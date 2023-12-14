@@ -1,6 +1,6 @@
 use super::{
     handler_trait::Handler,
-    interface::{DynMethod, Interface},
+    interface::{DynKaspadMethod, Interface},
 };
 use crate::{
     connection::{Connection, IncomingRoute},
@@ -17,7 +17,7 @@ pub struct RequestHandler {
     rpc_op: KaspadPayloadOps,
     incoming_route: IncomingRoute,
     server_ctx: ServerContext,
-    method: DynMethod,
+    method: DynKaspadMethod,
     connection: Connection,
 }
 

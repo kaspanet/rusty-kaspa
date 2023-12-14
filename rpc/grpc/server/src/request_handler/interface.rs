@@ -1,4 +1,4 @@
-use super::method::{Method, MethodTrait, RoutingPolicy};
+use super::method::{DropFn, Method, MethodTrait};
 use crate::{
     connection::Connection,
     connection_handler::ServerContext,
@@ -11,7 +11,9 @@ use kaspa_grpc_core::{
 use std::fmt::Debug;
 use std::{collections::HashMap, sync::Arc};
 
-pub type DynMethod = Arc<dyn MethodTrait<ServerContext, Connection, KaspadRequest, KaspadResponse>>;
+pub type KaspadMethod = Method<ServerContext, Connection, KaspadRequest, KaspadResponse>;
+pub type DynKaspadMethod = Arc<dyn MethodTrait<ServerContext, Connection, KaspadRequest, KaspadResponse>>;
+pub type KaspadDropFn = DropFn<KaspadRequest, KaspadResponse>;
 
 /// An interface providing methods implementations and a fallback "not implemented" method
 /// actually returning a message with a "not implemented" error.
@@ -23,8 +25,8 @@ pub type DynMethod = Arc<dyn MethodTrait<ServerContext, Connection, KaspadReques
 /// the `call()` method.
 pub struct Interface {
     server_ctx: ServerContext,
-    methods: HashMap<KaspadPayloadOps, DynMethod>,
-    method_not_implemented: DynMethod,
+    methods: HashMap<KaspadPayloadOps, DynKaspadMethod>,
+    method_not_implemented: DynKaspadMethod,
 }
 
 impl Interface {
@@ -43,23 +45,30 @@ impl Interface {
         Self { server_ctx, methods: Default::default(), method_not_implemented }
     }
 
-    pub fn method(&mut self, op: KaspadPayloadOps, method: Method<ServerContext, Connection, KaspadRequest, KaspadResponse>) {
-        let method: Arc<dyn MethodTrait<ServerContext, Connection, KaspadRequest, KaspadResponse>> = Arc::new(method);
+    pub fn method(&mut self, op: KaspadPayloadOps, method: KaspadMethod) {
+        let method: DynKaspadMethod = Arc::new(method);
         if self.methods.insert(op, method).is_some() {
             panic!("RPC method {op:?} is declared multiple times")
         }
     }
 
-    pub fn replace_method(&mut self, op: KaspadPayloadOps, method: Method<ServerContext, Connection, KaspadRequest, KaspadResponse>) {
-        let method: Arc<dyn MethodTrait<ServerContext, Connection, KaspadRequest, KaspadResponse>> = Arc::new(method);
+    pub fn replace_method(&mut self, op: KaspadPayloadOps, method: KaspadMethod) {
+        let method: DynKaspadMethod = Arc::new(method);
         let _ = self.methods.insert(op, method);
     }
 
-    pub fn replace_method_properties(&mut self, op: KaspadPayloadOps, tasks: usize, queue_size: usize, routing_policy: RoutingPolicy) {
+    pub fn set_enqueue_properties(&mut self, op: KaspadPayloadOps, tasks: usize, queue_size: usize) {
         self.methods.entry(op).and_modify(|x| {
-            let method: Method<ServerContext, Connection, KaspadRequest, KaspadResponse> =
-                Method::with_properties(x.method_fn(), tasks, queue_size, routing_policy);
-            let method: Arc<dyn MethodTrait<ServerContext, Connection, KaspadRequest, KaspadResponse>> = Arc::new(method);
+            let method: KaspadMethod = Method::with_enqueue_properties(x.method_fn(), tasks, queue_size);
+            let method: DynKaspadMethod = Arc::new(method);
+            *x = method;
+        });
+    }
+
+    pub fn set_drop_properties(&mut self, op: KaspadPayloadOps, tasks: usize, queue_size: usize, drop_fn: KaspadDropFn) {
+        self.methods.entry(op).and_modify(|x| {
+            let method: KaspadMethod = Method::with_drop_properties(x.method_fn(), tasks, queue_size, drop_fn);
+            let method: DynKaspadMethod = Arc::new(method);
             *x = method;
         });
     }
@@ -73,7 +82,7 @@ impl Interface {
         self.methods.get(op).unwrap_or(&self.method_not_implemented).call(self.server_ctx.clone(), connection, request).await
     }
 
-    pub fn get_method(&self, op: &KaspadPayloadOps) -> DynMethod {
+    pub fn get_method(&self, op: &KaspadPayloadOps) -> DynKaspadMethod {
         self.methods.get(op).unwrap_or(&self.method_not_implemented).clone()
     }
 }
