@@ -79,9 +79,7 @@ impl<const BPS: u64> Bps<BPS> {
         Self::ghostdag_k() as u64 * 10
     }
 
-    /// Mergeset limit determines pruning depth which effects every header so we can't easily change this on the fly
-    ///
-    /// TODO (TEMP): rename to mergeset_size_limit when restarting TN11 or when implementing a TN11 HF
+    // TODO (TEMP): rename to mergeset_size_limit when restarting TN11 or when implementing a TN11 HF
     pub const fn _mergeset_size_limit() -> u64 {
         let val = Self::ghostdag_k() as u64 * 2;
         if val < 180 {
