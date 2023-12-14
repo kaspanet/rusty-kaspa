@@ -45,4 +45,8 @@ impl BlockStatus {
     pub fn is_valid(self) -> bool {
         self != BlockStatus::StatusInvalid
     }
+
+    pub fn is_invalid(self) -> bool {
+        self == BlockStatus::StatusInvalid
+    }
 }

@@ -216,10 +216,22 @@ impl Params {
 
     /// Returns whether the sink timestamp is recent enough and the node is considered synced or nearly synced.
     pub fn is_nearly_synced(&self, sink_timestamp: u64, sink_daa_score: u64) -> bool {
-        // We consider the node close to being synced if the sink (virtual selected parent) block
-        // timestamp is within DAA window duration far in the past. Blocks mined over such DAG state would
-        // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
-        unix_now() < sink_timestamp + self.expected_daa_window_duration_in_milliseconds(sink_daa_score)
+        if self.net.is_mainnet() {
+            // We consider the node close to being synced if the sink (virtual selected parent) block
+            // timestamp is within DAA window duration far in the past. Blocks mined over such DAG state would
+            // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
+            unix_now() < sink_timestamp + self.expected_daa_window_duration_in_milliseconds(sink_daa_score)
+        } else {
+            // For testnets we consider the node to be synced if the sink timestamp is within a time range which
+            // is overwhelmingly unlikely to pass without mined blocks even if net hashrate decreased dramatically.
+            //
+            // This period is smaller than the above mainnet calculation in order to ensure that an IBDing miner
+            // with significant testnet hashrate does not overwhelm the network with deep side-DAGs.
+            //
+            // We use DAA duration as baseline and scale it down with BPS
+            let max_expected_duration_without_blocks_in_milliseconds = self.target_time_per_block * NEW_DIFFICULTY_WINDOW_DURATION; // = DAA duration in milliseconds / bps
+            unix_now() < sink_timestamp + max_expected_duration_without_blocks_in_milliseconds
+        }
     }
 
     pub fn network_name(&self) -> String {
