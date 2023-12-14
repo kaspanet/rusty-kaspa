@@ -193,11 +193,11 @@ pub struct Address {
 
 impl std::fmt::Debug for Address {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Address")
-            .field("prefix", &self.prefix)
-            .field("version", &self.version)
-            .field("payload", &self.encode_payload())
-            .finish()
+        if self.version == Version::PubKey {
+            write!(f, "{}", String::from(self))
+        } else {
+            write!(f, "{} ({})", String::from(self), self.version)
+        }
     }
 }
 
