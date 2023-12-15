@@ -174,19 +174,19 @@ impl OrphanBlocksPool {
         }
 
         // Now process the roots and unorphan their descendents
-        let mut tasks = Vec::with_capacity(roots.len());
-        let mut hashes = Vec::with_capacity(roots.len());
+        let mut virtual_processing_tasks = Vec::with_capacity(roots.len());
+        let mut queued_hashes = Vec::with_capacity(roots.len());
         for root in roots {
             let root_hash = root.hash();
             let BlockValidationFutures { block_task: _, virtual_state_task: root_task } = consensus.validate_and_insert_block(root);
-            tasks.push(root_task);
-            hashes.push(root_hash);
+            virtual_processing_tasks.push(root_task);
+            queued_hashes.push(root_hash);
             let (unorphan_blocks, _, unorphan_tasks) = self.unorphan_blocks(consensus, root_hash).await;
-            tasks.extend(unorphan_tasks);
-            hashes.extend(unorphan_blocks.into_iter().map(|b| b.hash()));
+            virtual_processing_tasks.extend(unorphan_tasks);
+            queued_hashes.extend(unorphan_blocks.into_iter().map(|b| b.hash()));
         }
 
-        (hashes, tasks)
+        (queued_hashes, virtual_processing_tasks)
     }
 }
 

@@ -133,12 +133,14 @@ impl IbdFlow {
 
         // Following IBD we revalidate orphans since many of them might have been processed during the IBD
         // or are now processable
-        let (hashes, tasks) = self.ctx.revalidate_orphans(&session).await;
-        let mut unorphaned_hashes = Vec::with_capacity(hashes.len());
-        let results = join_all(tasks).await;
-        for (hash, result) in hashes.into_iter().zip(results) {
+        let (queued_hashes, virtual_processing_tasks) = self.ctx.revalidate_orphans(&session).await;
+        let mut unorphaned_hashes = Vec::with_capacity(queued_hashes.len());
+        let results = join_all(virtual_processing_tasks).await;
+        for (hash, result) in queued_hashes.into_iter().zip(results) {
             match result {
                 Ok(_) => unorphaned_hashes.push(hash),
+                // We do not return the error and disconnect here since we don't know
+                // that this peer was the origin of the orphan block
                 Err(e) => warn!("Validation failed for orphan block {}: {}", hash, e),
             }
         }
