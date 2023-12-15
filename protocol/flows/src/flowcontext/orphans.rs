@@ -237,6 +237,8 @@ mod tests {
         let d = Block::from_precomputed_hash(11.into(), vec![10.into()]);
         let e = Block::from_precomputed_hash(12.into(), vec![10.into()]);
         let f = Block::from_precomputed_hash(13.into(), vec![12.into()]);
+        let g = Block::from_precomputed_hash(14.into(), vec![13.into()]);
+        let h = Block::from_precomputed_hash(15.into(), vec![14.into()]);
 
         pool.add_orphan(c.clone());
         pool.add_orphan(d.clone());
@@ -256,10 +258,15 @@ mod tests {
         pool.add_orphan(d.clone());
         pool.add_orphan(e.clone());
         pool.add_orphan(f.clone());
-        assert_eq!(pool.orphans.len(), 3);
+        pool.add_orphan(h.clone());
+        assert_eq!(pool.orphans.len(), 4);
+        pool.revalidate_orphans(&consensus).await;
+        assert_eq!(pool.orphans.len(), 1);
+        assert!(pool.orphans.contains_key(&h.hash())); // h's parent, g, was never inserted to the pool
+        pool.add_orphan(g.clone());
         pool.revalidate_orphans(&consensus).await;
         assert!(pool.orphans.is_empty());
 
-        drop((a, b, c, d, e, f));
+        drop((a, b, c, d, e, f, g, h));
     }
 }
