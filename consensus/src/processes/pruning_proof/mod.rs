@@ -394,7 +394,14 @@ impl PruningProofManager {
             .map(|level| Arc::new(DbGhostdagStore::new(db.clone(), level, cache_policy, cache_policy)))
             .collect_vec();
         let mut relations_stores = (0..=self.max_block_level)
-            .map(|level| DbRelationsStore::new(db.clone(), level, CachePolicy::Unit(2 * self.pruning_proof_m as usize)))
+            .map(|level| {
+                DbRelationsStore::new(
+                    db.clone(),
+                    level,
+                    CachePolicy::Unit(2 * self.pruning_proof_m as usize),
+                    CachePolicy::Unit(2 * self.pruning_proof_m as usize),
+                )
+            })
             .collect_vec();
         let reachability_stores = (0..=self.max_block_level)
             .map(|level| Arc::new(RwLock::new(DbReachabilityStore::with_block_level(db.clone(), cache_policy, cache_policy, level))))

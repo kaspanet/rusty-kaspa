@@ -116,7 +116,7 @@ fn reachability_stretch_test(use_attack_json: bool) {
     // Act
     let (_temp_db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let mut store = DbReachabilityStore::new(db.clone(), CachePolicy::Unit(50_000), CachePolicy::Unit(50_000));
-    let mut relations = DbRelationsStore::new(db, 0, CachePolicy::Unit(100_000)); // TODO: remove level
+    let mut relations = DbRelationsStore::new(db, 0, CachePolicy::Unit(100_000), CachePolicy::Unit(100_000)); // TODO: remove level
     let mut builder = DagBuilder::new(&mut store, &mut relations);
 
     builder.init();

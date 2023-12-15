@@ -89,7 +89,9 @@ impl ConsensusStorage {
 
         // Cache sizes which are tracked per unit
         let relations_cache_size = 50_000_000 / size_of::<Hash>();
+        let relations_children_cache_size = 5_000_000 / size_of::<Hash>();
         let reachability_relations_cache_size = 50_000_000 / size_of::<Hash>();
+        let reachability_relations_children_cache_size = 5_000_000 / size_of::<Hash>();
         let transactions_cache_size = 2000usize; // Tracked units are txs
 
         // Cache sizes represented and tracked as bytes
@@ -114,7 +116,15 @@ impl ConsensusStorage {
                         } else {
                             CachePolicy::Unit(noise(2 * params.pruning_proof_m as usize))
                         };
-                    DbRelationsStore::new(db.clone(), level, cache_policy)
+                    let level_normalized_children_cache_size = relations_children_cache_size.checked_shr(level as u32).unwrap_or(0);
+                    let children_cache_policy = if level_normalized_children_cache_size
+                        > 2 * params.pruning_proof_m as usize * params.max_block_parents as usize
+                    {
+                        CachePolicy::Tracked(noise(level_normalized_children_cache_size))
+                    } else {
+                        CachePolicy::Unit(noise(2 * params.pruning_proof_m as usize))
+                    };
+                    DbRelationsStore::new(db.clone(), level, cache_policy, children_cache_policy)
                 })
                 .collect_vec(),
         ));
@@ -128,6 +138,7 @@ impl ConsensusStorage {
             db.clone(),
             DatabaseStorePrefixes::ReachabilityRelations.as_ref(),
             CachePolicy::Tracked(noise(reachability_relations_cache_size)),
+            CachePolicy::Tracked(noise(reachability_relations_children_cache_size)),
         )));
 
         let max_ghostdag_data_size = size_of::<GhostdagData>()
