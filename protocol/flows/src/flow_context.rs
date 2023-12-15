@@ -363,7 +363,7 @@ impl FlowContext {
         unorphaned_blocks
     }
 
-    pub async fn revalidate_orphans(&self, consensus: &ConsensusProxy) {
+    pub async fn revalidate_orphans(&self, consensus: &ConsensusProxy) -> (Vec<Hash>, Vec<BlockValidationFuture>) {
         self.orphans_pool.write().await.revalidate_orphans(consensus).await
     }
 

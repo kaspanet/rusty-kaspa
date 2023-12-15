@@ -141,7 +141,8 @@ impl OrphanBlocksPool {
     /// This is important for the overall health of the pool and for ensuring that
     /// orphan blocks don't evict due to pool size limit while already processed
     /// blocks remain in it. Should be called following IBD.  
-    pub async fn revalidate_orphans(&mut self, consensus: &ConsensusProxy) {
+    pub async fn revalidate_orphans(&mut self, consensus: &ConsensusProxy) -> (Vec<Hash>, Vec<BlockValidationFuture>) {
+        // First, cleanup blocks already processed by consensus
         let mut i = 0;
         while i < self.orphans.len() {
             if let Some((&h, _)) = self.orphans.get_index(i) {
@@ -156,6 +157,36 @@ impl OrphanBlocksPool {
                 i += 1;
             }
         }
+
+        // Next, search for root blocks which are processable
+        let mut roots = Vec::new();
+        for block in self.orphans.values() {
+            let mut processable = true;
+            for p in block.block.header.direct_parents().iter().copied() {
+                if self.orphans.contains_key(&p) || consensus.async_get_block_status(p).await.is_none_or(|s| s.is_header_only()) {
+                    processable = false;
+                    break;
+                }
+            }
+            if processable {
+                roots.push(block.block.clone());
+            }
+        }
+
+        // Now process the roots and unorphan their descendents
+        let mut tasks = Vec::with_capacity(roots.len());
+        let mut hashes = Vec::with_capacity(roots.len());
+        for root in roots {
+            let root_hash = root.hash();
+            let BlockValidationFutures { block_task: _, virtual_state_task: root_task } = consensus.validate_and_insert_block(root);
+            tasks.push(root_task);
+            hashes.push(root_hash);
+            let (unorphan_blocks, _, unorphan_tasks) = self.unorphan_blocks(consensus, root_hash).await;
+            tasks.extend(unorphan_tasks);
+            hashes.extend(unorphan_blocks.into_iter().map(|b| b.hash()));
+        }
+
+        (hashes, tasks)
     }
 }
 
@@ -226,10 +257,6 @@ mod tests {
         pool.add_orphan(e.clone());
         pool.add_orphan(f.clone());
         assert_eq!(pool.orphans.len(), 3);
-        pool.revalidate_orphans(&consensus).await;
-        assert_eq!(pool.orphans.len(), 2);
-        consensus.validate_and_insert_block(e.clone()).virtual_state_task.await.unwrap();
-        consensus.validate_and_insert_block(f.clone()).virtual_state_task.await.unwrap();
         pool.revalidate_orphans(&consensus).await;
         assert!(pool.orphans.is_empty());
 
