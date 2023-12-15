@@ -95,6 +95,7 @@ pub struct HTLC {
     pub role: HtlcRole,
     pub locktime: u64,
     pub secret_hash: Hash,
+    pub secret: Option<Vec<u8>>,
 }
 
 impl HTLC {
@@ -106,6 +107,7 @@ impl HTLC {
         role: HtlcRole,
         locktime: u64,
         secret_hash: Hash,
+        secret: Option<Vec<u8>>,
     ) -> Self {
         Self {
             version: HTLC_ACCOUNT_VERSION,
@@ -116,6 +118,7 @@ impl HTLC {
             role,
             locktime,
             secret_hash,
+            secret,
         }
     }
 }

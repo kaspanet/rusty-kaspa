@@ -41,6 +41,12 @@ impl Htlc {
                 let account_name = argv.next();
                 wizards::htlc::create(&ctx, account_name.as_deref(), role, locktime, secret_hash).await?;
             }
+            "secret-add" => {
+                let secret = argv.first().ok_or(Error::Custom("'secret' is required".to_string()))?;
+                let account = ctx.select_account().await.unwrap();
+                wizards::htlc::add_secret(&ctx, account, secret.clone()).await.unwrap();
+                tprintln!(ctx, "secret successfully added\r\n");
+            }
             v => {
                 tprintln!(ctx, "unknown command: '{v}'\r\n");
                 return self.display_help(ctx, argv).await;
@@ -52,10 +58,13 @@ impl Htlc {
 
     async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> crate::imports::Result<()> {
         ctx.term().help(
-            &[(
-                "create <role> <locktime> <secret-hash> [<name>]",
-                "Create a new account (role: 'sender', 'receiver', locktime: unix time in ms, secret-hash: hexed hash of secret)",
-            )],
+            &[
+                (
+                    "create <role> <locktime> <secret-hash> [<name>]",
+                    "Create a new account (role: 'sender', 'receiver', locktime: unix time in ms, secret-hash: hexed hash of secret)",
+                ),
+                ("secret-add <secret in hex>", "Provide secret to make it possible to withdraw"),
+            ],
             None,
         )?;
 

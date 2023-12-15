@@ -519,7 +519,7 @@ impl Wallet {
                 .load_key_data(&ctx, &args.prv_key_data_id)
                 .await?
                 .ok_or(Error::PrivateKeyNotFound(args.prv_key_data_id.to_hex()))?;
-            let xpub_key = prv_key_data.create_xpub(None, AccountKind::MultiSig, 0).await?;
+            let xpub_key = prv_key_data.get_xprv(None)?.public_key();
             let xpub_prefix = kaspa_bip32::Prefix::XPUB;
             let creator_xpub = xpub_key.to_string(Some(xpub_prefix));
 
@@ -531,6 +531,7 @@ impl Wallet {
                 args.role,
                 args.locktime,
                 Hash::from_str(&args.secret_hash).map_err(|_| Custom("hex conversion".to_string()))?,
+                None,
             );
             match args.role {
                 HtlcRole::Receiver => Arc::new(runtime::HTLC::<Receiver>::try_new(args.prv_key_data_id, settings, self, data).await?),
@@ -539,6 +540,44 @@ impl Wallet {
         };
 
         let stored_account = account.as_storable()?;
+
+        account_storage.store_single(&stored_account, None).await?;
+        self.inner.store.clone().commit(&ctx).await?;
+        account.clone().start().await?;
+
+        Ok(account)
+    }
+
+    pub async fn htlc_add_secret(
+        self: &Arc<Wallet>,
+        account: Arc<dyn Account>,
+        wallet_secret: Secret,
+        secret: Vec<u8>,
+    ) -> Result<Arc<dyn Account>> {
+        let account_storage = self.inner.store.clone().as_account_store()?;
+        let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
+
+        let (data, _) = account_storage.load_single(account.id()).await.unwrap().unwrap();
+        let check_hash = |secret, secret_hash| {
+            use sha2::{Digest, Sha256};
+            let mut hasher = Sha256::new();
+            hasher.update(secret);
+            hasher.finalize().as_slice() == secret_hash
+        };
+
+        let new_data = match data.data.clone() {
+            AccountData::Htlc(data @ HTLC { role: HtlcRole::Receiver, .. }) if check_hash(&secret, &data.secret_hash.as_bytes()) => {
+                HTLC { secret: Some(secret), ..data }
+            }
+            AccountData::Htlc(HTLC { role: HtlcRole::Sender, .. }) => return Err(Error::Custom("role mismatch".to_string())),
+            AccountData::Htlc(_) => return Err(Error::Custom("hash mismatch".to_string())),
+            _ => unreachable!(),
+        };
+        let settings = account.context().settings.clone().unwrap();
+        let new_acc =
+            runtime::HTLC::<Receiver>::try_new(*account.prv_key_data_id().unwrap(), settings, &self, new_data).await.unwrap();
+
+        let stored_account = new_acc.as_storable()?;
 
         account_storage.store_single(&stored_account, None).await?;
         self.inner.store.clone().commit(&ctx).await?;

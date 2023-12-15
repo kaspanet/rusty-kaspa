@@ -1,4 +1,5 @@
 use crate::KaspaCli;
+use kaspa_wallet_core::runtime::Account;
 use kaspa_wallet_core::{
     runtime::{wallet::HtlcCreateArgs, PrvKeyDataCreateArgs},
     storage::account::HtlcRole,
@@ -41,5 +42,14 @@ pub(crate) async fn create(
             secret_hash,
         })
         .await?;
+    Ok(())
+}
+
+pub(crate) async fn add_secret(ctx: &Arc<KaspaCli>, acc: Arc<dyn Account>, secret: String) -> crate::imports::Result<()> {
+    let wallet = ctx.wallet();
+    let (wallet_secret, _) = ctx.ask_wallet_secret(None).await?;
+    let mut secret_v = vec![0; secret.len() / 2];
+    faster_hex::hex_decode(secret.as_bytes(), &mut secret_v)?;
+    wallet.htlc_add_secret(acc, wallet_secret, secret_v).await?;
     Ok(())
 }

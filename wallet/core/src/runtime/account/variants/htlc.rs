@@ -6,7 +6,7 @@ use crate::runtime::Wallet;
 use crate::secret::Secret;
 use crate::storage::account::HtlcRole;
 use crate::storage::{self, Metadata, PrvKeyDataId, Settings};
-use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, HtlcSenderSigner, PaymentDestination};
+use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, HtlcReceiverSigner, HtlcSenderSigner, PaymentDestination};
 use kaspa_bip32::ExtendedPublicKey;
 use kaspa_hashes::Hash;
 use kaspa_txscript::{extract_script_pub_key_address, htlc_redeem_script, pay_to_script_hash_script};
@@ -25,6 +25,7 @@ pub struct HTLC<T> {
     role: PhantomData<T>,
     pub(crate) locktime: u64,
     pub(crate) secret_hash: Hash,
+    pub(crate) secret: Option<Vec<u8>>,
 }
 
 impl HTLC<Sender> {
@@ -52,6 +53,7 @@ impl HTLC<Sender> {
             role: PhantomData,
             locktime,
             secret_hash,
+            secret: None,
         })
     }
 }
@@ -66,7 +68,9 @@ impl HTLC<Receiver> {
         let id = AccountId::from_htlc(&prv_key_data_id, &data);
         let inner = Arc::new(Inner::new(wallet, id, Some(settings)));
 
-        let storage::account::HTLC { xpub_key, second_party_address, account_index, ecdsa, role, locktime, secret_hash, .. } = data;
+        let storage::account::HTLC {
+            xpub_key, second_party_address, account_index, ecdsa, role, locktime, secret_hash, secret, ..
+        } = data;
 
         if let HtlcRole::Sender = role {
             return Err(Error::Custom("unexpected role".to_string()));
@@ -81,6 +85,7 @@ impl HTLC<Receiver> {
             role: PhantomData,
             locktime,
             secret_hash,
+            secret,
         })
     }
 }
@@ -136,6 +141,7 @@ impl Account for HTLC<Sender> {
             HtlcRole::Sender,
             self.locktime,
             self.secret_hash,
+            self.secret.clone(),
         );
 
         let account = storage::Account::new(*self.id(), Some(self.prv_key_data_id), settings, storage::AccountData::Htlc(htlc));
@@ -166,7 +172,7 @@ impl Account for HTLC<Sender> {
         notifier: Option<GenerationNotifier>,
     ) -> Result<(GeneratorSummary, Vec<kaspa_hashes::Hash>)> {
         let keydata = self.prv_key_data(wallet_secret).await?;
-        let signer = Arc::new(HtlcSenderSigner::try_new(self.clone().as_dyn_arc(), keydata));
+        let signer = Arc::new(HtlcSenderSigner::new(self.clone(), keydata));
 
         let settings = GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, priority_fee_sompi, payload)?;
 
@@ -218,7 +224,6 @@ impl Account for HTLC<Receiver> {
             &self.secret_hash.as_bytes(),
             self.locktime,
         )?;
-
         let script_pub_key = pay_to_script_hash_script(&script);
         let address = extract_script_pub_key_address(&script_pub_key, prefix)?;
         Ok(address)
@@ -239,6 +244,7 @@ impl Account for HTLC<Receiver> {
             HtlcRole::Receiver,
             self.locktime,
             self.secret_hash,
+            self.secret.clone(),
         );
 
         let account = storage::Account::new(*self.id(), Some(self.prv_key_data_id), settings, storage::AccountData::Htlc(htlc));
@@ -252,5 +258,43 @@ impl Account for HTLC<Receiver> {
 
     fn as_derivation_capable(self: Arc<Self>) -> Result<Arc<dyn DerivationCapableAccount>> {
         Err(Error::AccountKindFeature)
+    }
+
+    async fn send(
+        self: Arc<Self>,
+        destination: PaymentDestination,
+        priority_fee_sompi: Fees,
+        payload: Option<Vec<u8>>,
+        wallet_secret: Secret,
+        _payment_secret: Option<Secret>,
+        abortable: &Abortable,
+        notifier: Option<GenerationNotifier>,
+    ) -> Result<(GeneratorSummary, Vec<Hash>)> {
+        let Some(_) = &self.secret else { return Err(Error::Custom("not ready, should fill secret first".to_string())) };
+        let keydata = self.prv_key_data(wallet_secret).await?;
+        let signer = Arc::new(HtlcReceiverSigner::new(self.clone(), keydata));
+
+        let settings = GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, priority_fee_sompi, payload)?;
+
+        let generator = Generator::try_new(settings, Some(signer), Some(abortable))?;
+
+        let mut stream = generator.stream();
+        let mut ids = vec![];
+        while let Some(transaction) = stream.try_next().await? {
+            if let Some(notifier) = notifier.as_ref() {
+                notifier(&transaction);
+            }
+
+            transaction.try_sign()?;
+            transaction.log().await?;
+            let id = transaction.try_submit(&self.wallet().rpc_api()).await?;
+            ids.push(id);
+            yield_executor().await;
+        }
+
+        Ok((generator.summary(), ids))
+    }
+    fn sig_op_count(&self) -> u8 {
+        2
     }
 }
