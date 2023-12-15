@@ -4,7 +4,7 @@ use crate::{
     manager::ManagerEvent,
     request_handler::{
         factory::Factory,
-        interface::{Interface, KaspadDropFn},
+        interface::{Interface, KaspadRoutingPolicy},
         method::RoutingPolicy,
     },
 };
@@ -94,17 +94,12 @@ type RequestSender = MpmcSender<KaspadRequest>;
 #[derive(Clone)]
 struct Route {
     sender: RequestSender,
-    policy: RoutingPolicy,
-    drop_fn: Option<KaspadDropFn>,
+    policy: KaspadRoutingPolicy,
 }
 
 impl Route {
-    fn new_enqueue(sender: RequestSender) -> Self {
-        Self { sender, policy: RoutingPolicy::Enqueue, drop_fn: None }
-    }
-
-    fn new_drop(sender: RequestSender, drop_fn: KaspadDropFn) -> Self {
-        Self { sender, policy: RoutingPolicy::DropIfFull, drop_fn: Some(drop_fn) }
+    fn new(sender: RequestSender, policy: KaspadRoutingPolicy) -> Self {
+        Self { sender, policy }
     }
 }
 
@@ -134,7 +129,7 @@ impl Router {
         Self { routing_map: Default::default(), server_context, interface }
     }
 
-    fn subscribe(&mut self, connection: &Connection, rpc_op: KaspadPayloadOps) -> Route {
+    fn get_or_subscribe(&mut self, connection: &Connection, rpc_op: KaspadPayloadOps) -> &Route {
         match self.routing_map.entry(rpc_op) {
             Entry::Vacant(entry) => {
                 let method = self.interface.get_method(&rpc_op);
@@ -151,13 +146,8 @@ impl Router {
                     })
                     .collect_vec();
                 handlers.into_iter().for_each(|x| x.launch());
-                let route = match method.routing_policy() {
-                    RoutingPolicy::Enqueue => Route::new_enqueue(sender),
-                    RoutingPolicy::DropIfFull => {
-                        Route::new_drop(sender, method.drop_fn().expect("a method with DropIfFull routing policy has a drop function"))
-                    }
-                };
-                entry.insert(route.clone());
+                let route = Route::new(sender, method.routing_policy());
+                entry.insert(route);
                 match method.tasks() {
                     1 => {
                         trace!("GRPC, Connection::subscribe - {:?} route is registered, client:{:?}", rpc_op, connection.identity());
@@ -171,10 +161,10 @@ impl Router {
                         );
                     }
                 }
-                route
             }
-            Entry::Occupied(entry) => entry.get().clone(),
+            Entry::Occupied(_) => {}
         }
+        self.routing_map.get(&rpc_op).unwrap()
     }
 
     async fn route_to_handler(&mut self, connection: &Connection, request: KaspadRequest) -> GrpcServerResult<()> {
@@ -183,18 +173,17 @@ impl Router {
             return Err(GrpcServerError::InvalidRequestPayload);
         }
         let rpc_op = request.payload.as_ref().unwrap().into();
-        let route = self.routing_map.get(&rpc_op).cloned();
-        let route = route.unwrap_or_else(|| self.subscribe(connection, rpc_op));
+        let route = self.get_or_subscribe(connection, rpc_op);
         match route.policy {
             RoutingPolicy::Enqueue => match route.send(request).await {
                 Ok(_) => Ok(()),
                 Err(_) => Err(GrpcServerError::ClosedHandler(rpc_op)),
             },
-            RoutingPolicy::DropIfFull => match route.try_send(request) {
+            RoutingPolicy::DropIfFull(ref drop_fn) => match route.try_send(request) {
                 Ok(_) => Ok(()),
                 Err(MpmcTrySendError::Full(request)) => {
                     let id = request.id;
-                    let mut response = (route.drop_fn.clone().unwrap())(request)?;
+                    let mut response = (drop_fn)(&request)?;
                     response.id = id;
                     connection.enqueue(response).await?;
                     Ok(())

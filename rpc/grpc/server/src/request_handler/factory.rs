@@ -3,7 +3,7 @@ use std::sync::Arc;
 use super::{
     handler::RequestHandler,
     handler_trait::Handler,
-    interface::{Interface, KaspadMethod},
+    interface::{Interface, KaspadMethod, KaspadRoutingPolicy},
     method::Method,
 };
 use crate::{
@@ -131,16 +131,13 @@ impl Factory {
 
         // Methods with special properties
         let network_bps = network_bps as usize;
-        interface.set_drop_properties(
+        interface.set_method_properties(
             KaspadPayloadOps::SubmitBlock,
             network_bps,
             10.max(network_bps * 2),
-            Arc::new(Box::new(|request: KaspadRequest| {
-                let response = SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::RouteIsFull) };
-                let mut response: KaspadResponse = Ok(response).into();
-                response.id = request.id;
-                Ok(response)
-            })),
+            KaspadRoutingPolicy::DropIfFull(Arc::new(Box::new(|_: &KaspadRequest| {
+                Ok(Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::RouteIsFull) }).into())
+            }))),
         );
 
         interface

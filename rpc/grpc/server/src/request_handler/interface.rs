@@ -1,4 +1,4 @@
-use super::method::{DropFn, Method, MethodTrait};
+use super::method::{DropFn, Method, MethodTrait, RoutingPolicy};
 use crate::{
     connection::Connection,
     connection_handler::ServerContext,
@@ -14,6 +14,7 @@ use std::{collections::HashMap, sync::Arc};
 pub type KaspadMethod = Method<ServerContext, Connection, KaspadRequest, KaspadResponse>;
 pub type DynKaspadMethod = Arc<dyn MethodTrait<ServerContext, Connection, KaspadRequest, KaspadResponse>>;
 pub type KaspadDropFn = DropFn<KaspadRequest, KaspadResponse>;
+pub type KaspadRoutingPolicy = RoutingPolicy<KaspadRequest, KaspadResponse>;
 
 /// An interface providing methods implementations and a fallback "not implemented" method
 /// actually returning a message with a "not implemented" error.
@@ -57,18 +58,17 @@ impl Interface {
         let _ = self.methods.insert(op, method);
     }
 
-    pub fn set_enqueue_properties(&mut self, op: KaspadPayloadOps, tasks: usize, queue_size: usize) {
+    pub fn set_method_properties(
+        &mut self,
+        op: KaspadPayloadOps,
+        tasks: usize,
+        queue_size: usize,
+        routing_policy: KaspadRoutingPolicy,
+    ) {
         self.methods.entry(op).and_modify(|x| {
-            let method: KaspadMethod = Method::with_enqueue_properties(x.method_fn(), tasks, queue_size);
-            let method: DynKaspadMethod = Arc::new(method);
-            *x = method;
-        });
-    }
-
-    pub fn set_drop_properties(&mut self, op: KaspadPayloadOps, tasks: usize, queue_size: usize, drop_fn: KaspadDropFn) {
-        self.methods.entry(op).and_modify(|x| {
-            let method: KaspadMethod = Method::with_drop_properties(x.method_fn(), tasks, queue_size, drop_fn);
-            let method: DynKaspadMethod = Arc::new(method);
+            let method: Method<ServerContext, Connection, KaspadRequest, KaspadResponse> =
+                Method::with_properties(x.method_fn(), tasks, queue_size, routing_policy);
+            let method: Arc<dyn MethodTrait<ServerContext, Connection, KaspadRequest, KaspadResponse>> = Arc::new(method);
             *x = method;
         });
     }

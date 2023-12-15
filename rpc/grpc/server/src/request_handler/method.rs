@@ -3,10 +3,18 @@ use async_trait::async_trait;
 use futures::Future;
 use std::{pin::Pin, sync::Arc};
 
-#[derive(Clone, Copy, Eq, PartialEq)]
-pub enum RoutingPolicy {
+pub enum RoutingPolicy<Request, Response> {
     Enqueue,
-    DropIfFull,
+    DropIfFull(DropFn<Request, Response>),
+}
+
+impl<Request, Response> Clone for RoutingPolicy<Request, Response> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Enqueue => Self::Enqueue,
+            Self::DropIfFull(drop_fn) => Self::DropIfFull(drop_fn.clone()),
+        }
+    }
 }
 
 #[async_trait]
@@ -17,8 +25,7 @@ pub trait MethodTrait<ServerContext, ConnectionContext, Request, Response>: Send
     fn method_fn(&self) -> MethodFn<ServerContext, ConnectionContext, Request, Response>;
     fn tasks(&self) -> usize;
     fn queue_size(&self) -> usize;
-    fn routing_policy(&self) -> RoutingPolicy;
-    fn drop_fn(&self) -> Option<DropFn<Request, Response>>;
+    fn routing_policy(&self) -> RoutingPolicy<Request, Response>;
 }
 
 /// RPC method function type
@@ -29,7 +36,7 @@ pub type MethodFn<ServerContext, ConnectionContext, Request, Response> =
 pub type MethodFnReturn<T> = Pin<Box<(dyn Send + 'static + Future<Output = GrpcServerResult<T>>)>>;
 
 /// RPC drop function type
-pub type DropFn<Request, Response> = Arc<Box<dyn Send + Sync + Fn(Request) -> GrpcServerResult<Response>>>;
+pub type DropFn<Request, Response> = Arc<Box<dyn Send + Sync + Fn(&Request) -> GrpcServerResult<Response>>>;
 
 /// RPC method wrapper. Contains the method closure function.
 pub struct Method<ServerContext, ConnectionContext, Request, Response>
@@ -49,10 +56,7 @@ where
     queue_size: usize,
 
     /// Policy applied when the routing channel is full
-    routing_policy: RoutingPolicy,
-
-    /// Function to call when routing_policy is DropIfFull and the handler queue is full
-    drop_fn: Option<DropFn<Request, Response>>,
+    routing_policy: RoutingPolicy<Request, Response>,
 }
 
 impl<ServerContext, ConnectionContext, Request, Response> Method<ServerContext, ConnectionContext, Request, Response>
@@ -71,25 +75,16 @@ where
             tasks: 1,
             queue_size: Self::default_queue_size(),
             routing_policy: RoutingPolicy::Enqueue,
-            drop_fn: None,
         }
     }
 
-    pub fn with_enqueue_properties(
+    pub fn with_properties(
         method_fn: MethodFn<ServerContext, ConnectionContext, Request, Response>,
         tasks: usize,
         queue_size: usize,
+        routing_policy: RoutingPolicy<Request, Response>,
     ) -> Method<ServerContext, ConnectionContext, Request, Response> {
-        Method { method_fn, tasks, queue_size, routing_policy: RoutingPolicy::Enqueue, drop_fn: None }
-    }
-
-    pub fn with_drop_properties(
-        method_fn: MethodFn<ServerContext, ConnectionContext, Request, Response>,
-        tasks: usize,
-        queue_size: usize,
-        drop_fn: DropFn<Request, Response>,
-    ) -> Method<ServerContext, ConnectionContext, Request, Response> {
-        Method { method_fn, tasks, queue_size, routing_policy: RoutingPolicy::DropIfFull, drop_fn: Some(drop_fn) }
+        Method { method_fn, tasks, queue_size, routing_policy }
     }
 
     pub fn default_queue_size() -> usize {
@@ -127,11 +122,7 @@ where
         self.queue_size
     }
 
-    fn routing_policy(&self) -> RoutingPolicy {
-        self.routing_policy
-    }
-
-    fn drop_fn(&self) -> Option<DropFn<Request, Response>> {
-        self.drop_fn.clone()
+    fn routing_policy(&self) -> RoutingPolicy<Request, Response> {
+        self.routing_policy.clone()
     }
 }
