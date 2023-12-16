@@ -1,7 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
-use crate::storage::*;
 use async_trait::async_trait;
 use downcast::{downcast_sync, AnySync};
 
@@ -57,15 +56,17 @@ pub trait PrvKeyDataStore: Send + Sync {
 
 #[async_trait]
 pub trait AccountStore: Send + Sync {
-    async fn iter(&self, prv_key_data_id_filter: Option<PrvKeyDataId>)
-        -> Result<StorageStream<(Arc<Account>, Option<Arc<Metadata>>)>>;
+    async fn iter(
+        &self,
+        prv_key_data_id_filter: Option<PrvKeyDataId>,
+    ) -> Result<StorageStream<(Arc<AccountStorage>, Option<Arc<AccountMetadata>>)>>;
     async fn len(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<usize>;
-    async fn load_single(&self, ids: &AccountId) -> Result<Option<(Arc<Account>, Option<Arc<Metadata>>)>>;
-    async fn load_multiple(&self, ids: &[AccountId]) -> Result<Vec<(Arc<Account>, Option<Arc<Metadata>>)>>;
-    async fn store_single(&self, account: &Account, metadata: Option<&Metadata>) -> Result<()>;
-    async fn store_multiple(&self, data: Vec<(Account, Option<Metadata>)>) -> Result<()>;
+    async fn load_single(&self, ids: &AccountId) -> Result<Option<(Arc<AccountStorage>, Option<Arc<AccountMetadata>>)>>;
+    async fn load_multiple(&self, ids: &[AccountId]) -> Result<Vec<(Arc<AccountStorage>, Option<Arc<AccountMetadata>>)>>;
+    async fn store_single(&self, account: &AccountStorage, metadata: Option<&AccountMetadata>) -> Result<()>;
+    async fn store_multiple(&self, data: Vec<(AccountStorage, Option<AccountMetadata>)>) -> Result<()>;
     async fn remove(&self, id: &[&AccountId]) -> Result<()>;
-    async fn update_metadata(&self, metadata: Vec<Metadata>) -> Result<()>;
+    async fn update_metadata(&self, metadata: Vec<AccountMetadata>) -> Result<()>;
 }
 
 #[async_trait]

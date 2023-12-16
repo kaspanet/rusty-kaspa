@@ -1,159 +1,123 @@
 use crate::imports::*;
-use crate::storage::{AccountId, AccountKind, PrvKeyDataId};
-use secp256k1::PublicKey;
+use crate::result::Result;
+use crate::storage::PrvKeyDataId;
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "lowercase")]
-pub struct Settings {
-    pub is_visible: bool,
+pub struct AccountSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-}
-
-const LEGACY_ACCOUNT_VERSION: u16 = 0;
-#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-#[serde(rename_all = "lowercase")]
-pub struct Legacy {
-    pub version: u16,
-}
-
-impl Legacy {
-    pub fn new() -> Self {
-        Self { version: LEGACY_ACCOUNT_VERSION }
-    }
-}
-
-impl Default for Legacy {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-const BIP32_ACCOUNT_VERSION: u16 = 0;
-#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-#[serde(rename_all = "lowercase")]
-pub struct Bip32 {
-    #[serde(default)]
-    pub version: u16,
-
-    pub account_index: u64,
-    pub xpub_keys: Arc<Vec<String>>,
-    pub ecdsa: bool,
-}
-
-impl Bip32 {
-    pub fn new(account_index: u64, xpub_keys: Arc<Vec<String>>, ecdsa: bool) -> Self {
-        Self { version: BIP32_ACCOUNT_VERSION, account_index, xpub_keys, ecdsa }
-    }
-}
-
-const MULTISIG_ACCOUNT_VERSION: u16 = 0;
-#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-#[serde(rename_all = "lowercase")]
-pub struct MultiSig {
-    #[serde(default)]
-    pub version: u16,
-    pub xpub_keys: Arc<Vec<String>>,
-    pub prv_key_data_ids: Option<Arc<Vec<PrvKeyDataId>>>,
-    pub cosigner_index: Option<u8>,
-    pub minimum_signatures: u16,
-    pub ecdsa: bool,
-}
-
-impl MultiSig {
-    pub fn new(
-        xpub_keys: Arc<Vec<String>>,
-        prv_key_data_ids: Option<Arc<Vec<PrvKeyDataId>>>,
-        cosigner_index: Option<u8>,
-        minimum_signatures: u16,
-        ecdsa: bool,
-    ) -> Self {
-        Self { version: MULTISIG_ACCOUNT_VERSION, xpub_keys, prv_key_data_ids, cosigner_index, minimum_signatures, ecdsa }
-    }
-}
-
-const KEYPAIR_ACCOUNT_VERSION: u16 = 0;
-#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-#[serde(rename_all = "lowercase")]
-pub struct Keypair {
-    #[serde(default)]
-    pub version: u16,
-
-    pub public_key: String,
-    pub ecdsa: bool,
-}
-
-impl Keypair {
-    pub fn new(public_key: PublicKey, ecdsa: bool) -> Self {
-        Self { version: KEYPAIR_ACCOUNT_VERSION, public_key: public_key.to_string(), ecdsa }
-    }
-}
-
-const HARDWARE_ACCOUNT_VERSION: u16 = 0;
-#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-#[serde(rename_all = "lowercase")]
-pub struct Hardware {
-    #[serde(default)]
-    pub version: u16,
-
-    pub descriptor: String,
-}
-
-impl Hardware {
-    pub fn new(descriptor: &str) -> Self {
-        Self { version: HARDWARE_ACCOUNT_VERSION, descriptor: descriptor.to_string() }
-    }
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meta: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-#[serde(tag = "type")]
 #[serde(rename_all = "lowercase")]
-pub enum AccountData {
-    Legacy(Legacy),
-    Bip32(Bip32),
-    MultiSig(MultiSig),
-    Keypair(Keypair),
-    Hardware(Hardware),
+#[serde(tag = "type", content = "data")]
+pub enum AssocPrvKeyDataIds {
+    None,
+    Single(PrvKeyDataId),
+    Multiple(Arc<Vec<PrvKeyDataId>>),
 }
 
-impl AccountData {
-    pub fn account_kind(&self) -> AccountKind {
-        match self {
-            AccountData::Legacy { .. } => AccountKind::Legacy,
-            AccountData::Bip32 { .. } => AccountKind::Bip32,
-            AccountData::MultiSig { .. } => AccountKind::MultiSig,
-            AccountData::Hardware { .. } => AccountKind::Hardware,
-            AccountData::Keypair { .. } => AccountKind::Keypair,
+impl From<PrvKeyDataId> for AssocPrvKeyDataIds {
+    fn from(value: PrvKeyDataId) -> Self {
+        AssocPrvKeyDataIds::Single(value)
+    }
+}
+
+impl TryFrom<Option<Arc<Vec<PrvKeyDataId>>>> for AssocPrvKeyDataIds {
+    type Error = Error;
+
+    fn try_from(value: Option<Arc<Vec<PrvKeyDataId>>>) -> Result<Self> {
+        match value {
+            None => Ok(AssocPrvKeyDataIds::None),
+            Some(ids) => {
+                if ids.is_empty() {
+                    return Err(Error::AssocPrvKeyDataIdsEmpty);
+                }
+                Ok(AssocPrvKeyDataIds::Multiple(ids))
+            }
         }
     }
 }
 
-const ACCOUNT_VERSION: u16 = 0;
-#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-pub struct Account {
-    #[serde(default)]
-    pub version: u16,
+impl TryFrom<AssocPrvKeyDataIds> for PrvKeyDataId {
+    type Error = Error;
 
-    pub id: AccountId,
-    pub prv_key_data_id: Option<PrvKeyDataId>,
-    pub settings: Settings,
-    pub data: AccountData,
+    fn try_from(value: AssocPrvKeyDataIds) -> Result<Self> {
+        match value {
+            AssocPrvKeyDataIds::Single(id) => Ok(id),
+            _ => Err(Error::AssocPrvKeyDataIds("Single".to_string(), value)),
+        }
+    }
 }
 
-impl Account {
-    pub fn new(id: AccountId, prv_key_data_id: Option<PrvKeyDataId>, settings: Settings, data: AccountData) -> Self {
-        Self { version: ACCOUNT_VERSION, id, prv_key_data_id, settings, data }
+impl TryFrom<AssocPrvKeyDataIds> for Arc<Vec<PrvKeyDataId>> {
+    type Error = Error;
+
+    fn try_from(value: AssocPrvKeyDataIds) -> Result<Self> {
+        match value {
+            AssocPrvKeyDataIds::Multiple(ids) => Ok(ids),
+            _ => Err(Error::AssocPrvKeyDataIds("Multiple".to_string(), value)),
+        }
+    }
+}
+
+impl AssocPrvKeyDataIds {
+    pub fn contains(&self, id: &PrvKeyDataId) -> bool {
+        match self {
+            AssocPrvKeyDataIds::None => false,
+            AssocPrvKeyDataIds::Single(single) => single == id,
+            AssocPrvKeyDataIds::Multiple(multiple) => multiple.iter().any(|elem| elem == id),
+        }
+    }
+}
+
+const ACCOUNT_VERSION: u32 = 0;
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub struct AccountStorage {
+    #[serde(default)]
+    pub version: [u32; 2],
+
+    pub kind: String,
+    pub id: AccountId,
+    pub storage_key: AccountStorageKey,
+    pub prv_key_data_ids: AssocPrvKeyDataIds,
+    pub settings: AccountSettings,
+    pub serialized: Vec<u8>,
+}
+
+impl AccountStorage {
+    pub fn new(
+        kind: &str,
+        data_version: u32,
+        id: &AccountId,
+        storage_key: &AccountStorageKey,
+        prv_key_data_ids: AssocPrvKeyDataIds,
+        settings: AccountSettings,
+        serialized: &[u8],
+    ) -> Self {
+        Self {
+            version: [ACCOUNT_VERSION, data_version],
+            id: *id,
+            storage_key: *storage_key,
+            kind: kind.to_string(),
+            prv_key_data_ids,
+            settings,
+            serialized: serialized.to_vec(),
+        }
     }
 
     pub fn id(&self) -> &AccountId {
         &self.id
     }
 
-    pub fn data(&self) -> &AccountData {
-        &self.data
+    pub fn storage_key(&self) -> &AccountStorageKey {
+        &self.storage_key
     }
 
-    pub fn is_legacy(&self) -> bool {
-        matches!(self.data, AccountData::Legacy { .. })
+    pub fn serialized(&self) -> &[u8] {
+        &self.serialized
     }
 }

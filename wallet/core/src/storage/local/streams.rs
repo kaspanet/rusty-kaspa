@@ -1,7 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::storage::local::cache::Cache;
-use crate::storage::*;
 
 #[derive(Clone)]
 struct StoreStreamInner {
@@ -60,7 +59,7 @@ impl AccountStream {
 }
 
 impl Stream for AccountStream {
-    type Item = Result<(Arc<Account>, Option<Arc<Metadata>>)>;
+    type Item = Result<(Arc<AccountStorage>, Option<Arc<AccountMetadata>>)>;
 
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let cache = self.inner.cache.clone();
@@ -73,18 +72,11 @@ impl Stream for AccountStream {
                 let account = accounts[self.inner.cursor].clone();
                 self.inner.cursor += 1;
 
-                match &account.data {
-                    AccountData::MultiSig(MultiSig { prv_key_data_ids: Some(prv_key_data_ids), .. })
-                        if prv_key_data_ids.binary_search(&filter).is_ok() =>
-                    {
-                        let meta = metadata.get(&account.id).cloned();
-                        return Poll::Ready(Some(Ok((account, meta))));
-                    }
-                    _ if account.prv_key_data_id == Some(filter) => {
-                        let meta = metadata.get(&account.id).cloned();
-                        return Poll::Ready(Some(Ok((account, meta))));
-                    }
-                    _ => continue,
+                if account.prv_key_data_ids.contains(&filter) {
+                    let meta = metadata.get(&account.id).cloned();
+                    return Poll::Ready(Some(Ok((account, meta))));
+                } else {
+                    continue;
                 }
             }
             Poll::Ready(None)

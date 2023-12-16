@@ -2,14 +2,54 @@ use crate::derivation::AddressDerivationMeta;
 use crate::derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::account::descriptor::{self, AccountDescriptor};
-use crate::runtime::account::{Account, AccountId, AccountKind, AsLegacyAccount, DerivationCapableAccount, Inner};
+use crate::runtime::account::descriptor::AccountDescriptor;
+use crate::runtime::account::{Account, AccountKind, AsLegacyAccount, DerivationCapableAccount, Inner};
 use crate::runtime::Wallet;
 use crate::secret::Secret;
-use crate::storage::{self, Metadata, PrvKeyDataId, Settings};
+use crate::storage::{AccountMetadata, AccountSettings, PrvKeyDataId};
 use kaspa_bip32::{ExtendedPrivateKey, Prefix, SecretKey};
 
 const CACHE_ADDRESS_OFFSET: u32 = 2048;
+
+pub const LEGACY_ACCOUNT_VERSION: u32 = 0;
+pub const LEGACY_ACCOUNT_KIND: &str = "kaspa-legacy-standard";
+
+pub struct Ctor {}
+
+#[async_trait]
+impl Factory for Ctor {
+    async fn try_load(
+        &self,
+        wallet: &Arc<Wallet>,
+        storage: &AccountStorage,
+        meta: Option<Arc<AccountMetadata>>,
+    ) -> Result<Arc<dyn Account>> {
+        Ok(Arc::new(Legacy::try_load(wallet, storage, meta).await?))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "lowercase")]
+pub struct Storable {
+    pub version: u32,
+}
+
+impl Storable {
+    pub fn new() -> Self {
+        Self { version: LEGACY_ACCOUNT_VERSION }
+    }
+
+    pub fn try_load(storage: &AccountStorage) -> Result<Self> {
+        let storable = serde_json::from_str::<Storable>(std::str::from_utf8(&storage.serialized)?)?;
+        Ok(storable)
+    }
+}
+
+impl Default for Storable {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 pub struct Legacy {
     inner: Arc<Inner>,
@@ -18,21 +58,29 @@ pub struct Legacy {
 }
 
 impl Legacy {
-    pub async fn try_new(
-        wallet: &Arc<Wallet>,
-        prv_key_data_id: PrvKeyDataId,
-        settings: Settings,
-        data: storage::account::Legacy,
-        meta: Option<Arc<Metadata>>,
-    ) -> Result<Self> {
-        let id = AccountId::from_legacy(&prv_key_data_id, &data);
-        let inner = Arc::new(Inner::new(wallet, id, Some(settings)));
+    pub async fn try_new(wallet: &Arc<Wallet>, name: Option<String>, prv_key_data_id: PrvKeyDataId) -> Result<Self> {
+        let storable = Storable::new();
+        let settings = AccountSettings { name, ..Default::default() };
+
+        let (id, storage_key) = make_account_hashes(from_legacy(&prv_key_data_id, &storable));
+        let inner = Arc::new(Inner::new(wallet, id, storage_key, settings));
+
+        let account_index = 0;
+        let derivation = AddressDerivationManager::create_legacy_pubkey_managers(wallet, account_index, Default::default())?;
+
+        Ok(Self { inner, prv_key_data_id, derivation })
+    }
+
+    pub async fn try_load(wallet: &Arc<Wallet>, storage: &AccountStorage, meta: Option<Arc<AccountMetadata>>) -> Result<Self> {
+        let prv_key_data_id: PrvKeyDataId = storage.prv_key_data_ids.clone().try_into()?;
+
+        let inner = Arc::new(Inner::from_storage(wallet, storage));
 
         let address_derivation_indexes =
             meta.and_then(|meta| meta.address_derivation_indexes()).unwrap_or(AddressDerivationMeta::new(0, 0));
         let account_index = 0;
         let derivation =
-            AddressDerivationManager::create_legacy_pubkey_managers(wallet, account_index, address_derivation_indexes.clone(), data)?;
+            AddressDerivationManager::create_legacy_pubkey_managers(wallet, account_index, address_derivation_indexes.clone())?;
 
         Ok(Self { inner, prv_key_data_id, derivation })
     }
@@ -105,30 +153,40 @@ impl Account for Legacy {
         self.derivation.change_address_manager().current_address()
     }
 
-    fn as_storable(&self) -> Result<storage::account::Account> {
-        let settings = self.context().settings.clone().unwrap_or_default();
-        let legacy = storage::Legacy::new();
-        let account = storage::Account::new(*self.id(), Some(self.prv_key_data_id), settings, storage::AccountData::Legacy(legacy));
-        Ok(account)
+    fn to_storage(&self) -> Result<AccountStorage> {
+        let settings = self.context().settings.clone();
+        let storable = Storable::new();
+        let serialized = serde_json::to_string(&storable)?;
+        let account_storage = AccountStorage::new(
+            LEGACY_ACCOUNT_KIND,
+            LEGACY_ACCOUNT_VERSION,
+            self.id(),
+            self.storage_key(),
+            self.prv_key_data_id.into(),
+            settings,
+            serialized.as_bytes(),
+        );
+
+        Ok(account_storage)
     }
 
-    fn metadata(&self) -> Result<Option<Metadata>> {
-        let metadata = Metadata::new(self.inner.id, self.derivation.address_derivation_meta());
+    fn metadata(&self) -> Result<Option<AccountMetadata>> {
+        let metadata = AccountMetadata::new(self.inner.id, self.derivation.address_derivation_meta());
         Ok(Some(metadata))
     }
 
     fn descriptor(&self) -> Result<AccountDescriptor> {
-        let descriptor = descriptor::Legacy {
-            account_id: *self.id(),
-            account_name: self.name(),
-            prv_key_data_id: self.prv_key_data_id,
-            // xpub_keys: self.xpub_keys.clone(),
-            receive_address: self.receive_address().ok(),
-            change_address: self.change_address().ok(),
-            meta: self.derivation.address_derivation_meta(),
-        };
+        let descriptor = AccountDescriptor::new(
+            LEGACY_ACCOUNT_KIND,
+            *self.id(),
+            self.name(),
+            self.prv_key_data_id.into(),
+            self.receive_address().ok(),
+            self.change_address().ok(),
+        )
+        .with_property(AccountDescriptorProperty::DerivationMeta, self.derivation.address_derivation_meta().into());
 
-        Ok(descriptor.into())
+        Ok(descriptor)
     }
 
     fn as_derivation_capable(self: Arc<Self>) -> Result<Arc<dyn DerivationCapableAccount>> {

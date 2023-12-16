@@ -4,7 +4,7 @@
 
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::{account::ScanNotifier, try_from_storage, Account, AccountDescriptor, AccountId, ActiveAccountMap};
+use crate::runtime::{account::ScanNotifier, Account, AccountDescriptor, ActiveAccountMap};
 use crate::secret::Secret;
 use crate::settings::{SettingsStore, WalletSettings};
 use crate::storage::interface::{OpenArgs, StorageDescriptor};
@@ -24,7 +24,6 @@ use kaspa_notify::{
     scope::{Scope, VirtualDaaScoreChangedScope},
 };
 use kaspa_rpc_core::notify::mode::NotificationMode;
-use kaspa_wallet_core::storage::MultiSig;
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
 use std::sync::Arc;
 use workflow_core::task::spawn;
@@ -244,17 +243,21 @@ impl Wallet {
         // reset current state only after we have successfully opened another wallet
         self.reset(true).await?;
 
-        let accounts = if args.load_account_descriptors() {
+        let accounts: Option<Vec<Arc<dyn Account>>> = if args.load_account_descriptors() {
             let stored_accounts = self.inner.store.as_account_store().unwrap().iter(None).await?.try_collect::<Vec<_>>().await?;
             let stored_accounts = if !args.is_legacy_only() {
                 stored_accounts
             } else {
-                stored_accounts.into_iter().filter(|(stored_account, _)| stored_account.is_legacy()).collect::<Vec<_>>()
+                stored_accounts
+                    .into_iter()
+                    .filter(|(account_storage, _)| account_storage.kind == legacy::LEGACY_ACCOUNT_KIND)
+                    .collect::<Vec<_>>()
             };
             Some(
                 futures::stream::iter(stored_accounts.into_iter())
-                    .then(|(account, meta)| try_from_storage(self, account, meta))
+                    .then(|(account, meta)| try_load_account(self, account, meta))
                     .try_collect::<Vec<_>>()
+                    // .try_collect::<Result<Vec<_>>>()
                     .await?,
             )
         } else {
@@ -309,18 +312,18 @@ impl Wallet {
 
         let ids = stored_accounts.iter().map(|(account, _)| *account.id()).collect::<Vec<_>>();
 
-        for (stored_account, meta) in stored_accounts.into_iter() {
-            if stored_account.is_legacy() {
+        for (account_storage, meta) in stored_accounts.into_iter() {
+            if account_storage.kind == legacy::LEGACY_ACCOUNT_KIND {
                 let legacy_account = self
                     .legacy_accounts()
-                    .get(stored_account.id())
+                    .get(account_storage.id())
                     .ok_or_else(|| Error::LegacyAccountNotInitialized)?
                     .clone()
                     .as_legacy_account()?;
                 legacy_account.clone().start().await?;
                 legacy_account.clear_private_context().await?;
             } else {
-                let account = try_from_storage(self, stored_account, meta).await?;
+                let account = try_load_account(self, account_storage, meta).await?;
                 account.clone().start().await?;
             }
         }
@@ -555,12 +558,10 @@ impl Wallet {
         wallet_secret: &Secret,
         prv_key_data_args: Vec<PrvKeyDataArgs>,
         mut xpub_keys: Vec<String>,
-        name: Option<String>,
+        account_name: Option<String>,
         minimum_signatures: u16,
     ) -> Result<Arc<dyn Account>> {
         let account_store = self.inner.store.clone().as_account_store()?;
-
-        let settings = storage::Settings { is_visible: true, name };
 
         let account: Arc<dyn Account> = if prv_key_data_args.is_not_empty() {
             let mut generated_xpubs = Vec::with_capacity(prv_key_data_args.len());
@@ -585,29 +586,20 @@ impl Wallet {
             let min_cosigner_index = xpub_keys.binary_search(generated_xpubs.first().unwrap()).unwrap() as u8;
 
             Arc::new(
-                runtime::MultiSig::try_new(
+                multisig::MultiSig::try_new(
                     self,
-                    settings,
-                    MultiSig::new(
-                        Arc::new(xpub_keys),
-                        Some(Arc::new(prv_key_data_ids)),
-                        Some(min_cosigner_index),
-                        minimum_signatures,
-                        false,
-                    ),
-                    None,
+                    account_name,
+                    Arc::new(xpub_keys),
+                    Some(Arc::new(prv_key_data_ids)),
+                    Some(min_cosigner_index),
+                    minimum_signatures,
+                    false,
                 )
                 .await?,
             )
         } else {
             Arc::new(
-                runtime::MultiSig::try_new(
-                    self,
-                    settings,
-                    MultiSig::new(Arc::new(xpub_keys), None, None, minimum_signatures, false),
-                    None,
-                )
-                .await?,
+                multisig::MultiSig::try_new(self, account_name, Arc::new(xpub_keys), None, None, minimum_signatures, false).await?,
             )
         };
 
@@ -615,9 +607,7 @@ impl Wallet {
             return Err(Error::AccountAlreadyExists(*account.id()));
         }
 
-        let storable_account = account.as_storable()?;
-        account_store.store_single(&storable_account, None).await?;
-        self.inner.store.clone().commit(wallet_secret).await?;
+        self.inner.store.clone().as_account_store()?.store_single(&account.to_storage()?, None).await?;
 
         Ok(account)
     }
@@ -650,18 +640,14 @@ impl Wallet {
         let xpub_key = prv_key_data.create_xpub(payment_secret, AccountKind::Bip32, account_index).await?;
         let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(KeyPrefix::XPUB))]);
 
-        let bip32 = storage::Bip32::new(account_index, xpub_keys, false);
-
-        let settings = storage::Settings { is_visible: true, name: account_name };
-        let account: Arc<dyn Account> = Arc::new(runtime::Bip32::try_new(self, prv_key_data.id, settings, bip32, None).await?);
+        let account: Arc<dyn Account> =
+            Arc::new(bip32::Bip32::try_new(self, account_name, prv_key_data.id, account_index, xpub_keys, false).await?);
 
         if account_store.load_single(account.id()).await?.is_some() {
             return Err(Error::AccountAlreadyExists(*account.id()));
         }
 
-        let storable_account = account.as_storable()?;
-        account_store.store_single(&storable_account, None).await?;
-        self.inner.store.clone().commit(wallet_secret).await?;
+        self.inner.store.clone().as_account_store()?.store_single(&account.to_storage()?, None).await?;
 
         Ok(account)
     }
@@ -682,18 +668,13 @@ impl Wallet {
             .await?
             .ok_or_else(|| Error::PrivateKeyNotFound(prv_key_data_id))?;
 
-        let bip32 = storage::Legacy::new();
-
-        let settings = storage::Settings { is_visible: true, name: account_name };
-        let account: Arc<dyn Account> = Arc::new(runtime::Legacy::try_new(self, prv_key_data.id, settings, bip32, None).await?);
+        let account: Arc<dyn Account> = Arc::new(legacy::Legacy::try_new(self, account_name, prv_key_data.id).await?);
 
         if account_store.load_single(account.id()).await?.is_some() {
             return Err(Error::AccountAlreadyExists(*account.id()));
         }
 
-        let storable_account = account.as_storable()?;
-        account_store.store_single(&storable_account, None).await?;
-        self.inner.store.clone().commit(wallet_secret).await?;
+        self.inner.store.clone().as_account_store()?.store_single(&account.to_storage()?, None).await?;
 
         Ok(account)
     }
@@ -756,16 +737,12 @@ impl Wallet {
             prv_key_data.create_xpub(payment_secret.as_ref(), account_kind.unwrap_or(AccountKind::Bip32), account_index).await?;
         let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(KeyPrefix::XPUB))]);
 
-        let bip32 = storage::Bip32::new(account_index, xpub_keys, false);
-
-        let settings = storage::Settings { is_visible: false, name: account_name };
-        let account: Arc<dyn Account> = Arc::new(runtime::Bip32::try_new(self, prv_key_data.id, settings, bip32, None).await?);
-        let stored_account = account.as_storable()?;
+        let account: Arc<dyn Account> =
+            Arc::new(bip32::Bip32::try_new(self, account_name, prv_key_data.id, account_index, xpub_keys, false).await?);
 
         let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
         prv_key_data_store.store(wallet_secret, prv_key_data).await?;
-        let account_store = self.inner.store.as_account_store()?;
-        account_store.store_single(&stored_account, None).await?;
+        self.inner.store.clone().as_account_store()?.store_single(&account.to_storage()?, None).await?;
         self.inner.store.commit(wallet_secret).await?;
 
         self.select(Some(&account)).await?;
@@ -779,7 +756,7 @@ impl Wallet {
             let account_storage = self.inner.store.as_account_store()?;
             let stored = account_storage.load_single(account_id).await?;
             if let Some((stored_account, stored_metadata)) = stored {
-                let account = try_from_storage(self, stored_account, stored_metadata).await?;
+                let account = try_load_account(self, stored_account, stored_metadata).await?;
                 Ok(Some(account))
             } else {
                 Ok(None)
@@ -960,7 +937,7 @@ impl Wallet {
                 } else if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
                     Ok(account)
                 } else {
-                    let account = try_from_storage(&wallet, stored_account, stored_metadata).await?;
+                    let account = try_load_account(&wallet, stored_account, stored_metadata).await?;
                     account.clone().start().await?;
                     Ok(account)
                 }
@@ -1100,20 +1077,16 @@ impl Wallet {
             return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id));
         }
 
-        let data = storage::Legacy::new();
-        let settings = storage::Settings::default();
-        let account = Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?);
+        let account: Arc<dyn Account> = Arc::new(legacy::Legacy::try_new(self, None, prv_key_data.id).await?);
 
         // activate account (add it to wallet active account list)
         self.active_accounts().insert(account.clone().as_dyn_arc());
         self.legacy_accounts().insert(account.clone().as_dyn_arc());
 
-        let account_store = self.inner.store.as_account_store()?;
-        let stored_account = account.as_storable()?;
         // store private key and account
         self.inner.store.batch().await?;
         prv_key_data_store.store(wallet_secret, prv_key_data).await?;
-        account_store.store_single(&stored_account, None).await?;
+        self.inner.store.clone().as_account_store()?.store_single(&account.to_storage()?, None).await?;
         self.inner.store.flush(wallet_secret).await?;
 
         let legacy_account = account.clone().as_legacy_account()?;
@@ -1165,28 +1138,17 @@ impl Wallet {
                 let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(kaspa_bip32::Prefix::KPUB))]);
                 let ecdsa = false;
                 // ---
-
-                let data = storage::Bip32::new(account_index, xpub_keys, ecdsa);
-                let settings = storage::Settings::default();
-                Arc::new(runtime::account::Bip32::try_new(self, prv_key_data.id, settings, data, None).await?)
-                // account
+                Arc::new(bip32::Bip32::try_new(self, None, prv_key_data.id, account_index, xpub_keys, ecdsa).await?)
             }
-            AccountKind::Legacy => {
-                // is_legacy = true;
-                let data = storage::Legacy::new();
-                let settings = storage::Settings::default();
-                Arc::new(runtime::account::Legacy::try_new(self, prv_key_data.id, settings, data, None).await?)
-            }
+            AccountKind::Legacy => Arc::new(legacy::Legacy::try_new(self, None, prv_key_data.id).await?),
             _ => {
                 return Err(Error::AccountKindFeature);
             }
         };
 
-        let stored_account = account.as_storable()?;
         let account_store = self.inner.store.as_account_store()?;
         self.inner.store.batch().await?;
-        self.store().as_prv_key_data_store()?.store(wallet_secret, prv_key_data).await?;
-        account_store.store_single(&stored_account, None).await?;
+        account_store.store_single(&account.to_storage()?, None).await?;
         self.inner.store.flush(wallet_secret).await?;
 
         if let Ok(legacy_account) = account.clone().as_legacy_account() {
@@ -1238,9 +1200,11 @@ impl Wallet {
             let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(kaspa_bip32::Prefix::KPUB))]);
             let ecdsa = false;
             // ---
-            let data = storage::Bip32::new(account_index as u64, xpub_keys, ecdsa);
-            let addresses = runtime::Bip32::try_new(self, prv_key_data.id, Default::default(), data, None)
-                .await?
+
+            // let data = storage::Bip32::new(account_index as u64, xpub_keys, ecdsa);
+            // let addresses = runtime::Bip32::try_new(self, prv_key_data.id, Default::default(), data, None)
+            let addresses = bip32::Bip32::try_new(self, None, prv_key_data.id, account_index as u64, xpub_keys, ecdsa).await?
+                // .await?
                 .get_address_range_for_scan(0..address_scan_extent)?;
             if self.rpc_api().get_utxos_by_addresses(addresses).await?.is_not_empty() {
                 last_account_index = account_index;
@@ -1280,24 +1244,19 @@ impl Wallet {
         let min_cosigner_index = xpub_keys.binary_search(generated_xpubs.first().unwrap()).unwrap() as u8;
 
         let account: Arc<dyn Account> = Arc::new(
-            runtime::MultiSig::try_new(
+            multisig::MultiSig::try_new(
                 self,
-                storage::Settings::default(),
-                MultiSig::new(
-                    Arc::new(xpub_keys),
-                    Some(Arc::new(prv_key_data_ids)),
-                    Some(min_cosigner_index),
-                    minimum_signatures,
-                    false,
-                ),
                 None,
+                Arc::new(xpub_keys),
+                Some(Arc::new(prv_key_data_ids)),
+                Some(min_cosigner_index),
+                minimum_signatures,
+                false,
             )
             .await?,
         );
 
-        let stored_account = account.as_storable()?;
-        self.inner.store.clone().as_account_store()?.store_single(&stored_account, None).await?;
-        self.inner.store.clone().commit(wallet_secret).await?;
+        self.inner.store.clone().as_account_store()?.store_single(&account.to_storage()?, None).await?;
         account.clone().start().await?;
 
         Ok(account)

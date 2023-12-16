@@ -15,7 +15,6 @@ use crate::runtime::{AccountDescriptor, PrvKeyDataCreateArgs, WalletCreateArgs};
 use crate::secret::Secret;
 use crate::storage::{PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, WalletDescriptor};
 use crate::tx::GeneratorSummary;
-use runtime::AccountId;
 use workflow_core::channel::Receiver;
 
 ///
@@ -226,7 +225,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn accounts_rename_call(self: Arc<Self>, request: AccountsRenameRequest) -> Result<AccountsRenameResponse>;
 
     /// Wrapper around [`accounts_activate_call()`](Self::accounts_activate_call)
-    async fn accounts_activate(self: Arc<Self>, account_ids: Option<Vec<runtime::AccountId>>) -> Result<AccountsActivateResponse> {
+    async fn accounts_activate(self: Arc<Self>, account_ids: Option<Vec<AccountId>>) -> Result<AccountsActivateResponse> {
         self.accounts_activate_call(AccountsActivateRequest { account_ids }).await
     }
     /// Activate a specific set of accounts.
@@ -241,7 +240,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn accounts_activate_call(self: Arc<Self>, request: AccountsActivateRequest) -> Result<AccountsActivateResponse>;
 
     /// Wrapper around [`accounts_deactivate_call()`](Self::accounts_deactivate_call)
-    async fn accounts_deactivate(self: Arc<Self>, account_ids: Option<Vec<runtime::AccountId>>) -> Result<AccountsDeactivateResponse> {
+    async fn accounts_deactivate(self: Arc<Self>, account_ids: Option<Vec<AccountId>>) -> Result<AccountsDeactivateResponse> {
         self.accounts_deactivate_call(AccountsDeactivateRequest { account_ids }).await
     }
 
@@ -291,7 +290,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// Wrapper around [`accounts_create_new_address`](Self::accounts_create_new_address)
     async fn accounts_create_new_address(
         self: Arc<Self>,
-        account_id: runtime::AccountId,
+        account_id: AccountId,
         kind: NewAddressKind,
     ) -> Result<AccountsCreateNewAddressResponse> {
         self.accounts_create_new_address_call(AccountsCreateNewAddressRequest { account_id, kind }).await
@@ -333,7 +332,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// Get a range of transaction records for a specific account id.
     async fn transactions_data_get_range(
         self: Arc<Self>,
-        account_id: runtime::AccountId,
+        account_id: AccountId,
         network_id: NetworkId,
         range: std::ops::Range<u64>,
     ) -> Result<TransactionsDataGetResponse> {

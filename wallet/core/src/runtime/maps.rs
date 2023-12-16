@@ -1,5 +1,4 @@
 use crate::imports::*;
-use crate::runtime::{Account, AccountId};
 
 #[derive(Default, Clone)]
 pub struct ActiveAccountMap(Arc<Mutex<HashMap<AccountId, Arc<dyn Account>>>>);

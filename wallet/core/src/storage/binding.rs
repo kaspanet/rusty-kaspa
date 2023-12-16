@@ -1,5 +1,4 @@
 use crate::imports::*;
-use crate::runtime::{Account, AccountId};
 use crate::utxo::{UtxoContextBinding as UtxoProcessorBinding, UtxoContextId};
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

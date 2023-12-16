@@ -15,8 +15,8 @@ pub mod local;
 pub mod metadata;
 pub mod transaction;
 
-pub use crate::runtime::{AccountId, AccountKind};
-pub use account::{Account, AccountData, Bip32, Keypair, Legacy, MultiSig, Settings};
+pub use crate::runtime::AccountKind;
+pub use account::{AccountSettings, AccountStorage};
 pub use address::AddressBookEntry;
 pub use binding::Binding;
 pub use hint::Hint;
@@ -26,17 +26,19 @@ pub use interface::{
 };
 pub use keydata::{KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload};
 pub use local::interface::make_filename;
-pub use metadata::Metadata;
+pub use metadata::AccountMetadata;
 pub use transaction::{TransactionData, TransactionId, TransactionKind, TransactionRecord};
 
 #[cfg(test)]
 mod tests {
 
     use super::*;
+    use crate::imports::*;
     use crate::result::Result;
+    use crate::runtime::account::variants::bip32::*;
     use crate::secret::Secret;
     use crate::storage::local::Payload;
-    use crate::storage::local::Wallet;
+    use crate::storage::local::WalletStorage;
     use kaspa_bip32::{Language, Mnemonic};
     use std::sync::Arc;
 
@@ -69,26 +71,46 @@ mod tests {
         payload.prv_key_data.push(prv_key_data1.clone());
         payload.prv_key_data.push(prv_key_data2.clone());
 
-        let settings = Settings { name: Some("Wallet-A".to_string()), is_visible: false };
-        let bip32 = Bip32::new(0, pub_key_data1.clone(), false);
-        let id = AccountId::from_bip32(&prv_key_data1.id, &bip32);
-        let account1 = Account::new(id, Some(prv_key_data1.id), settings, AccountData::Bip32(bip32));
+        let settings = AccountSettings { name: Some("Wallet-A".to_string()), ..Default::default() };
+        let storable = bip32::Storable::new(0, pub_key_data1.clone(), false);
+        let (id, storage_key) = make_account_hashes(from_bip32(&prv_key_data1.id, &storable));
+        let storable = serde_json::to_string(&storable)?;
+        let account1 = AccountStorage::new(
+            BIP32_ACCOUNT_KIND,
+            BIP32_ACCOUNT_VERSION,
+            &id,
+            &storage_key,
+            prv_key_data1.id.into(),
+            settings,
+            storable.as_bytes(),
+        );
+
         payload.accounts.push(account1);
 
-        let settings = Settings { name: Some("Wallet-B".to_string()), is_visible: false };
-        let bip32 = Bip32::new(0, pub_key_data2.clone(), false);
-        let id = AccountId::from_bip32(&prv_key_data2.id, &bip32);
-        let account2 = Account::new(id, Some(prv_key_data2.id), settings, AccountData::Bip32(bip32));
+        let settings = AccountSettings { name: Some("Wallet-B".to_string()), ..Default::default() };
+        let storable = bip32::Storable::new(0, pub_key_data2.clone(), false);
+        let (id, storage_key) = make_account_hashes(from_bip32(&prv_key_data2.id, &storable));
+        let storable = serde_json::to_string(&storable)?;
+        let account2 = AccountStorage::new(
+            BIP32_ACCOUNT_KIND,
+            BIP32_ACCOUNT_VERSION,
+            &id,
+            &storage_key,
+            prv_key_data2.id.into(),
+            settings,
+            storable.as_bytes(),
+        );
+
         payload.accounts.push(account2);
 
         let payload_json = serde_json::to_string(&payload).unwrap();
         // let settings = WalletSettings::new(account_id);
 
-        let w1 = Wallet::try_new(None, None, &wallet_secret, payload, vec![])?;
+        let w1 = WalletStorage::try_new(None, None, &wallet_secret, payload, vec![])?;
         w1.try_store(&store).await?;
         // Wallet::try_store_payload(&store, &wallet_secret, payload).await?;
 
-        let w2 = Wallet::try_load(&store).await?;
+        let w2 = WalletStorage::try_load(&store).await?;
         let w2payload = w2.payload.decrypt::<Payload>(&wallet_secret).unwrap();
         println!("\n---\nwallet.metadata (plain): {:#?}\n\n", w2.metadata);
         // let w2payload_json = serde_json::to_string(w2payload.as_ref()).unwrap();

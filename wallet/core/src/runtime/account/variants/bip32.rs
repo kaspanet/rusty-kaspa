@@ -1,12 +1,52 @@
+// use storage::account::AssocPrvKeyDataIds;
+
 use crate::derivation::AddressDerivationManager;
 use crate::derivation::AddressDerivationManagerTrait;
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::account::descriptor::{self, AccountDescriptor};
+use crate::runtime::account::descriptor::*;
 use crate::runtime::account::Inner;
-use crate::runtime::account::{Account, AccountId, AccountKind, DerivationCapableAccount};
+use crate::runtime::account::{Account, AccountKind, DerivationCapableAccount};
 use crate::runtime::Wallet;
-use crate::storage::{self, Metadata, PrvKeyDataId, Settings};
+
+pub const BIP32_ACCOUNT_VERSION: u32 = 0;
+pub const BIP32_ACCOUNT_KIND: &str = "kaspa-bip32-standard";
+
+pub struct Ctor {}
+
+#[async_trait]
+impl Factory for Ctor {
+    async fn try_load(
+        &self,
+        wallet: &Arc<Wallet>,
+        storage: &AccountStorage,
+        meta: Option<Arc<AccountMetadata>>,
+    ) -> Result<Arc<dyn Account>> {
+        Ok(Arc::new(bip32::Bip32::try_load(wallet, storage, meta).await?))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "lowercase")]
+pub struct Storable {
+    #[serde(default)]
+    pub version: u32,
+
+    pub account_index: u64,
+    pub xpub_keys: Arc<Vec<String>>,
+    pub ecdsa: bool,
+}
+
+impl Storable {
+    pub fn new(account_index: u64, xpub_keys: Arc<Vec<String>>, ecdsa: bool) -> Self {
+        Self { version: BIP32_ACCOUNT_VERSION, account_index, xpub_keys, ecdsa }
+    }
+
+    pub fn try_load(storage: &AccountStorage) -> Result<Self> {
+        let storable = serde_json::from_str::<Storable>(std::str::from_utf8(&storage.serialized)?)?;
+        Ok(storable)
+    }
+}
 
 pub struct Bip32 {
     inner: Arc<Inner>,
@@ -14,22 +54,35 @@ pub struct Bip32 {
     account_index: u64,
     xpub_keys: Arc<Vec<String>>,
     ecdsa: bool,
-    bip39_passphrase: bool,
     derivation: Arc<AddressDerivationManager>,
 }
 
 impl Bip32 {
     pub async fn try_new(
         wallet: &Arc<Wallet>,
+        name: Option<String>,
         prv_key_data_id: PrvKeyDataId,
-        settings: Settings,
-        data: storage::account::Bip32,
-        meta: Option<Arc<Metadata>>,
+        account_index: u64,
+        xpub_keys: Arc<Vec<String>>,
+        ecdsa: bool,
     ) -> Result<Self> {
-        let id = AccountId::from_bip32(&prv_key_data_id, &data);
-        let inner = Arc::new(Inner::new(wallet, id, Some(settings)));
+        let storable = Storable::new(account_index, xpub_keys.clone(), ecdsa);
+        let settings = AccountSettings { name, ..Default::default() };
+        let (id, storage_key) = make_account_hashes(from_bip32(&prv_key_data_id, &storable));
+        let inner = Arc::new(Inner::new(wallet, id, storage_key, settings));
 
-        let storage::account::Bip32 { account_index, xpub_keys, ecdsa, .. } = data;
+        let derivation =
+            AddressDerivationManager::new(wallet, AccountKind::Bip32, &xpub_keys, ecdsa, 0, None, 1, Default::default()).await?;
+
+        Ok(Self { inner, prv_key_data_id, account_index, xpub_keys, ecdsa, derivation })
+    }
+
+    pub async fn try_load(wallet: &Arc<Wallet>, storage: &AccountStorage, meta: Option<Arc<AccountMetadata>>) -> Result<Self> {
+        let storable = Storable::try_load(storage)?;
+        let prv_key_data_id: PrvKeyDataId = storage.prv_key_data_ids.clone().try_into()?;
+        let inner = Arc::new(Inner::from_storage(wallet, storage));
+
+        let Storable { account_index, xpub_keys, ecdsa, .. } = storable;
 
         let address_derivation_indexes = meta.and_then(|meta| meta.address_derivation_indexes()).unwrap_or_default();
 
@@ -37,22 +90,15 @@ impl Bip32 {
             AddressDerivationManager::new(wallet, AccountKind::Bip32, &xpub_keys, ecdsa, 0, None, 1, address_derivation_indexes)
                 .await?;
 
-        let prv_key_data_info = wallet
+        // TODO - is this needed?
+        let _prv_key_data_info = wallet
             .store()
             .as_prv_key_data_store()?
             .load_key_info(&prv_key_data_id)
             .await?
             .ok_or_else(|| Error::PrivateKeyNotFound(prv_key_data_id))?;
 
-        Ok(Self {
-            inner,
-            prv_key_data_id,
-            account_index,
-            xpub_keys,
-            ecdsa,
-            bip39_passphrase: prv_key_data_info.requires_bip39_passphrase(),
-            derivation,
-        })
+        Ok(Self { inner, prv_key_data_id, account_index, xpub_keys, ecdsa, derivation })
     }
 
     pub fn get_address_range_for_scan(&self, range: std::ops::Range<u32>) -> Result<Vec<Address>> {
@@ -95,33 +141,43 @@ impl Account for Bip32 {
         self.derivation.change_address_manager().current_address()
     }
 
-    fn as_storable(&self) -> Result<storage::account::Account> {
-        let settings = self.context().settings.clone().unwrap_or_default();
-        let bip32 = storage::Bip32::new(self.account_index, self.xpub_keys.clone(), self.ecdsa);
-        let account = storage::Account::new(*self.id(), Some(self.prv_key_data_id), settings, storage::AccountData::Bip32(bip32));
-        Ok(account)
+    fn to_storage(&self) -> Result<AccountStorage> {
+        let settings = self.context().settings.clone();
+        let storable = Storable::new(self.account_index, self.xpub_keys.clone(), self.ecdsa);
+        let serialized = serde_json::to_string(&storable)?;
+        let storage = AccountStorage::new(
+            BIP32_ACCOUNT_KIND,
+            BIP32_ACCOUNT_VERSION,
+            self.id(),
+            self.storage_key(),
+            self.prv_key_data_id.into(),
+            settings,
+            serialized.as_bytes(),
+        );
+
+        Ok(storage)
     }
 
-    fn metadata(&self) -> Result<Option<Metadata>> {
-        let metadata = Metadata::new(self.inner.id, self.derivation.address_derivation_meta());
+    fn metadata(&self) -> Result<Option<AccountMetadata>> {
+        let metadata = AccountMetadata::new(self.inner.id, self.derivation.address_derivation_meta());
         Ok(Some(metadata))
     }
 
     fn descriptor(&self) -> Result<AccountDescriptor> {
-        let descriptor = descriptor::Bip32 {
-            account_id: *self.id(),
-            account_name: self.name(),
-            prv_key_data_id: self.prv_key_data_id,
-            account_index: self.account_index,
-            xpub_keys: self.xpub_keys.clone(),
-            ecdsa: self.ecdsa,
-            bip39_passphrase: self.bip39_passphrase,
-            receive_address: self.receive_address().ok(),
-            change_address: self.change_address().ok(),
-            meta: self.derivation.address_derivation_meta(),
-        };
+        let descriptor = AccountDescriptor::new(
+            BIP32_ACCOUNT_KIND,
+            *self.id(),
+            self.name(),
+            self.prv_key_data_id.into(),
+            self.receive_address().ok(),
+            self.change_address().ok(),
+        )
+        .with_property(AccountDescriptorProperty::AccountIndex, self.account_index.into())
+        .with_property(AccountDescriptorProperty::XpubKeys, self.xpub_keys.clone().into())
+        .with_property(AccountDescriptorProperty::Ecdsa, self.ecdsa.into())
+        .with_property(AccountDescriptorProperty::DerivationMeta, self.derivation.address_derivation_meta().into());
 
-        Ok(descriptor.into())
+        Ok(descriptor)
     }
 
     fn as_derivation_capable(self: Arc<Self>) -> Result<Arc<dyn DerivationCapableAccount>> {

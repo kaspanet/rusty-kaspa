@@ -5,15 +5,14 @@ use crate::storage::local::Payload;
 use crate::storage::local::Storage;
 use crate::storage::Encryptable;
 use crate::storage::TransactionRecord;
-use crate::storage::{Decrypted, Encrypted, Hint, Metadata, PrvKeyData, PrvKeyDataId};
-use runtime::AccountId;
+use crate::storage::{AccountMetadata, Decrypted, Encrypted, Hint, PrvKeyData, PrvKeyDataId};
 use serde_json::{from_str, from_value, Value};
 use workflow_store::fs;
 
 pub const WALLET_VERSION: [u16; 3] = [1, 0, 0];
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Wallet {
+pub struct WalletStorage {
     #[serde(default)]
     pub version: [u16; 3],
 
@@ -22,18 +21,18 @@ pub struct Wallet {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_hint: Option<Hint>,
     pub payload: Encrypted,
-    pub metadata: Vec<Metadata>,
+    pub metadata: Vec<AccountMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transactions: Option<Encryptable<HashMap<AccountId, Vec<TransactionRecord>>>>,
 }
 
-impl Wallet {
+impl WalletStorage {
     pub fn try_new(
         title: Option<String>,
         user_hint: Option<Hint>,
         secret: &Secret,
         payload: Payload,
-        metadata: Vec<Metadata>,
+        metadata: Vec<AccountMetadata>,
     ) -> Result<Self> {
         let payload = Decrypted::new(payload).encrypt(secret)?;
         Ok(Self { version: WALLET_VERSION, title, payload, metadata, user_hint, transactions: None })
@@ -43,7 +42,7 @@ impl Wallet {
         self.payload.decrypt::<Payload>(secret)
     }
 
-    pub async fn try_load(store: &Storage) -> Result<Wallet> {
+    pub async fn try_load(store: &Storage) -> Result<WalletStorage> {
         if fs::exists(store.filename()).await? {
             let text = fs::read_to_string(store.filename()).await?;
             let root = from_str::<Value>(&text)?;
@@ -57,7 +56,7 @@ impl Wallet {
 
             match version {
                 [0, 0, 0] => Err(Error::Custom("wallet version 0.0.0 used during the development is no longer supported".to_string())),
-                _ => Ok(from_value::<Wallet>(root)?),
+                _ => Ok(from_value::<WalletStorage>(root)?),
             }
         } else {
             let name = store.filename().file_name().unwrap().to_str().unwrap();
@@ -79,7 +78,7 @@ impl Wallet {
         Ok(keydata)
     }
 
-    pub fn replace_metadata(&mut self, metadata: Vec<Metadata>) {
+    pub fn replace_metadata(&mut self, metadata: Vec<AccountMetadata>) {
         self.metadata = metadata;
     }
 }

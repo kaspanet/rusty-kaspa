@@ -248,7 +248,6 @@ impl AddressDerivationManager {
         wallet: &Arc<runtime::Wallet>,
         account_index: u64,
         address_derivation_indexes: AddressDerivationMeta,
-        _data: storage::account::Legacy,
     ) -> Result<Arc<AddressDerivationManager>> {
         let mut receive_pubkey_managers = vec![];
         let mut change_pubkey_managers = vec![];

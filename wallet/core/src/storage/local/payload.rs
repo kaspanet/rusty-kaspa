@@ -1,7 +1,7 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
-use crate::storage::{Account, AddressBookEntry, PrvKeyData, PrvKeyDataId};
+use crate::storage::{AddressBookEntry, PrvKeyData, PrvKeyDataId};
 use kaspa_bip32::Mnemonic;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -13,12 +13,12 @@ pub struct Payload {
     pub version: [u16; 3],
 
     pub prv_key_data: Vec<PrvKeyData>,
-    pub accounts: Vec<Account>,
+    pub accounts: Vec<AccountStorage>,
     pub address_book: Vec<AddressBookEntry>,
 }
 
 impl Payload {
-    pub fn new(prv_key_data: Vec<PrvKeyData>, accounts: Vec<Account>, address_book: Vec<AddressBookEntry>) -> Self {
+    pub fn new(prv_key_data: Vec<PrvKeyData>, accounts: Vec<AccountStorage>, address_book: Vec<AddressBookEntry>) -> Self {
         Self { version: PAYLOAD_VERSION, prv_key_data, accounts, address_book }
     }
 }

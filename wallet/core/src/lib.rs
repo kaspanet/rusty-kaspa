@@ -38,9 +38,11 @@ extern crate self as kaspa_wallet_core;
 
 pub mod api;
 pub mod derivation;
+pub mod deterministic;
 pub mod encryption;
 pub mod error;
 pub mod events;
+pub mod factory;
 mod imports;
 pub mod message;
 pub mod prelude;

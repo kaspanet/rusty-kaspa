@@ -18,7 +18,8 @@ use workflow_wasm::printable::*;
 
 use thiserror::Error;
 
-use crate::storage::AccountId;
+use crate::deterministic::AccountId;
+use crate::imports::account::AssocPrvKeyDataIds;
 use crate::storage::PrvKeyDataId;
 
 #[derive(Debug, Error)]
@@ -176,6 +177,9 @@ pub enum Error {
     #[error("{0}")]
     TryFromEnum(#[from] workflow_core::enums::TryFromError),
 
+    #[error("Account factory found for type: {0}")]
+    AccountFactoryNotFound(String),
+
     #[error("Account not found: {0}")]
     AccountNotFound(AccountId),
 
@@ -250,6 +254,12 @@ pub enum Error {
 
     #[error("Legacy account is not initialized")]
     LegacyAccountNotInitialized,
+
+    #[error("AssocPrvKeyDataIds required {0} but got {1:?}")]
+    AssocPrvKeyDataIds(String, AssocPrvKeyDataIds),
+
+    #[error("AssocPrvKeyDataIds are empty")]
+    AssocPrvKeyDataIdsEmpty,
 }
 
 impl From<Aborted> for Error {

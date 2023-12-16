@@ -1,10 +1,8 @@
 pub mod descriptor;
-pub mod id;
 pub mod kind;
 pub mod variants;
 
-pub use descriptor::AccountDescriptor;
-pub use id::*;
+pub use descriptor::*;
 use kaspa_bip32::ChildNumber;
 use kaspa_bip32::ExtendedPrivateKey;
 pub use kind::*;
@@ -13,15 +11,13 @@ pub use variants::*;
 use crate::derivation::build_derivate_paths;
 use crate::derivation::gen0;
 use crate::derivation::AddressDerivationManagerTrait;
-#[allow(unused_imports)]
-use crate::derivation::{gen0::*, gen1::*, AddressDerivationMeta, PubkeyDerivationManagerTrait, WalletDerivationManagerTrait};
 use crate::imports::*;
 use crate::result::Result;
 use crate::runtime::{Balance, BalanceStrings, Wallet};
 use crate::secret::Secret;
-use crate::storage::account::Settings;
-use crate::storage::Metadata;
-use crate::storage::{self, AccountData, PrvKeyData, PrvKeyDataId};
+use crate::storage::account::AccountSettings;
+use crate::storage::AccountMetadata;
+use crate::storage::{PrvKeyData, PrvKeyDataId};
 use crate::tx::PaymentOutput;
 use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction, Signer};
 use crate::utxo::{UtxoContext, UtxoContextBinding};
@@ -38,15 +34,15 @@ pub type GenerationNotifier = Arc<dyn Fn(&PendingTransaction) + Send + Sync>;
 pub type ScanNotifier = Arc<dyn Fn(usize, usize, u64, Option<TransactionId>) + Send + Sync>;
 
 pub struct Context {
-    pub settings: Option<Settings>,
+    pub settings: AccountSettings,
 }
 
 impl Context {
-    pub fn new(settings: Option<Settings>) -> Self {
+    pub fn new(settings: AccountSettings) -> Self {
         Self { settings }
     }
 
-    pub fn settings(&self) -> &Option<Settings> {
+    pub fn settings(&self) -> &AccountSettings {
         &self.settings
     }
 }
@@ -54,40 +50,29 @@ impl Context {
 pub struct Inner {
     context: Mutex<Context>,
     id: AccountId,
+    storage_key: AccountStorageKey,
     wallet: Arc<Wallet>,
     utxo_context: UtxoContext,
 }
 
 impl Inner {
-    pub fn new(wallet: &Arc<Wallet>, id: AccountId, settings: Option<storage::account::Settings>) -> Self {
+    pub fn new(wallet: &Arc<Wallet>, id: AccountId, storage_key: AccountStorageKey, settings: AccountSettings) -> Self {
         let utxo_context = UtxoContext::new(wallet.utxo_processor(), UtxoContextBinding::AccountId(id));
 
         let context = Context { settings };
-        Inner { context: Mutex::new(context), id, wallet: wallet.clone(), utxo_context: utxo_context.clone() }
+        Inner { context: Mutex::new(context), id, storage_key, wallet: wallet.clone(), utxo_context: utxo_context.clone() }
+    }
+
+    pub fn from_storage(wallet: &Arc<Wallet>, storage: &AccountStorage) -> Self {
+        Self::new(wallet, storage.id, storage.storage_key, storage.settings.clone())
     }
 
     pub fn context(&self) -> MutexGuard<Context> {
         self.context.lock().unwrap()
     }
-}
 
-pub async fn try_from_storage(
-    wallet: &Arc<Wallet>,
-    stored_account: Arc<storage::Account>,
-    meta: Option<Arc<storage::Metadata>>,
-) -> Result<Arc<dyn Account>> {
-    let storage::Account { prv_key_data_id, data, settings, .. } = (*stored_account).clone();
-
-    match data {
-        AccountData::Bip32(bip32) => Ok(Arc::new(Bip32::try_new(wallet, prv_key_data_id.unwrap(), settings, bip32, meta).await?)),
-        AccountData::Legacy(legacy) => Ok(Arc::new(Legacy::try_new(wallet, prv_key_data_id.unwrap(), settings, legacy, meta).await?)),
-        AccountData::MultiSig(multisig) => Ok(Arc::new(MultiSig::try_new(wallet, settings, multisig, meta).await?)),
-        AccountData::Keypair(keypair) => {
-            Ok(Arc::new(Keypair::try_new(wallet, prv_key_data_id.unwrap(), settings, keypair, meta).await?))
-        }
-        AccountData::Hardware(_hardware) => {
-            todo!()
-        }
+    pub fn store(&self) -> &Arc<dyn Interface> {
+        self.wallet.store()
     }
 }
 
@@ -101,6 +86,10 @@ pub trait Account: AnySync + Send + Sync + 'static {
 
     fn id(&self) -> &AccountId {
         &self.inner().id
+    }
+
+    fn storage_key(&self) -> &AccountStorageKey {
+        &self.inner().storage_key
     }
 
     fn account_kind(&self) -> AccountKind;
@@ -122,7 +111,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
     }
 
     fn name(&self) -> Option<String> {
-        self.context().settings.as_ref().and_then(|settings| settings.name.clone())
+        self.context().settings.name.clone()
     }
 
     fn name_or_id(&self) -> String {
@@ -152,14 +141,10 @@ pub trait Account: AnySync + Send + Sync + 'static {
     async fn rename(&self, wallet_secret: &Secret, name: Option<&str>) -> Result<()> {
         {
             let mut context = self.context();
-            if let Some(settings) = &mut context.settings {
-                settings.name = name.map(String::from);
-            } else {
-                context.settings = Some(storage::Settings { name: name.map(String::from), ..Default::default() });
-            }
+            context.settings.name = name.map(String::from);
         }
 
-        let account = self.as_storable()?;
+        let account = self.to_storage()?;
         self.wallet().store().as_account_store()?.store_single(&account, None).await?;
 
         self.wallet().store().commit(wallet_secret).await?;
@@ -187,8 +172,8 @@ pub trait Account: AnySync + Send + Sync + 'static {
     }
 
     fn prv_key_data_id(&self) -> Result<&PrvKeyDataId> {
+        // TODO - change to AssocPrvKeyDataIds
         Err(Error::ResidentAccount)
-        // panic!("account type does not have a private key in storage")
     }
 
     async fn prv_key_data(&self, wallet_secret: Secret) -> Result<PrvKeyData> {
@@ -204,8 +189,8 @@ pub trait Account: AnySync + Send + Sync + 'static {
         Ok(keydata)
     }
 
-    fn as_storable(&self) -> Result<storage::Account>;
-    fn metadata(&self) -> Result<Option<Metadata>>;
+    fn to_storage(&self) -> Result<AccountStorage>;
+    fn metadata(&self) -> Result<Option<AccountMetadata>>;
     fn descriptor(&self) -> Result<descriptor::AccountDescriptor>;
 
     async fn scan(self: Arc<Self>, window_size: Option<usize>, extent: Option<u32>) -> Result<()> {
@@ -672,7 +657,9 @@ pub fn create_private_keys<'l>(
 mod tests {
     use super::create_private_keys;
     use super::{AccountKind, ExtendedPrivateKey};
-    use crate::runtime::account::PubkeyDerivationManagerV0;
+    use crate::derivation::gen0::PubkeyDerivationManagerV0;
+    //use crate::runtime::account::
+    // PubkeyDerivationManagerV0;
     use kaspa_addresses::Address;
     use kaspa_addresses::Prefix;
     use kaspa_bip32::secp256k1::SecretKey;

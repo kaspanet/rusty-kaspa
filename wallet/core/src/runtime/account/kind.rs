@@ -18,6 +18,7 @@ u8_try_from! {
         Keypair,
         Hardware,
         Resident,
+        // Other,
     }
 }
 
@@ -36,6 +37,7 @@ impl std::fmt::Display for AccountKind {
             AccountKind::Keypair => write!(f, "keypair"),
             AccountKind::Hardware => write!(f, "hardware"),
             AccountKind::Resident => write!(f, "resident"),
+            // AccountKind::Other => write!(f, "resident"),
         }
     }
 }

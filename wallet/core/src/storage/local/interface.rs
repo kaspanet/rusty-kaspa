@@ -7,10 +7,9 @@ use crate::storage::interface::{
 use crate::storage::local::cache::*;
 use crate::storage::local::streams::*;
 use crate::storage::local::transaction::*;
-use crate::storage::local::wallet::Wallet;
+use crate::storage::local::wallet::WalletStorage;
 use crate::storage::local::Payload;
 use crate::storage::local::Storage;
-use crate::storage::*;
 use slugify_rs::slugify;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
@@ -87,7 +86,7 @@ impl LocalStoreInner {
         let filename = make_filename(&None, &args.filename);
         let storage = Storage::try_new_with_folder(folder, &format!("{filename}.wallet"))?;
 
-        let wallet = Wallet::try_load(&storage).await?;
+        let wallet = WalletStorage::try_load(&storage).await?;
         let cache = Arc::new(Mutex::new(Cache::from_wallet(wallet, wallet_secret)?));
         let is_modified = AtomicBool::new(false);
 
@@ -101,7 +100,7 @@ impl LocalStoreInner {
     }
 
     async fn try_import(wallet_secret: &Secret, folder: &str, data: &str) -> Result<Self> {
-        let wallet: Wallet = serde_json::from_str(data)?;
+        let wallet: WalletStorage = serde_json::from_str(data)?;
         // Try to decrypt the wallet payload with the provided
         // secret. This will block import if the secret is
         // not correct.
@@ -180,8 +179,8 @@ impl LocalStoreInner {
             Store::Storage(ref storage) => {
                 // take current metadata, load wallet, replace metadata, store wallet
                 // this bypasses the cache payload and wallet encryption
-                let metadata: Vec<Metadata> = (&self.cache().metadata).try_into()?;
-                let mut wallet = Wallet::try_load(storage).await?;
+                let metadata: Vec<AccountMetadata> = (&self.cache().metadata).try_into()?;
+                let mut wallet = WalletStorage::try_load(storage).await?;
                 wallet.replace_metadata(metadata);
                 wallet.try_store(storage).await?;
                 Ok(())
@@ -513,20 +512,20 @@ impl AccountStore for LocalStoreInner {
     async fn iter(
         &self,
         prv_key_data_id_filter: Option<PrvKeyDataId>,
-    ) -> Result<StorageStream<(Arc<Account>, Option<Arc<Metadata>>)>> {
+    ) -> Result<StorageStream<(Arc<AccountStorage>, Option<Arc<AccountMetadata>>)>> {
         Ok(Box::pin(AccountStream::new(self.cache.clone(), prv_key_data_id_filter)))
     }
 
     async fn len(&self, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<usize> {
         let len = match prv_key_data_id_filter {
-            Some(filter) => self.cache().accounts.vec.iter().filter(|account| account.prv_key_data_id == Some(filter)).count(),
+            Some(filter) => self.cache().accounts.vec.iter().filter(|account| account.prv_key_data_ids.contains(&filter)).count(),
             None => self.cache().accounts.vec.len(),
         };
 
         Ok(len)
     }
 
-    async fn load_single(&self, ids: &AccountId) -> Result<Option<(Arc<Account>, Option<Arc<Metadata>>)>> {
+    async fn load_single(&self, ids: &AccountId) -> Result<Option<(Arc<AccountStorage>, Option<Arc<AccountMetadata>>)>> {
         let cache = self.cache();
         if let Some(account) = cache.accounts.load_single(ids)? {
             Ok(Some((account, cache.metadata.load_single(ids)?)))
@@ -535,7 +534,7 @@ impl AccountStore for LocalStoreInner {
         }
     }
 
-    async fn load_multiple(&self, ids: &[AccountId]) -> Result<Vec<(Arc<Account>, Option<Arc<Metadata>>)>> {
+    async fn load_multiple(&self, ids: &[AccountId]) -> Result<Vec<(Arc<AccountStorage>, Option<Arc<AccountMetadata>>)>> {
         let cache = self.cache();
         let accounts = cache.accounts.load_multiple(ids)?;
         accounts
@@ -546,7 +545,7 @@ impl AccountStore for LocalStoreInner {
             .collect::<Result<Vec<_>>>()
     }
 
-    async fn store_single(&self, account: &Account, metadata: Option<&Metadata>) -> Result<()> {
+    async fn store_single(&self, account: &AccountStorage, metadata: Option<&AccountMetadata>) -> Result<()> {
         let mut cache = self.cache();
         cache.accounts.store_single(account)?;
         if let Some(metadata) = metadata {
@@ -556,7 +555,7 @@ impl AccountStore for LocalStoreInner {
         Ok(())
     }
 
-    async fn store_multiple(&self, data: Vec<(Account, Option<Metadata>)>) -> Result<()> {
+    async fn store_multiple(&self, data: Vec<(AccountStorage, Option<AccountMetadata>)>) -> Result<()> {
         let mut cache = self.cache();
         let (accounts, metadata): (Vec<_>, Vec<_>) = data.into_iter().unzip();
         cache.accounts.store_multiple(accounts)?;
@@ -575,7 +574,7 @@ impl AccountStore for LocalStoreInner {
         Ok(())
     }
 
-    async fn update_metadata(&self, metadata: Vec<Metadata>) -> Result<()> {
+    async fn update_metadata(&self, metadata: Vec<AccountMetadata>) -> Result<()> {
         self.cache().metadata.store_multiple(metadata)?;
         self.update_stored_metadata().await?;
         Ok(())

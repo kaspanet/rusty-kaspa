@@ -109,15 +109,15 @@ pub enum Events {
     },
     /// Accounts have been activated
     AccountActivation {
-        ids: Vec<runtime::AccountId>,
+        ids: Vec<AccountId>,
     },
     /// Accounts have been deactivated
     AccountDeactivation {
-        ids: Vec<runtime::AccountId>,
+        ids: Vec<AccountId>,
     },
     /// Account selection change (`None` if no account is selected)
     AccountSelection {
-        id: Option<runtime::AccountId>,
+        id: Option<AccountId>,
     },
     /// Account has been created
     AccountCreate {

@@ -1,5 +1,6 @@
 use crate::imports::*;
-use kaspa_wallet_core::runtime::{Account, MultiSig};
+use kaspa_wallet_core::runtime::account::multisig::MultiSig;
+use kaspa_wallet_core::runtime::Account;
 
 #[derive(Default, Handler)]
 #[help("Export transactions, a wallet or a private key")]
@@ -31,7 +32,7 @@ impl Export {
 }
 
 async fn export_multisig_account(ctx: Arc<KaspaCli>, account: Arc<MultiSig>) -> Result<()> {
-    match &account.prv_key_data_ids {
+    match &account.prv_key_data_ids() {
         None => Err(Error::KeyDataNotFound),
         Some(v) if v.is_empty() => Err(Error::KeyDataNotFound),
         Some(prv_key_data_ids) => {
@@ -40,7 +41,7 @@ async fn export_multisig_account(ctx: Arc<KaspaCli>, account: Arc<MultiSig>) -> 
                 return Err(Error::WalletSecretRequired);
             }
 
-            tprintln!(ctx, "required signatures: {}", account.minimum_signatures);
+            tprintln!(ctx, "required signatures: {}", account.minimum_signatures());
             tprintln!(ctx, "");
 
             let prv_key_data_store = ctx.store().as_prv_key_data_store()?;
@@ -59,7 +60,7 @@ async fn export_multisig_account(ctx: Arc<KaspaCli>, account: Arc<MultiSig>) -> 
                 generated_xpub_keys.push(xpub_key.to_string(Some(xpub_prefix)));
             }
 
-            let additional = account.xpub_keys.iter().filter(|xpub| !generated_xpub_keys.contains(xpub));
+            let additional = account.xpub_keys().iter().filter(|xpub| !generated_xpub_keys.contains(xpub));
             additional.enumerate().for_each(|(idx, xpub)| {
                 if idx == 0 {
                     tprintln!(ctx, "additional xpubs: ");
