@@ -43,9 +43,14 @@ impl Htlc {
             }
             "secret-add" => {
                 let secret = argv.first().ok_or(Error::Custom("'secret' is required".to_string()))?;
-                let account = ctx.select_account().await.unwrap();
-                wizards::htlc::add_secret(&ctx, account, secret.clone()).await.unwrap();
+                let account = ctx.select_account().await?;
+                wizards::htlc::add_secret(&ctx, account, secret.clone()).await?;
                 tprintln!(ctx, "secret successfully added\r\n");
+            }
+            "show" => {
+                let account = ctx.select_account().await?;
+                let address = wizards::htlc::show(&ctx, account).await?;
+                tprintln!(ctx, "address of private key holder: '{address}'\r\n");
             }
             v => {
                 tprintln!(ctx, "unknown command: '{v}'\r\n");
