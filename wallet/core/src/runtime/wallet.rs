@@ -17,7 +17,8 @@ use crate::{derivation::gen0, derivation::gen0::import::*, derivation::gen1, der
 use futures::future::join_all;
 use futures::stream::StreamExt;
 use futures::{select, FutureExt, Stream};
-use kaspa_bip32::{Language, Mnemonic};
+use kaspa_addresses::Version;
+use kaspa_bip32::{ExtendedPublicKey, Language, Mnemonic};
 use kaspa_hashes::Hash;
 use kaspa_notify::{
     listener::ListenerId,
@@ -520,7 +521,7 @@ impl Wallet {
                 .await?
                 .ok_or(Error::PrivateKeyNotFound(args.prv_key_data_id.to_hex()))?;
             let xpub_key = prv_key_data.get_xprv(None)?.public_key();
-            let xpub_prefix = kaspa_bip32::Prefix::XPUB;
+            let xpub_prefix = kaspa_bip32::Prefix::XPUB; // todo
             let creator_xpub = xpub_key.to_string(Some(xpub_prefix));
 
             let data = HTLC::new(
@@ -584,6 +585,21 @@ impl Wallet {
         account.clone().start().await?;
 
         Ok(account)
+    }
+
+    pub async fn htlc_show_address(self: &Arc<Wallet>, account: Arc<dyn Account>) -> Result<Address> {
+        let account_storage = self.inner.store.clone().as_account_store()?;
+
+        let (data, _) = account_storage.load_single(account.id()).await.unwrap().unwrap();
+
+        let xpub = match data.data.clone() {
+            AccountData::Htlc(HTLC { role: HtlcRole::Receiver, xpub_key, .. }) => xpub_key,
+            AccountData::Htlc(HTLC { role: HtlcRole::Sender, xpub_key, .. }) => xpub_key,
+            _ => unreachable!(),
+        };
+        let xpub_key = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(&xpub)?;
+
+        Ok(Address::new(self.address_prefix().unwrap(), Version::PubKey, &xpub_key.public_key.x_only_public_key().0.serialize()))
     }
 
     pub async fn create_multisig_account(self: &Arc<Wallet>, args: MultisigCreateArgs) -> Result<Arc<dyn Account>> {

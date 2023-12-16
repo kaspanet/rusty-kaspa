@@ -53,3 +53,9 @@ pub(crate) async fn add_secret(ctx: &Arc<KaspaCli>, acc: Arc<dyn Account>, secre
     wallet.htlc_add_secret(acc, wallet_secret, secret_v).await?;
     Ok(())
 }
+
+pub(crate) async fn show(ctx: &Arc<KaspaCli>, acc: Arc<dyn Account>) -> crate::imports::Result<kaspa_addresses::Address> {
+    let wallet = ctx.wallet();
+    let addr = wallet.htlc_show_address(acc).await?;
+    Ok(addr)
+}
