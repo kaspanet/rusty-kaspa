@@ -277,15 +277,15 @@ mod tests {
             self.broadcaster.start();
 
             // Execute the test steps
-            for step in self.steps.iter() {
+            for (step_idx, step) in self.steps.iter().enumerate() {
                 // Apply the subscription mutations and register the changes into the broadcaster
                 for (idx, mutation) in step.mutations.iter().enumerate() {
                     if let Some(ref mutation) = mutation {
                         let event = mutation.event_type();
-                        if self.listeners[idx].subscriptions[event].mutate(mutation.clone(), Default::default()).is_some() {
+                        if self.listeners[idx].mutate(mutation.clone(), Default::default()).is_some() {
                             let ctl = match mutation.active() {
                                 true => Ctl::Register(
-                                    self.listeners[idx].subscriptions[event].clone_arc(),
+                                    self.listeners[idx].subscriptions[event].clone(),
                                     idx as u64,
                                     self.listeners[idx].connection(),
                                 ),
@@ -293,14 +293,16 @@ mod tests {
                             };
                             assert!(
                                 self.ctl_sender.send(ctl).await.is_ok(),
-                                "{} - {}: sending a registration message failed",
+                                "{} [#{}] - {}: sending a registration message failed",
                                 self.name,
+                                step_idx,
                                 step.name
                             );
                             assert!(
                                 self.sync_receiver.recv().await.is_ok(),
-                                "{} - {}: receiving a sync message failed",
+                                "{} [#{}] - {}: receiving a sync message failed",
                                 self.name,
+                                step_idx,
                                 step.name
                             );
                         }
@@ -310,22 +312,34 @@ mod tests {
                 // Send the notification
                 assert!(
                     self.notification_sender.send_blocking(step.notification.clone()).is_ok(),
-                    "{} - {}: sending the notification failed",
+                    "{} [#{}] - {}: sending the notification failed",
                     self.name,
+                    step_idx,
                     step.name
                 );
-                assert!(self.sync_receiver.recv().await.is_ok(), "{} - {}: receiving a sync message failed", self.name, step.name);
+                assert!(
+                    self.sync_receiver.recv().await.is_ok(),
+                    "{} [#{}] - {}: receiving a sync message failed",
+                    self.name,
+                    step_idx,
+                    step.name
+                );
 
                 // Check what the listeners do receive
                 for (idx, expected) in step.expected_notifications.iter().enumerate() {
                     if let Some(ref expected) = expected {
                         let notification = self.notification_receivers[idx].recv().await.unwrap();
-                        assert_eq!(*expected, notification, "{} - {}: listener[{}] got wrong notification", self.name, step.name, idx);
+                        assert_eq!(
+                            *expected, notification,
+                            "{} [#{}] - {}: listener[{}] got wrong notification",
+                            self.name, step_idx, step.name, idx
+                        );
                     } else {
                         assert!(
                             self.notification_receivers[idx].is_empty(),
-                            "{} - {}: listener[{}] has a notification in its channel but should not",
+                            "{} [#{}] - {}: listener[{}] has a notification in its channel but should not",
                             self.name,
+                            step_idx,
                             step.name,
                             idx
                         );

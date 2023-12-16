@@ -1,16 +1,18 @@
-use super::{compounded, single, CompoundedSubscription, SingleSubscription};
+use std::sync::Arc;
+
+use super::{compounded, single, CompoundedSubscription, DynSubscription};
 use crate::events::{EventArray, EventType};
 
 pub struct ArrayBuilder {}
 
 impl ArrayBuilder {
-    pub fn single() -> EventArray<SingleSubscription> {
+    pub fn single() -> EventArray<DynSubscription> {
         EventArray::from_fn(|i| {
             let event_type = EventType::try_from(i).unwrap();
-            let subscription: SingleSubscription = match event_type {
-                EventType::VirtualChainChanged => Box::<single::VirtualChainChangedSubscription>::default(),
-                EventType::UtxosChanged => Box::<single::UtxosChangedSubscription>::default(),
-                _ => Box::new(single::OverallSubscription::new(event_type, false)),
+            let subscription: DynSubscription = match event_type {
+                EventType::VirtualChainChanged => Arc::<single::VirtualChainChangedSubscription>::default(),
+                EventType::UtxosChanged => Arc::<single::UtxosChangedSubscription>::default(),
+                _ => Arc::new(single::OverallSubscription::new(event_type, false)),
             };
             subscription
         })

@@ -322,7 +322,7 @@ where
             // Update broadcasters
             match listener.subscriptions[event].active() {
                 true => {
-                    let subscription = listener.subscriptions[event].clone_arc();
+                    let subscription = listener.subscriptions[event].clone();
                     self.broadcasters
                         .iter()
                         .try_for_each(|broadcaster| broadcaster.register(subscription.clone(), id, listener.connection()))?;

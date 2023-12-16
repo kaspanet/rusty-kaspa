@@ -1,11 +1,11 @@
 use std::fmt::Debug;
 extern crate derive_more;
-use crate::subscription::MutationPolicies;
+use crate::subscription::{DynSubscription, MutationPolicies};
 
 use super::{
     connection::Connection,
     events::EventArray,
-    subscription::{array::ArrayBuilder, Mutation, SingleSubscription},
+    subscription::{array::ArrayBuilder, Mutation},
 };
 
 pub type ListenerId = u64;
@@ -17,7 +17,7 @@ where
     C: Connection,
 {
     connection: C,
-    pub(crate) subscriptions: EventArray<SingleSubscription>,
+    pub(crate) subscriptions: EventArray<DynSubscription>,
 }
 
 impl<C> Listener<C>
@@ -37,7 +37,12 @@ where
     /// Return Some mutations to be applied to a compounded state if any change occurred
     /// in the subscription state and None otherwise.
     pub fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies) -> Option<Vec<Mutation>> {
-        self.subscriptions[mutation.event_type()].mutate(mutation, policies)
+        let event_type = mutation.event_type();
+        let result = self.subscriptions[event_type].clone().mutated(mutation, policies);
+        result.map(|(subscription, mutations)| {
+            self.subscriptions[event_type] = subscription;
+            mutations
+        })
     }
 
     pub fn close(&self) {

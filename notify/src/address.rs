@@ -23,6 +23,12 @@ impl UtxoAddress {
     }
 }
 
+impl AsRef<Address> for UtxoAddress {
+    fn as_ref(&self) -> &Address {
+        &(self.0)
+    }
+}
+
 impl From<Address> for UtxoAddress {
     fn from(address: Address) -> Self {
         Self::from_address(address)
