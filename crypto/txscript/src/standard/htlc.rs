@@ -132,7 +132,7 @@ mod tests {
 
             let cache = Cache::new(10_000);
             let mut engine = TxScriptEngine::from_transaction_input(&tx, input, 0, entry, &mut reused_values, &cache).unwrap();
-            assert_eq!(engine.execute().is_ok(), true);
+            assert!(engine.execute().is_ok());
         }
 
         // check refund
@@ -161,7 +161,7 @@ mod tests {
 
             let cache = Cache::new(10_000);
             let mut engine = TxScriptEngine::from_transaction_input(&tx, input, 0, entry, &mut reused_values, &cache).unwrap();
-            assert_eq!(engine.execute().is_ok(), true);
+            assert!(engine.execute().is_ok());
         }
     }
 }
