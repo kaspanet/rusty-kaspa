@@ -1,6 +1,5 @@
 use super::{DynSubscription, Mutation, MutationPolicies, Single, Subscription, UtxosChangedMutationPolicy};
 use crate::{
-    address::UtxoAddress,
     events::EventType,
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::Command,
@@ -151,7 +150,7 @@ impl Subscription for VirtualChainChangedSubscription {
 #[derive(Clone, Debug, Default)]
 pub struct UtxosChangedSubscription {
     active: bool,
-    addresses: HashMap<ScriptPublicKey, UtxoAddress>,
+    addresses: HashMap<ScriptPublicKey, Address>,
     id: Uuid,
 }
 
@@ -163,19 +162,12 @@ impl UtxosChangedSubscription {
     }
 
     fn set_addresses(&mut self, addresses: Vec<Address>) -> &mut Self {
-        self.addresses = addresses
-            .into_iter()
-            .map(|x| {
-                let utxo_address: UtxoAddress = x.into();
-                (utxo_address.to_script_public_key(), utxo_address)
-            })
-            .collect();
+        self.addresses = addresses.into_iter().map(|x| (pay_to_address_script(&x), x)).collect();
         self
     }
 
     pub fn insert_address(&mut self, address: &Address) -> bool {
-        let utxo_address: UtxoAddress = address.clone().into();
-        self.addresses.insert(utxo_address.to_script_public_key(), utxo_address).is_none()
+        self.addresses.insert(pay_to_address_script(address), address.clone()).is_none()
     }
 
     pub fn contains_address(&self, address: &Address) -> bool {
@@ -186,7 +178,7 @@ impl UtxosChangedSubscription {
         self.addresses.remove(&pay_to_address_script(address)).is_some()
     }
 
-    pub fn addresses(&self) -> &HashMap<ScriptPublicKey, UtxoAddress> {
+    pub fn addresses(&self) -> &HashMap<ScriptPublicKey, Address> {
         &self.addresses
     }
 
@@ -252,7 +244,7 @@ impl Single for UtxosChangedSubscription {
                         let mutations = match policies.utxo_changed {
                             UtxosChangedMutationPolicy::AddressSet => Some(vec![Mutation::new(
                                 Command::Stop,
-                                UtxosChangedScope::new(self.addresses.values().cloned().map(|x| x.into()).collect_vec()).into(),
+                                UtxosChangedScope::new(self.addresses.values().cloned().collect_vec()).into(),
                             )]),
                             UtxosChangedMutationPolicy::AllOrNothing => {
                                 Some(vec![Mutation::new(Command::Stop, UtxosChangedScope::default().into())])
@@ -266,7 +258,7 @@ impl Single for UtxosChangedSubscription {
                             let addresses = self
                                 .addresses
                                 .values()
-                                .filter_map(|x| if removed.contains(x) { None } else { Some(Address::from(x.clone())) })
+                                .filter_map(|x| if removed.contains(x) { None } else { Some(x.clone()) })
                                 .collect_vec();
                             let mutated = Self::new(!addresses.is_empty(), addresses);
                             let mutations = match (policies.utxo_changed, mutated.active) {
@@ -289,8 +281,7 @@ impl Single for UtxosChangedSubscription {
                         // Mutation Add(A)
                         let added = scope.addresses.iter().filter(|x| !self.contains_address(x)).cloned().collect_vec();
                         if !added.is_empty() {
-                            let addresses =
-                                added.iter().cloned().chain(self.addresses.values().map(|x| Address::from(x.clone()))).collect_vec();
+                            let addresses = added.iter().cloned().chain(self.addresses.values().cloned()).collect_vec();
                             let mutated = Self::new(true, addresses);
                             let mutations = match policies.utxo_changed {
                                 UtxosChangedMutationPolicy::AddressSet => {
@@ -309,7 +300,7 @@ impl Single for UtxosChangedSubscription {
                             UtxosChangedMutationPolicy::AddressSet => Some(vec![
                                 Mutation::new(
                                     Command::Stop,
-                                    UtxosChangedScope::new(self.addresses.values().map(|x| Address::from(x.clone())).collect()).into(),
+                                    UtxosChangedScope::new(self.addresses.values().cloned().collect()).into(),
                                 ),
                                 Mutation::new(Command::Start, UtxosChangedScope::default().into()),
                             ]),
@@ -363,7 +354,7 @@ impl Subscription for UtxosChangedSubscription {
     }
 
     fn scope(&self) -> Scope {
-        UtxosChangedScope::new(self.addresses.values().map(|x| &**x).cloned().collect()).into()
+        UtxosChangedScope::new(self.addresses.values().cloned().collect()).into()
     }
 }
 
