@@ -1,6 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::{runtime::Account, secret::Secret, storage::PrvKeyData};
+use crate::secret::Secret;
 use kaspa_bip32::PrivateKey;
 use kaspa_consensus_core::{sign::sign_with_multiple_v2, tx::SignableTransaction};
 

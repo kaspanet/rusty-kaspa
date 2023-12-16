@@ -1,23 +1,23 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime;
 use crate::secret::Secret;
 use crate::tx::PaymentOutputs;
 use crate::wasm::utxo::UtxoContext;
 use kaspa_consensus_wasm::Keypair;
 use workflow_core::abortable::Abortable;
 use workflow_wasm::abi::ref_from_abi;
+use crate::account as native;
 
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
 pub struct Account {
-    inner: Arc<dyn runtime::Account>,
+    inner: Arc<dyn native::Account>,
     #[wasm_bindgen(getter_with_clone)]
     pub context: UtxoContext,
 }
 
 impl Account {
-    pub async fn try_new(inner: Arc<dyn runtime::Account>) -> Result<Self> {
+    pub async fn try_new(inner: Arc<dyn native::Account>) -> Result<Self> {
         let context = inner.utxo_context().clone();
         Ok(Self { inner, context: context.into() })
     }
@@ -113,7 +113,7 @@ impl Account {
     }
 }
 
-impl From<Account> for Arc<dyn runtime::Account> {
+impl From<Account> for Arc<dyn native::Account> {
     fn from(account: Account) -> Self {
         account.inner
     }
@@ -140,8 +140,8 @@ impl TryFrom<JsValue> for Account {
 //     }
 // }
 
-// impl From<IterResult<Arc<runtime::Account>>> for JsValue {
-//     fn from(account: Result<Arc<runtime::Account>>) -> Self {
+// impl From<IterResult<Arc<native::Account>>> for JsValue {
+//     fn from(account: Result<Arc<native::Account>>) -> Self {
 //         account.map(|account| account.into())
 //     }
 // }

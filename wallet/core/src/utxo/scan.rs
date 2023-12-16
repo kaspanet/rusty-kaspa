@@ -1,7 +1,7 @@
 use crate::derivation::AddressManager;
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::{AtomicBalance, Balance};
+use crate::utxo::balance::AtomicBalance;
 use crate::utxo::{UtxoContext, UtxoEntryReference, UtxoEntryReferenceExtension};
 use std::cmp::max;
 

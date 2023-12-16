@@ -6,6 +6,6 @@
 pub use crate::api::*;
 pub use crate::events::{Events, SyncState};
 pub use crate::rpc::{ConnectOptions, ConnectStrategy};
-pub use crate::runtime::wallet::args::*;
+pub use crate::wallet::args::*;
 pub use crate::tx::{Fees, PaymentDestination, PaymentOutput, PaymentOutputs};
 pub use kaspa_addresses::{Address, Prefix as AddressPrefix};

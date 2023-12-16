@@ -1,6 +1,5 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime;
 use crate::tx::{generator as native, Fees, PaymentDestination, PaymentOutputs};
 use crate::utxo::{TryIntoUtxoEntryReferences, UtxoEntryReference};
 use crate::wasm::tx::generator::*;
@@ -105,7 +104,7 @@ impl Generator {
                 )?
             }
             GeneratorSource::Account(account) => {
-                let account: Arc<dyn runtime::Account> = account.into();
+                let account: Arc<dyn crate::account::Account> = account.into();
                 native::GeneratorSettings::try_new_with_account(account, final_transaction_destination, final_priority_fee, None)?
             }
         };

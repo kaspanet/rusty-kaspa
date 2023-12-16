@@ -3,6 +3,7 @@
 //!
 
 pub mod binding;
+pub mod balance;
 pub mod context;
 pub mod iterator;
 pub mod outgoing;
@@ -12,7 +13,9 @@ pub mod reference;
 pub mod scan;
 pub mod settings;
 pub mod stream;
+pub mod sync;
 
+pub use balance::Balance;
 pub use binding::UtxoContextBinding;
 pub use context::{UtxoContext, UtxoContextId};
 pub use iterator::UtxoIterator;
@@ -24,6 +27,7 @@ pub use reference::{Maturity, TryIntoUtxoEntryReferences, UtxoEntryReference, Ut
 pub use scan::{Scan, ScanExtent};
 pub use settings::*;
 pub use stream::UtxoStream;
+pub use sync::SyncMonitor;
 
 #[cfg(test)]
 pub mod test;

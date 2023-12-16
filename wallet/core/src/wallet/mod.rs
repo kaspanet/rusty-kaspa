@@ -4,13 +4,15 @@
 
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::{account::ScanNotifier, Account, AccountDescriptor, ActiveAccountMap};
+use crate::account::ScanNotifier;
+use crate::account::kind::AccountKind;
+use crate::wallet::maps::ActiveAccountMap;
 use crate::secret::Secret;
 use crate::settings::{SettingsStore, WalletSettings};
 use crate::storage::interface::{OpenArgs, StorageDescriptor};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
-use crate::storage::{self, AccountKind, Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, TransactionRecord, WalletDescriptor};
+use crate::storage::{Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, TransactionRecord, WalletDescriptor};
 use crate::utxo::UtxoProcessor;
 #[allow(unused_imports)]
 use crate::{derivation::gen0, derivation::gen0::import::*, derivation::gen1, derivation::gen1::import::*};
@@ -29,6 +31,7 @@ use std::sync::Arc;
 use workflow_core::task::spawn;
 use workflow_log::log_error;
 
+pub mod maps;
 pub mod api;
 pub mod args;
 pub use api::*;

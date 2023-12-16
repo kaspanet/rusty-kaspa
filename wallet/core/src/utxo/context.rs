@@ -2,7 +2,6 @@ use crate::encryption::sha256_hash;
 use crate::events::Events;
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::Balance;
 use crate::storage::TransactionRecord;
 use crate::tx::PendingTransaction;
 use crate::utxo::{

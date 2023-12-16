@@ -1,6 +1,6 @@
 use crate::encryption::sha256_hash;
 use crate::imports::*;
-pub use crate::runtime::account::{bip32, keypair, legacy, multisig};
+pub use crate::account::{bip32, keypair, legacy, multisig};
 use crate::storage::PrvKeyDataId;
 use kaspa_hashes::Hash;
 use kaspa_utils::as_slice::AsSlice;

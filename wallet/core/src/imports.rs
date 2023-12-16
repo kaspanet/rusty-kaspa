@@ -3,18 +3,20 @@
 //! are used internally in the wallet core.
 //!
 
-// pub use crate::daa::Daa;
 pub use crate::deterministic::*;
 pub use crate::error::Error;
 pub use crate::events::{Events, SyncState};
 pub use crate::factory::{factories, try_load_account, Factory};
 pub use crate::rpc::Rpc;
 pub use crate::rpc::{DynRpcApi, RpcCtl};
-pub use crate::runtime::account::descriptor::{AccountDescriptor, AccountDescriptorProperty, AccountDescriptorValue};
-pub use crate::runtime::{Account, Wallet};
+pub use crate::account::descriptor::{AccountDescriptor, AccountDescriptorProperty, AccountDescriptorValue};
+pub use crate::account::Account;
+pub use crate::wallet::*;
 pub use crate::storage::*;
+pub use crate::utxo::balance::Balance;
 pub use crate::utxo::scan::{Scan, ScanExtent};
-pub use crate::{runtime, storage, utils, utxo};
+pub use crate::{storage, utils, utxo};
+
 pub use ahash::{AHashMap, AHashSet};
 pub use async_trait::async_trait;
 pub use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};

@@ -14,7 +14,8 @@ use workflow_core::runtime;
 use xxhash_rust::xxh3::xxh3_64;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
-use crate::storage::{AccountKind, Encryptable};
+use crate::account::AccountKind;
+use crate::encryption::Encryptable;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, BorshSerialize, BorshDeserialize)]
 pub struct KeyDataId(pub(crate) [u8; 8]);

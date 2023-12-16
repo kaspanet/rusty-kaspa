@@ -1,5 +1,4 @@
 use crate::imports::*;
-use crate::runtime::Account;
 use crate::utxo::{Maturity, UtxoContext, UtxoEntryId, UtxoEntryReference, UtxoEntryReferenceExtension};
 
 pub struct PendingUtxoEntryReferenceInner {

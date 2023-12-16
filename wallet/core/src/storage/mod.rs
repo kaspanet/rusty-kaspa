@@ -15,7 +15,6 @@ pub mod local;
 pub mod metadata;
 pub mod transaction;
 
-pub use crate::runtime::AccountKind;
 pub use account::{AccountSettings, AccountStorage};
 pub use address::AddressBookEntry;
 pub use binding::Binding;
@@ -35,7 +34,7 @@ mod tests {
     use super::*;
     use crate::imports::*;
     use crate::result::Result;
-    use crate::runtime::account::variants::bip32::*;
+    use crate::account::variants::bip32::*;
     use crate::secret::Secret;
     use crate::storage::local::Payload;
     use crate::storage::local::WalletStorage;

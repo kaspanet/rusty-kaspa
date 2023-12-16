@@ -13,9 +13,9 @@ use crate::derivation::gen1::{PubkeyDerivationManager, WalletDerivationManager};
 use crate::error::Error;
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime;
-use crate::runtime::account::create_private_keys;
-use crate::runtime::AccountKind;
+// use crate::runtime;
+use crate::account::create_private_keys;
+use crate::account::AccountKind;
 use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_txscript::{
@@ -47,7 +47,7 @@ pub struct Inner {
 
 pub struct AddressManager {
     // pub prefix: Prefix,
-    pub wallet: Arc<runtime::Wallet>,
+    pub wallet: Arc<Wallet>,
     pub account_kind: AccountKind,
     pub pubkey_managers: Vec<Arc<dyn PubkeyDerivationManagerTrait>>,
     pub ecdsa: bool,
@@ -57,7 +57,7 @@ pub struct AddressManager {
 
 impl AddressManager {
     pub fn new(
-        wallet: Arc<runtime::Wallet>,
+        wallet: Arc<Wallet>,
         account_kind: AccountKind,
         pubkey_managers: Vec<Arc<dyn PubkeyDerivationManagerTrait>>,
         ecdsa: bool,
@@ -175,14 +175,14 @@ pub struct AddressDerivationManager {
     pub cosigner_index: Option<u32>,
     pub derivators: Vec<Arc<dyn WalletDerivationManagerTrait>>,
     #[allow(dead_code)]
-    wallet: Arc<runtime::Wallet>,
+    wallet: Arc<Wallet>,
     pub receive_address_manager: Arc<AddressManager>,
     pub change_address_manager: Arc<AddressManager>,
 }
 
 impl AddressDerivationManager {
     pub async fn new(
-        wallet: &Arc<runtime::Wallet>,
+        wallet: &Arc<Wallet>,
         account_kind: AccountKind,
         keys: &Vec<String>,
         ecdsa: bool,
@@ -245,7 +245,7 @@ impl AddressDerivationManager {
     }
 
     pub fn create_legacy_pubkey_managers(
-        wallet: &Arc<runtime::Wallet>,
+        wallet: &Arc<Wallet>,
         account_index: u64,
         address_derivation_indexes: AddressDerivationMeta,
     ) -> Result<Arc<AddressDerivationManager>> {

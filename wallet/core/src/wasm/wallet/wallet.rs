@@ -1,6 +1,5 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime;
 use crate::storage::local::interface::LocalStore;
 use crate::storage::{PrvKeyDataId, WalletDescriptor};
 use crate::wasm::wallet::account::Account;
@@ -9,11 +8,12 @@ use kaspa_wrpc_client::wasm::RpcClient;
 use kaspa_wrpc_client::WrpcEncoding;
 use workflow_core::sendable::Sendable;
 use workflow_wasm::channel::EventDispatcher;
+use crate::wallet as native;
 
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
 pub struct Wallet {
-    pub(crate) wallet: Arc<runtime::Wallet>,
+    pub(crate) wallet: Arc<native::Wallet>,
     #[wasm_bindgen(getter_with_clone)]
     pub rpc: RpcClient,
     #[wasm_bindgen(getter_with_clone)]
@@ -35,7 +35,7 @@ impl Wallet {
         let rpc_api: Arc<DynRpcApi> = rpc.client().rpc_api().clone();
         let rpc_ctl = rpc.client().rpc_ctl().clone();
         let rpc_binding = Rpc::new(rpc_api, rpc_ctl);
-        let wallet = Arc::new(runtime::Wallet::try_with_rpc(Some(rpc_binding), store, network_id)?);
+        let wallet = Arc::new(native::Wallet::try_with_rpc(Some(rpc_binding), store, network_id)?);
         let events = EventDispatcher::default();
 
         Ok(Self { wallet, events, rpc })
@@ -239,7 +239,7 @@ impl TryFrom<JsValue> for WalletCtorArgs {
 //     }
 // }
 
-// impl From<WalletCreateArgs> for runtime::WalletCreateArgs {
+// impl From<WalletCreateArgs> for native::WalletCreateArgs {
 //     fn from(args: WalletCreateArgs) -> Self {
 //         Self {
 //             title: args.title,
