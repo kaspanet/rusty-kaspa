@@ -2,11 +2,10 @@
 //! [`Wallet`] - a Kaspa wallet runtime.
 //!
 
+use crate::account::kind::AccountKind;
+use crate::account::ScanNotifier;
 use crate::imports::*;
 use crate::result::Result;
-use crate::account::ScanNotifier;
-use crate::account::kind::AccountKind;
-use crate::wallet::maps::ActiveAccountMap;
 use crate::secret::Secret;
 use crate::settings::{SettingsStore, WalletSettings};
 use crate::storage::interface::{OpenArgs, StorageDescriptor};
@@ -14,6 +13,7 @@ use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
 use crate::storage::{Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, TransactionRecord, WalletDescriptor};
 use crate::utxo::UtxoProcessor;
+use crate::wallet::maps::ActiveAccountMap;
 #[allow(unused_imports)]
 use crate::{derivation::gen0, derivation::gen0::import::*, derivation::gen1, derivation::gen1::import::*};
 use futures::future::join_all;
@@ -31,9 +31,9 @@ use std::sync::Arc;
 use workflow_core::task::spawn;
 use workflow_log::log_error;
 
-pub mod maps;
 pub mod api;
 pub mod args;
+pub mod maps;
 pub use api::*;
 pub use args::*;
 
@@ -492,9 +492,9 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn ping(&self) -> bool {
-        self.rpc_api().ping().await.is_ok()
-    }
+    // pub async fn ping(&self) -> bool {
+    //     self.rpc_api().ping().await.is_ok()
+    // }
 
     pub async fn broadcast(&self) -> Result<()> {
         Ok(())

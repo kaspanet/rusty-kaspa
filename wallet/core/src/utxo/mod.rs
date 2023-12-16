@@ -2,8 +2,8 @@
 //! UTXO handling primitives.
 //!
 
-pub mod binding;
 pub mod balance;
+pub mod binding;
 pub mod context;
 pub mod iterator;
 pub mod outgoing;

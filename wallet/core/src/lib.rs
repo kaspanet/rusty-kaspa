@@ -36,6 +36,7 @@
 extern crate alloc;
 extern crate self as kaspa_wallet_core;
 
+pub mod account;
 pub mod api;
 pub mod derivation;
 pub mod deterministic;
@@ -48,14 +49,13 @@ pub mod message;
 pub mod prelude;
 pub mod result;
 pub mod rpc;
-pub mod account;
-pub mod wallet;
 pub mod secret;
 pub mod settings;
 pub mod storage;
 pub mod tx;
 pub mod utils;
 pub mod utxo;
+pub mod wallet;
 pub mod wasm;
 
 /// Returns the version of the Wallet framework.

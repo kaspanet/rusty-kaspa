@@ -1,6 +1,5 @@
 use crate::imports::*;
 use kaspa_consensus_core::tx::{TransactionInput, TransactionOutpoint};
-use kaspa_wallet_core::runtime;
 use kaspa_wallet_core::storage::Binding;
 use kaspa_wallet_core::storage::{TransactionData, TransactionKind, TransactionRecord};
 use workflow_log::style;
@@ -58,7 +57,7 @@ pub trait TransactionExtension {
         current_daa_score: Option<u64>,
         include_utxos: bool,
         history: bool,
-        account: Option<Arc<dyn runtime::Account>>,
+        account: Option<Arc<dyn Account>>,
     ) -> Vec<String>;
 }
 
@@ -79,7 +78,7 @@ impl TransactionExtension for TransactionRecord {
         current_daa_score: Option<u64>,
         include_utxos: bool,
         history: bool,
-        account: Option<Arc<dyn runtime::Account>>,
+        account: Option<Arc<dyn Account>>,
     ) -> Vec<String> {
         let TransactionRecord { id, binding, block_daa_score, transaction_data, .. } = self;
 

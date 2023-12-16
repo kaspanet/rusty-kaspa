@@ -1,16 +1,13 @@
 use crate::error::Error;
 use crate::helpers::*;
 use crate::imports::*;
-// pub use crate::metrics;
 use crate::modules::miner::Miner;
 use crate::modules::node::Node;
 use crate::notifier::{Notification, Notifier};
 use crate::result::Result;
 use kaspa_daemon::{DaemonEvent, DaemonKind, Daemons};
 use kaspa_wallet_core::rpc::DynRpcApi;
-use kaspa_wallet_core::runtime::{Account, BalanceStrings};
 use kaspa_wallet_core::storage::{IdT, PrvKeyDataInfo};
-use kaspa_wallet_core::{events::Events, runtime::Wallet};
 use kaspa_wrpc_client::KaspaRpcClient;
 use workflow_core::channel::*;
 use workflow_core::time::Instant;

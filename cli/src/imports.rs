@@ -14,16 +14,9 @@ pub use kaspa_consensus_core::network::{NetworkId, NetworkType};
 pub use kaspa_daemon::DaemonEvent;
 pub use kaspa_utils::hex::*;
 pub use kaspa_wallet_core::derivation::gen0::import::*;
-pub use kaspa_wallet_core::prelude::{Address, ConnectOptions, ConnectStrategy, Events, SyncState};
 pub use kaspa_wallet_core::settings::{DefaultSettings, SettingsStore, WalletSettings};
-pub use kaspa_wallet_core::storage::interface::Interface;
-pub use kaspa_wallet_core::storage::{AccountKind, IdT, PrvKeyDataId, PrvKeyDataInfo};
-pub use kaspa_wallet_core::tx::PaymentOutputs;
+pub use kaspa_wallet_core::prelude::*;
 pub use kaspa_wallet_core::utils::*;
-pub use kaspa_wallet_core::{
-    runtime::{AccountCreateArgs, Wallet, WalletOpenArgs},
-    secret::Secret,
-};
 pub use pad::PadStr;
 pub use regex::Regex;
 pub use separator::Separatable;

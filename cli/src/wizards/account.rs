@@ -2,9 +2,9 @@ use crate::cli::KaspaCli;
 use crate::imports::*;
 use crate::result::Result;
 use kaspa_bip32::{Language, Mnemonic, WordCount};
-use kaspa_wallet_core::runtime::wallet::AccountCreateArgsBip32;
-use kaspa_wallet_core::runtime::{PrvKeyDataArgs, PrvKeyDataCreateArgs};
-use kaspa_wallet_core::storage::AccountKind;
+// use kaspa_wallet_core::runtime::wallet::AccountCreateArgsBip32;
+// use kaspa_wallet_core::runtime::{PrvKeyDataArgs, PrvKeyDataCreateArgs};
+// use kaspa_wallet_core::storage::AccountKind;
 
 pub(crate) async fn create(
     ctx: &Arc<KaspaCli>,

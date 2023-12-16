@@ -1,5 +1,4 @@
 use crate::imports::*;
-use kaspa_wallet_core::runtime::balance::*;
 use workflow_core::channel::*;
 use workflow_terminal::clear::*;
 use workflow_terminal::cursor::*;

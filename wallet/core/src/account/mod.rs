@@ -13,7 +13,6 @@ use crate::derivation::gen0;
 use crate::derivation::AddressDerivationManagerTrait;
 use crate::imports::*;
 use crate::result::Result;
-// use crate::runtime::{Balance, BalanceStrings, Wallet};
 use crate::secret::Secret;
 use crate::storage::account::AccountSettings;
 use crate::storage::AccountMetadata;
@@ -26,7 +25,7 @@ use kaspa_consensus_wasm::UtxoEntryReference;
 use separator::Separatable;
 use workflow_core::abortable::Abortable;
 
-use crate::utxo::balance::{BalanceStrings,AtomicBalance};
+use crate::utxo::balance::{AtomicBalance, BalanceStrings};
 
 pub const DEFAULT_AMOUNT_PADDING: usize = 19;
 

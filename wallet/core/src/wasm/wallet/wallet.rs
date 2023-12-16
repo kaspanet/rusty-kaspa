@@ -2,13 +2,13 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::storage::local::interface::LocalStore;
 use crate::storage::{PrvKeyDataId, WalletDescriptor};
+use crate::wallet as native;
 use crate::wasm::wallet::account::Account;
 use crate::wasm::wallet::keydata::PrvKeyDataInfo;
 use kaspa_wrpc_client::wasm::RpcClient;
 use kaspa_wrpc_client::WrpcEncoding;
 use workflow_core::sendable::Sendable;
 use workflow_wasm::channel::EventDispatcher;
-use crate::wallet as native;
 
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
@@ -153,9 +153,9 @@ impl Wallet {
     //     // }
     // }
 
-    pub async fn ping(&self) -> bool {
-        self.wallet.ping().await
-    }
+    // pub async fn ping(&self) -> bool {
+    //     self.wallet.ping().await.is_ok()
+    // }
 
     pub async fn start(&self) -> Result<()> {
         self.events.start_notification_task(self.wallet.multiplexer()).await?;

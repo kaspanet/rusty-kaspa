@@ -1,5 +1,5 @@
-use crate::imports::*;
 use crate::events::Events;
+use crate::imports::*;
 use crate::result::Result;
 use crate::tx::{Fees, PaymentDestination};
 use crate::utxo::{UtxoContext, UtxoEntryReference, UtxoIterator};

@@ -1,12 +1,6 @@
-use crate::derivation::AddressDerivationMeta;
+use crate::account::{AsLegacyAccount, Inner};
 use crate::derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
 use crate::imports::*;
-use crate::result::Result;
-use crate::runtime::account::descriptor::AccountDescriptor;
-use crate::runtime::account::{Account, AccountKind, AsLegacyAccount, DerivationCapableAccount, Inner};
-use crate::runtime::Wallet;
-use crate::secret::Secret;
-use crate::storage::{AccountMetadata, AccountSettings, PrvKeyDataId};
 use kaspa_bip32::{ExtendedPrivateKey, Prefix, SecretKey};
 
 const CACHE_ADDRESS_OFFSET: u32 = 2048;
@@ -76,8 +70,7 @@ impl Legacy {
 
         let inner = Arc::new(Inner::from_storage(wallet, storage));
 
-        let address_derivation_indexes =
-            meta.and_then(|meta| meta.address_derivation_indexes()).unwrap_or(AddressDerivationMeta::new(0, 0));
+        let address_derivation_indexes = meta.and_then(|meta| meta.address_derivation_indexes()).unwrap_or_default();
         let account_index = 0;
         let derivation =
             AddressDerivationManager::create_legacy_pubkey_managers(wallet, account_index, address_derivation_indexes.clone())?;

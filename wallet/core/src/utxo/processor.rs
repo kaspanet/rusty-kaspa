@@ -11,10 +11,12 @@ use kaspa_wrpc_client::KaspaRpcClient;
 use workflow_core::channel::{Channel, DuplexChannel};
 use workflow_core::task::spawn;
 
-use crate::result::Result;
-use crate::wallet::WalletBusMessage;
-use crate::utxo::{SyncMonitor, Maturity, OutgoingTransaction, PendingUtxoEntryReference, UtxoContext, UtxoEntryId, UtxoEntryReference};
 use crate::events::Events;
+use crate::result::Result;
+use crate::utxo::{
+    Maturity, OutgoingTransaction, PendingUtxoEntryReference, SyncMonitor, UtxoContext, UtxoEntryId, UtxoEntryReference,
+};
+use crate::wallet::WalletBusMessage;
 use crate::{imports::*, storage::TransactionRecord};
 use async_std::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 use kaspa_rpc_core::{

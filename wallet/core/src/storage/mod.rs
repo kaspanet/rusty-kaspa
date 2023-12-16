@@ -32,9 +32,9 @@ pub use transaction::{TransactionData, TransactionId, TransactionKind, Transacti
 mod tests {
 
     use super::*;
+    use crate::account::variants::bip32::*;
     use crate::imports::*;
     use crate::result::Result;
-    use crate::account::variants::bip32::*;
     use crate::secret::Secret;
     use crate::storage::local::Payload;
     use crate::storage::local::WalletStorage;
