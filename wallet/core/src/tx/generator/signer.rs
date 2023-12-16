@@ -107,6 +107,7 @@ impl SignerT for HtlcSenderSigner {
         let prv_k = prv_k.private_key();
         let schnorr_key = secp256k1::KeyPair::from_secret_key(secp256k1::SECP256K1, prv_k);
         let mut reused_values = SigHashReusedValues::new();
+        tx.tx.lock_time = self.account.locktime;
 
         for i in 0..tx.tx.inputs.len() {
             let sig_hash = calc_schnorr_signature_hash(&tx.as_verifiable(), i, SIG_HASH_ALL, &mut reused_values); // todo index
@@ -136,7 +137,6 @@ impl SignerT for HtlcSenderSigner {
 
             tx.tx.inputs[i].signature_script = builder.drain();
         }
-        tx.tx.lock_time = self.account.locktime;
         Ok(tx)
     }
 }
