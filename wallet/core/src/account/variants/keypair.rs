@@ -1,5 +1,5 @@
-use crate::imports::*;
 use crate::account::Inner;
+use crate::imports::*;
 use kaspa_addresses::Version;
 use secp256k1::PublicKey;
 
@@ -87,7 +87,7 @@ impl Account for Keypair {
     }
 
     fn account_kind(&self) -> AccountKind {
-        AccountKind::Keypair
+        KEYPAIR_ACCOUNT_KIND.into()
     }
 
     fn prv_key_data_id(&self) -> Result<&PrvKeyDataId> {
@@ -121,7 +121,7 @@ impl Account for Keypair {
         let storable = Storable::new(self.public_key, self.ecdsa);
         let serialized = serde_json::to_string(&storable)?;
         let account_storage = AccountStorage::new(
-            KEYPAIR_ACCOUNT_KIND,
+            KEYPAIR_ACCOUNT_KIND.into(),
             KEYPAIR_ACCOUNT_VERSION,
             self.id(),
             self.storage_key(),
@@ -146,7 +146,7 @@ impl Account for Keypair {
 
     fn descriptor(&self) -> Result<AccountDescriptor> {
         let descriptor = AccountDescriptor::new(
-            KEYPAIR_ACCOUNT_KIND,
+            KEYPAIR_ACCOUNT_KIND.into(),
             *self.id(),
             self.name(),
             self.prv_key_data_id.into(),

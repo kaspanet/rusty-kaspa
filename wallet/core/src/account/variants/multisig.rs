@@ -76,7 +76,7 @@ impl MultiSig {
 
         let derivation = AddressDerivationManager::new(
             wallet,
-            AccountKind::MultiSig,
+            MULTISIG_ACCOUNT_KIND.into(),
             &xpub_keys,
             ecdsa,
             0,
@@ -99,7 +99,7 @@ impl MultiSig {
 
         let derivation = AddressDerivationManager::new(
             wallet,
-            AccountKind::MultiSig,
+            MULTISIG_ACCOUNT_KIND.into(),
             &xpub_keys,
             ecdsa,
             0,
@@ -132,7 +132,7 @@ impl Account for MultiSig {
     }
 
     fn account_kind(&self) -> AccountKind {
-        AccountKind::MultiSig
+        MULTISIG_ACCOUNT_KIND.into()
     }
 
     fn prv_key_data_id(&self) -> Result<&PrvKeyDataId> {
@@ -174,7 +174,7 @@ impl Account for MultiSig {
         let serialized = serde_json::to_string(&storable)?;
 
         let account_storage = AccountStorage::new(
-            MULTISIG_ACCOUNT_KIND,
+            MULTISIG_ACCOUNT_KIND.into(),
             MULTISIG_ACCOUNT_VERSION,
             self.id(),
             self.storage_key(),
@@ -193,7 +193,7 @@ impl Account for MultiSig {
 
     fn descriptor(&self) -> Result<AccountDescriptor> {
         let descriptor = AccountDescriptor::new(
-            MULTISIG_ACCOUNT_KIND,
+            MULTISIG_ACCOUNT_KIND.into(),
             *self.id(),
             self.name(),
             self.prv_key_data_ids.clone().try_into()?,

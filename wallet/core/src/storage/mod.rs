@@ -75,7 +75,7 @@ mod tests {
         let (id, storage_key) = make_account_hashes(from_bip32(&prv_key_data1.id, &storable));
         let storable = serde_json::to_string(&storable)?;
         let account1 = AccountStorage::new(
-            BIP32_ACCOUNT_KIND,
+            BIP32_ACCOUNT_KIND.into(),
             BIP32_ACCOUNT_VERSION,
             &id,
             &storage_key,
@@ -91,7 +91,7 @@ mod tests {
         let (id, storage_key) = make_account_hashes(from_bip32(&prv_key_data2.id, &storable));
         let storable = serde_json::to_string(&storable)?;
         let account2 = AccountStorage::new(
-            BIP32_ACCOUNT_KIND,
+            BIP32_ACCOUNT_KIND.into(),
             BIP32_ACCOUNT_VERSION,
             &id,
             &storage_key,

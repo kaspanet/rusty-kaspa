@@ -119,7 +119,7 @@ impl Account for Legacy {
     }
 
     fn account_kind(&self) -> AccountKind {
-        AccountKind::Legacy
+        LEGACY_ACCOUNT_KIND.into()
     }
 
     fn prv_key_data_id(&self) -> Result<&PrvKeyDataId> {
@@ -151,7 +151,7 @@ impl Account for Legacy {
         let storable = Storable::new();
         let serialized = serde_json::to_string(&storable)?;
         let account_storage = AccountStorage::new(
-            LEGACY_ACCOUNT_KIND,
+            LEGACY_ACCOUNT_KIND.into(),
             LEGACY_ACCOUNT_VERSION,
             self.id(),
             self.storage_key(),
@@ -170,7 +170,7 @@ impl Account for Legacy {
 
     fn descriptor(&self) -> Result<AccountDescriptor> {
         let descriptor = AccountDescriptor::new(
-            LEGACY_ACCOUNT_KIND,
+            LEGACY_ACCOUNT_KIND.into(),
             *self.id(),
             self.name(),
             self.prv_key_data_id.into(),

@@ -607,14 +607,14 @@ pub trait DerivationCapableAccount: Account {
     ) -> Result<Vec<(&'l Address, secp256k1::SecretKey)>> {
         let payload = key_data.payload.decrypt(payment_secret.as_ref())?;
         let xkey = payload.get_xprv(payment_secret.as_ref())?;
-        create_private_keys(self.account_kind(), self.cosigner_index(), self.account_index(), &xkey, receive, change)
+        create_private_keys(&self.account_kind(), self.cosigner_index(), self.account_index(), &xkey, receive, change)
     }
 }
 
 downcast_sync!(dyn DerivationCapableAccount);
 
 pub fn create_private_keys<'l>(
-    account_kind: AccountKind,
+    account_kind: &AccountKind,
     cosigner_index: u32,
     account_index: u64,
     xkey: &ExtendedPrivateKey<secp256k1::SecretKey>,
@@ -623,7 +623,7 @@ pub fn create_private_keys<'l>(
 ) -> Result<Vec<(&'l Address, secp256k1::SecretKey)>> {
     let paths = build_derivate_paths(account_kind, account_index, cosigner_index)?;
     let mut private_keys = vec![];
-    if matches!(account_kind, AccountKind::Legacy) {
+    if matches!(account_kind.as_ref(), LEGACY_ACCOUNT_KIND) {
         let (private_key, attrs) = gen0::WalletDerivationManagerV0::derive_key_by_path(xkey, paths.0)?;
         for (address, index) in receive.iter() {
             let (private_key, _) =
@@ -655,8 +655,9 @@ pub fn create_private_keys<'l>(
 #[cfg(test)]
 mod tests {
     use super::create_private_keys;
-    use super::{AccountKind, ExtendedPrivateKey};
+    use super::ExtendedPrivateKey;
     use crate::derivation::gen0::PubkeyDerivationManagerV0;
+    use crate::imports::LEGACY_ACCOUNT_KIND;
     //use crate::runtime::account::
     // PubkeyDerivationManagerV0;
     use kaspa_addresses::Address;
@@ -795,14 +796,14 @@ mod tests {
         let receive_keys = gen0_receive_keys();
         let change_keys = gen0_change_keys();
 
-        let keys = create_private_keys(AccountKind::Legacy, 0, 0, &xkey, &receive_addresses, &[]).unwrap();
+        let keys = create_private_keys(&LEGACY_ACCOUNT_KIND.into(), 0, 0, &xkey, &receive_addresses, &[]).unwrap();
         for (index, (a, key)) in keys.iter().enumerate() {
             let address = PubkeyDerivationManagerV0::create_address(&key.get_public_key(), Prefix::Testnet, false).unwrap();
             assert_eq!(*a, &address, "receive address at {index} failed");
             assert_eq!(bytes_str(&key.to_bytes()), receive_keys[index], "receive key at {index} failed");
         }
 
-        let keys = create_private_keys(AccountKind::Legacy, 0, 0, &xkey, &[], &change_addresses).unwrap();
+        let keys = create_private_keys(&LEGACY_ACCOUNT_KIND.into(), 0, 0, &xkey, &[], &change_addresses).unwrap();
         for (index, (a, key)) in keys.iter().enumerate() {
             let address = PubkeyDerivationManagerV0::create_address(&key.get_public_key(), Prefix::Testnet, false).unwrap();
             assert_eq!(*a, &address, "change address at {index} failed");

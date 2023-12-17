@@ -20,6 +20,7 @@ use thiserror::Error;
 
 use crate::deterministic::AccountId;
 use crate::imports::account::AssocPrvKeyDataIds;
+use crate::imports::AccountKind;
 use crate::storage::PrvKeyDataId;
 
 #[derive(Debug, Error)]
@@ -178,7 +179,7 @@ pub enum Error {
     TryFromEnum(#[from] workflow_core::enums::TryFromError),
 
     #[error("Account factory found for type: {0}")]
-    AccountFactoryNotFound(String),
+    AccountFactoryNotFound(AccountKind),
 
     #[error("Account not found: {0}")]
     AccountNotFound(AccountId),

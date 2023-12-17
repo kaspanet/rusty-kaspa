@@ -1,3 +1,7 @@
+use kaspa_wallet_core::account::BIP32_ACCOUNT_KIND;
+use kaspa_wallet_core::account::LEGACY_ACCOUNT_KIND;
+use kaspa_wallet_core::account::MULTISIG_ACCOUNT_KIND;
+
 use crate::imports::*;
 use crate::wizards;
 
@@ -39,7 +43,7 @@ impl Account {
             }
             "create" => {
                 let account_kind = if argv.is_empty() {
-                    AccountKind::Bip32
+                    BIP32_ACCOUNT_KIND.into()
                 } else {
                     let kind = argv.remove(0);
                     kind.parse::<AccountKind>()?
@@ -152,15 +156,15 @@ impl Account {
                         let account_kind = argv.remove(0);
                         let account_kind = account_kind.parse::<AccountKind>()?;
 
-                        match account_kind {
-                            AccountKind::Legacy | AccountKind::Bip32 => {
+                        match account_kind.as_ref() {
+                            LEGACY_ACCOUNT_KIND | BIP32_ACCOUNT_KIND => {
                                 if !argv.is_empty() {
                                     tprintln!(ctx, "too many arguments: {}\r\n", argv.join(" "));
                                     return Ok(());
                                 }
                                 crate::wizards::import::import_with_mnemonic(&ctx, account_kind, &argv).await?;
                             }
-                            AccountKind::MultiSig => {
+                            MULTISIG_ACCOUNT_KIND => {
                                 crate::wizards::import::import_with_mnemonic(&ctx, account_kind, &argv).await?;
                             }
                             _ => {

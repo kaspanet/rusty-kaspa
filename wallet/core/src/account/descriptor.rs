@@ -21,7 +21,7 @@ pub struct AccountDescriptor {
 
 impl AccountDescriptor {
     pub fn new(
-        kind: &str,
+        kind: AccountKind,
         account_id: AccountId,
         account_name: Option<String>,
         prv_key_data_ids: AssocPrvKeyDataIds,

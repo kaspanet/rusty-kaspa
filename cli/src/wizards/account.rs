@@ -2,6 +2,7 @@ use crate::cli::KaspaCli;
 use crate::imports::*;
 use crate::result::Result;
 use kaspa_bip32::{Language, Mnemonic, WordCount};
+use kaspa_wallet_core::account::MULTISIG_ACCOUNT_KIND;
 // use kaspa_wallet_core::runtime::wallet::AccountCreateArgsBip32;
 // use kaspa_wallet_core::runtime::{PrvKeyDataArgs, PrvKeyDataCreateArgs};
 // use kaspa_wallet_core::storage::AccountKind;
@@ -24,7 +25,7 @@ pub(crate) async fn create(
         Some(term.ask(false, "Please enter account name (optional, press <enter> to skip): ").await?.trim().to_string())
     };
 
-    if matches!(account_kind, AccountKind::MultiSig) {
+    if account_kind == MULTISIG_ACCOUNT_KIND {
         return create_multisig(ctx, name, word_count).await;
     }
 

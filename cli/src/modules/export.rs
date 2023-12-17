@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_wallet_core::account::{multisig::MultiSig, Account};
+use kaspa_wallet_core::account::{multisig::MultiSig, Account, MULTISIG_ACCOUNT_KIND};
 
 #[derive(Default, Handler)]
 #[help("Export transactions, a wallet or a private key")]
@@ -18,7 +18,7 @@ impl Export {
         match what.as_str() {
             "mnemonic" => {
                 let account = ctx.account().await?;
-                if matches!(account.account_kind(), AccountKind::MultiSig) {
+                if account.account_kind() == MULTISIG_ACCOUNT_KIND {
                     let account = account.downcast_arc::<MultiSig>()?;
                     export_multisig_account(ctx, account).await
                 } else {
@@ -54,7 +54,7 @@ async fn export_multisig_account(ctx: Arc<KaspaCli>, account: Arc<MultiSig>) -> 
                 tprintln!(ctx, "{}", mnemonic.phrase());
                 tprintln!(ctx, "");
 
-                let xpub_key = prv_key_data.create_xpub(None, AccountKind::MultiSig, 0).await?; // todo it can be done concurrently
+                let xpub_key = prv_key_data.create_xpub(None, MULTISIG_ACCOUNT_KIND.into(), 0).await?; // todo it can be done concurrently
                 let xpub_prefix = kaspa_bip32::Prefix::XPUB;
                 generated_xpub_keys.push(xpub_key.to_string(Some(xpub_prefix)));
             }

@@ -1,6 +1,6 @@
-use crate::imports::*;
 use crate::account::Inner;
 use crate::derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
+use crate::imports::*;
 
 pub const BIP32_ACCOUNT_VERSION: u32 = 0;
 pub const BIP32_ACCOUNT_KIND: &str = "kaspa-bip32-standard";
@@ -65,7 +65,8 @@ impl Bip32 {
         let inner = Arc::new(Inner::new(wallet, id, storage_key, settings));
 
         let derivation =
-            AddressDerivationManager::new(wallet, AccountKind::Bip32, &xpub_keys, ecdsa, 0, None, 1, Default::default()).await?;
+            AddressDerivationManager::new(wallet, BIP32_ACCOUNT_KIND.into(), &xpub_keys, ecdsa, 0, None, 1, Default::default())
+                .await?;
 
         Ok(Self { inner, prv_key_data_id, account_index, xpub_keys, ecdsa, derivation })
     }
@@ -79,9 +80,17 @@ impl Bip32 {
 
         let address_derivation_indexes = meta.and_then(|meta| meta.address_derivation_indexes()).unwrap_or_default();
 
-        let derivation =
-            AddressDerivationManager::new(wallet, AccountKind::Bip32, &xpub_keys, ecdsa, 0, None, 1, address_derivation_indexes)
-                .await?;
+        let derivation = AddressDerivationManager::new(
+            wallet,
+            BIP32_ACCOUNT_KIND.into(),
+            &xpub_keys,
+            ecdsa,
+            0,
+            None,
+            1,
+            address_derivation_indexes,
+        )
+        .await?;
 
         // TODO - is this needed?
         let _prv_key_data_info = wallet
@@ -108,7 +117,7 @@ impl Account for Bip32 {
     }
 
     fn account_kind(&self) -> AccountKind {
-        AccountKind::Bip32
+        BIP32_ACCOUNT_KIND.into()
     }
 
     fn prv_key_data_id(&self) -> Result<&PrvKeyDataId> {
@@ -139,7 +148,7 @@ impl Account for Bip32 {
         let storable = Storable::new(self.account_index, self.xpub_keys.clone(), self.ecdsa);
         let serialized = serde_json::to_string(&storable)?;
         let storage = AccountStorage::new(
-            BIP32_ACCOUNT_KIND,
+            BIP32_ACCOUNT_KIND.into(),
             BIP32_ACCOUNT_VERSION,
             self.id(),
             self.storage_key(),
@@ -158,7 +167,7 @@ impl Account for Bip32 {
 
     fn descriptor(&self) -> Result<AccountDescriptor> {
         let descriptor = AccountDescriptor::new(
-            BIP32_ACCOUNT_KIND,
+            BIP32_ACCOUNT_KIND.into(),
             *self.id(),
             self.name(),
             self.prv_key_data_id.into(),

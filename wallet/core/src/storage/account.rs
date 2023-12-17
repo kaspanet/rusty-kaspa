@@ -80,7 +80,7 @@ pub struct AccountStorage {
     #[serde(default)]
     pub version: [u32; 2],
 
-    pub kind: String,
+    pub kind: AccountKind,
     pub id: AccountId,
     pub storage_key: AccountStorageKey,
     pub prv_key_data_ids: AssocPrvKeyDataIds,
@@ -90,7 +90,7 @@ pub struct AccountStorage {
 
 impl AccountStorage {
     pub fn new(
-        kind: &str,
+        kind: AccountKind,
         data_version: u32,
         id: &AccountId,
         storage_key: &AccountStorageKey,
@@ -102,7 +102,7 @@ impl AccountStorage {
             version: [ACCOUNT_VERSION, data_version],
             id: *id,
             storage_key: *storage_key,
-            kind: kind.to_string(),
+            kind,
             prv_key_data_ids,
             settings,
             serialized: serialized.to_vec(),

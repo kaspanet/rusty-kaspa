@@ -1,5 +1,5 @@
-use crate::imports::*;
 use crate::account::Inner;
+use crate::imports::*;
 use kaspa_addresses::Version;
 use secp256k1::{PublicKey, SecretKey};
 use storage::account::AssocPrvKeyDataIds;
@@ -16,7 +16,7 @@ pub struct Resident {
 
 impl Resident {
     pub async fn try_load(wallet: &Arc<Wallet>, public_key: PublicKey, secret_key: Option<SecretKey>) -> Result<Self> {
-        let (id, storage_key) = make_account_hashes(from_public_key(RESIDENT_ACCOUNT_KIND, &public_key));
+        let (id, storage_key) = make_account_hashes(from_public_key(&RESIDENT_ACCOUNT_KIND.into(), &public_key));
         let inner = Arc::new(Inner::new(wallet, id, storage_key, Default::default()));
 
         Ok(Self { inner, public_key, secret_key })
@@ -30,7 +30,7 @@ impl Account for Resident {
     }
 
     fn account_kind(&self) -> AccountKind {
-        AccountKind::Resident
+        RESIDENT_ACCOUNT_KIND.into()
     }
 
     fn prv_key_data_id(&self) -> Result<&PrvKeyDataId> {
@@ -69,7 +69,7 @@ impl Account for Resident {
 
     fn descriptor(&self) -> Result<AccountDescriptor> {
         let descriptor = AccountDescriptor::new(
-            RESIDENT_ACCOUNT_KIND,
+            RESIDENT_ACCOUNT_KIND.into(),
             *self.id(),
             self.name(),
             AssocPrvKeyDataIds::None,

@@ -253,7 +253,7 @@ impl Wallet {
             } else {
                 stored_accounts
                     .into_iter()
-                    .filter(|(account_storage, _)| account_storage.kind == legacy::LEGACY_ACCOUNT_KIND)
+                    .filter(|(account_storage, _)| account_storage.kind.as_ref() == LEGACY_ACCOUNT_KIND)
                     .collect::<Vec<_>>()
             };
             Some(
@@ -316,7 +316,7 @@ impl Wallet {
         let ids = stored_accounts.iter().map(|(account, _)| *account.id()).collect::<Vec<_>>();
 
         for (account_storage, meta) in stored_accounts.into_iter() {
-            if account_storage.kind == legacy::LEGACY_ACCOUNT_KIND {
+            if account_storage.kind.as_ref() == LEGACY_ACCOUNT_KIND {
                 let legacy_account = self
                     .legacy_accounts()
                     .get(account_storage.id())
@@ -578,7 +578,7 @@ impl Wallet {
                     .load_key_data(wallet_secret, &prv_key_data_id)
                     .await?
                     .ok_or_else(|| Error::PrivateKeyNotFound(prv_key_data_id))?;
-                let xpub_key = prv_key_data.create_xpub(payment_secret.as_ref(), AccountKind::MultiSig, 0).await?; // todo it can be done concurrently
+                let xpub_key = prv_key_data.create_xpub(payment_secret.as_ref(), MULTISIG_ACCOUNT_KIND.into(), 0).await?; // todo it can be done concurrently
                 generated_xpubs.push(xpub_key.to_string(Some(KeyPrefix::XPUB)));
                 prv_key_data_ids.push(prv_key_data_id);
             }
@@ -640,7 +640,7 @@ impl Wallet {
             account_store.clone().len(Some(prv_key_data_id)).await? as u64
         };
 
-        let xpub_key = prv_key_data.create_xpub(payment_secret, AccountKind::Bip32, account_index).await?;
+        let xpub_key = prv_key_data.create_xpub(payment_secret, BIP32_ACCOUNT_KIND.into(), account_index).await?;
         let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(KeyPrefix::XPUB))]);
 
         let account: Arc<dyn Account> =
@@ -736,8 +736,9 @@ impl Wallet {
         let mnemonic = Mnemonic::random(mnemonic_phrase_word_count, Default::default())?;
         let account_index = 0;
         let prv_key_data = PrvKeyData::try_from((mnemonic.clone(), payment_secret.as_ref()))?;
-        let xpub_key =
-            prv_key_data.create_xpub(payment_secret.as_ref(), account_kind.unwrap_or(AccountKind::Bip32), account_index).await?;
+        let xpub_key = prv_key_data
+            .create_xpub(payment_secret.as_ref(), account_kind.unwrap_or(BIP32_ACCOUNT_KIND.into()), account_index)
+            .await?;
         let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(KeyPrefix::XPUB))]);
 
         let account: Arc<dyn Account> =
@@ -1134,8 +1135,8 @@ impl Wallet {
             return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id));
         }
         // let mut is_legacy = false;
-        let account: Arc<dyn Account> = match account_kind {
-            AccountKind::Bip32 => {
+        let account: Arc<dyn Account> = match account_kind.as_ref() {
+            BIP32_ACCOUNT_KIND => {
                 let account_index = 0;
                 let xpub_key = prv_key_data.create_xpub(payment_secret, account_kind, account_index).await?;
                 let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(kaspa_bip32::Prefix::KPUB))]);
@@ -1143,7 +1144,7 @@ impl Wallet {
                 // ---
                 Arc::new(bip32::Bip32::try_new(self, None, prv_key_data.id, account_index, xpub_keys, ecdsa).await?)
             }
-            AccountKind::Legacy => Arc::new(legacy::Legacy::try_new(self, None, prv_key_data.id).await?),
+            LEGACY_ACCOUNT_KIND => Arc::new(legacy::Legacy::try_new(self, None, prv_key_data.id).await?),
             _ => {
                 return Err(Error::AccountKindFeature);
             }
@@ -1199,7 +1200,8 @@ impl Wallet {
         let mut account_index = 0;
 
         while account_index < last_account_index + account_scan_extent {
-            let xpub_key = prv_key_data.create_xpub(bip39_passphrase.as_ref(), AccountKind::Bip32, account_index as u64).await?;
+            let xpub_key =
+                prv_key_data.create_xpub(bip39_passphrase.as_ref(), BIP32_ACCOUNT_KIND.into(), account_index as u64).await?;
             let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(kaspa_bip32::Prefix::KPUB))]);
             let ecdsa = false;
             // ---
@@ -1234,7 +1236,7 @@ impl Wallet {
             if prv_key_data_store.load_key_data(wallet_secret, &prv_key_data.id).await?.is_some() {
                 return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id));
             }
-            let xpub_key = prv_key_data.create_xpub(payment_secret.as_ref(), AccountKind::MultiSig, 0).await?; // todo it can be done concurrently
+            let xpub_key = prv_key_data.create_xpub(payment_secret.as_ref(), MULTISIG_ACCOUNT_KIND.into(), 0).await?; // todo it can be done concurrently
             generated_xpubs.push(xpub_key.to_string(Some(KeyPrefix::XPUB)));
             prv_key_data_ids.push(prv_key_data.id);
             prv_key_data_store.store(wallet_secret, prv_key_data).await?;
