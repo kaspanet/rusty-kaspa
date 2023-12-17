@@ -1,4 +1,8 @@
-use crate::flowcontext::{orphans::OrphanBlocksPool, process_queue::ProcessQueue, transactions::TransactionsSpread};
+use crate::flowcontext::{
+    orphans::{OrphanBlocksPool, OrphanRootsOutput},
+    process_queue::ProcessQueue,
+    transactions::TransactionsSpread,
+};
 use crate::{v5, v6};
 use async_trait::async_trait;
 use futures::future::join_all;
@@ -323,21 +327,21 @@ impl FlowContext {
         Self::try_adding_request_impl(req, &self.shared_transaction_requests)
     }
 
-    pub async fn add_orphan(&self, orphan_block: Block) {
+    pub async fn add_orphan(&self, consensus: &ConsensusProxy, orphan_block: Block) -> Option<OrphanRootsOutput> {
         if self.is_log_throttled() {
             debug!("Received a block with missing parents, adding to orphan pool: {}", orphan_block.hash());
         } else {
             info!("Received a block with missing parents, adding to orphan pool: {}", orphan_block.hash());
         }
-        self.orphans_pool.write().await.add_orphan(orphan_block)
+        self.orphans_pool.write().await.add_orphan(consensus, orphan_block).await
     }
 
     pub async fn is_known_orphan(&self, hash: Hash) -> bool {
         self.orphans_pool.read().await.is_known_orphan(hash)
     }
 
-    pub async fn get_orphan_roots(&self, consensus: &ConsensusProxy, orphan: Hash) -> Option<Vec<Hash>> {
-        self.orphans_pool.read().await.get_orphan_roots(consensus, orphan).await
+    pub async fn get_orphan_roots_if_known(&self, consensus: &ConsensusProxy, orphan: Hash) -> OrphanRootsOutput {
+        self.orphans_pool.read().await.get_orphan_roots_if_known(consensus, orphan).await
     }
 
     pub async fn unorphan_blocks(&self, consensus: &ConsensusProxy, root: Hash) -> Vec<(Block, BlockValidationFuture)> {

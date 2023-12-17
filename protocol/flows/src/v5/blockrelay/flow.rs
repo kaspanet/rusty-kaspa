@@ -1,6 +1,7 @@
 use crate::{
     flow_context::{BlockSource, FlowContext, RequestScope},
     flow_trait::Flow,
+    flowcontext::orphans::OrphanRootsOutput,
 };
 use kaspa_consensus_core::{api::BlockValidationFutures, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use kaspa_consensusmanager::ConsensusProxy;
@@ -98,9 +99,14 @@ impl HandleRelayInvsFlow {
                 }
             }
 
-            if self.ctx.is_known_orphan(inv.hash).await {
-                self.enqueue_orphan_roots(&session, inv.hash).await;
-                continue;
+            match self.ctx.get_orphan_roots_if_known(&session, inv.hash).await {
+                OrphanRootsOutput::Unknown => {}                                       // Keep processing this inv
+                OrphanRootsOutput::NoRoots | OrphanRootsOutput::NotOrphan => continue, // Existing orphan w/o roots
+                OrphanRootsOutput::Roots(roots) => {
+                    // Known orphan with roots to enqueue
+                    self.enqueue_orphan_roots(inv.hash, roots);
+                    continue;
+                }
             }
 
             if self.ctx.is_ibd_running() && !session.async_is_nearly_synced().await {
@@ -137,14 +143,25 @@ impl HandleRelayInvsFlow {
                 continue;
             }
 
-            let BlockValidationFutures { block_task, virtual_state_task } = session.validate_and_insert_block(block.clone());
+            let BlockValidationFutures { block_task, mut virtual_state_task } = session.validate_and_insert_block(block.clone());
 
             match block_task.await {
                 Ok(_) => {}
                 Err(RuleError::MissingParents(missing_parents)) => {
                     debug!("Block {} is orphan and has missing parents: {:?}", block.hash(), missing_parents);
-                    self.process_orphan(&session, block, inv.is_indirect).await?;
-                    continue;
+                    if self.process_orphan(&session, block.clone(), inv.is_indirect).await? {
+                        continue;
+                    } else {
+                        // Block is actually not an orphan, retrying
+                        let BlockValidationFutures { block_task: block_task_inner, virtual_state_task: virtual_state_task_inner } =
+                            session.validate_and_insert_block(block.clone());
+                        virtual_state_task = virtual_state_task_inner;
+                        match block_task_inner.await {
+                            Ok(_) => debug!("Retried orphan block {} successfully", block.hash()),
+                            Err(RuleError::MissingParents(_)) => continue, // This is never expected but we avoid erring on it
+                            Err(rule_error) => return Err(rule_error.into()),
+                        }
+                    }
                 }
                 Err(rule_error) => return Err(rule_error.into()),
             }
@@ -169,18 +186,13 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    async fn enqueue_orphan_roots(&mut self, consensus: &ConsensusProxy, orphan: Hash) {
-        if let Some(roots) = self.ctx.get_orphan_roots(consensus, orphan).await {
-            if roots.is_empty() {
-                return;
-            }
-            if self.ctx.is_log_throttled() {
-                debug!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
-            } else {
-                info!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
-            }
-            self.invs_route.enqueue_indirect_invs(roots)
+    fn enqueue_orphan_roots(&mut self, orphan: Hash, roots: Vec<Hash>) {
+        if self.ctx.is_log_throttled() {
+            debug!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
+        } else {
+            info!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
         }
+        self.invs_route.enqueue_indirect_invs(roots)
     }
 
     async fn request_block(
@@ -208,10 +220,16 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    async fn process_orphan(&mut self, consensus: &ConsensusProxy, block: Block, is_indirect_inv: bool) -> Result<(), ProtocolError> {
+    /// Process the orphan block. Returns a boolean indicating whether the block is actually an orphan
+    async fn process_orphan(
+        &mut self,
+        consensus: &ConsensusProxy,
+        block: Block,
+        is_indirect_inv: bool,
+    ) -> Result<bool, ProtocolError> {
         // Return if the block has been orphaned from elsewhere already
         if self.ctx.is_known_orphan(block.hash()).await {
-            return Ok(());
+            return Ok(true);
         }
 
         // Add the block to the orphan pool if it's within orphan resolution range.
@@ -219,8 +237,14 @@ impl HandleRelayInvsFlow {
         // we can avoid the query.
         if is_indirect_inv || self.check_orphan_resolution_range(consensus, block.hash(), self.msg_route.id()).await? {
             let hash = block.hash();
-            self.ctx.add_orphan(block).await;
-            self.enqueue_orphan_roots(consensus, hash).await;
+            match self.ctx.add_orphan(consensus, block).await {
+                // There is a sync gap between consensus and the orphan pool, meaning that consensus might have indicated
+                // that this block is orphan, but by the time it got to the orphan pool we discovered it is no longer so.
+                // We signal this to the caller by returning false, triggering a consensus processing retry
+                Some(OrphanRootsOutput::NotOrphan) => return Ok(false),
+                Some(OrphanRootsOutput::Roots(roots)) => self.enqueue_orphan_roots(hash, roots),
+                None | Some(OrphanRootsOutput::Unknown | OrphanRootsOutput::NoRoots) => {}
+            }
         } else {
             // Send the block to IBD flow via the dedicated job channel. If the channel has a pending job, we prefer
             // the block with higher blue work, since it is usually more recent
@@ -229,7 +253,7 @@ impl HandleRelayInvsFlow {
                 Err(TrySendError::Closed(_)) => return Err(ProtocolError::ConnectionClosed), // This indicates that IBD flow has exited
             }
         }
-        Ok(())
+        Ok(true)
     }
 
     /// Finds out whether the given block hash should be retrieved via the unorphaning
