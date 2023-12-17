@@ -1,5 +1,6 @@
 use super::{DynSubscription, Mutation, MutationPolicies, Single, Subscription, UtxosChangedMutationPolicy};
 use crate::{
+    address::hashing::hash,
     events::EventType,
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::Command,
@@ -152,13 +153,16 @@ pub struct UtxosChangedSubscription {
     active: bool,
     script_pub_keys: ScriptPublicKeys,
     addresses: Vec<Address>,
+    addresses_hash: kaspa_consensus_core::Hash,
 }
 
 impl UtxosChangedSubscription {
     pub fn new(active: bool, mut addresses: Vec<Address>) -> Self {
         addresses.sort();
+        // Hashing addresses is deterministic because the vector is sorted
+        let addresses_hash = hash(&addresses);
         let script_pub_keys = addresses.iter().map(pay_to_address_script).collect();
-        Self { active, script_pub_keys, addresses }
+        Self { active, script_pub_keys, addresses, addresses_hash }
     }
 
     pub fn contains_address(&self, address: &Address) -> bool {
@@ -191,8 +195,7 @@ impl Eq for UtxosChangedSubscription {}
 impl Hash for UtxosChangedSubscription {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.active.hash(state);
-        // hashing addresses is determinist because it is sorted
-        self.addresses.hash(state);
+        self.addresses_hash.hash(state);
     }
 }
 
