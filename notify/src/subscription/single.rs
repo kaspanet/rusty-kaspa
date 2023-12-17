@@ -32,7 +32,7 @@ impl OverallSubscription {
 }
 
 impl Single for OverallSubscription {
-    fn mutated(self: Arc<Self>, mutation: Mutation, _: MutationPolicies) -> Option<(DynSubscription, Vec<Mutation>)> {
+    fn mutated_and_mutations(&self, mutation: Mutation, _: MutationPolicies) -> Option<(DynSubscription, Vec<Mutation>)> {
         assert_eq!(self.event_type(), mutation.event_type());
         if self.active != mutation.active() {
             let mutated = Self::new(self.event_type, mutation.active());
@@ -76,7 +76,7 @@ impl VirtualChainChangedSubscription {
 }
 
 impl Single for VirtualChainChangedSubscription {
-    fn mutated(self: Arc<Self>, mutation: Mutation, _: MutationPolicies) -> Option<(DynSubscription, Vec<Mutation>)> {
+    fn mutated_and_mutations(&self, mutation: Mutation, _: MutationPolicies) -> Option<(DynSubscription, Vec<Mutation>)> {
         assert_eq!(self.event_type(), mutation.event_type());
         if let Scope::VirtualChainChanged(ref scope) = mutation.scope {
             // Here we want the code to (almost) match a double entry table structure
@@ -212,7 +212,8 @@ impl Hash for UtxosChangedSubscription {
 }
 
 impl Single for UtxosChangedSubscription {
-    fn mutated(self: Arc<Self>, mutation: Mutation, policies: MutationPolicies) -> Option<(DynSubscription, Vec<Mutation>)> {
+    fn mutated_and_mutations(&self, mutation: Mutation, policies: MutationPolicies) -> Option<(DynSubscription, Vec<Mutation>)> {
+        assert_eq!(self.event_type(), mutation.event_type());
         if let Scope::UtxosChanged(ref scope) = mutation.scope {
             // Here we want the code to (almost) match a double entry table structure
             // by subscription state and by mutation
@@ -516,9 +517,8 @@ mod tests {
 
         fn run(&self) {
             for test in self.tests.iter() {
-                let result = test.state.clone().mutated(test.mutation.clone(), Default::default());
-                let (new_state, result) =
-                    result.map(|(mutated, mutations)| (mutated, Some(mutations))).unwrap_or_else(|| (test.state.clone(), None));
+                let mut new_state = test.state.clone();
+                let result = new_state.mutate(test.mutation.clone(), Default::default());
                 assert_eq!(test.new_state.active(), new_state.active(), "Testing '{}': wrong new state activity", test.name);
                 assert_eq!(*test.new_state, *new_state, "Testing '{}': wrong new state", test.name);
                 assert_eq!(test.result, result, "Testing '{}': wrong result", test.name);

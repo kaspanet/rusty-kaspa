@@ -21,7 +21,9 @@ use kaspa_notify::{
     notifier::{DynNotify, Notifier},
     scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
-    subscription::{array::ArrayBuilder, Command, DynSubscription, Mutation, MutationPolicies, UtxosChangedMutationPolicy},
+    subscription::{
+        array::ArrayBuilder, Command, DynSubscription, MutateSingle, Mutation, MutationPolicies, UtxosChangedMutationPolicy,
+    },
 };
 use kaspa_rpc_core::{
     api::rpc::RpcApi,
@@ -257,15 +259,9 @@ impl RpcApi for GrpcClient {
                 self.notifier.clone().unwrap().try_start_notify(id, scope)?;
             }
             NotificationMode::Direct => {
-                let event_type: EventType = (&scope).into();
-                {
-                    let mut subscriptions = self.subscriptions.as_ref().unwrap().lock().await;
-                    if let Some((mutated, _)) =
-                        subscriptions[event_type].clone().mutated(Mutation::new(Command::Start, scope.clone()), self.policies.clone())
-                    {
-                        subscriptions[event_type] = mutated;
-                    }
-                }
+                let event: EventType = (&scope).into();
+                self.subscriptions.as_ref().unwrap().lock().await[event]
+                    .mutate(Mutation::new(Command::Start, scope.clone()), self.policies.clone());
                 self.inner.start_notify_to_client(scope).await?;
             }
         }
@@ -280,16 +276,9 @@ impl RpcApi for GrpcClient {
                     self.notifier.clone().unwrap().try_stop_notify(id, scope)?;
                 }
                 NotificationMode::Direct => {
-                    let event_type: EventType = (&scope).into();
-                    {
-                        let mut subscriptions = self.subscriptions.as_ref().unwrap().lock().await;
-                        if let Some((mutated, _)) = subscriptions[event_type]
-                            .clone()
-                            .mutated(Mutation::new(Command::Stop, scope.clone()), self.policies.clone())
-                        {
-                            subscriptions[event_type] = mutated;
-                        }
-                    }
+                    let event: EventType = (&scope).into();
+                    self.subscriptions.as_ref().unwrap().lock().await[event]
+                        .mutate(Mutation::new(Command::Stop, scope.clone()), self.policies.clone());
                     self.inner.stop_notify_to_client(scope).await?;
                 }
             }

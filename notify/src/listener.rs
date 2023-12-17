@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 extern crate derive_more;
-use crate::subscription::{DynSubscription, MutationPolicies};
+use crate::subscription::{DynSubscription, MutateSingle, MutationPolicies};
 
 use super::{
     connection::Connection,
@@ -38,11 +38,7 @@ where
     /// in the subscription state and None otherwise.
     pub fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies) -> Option<Vec<Mutation>> {
         let event_type = mutation.event_type();
-        let result = self.subscriptions[event_type].clone().mutated(mutation, policies);
-        result.map(|(subscription, mutations)| {
-            self.subscriptions[event_type] = subscription;
-            mutations
-        })
+        self.subscriptions[event_type].mutate(mutation, policies)
     }
 
     pub fn close(&self) {

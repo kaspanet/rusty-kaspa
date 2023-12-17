@@ -2,6 +2,7 @@ use super::{events::EventType, notification::Notification, scope::Scope};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::ops::Deref;
 use std::{
     any::Any,
     fmt::Debug,
@@ -111,7 +112,20 @@ impl Eq for dyn Compounded {}
 pub type CompoundedSubscription = Box<dyn Compounded>;
 
 pub trait Single: Subscription + AsAny + DynHash + DynEq + Debug + Send + Sync {
-    fn mutated(self: Arc<Self>, mutation: Mutation, policies: MutationPolicies) -> Option<(DynSubscription, Vec<Mutation>)>;
+    fn mutated_and_mutations(&self, mutation: Mutation, policies: MutationPolicies) -> Option<(DynSubscription, Vec<Mutation>)>;
+}
+
+pub trait MutateSingle: Deref<Target = dyn Single> {
+    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies) -> Option<Vec<Mutation>>;
+}
+
+impl MutateSingle for Arc<dyn Single> {
+    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies) -> Option<Vec<Mutation>> {
+        self.mutated_and_mutations(mutation, policies).map(|(mutated, mutations)| {
+            *self = mutated;
+            mutations
+        })
+    }
 }
 
 impl Hash for dyn Single {
