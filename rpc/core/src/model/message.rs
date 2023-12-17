@@ -959,7 +959,7 @@ impl UtxosChangedNotification {
     }
 
     fn filter_utxos(utxo_set: &[RpcUtxosByAddressesEntry], subscription: &UtxosChangedSubscription) -> Vec<RpcUtxosByAddressesEntry> {
-        utxo_set.iter().filter(|x| subscription.addresses().contains_key(&x.utxo_entry.script_public_key)).cloned().collect()
+        utxo_set.iter().filter(|x| subscription.contains(&x.utxo_entry.script_public_key)).cloned().collect()
     }
 }
 

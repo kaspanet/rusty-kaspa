@@ -28,7 +28,6 @@ rand.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 triggered.workspace = true
-uuid.workspace = true
 workflow-core.workspace = true
 workflow-log.workspace = true
 

@@ -2542,7 +2542,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "triggered",
- "uuid 1.5.0",
  "workflow-core",
  "workflow-log",
 ]

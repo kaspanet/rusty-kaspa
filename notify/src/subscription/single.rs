@@ -6,15 +6,15 @@ use crate::{
 };
 use itertools::Itertools;
 use kaspa_addresses::Address;
-use kaspa_consensus_core::tx::ScriptPublicKey;
+use kaspa_consensus_core::tx::ScriptPublicKeys;
 use kaspa_txscript::pay_to_address_script;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     fmt::Debug,
     hash::{Hash, Hasher},
+    ops::Deref,
     sync::Arc,
 };
-use uuid::Uuid;
 
 /// Subscription with a all or none scope.
 ///
@@ -150,51 +150,40 @@ impl Subscription for VirtualChainChangedSubscription {
 #[derive(Clone, Debug, Default)]
 pub struct UtxosChangedSubscription {
     active: bool,
-    addresses: HashMap<ScriptPublicKey, Address>,
-    id: Uuid,
+    script_pub_keys: ScriptPublicKeys,
+    addresses: Vec<Address>,
 }
 
 impl UtxosChangedSubscription {
-    pub fn new(active: bool, addresses: Vec<Address>) -> Self {
-        let mut subscription = Self { active, addresses: HashMap::default(), id: Uuid::new_v4() };
-        subscription.set_addresses(addresses);
-        subscription
-    }
-
-    fn set_addresses(&mut self, addresses: Vec<Address>) -> &mut Self {
-        self.addresses = addresses.into_iter().map(|x| (pay_to_address_script(&x), x)).collect();
-        self
-    }
-
-    pub fn insert_address(&mut self, address: &Address) -> bool {
-        self.addresses.insert(pay_to_address_script(address), address.clone()).is_none()
+    pub fn new(active: bool, mut addresses: Vec<Address>) -> Self {
+        addresses.sort();
+        let script_pub_keys = addresses.iter().map(pay_to_address_script).collect();
+        Self { active, script_pub_keys, addresses }
     }
 
     pub fn contains_address(&self, address: &Address) -> bool {
-        self.addresses.contains_key(&pay_to_address_script(address))
-    }
-
-    pub fn remove_address(&mut self, address: &Address) -> bool {
-        self.addresses.remove(&pay_to_address_script(address)).is_some()
-    }
-
-    pub fn addresses(&self) -> &HashMap<ScriptPublicKey, Address> {
-        &self.addresses
+        self.script_pub_keys.contains(&pay_to_address_script(address))
     }
 
     pub fn to_all(&self) -> bool {
-        self.addresses.is_empty()
+        self.script_pub_keys.is_empty()
+    }
+}
+
+impl Deref for UtxosChangedSubscription {
+    type Target = ScriptPublicKeys;
+
+    fn deref(&self) -> &Self::Target {
+        &self.script_pub_keys
     }
 }
 
 impl PartialEq for UtxosChangedSubscription {
     fn eq(&self, other: &Self) -> bool {
-        if self.active == other.active && self.addresses.len() == other.addresses.len() {
-            // HashMaps are considered equal if they contain the same keys
-            let result = self.addresses.keys().all(|x| other.addresses.contains_key(x));
-            return result;
-        }
-        false
+        self.active == other.active
+            && self.addresses.len() == other.addresses.len()
+            // addresses are sorted, so they can be compared sequentially
+            && self.addresses.iter().zip(other.addresses.iter()).all(|(left, right)| *left == *right)
     }
 }
 impl Eq for UtxosChangedSubscription {}
@@ -202,12 +191,8 @@ impl Eq for UtxosChangedSubscription {}
 impl Hash for UtxosChangedSubscription {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.active.hash(state);
-
-        // For non-blanket active subscriptions, every subscription is considered as unique since
-        // it is extremely unlikely that two subscriptions may share an equal address set.
-        if self.active && !self.addresses.is_empty() {
-            self.id.hash(state);
-        }
+        // hashing addresses is determinist because it is sorted
+        self.addresses.hash(state);
     }
 }
 
@@ -236,7 +221,7 @@ impl Single for UtxosChangedSubscription {
                     };
                     mutations.map(|x| (Arc::new(mutated) as DynSubscription, x))
                 }
-            } else if !self.addresses.is_empty() {
+            } else if !self.script_pub_keys.is_empty() {
                 // State Selected(S)
                 if !mutation.active() {
                     if scope.addresses.is_empty() {
@@ -245,7 +230,7 @@ impl Single for UtxosChangedSubscription {
                         let mutations = match policies.utxo_changed {
                             UtxosChangedMutationPolicy::AddressSet => Some(vec![Mutation::new(
                                 Command::Stop,
-                                UtxosChangedScope::new(self.addresses.values().cloned().collect_vec()).into(),
+                                UtxosChangedScope::new(self.addresses.iter().cloned().collect_vec()).into(),
                             )]),
                             UtxosChangedMutationPolicy::AllOrNothing => {
                                 Some(vec![Mutation::new(Command::Stop, UtxosChangedScope::default().into())])
@@ -258,7 +243,7 @@ impl Single for UtxosChangedSubscription {
                         if !removed.is_empty() {
                             let addresses = self
                                 .addresses
-                                .values()
+                                .iter()
                                 .filter_map(|x| if removed.contains(x) { None } else { Some(x.clone()) })
                                 .collect_vec();
                             let mutated = Self::new(!addresses.is_empty(), addresses);
@@ -282,7 +267,7 @@ impl Single for UtxosChangedSubscription {
                         // Mutation Add(A)
                         let added = scope.addresses.iter().filter(|x| !self.contains_address(x)).cloned().collect_vec();
                         if !added.is_empty() {
-                            let addresses = added.iter().cloned().chain(self.addresses.values().cloned()).collect_vec();
+                            let addresses = added.iter().cloned().chain(self.addresses.iter().cloned()).collect_vec();
                             let mutated = Self::new(true, addresses);
                             let mutations = match policies.utxo_changed {
                                 UtxosChangedMutationPolicy::AddressSet => {
@@ -299,10 +284,7 @@ impl Single for UtxosChangedSubscription {
                         let mutated = Self::new(true, vec![]);
                         let mutations = match policies.utxo_changed {
                             UtxosChangedMutationPolicy::AddressSet => Some(vec![
-                                Mutation::new(
-                                    Command::Stop,
-                                    UtxosChangedScope::new(self.addresses.values().cloned().collect()).into(),
-                                ),
+                                Mutation::new(Command::Stop, UtxosChangedScope::new(self.addresses.clone()).into()),
                                 Mutation::new(Command::Start, UtxosChangedScope::default().into()),
                             ]),
                             UtxosChangedMutationPolicy::AllOrNothing => None,
@@ -355,7 +337,7 @@ impl Subscription for UtxosChangedSubscription {
     }
 
     fn scope(&self) -> Scope {
-        UtxosChangedScope::new(self.addresses.values().cloned().collect()).into()
+        UtxosChangedScope::new(self.addresses.clone()).into()
     }
 }
 
@@ -372,15 +354,13 @@ mod tests {
             left: usize,
             right: usize,
             should_match: bool,
-            hash_should_match: bool,
         }
         impl Comparison {
-            fn new(left: usize, right: usize, should_match: bool, hash_should_match: bool) -> Self {
-                Self { left, right, should_match, hash_should_match }
+            fn new(left: usize, right: usize, should_match: bool) -> Self {
+                Self { left, right, should_match }
             }
             fn compare(&self, name: &str, subscriptions: &[DynSubscription]) {
                 let equal = if self.should_match { "be equal" } else { "not be equal" };
-                let equal_hash = if self.hash_should_match { "be equal" } else { "not be equal" };
                 // Compare Box dyn Single
                 #[allow(clippy::op_ref)]
                 let cmp = &subscriptions[self.left] == &subscriptions[self.right];
@@ -392,8 +372,8 @@ mod tests {
                 // Compare Box dyn Single hash
                 assert_eq!(
                     get_hash(&subscriptions[self.left]) == get_hash(&subscriptions[self.right]),
-                    self.hash_should_match,
-                    "{name}: subscription hashes should {equal_hash}, comparing {:?} => {} with {:?} => {}",
+                    self.should_match,
+                    "{name}: subscription hashes should {equal}, comparing {:?} => {} with {:?} => {}",
                     &subscriptions[self.left],
                     get_hash(&subscriptions[self.left]),
                     &subscriptions[self.right],
@@ -410,8 +390,8 @@ mod tests {
                 // Compare Arc dyn Single hash
                 assert_eq!(
                     get_hash(&left_arc) == get_hash(&right_arc),
-                    self.hash_should_match,
-                    "{name}: subscription hashes should {equal_hash}, comparing {:?} => {} with {:?} => {}",
+                    self.should_match,
+                    "{name}: subscription hashes should {equal}, comparing {:?} => {} with {:?} => {}",
                     left_arc,
                     get_hash(&left_arc),
                     right_arc,
@@ -438,11 +418,7 @@ mod tests {
                     Arc::new(OverallSubscription::new(EventType::BlockAdded, true)),
                     Arc::new(OverallSubscription::new(EventType::BlockAdded, true)),
                 ],
-                comparisons: vec![
-                    Comparison::new(0, 1, false, false),
-                    Comparison::new(0, 2, false, false),
-                    Comparison::new(1, 2, true, true),
-                ],
+                comparisons: vec![Comparison::new(0, 1, false), Comparison::new(0, 2, false), Comparison::new(1, 2, true)],
             },
             Test {
                 name: "test virtual selected parent chain changed subscription",
@@ -453,12 +429,12 @@ mod tests {
                     Arc::new(VirtualChainChangedSubscription::new(true, true)),
                 ],
                 comparisons: vec![
-                    Comparison::new(0, 1, false, false),
-                    Comparison::new(0, 2, false, false),
-                    Comparison::new(0, 3, false, false),
-                    Comparison::new(1, 2, false, false),
-                    Comparison::new(1, 3, false, false),
-                    Comparison::new(2, 3, true, true),
+                    Comparison::new(0, 1, false),
+                    Comparison::new(0, 2, false),
+                    Comparison::new(0, 3, false),
+                    Comparison::new(1, 2, false),
+                    Comparison::new(1, 3, false),
+                    Comparison::new(2, 3, true),
                 ],
             },
             Test {
@@ -472,15 +448,15 @@ mod tests {
                     Arc::new(UtxosChangedSubscription::new(true, vec![])),
                 ],
                 comparisons: vec![
-                    Comparison::new(0, 1, false, false),
-                    Comparison::new(0, 2, false, false),
-                    Comparison::new(0, 3, false, false),
-                    Comparison::new(1, 2, false, false),
-                    Comparison::new(1, 3, false, false),
-                    Comparison::new(3, 3, true, true),
-                    Comparison::new(0, 4, false, false),
-                    Comparison::new(4, 5, true, true),
-                    Comparison::new(2, 3, true, false), // same address sets but diverging ids
+                    Comparison::new(0, 1, false),
+                    Comparison::new(0, 2, false),
+                    Comparison::new(0, 3, false),
+                    Comparison::new(1, 2, false),
+                    Comparison::new(1, 3, false),
+                    Comparison::new(3, 3, true),
+                    Comparison::new(0, 4, false),
+                    Comparison::new(4, 5, true),
+                    Comparison::new(2, 3, true),
                 ],
             },
         ];
