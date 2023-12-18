@@ -239,16 +239,19 @@ impl HandleRelayInvsFlow {
             return Ok(true);
         }
 
-        // TODO: explain the rule system
-        let mut should_orphan = known_within_range || self.check_orphan_ibd_conditions(block.header.daa_score);
-        if !should_orphan {
-            known_within_range = self.check_orphan_resolution_range(consensus, block.hash(), self.msg_route.id()).await?;
-            should_orphan = known_within_range;
-        }
+        /* We orphan a block if one of the following holds:
+                1. It is known to be within orphan resolution range (no-op)
+                2. It holds the IBD DAA score heuristic conditions (local op)
+                3. We resolve its orphan range by interacting with the peer (peer op)
 
-        // Add the block to the orphan pool if it's within orphan resolution range.
-        // If the block is indirect it means one of its descendants was already is resolution range, so
-        // we can avoid the query.
+            Note that we check the conditions by the order of their cost and avoid making expensive calls if not needed.
+        */
+        let should_orphan = known_within_range || self.check_orphan_ibd_conditions(block.header.daa_score) || {
+            // Inner scope to evaluate orphan resolution range and reassign the `known_within_range` variable
+            known_within_range = self.check_orphan_resolution_range(consensus, block.hash(), self.msg_route.id()).await?;
+            known_within_range
+        };
+
         if should_orphan {
             let hash = block.hash();
             match self.ctx.add_orphan(consensus, block).await {
@@ -270,6 +273,18 @@ impl HandleRelayInvsFlow {
         Ok(true)
     }
 
+    /// Applies an heuristic to check whether we should store the orphan block in the orphan pool for IBD considerations.
+    ///
+    /// When IBD is going on it is guaranteed to sync all blocks in past(R) where R is the relay block triggering the
+    /// IBD. Frequently, if the IBD is short and fast enough, R will be within short distance from the syncer tips once
+    /// the IBD is over. However antipast(R) is usually not in orphan resolution range so these blocks will not be kept
+    /// leading to another IBD and so on.
+    ///
+    /// By checking whether the current orphan DAA score is within the range (R - M/10, R + M/2)** we make sure that in this
+    /// case we keep ~M/2 blocks in the orphan pool which are all unorphaned when IBD completes (see revalidate_orphans),
+    /// and the node reaches full sync state asap.
+    ///
+    /// ** where R is the DAA score of R, and M is the orphans pool size limit
     fn check_orphan_ibd_conditions(&self, orphan_daa_score: u64) -> bool {
         if let Some(ibd_daa_score) = self.ctx.ibd_relay_daa_score() {
             let max_orphans = self.ctx.max_orphans() as u64;
@@ -279,10 +294,9 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    /// Finds out whether the given block hash should be retrieved via the unorphaning
-    /// mechanism or via IBD. This method sends a BlockLocator request to the peer with
-    /// a limit of `ctx.orphan_resolution_range`. In the response, if we know none of the hashes,
-    /// we should retrieve the given block `hash` via IBD. Otherwise, via unorphaning.
+    /// Checks whether the given block hash is within orphan resolution range. This method sends a BlockLocator
+    /// request to the peer with a limit of `ctx.orphan_resolution_range`. In the response, if we know one of the
+    /// hashes, we should retrieve the given block via unorphaning.
     async fn check_orphan_resolution_range(
         &mut self,
         consensus: &ConsensusProxy,
