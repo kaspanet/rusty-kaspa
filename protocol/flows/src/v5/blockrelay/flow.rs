@@ -283,7 +283,7 @@ impl HandleRelayInvsFlow {
     /// By checking whether the current orphan DAA score is within the range (R - M/10, R + M/2)** we make sure that in this
     /// case we keep ~M/2 blocks in the orphan pool which are all unorphaned when IBD completes (see revalidate_orphans),
     /// and the node reaches full sync state asap. We use M/10 for the lower bound since we only want to cover anticone(R)
-    /// in that region (which is expectedly small), whereas the M/2 upper bound is for covering the most recent segment in
+    /// in that region (which is expectedly small), whereas the M/2 upper bound is for covering the most early segment in
     /// future(R). Overall we avoid keeping more than ~M/2 in order to not enter the area where blocks start getting evicted
     /// from the orphan pool.
     ///
