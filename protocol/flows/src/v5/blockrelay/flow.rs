@@ -223,8 +223,8 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    /// Process the orphan block. Returns a boolean indicating whether the block is
-    /// actually an orphan. If the block has no missing roots the function returns `false`.
+    /// Process the orphan block. Returns `false` if the block has no missing roots, indicating
+    /// a retry is recommended
     async fn process_orphan(
         &mut self,
         consensus: &ConsensusProxy,
