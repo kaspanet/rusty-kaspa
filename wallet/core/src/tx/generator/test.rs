@@ -148,7 +148,6 @@ fn expect(pt: &PendingTransaction, expected: &Expected) {
 
     assert_eq!(transaction_mass, pt.inner.mass, "pending transaction mass does not match calculated mass");
 
-    // let (total_output_value_with_fees, priority_fees) =
     match expected.priority_fees {
         FeesExpected::Sender(priority_fees) => {
             let total_fees_expected = priority_fees + relay_fees;
@@ -421,7 +420,6 @@ fn test_generator_inputs_100_outputs_1_fees_exclude() -> Result<()> {
             output_count: 2,
             priority_fees: FeesExpected::sender_pays(Kaspa(5.0)),
         });
-    //    .finalize();
 
     Ok(())
 }

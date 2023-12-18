@@ -1,7 +1,6 @@
 use crate::imports::*;
 
 use async_channel::{unbounded, Receiver};
-// use async_std::channel::{unbounded, Receiver, Sender};
 use async_trait::async_trait;
 use kaspa_notify::events::EVENT_TYPE_ARRAY;
 use kaspa_notify::listener::ListenerId;
@@ -11,8 +10,6 @@ use kaspa_rpc_core::api::ctl::RpcCtl;
 use kaspa_rpc_core::{api::rpc::RpcApi, *};
 use kaspa_rpc_core::{notify::connection::ChannelConnection, RpcResult};
 use std::sync::Arc;
-
-// use crate::imports::Rpc;
 
 pub type RpcCoreNotifier = Notifier<Notification, ChannelConnection>;
 

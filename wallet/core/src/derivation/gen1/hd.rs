@@ -1,21 +1,15 @@
+use crate::derivation::traits::*;
+use crate::imports::*;
 use hmac::Mac;
 use kaspa_addresses::{Address, Prefix as AddressPrefix, Version as AddressVersion};
-use ripemd::Ripemd160;
-use sha2::{Digest, Sha256};
-use std::{
-    fmt::Debug,
-    str::FromStr,
-    sync::{Arc, Mutex},
-};
-use zeroize::Zeroizing;
-
-use crate::derivation::traits::*;
-use crate::result::Result;
-use async_trait::async_trait;
+use kaspa_bip32::types::{ChainCode, HmacSha512, KeyFingerprint, PublicKeyBytes, KEY_SIZE};
 use kaspa_bip32::{
-    types::*, AddressType, ChildNumber, DerivationPath, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix,
+    AddressType, ChildNumber, DerivationPath, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix,
     PrivateKey, PublicKey, SecretKey, SecretKeyExt,
 };
+use ripemd::Ripemd160;
+use sha2::{Digest, Sha256};
+use std::fmt::Debug;
 use wasm_bindgen::prelude::*;
 
 fn get_fingerprint<K>(private_key: &K) -> KeyFingerprint
@@ -231,7 +225,7 @@ impl WalletDerivationManager {
 
         public_key = public_key.derive_child(ChildNumber::new(address_type.index(), false)?)?;
 
-        let mut hmac = HmacSha512::new_from_slice(&public_key.attrs().chain_code).map_err(Error::Hmac)?;
+        let mut hmac = HmacSha512::new_from_slice(&public_key.attrs().chain_code).map_err(kaspa_bip32::Error::Hmac)?;
         hmac.update(&public_key.to_bytes());
 
         PubkeyDerivationManager::new(*public_key.public_key(), public_key.attrs().clone(), public_key.fingerprint(), hmac, 0)
@@ -244,12 +238,12 @@ impl WalletDerivationManager {
     ) -> Result<(secp256k1::PublicKey, ExtendedKeyAttrs)> {
         let fingerprint = public_key.fingerprint();
 
-        let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(Error::Hmac)?;
+        let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(kaspa_bip32::Error::Hmac)?;
         hmac.update(&public_key.to_bytes());
 
         let (key, chain_code) = Self::derive_public_key_child(public_key, index, hmac)?;
 
-        let depth = attrs.depth.checked_add(1).ok_or(Error::Depth)?;
+        let depth = attrs.depth.checked_add(1).ok_or(kaspa_bip32::Error::Depth)?;
 
         let attrs =
             ExtendedKeyAttrs { parent_fingerprint: fingerprint, child_number: ChildNumber::new(index, false)?, chain_code, depth };
@@ -293,7 +287,7 @@ impl WalletDerivationManager {
 
         let (private_key, chain_code) = Self::derive_key(private_key, child_number, hmac)?;
 
-        let depth = attrs.depth.checked_add(1).ok_or(Error::Depth)?;
+        let depth = attrs.depth.checked_add(1).ok_or(kaspa_bip32::Error::Depth)?;
 
         let attrs = ExtendedKeyAttrs { parent_fingerprint: fingerprint, child_number, chain_code, depth };
 
@@ -324,7 +318,7 @@ impl WalletDerivationManager {
     where
         K: PrivateKey<PublicKey = secp256k1::PublicKey>,
     {
-        let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(Error::Hmac)?;
+        let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(kaspa_bip32::Error::Hmac)?;
         if hardened {
             hmac.update(&[0]);
             hmac.update(&private_key.to_bytes());

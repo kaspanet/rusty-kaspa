@@ -933,6 +933,9 @@ impl Wallet {
         Ok(Box::pin(stream))
     }
 
+    // TODO - remove these comments (these functions are a part of
+    // a major refactoring and are temporarily kept here for reference)
+
     // pub async fn initialize_legacy_accounts(
     //     self: &Arc<Self>,
     //     filter: Option<PrvKeyDataId>,

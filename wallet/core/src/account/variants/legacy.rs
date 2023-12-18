@@ -115,7 +115,6 @@ impl Legacy {
             derivator.initialize(xprv.clone(), index)?;
         }
 
-        // let derivation = account.clone().as_derivation_capable()?.derivation();
         let m = self.derivation.receive_address_manager();
         m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
         let m = self.derivation.change_address_manager();

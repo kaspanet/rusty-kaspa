@@ -6,21 +6,8 @@
 //!
 
 use crate::imports::*;
-use std::sync::Arc;
-
-use borsh::{BorshDeserialize, BorshSerialize};
+use crate::tx::{Fees, GeneratorSummary, PaymentDestination};
 use kaspa_addresses::Address;
-use kaspa_consensus_core::{network::NetworkId, tx::TransactionId};
-// use serde::{Deserialize, Serialize};
-#[allow(unused_imports)]
-use workflow_rpc::id::{Generator, Id64 as TaskId};
-
-use crate::{
-    // runtime::{account::descriptor::AccountDescriptor, wallet::AccountCreateArgs, PrvKeyDataCreateArgs, WalletCreateArgs},
-    secret::Secret,
-    storage::{PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, StorageDescriptor, TransactionKind, TransactionRecord, WalletDescriptor},
-    tx::{Fees, GeneratorSummary, PaymentDestination},
-};
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -389,7 +376,6 @@ pub struct AccountsTransferResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsEstimateRequest {
-    pub task_id: Option<TaskId>,
     pub account_id: AccountId,
     pub destination: PaymentDestination,
     pub priority_fee_sompi: Fees,

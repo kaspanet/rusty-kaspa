@@ -172,7 +172,7 @@ impl Account for MultiSig {
     }
 
     fn sig_op_count(&self) -> u8 {
-        // TODO
+        // TODO @maxim
         1
     }
 

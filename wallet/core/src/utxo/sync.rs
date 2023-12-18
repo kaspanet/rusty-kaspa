@@ -139,7 +139,6 @@ impl SyncMonitor {
                                 if is_synced != this.is_synced() {
                                     this.inner.is_synced.store(true, Ordering::SeqCst);
                                     this.notify(Events::SyncState { sync_state : SyncState::Synced }).await.unwrap_or_else(|err|log_error!("SyncProc error dispatching notification event: {err}"));
-                                    // this.notify(Events::NodeSync { is_synced }).await.unwrap_or_else(|err|log_error!("SyncProc error dispatching notification event: {err}"));
                                 }
 
                                 break;
@@ -256,8 +255,6 @@ impl StateObserver {
             }
         } else if self.utxo_resync.is_match(line) {
             state = Some(SyncState::UtxoResync);
-            // } else if self.accepted_block.is_match(line) {
-            //     state = Some(SyncState::UtxoResync);
         }
 
         state

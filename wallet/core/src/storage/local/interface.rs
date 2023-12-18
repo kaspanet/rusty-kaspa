@@ -113,7 +113,6 @@ impl LocalStoreInner {
             return Err(Error::WalletAlreadyExists);
         }
 
-        // let wallet = Wallet::try_load(&storage).await?;
         let cache = Arc::new(Mutex::new(Cache::from_wallet(wallet, wallet_secret)?));
         let is_modified = AtomicBool::new(false);
 
@@ -192,14 +191,6 @@ impl LocalStoreInner {
     pub fn cache(&self) -> MutexGuard<Cache> {
         self.cache.lock().unwrap()
     }
-
-    // pub async fn reload(&self, wallet_secret: &Secret) -> Result<()> {
-    //     let secret = ctx.wallet_secret().await.expect("wallet requires an encryption secret");
-    //     let wallet = Wallet::try_load(&self.store).await?;
-    //     let cache = Cache::try_from((wallet, &secret))?;
-    //     self.cache.lock().unwrap().replace(cache);
-    //     Ok(())
-    // }
 
     pub async fn store(&self, wallet_secret: &Secret) -> Result<()> {
         match &*self.storage() {
@@ -313,7 +304,6 @@ impl LocalStore {
         let inner = LocalStoreInner::try_import(wallet_secret, &location.folder, serialized_wallet_storage).await?;
         inner.store(wallet_secret).await?;
         let wallet_descriptor = inner.descriptor();
-        // self.inner.lock().unwrap().replace(Arc::new(inner));
         Ok(wallet_descriptor)
     }
 }

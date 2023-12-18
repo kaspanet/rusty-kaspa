@@ -660,7 +660,7 @@ impl UtxoContext {
                 local.remove(address);
             });
         } else {
-            log_warning!("utxo processor: unregistering empty address set")
+            log_warning!("utxo processor: unregister for an empty address set")
         }
 
         Ok(())

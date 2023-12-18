@@ -41,7 +41,7 @@ extern "C" {
 /// transaction mass, at which point it will produce a compound transaction by forwarding
 /// all selected UTXO entries to the supplied change address and prepare to start generating
 /// a new transaction.  Such sequence of daisy-chained transactions is known as a "batch".
-/// Each compount transaction results in a new UTXO, which is immediately reused in the
+/// Each compound transaction results in a new UTXO, which is immediately reused in the
 /// subsequent transaction.
 ///
 /// ```javascript

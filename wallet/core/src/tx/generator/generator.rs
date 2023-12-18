@@ -302,9 +302,6 @@ impl Generator {
             return Err(Error::GeneratorChangeAddressNetworkTypeMismatch);
         }
 
-        // if final_transaction_amount.is_none() && !matches!(final_transaction_priority_fee, Fees::None) {
-        // }
-
         let context = Mutex::new(Context {
             utxo_source_iterator: utxo_iterator,
             number_of_transactions: 0,

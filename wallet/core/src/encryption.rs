@@ -81,7 +81,6 @@ where
     pub fn into_decrypted(self, secret: &Secret) -> Result<Self> {
         match self {
             Self::Plain(v) => Ok(Self::Plain(v)),
-            // Self::XChaCha20Poly1305(v) => Ok(Self::Plain(v.decrypt::<T>(secret)?.clone())),
             Self::XChaCha20Poly1305(v) => Ok(Self::Plain(v.decrypt::<T>(secret)?.unwrap())),
         }
     }

@@ -281,7 +281,7 @@ impl WalletApi for super::Wallet {
     }
 
     async fn accounts_estimate_call(self: Arc<Self>, request: AccountsEstimateRequest) -> Result<AccountsEstimateResponse> {
-        let AccountsEstimateRequest { task_id: _, account_id, destination, priority_fee_sompi, payload } = request;
+        let AccountsEstimateRequest { account_id, destination, priority_fee_sompi, payload } = request;
 
         let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
 

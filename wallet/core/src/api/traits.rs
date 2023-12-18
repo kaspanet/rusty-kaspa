@@ -10,8 +10,6 @@
 use crate::api::message::*;
 use crate::imports::*;
 use crate::result::Result;
-// use crate::wallet::AccountCreateArgs;
-// use crate::account::{AccountDescriptor, PrvKeyDataCreateArgs, WalletCreateArgs};
 use crate::secret::Secret;
 use crate::storage::{PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, WalletDescriptor};
 use crate::tx::GeneratorSummary;

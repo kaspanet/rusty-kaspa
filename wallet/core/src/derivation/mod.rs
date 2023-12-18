@@ -8,14 +8,13 @@ pub mod traits;
 
 pub use traits::*;
 
+use crate::account::create_private_keys;
+use crate::account::AccountKind;
 use crate::derivation::gen0::{PubkeyDerivationManagerV0, WalletDerivationManagerV0};
 use crate::derivation::gen1::{PubkeyDerivationManager, WalletDerivationManager};
 use crate::error::Error;
 use crate::imports::*;
 use crate::result::Result;
-// use crate::runtime;
-use crate::account::create_private_keys;
-use crate::account::AccountKind;
 use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_txscript::{
@@ -52,7 +51,6 @@ pub struct Inner {
 }
 
 pub struct AddressManager {
-    // pub prefix: Prefix,
     pub wallet: Arc<Wallet>,
     pub account_kind: AccountKind,
     pub pubkey_managers: Vec<Arc<dyn PubkeyDerivationManagerTrait>>,
