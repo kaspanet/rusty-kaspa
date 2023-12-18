@@ -1,3 +1,7 @@
+//!
+//! Extensions for [`UtxoEntryReference`] for handling UTXO maturity.
+//!
+
 use crate::imports::*;
 use crate::utxo::{
     UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA, UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA,

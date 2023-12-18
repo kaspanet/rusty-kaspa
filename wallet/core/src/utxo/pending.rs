@@ -1,3 +1,8 @@
+//!
+//! Implements the [`PendingUtxoEntryReference`] type used
+//! by the [`UtxoProcessor`] to monitor UTXO maturity progress.
+//!
+
 use crate::imports::*;
 use crate::utxo::{Maturity, UtxoContext, UtxoEntryId, UtxoEntryReference, UtxoEntryReferenceExtension};
 

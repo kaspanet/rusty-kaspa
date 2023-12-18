@@ -1,3 +1,8 @@
+//!
+//! Sync monitor implementation. Sync monitor tracks
+//! the node's sync state and notifies the wallet.
+//!
+
 use crate::imports::*;
 use crate::result::Result;
 use futures::stream::StreamExt;

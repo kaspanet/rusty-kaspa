@@ -1,3 +1,9 @@
+//!
+//! User hint is a string that can be stored in the wallet
+//! and presented to the user when the wallet opens to help
+//! prevent phishing attacks.
+//!
+
 use crate::imports::*;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use std::fmt::{Display, Formatter};

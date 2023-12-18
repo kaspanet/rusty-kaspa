@@ -1,3 +1,9 @@
+//!
+//! Implements the [`OutgoingTransaction`] type,
+//! which is a wrapper around [`PendingTransaction`]
+//! that adds additional transaction context information.
+//!
+
 use crate::imports::*;
 use crate::tx::PendingTransaction;
 use crate::utxo::{UtxoContext, UtxoEntryReference};

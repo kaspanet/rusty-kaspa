@@ -1,3 +1,7 @@
+//!
+//! Transaction signing trait and generic signer implementations..
+//!
+
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;

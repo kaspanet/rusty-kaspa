@@ -1,3 +1,7 @@
+//!
+//! Primitives for declaring transaction fees.
+//!
+
 use crate::result::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};

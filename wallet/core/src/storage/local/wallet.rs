@@ -1,6 +1,6 @@
 //!
 //! Wallet data storage wrapper.
-//! 
+//!
 
 use crate::imports::*;
 use crate::result::Result;

@@ -1,3 +1,7 @@
+//!
+//! Account balances.
+//!
+
 use crate::imports::*;
 
 pub enum DeltaStyle {

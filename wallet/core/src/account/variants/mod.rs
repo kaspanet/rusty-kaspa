@@ -1,6 +1,6 @@
 //!
 //! Kaspa core wallet account variant implementations.
-//! 
+//!
 
 pub mod bip32;
 pub mod keypair;

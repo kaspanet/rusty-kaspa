@@ -1,6 +1,6 @@
 //!
 //! Helpers for binary serialization and deserialization used by the storage subsystem.
-//! 
+//!
 
 use crate::imports::*;
 

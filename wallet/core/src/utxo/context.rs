@@ -1,3 +1,9 @@
+//!
+//! Implementation of the [`UtxoContext`] which is a runtime
+//! primitive responsible for monitoring multiple addresses,
+//! generation of address-related events and balance tracking.
+//!
+
 use crate::encryption::sha256_hash;
 use crate::events::Events;
 use crate::imports::*;

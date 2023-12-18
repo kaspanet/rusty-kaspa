@@ -1,6 +1,6 @@
 //!
 //! Wallet Account factories (Account type registration and creation).
-//! 
+//!
 
 use crate::imports::*;
 use crate::result::Result;

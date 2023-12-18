@@ -1,6 +1,6 @@
 //!
 //! BIP32 & BIP44 account implementation
-//! 
+//!
 
 use crate::account::Inner;
 use crate::derivation::{AddressDerivationManager, AddressDerivationManagerTrait};

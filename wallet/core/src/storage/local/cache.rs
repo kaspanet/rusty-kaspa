@@ -1,6 +1,6 @@
 //!
 //! Wallet data cache retained in memory during the wallet session.
-//! 
+//!
 
 use crate::imports::*;
 use crate::result::Result;

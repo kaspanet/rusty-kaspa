@@ -1,3 +1,7 @@
+//!
+//! Id references used to associate transactions with Account or UtxoContext ids.
+//!
+
 use crate::imports::*;
 use crate::utxo::{UtxoContextBinding as UtxoProcessorBinding, UtxoContextId};
 

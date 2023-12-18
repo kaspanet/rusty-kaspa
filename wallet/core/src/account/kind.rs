@@ -1,6 +1,6 @@
 //!
 //! [`AccountKind`] is a unique type identifier of an [`Account`].
-//! 
+//!
 
 use crate::imports::*;
 use std::hash::Hash;

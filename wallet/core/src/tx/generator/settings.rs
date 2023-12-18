@@ -1,3 +1,8 @@
+//!
+//! Transaction [`GeneratorSettings`] used when
+//! constructing and instance of the [`Generator`].
+//!
+
 use crate::events::Events;
 use crate::imports::*;
 use crate::result::Result;

@@ -1,3 +1,8 @@
+//!
+//! Implementation of [`UtxoContextBinding`] which allows binding of
+//! [`UtxoContext`] to [`Account`] or custom developer-defined ids.
+//!
+
 use crate::imports::*;
 use crate::utxo::UtxoContextId;
 

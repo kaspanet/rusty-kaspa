@@ -1,9 +1,8 @@
 //!
 //! Account descriptors (client-side account information representation).
-//! 
+//!
 
 use crate::derivation::AddressDerivationMeta;
-use crate::imports::account::AssocPrvKeyDataIds;
 use crate::imports::*;
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Address;

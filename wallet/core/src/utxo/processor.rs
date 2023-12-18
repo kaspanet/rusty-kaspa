@@ -1,4 +1,11 @@
-use futures::{select_biased, FutureExt};
+//!
+//! Implements [`UtxoProcessor`], which is the main component
+//! of the UTXO subsystem. It is responsible for managing and
+//! coordinating multiple [`UtxoContext`] instances acting as
+//! a hub for UTXO event dispersal and related processing.
+//!
+
+use crate::imports::*;
 use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, UtxosChangedScope, VirtualDaaScoreChangedScope},
@@ -17,13 +24,11 @@ use crate::utxo::{
     Maturity, OutgoingTransaction, PendingUtxoEntryReference, SyncMonitor, UtxoContext, UtxoEntryId, UtxoEntryReference,
 };
 use crate::wallet::WalletBusMessage;
-use crate::{imports::*, storage::TransactionRecord};
 use async_std::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 use kaspa_rpc_core::{
     notify::connection::{ChannelConnection, ChannelType},
     Notification,
 };
-use std::collections::HashMap;
 
 use super::UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA;
 

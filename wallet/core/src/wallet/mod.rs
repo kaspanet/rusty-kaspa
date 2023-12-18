@@ -1,5 +1,5 @@
 //!
-//! [`Wallet`] - a Kaspa wallet runtime.
+//! Kaspa wallet runtime implementation.
 //!
 
 use crate::account::ScanNotifier;

@@ -1,3 +1,7 @@
+//!
+//! General-purpose Id traits used by storage data collections.
+//!
+
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_utils::hex::ToHex;
 use std::cmp::Eq;

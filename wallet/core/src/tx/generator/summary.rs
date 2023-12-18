@@ -1,3 +1,10 @@
+//!
+//! [`GeneratorSummary`] is a struct that holds the summary
+//! of a [`Generator`] output after transaction generation.
+//! The summary includes total amount, total fees consumed,
+//! total UTXOs consumed etc.
+//!
+
 use crate::utils::*;
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_consensus_core::network::NetworkType;

@@ -1,6 +1,6 @@
 //!
 //! Web browser IndexedDB implementation of the transaction storage.
-//! 
+//!
 
 use crate::imports::*;
 use crate::result::Result;

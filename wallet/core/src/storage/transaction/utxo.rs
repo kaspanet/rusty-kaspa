@@ -1,6 +1,6 @@
 //!
 //! UTXO record representation used by wallet transactions.
-//! 
+//!
 
 use crate::imports::*;
 use kaspa_addresses::Address;

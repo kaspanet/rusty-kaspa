@@ -1,6 +1,6 @@
 //!
 //! Private key storage and encryption.
-//! 
+//!
 
 use crate::derivation::create_xpub_from_xprv;
 use crate::imports::*;

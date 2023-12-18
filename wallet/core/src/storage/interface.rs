@@ -1,3 +1,7 @@
+//!
+//! Wallet storage subsystem traits.
+//!
+
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;

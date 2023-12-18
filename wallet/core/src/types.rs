@@ -1,6 +1,6 @@
 //!
 //!  Type aliases used by the wallet framework.
-//! 
+//!
 
 use std::sync::Arc;
 

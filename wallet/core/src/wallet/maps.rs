@@ -1,3 +1,8 @@
+//!
+//! Implementation of an [`ActiveAccountMap`] which is a
+//! thread-safe map of [`AccountId`] to [`Account`].
+//!
+
 use crate::imports::*;
 
 #[derive(Default, Clone)]

@@ -1,6 +1,11 @@
+//!
+//! Address scanner implementation, responsible for
+//! aggregating UTXOs from multiple addresses and
+//! building corresponding balances.
+//!
+
 use crate::derivation::AddressManager;
 use crate::imports::*;
-use crate::result::Result;
 use crate::utxo::balance::AtomicBalance;
 use crate::utxo::{UtxoContext, UtxoEntryReference, UtxoEntryReferenceExtension};
 use std::cmp::max;
@@ -22,7 +27,7 @@ enum Provider {
 }
 
 pub struct Scan {
-    provider: Provider, //Arc<AddressManager>,
+    provider: Provider,
     window_size: Option<usize>,
     extent: Option<ScanExtent>,
     balance: Arc<AtomicBalance>,
@@ -37,13 +42,7 @@ impl Scan {
         window_size: Option<usize>,
         extent: Option<ScanExtent>,
     ) -> Scan {
-        Scan {
-            provider: Provider::AddressManager(address_manager),
-            window_size, //: Some(DEFAULT_WINDOW_SIZE),
-            extent,      //: Some(ScanExtent::EmptyWindow),
-            balance: balance.clone(),
-            current_daa_score,
-        }
+        Scan { provider: Provider::AddressManager(address_manager), window_size, extent, balance: balance.clone(), current_daa_score }
     }
     pub fn new_with_address_set(addresses: HashSet<Address>, balance: &Arc<AtomicBalance>, current_daa_score: u64) -> Scan {
         Scan {

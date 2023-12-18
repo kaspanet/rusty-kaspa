@@ -23,7 +23,7 @@ pub use id::IdT;
 pub use interface::{
     AccountStore, Interface, PrvKeyDataStore, StorageDescriptor, TransactionRecordStore, WalletDescriptor, WalletExportOptions,
 };
-pub use keydata::{PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload};
+pub use keydata::{AssocPrvKeyDataIds, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload};
 pub use local::interface::make_filename;
 pub use metadata::AccountMetadata;
 pub use transaction::{TransactionData, TransactionId, TransactionKind, TransactionRecord};

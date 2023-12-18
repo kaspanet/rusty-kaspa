@@ -1,6 +1,6 @@
 //!
 //! Local file system transaction storage (native+NodeJS fs IO).
-//! 
+//!
 
 use crate::encryption::*;
 use crate::imports::*;

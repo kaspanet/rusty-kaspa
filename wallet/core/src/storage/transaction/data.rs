@@ -1,6 +1,6 @@
 //!
 //! Wallet transaction data variants.
-//! 
+//!
 
 use super::UtxoRecord;
 use crate::imports::*;
