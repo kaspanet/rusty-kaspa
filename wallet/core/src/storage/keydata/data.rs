@@ -1,198 +1,166 @@
 use crate::derivation::create_xpub_from_xprv;
 use crate::imports::*;
-use crate::result::Result;
-use crate::secret::Secret;
-use faster_hex::{hex_decode, hex_string};
 use kaspa_bip32::{ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic};
 use kaspa_utils::hex::ToHex;
 use secp256k1::SecretKey;
-use serde::Serializer;
-use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
-#[allow(unused_imports)]
-use workflow_core::runtime;
 use xxhash_rust::xxh3::xxh3_64;
-use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
-use crate::account::AccountKind;
-
-#[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, BorshSerialize, BorshDeserialize)]
-pub struct KeyDataId(pub(crate) [u8; 8]);
-
-impl KeyDataId {
-    pub fn new(id: u64) -> Self {
-        KeyDataId(id.to_le_bytes())
-    }
-
-    pub fn new_from_slice(vec: &[u8]) -> Self {
-        Self(<[u8; 8]>::try_from(<&[u8]>::clone(&vec)).expect("Error: invalid slice size for id"))
-    }
-}
-
-impl ToHex for KeyDataId {
-    fn to_hex(&self) -> String {
-        self.0.to_vec().to_hex()
-    }
-}
-
-impl FromHex for KeyDataId {
-    type Error = Error;
-    fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
-        let mut data = vec![0u8; hex_str.len() / 2];
-        hex_decode(hex_str.as_bytes(), &mut data)?;
-        Ok(Self::new_from_slice(&data))
-    }
-}
-
-impl std::fmt::Debug for KeyDataId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "KeyDataId ({})", self.0.as_slice().to_hex())
-    }
-}
-
-impl std::fmt::Display for KeyDataId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0.as_slice().to_hex())
-    }
-}
-
-impl Serialize for KeyDataId {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&hex_string(&self.0))
-    }
-}
-
-impl<'de> Deserialize<'de> for KeyDataId {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = <std::string::String as Deserialize>::deserialize(deserializer)?;
-        let mut data = vec![0u8; s.len() / 2];
-        hex_decode(s.as_bytes(), &mut data).map_err(serde::de::Error::custom)?;
-        Ok(Self::new_from_slice(&data))
-    }
-}
-
-impl Zeroize for KeyDataId {
-    fn zeroize(&mut self) {
-        self.0.zeroize();
-    }
-}
-
-pub type PrvKeyDataId = KeyDataId;
-pub type PrvKeyDataMap = HashMap<PrvKeyDataId, PrvKeyData>;
+const PRV_KEY_DATA_VARIANT_MAGIC: u32 = 0x4b505256;
+const PRV_KEY_DATA_VARIANT_VERSION: u32 = 0;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub enum PrvKeyDataVariantKind {
+    Mnemonic,
+    Bip39Seed,
+    ExtendedPrivateKey,
+    SecretKey,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "key-variant", content = "key-data")]
-pub enum PrvKeyVariant {
-    // 12 or 24 word Bip39 mnemonic
+pub enum PrvKeyDataVariant {
+    // 12 or 24 word bip39 mnemonic
     Mnemonic(String),
     // Bip39 seed (generated from mnemonic)
     Bip39Seed(String),
     // Extended Private Key (XPrv)
     ExtendedPrivateKey(String),
-    // SecretKey
+    // secp256k1::SecretKey
     SecretKey(String),
 }
 
-impl PrvKeyVariant {
+impl BorshSerialize for PrvKeyDataVariant {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        StorageHeader::new(PRV_KEY_DATA_VARIANT_MAGIC, PRV_KEY_DATA_VARIANT_VERSION).serialize(writer)?;
+        let kind = self.kind();
+        let string = self.get_string();
+        BorshSerialize::serialize(&kind, writer)?;
+        BorshSerialize::serialize(string.as_str(), writer)?;
+
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for PrvKeyDataVariant {
+    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
+        let StorageHeader { version: _, .. } =
+            StorageHeader::deserialize(buf)?.try_magic(PRV_KEY_DATA_VARIANT_MAGIC)?.try_version(PRV_KEY_DATA_VARIANT_VERSION)?;
+
+        let kind: PrvKeyDataVariantKind = BorshDeserialize::deserialize(buf)?;
+        let string: String = BorshDeserialize::deserialize(buf)?;
+
+        match kind {
+            PrvKeyDataVariantKind::Mnemonic => Ok(Self::Mnemonic(string)),
+            PrvKeyDataVariantKind::Bip39Seed => Ok(Self::Bip39Seed(string)),
+            PrvKeyDataVariantKind::ExtendedPrivateKey => Ok(Self::ExtendedPrivateKey(string)),
+            PrvKeyDataVariantKind::SecretKey => Ok(Self::SecretKey(string)),
+        }
+    }
+}
+
+impl PrvKeyDataVariant {
+    pub fn kind(&self) -> PrvKeyDataVariantKind {
+        match self {
+            PrvKeyDataVariant::Mnemonic(_) => PrvKeyDataVariantKind::Mnemonic,
+            PrvKeyDataVariant::Bip39Seed(_) => PrvKeyDataVariantKind::Bip39Seed,
+            PrvKeyDataVariant::ExtendedPrivateKey(_) => PrvKeyDataVariantKind::ExtendedPrivateKey,
+            PrvKeyDataVariant::SecretKey(_) => PrvKeyDataVariantKind::SecretKey,
+        }
+    }
+
     pub fn from_mnemonic(mnemonic: Mnemonic) -> Self {
-        PrvKeyVariant::Mnemonic(mnemonic.phrase_string())
+        PrvKeyDataVariant::Mnemonic(mnemonic.phrase_string())
     }
 
     pub fn from_secret_key(secret_key: SecretKey) -> Self {
-        PrvKeyVariant::SecretKey(secret_key.secret_bytes().to_vec().to_hex())
+        PrvKeyDataVariant::SecretKey(secret_key.secret_bytes().to_vec().to_hex())
     }
 
     pub fn get_string(&self) -> Zeroizing<String> {
         match self {
-            PrvKeyVariant::Mnemonic(s) => Zeroizing::new(s.clone()),
-            PrvKeyVariant::Bip39Seed(s) => Zeroizing::new(s.clone()),
-            PrvKeyVariant::ExtendedPrivateKey(s) => Zeroizing::new(s.clone()),
-            PrvKeyVariant::SecretKey(s) => Zeroizing::new(s.clone()),
+            PrvKeyDataVariant::Mnemonic(s) => Zeroizing::new(s.clone()),
+            PrvKeyDataVariant::Bip39Seed(s) => Zeroizing::new(s.clone()),
+            PrvKeyDataVariant::ExtendedPrivateKey(s) => Zeroizing::new(s.clone()),
+            PrvKeyDataVariant::SecretKey(s) => Zeroizing::new(s.clone()),
         }
     }
 
-    pub fn id(&self) -> KeyDataId {
-        let s = self.get_string();
+    pub fn id(&self) -> PrvKeyDataId {
+        let s = PrvKeyDataVariant::get_string(self); //self.get_string();
         PrvKeyDataId::new(xxh3_64(s.as_bytes()))
     }
 }
 
-impl Zeroize for PrvKeyVariant {
+impl Zeroize for PrvKeyDataVariant {
     fn zeroize(&mut self) {
         match self {
-            PrvKeyVariant::Mnemonic(s) => s.zeroize(),
-            PrvKeyVariant::Bip39Seed(s) => s.zeroize(),
-            PrvKeyVariant::ExtendedPrivateKey(s) => s.zeroize(),
-            PrvKeyVariant::SecretKey(s) => s.zeroize(),
+            PrvKeyDataVariant::Mnemonic(s) => s.zeroize(),
+            PrvKeyDataVariant::Bip39Seed(s) => s.zeroize(),
+            PrvKeyDataVariant::ExtendedPrivateKey(s) => s.zeroize(),
+            PrvKeyDataVariant::SecretKey(s) => s.zeroize(),
         }
     }
 }
-impl Drop for PrvKeyVariant {
+impl Drop for PrvKeyDataVariant {
     fn drop(&mut self) {
         self.zeroize()
     }
 }
 
-impl ZeroizeOnDrop for PrvKeyVariant {}
+impl ZeroizeOnDrop for PrvKeyDataVariant {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PrvKeyDataPayload {
-    prv_key_variant: PrvKeyVariant,
+    prv_key_variant: PrvKeyDataVariant,
 }
 
 impl PrvKeyDataPayload {
     pub fn try_new_with_mnemonic(mnemonic: Mnemonic) -> Result<Self> {
-        Ok(Self { prv_key_variant: PrvKeyVariant::from_mnemonic(mnemonic) })
+        Ok(Self { prv_key_variant: PrvKeyDataVariant::from_mnemonic(mnemonic) })
     }
 
     pub fn try_new_with_secret_key(secret_key: SecretKey) -> Result<Self> {
-        Ok(Self { prv_key_variant: PrvKeyVariant::from_secret_key(secret_key) })
+        Ok(Self { prv_key_variant: PrvKeyDataVariant::from_secret_key(secret_key) })
     }
 
     pub fn get_xprv(&self, payment_secret: Option<&Secret>) -> Result<ExtendedPrivateKey<SecretKey>> {
         let payment_secret = payment_secret.map(|s| std::str::from_utf8(s.as_ref())).transpose()?;
 
         match &self.prv_key_variant {
-            PrvKeyVariant::Mnemonic(mnemonic) => {
+            PrvKeyDataVariant::Mnemonic(mnemonic) => {
                 let mnemonic = Mnemonic::new(mnemonic, Language::English)?;
                 let xkey = ExtendedPrivateKey::<SecretKey>::new(mnemonic.to_seed(payment_secret.unwrap_or_default()))?;
                 Ok(xkey)
             }
-            PrvKeyVariant::Bip39Seed(seed) => {
+            PrvKeyDataVariant::Bip39Seed(seed) => {
                 let seed = Zeroizing::new(Vec::from_hex(seed.as_ref())?);
                 let xkey = ExtendedPrivateKey::<SecretKey>::new(seed)?;
                 Ok(xkey)
             }
-            PrvKeyVariant::ExtendedPrivateKey(extended_private_key) => {
+            PrvKeyDataVariant::ExtendedPrivateKey(extended_private_key) => {
                 let xkey: ExtendedPrivateKey<SecretKey> = extended_private_key.parse()?;
                 Ok(xkey)
             }
-            PrvKeyVariant::SecretKey(_) => Err(Error::XPrvSupport),
+            PrvKeyDataVariant::SecretKey(_) => Err(Error::XPrvSupport),
         }
     }
 
     pub fn as_mnemonic(&self) -> Result<Option<Mnemonic>> {
         match &self.prv_key_variant {
-            PrvKeyVariant::Mnemonic(mnemonic) => Ok(Some(Mnemonic::new(mnemonic.clone(), Language::English)?)),
+            PrvKeyDataVariant::Mnemonic(mnemonic) => Ok(Some(Mnemonic::new(mnemonic.clone(), Language::English)?)),
             _ => Ok(None),
         }
     }
 
-    pub fn as_variant(&self) -> Zeroizing<PrvKeyVariant> {
+    pub fn as_variant(&self) -> Zeroizing<PrvKeyDataVariant> {
         Zeroizing::new(self.prv_key_variant.clone())
     }
 
     pub fn as_secret_key(&self) -> Result<Option<SecretKey>> {
         match &self.prv_key_variant {
-            PrvKeyVariant::SecretKey(private_key) => Ok(Some(SecretKey::from_str(private_key)?)),
+            PrvKeyDataVariant::SecretKey(private_key) => Ok(Some(SecretKey::from_str(private_key)?)),
             _ => Ok(None),
         }
     }
@@ -246,7 +214,7 @@ impl PrvKeyData {
         payload.as_mnemonic()
     }
 
-    pub fn as_variant(&self, payment_secret: Option<&Secret>) -> Result<Zeroizing<PrvKeyVariant>> {
+    pub fn as_variant(&self, payment_secret: Option<&Secret>) -> Result<Zeroizing<PrvKeyDataVariant>> {
         let payload = self.payload.decrypt(payment_secret)?;
         Ok(payload.as_variant())
     }
@@ -324,48 +292,22 @@ impl PrvKeyData {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-pub struct PrvKeyDataInfo {
-    pub id: PrvKeyDataId,
-    pub name: Option<String>,
-    pub is_encrypted: bool,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::*;
 
-impl From<&PrvKeyData> for PrvKeyDataInfo {
-    fn from(data: &PrvKeyData) -> Self {
-        Self::new(data.id, data.name.clone(), data.payload.is_encrypted())
-    }
-}
+    #[test]
+    fn test_storage_prv_key_data() -> Result<()> {
+        let storable_in = PrvKeyDataVariant::Bip39Seed("lorem ipsum".to_string());
+        let guard = StorageGuard::new(&storable_in);
+        let storable_out = guard.validate()?;
 
-impl PrvKeyDataInfo {
-    pub fn new(id: PrvKeyDataId, name: Option<String>, is_encrypted: bool) -> Self {
-        Self { id, name, is_encrypted }
-    }
-
-    pub fn is_encrypted(&self) -> bool {
-        self.is_encrypted
-    }
-
-    pub fn name_or_id(&self) -> String {
-        if let Some(name) = &self.name {
-            name.to_owned()
-        } else {
-            self.id.to_hex()[0..16].to_string()
+        match &storable_out {
+            PrvKeyDataVariant::Bip39Seed(s) => assert_eq!(s, "lorem ipsum"),
+            _ => unreachable!("invalid prv key variant storage data"),
         }
-    }
 
-    pub fn requires_bip39_passphrase(&self) -> bool {
-        self.is_encrypted
-    }
-}
-
-impl Display for PrvKeyDataInfo {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if let Some(name) = &self.name {
-            write!(f, "{} ({})", name, self.id.to_hex())?;
-        } else {
-            write!(f, "{}", self.id.to_hex())?;
-        }
         Ok(())
     }
 }

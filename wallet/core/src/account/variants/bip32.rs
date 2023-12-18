@@ -40,18 +40,10 @@ impl Storable {
 
 impl BorshSerialize for Storable {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        // let xpub_keys = self.xpub_keys.try_to_vec()?;
-        // let account_index = self.account_index.try_to_vec()?;
-        // let ecdsa = self.ecdsa.try_to_vec()?;
-
         StorageHeader::new(BIP32_ACCOUNT_MAGIC, BIP32_ACCOUNT_VERSION).serialize(writer)?;
         BorshSerialize::serialize(&self.xpub_keys, writer)?;
         BorshSerialize::serialize(&self.account_index, writer)?;
         BorshSerialize::serialize(&self.ecdsa, writer)?;
-
-        // writer.write_all(xpub_keys.as_slice())?;
-        // writer.write_all(account_index.as_slice())?;
-        // writer.write_all(ecdsa.as_slice())?;
 
         Ok(())
     }
@@ -222,5 +214,27 @@ impl DerivationCapableAccount for Bip32 {
 
     fn account_index(&self) -> u64 {
         self.account_index
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::*;
+
+    #[test]
+    fn test_storage_bip32() -> Result<()> {
+        let storable_in = Storable::new(0xbaadf00d, vec![make_xpub()].into(), false);
+        let guard = StorageGuard::new(&storable_in);
+        let storable_out = guard.validate()?;
+
+        assert_eq!(storable_in.account_index, storable_out.account_index);
+        assert_eq!(storable_in.ecdsa, storable_out.ecdsa);
+        assert_eq!(storable_in.xpub_keys.len(), storable_out.xpub_keys.len());
+        for idx in 0..storable_in.xpub_keys.len() {
+            assert_eq!(storable_in.xpub_keys[idx], storable_out.xpub_keys[idx]);
+        }
+
+        Ok(())
     }
 }

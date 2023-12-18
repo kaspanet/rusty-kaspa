@@ -109,7 +109,7 @@ pub enum Error {
     #[error("Invalid filename: {0}")]
     InvalidFilename(String),
 
-    #[error("(I/O) {0}")]
+    #[error("{0}")]
     Io(#[from] std::io::Error),
 
     #[error("{0}")]

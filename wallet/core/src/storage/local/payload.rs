@@ -73,3 +73,18 @@ impl BorshDeserialize for Payload {
         Ok(Self { prv_key_data, accounts, address_book })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::*;
+
+    #[test]
+    fn test_storage_wallet_payload() -> Result<()> {
+        let storable_in = Payload::new(vec![], vec![], vec![]);
+        let guard = StorageGuard::new(&storable_in);
+        let _storable_out = guard.validate()?;
+
+        Ok(())
+    }
+}

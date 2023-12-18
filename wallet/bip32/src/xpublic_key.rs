@@ -158,7 +158,7 @@ where
 {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         Header { version: BORSH_EXTENDED_PUBLIC_KEY_VERSION, magic: BORSH_EXTENDED_PUBLIC_KEY_MAGIC }.serialize(writer)?;
-        BorshSerialize::serialize(self.public_key.to_bytes().as_slice(), writer)?;
+        writer.write_all(self.public_key.to_bytes().as_slice())?;
         BorshSerialize::serialize(&self.attrs, writer)?;
         Ok(())
     }

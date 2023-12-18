@@ -49,7 +49,7 @@ impl IntoIterator for &AssocPrvKeyDataIds {
     fn into_iter(self) -> Self::IntoIter {
         match self {
             AssocPrvKeyDataIds::None => Vec::new().into_iter(),
-            AssocPrvKeyDataIds::Single(id) => vec![id.clone()].into_iter(),
+            AssocPrvKeyDataIds::Single(id) => vec![*id].into_iter(),
             AssocPrvKeyDataIds::Multiple(ids) => (**ids).clone().into_iter(),
         }
     }
@@ -185,5 +185,34 @@ impl BorshDeserialize for AccountStorage {
         let serialized = BorshDeserialize::deserialize(buf)?;
 
         Ok(Self { kind, id, storage_key, prv_key_data_ids, settings, serialized })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::*;
+
+    #[test]
+    fn test_storage_account_storage_wrapper() -> Result<()> {
+        let (id, storage_key) = make_account_hashes(from_data(&BIP32_ACCOUNT_KIND.into(), &[0x00, 0x01, 0x02, 0x03]));
+        let prv_key_data_id = PrvKeyDataId::new(0xcafe);
+        let storable_in = AccountStorage::new(
+            BIP32_ACCOUNT_KIND.into(),
+            &id,
+            &storage_key,
+            prv_key_data_id.into(),
+            AccountSettings::default(),
+            &[0x00, 0x01, 0x02, 0x03],
+        );
+        let guard = StorageGuard::new(&storable_in);
+        let storable_out = guard.validate()?;
+
+        assert_eq!(storable_in.kind, storable_out.kind);
+        assert_eq!(storable_in.id, storable_out.id);
+        assert_eq!(storable_in.storage_key, storable_out.storage_key);
+        assert_eq!(storable_in.serialized, storable_out.serialized);
+
+        Ok(())
     }
 }

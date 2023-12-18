@@ -92,10 +92,7 @@ impl BorshDeserialize for WalletStorage {
         if magic != WALLET_STORAGE_MAGIC {
             return Err(IoError::new(
                 IoErrorKind::InvalidData,
-                format!(
-                    "This does not seem to be kaspa wallet data file. Unknown file signature. Expected {:x}, found {:x}",
-                    WALLET_STORAGE_MAGIC, magic
-                ),
+                format!("This does not seem to be a kaspa wallet data file. Unknown file signature '0x{:x}'.", magic),
             ));
         }
 
@@ -114,5 +111,27 @@ impl BorshDeserialize for WalletStorage {
         let transactions = BorshDeserialize::deserialize(buf)?;
 
         Ok(Self { title, user_hint, encryption_kind, payload, metadata, transactions })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::*;
+
+    #[test]
+    fn test_storage_wallet_storage() -> Result<()> {
+        let storable_in = WalletStorage::try_new(
+            Some("title".to_string()),
+            Some(Hint::new("hint".to_string())),
+            &Secret::from("secret"),
+            EncryptionKind::XChaCha20Poly1305,
+            Payload::new(vec![], vec![], vec![]),
+            vec![],
+        )?;
+        let guard = StorageGuard::new(&storable_in);
+        let _storable_out = guard.validate()?;
+
+        Ok(())
     }
 }

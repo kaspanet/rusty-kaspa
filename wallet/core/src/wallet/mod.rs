@@ -1306,8 +1306,8 @@ mod test {
     use std::{str::FromStr, thread::sleep, time};
 
     use super::*;
-    use crate::utxo::{UtxoContext, UtxoContextBinding, UtxoIterator};
     use crate::derivation::gen1;
+    use crate::utxo::{UtxoContext, UtxoContextBinding, UtxoIterator};
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;

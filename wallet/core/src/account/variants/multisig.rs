@@ -234,3 +234,26 @@ impl DerivationCapableAccount for MultiSig {
         0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tests::*;
+
+    #[test]
+    fn test_storage_multisig() -> Result<()> {
+        let storable_in = Storable::new(vec![make_xpub()].into(), Some(42), 0xc0fe, false);
+        let guard = StorageGuard::new(&storable_in);
+        let storable_out = guard.validate()?;
+
+        assert_eq!(storable_in.cosigner_index, storable_out.cosigner_index);
+        assert_eq!(storable_in.minimum_signatures, storable_out.minimum_signatures);
+        assert_eq!(storable_in.ecdsa, storable_out.ecdsa);
+        assert_eq!(storable_in.xpub_keys.len(), storable_out.xpub_keys.len());
+        for idx in 0..storable_in.xpub_keys.len() {
+            assert_eq!(storable_in.xpub_keys[idx], storable_out.xpub_keys[idx]);
+        }
+
+        Ok(())
+    }
+}
