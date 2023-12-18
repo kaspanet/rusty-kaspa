@@ -1,3 +1,7 @@
+//!
+//! Resident account implementation (for temporary use in runtime)
+//! 
+
 use crate::account::Inner;
 use crate::imports::*;
 use kaspa_addresses::Version;

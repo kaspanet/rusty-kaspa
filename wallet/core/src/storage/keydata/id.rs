@@ -1,3 +1,7 @@
+//!
+//! Deterministic private key data ids.
+//! 
+
 use crate::imports::*;
 use faster_hex::{hex_decode, hex_string};
 use serde::Serializer;

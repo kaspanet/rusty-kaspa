@@ -1,3 +1,7 @@
+//!
+//! Wallet transaction record implementation.
+//! 
+
 use super::*;
 use crate::imports::*;
 use crate::storage::Binding;

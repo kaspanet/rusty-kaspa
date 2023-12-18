@@ -1,3 +1,9 @@
+//!
+//! Storage interface implementation capable of storing wallet data
+//! in a local file system, web browser localstorage and chrome
+//! extension storage.
+//! 
+
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;

@@ -4,10 +4,10 @@ pub mod variants;
 pub use kind::*;
 pub use variants::*;
 
+use crate::imports::*;
 use crate::derivation::build_derivate_paths;
 use crate::derivation::gen0;
 use crate::derivation::AddressDerivationManagerTrait;
-use crate::imports::*;
 use crate::storage::account::AccountSettings;
 use crate::storage::AccountMetadata;
 use crate::storage::{PrvKeyData, PrvKeyDataId};

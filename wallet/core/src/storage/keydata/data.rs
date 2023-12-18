@@ -1,3 +1,7 @@
+//!
+//! Private key storage and encryption.
+//! 
+
 use crate::derivation::create_xpub_from_xprv;
 use crate::imports::*;
 use kaspa_bip32::{ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic};

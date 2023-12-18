@@ -1,3 +1,7 @@
+//!
+//! Encrypted wallet payload storage.
+//! 
+
 use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;

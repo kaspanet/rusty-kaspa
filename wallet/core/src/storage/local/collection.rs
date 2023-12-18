@@ -1,3 +1,7 @@
+//!
+//! Ordered collections used to store wallet primitives.
+//! 
+
 use crate::error::Error;
 use crate::result::Result;
 use std::collections::HashMap;

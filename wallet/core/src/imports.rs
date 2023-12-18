@@ -1,6 +1,6 @@
 //!
 //! This file contains most common imports that
-//! are used internally in the wallet core.
+//! are used internally in the wallet framework core.
 //!
 
 pub use crate::account::descriptor::{AccountDescriptor, AccountDescriptorProperty, AccountDescriptorValue};

@@ -1,3 +1,7 @@
+//!
+//! Wallet transaction data variants.
+//! 
+
 use super::UtxoRecord;
 use crate::imports::*;
 use kaspa_consensus_core::tx::Transaction;

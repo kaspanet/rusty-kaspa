@@ -1,3 +1,7 @@
+//!
+//! Secp256k1 keypair account implementation
+//! 
+
 use crate::account::Inner;
 use crate::imports::*;
 use kaspa_addresses::Version;

@@ -1,3 +1,7 @@
+//!
+//! Wallet transaction records.
+//! 
+
 pub mod data;
 pub mod kind;
 pub mod record;

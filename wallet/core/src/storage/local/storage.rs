@@ -1,3 +1,7 @@
+//!
+//! Location (file path) representation & multi-platform helper utilities.
+//! 
+
 use crate::imports::*;
 use crate::result::Result;
 use std::path::{Path, PathBuf};

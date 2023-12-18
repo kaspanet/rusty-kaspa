@@ -1,3 +1,7 @@
+//!
+//! Private key data info (reference representation).
+//! 
+
 use crate::imports::*;
 use std::fmt::{Display, Formatter};
 

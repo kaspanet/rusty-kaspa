@@ -1,3 +1,7 @@
+//!
+//! Async streams for async iteration of wallet primitives.
+//! 
+
 use crate::imports::*;
 use crate::result::Result;
 use crate::storage::local::cache::Cache;

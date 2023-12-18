@@ -1,3 +1,7 @@
+//! 
+//! Private key management primitives.
+//! 
+
 pub mod id;
 pub use id::*;
 

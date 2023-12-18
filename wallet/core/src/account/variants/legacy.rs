@@ -1,3 +1,7 @@
+//!
+//! Legacy (KDX, kaspanet.io Web Wallet) account implementation
+//! 
+
 use crate::account::{AsLegacyAccount, Inner};
 use crate::derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
 use crate::imports::*;

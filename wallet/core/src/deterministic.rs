@@ -1,3 +1,7 @@
+//!
+//! Deterministic byte sequence generation (used by Account ids).
+//! 
+
 pub use crate::account::{bip32, keypair, legacy, multisig};
 use crate::encryption::sha256_hash;
 use crate::imports::*;

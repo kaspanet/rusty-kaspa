@@ -1,3 +1,7 @@
+//!
+//! Traits for derivation managers.
+//! 
+
 use crate::result::Result;
 use async_trait::async_trait;
 use kaspa_bip32::ExtendedPublicKey;
