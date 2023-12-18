@@ -312,8 +312,8 @@ impl Consensus {
         (async { brx.await.unwrap() }, async { vrx.await.unwrap() })
     }
 
-    pub fn body_tips(&self) -> Arc<BlockHashSet> {
-        self.body_tips_store.read().get().unwrap()
+    pub fn body_tips(&self) -> BlockHashSet {
+        self.body_tips_store.read().get().unwrap().read().clone()
     }
 
     pub fn block_status(&self, hash: Hash) -> BlockStatus {
@@ -582,7 +582,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_tips(&self) -> Vec<Hash> {
-        self.body_tips().iter().copied().collect_vec()
+        self.body_tips_store.read().get().unwrap().read().iter().copied().collect_vec()
     }
 
     fn get_tips_len(&self) -> usize {

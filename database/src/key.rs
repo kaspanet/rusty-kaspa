@@ -71,7 +71,13 @@ impl Display for DbKey {
                 pos += 1;
                 if self.prefix_len > 1 {
                     match prefix {
-                        Ghostdag | GhostdagCompact | RelationsParents | RelationsChildren | Reachability => {
+                        Ghostdag
+                        | GhostdagCompact
+                        | RelationsParents
+                        | RelationsChildren
+                        | Reachability
+                        | ReachabilityTreeChildren
+                        | ReachabilityFutureCoveringSet => {
                             if self.path[1] != SEPARATOR {
                                 // Expected to be a block level so we display as a number
                                 Display::fmt(&self.path[1], f)?;

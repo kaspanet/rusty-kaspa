@@ -12,7 +12,7 @@ use kaspa_consensus::{
         headers::HeaderStoreReader,
         relations::RelationsStoreReader,
     },
-    params::{Params, Testnet11Bps, DEVNET_PARAMS, TESTNET11_PARAMS},
+    params::{Params, Testnet11Bps, DEVNET_PARAMS, NETWORK_DELAY_BOUND, TESTNET11_PARAMS},
 };
 use kaspa_consensus_core::{
     api::ConsensusApi, block::Block, blockstatus::BlockStatus, config::bps::calculate_ghostdag_k, errors::block::BlockProcessResult,
@@ -263,7 +263,8 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
             params.past_median_time_window_size(0),
         );
     } else {
-        let k = u64::max(calculate_ghostdag_k(2.0 * args.delay * args.bps, 0.05), params.ghostdag_k as u64);
+        let max_delay = args.delay.max(NETWORK_DELAY_BOUND as f64);
+        let k = u64::max(calculate_ghostdag_k(2.0 * max_delay * args.bps, 0.05), params.ghostdag_k as u64);
         let k = u64::min(k, KType::MAX as u64) as KType; // Clamp to KType::MAX
         params.ghostdag_k = k;
         params.mergeset_size_limit = k as u64 * 10;
@@ -285,12 +286,7 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
             params.difficulty_sample_rate = (2.0 * args.bps) as u64;
         }
 
-        info!(
-            "The delay times bps product is larger than 2 (2Dλ={}), setting GHOSTDAG K={}, DAA window size={})",
-            2.0 * args.delay * args.bps,
-            k,
-            params.difficulty_window_size(0)
-        );
+        info!("2Dλ={}, GHOSTDAG K={}, DAA window size={}", 2.0 * args.delay * args.bps, k, params.difficulty_window_size(0));
     }
     if args.test_pruning {
         params.pruning_proof_m = 16;
@@ -329,7 +325,7 @@ async fn validate(src_consensus: &Consensus, dst_consensus: &Consensus, params: 
     for (i, mut chunk) in iter.enumerate() {
         let current_joins = submit_chunk(src_consensus, dst_consensus, &mut chunk);
         let statuses = try_join_all(prev_joins).await.unwrap();
-        info!("Validated chunk {}", i);
+        trace!("Validated chunk {}", i);
         assert!(statuses.iter().all(|s| s.is_utxo_valid_or_pending()));
         prev_joins = current_joins;
     }
