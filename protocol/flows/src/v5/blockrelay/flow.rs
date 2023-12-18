@@ -1,7 +1,7 @@
 use crate::{
     flow_context::{BlockSource, FlowContext, RequestScope},
     flow_trait::Flow,
-    flowcontext::orphans::OrphanRootsOutput,
+    flowcontext::orphans::OrphanOutput,
 };
 use kaspa_consensus_core::{api::BlockValidationFutures, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use kaspa_consensusmanager::ConsensusProxy;
@@ -100,9 +100,9 @@ impl HandleRelayInvsFlow {
             }
 
             match self.ctx.get_orphan_roots_if_known(&session, inv.hash).await {
-                OrphanRootsOutput::Unknown => {}                                       // Keep processing this inv
-                OrphanRootsOutput::NoRoots | OrphanRootsOutput::NotOrphan => continue, // Existing orphan w/o roots
-                OrphanRootsOutput::Roots(roots) => {
+                OrphanOutput::Unknown => {}                                  // Keep processing this inv
+                OrphanOutput::NoRoots | OrphanOutput::NotOrphan => continue, // Existing orphan w/o roots
+                OrphanOutput::Roots(roots) => {
                     // Known orphan with roots to enqueue
                     self.enqueue_orphan_roots(inv.hash, roots);
                     continue;
@@ -241,9 +241,9 @@ impl HandleRelayInvsFlow {
                 // There is a sync gap between consensus and the orphan pool, meaning that consensus might have indicated
                 // that this block is orphan, but by the time it got to the orphan pool we discovered it is no longer so.
                 // We signal this to the caller by returning false, triggering a consensus processing retry
-                Some(OrphanRootsOutput::NotOrphan) => return Ok(false),
-                Some(OrphanRootsOutput::Roots(roots)) => self.enqueue_orphan_roots(hash, roots),
-                None | Some(OrphanRootsOutput::Unknown | OrphanRootsOutput::NoRoots) => {}
+                Some(OrphanOutput::NotOrphan) => return Ok(false),
+                Some(OrphanOutput::Roots(roots)) => self.enqueue_orphan_roots(hash, roots),
+                None | Some(OrphanOutput::Unknown | OrphanOutput::NoRoots) => {}
             }
         } else {
             // Send the block to IBD flow via the dedicated job channel. If the channel has a pending job, we prefer

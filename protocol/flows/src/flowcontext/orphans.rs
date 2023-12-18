@@ -8,13 +8,16 @@ use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use kaspa_utils::option::OptionExtensions;
 use rand::Rng;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    iter::once,
+};
 
 use super::process_queue::ProcessQueue;
 
 /// The output of an orphan pool block query
 #[derive(Debug)]
-pub enum OrphanRootsOutput {
+pub enum OrphanOutput {
     /// Block is orphan with the provided missing roots
     Roots(Vec<Hash>),
     /// Block has orphan ancestors but no missing roots
@@ -57,7 +60,7 @@ impl OrphanBlocksPool {
 
     /// Adds the provided block to the orphan pool. Returns None if the block is already
     /// in the pool or if the pool chose not to keep it for any reason
-    pub async fn add_orphan(&mut self, consensus: &ConsensusProxy, orphan_block: Block) -> Option<OrphanRootsOutput> {
+    pub async fn add_orphan(&mut self, consensus: &ConsensusProxy, orphan_block: Block) -> Option<OrphanOutput> {
         let orphan_hash = orphan_block.hash();
         if self.orphans.contains_key(&orphan_hash) {
             return None;
@@ -88,14 +91,15 @@ impl OrphanBlocksPool {
     /// Returns the orphan roots of the provided orphan. Orphan roots are ancestors of this orphan which are
     /// not in the orphan pool AND do not exist consensus-wise or are header-only. Given an orphan relayed by
     /// a peer, these blocks should be the next-in-line to be requested from that peer.
-    pub async fn get_orphan_roots_if_known(&self, consensus: &ConsensusProxy, orphan: Hash) -> OrphanRootsOutput {
+    pub async fn get_orphan_roots_if_known(&self, consensus: &ConsensusProxy, orphan: Hash) -> OrphanOutput {
         if !self.orphans.contains_key(&orphan) {
-            return OrphanRootsOutput::Unknown;
+            return OrphanOutput::Unknown;
         }
         self.get_orphan_roots(consensus, orphan).await
     }
 
-    pub async fn get_orphan_roots(&self, consensus: &ConsensusProxy, orphan: Hash) -> OrphanRootsOutput {
+    /// Internal get roots method. Assumes 'orphan' is within the pool
+    async fn get_orphan_roots(&self, consensus: &ConsensusProxy, orphan: Hash) -> OrphanOutput {
         let mut known_orphan_ancestors = false;
         let mut roots = Vec::new();
         let mut queue = VecDeque::from([orphan]);
@@ -118,9 +122,9 @@ impl OrphanBlocksPool {
         }
 
         match (known_orphan_ancestors, roots.len()) {
-            (false, 0) => OrphanRootsOutput::NotOrphan, // No known orphan ancestors, no missing roots => not orphan
-            (true, 0) => OrphanRootsOutput::NoRoots,    // Has known orphan ancestors but no missing roots
-            (_, _) => OrphanRootsOutput::Roots(roots),  // Has missing roots
+            (false, 0) => OrphanOutput::NotOrphan, // No known orphan ancestors, no missing roots => not orphan
+            (true, 0) => OrphanOutput::NoRoots,    // Has known orphan ancestors but no missing roots
+            (_, _) => OrphanOutput::Roots(roots),  // Has missing roots
         }
     }
 
@@ -151,6 +155,7 @@ impl OrphanBlocksPool {
                 }
             }
         }
+        // We deliberately want all processing tasks to be awaited out of the orphan pool lock
         itertools::multiunzip(processing.into_values())
     }
 
@@ -185,12 +190,15 @@ impl OrphanBlocksPool {
             }
         }
 
-        // Next, search for root blocks which are processable
+        // Next, search for root blocks which are processable. A processable block is a block
+        // which all of its parents are known to consensus with valid body state
         let mut roots = Vec::new();
         for block in self.orphans.values() {
             let mut processable = true;
-            for p in block.block.header.direct_parents().iter().copied() {
-                if self.orphans.contains_key(&p) || consensus.async_get_block_status(p).await.is_none_or(|s| s.is_header_only()) {
+            for parent in block.block.header.direct_parents().iter().copied() {
+                if self.orphans.contains_key(&parent)
+                    || consensus.async_get_block_status(parent).await.is_none_or(|status| status.is_header_only())
+                {
                     processable = false;
                     break;
                 }
@@ -205,15 +213,16 @@ impl OrphanBlocksPool {
         let mut queued_hashes = Vec::with_capacity(roots.len());
         for root in roots {
             let root_hash = root.hash();
+            // Queue the root for processing
             let BlockValidationFutures { block_task: _, virtual_state_task: root_task } = consensus.validate_and_insert_block(root);
-            virtual_processing_tasks.push(root_task);
-            queued_hashes.push(root_hash);
-
-            let (unorphan_blocks, _, unorphan_tasks) = self.unorphan_blocks(consensus, root_hash).await;
-            virtual_processing_tasks.extend(unorphan_tasks);
-            queued_hashes.extend(unorphan_blocks.into_iter().map(|b| b.hash()));
+            // Queue its descendents which are processable
+            let (descendent_blocks, _, descendents_tasks) = self.unorphan_blocks(consensus, root_hash).await;
+            // Keep track of all hashes and tasks
+            virtual_processing_tasks.extend(once(root_task).chain(descendents_tasks));
+            queued_hashes.extend(once(root_hash).chain(descendent_blocks.into_iter().map(|block| block.hash())));
         }
 
+        // We deliberately want the processing tasks to be awaited out of the orphan pool lock
         (queued_hashes, virtual_processing_tasks)
     }
 }
@@ -272,7 +281,7 @@ mod tests {
         pool.add_orphan(&consensus, c.clone()).await.unwrap();
         pool.add_orphan(&consensus, d.clone()).await.unwrap();
 
-        assert_match!(pool.get_orphan_roots_if_known(&consensus, d.hash()).await, OrphanRootsOutput::Roots(recv_roots) if recv_roots == roots);
+        assert_match!(pool.get_orphan_roots_if_known(&consensus, d.hash()).await, OrphanOutput::Roots(recv_roots) if recv_roots == roots);
 
         consensus.validate_and_insert_block(a.clone()).virtual_state_task.await.unwrap();
         consensus.validate_and_insert_block(b.clone()).virtual_state_task.await.unwrap();

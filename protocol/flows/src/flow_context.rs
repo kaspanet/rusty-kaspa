@@ -1,5 +1,5 @@
 use crate::flowcontext::{
-    orphans::{OrphanBlocksPool, OrphanRootsOutput},
+    orphans::{OrphanBlocksPool, OrphanOutput},
     process_queue::ProcessQueue,
     transactions::TransactionsSpread,
 };
@@ -327,7 +327,7 @@ impl FlowContext {
         Self::try_adding_request_impl(req, &self.shared_transaction_requests)
     }
 
-    pub async fn add_orphan(&self, consensus: &ConsensusProxy, orphan_block: Block) -> Option<OrphanRootsOutput> {
+    pub async fn add_orphan(&self, consensus: &ConsensusProxy, orphan_block: Block) -> Option<OrphanOutput> {
         if self.is_log_throttled() {
             debug!("Received a block with missing parents, adding to orphan pool: {}", orphan_block.hash());
         } else {
@@ -340,7 +340,7 @@ impl FlowContext {
         self.orphans_pool.read().await.is_known_orphan(hash)
     }
 
-    pub async fn get_orphan_roots_if_known(&self, consensus: &ConsensusProxy, orphan: Hash) -> OrphanRootsOutput {
+    pub async fn get_orphan_roots_if_known(&self, consensus: &ConsensusProxy, orphan: Hash) -> OrphanOutput {
         self.orphans_pool.read().await.get_orphan_roots_if_known(consensus, orphan).await
     }
 
