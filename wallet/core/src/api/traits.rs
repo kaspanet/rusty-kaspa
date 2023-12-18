@@ -278,10 +278,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// around this call.
     async fn accounts_create_call(self: Arc<Self>, request: AccountsCreateRequest) -> Result<AccountsCreateResponse>;
 
-    // - TODO
-    // - TODO
-    // - TODO
-    // - TODO
+    // TODO
     async fn accounts_import_call(self: Arc<Self>, request: AccountsImportRequest) -> Result<AccountsImportResponse>;
 
     /// Get an [`AccountDescriptor`] for a specific account id.
