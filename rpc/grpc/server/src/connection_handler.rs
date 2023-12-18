@@ -75,6 +75,7 @@ const GRPC_SERVER: &str = "grpc-server";
 
 impl ConnectionHandler {
     pub(crate) fn new(
+        network_bps: u64,
         manager_sender: MpscSender<ManagerEvent>,
         core_service: DynRpcService,
         core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
@@ -93,7 +94,7 @@ impl ConnectionHandler {
         let notifier: Arc<Notifier<Notification, Connection>> =
             Arc::new(Notifier::new(GRPC_SERVER, core_events, vec![collector], vec![subscriber], 10));
         let server_context = ServerContext::new(core_service, notifier);
-        let interface = Arc::new(Factory::new_interface(server_context.clone()));
+        let interface = Arc::new(Factory::new_interface(server_context.clone(), network_bps));
         let running = Default::default();
 
         Self { manager_sender, server_context, interface, running, counters }

@@ -4,7 +4,7 @@ use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
 use workflow_core::channel::ChannelError;
 
-use crate::{api::ctl::RpcState, RpcHash, RpcTransactionId};
+use crate::{api::ctl::RpcState, RpcHash, RpcTransactionId, SubmitBlockRejectReason};
 
 #[derive(Clone, Debug, Error)]
 pub enum RpcError {
@@ -76,6 +76,9 @@ pub enum RpcError {
 
     #[error("IP {0} is not registered as banned.")]
     IpIsNotBanned(IpAddress),
+
+    #[error("Block was not submitted: {0}")]
+    SubmitBlockError(SubmitBlockRejectReason),
 
     #[error(transparent)]
     AddressError(#[from] kaspa_addresses::AddressError),
