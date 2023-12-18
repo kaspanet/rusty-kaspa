@@ -65,6 +65,7 @@ pub struct Args {
     pub prealloc_amount: u64,
 
     pub disable_upnp: bool,
+    pub disable_dns_seeding: bool,
 }
 
 impl Default for Args {
@@ -111,6 +112,7 @@ impl Default for Args {
             prealloc_amount: 1_000_000,
 
             disable_upnp: false,
+            disable_dns_seeding: false,
         }
     }
 }
@@ -317,7 +319,8 @@ pub fn cli() -> Command {
                 .value_parser(clap::value_parser!(u64))
                 .help("Interval in seconds for performance metrics collection."),
         )
-        .arg(arg!(--"disable-upnp" "Disable upnp"));
+        .arg(arg!(--"disable-upnp" "Disable upnp"))
+        .arg(arg!(--"nodnsseed" "Disable DNS seeding for peers"));
 
     #[cfg(feature = "devnet-prealloc")]
     let cmd = cmd
@@ -377,6 +380,7 @@ pub fn parse_args() -> Args {
         #[cfg(feature = "devnet-prealloc")]
         prealloc_amount: m.get_one::<u64>("prealloc-amount").cloned().unwrap_or(defaults.prealloc_amount),
         disable_upnp: m.get_one::<bool>("disable-upnp").cloned().unwrap_or(defaults.disable_upnp),
+        disable_dns_seeding: m.get_one::<bool>("nodnsseed").cloned().unwrap_or(defaults.disable_dns_seeding),
     }
 }
 
