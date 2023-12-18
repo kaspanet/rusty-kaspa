@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AccountDescriptor {
-    pub kind: String,
+    pub kind: AccountKind,
     pub account_id: AccountId,
     pub account_name: Option<String>,
     pub prv_key_data_ids: AssocPrvKeyDataIds,
@@ -27,15 +27,7 @@ impl AccountDescriptor {
         receive_address: Option<Address>,
         change_address: Option<Address>,
     ) -> Self {
-        Self {
-            kind: kind.to_string(),
-            account_id,
-            account_name,
-            prv_key_data_ids,
-            receive_address,
-            change_address,
-            properties: BTreeMap::default(),
-        }
+        Self { kind, account_id, account_name, prv_key_data_ids, receive_address, change_address, properties: BTreeMap::default() }
     }
 
     pub fn with_property(mut self, property: AccountDescriptorProperty, value: AccountDescriptorValue) -> Self {
@@ -54,6 +46,18 @@ pub enum AccountDescriptorProperty {
     Other(String),
 }
 
+impl std::fmt::Display for AccountDescriptorProperty {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AccountDescriptorProperty::AccountIndex => write!(f, "Account Index"),
+            AccountDescriptorProperty::XpubKeys => write!(f, "Xpub Keys"),
+            AccountDescriptorProperty::Ecdsa => write!(f, "ECDSA"),
+            AccountDescriptorProperty::DerivationMeta => write!(f, "Derivation Indexes"),
+            AccountDescriptorProperty::Other(other) => write!(f, "{}", other),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(tag = "type", content = "value")]
 #[serde(rename_all = "kebab-case")]
@@ -64,6 +68,25 @@ pub enum AccountDescriptorValue {
     AddressDerivationMeta(AddressDerivationMeta),
     XPubKeys(ExtendedPublicKeys),
     Json(String),
+}
+
+impl std::fmt::Display for AccountDescriptorValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AccountDescriptorValue::U64(value) => write!(f, "{}", value),
+            AccountDescriptorValue::String(value) => write!(f, "{}", value),
+            AccountDescriptorValue::Bool(value) => write!(f, "{}", value),
+            AccountDescriptorValue::AddressDerivationMeta(value) => write!(f, "{}", value),
+            AccountDescriptorValue::XPubKeys(value) => {
+                let mut s = String::new();
+                for xpub in value.iter() {
+                    s.push_str(&format!("{}\n", xpub));
+                }
+                write!(f, "{}", s)
+            }
+            AccountDescriptorValue::Json(value) => write!(f, "{}", value),
+        }
+    }
 }
 
 impl From<u64> for AccountDescriptorValue {
@@ -145,8 +168,8 @@ impl AccountDescriptor {
         }
     }
 
-    pub fn account_kind(&self) -> &str {
-        self.kind.as_str()
+    pub fn account_kind(&self) -> &AccountKind {
+        &self.kind
     }
 
     pub fn receive_address(&self) -> &Option<Address> {

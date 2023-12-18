@@ -6,6 +6,12 @@ use std::str::FromStr;
 #[wasm_bindgen]
 pub struct AccountKind(Arc<String>);
 
+impl AccountKind {
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
 impl AsRef<str> for AccountKind {
     fn as_ref(&self) -> &str {
         self.0.as_str()

@@ -40,6 +40,12 @@ impl AddressDerivationMeta {
     }
 }
 
+impl std::fmt::Display for AddressDerivationMeta {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}, {}]", self.receive(), self.change())
+    }
+}
+
 pub struct Inner {
     pub index: u32,
     pub address_to_index_map: HashMap<Address, u32>,

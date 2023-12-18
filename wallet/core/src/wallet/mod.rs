@@ -14,8 +14,7 @@ use crate::storage::local::Storage;
 use crate::storage::{Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, TransactionRecord, WalletDescriptor};
 use crate::utxo::UtxoProcessor;
 use crate::wallet::maps::ActiveAccountMap;
-#[allow(unused_imports)]
-use crate::{derivation::gen0, derivation::gen0::import::*, derivation::gen1, derivation::gen1::import::*};
+use crate::{derivation::gen0::import::*, derivation::gen1::import::*};
 use futures::future::join_all;
 use futures::stream::StreamExt;
 use futures::{select, FutureExt, Stream};
@@ -1308,6 +1307,7 @@ mod test {
 
     use super::*;
     use crate::utxo::{UtxoContext, UtxoContextBinding, UtxoIterator};
+    use crate::derivation::gen1;
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;

@@ -42,6 +42,19 @@ pub enum AssocPrvKeyDataIds {
     Multiple(Arc<Vec<PrvKeyDataId>>),
 }
 
+impl IntoIterator for &AssocPrvKeyDataIds {
+    type Item = PrvKeyDataId;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            AssocPrvKeyDataIds::None => Vec::new().into_iter(),
+            AssocPrvKeyDataIds::Single(id) => vec![id.clone()].into_iter(),
+            AssocPrvKeyDataIds::Multiple(ids) => (**ids).clone().into_iter(),
+        }
+    }
+}
+
 impl From<PrvKeyDataId> for AssocPrvKeyDataIds {
     fn from(value: PrvKeyDataId) -> Self {
         AssocPrvKeyDataIds::Single(value)
