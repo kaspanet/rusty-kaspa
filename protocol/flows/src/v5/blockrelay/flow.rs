@@ -107,8 +107,8 @@ impl HandleRelayInvsFlow {
             }
 
             match self.ctx.get_orphan_roots_if_known(&session, inv.hash).await {
-                OrphanOutput::Unknown => {}                                  // Keep processing this inv
-                OrphanOutput::NoRoots | OrphanOutput::NotOrphan => continue, // Existing orphan w/o roots
+                OrphanOutput::Unknown => {}        // Keep processing this inv
+                OrphanOutput::NoRoots => continue, // Existing orphan w/o missing roots
                 OrphanOutput::Roots(roots) => {
                     // Known orphan with roots to enqueue
                     self.enqueue_orphan_roots(inv.hash, roots, inv.known_within_range);
@@ -159,13 +159,13 @@ impl HandleRelayInvsFlow {
                     if self.process_orphan(&session, block.clone(), inv.known_within_range).await? {
                         continue;
                     } else {
-                        // Block is actually not an orphan, retrying
+                        // Block is possibly not an orphan, retrying
                         let BlockValidationFutures { block_task: block_task_inner, virtual_state_task: virtual_state_task_inner } =
                             session.validate_and_insert_block(block.clone());
                         virtual_state_task = virtual_state_task_inner;
                         match block_task_inner.await {
-                            Ok(_) => debug!("Retried orphan block {} successfully", block.hash()),
-                            Err(RuleError::MissingParents(_)) => continue, // This is never expected but we avoid erring on it
+                            Ok(_) => info!("Retried orphan block {} successfully", block.hash()),
+                            Err(RuleError::MissingParents(_)) => continue,
                             Err(rule_error) => return Err(rule_error.into()),
                         }
                     }
@@ -227,7 +227,8 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    /// Process the orphan block. Returns a boolean indicating whether the block is actually an orphan
+    /// Process the orphan block. Returns a boolean indicating whether the block is
+    /// actually an orphan. If the block has no missing roots the function returns `false`.
     async fn process_orphan(
         &mut self,
         consensus: &ConsensusProxy,
@@ -258,9 +259,9 @@ impl HandleRelayInvsFlow {
                 // There is a sync gap between consensus and the orphan pool, meaning that consensus might have indicated
                 // that this block is orphan, but by the time it got to the orphan pool we discovered it is no longer so.
                 // We signal this to the caller by returning false, triggering a consensus processing retry
-                Some(OrphanOutput::NotOrphan) => return Ok(false),
+                Some(OrphanOutput::NoRoots) => return Ok(false),
                 Some(OrphanOutput::Roots(roots)) => self.enqueue_orphan_roots(hash, roots, known_within_range),
-                None | Some(OrphanOutput::Unknown | OrphanOutput::NoRoots) => {}
+                None | Some(OrphanOutput::Unknown) => {}
             }
         } else {
             // Send the block to IBD flow via the dedicated job channel. If the channel has a pending job, we prefer
@@ -282,9 +283,12 @@ impl HandleRelayInvsFlow {
     ///
     /// By checking whether the current orphan DAA score is within the range (R - M/10, R + M/2)** we make sure that in this
     /// case we keep ~M/2 blocks in the orphan pool which are all unorphaned when IBD completes (see revalidate_orphans),
-    /// and the node reaches full sync state asap.
+    /// and the node reaches full sync state asap. We use M/10 for the lower bound since we only want to cover anticone(R)
+    /// in that region (which is expectedly small), whereas the M/2 upper bound is for covering the most recent segment in
+    /// future(R). Overall we avoid keeping more than ~M/2 in order to not enter the area where blocks start getting evicted
+    /// from the orphan pool.
     ///
-    /// ** where R is the DAA score of R, and M is the orphans pool size limit
+    /// **where R is the DAA score of R, and M is the orphans pool size limit
     fn check_orphan_ibd_conditions(&self, orphan_daa_score: u64) -> bool {
         if let Some(ibd_daa_score) = self.ctx.ibd_relay_daa_score() {
             let max_orphans = self.ctx.max_orphans() as u64;

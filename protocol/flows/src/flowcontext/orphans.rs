@@ -20,10 +20,8 @@ use super::process_queue::ProcessQueue;
 pub enum OrphanOutput {
     /// Block is orphan with the provided missing roots
     Roots(Vec<Hash>),
-    /// Block has orphan ancestors but no missing roots
+    /// Block has no missing roots (but it might have known orphan ancestors)
     NoRoots,
-    /// The block is in the orphan pool but is actually ready for processing
-    NotOrphan,
     /// The block does not exist in the orphan pool
     Unknown,
 }
@@ -100,13 +98,11 @@ impl OrphanBlocksPool {
 
     /// Internal get roots method. Assumes 'orphan' is within the pool
     async fn get_orphan_roots(&self, consensus: &ConsensusProxy, orphan: Hash) -> OrphanOutput {
-        let mut known_orphan_ancestors = false;
         let mut roots = Vec::new();
         let mut queue = VecDeque::from([orphan]);
         let mut visited = HashSet::from([orphan]); // We avoid the custom block hasher here. See comment on `orphans` above.
         while let Some(current) = queue.pop_front() {
             if let Some(block) = self.orphans.get(&current) {
-                known_orphan_ancestors |= orphan != current;
                 for parent in block.block.header.direct_parents().iter().copied() {
                     if visited.insert(parent) {
                         queue.push_back(parent);
@@ -121,10 +117,10 @@ impl OrphanBlocksPool {
             }
         }
 
-        match (known_orphan_ancestors, roots.len()) {
-            (false, 0) => OrphanOutput::NotOrphan, // No known orphan ancestors, no missing roots => not orphan
-            (true, 0) => OrphanOutput::NoRoots,    // Has known orphan ancestors but no missing roots
-            (_, _) => OrphanOutput::Roots(roots),  // Has missing roots
+        if roots.is_empty() {
+            OrphanOutput::NoRoots
+        } else {
+            OrphanOutput::Roots(roots)
         }
     }
 
