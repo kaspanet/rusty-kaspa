@@ -320,7 +320,9 @@ impl HandleRelayInvsFlow {
         // with current syncer-side implementations (in both go-kaspa and this codebase) we could query only the last one,
         // but we prefer not relying on such details for correctness
         //
-        // TODO: change syncer-side to only send the most early block since it's sufficient for our needs
+        // The current syncer-side implementation sends a full locator even though it suffices to only send the
+        // most early block. We keep it this way in order to allow future syncee-side implementations to do more
+        // with the full incremental info and because it is only a small set of hashes.
         for h in locator_hashes.into_iter().rev() {
             if consensus.async_get_block_status(h).await.is_some_and(|s| s.has_block_body()) {
                 return Ok(true);
