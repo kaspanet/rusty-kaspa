@@ -588,6 +588,13 @@ impl Wallet {
             xpub_keys.sort_unstable();
             let min_cosigner_index = xpub_keys.binary_search(generated_xpubs.first().unwrap()).unwrap() as u8;
 
+            let xpub_keys = xpub_keys
+                .into_iter()
+                .map(|xpub_key| {
+                    ExtendedPublicKeySecp256k1::from_str(&xpub_key).map_err(|err| Error::InvalidExtendedPublicKey(xpub_key, err))
+                })
+                .collect::<Result<Vec<_>>>()?;
+
             Arc::new(
                 multisig::MultiSig::try_new(
                     self,
@@ -601,6 +608,13 @@ impl Wallet {
                 .await?,
             )
         } else {
+            let xpub_keys = xpub_keys
+                .into_iter()
+                .map(|xpub_key| {
+                    ExtendedPublicKeySecp256k1::from_str(&xpub_key).map_err(|err| Error::InvalidExtendedPublicKey(xpub_key, err))
+                })
+                .collect::<Result<Vec<_>>>()?;
+
             Arc::new(
                 multisig::MultiSig::try_new(self, account_name, Arc::new(xpub_keys), None, None, minimum_signatures, false).await?,
             )
@@ -641,7 +655,7 @@ impl Wallet {
         };
 
         let xpub_key = prv_key_data.create_xpub(payment_secret, BIP32_ACCOUNT_KIND.into(), account_index).await?;
-        let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(KeyPrefix::XPUB))]);
+        let xpub_keys = Arc::new(vec![xpub_key]);
 
         let account: Arc<dyn Account> =
             Arc::new(bip32::Bip32::try_new(self, account_name, prv_key_data.id, account_index, xpub_keys, false).await?);
@@ -708,7 +722,11 @@ impl Wallet {
         prv_key_data_create_args: PrvKeyDataCreateArgs,
     ) -> Result<PrvKeyDataId> {
         let mnemonic = Mnemonic::new(prv_key_data_create_args.mnemonic, Language::default())?;
-        let prv_key_data = PrvKeyData::try_from((mnemonic.clone(), prv_key_data_create_args.payment_secret.as_ref()))?;
+        let prv_key_data = PrvKeyData::try_from_mnemonic(
+            mnemonic.clone(),
+            prv_key_data_create_args.payment_secret.as_ref(),
+            self.store().encryption_kind()?,
+        )?;
         let prv_key_data_info = PrvKeyDataInfo::from(prv_key_data.as_ref());
         let prv_key_data_id = prv_key_data.id;
         let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
@@ -731,15 +749,16 @@ impl Wallet {
     ) -> Result<(WalletDescriptor, StorageDescriptor, Mnemonic, Arc<dyn Account>)> {
         self.close().await?;
 
+        let encryption_kind = wallet_args.encryption_kind;
         let wallet_descriptor = self.inner.store.create(wallet_secret, wallet_args.into()).await?;
         let storage_descriptor = self.inner.store.location()?;
         let mnemonic = Mnemonic::random(mnemonic_phrase_word_count, Default::default())?;
         let account_index = 0;
-        let prv_key_data = PrvKeyData::try_from((mnemonic.clone(), payment_secret.as_ref()))?;
+        let prv_key_data = PrvKeyData::try_from_mnemonic(mnemonic.clone(), payment_secret.as_ref(), encryption_kind)?;
         let xpub_key = prv_key_data
             .create_xpub(payment_secret.as_ref(), account_kind.unwrap_or(BIP32_ACCOUNT_KIND.into()), account_index)
             .await?;
-        let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(KeyPrefix::XPUB))]);
+        let xpub_keys = Arc::new(vec![xpub_key]);
 
         let account: Arc<dyn Account> =
             Arc::new(bip32::Bip32::try_new(self, account_name, prv_key_data.id, account_index, xpub_keys, false).await?);
@@ -1075,7 +1094,7 @@ impl Wallet {
         let keydata = load_v0_keydata(import_secret).await?;
 
         let mnemonic = Mnemonic::new(keydata.mnemonic.trim(), Language::English)?;
-        let prv_key_data = PrvKeyData::try_new_from_mnemonic(mnemonic, payment_secret)?;
+        let prv_key_data = PrvKeyData::try_new_from_mnemonic(mnemonic, payment_secret, self.store().encryption_kind()?)?;
         let prv_key_data_store = self.inner.store.as_prv_key_data_store()?;
         if prv_key_data_store.load_key_data(wallet_secret, &prv_key_data.id).await?.is_some() {
             return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id));
@@ -1129,7 +1148,7 @@ impl Wallet {
         mnemonic: Mnemonic,
         account_kind: AccountKind,
     ) -> Result<Arc<dyn Account>> {
-        let prv_key_data = storage::PrvKeyData::try_new_from_mnemonic(mnemonic, payment_secret)?;
+        let prv_key_data = storage::PrvKeyData::try_new_from_mnemonic(mnemonic, payment_secret, self.store().encryption_kind()?)?;
         let prv_key_data_store = self.store().as_prv_key_data_store()?;
         if prv_key_data_store.load_key_data(wallet_secret, &prv_key_data.id).await?.is_some() {
             return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id));
@@ -1139,7 +1158,7 @@ impl Wallet {
             BIP32_ACCOUNT_KIND => {
                 let account_index = 0;
                 let xpub_key = prv_key_data.create_xpub(payment_secret, account_kind, account_index).await?;
-                let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(kaspa_bip32::Prefix::KPUB))]);
+                let xpub_keys = Arc::new(vec![xpub_key]);
                 let ecdsa = false;
                 // ---
                 Arc::new(bip32::Bip32::try_new(self, None, prv_key_data.id, account_index, xpub_keys, ecdsa).await?)
@@ -1194,7 +1213,9 @@ impl Wallet {
         account_scan_extent: u32,
     ) -> Result<u32> {
         let mnemonic = Mnemonic::new(bip39_mnemonic.as_str(), Language::English)?;
-        let prv_key_data = storage::PrvKeyData::try_new_from_mnemonic(mnemonic, bip39_passphrase.as_ref())?;
+        // TODO @aspect - this is not efficient, we need to scan without encrypting prv_key_data
+        let prv_key_data =
+            storage::PrvKeyData::try_new_from_mnemonic(mnemonic, bip39_passphrase.as_ref(), EncryptionKind::XChaCha20Poly1305)?;
 
         let mut last_account_index = 0;
         let mut account_index = 0;
@@ -1202,14 +1223,12 @@ impl Wallet {
         while account_index < last_account_index + account_scan_extent {
             let xpub_key =
                 prv_key_data.create_xpub(bip39_passphrase.as_ref(), BIP32_ACCOUNT_KIND.into(), account_index as u64).await?;
-            let xpub_keys = Arc::new(vec![xpub_key.to_string(Some(kaspa_bip32::Prefix::KPUB))]);
+            let xpub_keys = Arc::new(vec![xpub_key]);
             let ecdsa = false;
             // ---
 
-            // let data = storage::Bip32::new(account_index as u64, xpub_keys, ecdsa);
-            // let addresses = runtime::Bip32::try_new(self, prv_key_data.id, Default::default(), data, None)
-            let addresses = bip32::Bip32::try_new(self, None, prv_key_data.id, account_index as u64, xpub_keys, ecdsa).await?
-                // .await?
+            let addresses = bip32::Bip32::try_new(self, None, prv_key_data.id, account_index as u64, xpub_keys, ecdsa)
+                .await?
                 .get_address_range_for_scan(0..address_scan_extent)?;
             if self.rpc_api().get_utxos_by_addresses(addresses).await?.is_not_empty() {
                 last_account_index = account_index;
@@ -1232,7 +1251,8 @@ impl Wallet {
         let prv_key_data_store = self.store().as_prv_key_data_store()?;
 
         for (mnemonic, payment_secret) in mnemonics_secrets {
-            let prv_key_data = storage::PrvKeyData::try_new_from_mnemonic(mnemonic, payment_secret.as_ref())?;
+            let prv_key_data =
+                storage::PrvKeyData::try_new_from_mnemonic(mnemonic, payment_secret.as_ref(), self.store().encryption_kind()?)?;
             if prv_key_data_store.load_key_data(wallet_secret, &prv_key_data.id).await?.is_some() {
                 return Err(Error::PrivateKeyAlreadyExists(prv_key_data.id));
             }
@@ -1247,6 +1267,13 @@ impl Wallet {
         let mut xpub_keys = additional_xpub_keys;
         xpub_keys.sort_unstable();
         let min_cosigner_index = xpub_keys.binary_search(generated_xpubs.first().unwrap()).unwrap() as u8;
+
+        let xpub_keys = xpub_keys
+            .into_iter()
+            .map(|xpub_key| {
+                ExtendedPublicKeySecp256k1::from_str(&xpub_key).map_err(|err| Error::InvalidExtendedPublicKey(xpub_key, err))
+            })
+            .collect::<Result<Vec<_>>>()?;
 
         let account: Arc<dyn Account> = Arc::new(
             multisig::MultiSig::try_new(

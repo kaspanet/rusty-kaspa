@@ -71,7 +71,8 @@ impl LocalStoreInner {
         };
 
         let payload = Payload::default();
-        let cache = Arc::new(Mutex::new(Cache::from_payload(wallet_title, args.user_hint, payload, wallet_secret)?));
+        let cache =
+            Arc::new(Mutex::new(Cache::from_payload(wallet_title, args.user_hint, payload, wallet_secret, args.encryption_kind)?));
         let is_modified = AtomicBool::new(false);
         let transactions: Arc<dyn TransactionRecordStore> = if !is_web() {
             Arc::new(fsio::TransactionStore::new(folder, &filename))
@@ -99,8 +100,8 @@ impl LocalStoreInner {
         Ok(Self { cache, store: Mutex::new(Arc::new(Store::Storage(storage))), is_modified, transactions })
     }
 
-    async fn try_import(wallet_secret: &Secret, folder: &str, data: &str) -> Result<Self> {
-        let wallet: WalletStorage = serde_json::from_str(data)?;
+    async fn try_import(wallet_secret: &Secret, folder: &str, serialized_wallet_storage: &[u8]) -> Result<Self> {
+        let wallet = WalletStorage::try_from_slice(serialized_wallet_storage)?;
         // Try to decrypt the wallet payload with the provided
         // secret. This will block import if the secret is
         // not correct.
@@ -125,9 +126,9 @@ impl LocalStoreInner {
         Ok(Self { cache, store: Mutex::new(Arc::new(Store::Storage(storage))), is_modified, transactions })
     }
 
-    async fn try_export(&self, wallet_secret: &Secret, _options: WalletExportOptions) -> Result<String> {
+    async fn try_export(&self, wallet_secret: &Secret, _options: WalletExportOptions) -> Result<Vec<u8>> {
         let wallet = self.cache().to_wallet(None, wallet_secret)?;
-        Ok(serde_json::to_string(&wallet)?)
+        Ok(wallet.try_to_vec()?)
     }
 
     fn storage(&self) -> Arc<Store> {
@@ -152,7 +153,7 @@ impl LocalStoreInner {
             Store::Resident => {
                 let mut cache = self.cache();
                 let old_prv_key_data: Decrypted<PrvKeyDataMap> = cache.prv_key_data.decrypt(old_secret)?;
-                let new_prv_key_data = Decrypted::new(old_prv_key_data.unwrap()).encrypt(new_secret)?;
+                let new_prv_key_data = Decrypted::new(old_prv_key_data.unwrap()).encrypt(new_secret, cache.encryption_kind)?;
                 cache.prv_key_data.replace(new_prv_key_data);
 
                 Ok(())
@@ -161,7 +162,7 @@ impl LocalStoreInner {
                 let wallet = {
                     let mut cache = self.cache();
                     let old_prv_key_data: Decrypted<PrvKeyDataMap> = cache.prv_key_data.decrypt(old_secret)?;
-                    let new_prv_key_data = Decrypted::new(old_prv_key_data.unwrap()).encrypt(new_secret)?;
+                    let new_prv_key_data = Decrypted::new(old_prv_key_data.unwrap()).encrypt(new_secret, cache.encryption_kind)?;
                     cache.prv_key_data.replace(new_prv_key_data);
 
                     cache.to_wallet(None, new_secret)?
@@ -303,13 +304,13 @@ impl LocalStore {
     }
 
     #[allow(dead_code)]
-    async fn wallet_export_impl(&self, wallet_secret: &Secret, _options: WalletExportOptions) -> Result<String> {
+    async fn wallet_export_impl(&self, wallet_secret: &Secret, _options: WalletExportOptions) -> Result<Vec<u8>> {
         self.inner()?.try_export(wallet_secret, _options).await
     }
 
-    async fn wallet_import_impl(&self, wallet_secret: &Secret, data: &str) -> Result<WalletDescriptor> {
+    async fn wallet_import_impl(&self, wallet_secret: &Secret, serialized_wallet_storage: &[u8]) -> Result<WalletDescriptor> {
         let location = self.location().expect("initialized wallet storage location");
-        let inner = LocalStoreInner::try_import(wallet_secret, &location.folder, data).await?;
+        let inner = LocalStoreInner::try_import(wallet_secret, &location.folder, serialized_wallet_storage).await?;
         inner.store(wallet_secret).await?;
         let wallet_descriptor = inner.descriptor();
         // self.inner.lock().unwrap().replace(Arc::new(inner));
@@ -337,6 +338,10 @@ impl Interface for LocalStore {
 
     fn descriptor(&self) -> Option<WalletDescriptor> {
         self.inner.lock().unwrap().as_ref().map(|inner| inner.descriptor())
+    }
+
+    fn encryption_kind(&self) -> Result<EncryptionKind> {
+        Ok(self.inner()?.cache().encryption_kind)
     }
 
     async fn rename(&self, wallet_secret: &Secret, title: Option<&str>, filename: Option<&str>) -> Result<()> {
@@ -464,12 +469,12 @@ impl Interface for LocalStore {
         Ok(())
     }
 
-    async fn wallet_export(&self, wallet_secret: &Secret, options: WalletExportOptions) -> Result<String> {
+    async fn wallet_export(&self, wallet_secret: &Secret, options: WalletExportOptions) -> Result<Vec<u8>> {
         self.wallet_export_impl(wallet_secret, options).await
     }
 
-    async fn wallet_import(&self, wallet_secret: &Secret, data: &str) -> Result<WalletDescriptor> {
-        self.wallet_import_impl(wallet_secret, data).await
+    async fn wallet_import(&self, wallet_secret: &Secret, serialized_wallet_storage: &[u8]) -> Result<WalletDescriptor> {
+        self.wallet_import_impl(wallet_secret, serialized_wallet_storage).await
     }
 }
 
@@ -489,19 +494,23 @@ impl PrvKeyDataStore for LocalStoreInner {
     }
 
     async fn store(&self, wallet_secret: &Secret, prv_key_data: PrvKeyData) -> Result<()> {
-        let mut prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(wallet_secret)?;
+        let mut cache = self.cache();
+        let encryption_kind = cache.encryption_kind;
+        let mut prv_key_data_map: Decrypted<PrvKeyDataMap> = cache.prv_key_data.decrypt(wallet_secret)?;
         let prv_key_data_info = Arc::new((&prv_key_data).into());
-        self.cache().prv_key_data_info.insert(prv_key_data.id, prv_key_data_info)?;
+        cache.prv_key_data_info.insert(prv_key_data.id, prv_key_data_info)?;
         prv_key_data_map.insert(prv_key_data.id, prv_key_data);
-        self.cache().prv_key_data.replace(prv_key_data_map.encrypt(wallet_secret)?);
+        cache.prv_key_data.replace(prv_key_data_map.encrypt(wallet_secret, encryption_kind)?);
         self.set_modified(true);
         Ok(())
     }
 
     async fn remove(&self, wallet_secret: &Secret, prv_key_data_id: &PrvKeyDataId) -> Result<()> {
-        let mut prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(wallet_secret)?;
+        let mut cache = self.cache();
+        let encryption_kind = cache.encryption_kind;
+        let mut prv_key_data_map: Decrypted<PrvKeyDataMap> = cache.prv_key_data.decrypt(wallet_secret)?;
         prv_key_data_map.remove(prv_key_data_id);
-        self.cache().prv_key_data.replace(prv_key_data_map.encrypt(wallet_secret)?);
+        cache.prv_key_data.replace(prv_key_data_map.encrypt(wallet_secret, encryption_kind)?);
         self.set_modified(true);
         Ok(())
     }

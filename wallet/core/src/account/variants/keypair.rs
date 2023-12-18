@@ -3,25 +3,56 @@ use crate::imports::*;
 use kaspa_addresses::Version;
 use secp256k1::PublicKey;
 
+pub const KEYPAIR_ACCOUNT_MAGIC: u32 = 0x50414952;
 pub const KEYPAIR_ACCOUNT_VERSION: u32 = 0;
 pub const KEYPAIR_ACCOUNT_KIND: &str = "kaspa-keypair-standard";
 
-#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct Storable {
-    pub version: u32,
-    pub xpub_key: Arc<String>,
+    pub public_key: secp256k1::PublicKey,
     pub ecdsa: bool,
 }
 
 impl Storable {
-    pub fn new(public_key: PublicKey, ecdsa: bool) -> Self {
-        Self { version: KEYPAIR_ACCOUNT_VERSION, xpub_key: Arc::new(public_key.to_string()), ecdsa }
+    pub fn new(public_key: secp256k1::PublicKey, ecdsa: bool) -> Self {
+        Self { public_key, ecdsa }
     }
 
     pub fn try_load(storage: &AccountStorage) -> Result<Self> {
-        let storable = serde_json::from_str::<Storable>(std::str::from_utf8(&storage.serialized)?)?;
-        Ok(storable)
+        Ok(Self::try_from_slice(storage.serialized.as_slice())?)
+    }
+}
+
+impl BorshSerialize for Storable {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        let public_key = self.public_key.serialize();
+
+        StorageHeader::new(KEYPAIR_ACCOUNT_MAGIC, KEYPAIR_ACCOUNT_VERSION).serialize(writer)?;
+
+        BorshSerialize::serialize(public_key.as_slice(), writer)?;
+        BorshSerialize::serialize(&self.ecdsa, writer)?;
+
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for Storable {
+    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
+        use secp256k1::constants::PUBLIC_KEY_SIZE;
+
+        let StorageHeader { version: _, .. } =
+            StorageHeader::deserialize(buf)?.try_magic(KEYPAIR_ACCOUNT_MAGIC)?.try_version(KEYPAIR_ACCOUNT_VERSION)?;
+
+        let public_key_bytes: [u8; PUBLIC_KEY_SIZE] = buf[..PUBLIC_KEY_SIZE]
+            .try_into()
+            .map_err(|_| IoError::new(IoErrorKind::Other, "Unable to deserialize keypair account (public_key buffer try_into)"))?;
+        let public_key = secp256k1::PublicKey::from_slice(&public_key_bytes)
+            .map_err(|_| IoError::new(IoErrorKind::Other, "Unable to deserialize keypair account (invalid public key)"))?;
+        *buf = &buf[PUBLIC_KEY_SIZE..];
+        let ecdsa = BorshDeserialize::deserialize(buf)?;
+
+        Ok(Self { public_key, ecdsa })
     }
 }
 
@@ -36,7 +67,7 @@ impl Keypair {
     pub async fn try_new(
         wallet: &Arc<Wallet>,
         name: Option<String>,
-        public_key: PublicKey,
+        public_key: secp256k1::PublicKey,
         prv_key_data_id: PrvKeyDataId,
         ecdsa: bool,
     ) -> Result<Self> {
@@ -46,37 +77,16 @@ impl Keypair {
         let (id, storage_key) = make_account_hashes(from_keypair(&prv_key_data_id, &storable));
         let inner = Arc::new(Inner::new(wallet, id, storage_key, settings));
 
-        let Storable { xpub_key, ecdsa, .. } = storable;
-        Ok(Self { inner, prv_key_data_id, public_key: PublicKey::from_str(xpub_key.as_str())?, ecdsa })
-
-        // let serialized = serde_json::to_string(&storable)?;
-        // Ok(Self::try_load(wallet, KEYPAIR_ACCOUNT_VERSION, prv_key_data_id, settings, serialized.as_bytes(), None).await?)
+        let Storable { public_key, ecdsa, .. } = storable;
+        Ok(Self { inner, prv_key_data_id, public_key, ecdsa })
     }
 
-    pub async fn try_load(
-        wallet: &Arc<Wallet>,
-        storage: &AccountStorage,
-        _meta: Option<Arc<AccountMetadata>>,
-        // wallet: &Arc<Wallet>,
-        // version : u32,
-        // prv_key_data_id: PrvKeyDataId,
-        // settings: AccountSettings,
-        // serialized: &[u8],
-        // _meta: Option<Arc<AccountMetadata>>,
-    ) -> Result<Self> {
+    pub async fn try_load(wallet: &Arc<Wallet>, storage: &AccountStorage, _meta: Option<Arc<AccountMetadata>>) -> Result<Self> {
         let storable = Storable::try_load(storage)?;
-
-        // let (id, storage_key) = make_account_hashes(from_keypair(&prv_key_data_id, &storable));
-        // let inner = Arc::new(Inner::new(wallet, id, storage_key, settings));
         let inner = Arc::new(Inner::from_storage(wallet, storage));
 
-        let Storable { xpub_key, ecdsa, .. } = storable;
-        Ok(Self {
-            inner,
-            prv_key_data_id: storage.prv_key_data_ids.clone().try_into()?,
-            public_key: PublicKey::from_str(xpub_key.as_str())?,
-            ecdsa,
-        })
+        let Storable { public_key, ecdsa, .. } = storable;
+        Ok(Self { inner, prv_key_data_id: storage.prv_key_data_ids.clone().try_into()?, public_key, ecdsa })
     }
 }
 
@@ -122,7 +132,6 @@ impl Account for Keypair {
         let serialized = serde_json::to_string(&storable)?;
         let account_storage = AccountStorage::new(
             KEYPAIR_ACCOUNT_KIND.into(),
-            KEYPAIR_ACCOUNT_VERSION,
             self.id(),
             self.storage_key(),
             self.prv_key_data_id.into(),
@@ -132,13 +141,6 @@ impl Account for Keypair {
 
         Ok(account_storage)
     }
-
-    // fn as_storable(&self) -> Result<storage::account::Account> {
-    //     let settings = self.context().settings.clone().unwrap_or_default();
-    //     let keypair = storage::Keypair::new(self.public_key, self.ecdsa);
-    //     let account = AccountStorage::new(*self.id(), Some(self.prv_key_data_id), settings, storage::AccountData::Keypair(keypair));
-    //     Ok(account)
-    // }
 
     fn metadata(&self) -> Result<Option<AccountMetadata>> {
         Ok(None)
@@ -153,24 +155,8 @@ impl Account for Keypair {
             self.receive_address().ok(),
             self.change_address().ok(),
         )
-        // .with_property(AccountDescriptorProperty::AccountIndex, self.account_index.into())
-        // .with_property(AccountDescriptorProperty::XpubKeys, self.xpub_keys.into())
-        .with_property(AccountDescriptorProperty::Ecdsa, self.ecdsa.into())
-        // .with_property(AccountDescriptorProperty::DerivationMeta, self.derivation.address_derivation_meta().into())
-        ;
+        .with_property(AccountDescriptorProperty::Ecdsa, self.ecdsa.into());
 
         Ok(descriptor)
-
-        // let descriptor = AccountDescriptor {
-        //     account_id: *self.id(),
-        //     account_name: self.name(),
-        //     prv_key_data_id: self.prv_key_data_id.into(),
-        //     xpub_keys: Arc::new(vec![self.public_key.to_string()]),
-        //     ecdsa: Some(self.ecdsa),
-        //     receive_address: self.receive_address().ok(),
-        //     change_address: self.receive_address().ok(),
-        // };
-
-        // Ok(descriptor.into())
     }
 }

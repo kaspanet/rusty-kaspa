@@ -9,24 +9,31 @@ use crate::storage::{Hint, PrvKeyDataId};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use zeroize::Zeroize;
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletCreateArgs {
     pub title: Option<String>,
     pub filename: Option<String>,
+    pub encryption_kind: EncryptionKind,
     pub user_hint: Option<Hint>,
     pub overwrite_wallet_storage: bool,
 }
 
 impl WalletCreateArgs {
-    pub fn new(title: Option<String>, filename: Option<String>, user_hint: Option<Hint>, overwrite_wallet_storage: bool) -> Self {
-        Self { title, filename, user_hint, overwrite_wallet_storage }
+    pub fn new(
+        title: Option<String>,
+        filename: Option<String>,
+        encryption_kind: EncryptionKind,
+        user_hint: Option<Hint>,
+        overwrite_wallet_storage: bool,
+    ) -> Self {
+        Self { title, filename, encryption_kind, user_hint, overwrite_wallet_storage }
     }
 }
 
 impl From<WalletCreateArgs> for CreateArgs {
     fn from(args: WalletCreateArgs) -> Self {
-        CreateArgs::new(args.title, args.filename, args.user_hint, args.overwrite_wallet_storage)
+        CreateArgs::new(args.title, args.filename, args.encryption_kind, args.user_hint, args.overwrite_wallet_storage)
     }
 }
 

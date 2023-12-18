@@ -23,7 +23,7 @@ pub use id::IdT;
 pub use interface::{
     AccountStore, Interface, PrvKeyDataStore, StorageDescriptor, TransactionRecordStore, WalletDescriptor, WalletExportOptions,
 };
-pub use keydata::{KeyCaps, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload};
+pub use keydata::{PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload};
 pub use local::interface::make_filename;
 pub use metadata::AccountMetadata;
 pub use transaction::{TransactionData, TransactionId, TransactionKind, TransactionRecord};
@@ -39,7 +39,6 @@ mod tests {
     use crate::storage::local::Payload;
     use crate::storage::local::WalletStorage;
     use kaspa_bip32::{Language, Mnemonic};
-    use std::sync::Arc;
 
     #[tokio::test]
     async fn test_wallet_store_wallet_store_load() -> Result<()> {
@@ -58,54 +57,42 @@ mod tests {
         let mnemonic2s = "fiber boy desk trip pitch snake table awkward endorse car learn forest solid ticket enemy pink gesture wealth iron chaos clock gather honey farm".to_string();
 
         let mnemonic1 = Mnemonic::new(mnemonic1s.clone(), Language::English)?;
-        let prv_key_data1 = PrvKeyData::try_new_from_mnemonic(mnemonic1.clone(), Some(&payment_secret))?;
+        let prv_key_data1 =
+            PrvKeyData::try_new_from_mnemonic(mnemonic1.clone(), Some(&payment_secret), EncryptionKind::XChaCha20Poly1305)?;
+        let pub_key_data1 = prv_key_data1.create_xpub(None, "test-account-kind".into(), 0).await?;
 
         let mnemonic2 = Mnemonic::new(mnemonic2s.clone(), Language::English)?;
-        let prv_key_data2 = PrvKeyData::try_new_from_mnemonic(mnemonic2.clone(), Some(&payment_secret))?;
+        let prv_key_data2 =
+            PrvKeyData::try_new_from_mnemonic(mnemonic2.clone(), Some(&payment_secret), EncryptionKind::XChaCha20Poly1305)?;
+        let pub_key_data2 = prv_key_data2.create_xpub(None, "test-account-kind".into(), 0).await?;
 
-        let pub_key_data1 = Arc::new(vec!["abc".to_string()]);
-        let pub_key_data2 = Arc::new(vec!["xyz".to_string()]);
-        println!("keydata1 id: {:?}", prv_key_data1.id);
+        // println!("keydata1 id: {:?}", prv_key_data1.id);
         //assert_eq!(prv_key_data.id.0, [79, 36, 5, 159, 220, 113, 179, 22]);
         payload.prv_key_data.push(prv_key_data1.clone());
         payload.prv_key_data.push(prv_key_data2.clone());
 
         let settings = AccountSettings { name: Some("Wallet-A".to_string()), ..Default::default() };
-        let storable = bip32::Storable::new(0, pub_key_data1.clone(), false);
+        let storable = bip32::Storable::new(0, vec![pub_key_data1.clone()].into(), false);
         let (id, storage_key) = make_account_hashes(from_bip32(&prv_key_data1.id, &storable));
         let storable = serde_json::to_string(&storable)?;
-        let account1 = AccountStorage::new(
-            BIP32_ACCOUNT_KIND.into(),
-            BIP32_ACCOUNT_VERSION,
-            &id,
-            &storage_key,
-            prv_key_data1.id.into(),
-            settings,
-            storable.as_bytes(),
-        );
+        let account1 =
+            AccountStorage::new(BIP32_ACCOUNT_KIND.into(), &id, &storage_key, prv_key_data1.id.into(), settings, storable.as_bytes());
 
         payload.accounts.push(account1);
 
         let settings = AccountSettings { name: Some("Wallet-B".to_string()), ..Default::default() };
-        let storable = bip32::Storable::new(0, pub_key_data2.clone(), false);
+        let storable = bip32::Storable::new(0, vec![pub_key_data2.clone()].into(), false);
         let (id, storage_key) = make_account_hashes(from_bip32(&prv_key_data2.id, &storable));
         let storable = serde_json::to_string(&storable)?;
-        let account2 = AccountStorage::new(
-            BIP32_ACCOUNT_KIND.into(),
-            BIP32_ACCOUNT_VERSION,
-            &id,
-            &storage_key,
-            prv_key_data2.id.into(),
-            settings,
-            storable.as_bytes(),
-        );
+        let account2 =
+            AccountStorage::new(BIP32_ACCOUNT_KIND.into(), &id, &storage_key, prv_key_data2.id.into(), settings, storable.as_bytes());
 
         payload.accounts.push(account2);
 
         let payload_json = serde_json::to_string(&payload).unwrap();
         // let settings = WalletSettings::new(account_id);
 
-        let w1 = WalletStorage::try_new(None, None, &wallet_secret, payload, vec![])?;
+        let w1 = WalletStorage::try_new(None, None, &wallet_secret, EncryptionKind::XChaCha20Poly1305, payload, vec![])?;
         w1.try_store(&store).await?;
         // Wallet::try_store_payload(&store, &wallet_secret, payload).await?;
 

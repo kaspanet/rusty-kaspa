@@ -5,6 +5,7 @@ use kaspa_bip32::{ExtendedPrivateKey, Prefix, SecretKey};
 
 const CACHE_ADDRESS_OFFSET: u32 = 2048;
 
+pub const LEGACY_ACCOUNT_MAGIC: u32 = 0x4c474359;
 pub const LEGACY_ACCOUNT_VERSION: u32 = 0;
 pub const LEGACY_ACCOUNT_KIND: &str = "kaspa-legacy-standard";
 
@@ -22,26 +23,30 @@ impl Factory for Ctor {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub struct Storable {
-    pub version: u32,
-}
+pub struct Storable;
 
 impl Storable {
-    pub fn new() -> Self {
-        Self { version: LEGACY_ACCOUNT_VERSION }
-    }
-
     pub fn try_load(storage: &AccountStorage) -> Result<Self> {
-        let storable = serde_json::from_str::<Storable>(std::str::from_utf8(&storage.serialized)?)?;
-        Ok(storable)
+        Ok(Self::try_from_slice(storage.serialized.as_slice())?)
     }
 }
 
-impl Default for Storable {
-    fn default() -> Self {
-        Self::new()
+impl BorshSerialize for Storable {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        StorageHeader::new(LEGACY_ACCOUNT_MAGIC, LEGACY_ACCOUNT_VERSION).serialize(writer)?;
+
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for Storable {
+    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
+        let StorageHeader { version: _, .. } =
+            StorageHeader::deserialize(buf)?.try_magic(LEGACY_ACCOUNT_MAGIC)?.try_version(LEGACY_ACCOUNT_VERSION)?;
+
+        Ok(Self {})
     }
 }
 
@@ -53,7 +58,7 @@ pub struct Legacy {
 
 impl Legacy {
     pub async fn try_new(wallet: &Arc<Wallet>, name: Option<String>, prv_key_data_id: PrvKeyDataId) -> Result<Self> {
-        let storable = Storable::new();
+        let storable = Storable;
         let settings = AccountSettings { name, ..Default::default() };
 
         let (id, storage_key) = make_account_hashes(from_legacy(&prv_key_data_id, &storable));
@@ -148,11 +153,10 @@ impl Account for Legacy {
 
     fn to_storage(&self) -> Result<AccountStorage> {
         let settings = self.context().settings.clone();
-        let storable = Storable::new();
+        let storable = Storable;
         let serialized = serde_json::to_string(&storable)?;
         let account_storage = AccountStorage::new(
             LEGACY_ACCOUNT_KIND.into(),
-            LEGACY_ACCOUNT_VERSION,
             self.id(),
             self.storage_key(),
             self.prv_key_data_id.into(),

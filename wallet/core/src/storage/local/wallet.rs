@@ -6,20 +6,18 @@ use crate::storage::local::Storage;
 use crate::storage::Encryptable;
 use crate::storage::TransactionRecord;
 use crate::storage::{AccountMetadata, Decrypted, Encrypted, Hint, PrvKeyData, PrvKeyDataId};
-use serde_json::{from_str, from_value, Value};
 use workflow_store::fs;
 
-pub const WALLET_VERSION: [u16; 3] = [1, 0, 0];
+pub const WALLET_STORAGE_MAGIC: u32 = 0x4b415357;
+pub const WALLET_STORAGE_VERSION: u32 = 0;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct WalletStorage {
-    #[serde(default)]
-    pub version: [u16; 3],
-
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user_hint: Option<Hint>,
+    pub encryption_kind: EncryptionKind,
     pub payload: Encrypted,
     pub metadata: Vec<AccountMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -31,11 +29,12 @@ impl WalletStorage {
         title: Option<String>,
         user_hint: Option<Hint>,
         secret: &Secret,
+        encryption_kind: EncryptionKind,
         payload: Payload,
         metadata: Vec<AccountMetadata>,
     ) -> Result<Self> {
-        let payload = Decrypted::new(payload).encrypt(secret)?;
-        Ok(Self { version: WALLET_VERSION, title, payload, metadata, user_hint, transactions: None })
+        let payload = Decrypted::new(payload).encrypt(secret, encryption_kind)?;
+        Ok(Self { title, encryption_kind, payload, metadata, user_hint, transactions: None })
     }
 
     pub fn payload(&self, secret: &Secret) -> Result<Decrypted<Payload>> {
@@ -44,20 +43,8 @@ impl WalletStorage {
 
     pub async fn try_load(store: &Storage) -> Result<WalletStorage> {
         if fs::exists(store.filename()).await? {
-            let text = fs::read_to_string(store.filename()).await?;
-            let root = from_str::<Value>(&text)?;
-
-            let version = root.get("version");
-            let version: [u16; 3] = if let Some(version) = version {
-                from_value(version.clone()).map_err(|err| Error::Custom(format!("unknown wallet version `{version:?}`: {err}")))?
-            } else {
-                [0, 0, 0]
-            };
-
-            match version {
-                [0, 0, 0] => Err(Error::Custom("wallet version 0.0.0 used during the development is no longer supported".to_string())),
-                _ => Ok(from_value::<WalletStorage>(root)?),
-            }
+            let bytes = fs::read(store.filename()).await?;
+            Ok(BorshDeserialize::try_from_slice(bytes.as_slice())?)
         } else {
             let name = store.filename().file_name().unwrap().to_str().unwrap();
             Err(Error::NoWalletInStorage(name.to_string()))
@@ -66,7 +53,8 @@ impl WalletStorage {
 
     pub async fn try_store(&self, store: &Storage) -> Result<()> {
         store.ensure_dir().await?;
-        fs::write_json(store.filename(), self).await?;
+        let serialized = BorshSerialize::try_to_vec(self)?;
+        fs::write(store.filename(), serialized.as_slice()).await?;
         Ok(())
     }
 
@@ -80,5 +68,51 @@ impl WalletStorage {
 
     pub fn replace_metadata(&mut self, metadata: Vec<AccountMetadata>) {
         self.metadata = metadata;
+    }
+}
+
+impl BorshSerialize for WalletStorage {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        StorageHeader::new(WALLET_STORAGE_MAGIC, WALLET_STORAGE_VERSION).serialize(writer)?;
+        BorshSerialize::serialize(&self.title, writer)?;
+        BorshSerialize::serialize(&self.user_hint, writer)?;
+        BorshSerialize::serialize(&self.encryption_kind, writer)?;
+        BorshSerialize::serialize(&self.payload, writer)?;
+        BorshSerialize::serialize(&self.metadata, writer)?;
+        BorshSerialize::serialize(&self.transactions, writer)?;
+
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for WalletStorage {
+    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
+        let StorageHeader { magic, version, .. } = StorageHeader::deserialize(buf)?;
+
+        if magic != WALLET_STORAGE_MAGIC {
+            return Err(IoError::new(
+                IoErrorKind::InvalidData,
+                format!(
+                    "This does not seem to be kaspa wallet data file. Unknown file signature. Expected {:x}, found {:x}",
+                    WALLET_STORAGE_MAGIC, magic
+                ),
+            ));
+        }
+
+        if version > WALLET_STORAGE_VERSION {
+            return Err(IoError::new(
+                IoErrorKind::InvalidData,
+                format!("This wallet data was generated using a new version of the software. Please upgrade your software environment. Expected at most version '{}', encountered version '{}'", WALLET_STORAGE_VERSION, version),
+            ));
+        }
+
+        let title = BorshDeserialize::deserialize(buf)?;
+        let user_hint = BorshDeserialize::deserialize(buf)?;
+        let encryption_kind = BorshDeserialize::deserialize(buf)?;
+        let payload = BorshDeserialize::deserialize(buf)?;
+        let metadata = BorshDeserialize::deserialize(buf)?;
+        let transactions = BorshDeserialize::deserialize(buf)?;
+
+        Ok(Self { title, user_hint, encryption_kind, payload, metadata, transactions })
     }
 }

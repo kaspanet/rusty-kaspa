@@ -1,242 +1,20 @@
+use super::*;
 use crate::imports::*;
-// use crate::runtime::Wallet;
 use crate::storage::Binding;
 use crate::tx::PendingTransactionInner;
-use crate::utxo::{Maturity, OutgoingTransaction, UtxoContext, UtxoEntryReference};
-use kaspa_addresses::Address;
-use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction};
-// use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint};
-use separator::Separatable;
-use serde::{Deserialize, Serialize};
 use workflow_core::time::{unixtime_as_millis_u64, unixtime_to_locale_string};
-// use workflow_log::style;
 
 pub use kaspa_consensus_core::tx::TransactionId;
 use zeroize::Zeroize;
 
-const TRANSACTION_VERSION: u16 = 1;
+const TRANSACTION_RECORD_MAGIC: u32 = 0x4b415458;
+const TRANSACTION_RECORD_VERSION: u32 = 0;
 
-#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
-pub enum TransactionKind {
-    /// Incoming transaction
-    Incoming,
-    /// Transaction created by the runtime
-    Outgoing,
-    /// Outgoing transaction observed by the runtime
-    External,
-    /// Internal batch (sweep) transaction
-    Batch,
-    /// Reorg transaction (caused by UTXO reorg)
-    Reorg,
-    /// Stasis transaction (caused by reorg during coinbase UTXO stasis)
-    /// NOTE: These types of transactions should be ignored by clients.
-    Stasis,
-    TransferIncoming,
-    TransferOutgoing,
-    Change,
-}
-
-impl TransactionKind {}
-
-impl TransactionKind {
-    pub fn sign(&self) -> String {
-        match self {
-            TransactionKind::Incoming => "+",
-            TransactionKind::Outgoing => "-",
-            TransactionKind::External => "-",
-            TransactionKind::Batch => "",
-            TransactionKind::Reorg => "-",
-            TransactionKind::Stasis => "",
-            TransactionKind::TransferIncoming => "",
-            TransactionKind::TransferOutgoing => "",
-            TransactionKind::Change => "",
-        }
-        .to_string()
-    }
-}
-
-impl std::fmt::Display for TransactionKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            TransactionKind::Incoming => "incoming",
-            TransactionKind::Outgoing => "outgoing",
-            TransactionKind::External => "external",
-            TransactionKind::Batch => "batch",
-            TransactionKind::Reorg => "reorg",
-            TransactionKind::Stasis => "stasis",
-            TransactionKind::TransferIncoming => "transfer-incoming",
-            TransactionKind::TransferOutgoing => "transfer-outgoing",
-            TransactionKind::Change => "change",
-        };
-        write!(f, "{s}")
-    }
-}
-
-/// [`UtxoRecord`] represents an incoming transaction UTXO entry
-/// stored within [`TransactionRecord`].
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-pub struct UtxoRecord {
-    pub address: Option<Address>,
-    pub index: TransactionIndexType,
-    pub amount: u64,
-    #[serde(rename = "scriptPubKey")]
-    pub script_public_key: ScriptPublicKey,
-    #[serde(rename = "isCoinbase")]
-    pub is_coinbase: bool,
-}
-
-impl From<&UtxoEntryReference> for UtxoRecord {
-    fn from(utxo: &UtxoEntryReference) -> Self {
-        let UtxoEntryReference { utxo } = utxo;
-        UtxoRecord {
-            index: utxo.outpoint.get_index(),
-            address: utxo.address.clone(),
-            amount: utxo.entry.amount,
-            script_public_key: utxo.entry.script_public_key.clone(),
-            is_coinbase: utxo.entry.is_coinbase,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-#[serde(tag = "type", content = "transaction")]
-// the reason the struct is renamed kebab-case and then
-// each field is renamed to camelCase is to force the
-// enum tags to be lower case.
-#[serde(rename_all = "kebab-case")]
-pub enum TransactionData {
-    Reorg {
-        #[serde(rename = "utxoEntries")]
-        utxo_entries: Vec<UtxoRecord>,
-        #[serde(rename = "value")]
-        aggregate_input_value: u64,
-    },
-    Incoming {
-        #[serde(rename = "utxoEntries")]
-        utxo_entries: Vec<UtxoRecord>,
-        #[serde(rename = "value")]
-        aggregate_input_value: u64,
-    },
-    Stasis {
-        #[serde(rename = "utxoEntries")]
-        utxo_entries: Vec<UtxoRecord>,
-        #[serde(rename = "value")]
-        aggregate_input_value: u64,
-    },
-    External {
-        #[serde(rename = "utxoEntries")]
-        utxo_entries: Vec<UtxoRecord>,
-        #[serde(rename = "value")]
-        aggregate_input_value: u64,
-    },
-    Batch {
-        fees: u64,
-        #[serde(rename = "inputValue")]
-        aggregate_input_value: u64,
-        #[serde(rename = "outputValue")]
-        aggregate_output_value: u64,
-        transaction: Transaction,
-        #[serde(rename = "paymentValue")]
-        payment_value: Option<u64>,
-        #[serde(rename = "changeValue")]
-        change_value: u64,
-        #[serde(rename = "acceptedDaaScore")]
-        accepted_daa_score: Option<u64>,
-        #[serde(rename = "utxoEntries")]
-        #[serde(default)]
-        utxo_entries: Vec<UtxoRecord>,
-    },
-    Outgoing {
-        fees: u64,
-        #[serde(rename = "inputValue")]
-        aggregate_input_value: u64,
-        #[serde(rename = "outputValue")]
-        aggregate_output_value: u64,
-        transaction: Transaction,
-        #[serde(rename = "paymentValue")]
-        payment_value: Option<u64>,
-        #[serde(rename = "changeValue")]
-        change_value: u64,
-        #[serde(rename = "acceptedDaaScore")]
-        accepted_daa_score: Option<u64>,
-        #[serde(rename = "utxoEntries")]
-        #[serde(default)]
-        utxo_entries: Vec<UtxoRecord>,
-    },
-    TransferIncoming {
-        fees: u64,
-        #[serde(rename = "inputValue")]
-        aggregate_input_value: u64,
-        #[serde(rename = "outputValue")]
-        aggregate_output_value: u64,
-        transaction: Transaction,
-        #[serde(rename = "paymentValue")]
-        payment_value: Option<u64>,
-        #[serde(rename = "changeValue")]
-        change_value: u64,
-        #[serde(rename = "acceptedDaaScore")]
-        accepted_daa_score: Option<u64>,
-        #[serde(rename = "utxoEntries")]
-        utxo_entries: Vec<UtxoRecord>,
-    },
-    TransferOutgoing {
-        fees: u64,
-        #[serde(rename = "inputValue")]
-        aggregate_input_value: u64,
-        #[serde(rename = "outputValue")]
-        aggregate_output_value: u64,
-        transaction: Transaction,
-        #[serde(rename = "paymentValue")]
-        payment_value: Option<u64>,
-        #[serde(rename = "changeValue")]
-        change_value: u64,
-        #[serde(rename = "acceptedDaaScore")]
-        accepted_daa_score: Option<u64>,
-        #[serde(rename = "utxoEntries")]
-        utxo_entries: Vec<UtxoRecord>,
-    },
-    Change {
-        #[serde(rename = "inputValue")]
-        aggregate_input_value: u64,
-        #[serde(rename = "outputValue")]
-        aggregate_output_value: u64,
-        transaction: Transaction,
-        #[serde(rename = "paymentValue")]
-        payment_value: Option<u64>,
-        #[serde(rename = "changeValue")]
-        change_value: u64,
-        #[serde(rename = "acceptedDaaScore")]
-        accepted_daa_score: Option<u64>,
-        #[serde(rename = "utxoEntries")]
-        utxo_entries: Vec<UtxoRecord>,
-    },
-}
-
-impl TransactionData {
-    pub fn kind(&self) -> TransactionKind {
-        match self {
-            TransactionData::Reorg { .. } => TransactionKind::Reorg,
-            TransactionData::Stasis { .. } => TransactionKind::Stasis,
-            TransactionData::Incoming { .. } => TransactionKind::Incoming,
-            TransactionData::External { .. } => TransactionKind::External,
-            TransactionData::Outgoing { .. } => TransactionKind::Outgoing,
-            TransactionData::Batch { .. } => TransactionKind::Batch,
-            TransactionData::TransferIncoming { .. } => TransactionKind::TransferIncoming,
-            TransactionData::TransferOutgoing { .. } => TransactionKind::TransferOutgoing,
-            TransactionData::Change { .. } => TransactionKind::Change,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionRecord {
-    pub version: u16,
     pub id: TransactionId,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unixtime: Option<u64>,
-    // TODO - remove default
-    #[serde(default)]
     pub value: u64,
     pub binding: Binding,
     #[serde(rename = "blockDaaScore")]
@@ -378,6 +156,7 @@ impl TransactionRecord {
     pub fn new_reorg(utxo_context: &UtxoContext, id: TransactionId, utxos: &[UtxoEntryReference]) -> Self {
         Self::new_incoming_impl(utxo_context, TransactionKind::Reorg, id, utxos)
     }
+
     pub fn new_stasis(utxo_context: &UtxoContext, id: TransactionId, utxos: &[UtxoEntryReference]) -> Self {
         Self::new_incoming_impl(utxo_context, TransactionKind::Stasis, id, utxos)
     }
@@ -403,7 +182,6 @@ impl TransactionRecord {
         };
 
         TransactionRecord {
-            version: TRANSACTION_VERSION,
             id,
             unixtime: Some(unixtime),
             value: aggregate_input_value,
@@ -429,7 +207,6 @@ impl TransactionRecord {
         let unixtime = unixtime_as_millis_u64();
 
         TransactionRecord {
-            version: TRANSACTION_VERSION,
             id,
             unixtime: Some(unixtime),
             value: aggregate_input_value,
@@ -476,7 +253,6 @@ impl TransactionRecord {
         };
 
         TransactionRecord {
-            version: TRANSACTION_VERSION,
             id,
             unixtime: Some(unixtime),
             value: payment_value.unwrap_or(*aggregate_input_value),
@@ -523,7 +299,6 @@ impl TransactionRecord {
         };
 
         TransactionRecord {
-            version: TRANSACTION_VERSION,
             id,
             unixtime: Some(unixtime),
             value: payment_value.unwrap_or(*aggregate_input_value),
@@ -574,7 +349,6 @@ impl TransactionRecord {
         };
 
         TransactionRecord {
-            version: TRANSACTION_VERSION,
             id,
             unixtime: Some(unixtime),
             value: payment_value.unwrap_or(*aggregate_input_value),
@@ -625,7 +399,6 @@ impl TransactionRecord {
         };
 
         TransactionRecord {
-            version: TRANSACTION_VERSION,
             id,
             unixtime: Some(unixtime),
             value: payment_value.unwrap_or(*aggregate_input_value),
@@ -674,7 +447,6 @@ impl TransactionRecord {
         };
 
         TransactionRecord {
-            version: TRANSACTION_VERSION,
             id,
             unixtime: Some(unixtime),
             value: *change_output_value,
@@ -693,14 +465,41 @@ impl Zeroize for TransactionRecord {
         // TODO - this trait is added due to the
         // Encryptable<TransactionRecord> requirement
         // for T to be Zeroize.
-        //
-        // This will be updated later
-        //
-        // self.id.zeroize();
-        // self.binding.zeroize();
-        // self.block_daa_score.zeroize();
-        // self.transaction_data.zeroize();
-        // self.network_id.zeroize();
-        // self.metadata.zeroize();
+    }
+}
+
+impl BorshSerialize for TransactionRecord {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        StorageHeader::new(TRANSACTION_RECORD_MAGIC, TRANSACTION_RECORD_VERSION).serialize(writer)?;
+        BorshSerialize::serialize(&self.id, writer)?;
+        BorshSerialize::serialize(&self.unixtime, writer)?;
+        BorshSerialize::serialize(&self.value, writer)?;
+        BorshSerialize::serialize(&self.binding, writer)?;
+        BorshSerialize::serialize(&self.block_daa_score, writer)?;
+        BorshSerialize::serialize(&self.network_id, writer)?;
+        BorshSerialize::serialize(&self.transaction_data, writer)?;
+        BorshSerialize::serialize(&self.note, writer)?;
+        BorshSerialize::serialize(&self.metadata, writer)?;
+
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for TransactionRecord {
+    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
+        let StorageHeader { version: _, .. } =
+            StorageHeader::deserialize(buf)?.try_magic(TRANSACTION_RECORD_MAGIC)?.try_version(TRANSACTION_RECORD_VERSION)?;
+
+        let id = BorshDeserialize::deserialize(buf)?;
+        let unixtime = BorshDeserialize::deserialize(buf)?;
+        let value = BorshDeserialize::deserialize(buf)?;
+        let binding = BorshDeserialize::deserialize(buf)?;
+        let block_daa_score = BorshDeserialize::deserialize(buf)?;
+        let network_id = BorshDeserialize::deserialize(buf)?;
+        let transaction_data = BorshDeserialize::deserialize(buf)?;
+        let note = BorshDeserialize::deserialize(buf)?;
+        let metadata = BorshDeserialize::deserialize(buf)?;
+
+        Ok(Self { id, unixtime, value, binding, block_daa_score, network_id, transaction_data, note, metadata })
     }
 }

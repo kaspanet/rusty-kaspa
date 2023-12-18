@@ -7,6 +7,7 @@ pub use crate::account::descriptor::{AccountDescriptor, AccountDescriptorPropert
 pub use crate::account::variants::*;
 pub use crate::account::{Account, AccountKind, DerivationCapableAccount};
 pub use crate::deterministic::*;
+pub use crate::encryption::{Encryptable, EncryptionKind};
 pub use crate::error::Error;
 pub use crate::events::{Events, SyncState};
 pub use crate::factory::{factories, try_load_account, Factory};
@@ -14,9 +15,12 @@ pub use crate::result::Result;
 pub use crate::rpc::Rpc;
 pub use crate::rpc::{DynRpcApi, RpcCtl};
 pub use crate::secret::Secret;
+pub use crate::serializer::*;
 pub use crate::storage::*;
+pub use crate::types::*;
 pub use crate::utxo::balance::Balance;
 pub use crate::utxo::scan::{Scan, ScanExtent};
+pub use crate::utxo::{Maturity, OutgoingTransaction, UtxoContext, UtxoEntryReference, UtxoProcessor};
 pub use crate::wallet::*;
 pub use crate::{storage, utils, utxo};
 
@@ -38,6 +42,7 @@ pub use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionId, TransactionIn
 pub use kaspa_utils::hashmap::*;
 pub use kaspa_utils::hex::{FromHex, ToHex};
 pub use pad::PadStr;
+pub use separator::Separatable;
 pub use serde::{Deserialize, Deserializer, Serialize};
 pub use std::collections::{HashMap, HashSet};
 pub use std::pin::Pin;
@@ -47,6 +52,7 @@ pub use std::sync::{Arc, Mutex, MutexGuard};
 pub use std::task::{Context, Poll};
 pub use wasm_bindgen::prelude::*;
 pub use workflow_core::prelude::*;
+pub use workflow_core::seal;
 pub use workflow_log::prelude::*;
 pub use workflow_wasm::prelude::*;
 pub use workflow_wasm::stream::AsyncStream;

@@ -261,6 +261,9 @@ pub enum Error {
 
     #[error("AssocPrvKeyDataIds are empty")]
     AssocPrvKeyDataIdsEmpty,
+
+    #[error("Invalid extended public key '{0}': {1}")]
+    InvalidExtendedPublicKey(String, BIP32Error),
 }
 
 impl From<Aborted> for Error {

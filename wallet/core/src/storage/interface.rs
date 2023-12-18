@@ -127,13 +127,20 @@ pub trait TransactionRecordStore: Send + Sync {
 pub struct CreateArgs {
     pub title: Option<String>,
     pub filename: Option<String>,
+    pub encryption_kind: EncryptionKind,
     pub user_hint: Option<Hint>,
     pub overwrite_wallet: bool,
 }
 
 impl CreateArgs {
-    pub fn new(title: Option<String>, filename: Option<String>, user_hint: Option<Hint>, overwrite_wallet: bool) -> Self {
-        Self { title, filename, user_hint, overwrite_wallet }
+    pub fn new(
+        title: Option<String>,
+        filename: Option<String>,
+        encryption_kind: EncryptionKind,
+        user_hint: Option<Hint>,
+        overwrite_wallet: bool,
+    ) -> Self {
+        Self { title, filename, encryption_kind, user_hint, overwrite_wallet }
     }
 }
 
@@ -161,6 +168,9 @@ pub trait Interface: Send + Sync + AnySync {
 
     /// returns the name of the currently open wallet or none
     fn descriptor(&self) -> Option<WalletDescriptor>;
+
+    /// encryption used by the currently open wallet
+    fn encryption_kind(&self) -> Result<EncryptionKind>;
 
     /// rename the currently open wallet (title or the filename)
     async fn rename(&self, wallet_secret: &Secret, title: Option<&str>, filename: Option<&str>) -> Result<()>;
@@ -190,10 +200,10 @@ pub trait Interface: Send + Sync + AnySync {
     async fn close(&self) -> Result<()>;
 
     /// export the wallet data
-    async fn wallet_export(&self, wallet_secret: &Secret, options: WalletExportOptions) -> Result<String>;
+    async fn wallet_export(&self, wallet_secret: &Secret, options: WalletExportOptions) -> Result<Vec<u8>>;
 
     /// import the wallet data
-    async fn wallet_import(&self, wallet_secret: &Secret, data: &str) -> Result<WalletDescriptor>;
+    async fn wallet_import(&self, wallet_secret: &Secret, serialized_wallet_storage: &[u8]) -> Result<WalletDescriptor>;
 
     // ~~~
 

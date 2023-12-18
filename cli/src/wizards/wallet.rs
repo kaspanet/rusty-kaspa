@@ -126,7 +126,7 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
     // suspend commits for multiple operations
     wallet.store().batch().await?;
 
-    let wallet_args = WalletCreateArgs::new(name.map(String::from), None, hint, true);
+    let wallet_args = WalletCreateArgs::new(name.map(String::from), None, EncryptionKind::XChaCha20Poly1305, hint, true);
     let (_wallet_descriptor, storage_descriptor) = ctx.wallet().create_wallet(&wallet_secret, wallet_args).await?;
     let prv_key_data_id = wallet.create_prv_key_data(&wallet_secret, prv_key_data_args).await?;
 

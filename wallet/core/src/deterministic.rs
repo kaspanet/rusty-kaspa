@@ -51,9 +51,9 @@ impl std::fmt::Display for AccountId {
 }
 
 #[derive(BorshSerialize)]
-struct DeterministicHashData<'kind, T: AsSlice<Element = PrvKeyDataId>> {
-    account_kind: &'kind AccountKind,
-    prv_key_data_id: Option<T>,
+struct DeterministicHashData<'data, T: AsSlice<Element = PrvKeyDataId>> {
+    account_kind: &'data AccountKind,
+    prv_key_data_ids: &'data Option<T>,
     ecdsa: Option<bool>,
     account_index: Option<u64>,
     secp256k1_public_key: Option<Vec<u8>>,
@@ -81,7 +81,7 @@ where
 pub fn from_bip32<const N: usize>(prv_key_data_id: &PrvKeyDataId, data: &bip32::Storable) -> [Hash; N] {
     let hashable = DeterministicHashData {
         account_kind: &bip32::BIP32_ACCOUNT_KIND.into(),
-        prv_key_data_id: Some([*prv_key_data_id]),
+        prv_key_data_ids: &Some([*prv_key_data_id]),
         ecdsa: Some(data.ecdsa),
         account_index: Some(data.account_index),
         secp256k1_public_key: None,
@@ -93,7 +93,7 @@ pub fn from_bip32<const N: usize>(prv_key_data_id: &PrvKeyDataId, data: &bip32::
 pub fn from_legacy<const N: usize>(prv_key_data_id: &PrvKeyDataId, _data: &legacy::Storable) -> [Hash; N] {
     let hashable = DeterministicHashData {
         account_kind: &legacy::LEGACY_ACCOUNT_KIND.into(),
-        prv_key_data_id: Some([*prv_key_data_id]),
+        prv_key_data_ids: &Some([*prv_key_data_id]),
         ecdsa: Some(false),
         account_index: Some(0),
         secp256k1_public_key: None,
@@ -102,14 +102,14 @@ pub fn from_legacy<const N: usize>(prv_key_data_id: &PrvKeyDataId, _data: &legac
     make_hashes(hashable)
 }
 
-pub fn from_multisig<const N: usize>(data: &multisig::Storable) -> [Hash; N] {
+pub fn from_multisig<const N: usize>(prv_key_data_ids: &Option<Arc<Vec<PrvKeyDataId>>>, data: &multisig::Storable) -> [Hash; N] {
     let hashable = DeterministicHashData {
         account_kind: &multisig::MULTISIG_ACCOUNT_KIND.into(),
-        prv_key_data_id: data.prv_key_data_ids.as_ref().cloned(),
+        prv_key_data_ids,
         ecdsa: Some(data.ecdsa),
-        account_index: Some(0),
+        account_index: None,
         secp256k1_public_key: None,
-        data: Some(data.xpub_keys.iter().flat_map(|s| s.as_bytes()).cloned().collect()),
+        data: Some(data.xpub_keys.try_to_vec().unwrap()),
     };
     make_hashes(hashable)
 }
@@ -117,10 +117,10 @@ pub fn from_multisig<const N: usize>(data: &multisig::Storable) -> [Hash; N] {
 pub(crate) fn from_keypair<const N: usize>(prv_key_data_id: &PrvKeyDataId, data: &keypair::Storable) -> [Hash; N] {
     let hashable = DeterministicHashData {
         account_kind: &keypair::KEYPAIR_ACCOUNT_KIND.into(),
-        prv_key_data_id: Some([*prv_key_data_id]),
+        prv_key_data_ids: &Some([*prv_key_data_id]),
         ecdsa: Some(data.ecdsa),
         account_index: None,
-        secp256k1_public_key: Some(data.xpub_key.as_bytes().to_vec()),
+        secp256k1_public_key: Some(data.public_key.serialize().to_vec()),
         data: None,
     };
     make_hashes(hashable)
@@ -129,7 +129,7 @@ pub(crate) fn from_keypair<const N: usize>(prv_key_data_id: &PrvKeyDataId, data:
 pub fn from_public_key<const N: usize>(account_kind: &AccountKind, public_key: &PublicKey) -> [Hash; N] {
     let hashable: DeterministicHashData<[PrvKeyDataId; 0]> = DeterministicHashData {
         account_kind,
-        prv_key_data_id: None,
+        prv_key_data_ids: &None,
         ecdsa: None,
         account_index: None,
         secp256k1_public_key: Some(public_key.serialize().to_vec()),
@@ -141,7 +141,7 @@ pub fn from_public_key<const N: usize>(account_kind: &AccountKind, public_key: &
 pub fn from_data<const N: usize>(account_kind: &AccountKind, data: &[u8]) -> [Hash; N] {
     let hashable: DeterministicHashData<[PrvKeyDataId; 0]> = DeterministicHashData {
         account_kind,
-        prv_key_data_id: None,
+        prv_key_data_ids: &None,
         ecdsa: None,
         account_index: None,
         secp256k1_public_key: None,

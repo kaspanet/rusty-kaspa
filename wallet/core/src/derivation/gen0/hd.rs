@@ -608,36 +608,14 @@ impl WalletDerivationManagerTrait for WalletDerivationManagerV0 {
     }
 
     fn from_extended_public_key_str(_xpub: &str, _cosigner_index: Option<u32>) -> Result<Self> {
-        // let extended_public_key = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(xpub)?;
-        // let wallet = Self::from_extended_public_key(extended_public_key, cosigner_index).await?;
-        // Ok(wallet)
-        todo!()
+        unreachable!();
     }
 
     fn from_extended_public_key(
         _extended_public_key: ExtendedPublicKey<secp256k1::PublicKey>,
         _cosigner_index: Option<u32>,
     ) -> Result<Self> {
-        // let receive_wallet =
-        //     Self::derive_child_pubkey_manager(extended_public_key.clone(), AddressType::Receive, cosigner_index).await?;
-
-        // println!("###: public_key {:?}", receive_wallet.public_key);
-        // println!("###: attrs {:?}", receive_wallet.attrs());
-        // println!("###: fingerprint {:?}", receive_wallet.fingerprint);
-        // println!("###: hmac {:?}", receive_wallet.hmac);
-
-        // let change_wallet =
-        //     Self::derive_child_pubkey_manager(extended_public_key.clone(), AddressType::Change, cosigner_index).await?;
-
-        // let wallet = Self {
-        //     extended_public_key,
-        //     receive_pubkey_manager: Arc::new(receive_wallet),
-        //     change_pubkey_manager: Arc::new(change_wallet),
-        // };
-
-        // Ok(wallet)
-
-        todo!()
+        unreachable!();
     }
 
     fn receive_pubkey_manager(&self) -> Arc<dyn PubkeyDerivationManagerTrait> {

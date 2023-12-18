@@ -186,7 +186,7 @@ impl TransactionRecordStore for TransactionStore {
         for tx in transaction_records {
             let folder = self.ensure_folder(tx.binding(), tx.network_id()).await?;
             let filename = folder.join(tx.id().to_hex());
-            write(&filename, tx, None).await?;
+            write(&filename, tx, None, EncryptionKind::XChaCha20Poly1305).await?;
         }
 
         Ok(())
@@ -213,7 +213,7 @@ impl TransactionRecordStore for TransactionStore {
         let path = folder.join(id.to_hex());
         let mut transaction = read(&path, None).await?;
         transaction.note = note;
-        write(&path, &transaction, None).await?;
+        write(&path, &transaction, None, EncryptionKind::XChaCha20Poly1305).await?;
         Ok(())
     }
     async fn store_transaction_metadata(
@@ -227,7 +227,7 @@ impl TransactionRecordStore for TransactionStore {
         let path = folder.join(id.to_hex());
         let mut transaction = read(&path, None).await?;
         transaction.metadata = metadata;
-        write(&path, &transaction, None).await?;
+        write(&path, &transaction, None, EncryptionKind::XChaCha20Poly1305).await?;
         Ok(())
     }
 }
@@ -296,18 +296,20 @@ impl Stream for TransactionRecordStream {
 }
 
 async fn read(path: &Path, secret: Option<&Secret>) -> Result<TransactionRecord> {
-    let data = fs::read_json::<Encryptable<TransactionRecord>>(path).await?;
-    Ok(data.decrypt(secret)?.unwrap())
+    let bytes = fs::read(path).await?;
+    let encryptable = Encryptable::<TransactionRecord>::try_from_slice(bytes.as_slice())?;
+    Ok(encryptable.decrypt(secret)?.unwrap())
 }
 
 fn read_sync(path: &Path, secret: Option<&Secret>) -> Result<TransactionRecord> {
-    let data = fs::read_json_sync::<Encryptable<TransactionRecord>>(path)?;
-    Ok(data.decrypt(secret)?.unwrap())
+    let bytes = fs::read_sync(path)?;
+    let encryptable = Encryptable::<TransactionRecord>::try_from_slice(bytes.as_slice())?;
+    Ok(encryptable.decrypt(secret)?.unwrap())
 }
 
-async fn write(path: &Path, record: &TransactionRecord, secret: Option<&Secret>) -> Result<()> {
+async fn write(path: &Path, record: &TransactionRecord, secret: Option<&Secret>, encryption_kind: EncryptionKind) -> Result<()> {
     let data = if let Some(secret) = secret {
-        Encryptable::from(record.clone()).into_encrypted(secret)?
+        Encryptable::from(record.clone()).into_encrypted(secret, encryption_kind)?
     } else {
         Encryptable::from(record.clone())
     };

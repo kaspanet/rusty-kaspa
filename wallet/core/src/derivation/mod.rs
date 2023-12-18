@@ -184,7 +184,7 @@ impl AddressDerivationManager {
     pub async fn new(
         wallet: &Arc<Wallet>,
         account_kind: AccountKind,
-        keys: &Vec<String>,
+        keys: &ExtendedPublicKeys,
         ecdsa: bool,
         account_index: u64,
         cosigner_index: Option<u32>,
@@ -198,14 +198,16 @@ impl AddressDerivationManager {
         let mut receive_pubkey_managers = vec![];
         let mut change_pubkey_managers = vec![];
         let mut derivators = vec![];
-        for xpub in keys {
+        for xpub in keys.iter() {
             let derivator: Arc<dyn WalletDerivationManagerTrait> = match account_kind.as_ref() {
-                LEGACY_ACCOUNT_KIND => Arc::new(gen0::WalletDerivationManagerV0::from_extended_public_key_str(xpub, cosigner_index)?),
+                LEGACY_ACCOUNT_KIND => {
+                    Arc::new(gen0::WalletDerivationManagerV0::from_extended_public_key(xpub.clone(), cosigner_index)?)
+                }
                 MULTISIG_ACCOUNT_KIND => {
                     let cosigner_index = cosigner_index.ok_or(Error::InvalidAccountKind)?;
-                    Arc::new(gen1::WalletDerivationManager::from_extended_public_key_str(xpub, Some(cosigner_index))?)
+                    Arc::new(gen1::WalletDerivationManager::from_extended_public_key(xpub.clone(), Some(cosigner_index))?)
                 }
-                _ => Arc::new(gen1::WalletDerivationManager::from_extended_public_key_str(xpub, cosigner_index)?),
+                _ => Arc::new(gen1::WalletDerivationManager::from_extended_public_key(xpub.clone(), cosigner_index)?),
             };
 
             receive_pubkey_managers.push(derivator.receive_pubkey_manager());

@@ -2,6 +2,7 @@ use crate::account::Inner;
 use crate::derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
 use crate::imports::*;
 
+pub const BIP32_ACCOUNT_MAGIC: u32 = 0x42503332;
 pub const BIP32_ACCOUNT_VERSION: u32 = 0;
 pub const BIP32_ACCOUNT_KIND: &str = "kaspa-bip32-standard";
 
@@ -19,25 +20,53 @@ impl Factory for Ctor {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct Storable {
-    #[serde(default)]
-    pub version: u32,
-
+    pub xpub_keys: Arc<Vec<ExtendedPublicKeySecp256k1>>,
     pub account_index: u64,
-    pub xpub_keys: Arc<Vec<String>>,
     pub ecdsa: bool,
 }
 
 impl Storable {
-    pub fn new(account_index: u64, xpub_keys: Arc<Vec<String>>, ecdsa: bool) -> Self {
-        Self { version: BIP32_ACCOUNT_VERSION, account_index, xpub_keys, ecdsa }
+    pub fn new(account_index: u64, xpub_keys: Arc<Vec<ExtendedPublicKeySecp256k1>>, ecdsa: bool) -> Self {
+        Self { account_index, xpub_keys, ecdsa }
     }
 
     pub fn try_load(storage: &AccountStorage) -> Result<Self> {
-        let storable = serde_json::from_str::<Storable>(std::str::from_utf8(&storage.serialized)?)?;
-        Ok(storable)
+        Ok(Self::try_from_slice(storage.serialized.as_slice())?)
+    }
+}
+
+impl BorshSerialize for Storable {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        // let xpub_keys = self.xpub_keys.try_to_vec()?;
+        // let account_index = self.account_index.try_to_vec()?;
+        // let ecdsa = self.ecdsa.try_to_vec()?;
+
+        StorageHeader::new(BIP32_ACCOUNT_MAGIC, BIP32_ACCOUNT_VERSION).serialize(writer)?;
+        BorshSerialize::serialize(&self.xpub_keys, writer)?;
+        BorshSerialize::serialize(&self.account_index, writer)?;
+        BorshSerialize::serialize(&self.ecdsa, writer)?;
+
+        // writer.write_all(xpub_keys.as_slice())?;
+        // writer.write_all(account_index.as_slice())?;
+        // writer.write_all(ecdsa.as_slice())?;
+
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for Storable {
+    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
+        let StorageHeader { version: _, .. } =
+            StorageHeader::deserialize(buf)?.try_magic(BIP32_ACCOUNT_MAGIC)?.try_version(BIP32_ACCOUNT_VERSION)?;
+
+        let xpub_keys = BorshDeserialize::deserialize(buf)?;
+        let account_index = BorshDeserialize::deserialize(buf)?;
+        let ecdsa = BorshDeserialize::deserialize(buf)?;
+
+        Ok(Self { xpub_keys, account_index, ecdsa })
     }
 }
 
@@ -45,7 +74,7 @@ pub struct Bip32 {
     inner: Arc<Inner>,
     prv_key_data_id: PrvKeyDataId,
     account_index: u64,
-    xpub_keys: Arc<Vec<String>>,
+    xpub_keys: ExtendedPublicKeys,
     ecdsa: bool,
     derivation: Arc<AddressDerivationManager>,
 }
@@ -56,7 +85,7 @@ impl Bip32 {
         name: Option<String>,
         prv_key_data_id: PrvKeyDataId,
         account_index: u64,
-        xpub_keys: Arc<Vec<String>>,
+        xpub_keys: ExtendedPublicKeys,
         ecdsa: bool,
     ) -> Result<Self> {
         let storable = Storable::new(account_index, xpub_keys.clone(), ecdsa);
@@ -149,7 +178,6 @@ impl Account for Bip32 {
         let serialized = serde_json::to_string(&storable)?;
         let storage = AccountStorage::new(
             BIP32_ACCOUNT_KIND.into(),
-            BIP32_ACCOUNT_VERSION,
             self.id(),
             self.storage_key(),
             self.prv_key_data_id.into(),

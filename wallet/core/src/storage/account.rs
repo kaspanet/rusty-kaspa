@@ -2,13 +2,35 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::storage::PrvKeyDataId;
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+const ACCOUNT_SETTINGS_VERSION: u32 = 0;
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct AccountSettings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub meta: Option<Vec<u8>>,
+}
+
+impl BorshSerialize for AccountSettings {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        BorshSerialize::serialize(&ACCOUNT_SETTINGS_VERSION, writer)?;
+        BorshSerialize::serialize(&self.name, writer)?;
+        BorshSerialize::serialize(&self.meta, writer)?;
+
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for AccountSettings {
+    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
+        let _version: u32 = BorshDeserialize::deserialize(buf)?;
+        let name = BorshDeserialize::deserialize(buf)?;
+        let meta = BorshDeserialize::deserialize(buf)?;
+
+        Ok(Self { name, meta })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -64,6 +86,18 @@ impl TryFrom<AssocPrvKeyDataIds> for Arc<Vec<PrvKeyDataId>> {
     }
 }
 
+impl TryFrom<AssocPrvKeyDataIds> for Option<Arc<Vec<PrvKeyDataId>>> {
+    type Error = Error;
+
+    fn try_from(value: AssocPrvKeyDataIds) -> Result<Self> {
+        match value {
+            AssocPrvKeyDataIds::None => Ok(None),
+            AssocPrvKeyDataIds::Multiple(ids) => Ok(Some(ids)),
+            _ => Err(Error::AssocPrvKeyDataIds("None or Multiple".to_string(), value)),
+        }
+    }
+}
+
 impl AssocPrvKeyDataIds {
     pub fn contains(&self, id: &PrvKeyDataId) -> bool {
         match self {
@@ -74,12 +108,10 @@ impl AssocPrvKeyDataIds {
     }
 }
 
+const ACCOUNT_MAGIC: u32 = 0x4B415341;
 const ACCOUNT_VERSION: u32 = 0;
-#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountStorage {
-    #[serde(default)]
-    pub version: [u32; 2],
-
     pub kind: AccountKind,
     pub id: AccountId,
     pub storage_key: AccountStorageKey,
@@ -91,22 +123,13 @@ pub struct AccountStorage {
 impl AccountStorage {
     pub fn new(
         kind: AccountKind,
-        data_version: u32,
         id: &AccountId,
         storage_key: &AccountStorageKey,
         prv_key_data_ids: AssocPrvKeyDataIds,
         settings: AccountSettings,
         serialized: &[u8],
     ) -> Self {
-        Self {
-            version: [ACCOUNT_VERSION, data_version],
-            id: *id,
-            storage_key: *storage_key,
-            kind,
-            prv_key_data_ids,
-            settings,
-            serialized: serialized.to_vec(),
-        }
+        Self { id: *id, storage_key: *storage_key, kind, prv_key_data_ids, settings, serialized: serialized.to_vec() }
     }
 
     pub fn id(&self) -> &AccountId {
@@ -119,5 +142,35 @@ impl AccountStorage {
 
     pub fn serialized(&self) -> &[u8] {
         &self.serialized
+    }
+}
+
+impl BorshSerialize for AccountStorage {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        StorageHeader::new(ACCOUNT_MAGIC, ACCOUNT_VERSION).serialize(writer)?;
+        BorshSerialize::serialize(&self.kind, writer)?;
+        BorshSerialize::serialize(&self.id, writer)?;
+        BorshSerialize::serialize(&self.storage_key, writer)?;
+        BorshSerialize::serialize(&self.prv_key_data_ids, writer)?;
+        BorshSerialize::serialize(&self.settings, writer)?;
+        BorshSerialize::serialize(&self.serialized, writer)?;
+
+        Ok(())
+    }
+}
+
+impl BorshDeserialize for AccountStorage {
+    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
+        let StorageHeader { version: _, .. } =
+            StorageHeader::deserialize(buf)?.try_magic(ACCOUNT_MAGIC)?.try_version(ACCOUNT_VERSION)?;
+
+        let kind = BorshDeserialize::deserialize(buf)?;
+        let id = BorshDeserialize::deserialize(buf)?;
+        let storage_key = BorshDeserialize::deserialize(buf)?;
+        let prv_key_data_ids = BorshDeserialize::deserialize(buf)?;
+        let settings = BorshDeserialize::deserialize(buf)?;
+        let serialized = BorshDeserialize::deserialize(buf)?;
+
+        Ok(Self { kind, id, storage_key, prv_key_data_ids, settings, serialized })
     }
 }

@@ -5,6 +5,7 @@
 
 pub use crate::account::{Account, AccountKind};
 pub use crate::api::*;
+pub use crate::encryption::EncryptionKind;
 pub use crate::events::{Events, SyncState};
 pub use crate::rpc::{ConnectOptions, ConnectStrategy};
 pub use crate::secret::Secret;

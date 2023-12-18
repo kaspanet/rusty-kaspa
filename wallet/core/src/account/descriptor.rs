@@ -5,7 +5,6 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Address;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AccountDescriptor {
@@ -63,7 +62,7 @@ pub enum AccountDescriptorValue {
     String(String),
     Bool(bool),
     AddressDerivationMeta(AddressDerivationMeta),
-    XPubKeys(Arc<Vec<String>>),
+    XPubKeys(ExtendedPublicKeys),
     Json(String),
 }
 
@@ -97,8 +96,8 @@ impl From<&str> for AccountDescriptorValue {
     }
 }
 
-impl From<Arc<Vec<String>>> for AccountDescriptorValue {
-    fn from(value: Arc<Vec<String>>) -> Self {
+impl From<ExtendedPublicKeys> for AccountDescriptorValue {
+    fn from(value: ExtendedPublicKeys) -> Self {
         Self::XPubKeys(value)
     }
 }

@@ -55,8 +55,7 @@ async fn export_multisig_account(ctx: Arc<KaspaCli>, account: Arc<MultiSig>) -> 
                 tprintln!(ctx, "");
 
                 let xpub_key = prv_key_data.create_xpub(None, MULTISIG_ACCOUNT_KIND.into(), 0).await?; // todo it can be done concurrently
-                let xpub_prefix = kaspa_bip32::Prefix::XPUB;
-                generated_xpub_keys.push(xpub_key.to_string(Some(xpub_prefix)));
+                generated_xpub_keys.push(xpub_key);
             }
 
             let additional = account.xpub_keys().iter().filter(|xpub| !generated_xpub_keys.contains(xpub));

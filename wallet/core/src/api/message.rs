@@ -172,14 +172,14 @@ pub struct WalletExportRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletExportResponse {
-    pub wallet_data: String,
+    pub wallet_data: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletImportRequest {
     pub wallet_secret: Secret,
-    pub wallet_data: String,
+    pub wallet_data: Vec<u8>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

@@ -15,7 +15,6 @@ use xxhash_rust::xxh3::xxh3_64;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use crate::account::AccountKind;
-use crate::encryption::Encryptable;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd, BorshSerialize, BorshDeserialize)]
 pub struct KeyDataId(pub(crate) [u8; 8]);
@@ -87,32 +86,6 @@ impl Zeroize for KeyDataId {
 pub type PrvKeyDataId = KeyDataId;
 pub type PrvKeyDataMap = HashMap<PrvKeyDataId, PrvKeyData>;
 
-/// Indicates key capabilities in the context of Kaspa
-/// core (kaspa-wallet) or legacy (KDX/PWA) wallets.
-/// The setting is based on the type of key import.
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum KeyCaps {
-    // 24 word mnemonic, bip39 seed accounts
-    KaspaCore,
-    // 12 word mnemonic (legacy), keypair
-    Legacy,
-    // deprecated - to be removed
-    MultipleAccounts,
-    SingleAccount,
-}
-
-impl KeyCaps {
-    pub fn from_mnemonic_phrase(phrase: &str) -> Self {
-        let data = phrase.split_whitespace().collect::<Vec<_>>();
-        if data.len() == 12 {
-            KeyCaps::Legacy
-        } else {
-            KeyCaps::KaspaCore
-        }
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "key-variant", content = "key-data")]
@@ -149,22 +122,6 @@ impl PrvKeyVariant {
         let s = self.get_string();
         PrvKeyDataId::new(xxh3_64(s.as_bytes()))
     }
-
-    // pub fn get_caps(&self) -> KeyCaps {
-    //     match self {
-    //         PrvKeyVariant::Mnemonic(phrase) => { KeyCaps::from_mnemonic_phrase(phrase) },
-    //         PrvKeyVariant::Bip39Seed(_) => { KeyCaps::MultipleAccounts },
-    //         PrvKeyVariant::ExtendedPrivateKey(_) => { KeyCaps::SingleAccount },
-    //     }
-    // }
-
-    // pub fn get_as_bytes(&self) -> Zeroizing<&[u8]> {
-    //     match self {
-    //         PrvKeyVariant::Mnemonic(s) => Zeroizing::new(s.clone()),
-    //         PrvKeyVariant::ExtendedPrivateKey(s) => Zeroizing::new(s.clone()),
-    //         PrvKeyVariant::Seed(s) => Zeroizing::new(s.clone()),
-    //     }
-    // }
 }
 
 impl Zeroize for PrvKeyVariant {
@@ -264,7 +221,6 @@ impl ZeroizeOnDrop for PrvKeyDataPayload {}
 pub struct PrvKeyData {
     pub id: PrvKeyDataId,
     pub name: Option<String>,
-    pub key_caps: KeyCaps,
     pub payload: Encryptable<PrvKeyDataPayload>,
 }
 
@@ -294,19 +250,15 @@ impl PrvKeyData {
         let payload = self.payload.decrypt(payment_secret)?;
         Ok(payload.as_variant())
     }
-}
 
-impl TryFrom<(Mnemonic, Option<&Secret>)> for PrvKeyData {
-    type Error = Error;
-    fn try_from((mnemonic, payment_secret): (Mnemonic, Option<&Secret>)) -> Result<Self> {
-        let account_caps = KeyCaps::from_mnemonic_phrase(mnemonic.phrase());
+    pub fn try_from_mnemonic(mnemonic: Mnemonic, payment_secret: Option<&Secret>, encryption_kind: EncryptionKind) -> Result<Self> {
         let key_data_payload = PrvKeyDataPayload::try_new_with_mnemonic(mnemonic)?;
         let key_data_payload_id = key_data_payload.id();
         let key_data_payload = Encryptable::Plain(key_data_payload);
 
-        let mut prv_key_data = PrvKeyData::new(key_data_payload_id, None, account_caps, key_data_payload);
+        let mut prv_key_data = PrvKeyData::new(key_data_payload_id, None, key_data_payload);
         if let Some(payment_secret) = payment_secret {
-            prv_key_data.encrypt(payment_secret)?;
+            prv_key_data.encrypt(payment_secret, encryption_kind)?;
         }
 
         Ok(prv_key_data)
@@ -334,56 +286,60 @@ impl Drop for PrvKeyData {
 }
 
 impl PrvKeyData {
-    pub fn new(id: PrvKeyDataId, name: Option<String>, key_caps: KeyCaps, payload: Encryptable<PrvKeyDataPayload>) -> Self {
-        Self { id, payload, key_caps, name }
+    pub fn new(id: PrvKeyDataId, name: Option<String>, payload: Encryptable<PrvKeyDataPayload>) -> Self {
+        Self { id, payload, name }
     }
 
-    pub fn try_new_from_mnemonic(mnemonic: Mnemonic, payment_secret: Option<&Secret>) -> Result<Self> {
-        let key_caps = KeyCaps::from_mnemonic_phrase(mnemonic.phrase());
+    pub fn try_new_from_mnemonic(
+        mnemonic: Mnemonic,
+        payment_secret: Option<&Secret>,
+        encryption_kind: EncryptionKind,
+    ) -> Result<Self> {
         let payload = PrvKeyDataPayload::try_new_with_mnemonic(mnemonic)?;
-        let mut prv_key_data = Self { id: payload.id(), payload: Encryptable::Plain(payload), key_caps, name: None };
+        let mut prv_key_data = Self { id: payload.id(), payload: Encryptable::Plain(payload), name: None };
         if let Some(payment_secret) = payment_secret {
-            prv_key_data.encrypt(payment_secret)?;
+            prv_key_data.encrypt(payment_secret, encryption_kind)?;
         }
 
         Ok(prv_key_data)
     }
 
-    pub fn try_new_from_secret_key(secret_key: SecretKey, payment_secret: Option<&Secret>) -> Result<Self> {
-        let key_caps = KeyCaps::Legacy;
+    pub fn try_new_from_secret_key(
+        secret_key: SecretKey,
+        payment_secret: Option<&Secret>,
+        encryption_kind: EncryptionKind,
+    ) -> Result<Self> {
         let payload = PrvKeyDataPayload::try_new_with_secret_key(secret_key)?;
-        let mut prv_key_data = Self { id: payload.id(), payload: Encryptable::Plain(payload), key_caps, name: None };
+        let mut prv_key_data = Self { id: payload.id(), payload: Encryptable::Plain(payload), name: None };
         if let Some(payment_secret) = payment_secret {
-            prv_key_data.encrypt(payment_secret)?;
+            prv_key_data.encrypt(payment_secret, encryption_kind)?;
         }
 
         Ok(prv_key_data)
     }
 
-    pub fn encrypt(&mut self, secret: &Secret) -> Result<()> {
-        self.payload = self.payload.into_encrypted(secret)?;
+    pub fn encrypt(&mut self, secret: &Secret, encryption_kind: EncryptionKind) -> Result<()> {
+        self.payload = self.payload.into_encrypted(secret, encryption_kind)?;
         Ok(())
     }
 }
 
-// TODO: wasm bindgen
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct PrvKeyDataInfo {
     pub id: PrvKeyDataId,
     pub name: Option<String>,
-    pub key_caps: KeyCaps,
     pub is_encrypted: bool,
 }
 
 impl From<&PrvKeyData> for PrvKeyDataInfo {
     fn from(data: &PrvKeyData) -> Self {
-        Self::new(data.id, data.name.clone(), data.key_caps.clone(), data.payload.is_encrypted())
+        Self::new(data.id, data.name.clone(), data.payload.is_encrypted())
     }
 }
 
 impl PrvKeyDataInfo {
-    pub fn new(id: PrvKeyDataId, name: Option<String>, key_caps: KeyCaps, is_encrypted: bool) -> Self {
-        Self { id, name, key_caps, is_encrypted }
+    pub fn new(id: PrvKeyDataId, name: Option<String>, is_encrypted: bool) -> Self {
+        Self { id, name, is_encrypted }
     }
 
     pub fn is_encrypted(&self) -> bool {
@@ -397,10 +353,6 @@ impl PrvKeyDataInfo {
             self.id.to_hex()[0..16].to_string()
         }
     }
-
-    // pub fn requires_wallet_passphrase(&self) -> bool {
-    //     self.key_caps == KeyCaps::SingleAccount
-    // }
 
     pub fn requires_bip39_passphrase(&self) -> bool {
         self.is_encrypted
