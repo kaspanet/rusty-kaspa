@@ -264,6 +264,9 @@ pub enum Error {
 
     #[error("Invalid extended public key '{0}': {1}")]
     InvalidExtendedPublicKey(String, BIP32Error),
+
+    #[error("Missing DAA score while processing '{0}' (this may be a node connection issue)")]
+    MissingDaaScore(&'static str),
 }
 
 impl From<Aborted> for Error {

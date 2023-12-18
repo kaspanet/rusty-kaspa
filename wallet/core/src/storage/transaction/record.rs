@@ -219,10 +219,14 @@ impl TransactionRecord {
         }
     }
 
-    pub fn new_outgoing(utxo_context: &UtxoContext, outgoing_tx: &OutgoingTransaction, accepted_daa_score: Option<u64>) -> Self {
+    pub fn new_outgoing(
+        utxo_context: &UtxoContext,
+        outgoing_tx: &OutgoingTransaction,
+        accepted_daa_score: Option<u64>,
+    ) -> Result<Self> {
         let binding = Binding::from(utxo_context.binding());
         let block_daa_score =
-            utxo_context.processor().current_daa_score().expect("TransactionRecord::new_outgoing() - missing daa score");
+            utxo_context.processor().current_daa_score().ok_or(Error::MissingDaaScore("TransactionRecord::new_outgoing()"))?;
 
         let utxo_entries = outgoing_tx.utxo_entries().into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
 
@@ -252,7 +256,7 @@ impl TransactionRecord {
             utxo_entries,
         };
 
-        TransactionRecord {
+        Ok(TransactionRecord {
             id,
             unixtime: Some(unixtime),
             value: payment_value.unwrap_or(*aggregate_input_value),
@@ -262,13 +266,13 @@ impl TransactionRecord {
             network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
             metadata: None,
             note: None,
-        }
+        })
     }
 
-    pub fn new_batch(utxo_context: &UtxoContext, outgoing_tx: &OutgoingTransaction, accepted_daa_score: Option<u64>) -> Self {
+    pub fn new_batch(utxo_context: &UtxoContext, outgoing_tx: &OutgoingTransaction, accepted_daa_score: Option<u64>) -> Result<Self> {
         let binding = Binding::from(utxo_context.binding());
         let block_daa_score =
-            utxo_context.processor().current_daa_score().expect("TransactionRecord::new_outgoing() - missing daa score");
+            utxo_context.processor().current_daa_score().ok_or(Error::MissingDaaScore("TransactionRecord::new_batch()"))?;
 
         let utxo_entries = outgoing_tx.utxo_entries().into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
 
@@ -298,7 +302,7 @@ impl TransactionRecord {
             utxo_entries,
         };
 
-        TransactionRecord {
+        Ok(TransactionRecord {
             id,
             unixtime: Some(unixtime),
             value: payment_value.unwrap_or(*aggregate_input_value),
@@ -308,7 +312,7 @@ impl TransactionRecord {
             network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
             metadata: None,
             note: None,
-        }
+        })
     }
 
     pub fn new_transfer_incoming(
@@ -316,10 +320,12 @@ impl TransactionRecord {
         outgoing_tx: &OutgoingTransaction,
         accepted_daa_score: Option<u64>,
         utxos: &[UtxoEntryReference],
-    ) -> Self {
+    ) -> Result<Self> {
         let binding = Binding::from(utxo_context.binding());
-        let block_daa_score =
-            utxo_context.processor().current_daa_score().expect("TransactionRecord::new_outgoing() - missing daa score");
+        let block_daa_score = utxo_context
+            .processor()
+            .current_daa_score()
+            .ok_or(Error::MissingDaaScore("TransactionRecord::new_transfer_incoming()"))?;
         let utxo_entries = utxos.iter().map(UtxoRecord::from).collect::<Vec<_>>();
 
         let unixtime = unixtime_as_millis_u64();
@@ -348,7 +354,7 @@ impl TransactionRecord {
             utxo_entries,
         };
 
-        TransactionRecord {
+        Ok(TransactionRecord {
             id,
             unixtime: Some(unixtime),
             value: payment_value.unwrap_or(*aggregate_input_value),
@@ -358,7 +364,7 @@ impl TransactionRecord {
             network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
             metadata: None,
             note: None,
-        }
+        })
     }
 
     pub fn new_transfer_outgoing(
@@ -366,10 +372,12 @@ impl TransactionRecord {
         outgoing_tx: &OutgoingTransaction,
         accepted_daa_score: Option<u64>,
         utxos: &[UtxoEntryReference],
-    ) -> Self {
+    ) -> Result<Self> {
         let binding = Binding::from(utxo_context.binding());
-        let block_daa_score =
-            utxo_context.processor().current_daa_score().expect("TransactionRecord::new_outgoing() - missing daa score");
+        let block_daa_score = utxo_context
+            .processor()
+            .current_daa_score()
+            .ok_or(Error::MissingDaaScore("TransactionRecord::new_transfer_outgoing()"))?;
         let utxo_entries = utxos.iter().map(UtxoRecord::from).collect::<Vec<_>>();
 
         let unixtime = unixtime_as_millis_u64();
@@ -398,7 +406,7 @@ impl TransactionRecord {
             utxo_entries,
         };
 
-        TransactionRecord {
+        Ok(TransactionRecord {
             id,
             unixtime: Some(unixtime),
             value: payment_value.unwrap_or(*aggregate_input_value),
@@ -408,7 +416,7 @@ impl TransactionRecord {
             network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
             metadata: None,
             note: None,
-        }
+        })
     }
 
     pub fn new_change(
@@ -416,10 +424,10 @@ impl TransactionRecord {
         outgoing_tx: &OutgoingTransaction,
         accepted_daa_score: Option<u64>,
         utxos: &[UtxoEntryReference],
-    ) -> Self {
+    ) -> Result<Self> {
         let binding = Binding::from(utxo_context.binding());
         let block_daa_score =
-            utxo_context.processor().current_daa_score().expect("TransactionRecord::new_outgoing() - missing daa score");
+            utxo_context.processor().current_daa_score().ok_or(Error::MissingDaaScore("TransactionRecord::new_change()"))?;
         let utxo_entries = utxos.iter().map(UtxoRecord::from).collect::<Vec<_>>();
 
         let unixtime = unixtime_as_millis_u64();
@@ -446,7 +454,7 @@ impl TransactionRecord {
             utxo_entries,
         };
 
-        TransactionRecord {
+        Ok(TransactionRecord {
             id,
             unixtime: Some(unixtime),
             value: *change_output_value,
@@ -456,7 +464,7 @@ impl TransactionRecord {
             network_id: utxo_context.processor().network_id().expect("network expected for transaction record generation"),
             metadata: None,
             note: None,
-        }
+        })
     }
 }
 

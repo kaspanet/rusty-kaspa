@@ -148,7 +148,10 @@ pub enum Events {
     /// [`UtxoProcessor`](crate::utxo::processor::UtxoProcessor) has shut down.
     UtxoProcStop,
     /// Occurs when UtxoProcessor has failed to connect to the node
-    /// for an unknown reason. (general error trap)
+    /// for an unknown reason. Can also occur during general unexpected
+    /// UtxoProcessor processing errors, such as node disconnection
+    /// then submitting an outgoing transaction. This is a general
+    /// error trap for logging purposes and is safe to ignore.
     UtxoProcError {
         message: String,
     },

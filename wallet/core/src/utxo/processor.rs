@@ -590,9 +590,10 @@ impl UtxoProcessor {
                     notification = notification_receiver.recv().fuse() => {
                         match notification {
                             Ok(notification) => {
-                                this.handle_notification(notification).await.unwrap_or_else(|err| {
+                                if let Err(err) = this.handle_notification(notification).await {
+                                    this.notify(Events::UtxoProcError { message: err.to_string() }).await.ok();
                                     log_error!("error while handling notification: {err}");
-                                });
+                                }
                             }
                             Err(err) => {
                                 log_error!("RPC notification channel error: {err}");
