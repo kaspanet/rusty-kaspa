@@ -202,10 +202,14 @@ impl BlockEventLogger {
                     (0, 0, 0) => {}
                     (1, 0, 0) => info!("Unorphaned block {}", summary.unorphan()),
                     (n, 0, 0) => info!("Unorphaned {} block(s) ...{}", n, summary.unorphan()),
+                    (0, m, 0) => info!("Orphaned {} block(s) ...{}", m, summary.orphan()),
                     (0, m, l) => info!("Orphaned {} block(s) ...{} and queued {} missing roots", m, summary.orphan(), l),
+                    (n, m, 0) => {
+                        info!("Unorphaned {} block(s) ...{}, orphaned {} block(s) ...{}", n, summary.unorphan(), m, summary.orphan(),)
+                    }
                     (n, m, l) => {
                         info!(
-                            "Unorphaned {} block(s) ...{},  orphaned {} block(s) ...{} and queued {} missing roots",
+                            "Unorphaned {} block(s) ...{}, orphaned {} block(s) ...{} and queued {} missing roots",
                             n,
                             summary.unorphan(),
                             m,
