@@ -13,11 +13,12 @@ pub struct Payload {
     pub prv_key_data: Vec<PrvKeyData>,
     pub accounts: Vec<AccountStorage>,
     pub address_book: Vec<AddressBookEntry>,
+    pub encrypt_transactions: Option<EncryptionKind>,
 }
 
 impl Payload {
     pub fn new(prv_key_data: Vec<PrvKeyData>, accounts: Vec<AccountStorage>, address_book: Vec<AddressBookEntry>) -> Self {
-        Self { prv_key_data, accounts, address_book }
+        Self { prv_key_data, accounts, address_book, encrypt_transactions: None }
     }
 }
 
@@ -57,6 +58,7 @@ impl BorshSerialize for Payload {
         BorshSerialize::serialize(&self.prv_key_data, writer)?;
         BorshSerialize::serialize(&self.accounts, writer)?;
         BorshSerialize::serialize(&self.address_book, writer)?;
+        BorshSerialize::serialize(&self.encrypt_transactions, writer)?;
 
         Ok(())
     }
@@ -69,8 +71,9 @@ impl BorshDeserialize for Payload {
         let prv_key_data = BorshDeserialize::deserialize(buf)?;
         let accounts = BorshDeserialize::deserialize(buf)?;
         let address_book = BorshDeserialize::deserialize(buf)?;
+        let encrypt_transactions = BorshDeserialize::deserialize(buf)?;
 
-        Ok(Self { prv_key_data, accounts, address_book })
+        Ok(Self { prv_key_data, accounts, address_book, encrypt_transactions })
     }
 }
 

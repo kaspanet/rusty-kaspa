@@ -2,22 +2,14 @@
 //! [`Wallet`] - a Kaspa wallet runtime.
 //!
 
-use crate::account::kind::AccountKind;
 use crate::account::ScanNotifier;
+use crate::factory::try_load_account;
 use crate::imports::*;
-use crate::result::Result;
-use crate::secret::Secret;
 use crate::settings::{SettingsStore, WalletSettings};
 use crate::storage::interface::{OpenArgs, StorageDescriptor};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
-use crate::storage::{Interface, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, TransactionRecord, WalletDescriptor};
-use crate::utxo::UtxoProcessor;
 use crate::wallet::maps::ActiveAccountMap;
-use crate::{derivation::gen0::import::*, derivation::gen1::import::*};
-use futures::future::join_all;
-use futures::stream::StreamExt;
-use futures::{select, FutureExt, Stream};
 use kaspa_bip32::Prefix as KeyPrefix;
 use kaspa_bip32::{Language, Mnemonic, WordCount};
 use kaspa_notify::{
@@ -26,9 +18,7 @@ use kaspa_notify::{
 };
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
-use std::sync::Arc;
 use workflow_core::task::spawn;
-use workflow_log::log_error;
 
 pub mod api;
 pub mod args;
@@ -361,28 +351,6 @@ impl Wallet {
         Ok(())
     }
 
-    // // /// Loads a wallet from storage. Accounts are activated by this call.
-    // pub async fn open_and_activate(self: &Arc<Wallet>, secret: Secret, name: Option<String>) -> Result<()> {
-    //     let name = name.or_else(|| self.settings().get(WalletSettings::Wallet));
-    //     let name = Some(make_filename(&name, &None));
-    //     let ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(secret.clone()));
-    //     self.store().open(&ctx, OpenArgs::new(name)).await?;
-
-    //     // reset current state only after we have successfully opened another wallet
-    //     self.reset(true).await?;
-
-    //     self.initialize_all_stored_accounts(secret).await?;
-    //     let hint = self.store().get_user_hint().await?;
-    //     self.notify(Events::WalletHint { hint }).await?;
-    //     self.notify(Events::WalletOpen).await?;
-    //     Ok(())
-    // }
-
-    // async fn initialize_all_stored_accounts(self: &Arc<Wallet>, secret: Secret) -> Result<()> {
-    //     self.initialize_accounts(None, secret).await?.try_collect::<Vec<_>>().await?;
-    //     Ok(())
-    // }
-
     pub async fn get_prv_key_data(&self, wallet_secret: &Secret, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>> {
         self.inner.store.as_prv_key_data_store()?.load_key_data(wallet_secret, id).await
     }
@@ -490,10 +458,6 @@ impl Wallet {
         self.rpc_api().stop_notify(self.listener_id(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())
     }
-
-    // pub async fn ping(&self) -> bool {
-    //     self.rpc_api().ping().await.is_ok()
-    // }
 
     pub async fn broadcast(&self) -> Result<()> {
         Ok(())
@@ -1089,6 +1053,8 @@ impl Wallet {
         payment_secret: Option<&Secret>,
         notifier: Option<ScanNotifier>,
     ) -> Result<Arc<dyn Account>> {
+        use crate::derivation::gen0::import::load_v0_keydata;
+
         let notifier = notifier.as_ref();
         let keydata = load_v0_keydata(import_secret).await?;
 
@@ -1135,6 +1101,8 @@ impl Wallet {
     }
 
     pub async fn import_gen1_keydata(self: &Arc<Wallet>, secret: Secret) -> Result<()> {
+        use crate::derivation::gen1::import::load_v1_keydata;
+
         let _keydata = load_v1_keydata(&secret).await?;
 
         Ok(())

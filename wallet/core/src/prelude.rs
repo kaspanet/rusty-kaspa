@@ -3,7 +3,8 @@
 //! Contains most commonly used imports.
 //!
 
-pub use crate::account::{Account, AccountDescriptor, AccountKind};
+pub use crate::account::descriptor::AccountDescriptor;
+pub use crate::account::{Account, AccountKind};
 pub use crate::api::*;
 pub use crate::deterministic::{AccountId, AccountStorageKey};
 pub use crate::encryption::EncryptionKind;

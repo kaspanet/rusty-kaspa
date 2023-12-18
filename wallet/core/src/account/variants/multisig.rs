@@ -10,6 +10,14 @@ pub struct Ctor {}
 
 #[async_trait]
 impl Factory for Ctor {
+    fn name(&self) -> String {
+        "multisig".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Kaspa Core Multi-Signature Account".to_string()
+    }
+
     async fn try_load(
         &self,
         wallet: &Arc<Wallet>,

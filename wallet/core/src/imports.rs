@@ -10,7 +10,7 @@ pub use crate::deterministic::*;
 pub use crate::encryption::{Encryptable, EncryptionKind};
 pub use crate::error::Error;
 pub use crate::events::{Events, SyncState};
-pub use crate::factory::{factories, try_load_account, Factory};
+pub use crate::factory::{factories, Factory};
 pub use crate::result::Result;
 pub use crate::rpc::Rpc;
 pub use crate::rpc::{DynRpcApi, RpcCtl};

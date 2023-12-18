@@ -10,6 +10,14 @@ pub struct Ctor {}
 
 #[async_trait]
 impl Factory for Ctor {
+    fn name(&self) -> String {
+        "bip32/bip44".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Kaspa Core HD Wallet Account".to_string()
+    }
+
     async fn try_load(
         &self,
         wallet: &Arc<Wallet>,

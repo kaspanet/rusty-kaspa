@@ -7,6 +7,28 @@ pub const KEYPAIR_ACCOUNT_MAGIC: u32 = 0x50414952;
 pub const KEYPAIR_ACCOUNT_VERSION: u32 = 0;
 pub const KEYPAIR_ACCOUNT_KIND: &str = "kaspa-keypair-standard";
 
+pub struct Ctor {}
+
+#[async_trait]
+impl Factory for Ctor {
+    fn name(&self) -> String {
+        "Keypair".to_string()
+    }
+
+    fn description(&self) -> String {
+        "Secp265k1 Keypair Account".to_string()
+    }
+
+    async fn try_load(
+        &self,
+        wallet: &Arc<Wallet>,
+        storage: &AccountStorage,
+        meta: Option<Arc<AccountMetadata>>,
+    ) -> Result<Arc<dyn Account>> {
+        Ok(Arc::new(Keypair::try_load(wallet, storage, meta).await?))
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub struct Storable {

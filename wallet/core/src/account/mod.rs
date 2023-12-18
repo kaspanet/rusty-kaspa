@@ -1,10 +1,6 @@
 pub mod descriptor;
 pub mod kind;
 pub mod variants;
-
-pub use descriptor::*;
-use kaspa_bip32::ChildNumber;
-use kaspa_bip32::ExtendedPrivateKey;
 pub use kind::*;
 pub use variants::*;
 
@@ -12,20 +8,16 @@ use crate::derivation::build_derivate_paths;
 use crate::derivation::gen0;
 use crate::derivation::AddressDerivationManagerTrait;
 use crate::imports::*;
-use crate::result::Result;
-use crate::secret::Secret;
 use crate::storage::account::AccountSettings;
 use crate::storage::AccountMetadata;
 use crate::storage::{PrvKeyData, PrvKeyDataId};
 use crate::tx::PaymentOutput;
 use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, PaymentDestination, PendingTransaction, Signer};
-use crate::utxo::{UtxoContext, UtxoContextBinding};
-use kaspa_bip32::PrivateKey;
-use kaspa_consensus_wasm::UtxoEntryReference;
-use separator::Separatable;
-use workflow_core::abortable::Abortable;
-
 use crate::utxo::balance::{AtomicBalance, BalanceStrings};
+use crate::utxo::UtxoContextBinding;
+use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, PrivateKey};
+use kaspa_consensus_wasm::UtxoEntryReference;
+use workflow_core::abortable::Abortable;
 
 pub const DEFAULT_AMOUNT_PADDING: usize = 19;
 
