@@ -131,7 +131,7 @@ pub struct FlowContextInner {
     transactions_spread: AsyncRwLock<TransactionsSpread>,
     shared_transaction_requests: Arc<Mutex<HashMap<TransactionId, RequestScopeMetadata>>>,
     is_ibd_running: Arc<AtomicBool>,
-    ibd_peer_key: Arc<RwLock<Option<PeerKey>>>,
+    ibd_metadata: Arc<RwLock<Option<IbdMetadata>>>,
     pub address_manager: Arc<Mutex<AddressManager>>,
     connection_manager: RwLock<Option<Arc<ConnectionManager>>>,
     mining_manager: MiningManagerProxy,
@@ -143,6 +143,7 @@ pub struct FlowContextInner {
 
     // Orphan parameters
     orphan_resolution_range: u32,
+    max_orphans: usize,
 }
 
 #[derive(Clone)]
@@ -159,6 +160,14 @@ impl Drop for IbdRunningGuard {
         let result = self.indicator.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst);
         assert!(result.is_ok())
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct IbdMetadata {
+    /// The peer from which current IBD is syncing from
+    peer: PeerKey,
+    /// The DAA score of the relay block which triggered the current IBD
+    daa_score: u64,
 }
 
 pub struct RequestScopeMetadata {
@@ -224,7 +233,7 @@ impl FlowContext {
                 transactions_spread: AsyncRwLock::new(TransactionsSpread::new(hub.clone())),
                 shared_transaction_requests: Arc::new(Mutex::new(HashMap::new())),
                 is_ibd_running: Default::default(),
-                ibd_peer_key: Default::default(),
+                ibd_metadata: Default::default(),
                 hub,
                 address_manager,
                 connection_manager: Default::default(),
@@ -233,6 +242,7 @@ impl FlowContext {
                 notification_root,
                 accepted_block_logger: if config.bps() > 1 { Some(AcceptedBlockLogger::new(config.bps() as usize)) } else { None },
                 orphan_resolution_range,
+                max_orphans,
                 config,
             }),
         }
@@ -244,6 +254,10 @@ impl FlowContext {
 
     pub fn orphan_resolution_range(&self) -> u32 {
         self.orphan_resolution_range
+    }
+
+    pub fn max_orphans(&self) -> usize {
+        self.max_orphans
     }
 
     pub fn start_async_services(&self) {
@@ -276,9 +290,9 @@ impl FlowContext {
         &self.mining_manager
     }
 
-    pub fn try_set_ibd_running(&self, peer_key: PeerKey) -> Option<IbdRunningGuard> {
+    pub fn try_set_ibd_running(&self, peer: PeerKey, relay_daa_score: u64) -> Option<IbdRunningGuard> {
         if self.is_ibd_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-            self.ibd_peer_key.write().replace(peer_key);
+            self.ibd_metadata.write().replace(IbdMetadata { peer, daa_score: relay_daa_score });
             Some(IbdRunningGuard { indicator: self.is_ibd_running.clone() })
         } else {
             None
@@ -289,9 +303,19 @@ impl FlowContext {
         self.is_ibd_running.load(Ordering::SeqCst)
     }
 
+    /// If IBD is running, returns the IBD peer we are syncing from
     pub fn ibd_peer_key(&self) -> Option<PeerKey> {
         if self.is_ibd_running() {
-            *self.ibd_peer_key.read()
+            self.ibd_metadata.read().map(|md| md.peer)
+        } else {
+            None
+        }
+    }
+
+    /// If IBD is running, returns the DAA score of the relay block which triggered it
+    pub fn ibd_relay_daa_score(&self) -> Option<u64> {
+        if self.is_ibd_running() {
+            self.ibd_metadata.read().map(|md| md.daa_score)
         } else {
             None
         }

@@ -18,13 +18,19 @@ use std::{collections::VecDeque, sync::Arc};
 
 pub struct RelayInvMessage {
     hash: Hash,
-    is_indirect: bool,
+
+    /// Indicates whether this inv is an orphan root of a previously relayed descendent
+    /// (i.e. this inv was indirectly queued)
+    is_orphan_root: bool,
+
+    /// Indicates whether this inv is already known to be within orphan resolution range
+    known_within_range: bool,
 }
 
 /// Encapsulates an incoming invs route which also receives data locally
 pub struct TwoWayIncomingRoute {
     incoming_route: SharedIncomingRoute,
-    indirect_invs: VecDeque<Hash>,
+    indirect_invs: VecDeque<RelayInvMessage>,
 }
 
 impl TwoWayIncomingRoute {
@@ -32,17 +38,18 @@ impl TwoWayIncomingRoute {
         Self { incoming_route, indirect_invs: VecDeque::new() }
     }
 
-    pub fn enqueue_indirect_invs<I: IntoIterator<Item = Hash>>(&mut self, iter: I) {
-        self.indirect_invs.extend(iter)
+    pub fn enqueue_indirect_invs<I: IntoIterator<Item = Hash>>(&mut self, iter: I, known_within_range: bool) {
+        // All indirect invs are orphan roots; not all are known to be within orphan resolution range
+        self.indirect_invs.extend(iter.into_iter().map(|h| RelayInvMessage { hash: h, is_orphan_root: true, known_within_range }))
     }
 
     pub async fn dequeue(&mut self) -> Result<RelayInvMessage, ProtocolError> {
         if let Some(inv) = self.indirect_invs.pop_front() {
-            Ok(RelayInvMessage { hash: inv, is_indirect: true })
+            Ok(inv)
         } else {
             let msg = dequeue!(self.incoming_route, Payload::InvRelayBlock)?;
             let inv = msg.try_into()?;
-            Ok(RelayInvMessage { hash: inv, is_indirect: false })
+            Ok(RelayInvMessage { hash: inv, is_orphan_root: false, known_within_range: false })
         }
     }
 }
@@ -104,7 +111,7 @@ impl HandleRelayInvsFlow {
                 OrphanOutput::NoRoots | OrphanOutput::NotOrphan => continue, // Existing orphan w/o roots
                 OrphanOutput::Roots(roots) => {
                     // Known orphan with roots to enqueue
-                    self.enqueue_orphan_roots(inv.hash, roots);
+                    self.enqueue_orphan_roots(inv.hash, roots, inv.known_within_range);
                     continue;
                 }
             }
@@ -135,7 +142,7 @@ impl HandleRelayInvsFlow {
 
             // We do not apply the skip heuristic below if inv was queued indirectly (as an orphan root), since
             // that means the process started by a proper and relevant relay block
-            if !inv.is_indirect && !broadcast {
+            if !inv.is_orphan_root && !broadcast {
                 debug!(
                     "Relay block {} has lower blue work than virtual's merge depth root ({} <= {}), hence we are skipping it",
                     inv.hash, block.header.blue_work, blue_work_threshold
@@ -149,7 +156,7 @@ impl HandleRelayInvsFlow {
                 Ok(_) => {}
                 Err(RuleError::MissingParents(missing_parents)) => {
                     debug!("Block {} is orphan and has missing parents: {:?}", block.hash(), missing_parents);
-                    if self.process_orphan(&session, block.clone(), inv.is_indirect).await? {
+                    if self.process_orphan(&session, block.clone(), inv.known_within_range).await? {
                         continue;
                     } else {
                         // Block is actually not an orphan, retrying
@@ -186,13 +193,13 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    fn enqueue_orphan_roots(&mut self, orphan: Hash, roots: Vec<Hash>) {
+    fn enqueue_orphan_roots(&mut self, orphan: Hash, roots: Vec<Hash>, known_within_range: bool) {
         if self.ctx.is_log_throttled() {
             debug!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
         } else {
             info!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
         }
-        self.invs_route.enqueue_indirect_invs(roots)
+        self.invs_route.enqueue_indirect_invs(roots, known_within_range)
     }
 
     async fn request_block(
@@ -225,24 +232,31 @@ impl HandleRelayInvsFlow {
         &mut self,
         consensus: &ConsensusProxy,
         block: Block,
-        is_indirect_inv: bool,
+        mut known_within_range: bool,
     ) -> Result<bool, ProtocolError> {
         // Return if the block has been orphaned from elsewhere already
         if self.ctx.is_known_orphan(block.hash()).await {
             return Ok(true);
         }
 
+        // TODO: explain the rule system
+        let mut should_orphan = known_within_range || self.check_orphan_ibd_conditions(block.header.daa_score);
+        if !should_orphan {
+            known_within_range = self.check_orphan_resolution_range(consensus, block.hash(), self.msg_route.id()).await?;
+            should_orphan = known_within_range;
+        }
+
         // Add the block to the orphan pool if it's within orphan resolution range.
         // If the block is indirect it means one of its descendants was already is resolution range, so
         // we can avoid the query.
-        if is_indirect_inv || self.check_orphan_resolution_range(consensus, block.hash(), self.msg_route.id()).await? {
+        if should_orphan {
             let hash = block.hash();
             match self.ctx.add_orphan(consensus, block).await {
                 // There is a sync gap between consensus and the orphan pool, meaning that consensus might have indicated
                 // that this block is orphan, but by the time it got to the orphan pool we discovered it is no longer so.
                 // We signal this to the caller by returning false, triggering a consensus processing retry
                 Some(OrphanOutput::NotOrphan) => return Ok(false),
-                Some(OrphanOutput::Roots(roots)) => self.enqueue_orphan_roots(hash, roots),
+                Some(OrphanOutput::Roots(roots)) => self.enqueue_orphan_roots(hash, roots, known_within_range),
                 None | Some(OrphanOutput::Unknown | OrphanOutput::NoRoots) => {}
             }
         } else {
@@ -254,6 +268,15 @@ impl HandleRelayInvsFlow {
             }
         }
         Ok(true)
+    }
+
+    fn check_orphan_ibd_conditions(&self, orphan_daa_score: u64) -> bool {
+        if let Some(ibd_daa_score) = self.ctx.ibd_relay_daa_score() {
+            let max_orphans = self.ctx.max_orphans() as u64;
+            orphan_daa_score + max_orphans / 10 > ibd_daa_score && orphan_daa_score < ibd_daa_score + max_orphans / 2
+        } else {
+            false
+        }
     }
 
     /// Finds out whether the given block hash should be retrieved via the unorphaning
