@@ -1,5 +1,5 @@
 use crate::{
-    flow_context::{BlockSource, FlowContext, RequestScope},
+    flow_context::{BlockLogEvent, FlowContext, RequestScope},
     flow_trait::Flow,
     flowcontext::orphans::OrphanOutput,
 };
@@ -188,17 +188,13 @@ impl HandleRelayInvsFlow {
             let ctx = self.ctx.clone();
             tokio::spawn(async move {
                 ctx.on_new_block(&session, block, virtual_state_task).await;
-                ctx.log_block_acceptance(inv.hash, BlockSource::Relay);
+                ctx.log_block_event(BlockLogEvent::Relay(inv.hash));
             });
         }
     }
 
     fn enqueue_orphan_roots(&mut self, orphan: Hash, roots: Vec<Hash>, known_within_range: bool) {
-        if self.ctx.is_log_throttled() {
-            debug!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
-        } else {
-            info!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
-        }
+        self.ctx.log_block_event(BlockLogEvent::OrphanRoots(orphan, roots.len()));
         self.invs_route.enqueue_indirect_invs(roots, known_within_range)
     }
 
