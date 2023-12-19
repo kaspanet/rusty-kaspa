@@ -36,7 +36,7 @@ pub fn factories() -> &'static FactoryMap {
 
         let external = EXTERNAL.get_or_init(|| Mutex::new(AHashMap::new())).lock().unwrap().clone();
 
-        AHashMap::from_iter(factories.iter().map(|(k, v)| (k.clone(), v.clone())).chain(external))
+        AHashMap::from_iter(factories.iter().map(|(k, v)| (*k, v.clone())).chain(external))
     })
 }
 
@@ -53,7 +53,7 @@ pub(crate) async fn try_load_account(
     storage: Arc<AccountStorage>,
     meta: Option<Arc<AccountMetadata>>,
 ) -> Result<Arc<dyn Account>> {
-    let factory = factories().get(&storage.kind).ok_or_else(|| Error::AccountFactoryNotFound(storage.kind.clone()))?;
+    let factory = factories().get(&storage.kind).ok_or_else(|| Error::AccountFactoryNotFound(storage.kind))?;
 
     factory.try_load(wallet, &storage, meta).await
 }

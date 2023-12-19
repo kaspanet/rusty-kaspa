@@ -105,7 +105,7 @@ impl AddressManager {
 
     fn create_address(&self, keys: Vec<secp256k1::PublicKey>) -> Result<Address> {
         let address_prefix = self.wallet.address_prefix()?;
-        create_address(self.minimum_signatures, keys, address_prefix, self.ecdsa, Some(self.account_kind.clone()))
+        create_address(self.minimum_signatures, keys, address_prefix, self.ecdsa, Some(self.account_kind))
     }
 
     pub fn index(&self) -> u32 {
@@ -221,7 +221,7 @@ impl AddressDerivationManager {
 
         let receive_address_manager = AddressManager::new(
             wallet.clone(),
-            account_kind.clone(),
+            account_kind,
             receive_pubkey_managers,
             ecdsa,
             address_derivation_indexes.receive(),
@@ -230,7 +230,7 @@ impl AddressDerivationManager {
 
         let change_address_manager = AddressManager::new(
             wallet.clone(),
-            account_kind.clone(),
+            account_kind,
             change_pubkey_managers,
             ecdsa,
             address_derivation_indexes.change(),
@@ -266,21 +266,15 @@ impl AddressDerivationManager {
 
         let receive_address_manager = AddressManager::new(
             wallet.clone(),
-            account_kind.clone(),
+            account_kind,
             receive_pubkey_managers,
             false,
             address_derivation_indexes.receive(),
             1,
         )?;
 
-        let change_address_manager = AddressManager::new(
-            wallet.clone(),
-            account_kind.clone(),
-            change_pubkey_managers,
-            false,
-            address_derivation_indexes.change(),
-            1,
-        )?;
+        let change_address_manager =
+            AddressManager::new(wallet.clone(), account_kind, change_pubkey_managers, false, address_derivation_indexes.change(), 1)?;
 
         let manager = Self {
             account_kind,
