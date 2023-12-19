@@ -440,8 +440,8 @@ impl Wallet {
         Ok(())
     }
 
-    pub fn listener_id(&self) -> ListenerId {
-        self.inner.listener_id.lock().unwrap().expect("missing wallet.inner.listener_id in Wallet::listener_id()")
+    pub fn listener_id(&self) -> Result<ListenerId> {
+        Ok(self.inner.listener_id.lock().unwrap().ok_or(Error::ListenerId)?)
     }
 
     pub async fn get_info(&self) -> Result<String> {
@@ -450,12 +450,12 @@ impl Wallet {
     }
 
     pub async fn subscribe_daa_score(&self) -> Result<()> {
-        self.rpc_api().start_notify(self.listener_id(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        self.rpc_api().start_notify(self.listener_id()?, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())
     }
 
     pub async fn unsubscribe_daa_score(&self) -> Result<()> {
-        self.rpc_api().stop_notify(self.listener_id(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        self.rpc_api().stop_notify(self.listener_id()?, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())
     }
 

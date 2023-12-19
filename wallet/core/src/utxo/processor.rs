@@ -145,8 +145,8 @@ impl UtxoProcessor {
         &self.inner.sync_proc
     }
 
-    pub fn listener_id(&self) -> ListenerId {
-        self.inner.listener_id.lock().unwrap().expect("missing listener_id in UtxoProcessor::listener_id()")
+    pub fn listener_id(&self) -> Result<ListenerId> {
+        Ok(self.inner.listener_id.lock().unwrap().ok_or(Error::ListenerId)?)
     }
 
     pub fn set_network_id(&self, network_id: NetworkId) {
@@ -195,7 +195,7 @@ impl UtxoProcessor {
             if !addresses.is_empty() {
                 let addresses = addresses.into_iter().map(|address| (*address).clone()).collect::<Vec<_>>();
                 let utxos_changed_scope = UtxosChangedScope { addresses };
-                self.rpc_api().start_notify(self.listener_id(), Scope::UtxosChanged(utxos_changed_scope)).await?;
+                self.rpc_api().start_notify(self.listener_id()?, Scope::UtxosChanged(utxos_changed_scope)).await?;
             } else {
                 log_error!("registering empty address list!");
             }
@@ -212,7 +212,7 @@ impl UtxoProcessor {
             if !addresses.is_empty() {
                 let addresses = addresses.into_iter().map(|address| (*address).clone()).collect::<Vec<_>>();
                 let utxos_changed_scope = UtxosChangedScope { addresses };
-                self.rpc_api().stop_notify(self.listener_id(), Scope::UtxosChanged(utxos_changed_scope)).await?;
+                self.rpc_api().stop_notify(self.listener_id()?, Scope::UtxosChanged(utxos_changed_scope)).await?;
             } else {
                 log_error!("unregistering empty address list!");
             }
