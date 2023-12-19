@@ -73,6 +73,7 @@ include = [
 ]
 
 [workspace.dependencies]
+mimalloc = { version = "*", default-features = false, features = ['override'] }
 # kaspa-testing-integration = { version = "0.13.1", path = "testing/integration" }
 kaspa-addresses = { version = "0.13.1", path = "crypto/addresses" }
 kaspa-addressmanager = { version = "0.13.1", path = "components/addressmanager" }

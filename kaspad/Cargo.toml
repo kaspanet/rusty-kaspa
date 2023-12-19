@@ -13,6 +13,8 @@ name = "kaspad_lib"
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
+mimalloc.workspace = true
+
 kaspa-addresses.workspace = true
 kaspa-addressmanager.workspace = true
 kaspa-consensus-core.workspace = true
