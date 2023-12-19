@@ -146,7 +146,7 @@ impl UtxoProcessor {
     }
 
     pub fn listener_id(&self) -> Result<ListenerId> {
-        Ok(self.inner.listener_id.lock().unwrap().ok_or(Error::ListenerId)?)
+        self.inner.listener_id.lock().unwrap().ok_or(Error::ListenerId)
     }
 
     pub fn set_network_id(&self, network_id: NetworkId) {

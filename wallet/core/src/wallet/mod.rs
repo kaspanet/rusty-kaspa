@@ -441,7 +441,7 @@ impl Wallet {
     }
 
     pub fn listener_id(&self) -> Result<ListenerId> {
-        Ok(self.inner.listener_id.lock().unwrap().ok_or(Error::ListenerId)?)
+        self.inner.listener_id.lock().unwrap().ok_or(Error::ListenerId)
     }
 
     pub async fn get_info(&self) -> Result<String> {
