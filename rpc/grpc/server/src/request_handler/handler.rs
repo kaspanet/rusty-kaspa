@@ -1,6 +1,6 @@
 use super::{
     handler_trait::Handler,
-    interface::{DynMethod, Interface},
+    interface::{DynKaspadMethod, Interface},
 };
 use crate::{
     connection::{Connection, IncomingRoute},
@@ -17,7 +17,7 @@ pub struct RequestHandler {
     rpc_op: KaspadPayloadOps,
     incoming_route: IncomingRoute,
     server_ctx: ServerContext,
-    method: DynMethod,
+    method: DynKaspadMethod,
     connection: Connection,
 }
 
@@ -45,7 +45,7 @@ impl RequestHandler {
 impl Handler for RequestHandler {
     async fn start(&mut self) {
         debug!("GRPC, Starting request handler {:?} for client {}", self.rpc_op, self.connection);
-        while let Some(request) = self.incoming_route.recv().await {
+        while let Ok(request) = self.incoming_route.recv().await {
             let response = self.handle_request(request).await;
             match response {
                 Ok(response) => {

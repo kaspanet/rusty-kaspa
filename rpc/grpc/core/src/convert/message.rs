@@ -1,9 +1,30 @@
+//! Conversions of protowire messages from and to rpc core counterparts.
+//!
+//! Response payloads in protowire do always contain an error field and generally a set of
+//! fields providing the requested data.
+//!
+//! Responses in rpc core are expressed as RpcResult<XxxResponse>, where Xxx is the called
+//! RPC method.
+//!
+//! The general conversion convention from protowire to rpc core is to consider the error
+//! field first and, if present, to return a matching Err(RpcError). If absent, try to
+//! convert the set of data fields into a matching XxxResponse rpc core response and, on
+//! success, return Ok(XxxResponse), otherwise return a conversion error.
+//!
+//! Conversely, the general conversion convention from rpc core to protowire, depending on
+//! a provided RpcResult is to either convert the Ok(XxxResponse) into the matching set
+//! of data fields and provide no error or provide no data fields but an error field in case
+//! of Err(RpcError).
+//!
+//! The SubmitBlockResponse is a notable exception to this general rule.
+
 use crate::protowire::{self, submit_block_response_message::RejectReason};
 use kaspa_consensus_core::network::NetworkId;
 use kaspa_core::debug;
 use kaspa_notify::subscription::Command;
 use kaspa_rpc_core::{
     RpcContextualPeerAddress, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult,
+    SubmitBlockRejectReason, SubmitBlockReport,
 };
 use std::str::FromStr;
 
@@ -109,14 +130,25 @@ from!(item: &kaspa_rpc_core::SubmitBlockReport, RejectReason, {
         kaspa_rpc_core::SubmitBlockReport::Success => RejectReason::None,
         kaspa_rpc_core::SubmitBlockReport::Reject(kaspa_rpc_core::SubmitBlockRejectReason::BlockInvalid) => RejectReason::BlockInvalid,
         kaspa_rpc_core::SubmitBlockReport::Reject(kaspa_rpc_core::SubmitBlockRejectReason::IsInIBD) => RejectReason::IsInIbd,
+        // The conversion of RouteIsFull falls back to None since there exist no such variant in the original protowire version
+        // and we do not want to break backwards compatibility
+        kaspa_rpc_core::SubmitBlockReport::Reject(kaspa_rpc_core::SubmitBlockRejectReason::RouteIsFull) => RejectReason::None,
     }
 });
 
 from!(item: &kaspa_rpc_core::SubmitBlockRequest, protowire::SubmitBlockRequestMessage, {
     Self { block: Some((&item.block).into()), allow_non_daa_blocks: item.allow_non_daa_blocks }
 });
+// This conversion breaks the general conversion convention (see file header) since the message may
+// contain both a non default reject_reason and a matching error message. In the RouteIsFull case
+// reject_reason is None (because this reason has no variant in protowire) but a specific error
+// message is provided.
 from!(item: RpcResult<&kaspa_rpc_core::SubmitBlockResponse>, protowire::SubmitBlockResponseMessage, {
-    Self { reject_reason: RejectReason::from(&item.report) as i32, error: None }
+    let error: Option<protowire::RpcError> = match item.report {
+        kaspa_rpc_core::SubmitBlockReport::Success => None,
+        kaspa_rpc_core::SubmitBlockReport::Reject(reason) => Some(RpcError::SubmitBlockError(reason).into())
+    };
+    Self { reject_reason: RejectReason::from(&item.report) as i32, error }
 });
 
 from!(item: &kaspa_rpc_core::GetBlockTemplateRequest, protowire::GetBlockTemplateRequestMessage, {
@@ -468,9 +500,31 @@ try_from!(item: &protowire::SubmitBlockRequestMessage, kaspa_rpc_core::SubmitBlo
         allow_non_daa_blocks: item.allow_non_daa_blocks,
     }
 });
-try_from!(item: &protowire::SubmitBlockResponseMessage, RpcResult<kaspa_rpc_core::SubmitBlockResponse>, {
-    Self { report: RejectReason::try_from(item.reject_reason).map_err(|_| RpcError::PrimitiveToEnumConversionError)?.into() }
-});
+impl TryFrom<&protowire::SubmitBlockResponseMessage> for kaspa_rpc_core::SubmitBlockResponse {
+    type Error = RpcError;
+    // This conversion breaks the general conversion convention (see file header) since the message may
+    // contain both a non-None reject_reason and a matching error message. Things get even challenging
+    // in the RouteIsFull case where reject_reason is None (because this reason has no variant in protowire)
+    // but a specific error message is provided.
+    fn try_from(item: &protowire::SubmitBlockResponseMessage) -> RpcResult<Self> {
+        let report: SubmitBlockReport =
+            RejectReason::try_from(item.reject_reason).map_err(|_| RpcError::PrimitiveToEnumConversionError)?.into();
+        if let Some(ref err) = item.error {
+            match report {
+                SubmitBlockReport::Success => {
+                    if err.message == RpcError::SubmitBlockError(SubmitBlockRejectReason::RouteIsFull).to_string() {
+                        Ok(Self { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::RouteIsFull) })
+                    } else {
+                        Err(err.into())
+                    }
+                }
+                SubmitBlockReport::Reject(_) => Ok(Self { report }),
+            }
+        } else {
+            Ok(Self { report })
+        }
+    }
+}
 
 try_from!(item: &protowire::GetBlockTemplateRequestMessage, kaspa_rpc_core::GetBlockTemplateRequest, {
     Self { pay_address: item.pay_address.clone().try_into()?, extra_data: RpcExtraData::from_iter(item.extra_data.bytes()) }
@@ -831,3 +885,79 @@ try_from!(&protowire::NotifySinkBlueScoreChangedResponseMessage, RpcResult<kaspa
 // ----------------------------------------------------------------------------
 
 // TODO: tests
+
+#[cfg(test)]
+mod tests {
+    use kaspa_rpc_core::{RpcError, RpcResult, SubmitBlockRejectReason, SubmitBlockReport, SubmitBlockResponse};
+
+    use crate::protowire::{self, submit_block_response_message::RejectReason, SubmitBlockResponseMessage};
+
+    #[test]
+    fn test_submit_block_response() {
+        struct Test {
+            rpc_core: RpcResult<kaspa_rpc_core::SubmitBlockResponse>,
+            protowire: protowire::SubmitBlockResponseMessage,
+        }
+        impl Test {
+            fn new(
+                rpc_core: RpcResult<kaspa_rpc_core::SubmitBlockResponse>,
+                protowire: protowire::SubmitBlockResponseMessage,
+            ) -> Self {
+                Self { rpc_core, protowire }
+            }
+        }
+        let tests = vec![
+            Test::new(
+                Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
+                SubmitBlockResponseMessage { reject_reason: RejectReason::None as i32, error: None },
+            ),
+            Test::new(
+                Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) }),
+                SubmitBlockResponseMessage {
+                    reject_reason: RejectReason::BlockInvalid as i32,
+                    error: Some(protowire::RpcError {
+                        message: RpcError::SubmitBlockError(SubmitBlockRejectReason::BlockInvalid).to_string(),
+                    }),
+                },
+            ),
+            Test::new(
+                Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::IsInIBD) }),
+                SubmitBlockResponseMessage {
+                    reject_reason: RejectReason::IsInIbd as i32,
+                    error: Some(protowire::RpcError {
+                        message: RpcError::SubmitBlockError(SubmitBlockRejectReason::IsInIBD).to_string(),
+                    }),
+                },
+            ),
+            Test::new(
+                Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::RouteIsFull) }),
+                SubmitBlockResponseMessage {
+                    reject_reason: RejectReason::None as i32, // This rpc core reject reason has no matching protowire variant
+                    error: Some(protowire::RpcError {
+                        message: RpcError::SubmitBlockError(SubmitBlockRejectReason::RouteIsFull).to_string(),
+                    }),
+                },
+            ),
+        ];
+
+        for test in tests {
+            let cnv_protowire: SubmitBlockResponseMessage = test.rpc_core.as_ref().map_err(|x| x.clone()).into();
+            assert_eq!(cnv_protowire.reject_reason, test.protowire.reject_reason);
+            assert_eq!(cnv_protowire.error.is_some(), test.protowire.error.is_some());
+            assert_eq!(cnv_protowire.error, test.protowire.error);
+
+            let cnv_rpc_core: RpcResult<SubmitBlockResponse> = (&test.protowire).try_into();
+            assert_eq!(cnv_rpc_core.is_ok(), test.rpc_core.is_ok());
+            match cnv_rpc_core {
+                Ok(ref cnv_response) => {
+                    let Ok(ref response) = test.rpc_core else { panic!() };
+                    assert_eq!(cnv_response.report, response.report);
+                }
+                Err(ref cnv_err) => {
+                    let Err(ref err) = test.rpc_core else { panic!() };
+                    assert_eq!(cnv_err.to_string(), err.to_string());
+                }
+            }
+        }
+    }
+}
