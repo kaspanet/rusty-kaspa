@@ -245,31 +245,31 @@ hyper = "0.14.27"
 workflow-perf-monitor = { version = "0.0.2" }
 
 # workflow dependencies
-# workflow-d3 = { version = "0.9.0" }
-# workflow-nw = { version = "0.9.0" }
-# workflow-log = { version = "0.9.0" }
-# workflow-core = { version = "0.9.0" }
-# workflow-wasm = { version = "0.9.0" }
-# workflow-dom = { version = "0.9.0" }
-# workflow-rpc = { version = "0.9.0" }
-# workflow-node = { version = "0.9.0" }
-# workflow-store = { version = "0.9.0" }
-# workflow-terminal = { version = "0.9.0" }
+workflow-d3 = { version = "0.10.1" }
+workflow-nw = { version = "0.10.1" }
+workflow-log = { version = "0.10.1" }
+workflow-core = { version = "0.10.1" }
+workflow-wasm = { version = "0.10.1" }
+workflow-dom = { version = "0.10.1" }
+workflow-rpc = { version = "0.10.1" }
+workflow-node = { version = "0.10.1" }
+workflow-store = { version = "0.10.1" }
+workflow-terminal = { version = "0.10.1" }
 nw-sys = "0.1.6"
 
 # if below is enabled, this means that there is an ongoing work
 # on the workflow-rs crate. This requires that you clone workflow-rs
 # into a sibling folder from https://github.com/workflow-rs/workflow-rs
-workflow-d3 = { path = "../workflow-rs/d3" }
-workflow-nw = { path = "../workflow-rs/nw" }
-workflow-log = { path = "../workflow-rs/log" }
-workflow-core = { path = "../workflow-rs/core" }
-workflow-wasm = { path = "../workflow-rs/wasm" }
-workflow-dom = { path = "../workflow-rs/dom" }
-workflow-rpc = { path = "../workflow-rs/rpc" }
-workflow-node = { path = "../workflow-rs/node" }
-workflow-store = { path = "../workflow-rs/store" }
-workflow-terminal = { path = "../workflow-rs/terminal" }
+# workflow-d3 = { path = "../workflow-rs/d3" }
+# workflow-nw = { path = "../workflow-rs/nw" }
+# workflow-log = { path = "../workflow-rs/log" }
+# workflow-core = { path = "../workflow-rs/core" }
+# workflow-wasm = { path = "../workflow-rs/wasm" }
+# workflow-dom = { path = "../workflow-rs/dom" }
+# workflow-rpc = { path = "../workflow-rs/rpc" }
+# workflow-node = { path = "../workflow-rs/node" }
+# workflow-store = { path = "../workflow-rs/store" }
+# workflow-terminal = { path = "../workflow-rs/terminal" }
 # ---
 # workflow-d3 = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-nw = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
