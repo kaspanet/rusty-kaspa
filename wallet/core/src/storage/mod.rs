@@ -93,7 +93,7 @@ mod tests {
 
         let payload_json = serde_json::to_string(&payload).unwrap();
         // let settings = WalletSettings::new(account_id);
-        
+
         println!("creating wallet 1...");
         let w1 = WalletStorage::try_new(None, None, &wallet_secret, EncryptionKind::XChaCha20Poly1305, payload, vec![])?;
         w1.try_store(&store).await?;

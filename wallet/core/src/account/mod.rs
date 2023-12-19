@@ -1,7 +1,7 @@
 //!
 //! Generic wallet [`Account`] trait implementation used
 //! by different types of accounts.
-//! 
+//!
 
 pub mod descriptor;
 pub mod kind;

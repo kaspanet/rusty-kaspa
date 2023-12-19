@@ -22,13 +22,13 @@ use crate::result::Result;
 use js_sys::{Array, Uint8Array};
 use kaspa_addresses::{Address, Version as AddressVersion};
 use kaspa_consensus_core::network::wasm::Network;
+#[allow(unused_imports)] // needed for rust doc!
+use kaspa_consensus_core::network::NetworkType;
 use secp256k1::{Secp256k1, XOnlyPublicKey};
 use serde_wasm_bindgen::to_value;
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::abi::*;
-#[allow(unused_imports)] // needed for rust doc!
-use kaspa_consensus_core::network::NetworkType;
 
 /// Data structure that contains a secret and public keys.
 #[derive(Debug, Clone)]
