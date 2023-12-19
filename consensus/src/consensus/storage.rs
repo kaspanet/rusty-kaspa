@@ -92,7 +92,7 @@ impl ConsensusStorage {
         let relations_children_cache_size = 5_000_000 / size_of::<Hash>();
         let reachability_relations_cache_size = 35_000_000 / size_of::<Hash>();
         let reachability_relations_children_cache_size = 5_000_000 / size_of::<Hash>();
-        let transactions_cache_size = 2000usize; // Tracked units are txs
+        let transactions_cache_size = 40_000usize; // Tracked units are txs (TODO)
 
         // Cache sizes represented and tracked as bytes
         // TODO: unit approx for noise magnitude + higher block levels lower bound
