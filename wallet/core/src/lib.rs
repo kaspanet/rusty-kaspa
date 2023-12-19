@@ -9,8 +9,8 @@
 //! such as [`UtxoProcessor`](crate::utxo::UtxoProcessor)
 //! and [`UtxoContext`](crate::utxo::UtxoContext) that provide
 //! various levels of automation as well as higher-level
-//! APIs such as [`Wallet`](crate::runtime::Wallet),
-//! [`Account`](crate::runtime::Account) (managed via
+//! APIs such as [`Wallet`](crate::wallet::Wallet),
+//! [`Account`](crate::account::Account) (managed via
 //! [`WalletApi`](crate::api::WalletApi) trait)
 //! that offer a fully-featured wallet implementation
 //! backed by a multi-platform data storage layer capable of

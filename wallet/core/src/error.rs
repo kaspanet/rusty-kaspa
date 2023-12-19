@@ -262,6 +262,9 @@ pub enum Error {
 
     #[error("Missing DAA score while processing '{0}' (this may be a node connection issue)")]
     MissingDaaScore(&'static str),
+
+    #[error("Missing RPC listener id (this may be a node connection issue)")]
+    ListenerId,
 }
 
 impl From<Aborted> for Error {

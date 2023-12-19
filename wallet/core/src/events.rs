@@ -141,11 +141,11 @@ pub enum Events {
         url: Option<String>,
     },
 
-    /// Successful start of [`UtxoProcessor`](crate::utxo::processor::UtxoProcessor).
+    /// Successful start of [`UtxoProcessor`].
     /// This event signifies that the application can
     /// start interfacing with the UTXO processor.
     UtxoProcStart,
-    /// [`UtxoProcessor`](crate::utxo::processor::UtxoProcessor) has shut down.
+    /// [`UtxoProcessor`] has shut down.
     UtxoProcStop,
     /// Occurs when UtxoProcessor has failed to connect to the node
     /// for an unknown reason. Can also occur during general unexpected
@@ -178,15 +178,15 @@ pub enum Events {
     },
     /// Emitted when a transaction has been discovered
     /// during the UTXO scan. This event is generated
-    /// when a runtime [`Account`](crate::runtime::Account)
+    /// when a runtime [`Account`]
     /// initiates address monitoring and performs
     /// an initial scan of the UTXO set.
     ///
     /// This event is emitted when UTXOs are
     /// registered with the UtxoContext using the
-    /// [`UtxoContext::extend_from_scan()`](crate::utxo::context::UtxoContext::extend_from_scan) method.
+    /// [`UtxoContext::extend_from_scan()`](UtxoContext::extend_from_scan) method.
     ///
-    /// NOTE: if using runtime [`Wallet`](crate::runtime::Wallet),
+    /// NOTE: if using runtime [`Wallet`],
     /// the wallet will not emit this event if it detects
     /// that the transaction already exist in its transaction
     /// record set. If it doesn't, the wallet will create

@@ -4,7 +4,7 @@
 //! The wallet API is a high-level API that allows applications to perform
 //! wallet operations such as creating a wallet, opening a wallet, creating
 //! accounts, sending funds etc. The wallet API is an asynchronous trait that
-//! is implemented by the [`runtime::Wallet`](crate::runtime::wallet::Wallet) struct.
+//! is implemented by the [`Wallet`] struct.
 //!
 
 use crate::api::message::*;

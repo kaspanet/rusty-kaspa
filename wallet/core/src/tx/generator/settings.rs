@@ -1,6 +1,6 @@
 //!
 //! Transaction [`GeneratorSettings`] used when
-//! constructing and instance of the [`Generator`].
+//! constructing and instance of the [`Generator`](crate::tx::Generator).
 //!
 
 use crate::events::Events;

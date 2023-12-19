@@ -1,5 +1,5 @@
 //!
-//! [`keypair`](mod@keypair) module encapsulates [`Keypair`] and [`PrivateKey`].
+//! [`keypair`](mod@self) module encapsulates [`Keypair`] and [`PrivateKey`].
 //! The [`Keypair`] provides access to the secret and public keys.
 //!
 //! ```javascript
@@ -27,6 +27,8 @@ use serde_wasm_bindgen::to_value;
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::abi::*;
+#[allow(unused_imports)] // needed for rust doc!
+use kaspa_consensus_core::network::NetworkType;
 
 /// Data structure that contains a secret and public keys.
 #[derive(Debug, Clone)]

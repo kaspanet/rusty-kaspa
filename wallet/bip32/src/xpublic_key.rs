@@ -17,9 +17,7 @@ use std::fmt;
 
 /// Extended public keys derived using BIP32.
 ///
-/// Generic around a [`PublicKey`] type. When the `secp256k1` feature of this
-/// crate is enabled, the [`XPub`] type provides a convenient alias for
-/// extended ECDSA/secp256k1 public keys.
+/// Generic around a [`PublicKey`] type.
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub struct ExtendedPublicKey<K: PublicKey> {
     /// Derived public key

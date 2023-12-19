@@ -1,3 +1,8 @@
+//!
+//! Generic wallet [`Account`] trait implementation used
+//! by different types of accounts.
+//! 
+
 pub mod descriptor;
 pub mod kind;
 pub mod variants;
@@ -650,8 +655,6 @@ mod tests {
     use super::ExtendedPrivateKey;
     use crate::derivation::gen0::PubkeyDerivationManagerV0;
     use crate::imports::LEGACY_ACCOUNT_KIND;
-    //use crate::runtime::account::
-    // PubkeyDerivationManagerV0;
     use kaspa_addresses::Address;
     use kaspa_addresses::Prefix;
     use kaspa_bip32::secp256k1::SecretKey;

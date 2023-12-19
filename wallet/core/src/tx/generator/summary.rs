@@ -1,6 +1,6 @@
 //!
 //! [`GeneratorSummary`] is a struct that holds the summary
-//! of a [`Generator`] output after transaction generation.
+//! of a [`Generator`](crate::tx::Generator) output after transaction generation.
 //! The summary includes total amount, total fees consumed,
 //! total UTXOs consumed etc.
 //!
