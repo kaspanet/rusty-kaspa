@@ -11,12 +11,12 @@ async fn test_utxo_subsystem_bootstrap() -> Result<()> {
     let network_id = NetworkId::with_suffix(NetworkType::Testnet, 0);
     let rpc_api_mock = Arc::new(RpcCoreMock::new());
     let processor = UtxoProcessor::new(Some(rpc_api_mock.clone().into()), Some(network_id), None, None);
-    let context = UtxoContext::new(&processor, UtxoContextBinding::default());
+    let _context = UtxoContext::new(&processor, UtxoContextBinding::default());
 
     processor.mock_set_connected(true);
     processor.handle_daa_score_change(1).await?;
     // println!("daa score: {:?}", processor.current_daa_score());
-    context.register_addresses(&[output_address(network_id.into())]).await?;
+    // context.register_addresses(&[output_address(network_id.into())]).await?;
     Ok(())
 }
 

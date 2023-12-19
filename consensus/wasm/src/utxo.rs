@@ -306,12 +306,12 @@ impl TryFrom<&JsValue> for UtxoEntryReference {
 impl UtxoEntryReference {
     pub fn simulated(amount: u64) -> Self {
         use kaspa_addresses::{Prefix, Version};
-        let address = Address::new(Prefix::Testnet, Version::PubKey, &[0; 32]);
+        let address = Address::new(Prefix::Testnet, Version::PubKey, &rand::random::<[u8; 32]>());
         Self::simulated_with_address(amount, &address)
     }
 
     pub fn simulated_with_address(amount: u64, address: &Address) -> Self {
-        let outpoint = TransactionOutpoint::fake();
+        let outpoint = TransactionOutpoint::simulated();
         let script_public_key = kaspa_txscript::pay_to_address_script(address);
         let block_daa_score = 0;
         let is_coinbase = true;
