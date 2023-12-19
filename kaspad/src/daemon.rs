@@ -340,7 +340,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let p2p_server_addr = args.listen.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_p2p_port());
     // connect_peers means no DNS seeding and no outbound peers
     let outbound_target = if connect_peers.is_empty() { args.outbound_target } else { 0 };
-    let dns_seeders = if connect_peers.is_empty() { config.dns_seeders } else { &[] };
+    let dns_seeders = if connect_peers.is_empty() && !args.disable_dns_seeding { config.dns_seeders } else { &[] };
 
     let grpc_server_addr = args.rpclisten.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_rpc_port());
 
@@ -442,7 +442,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         mining_manager,
         flow_context,
         index_service.as_ref().map(|x| x.utxoindex().unwrap()),
-        config,
+        config.clone(),
         core.clone(),
         processing_counters,
         wrpc_borsh_counters.clone(),
@@ -452,7 +452,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         grpc_tower_counters.clone(),
     ));
     let grpc_service =
-        Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients, grpc_tower_counters));
+        Arc::new(GrpcService::new(grpc_server_addr, config, rpc_core_service.clone(), args.rpc_max_clients, grpc_tower_counters));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
