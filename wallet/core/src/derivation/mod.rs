@@ -527,7 +527,7 @@ pub async fn create_xpub_from_mnemonic(
     let xkey = ExtendedPrivateKey::<secp256k1::SecretKey>::new(seed)?;
 
     let (secret_key, attrs) = match account_kind.as_ref() {
-        LEGACY_ACCOUNT_KIND => WalletDerivationManagerV0::derive_extended_key_from_master_key(xkey, true, account_index)?,
+        LEGACY_ACCOUNT_KIND => WalletDerivationManagerV0::derive_extended_key_from_master_key(xkey, false, account_index)?,
         MULTISIG_ACCOUNT_KIND => WalletDerivationManager::derive_extended_key_from_master_key(xkey, true, account_index)?,
         _ => gen1::WalletDerivationManager::derive_extended_key_from_master_key(xkey, false, account_index)?,
     };
@@ -543,7 +543,7 @@ pub async fn create_xpub_from_xprv(
     account_index: u64,
 ) -> Result<ExtendedPublicKey<secp256k1::PublicKey>> {
     let (secret_key, attrs) = match account_kind.as_ref() {
-        LEGACY_ACCOUNT_KIND => WalletDerivationManagerV0::derive_extended_key_from_master_key(xprv, true, account_index)?,
+        LEGACY_ACCOUNT_KIND => WalletDerivationManagerV0::derive_extended_key_from_master_key(xprv, false, account_index)?,
         MULTISIG_ACCOUNT_KIND => WalletDerivationManager::derive_extended_key_from_master_key(xprv, true, account_index)?,
         BIP32_ACCOUNT_KIND => WalletDerivationManager::derive_extended_key_from_master_key(xprv, false, account_index)?,
         _ => panic!("create_xpub_from_xprv not supported for account kind: {:?}", account_kind),
