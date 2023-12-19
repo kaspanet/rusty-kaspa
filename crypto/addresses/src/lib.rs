@@ -219,17 +219,17 @@ impl Address {
 
     /// Convert an address to a string.
     #[wasm_bindgen(js_name = toString)]
-    pub fn as_string(&self) -> String {
+    pub fn address_to_string(&self) -> String {
         self.into()
     }
 
     #[wasm_bindgen(getter, js_name = "version")]
-    pub fn version_as_string(&self) -> String {
+    pub fn version_to_string(&self) -> String {
         self.version.to_string()
     }
 
     #[wasm_bindgen(getter, js_name = "prefix")]
-    pub fn prefix_as_string(&self) -> String {
+    pub fn prefix_to_string(&self) -> String {
         self.prefix.to_string()
     }
 
@@ -239,7 +239,7 @@ impl Address {
     }
 
     #[wasm_bindgen(getter, js_name = "payload")]
-    pub fn payload_as_string(&self) -> String {
+    pub fn payload_to_string(&self) -> String {
         self.encode_payload()
     }
 
@@ -644,9 +644,9 @@ mod tests {
         use web_sys::console;
         console::log_4(
             &"address: ".into(),
-            &expected.version_as_string().into(),
-            &expected.prefix_as_string().into(),
-            &expected.payload_as_string().into(),
+            &expected.version_to_string().into(),
+            &expected.prefix_to_string().into(),
+            &expected.payload_to_string().into(),
         );
 
         let obj = Object::new();
