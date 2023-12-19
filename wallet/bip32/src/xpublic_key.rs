@@ -203,7 +203,6 @@ where
     K: Deserialize<'de> + PublicKey,
 {
     phantom: std::marker::PhantomData<&'de K>,
-    // phantom: std::marker::PhantomData<&'de, K>,
 }
 
 impl<'de, K> de::Visitor<'de> for ExtendedPublicKeyVisitor<'de, K>

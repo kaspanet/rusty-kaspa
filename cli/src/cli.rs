@@ -367,7 +367,7 @@ impl KaspaCli {
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
                                         let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_with_state(&this.wallet,Some("reorg"),include_utxos).await;
+                                        let tx = record.format_transaction_with_state(&this.wallet,Some("reorg"),include_utxos).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
@@ -377,7 +377,7 @@ impl KaspaCli {
                                     // Pending and coinbase stasis fall under the same `Track` category
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
                                         let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_with_state(&this.wallet,Some("stasis"),include_utxos).await;
+                                        let tx = record.format_transaction_with_state(&this.wallet,Some("stasis"),include_utxos).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
@@ -395,7 +395,7 @@ impl KaspaCli {
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
                                         let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_with_state(&this.wallet,Some("pending"),include_utxos).await;
+                                        let tx = record.format_transaction_with_state(&this.wallet,Some("pending"),include_utxos).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
@@ -404,7 +404,7 @@ impl KaspaCli {
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
                                         let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_with_state(&this.wallet,Some("confirmed"),include_utxos).await;
+                                        let tx = record.format_transaction_with_state(&this.wallet,Some("confirmed"),include_utxos).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },

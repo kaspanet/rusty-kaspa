@@ -48,9 +48,9 @@ impl TransactionTypeExtension for TransactionKind {
 
 #[async_trait]
 pub trait TransactionExtension {
-    async fn format(&self, wallet: &Arc<Wallet>, include_utxos: bool) -> Vec<String>;
-    async fn format_with_state(&self, wallet: &Arc<Wallet>, state: Option<&str>, include_utxos: bool) -> Vec<String>;
-    async fn format_with_args(
+    async fn format_transaction(&self, wallet: &Arc<Wallet>, include_utxos: bool) -> Vec<String>;
+    async fn format_transaction_with_state(&self, wallet: &Arc<Wallet>, state: Option<&str>, include_utxos: bool) -> Vec<String>;
+    async fn format_transaction_with_args(
         &self,
         wallet: &Arc<Wallet>,
         state: Option<&str>,
@@ -63,15 +63,15 @@ pub trait TransactionExtension {
 
 #[async_trait]
 impl TransactionExtension for TransactionRecord {
-    async fn format(&self, wallet: &Arc<Wallet>, include_utxos: bool) -> Vec<String> {
-        self.format_with_args(wallet, None, None, include_utxos, false, None).await
+    async fn format_transaction(&self, wallet: &Arc<Wallet>, include_utxos: bool) -> Vec<String> {
+        self.format_transaction_with_args(wallet, None, None, include_utxos, false, None).await
     }
 
-    async fn format_with_state(&self, wallet: &Arc<Wallet>, state: Option<&str>, include_utxos: bool) -> Vec<String> {
-        self.format_with_args(wallet, state, None, include_utxos, false, None).await
+    async fn format_transaction_with_state(&self, wallet: &Arc<Wallet>, state: Option<&str>, include_utxos: bool) -> Vec<String> {
+        self.format_transaction_with_args(wallet, state, None, include_utxos, false, None).await
     }
 
-    async fn format_with_args(
+    async fn format_transaction_with_args(
         &self,
         wallet: &Arc<Wallet>,
         state: Option<&str>,

@@ -115,8 +115,8 @@ impl Metrics {
     // --- samplers
 
     async fn sample_metrics(self: &Arc<Self>, rpc: Arc<dyn RpcApi>, data: &mut MetricsData) -> Result<()> {
-        let metrics = rpc.get_metrics(true, true, true, true).await?;
-        let GetMetricsResponse { server_time: _, consensus_metrics, connection_metrics, bandwidth_metrics, process_metrics } = metrics;
+        let GetMetricsResponse { server_time: _, consensus_metrics, connection_metrics, bandwidth_metrics, process_metrics } =
+            rpc.get_metrics(true, true, true, true).await?;
 
         if let Some(consensus_metrics) = consensus_metrics {
             data.node_blocks_submitted_count = consensus_metrics.node_blocks_submitted_count;
