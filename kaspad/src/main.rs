@@ -15,6 +15,12 @@ use kaspad_lib::{
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
+#[cfg(not(feature = "heap"))]
+use mimalloc::MiMalloc;
+#[cfg(not(feature = "heap"))]
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
 pub fn main() {
     #[cfg(feature = "heap")]
     let _profiler = dhat::Profiler::builder().file_name("kaspad-heap.json").build();
