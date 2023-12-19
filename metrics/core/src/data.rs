@@ -41,21 +41,25 @@ impl MetricGroup {
         [MetricGroup::System, MetricGroup::Storage, MetricGroup::Connections, MetricGroup::Network].into_iter()
     }
 
-    pub fn metrics(&self) -> impl Iterator<Item = Metric> {
+    pub fn metrics(&self) -> impl Iterator<Item = &Metric> {
         match self {
-            MetricGroup::System => vec![
+            MetricGroup::System => [
                 Metric::NodeCpuUsage,
                 Metric::NodeResidentSetSizeBytes,
                 Metric::NodeVirtualMemorySizeBytes,
                 Metric::NodeFileHandlesCount,
-            ],
-            MetricGroup::Storage => vec![
+            ]
+            .as_slice()
+            .iter(),
+            MetricGroup::Storage => [
                 Metric::NodeDiskIoReadBytes,
                 Metric::NodeDiskIoReadPerSec,
                 Metric::NodeDiskIoWriteBytes,
                 Metric::NodeDiskIoWritePerSec,
-            ],
-            MetricGroup::Bandwidth => vec![
+            ]
+            .as_slice()
+            .iter(),
+            MetricGroup::Bandwidth => [
                 Metric::NodeTotalBytesTx,
                 Metric::NodeTotalBytesTxPerSecond,
                 Metric::NodeTotalBytesRx,
@@ -76,8 +80,10 @@ impl MetricGroup {
                 Metric::NodeJsonBytesTxPerSecond,
                 Metric::NodeJsonBytesRx,
                 Metric::NodeJsonBytesRxPerSecond,
-            ],
-            MetricGroup::Connections => vec![
+            ]
+            .as_slice()
+            .iter(),
+            MetricGroup::Connections => [
                 Metric::NodeActivePeers,
                 Metric::NodeBorshLiveConnections,
                 Metric::NodeBorshConnectionAttempts,
@@ -85,8 +91,10 @@ impl MetricGroup {
                 Metric::NodeJsonLiveConnections,
                 Metric::NodeJsonConnectionAttempts,
                 Metric::NodeJsonHandshakeFailures,
-            ],
-            MetricGroup::Network => vec![
+            ]
+            .as_slice()
+            .iter(),
+            MetricGroup::Network => [
                 Metric::NodeBlocksSubmittedCount,
                 Metric::NodeHeadersProcessedCount,
                 Metric::NodeDependenciesProcessedCount,
@@ -103,9 +111,10 @@ impl MetricGroup {
                 Metric::NetworkPastMedianTime,
                 Metric::NetworkVirtualParentHashesCount,
                 Metric::NetworkVirtualDaaScore,
-            ],
+            ]
+            .as_slice()
+            .iter(),
         }
-        .into_iter()
     }
 }
 
@@ -241,6 +250,8 @@ pub enum Metric {
 }
 
 impl Metric {
+    // TODO - this will be refactored at a later date
+    // as this requires changes and testing in /kos
     pub fn group(&self) -> &'static str {
         match self {
             Metric::NodeCpuUsage
