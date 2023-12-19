@@ -83,7 +83,7 @@ impl AssocPrvKeyDataIds {
         match self {
             AssocPrvKeyDataIds::None => false,
             AssocPrvKeyDataIds::Single(single) => single == id,
-            AssocPrvKeyDataIds::Multiple(multiple) => multiple.iter().any(|elem| elem == id),
+            AssocPrvKeyDataIds::Multiple(multiple) => multiple.contains(id),
         }
     }
 }
