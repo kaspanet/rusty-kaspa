@@ -33,6 +33,7 @@ derivative.workspace = true
 downcast.workspace = true
 evpkdf.workspace = true
 faster-hex.workspace = true
+fixedstr.workspace = true
 futures.workspace = true
 heapless.workspace = true
 hmac.workspace = true

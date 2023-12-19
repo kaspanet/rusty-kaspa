@@ -1420,6 +1420,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
 
 [[package]]
+name = "fixedstr"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49f9274e2c5ec70bcbd4b7c181ebfcfdff70f23e480cfa0d446efc1033c7200e"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "flate2"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3030,6 +3039,7 @@ dependencies = [
  "downcast",
  "evpkdf",
  "faster-hex 0.6.1",
+ "fixedstr",
  "futures",
  "heapless",
  "hmac",

@@ -159,6 +159,7 @@ enum-primitive-derive = "0.2.2"
 event-listener = "2.5.3" # TODO "3.0.1"
 evpkdf = "0.2.0"
 faster-hex = "0.6.1" # TODO "0.8.1" - fails unit tests
+fixedstr = { version = "0.5.4", features = ["serde"] }
 flate2 = "1.0.28"
 futures = { version = "0.3.29" }
 futures-util = { version = "0.3.29", default-features = false, features = [ "alloc", ] }
