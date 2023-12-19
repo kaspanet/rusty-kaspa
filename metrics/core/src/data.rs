@@ -397,7 +397,7 @@ impl Metric {
             Metric::NetworkTransactionsPerSecond => format_as_float(f.trunc(), short),
             Metric::NetworkTipHashesCount => format_as_float(f, short),
             Metric::NetworkDifficulty => format_as_float(f, short),
-            Metric::NetworkPastMedianTime => format_as_float(f, short),
+            Metric::NetworkPastMedianTime => format_as_float(f, false),
             Metric::NetworkVirtualParentHashesCount => format_as_float(f, short),
             Metric::NetworkVirtualDaaScore => format_as_float(f, false),
         }
@@ -460,7 +460,7 @@ impl Metric {
             Metric::NetworkTransactionsPerSecond => ("TPS", "TPS"),
             Metric::NetworkTipHashesCount => ("Tip Hashes", "Tip Hashes"),
             Metric::NetworkDifficulty => ("Network Difficulty", "Difficulty"),
-            Metric::NetworkPastMedianTime => ("Past Median Time", "Median T"),
+            Metric::NetworkPastMedianTime => ("Past Median Time", "MT"),
             Metric::NetworkVirtualParentHashesCount => ("Virtual Parent Hashes", "Virt Parents"),
             Metric::NetworkVirtualDaaScore => ("Virtual DAA Score", "DAA"),
         }
