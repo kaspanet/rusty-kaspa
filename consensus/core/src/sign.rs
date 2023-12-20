@@ -41,10 +41,30 @@ impl Signed {
         }
     }
 
-    /// Returns the transaction if it is partially signed, otherwise returns an error
+    /// Returns the transaction if it is fully signed, otherwise returns the
+    /// transaction as an error `Err(tx)`.
+    #[allow(clippy::result_large_err)]
+    pub fn try_fully_signed(self) -> std::result::Result<SignableTransaction, SignableTransaction> {
+        match self {
+            Signed::Fully(tx) => Ok(tx),
+            Signed::Partially(tx) => Err(tx),
+        }
+    }
+
+    /// Returns the transaction if it is partially signed, otherwise fail with an error
     pub fn partially_signed(self) -> std::result::Result<SignableTransaction, Error> {
         match self {
             Signed::Fully(_) => Err(Error::FullySigned),
+            Signed::Partially(tx) => Ok(tx),
+        }
+    }
+
+    /// Returns the transaction if it is partially signed, otherwise returns the
+    /// transaction as an error `Err(tx)`.
+    #[allow(clippy::result_large_err)]
+    pub fn try_partially_signed(self) -> std::result::Result<SignableTransaction, SignableTransaction> {
+        match self {
+            Signed::Fully(tx) => Err(tx),
             Signed::Partially(tx) => Ok(tx),
         }
     }
