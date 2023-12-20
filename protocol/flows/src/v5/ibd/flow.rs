@@ -5,7 +5,7 @@ use crate::{
         Flow,
     },
 };
-use futures::future::{join_all, try_join_all};
+use futures::future::{join_all, select, try_join_all, Either};
 use kaspa_consensus_core::{
     api::BlockValidationFuture,
     block::Block,
@@ -32,6 +32,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use tokio::time::sleep;
 
 use super::{progress::ProgressReporter, HeadersChunk, PruningPointUtxosetChunkStream, IBD_BATCH_SIZE};
 
@@ -486,7 +487,23 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
 
     async fn sync_missing_block_bodies(&mut self, consensus: &ConsensusProxy, high: Hash) -> Result<(), ProtocolError> {
         // TODO: query consensus in batches
-        let hashes = consensus.async_get_missing_block_body_hashes(high).await?;
+        let sleep_task = sleep(Duration::from_secs(2));
+        let hashes_task = consensus.async_get_missing_block_body_hashes(high);
+        tokio::pin!(sleep_task);
+        tokio::pin!(hashes_task);
+        let hashes = match select(sleep_task, hashes_task).await {
+            Either::Left((_, hashes_task)) => {
+                // We select between the tasks in order to inform the user if this operation is taking too long. On full IBD
+                // this operation requires traversing the full DAG which indeed might take several seconds or even minutes.
+                info!(
+                    "IBD: searching for missing block bodies to request from peer {}. This operation might take several seconds.",
+                    self.router
+                );
+                // Now re-await the original task
+                hashes_task.await
+            }
+            Either::Right((hashes_result, _)) => hashes_result,
+        }?;
         if hashes.is_empty() {
             return Ok(());
         }
