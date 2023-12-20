@@ -7,8 +7,6 @@ use crate::imports::*;
 use kaspa_addresses::Version;
 use secp256k1::PublicKey;
 
-pub const KEYPAIR_ACCOUNT_MAGIC: u32 = 0x50414952;
-pub const KEYPAIR_ACCOUNT_VERSION: u32 = 0;
 pub const KEYPAIR_ACCOUNT_KIND: &str = "kaspa-keypair-standard";
 
 pub struct Ctor {}
@@ -41,6 +39,9 @@ pub struct Storable {
 }
 
 impl Storable {
+    const STORAGE_MAGIC: u32 = 0x52494150;
+    const STORAGE_VERSION: u32 = 0;
+
     pub fn new(public_key: secp256k1::PublicKey, ecdsa: bool) -> Self {
         Self { public_key, ecdsa }
     }
@@ -54,7 +55,7 @@ impl BorshSerialize for Storable {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         let public_key = self.public_key.serialize();
 
-        StorageHeader::new(KEYPAIR_ACCOUNT_MAGIC, KEYPAIR_ACCOUNT_VERSION).serialize(writer)?;
+        StorageHeader::new(Self::STORAGE_MAGIC, Self::STORAGE_VERSION).serialize(writer)?;
 
         BorshSerialize::serialize(public_key.as_slice(), writer)?;
         BorshSerialize::serialize(&self.ecdsa, writer)?;
@@ -68,7 +69,7 @@ impl BorshDeserialize for Storable {
         use secp256k1::constants::PUBLIC_KEY_SIZE;
 
         let StorageHeader { version: _, .. } =
-            StorageHeader::deserialize(buf)?.try_magic(KEYPAIR_ACCOUNT_MAGIC)?.try_version(KEYPAIR_ACCOUNT_VERSION)?;
+            StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
 
         let public_key_bytes: [u8; PUBLIC_KEY_SIZE] = buf[..PUBLIC_KEY_SIZE]
             .try_into()

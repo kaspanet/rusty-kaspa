@@ -141,8 +141,13 @@ impl fmt::Display for ExtendedPublicKey<secp256k1::PublicKey> {
     }
 }
 
-const BORSH_EXTENDED_PUBLIC_KEY_MAGIC: u16 = 0x584b;
-const BORSH_EXTENDED_PUBLIC_KEY_VERSION: u16 = 0;
+impl<K> ExtendedPublicKey<K>
+where
+    K: PublicKey,
+{
+    const STORAGE_MAGIC: u16 = 0x4b58;
+    const STORAGE_VERSION: u16 = 0;
+}
 
 #[derive(BorshSerialize, BorshDeserialize)]
 struct Header {
@@ -155,7 +160,7 @@ where
     K: PublicKey,
 {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        Header { version: BORSH_EXTENDED_PUBLIC_KEY_VERSION, magic: BORSH_EXTENDED_PUBLIC_KEY_MAGIC }.serialize(writer)?;
+        Header { version: Self::STORAGE_VERSION, magic: Self::STORAGE_MAGIC }.serialize(writer)?;
         writer.write_all(self.public_key.to_bytes().as_slice())?;
         BorshSerialize::serialize(&self.attrs, writer)?;
         Ok(())
@@ -168,10 +173,10 @@ where
 {
     fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
         let Header { version, magic } = Header::deserialize(buf)?;
-        if magic != BORSH_EXTENDED_PUBLIC_KEY_MAGIC {
+        if magic != Self::STORAGE_MAGIC {
             return Err(std::io::Error::new(std::io::ErrorKind::Other, "Invalid extended public key magic value"));
         }
-        if version != BORSH_EXTENDED_PUBLIC_KEY_VERSION {
+        if version != Self::STORAGE_VERSION {
             return Err(std::io::Error::new(std::io::ErrorKind::Other, "Invalid extended public key version"));
         }
 

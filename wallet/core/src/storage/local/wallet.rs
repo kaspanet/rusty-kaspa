@@ -12,9 +12,6 @@ use crate::storage::TransactionRecord;
 use crate::storage::{AccountMetadata, Decrypted, Encrypted, Hint, PrvKeyData, PrvKeyDataId};
 use workflow_store::fs;
 
-pub const WALLET_STORAGE_MAGIC: u32 = 0x4b415357;
-pub const WALLET_STORAGE_VERSION: u32 = 0;
-
 #[derive(Clone, Serialize, Deserialize)]
 pub struct WalletStorage {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -29,6 +26,9 @@ pub struct WalletStorage {
 }
 
 impl WalletStorage {
+    pub const STORAGE_MAGIC: u32 = 0x5753414b;
+    pub const STORAGE_VERSION: u32 = 0;
+
     pub fn try_new(
         title: Option<String>,
         user_hint: Option<Hint>,
@@ -77,7 +77,7 @@ impl WalletStorage {
 
 impl BorshSerialize for WalletStorage {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        StorageHeader::new(WALLET_STORAGE_MAGIC, WALLET_STORAGE_VERSION).serialize(writer)?;
+        StorageHeader::new(Self::STORAGE_MAGIC, Self::STORAGE_VERSION).serialize(writer)?;
         BorshSerialize::serialize(&self.title, writer)?;
         BorshSerialize::serialize(&self.user_hint, writer)?;
         BorshSerialize::serialize(&self.encryption_kind, writer)?;
@@ -93,17 +93,17 @@ impl BorshDeserialize for WalletStorage {
     fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
         let StorageHeader { magic, version, .. } = StorageHeader::deserialize(buf)?;
 
-        if magic != WALLET_STORAGE_MAGIC {
+        if magic != Self::STORAGE_MAGIC {
             return Err(IoError::new(
                 IoErrorKind::InvalidData,
                 format!("This does not seem to be a kaspa wallet data file. Unknown file signature '0x{:x}'.", magic),
             ));
         }
 
-        if version > WALLET_STORAGE_VERSION {
+        if version > Self::STORAGE_VERSION {
             return Err(IoError::new(
                 IoErrorKind::InvalidData,
-                format!("This wallet data was generated using a new version of the software. Please upgrade your software environment. Expected at most version '{}', encountered version '{}'", WALLET_STORAGE_VERSION, version),
+                format!("This wallet data was generated using a new version of the software. Please upgrade your software environment. Expected at most version '{}', encountered version '{}'", Self::STORAGE_VERSION, version),
             ));
         }
 

@@ -9,9 +9,6 @@ use crate::derivation::AddressDerivationMeta;
 use crate::imports::*;
 use crate::storage::IdT;
 
-const ACCOUNT_METADATA_MAGIC: u32 = 0x4d455441;
-const ACCOUNT_METADATA_VERSION: u32 = 0;
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AccountMetadata {
     pub id: AccountId,
@@ -20,6 +17,9 @@ pub struct AccountMetadata {
 }
 
 impl AccountMetadata {
+    const STORAGE_MAGIC: u32 = 0x4154454d;
+    const STORAGE_VERSION: u32 = 0;
+
     pub fn new(id: AccountId, indexes: AddressDerivationMeta) -> Self {
         Self { id, indexes: Some(indexes) }
     }
@@ -38,7 +38,7 @@ impl IdT for AccountMetadata {
 
 impl BorshSerialize for AccountMetadata {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        StorageHeader::new(ACCOUNT_METADATA_MAGIC, ACCOUNT_METADATA_VERSION).serialize(writer)?;
+        StorageHeader::new(Self::STORAGE_MAGIC, Self::STORAGE_VERSION).serialize(writer)?;
         BorshSerialize::serialize(&self.id, writer)?;
         BorshSerialize::serialize(&self.indexes, writer)?;
 
@@ -49,7 +49,7 @@ impl BorshSerialize for AccountMetadata {
 impl BorshDeserialize for AccountMetadata {
     fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
-            StorageHeader::deserialize(buf)?.try_magic(ACCOUNT_METADATA_MAGIC)?.try_version(ACCOUNT_METADATA_VERSION)?;
+            StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
 
         let id = BorshDeserialize::deserialize(buf)?;
         let indexes = BorshDeserialize::deserialize(buf)?;

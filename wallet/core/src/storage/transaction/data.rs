@@ -7,9 +7,6 @@ use crate::imports::*;
 use kaspa_consensus_core::tx::Transaction;
 pub use kaspa_consensus_core::tx::TransactionId;
 
-const TRANSACTION_DATA_MAGIC: u32 = 0x54584454;
-const TRANSACTION_DATA_VERSION: u32 = 0;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "transaction")]
 // the reason the struct is renamed kebab-case and then
@@ -125,6 +122,9 @@ pub enum TransactionData {
 }
 
 impl TransactionData {
+    const STORAGE_MAGIC: u32 = 0x54445854;
+    const STORAGE_VERSION: u32 = 0;
+
     pub fn kind(&self) -> TransactionKind {
         match self {
             TransactionData::Reorg { .. } => TransactionKind::Reorg,
@@ -142,7 +142,7 @@ impl TransactionData {
 
 impl BorshSerialize for TransactionData {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        StorageHeader::new(TRANSACTION_DATA_MAGIC, TRANSACTION_DATA_VERSION).serialize(writer)?;
+        StorageHeader::new(Self::STORAGE_MAGIC, Self::STORAGE_VERSION).serialize(writer)?;
 
         let kind = self.kind();
         BorshSerialize::serialize(&kind, writer)?;
@@ -266,7 +266,7 @@ impl BorshSerialize for TransactionData {
 impl BorshDeserialize for TransactionData {
     fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
-            StorageHeader::deserialize(buf)?.try_magic(TRANSACTION_DATA_MAGIC)?.try_version(TRANSACTION_DATA_VERSION)?;
+            StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
 
         let kind: TransactionKind = BorshDeserialize::deserialize(buf)?;
 

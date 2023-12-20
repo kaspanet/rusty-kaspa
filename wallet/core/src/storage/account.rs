@@ -35,8 +35,6 @@ impl BorshDeserialize for AccountSettings {
     }
 }
 
-const ACCOUNT_MAGIC: u32 = 0x4B415341;
-const ACCOUNT_VERSION: u32 = 0;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountStorage {
     pub kind: AccountKind,
@@ -48,6 +46,9 @@ pub struct AccountStorage {
 }
 
 impl AccountStorage {
+    const STORAGE_MAGIC: u32 = 0x4153414b;
+    const STORAGE_VERSION: u32 = 0;
+
     pub fn new(
         kind: AccountKind,
         id: &AccountId,
@@ -74,7 +75,7 @@ impl AccountStorage {
 
 impl BorshSerialize for AccountStorage {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        StorageHeader::new(ACCOUNT_MAGIC, ACCOUNT_VERSION).serialize(writer)?;
+        StorageHeader::new(Self::STORAGE_MAGIC, Self::STORAGE_VERSION).serialize(writer)?;
         BorshSerialize::serialize(&self.kind, writer)?;
         BorshSerialize::serialize(&self.id, writer)?;
         BorshSerialize::serialize(&self.storage_key, writer)?;
@@ -89,7 +90,7 @@ impl BorshSerialize for AccountStorage {
 impl BorshDeserialize for AccountStorage {
     fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
-            StorageHeader::deserialize(buf)?.try_magic(ACCOUNT_MAGIC)?.try_version(ACCOUNT_VERSION)?;
+            StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
 
         let kind = BorshDeserialize::deserialize(buf)?;
         let id = BorshDeserialize::deserialize(buf)?;

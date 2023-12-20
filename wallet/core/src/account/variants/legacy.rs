@@ -9,8 +9,6 @@ use kaspa_bip32::{ExtendedPrivateKey, Prefix, SecretKey};
 
 const CACHE_ADDRESS_OFFSET: u32 = 2048;
 
-pub const LEGACY_ACCOUNT_MAGIC: u32 = 0x4c474359;
-pub const LEGACY_ACCOUNT_VERSION: u32 = 0;
 pub const LEGACY_ACCOUNT_KIND: &str = "kaspa-legacy-standard";
 
 pub struct Ctor {}
@@ -40,6 +38,9 @@ impl Factory for Ctor {
 pub struct Storable;
 
 impl Storable {
+    pub const STORAGE_MAGIC: u32 = 0x5943474c;
+    pub const STORAGE_VERSION: u32 = 0;
+
     pub fn try_load(storage: &AccountStorage) -> Result<Self> {
         Ok(Self::try_from_slice(storage.serialized.as_slice())?)
     }
@@ -47,7 +48,7 @@ impl Storable {
 
 impl BorshSerialize for Storable {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        StorageHeader::new(LEGACY_ACCOUNT_MAGIC, LEGACY_ACCOUNT_VERSION).serialize(writer)?;
+        StorageHeader::new(Self::STORAGE_MAGIC, Self::STORAGE_VERSION).serialize(writer)?;
 
         Ok(())
     }
@@ -56,7 +57,7 @@ impl BorshSerialize for Storable {
 impl BorshDeserialize for Storable {
     fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
-            StorageHeader::deserialize(buf)?.try_magic(LEGACY_ACCOUNT_MAGIC)?.try_version(LEGACY_ACCOUNT_VERSION)?;
+            StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
 
         Ok(Self {})
     }

@@ -9,9 +9,6 @@ use kaspa_utils::hex::ToHex;
 use secp256k1::SecretKey;
 use xxhash_rust::xxh3::xxh3_64;
 
-const PRV_KEY_DATA_VARIANT_MAGIC: u32 = 0x4b505256;
-const PRV_KEY_DATA_VARIANT_VERSION: u32 = 0;
-
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum PrvKeyDataVariantKind {
     Mnemonic,
@@ -36,7 +33,7 @@ pub enum PrvKeyDataVariant {
 
 impl BorshSerialize for PrvKeyDataVariant {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        StorageHeader::new(PRV_KEY_DATA_VARIANT_MAGIC, PRV_KEY_DATA_VARIANT_VERSION).serialize(writer)?;
+        StorageHeader::new(Self::MAGIC, Self::VERSION).serialize(writer)?;
         let kind = self.kind();
         let string = self.get_string();
         BorshSerialize::serialize(&kind, writer)?;
@@ -48,8 +45,7 @@ impl BorshSerialize for PrvKeyDataVariant {
 
 impl BorshDeserialize for PrvKeyDataVariant {
     fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
-        let StorageHeader { version: _, .. } =
-            StorageHeader::deserialize(buf)?.try_magic(PRV_KEY_DATA_VARIANT_MAGIC)?.try_version(PRV_KEY_DATA_VARIANT_VERSION)?;
+        let StorageHeader { version: _, .. } = StorageHeader::deserialize(buf)?.try_magic(Self::MAGIC)?.try_version(Self::VERSION)?;
 
         let kind: PrvKeyDataVariantKind = BorshDeserialize::deserialize(buf)?;
         let string: String = BorshDeserialize::deserialize(buf)?;
@@ -64,6 +60,9 @@ impl BorshDeserialize for PrvKeyDataVariant {
 }
 
 impl PrvKeyDataVariant {
+    const MAGIC: u32 = 0x5652504b;
+    const VERSION: u32 = 0;
+
     pub fn kind(&self) -> PrvKeyDataVariantKind {
         match self {
             PrvKeyDataVariant::Mnemonic(_) => PrvKeyDataVariantKind::Mnemonic,

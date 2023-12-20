@@ -9,9 +9,6 @@ use crate::storage::{AddressBookEntry, PrvKeyData, PrvKeyDataId};
 use kaspa_bip32::Mnemonic;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-const WALLET_PAYLOAD_MAGIC: u32 = 0x44415441;
-const WALLET_PAYLOAD_VERSION: u32 = 0;
-
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Payload {
     pub prv_key_data: Vec<PrvKeyData>,
@@ -21,6 +18,9 @@ pub struct Payload {
 }
 
 impl Payload {
+    const STORAGE_MAGIC: u32 = 0x41544144;
+    const STORAGE_VERSION: u32 = 0;
+
     pub fn new(prv_key_data: Vec<PrvKeyData>, accounts: Vec<AccountStorage>, address_book: Vec<AddressBookEntry>) -> Self {
         Self { prv_key_data, accounts, address_book, encrypt_transactions: None }
     }
@@ -58,7 +58,7 @@ impl Payload {
 
 impl BorshSerialize for Payload {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        StorageHeader::new(WALLET_PAYLOAD_MAGIC, WALLET_PAYLOAD_VERSION).serialize(writer)?;
+        StorageHeader::new(Self::STORAGE_MAGIC, Self::STORAGE_VERSION).serialize(writer)?;
         BorshSerialize::serialize(&self.prv_key_data, writer)?;
         BorshSerialize::serialize(&self.accounts, writer)?;
         BorshSerialize::serialize(&self.address_book, writer)?;
@@ -71,7 +71,7 @@ impl BorshSerialize for Payload {
 impl BorshDeserialize for Payload {
     fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
-            StorageHeader::deserialize(buf)?.try_magic(WALLET_PAYLOAD_MAGIC)?.try_version(WALLET_PAYLOAD_VERSION)?;
+            StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
         let prv_key_data = BorshDeserialize::deserialize(buf)?;
         let accounts = BorshDeserialize::deserialize(buf)?;
         let address_book = BorshDeserialize::deserialize(buf)?;

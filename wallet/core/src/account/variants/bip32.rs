@@ -6,8 +6,6 @@ use crate::account::Inner;
 use crate::derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
 use crate::imports::*;
 
-pub const BIP32_ACCOUNT_MAGIC: u32 = 0x42503332;
-pub const BIP32_ACCOUNT_VERSION: u32 = 0;
 pub const BIP32_ACCOUNT_KIND: &str = "kaspa-bip32-standard";
 
 pub struct Ctor {}
@@ -41,6 +39,9 @@ pub struct Storable {
 }
 
 impl Storable {
+    const STORAGE_MAGIC: u32 = 0x32335042;
+    const STORAGE_VERSION: u32 = 0;
+
     pub fn new(account_index: u64, xpub_keys: Arc<Vec<ExtendedPublicKeySecp256k1>>, ecdsa: bool) -> Self {
         Self { account_index, xpub_keys, ecdsa }
     }
@@ -52,7 +53,7 @@ impl Storable {
 
 impl BorshSerialize for Storable {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        StorageHeader::new(BIP32_ACCOUNT_MAGIC, BIP32_ACCOUNT_VERSION).serialize(writer)?;
+        StorageHeader::new(Self::STORAGE_MAGIC, Self::STORAGE_VERSION).serialize(writer)?;
         BorshSerialize::serialize(&self.xpub_keys, writer)?;
         BorshSerialize::serialize(&self.account_index, writer)?;
         BorshSerialize::serialize(&self.ecdsa, writer)?;
@@ -64,7 +65,7 @@ impl BorshSerialize for Storable {
 impl BorshDeserialize for Storable {
     fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
-            StorageHeader::deserialize(buf)?.try_magic(BIP32_ACCOUNT_MAGIC)?.try_version(BIP32_ACCOUNT_VERSION)?;
+            StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
 
         let xpub_keys = BorshDeserialize::deserialize(buf)?;
         let account_index = BorshDeserialize::deserialize(buf)?;

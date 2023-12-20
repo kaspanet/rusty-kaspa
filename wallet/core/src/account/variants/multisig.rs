@@ -6,8 +6,6 @@ use crate::account::Inner;
 use crate::derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
 use crate::imports::*;
 
-pub const MULTISIG_ACCOUNT_MAGIC: u32 = 0x4d534947;
-pub const MULTISIG_ACCOUNT_VERSION: u32 = 0;
 pub const MULTISIG_ACCOUNT_KIND: &str = "kaspa-multisig-standard";
 
 pub struct Ctor {}
@@ -42,6 +40,9 @@ pub struct Storable {
 }
 
 impl Storable {
+    pub const STORAGE_MAGIC: u32 = 0x4749534d;
+    pub const STORAGE_VERSION: u32 = 0;
+
     pub fn new(xpub_keys: ExtendedPublicKeys, cosigner_index: Option<u8>, minimum_signatures: u16, ecdsa: bool) -> Self {
         Self { xpub_keys, cosigner_index, minimum_signatures, ecdsa }
     }
@@ -53,7 +54,7 @@ impl Storable {
 
 impl BorshSerialize for Storable {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        StorageHeader::new(MULTISIG_ACCOUNT_MAGIC, MULTISIG_ACCOUNT_VERSION).serialize(writer)?;
+        StorageHeader::new(Self::STORAGE_MAGIC, Self::STORAGE_VERSION).serialize(writer)?;
 
         BorshSerialize::serialize(&self.xpub_keys, writer)?;
         BorshSerialize::serialize(&self.cosigner_index, writer)?;
@@ -67,7 +68,7 @@ impl BorshSerialize for Storable {
 impl BorshDeserialize for Storable {
     fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
-            StorageHeader::deserialize(buf)?.try_magic(MULTISIG_ACCOUNT_MAGIC)?.try_version(MULTISIG_ACCOUNT_VERSION)?;
+            StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
 
         let xpub_keys = BorshDeserialize::deserialize(buf)?;
         let cosigner_index = BorshDeserialize::deserialize(buf)?;

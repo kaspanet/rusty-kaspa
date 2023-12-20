@@ -11,9 +11,6 @@ use workflow_core::time::{unixtime_as_millis_u64, unixtime_to_locale_string};
 pub use kaspa_consensus_core::tx::TransactionId;
 use zeroize::Zeroize;
 
-const TRANSACTION_RECORD_MAGIC: u32 = 0x4b415458;
-const TRANSACTION_RECORD_VERSION: u32 = 0;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionRecord {
     pub id: TransactionId,
@@ -34,6 +31,9 @@ pub struct TransactionRecord {
 }
 
 impl TransactionRecord {
+    const STORAGE_MAGIC: u32 = 0x5854414b;
+    const STORAGE_VERSION: u32 = 0;
+
     pub fn id(&self) -> &TransactionId {
         &self.id
     }
@@ -482,7 +482,7 @@ impl Zeroize for TransactionRecord {
 
 impl BorshSerialize for TransactionRecord {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        StorageHeader::new(TRANSACTION_RECORD_MAGIC, TRANSACTION_RECORD_VERSION).serialize(writer)?;
+        StorageHeader::new(Self::STORAGE_MAGIC, Self::STORAGE_VERSION).serialize(writer)?;
         BorshSerialize::serialize(&self.id, writer)?;
         BorshSerialize::serialize(&self.unixtime, writer)?;
         BorshSerialize::serialize(&self.value, writer)?;
@@ -500,7 +500,7 @@ impl BorshSerialize for TransactionRecord {
 impl BorshDeserialize for TransactionRecord {
     fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
-            StorageHeader::deserialize(buf)?.try_magic(TRANSACTION_RECORD_MAGIC)?.try_version(TRANSACTION_RECORD_VERSION)?;
+            StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
 
         let id = BorshDeserialize::deserialize(buf)?;
         let unixtime = BorshDeserialize::deserialize(buf)?;
