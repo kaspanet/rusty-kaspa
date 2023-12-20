@@ -45,7 +45,10 @@ use rocksdb::WriteBatch;
 use std::{
     collections::VecDeque,
     ops::Deref,
-    sync::{Arc, atomic::{AtomicBool, Ordering}},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 

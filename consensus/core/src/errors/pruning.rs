@@ -56,6 +56,9 @@ pub enum PruningImportError {
 
     #[error("pruning import data lead to validation rule error")]
     PruningImportRuleError(#[from] RuleError),
+
+    #[error("process exit was initiated while validating pruning point proof")]
+    PruningValidationInterrupted,
 }
 
 pub type PruningImportResult<T> = std::result::Result<T, PruningImportError>;
