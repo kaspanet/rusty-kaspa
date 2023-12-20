@@ -8,12 +8,12 @@ use crate::storage::local::cache::Cache;
 
 #[derive(Clone)]
 struct StoreStreamInner {
-    cache: Arc<Mutex<Cache>>,
+    cache: Arc<RwLock<Cache>>,
     cursor: usize,
 }
 
 impl StoreStreamInner {
-    fn new(cache: Arc<Mutex<Cache>>) -> Self {
+    fn new(cache: Arc<RwLock<Cache>>) -> Self {
         Self { cache, cursor: 0 }
     }
 }
@@ -29,7 +29,7 @@ pub struct PrvKeyDataInfoStream {
 }
 
 impl PrvKeyDataInfoStream {
-    pub(crate) fn new(cache: Arc<Mutex<Cache>>) -> Self {
+    pub(crate) fn new(cache: Arc<RwLock<Cache>>) -> Self {
         Self { inner: StoreStreamInner::new(cache) }
     }
 }
@@ -39,7 +39,7 @@ impl Stream for PrvKeyDataInfoStream {
 
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let cache = self.inner.cache.clone();
-        let cache = cache.lock().unwrap();
+        let cache = cache.read().unwrap();
         let vec = &cache.prv_key_data_info.vec;
         if self.inner.cursor < vec.len() {
             let prv_key_data_info = vec[self.inner.cursor].clone();
@@ -57,7 +57,7 @@ pub struct AccountStream {
 }
 
 impl AccountStream {
-    pub(crate) fn new(cache: Arc<Mutex<Cache>>, filter: Option<PrvKeyDataId>) -> Self {
+    pub(crate) fn new(cache: Arc<RwLock<Cache>>, filter: Option<PrvKeyDataId>) -> Self {
         Self { inner: StoreStreamInner::new(cache), filter }
     }
 }
@@ -67,7 +67,7 @@ impl Stream for AccountStream {
 
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let cache = self.inner.cache.clone();
-        let cache = cache.lock().unwrap();
+        let cache = cache.read().unwrap();
         let accounts = &cache.accounts.vec;
         let metadata = &cache.metadata.map;
 
@@ -101,7 +101,7 @@ pub struct AddressBookEntryStream {
 }
 
 impl AddressBookEntryStream {
-    pub(crate) fn new(cache: Arc<Mutex<Cache>>) -> Self {
+    pub(crate) fn new(cache: Arc<RwLock<Cache>>) -> Self {
         Self { inner: StoreStreamInner::new(cache) }
     }
 }
@@ -111,7 +111,7 @@ impl Stream for AddressBookEntryStream {
 
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let cache = self.inner.cache.clone();
-        let cache = cache.lock().unwrap();
+        let cache = cache.read().unwrap();
         let vec = &cache.address_book; //transaction_records.vec;
 
         if self.inner.cursor < vec.len() {
