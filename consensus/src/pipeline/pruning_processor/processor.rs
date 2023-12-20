@@ -45,7 +45,7 @@ use rocksdb::WriteBatch;
 use std::{
     collections::VecDeque,
     ops::Deref,
-    sync::Arc,
+    sync::{Arc, atomic::{AtomicBool, Ordering}},
     time::{Duration, Instant},
 };
 
@@ -76,6 +76,9 @@ pub struct PruningProcessor {
 
     // Config
     config: Arc<Config>,
+
+    // Signals
+    is_process_exiting: Arc<AtomicBool>,
 }
 
 impl Deref for PruningProcessor {
@@ -94,6 +97,7 @@ impl PruningProcessor {
         services: &Arc<ConsensusServices>,
         pruning_lock: SessionLock,
         config: Arc<Config>,
+        is_process_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
             receiver,
@@ -105,6 +109,7 @@ impl PruningProcessor {
             pruning_proof_manager: services.pruning_proof_manager.clone(),
             pruning_lock,
             config,
+            is_process_exiting,
         }
     }
 
@@ -336,6 +341,12 @@ impl PruningProcessor {
             // If we have the lock for more than a few milliseconds, release and recapture to allow consensus progress during pruning
             if lock_acquire_time.elapsed() > Duration::from_millis(5) {
                 drop(reachability_read);
+                // An exit signal was received. Exit from this long running process.
+                if self.is_process_exiting.load(Ordering::SeqCst) {
+                    drop(prune_guard);
+                    info!("Header and Block pruning interrupted: Process is exiting");
+                    return;
+                }
                 prune_guard.blocking_yield();
                 lock_acquire_time = Instant::now();
                 reachability_read = self.reachability_store.upgradable_read();
