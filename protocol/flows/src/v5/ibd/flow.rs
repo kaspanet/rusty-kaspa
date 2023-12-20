@@ -112,11 +112,16 @@ impl IbdFlow {
                 match self.ibd_with_headers_proof(&staging, negotiation_output.syncer_virtual_selected_parent, &relay_block).await {
                     Ok(()) => {
                         spawn_blocking(|| staging.commit()).await.unwrap();
+                        info!(
+                            "Header download stage of IBD with headers proof completed successfully from {}. Committed staging consensus.",
+                            self.router
+                        );
                         self.ctx.on_pruning_point_utxoset_override();
                         // This will reobtain the freshly committed staging consensus
                         session = self.ctx.consensus().session().await;
                     }
                     Err(e) => {
+                        info!("IBD with headers proof from {} was unsuccessful ({})", self.router, e);
                         staging.cancel();
                         return Err(e);
                     }
