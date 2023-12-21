@@ -8,7 +8,7 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-kaspa-alloc.workspace = true
+kaspa-alloc.workspace = true            # This changes the global allocator for all of the next dependencies so should be kept first
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
