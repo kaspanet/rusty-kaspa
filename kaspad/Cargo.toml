@@ -52,5 +52,5 @@ tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 workflow-log.workspace = true
 
 [features]
-heap = ["dhat"]
+heap = ["dhat", "kaspa-alloc/heap"]
 devnet-prealloc = ["kaspa-consensus/devnet-prealloc"]
