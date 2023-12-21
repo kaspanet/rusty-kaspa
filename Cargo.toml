@@ -52,6 +52,7 @@ members = [
     "utils/tower",
     "rothschild",
     "metrics/perf_monitor",
+    "utils/alloc",
 ]
 
 [workspace.package]
@@ -72,7 +73,9 @@ include = [
 ]
 
 [workspace.dependencies]
-mimalloc = { version = "*", default-features = false, features = ['override'] }
+mimalloc = { version = "0.1.39", default-features = false, features = [
+    'override',
+] }
 # kaspa-testing-integration = { version = "0.13.1", path = "testing/integration" }
 kaspa-os = { version = "0.13.1", path = "kaspa-os" }
 kaspa-daemon = { version = "0.13.1", path = "daemon" }
@@ -122,6 +125,7 @@ kaspa-wrpc-server = { version = "0.13.1", path = "rpc/wrpc/server" }
 kaspa-wrpc-wasm = { version = "0.13.1", path = "rpc/wrpc/wasm" }
 kaspad = { version = "0.13.1", path = "kaspad" }
 kaspa-perf-monitor = { version = "0.13.1", path = "metrics/perf_monitor" }
+kaspa-alloc = { version = "0.13.1", path = "utils/alloc" }
 
 # external
 aes = "0.8.3"
@@ -235,7 +239,10 @@ web-sys = "=0.3.64"
 xxhash-rust = { version = "0.8.7", features = ["xxh3"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["alloc"] }
 pin-project-lite = "0.2.13"
-tower-http = { version = "0.4.4", features = ["map-response-body", "map-request-body"] }
+tower-http = { version = "0.4.4", features = [
+    "map-response-body",
+    "map-request-body",
+] }
 tower = "0.4.7"
 hyper = "0.14.27"
 # workflow dependencies that are not a part of core libraries
