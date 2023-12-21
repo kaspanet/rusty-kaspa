@@ -1,11 +1,11 @@
 #[cfg(not(feature = "heap"))]
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 extern "C" {
     fn mi_option_set_enabled(_: mi_option_e, val: bool);
 }
 
 #[cfg(not(feature = "heap"))]
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
 #[repr(C)]
@@ -48,7 +48,6 @@ use mimalloc::MiMalloc;
 static GLOBAL: MiMalloc = MiMalloc;
 
 pub fn init_allocator_with_default_settings() {
-    #[cfg(unix)]
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     #[cfg(not(feature = "heap"))]
     unsafe {
