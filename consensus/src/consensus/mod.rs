@@ -355,7 +355,7 @@ impl Consensus {
     }
 
     pub fn signal_exit(&self) {
-        self.is_consensus_exiting.store(true, Ordering::SeqCst);
+        self.is_consensus_exiting.store(true, Ordering::Relaxed);
         self.block_sender.send(BlockProcessingMessage::Exit).unwrap();
     }
 

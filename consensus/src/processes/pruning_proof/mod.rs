@@ -446,7 +446,7 @@ impl PruningProofManager {
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         for level in (0..=self.max_block_level).rev() {
             // Before processing this level, check if the process is exiting so we can end early
-            if self.is_consensus_exiting.load(Ordering::SeqCst) {
+            if self.is_consensus_exiting.load(Ordering::Relaxed) {
                 return Err(PruningImportError::PruningValidationInterrupted);
             }
 
