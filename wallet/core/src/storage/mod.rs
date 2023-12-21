@@ -15,7 +15,7 @@ pub mod local;
 pub mod metadata;
 pub mod transaction;
 
-pub use account::{AccountSettings, AccountStorage};
+pub use account::{AccountSettings, AccountStorage, Storable};
 pub use address::AddressBookEntry;
 pub use binding::Binding;
 pub use hint::Hint;
@@ -41,7 +41,7 @@ mod tests {
     use kaspa_bip32::{Language, Mnemonic};
 
     #[tokio::test]
-    async fn test_wallet_store_wallet_store_load() -> Result<()> {
+    async fn test_storage_wallet_store_load() -> Result<()> {
         // This test creates a simulated instance of keydata, stored account
         // instance and a wallet instance that owns them.  It then tests
         // loading of account references and a wallet instance and confirms
@@ -74,20 +74,18 @@ mod tests {
 
         println!("generating accounts...");
         let settings = AccountSettings { name: Some("Wallet-A".to_string()), ..Default::default() };
-        let storable = bip32::Storable::new(0, vec![pub_key_data1.clone()].into(), false);
+        let storable = bip32::Payload::new(0, vec![pub_key_data1.clone()].into(), false);
         let (id, storage_key) = make_account_hashes(from_bip32(&prv_key_data1.id, &storable));
-        let storable = serde_json::to_string(&storable)?;
         let account1 =
-            AccountStorage::new(BIP32_ACCOUNT_KIND.into(), &id, &storage_key, prv_key_data1.id.into(), settings, storable.as_bytes());
+            AccountStorage::try_new(BIP32_ACCOUNT_KIND.into(), &id, &storage_key, prv_key_data1.id.into(), settings, storable)?;
 
         payload.accounts.push(account1);
 
         let settings = AccountSettings { name: Some("Wallet-B".to_string()), ..Default::default() };
-        let storable = bip32::Storable::new(0, vec![pub_key_data2.clone()].into(), false);
+        let storable = bip32::Payload::new(0, vec![pub_key_data2.clone()].into(), false);
         let (id, storage_key) = make_account_hashes(from_bip32(&prv_key_data2.id, &storable));
-        let storable = serde_json::to_string(&storable)?;
         let account2 =
-            AccountStorage::new(BIP32_ACCOUNT_KIND.into(), &id, &storage_key, prv_key_data2.id.into(), settings, storable.as_bytes());
+            AccountStorage::try_new(BIP32_ACCOUNT_KIND.into(), &id, &storage_key, prv_key_data2.id.into(), settings, storable)?;
 
         payload.accounts.push(account2);
 
@@ -106,7 +104,7 @@ mod tests {
         println!("wallet decrypted...");
         println!("\n---\nwallet.metadata (plain): {:#?}\n\n", w2.metadata);
         // let w2payload_json = serde_json::to_string(w2payload.as_ref()).unwrap();
-        println!("\n---nwallet.payload (decrypted): {:#?}\n\n", w2payload.as_ref());
+        println!("\n---\nwallet.payload (decrypted): {:#?}\n\n", w2payload.as_ref());
         // purge the store
         store.purge().await?;
 

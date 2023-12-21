@@ -53,6 +53,10 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// Ping the wallet service. Accepts an optional `u64` value that is returned in the response.
     async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse>;
 
+    async fn batch(self: Arc<Self>) -> Result<()> {
+        self.batch_call(BatchRequest {}).await?;
+        Ok(())
+    }
     /// Initiates the wallet storage batch mode. Must be followed by the [`flush_call()`](Self::flush_call)
     /// after the desired wallet operations have been executed.
     ///
@@ -63,6 +67,10 @@ pub trait WalletApi: Send + Sync + AnySync {
     ///
     async fn batch_call(self: Arc<Self>, request: BatchRequest) -> Result<BatchResponse>;
 
+    async fn flush(self: Arc<Self>, wallet_secret: Secret) -> Result<()> {
+        self.flush_call(FlushRequest { wallet_secret }).await?;
+        Ok(())
+    }
     /// Saves the wallet data into the storage subsystem (disk, localstorage etc) if
     /// the wallet is in the batch mode and it's data has been marked as dirty.
     async fn flush_call(self: Arc<Self>, request: FlushRequest) -> Result<FlushResponse>;

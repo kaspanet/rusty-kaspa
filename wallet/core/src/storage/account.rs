@@ -45,19 +45,27 @@ pub struct AccountStorage {
     pub serialized: Vec<u8>,
 }
 
+pub trait Storable: Sized + BorshSerialize + BorshDeserialize {
+    const STORAGE_MAGIC: u32;
+    const STORAGE_VERSION: u32;
+}
+
 impl AccountStorage {
     const STORAGE_MAGIC: u32 = 0x4153414b;
     const STORAGE_VERSION: u32 = 0;
 
-    pub fn new(
+    pub fn try_new<A>(
         kind: AccountKind,
         id: &AccountId,
         storage_key: &AccountStorageKey,
         prv_key_data_ids: AssocPrvKeyDataIds,
         settings: AccountSettings,
-        serialized: &[u8],
-    ) -> Self {
-        Self { id: *id, storage_key: *storage_key, kind, prv_key_data_ids, settings, serialized: serialized.to_vec() }
+        serialized: A,
+    ) -> Result<Self>
+    where
+        A: Storable,
+    {
+        Ok(Self { id: *id, storage_key: *storage_key, kind, prv_key_data_ids, settings, serialized: serialized.try_to_vec()? })
     }
 
     pub fn id(&self) -> &AccountId {
@@ -112,14 +120,15 @@ mod tests {
     fn test_storage_account_storage_wrapper() -> Result<()> {
         let (id, storage_key) = make_account_hashes(from_data(&BIP32_ACCOUNT_KIND.into(), &[0x00, 0x01, 0x02, 0x03]));
         let prv_key_data_id = PrvKeyDataId::new(0xcafe);
-        let storable_in = AccountStorage::new(
+        let storable = bip32::Payload::new(0, ExtendedPublicKeys::default(), false);
+        let storable_in = AccountStorage::try_new(
             BIP32_ACCOUNT_KIND.into(),
             &id,
             &storage_key,
             prv_key_data_id.into(),
             AccountSettings::default(),
-            &[0x00, 0x01, 0x02, 0x03],
-        );
+            storable,
+        )?;
         let guard = StorageGuard::new(&storable_in);
         let storable_out = guard.validate()?;
 

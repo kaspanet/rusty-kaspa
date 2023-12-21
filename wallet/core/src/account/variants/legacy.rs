@@ -35,18 +35,19 @@ impl Factory for Ctor {
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub struct Storable;
+pub struct Payload;
 
-impl Storable {
-    pub const STORAGE_MAGIC: u32 = 0x5943474c;
-    pub const STORAGE_VERSION: u32 = 0;
-
+impl Payload {
     pub fn try_load(storage: &AccountStorage) -> Result<Self> {
         Ok(Self::try_from_slice(storage.serialized.as_slice())?)
     }
 }
+impl Storable for Payload {
+    const STORAGE_MAGIC: u32 = 0x5943474c;
+    const STORAGE_VERSION: u32 = 0;
+}
 
-impl BorshSerialize for Storable {
+impl BorshSerialize for Payload {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         StorageHeader::new(Self::STORAGE_MAGIC, Self::STORAGE_VERSION).serialize(writer)?;
 
@@ -54,7 +55,7 @@ impl BorshSerialize for Storable {
     }
 }
 
-impl BorshDeserialize for Storable {
+impl BorshDeserialize for Payload {
     fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
             StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
@@ -71,7 +72,7 @@ pub struct Legacy {
 
 impl Legacy {
     pub async fn try_new(wallet: &Arc<Wallet>, name: Option<String>, prv_key_data_id: PrvKeyDataId) -> Result<Self> {
-        let storable = Storable;
+        let storable = Payload;
         let settings = AccountSettings { name, ..Default::default() };
 
         let (id, storage_key) = make_account_hashes(from_legacy(&prv_key_data_id, &storable));
@@ -165,16 +166,15 @@ impl Account for Legacy {
 
     fn to_storage(&self) -> Result<AccountStorage> {
         let settings = self.context().settings.clone();
-        let storable = Storable;
-        let serialized = serde_json::to_string(&storable)?;
-        let account_storage = AccountStorage::new(
+        let storable = Payload;
+        let account_storage = AccountStorage::try_new(
             LEGACY_ACCOUNT_KIND.into(),
             self.id(),
             self.storage_key(),
             self.prv_key_data_id.into(),
             settings,
-            serialized.as_bytes(),
-        );
+            storable,
+        )?;
 
         Ok(account_storage)
     }

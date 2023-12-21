@@ -45,11 +45,13 @@ impl Account for Resident {
     }
 
     fn sig_op_count(&self) -> u8 {
-        1
+        // TODO - discuss
+        unreachable!()
     }
 
     fn minimum_signatures(&self) -> u16 {
-        1
+        // TODO - discuss
+        unreachable!()
     }
 
     fn receive_address(&self) -> Result<Address> {

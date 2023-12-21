@@ -32,17 +32,14 @@ impl Factory for Ctor {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub struct Storable {
+pub struct Payload {
     pub xpub_keys: ExtendedPublicKeys,
     pub cosigner_index: Option<u8>,
     pub minimum_signatures: u16,
     pub ecdsa: bool,
 }
 
-impl Storable {
-    pub const STORAGE_MAGIC: u32 = 0x4749534d;
-    pub const STORAGE_VERSION: u32 = 0;
-
+impl Payload {
     pub fn new(xpub_keys: ExtendedPublicKeys, cosigner_index: Option<u8>, minimum_signatures: u16, ecdsa: bool) -> Self {
         Self { xpub_keys, cosigner_index, minimum_signatures, ecdsa }
     }
@@ -52,7 +49,12 @@ impl Storable {
     }
 }
 
-impl BorshSerialize for Storable {
+impl Storable for Payload {
+    const STORAGE_MAGIC: u32 = 0x4749534d;
+    const STORAGE_VERSION: u32 = 0;
+}
+
+impl BorshSerialize for Payload {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         StorageHeader::new(Self::STORAGE_MAGIC, Self::STORAGE_VERSION).serialize(writer)?;
 
@@ -65,7 +67,7 @@ impl BorshSerialize for Storable {
     }
 }
 
-impl BorshDeserialize for Storable {
+impl BorshDeserialize for Payload {
     fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
             StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
@@ -99,7 +101,7 @@ impl MultiSig {
         minimum_signatures: u16,
         ecdsa: bool,
     ) -> Result<Self> {
-        let storable = Storable::new(xpub_keys.clone(), cosigner_index, minimum_signatures, ecdsa);
+        let storable = Payload::new(xpub_keys.clone(), cosigner_index, minimum_signatures, ecdsa);
         let settings = AccountSettings { name, ..Default::default() };
         let (id, storage_key) = make_account_hashes(from_multisig(&prv_key_data_ids, &storable));
         let inner = Arc::new(Inner::new(wallet, id, storage_key, settings));
@@ -120,10 +122,10 @@ impl MultiSig {
     }
 
     pub async fn try_load(wallet: &Arc<Wallet>, storage: &AccountStorage, meta: Option<Arc<AccountMetadata>>) -> Result<Self> {
-        let storable = Storable::try_load(storage)?;
+        let storable = Payload::try_load(storage)?;
         let inner = Arc::new(Inner::from_storage(wallet, storage));
 
-        let Storable { xpub_keys, cosigner_index, minimum_signatures, ecdsa, .. } = storable;
+        let Payload { xpub_keys, cosigner_index, minimum_signatures, ecdsa, .. } = storable;
 
         let address_derivation_indexes = meta.and_then(|meta| meta.address_derivation_indexes()).unwrap_or_default();
 
@@ -195,19 +197,15 @@ impl Account for MultiSig {
 
     fn to_storage(&self) -> Result<AccountStorage> {
         let settings = self.context().settings.clone();
-
-        let storable = Storable::new(self.xpub_keys.clone(), self.cosigner_index, self.minimum_signatures, self.ecdsa);
-
-        let serialized = serde_json::to_string(&storable)?;
-
-        let account_storage = AccountStorage::new(
+        let storable = Payload::new(self.xpub_keys.clone(), self.cosigner_index, self.minimum_signatures, self.ecdsa);
+        let account_storage = AccountStorage::try_new(
             MULTISIG_ACCOUNT_KIND.into(),
             self.id(),
             self.storage_key(),
             self.prv_key_data_ids.clone().try_into()?,
             settings,
-            serialized.as_bytes(),
-        );
+            storable,
+        )?;
 
         Ok(account_storage)
     }
@@ -255,7 +253,7 @@ mod tests {
 
     #[test]
     fn test_storage_multisig() -> Result<()> {
-        let storable_in = Storable::new(vec![make_xpub()].into(), Some(42), 0xc0fe, false);
+        let storable_in = Payload::new(vec![make_xpub()].into(), Some(42), 0xc0fe, false);
         let guard = StorageGuard::new(&storable_in);
         let storable_out = guard.validate()?;
 

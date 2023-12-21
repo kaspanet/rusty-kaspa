@@ -33,15 +33,12 @@ impl Factory for Ctor {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub struct Storable {
+pub struct Payload {
     pub public_key: secp256k1::PublicKey,
     pub ecdsa: bool,
 }
 
-impl Storable {
-    const STORAGE_MAGIC: u32 = 0x52494150;
-    const STORAGE_VERSION: u32 = 0;
-
+impl Payload {
     pub fn new(public_key: secp256k1::PublicKey, ecdsa: bool) -> Self {
         Self { public_key, ecdsa }
     }
@@ -51,7 +48,12 @@ impl Storable {
     }
 }
 
-impl BorshSerialize for Storable {
+impl Storable for Payload {
+    const STORAGE_MAGIC: u32 = 0x52494150;
+    const STORAGE_VERSION: u32 = 0;
+}
+
+impl BorshSerialize for Payload {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         let public_key = self.public_key.serialize();
 
@@ -64,7 +66,7 @@ impl BorshSerialize for Storable {
     }
 }
 
-impl BorshDeserialize for Storable {
+impl BorshDeserialize for Payload {
     fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
         use secp256k1::constants::PUBLIC_KEY_SIZE;
 
@@ -98,21 +100,21 @@ impl Keypair {
         prv_key_data_id: PrvKeyDataId,
         ecdsa: bool,
     ) -> Result<Self> {
-        let storable = Storable::new(public_key, ecdsa);
+        let storable = Payload::new(public_key, ecdsa);
         let settings = AccountSettings { name, ..Default::default() };
 
         let (id, storage_key) = make_account_hashes(from_keypair(&prv_key_data_id, &storable));
         let inner = Arc::new(Inner::new(wallet, id, storage_key, settings));
 
-        let Storable { public_key, ecdsa, .. } = storable;
+        let Payload { public_key, ecdsa, .. } = storable;
         Ok(Self { inner, prv_key_data_id, public_key, ecdsa })
     }
 
     pub async fn try_load(wallet: &Arc<Wallet>, storage: &AccountStorage, _meta: Option<Arc<AccountMetadata>>) -> Result<Self> {
-        let storable = Storable::try_load(storage)?;
+        let storable = Payload::try_load(storage)?;
         let inner = Arc::new(Inner::from_storage(wallet, storage));
 
-        let Storable { public_key, ecdsa, .. } = storable;
+        let Payload { public_key, ecdsa, .. } = storable;
         Ok(Self { inner, prv_key_data_id: storage.prv_key_data_ids.clone().try_into()?, public_key, ecdsa })
     }
 }
@@ -155,16 +157,15 @@ impl Account for Keypair {
 
     fn to_storage(&self) -> Result<AccountStorage> {
         let settings = self.context().settings.clone();
-        let storable = Storable::new(self.public_key, self.ecdsa);
-        let serialized = serde_json::to_string(&storable)?;
-        let account_storage = AccountStorage::new(
+        let storable = Payload::new(self.public_key, self.ecdsa);
+        let account_storage = AccountStorage::try_new(
             KEYPAIR_ACCOUNT_KIND.into(),
             self.id(),
             self.storage_key(),
             self.prv_key_data_id.into(),
             settings,
-            serialized.as_bytes(),
-        );
+            storable,
+        )?;
 
         Ok(account_storage)
     }

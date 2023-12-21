@@ -32,16 +32,13 @@ impl Factory for Ctor {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub struct Storable {
+pub struct Payload {
     pub xpub_keys: Arc<Vec<ExtendedPublicKeySecp256k1>>,
     pub account_index: u64,
     pub ecdsa: bool,
 }
 
-impl Storable {
-    const STORAGE_MAGIC: u32 = 0x32335042;
-    const STORAGE_VERSION: u32 = 0;
-
+impl Payload {
     pub fn new(account_index: u64, xpub_keys: Arc<Vec<ExtendedPublicKeySecp256k1>>, ecdsa: bool) -> Self {
         Self { account_index, xpub_keys, ecdsa }
     }
@@ -51,7 +48,12 @@ impl Storable {
     }
 }
 
-impl BorshSerialize for Storable {
+impl Storable for Payload {
+    const STORAGE_MAGIC: u32 = 0x32335042;
+    const STORAGE_VERSION: u32 = 0;
+}
+
+impl BorshSerialize for Payload {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         StorageHeader::new(Self::STORAGE_MAGIC, Self::STORAGE_VERSION).serialize(writer)?;
         BorshSerialize::serialize(&self.xpub_keys, writer)?;
@@ -62,7 +64,7 @@ impl BorshSerialize for Storable {
     }
 }
 
-impl BorshDeserialize for Storable {
+impl BorshDeserialize for Payload {
     fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
             StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
@@ -93,7 +95,7 @@ impl Bip32 {
         xpub_keys: ExtendedPublicKeys,
         ecdsa: bool,
     ) -> Result<Self> {
-        let storable = Storable::new(account_index, xpub_keys.clone(), ecdsa);
+        let storable = Payload::new(account_index, xpub_keys.clone(), ecdsa);
         let settings = AccountSettings { name, ..Default::default() };
         let (id, storage_key) = make_account_hashes(from_bip32(&prv_key_data_id, &storable));
         let inner = Arc::new(Inner::new(wallet, id, storage_key, settings));
@@ -106,11 +108,11 @@ impl Bip32 {
     }
 
     pub async fn try_load(wallet: &Arc<Wallet>, storage: &AccountStorage, meta: Option<Arc<AccountMetadata>>) -> Result<Self> {
-        let storable = Storable::try_load(storage)?;
+        let storable = Payload::try_load(storage)?;
         let prv_key_data_id: PrvKeyDataId = storage.prv_key_data_ids.clone().try_into()?;
         let inner = Arc::new(Inner::from_storage(wallet, storage));
 
-        let Storable { account_index, xpub_keys, ecdsa, .. } = storable;
+        let Payload { account_index, xpub_keys, ecdsa, .. } = storable;
 
         let address_derivation_indexes = meta.and_then(|meta| meta.address_derivation_indexes()).unwrap_or_default();
 
@@ -179,16 +181,15 @@ impl Account for Bip32 {
 
     fn to_storage(&self) -> Result<AccountStorage> {
         let settings = self.context().settings.clone();
-        let storable = Storable::new(self.account_index, self.xpub_keys.clone(), self.ecdsa);
-        let serialized = serde_json::to_string(&storable)?;
-        let storage = AccountStorage::new(
+        let storable = Payload::new(self.account_index, self.xpub_keys.clone(), self.ecdsa);
+        let storage = AccountStorage::try_new(
             BIP32_ACCOUNT_KIND.into(),
             self.id(),
             self.storage_key(),
             self.prv_key_data_id.into(),
             settings,
-            serialized.as_bytes(),
-        );
+            storable,
+        )?;
 
         Ok(storage)
     }
@@ -237,7 +238,7 @@ mod tests {
 
     #[test]
     fn test_storage_bip32() -> Result<()> {
-        let storable_in = Storable::new(0xbaadf00d, vec![make_xpub()].into(), false);
+        let storable_in = Payload::new(0xbaadf00d, vec![make_xpub()].into(), false);
         let guard = StorageGuard::new(&storable_in);
         let storable_out = guard.validate()?;
 

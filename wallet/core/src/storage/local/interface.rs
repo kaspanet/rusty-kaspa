@@ -386,6 +386,10 @@ impl Interface for LocalStore {
     }
 
     async fn open(&self, wallet_secret: &Secret, args: OpenArgs) -> Result<()> {
+        if self.inner()?.is_modified() {
+            panic!("LocalStore::open called while modified flag is true!");
+        }
+
         let location = self.location.lock().unwrap().clone().unwrap();
         let inner = Arc::new(LocalStoreInner::try_load(wallet_secret, &location.folder, args).await?);
         self.inner.lock().unwrap().replace(inner);

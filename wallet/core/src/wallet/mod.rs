@@ -588,6 +588,7 @@ impl Wallet {
         }
 
         self.inner.store.clone().as_account_store()?.store_single(&account.to_storage()?, None).await?;
+        self.inner.store.commit(wallet_secret).await?;
 
         Ok(account)
     }
@@ -628,6 +629,7 @@ impl Wallet {
         }
 
         self.inner.store.clone().as_account_store()?.store_single(&account.to_storage()?, None).await?;
+        self.inner.store.commit(wallet_secret).await?;
 
         Ok(account)
     }
@@ -655,6 +657,7 @@ impl Wallet {
         }
 
         self.inner.store.clone().as_account_store()?.store_single(&account.to_storage()?, None).await?;
+        self.inner.store.commit(wallet_secret).await?;
 
         Ok(account)
     }
