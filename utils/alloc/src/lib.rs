@@ -51,6 +51,7 @@ pub fn init_allocator_with_default_settings() {
     #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     #[cfg(not(feature = "heap"))]
     unsafe {
+        // Empirical tests show that this option results in the smallest RSS.
         mi_option_set_enabled(mi_option_e::mi_option_purge_decommits, false)
     };
 }
