@@ -1,4 +1,5 @@
 use crate::{adaptor::Adaptor, manager::Manager};
+use kaspa_consensus_core::config::Config;
 use kaspa_core::{
     debug,
     task::service::{AsyncService, AsyncServiceFuture},
@@ -13,6 +14,7 @@ const GRPC_SERVICE: &str = "grpc-service";
 
 pub struct GrpcService {
     net_address: NetAddress,
+    config: Arc<Config>,
     core_service: Arc<RpcCoreService>,
     rpc_max_clients: usize,
     shutdown: SingleTrigger,
@@ -22,11 +24,12 @@ pub struct GrpcService {
 impl GrpcService {
     pub fn new(
         address: NetAddress,
+        config: Arc<Config>,
         core_service: Arc<RpcCoreService>,
         rpc_max_clients: usize,
         counters: Arc<TowerConnectionCounters>,
     ) -> Self {
-        Self { net_address: address, core_service, rpc_max_clients, shutdown: Default::default(), counters }
+        Self { net_address: address, config, core_service, rpc_max_clients, shutdown: Default::default(), counters }
     }
 }
 
@@ -42,8 +45,14 @@ impl AsyncService for GrpcService {
         let shutdown_signal = self.shutdown.listener.clone();
 
         let manager = Manager::new(self.rpc_max_clients);
-        let grpc_adaptor =
-            Adaptor::server(self.net_address, manager, self.core_service.clone(), self.core_service.notifier(), self.counters.clone());
+        let grpc_adaptor = Adaptor::server(
+            self.net_address,
+            self.config.bps(),
+            manager,
+            self.core_service.clone(),
+            self.core_service.notifier(),
+            self.counters.clone(),
+        );
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
