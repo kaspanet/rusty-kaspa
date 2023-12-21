@@ -9,3 +9,6 @@ include.workspace = true
 
 [dependencies]
 mimalloc.workspace = true
+
+[features]
+heap = []

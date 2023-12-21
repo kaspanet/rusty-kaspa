@@ -35,4 +35,4 @@ secp256k1.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 
 [features]
-heap = ["dhat"]
+heap = ["dhat", "kaspa-alloc/heap"]
