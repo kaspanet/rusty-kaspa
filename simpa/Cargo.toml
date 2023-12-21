@@ -9,6 +9,7 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
+kaspa-alloc.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-consensus.workspace = true
@@ -20,7 +21,7 @@ kaspa-utils.workspace = true
 
 async-channel.workspace = true
 clap.workspace = true
-dhat = {workspace = true, optional = true}
+dhat = { workspace = true, optional = true }
 futures-util.workspace = true
 futures.workspace = true
 indexmap.workspace = true

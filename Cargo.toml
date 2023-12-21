@@ -53,6 +53,7 @@ members = [
     "rothschild",
     "metrics/perf_monitor",
     "metrics/core",
+    "utils/alloc",
 ]
 
 [workspace.package]
@@ -73,7 +74,9 @@ include = [
 ]
 
 [workspace.dependencies]
-mimalloc = { version = "*", default-features = false, features = ['override'] }
+mimalloc = { version = "0.1.39", default-features = false, features = [
+    'override',
+] }
 # kaspa-testing-integration = { version = "0.13.1", path = "testing/integration" }
 kaspa-addresses = { version = "0.13.1", path = "crypto/addresses" }
 kaspa-addressmanager = { version = "0.13.1", path = "components/addressmanager" }
@@ -125,6 +128,8 @@ kaspa-wrpc-proxy = { version = "0.13.1", path = "rpc/wrpc/proxy" }
 kaspa-wrpc-server = { version = "0.13.1", path = "rpc/wrpc/server" }
 kaspa-wrpc-wasm = { version = "0.13.1", path = "rpc/wrpc/wasm" }
 kaspad = { version = "0.13.1", path = "kaspad" }
+kaspa-alloc = { version = "0.13.1", path = "utils/alloc" }
+
 
 # external
 aes = "0.8.3"
@@ -163,7 +168,9 @@ faster-hex = "0.6.1" # TODO "0.8.1" - fails unit tests
 fixedstr = { version = "0.5.4", features = ["serde"] }
 flate2 = "1.0.28"
 futures = { version = "0.3.29" }
-futures-util = { version = "0.3.29", default-features = false, features = [ "alloc", ] }
+futures-util = { version = "0.3.29", default-features = false, features = [
+    "alloc",
+] }
 getrandom = { version = "0.2.10", features = ["js"] }
 h2 = "0.3.21"
 heapless = "0.7.16"
@@ -238,7 +245,10 @@ web-sys = "=0.3.64"
 xxhash-rust = { version = "0.8.7", features = ["xxh3"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["alloc"] }
 pin-project-lite = "0.2.13"
-tower-http = { version = "0.4.4", features = ["map-response-body", "map-request-body"] }
+tower-http = { version = "0.4.4", features = [
+    "map-response-body",
+    "map-request-body",
+] }
 tower = "0.4.7"
 hyper = "0.14.27"
 # workflow dependencies that are not a part of core libraries
