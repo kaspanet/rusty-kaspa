@@ -71,7 +71,7 @@ impl ConsensusServices {
         storage: Arc<ConsensusStorage>,
         config: Arc<Config>,
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
-        is_process_exiting: Arc<AtomicBool>,
+        is_consensus_exiting: Arc<AtomicBool>,
     ) -> Arc<Self> {
         let params = &config.params;
 
@@ -186,7 +186,7 @@ impl ConsensusServices {
             params.pruning_proof_m,
             params.anticone_finalization_depth(),
             params.ghostdag_k,
-            is_process_exiting,
+            is_consensus_exiting,
         ));
 
         let sync_manager = SyncManager::new(

@@ -119,7 +119,7 @@ pub struct PruningProofManager {
     anticone_finalization_depth: u64,
     ghostdag_k: KType,
 
-    is_process_exiting: Arc<AtomicBool>,
+    is_consensus_exiting: Arc<AtomicBool>,
 }
 
 impl PruningProofManager {
@@ -137,7 +137,7 @@ impl PruningProofManager {
         pruning_proof_m: u64,
         anticone_finalization_depth: u64,
         ghostdag_k: KType,
-        is_process_exiting: Arc<AtomicBool>,
+        is_consensus_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
             db,
@@ -169,7 +169,7 @@ impl PruningProofManager {
             anticone_finalization_depth,
             ghostdag_k,
 
-            is_process_exiting,
+            is_consensus_exiting,
         }
     }
 
@@ -446,7 +446,7 @@ impl PruningProofManager {
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         for level in (0..=self.max_block_level).rev() {
             // Before processing this level, check if the process is exiting so we can end early
-            if self.is_process_exiting.load(Ordering::SeqCst) {
+            if self.is_consensus_exiting.load(Ordering::SeqCst) {
                 return Err(PruningImportError::PruningValidationInterrupted);
             }
 

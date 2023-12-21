@@ -81,7 +81,7 @@ pub struct PruningProcessor {
     config: Arc<Config>,
 
     // Signals
-    is_process_exiting: Arc<AtomicBool>,
+    is_consensus_exiting: Arc<AtomicBool>,
 }
 
 impl Deref for PruningProcessor {
@@ -100,7 +100,7 @@ impl PruningProcessor {
         services: &Arc<ConsensusServices>,
         pruning_lock: SessionLock,
         config: Arc<Config>,
-        is_process_exiting: Arc<AtomicBool>,
+        is_consensus_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
             receiver,
@@ -112,7 +112,7 @@ impl PruningProcessor {
             pruning_proof_manager: services.pruning_proof_manager.clone(),
             pruning_lock,
             config,
-            is_process_exiting,
+            is_consensus_exiting,
         }
     }
 
@@ -345,7 +345,7 @@ impl PruningProcessor {
             if lock_acquire_time.elapsed() > Duration::from_millis(5) {
                 drop(reachability_read);
                 // An exit signal was received. Exit from this long running process.
-                if self.is_process_exiting.load(Ordering::SeqCst) {
+                if self.is_consensus_exiting.load(Ordering::SeqCst) {
                     drop(prune_guard);
                     info!("Header and Block pruning interrupted: Process is exiting");
                     return;

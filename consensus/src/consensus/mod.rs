@@ -128,7 +128,7 @@ pub struct Consensus {
     creation_timestamp: u64,
 
     // Signals
-    is_process_exiting: Arc<AtomicBool>,
+    is_consensus_exiting: Arc<AtomicBool>,
 }
 
 impl Deref for Consensus {
@@ -151,7 +151,7 @@ impl Consensus {
     ) -> Self {
         let params = &config.params;
         let perf_params = &config.perf;
-        let is_process_exiting: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+        let is_consensus_exiting: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
         //
         // Storage layer
@@ -163,8 +163,13 @@ impl Consensus {
         // Services and managers
         //
 
-        let services =
-            ConsensusServices::new(db.clone(), storage.clone(), config.clone(), tx_script_cache_counters, is_process_exiting.clone());
+        let services = ConsensusServices::new(
+            db.clone(),
+            storage.clone(),
+            config.clone(),
+            tx_script_cache_counters,
+            is_consensus_exiting.clone(),
+        );
 
         //
         // Processor channels
@@ -265,7 +270,7 @@ impl Consensus {
             &services,
             pruning_lock.clone(),
             config.clone(),
-            is_process_exiting.clone(),
+            is_consensus_exiting.clone(),
         ));
 
         // Ensure the relations stores are initialized
@@ -294,7 +299,7 @@ impl Consensus {
             counters,
             config,
             creation_timestamp,
-            is_process_exiting,
+            is_consensus_exiting,
         }
     }
 
@@ -350,7 +355,7 @@ impl Consensus {
     }
 
     pub fn signal_exit(&self) {
-        self.is_process_exiting.store(true, Ordering::SeqCst);
+        self.is_consensus_exiting.store(true, Ordering::SeqCst);
         self.block_sender.send(BlockProcessingMessage::Exit).unwrap();
     }
 
