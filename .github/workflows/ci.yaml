@@ -330,7 +330,7 @@ jobs:
 
       - name: Build wasm pack for nodejs
         run: cd wasm && wasm-pack build --target nodejs --out-dir nodejs/kaspa --features full
-        
+
   build-release:
     name: Build Ubuntu Release
     runs-on: ubuntu-latest
@@ -388,7 +388,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
         uses: taiki-e/install-action@nextest
 
       - name: Cache
