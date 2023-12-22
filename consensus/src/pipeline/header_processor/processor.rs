@@ -212,9 +212,12 @@ impl HeaderProcessor {
     pub fn worker(self: &Arc<HeaderProcessor>) {
         while let Ok(msg) = self.receiver.recv() {
             match msg {
-                BlockProcessingMessage::Exit => break,
-                BlockProcessingMessage::Process(task, result_transmitter) => {
-                    if let Some(task_id) = self.task_manager.register(task, result_transmitter) {
+                BlockProcessingMessage::Exit => {
+                    break;
+                }
+                BlockProcessingMessage::Process(task, block_result_transmitter, virtual_state_result_transmitter) => {
+                    if let Some(task_id) = self.task_manager.register(task, block_result_transmitter, virtual_state_result_transmitter)
+                    {
                         let processor = self.clone();
                         self.thread_pool.spawn(move || {
                             processor.queue_block(task_id);
@@ -235,14 +238,22 @@ impl HeaderProcessor {
         if let Some(task) = self.task_manager.try_begin(task_id) {
             let res = self.process_header(&task);
 
-            let dependent_tasks = self.task_manager.end(task, |task, result_transmitter| {
-                if res.is_err() || task.block().is_header_only() {
-                    // We don't care if receivers were dropped
-                    let _ = result_transmitter.send(res.clone());
-                } else {
-                    self.body_sender.send(BlockProcessingMessage::Process(task, result_transmitter)).unwrap();
-                }
-            });
+            let dependent_tasks = self.task_manager.end(
+                task,
+                |task,
+                 block_result_transmitter: tokio::sync::oneshot::Sender<Result<BlockStatus, RuleError>>,
+                 virtual_state_result_transmitter| {
+                    if res.is_err() || task.block().is_header_only() {
+                        // We don't care if receivers were dropped
+                        let _ = block_result_transmitter.send(res.clone());
+                        let _ = virtual_state_result_transmitter.send(res.clone());
+                    } else {
+                        self.body_sender
+                            .send(BlockProcessingMessage::Process(task, block_result_transmitter, virtual_state_result_transmitter))
+                            .unwrap();
+                    }
+                },
+            );
 
             for dep in dependent_tasks {
                 let processor = self.clone();

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use kaspa_p2p_lib::{
     common::ProtocolError,
-    dequeue, make_message,
+    dequeue_with_request_id, make_response,
     pb::{kaspad_message::Payload, PruningPointProofMessage},
     IncomingRoute, Router,
 };
@@ -34,13 +34,14 @@ impl RequestPruningPointProofFlow {
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         loop {
-            dequeue!(self.incoming_route, Payload::RequestPruningPointProof)?;
+            let (_, request_id) = dequeue_with_request_id!(self.incoming_route, Payload::RequestPruningPointProof)?;
             debug!("Got pruning point proof request");
-            let proof = (self.ctx.consensus().session().await).async_get_pruning_point_proof().await;
+            let proof = self.ctx.consensus().unguarded_session().async_get_pruning_point_proof().await;
             self.router
-                .enqueue(make_message!(
+                .enqueue(make_response!(
                     Payload::PruningPointProof,
-                    PruningPointProofMessage { headers: proof.iter().map(|headers| headers.try_into().unwrap()).collect() }
+                    PruningPointProofMessage { headers: proof.iter().map(|headers| headers.into()).collect() },
+                    request_id
                 ))
                 .await?;
             debug!("Sent pruning point proof");

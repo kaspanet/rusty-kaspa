@@ -4,7 +4,7 @@ pub use super::{
     genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TESTNET11_GENESIS, TESTNET_GENESIS},
 };
 use crate::{
-    networktype::{NetworkId, NetworkType},
+    network::{NetworkId, NetworkType},
     BlockLevel, KType,
 };
 use kaspa_addresses::Prefix;
@@ -216,14 +216,26 @@ impl Params {
 
     /// Returns whether the sink timestamp is recent enough and the node is considered synced or nearly synced.
     pub fn is_nearly_synced(&self, sink_timestamp: u64, sink_daa_score: u64) -> bool {
-        // We consider the node close to being synced if the sink (virtual selected parent) block
-        // timestamp is within DAA window duration far in the past. Blocks mined over such DAG state would
-        // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
-        unix_now() < sink_timestamp + self.expected_daa_window_duration_in_milliseconds(sink_daa_score)
+        if self.net.is_mainnet() {
+            // We consider the node close to being synced if the sink (virtual selected parent) block
+            // timestamp is within DAA window duration far in the past. Blocks mined over such DAG state would
+            // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
+            unix_now() < sink_timestamp + self.expected_daa_window_duration_in_milliseconds(sink_daa_score)
+        } else {
+            // For testnets we consider the node to be synced if the sink timestamp is within a time range which
+            // is overwhelmingly unlikely to pass without mined blocks even if net hashrate decreased dramatically.
+            //
+            // This period is smaller than the above mainnet calculation in order to ensure that an IBDing miner
+            // with significant testnet hashrate does not overwhelm the network with deep side-DAGs.
+            //
+            // We use DAA duration as baseline and scale it down with BPS
+            let max_expected_duration_without_blocks_in_milliseconds = self.target_time_per_block * NEW_DIFFICULTY_WINDOW_DURATION; // = DAA duration in milliseconds / bps
+            unix_now() < sink_timestamp + max_expected_duration_without_blocks_in_milliseconds
+        }
     }
 
     pub fn network_name(&self) -> String {
-        self.net.name()
+        self.net.to_prefixed()
     }
 
     pub fn prefix(&self) -> Prefix {
@@ -236,6 +248,10 @@ impl Params {
 
     pub fn default_rpc_port(&self) -> u16 {
         self.net.default_rpc_port()
+    }
+
+    pub fn finality_duration(&self) -> u64 {
+        self.target_time_per_block * self.finality_depth
     }
 }
 
@@ -268,8 +284,6 @@ impl From<NetworkId> for Params {
 
 pub const MAINNET_PARAMS: Params = Params {
     dns_seeders: &[
-        // This DNS seeder is run by Wolfie
-        "mainnet-dnsseed.kas.pa",
         // This DNS seeder is run by Denis Mashkevich
         "mainnet-dnsseed-1.kaspanet.org",
         // This DNS seeder is run by Denis Mashkevich
@@ -342,7 +356,6 @@ pub const MAINNET_PARAMS: Params = Params {
 
 pub const TESTNET_PARAMS: Params = Params {
     dns_seeders: &[
-        "testnet-10-dnsseed.kas.pa",
         // This DNS seeder is run by Tiram
         "seeder1-testnet.kaspad.net",
     ],
@@ -456,24 +469,34 @@ pub const SIMNET_PARAMS: Params = Params {
     dns_seeders: &[],
     net: NetworkId::new(NetworkType::Simnet),
     genesis: SIMNET_GENESIS,
-    ghostdag_k: LEGACY_DEFAULT_GHOSTDAG_K,
     legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
     new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
-    past_median_time_sample_rate: Bps::<1>::past_median_time_sample_rate(),
     past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
-    target_time_per_block: 1000,
-    sampling_activation_daa_score: u64::MAX,
+    sampling_activation_daa_score: 0, // Sampling is activated from network inception
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
-    difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
     sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
     legacy_difficulty_window_size: LEGACY_DIFFICULTY_WINDOW_SIZE,
     min_difficulty_window_len: MIN_DIFFICULTY_WINDOW_LEN,
-    max_block_parents: 10,
-    mergeset_size_limit: (LEGACY_DEFAULT_GHOSTDAG_K as u64) * 10,
-    merge_depth: 3600,
-    finality_depth: 86400,
-    pruning_depth: 185798,
+
+    //
+    // ~~~~~~~~~~~~~~~~~~ BPS dependent constants ~~~~~~~~~~~~~~~~~~
+    //
+    // Note we use a 10 BPS configuration for simnet
+    ghostdag_k: Testnet11Bps::ghostdag_k(),
+    target_time_per_block: Testnet11Bps::target_time_per_block(),
+    past_median_time_sample_rate: Testnet11Bps::past_median_time_sample_rate(),
+    difficulty_sample_rate: Testnet11Bps::difficulty_adjustment_sample_rate(),
+    max_block_parents: Testnet11Bps::max_block_parents(),
+    mergeset_size_limit: Testnet11Bps::mergeset_size_limit(),
+    merge_depth: Testnet11Bps::merge_depth_bound(),
+    finality_depth: Testnet11Bps::finality_depth(),
+    pruning_depth: Testnet11Bps::pruning_depth(),
+    pruning_proof_m: Testnet11Bps::pruning_proof_m(),
+    deflationary_phase_daa_score: Testnet11Bps::deflationary_phase_daa_score(),
+    pre_deflationary_phase_base_subsidy: Testnet11Bps::pre_deflationary_phase_base_subsidy(),
+    coinbase_maturity: Testnet11Bps::coinbase_maturity(),
+
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
@@ -491,18 +514,8 @@ pub const SIMNET_PARAMS: Params = Params {
     mass_per_sig_op: 1000,
     max_block_mass: 500_000,
 
-    // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
-    // switches to the deflationary period. This number is calculated as follows:
-    // We define a year as 365.25 days
-    // Half a year in seconds = 365.25 / 2 * 24 * 60 * 60 = 15778800
-    // The network was down for three days shortly after launch
-    // Three days in seconds = 3 * 24 * 60 * 60 = 259200
-    deflationary_phase_daa_score: 15778800 - 259200,
-    pre_deflationary_phase_base_subsidy: 50000000000,
-    coinbase_maturity: 100,
-    skip_proof_of_work: false,
+    skip_proof_of_work: true, // For simnet only, PoW can be simulated by default
     max_block_level: 250,
-    pruning_proof_m: 1000,
 };
 
 pub const DEVNET_PARAMS: Params = Params {

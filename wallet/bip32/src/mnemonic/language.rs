@@ -7,11 +7,13 @@
 
 use super::bits::{Bits, Bits11};
 use std::{collections::BTreeMap, vec::Vec};
+use wasm_bindgen::prelude::*;
 
 /// Supported languages.
 ///
 /// Presently only English is specified by the BIP39 standard
 #[derive(Copy, Clone, Debug, Default)]
+#[wasm_bindgen]
 pub enum Language {
     /// English is presently the only supported language
     #[default]
@@ -20,7 +22,7 @@ pub enum Language {
 
 impl Language {
     /// Get the word list for this language
-    pub(crate) fn wordlist(&self) -> &'static WordList {
+    pub fn wordlist(&self) -> &'static WordList {
         match *self {
             Language::English => &lazy::WORDLIST_ENGLISH,
         }
@@ -38,7 +40,7 @@ pub(crate) struct WordMap {
     inner: BTreeMap<&'static str, Bits11>,
 }
 
-pub(crate) struct WordList {
+pub struct WordList {
     inner: Vec<&'static str>,
 }
 
@@ -51,6 +53,29 @@ impl WordMap {
 impl WordList {
     pub fn get_word(&self, bits: Bits11) -> &'static str {
         self.inner[bits.bits() as usize]
+    }
+
+    pub fn iter(&self) -> WordListIterator<'_> {
+        WordListIterator { wordlist: self, index: 0 }
+    }
+}
+
+pub struct WordListIterator<'a> {
+    wordlist: &'a WordList,
+    index: usize,
+}
+
+impl Iterator for WordListIterator<'_> {
+    type Item = &'static str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.wordlist.inner.len() {
+            let word = self.wordlist.inner[self.index];
+            self.index += 1;
+            Some(word)
+        } else {
+            None
+        }
     }
 }
 

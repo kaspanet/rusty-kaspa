@@ -24,7 +24,7 @@ impl GenesisBlock {
 
 impl From<&GenesisBlock> for Header {
     fn from(genesis: &GenesisBlock) -> Self {
-        Header::new(
+        Header::new_finalized(
             genesis.version,
             Vec::new(),
             genesis.hash_merkle_root,
@@ -143,10 +143,24 @@ pub const TESTNET_GENESIS: GenesisBlock = GenesisBlock {
 
 pub const TESTNET11_GENESIS: GenesisBlock = GenesisBlock {
     hash: Hash::from_bytes([
-        0xf0, 0xa3, 0x15, 0x04, 0xfb, 0x4b, 0xf8, 0x83, 0xd0, 0xdd, 0x2a, 0x75, 0x1c, 0x7d, 0xac, 0x06, 0x1a, 0xb4, 0xc6, 0x33, 0x00,
-        0xc5, 0x4f, 0xd2, 0x64, 0xd8, 0xe3, 0x06, 0x99, 0xda, 0x51, 0x54,
+        0x3c, 0x8d, 0x1b, 0xea, 0xd4, 0x65, 0xd4, 0xf7, 0x93, 0xf4, 0xb5, 0x20, 0x1a, 0x99, 0x22, 0x43, 0x75, 0xe2, 0x3b, 0x33, 0xd4,
+        0x54, 0x9f, 0x36, 0x07, 0xc2, 0xa9, 0xf9, 0x51, 0xe4, 0xec, 0xc4,
     ]),
-    bits: 520421375, // see `gen_testnet11_genesis`
+    hash_merkle_root: Hash::from_bytes([
+        0xf5, 0xd7, 0x3a, 0xef, 0xd9, 0x1d, 0x82, 0x1a, 0xde, 0x39, 0xc8, 0x9a, 0x73, 0x2d, 0xc2, 0x1b, 0xa0, 0xab, 0x82, 0x42, 0xe0,
+        0x48, 0xdc, 0x2f, 0x26, 0x88, 0x1d, 0x6e, 0x7c, 0x00, 0x4e, 0xe0,
+    ]),
+    bits: 504155340, // see `gen_testnet11_genesis`
+    #[rustfmt::skip]
+    coinbase_payload: &[
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Blue score
+        0x00, 0xE1, 0xF5, 0x05, 0x00, 0x00, 0x00, 0x00, // Subsidy
+        0x00, 0x00, // Script version
+        0x01,                                                                         // Varint
+        0x00,                                                                         // OP-FALSE
+        0x6b, 0x61, 0x73, 0x70, 0x61, 0x2d, 0x74, 0x65, 0x73, 0x74, 0x6e, 0x65, 0x74, // kaspa-testnet
+        11, 3                                                                         // TN11, Relaunch 3
+    ],
     ..TESTNET_GENESIS
 };
 
@@ -217,7 +231,7 @@ mod tests {
     fn test_genesis_hashes() {
         [GENESIS, TESTNET_GENESIS, TESTNET11_GENESIS, SIMNET_GENESIS, DEVNET_GENESIS].into_iter().for_each(|genesis| {
             let block: Block = (&genesis).into();
-            assert_eq!(calc_hash_merkle_root(block.transactions.iter()), block.header.hash_merkle_root);
+            assert_hashes_eq(calc_hash_merkle_root(block.transactions.iter()), block.header.hash_merkle_root);
             assert_hashes_eq(block.hash(), genesis.hash);
         });
     }
@@ -227,11 +241,11 @@ mod tests {
         let bps = Testnet11Bps::bps();
         let mut genesis = TESTNET_GENESIS;
         let target = kaspa_math::Uint256::from_compact_target_bits(genesis.bits);
-        let scaled_up_target = target * bps;
-        let scaled_up_bits = scaled_up_target.compact_target_bits();
-        genesis.bits = scaled_up_bits;
+        let scaled_target = target * bps / 100;
+        let scaled_bits = scaled_target.compact_target_bits();
+        genesis.bits = scaled_bits;
         if genesis.bits != TESTNET11_GENESIS.bits {
-            panic!("Testnet 11: new bits: {}\nnew hash: {:#04x?}", scaled_up_bits, Block::from(&genesis).hash().as_bytes());
+            panic!("Testnet 11: new bits: {}\nnew hash: {:#04x?}", scaled_bits, Block::from(&genesis).hash().as_bytes());
         }
     }
 

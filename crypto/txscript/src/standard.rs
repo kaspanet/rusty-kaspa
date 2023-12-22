@@ -10,6 +10,10 @@ use kaspa_txscript_errors::TxScriptError;
 use smallvec::SmallVec;
 use std::iter::once;
 
+mod multisig;
+
+pub use multisig::{multisig_redeem_script, multisig_redeem_script_ecdsa, Error as MultisigCreateError};
+
 /// Creates a new script to pay a transaction output to a 32-byte pubkey.
 fn pay_to_pub_key(address_payload: &[u8]) -> ScriptVec {
     // TODO: use ScriptBuilder when add_op and add_data fns or equivalents are available

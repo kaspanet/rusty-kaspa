@@ -1,7 +1,7 @@
 //!
 //! Assertion macros based on the standard nightly version
-//! (https://doc.rust-lang.org/src/core/macros/mod.rs.html#144-169)
-//!   
+//! <https://doc.rust-lang.org/src/core/macros/mod.rs.html#144-169>
+//!
 
 use std::fmt;
 

@@ -1,8 +1,7 @@
 use crate::{db::DB, errors::StoreError};
 
 use super::prelude::{Cache, DbKey, DbWriter};
-use itertools::Itertools;
-use rocksdb::{Direction, IteratorMode, ReadOptions};
+use rocksdb::{Direction, IterateBounds, IteratorMode, ReadOptions};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::hash_map::RandomState, error::Error, hash::BuildHasher, sync::Arc};
 
@@ -153,26 +152,15 @@ where
         Ok(())
     }
 
+    /// Deletes all entries in the store using the underlying rocksdb `delete_range` operation
     pub fn delete_all(&self, mut writer: impl DbWriter) -> Result<(), StoreError>
     where
         TKey: Clone + AsRef<[u8]>,
     {
         self.cache.remove_all();
-        //TODO: Consider using column families to make it faster
         let db_key = DbKey::prefix_only(&self.prefix);
-        let mut read_opts = ReadOptions::default();
-        read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
-        let keys = self
-            .db
-            .iterator_opt(IteratorMode::From(db_key.as_ref(), Direction::Forward), read_opts)
-            .map(|iter_result| match iter_result {
-                Ok((key, _)) => Ok::<_, rocksdb::Error>(key),
-                Err(e) => Err(e),
-            })
-            .collect_vec();
-        for key in keys {
-            writer.delete(key.unwrap())?;
-        }
+        let (from, to) = rocksdb::PrefixRange(db_key.as_ref()).into_bounds();
+        writer.delete_range(from.unwrap(), to.unwrap())?;
         Ok(())
     }
 
@@ -219,5 +207,39 @@ where
             },
             Err(err) => Err(err.into()),
         })
+    }
+
+    pub fn prefix(&self) -> &[u8] {
+        &self.prefix
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        create_temp_db,
+        prelude::{BatchDbWriter, ConnBuilder, DirectDbWriter},
+    };
+    use kaspa_hashes::Hash;
+    use rocksdb::WriteBatch;
+
+    #[test]
+    fn test_delete_all() {
+        let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let access = CachedDbAccess::<Hash, u64>::new(db.clone(), 2, vec![1, 2]);
+
+        access.write_many(DirectDbWriter::new(&db), &mut (0..16).map(|i| (i.into(), 2))).unwrap();
+        assert_eq!(16, access.iterator().count());
+        access.delete_all(DirectDbWriter::new(&db)).unwrap();
+        assert_eq!(0, access.iterator().count());
+
+        access.write_many(DirectDbWriter::new(&db), &mut (0..16).map(|i| (i.into(), 2))).unwrap();
+        assert_eq!(16, access.iterator().count());
+        let mut batch = WriteBatch::default();
+        access.delete_all(BatchDbWriter::new(&mut batch)).unwrap();
+        assert_eq!(16, access.iterator().count());
+        db.write(batch).unwrap();
+        assert_eq!(0, access.iterator().count());
     }
 }

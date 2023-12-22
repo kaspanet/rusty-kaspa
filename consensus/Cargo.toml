@@ -1,6 +1,6 @@
 [package]
 name = "kaspa-consensus"
-description = "Kaspa consensus lib"
+description = "Kaspa consensus library"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,46 +8,47 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-kaspa-pow.workspace = true
-kaspa-math.workspace = true
-kaspa-hashes.workspace = true
-kaspa-merkle.workspace = true
-kaspa-core.workspace = true
-kaspa-notify.workspace = true
+async-channel.workspace = true
+bincode.workspace = true
+crossbeam-channel.workspace = true
+faster-hex.workspace = true
+futures-util.workspace = true
+indexmap.workspace = true
+itertools.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-notify.workspace = true
-faster-hex.workspace = true
-thiserror.workspace = true
-serde.workspace = true
-itertools.workspace = true
-futures-util.workspace = true
-tokio.workspace = true
-bincode.workspace = true
-rayon.workspace = true
-rand.workspace = true
-indexmap.workspace = true
-smallvec.workspace = true
+kaspa-consensusmanager.workspace = true
+kaspa-core.workspace = true
+kaspa-database.workspace = true
+kaspa-hashes.workspace = true
+kaspa-math.workspace = true
+kaspa-merkle.workspace = true
+kaspa-muhash.workspace = true
+kaspa-notify.workspace = true
+kaspa-pow.workspace = true
+kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 log.workspace = true
-kaspa-muhash.workspace = true
-parking_lot.workspace = true
-kaspa-txscript.workspace = true
-rocksdb.workspace = true
-kaspa-database.workspace = true
-kaspa-consensusmanager.workspace = true
 once_cell.workspace = true
+parking_lot.workspace = true
+rayon.workspace = true
+rocksdb.workspace = true
+secp256k1.workspace = true
+serde.workspace = true
+smallvec.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
 
-crossbeam-channel = "0.5"
-async-channel = "1.8.0"
-secp256k1 = { version = "0.24", features = ["global-context", "rand-std"] }
+rand = { workspace = true, features = ["small_rng"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
 
 [dev-dependencies]
 criterion.workspace = true
-rand = { workspace = true, features = ["small_rng"] }
-tokio = { workspace = true, features = ["rt", "macros"] }
-serde_json = "1.0"
-flate2 = "1"
-rand_distr = "0.4"
+serde_json.workspace = true
+flate2.workspace = true
+rand_distr.workspace = true
 kaspa-txscript-errors.workspace = true
 
 [[bench]]
@@ -56,3 +57,4 @@ harness = false
 
 [features]
 html_reports = []
+devnet-prealloc = ["kaspa-consensus-core/devnet-prealloc"]

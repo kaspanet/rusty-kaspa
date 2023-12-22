@@ -65,7 +65,7 @@ impl ConsensusConverter {
             transaction_ids: block.transactions.iter().map(|x| x.id()).collect(),
             is_header_only: block_status.is_header_only(),
             blue_score: ghostdag_data.blue_score,
-            children_hashes: (*children).clone(),
+            children_hashes: children,
             merge_set_blues_hashes: ghostdag_data.mergeset_blues,
             merge_set_reds_hashes: ghostdag_data.mergeset_reds,
             is_chain_block,
@@ -186,7 +186,7 @@ impl Converter for ConsensusConverter {
     async fn convert(&self, incoming: ConsensusNotification) -> Notification {
         match incoming {
             consensus_notify::Notification::BlockAdded(msg) => {
-                let session = self.consensus_manager.consensus().session().await;
+                let session = self.consensus_manager.consensus().unguarded_session();
                 // If get_block fails, rely on the infallible From implementation which will lack verbose data
                 let block = Arc::new(self.get_block(&session, &msg.block, true, true).await.unwrap_or_else(|_| (&msg.block).into()));
                 Notification::BlockAdded(BlockAddedNotification { block })

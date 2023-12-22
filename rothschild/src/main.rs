@@ -75,10 +75,17 @@ async fn main() {
     kaspa_core::log::init_logger(None, "");
     let args = Args::parse();
     let mut stats = Stats { num_txs: 0, since: unix_now(), num_utxos: 0, utxos_amount: 0, num_outs: 0 };
-    let rpc_client =
-        GrpcClient::connect(NotificationMode::Direct, format!("grpc://{}", args.rpc_server), true, None, false, Some(500_000))
-            .await
-            .unwrap();
+    let rpc_client = GrpcClient::connect(
+        NotificationMode::Direct,
+        format!("grpc://{}", args.rpc_server),
+        true,
+        None,
+        false,
+        Some(500_000),
+        Default::default(),
+    )
+    .await
+    .unwrap();
     info!("Connected to RPC");
     let mut pending = HashMap::new();
 
@@ -338,7 +345,7 @@ fn select_utxos(
     const MAX_UTXOS: usize = 84;
     let mut selected_amount: u64 = 0;
     let mut selected = Vec::new();
-    for (outpoint, entry) in utxos.iter().cloned().filter(|(op, _)| !pending.contains_key(op)) {
+    for (outpoint, entry) in utxos.iter().filter(|(op, _)| !pending.contains_key(op)).cloned() {
         selected_amount += entry.amount;
         selected.push((outpoint, entry));
 

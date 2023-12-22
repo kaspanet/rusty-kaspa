@@ -1,6 +1,7 @@
 use crate::model::*;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_consensus_core::block_count::BlockCount;
+use kaspa_core::debug;
 use kaspa_notify::subscription::{single::UtxosChangedSubscription, Command};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -27,18 +28,20 @@ impl SubmitBlockRequest {
     }
 }
 
-#[derive(Eq, PartialEq, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum SubmitBlockRejectReason {
     BlockInvalid = 1,
     IsInIBD = 2,
+    RouteIsFull = 3,
 }
 impl SubmitBlockRejectReason {
     fn as_str(&self) -> &'static str {
         // see app\appmessage\rpc_submit_block.go, line 35
         match self {
-            SubmitBlockRejectReason::BlockInvalid => "Block is invalid",
-            SubmitBlockRejectReason::IsInIBD => "Node is in IBD",
+            SubmitBlockRejectReason::BlockInvalid => "block is invalid",
+            SubmitBlockRejectReason::IsInIBD => "node is not synced",
+            SubmitBlockRejectReason::RouteIsFull => "route is full",
         }
     }
 }
@@ -169,17 +172,17 @@ impl GetPeerAddressesResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetSelectedTipHashRequest {}
+pub struct GetSinkRequest {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetSelectedTipHashResponse {
-    pub selected_tip_hash: RpcHash,
+pub struct GetSinkResponse {
+    pub sink: RpcHash,
 }
 
-impl GetSelectedTipHashResponse {
+impl GetSinkResponse {
     pub fn new(selected_tip_hash: RpcHash) -> Self {
-        Self { selected_tip_hash }
+        Self { sink: selected_tip_hash }
     }
 }
 
@@ -398,6 +401,7 @@ pub struct GetBlockDagInfoResponse {
     pub virtual_parent_hashes: Vec<RpcHash>,
     pub pruning_point_hash: RpcHash,
     pub virtual_daa_score: u64,
+    pub sink: RpcHash,
 }
 
 impl GetBlockDagInfoResponse {
@@ -411,6 +415,7 @@ impl GetBlockDagInfoResponse {
         virtual_parent_hashes: Vec<RpcHash>,
         pruning_point_hash: RpcHash,
         virtual_daa_score: u64,
+        sink: RpcHash,
     ) -> Self {
         Self {
             network,
@@ -422,6 +427,7 @@ impl GetBlockDagInfoResponse {
             virtual_parent_hashes,
             pruning_point_hash,
             virtual_daa_score,
+            sink,
         }
     }
 }
@@ -673,33 +679,108 @@ pub struct PingRequest {}
 #[serde(rename_all = "camelCase")]
 pub struct PingResponse {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct GetProcessMetricsRequest {}
+// TODO - custom wRPC commands (need review and implementation in gRPC)
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct GetProcessMetricsResponse {
-    pub uptime: u64,
-    pub memory_used: Vec<u64>,
-    pub storage_used: Vec<u64>,
-    pub grpc_connections: Vec<u64>,
-    pub wrpc_connections: Vec<u64>,
-    // TBD:
-    //  - approx bandwidth consumption
-    //  - other connection metrics
-    //  - cpu usage
+pub struct GetMetricsRequest {
+    pub process_metrics: bool,
+    pub consensus_metrics: bool,
 }
 
-impl GetProcessMetricsResponse {
-    pub fn new(
-        uptime: u64,
-        memory_used: Vec<u64>,
-        storage_used: Vec<u64>,
-        grpc_connections: Vec<u64>,
-        wrpc_connections: Vec<u64>,
-    ) -> Self {
-        Self { uptime, memory_used, storage_used, grpc_connections, wrpc_connections }
+#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessMetrics {
+    pub resident_set_size: u64,
+    pub virtual_memory_size: u64,
+    pub core_num: u64,
+    pub cpu_usage: f64,
+    pub fd_num: u64,
+    pub disk_io_read_bytes: u64,
+    pub disk_io_write_bytes: u64,
+    pub disk_io_read_per_sec: f64,
+    pub disk_io_write_per_sec: f64,
+
+    pub borsh_live_connections: u64,
+    pub borsh_connection_attempts: u64,
+    pub borsh_handshake_failures: u64,
+    pub json_live_connections: u64,
+    pub json_connection_attempts: u64,
+    pub json_handshake_failures: u64,
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ConsensusMetrics {
+    pub blocks_submitted: u64,
+    pub header_counts: u64,
+    pub dep_counts: u64,
+    pub body_counts: u64,
+    pub txs_counts: u64,
+    pub chain_block_counts: u64,
+    pub mass_counts: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetMetricsResponse {
+    pub server_time: u64,
+    pub process_metrics: Option<ProcessMetrics>,
+    pub consensus_metrics: Option<ConsensusMetrics>,
+}
+
+impl GetMetricsResponse {
+    pub fn new(server_time: u64, process_metrics: Option<ProcessMetrics>, consensus_metrics: Option<ConsensusMetrics>) -> Self {
+        Self { process_metrics, consensus_metrics, server_time }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetServerInfoRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetServerInfoResponse {
+    pub rpc_api_version: [u16; 4],
+    pub server_version: String,
+    pub network_id: RpcNetworkId,
+    pub has_utxo_index: bool,
+    pub is_synced: bool,
+    pub virtual_daa_score: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSyncStatusRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSyncStatusResponse {
+    pub is_synced: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetDaaScoreTimestampEstimateRequest {
+    pub daa_scores: Vec<u64>,
+}
+
+impl GetDaaScoreTimestampEstimateRequest {
+    pub fn new(daa_scores: Vec<u64>) -> Self {
+        Self { daa_scores }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetDaaScoreTimestampEstimateResponse {
+    pub timestamps: Vec<u64>,
+}
+
+impl GetDaaScoreTimestampEstimateResponse {
+    pub fn new(timestamps: Vec<u64>) -> Self {
+        Self { timestamps }
     }
 }
 
@@ -870,6 +951,7 @@ impl UtxosChangedNotification {
         } else {
             let added = Self::filter_utxos(&self.added, subscription);
             let removed = Self::filter_utxos(&self.removed, subscription);
+            debug!("CRPC, Creating UtxosChanged notifications with {} added and {} removed utxos", added.len(), removed.len());
             if added.is_empty() && removed.is_empty() {
                 None
             } else {
@@ -1017,7 +1099,7 @@ impl SubscribeResponse {
 }
 
 ///
-///  wRPC response for RpcApiOps::Subscribe request
+///  wRPC response for RpcApiOps::Unsubscribe request
 ///
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]

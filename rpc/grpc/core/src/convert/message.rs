@@ -1,6 +1,30 @@
+//! Conversions of protowire messages from and to rpc core counterparts.
+//!
+//! Response payloads in protowire do always contain an error field and generally a set of
+//! fields providing the requested data.
+//!
+//! Responses in rpc core are expressed as RpcResult<XxxResponse>, where Xxx is the called
+//! RPC method.
+//!
+//! The general conversion convention from protowire to rpc core is to consider the error
+//! field first and, if present, to return a matching Err(RpcError). If absent, try to
+//! convert the set of data fields into a matching XxxResponse rpc core response and, on
+//! success, return Ok(XxxResponse), otherwise return a conversion error.
+//!
+//! Conversely, the general conversion convention from rpc core to protowire, depending on
+//! a provided RpcResult is to either convert the Ok(XxxResponse) into the matching set
+//! of data fields and provide no error or provide no data fields but an error field in case
+//! of Err(RpcError).
+//!
+//! The SubmitBlockResponse is a notable exception to this general rule.
+
 use crate::protowire::{self, submit_block_response_message::RejectReason};
+use kaspa_consensus_core::network::NetworkId;
+use kaspa_core::debug;
+use kaspa_notify::subscription::Command;
 use kaspa_rpc_core::{
     RpcContextualPeerAddress, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult,
+    SubmitBlockRejectReason, SubmitBlockReport,
 };
 use std::str::FromStr;
 
@@ -106,14 +130,25 @@ from!(item: &kaspa_rpc_core::SubmitBlockReport, RejectReason, {
         kaspa_rpc_core::SubmitBlockReport::Success => RejectReason::None,
         kaspa_rpc_core::SubmitBlockReport::Reject(kaspa_rpc_core::SubmitBlockRejectReason::BlockInvalid) => RejectReason::BlockInvalid,
         kaspa_rpc_core::SubmitBlockReport::Reject(kaspa_rpc_core::SubmitBlockRejectReason::IsInIBD) => RejectReason::IsInIbd,
+        // The conversion of RouteIsFull falls back to None since there exist no such variant in the original protowire version
+        // and we do not want to break backwards compatibility
+        kaspa_rpc_core::SubmitBlockReport::Reject(kaspa_rpc_core::SubmitBlockRejectReason::RouteIsFull) => RejectReason::None,
     }
 });
 
 from!(item: &kaspa_rpc_core::SubmitBlockRequest, protowire::SubmitBlockRequestMessage, {
     Self { block: Some((&item.block).into()), allow_non_daa_blocks: item.allow_non_daa_blocks }
 });
+// This conversion breaks the general conversion convention (see file header) since the message may
+// contain both a non default reject_reason and a matching error message. In the RouteIsFull case
+// reject_reason is None (because this reason has no variant in protowire) but a specific error
+// message is provided.
 from!(item: RpcResult<&kaspa_rpc_core::SubmitBlockResponse>, protowire::SubmitBlockResponseMessage, {
-    Self { reject_reason: RejectReason::from(&item.report) as i32, error: None }
+    let error: Option<protowire::RpcError> = match item.report {
+        kaspa_rpc_core::SubmitBlockReport::Success => None,
+        kaspa_rpc_core::SubmitBlockReport::Reject(reason) => Some(RpcError::SubmitBlockError(reason).into())
+    };
+    Self { reject_reason: RejectReason::from(&item.report) as i32, error }
 });
 
 from!(item: &kaspa_rpc_core::GetBlockTemplateRequest, protowire::GetBlockTemplateRequestMessage, {
@@ -173,9 +208,9 @@ from!(item: RpcResult<&kaspa_rpc_core::GetPeerAddressesResponse>, protowire::Get
     }
 });
 
-from!(&kaspa_rpc_core::GetSelectedTipHashRequest, protowire::GetSelectedTipHashRequestMessage);
-from!(item: RpcResult<&kaspa_rpc_core::GetSelectedTipHashResponse>, protowire::GetSelectedTipHashResponseMessage, {
-    Self { selected_tip_hash: item.selected_tip_hash.to_string(), error: None }
+from!(&kaspa_rpc_core::GetSinkRequest, protowire::GetSinkRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetSinkResponse>, protowire::GetSinkResponseMessage, {
+    Self { sink: item.sink.to_string(), error: None }
 });
 
 from!(item: &kaspa_rpc_core::GetMempoolEntryRequest, protowire::GetMempoolEntryRequestMessage, {
@@ -257,7 +292,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetBlockCountResponse>, protowire::GetBlo
 from!(&kaspa_rpc_core::GetBlockDagInfoRequest, protowire::GetBlockDagInfoRequestMessage);
 from!(item: RpcResult<&kaspa_rpc_core::GetBlockDagInfoResponse>, protowire::GetBlockDagInfoResponseMessage, {
     Self {
-        network_name: item.network.to_string(),
+        network_name: item.network.to_prefixed(),
         block_count: item.block_count,
         header_count: item.header_count,
         tip_hashes: item.tip_hashes.iter().map(|x| x.to_string()).collect(),
@@ -266,6 +301,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetBlockDagInfoResponse>, protowire::GetB
         virtual_parent_hashes: item.virtual_parent_hashes.iter().map(|x| x.to_string()).collect(),
         pruning_point_hash: item.pruning_point_hash.to_string(),
         virtual_daa_score: item.virtual_daa_score,
+        sink: item.sink.to_string(),
         error: None,
     }
 });
@@ -291,6 +327,7 @@ from!(item: &kaspa_rpc_core::GetUtxosByAddressesRequest, protowire::GetUtxosByAd
     Self { addresses: item.addresses.iter().map(|x| x.into()).collect() }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetUtxosByAddressesResponse>, protowire::GetUtxosByAddressesResponseMessage, {
+    debug!("GRPC, Creating GetUtxosByAddresses message with {} entries", item.entries.len());
     Self { entries: item.entries.iter().map(|x| x.into()).collect(), error: None }
 });
 
@@ -298,6 +335,7 @@ from!(item: &kaspa_rpc_core::GetBalanceByAddressRequest, protowire::GetBalanceBy
     Self { address: (&item.address).into() }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetBalanceByAddressResponse>, protowire::GetBalanceByAddressResponseMessage, {
+    debug!("GRPC, Creating GetBalanceByAddress messages");
     Self { balance: item.balance, error: None }
 });
 
@@ -305,6 +343,7 @@ from!(item: &kaspa_rpc_core::GetBalancesByAddressesRequest, protowire::GetBalanc
     Self { addresses: item.addresses.iter().map(|x| x.into()).collect() }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetBalancesByAddressesResponse>, protowire::GetBalancesByAddressesResponseMessage, {
+    debug!("GRPC, Creating GetUtxosByAddresses message with {} entries", item.entries.len());
     Self { entries: item.entries.iter().map(|x| x.into()).collect(), error: None }
 });
 
@@ -346,17 +385,49 @@ from!(item: RpcResult<&kaspa_rpc_core::GetCoinSupplyResponse>, protowire::GetCoi
     Self { max_sompi: item.max_sompi, circulating_sompi: item.circulating_sompi, error: None }
 });
 
+from!(item: &kaspa_rpc_core::GetDaaScoreTimestampEstimateRequest, protowire::GetDaaScoreTimestampEstimateRequestMessage, {
+    Self {
+        daa_scores: item.daa_scores.clone()
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetDaaScoreTimestampEstimateResponse>, protowire::GetDaaScoreTimestampEstimateResponseMessage, {
+    Self { timestamps: item.timestamps.clone(), error: None }
+});
+
 from!(&kaspa_rpc_core::PingRequest, protowire::PingRequestMessage);
 from!(RpcResult<&kaspa_rpc_core::PingResponse>, protowire::PingResponseMessage);
 
-from!(&kaspa_rpc_core::GetProcessMetricsRequest, protowire::GetProcessMetricsRequestMessage);
-from!(item: RpcResult<&kaspa_rpc_core::GetProcessMetricsResponse>, protowire::GetProcessMetricsResponseMessage, {
+from!(item: &kaspa_rpc_core::GetMetricsRequest, protowire::GetMetricsRequestMessage, {
     Self {
-        uptime: item.uptime,
-        memory_used: item.memory_used.clone(),
-        storage_used: item.storage_used.clone(),
-        grpc_connections: item.grpc_connections.clone(),
-        wrpc_connections: item.wrpc_connections.clone(),
+        process_metrics: item.process_metrics,
+        consensus_metrics: item.consensus_metrics
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetricsResponseMessage, {
+    Self {
+        server_time: item.server_time,
+        process_metrics: item.process_metrics.as_ref().map(|x| x.into()),
+        consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.into()),
+        error: None,
+    }
+});
+from!(&kaspa_rpc_core::GetServerInfoRequest, protowire::GetServerInfoRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetServerInfoResponse>, protowire::GetServerInfoResponseMessage, {
+    Self {
+        rpc_api_version: item.rpc_api_version.iter().map(|x| *x as u32).collect(),
+        server_version: item.server_version.clone(),
+        network_id: item.network_id.to_string(),
+        has_utxo_index: item.has_utxo_index,
+        is_synced: item.is_synced,
+        virtual_daa_score: item.virtual_daa_score,
+        error: None,
+    }
+});
+
+from!(&kaspa_rpc_core::GetSyncStatusRequest, protowire::GetSyncStatusRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetSyncStatusResponse>, protowire::GetSyncStatusResponseMessage, {
+    Self {
+        is_synced: item.is_synced,
         error: None,
     }
 });
@@ -364,14 +435,23 @@ from!(item: RpcResult<&kaspa_rpc_core::GetProcessMetricsResponse>, protowire::Ge
 from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::NotifyUtxosChangedRequestMessage, {
     Self { addresses: item.addresses.iter().map(|x| x.into()).collect(), command: item.command.into() }
 });
+from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::StopNotifyingUtxosChangedRequestMessage, {
+    Self { addresses: item.addresses.iter().map(|x| x.into()).collect() }
+});
 from!(RpcResult<&kaspa_rpc_core::NotifyUtxosChangedResponse>, protowire::NotifyUtxosChangedResponseMessage);
+from!(RpcResult<&kaspa_rpc_core::NotifyUtxosChangedResponse>, protowire::StopNotifyingUtxosChangedResponseMessage);
 
 from!(item: &kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest, protowire::NotifyPruningPointUtxoSetOverrideRequestMessage, {
     Self { command: item.command.into() }
 });
+from!(&kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest, protowire::StopNotifyingPruningPointUtxoSetOverrideRequestMessage);
 from!(
     RpcResult<&kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideResponse>,
     protowire::NotifyPruningPointUtxoSetOverrideResponseMessage
+);
+from!(
+    RpcResult<&kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideResponse>,
+    protowire::StopNotifyingPruningPointUtxoSetOverrideResponseMessage
 );
 
 from!(item: &kaspa_rpc_core::NotifyFinalityConflictRequest, protowire::NotifyFinalityConflictRequestMessage, {
@@ -416,9 +496,31 @@ try_from!(item: &protowire::SubmitBlockRequestMessage, kaspa_rpc_core::SubmitBlo
         allow_non_daa_blocks: item.allow_non_daa_blocks,
     }
 });
-try_from!(item: &protowire::SubmitBlockResponseMessage, RpcResult<kaspa_rpc_core::SubmitBlockResponse>, {
-    Self { report: RejectReason::from_i32(item.reject_reason).ok_or(RpcError::PrimitiveToEnumConversionError)?.into() }
-});
+impl TryFrom<&protowire::SubmitBlockResponseMessage> for kaspa_rpc_core::SubmitBlockResponse {
+    type Error = RpcError;
+    // This conversion breaks the general conversion convention (see file header) since the message may
+    // contain both a non-None reject_reason and a matching error message. Things get even challenging
+    // in the RouteIsFull case where reject_reason is None (because this reason has no variant in protowire)
+    // but a specific error message is provided.
+    fn try_from(item: &protowire::SubmitBlockResponseMessage) -> RpcResult<Self> {
+        let report: SubmitBlockReport =
+            RejectReason::try_from(item.reject_reason).map_err(|_| RpcError::PrimitiveToEnumConversionError)?.into();
+        if let Some(ref err) = item.error {
+            match report {
+                SubmitBlockReport::Success => {
+                    if err.message == RpcError::SubmitBlockError(SubmitBlockRejectReason::RouteIsFull).to_string() {
+                        Ok(Self { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::RouteIsFull) })
+                    } else {
+                        Err(err.into())
+                    }
+                }
+                SubmitBlockReport::Reject(_) => Ok(Self { report }),
+            }
+        } else {
+            Ok(Self { report })
+        }
+    }
+}
 
 try_from!(item: &protowire::GetBlockTemplateRequestMessage, kaspa_rpc_core::GetBlockTemplateRequest, {
     Self { pay_address: item.pay_address.clone().try_into()?, extra_data: RpcExtraData::from_iter(item.extra_data.bytes()) }
@@ -488,9 +590,9 @@ try_from!(item: &protowire::GetPeerAddressesResponseMessage, RpcResult<kaspa_rpc
     }
 });
 
-try_from!(&protowire::GetSelectedTipHashRequestMessage, kaspa_rpc_core::GetSelectedTipHashRequest);
-try_from!(item: &protowire::GetSelectedTipHashResponseMessage, RpcResult<kaspa_rpc_core::GetSelectedTipHashResponse>, {
-    Self { selected_tip_hash: RpcHash::from_str(&item.selected_tip_hash)? }
+try_from!(&protowire::GetSinkRequestMessage, kaspa_rpc_core::GetSinkRequest);
+try_from!(item: &protowire::GetSinkResponseMessage, RpcResult<kaspa_rpc_core::GetSinkResponse>, {
+    Self { sink: RpcHash::from_str(&item.sink)? }
 });
 
 try_from!(item: &protowire::GetMempoolEntryRequestMessage, kaspa_rpc_core::GetMempoolEntryRequest, {
@@ -585,7 +687,7 @@ try_from!(item: &protowire::GetBlockCountResponseMessage, RpcResult<kaspa_rpc_co
 try_from!(&protowire::GetBlockDagInfoRequestMessage, kaspa_rpc_core::GetBlockDagInfoRequest);
 try_from!(item: &protowire::GetBlockDagInfoResponseMessage, RpcResult<kaspa_rpc_core::GetBlockDagInfoResponse>, {
     Self {
-        network: kaspa_rpc_core::RpcNetworkId::from_str(&item.network_name)?,
+        network: kaspa_rpc_core::RpcNetworkId::from_prefixed(&item.network_name)?,
         block_count: item.block_count,
         header_count: item.header_count,
         tip_hashes: item.tip_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
@@ -594,6 +696,7 @@ try_from!(item: &protowire::GetBlockDagInfoResponseMessage, RpcResult<kaspa_rpc_
         virtual_parent_hashes: item.virtual_parent_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
         pruning_point_hash: RpcHash::from_str(&item.pruning_point_hash)?,
         virtual_daa_score: item.virtual_daa_score,
+        sink: item.sink.parse()?,
     }
 });
 
@@ -675,17 +778,45 @@ try_from!(item: &protowire::GetCoinSupplyResponseMessage, RpcResult<kaspa_rpc_co
     Self { max_sompi: item.max_sompi, circulating_sompi: item.circulating_sompi }
 });
 
+try_from!(item: &protowire::GetDaaScoreTimestampEstimateRequestMessage, kaspa_rpc_core::GetDaaScoreTimestampEstimateRequest , {
+    Self {
+        daa_scores: item.daa_scores.clone()
+    }
+});
+try_from!(item: &protowire::GetDaaScoreTimestampEstimateResponseMessage, RpcResult<kaspa_rpc_core::GetDaaScoreTimestampEstimateResponse>, {
+    Self { timestamps: item.timestamps.clone() }
+});
+
 try_from!(&protowire::PingRequestMessage, kaspa_rpc_core::PingRequest);
 try_from!(&protowire::PingResponseMessage, RpcResult<kaspa_rpc_core::PingResponse>);
 
-try_from!(&protowire::GetProcessMetricsRequestMessage, kaspa_rpc_core::GetProcessMetricsRequest);
-try_from!(item: &protowire::GetProcessMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetProcessMetricsResponse>, {
+try_from!(item: &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetricsRequest, {
+    Self { process_metrics: item.process_metrics, consensus_metrics: item.consensus_metrics }
+});
+try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetMetricsResponse>, {
     Self {
-        uptime: item.uptime,
-        memory_used: item.memory_used.clone(),
-        storage_used: item.storage_used.clone(),
-        grpc_connections: item.grpc_connections.clone(),
-        wrpc_connections: item.wrpc_connections.clone(),
+        server_time: item.server_time,
+        process_metrics: item.process_metrics.as_ref().map(|x| x.try_into()).transpose()?,
+        consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.try_into()).transpose()?,
+    }
+});
+
+try_from!(&protowire::GetServerInfoRequestMessage, kaspa_rpc_core::GetServerInfoRequest);
+try_from!(item: &protowire::GetServerInfoResponseMessage, RpcResult<kaspa_rpc_core::GetServerInfoResponse>, {
+    Self {
+        rpc_api_version: item.rpc_api_version.iter().map(|x| *x as u16).collect::<Vec<_>>().as_slice().try_into().map_err(|_| RpcError::RpcApiVersionFormatError)?,
+        server_version: item.server_version.clone(),
+        network_id: NetworkId::from_str(&item.network_id)?,
+        has_utxo_index: item.has_utxo_index,
+        is_synced: item.is_synced,
+        virtual_daa_score: item.virtual_daa_score,
+    }
+});
+
+try_from!(&protowire::GetSyncStatusRequestMessage, kaspa_rpc_core::GetSyncStatusRequest);
+try_from!(item: &protowire::GetSyncStatusResponseMessage, RpcResult<kaspa_rpc_core::GetSyncStatusResponse>, {
+    Self {
+        is_synced: item.is_synced,
     }
 });
 
@@ -695,7 +826,14 @@ try_from!(item: &protowire::NotifyUtxosChangedRequestMessage, kaspa_rpc_core::No
         command: item.command.into(),
     }
 });
+try_from!(item: &protowire::StopNotifyingUtxosChangedRequestMessage, kaspa_rpc_core::NotifyUtxosChangedRequest, {
+    Self {
+        addresses: item.addresses.iter().map(|x| x.as_str().try_into()).collect::<Result<Vec<_>, _>>()?,
+        command: Command::Stop,
+    }
+});
 try_from!(&protowire::NotifyUtxosChangedResponseMessage, RpcResult<kaspa_rpc_core::NotifyUtxosChangedResponse>);
+try_from!(&protowire::StopNotifyingUtxosChangedResponseMessage, RpcResult<kaspa_rpc_core::NotifyUtxosChangedResponse>);
 
 try_from!(
     item: &protowire::NotifyPruningPointUtxoSetOverrideRequestMessage,
@@ -703,7 +841,16 @@ try_from!(
     { Self { command: item.command.into() } }
 );
 try_from!(
+    _item: &protowire::StopNotifyingPruningPointUtxoSetOverrideRequestMessage,
+    kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideRequest,
+    { Self { command: Command::Stop } }
+);
+try_from!(
     &protowire::NotifyPruningPointUtxoSetOverrideResponseMessage,
+    RpcResult<kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideResponse>
+);
+try_from!(
+    &protowire::StopNotifyingPruningPointUtxoSetOverrideResponseMessage,
     RpcResult<kaspa_rpc_core::NotifyPruningPointUtxoSetOverrideResponse>
 );
 
@@ -732,3 +879,79 @@ try_from!(&protowire::NotifySinkBlueScoreChangedResponseMessage, RpcResult<kaspa
 // ----------------------------------------------------------------------------
 
 // TODO: tests
+
+#[cfg(test)]
+mod tests {
+    use kaspa_rpc_core::{RpcError, RpcResult, SubmitBlockRejectReason, SubmitBlockReport, SubmitBlockResponse};
+
+    use crate::protowire::{self, submit_block_response_message::RejectReason, SubmitBlockResponseMessage};
+
+    #[test]
+    fn test_submit_block_response() {
+        struct Test {
+            rpc_core: RpcResult<kaspa_rpc_core::SubmitBlockResponse>,
+            protowire: protowire::SubmitBlockResponseMessage,
+        }
+        impl Test {
+            fn new(
+                rpc_core: RpcResult<kaspa_rpc_core::SubmitBlockResponse>,
+                protowire: protowire::SubmitBlockResponseMessage,
+            ) -> Self {
+                Self { rpc_core, protowire }
+            }
+        }
+        let tests = vec![
+            Test::new(
+                Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
+                SubmitBlockResponseMessage { reject_reason: RejectReason::None as i32, error: None },
+            ),
+            Test::new(
+                Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) }),
+                SubmitBlockResponseMessage {
+                    reject_reason: RejectReason::BlockInvalid as i32,
+                    error: Some(protowire::RpcError {
+                        message: RpcError::SubmitBlockError(SubmitBlockRejectReason::BlockInvalid).to_string(),
+                    }),
+                },
+            ),
+            Test::new(
+                Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::IsInIBD) }),
+                SubmitBlockResponseMessage {
+                    reject_reason: RejectReason::IsInIbd as i32,
+                    error: Some(protowire::RpcError {
+                        message: RpcError::SubmitBlockError(SubmitBlockRejectReason::IsInIBD).to_string(),
+                    }),
+                },
+            ),
+            Test::new(
+                Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::RouteIsFull) }),
+                SubmitBlockResponseMessage {
+                    reject_reason: RejectReason::None as i32, // This rpc core reject reason has no matching protowire variant
+                    error: Some(protowire::RpcError {
+                        message: RpcError::SubmitBlockError(SubmitBlockRejectReason::RouteIsFull).to_string(),
+                    }),
+                },
+            ),
+        ];
+
+        for test in tests {
+            let cnv_protowire: SubmitBlockResponseMessage = test.rpc_core.as_ref().map_err(|x| x.clone()).into();
+            assert_eq!(cnv_protowire.reject_reason, test.protowire.reject_reason);
+            assert_eq!(cnv_protowire.error.is_some(), test.protowire.error.is_some());
+            assert_eq!(cnv_protowire.error, test.protowire.error);
+
+            let cnv_rpc_core: RpcResult<SubmitBlockResponse> = (&test.protowire).try_into();
+            assert_eq!(cnv_rpc_core.is_ok(), test.rpc_core.is_ok());
+            match cnv_rpc_core {
+                Ok(ref cnv_response) => {
+                    let Ok(ref response) = test.rpc_core else { panic!() };
+                    assert_eq!(cnv_response.report, response.report);
+                }
+                Err(ref cnv_err) => {
+                    let Err(ref err) = test.rpc_core else { panic!() };
+                    assert_eq!(cnv_err.to_string(), err.to_string());
+                }
+            }
+        }
+    }
+}

@@ -275,7 +275,7 @@ mod tests {
     use kaspa_consensus_core::{
         config::params::{Params, TESTNET11_PARAMS},
         constants::SOMPI_PER_KASPA,
-        networktype::NetworkId,
+        network::NetworkId,
         tx::scriptvec,
     };
 

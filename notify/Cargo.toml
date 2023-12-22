@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-notify"
+description = "Kaspa notification subsystem"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,26 +8,28 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-kaspa-addresses.workspace = true
-kaspa-core.workspace = true
-kaspa-utils.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-txscript.workspace = true
-kaspa-txscript-errors.workspace = true
-serde.workspace = true
-derive_more.workspace = true
-thiserror.workspace = true
-borsh.workspace = true
 async-channel.workspace = true
-log.workspace = true
+async-trait.workspace = true
+borsh.workspace = true
+derive_more.workspace = true
 futures-util.workspace = true
-async-trait = "0.1.57"
-futures = { version = "0.3" }
-rand = "0.8"
-triggered = "0.1"
-workflow-core = "0.3"
-paste = "1.0.11"
+futures.workspace = true
+itertools.workspace = true
+kaspa-addresses.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-core.workspace = true
+kaspa-txscript-errors.workspace = true
+kaspa-txscript.workspace = true
+kaspa-utils.workspace = true
+log.workspace = true
 parking_lot.workspace = true
+paste.workspace = true
+rand.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+triggered.workspace = true
+workflow-core.workspace = true
+workflow-log.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }

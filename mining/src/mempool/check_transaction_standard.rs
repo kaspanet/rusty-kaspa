@@ -224,12 +224,15 @@ impl Mempool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mempool::config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE};
+    use crate::{
+        mempool::config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE},
+        MiningCounters,
+    };
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::{
         config::params::Params,
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
-        networktype::NetworkType,
+        network::NetworkType,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{ScriptPublicKey, ScriptVec, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
@@ -238,6 +241,7 @@ mod tests {
         script_builder::ScriptBuilder,
     };
     use smallvec::smallvec;
+    use std::sync::Arc;
 
     #[test]
     fn test_calc_min_required_tx_relay_fee() {
@@ -281,7 +285,8 @@ mod tests {
                 let params: Params = net.into();
                 let mut config = Config::build_default(params.target_time_per_block, false, params.max_block_mass);
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
-                let mempool = Mempool::new(config);
+                let counters = Arc::new(MiningCounters::default());
+                let mempool = Mempool::new(Arc::new(config), counters);
 
                 let got = mempool.minimum_required_transaction_relay_fee(test.size);
                 if got != test.want {
@@ -365,7 +370,8 @@ mod tests {
                 let params: Params = net.into();
                 let mut config = Config::build_default(params.target_time_per_block, false, params.max_block_mass);
                 config.minimum_relay_transaction_fee = test.minimum_relay_transaction_fee;
-                let mempool = Mempool::new(config);
+                let counters = Arc::new(MiningCounters::default());
+                let mempool = Mempool::new(Arc::new(config), counters);
 
                 println!("test_is_transaction_output_dust test '{}' ", test.name);
                 let res = mempool.is_transaction_output_dust(&test.tx_out);
@@ -543,7 +549,8 @@ mod tests {
             for net in NetworkType::iter() {
                 let params: Params = net.into();
                 let config = Config::build_default(params.target_time_per_block, false, params.max_block_mass);
-                let mempool = Mempool::new(config);
+                let counters = Arc::new(MiningCounters::default());
+                let mempool = Mempool::new(Arc::new(config), counters);
 
                 // Ensure standard-ness is as expected.
                 println!("test_check_transaction_standard_in_isolation test '{}' ", test.name);

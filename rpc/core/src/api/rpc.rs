@@ -6,6 +6,7 @@
 
 use crate::{model::*, notify::connection::ChannelConnection, RpcResult};
 use async_trait::async_trait;
+use downcast::{downcast_sync, AnySync};
 use kaspa_notify::{listener::ListenerId, scope::Scope, subscription::Command};
 use std::sync::Arc;
 
@@ -17,7 +18,7 @@ pub const MAX_SAFE_WINDOW_SIZE: u32 = 10_000;
 ///
 /// For each RPC call a matching readily implemented function taking detailed parameters is also provided.
 #[async_trait]
-pub trait RpcApi: Sync + Send {
+pub trait RpcApi: Sync + Send + AnySync {
     ///
     async fn ping(&self) -> RpcResult<()> {
         self.ping_call(PingRequest {}).await?;
@@ -25,11 +26,27 @@ pub trait RpcApi: Sync + Send {
     }
     async fn ping_call(&self, request: PingRequest) -> RpcResult<PingResponse>;
 
-    ///
-    async fn get_process_metrics(&self) -> RpcResult<GetProcessMetricsResponse> {
-        self.get_process_metrics_call(GetProcessMetricsRequest {}).await
+    // ---
+
+    async fn get_metrics(&self, process_metrics: bool, consensus_metrics: bool) -> RpcResult<GetMetricsResponse> {
+        self.get_metrics_call(GetMetricsRequest { process_metrics, consensus_metrics }).await
     }
-    async fn get_process_metrics_call(&self, request: GetProcessMetricsRequest) -> RpcResult<GetProcessMetricsResponse>;
+    async fn get_metrics_call(&self, request: GetMetricsRequest) -> RpcResult<GetMetricsResponse>;
+
+    // get_info alternative that carries only version, network_id (full), is_synced, virtual_daa_score
+    // these are the only variables needed to negotiate a wRPC connection (besides the wRPC handshake)
+    async fn get_server_info(&self) -> RpcResult<GetServerInfoResponse> {
+        self.get_server_info_call(GetServerInfoRequest {}).await
+    }
+    async fn get_server_info_call(&self, request: GetServerInfoRequest) -> RpcResult<GetServerInfoResponse>;
+
+    // Get current sync status of the node (should be converted to a notification subscription)
+    async fn get_sync_status(&self) -> RpcResult<bool> {
+        Ok(self.get_sync_status_call(GetSyncStatusRequest {}).await?.is_synced)
+    }
+    async fn get_sync_status_call(&self, request: GetSyncStatusRequest) -> RpcResult<GetSyncStatusResponse>;
+
+    // ---
 
     /// Requests the network the node is currently running against.
     async fn get_current_network(&self) -> RpcResult<RpcNetworkType> {
@@ -60,10 +77,10 @@ pub trait RpcApi: Sync + Send {
     async fn get_peer_addresses_call(&self, request: GetPeerAddressesRequest) -> RpcResult<GetPeerAddressesResponse>;
 
     /// requests the hash of the current virtual's selected parent.
-    async fn get_selected_tip_hash(&self) -> RpcResult<GetSelectedTipHashResponse> {
-        self.get_selected_tip_hash_call(GetSelectedTipHashRequest {}).await
+    async fn get_sink(&self) -> RpcResult<GetSinkResponse> {
+        self.get_sink_call(GetSinkRequest {}).await
     }
-    async fn get_selected_tip_hash_call(&self, request: GetSelectedTipHashRequest) -> RpcResult<GetSelectedTipHashResponse>;
+    async fn get_sink_call(&self, request: GetSinkRequest) -> RpcResult<GetSinkResponse>;
 
     /// Requests information about a specific transaction in the mempool.
     async fn get_mempool_entry(
@@ -273,6 +290,14 @@ pub trait RpcApi: Sync + Send {
     }
     async fn get_coin_supply_call(&self, request: GetCoinSupplyRequest) -> RpcResult<GetCoinSupplyResponse>;
 
+    async fn get_daa_score_timestamp_estimate(&self, daa_scores: Vec<u64>) -> RpcResult<GetDaaScoreTimestampEstimateResponse> {
+        self.get_daa_score_timestamp_estimate_call(GetDaaScoreTimestampEstimateRequest { daa_scores }).await
+    }
+    async fn get_daa_score_timestamp_estimate_call(
+        &self,
+        request: GetDaaScoreTimestampEstimateRequest,
+    ) -> RpcResult<GetDaaScoreTimestampEstimateResponse>;
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 
@@ -301,3 +326,5 @@ pub trait RpcApi: Sync + Send {
 }
 
 pub type DynRpcService = Arc<dyn RpcApi>;
+
+downcast_sync!(dyn RpcApi);

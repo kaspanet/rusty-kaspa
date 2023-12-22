@@ -6,38 +6,49 @@ edition.workspace = true
 authors.workspace = true
 include.workspace = true
 license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "kaspad_lib"
+crate-type = ["cdylib", "lib"]
 
 [dependencies]
-kaspa-hashes.workspace = true
-kaspa-utils.workspace = true
-kaspa-core.workspace = true
+kaspa-addresses.workspace = true
+kaspa-addressmanager.workspace = true
 kaspa-consensus-core.workspace = true
-kaspa-consensus.workspace = true
 kaspa-consensus-notify.workspace = true
+kaspa-consensus.workspace = true
+kaspa-consensusmanager.workspace = true
+kaspa-core.workspace = true
 kaspa-database.workspace = true
+kaspa-grpc-server.workspace = true
+kaspa-hashes.workspace = true
 kaspa-index-processor.workspace = true
-kaspa-utxoindex.workspace = true
+kaspa-mining.workspace = true
+kaspa-p2p-flows.workspace = true
+kaspa-perf-monitor.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-rpc-service.workspace = true
-kaspa-grpc-server.workspace = true
+kaspa-txscript.workspace = true
+kaspa-utils.workspace = true
+kaspa-utils-tower.workspace = true
+kaspa-utxoindex.workspace = true
 kaspa-wrpc-server.workspace = true
-kaspa-p2p-flows.workspace = true
-kaspa-mining.workspace = true
-kaspa-addressmanager.workspace = true
-kaspa-consensusmanager.workspace = true
-kaspa-perf-monitor.workspace = true
 
 async-channel.workspace = true
-thiserror.workspace = true
+clap.workspace = true
+dhat = { workspace = true, optional = true }
+dirs.workspace = true
 futures-util.workspace = true
+log.workspace = true
+num_cpus.workspace = true
 rand.workspace = true
 rayon.workspace = true
 tempfile.workspace = true
+thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
-clap.workspace = true
-log.workspace = true
 workflow-log.workspace = true
-# rand_distr = "0.4"
-# num-format = "0.4"
-dirs = "4.0"
-num_cpus.workspace = true
+
+[features]
+heap = ["dhat"]
+devnet-prealloc = ["kaspa-consensus/devnet-prealloc"]

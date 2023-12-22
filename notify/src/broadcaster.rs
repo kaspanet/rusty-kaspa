@@ -104,19 +104,7 @@ where
     N: Notification,
     C: Connection<Notification = N>,
 {
-    pub fn new(name: &'static str, incoming: Receiver<N>) -> Self {
-        Self {
-            name,
-            started: Arc::new(AtomicBool::default()),
-            ctl: Channel::unbounded(),
-            incoming,
-            _sync: None,
-            shutdown: Channel::oneshot(),
-        }
-    }
-
-    #[cfg(test)]
-    pub fn with_sync(name: &'static str, incoming: Receiver<N>, _sync: Option<Sender<()>>) -> Self {
+    pub fn new(name: &'static str, incoming: Receiver<N>, _sync: Option<Sender<()>>) -> Self {
         Self {
             name,
             started: Arc::new(AtomicBool::default()),
@@ -169,7 +157,7 @@ where
                                         let message = C::into_message(&applied_notification, encoding);
                                         for (id, connection) in connection_set.iter() {
                                             // ... to listeners connections
-                                            match connection.send(message.clone()) {
+                                            match connection.send(message.clone()).await {
                                                 Ok(_) => {
                                                     trace!("[Broadcaster-{}] sent notification {notification} to listener {id}", self.name);
                                                 },
@@ -198,7 +186,6 @@ where
 
                 // In case we have a sync channel, report that the command was processed.
                 // This is for test only.
-                #[cfg(test)]
                 if let Some(ref sync) = self._sync {
                     let _ = sync.try_send(());
                 }
@@ -258,7 +245,7 @@ mod tests {
         fn new(name: &'static str, listener_count: usize, steps: Vec<Step>) -> Self {
             let (sync_sender, sync_receiver) = unbounded();
             let (notification_sender, notification_receiver) = unbounded();
-            let broadcaster = Arc::new(TestBroadcaster::with_sync("test", notification_receiver, Some(sync_sender)));
+            let broadcaster = Arc::new(TestBroadcaster::new("test", notification_receiver, Some(sync_sender)));
             let mut listeners = Vec::with_capacity(listener_count);
             let mut notification_receivers = Vec::with_capacity(listener_count);
             for _ in 0..listener_count {

@@ -1,7 +1,7 @@
 use super::coinbase_mock::CoinbaseManagerMock;
 use kaspa_consensus_core::{
     api::ConsensusApi,
-    block::{BlockTemplate, MutableBlock},
+    block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     coinbase::MinerData,
     constants::BLOCK_VERSION,
     errors::{
@@ -72,13 +72,19 @@ impl ConsensusMock {
 }
 
 impl ConsensusApi for ConsensusMock {
-    fn build_block_template(&self, miner_data: MinerData, mut txs: Vec<Transaction>) -> Result<BlockTemplate, RuleError> {
+    fn build_block_template(
+        &self,
+        miner_data: MinerData,
+        mut tx_selector: Box<dyn TemplateTransactionSelector>,
+        _build_mode: TemplateBuildMode,
+    ) -> Result<BlockTemplate, RuleError> {
+        let mut txs = tx_selector.select_transactions();
         let coinbase_manager = CoinbaseManagerMock::new();
         let coinbase = coinbase_manager.expected_coinbase_transaction(miner_data.clone());
         txs.insert(0, coinbase.tx);
         let now = unix_now();
         let hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        let header = Header::new(
+        let header = Header::new_finalized(
             BLOCK_VERSION,
             vec![],
             hash_merkle_root,
@@ -94,10 +100,10 @@ impl ConsensusApi for ConsensusMock {
         );
         let mutable_block = MutableBlock::new(header, txs);
 
-        Ok(BlockTemplate::new(mutable_block, miner_data, coinbase.has_red_reward, now, 0))
+        Ok(BlockTemplate::new(mutable_block, miner_data, coinbase.has_red_reward, now, 0, ZERO_HASH))
     }
 
-    fn validate_mempool_transaction_and_populate(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
+    fn validate_mempool_transaction(&self, mutable_tx: &mut MutableTransaction) -> TxResult<()> {
         // If a predefined status was registered to simulate an error, return it right away
         if let Some(status) = self.statuses.read().get(&mutable_tx.id()) {
             if status.is_err() {
@@ -129,6 +135,14 @@ impl ConsensusApi for ConsensusMock {
         Ok(())
     }
 
+    fn validate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
+        transactions.iter_mut().map(|x| self.validate_mempool_transaction(x)).collect()
+    }
+
+    fn populate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
+        transactions.iter_mut().map(|x| self.validate_mempool_transaction(x)).collect()
+    }
+
     fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
         if transaction.is_coinbase() {
             0
@@ -139,6 +153,10 @@ impl ConsensusApi for ConsensusMock {
 
     fn get_virtual_daa_score(&self) -> u64 {
         0
+    }
+
+    fn get_virtual_state_approx_id(&self) -> VirtualStateApproxId {
+        VirtualStateApproxId::new(self.get_virtual_daa_score(), 0.into(), ZERO_HASH)
     }
 
     fn modify_coinbase_payload(&self, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {

@@ -5,7 +5,10 @@ use crate::{
         RuleError::{BadAcceptedIDMerkleRoot, BadCoinbaseTransaction, BadUTXOCommitment, InvalidTransactionsInUtxoContext},
     },
     model::stores::{block_transactions::BlockTransactionsStoreReader, daa::DaaStoreReader, ghostdag::GhostdagData},
-    processes::transaction_validator::errors::{TxResult, TxRuleError},
+    processes::transaction_validator::{
+        errors::{TxResult, TxRuleError},
+        transaction_validator_populated::TxValidationFlags,
+    },
 };
 use kaspa_consensus_core::{
     acceptance_data::{AcceptedTxEntry, MergesetBlockAcceptanceData},
@@ -70,21 +73,27 @@ impl VirtualStateProcessor {
 
         ctx.mergeset_diff.add_transaction(&validated_coinbase, pov_daa_score).unwrap();
         ctx.multiset_hash.add_transaction(&validated_coinbase, pov_daa_score);
-        ctx.accepted_tx_ids.push(validated_coinbase.id());
+        let validated_coinbase_id = validated_coinbase.id();
+        ctx.accepted_tx_ids.push(validated_coinbase_id);
 
-        // TODO: no need to validate selected parent transactions, but only to populate and add,
-        // since selected parent txs were already validated as part of selected parent utxo state verification.
-
-        for (merged_block, txs) in once((ctx.selected_parent(), selected_parent_transactions)).chain(
-            ctx.ghostdag_data
-                .consensus_ordered_mergeset_without_selected_parent(self.ghostdag_primary_store.deref())
-                .map(|b| (b, self.block_transactions_store.get(b).unwrap())),
-        ) {
+        for (i, (merged_block, txs)) in once((ctx.selected_parent(), selected_parent_transactions))
+            .chain(
+                ctx.ghostdag_data
+                    .consensus_ordered_mergeset_without_selected_parent(self.ghostdag_primary_store.deref())
+                    .map(|b| (b, self.block_transactions_store.get(b).unwrap())),
+            )
+            .enumerate()
+        {
             // Create a composed UTXO view from the selected parent UTXO view + the mergeset UTXO diff
             let composed_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);
 
-            // Validate transactions in current UTXO context
-            let validated_transactions = self.validate_transactions_in_parallel(&txs, &composed_view, pov_daa_score);
+            // The first block in the mergeset is always the selected parent
+            let is_selected_parent = i == 0;
+
+            // No need to fully validate selected parent transactions since selected parent txs were already validated
+            // as part of selected parent UTXO state verification with the exact same UTXO context.
+            let validation_flags = if is_selected_parent { TxValidationFlags::SkipScriptChecks } else { TxValidationFlags::Full };
+            let validated_transactions = self.validate_transactions_in_parallel(&txs, &composed_view, pov_daa_score, validation_flags);
 
             let mut block_fee = 0u64;
             for (validated_tx, _) in validated_transactions.iter() {
@@ -94,13 +103,27 @@ impl VirtualStateProcessor {
                 block_fee += validated_tx.calculated_fee;
             }
 
-            ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
-                block_hash: merged_block,
-                accepted_transactions: validated_transactions
-                    .into_iter()
-                    .map(|(tx, tx_idx)| AcceptedTxEntry { transaction_id: tx.id(), index_within_block: tx_idx })
-                    .collect(),
-            });
+            if is_selected_parent {
+                // For the selected parent, we prepend the coinbase tx
+                ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
+                    block_hash: merged_block,
+                    accepted_transactions: once(AcceptedTxEntry { transaction_id: validated_coinbase_id, index_within_block: 0 })
+                        .chain(
+                            validated_transactions
+                                .into_iter()
+                                .map(|(tx, tx_idx)| AcceptedTxEntry { transaction_id: tx.id(), index_within_block: tx_idx }),
+                        )
+                        .collect(),
+                });
+            } else {
+                ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
+                    block_hash: merged_block,
+                    accepted_transactions: validated_transactions
+                        .into_iter()
+                        .map(|(tx, tx_idx)| AcceptedTxEntry { transaction_id: tx.id(), index_within_block: tx_idx })
+                        .collect(),
+                });
+            }
 
             let coinbase_data = self.coinbase_manager.deserialize_coinbase_payload(&txs[0].payload).unwrap();
             ctx.mergeset_rewards.insert(
@@ -150,9 +173,10 @@ impl VirtualStateProcessor {
             &self.daa_excluded_store.get_mergeset_non_daa(header.hash).unwrap(),
         )?;
 
-        // Verify all transactions are valid in context (TODO: skip validation when becoming selected parent)
+        // Verify all transactions are valid in context
         let current_utxo_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);
-        let validated_transactions = self.validate_transactions_in_parallel(&txs, &current_utxo_view, header.daa_score);
+        let validated_transactions =
+            self.validate_transactions_in_parallel(&txs, &current_utxo_view, header.daa_score, TxValidationFlags::Full);
         if validated_transactions.len() < txs.len() - 1 {
             // Some non-coinbase transactions are invalid
             return Err(InvalidTransactionsInUtxoContext(txs.len() - 1 - validated_transactions.len(), txs.len() - 1));
@@ -185,11 +209,12 @@ impl VirtualStateProcessor {
 
     /// Validates transactions against the provided `utxo_view` and returns a vector with all transactions
     /// which passed the validation along with their original index within the containing block
-    pub fn validate_transactions_in_parallel<'a, V: UtxoView + Sync>(
+    pub(crate) fn validate_transactions_in_parallel<'a, V: UtxoView + Sync>(
         &self,
         txs: &'a Vec<Transaction>,
         utxo_view: &V,
         pov_daa_score: u64,
+        flags: TxValidationFlags,
     ) -> Vec<(ValidatedTransaction<'a>, u32)> {
         self.thread_pool.install(|| {
             txs
@@ -197,7 +222,7 @@ impl VirtualStateProcessor {
                             // that all txs within each block are independent
                 .enumerate()
                 .skip(1) // Skip the coinbase tx.
-                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score).ok().map(|vtx| (vtx, i as u32)))
+                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score, flags).ok().map(|vtx| (vtx, i as u32)))
                 .collect()
         })
     }
@@ -208,6 +233,7 @@ impl VirtualStateProcessor {
         transaction: &'a Transaction,
         utxo_view: &impl UtxoView,
         pov_daa_score: u64,
+        flags: TxValidationFlags,
     ) -> TxResult<ValidatedTransaction<'a>> {
         let mut entries = Vec::with_capacity(transaction.inputs.len());
         for input in transaction.inputs.iter() {
@@ -219,7 +245,7 @@ impl VirtualStateProcessor {
             }
         }
         let populated_tx = PopulatedTransaction::new(transaction, entries);
-        let res = self.transaction_validator.validate_populated_transaction_and_get_fee(&populated_tx, pov_daa_score);
+        let res = self.transaction_validator.validate_populated_transaction_and_get_fee(&populated_tx, pov_daa_score, flags);
         match res {
             Ok(calculated_fee) => Ok(ValidatedTransaction::new(populated_tx, calculated_fee)),
             Err(tx_rule_error) => {
@@ -229,12 +255,11 @@ impl VirtualStateProcessor {
         }
     }
 
-    /// Populates the mempool transaction with maximally found UTXO entry data and proceeds to validation if all found
-    pub(super) fn validate_mempool_transaction_in_utxo_context(
+    /// Populates the mempool transaction with maximally found UTXO entry data
+    pub(crate) fn populate_mempool_transaction_in_utxo_context(
         &self,
         mutable_tx: &mut MutableTransaction,
         utxo_view: &impl UtxoView,
-        pov_daa_score: u64,
     ) -> TxResult<()> {
         let mut has_missing_outpoints = false;
         for i in 0..mutable_tx.tx.inputs.len() {
@@ -253,9 +278,24 @@ impl VirtualStateProcessor {
         if has_missing_outpoints {
             return Err(TxRuleError::MissingTxOutpoints);
         }
+        Ok(())
+    }
+
+    /// Populates the mempool transaction with maximally found UTXO entry data and proceeds to validation if all found
+    pub(super) fn validate_mempool_transaction_in_utxo_context(
+        &self,
+        mutable_tx: &mut MutableTransaction,
+        utxo_view: &impl UtxoView,
+        pov_daa_score: u64,
+    ) -> TxResult<()> {
+        self.populate_mempool_transaction_in_utxo_context(mutable_tx, utxo_view)?;
+
         // At this point we know all UTXO entries are populated, so we can safely pass the tx as verifiable
-        let calculated_fee =
-            self.transaction_validator.validate_populated_transaction_and_get_fee(&mutable_tx.as_verifiable(), pov_daa_score)?;
+        let calculated_fee = self.transaction_validator.validate_populated_transaction_and_get_fee(
+            &mutable_tx.as_verifiable(),
+            pov_daa_score,
+            TxValidationFlags::Full,
+        )?;
         mutable_tx.calculated_fee = Some(calculated_fee);
         Ok(())
     }

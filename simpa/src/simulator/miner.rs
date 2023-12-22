@@ -4,7 +4,7 @@ use kaspa_consensus::consensus::Consensus;
 use kaspa_consensus::model::stores::virtual_state::VirtualStateStoreReader;
 use kaspa_consensus::params::Params;
 use kaspa_consensus_core::api::ConsensusApi;
-use kaspa_consensus_core::block::Block;
+use kaspa_consensus_core::block::{Block, TemplateBuildMode, TemplateTransactionSelector};
 use kaspa_consensus_core::coinbase::MinerData;
 use kaspa_consensus_core::sign::sign;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
@@ -21,6 +21,30 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::cmp::max;
 use std::iter::once;
 use std::sync::Arc;
+
+struct OnetimeTxSelector {
+    txs: Option<Vec<Transaction>>,
+}
+
+impl OnetimeTxSelector {
+    fn new(txs: Vec<Transaction>) -> Self {
+        Self { txs: Some(txs) }
+    }
+}
+
+impl TemplateTransactionSelector for OnetimeTxSelector {
+    fn select_transactions(&mut self) -> Vec<Transaction> {
+        self.txs.take().unwrap()
+    }
+
+    fn reject_selection(&mut self, _tx_id: kaspa_consensus_core::tx::TransactionId) {
+        unimplemented!()
+    }
+
+    fn is_successful(&self) -> bool {
+        true
+    }
+}
 
 pub struct Miner {
     // ID
@@ -64,7 +88,7 @@ impl Miner {
         target_blocks: Option<u64>,
     ) -> Self {
         let (schnorr_public_key, _) = pk.x_only_public_key();
-        let script_pub_key_script = once(0x20).chain(schnorr_public_key.serialize().into_iter()).chain(once(0xac)).collect_vec(); // TODO: Use script builder when available to create p2pk properly
+        let script_pub_key_script = once(0x20).chain(schnorr_public_key.serialize()).chain(once(0xac)).collect_vec(); // TODO: Use script builder when available to create p2pk properly
         let script_pub_key_script_vec = ScriptVec::from_slice(&script_pub_key_script);
         Self {
             id,
@@ -89,7 +113,7 @@ impl Miner {
         let session = self.consensus.acquire_session();
         let mut block_template = self
             .consensus
-            .build_block_template(self.miner_data.clone(), txs)
+            .build_block_template(self.miner_data.clone(), Box::new(OnetimeTxSelector::new(txs)), TemplateBuildMode::Standard)
             .expect("simulation txs are selected in sync with virtual state and are expected to be valid");
         drop(session);
         block_template.block.header.timestamp = timestamp; // Use simulation time rather than real time
@@ -108,7 +132,9 @@ impl Miner {
             .possible_unspent_outpoints
             .iter()
             .filter_map(|&outpoint| {
-                let Some(entry) = self.get_spendable_entry(virtual_utxo_view, outpoint, virtual_state.daa_score) else { return None; };
+                let Some(entry) = self.get_spendable_entry(virtual_utxo_view, outpoint, virtual_state.daa_score) else {
+                    return None;
+                };
                 let unsigned_tx = self.create_unsigned_tx(outpoint, entry.amount, multiple_outputs);
                 Some(MutableTransaction::with_entries(unsigned_tx, vec![entry]))
             })
@@ -130,7 +156,9 @@ impl Miner {
         outpoint: TransactionOutpoint,
         virtual_daa_score: u64,
     ) -> Option<UtxoEntry> {
-        let Some(entry) = utxo_view.get(&outpoint) else { return None; };
+        let Some(entry) = utxo_view.get(&outpoint) else {
+            return None;
+        };
         if entry.amount < 2
             || (entry.is_coinbase && (virtual_daa_score as i64 - entry.block_daa_score as i64) <= self.params.coinbase_maturity as i64)
         {
@@ -183,7 +211,7 @@ impl Miner {
             Suspension::Halt
         } else {
             let session = self.consensus.acquire_session();
-            let status = futures::executor::block_on(self.consensus.validate_and_insert_block(block)).unwrap();
+            let status = futures::executor::block_on(self.consensus.validate_and_insert_block(block).virtual_state_task).unwrap();
             assert!(status.is_utxo_valid_or_pending());
             drop(session);
             Suspension::Idle

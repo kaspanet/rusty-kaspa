@@ -1,23 +1,31 @@
+extern crate alloc;
+extern crate self as kaspa_wallet_core;
+
+pub mod derivation;
+pub mod encryption;
 pub mod error;
+pub mod events;
+mod imports;
+pub mod message;
 pub mod result;
-pub mod wallet;
-pub mod wallets;
-pub mod wrapper;
+pub mod rpc;
+pub mod runtime;
+pub mod secret;
+pub mod settings;
+pub mod storage;
+pub mod tx;
+pub mod utils;
+pub mod utxo;
+pub mod wasm;
 
-pub use kaspa_addresses::Address;
+pub use derivation::{AddressDerivationManager, AddressDerivationManagerTrait};
+pub use events::{Events, SyncState};
+pub use kaspa_addresses::{Address, Prefix as AddressPrefix};
+pub use kaspa_wrpc_client::client::{ConnectOptions, ConnectStrategy};
 pub use result::Result;
-pub use wallet::Wallet;
-pub use wallets::dummy_address;
-pub use wrapper::WalletWrapper;
+pub use settings::{DefaultSettings, SettingsStore, SettingsStoreT, WalletSettings};
 
-#[macro_export]
-macro_rules! hex {
-    ($str: literal) => {{
-        let len = $str.as_bytes().len() / 2;
-        let mut dst = vec![0; len];
-        dst.resize(len, 0);
-        faster_hex::hex_decode_fallback($str.as_bytes(), &mut dst);
-        dst
-    }
-    [..]};
+/// Returns the version of the Wallet framework.
+pub fn version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
 }

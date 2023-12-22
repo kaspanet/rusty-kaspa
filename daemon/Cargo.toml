@@ -1,0 +1,26 @@
+[package]
+name = "kaspa-daemon"
+description = "Utilities for running Kaspa node and tools as a child processes"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+borsh.workspace = true
+cfg-if.workspace = true
+downcast-rs.workspace = true
+futures.workspace = true
+kaspa-addresses.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-wallet-core.workspace = true
+nw-sys.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+workflow-core.workspace = true
+workflow-log.workspace = true
+workflow-node.workspace = true
+workflow-nw.workspace = true
+workflow-store.workspace = true

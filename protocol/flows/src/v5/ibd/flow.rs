@@ -5,7 +5,7 @@ use crate::{
         Flow,
     },
 };
-use futures::future::try_join_all;
+use futures::future::{join_all, try_join_all};
 use kaspa_consensus_core::{
     api::BlockValidationFuture,
     block::Block,
@@ -14,7 +14,7 @@ use kaspa_consensus_core::{
     BlockHashSet,
 };
 use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy, StagingConsensus};
-use kaspa_core::{debug, info, warn};
+use kaspa_core::{debug, info, time::unix_now, warn};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_p2p_lib::{
@@ -22,16 +22,16 @@ use kaspa_p2p_lib::{
     convert::model::trusted::TrustedDataPackage,
     dequeue_with_timeout, make_message,
     pb::{
-        kaspad_message::Payload, RequestAnticoneMessage, RequestHeadersMessage, RequestIbdBlocksMessage,
+        kaspad_message::Payload, RequestAntipastMessage, RequestHeadersMessage, RequestIbdBlocksMessage,
         RequestPruningPointAndItsAnticoneMessage, RequestPruningPointProofMessage, RequestPruningPointUtxoSetMessage,
     },
     IncomingRoute, Router,
 };
+use kaspa_utils::channel::JobReceiver;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::sync::mpsc::Receiver;
 
 use super::{progress::ProgressReporter, HeadersChunk, PruningPointUtxosetChunkStream, IBD_BATCH_SIZE};
 
@@ -42,7 +42,7 @@ pub struct IbdFlow {
     pub(super) incoming_route: IncomingRoute,
 
     // Receives relay blocks from relay flow which are out of orphan resolution range and hence trigger IBD
-    relay_receiver: Receiver<Block>,
+    relay_receiver: JobReceiver<Block>,
 }
 
 #[async_trait::async_trait]
@@ -65,13 +65,13 @@ pub enum IbdType {
 // TODO: define a peer banning strategy
 
 impl IbdFlow {
-    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, relay_receiver: Receiver<Block>) -> Self {
+    pub fn new(ctx: FlowContext, router: Arc<Router>, incoming_route: IncomingRoute, relay_receiver: JobReceiver<Block>) -> Self {
         Self { ctx, router, incoming_route, relay_receiver }
     }
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
-        while let Some(relay_block) = self.relay_receiver.recv().await {
-            if let Some(_guard) = self.ctx.try_set_ibd_running(self.router.key()) {
+        while let Ok(relay_block) = self.relay_receiver.recv().await {
+            if let Some(_guard) = self.ctx.try_set_ibd_running(self.router.key(), relay_block.header.daa_score) {
                 info!("IBD started with peer {}", self.router);
 
                 match self.ibd(relay_block).await {
@@ -127,9 +127,29 @@ impl IbdFlow {
         // Sync missing bodies in the past of syncer sink (virtual selected parent)
         self.sync_missing_block_bodies(&session, negotiation_output.syncer_virtual_selected_parent).await?;
 
-        // Relay block might be in the anticone of syncer selected tip, thus
+        // Relay block might be in the antipast of syncer sink, thus
         // check its past for missing bodies as well.
-        self.sync_missing_block_bodies(&session, relay_block.hash()).await
+        self.sync_missing_block_bodies(&session, relay_block.hash()).await?;
+
+        // Following IBD we revalidate orphans since many of them might have been processed during the IBD
+        // or are now processable
+        let (queued_hashes, virtual_processing_tasks) = self.ctx.revalidate_orphans(&session).await;
+        let mut unorphaned_hashes = Vec::with_capacity(queued_hashes.len());
+        let results = join_all(virtual_processing_tasks).await;
+        for (hash, result) in queued_hashes.into_iter().zip(results) {
+            match result {
+                Ok(_) => unorphaned_hashes.push(hash),
+                // We do not return the error and disconnect here since we don't know
+                // that this peer was the origin of the orphan block
+                Err(e) => warn!("Validation failed for orphan block {}: {}", hash, e),
+            }
+        }
+        match unorphaned_hashes.len() {
+            0 => {}
+            n => info!("IBD post processing: unorphaned {} blocks ...{}", n, unorphaned_hashes.last().unwrap()),
+        }
+
+        Ok(())
     }
 
     async fn determine_ibd_type(
@@ -146,14 +166,30 @@ impl IbdFlow {
                 return Ok(IbdType::Sync(highest_known_syncer_chain_hash));
             }
 
-            // TODO: in this case we know a syncer chain block, but it violates our current finality. In some cases
-            // this info should possibly be used to reject the IBD despite having more blue work etc.
+            // If the pruning point is not in the chain of `highest_known_syncer_chain_hash`, it
+            // means it's in its antichain (because if `highest_known_syncer_chain_hash` was in
+            // the pruning point's past the pruning point itself would be
+            // `highest_known_syncer_chain_hash`). So it means there's a finality conflict.
+            // TODO: consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
+            return Ok(IbdType::None);
         }
 
         let hst_header = consensus.async_get_header(consensus.async_get_headers_selected_tip().await).await.unwrap();
         if relay_header.blue_score >= hst_header.blue_score + self.ctx.config.pruning_depth
             && relay_header.blue_work > hst_header.blue_work
         {
+            if unix_now() > consensus.async_creation_timestamp().await + self.ctx.config.finality_duration() {
+                let fp = consensus.async_finality_point().await;
+                let fp_ts = consensus.async_get_header(fp).await?.timestamp;
+                if unix_now() < fp_ts + self.ctx.config.finality_duration() * 3 / 2 {
+                    // We reject the headers proof if the node has a relatively up-to-date finality point and current
+                    // consensus has matured for long enough (and not recently synced). This is mostly a spam-protector
+                    // since subsequent checks identify these violations as well
+                    // TODO: consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
+                    return Ok(IbdType::None);
+                }
+            }
+
             // The relayed block has sufficient blue score and blue work over the current header selected tip
             Ok(IbdType::DownloadHeadersProof)
         } else {
@@ -169,16 +205,17 @@ impl IbdFlow {
     ) -> Result<(), ProtocolError> {
         info!("Starting IBD with headers proof with peer {}", self.router);
 
-        let session = staging.session().await;
+        let staging_session = staging.session().await;
 
-        let pruning_point = self.sync_and_validate_pruning_proof(&session).await?;
-        self.sync_headers(&session, syncer_virtual_selected_parent, pruning_point, relay_block).await?;
-        self.validate_staging_timestamps(&self.ctx.consensus().session().await, &session).await?;
-        self.sync_pruning_point_utxoset(&session, pruning_point).await?;
+        let pruning_point = self.sync_and_validate_pruning_proof(&staging_session).await?;
+        self.sync_headers(&staging_session, syncer_virtual_selected_parent, pruning_point, relay_block).await?;
+        staging_session.async_validate_pruning_points().await?;
+        self.validate_staging_timestamps(&self.ctx.consensus().session().await, &staging_session).await?;
+        self.sync_pruning_point_utxoset(&staging_session, pruning_point).await?;
         Ok(())
     }
 
-    async fn sync_and_validate_pruning_proof(&mut self, consensus: &ConsensusProxy) -> Result<Hash, ProtocolError> {
+    async fn sync_and_validate_pruning_proof(&mut self, staging: &ConsensusProxy) -> Result<Hash, ProtocolError> {
         self.router.enqueue(make_message!(Payload::RequestPruningPointProof, RequestPruningPointProofMessage {})).await?;
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
@@ -186,11 +223,23 @@ impl IbdFlow {
         let proof: PruningPointProof = msg.try_into()?;
         debug!("received proof with overall {} headers", proof.iter().map(|l| l.len()).sum::<usize>());
 
+        // Get a new session for current consensus (non staging)
+        let consensus = self.ctx.consensus().session().await;
+
+        // The proof is validated in the context of current consensus
         let proof = consensus.clone().spawn_blocking(move |c| c.validate_pruning_proof(&proof).map(|()| proof)).await?;
 
         let proof_pruning_point = proof[0].last().expect("was just ensured by validation").hash;
 
-        // TODO: verify the proof pruning point is different than current consensus pruning point
+        if proof_pruning_point == self.ctx.config.genesis.hash {
+            return Err(ProtocolError::Other("the proof pruning point is the genesis block"));
+        }
+
+        if proof_pruning_point == consensus.async_pruning_point().await {
+            return Err(ProtocolError::Other("the proof pruning point is the same as the current pruning point"));
+        }
+
+        drop(consensus);
 
         self.router
             .enqueue(make_message!(Payload::RequestPruningPointAndItsAnticone, RequestPruningPointAndItsAnticoneMessage {}))
@@ -207,14 +256,20 @@ impl IbdFlow {
             return Err(ProtocolError::Other("the first pruning point in the list is expected to be genesis"));
         }
 
-        // TODO: validate pruning points before importing
+        // Check if past pruning points violate finality of current consensus
+        if self.ctx.consensus().session().await.async_are_pruning_points_violating_finality(pruning_points.clone()).await {
+            // TODO: consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
+            return Err(ProtocolError::Other("pruning points are violating finality"));
+        }
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
         let pkg: TrustedDataPackage = msg.try_into()?;
         debug!("received trusted data with {} daa entries and {} ghostdag entries", pkg.daa_window.len(), pkg.ghostdag_window.len());
 
         let mut entry_stream = TrustedEntryStream::new(&self.router, &mut self.incoming_route);
-        let Some(pruning_point_entry) = entry_stream.next().await? else { return Err(ProtocolError::Other("got `done` message before receiving the pruning point")); };
+        let Some(pruning_point_entry) = entry_stream.next().await? else {
+            return Err(ProtocolError::Other("got `done` message before receiving the pruning point"));
+        };
 
         if pruning_point_entry.block.hash() != proof_pruning_point {
             return Err(ProtocolError::Other("the proof pruning point is not equal to the expected trusted entry"));
@@ -228,11 +283,11 @@ impl IbdFlow {
         let mut trusted_set = pkg.build_trusted_subdag(entries)?;
 
         if self.ctx.config.enable_sanity_checks {
-            trusted_set = consensus
+            trusted_set = staging
                 .clone()
                 .spawn_blocking(move |c| {
                     let ref_proof = proof.clone();
-                    c.apply_pruning_proof(proof, &trusted_set);
+                    c.apply_pruning_proof(proof, &trusted_set)?;
                     c.import_pruning_points(pruning_points);
 
                     info!("Building the proof which was just applied (sanity test)");
@@ -255,19 +310,21 @@ impl IbdFlow {
                     } else {
                         info!("Proof was locally built successfully");
                     }
-                    trusted_set
+                    Result::<_, ProtocolError>::Ok(trusted_set)
                 })
-                .await;
+                .await?;
         } else {
-            trusted_set = consensus
+            trusted_set = staging
                 .clone()
                 .spawn_blocking(move |c| {
-                    c.apply_pruning_proof(proof, &trusted_set);
+                    c.apply_pruning_proof(proof, &trusted_set)?;
                     c.import_pruning_points(pruning_points);
-                    trusted_set
+                    Result::<_, ProtocolError>::Ok(trusted_set)
                 })
-                .await;
+                .await?;
         }
+
+        // TODO: add logs to staging commit process
 
         info!("Starting to process {} trusted blocks", trusted_set.len());
         let mut last_time = Instant::now();
@@ -281,12 +338,9 @@ impl IbdFlow {
                 last_index = i;
             }
             // TODO: queue and join in batches
-            consensus.validate_and_insert_trusted_block(tb).await?;
+            staging.validate_and_insert_trusted_block(tb).virtual_state_task.await?;
         }
         info!("Done processing trusted blocks");
-
-        // TODO: make sure that the proof pruning point is not genesis
-
         Ok(proof_pruning_point)
     }
 
@@ -314,11 +368,14 @@ impl IbdFlow {
         if let Some(chunk) = chunk_stream.next().await? {
             let mut prev_daa_score = chunk.last().expect("chunk is never empty").daa_score;
             let mut prev_jobs: Vec<BlockValidationFuture> =
-                chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h))).collect();
+                chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).virtual_state_task).collect();
 
             while let Some(chunk) = chunk_stream.next().await? {
                 let current_daa_score = chunk.last().expect("chunk is never empty").daa_score;
-                let current_jobs = chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h))).collect();
+                let current_jobs = chunk
+                    .into_iter()
+                    .map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).virtual_state_task)
+                    .collect();
                 let prev_chunk_len = prev_jobs.len();
                 // Join the previous chunk so that we always concurrently process a chunk and receive another
                 try_join_all(prev_jobs).await?;
@@ -350,12 +407,13 @@ impl IbdFlow {
             return Ok(());
         }
 
-        // Send a special header request for the selected tip anticone. This is expected to
-        // be a small set, as it is bounded to the size of virtual's mergeset.
+        // Send a special header request for the sink antipast. This is expected to
+        // be a relatively small set since virtual and relay blocks should be close topologically.
+        // See server-side handling of `RequestAnticone` for further details.
         self.router
             .enqueue(make_message!(
-                Payload::RequestAnticone,
-                RequestAnticoneMessage {
+                Payload::RequestAntipast,
+                RequestAntipastMessage {
                     block_hash: Some(syncer_virtual_selected_parent.into()),
                     context_hash: Some(relay_block_hash.into())
                 }
@@ -365,7 +423,7 @@ impl IbdFlow {
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::BlockHeaders)?;
         let chunk: HeadersChunk = msg.try_into()?;
         let jobs: Vec<BlockValidationFuture> =
-            chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h))).collect();
+            chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).virtual_state_task).collect();
         try_join_all(jobs).await?;
         dequeue_with_timeout!(self.incoming_route, Payload::DoneHeaders)?;
 
@@ -451,8 +509,6 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         try_join_all(prev_jobs).await?;
         progress_reporter.report_completion(prev_chunk_len);
 
-        self.ctx.on_new_block_template().await?;
-
         Ok(())
     }
 
@@ -479,7 +535,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
             }
             current_daa_score = block.header.daa_score;
-            jobs.push(consensus.validate_and_insert_block(block));
+            jobs.push(consensus.validate_and_insert_block(block).virtual_state_task);
         }
 
         Ok((jobs, current_daa_score))

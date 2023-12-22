@@ -1,10 +1,15 @@
 [package]
 name = "kaspa-wrpc-client"
+description = "Kaspa wRPC client"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 include.workspace = true
 license.workspace = true
+
+[features]
+no-unsafe-eval = ["workflow-core/no-unsafe-eval","workflow-rpc/no-unsafe-eval"]
+default = []
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -15,6 +20,9 @@ async-trait.workspace = true
 borsh.workspace = true
 futures.workspace = true
 js-sys.workspace = true
+kaspa-addresses.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-consensus-wasm.workspace = true
 kaspa-notify.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-rpc-macros.workspace = true
@@ -27,5 +35,7 @@ thiserror.workspace = true
 wasm-bindgen-futures.workspace = true
 wasm-bindgen.workspace = true
 workflow-core.workspace = true
+workflow-dom.workspace = true
 workflow-log.workspace = true
 workflow-rpc.workspace = true
+workflow-wasm.workspace = true

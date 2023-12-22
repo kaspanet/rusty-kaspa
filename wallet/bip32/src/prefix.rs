@@ -31,6 +31,12 @@ impl Prefix {
     /// `kpub` prefix
     pub const KPUB: Self = Self::from_parts_unchecked("kpub", 0x038f332e);
 
+    /// `ktrv` prefix
+    pub const KTRV: Self = Self::from_parts_unchecked("ktrv", 0x03909e07);
+
+    /// `ktub` prefix
+    pub const KTUB: Self = Self::from_parts_unchecked("ktub", 0x0390a241);
+
     /// `tprv` prefix
     pub const TPRV: Self = Self::from_parts_unchecked("tprv", 0x04358394);
 
@@ -92,7 +98,7 @@ impl Prefix {
         bytes[..4].copy_from_slice(&version.to_be_bytes());
 
         let mut buffer = [0u8; ExtendedKey::MAX_BASE58_SIZE];
-        bs58::encode(&bytes).with_check().into(buffer.as_mut())?;
+        bs58::encode(&bytes).with_check().onto(buffer.as_mut())?;
 
         let s = str::from_utf8(&buffer[..4]).map_err(Error::Utf8Error)?;
         Self::validate_str(s)?;
@@ -106,12 +112,12 @@ impl Prefix {
 
     /// Is this a public key?
     pub fn is_public(self) -> bool {
-        &self.chars[1..] == b"pub"
+        &self.chars[1..] == b"pub" || &self.chars[1..] == b"tub"
     }
 
     /// Is this a private key?
     pub fn is_private(self) -> bool {
-        &self.chars[1..] == b"prv"
+        &self.chars[1..] == b"prv" || &self.chars[1..] == b"trv"
     }
 
     /// Get the [`Version`] number.
@@ -198,6 +204,29 @@ struct DebugVersion(Version);
 impl Debug for DebugVersion {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:#010x}", self.0)
+    }
+}
+
+impl TryFrom<&str> for Prefix {
+    type Error = Error;
+    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
+        match value {
+            "kprv" => Ok(Prefix::KPRV),
+            "kpub" => Ok(Prefix::KPUB),
+
+            "tprv" => Ok(Prefix::TPRV),
+            "tpub" => Ok(Prefix::TPUB),
+
+            "xprv" => Ok(Prefix::XPRV),
+            "xpub" => Ok(Prefix::XPUB),
+
+            "yprv" => Ok(Prefix::YPRV),
+            "ypub" => Ok(Prefix::YPUB),
+
+            "zprv" => Ok(Prefix::ZPRV),
+            "zpub" => Ok(Prefix::ZPUB),
+            _ => Err(Error::String(format!("Invalid prefix: {value}"))),
+        }
     }
 }
 

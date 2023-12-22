@@ -1,214 +1,241 @@
-# Kaspa on Rust
 
-This repository contains the implementation of the Kaspa full-node and related libraries in the Rust programming language. This is an Alpha version at the initial testing phase, however the node is expected to be fully functional and capable as a drop-in replacement for the Kaspa golang node.
+<h1>Kaspa On Rust</h1>
 
-## Getting started
+Welcome to the Rust-based implementation of the Kaspa full-node and its ancillary libraries. This Alpha release serves as a drop-in replacement to the established <a href="https://github.com/kaspanet/kaspad">Golang node</a> (once the rust rewrite is completed), introducing developers to the possibilities of Rust in the Kaspa network's context.
 
-- Install Protobuf (required for grpc)
-  - Linux: `sudo apt install protobuf-compiler libprotobuf-dev`
-  - Windows: [protoc-21.10-win64.zip](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add `bin` dir to `Path`
-  - MacOS: `brew install protobuf`
-- Install the [clang toolchain](https://clang.llvm.org/) (required for RocksDB)
-  - Linux: `apt-get install clang-format clang-tidy clang-tools clang clangd libc++-dev libc++1 libc++abi-dev libc++abi1 libclang-dev libclang1 liblldb-dev libllvm-ocaml-dev libomp-dev libomp5 lld lldb llvm-dev llvm-runtime llvm python3-clang`
-  - Windows: [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe) and set `LIBCLANG_PATH` env var pointing to the `bin` dir of the llvm installation
-  - MacOS: Please see [Installing clang toolchain on MacOS](#installing-clang-toolchain-on-macos)
-- Install the [rust toolchain](https://rustup.rs/)
-- If you already have rust installed, update it by running: `rustup update`
-- Install wasm-pack: `cargo install wasm-pack`
-- Install wasm32 target: `rustup target add wasm32-unknown-unknown`
-- Run the following commands:
+We invite developers and blockchain enthusiasts to collaborate, test, and optimize our Rust implementation. Each line of code here is an opportunity to contribute to the open-source blockchain movement, shaping a platform designed for scalability and speed without compromising on decentralization.
+
+Your feedback, contributions, and issue reports will be integral to evolving this codebase from its Alpha phase into a mature and reliable node in the Kaspa network.
+
+## Installation
+  <details>
+  <summary>Building on Linux</summary>
+  
+  1. Install  general prerequisites
+
+      ```bash
+      sudo apt install build-essential libssl-dev pkg-config 
+      ```
+
+  2. Install Protobuf (required for gRPC)
+  
+      ```bash
+      sudo apt install protobuf-compiler libprotobuf-dev #Required for gRPC
+      ```
+  3. Install the clang toolchain (required for RocksDB and WASM secp256k1 builds)
+
+      ```bash
+      sudo apt-get install clang-format clang-tidy \
+      clang-tools clang clangd libc++-dev \
+      libc++1 libc++abi-dev libc++abi1 \
+      libclang-dev libclang1 liblldb-dev \
+      libllvm-ocaml-dev libomp-dev libomp5 \ 
+      lld lldb llvm-dev llvm-runtime \
+      llvm python3-clang
+      ```
+  3. Install the [rust toolchain](https://rustup.rs/)
+     
+     If you already have rust installed, update it by running: `rustup update` 
+  4. Install wasm-pack
+      ```bash
+      cargo install wasm-pack
+      ```
+  4. Install wasm32 target
+      ```bash
+      rustup target add wasm32-unknown-unknown
+      ```      
+  5. Clone the repo
+      ```bash
+      git clone https://github.com/kaspanet/rusty-kaspa
+      cd rusty-kaspa
+      ```
+  </details>
+
+
+
+  <details>  
+  <summary>Building on Windows</summary>
+
+
+  1. [Install Git for Windows](https://gitforwindows.org/) or an alternative Git distribution.
+
+  2. Install [Protocol Buffers](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add the `bin` directory to your `Path`
+
+  
+3. Install [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe)
+
+    Add the `bin` directory of the LLVM installation (`C:\Program Files\LLVM\bin`) to PATH
+    
+    set `LIBCLANG_PATH` environment variable to point to the `bin` directory as well
+
+    **IMPORTANT:** Due to C++ dependency configuration issues, LLVM `AR` installation on Windows may not function correctly when switching between WASM and native C++ code compilation (native `RocksDB+secp256k1` vs WASM32 builds of `secp256k1`). Unfortunately, manually setting `AR` environment variable also confuses C++ build toolchain (it should not be set for native but should be set for WASM32 targets). Currently, the best way to address this, is as follows: after installing LLVM on Windows, go to the target `bin` installation directory and copy or rename `LLVM_AR.exe` to `AR.exe`.
+  
+  4. Install the [rust toolchain](https://rustup.rs/)
+     
+     If you already have rust installed, update it by running: `rustup update` 
+  5. Install wasm-pack
+      ```bash
+      cargo install wasm-pack
+      ```
+  6. Install wasm32 target
+      ```bash
+      rustup target add wasm32-unknown-unknown
+      ```      
+  7. Clone the repo
+      ```bash
+      git clone https://github.com/kaspanet/rusty-kaspa
+      cd rusty-kaspa
+      ```
+ </details>      
+
+
+  <details>  
+  <summary>Building on Mac OS</summary>
+
+
+  1. Install Protobuf (required for gRPC)
+      ```bash
+      brew install protobuf
+      ```
+  2. Install llvm. 
+  
+      The default XCode installation of `llvm` does not support WASM build targets.
+To build WASM on MacOS you need to install `llvm` from homebrew (at the time of writing, the llvm version for MacOS is 16.0.1).
+      ```bash
+      brew install llvm
+      ```
+
+      **NOTE:** Homebrew can use different keg installation locations depending on your configuration. For example:
+      - `/opt/homebrew/opt/llvm` -> `/opt/homebrew/Cellar/llvm/16.0.1`
+      - `/usr/local/Cellar/llvm/16.0.1`
+
+      To determine the installation location you can use `brew list llvm` command and then modify the paths below accordingly:
+      ```bash
+      % brew list llvm
+      /usr/local/Cellar/llvm/16.0.1/bin/FileCheck
+      /usr/local/Cellar/llvm/16.0.1/bin/UnicodeNameMappingGenerator
+      ...
+      ```
+      If you have `/opt/homebrew/Cellar`, then you should be able to use `/opt/homebrew/opt/llvm`.
+
+      Add the following to your `~/.zshrc` file:
+      ```bash
+      export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+      export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
+      export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
+      export AR=/opt/homebrew/opt/llvm/bin/llvm-ar
+      ```
+
+      Reload the `~/.zshrc` file
+      ```bash
+      source ~/.zshrc
+      ```
+  3. Install the [rust toolchain](https://rustup.rs/)
+     
+     If you already have rust installed, update it by running: `rustup update` 
+  4. Install wasm-pack
+      ```bash
+      cargo install wasm-pack
+      ```
+  4. Install wasm32 target
+      ```bash
+      rustup target add wasm32-unknown-unknown
+      ```      
+  5. Clone the repo
+      ```bash
+      git clone https://github.com/kaspanet/rusty-kaspa
+      cd rusty-kaspa
+      ```
+
+ </details>   
+
+  <details>
+
+  <summary>Building WASM framework</summary>
+
+  Rust WebAssembly (Wasm) refers to the use of the Rust programming language to write code that can be compiled into WebAssembly, a binary instruction format that runs in web browsers. This allows for easy development using JS/TS while retaining the benefits of Rust.
+
+  The library can be build in for `NodeJS`, `React Native` and as an `ES6 Module`
+
+  <details>
+
+  <summary>
+  NodeJS
+  </summary>
+
+  ```bash
+  cd rusty-kaspa
+  cd wasm
+  ./build-node
+  cd nodejs
+  npm install
+  ```
+
+  </details>
+
+  <details>
+
+  <summary>
+  React Native
+  </summary>
+
+  ```bash
+  cd rusty-kaspa
+  cd wasm
+  ./build-react-native
+  ```
+
+  </details>
+
+  <details>
+
+  <summary>
+  ES6
+  </summary>
+
+  ```bash
+  cd rusty-kaspa
+  cd wasm
+  ./build-web
+  ```
+
+  </details>
+
+  <br>
+  This will produce a folder: "nodejs", "web" or "react-native" library in `/wasm` directory depending on your selection.
+
+
+
+  </details>
+
+<details>
+
+<summary>
+Wallet CLI
+</summary>
+
+
 
 ```bash
-$ git clone https://github.com/kaspanet/rusty-kaspa
-$ cd rusty-kaspa
+cd cli
+cargo run --release
 ```
 
-## Running the node
+Wallet CLI is now available via the `/cli` or `/kos` projects.
+For KOS, please see [`kos/README.md`](kos/README.md)
 
-Run the node through the following command:
-
-```bash
-$ cargo run --release --bin kaspad
-```
-
-And if you want to setup a test node, run the following command instead:
-
-```bash
-$ cargo run --release --bin kaspad -- --testnet
-```
-
-## Mining
-Mining is currently supported only on testnet, so once you've setup a test node, follow these instructions:
-
-- Download and unzip the latest binaries bundle of [kaspanet/kaspad](https://github.com/kaspanet/kaspad/releases).
-
-- In a separate terminal run the kaspanet/kaspad miner:
-
-```bash
-$ kaspaminer --testnet --miningaddr kaspatest:qrcqat6l9zcjsu7swnaztqzrv0s7hu04skpaezxk43y4etj8ncwfk308jlcew
-```
-
-- This will create and feed a DAG with the miner getting block templates from the node and submitting them back when mined. The node processes and stores the blocks while applying all currently implemented logic. Execution can be stopped and resumed, the data is persisted in a database.
-
-- You can replace the above mining address with your own address by creating one as described [here](https://github.com/kaspanet/docs/blob/main/Getting%20Started/Full%20Node%20Installation.md#creating-a-wallet-optional). 
-
-## Simulation framework (Simpa)
-
-Additionally, the current codebase supports a full in-process network simulation, building an actual DAG over virtual time with virtual delay and benchmarking validation time (following the simulation generation). Execute 
-```bash 
-cargo run --release --bin simpa -- --help
-``` 
-to see the full command line configuration supported by `simpa`. For instance, the following command will run a simulation producing 1000 blocks with communication delay of 2 seconds and BPS=8, and attempts to fill each block with up to 200 transactions.   
-
-```bash
-$ cargo run --release --bin simpa -- -t=200 -d=2 -b=8 -n=1000
-```
-
-## Logging
-
-Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) either by defining the environment variable `RUST_LOG` and/or by adding a `--loglevel` argument to the command, ie.:
-
-```bash
-$ (cargo run --bin kaspad -- --loglevel info,kaspa_rpc_core=trace,kaspa_grpc_core=trace,consensus=trace,kaspa_core=trace) 2>&1 | tee ~/rusty-kaspa.log
-```
+</details>
 
 
 
-## Tests & Benchmarks
+<details>
 
-- To run all current tests use:
+<summary>
+Local Web Wallet
+</summary>
 
-```bash
-$ cd rusty-kaspa
-$ cargo test --release
-// or install nextest and run
-$ cargo nextest run --release
-```
+Run an http server inside of `wallet/wasm/web` folder. If you don't have once, you can use the following:
 
-- To run current benchmarks:
-
-```bash
-$ cd rusty-kaspa
-$ cargo bench
-```
-
-## Building WASM
-
-To build rusty-kaspa wasm library, do the following:
-
-```bash
-cd wasm
-./build-web
-```
-This will produce a wasm library in `/web-root` directory
-
-## Installing clang toolchain on MacOS
-
-The default XCode installation of `llvm` does not support WASM build targets.
-To build WASM on MacOS you need to install `llvm` from homebrew (at the time of writing MacOS version is 13.0.1).
-
-```bash
-brew install llvm
-```
-NOTE: depending on your setup, the installation location may be different.
-To determine the installation location you can type `which llvm` or `which clang`
-and then modify the paths below accordingly.
-
-Add the following to your `~/.zshrc` file:
-```bash
-export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
-export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
-export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
-export AR=/opt/homebrew/opt/llvm/bin/llvm-ar
-```
-Reload the `~/.zshrc` file
-```bash
-source ~/.zshrc
-```
-
-## JSON and Borsh RPC protocols
-
-In addition to gRPC, Rusty Kaspa integrates an optional wRPC
-subsystem. wRPC is a high-performance, platform-neutral, Rust-centric, WebSocket-framed RPC 
-implementation that can use Borsh and JSON protocol encoding. JSON protocol messaging 
-is similar to JSON-RPC 1.0, but differs from the specification due to server-side 
-notifications. Borsh encoding is meant for inter-process communication. When using Borsh
-both client and server should be built from the same codebase.  JSON protocol is based on 
-Kaspa data structures and is data-structure-version agnostic. You can connect to the
-JSON endpoint using any WebSocket library. Built-in RPC clients for JavaScript and
-TypeScript capable of running in web browsers and Node.js are available as a part of
-the Kaspa WASM framework.
-
-## Enabling wRPC
-
-wRPC subsystem is disabled by default in `kaspad` and can be enabled via:
-- `--rpclisten-json = <interface:port>` for JSON protocol
-- `--rpclisten-borsh = <interface:port>` for Borsh protocol
-
-## wRPC to gRPC Proxy
-
-Proxy providing wRPC to gRPC relay is available in `rpc/wrpc/proxy`.
-By default, the proxy server will connect to *grpc://127.0.01:16110*
-while offering wRPC connections on *wrpc://127.0.0.1:17110*. Use `--help`
-to see configuration options.
-
-The Proxy server is currently used for testing with the Golang implementation
-of Kaspad. At the time of writing, the gRPC has only partial messsage translation
-implementation.
-
-To run the proxy:
-```bash
-cd rpc/wrpc/proxy
-cargo run
-```
-
-## Native JavaScript & TypeScript RPC clients for Browsers and Node.js environments
-
-Integration in a Browser and Node.js environments is possible using WASM.
-The JavaScript code is agnostic to which environment it runs in.
-NOTE: to run in Node.js environment, you must instantiate a W3C WebSocket
-shim using a `WebSocket` crate before initializing Kaspa environment:
-`globalThis.WebSocket = require('websocket').w3cwebsocket;`
-
-Prerequisites:
-- WasmPack: https://rustwasm.github.io/wasm-pack/installer/
-
-To test Node.js:
-- Make sure you have Rust and WasmPack installed
-- Start Golang Kaspad
-- Start wRPC proxy
-
-```bash
-cd rpc/wrpc/wasm
-./build-node
-cd nodejs
-npm install
-node index
-```
-
-You can take a look at `rpc/wrpc/wasm/nodejs/index.js` to see the use of the native JavaScript & TypeScript APIs.
-
-NOTE: `npm install` is needed to install [WebSocket](https://github.com/theturtle32/WebSocket-Node) module.
-When running in the Browser environment, no additional dependencies are necessary because
-the browser provides the W3C WebSocket class natively.
-
-## Wallet CLI
-
-The wallet CLI is under heavy development.  To test the environment you can do the following:
-
-- Start Golang Kaspad
-- Start wRPC proxy
-
-Native (OS command line):
-
-```bash
-cd wallet/native
-cargo run
-```
-
-Web Browser (WASM):
-
-Run an http server inside of `wallet/wasm/web` folder. If you don't have once, you can use `basic-http-server`.
 ```bash
 cd wallet/wasm/web
 cargo install basic-http-server
@@ -218,16 +245,186 @@ The *basic-http-server* will serve on port 4000 by default, so open your web bro
 
 The framework is compatible with all major desktop and mobile browsers.
 
-## Using Wallet CLI
 
-This project is under heavy development and currently demonstrates only the RPC data exchange and
-address generation using the native or WASM wallet library. 
+</details>
 
-Here are the few commands that work:
 
+## Running the node
+
+  **Start a mainnet node**
+
+  ```bash
+  cargo run --release --bin kaspad
+  ```
+  **Start a testnet node**
+
+  ```bash
+cargo run --release --bin kaspad -- --testnet
+  ```
+
+
+<details>
+
+  <summary>
+wRPC
+  </summary>
+
+  wRPC subsystem is disabled by default in `kaspad` and can be enabled via:
+
+
+  JSON protocol:
+  ```bash
+  --rpclisten-json = <interface:port>
+  ```
+
+  Borsh protocol:
+  ```bash
+  --rpclisten-borsh = <interface:port>
+  ```
+
+  **Sidenote:**
+
+  Rusty Kaspa integrates an optional wRPC
+  subsystem. wRPC is a high-performance, platform-neutral, Rust-centric, WebSocket-framed RPC 
+  implementation that can use [Borsh](https://borsh.io/) and JSON protocol encoding.
+
+  JSON protocol messaging 
+  is similar to JSON-RPC 1.0, but differs from the specification due to server-side 
+  notifications.
+
+  [Borsh](https://borsh.io/) encoding is meant for inter-process communication. When using [Borsh](https://borsh.io/)
+  both client and server should be built from the same codebase.  
+
+  JSON protocol is based on 
+  Kaspa data structures and is data-structure-version agnostic. You can connect to the
+  JSON endpoint using any WebSocket library. Built-in RPC clients for JavaScript and
+  TypeScript capable of running in web browsers and Node.js are available as a part of
+  the Kaspa WASM framework.
+
+  **wRPC to gRPC Proxy is deprecated and no longer supported.**
+
+</details>
+
+
+
+<details>
+
+<summary>
+Mining
+</summary>
+
+Mining is currently supported only on testnet, so once you've setup a test node, follow these instructions.
+
+1. Download and unzip the latest binaries bundle of [kaspanet/kaspad](https://github.com/kaspanet/kaspad/releases).
+
+2. In a separate terminal run the kaspanet/kaspad miner:
+
+    ```
+    kaspaminer --testnet --miningaddr kaspatest:qrcqat6l9zcjsu7swnaztqzrv0s7hu04skpaezxk43y4etj8ncwfk308jlcew
+    ```
+
+    This will create and feed a DAG with the miner getting block templates from the node and submitting them back when mined. The node processes and stores the blocks while applying all currently implemented logic. Execution can be stopped and resumed, the data is persisted in a database.
+
+    You can replace the above mining address with your own address by creating one as described [here](https://github.com/kaspanet/docs/blob/main/Getting%20Started/Full%20Node%20Installation.md#creating-a-wallet-optional). 
+
+</details>
+
+
+## Benchmarking & Testing
+
+
+<details> 
+
+<summary>Simulation framework (Simpa)</summary>
+
+Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) by either:
+
+The current codebase supports a full in-process network simulation, building an actual DAG over virtual time with virtual delay and benchmarking validation time (following the simulation generation). 
+
+To see the available commands
+```bash 
+cargo run --release --bin simpa -- --help
+``` 
+
+The following command will run a simulation to produce 1000 blocks with communication delay of 2 seconds and 8 BPS (blocks per second) while attempting to fill each block with up to 200 transactions.   
+
+```bash
+cargo run --release --bin simpa -- -t=200 -d=2 -b=8 -n=1000
 ```
-get-info
-subscribe-daa-score
-new-address
-exit
+
+</details>
+
+
+
+
+<details> 
+
+<summary>Heap Profiling</summary>
+
+Heap-profiling in `kaspad` and `simpa` can be done by enabling `heap` feature and profile using the `--features` argument
+
+```bash
+cargo run --bin kaspad --profile heap --features=heap
 ```
+
+It will produce `{bin-name}-heap.json` file in the root of the workdir, that can be inspected by the [dhat-viewer](https://github.com/unofficial-mirror/valgrind/tree/master/dhat)
+
+</details>
+
+
+<details> 
+
+<summary>Tests</summary>
+
+
+**Run unit and most integration tests**
+
+```bash
+cd rusty-kaspa
+cargo test --release
+// or install nextest and run
+```
+
+
+
+**Using nextest**
+
+```bash
+cd rusty-kaspa
+cargo nextest run --release
+```
+
+
+
+</details>
+
+
+<details> 
+
+<summary>Benchmarks</summary>
+
+```bash
+cd rusty-kaspa
+cargo bench
+```
+
+</details>
+
+<details> 
+
+<summary>Logging</summary>
+
+Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) by either:
+
+1. Defining the environment variable `RUST_LOG`
+2. Adding the --loglevel argument like in the following example:
+
+    ```
+    (cargo run --bin kaspad -- --loglevel info,kaspa_rpc_core=trace,kaspa_grpc_core=trace,consensus=trace,kaspa_core=trace) 2>&1 | tee ~/rusty-kaspa.log
+    ```
+    In this command we set the `loglevel` to `INFO`.
+
+</details>
+
+
+

@@ -9,6 +9,8 @@ use parking_lot::{Mutex, RwLock};
 use seqlock::SeqLock;
 use std::fmt::{Debug, Display};
 use std::net::SocketAddr;
+use std::ops::{Deref, DerefMut};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
 use std::{collections::HashMap, sync::Arc};
 use tokio::select;
@@ -19,7 +21,54 @@ use tonic::Streaming;
 
 use super::peer::{PeerKey, PeerProperties};
 
-pub type IncomingRoute = MpscReceiver<KaspadMessage>;
+pub struct IncomingRoute {
+    rx: MpscReceiver<KaspadMessage>,
+    id: u32,
+}
+
+// BLANK_ROUTE_ID is the value that is used in the p2p when no request or response IDs
+// are needed. To support backward compatibility, this is set to the default gRPC value
+// for uint32.
+pub const BLANK_ROUTE_ID: u32 = 0;
+static ROUTE_ID: AtomicU32 = AtomicU32::new(BLANK_ROUTE_ID + 1);
+
+impl IncomingRoute {
+    pub fn new(rx: MpscReceiver<KaspadMessage>) -> Self {
+        let id = ROUTE_ID.fetch_add(1, Ordering::SeqCst);
+        Self { rx, id }
+    }
+
+    pub fn id(&self) -> u32 {
+        self.id
+    }
+}
+
+impl Deref for IncomingRoute {
+    type Target = MpscReceiver<KaspadMessage>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.rx
+    }
+}
+
+impl DerefMut for IncomingRoute {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.rx
+    }
+}
+
+#[derive(Clone)]
+pub struct SharedIncomingRoute(Arc<tokio::sync::Mutex<IncomingRoute>>);
+
+impl SharedIncomingRoute {
+    pub fn new(incoming_route: IncomingRoute) -> Self {
+        Self(Arc::new(tokio::sync::Mutex::new(incoming_route)))
+    }
+
+    pub async fn recv(&mut self) -> Option<KaspadMessage> {
+        self.0.lock().await.recv().await
+    }
+}
 
 /// The policy for handling the case where route capacity is reached for a specific route type
 pub enum IncomingRouteOverflowPolicy {
@@ -78,7 +127,9 @@ pub struct Router {
     connection_started: Instant,
 
     /// Routing map for mapping messages to subscribed flows
-    routing_map: RwLock<HashMap<KaspadMessagePayloadType, MpscSender<KaspadMessage>>>,
+    routing_map_by_type: RwLock<HashMap<KaspadMessagePayloadType, MpscSender<KaspadMessage>>>,
+
+    routing_map_by_id: RwLock<HashMap<u32, MpscSender<KaspadMessage>>>,
 
     /// The outgoing route for sending messages to this peer
     outgoing_route: MpscSender<KaspadMessage>,
@@ -137,7 +188,8 @@ impl Router {
             net_address,
             is_outbound,
             connection_started: Instant::now(),
-            routing_map: RwLock::new(HashMap::new()),
+            routing_map_by_type: RwLock::new(HashMap::new()),
+            routing_map_by_id: RwLock::new(HashMap::new()),
             outgoing_route,
             hub_sender,
             mutable_state: Mutex::new(RouterMutableState::new(Some(start_sender), Some(shutdown_sender))),
@@ -269,12 +321,17 @@ impl Router {
     /// This should be used by `ConnectionInitializer` instances to register application-specific flows.
     pub fn subscribe_with_capacity(&self, msg_types: Vec<KaspadMessagePayloadType>, capacity: usize) -> IncomingRoute {
         let (sender, receiver) = mpsc_channel(capacity);
-        let mut map = self.routing_map.write();
+        let incoming_route = IncomingRoute::new(receiver);
+        let mut map_by_type = self.routing_map_by_type.write();
         for msg_type in msg_types {
-            match map.insert(msg_type, sender.clone()) {
+            match map_by_type.insert(msg_type, sender.clone()) {
                 Some(_) => {
                     // Overrides an existing route -- panic
-                    error!("P2P, Router::subscribe overrides an existing value: {:?}, router-id: {}", msg_type, self.identity());
+                    error!(
+                        "P2P, Router::subscribe overrides an existing message type: {:?}, router-id: {}",
+                        msg_type,
+                        self.identity()
+                    );
                     panic!("P2P, Tried to subscribe to an existing route");
                 }
                 None => {
@@ -282,7 +339,26 @@ impl Router {
                 }
             }
         }
-        receiver
+        let mut map_by_id = self.routing_map_by_id.write();
+        match map_by_id.insert(incoming_route.id, sender.clone()) {
+            Some(_) => {
+                // Overrides an existing route -- panic
+                error!(
+                    "P2P, Router::subscribe overrides an existing route id: {:?}, router-id: {}",
+                    incoming_route.id,
+                    self.identity()
+                );
+                panic!("P2P, Tried to subscribe to an existing route");
+            }
+            None => {
+                trace!(
+                    "P2P, Router::subscribe - route id: {:?} route is registered, router-id:{:?}",
+                    incoming_route.id,
+                    self.identity()
+                );
+            }
+        }
+        incoming_route
     }
 
     /// Routes a message coming from the network to the corresponding registered flow
@@ -297,7 +373,13 @@ impl Router {
             let Some(KaspadMessagePayload::Reject(reject)) = msg.payload else { unreachable!() };
             return Err(ProtocolError::from_reject_message(reject.reason));
         }
-        let op = self.routing_map.read().get(&msg_type).cloned();
+
+        let op = if msg.response_id != BLANK_ROUTE_ID {
+            self.routing_map_by_id.read().get(&msg.response_id).cloned()
+        } else {
+            self.routing_map_by_type.read().get(&msg_type).cloned()
+        };
+
         if let Some(sender) = op {
             match sender.try_send(msg) {
                 Ok(_) => Ok(()),
@@ -359,7 +441,8 @@ impl Router {
         }
 
         // Drop all flow senders
-        self.routing_map.write().clear();
+        self.routing_map_by_type.write().clear();
+        self.routing_map_by_id.write().clear();
 
         // Send a close notification to the central Hub
         self.hub_sender.send(HubEvent::PeerClosing(self.clone())).await.expect("hub receiver should never drop before senders");

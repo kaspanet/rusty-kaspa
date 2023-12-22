@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-utils"
+description = "Kaspa utilities"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,16 +9,25 @@ license.workspace = true
 
 [dependencies]
 async-channel.workspace = true
-uuid.workspace = true
-serde.workspace = true
 borsh.workspace = true
+cfg-if.workspace = true
+event-listener.workspace = true
+faster-hex.workspace = true
+ipnet.workspace = true
 itertools.workspace = true
+serde.workspace = true
+smallvec.workspace = true
+thiserror.workspace = true
+triggered.workspace = true
+uuid.workspace = true
+log.workspace = true
 
-triggered = "0.1"
-event-listener = "2.5.3"
-ipnet = "2.8.0"
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rlimit.workspace = true
 
 [dev-dependencies]
+bincode.workspace = true
+serde_json.workspace = true
 async-trait.workspace = true
 futures-util.workspace = true
 tokio = { workspace = true, features = ["rt", "time", "macros"] }

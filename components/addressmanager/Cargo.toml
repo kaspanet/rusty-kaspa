@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-addressmanager"
+description = "Kaspa address manager"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,19 +8,22 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-rocksdb.workspace = true
-kaspa-utils.workspace = true
+borsh.workspace = true
+igd-next.workspace = true
+itertools.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-core.workspace = true
 kaspa-database.workspace = true
-serde.workspace = true
-itertools.workspace = true
-rand.workspace = true
-parking_lot.workspace = true
-borsh.workspace = true
+kaspa-utils.workspace = true
+local-ip-address.workspace = true
 log.workspace = true
-local-ip-address = "0.5.3"
+parking_lot.workspace = true
+rand.workspace = true
+rocksdb.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
-statrs = "0.13.0"
-statest = "0.2.2"
+statrs.workspace = true
+statest.workspace = true

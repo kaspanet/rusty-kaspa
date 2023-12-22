@@ -2,8 +2,9 @@ use kaspa_consensus_core::tx::TransactionId;
 use kaspa_utils::networking::IpAddress;
 use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
+use workflow_core::channel::ChannelError;
 
-use crate::{RpcHash, RpcTransactionId};
+use crate::{api::ctl::RpcState, RpcHash, RpcTransactionId, SubmitBlockRejectReason};
 
 #[derive(Clone, Debug, Error)]
 pub enum RpcError {
@@ -24,6 +25,9 @@ pub enum RpcError {
 
     #[error("Ip address parsing error {0}")]
     ParseIpAddressError(#[from] AddrParseError),
+
+    #[error("Wrong rpc api version format")]
+    RpcApiVersionFormatError,
 
     #[error("Invalid script class: {0}")]
     InvalidRpcScriptClass(String),
@@ -73,14 +77,17 @@ pub enum RpcError {
     #[error("IP {0} is not registered as banned.")]
     IpIsNotBanned(IpAddress),
 
+    #[error("Block was not submitted: {0}")]
+    SubmitBlockError(SubmitBlockRejectReason),
+
     #[error(transparent)]
     AddressError(#[from] kaspa_addresses::AddressError),
 
     #[error(transparent)]
-    NetworkTypeError(#[from] kaspa_consensus_core::networktype::NetworkTypeError),
+    NetworkTypeError(#[from] kaspa_consensus_core::network::NetworkTypeError),
 
     #[error(transparent)]
-    NetworkIdError(#[from] kaspa_consensus_core::networktype::NetworkIdError),
+    NetworkIdError(#[from] kaspa_consensus_core::network::NetworkIdError),
 
     #[error(transparent)]
     NotificationError(#[from] kaspa_notify::error::Error),
@@ -97,8 +104,17 @@ pub enum RpcError {
     #[error(transparent)]
     NodeIdError(#[from] uuid::Error),
 
+    #[error("RPC Server (remote error) -> {0}")]
+    RpcSubsystem(String),
+
     #[error("{0}")]
     General(String),
+
+    #[error("RpcCtl dispatch error")]
+    RpcCtlDispatchError,
+
+    #[error("transaction query must either not filter transactions or include orphans")]
+    InconsistentMempoolTxQuery,
 }
 
 impl From<String> for RpcError {
@@ -110,6 +126,12 @@ impl From<String> for RpcError {
 impl From<&str> for RpcError {
     fn from(value: &str) -> Self {
         RpcError::General(value.to_string())
+    }
+}
+
+impl From<ChannelError<RpcState>> for RpcError {
+    fn from(_: ChannelError<RpcState>) -> Self {
+        RpcError::RpcCtlDispatchError
     }
 }
 

@@ -1,3 +1,7 @@
+extern crate alloc;
+extern crate core;
+extern crate self as consensus_core;
+
 use std::collections::{HashMap, HashSet};
 use std::hash::{BuildHasher, Hasher};
 
@@ -12,13 +16,14 @@ pub mod blockstatus;
 pub mod coinbase;
 pub mod config;
 pub mod constants;
+pub mod daa_score_timestamp;
 pub mod errors;
 pub mod hashing;
 pub mod header;
 pub mod mass;
 pub mod merkle;
 pub mod muhash;
-pub mod networktype;
+pub mod network;
 pub mod pruning;
 pub mod sign;
 pub mod subnets;
