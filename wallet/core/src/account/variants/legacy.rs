@@ -42,10 +42,13 @@ impl Payload {
         Ok(Self::try_from_slice(storage.serialized.as_slice())?)
     }
 }
+
 impl Storable for Payload {
     const STORAGE_MAGIC: u32 = 0x5943474c;
     const STORAGE_VERSION: u32 = 0;
 }
+
+impl AccountStorable for Payload {}
 
 impl BorshSerialize for Payload {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {

@@ -49,9 +49,14 @@ impl Payload {
 }
 
 impl Storable for Payload {
+    // a unique number used for binary
+    // serialization data alignment check
     const STORAGE_MAGIC: u32 = 0x32335042;
+    // binary serialization version
     const STORAGE_VERSION: u32 = 0;
 }
+
+impl AccountStorable for Payload {}
 
 impl BorshSerialize for Payload {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {

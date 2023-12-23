@@ -145,7 +145,10 @@ impl<K> ExtendedPublicKey<K>
 where
     K: PublicKey,
 {
+    // a unique number used for binary
+    // serialization data alignment check
     const STORAGE_MAGIC: u16 = 0x4b58;
+    // binary serialization version
     const STORAGE_VERSION: u16 = 0;
 }
 

@@ -13,9 +13,10 @@ pub mod interface;
 pub mod keydata;
 pub mod local;
 pub mod metadata;
+pub mod storable;
 pub mod transaction;
 
-pub use account::{AccountSettings, AccountStorage, Storable};
+pub use account::{AccountSettings, AccountStorable, AccountStorage};
 pub use address::AddressBookEntry;
 pub use binding::Binding;
 pub use hint::Hint;
@@ -26,6 +27,7 @@ pub use interface::{
 pub use keydata::{AssocPrvKeyDataIds, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, PrvKeyDataMap, PrvKeyDataPayload};
 pub use local::interface::make_filename;
 pub use metadata::AccountMetadata;
+pub use storable::Storable;
 pub use transaction::{TransactionData, TransactionId, TransactionKind, TransactionRecord};
 
 #[cfg(test)]

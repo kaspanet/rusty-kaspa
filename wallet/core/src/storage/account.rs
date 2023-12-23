@@ -35,6 +35,9 @@ impl BorshDeserialize for AccountSettings {
     }
 }
 
+/// A [`Storable`] variant used explicitly for [`Account`] payload storage.
+pub trait AccountStorable: Storable {}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AccountStorage {
     pub kind: AccountKind,
@@ -43,11 +46,6 @@ pub struct AccountStorage {
     pub prv_key_data_ids: AssocPrvKeyDataIds,
     pub settings: AccountSettings,
     pub serialized: Vec<u8>,
-}
-
-pub trait Storable: Sized + BorshSerialize + BorshDeserialize {
-    const STORAGE_MAGIC: u32;
-    const STORAGE_VERSION: u32;
 }
 
 impl AccountStorage {
@@ -63,7 +61,7 @@ impl AccountStorage {
         serialized: A,
     ) -> Result<Self>
     where
-        A: Storable,
+        A: AccountStorable,
     {
         Ok(Self { id: *id, storage_key: *storage_key, kind, prv_key_data_ids, settings, serialized: serialized.try_to_vec()? })
     }

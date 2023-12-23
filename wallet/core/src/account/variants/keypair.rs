@@ -53,6 +53,8 @@ impl Storable for Payload {
     const STORAGE_VERSION: u32 = 0;
 }
 
+impl AccountStorable for Payload {}
+
 impl BorshSerialize for Payload {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         let public_key = self.public_key.serialize();
