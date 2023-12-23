@@ -324,7 +324,7 @@ impl UtxoContext {
             }
             Ok(())
         } else {
-            log_error!("ignoring duplicate utxo entry");
+            log_warning!("ignoring duplicate utxo entry");
             Ok(())
         }
     }
@@ -531,6 +531,8 @@ impl UtxoContext {
 
             for utxo in utxos.iter() {
                 if let Err(err) = self.insert(utxo.clone(), current_daa_score, force_maturity_if_outgoing).await {
+                    // TODO - remove `Result<>` from insert at a later date once
+                    // we are confident that the insert will never result in an error.
                     log_error!("{}", err);
                 }
             }
