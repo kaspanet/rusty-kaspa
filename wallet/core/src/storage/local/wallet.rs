@@ -57,8 +57,18 @@ impl WalletStorage {
 
     pub async fn try_store(&self, store: &Storage) -> Result<()> {
         store.ensure_dir().await?;
-        let serialized = BorshSerialize::try_to_vec(self)?;
-        fs::write(store.filename(), serialized.as_slice()).await?;
+
+        cfg_if! {
+            if #[cfg(target_arch = "wasm32")] {
+                let serialized = BorshSerialize::try_to_vec(self)?;
+                fs::write(store.filename(), serialized.as_slice()).await?;
+            } else {
+                // make this platform-specific to avoid creating
+                // a buffer containing serialization
+                let mut file = std::fs::File::create(store.filename(), )?;
+                BorshSerialize::serialize(self, &mut file)?;
+            }
+        }
         Ok(())
     }
 
