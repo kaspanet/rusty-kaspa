@@ -1,4 +1,6 @@
 use crate::imports::*;
+use itertools::Either;
+use std::iter::{empty, once, Empty, Once};
 
 #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "lowercase")]
@@ -11,13 +13,13 @@ pub enum AssocPrvKeyDataIds {
 
 impl IntoIterator for &AssocPrvKeyDataIds {
     type Item = PrvKeyDataId;
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+    type IntoIter = Either<Either<Empty<Self::Item>, Once<Self::Item>>, std::vec::IntoIter<Self::Item>>;
 
     fn into_iter(self) -> Self::IntoIter {
         match self {
-            AssocPrvKeyDataIds::None => Vec::new().into_iter(),
-            AssocPrvKeyDataIds::Single(id) => vec![*id].into_iter(),
-            AssocPrvKeyDataIds::Multiple(ids) => (**ids).clone().into_iter(),
+            AssocPrvKeyDataIds::None => Either::Left(Either::Left(empty())),
+            AssocPrvKeyDataIds::Single(id) => Either::Left(Either::Right(once(*id))),
+            AssocPrvKeyDataIds::Multiple(ids) => Either::Right((**ids).clone().into_iter()),
         }
     }
 }
@@ -85,5 +87,26 @@ impl AssocPrvKeyDataIds {
             AssocPrvKeyDataIds::Single(single) => single == id,
             AssocPrvKeyDataIds::Multiple(multiple) => multiple.contains(id),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_assoc_prv_key_data_ids() -> Result<()> {
+        let id = PrvKeyDataId::new(0x1ee7c0de);
+        let vec = vec![PrvKeyDataId::new(0x1ee7c0de), PrvKeyDataId::new(0xbaadc0de), PrvKeyDataId::new(0xba5ec0de)];
+
+        let iter = AssocPrvKeyDataIds::Single(id).into_iter();
+        iter.for_each(|id| assert_eq!(id, id));
+
+        let iter = AssocPrvKeyDataIds::Multiple(vec.clone().into()).into_iter();
+        for (idx, id) in iter.enumerate() {
+            assert_eq!(id, vec[idx]);
+        }
+
+        Ok(())
     }
 }
