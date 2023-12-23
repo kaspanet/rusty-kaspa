@@ -549,7 +549,9 @@ impl Wallet {
             generated_xpubs.sort_unstable();
             xpub_keys.extend_from_slice(generated_xpubs.as_slice());
             xpub_keys.sort_unstable();
-            let min_cosigner_index = xpub_keys.binary_search(generated_xpubs.first().unwrap()).unwrap() as u8;
+
+            let min_cosigner_index =
+                generated_xpubs.first().and_then(|first_generated| xpub_keys.binary_search(first_generated).ok()).map(|v| v as u8);
 
             let xpub_keys = xpub_keys
                 .into_iter()
@@ -564,7 +566,7 @@ impl Wallet {
                     account_name,
                     Arc::new(xpub_keys),
                     Some(Arc::new(prv_key_data_ids)),
-                    Some(min_cosigner_index),
+                    min_cosigner_index,
                     minimum_signatures,
                     false,
                 )
@@ -1239,7 +1241,9 @@ impl Wallet {
         additional_xpub_keys.extend_from_slice(generated_xpubs.as_slice());
         let mut xpub_keys = additional_xpub_keys;
         xpub_keys.sort_unstable();
-        let min_cosigner_index = xpub_keys.binary_search(generated_xpubs.first().unwrap()).unwrap() as u8;
+
+        let min_cosigner_index =
+            generated_xpubs.first().and_then(|first_generated| xpub_keys.binary_search(first_generated).ok()).map(|v| v as u8);
 
         let xpub_keys = xpub_keys
             .into_iter()
@@ -1254,7 +1258,7 @@ impl Wallet {
                 None,
                 Arc::new(xpub_keys),
                 Some(Arc::new(prv_key_data_ids)),
-                Some(min_cosigner_index),
+                min_cosigner_index,
                 minimum_signatures,
                 false,
             )
