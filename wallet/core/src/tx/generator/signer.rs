@@ -51,6 +51,7 @@ impl SignerT for Signer {
 
         let keys = self.inner.keys.lock().unwrap();
         let keys_for_signing = addresses.iter().map(|address| *keys.get(address).unwrap()).collect::<Vec<_>>();
+        // TODO - refactor for multisig
         Ok(sign_with_multiple_v2(mutable_tx, keys_for_signing).fully_signed()?)
     }
 }
@@ -75,6 +76,7 @@ impl KeydataSigner {
 impl SignerT for KeydataSigner {
     fn try_sign(&self, mutable_tx: SignableTransaction, addresses: &[Address]) -> Result<SignableTransaction> {
         let keys_for_signing = addresses.iter().map(|address| *self.inner.keys.get(address).unwrap()).collect::<Vec<_>>();
+        // TODO - refactor for multisig
         Ok(sign_with_multiple_v2(mutable_tx, keys_for_signing).fully_signed()?)
     }
 }
