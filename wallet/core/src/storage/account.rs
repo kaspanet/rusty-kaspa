@@ -35,7 +35,7 @@ impl BorshDeserialize for AccountSettings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AccountStorage {
     pub kind: AccountKind,
     pub id: AccountId,
@@ -78,6 +78,19 @@ impl AccountStorage {
 
     pub fn serialized(&self) -> &[u8] {
         &self.serialized
+    }
+}
+
+impl std::fmt::Debug for AccountStorage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AccountStorage")
+            .field("kind", &self.kind)
+            .field("id", &self.id)
+            .field("storage_key", &self.storage_key)
+            .field("prv_key_data_ids", &self.prv_key_data_ids)
+            .field("settings", &self.settings)
+            .field("serialized", &self.serialized.to_hex())
+            .finish()
     }
 }
 

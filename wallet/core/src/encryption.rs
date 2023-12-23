@@ -155,7 +155,7 @@ where
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct Encrypted {
     encryption_kind: EncryptionKind,
     payload: Vec<u8>,
@@ -164,6 +164,12 @@ pub struct Encrypted {
 impl Zeroize for Encrypted {
     fn zeroize(&mut self) {
         self.payload.zeroize();
+    }
+}
+
+impl std::fmt::Debug for Encrypted {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Encrypted").field("encryption_kind", &self.encryption_kind).field("payload", &self.payload.to_hex()).finish()
     }
 }
 
