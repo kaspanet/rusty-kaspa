@@ -100,7 +100,6 @@ impl PendingTransaction {
                 mass,
                 fees,
                 kind,
-                // is_transfer: generator.is_transfer(),
             }),
         })
     }
@@ -126,7 +125,7 @@ impl PendingTransaction {
         &self.inner.addresses
     }
 
-    /// Get UTXO entries [`Vec<UtxoEntryReference>`] of the pending transaction
+    /// Get UTXO entries [`AHashSet<UtxoEntryReference>`] of the pending transaction
     pub fn utxo_entries(&self) -> &AHashSet<UtxoEntryReference> {
         &self.inner.utxo_entries
     }
