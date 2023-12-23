@@ -15,7 +15,8 @@ use zeroize::Zeroize;
 pub struct TransactionRecord {
     pub id: TransactionId,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub unixtime: Option<u64>,
+    #[serde(rename = "unixtimeMsec")]
+    pub unixtime_msec: Option<u64>,
     pub value: u64,
     pub binding: Binding,
     #[serde(rename = "blockDaaScore")]
@@ -38,16 +39,16 @@ impl TransactionRecord {
         &self.id
     }
 
-    pub fn unixtime(&self) -> Option<u64> {
-        self.unixtime
+    pub fn unixtime_msec(&self) -> Option<u64> {
+        self.unixtime_msec
     }
 
     pub fn unixtime_as_locale_string(&self) -> Option<String> {
-        self.unixtime.map(unixtime_to_locale_string)
+        self.unixtime_msec.map(unixtime_to_locale_string)
     }
 
     pub fn unixtime_or_daa_as_string(&self) -> String {
-        if let Some(unixtime) = self.unixtime {
+        if let Some(unixtime) = self.unixtime_msec {
             unixtime_to_locale_string(unixtime)
         } else {
             self.block_daa_score.separated_string()
@@ -55,7 +56,7 @@ impl TransactionRecord {
     }
 
     pub fn set_unixtime(&mut self, unixtime: u64) {
-        self.unixtime = Some(unixtime);
+        self.unixtime_msec = Some(unixtime);
     }
 
     pub fn binding(&self) -> &Binding {
@@ -187,7 +188,7 @@ impl TransactionRecord {
 
         TransactionRecord {
             id,
-            unixtime: Some(unixtime),
+            unixtime_msec: Some(unixtime),
             value: aggregate_input_value,
             binding,
             transaction_data,
@@ -212,7 +213,7 @@ impl TransactionRecord {
 
         TransactionRecord {
             id,
-            unixtime: Some(unixtime),
+            unixtime_msec: Some(unixtime),
             value: aggregate_input_value,
             binding,
             transaction_data,
@@ -262,7 +263,7 @@ impl TransactionRecord {
 
         Ok(TransactionRecord {
             id,
-            unixtime: Some(unixtime),
+            unixtime_msec: Some(unixtime),
             value: payment_value.unwrap_or(*aggregate_input_value),
             binding,
             transaction_data,
@@ -308,7 +309,7 @@ impl TransactionRecord {
 
         Ok(TransactionRecord {
             id,
-            unixtime: Some(unixtime),
+            unixtime_msec: Some(unixtime),
             value: payment_value.unwrap_or(*aggregate_input_value),
             binding,
             transaction_data,
@@ -360,7 +361,7 @@ impl TransactionRecord {
 
         Ok(TransactionRecord {
             id,
-            unixtime: Some(unixtime),
+            unixtime_msec: Some(unixtime),
             value: payment_value.unwrap_or(*aggregate_input_value),
             binding,
             transaction_data,
@@ -412,7 +413,7 @@ impl TransactionRecord {
 
         Ok(TransactionRecord {
             id,
-            unixtime: Some(unixtime),
+            unixtime_msec: Some(unixtime),
             value: payment_value.unwrap_or(*aggregate_input_value),
             binding,
             transaction_data,
@@ -460,7 +461,7 @@ impl TransactionRecord {
 
         Ok(TransactionRecord {
             id,
-            unixtime: Some(unixtime),
+            unixtime_msec: Some(unixtime),
             value: *change_output_value,
             binding,
             transaction_data,
@@ -484,7 +485,7 @@ impl BorshSerialize for TransactionRecord {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         StorageHeader::new(Self::STORAGE_MAGIC, Self::STORAGE_VERSION).serialize(writer)?;
         BorshSerialize::serialize(&self.id, writer)?;
-        BorshSerialize::serialize(&self.unixtime, writer)?;
+        BorshSerialize::serialize(&self.unixtime_msec, writer)?;
         BorshSerialize::serialize(&self.value, writer)?;
         BorshSerialize::serialize(&self.binding, writer)?;
         BorshSerialize::serialize(&self.block_daa_score, writer)?;
@@ -512,6 +513,6 @@ impl BorshDeserialize for TransactionRecord {
         let note = BorshDeserialize::deserialize(buf)?;
         let metadata = BorshDeserialize::deserialize(buf)?;
 
-        Ok(Self { id, unixtime, value, binding, block_daa_score, network_id, transaction_data, note, metadata })
+        Ok(Self { id, unixtime_msec: unixtime, value, binding, block_daa_score, network_id, transaction_data, note, metadata })
     }
 }
