@@ -34,14 +34,23 @@ static mut DEFAULT_WALLET_FILE: Option<String> = None;
 static mut DEFAULT_SETTINGS_FILE: Option<String> = None;
 
 pub fn default_storage_folder() -> &'static str {
+    // SAFETY: This operation is initializing a static mut variable,
+    // however, the actual variable is accessible only through
+    // this function.
     unsafe { DEFAULT_STORAGE_FOLDER.get_or_insert("~/.kaspa".to_string()).as_str() }
 }
 
 pub fn default_wallet_file() -> &'static str {
+    // SAFETY: This operation is initializing a static mut variable,
+    // however, the actual variable is accessible only through
+    // this function.
     unsafe { DEFAULT_WALLET_FILE.get_or_insert("kaspa".to_string()).as_str() }
 }
 
 pub fn default_settings_file() -> &'static str {
+    // SAFETY: This operation is initializing a static mut variable,
+    // however, the actual variable is accessible only through
+    // this function.
     unsafe { DEFAULT_SETTINGS_FILE.get_or_insert("kaspa".to_string()).as_str() }
 }
 
@@ -61,6 +70,9 @@ pub fn default_settings_file() -> &'static str {
 #[wasm_bindgen(js_name = setDefaultStorageFolder, skip_jsdoc)]
 pub fn set_default_storage_folder(folder: String) -> Result<()> {
     create_dir_all_sync(&folder).map_err(|err| Error::custom(format!("Failed to create storage folder: {err}")))?;
+    // SAFETY: This is unsafe because we are setting a static mut variable
+    // meaning this function is not thread-safe. However the function
+    // must be used before any other wallet operations are performed.
     unsafe {
         DEFAULT_STORAGE_FOLDER = Some(folder);
     }
