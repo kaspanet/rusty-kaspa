@@ -379,12 +379,12 @@ impl UtxoContext {
                     context.mature.sorted_insert_binary_asc_by_key(utxo_entry.clone(), |entry| entry.amount_as_ref());
                 } else {
                     log_error!("Error: non-pending utxo promotion!");
-                    panic!("Error: non-pending utxo promotion!");
+                    unreachable!("Error: non-pending utxo promotion!");
                 }
             }
 
             if self.context().outgoing.get(&txid).is_some() {
-                panic!("Error: promotion of the outgoing transaction!");
+                unreachable!("Error: promotion of the outgoing transaction!");
             }
 
             let record = TransactionRecord::new_incoming(self, txid, &utxos);
