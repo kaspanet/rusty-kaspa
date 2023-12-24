@@ -24,7 +24,7 @@ use kaspa_core::{info, task::service::AsyncService, task::tick::TickService, tim
 use kaspa_database::prelude::ConnBuilder;
 use kaspa_database::{create_temp_db, load_existing_db};
 use kaspa_hashes::Hash;
-use kaspa_perf_monitor::builder::Builder;
+use kaspa_perf_monitor::{builder::Builder, counters::CountersSnapshot};
 use kaspa_utils::fd_budget;
 use simulator::network::KaspaNetworkSimulator;
 use std::{collections::VecDeque, sync::Arc, time::Duration};
@@ -145,8 +145,9 @@ fn main_impl(mut args: Args) {
 
     let stop_perf_monitor = args.perf_metrics.then(|| {
         let ts = Arc::new(TickService::new());
-        let cb = move |counters| {
-            trace!("metrics: {:?}", counters);
+
+        let cb = move |counters: CountersSnapshot| {
+            trace!("{}", counters);
             #[cfg(feature = "heap")]
             trace!("heap stats: {:?}", dhat::HeapStats::get());
         };
