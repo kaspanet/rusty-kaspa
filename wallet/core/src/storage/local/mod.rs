@@ -114,6 +114,11 @@ pub fn js_set_default_storage_folder(folder: String) -> Result<()> {
 /// This function should be called before using any
 /// other wallet SDK functions.
 ///
+/// # Safety
+///
+/// This function is unsafe because it is setting a static
+/// mut variable, meaning this function is not thread-safe.
+///
 pub unsafe fn set_default_wallet_file(folder: String) -> Result<()> {
     DEFAULT_WALLET_FILE = Some(folder);
     Ok(())
