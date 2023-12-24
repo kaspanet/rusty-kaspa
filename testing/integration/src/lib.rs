@@ -1,8 +1,3 @@
-#[ctor::ctor]
-fn init_allocator() {
-    kaspa_alloc::init_allocator_with_default_settings();
-}
-
 pub mod common;
 
 #[cfg(test)]

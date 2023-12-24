@@ -1132,16 +1132,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ctor"
-version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30d2b3721e861707777e3195b0158f950ae6dc4a27e4d02ff9f67e3eb3de199e"
-dependencies = [
- "quote",
- "syn 2.0.41",
-]
-
-[[package]]
 name = "ctrlc"
 version = "3.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2870,7 +2860,6 @@ dependencies = [
  "bincode",
  "criterion",
  "crossbeam-channel",
- "ctor",
  "faster-hex 0.6.1",
  "flate2",
  "futures-util",

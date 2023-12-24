@@ -54,7 +54,6 @@ smallvec.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-ctor = "0.2.6"
 
 [dev-dependencies]
 criterion.workspace = true
