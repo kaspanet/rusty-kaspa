@@ -16,7 +16,7 @@ use kaspa_consensus_core::{
     network::{NetworkId, NetworkType},
 };
 
-use kaspa_core::kaspad_env::version;
+use kaspa_core::version::version;
 
 use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_wrpc_server::address::WrpcNetAddress;

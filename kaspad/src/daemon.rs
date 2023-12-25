@@ -7,7 +7,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
 use kaspa_core::{core::Core, info, trace};
-use kaspa_core::{kaspad_env::version, task::tick::TickService};
+use kaspa_core::{task::tick::TickService, version::version};
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
