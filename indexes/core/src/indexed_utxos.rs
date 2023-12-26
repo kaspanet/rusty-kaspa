@@ -1,4 +1,5 @@
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
+use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -30,7 +31,11 @@ impl CompactUtxoEntry {
     }
 }
 
-impl kaspa_utils::mem_size::MemSizeEstimator for CompactUtxoEntry {}
+impl MemSizeEstimator for CompactUtxoEntry {
+    fn estimate_mem_units(&self) -> usize {
+        1
+    }
+}
 
 impl From<UtxoEntry> for CompactUtxoEntry {
     fn from(utxo_entry: UtxoEntry) -> Self {

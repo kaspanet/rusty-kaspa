@@ -431,7 +431,12 @@ macro_rules! construct_uint {
 
         }
 
-        impl kaspa_utils::mem_size::MemSizeEstimator for $name {}
+        impl kaspa_utils::mem_size::MemSizeEstimator for $name {
+            fn estimate_mem_units(&self) -> usize {
+                1
+
+            }
+        }
 
         impl kaspa_utils::hex::ToHex for $name {
             fn to_hex(&self) -> String {

@@ -4,6 +4,7 @@ use kaspa_database::{
     prelude::{CachedDbAccess, DirectDbWriter},
     registry::DatabaseStorePrefixes,
 };
+use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 use std::net::Ipv6Addr;
 use std::{error::Error, fmt::Display, sync::Arc};
@@ -17,7 +18,11 @@ pub struct Entry {
     pub address: NetAddress,
 }
 
-impl kaspa_utils::mem_size::MemSizeEstimator for Entry {}
+impl MemSizeEstimator for Entry {
+    fn estimate_mem_units(&self) -> usize {
+        1
+    }
+}
 
 pub trait AddressesStoreReader {
     fn get(&self, key: AddressKey) -> Result<Entry, StoreError>;

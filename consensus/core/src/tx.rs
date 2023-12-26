@@ -2,6 +2,7 @@ mod script_public_key;
 
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_utils::hex::ToHex;
+use kaspa_utils::mem_size::MemSizeEstimator;
 use kaspa_utils::{serde_bytes, serde_bytes_fixed_ref};
 pub use script_public_key::{scriptvec, ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, SCRIPT_VECTOR_SIZE};
 use serde::{Deserialize, Serialize};
@@ -44,7 +45,11 @@ impl UtxoEntry {
     }
 }
 
-impl kaspa_utils::mem_size::MemSizeEstimator for UtxoEntry {}
+impl MemSizeEstimator for UtxoEntry {
+    fn estimate_mem_units(&self) -> usize {
+        1
+    }
+}
 
 pub type TransactionIndexType = u32;
 

@@ -7,7 +7,7 @@ use kaspa_database::prelude::{CachePolicy, DB};
 use kaspa_database::prelude::{StoreError, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
-use kaspa_utils::mem_size::{MemSize, MemSizeEstimator};
+use kaspa_utils::mem_size::MemSizeEstimator;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 
@@ -28,10 +28,10 @@ pub struct HeaderWithBlockLevel {
 }
 
 impl MemSizeEstimator for HeaderWithBlockLevel {
-    fn estimate_mem_size(&self) -> MemSize {
-        let inner_header_bytes =
-            size_of::<Header>() + self.header.parents_by_level.iter().map(|l| l.len()).sum::<usize>() * size_of::<Hash>();
-        MemSize::BytesStatic { num_bytes: inner_header_bytes + size_of::<Self>() }
+    fn estimate_mem_bytes(&self) -> usize {
+        size_of::<Header>()
+            + self.header.parents_by_level.iter().map(|l| l.len()).sum::<usize>() * size_of::<Hash>()
+            + size_of::<Self>()
     }
 }
 
@@ -49,7 +49,11 @@ pub struct CompactHeaderData {
     pub blue_score: u64,
 }
 
-impl MemSizeEstimator for CompactHeaderData {}
+impl MemSizeEstimator for CompactHeaderData {
+    fn estimate_mem_units(&self) -> usize {
+        1
+    }
+}
 
 impl From<&Header> for CompactHeaderData {
     fn from(header: &Header) -> Self {

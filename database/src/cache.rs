@@ -12,10 +12,10 @@ pub enum CachePolicy {
     Unit(usize),
     /// Items are tracked by size and the cache never allows the accumulated tracked size
     /// to surpass the provided size argument.
-    Tracked(usize),
+    Tracked(usize, bool),
     /// Items are tracked by size with a max_size limit but the cache will pass this limit if
     /// there are no more than min_units overall in the cache
-    LowerBoundedTracked { max_size: usize, min_units: usize },
+    LowerBoundedTracked { max_size: usize, min_units: usize, bytes_mode: bool },
 }
 
 #[derive(Clone)]
@@ -27,15 +27,19 @@ struct CachePolicyInner {
     max_size: usize,
     /// Min units to keep in the cache even if passing tracked size limit.
     min_units: usize,
+    /// Indicates whether tracking is in bytes mode
+    bytes_mode: bool,
 }
 
 impl From<CachePolicy> for CachePolicyInner {
     fn from(policy: CachePolicy) -> Self {
         match policy {
-            CachePolicy::Empty => CachePolicyInner { tracked: false, max_size: 0, min_units: 0 },
-            CachePolicy::Unit(max_size) => CachePolicyInner { tracked: false, max_size, min_units: 0 },
-            CachePolicy::Tracked(max_size) => CachePolicyInner { tracked: true, max_size, min_units: 0 },
-            CachePolicy::LowerBoundedTracked { max_size, min_units } => CachePolicyInner { tracked: true, max_size, min_units },
+            CachePolicy::Empty => CachePolicyInner { tracked: false, max_size: 0, min_units: 0, bytes_mode: false },
+            CachePolicy::Unit(max_size) => CachePolicyInner { tracked: false, max_size, min_units: 0, bytes_mode: false },
+            CachePolicy::Tracked(max_size, bytes_mode) => CachePolicyInner { tracked: true, max_size, min_units: 0, bytes_mode },
+            CachePolicy::LowerBoundedTracked { max_size, min_units, bytes_mode } => {
+                CachePolicyInner { tracked: true, max_size, min_units, bytes_mode }
+            }
         }
     }
 }
@@ -61,17 +65,17 @@ where
         // We allow passing tracked size limit as long as there are no more than min_units units
         while self.tracked_size > policy.max_size && self.map.len() > policy.min_units {
             if let Some((_, v)) = self.map.swap_remove_index(rand::thread_rng().gen_range(0..self.map.len())) {
-                self.tracked_size -= v.estimate_mem_size().agnostic_size();
+                self.tracked_size -= v.estimate_size(policy.bytes_mode)
             }
         }
     }
 
     fn insert(&mut self, policy: &CachePolicyInner, key: TKey, data: TData) {
         if policy.tracked {
-            let new_data_size = data.estimate_mem_size().agnostic_size();
+            let new_data_size = data.estimate_size(policy.bytes_mode);
             self.tracked_size += new_data_size;
             if let Some(removed) = self.map.insert(key, data) {
-                self.tracked_size -= removed.estimate_mem_size().agnostic_size();
+                self.tracked_size -= removed.estimate_size(policy.bytes_mode);
             }
             self.evict(policy);
         } else {
@@ -88,9 +92,9 @@ where
     {
         if let Some(data) = self.map.get_mut(&key) {
             if policy.tracked {
-                self.tracked_size -= data.estimate_mem_size().agnostic_size();
+                self.tracked_size -= data.estimate_size(policy.bytes_mode);
                 op(data);
-                self.tracked_size += data.estimate_mem_size().agnostic_size();
+                self.tracked_size += data.estimate_size(policy.bytes_mode);
                 self.evict(policy);
             } else {
                 op(data);
@@ -102,7 +106,7 @@ where
         match self.map.swap_remove(key) {
             Some(data) => {
                 if policy.tracked {
-                    self.tracked_size -= data.estimate_mem_size().agnostic_size();
+                    self.tracked_size -= data.estimate_size(policy.bytes_mode);
                 }
                 Some(data)
             }

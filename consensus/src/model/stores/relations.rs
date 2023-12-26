@@ -419,7 +419,7 @@ mod tests {
     #[test]
     fn test_db_relations_store() {
         let (lt, db) = create_temp_db!(kaspa_database::prelude::ConnBuilder::default().with_files_limit(10));
-        test_relations_store(DbRelationsStore::new(db, 0, CachePolicy::Tracked(2), CachePolicy::Tracked(2)));
+        test_relations_store(DbRelationsStore::new(db, 0, CachePolicy::Tracked(2, false), CachePolicy::Tracked(2, false)));
         drop(lt)
     }
 

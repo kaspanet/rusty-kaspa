@@ -7,6 +7,7 @@ use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
+use kaspa_utils::mem_size::MemSizeEstimator;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +28,11 @@ struct BlockDepthInfo {
     finality_point: Hash,
 }
 
-impl kaspa_utils::mem_size::MemSizeEstimator for BlockDepthInfo {}
+impl MemSizeEstimator for BlockDepthInfo {
+    fn estimate_mem_units(&self) -> usize {
+        1
+    }
+}
 
 /// A DB + cache implementation of `DepthStore` trait, with concurrency support.
 #[derive(Clone)]

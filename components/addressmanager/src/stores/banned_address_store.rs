@@ -3,6 +3,7 @@ use kaspa_database::{
     prelude::{CachedDbAccess, DirectDbWriter, DB},
     registry::DatabaseStorePrefixes,
 };
+use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, Ipv6Addr};
 use std::{error::Error, fmt::Display, sync::Arc};
@@ -10,7 +11,11 @@ use std::{error::Error, fmt::Display, sync::Arc};
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct ConnectionBanTimestamp(pub u64);
 
-impl kaspa_utils::mem_size::MemSizeEstimator for ConnectionBanTimestamp {}
+impl MemSizeEstimator for ConnectionBanTimestamp {
+    fn estimate_mem_units(&self) -> usize {
+        1
+    }
+}
 
 pub trait BannedAddressesStoreReader {
     fn get(&self, address: IpAddr) -> Result<ConnectionBanTimestamp, StoreError>;

@@ -15,6 +15,7 @@ use kaspa_database::{
 };
 
 use kaspa_txscript::caches::TxScriptCacheCounters;
+use kaspa_utils::mem_size::MemSizeEstimator;
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -27,7 +28,11 @@ pub struct ConsensusEntry {
     creation_timestamp: u64,
 }
 
-impl kaspa_utils::mem_size::MemSizeEstimator for ConsensusEntry {}
+impl MemSizeEstimator for ConsensusEntry {
+    fn estimate_mem_units(&self) -> usize {
+        1
+    }
+}
 
 impl ConsensusEntry {
     pub fn new(key: u64, directory_name: String, creation_timestamp: u64) -> Self {

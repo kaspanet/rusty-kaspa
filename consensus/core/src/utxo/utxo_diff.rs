@@ -3,7 +3,7 @@ use super::{
     utxo_error::{UtxoAlgebraError, UtxoResult},
 };
 use crate::tx::{TransactionOutpoint, UtxoEntry, VerifiableTransaction};
-use kaspa_utils::mem_size::{MemSize, MemSizeEstimator};
+use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 use std::{collections::hash_map::Entry::Vacant, mem::size_of};
 
@@ -19,10 +19,8 @@ pub struct UtxoDiff {
 }
 
 impl MemSizeEstimator for UtxoDiff {
-    fn estimate_mem_size(&self) -> MemSize {
-        MemSize::BytesStatic {
-            num_bytes: size_of::<Self>() + (self.add.len() + self.remove.len()) * size_of::<(TransactionOutpoint, UtxoEntry)>(),
-        }
+    fn estimate_mem_bytes(&self) -> usize {
+        size_of::<Self>() + (self.add.len() + self.remove.len()) * (size_of::<TransactionOutpoint>() + size_of::<UtxoEntry>())
     }
 }
 

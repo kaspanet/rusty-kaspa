@@ -89,21 +89,21 @@ impl ConsensusStorage {
 
         // Cache sizes which are tracked per unit
         let parents_cache_size = 40_000_000 / size_of::<Hash>();
-        let children_cache_size = 5_000_000 / size_of::<Hash>();
-        let reachability_relations_cache_size = 40_000_000 / size_of::<Hash>();
-        let reachability_relations_children_cache_size = 5_000_000 / size_of::<Hash>();
-        let transactions_cache_size = 40_000usize; // Tracked units are txs (TODO)
+        let children_cache_size = 5_000_000 / size_of::<Hash>(); // Children relations are hardly used in consensus processing so the cache can be small
+        let reachability_parents_cache_size = 40_000_000 / size_of::<Hash>();
+        let reachability_children_cache_size = 5_000_000 / size_of::<Hash>();
+        let transactions_cache_size = 40_000usize; // Tracked units are txs
 
         // Cache sizes represented and tracked as bytes
         let ghostdag_cache_bytes = 80_000_000usize;
         let headers_cache_bytes = 80_000_000usize;
         let utxo_diffs_cache_bytes = 40_000_000usize;
 
-        // Add stochastic noise to cache sizes to avoid predictable and equal sizes across all network nodes
-        let noise = |size| size + rand::thread_rng().gen_range(0..16);
-
         // Number of units lower bound for level-related caches
         let unit_lower_bound = 2 * params.pruning_proof_m as usize;
+
+        // Add stochastic noise to cache sizes to avoid predictable and equal sizes across all network nodes
+        let noise = |size| size + rand::thread_rng().gen_range(0..16);
 
         // Headers
         let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), CachePolicy::Unit(noise(statuses_cache_size)))));
@@ -112,11 +112,17 @@ impl ConsensusStorage {
                 .map(|level| {
                     // = size / 2^level
                     let parents_level_size = parents_cache_size.checked_shr(level as u32).unwrap_or(0);
-                    let parents_cache_policy =
-                        CachePolicy::LowerBoundedTracked { max_size: noise(parents_level_size), min_units: noise(unit_lower_bound) };
+                    let parents_cache_policy = CachePolicy::LowerBoundedTracked {
+                        max_size: noise(parents_level_size),
+                        min_units: noise(unit_lower_bound),
+                        bytes_mode: false,
+                    };
                     let children_level_size = children_cache_size.checked_shr(level as u32).unwrap_or(0);
-                    let children_cache_policy =
-                        CachePolicy::LowerBoundedTracked { max_size: noise(children_level_size), min_units: noise(unit_lower_bound) };
+                    let children_cache_policy = CachePolicy::LowerBoundedTracked {
+                        max_size: noise(children_level_size),
+                        min_units: noise(unit_lower_bound),
+                        bytes_mode: false,
+                    };
                     DbRelationsStore::new(db.clone(), level, parents_cache_policy, children_cache_policy)
                 })
                 .collect_vec(),
@@ -124,14 +130,14 @@ impl ConsensusStorage {
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(
             db.clone(),
             CachePolicy::Unit(noise(reachability_data_cache_size)),
-            CachePolicy::Tracked(noise(reachability_sets_cache_size)),
+            CachePolicy::Tracked(noise(reachability_sets_cache_size), false),
         )));
 
         let reachability_relations_store = Arc::new(RwLock::new(DbRelationsStore::with_prefix(
             db.clone(),
             DatabaseStorePrefixes::ReachabilityRelations.as_ref(),
-            CachePolicy::Tracked(noise(reachability_relations_cache_size)),
-            CachePolicy::Tracked(noise(reachability_relations_children_cache_size)),
+            CachePolicy::Tracked(noise(reachability_parents_cache_size), false),
+            CachePolicy::Tracked(noise(reachability_children_cache_size), false),
         )));
 
         let ghostdag_stores = Arc::new(
@@ -139,8 +145,11 @@ impl ConsensusStorage {
                 .map(|level| {
                     // = size / 2^level
                     let level_cache_bytes = ghostdag_cache_bytes.checked_shr(level as u32).unwrap_or(0);
-                    let cache_policy =
-                        CachePolicy::LowerBoundedTracked { max_size: noise(level_cache_bytes), min_units: noise(unit_lower_bound) };
+                    let cache_policy = CachePolicy::LowerBoundedTracked {
+                        max_size: noise(level_cache_bytes),
+                        min_units: noise(unit_lower_bound),
+                        bytes_mode: true,
+                    };
                     let compact_cache_size = max(ghostdag_compact_cache_size.checked_shr(level as u32).unwrap_or(0), unit_lower_bound);
                     Arc::new(DbGhostdagStore::new(db.clone(), level, cache_policy, CachePolicy::Unit(noise(compact_cache_size))))
                 })
@@ -150,7 +159,7 @@ impl ConsensusStorage {
         let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), CachePolicy::Unit(noise(daa_excluded_cache_size))));
         let headers_store = Arc::new(DbHeadersStore::new(
             db.clone(),
-            CachePolicy::Tracked(noise(headers_cache_bytes)),
+            CachePolicy::Tracked(noise(headers_cache_bytes), true),
             CachePolicy::Unit(noise((3600 * params.bps() as usize).max(perf_params.header_data_cache_size))),
         ));
         let depth_store = Arc::new(DbDepthStore::new(db.clone(), CachePolicy::Unit(noise(perf_params.header_data_cache_size))));
@@ -165,8 +174,8 @@ impl ConsensusStorage {
 
         // Txs
         let block_transactions_store =
-            Arc::new(DbBlockTransactionsStore::new(db.clone(), CachePolicy::Tracked(noise(transactions_cache_size))));
-        let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), CachePolicy::Tracked(noise(utxo_diffs_cache_bytes))));
+            Arc::new(DbBlockTransactionsStore::new(db.clone(), CachePolicy::Tracked(noise(transactions_cache_size), false)));
+        let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), CachePolicy::Tracked(noise(utxo_diffs_cache_bytes), true)));
         let utxo_multisets_store =
             Arc::new(DbUtxoMultisetsStore::new(db.clone(), CachePolicy::Unit(noise(perf_params.block_data_cache_size))));
         let acceptance_data_store =

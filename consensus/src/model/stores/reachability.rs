@@ -12,6 +12,7 @@ use kaspa_database::{
 use kaspa_hashes::Hash;
 
 use itertools::Itertools;
+use kaspa_utils::mem_size::MemSizeEstimator;
 use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
@@ -28,7 +29,11 @@ pub(crate) struct ReachabilityData {
     pub height: u64,
 }
 
-impl kaspa_utils::mem_size::MemSizeEstimator for ReachabilityData {}
+impl MemSizeEstimator for ReachabilityData {
+    fn estimate_mem_units(&self) -> usize {
+        1
+    }
+}
 
 impl ReachabilityData {
     pub fn new(parent: Hash, interval: Interval, height: u64) -> Self {
