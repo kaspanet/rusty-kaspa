@@ -14,9 +14,10 @@ pub enum CachePolicy {
 
 #[derive(Clone)]
 struct CachePolicyInner {
-    /// Indicates if this policy was set to be tracked.
+    /// Indicates if this cache was set to be tracked.
     tracked: bool,
-    /// The max size of this cache. Units depend on policy.
+    /// The max size of this cache. Units (bytes or some logical unit) depend on
+    /// caller logic and the implementation of `MemSizeEstimator`.
     max_size: usize,
     /// Min units to keep in the cache even if passing tracked size limit.
     min_units: usize,
@@ -41,6 +42,73 @@ where
     // We use IndexMap and not HashMap because it makes it cheaper to remove a random element when the cache is full.
     map: IndexMap<TKey, TData, S>,
     tracked_size: usize,
+}
+
+impl<TKey, TData, S> Inner<TKey, TData, S>
+where
+    TKey: Clone + std::hash::Hash + Eq + Send + Sync,
+    TData: Clone + Send + Sync + MemSizeEstimator,
+    S: BuildHasher + Default,
+{
+    fn insert(&mut self, policy: &CachePolicyInner, key: TKey, data: TData) {
+        match policy.tracked {
+            false => {
+                if self.map.len() == policy.max_size {
+                    self.map.swap_remove_index(rand::thread_rng().gen_range(0..policy.max_size));
+                }
+                self.map.insert(key, data);
+            }
+            true => {
+                let new_data_size = data.estimate_mem_size().agnostic_size();
+                self.tracked_size += new_data_size;
+                if let Some(removed) = self.map.insert(key, data) {
+                    self.tracked_size -= removed.estimate_mem_size().agnostic_size();
+                }
+
+                // We allow passing tracked size limit as long as there are no more than min_units units
+                while self.tracked_size > policy.max_size && self.map.len() > policy.min_units {
+                    if let Some((_, v)) = self.map.swap_remove_index(rand::thread_rng().gen_range(0..self.map.len())) {
+                        self.tracked_size -= v.estimate_mem_size().agnostic_size();
+                    }
+                }
+            }
+        }
+    }
+
+    fn update_if_entry_exists<F>(&mut self, policy: &CachePolicyInner, key: TKey, op: F)
+    where
+        F: Fn(&mut TData),
+    {
+        if let Some(data) = self.map.get_mut(&key) {
+            match policy.tracked {
+                false => {
+                    op(data);
+                }
+                true => {
+                    self.tracked_size -= data.estimate_mem_size().agnostic_size();
+                    op(data);
+                    self.tracked_size += data.estimate_mem_size().agnostic_size();
+                    while self.tracked_size > policy.max_size && self.map.len() > policy.min_units {
+                        if let Some((_, v)) = self.map.swap_remove_index(rand::thread_rng().gen_range(0..self.map.len())) {
+                            self.tracked_size -= v.estimate_mem_size().agnostic_size();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn remove(&mut self, policy: &CachePolicyInner, key: &TKey) -> Option<TData> {
+        match self.map.swap_remove(key) {
+            Some(data) => {
+                if policy.tracked {
+                    self.tracked_size -= data.estimate_mem_size().agnostic_size();
+                }
+                Some(data)
+            }
+            None => None,
+        }
+    }
 }
 
 impl<TKey, TData, S> Inner<TKey, TData, S>
@@ -84,70 +152,21 @@ where
         self.inner.read().map.contains_key(key)
     }
 
-    fn insert_impl(&self, inner: &mut Inner<TKey, TData, S>, key: TKey, data: TData) {
-        match self.policy.tracked {
-            false => {
-                if inner.map.len() == self.policy.max_size {
-                    inner.map.swap_remove_index(rand::thread_rng().gen_range(0..self.policy.max_size));
-                }
-                inner.map.insert(key, data);
-            }
-            true => {
-                let new_data_size = data.estimate_mem_size().agnostic_size();
-                inner.tracked_size += new_data_size;
-                if let Some(removed) = inner.map.insert(key, data) {
-                    inner.tracked_size -= removed.estimate_mem_size().agnostic_size();
-                }
-
-                // We allow passing tracked size limit as long as there are no more than min_units units
-                while inner.tracked_size > self.policy.max_size && inner.map.len() > self.policy.min_units {
-                    if let Some((_, v)) = inner.map.swap_remove_index(rand::thread_rng().gen_range(0..inner.map.len())) {
-                        inner.tracked_size -= v.estimate_mem_size().agnostic_size();
-                    }
-                }
-            }
-        }
-    }
-
     pub fn insert(&self, key: TKey, data: TData) {
         if self.policy.max_size == 0 {
             return;
         }
 
-        let mut write_guard = self.inner.write();
-        self.insert_impl(&mut write_guard, key, data);
+        self.inner.write().insert(&self.policy, key, data);
     }
 
     pub fn insert_many(&self, iter: &mut impl Iterator<Item = (TKey, TData)>) {
         if self.policy.max_size == 0 {
             return;
         }
-        let mut write_guard = self.inner.write();
+        let mut inner = self.inner.write();
         for (key, data) in iter {
-            self.insert_impl(&mut write_guard, key, data);
-        }
-    }
-
-    fn update_if_entry_exists_impl<F>(&self, inner: &mut Inner<TKey, TData, S>, key: TKey, op: F)
-    where
-        F: Fn(&mut TData),
-    {
-        if let Some(data) = inner.map.get_mut(&key) {
-            match self.policy.tracked {
-                false => {
-                    op(data);
-                }
-                true => {
-                    inner.tracked_size -= data.estimate_mem_size().agnostic_size();
-                    op(data);
-                    inner.tracked_size += data.estimate_mem_size().agnostic_size();
-                    while inner.tracked_size > self.policy.max_size && inner.map.len() > self.policy.min_units {
-                        if let Some((_, v)) = inner.map.swap_remove_index(rand::thread_rng().gen_range(0..inner.map.len())) {
-                            inner.tracked_size -= v.estimate_mem_size().agnostic_size();
-                        }
-                    }
-                }
-            }
+            inner.insert(&self.policy, key, data);
         }
     }
 
@@ -158,37 +177,23 @@ where
         if self.policy.max_size == 0 {
             return;
         }
-        let mut write_guard = self.inner.write();
-        self.update_if_entry_exists_impl(&mut write_guard, key, op);
-    }
-
-    fn remove_impl(&self, inner: &mut Inner<TKey, TData, S>, key: &TKey) -> Option<TData> {
-        match inner.map.swap_remove(key) {
-            Some(data) => {
-                if self.policy.tracked {
-                    inner.tracked_size -= data.estimate_mem_size().agnostic_size();
-                }
-                Some(data)
-            }
-            None => None,
-        }
+        self.inner.write().update_if_entry_exists(&self.policy, key, op);
     }
 
     pub fn remove(&self, key: &TKey) -> Option<TData> {
         if self.policy.max_size == 0 {
             return None;
         }
-        let mut write_guard = self.inner.write();
-        self.remove_impl(&mut write_guard, key)
+        self.inner.write().remove(&self.policy, key)
     }
 
     pub fn remove_many(&self, key_iter: &mut impl Iterator<Item = TKey>) {
         if self.policy.max_size == 0 {
             return;
         }
-        let mut write_guard = self.inner.write();
+        let mut inner = self.inner.write();
         for key in key_iter {
-            self.remove_impl(&mut write_guard, &key);
+            inner.remove(&self.policy, &key);
         }
     }
 
@@ -196,10 +201,10 @@ where
         if self.policy.max_size == 0 {
             return;
         }
-        let mut write_guard = self.inner.write();
-        write_guard.map.clear();
+        let mut inner = self.inner.write();
+        inner.map.clear();
         if self.policy.tracked {
-            write_guard.tracked_size = 0;
+            inner.tracked_size = 0;
         }
     }
 }
