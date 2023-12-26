@@ -1182,7 +1182,7 @@ impl Wallet {
     /// accounts.
     pub async fn scan_bip44_accounts(
         self: &Arc<Self>,
-        bip39_mnemonic: String,
+        mut bip39_mnemonic: String,
         bip39_passphrase: Option<Secret>,
         address_scan_extent: u32,
         account_scan_extent: u32,
@@ -1210,6 +1210,8 @@ impl Wallet {
             }
             account_index += 1;
         }
+
+        bip39_mnemonic.zeroize();
 
         Ok(last_account_index)
     }
