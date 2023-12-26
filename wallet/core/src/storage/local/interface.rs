@@ -416,10 +416,8 @@ impl Interface for LocalStore {
             let path = folder.join(format!("{}.wallet", filename));
             // TODO - refactor on native to read directly from file (skip temporary buffer creation)
             let wallet_data = fs::read(&path).await;
-            let title = wallet_data
-                .ok()
-                .and_then(|data| WalletStorage::try_from_slice(data.as_slice()).ok())
-                .and_then(|wallet| wallet.title);
+            let title =
+                wallet_data.ok().and_then(|data| WalletStorage::try_from_slice(data.as_slice()).ok()).and_then(|wallet| wallet.title);
             descriptors.push(WalletDescriptor { title, filename });
         }
 

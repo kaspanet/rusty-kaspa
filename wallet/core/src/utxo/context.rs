@@ -646,7 +646,7 @@ impl UtxoContext {
 
         let local = self.addresses();
 
-        // addresses are filtered for a known address set where 
+        // addresses are filtered for a known address set where
         // addresses can already be registered with the processor
         // as a part of address space (Scan window) pre-caching.
         let addresses = addresses
