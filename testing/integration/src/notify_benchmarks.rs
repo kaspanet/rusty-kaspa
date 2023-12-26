@@ -2,6 +2,7 @@ use crate::common::{self, client_notify::ChannelNotify, daemon::Daemon, memory_m
 use futures_util::future::join_all;
 use itertools::Itertools;
 use kaspa_addresses::Address;
+use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_consensus::params::Params;
 use kaspa_consensus_core::{constants::SOMPI_PER_KASPA, network::NetworkType, tx::Transaction};
 use kaspa_core::{debug, info, task::tick::TickService, trace, warn};
@@ -32,6 +33,7 @@ use tokio::join;
 #[tokio::test]
 #[ignore = "bmk"]
 async fn bench_utxos_changed_subscriptions_footprint() {
+    init_allocator_with_default_settings();
     kaspa_core::panic::configure_panic();
     //kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_rpc_core=debug,kaspa_grpc_core=debug,kaspa_grpc_server=debug,kaspa_notify=debug,kaspa_mining::monitor=debug");
     kaspa_core::log::try_init_logger(

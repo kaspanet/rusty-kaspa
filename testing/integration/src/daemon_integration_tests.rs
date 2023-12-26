@@ -5,6 +5,7 @@ use crate::common::{
     utils::{fetch_spendable_utxos, generate_tx, mine_block, wait_for},
 };
 use kaspa_addresses::Address;
+use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_consensus::params::SIMNET_PARAMS;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{task::runtime::AsyncRuntime, trace};
@@ -18,6 +19,7 @@ use std::{sync::Arc, time::Duration};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_sanity_test() {
+    init_allocator_with_default_settings();
     kaspa_core::log::try_init_logger("INFO");
 
     // let total_fd_limit =  kaspa_utils::fd_budget::get_limit() / 2 - 128;
@@ -40,6 +42,7 @@ async fn daemon_sanity_test() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_mining_test() {
+    init_allocator_with_default_settings();
     kaspa_core::log::try_init_logger("INFO");
 
     let args = Args {
@@ -320,6 +323,7 @@ async fn daemon_utxos_propagation_test() {
 // The following test runtime parameters are required for a graceful shutdown of the gRPC server
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn daemon_cleaning_test() {
+    init_allocator_with_default_settings();
     kaspa_core::log::try_init_logger("info,kaspa_grpc_core=trace,kaspa_grpc_server=trace,kaspa_grpc_client=trace,kaspa_core=trace");
     let args = Args { devnet: true, ..Default::default() };
     let consensus_manager;
