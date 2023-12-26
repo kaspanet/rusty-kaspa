@@ -29,7 +29,7 @@ Your feedback, contributions, and issue reports will be integral to evolving thi
       clang-tools clang clangd libc++-dev \
       libc++1 libc++abi-dev libc++abi1 \
       libclang-dev libclang1 liblldb-dev \
-      libllvm-ocaml-dev libomp-dev libomp5 \ 
+      libllvm-ocaml-dev libomp-dev libomp5 \
       lld lldb llvm-dev llvm-runtime \
       llvm python3-clang
       ```
