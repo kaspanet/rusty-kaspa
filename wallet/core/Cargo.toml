@@ -18,7 +18,9 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 aes.workspace = true
+ahash.workspace = true
 argon2.workspace = true
+async-channel.workspace = true
 async-std.workspace = true
 async-trait.workspace = true
 base64.workspace = true
@@ -31,6 +33,7 @@ derivative.workspace = true
 downcast.workspace = true
 evpkdf.workspace = true
 faster-hex.workspace = true
+fixedstr.workspace = true
 futures.workspace = true
 heapless.workspace = true
 hmac.workspace = true
@@ -47,6 +50,7 @@ kaspa-rpc-core.workspace = true
 kaspa-txscript-errors.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
+kaspa-wallet-macros.workspace = true
 kaspa-wrpc-client.workspace = true
 md-5.workspace = true
 pad.workspace = true

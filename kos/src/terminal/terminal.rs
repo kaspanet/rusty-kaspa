@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_cli_lib::metrics::MetricsSnapshot;
+use kaspa_metrics_core::MetricsSnapshot;
 
 static mut TERMINAL: Option<Arc<Terminal>> = None;
 static mut SHUTDOWN_ATTEMPTS: usize = 0;
@@ -20,7 +20,7 @@ pub struct Terminal {
 impl Terminal {
     pub async fn try_new() -> Result<Arc<Self>> {
         log_info!("-> core ipc binding");
-        let core_ipc_target = get_ipc_target(Modules::Core).await?.expect("Unable to aquire background window");
+        let core_ipc_target = get_ipc_target(Modules::Core).await?.expect("Unable to acquire background window");
         let core = Arc::new(CoreIpc::new(core_ipc_target));
         log_info!("-> creating daemon interface");
         let daemons = Arc::new(Daemons::new().with_kaspad(core.clone()).with_cpu_miner(core.clone()));
@@ -135,21 +135,21 @@ impl Terminal {
                         MetricsSinkCtl::Activate => {
                             let ipc = get_ipc_target(Modules::Metrics)
                                 .await
-                                .expect("Error actuiring ipc for the metrics window")
+                                .expect("Error acquiring ipc for the metrics window")
                                 .expect("Unable to locate ipc for the metrics window");
 
                             this.metrics.lock().unwrap().replace(Arc::new(ipc));
                             metrics.register_sink(Arc::new(Box::new(move |data: MetricsSnapshot| {
                                 let this = this.clone();
 
-                                Box::pin(async move {
+                                Some(Box::pin(async move {
                                     let ipc = this.metrics.lock().unwrap().as_ref().unwrap().clone();
                                     ipc.notify(MetricsOps::MetricsSnapshot, data).await.unwrap_or_else(|err| {
                                         log_error!("error posting metrics data to metrics window: {:?}", err);
                                     });
 
                                     Ok(())
-                                })
+                                }))
                             })))
                         }
                         MetricsSinkCtl::Deactivate => {

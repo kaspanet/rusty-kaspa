@@ -566,6 +566,10 @@ impl ConsensusApi for Consensus {
         self.virtual_stores.read().state.get().unwrap().parents.iter().copied().collect()
     }
 
+    fn get_virtual_parents_len(&self) -> usize {
+        self.virtual_stores.read().state.get().unwrap().parents.len()
+    }
+
     fn get_virtual_utxos(
         &self,
         from_outpoint: Option<TransactionOutpoint>,
@@ -579,6 +583,10 @@ impl ConsensusApi for Consensus {
 
     fn get_tips(&self) -> Vec<Hash> {
         self.body_tips_store.read().get().unwrap().read().iter().copied().collect_vec()
+    }
+
+    fn get_tips_len(&self) -> usize {
+        self.body_tips_store.read().get().unwrap().read().len()
     }
 
     fn get_pruning_point_utxos(

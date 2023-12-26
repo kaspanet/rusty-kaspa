@@ -4,6 +4,7 @@ members = [
     "daemon",
     "cli",
     "core",
+    "wallet/macros",
     "wallet/core",
     "wallet/native",
     "wallet/wasm",
@@ -32,7 +33,6 @@ members = [
     "rpc/grpc/core",
     "rpc/grpc/client",
     "rpc/grpc/server",
-    "rpc/wrpc/core",
     "rpc/wrpc/server",
     "rpc/wrpc/client",
     "rpc/wrpc/proxy",
@@ -52,6 +52,8 @@ members = [
     "utils/tower",
     "rothschild",
     "metrics/perf_monitor",
+    "metrics/core",
+    "utils/alloc",
 ]
 
 [workspace.package]
@@ -72,12 +74,14 @@ include = [
 ]
 
 [workspace.dependencies]
+mimalloc = { version = "0.1.39", default-features = false, features = [
+    'override',
+] }
 # kaspa-testing-integration = { version = "0.13.1", path = "testing/integration" }
-kaspa-os = { version = "0.13.1", path = "kaspa-os" }
-kaspa-daemon = { version = "0.13.1", path = "daemon" }
 kaspa-addresses = { version = "0.13.1", path = "crypto/addresses" }
 kaspa-addressmanager = { version = "0.13.1", path = "components/addressmanager" }
 kaspa-bip32 = { version = "0.13.1", path = "wallet/bip32" }
+kaspa-cli = { version = "0.13.1", path = "cli" }
 kaspa-connectionmanager = { version = "0.13.1", path = "components/connectionmanager" }
 kaspa-consensus = { version = "0.13.1", path = "consensus" }
 kaspa-consensus-core = { version = "0.13.1", path = "consensus/core" }
@@ -85,6 +89,7 @@ kaspa-consensus-notify = { version = "0.13.1", path = "consensus/notify" }
 kaspa-consensus-wasm = { version = "0.13.1", path = "consensus/wasm" }
 kaspa-consensusmanager = { version = "0.13.1", path = "components/consensusmanager" }
 kaspa-core = { version = "0.13.1", path = "core" }
+kaspa-daemon = { version = "0.13.1", path = "daemon" }
 kaspa-database = { version = "0.13.1", path = "database" }
 kaspa-grpc-client = { version = "0.13.1", path = "rpc/grpc/client" }
 kaspa-grpc-core = { version = "0.13.1", path = "rpc/grpc/core" }
@@ -94,12 +99,15 @@ kaspa-index-core = { version = "0.13.1", path = "indexes/core" }
 kaspa-index-processor = { version = "0.13.1", path = "indexes/processor" }
 kaspa-math = { version = "0.13.1", path = "math" }
 kaspa-merkle = { version = "0.13.1", path = "crypto/merkle" }
+kaspa-metrics-core = { version = "0.13.0", path = "metrics/core" }
 kaspa-mining = { version = "0.13.1", path = "mining" }
 kaspa-mining-errors = { version = "0.13.1", path = "mining/errors" }
 kaspa-muhash = { version = "0.13.1", path = "crypto/muhash" }
 kaspa-notify = { version = "0.13.1", path = "notify" }
+kaspa-os = { version = "0.13.1", path = "kaspa-os" }
 kaspa-p2p-flows = { version = "0.13.1", path = "protocol/flows" }
 kaspa-p2p-lib = { version = "0.13.1", path = "protocol/p2p" }
+kaspa-perf-monitor = { version = "0.13.1", path = "metrics/perf_monitor" }
 kaspa-pow = { version = "0.13.1", path = "consensus/pow" }
 kaspa-rpc-core = { version = "0.13.1", path = "rpc/core" }
 kaspa-rpc-macros = { version = "0.13.1", path = "rpc/macros" }
@@ -110,20 +118,22 @@ kaspa-utils = { version = "0.13.1", path = "utils" }
 kaspa-utils-tower = { version = "0.13.1", path = "utils/tower" }
 kaspa-utxoindex = { version = "0.13.1", path = "indexes/utxoindex" }
 kaspa-wallet = { version = "0.13.1", path = "wallet/native" }
-kaspa-cli = { version = "0.13.1", path = "cli" }
 kaspa-wallet-cli-wasm = { version = "0.13.1", path = "wallet/wasm" }
 kaspa-wallet-core = { version = "0.13.1", path = "wallet/core" }
+kaspa-wallet-macros = { version = "0.13.0", path = "wallet/macros" }
 kaspa-wasm = { version = "0.13.1", path = "wasm" }
-kaspa-wrpc-core = { version = "0.13.1", path = "rpc/wrpc/core" }
 kaspa-wrpc-client = { version = "0.13.1", path = "rpc/wrpc/client" }
+kaspa-wrpc-core = { version = "0.13.1", path = "rpc/wrpc/core" }
 kaspa-wrpc-proxy = { version = "0.13.1", path = "rpc/wrpc/proxy" }
 kaspa-wrpc-server = { version = "0.13.1", path = "rpc/wrpc/server" }
 kaspa-wrpc-wasm = { version = "0.13.1", path = "rpc/wrpc/wasm" }
 kaspad = { version = "0.13.1", path = "kaspad" }
-kaspa-perf-monitor = { version = "0.13.1", path = "metrics/perf_monitor" }
+kaspa-alloc = { version = "0.13.1", path = "utils/alloc" }
+
 
 # external
 aes = "0.8.3"
+ahash = "0.8.6"
 argon2 = "0.5.2"
 async-channel = "2.0.0"
 async-std = { version = "1.12.0", features = ['attributes'] }
@@ -155,6 +165,7 @@ enum-primitive-derive = "0.2.2"
 event-listener = "2.5.3" # TODO "3.0.1"
 evpkdf = "0.2.0"
 faster-hex = "0.6.1" # TODO "0.8.1" - fails unit tests
+fixedstr = { version = "0.5.4", features = ["serde"] }
 flate2 = "1.0.28"
 futures = { version = "0.3.29" }
 futures-util = { version = "0.3.29", default-features = false, features = [
@@ -234,7 +245,10 @@ web-sys = "=0.3.64"
 xxhash-rust = { version = "0.8.7", features = ["xxh3"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["alloc"] }
 pin-project-lite = "0.2.13"
-tower-http = { version = "0.4.4", features = ["map-response-body", "map-request-body"] }
+tower-http = { version = "0.4.4", features = [
+    "map-response-body",
+    "map-request-body",
+] }
 tower = "0.4.7"
 hyper = "0.14.27"
 # workflow dependencies that are not a part of core libraries
@@ -243,16 +257,16 @@ hyper = "0.14.27"
 workflow-perf-monitor = { version = "0.0.2" }
 
 # workflow dependencies
-workflow-d3 = { version = "0.8.1" }
-workflow-nw = { version = "0.8.1" }
-workflow-log = { version = "0.8.1" }
-workflow-core = { version = "0.8.1" }
-workflow-wasm = { version = "0.8.1" }
-workflow-dom = { version = "0.8.1" }
-workflow-rpc = { version = "0.8.1" }
-workflow-node = { version = "0.8.1" }
-workflow-store = { version = "0.8.1" }
-workflow-terminal = { version = "0.8.1" }
+workflow-d3 = { version = "0.10.2" }
+workflow-nw = { version = "0.10.2" }
+workflow-log = { version = "0.10.2" }
+workflow-core = { version = "0.10.2" }
+workflow-wasm = { version = "0.10.2" }
+workflow-dom = { version = "0.10.2" }
+workflow-rpc = { version = "0.10.2" }
+workflow-node = { version = "0.10.2" }
+workflow-store = { version = "0.10.2" }
+workflow-terminal = { version = "0.10.2" }
 nw-sys = "0.1.6"
 
 # if below is enabled, this means that there is an ongoing work
@@ -268,6 +282,17 @@ nw-sys = "0.1.6"
 # workflow-node = { path = "../workflow-rs/node" }
 # workflow-store = { path = "../workflow-rs/store" }
 # workflow-terminal = { path = "../workflow-rs/terminal" }
+# ---
+# workflow-d3 = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-nw = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-log = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-core = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-wasm = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-dom = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-rpc = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-node = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-store = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-terminal = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # https://github.com/aspectron/nw-sys
 # nw-sys = { path = "../nw-sys" }
 

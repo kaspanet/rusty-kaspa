@@ -1,6 +1,6 @@
+use crate::account as native;
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime;
 use crate::secret::Secret;
 use crate::tx::PaymentOutputs;
 use crate::wasm::utxo::UtxoContext;
@@ -11,13 +11,13 @@ use workflow_wasm::abi::ref_from_abi;
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
 pub struct Account {
-    inner: Arc<dyn runtime::Account>,
+    inner: Arc<dyn native::Account>,
     #[wasm_bindgen(getter_with_clone)]
     pub context: UtxoContext,
 }
 
 impl Account {
-    pub async fn try_new(inner: Arc<dyn runtime::Account>) -> Result<Self> {
+    pub async fn try_new(inner: Arc<dyn native::Account>) -> Result<Self> {
         let context = inner.utxo_context().clone();
         Ok(Self { inner, context: context.into() })
     }
@@ -85,35 +85,11 @@ impl Account {
     pub async fn send(&self, js_value: JsValue) -> Result<JsValue> {
         let _args = AccountSendArgs::try_from(js_value)?;
 
-        // self.inner.clone().send(
-
-        // self: Arc<Self>,
-        // destination: PaymentDestination,
-        // priority_fee_sompi: Fees,
-        // payload: Option<Vec<u8>>,
-        // wallet_secret: Secret,
-        // payment_secret: Option<Secret>,
-        // abortable: &Abortable,
-        // notifier: Option<GenerationNotifier>,
-
-        // ).await;
-
-        // self.inner
-        //     .send_v1(
-        //         &args.outputs,
-        //         args.priority_fee_sompi,
-        //         args.include_fees_in_amount,
-        //         args.wallet_secret,
-        //         args.payment_secret,
-        //         &args.abortable,
-        //     )
-        //     .await?;
-
         todo!()
     }
 }
 
-impl From<Account> for Arc<dyn runtime::Account> {
+impl From<Account> for Arc<dyn native::Account> {
     fn from(account: Account) -> Self {
         account.inner
     }
@@ -126,42 +102,11 @@ impl TryFrom<JsValue> for Account {
     }
 }
 
-// pub enum IterResult<T, E> {
-//     Ok(T),
-//     Err(E),
-// }
-
-// impl<T,E> From<Result<T,E>> for IterResult<T,E> {
-//     fn from(result: Result<T,E>) -> IterResult<T,E> {
-//         match result {
-//             Ok(t) => IterResult::Ok(t),
-//             Err(e) => IterResult::Err(e),
-//         }
-//     }
-// }
-
-// impl From<IterResult<Arc<runtime::Account>>> for JsValue {
-//     fn from(account: Result<Arc<runtime::Account>>) -> Self {
-//         account.map(|account| account.into())
-//     }
-// }
-
-// self: Arc<Self>,
-// destination: PaymentDestination,
-// priority_fee_sompi: Fees,
-// payload: Option<Vec<u8>>,
-// wallet_secret: Secret,
-// payment_secret: Option<Secret>,
-// abortable: &Abortable,
-// notifier: Option<GenerationNotifier>,
-
 pub struct AccountSendArgs {
-    // pub destination : PaymentDestination,
     pub outputs: PaymentOutputs,
     pub priority_fee_sompi: Option<u64>,
     pub include_fees_in_amount: bool,
 
-    // pub utxos: Option<Vec<Arc<UtxoEntryReference>>>,
     pub wallet_secret: Secret,
     pub payment_secret: Option<Secret>,
     pub abortable: Abortable,
@@ -190,10 +135,7 @@ impl TryFrom<JsValue> for AccountSendArgs {
     }
 }
 
-pub struct AccountCreateArgs {
-    // rpc: RpcClient,
-    // network_id: NetworkId,
-}
+pub struct AccountCreateArgs {}
 
 impl TryFrom<JsValue> for AccountCreateArgs {
     type Error = Error;

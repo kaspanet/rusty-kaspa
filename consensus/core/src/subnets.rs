@@ -9,8 +9,14 @@ use kaspa_utils::{serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_r
 pub const SUBNETWORK_ID_SIZE: usize = 20;
 
 /// The domain representation of a Subnetwork ID
-#[derive(Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct SubnetworkId([u8; SUBNETWORK_ID_SIZE]);
+
+impl Debug for SubnetworkId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SubnetworkId").field("", &self.to_hex()).finish()
+    }
+}
 
 serde_impl_ser_fixed_bytes_ref!(SubnetworkId, SUBNETWORK_ID_SIZE);
 serde_impl_deser_fixed_bytes_ref!(SubnetworkId, SUBNETWORK_ID_SIZE);

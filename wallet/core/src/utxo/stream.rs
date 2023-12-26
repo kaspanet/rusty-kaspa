@@ -1,3 +1,7 @@
+//!
+//! Implements an async stream of UTXOs.
+//!
+
 use super::{UtxoContext, UtxoEntryReference};
 use crate::imports::*;
 

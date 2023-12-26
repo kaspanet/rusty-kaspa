@@ -4,6 +4,7 @@ extern crate kaspa_hashes;
 
 use std::sync::Arc;
 
+use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_core::{info, signals::Signals};
 use kaspa_utils::fd_budget;
 use kaspad_lib::{
@@ -18,6 +19,8 @@ static ALLOC: dhat::Alloc = dhat::Alloc;
 pub fn main() {
     #[cfg(feature = "heap")]
     let _profiler = dhat::Profiler::builder().file_name("kaspad-heap.json").build();
+
+    init_allocator_with_default_settings();
 
     let args = parse_args();
 

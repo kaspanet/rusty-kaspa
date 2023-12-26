@@ -59,13 +59,13 @@ use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
-use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
 use std::{
     collections::HashMap,
     iter::once,
     sync::{atomic::Ordering, Arc},
     vec,
 };
+use workflow_rpc::server::WebSocketCounters as WrpcServerCounters;
 
 /// A service implementing the Rpc API at kaspa_rpc_core level.
 ///
@@ -100,13 +100,7 @@ pub struct RpcCoreService {
     wrpc_json_counters: Arc<WrpcServerCounters>,
     shutdown: SingleTrigger,
     perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
-
-    // parking here for now
-    // will be integrated into
-    // metrics in the upcoming PR
-    #[allow(dead_code)]
     p2p_tower_counters: Arc<TowerConnectionCounters>,
-    #[allow(dead_code)]
     grpc_tower_counters: Arc<TowerConnectionCounters>,
 }
 
@@ -760,39 +754,72 @@ impl RpcApi for RpcCoreService {
             disk_io_write_bytes,
             disk_io_read_per_sec,
             disk_io_write_per_sec,
-            ..
         } = self.perf_monitor.snapshot();
+
         let process_metrics = req.process_metrics.then_some(ProcessMetrics {
             resident_set_size,
             virtual_memory_size,
-            core_num: core_num as u64,
-            cpu_usage,
-            fd_num: fd_num as u64,
+            core_num: core_num as u32,
+            cpu_usage: cpu_usage as f32,
+            fd_num: fd_num as u32,
             disk_io_read_bytes,
             disk_io_write_bytes,
-            disk_io_read_per_sec,
-            disk_io_write_per_sec,
-            borsh_live_connections: self.wrpc_borsh_counters.live_connections.load(Ordering::Relaxed),
-            borsh_connection_attempts: self.wrpc_borsh_counters.connection_attempts.load(Ordering::Relaxed),
-            borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed),
-            json_live_connections: self.wrpc_json_counters.live_connections.load(Ordering::Relaxed),
-            json_connection_attempts: self.wrpc_json_counters.connection_attempts.load(Ordering::Relaxed),
-            json_handshake_failures: self.wrpc_json_counters.handshake_failures.load(Ordering::Relaxed),
+            disk_io_read_per_sec: disk_io_read_per_sec as f32,
+            disk_io_write_per_sec: disk_io_write_per_sec as f32,
         });
 
-        let consensus_metrics = req.consensus_metrics.then_some(ConsensusMetrics {
-            blocks_submitted: self.processing_counters.blocks_submitted.load(Ordering::SeqCst),
-            header_counts: self.processing_counters.header_counts.load(Ordering::SeqCst),
-            dep_counts: self.processing_counters.dep_counts.load(Ordering::SeqCst),
-            body_counts: self.processing_counters.body_counts.load(Ordering::SeqCst),
-            txs_counts: self.processing_counters.txs_counts.load(Ordering::SeqCst),
-            chain_block_counts: self.processing_counters.chain_block_counts.load(Ordering::SeqCst),
-            mass_counts: self.processing_counters.mass_counts.load(Ordering::SeqCst),
+        let connection_metrics = req.connection_metrics.then_some(ConnectionMetrics {
+            borsh_live_connections: self.wrpc_borsh_counters.active_connections.load(Ordering::Relaxed) as u32,
+            borsh_connection_attempts: self.wrpc_borsh_counters.total_connections.load(Ordering::Relaxed) as u64,
+            borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed) as u64,
+            json_live_connections: self.wrpc_json_counters.active_connections.load(Ordering::Relaxed) as u32,
+            json_connection_attempts: self.wrpc_json_counters.total_connections.load(Ordering::Relaxed) as u64,
+            json_handshake_failures: self.wrpc_json_counters.handshake_failures.load(Ordering::Relaxed) as u64,
+
+            active_peers: self.flow_context.hub().active_peers_len() as u32,
         });
+
+        let bandwidth_metrics = req.bandwidth_metrics.then_some(BandwidthMetrics {
+            borsh_bytes_tx: self.wrpc_borsh_counters.tx_bytes.load(Ordering::Relaxed) as u64,
+            borsh_bytes_rx: self.wrpc_borsh_counters.rx_bytes.load(Ordering::Relaxed) as u64,
+            json_bytes_tx: self.wrpc_json_counters.tx_bytes.load(Ordering::Relaxed) as u64,
+            json_bytes_rx: self.wrpc_json_counters.rx_bytes.load(Ordering::Relaxed) as u64,
+            p2p_bytes_tx: self.p2p_tower_counters.bytes_tx.load(Ordering::Relaxed) as u64,
+            p2p_bytes_rx: self.p2p_tower_counters.bytes_rx.load(Ordering::Relaxed) as u64,
+            grpc_bytes_tx: self.grpc_tower_counters.bytes_tx.load(Ordering::Relaxed) as u64,
+            grpc_bytes_rx: self.grpc_tower_counters.bytes_rx.load(Ordering::Relaxed) as u64,
+        });
+
+        let consensus_metrics = if req.consensus_metrics {
+            let session = self.consensus_manager.consensus().unguarded_session();
+            let block_count = session.async_estimate_block_count().await;
+
+            Some(ConsensusMetrics {
+                node_blocks_submitted_count: self.processing_counters.blocks_submitted.load(Ordering::SeqCst),
+                node_headers_processed_count: self.processing_counters.header_counts.load(Ordering::SeqCst),
+                node_dependencies_processed_count: self.processing_counters.dep_counts.load(Ordering::SeqCst),
+                node_bodies_processed_count: self.processing_counters.body_counts.load(Ordering::SeqCst),
+                node_transactions_processed_count: self.processing_counters.txs_counts.load(Ordering::SeqCst),
+                node_chain_blocks_processed_count: self.processing_counters.chain_block_counts.load(Ordering::SeqCst),
+                node_mass_processed_count: self.processing_counters.mass_counts.load(Ordering::SeqCst),
+                // ---
+                node_database_blocks_count: block_count.block_count,
+                node_database_headers_count: block_count.header_count,
+                // ---
+                network_mempool_size: self.mining_manager.clone().transaction_count(TransactionQuery::TransactionsOnly).await as u64,
+                network_tip_hashes_count: session.async_get_tips_len().await as u32,
+                network_difficulty: self.consensus_converter.get_difficulty_ratio(session.async_get_virtual_bits().await),
+                network_past_median_time: session.async_get_virtual_past_median_time().await,
+                network_virtual_parent_hashes_count: session.async_get_virtual_parents_len().await as u32,
+                network_virtual_daa_score: session.async_get_virtual_daa_score().await,
+            })
+        } else {
+            None
+        };
 
         let server_time = unix_now();
 
-        let response = GetMetricsResponse { server_time, process_metrics, consensus_metrics };
+        let response = GetMetricsResponse { server_time, process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics };
 
         Ok(response)
     }
