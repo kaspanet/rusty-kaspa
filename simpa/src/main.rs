@@ -2,6 +2,7 @@ use async_channel::unbounded;
 use clap::Parser;
 use futures::{future::try_join_all, Future};
 use itertools::Itertools;
+use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_consensus::{
     config::ConfigBuilder,
     consensus::Consensus,
@@ -117,6 +118,8 @@ static ALLOC: dhat::Alloc = dhat::Alloc;
 fn main() {
     #[cfg(feature = "heap")]
     let _profiler = dhat::Profiler::builder().file_name("simpa-heap.json").build();
+
+    init_allocator_with_default_settings();
 
     // Get CLI arguments
     let args = Args::parse();

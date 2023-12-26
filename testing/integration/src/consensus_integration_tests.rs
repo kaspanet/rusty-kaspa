@@ -3,6 +3,7 @@
 //!
 
 use async_channel::unbounded;
+use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_consensus::config::genesis::GENESIS;
 use kaspa_consensus::config::{Config, ConfigBuilder};
 use kaspa_consensus::consensus::factory::Factory as ConsensusFactory;
@@ -173,16 +174,19 @@ fn reachability_stretch_test(use_attack_json: bool) {
 
 #[test]
 fn test_attack_json() {
+    init_allocator_with_default_settings();
     reachability_stretch_test(true);
 }
 
 #[test]
 fn test_noattack_json() {
+    init_allocator_with_default_settings();
     reachability_stretch_test(false);
 }
 
 #[tokio::test]
 async fn consensus_sanity_test() {
+    init_allocator_with_default_settings();
     let genesis_child: Hash = 2.into();
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
     let consensus = TestConsensus::new(&config);
@@ -232,6 +236,7 @@ struct GhostdagTestBlock {
 
 #[tokio::test]
 async fn ghostdag_test() {
+    init_allocator_with_default_settings();
     let mut path_strings: Vec<String> =
         common::read_dir("testdata/dags").map(|f| f.unwrap().path().to_str().unwrap().to_owned()).collect();
     path_strings.sort();
@@ -316,6 +321,7 @@ fn strings_to_hashes(strings: &Vec<String>) -> Vec<Hash> {
 
 #[tokio::test]
 async fn block_window_test() {
+    init_allocator_with_default_settings();
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
@@ -385,6 +391,7 @@ async fn block_window_test() {
 
 #[tokio::test]
 async fn header_in_isolation_validation_test() {
+    init_allocator_with_default_settings();
     let config = Config::new(MAINNET_PARAMS);
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
@@ -453,6 +460,7 @@ async fn header_in_isolation_validation_test() {
 
 #[tokio::test]
 async fn incest_test() {
+    init_allocator_with_default_settings();
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
@@ -481,6 +489,7 @@ async fn incest_test() {
 
 #[tokio::test]
 async fn missing_parents_test() {
+    init_allocator_with_default_settings();
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
@@ -505,6 +514,7 @@ async fn missing_parents_test() {
 // as a known invalid.
 #[tokio::test]
 async fn known_invalid_test() {
+    init_allocator_with_default_settings();
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
@@ -530,6 +540,7 @@ async fn known_invalid_test() {
 
 #[tokio::test]
 async fn median_time_test() {
+    init_allocator_with_default_settings();
     struct Test {
         name: &'static str,
         config: Config,
@@ -603,6 +614,7 @@ async fn median_time_test() {
 
 #[tokio::test]
 async fn mergeset_size_limit_test() {
+    init_allocator_with_default_settings();
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().build();
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
@@ -828,32 +840,38 @@ impl KaspadGoParams {
 
 #[tokio::test]
 async fn goref_custom_pruning_depth_test() {
+    init_allocator_with_default_settings();
     json_test("testdata/dags_for_json_tests/goref_custom_pruning_depth", false).await
 }
 
 #[tokio::test]
 async fn goref_notx_test() {
+    init_allocator_with_default_settings();
     json_test("testdata/dags_for_json_tests/goref-notx-5000-blocks", false).await
 }
 
 #[tokio::test]
 async fn goref_notx_concurrent_test() {
+    init_allocator_with_default_settings();
     json_test("testdata/dags_for_json_tests/goref-notx-5000-blocks", true).await
 }
 
 #[tokio::test]
 async fn goref_tx_small_test() {
+    init_allocator_with_default_settings();
     json_test("testdata/dags_for_json_tests/goref-905-tx-265-blocks", false).await
 }
 
 #[tokio::test]
 async fn goref_tx_small_concurrent_test() {
+    init_allocator_with_default_settings();
     json_test("testdata/dags_for_json_tests/goref-905-tx-265-blocks", true).await
 }
 
 #[ignore]
 #[tokio::test]
 async fn goref_tx_big_test() {
+    init_allocator_with_default_settings();
     // TODO: add this directory to a data repo and fetch dynamically
     json_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks", false).await
 }
@@ -861,6 +879,7 @@ async fn goref_tx_big_test() {
 #[ignore]
 #[tokio::test]
 async fn goref_tx_big_concurrent_test() {
+    init_allocator_with_default_settings();
     // TODO: add this file to a data repo and fetch dynamically
     json_test("testdata/dags_for_json_tests/goref-1.6M-tx-10K-blocks", true).await
 }
@@ -1223,6 +1242,7 @@ fn hex_decode(src: &str) -> Vec<u8> {
 
 #[tokio::test]
 async fn bounded_merge_depth_test() {
+    init_allocator_with_default_settings();
     let config = ConfigBuilder::new(DEVNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
@@ -1302,6 +1322,7 @@ async fn bounded_merge_depth_test() {
 
 #[tokio::test]
 async fn difficulty_test() {
+    init_allocator_with_default_settings();
     async fn add_block(consensus: &TestConsensus, block_time: Option<u64>, parents: Vec<Hash>) -> Header {
         let selected_parent = consensus.ghostdag_manager().find_selected_parent(parents.iter().copied());
         let block_time = block_time.unwrap_or_else(|| {
@@ -1620,6 +1641,7 @@ async fn difficulty_test() {
 
 #[tokio::test]
 async fn selected_chain_test() {
+    init_allocator_with_default_settings();
     kaspa_core::log::try_init_logger("info");
 
     let config = ConfigBuilder::new(MAINNET_PARAMS)
@@ -1688,6 +1710,7 @@ fn selected_chain_store_iterator(consensus: &TestConsensus, pruning_point: Hash)
 
 #[tokio::test]
 async fn staging_consensus_test() {
+    init_allocator_with_default_settings();
     let config = ConfigBuilder::new(MAINNET_PARAMS).build();
 
     let db_tempdir = get_kaspa_tempdir();
