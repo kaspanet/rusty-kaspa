@@ -140,7 +140,7 @@ impl Hub {
 
     /// Returns the number of currently active peers
     pub fn active_peers_len(&self) -> usize {
-        self.peers.read().values().len()
+        self.peers.read().len()
     }
 
     /// Returns whether there are currently active peers

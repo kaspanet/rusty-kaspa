@@ -586,7 +586,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_tips_len(&self) -> usize {
-        self.body_tips().len()
+        self.body_tips_store.read().get().unwrap().read().len()
     }
 
     fn get_pruning_point_utxos(
