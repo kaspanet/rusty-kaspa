@@ -102,6 +102,8 @@ fn str_to_sompi(amount: &str) -> Result<u64> {
     } else if decimal_len <= 8 {
         decimal.parse::<u64>()? * 10u64.pow(8 - decimal_len as u32)
     } else {
+        // TODO - discuss how to handle values longer than 8 decimal places
+        // (reject, truncate, ceil(), etc.)
         decimal[..8].parse::<u64>()?
     };
     Ok(integer + decimal)
