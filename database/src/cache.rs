@@ -6,9 +6,15 @@ use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CachePolicy {
+    /// An empty cache (avoids aqcuiring locks etc so considred perf-free)
     Empty,
+    /// The cache bounds the number of items it holds w/o tracking their inner size
     Unit(usize),
+    /// Items are tracked by size and the cache never allows the accumulated tracked size
+    /// to surpass the provided size argument.
     Tracked(usize),
+    /// Items are tracked by size with a max_size limit but the cache will pass this limit if
+    /// there are no more than min_units overall in the cache
     LowerBoundedTracked { max_size: usize, min_units: usize },
 }
 
@@ -50,28 +56,29 @@ where
     TData: Clone + Send + Sync + MemSizeEstimator,
     S: BuildHasher + Default,
 {
-    fn insert(&mut self, policy: &CachePolicyInner, key: TKey, data: TData) {
-        match policy.tracked {
-            false => {
-                if self.map.len() == policy.max_size {
-                    self.map.swap_remove_index(rand::thread_rng().gen_range(0..policy.max_size));
-                }
-                self.map.insert(key, data);
+    /// Evicts items until meeting cache policy requirements
+    fn evict(&mut self, policy: &CachePolicyInner) {
+        // We allow passing tracked size limit as long as there are no more than min_units units
+        while self.tracked_size > policy.max_size && self.map.len() > policy.min_units {
+            if let Some((_, v)) = self.map.swap_remove_index(rand::thread_rng().gen_range(0..self.map.len())) {
+                self.tracked_size -= v.estimate_mem_size().agnostic_size();
             }
-            true => {
-                let new_data_size = data.estimate_mem_size().agnostic_size();
-                self.tracked_size += new_data_size;
-                if let Some(removed) = self.map.insert(key, data) {
-                    self.tracked_size -= removed.estimate_mem_size().agnostic_size();
-                }
+        }
+    }
 
-                // We allow passing tracked size limit as long as there are no more than min_units units
-                while self.tracked_size > policy.max_size && self.map.len() > policy.min_units {
-                    if let Some((_, v)) = self.map.swap_remove_index(rand::thread_rng().gen_range(0..self.map.len())) {
-                        self.tracked_size -= v.estimate_mem_size().agnostic_size();
-                    }
-                }
+    fn insert(&mut self, policy: &CachePolicyInner, key: TKey, data: TData) {
+        if policy.tracked {
+            let new_data_size = data.estimate_mem_size().agnostic_size();
+            self.tracked_size += new_data_size;
+            if let Some(removed) = self.map.insert(key, data) {
+                self.tracked_size -= removed.estimate_mem_size().agnostic_size();
             }
+            self.evict(policy);
+        } else {
+            if self.map.len() == policy.max_size {
+                self.map.swap_remove_index(rand::thread_rng().gen_range(0..policy.max_size));
+            }
+            self.map.insert(key, data);
         }
     }
 
@@ -80,20 +87,13 @@ where
         F: Fn(&mut TData),
     {
         if let Some(data) = self.map.get_mut(&key) {
-            match policy.tracked {
-                false => {
-                    op(data);
-                }
-                true => {
-                    self.tracked_size -= data.estimate_mem_size().agnostic_size();
-                    op(data);
-                    self.tracked_size += data.estimate_mem_size().agnostic_size();
-                    while self.tracked_size > policy.max_size && self.map.len() > policy.min_units {
-                        if let Some((_, v)) = self.map.swap_remove_index(rand::thread_rng().gen_range(0..self.map.len())) {
-                            self.tracked_size -= v.estimate_mem_size().agnostic_size();
-                        }
-                    }
-                }
+            if policy.tracked {
+                self.tracked_size -= data.estimate_mem_size().agnostic_size();
+                op(data);
+                self.tracked_size += data.estimate_mem_size().agnostic_size();
+                self.evict(policy);
+            } else {
+                op(data);
             }
         }
     }
