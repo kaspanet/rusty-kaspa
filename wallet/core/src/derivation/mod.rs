@@ -1,35 +1,29 @@
+//!
+//!  Module handling bip32 address derivation (bip32+bip44 and legacy accounts)
+//!
+
 pub mod gen0;
 pub mod gen1;
 pub mod traits;
 
 pub use traits::*;
 
+use crate::account::create_private_keys;
+use crate::account::AccountKind;
 use crate::derivation::gen0::{PubkeyDerivationManagerV0, WalletDerivationManagerV0};
 use crate::derivation::gen1::{PubkeyDerivationManager, WalletDerivationManager};
 use crate::error::Error;
 use crate::imports::*;
-use crate::runtime;
-use crate::runtime::account::create_private_keys;
-use crate::runtime::AccountKind;
-use crate::Result;
+use crate::result::Result;
 use kaspa_bip32::{AddressType, DerivationPath, ExtendedPrivateKey, ExtendedPublicKey, Language, Mnemonic, SecretKeyExt};
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_txscript::{
     extract_script_pub_key_address, multisig_redeem_script, multisig_redeem_script_ecdsa, pay_to_script_hash_script,
 };
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard};
-use wasm_bindgen::prelude::*;
 use workflow_wasm::serde::from_value;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AddressDerivationMeta([u32; 2]);
-
-impl Default for AddressDerivationMeta {
-    fn default() -> Self {
-        Self([1, 1])
-    }
-}
 
 impl AddressDerivationMeta {
     pub fn new(receive: u32, change: u32) -> Self {
@@ -45,14 +39,19 @@ impl AddressDerivationMeta {
     }
 }
 
+impl std::fmt::Display for AddressDerivationMeta {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}, {}]", self.receive(), self.change())
+    }
+}
+
 pub struct Inner {
     pub index: u32,
     pub address_to_index_map: HashMap<Address, u32>,
 }
 
 pub struct AddressManager {
-    // pub prefix: Prefix,
-    pub wallet: Arc<runtime::Wallet>,
+    pub wallet: Arc<Wallet>,
     pub account_kind: AccountKind,
     pub pubkey_managers: Vec<Arc<dyn PubkeyDerivationManagerTrait>>,
     pub ecdsa: bool,
@@ -62,7 +61,7 @@ pub struct AddressManager {
 
 impl AddressManager {
     pub fn new(
-        wallet: Arc<runtime::Wallet>,
+        wallet: Arc<Wallet>,
         account_kind: AccountKind,
         pubkey_managers: Vec<Arc<dyn PubkeyDerivationManagerTrait>>,
         ecdsa: bool,
@@ -180,16 +179,16 @@ pub struct AddressDerivationManager {
     pub cosigner_index: Option<u32>,
     pub derivators: Vec<Arc<dyn WalletDerivationManagerTrait>>,
     #[allow(dead_code)]
-    wallet: Arc<runtime::Wallet>,
+    wallet: Arc<Wallet>,
     pub receive_address_manager: Arc<AddressManager>,
     pub change_address_manager: Arc<AddressManager>,
 }
 
 impl AddressDerivationManager {
     pub async fn new(
-        wallet: &Arc<runtime::Wallet>,
+        wallet: &Arc<Wallet>,
         account_kind: AccountKind,
-        keys: &Vec<String>,
+        keys: &ExtendedPublicKeys,
         ecdsa: bool,
         account_index: u64,
         cosigner_index: Option<u32>,
@@ -203,14 +202,16 @@ impl AddressDerivationManager {
         let mut receive_pubkey_managers = vec![];
         let mut change_pubkey_managers = vec![];
         let mut derivators = vec![];
-        for xpub in keys {
-            let derivator: Arc<dyn WalletDerivationManagerTrait> = match account_kind {
-                AccountKind::Legacy => Arc::new(gen0::WalletDerivationManagerV0::from_extended_public_key_str(xpub, cosigner_index)?),
-                AccountKind::MultiSig => {
-                    let cosigner_index = cosigner_index.ok_or(Error::InvalidAccountKind)?;
-                    Arc::new(gen1::WalletDerivationManager::from_extended_public_key_str(xpub, Some(cosigner_index))?)
+        for xpub in keys.iter() {
+            let derivator: Arc<dyn WalletDerivationManagerTrait> = match account_kind.as_ref() {
+                LEGACY_ACCOUNT_KIND => {
+                    Arc::new(gen0::WalletDerivationManagerV0::from_extended_public_key(xpub.clone(), cosigner_index)?)
                 }
-                _ => Arc::new(gen1::WalletDerivationManager::from_extended_public_key_str(xpub, cosigner_index)?),
+                MULTISIG_ACCOUNT_KIND => {
+                    let cosigner_index = cosigner_index.ok_or(Error::InvalidAccountKind)?;
+                    Arc::new(gen1::WalletDerivationManager::from_extended_public_key(xpub.clone(), Some(cosigner_index))?)
+                }
+                _ => Arc::new(gen1::WalletDerivationManager::from_extended_public_key(xpub.clone(), cosigner_index)?),
             };
 
             receive_pubkey_managers.push(derivator.receive_pubkey_manager());
@@ -250,10 +251,9 @@ impl AddressDerivationManager {
     }
 
     pub fn create_legacy_pubkey_managers(
-        wallet: &Arc<runtime::Wallet>,
+        wallet: &Arc<Wallet>,
         account_index: u64,
         address_derivation_indexes: AddressDerivationMeta,
-        _data: storage::account::Legacy,
     ) -> Result<Arc<AddressDerivationManager>> {
         let mut receive_pubkey_managers = vec![];
         let mut change_pubkey_managers = vec![];
@@ -262,7 +262,7 @@ impl AddressDerivationManager {
         receive_pubkey_managers.push(derivator.receive_pubkey_manager());
         change_pubkey_managers.push(derivator.change_pubkey_manager());
 
-        let account_kind = AccountKind::Legacy;
+        let account_kind = AccountKind::from(LEGACY_ACCOUNT_KIND);
 
         let receive_address_manager = AddressManager::new(
             wallet.clone(),
@@ -334,7 +334,7 @@ impl AddressDerivationManager {
         let (receive, change) = if change_address { (vec![], addresses) } else { (addresses, vec![]) };
 
         let private_keys =
-            create_private_keys(self.account_kind, self.cosigner_index.unwrap_or(0), self.account_index, xkey, &receive, &change)?;
+            create_private_keys(&self.account_kind, self.cosigner_index.unwrap_or(0), self.account_index, xkey, &receive, &change)?;
 
         let mut result = vec![];
         for (address, private_key) in private_keys {
@@ -504,7 +504,7 @@ pub fn create_address(
         return create_multisig_address(minimum_signatures, keys, prefix, ecdsa);
     }
 
-    if matches!(account_kind, Some(AccountKind::Legacy)) {
+    if account_kind.map(|kind| kind == LEGACY_ACCOUNT_KIND).unwrap_or(false) {
         PubkeyDerivationManagerV0::create_address(&keys[0], prefix, ecdsa)
     } else {
         PubkeyDerivationManager::create_address(&keys[0], prefix, ecdsa)
@@ -520,9 +520,9 @@ pub async fn create_xpub_from_mnemonic(
     let seed = mnemonic.to_seed("");
     let xkey = ExtendedPrivateKey::<secp256k1::SecretKey>::new(seed)?;
 
-    let (secret_key, attrs) = match account_kind {
-        AccountKind::Legacy => WalletDerivationManagerV0::derive_extended_key_from_master_key(xkey, true, account_index)?,
-        AccountKind::MultiSig => WalletDerivationManager::derive_extended_key_from_master_key(xkey, true, account_index)?,
+    let (secret_key, attrs) = match account_kind.as_ref() {
+        LEGACY_ACCOUNT_KIND => WalletDerivationManagerV0::derive_extended_key_from_master_key(xkey, false, account_index)?,
+        MULTISIG_ACCOUNT_KIND => WalletDerivationManager::derive_extended_key_from_master_key(xkey, true, account_index)?,
         _ => gen1::WalletDerivationManager::derive_extended_key_from_master_key(xkey, false, account_index)?,
     };
 
@@ -536,10 +536,10 @@ pub async fn create_xpub_from_xprv(
     account_kind: AccountKind,
     account_index: u64,
 ) -> Result<ExtendedPublicKey<secp256k1::PublicKey>> {
-    let (secret_key, attrs) = match account_kind {
-        AccountKind::Legacy => WalletDerivationManagerV0::derive_extended_key_from_master_key(xprv, true, account_index)?,
-        AccountKind::MultiSig => WalletDerivationManager::derive_extended_key_from_master_key(xprv, true, account_index)?,
-        AccountKind::Bip32 => WalletDerivationManager::derive_extended_key_from_master_key(xprv, false, account_index)?,
+    let (secret_key, attrs) = match account_kind.as_ref() {
+        LEGACY_ACCOUNT_KIND => WalletDerivationManagerV0::derive_extended_key_from_master_key(xprv, false, account_index)?,
+        MULTISIG_ACCOUNT_KIND => WalletDerivationManager::derive_extended_key_from_master_key(xprv, true, account_index)?,
+        BIP32_ACCOUNT_KIND => WalletDerivationManager::derive_extended_key_from_master_key(xprv, false, account_index)?,
         _ => panic!("create_xpub_from_xprv not supported for account kind: {:?}", account_kind),
     };
 
@@ -549,15 +549,15 @@ pub async fn create_xpub_from_xprv(
 }
 
 pub fn build_derivate_path(
-    account_kind: AccountKind,
+    account_kind: &AccountKind,
     account_index: u64,
     cosigner_index: u32,
     address_type: AddressType,
 ) -> Result<DerivationPath> {
-    match account_kind {
-        AccountKind::Legacy => WalletDerivationManagerV0::build_derivate_path(account_index, Some(address_type)),
-        AccountKind::Bip32 => WalletDerivationManager::build_derivate_path(false, account_index, None, Some(address_type)),
-        AccountKind::MultiSig => {
+    match account_kind.as_ref() {
+        LEGACY_ACCOUNT_KIND => WalletDerivationManagerV0::build_derivate_path(account_index, Some(address_type)),
+        BIP32_ACCOUNT_KIND => WalletDerivationManager::build_derivate_path(false, account_index, None, Some(address_type)),
+        MULTISIG_ACCOUNT_KIND => {
             WalletDerivationManager::build_derivate_path(true, account_index, Some(cosigner_index), Some(address_type))
         }
         _ => {
@@ -567,7 +567,7 @@ pub fn build_derivate_path(
 }
 
 pub fn build_derivate_paths(
-    account_kind: AccountKind,
+    account_kind: &AccountKind,
     account_index: u64,
     cosigner_index: u32,
 ) -> Result<(DerivationPath, DerivationPath)> {

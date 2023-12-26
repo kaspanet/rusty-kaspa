@@ -111,10 +111,13 @@ impl Node {
                 kaspad.configure(self.create_config(&ctx).await?).await?;
                 kaspad.start().await?;
 
-                // temporary setup for autoconnect
+                // temporary setup for auto-connect
                 let url = ctx.wallet().settings().get(WalletSettings::Server);
                 let network_type = ctx.wallet().network_id()?;
-                if let Some(url) = wrpc_client.parse_url_with_network_type(url, network_type.into()).map_err(|e| e.to_string())? {
+                if let Some(url) = url
+                    .map(|url| wrpc_client.parse_url_with_network_type(url, network_type.into()).map_err(|e| e.to_string()))
+                    .transpose()?
+                {
                     // log_info!("connecting to url: {}", url);
                     if url.contains("127.0.0.1") || url.contains("localhost") {
                         spawn(async move {

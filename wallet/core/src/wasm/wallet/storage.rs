@@ -18,17 +18,17 @@ extern "C" {
 
     // initialize wallet storage
     #[wasm_bindgen(method, js_name = "create")]
-    async fn create(this: &Storage, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<()>;
+    async fn create(this: &Storage, wallet_secret: &Secret, args: CreateArgs) -> Result<()>;
 
     // async fn is_open(&self) -> Result<bool>;
 
     // establish an open state (load wallet data cache, connect to the database etc.)
     #[wasm_bindgen(method, js_name = "open")]
-    async fn open(this: &Storage, ctx: &Arc<dyn AccessContextT>, args: OpenArgs) -> Result<()>;
+    async fn open(this: &Storage, wallet_secret: &Secret, args: OpenArgs) -> Result<()>;
 
     // flush writable operations (invoked after multiple store and remove operations)
     #[wasm_bindgen(method, js_name = "commit")]
-    async fn commit(this: &Storage, ctx: &Arc<dyn AccessContextT>) -> Result<()>;
+    async fn commit(this: &Storage, wallet_secret: &Secret) -> Result<()>;
 
     // stop the storage subsystem
     #[wasm_bindgen(method, js_name = "close")]
@@ -52,13 +52,13 @@ extern "C" {
     #[wasm_bindgen(method, js_name = "loadKeyInfo")]
     async fn load_key_info(this: &Storage, id: &PrvKeyDataId) -> Result<Option<Arc<PrvKeyDataInfo>>>;
     #[wasm_bindgen(method, js_name = "loadKeyData")]
-    async fn load_key_data(this: &Storage, ctx: &Arc<dyn AccessContextT>, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>>;
+    async fn load_key_data(this: &Storage, wallet_secret: &Secret, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>>;
     #[wasm_bindgen(method, js_name = "storeKeyInfo")]
-    async fn store_key_info(this: &Storage, ctx: &Arc<dyn AccessContextT>, data: PrvKeyData) -> Result<()>;
+    async fn store_key_info(this: &Storage, wallet_secret: &Secret, data: PrvKeyData) -> Result<()>;
     #[wasm_bindgen(method, js_name = "storeKeyData")]
-    async fn store_key_data(this: &Storage, ctx: &Arc<dyn AccessContextT>, data: PrvKeyData) -> Result<()>;
+    async fn store_key_data(this: &Storage, wallet_secret: &Secret, data: PrvKeyData) -> Result<()>;
     #[wasm_bindgen(method, js_name = "removeKeyData")]
-    async fn remove_key_data(this: &Storage, ctx: &Arc<dyn AccessContextT>, id: &PrvKeyDataId) -> Result<()>;
+    async fn remove_key_data(this: &Storage, wallet_secret: &Secret, id: &PrvKeyDataId) -> Result<()>;
     
     #[wasm_bindgen(method, js_name = "getAccountRange")]
     async fn get_account_range(this: &Storage, prv_key_data_id_filter: Option<PrvKeyDataId>) -> Result<StorageStream<Account>>;
@@ -126,7 +126,7 @@ impl Interface for Proxy {
         store.exists().await
     }
 
-    async fn create(&self, ctx: &Arc<dyn AccessContextT>, args: CreateArgs) -> Result<()> {
+    async fn create(&self, wallet_secret: &Secret, args: CreateArgs) -> Result<()> {
         let location = self.location.lock().unwrap().clone().unwrap();
         let inner = Arc::new(Inner::try_create(ctx, &location.folder, args).await?);
         self.inner.lock().unwrap().replace(inner);
@@ -134,7 +134,7 @@ impl Interface for Proxy {
         Ok(())
     }
 
-    async fn open(&self, ctx: &Arc<dyn AccessContextT>, args: OpenArgs) -> Result<()> {
+    async fn open(&self, wallet_secret: &Secret, args: OpenArgs) -> Result<()> {
         let location = self.location.lock().unwrap().clone().unwrap();
         let inner = Arc::new(Inner::try_load(ctx, &location.folder, args).await?);
         self.inner.lock().unwrap().replace(inner);
@@ -149,7 +149,7 @@ impl Interface for Proxy {
         Ok(Some(self.inner()?.store.filename_as_string()))
     }
 
-    async fn commit(&self, ctx: &Arc<dyn AccessContextT>) -> Result<()> {
+    async fn commit(&self, wallet_secret: &Secret) -> Result<()> {
         // log_info!("--== committing storage ==--");
         self.inner()?.store(ctx).await?;
         Ok(())
@@ -189,13 +189,13 @@ impl PrvKeyDataStore for Inner {
         Ok(self.cache().prv_key_data_info.map.get(prv_key_data_id).cloned())
     }
 
-    async fn load_key_data(&self, ctx: &Arc<dyn AccessContextT>, prv_key_data_id: &PrvKeyDataId) -> Result<Option<PrvKeyData>> {
+    async fn load_key_data(&self, wallet_secret: &Secret, prv_key_data_id: &PrvKeyDataId) -> Result<Option<PrvKeyData>> {
         let wallet_secret = ctx.wallet_secret().await;
         let prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(wallet_secret)?;
         Ok(prv_key_data_map.get(prv_key_data_id).cloned())
     }
 
-    async fn store(&self, ctx: &Arc<dyn AccessContextT>, prv_key_data: PrvKeyData) -> Result<()> {
+    async fn store(&self, wallet_secret: &Secret, prv_key_data: PrvKeyData) -> Result<()> {
         let wallet_secret = ctx.wallet_secret().await;
         let prv_key_data_info = Arc::new((&prv_key_data).into());
         self.cache().prv_key_data_info.insert(prv_key_data.id, prv_key_data_info)?;
@@ -206,7 +206,7 @@ impl PrvKeyDataStore for Inner {
         Ok(())
     }
 
-    async fn remove(&self, ctx: &Arc<dyn AccessContextT>, prv_key_data_id: &PrvKeyDataId) -> Result<()> {
+    async fn remove(&self, wallet_secret: &Secret, prv_key_data_id: &PrvKeyDataId) -> Result<()> {
         let wallet_secret = ctx.wallet_secret().await;
         let mut prv_key_data_map: Decrypted<PrvKeyDataMap> = self.cache().prv_key_data.decrypt(wallet_secret.clone())?;
         prv_key_data_map.remove(prv_key_data_id);

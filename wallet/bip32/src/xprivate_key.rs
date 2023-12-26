@@ -14,9 +14,7 @@ const BIP39_DOMAIN_SEPARATOR: [u8; 12] = [0x42, 0x69, 0x74, 0x63, 0x6f, 0x69, 0x
 
 /// Extended private keys derived using BIP32.
 ///
-/// Generic around a [`PrivateKey`] type. When the `secp256k1` feature of this
-/// crate is enabled, the [`XPrv`] type provides a convenient alias for
-/// extended ECDSA/secp256k1 private keys.
+/// Generic around a [`PrivateKey`] type.
 #[derive(Clone)]
 pub struct ExtendedPrivateKey<K: PrivateKey> {
     /// Derived private key

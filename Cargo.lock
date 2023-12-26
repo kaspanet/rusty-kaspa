@@ -233,7 +233,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ca33f4bc4ed1babef42cad36cc1f51fa88be00420404e5b1e80ab1b18f7678c"
 dependencies = [
  "concurrent-queue",
+<<<<<<< HEAD
  "event-listener 4.0.1",
+=======
+ "event-listener 4.0.0",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
  "event-listener-strategy",
  "futures-core",
  "pin-project-lite",
@@ -322,7 +326,11 @@ version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7125e42787d53db9dd54261812ef17e937c95a51e4d291373b670342fa44310c"
 dependencies = [
+<<<<<<< HEAD
  "event-listener 4.0.1",
+=======
+ "event-listener 4.0.0",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
  "event-listener-strategy",
  "pin-project-lite",
 ]
@@ -373,7 +381,11 @@ checksum = "16e62a023e7c117e27523144c5d2459f4397fcc3cab0085af8e2224f643a0193"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 ]
 
 [[package]]
@@ -390,7 +402,11 @@ checksum = "fdf6721fb0140e4f897002dd086c06f6c27775df19cfe1fccb21181a48fd2c98"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 ]
 
 [[package]]
@@ -570,7 +586,11 @@ dependencies = [
  "regex",
  "rustc-hash",
  "shlex",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 ]
 
 [[package]]
@@ -905,7 +925,11 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 ]
 
 [[package]]
@@ -963,6 +987,12 @@ name = "convert_case"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
+
+[[package]]
+name = "convert_case"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb4a24b1aaf0fd0ce8b45161144d6f42cd91677fd5940fd431183eb023b3a2b8"
 
 [[package]]
 name = "convert_case"
@@ -1153,6 +1183,18 @@ name = "data-encoding"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7e962a19be5cfc3f3bf6dd8f61eb50107f356ad6270fbb3ed41476571db78be5"
+<<<<<<< HEAD
+=======
+
+[[package]]
+name = "deranged"
+version = "0.3.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8eb30d70a07a3b04884d2677f06bec33509dc67ca60d92949e5535352d3191dc"
+dependencies = [
+ "powerfmt",
+]
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 
 [[package]]
 name = "derivative"
@@ -1328,9 +1370,15 @@ checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 
 [[package]]
 name = "event-listener"
+<<<<<<< HEAD
 version = "4.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84f2cdcf274580f2d63697192d744727b3198894b1bf02923643bf59e2c26712"
+=======
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "770d968249b5d99410d61f5bf89057f3199a077a04d087092f58e7d10692baae"
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 dependencies = [
  "concurrent-queue",
  "parking",
@@ -1343,7 +1391,11 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "958e4d70b6d5e81971bebec42271ec641e7ff4e170a6fa605f2b8a8b65cb97d3"
 dependencies = [
+<<<<<<< HEAD
  "event-listener 4.0.1",
+=======
+ "event-listener 4.0.0",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
  "pin-project-lite",
 ]
 
@@ -1387,10 +1439,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "25cbce373ec4653f1a01a31e8a5e5ec0c622dc27ff9c4e6606eefef5cbbed4a5"
 
 [[package]]
+name = "filetime"
+version = "0.2.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ee447700ac8aa0b2f2bd7bc4462ad686ba06baa6727ac149a2d6277f0d240fd"
+dependencies = [
+ "cfg-if 1.0.0",
+ "libc",
+ "redox_syscall",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
 name = "fixedbitset"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
+
+[[package]]
+name = "fixedstr"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49f9274e2c5ec70bcbd4b7c181ebfcfdff70f23e480cfa0d446efc1033c7200e"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "flate2"
@@ -1516,7 +1589,11 @@ checksum = "53b153fd91e4b0147f4aced87be237c98248656bb01050b96bf3ee89220a8ddb"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 ]
 
 [[package]]
@@ -2050,6 +2127,7 @@ dependencies = [
 name = "kaspa-bip32"
 version = "0.13.1"
 dependencies = [
+ "borsh",
  "bs58",
  "faster-hex 0.6.1",
  "getrandom 0.2.11",
@@ -2062,6 +2140,7 @@ dependencies = [
  "rand_core 0.6.4",
  "ripemd",
  "secp256k1",
+ "serde",
  "sha2",
  "subtle",
  "thiserror",
@@ -2088,6 +2167,7 @@ dependencies = [
  "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-daemon",
+ "kaspa-metrics-core",
  "kaspa-rpc-core",
  "kaspa-utils",
  "kaspa-wallet-core",
@@ -2519,6 +2599,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-metrics-core"
+version = "0.13.1"
+dependencies = [
+ "async-trait",
+ "borsh",
+ "futures",
+ "kaspa-core",
+ "kaspa-rpc-core",
+ "separator",
+ "serde",
+ "thiserror",
+ "workflow-core",
+ "workflow-log",
+]
+
+[[package]]
 name = "kaspa-mining"
 version = "0.13.1"
 dependencies = [
@@ -2608,6 +2704,7 @@ dependencies = [
  "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-daemon",
+ "kaspa-metrics-core",
  "kaspa-rpc-core",
  "kaspa-wallet-core",
  "nw-sys",
@@ -2784,9 +2881,9 @@ dependencies = [
  "kaspa-utils",
  "kaspa-utils-tower",
  "kaspa-utxoindex",
- "kaspa-wrpc-core",
  "log",
  "tokio",
+ "workflow-rpc",
 ]
 
 [[package]]
@@ -2968,7 +3065,9 @@ name = "kaspa-wallet-core"
 version = "0.13.1"
 dependencies = [
  "aes",
+ "ahash 0.8.6",
  "argon2",
+ "async-channel 2.1.1",
  "async-std",
  "async-trait",
  "base64 0.21.5",
@@ -2981,6 +3080,7 @@ dependencies = [
  "downcast",
  "evpkdf",
  "faster-hex 0.6.1",
+ "fixedstr",
  "futures",
  "heapless",
  "hmac",
@@ -2998,6 +3098,7 @@ dependencies = [
  "kaspa-txscript",
  "kaspa-txscript-errors",
  "kaspa-utils",
+ "kaspa-wallet-macros",
  "kaspa-wrpc-client",
  "md-5",
  "pad",
@@ -3027,6 +3128,19 @@ dependencies = [
  "workflow-wasm",
  "xxhash-rust",
  "zeroize",
+]
+
+[[package]]
+name = "kaspa-wallet-macros"
+version = "0.13.1"
+dependencies = [
+ "convert_case 0.5.0",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "syn 1.0.109",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -3080,10 +3194,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wrpc-core"
-version = "0.13.1"
-
-[[package]]
 name = "kaspa-wrpc-proxy"
 version = "0.13.1"
 dependencies = [
@@ -3093,7 +3203,6 @@ dependencies = [
  "kaspa-grpc-client",
  "kaspa-rpc-core",
  "kaspa-rpc-macros",
- "kaspa-wrpc-core",
  "kaspa-wrpc-server",
  "num_cpus",
  "thiserror",
@@ -3118,7 +3227,6 @@ dependencies = [
  "kaspa-rpc-macros",
  "kaspa-rpc-service",
  "kaspa-utils",
- "kaspa-wrpc-core",
  "log",
  "num_cpus",
  "openssl",
@@ -3735,6 +3843,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "num_threads"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2819ce041d2ee131036f4fc9d6ae7ae125a3a40e97ba64d04fe799ad9dabbb44"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "numtoa"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3803,7 +3920,11 @@ checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 ]
 
 [[package]]
@@ -3904,7 +4025,11 @@ checksum = "70df726c43c645ef1dde24c7ae14692036ebe5457c92c5f0ec4cfceb99634ff6"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 ]
 
 [[package]]
@@ -3973,7 +4098,11 @@ checksum = "4359fd9c9171ec6e8c62926d6faaf553a8dc3f64e1507e76da7911b4f6a04405"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 ]
 
 [[package]]
@@ -4051,6 +4180,15 @@ name = "portable-atomic"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7170ef9988bc169ba16dd36a7fa041e5c4cbeb6a35b76d4c03daded371eae7c0"
+<<<<<<< HEAD
+=======
+
+[[package]]
+name = "powerfmt"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 
 [[package]]
 name = "ppv-lite86"
@@ -4065,7 +4203,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae005bd773ab59b4725093fd7df83fd7892f7d8eafb48dbd7de6e024e4215f9d"
 dependencies = [
  "proc-macro2",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 ]
 
 [[package]]
@@ -4102,9 +4244,15 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
+<<<<<<< HEAD
 version = "1.0.71"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75cb1540fadbd5b8fbccc4dddad2734eba435053f725621c070711a14bb5f4b8"
+=======
+version = "1.0.70"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39278fbbf5fb4f646ce651690877f89d1c5811a3d4acb27700c1cb3cdb78fd3b"
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 dependencies = [
  "unicode-ident",
 ]
@@ -4136,7 +4284,11 @@ dependencies = [
  "prost",
  "prost-types",
  "regex",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
  "tempfile",
  "which",
 ]
@@ -4151,7 +4303,11 @@ dependencies = [
  "itertools 0.11.0",
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 ]
 
 [[package]]
@@ -4631,7 +4787,11 @@ checksum = "43576ca501357b9b071ac53cdc7da8ef0cbd9493d8df094cd821777ea6e894d3"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 ]
 
 [[package]]
@@ -4880,9 +5040,15 @@ dependencies = [
 
 [[package]]
 name = "syn"
+<<<<<<< HEAD
 version = "2.0.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b7d0a2c048d661a1a59fcd7355baa232f7ed34e0ee4df2eef3c1c1c0d3852d8"
+=======
+version = "2.0.41"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44c8b28c477cc3bf0e7966561e3460130e1255f7a1cf71931075f1c5e7a7e269"
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4964,7 +5130,11 @@ checksum = "01742297787513b79cf8e29d1056ede1313e2420b7b3b15d0a768b4921f549df"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 ]
 
 [[package]]
@@ -4981,6 +5151,37 @@ checksum = "f0ec81c46e9eb50deaa257be2f148adf052d1fb7701cfd55ccfab2525280b70b"
 dependencies = [
  "libc",
  "winapi",
+]
+
+[[package]]
+name = "time"
+version = "0.3.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4a34ab300f2dee6e562c10a046fc05e358b29f9bf92277f30c3c8d82275f6f5"
+dependencies = [
+ "deranged",
+ "itoa",
+ "libc",
+ "num_threads",
+ "powerfmt",
+ "serde",
+ "time-core",
+ "time-macros",
+]
+
+[[package]]
+name = "time-core"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef927ca75afb808a4d64dd374f00a2adf8d0fcff8e7b184af886c3c87ec4a3f3"
+
+[[package]]
+name = "time-macros"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ad70d68dba9e1f8aceda7aa6711965dfec1cac869f311a51bd08b3a2ccbce20"
+dependencies = [
+ "time-core",
 ]
 
 [[package]]
@@ -5010,9 +5211,15 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
+<<<<<<< HEAD
 version = "1.35.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c89b4efa943be685f629b149f53829423f8f5531ea21249408e8e2f8671ec104"
+=======
+version = "1.35.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "841d45b238a16291a4e1584e61820b8ae57d696cc5015c459c229ccc6990cc1c"
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 dependencies = [
  "backtrace",
  "bytes",
@@ -5044,7 +5251,11 @@ checksum = "5b8a1e28f2deaa14e508979454cb3a223b10b938b45af148bc0986de36f1923b"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 ]
 
 [[package]]
@@ -5156,7 +5367,11 @@ dependencies = [
  "proc-macro2",
  "prost-build",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 ]
 
 [[package]]
@@ -5229,7 +5444,11 @@ checksum = "34704c8d6ebcbc939824180af020566b01a7c01f80641264eba0999f6c2b6be7"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 ]
 
 [[package]]
@@ -5414,6 +5633,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
 
 [[package]]
+name = "vergen"
+version = "8.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1290fd64cc4e7d3c9b07d7f333ce0ce0007253e32870e632624835cc80b83939"
+dependencies = [
+ "anyhow",
+ "rustc_version",
+ "rustversion",
+ "time",
+]
+
+[[package]]
 name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5479,7 +5710,11 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
  "wasm-bindgen-shared",
 ]
 
@@ -5513,7 +5748,11 @@ checksum = "54681b18a46765f095758388f2d0cf16eb8d4169b639ab575a8f5693af210c7b"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -5821,9 +6060,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-chrome"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "808d0e743c97552ee0ed5150007cae8c15bb507e9d58a0b1323a8be09c92ad9a"
+checksum = "21ebac6262dc1583565f97b4e3c87191b388c39440a7fdee1bb763a813f80837"
 dependencies = [
  "cfg-if 1.0.0",
  "chrome-sys",
@@ -5836,15 +6075,16 @@ dependencies = [
 
 [[package]]
 name = "workflow-core"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5d960ca704f3ea26e696c371df88091ec188cba86b31b823f63326ecf9173b7"
+checksum = "4b47e41ad98580f80ddafd2020c18810731e34da77ac16347982772f15d9ba18"
 dependencies = [
  "async-channel 2.1.1",
  "async-std",
  "borsh",
  "bs58",
  "cfg-if 1.0.0",
+ "chrono",
  "dirs",
  "faster-hex 0.8.1",
  "futures",
@@ -5857,6 +6097,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "triggered",
+ "vergen",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -5866,9 +6107,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-core-macros"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b743709438413cf5b9c187a163ef6f73a55920947a335d3367f2127fbe1603ba"
+checksum = "ab418ecc3a4578d3d68820d4b4e5c35917b19be98fc0e7b1ed79b7225e75384f"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -5883,9 +6124,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-d3"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11a1c33d6966850dcbe16b7a63d64751086a9e5b811aea183993bf812843b94f"
+checksum = "1aec0ecd0f3cb188d8e80e8bbd3f3d4c9e0e4d3e643f250bd83ab6a73a87e17e"
 dependencies = [
  "atomic_float",
  "js-sys",
@@ -5900,9 +6141,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-dom"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d3283462c546148d47f25633bfe2271135b3d2b8a8bf9e5fee4d91b4e5a92b2"
+checksum = "18c01a4c1d4c72b04ad470c83433d52cc85e5801b681b4773254b53ba615c614"
 dependencies = [
  "futures",
  "js-sys",
@@ -5918,9 +6159,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-log"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6e3027bd920784edea24f96213728bac8e19bc94278cad81fd4518ebf9cba12"
+checksum = "d82efcf0da005b982fc3b811175b7960aef286c1ab83edbc90fc2864c0da4aa2"
 dependencies = [
  "cfg-if 1.0.0",
  "console",
@@ -5934,9 +6175,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-macro-tools"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "553fcac6e1900600adf3137a621c200117f6f7a81c91b489634c778cfd9fc438"
+checksum = "4b5a3578b59ffd5eec99e4ff886d5e2bb6989d06068b0db2aa6611ec3b1dcebd"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -5947,9 +6188,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-node"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3a5ef29b1200a4076be3032a54891cbd8267a45a52469e0faae30f11a763da6"
+checksum = "1ce39ed278dd2095ac0549f7d8817d9c786f0370c112d553a91a9ee4c56feb18"
 dependencies = [
  "borsh",
  "futures",
@@ -5968,9 +6209,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-nw"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d35104cac52de5e9353cf3970329b5620e165ce319de2813ed62360023b632b2"
+checksum = "ad8d13f534b29db4c946fa135b850175a8c04176e0a266cf265548e32936d094"
 dependencies = [
  "ahash 0.8.6",
  "async-trait",
@@ -5992,9 +6233,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-panic-hook"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07ac55687ef271f5b7e805170e6429c261a97c114d5b14d9fb153054c129d22a"
+checksum = "8cd36afe3c94147bb6777003b9dc5452afc5d25d02681922563080e76030e667"
 dependencies = [
  "cfg-if 1.0.0",
  "wasm-bindgen",
@@ -6017,9 +6258,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-rpc"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f92426a186e5ef112afa35bf988c884b6f34fbf23665054fc7da54b0a125ee2"
+checksum = "1534cc0e6e3e7ebd3a6a6adc555de2127f70c432567dc787d6c16dc7ce2a6d2e"
 dependencies = [
  "ahash 0.8.6",
  "async-std",
@@ -6046,9 +6287,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-rpc-macros"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f904fda04b32be54f132a69634be79898da0d944dbe07792a00087c6ef8069d"
+checksum = "21c82002491ec14cc23bb14f7bb179617e8dbb8a738532477fa843d3cb51cd95"
 dependencies = [
  "parse-variants",
  "proc-macro-error",
@@ -6059,15 +6300,16 @@ dependencies = [
 
 [[package]]
 name = "workflow-store"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea7357def5065ee1e925f48af268ba90c832176d5d94d0c9f1f5682dd1b9efbc"
+checksum = "2cb49681ba575966c19f5684e5b2908a5f7b8678cb20644bcb51396d66ad6eb3"
 dependencies = [
  "async-std",
  "base64 0.21.5",
  "cfg-if 1.0.0",
  "chrome-sys",
  "faster-hex 0.8.1",
+ "filetime",
  "home",
  "js-sys",
  "lazy_static",
@@ -6086,9 +6328,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-task"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37cb53d40377228b9beed840a5edfbd73b6117f17024908711431058e89df4af"
+checksum = "b84fbeb7f8b036295a11fed4665c514fb55aea0b721fb8d9d933f88238d1e0c0"
 dependencies = [
  "futures",
  "thiserror",
@@ -6098,9 +6340,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-task-macros"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55bc7451b834e1c2f0ce5eafa0b9a714217bf9ebfc58849979bc9515f18a423f"
+checksum = "5086f968f664b6bdcd37a293b4baa6914b752feded93679177b16a863c111fcc"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -6114,9 +6356,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-terminal"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41047d47b5a24cbadc7cf623bf4488964207216b3f1c3be6a163639bfec8b7ce"
+checksum = "c6f1977765e333b303166a60322833078583f6fd32b0c6251c54776b59b980d2"
 dependencies = [
  "async-std",
  "async-trait",
@@ -6143,9 +6385,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-terminal-macros"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9caa3dc058ae138d5a01c3645b1478c020b7e5bef6f482f1f45a9a767b222e33"
+checksum = "da768384e9a5e1fe6a8f2b6389b58d500954f8c2ff8cce8622c3947388593601"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -6159,9 +6401,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-wasm"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c2d3d443c72e1025ae82c3c8d46cc45988652a37ba3f74406ae78231353ac23"
+checksum = "b099355ef033f582eb6884425b354dadf010bb8327e7269090bf804703f0f858"
 dependencies = [
  "cfg-if 1.0.0",
  "faster-hex 0.8.1",
@@ -6180,9 +6422,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-wasm-macros"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbc012f660e74cc464d7f86429c5012777f1c8967c3042539fc6b8b70358bed4"
+checksum = "5ef6486895e291567e1ac8d17a5948ed0676f0ffb304eaf7f5391ad102149cc0"
 dependencies = [
  "js-sys",
  "proc-macro-error",
@@ -6194,9 +6436,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-websocket"
-version = "0.8.1"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1cd17b12dbbe351ae9c0a602614dbfdfa1f86ee916fbb661a92e901f5ae9544c"
+checksum = "682c3315971aeefd9dc3a0a261355c14157192c1c8716468ab61bff7f4803d5d"
 dependencies = [
  "ahash 0.8.6",
  "async-channel 2.1.1",
@@ -6253,15 +6495,22 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
+<<<<<<< HEAD
 version = "0.7.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74d4d3961e53fa4c9a25a8637fc2bfaf2595b3d3ae34875568a5cf64787716be"
+=======
+version = "0.7.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c4061bedbb353041c12f413700357bec76df2c7e2ca8e4df8bac24c6bf68e3d"
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
+<<<<<<< HEAD
 version = "0.7.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ce1b18ccd8e73a9321186f97e46f9f04b778851177567b1975109d26a08d2a6"
@@ -6269,6 +6518,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.42",
+=======
+version = "0.7.31"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3c129550b3e6de3fd0ba67ba5c81818f9805e58b8d7fee80a3a59d2c9fc601a"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.41",
+>>>>>>> b6f7e09e (Cumulative PR for Wallet & Metrics Refactoring (#360))
 ]
 
 [[package]]

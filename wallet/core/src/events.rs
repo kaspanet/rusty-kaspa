@@ -1,7 +1,11 @@
+//!
+//! Events emitted by the wallet framework. This includes various wallet,
+//! account and transaction events as well as state and sync events
+//! produced by the client RPC and the Kaspa node monitoring subsystems.
+//!
+
 use crate::imports::*;
-use crate::runtime::Balance;
-use crate::storage::Hint;
-use crate::storage::TransactionRecord;
+use crate::storage::{Hint, PrvKeyDataInfo, StorageDescriptor, TransactionRecord, WalletDescriptor};
 use crate::utxo::context::UtxoContextId;
 
 /// Sync state of the kaspad node
@@ -71,20 +75,58 @@ pub enum Events {
     },
     /// [`SyncState`] notification posted
     /// when the node sync state changes
-    SyncState { sync_state: SyncState },
+    SyncState {
+        sync_state: SyncState,
+    },
     /// Emitted after the wallet has loaded and
     /// contains anti-phishing 'hint' set by the user.
-    WalletHint { hint: Option<Hint> },
+    WalletHint {
+        hint: Option<Hint>,
+    },
     /// Wallet has opened
-    WalletOpen,
-    /// Wallet open failure
-    WalletError { message: String },
+    WalletOpen {
+        wallet_descriptor: Option<WalletDescriptor>,
+        account_descriptors: Option<Vec<AccountDescriptor>>,
+    },
+    WalletCreate {
+        wallet_descriptor: WalletDescriptor,
+        storage_descriptor: StorageDescriptor,
+    },
     /// Wallet reload initiated (development only)
-    WalletReload,
+    WalletReload {
+        wallet_descriptor: Option<WalletDescriptor>,
+        account_descriptors: Option<Vec<AccountDescriptor>>,
+    },
+    /// Wallet open failure
+    WalletError {
+        message: String,
+    },
     /// Wallet has been closed
     WalletClose,
+    PrvKeyDataCreate {
+        prv_key_data_info: PrvKeyDataInfo,
+    },
+    /// Accounts have been activated
+    AccountActivation {
+        ids: Vec<AccountId>,
+    },
+    /// Accounts have been deactivated
+    AccountDeactivation {
+        ids: Vec<AccountId>,
+    },
     /// Account selection change (`None` if no account is selected)
-    AccountSelection { id: Option<runtime::AccountId> },
+    AccountSelection {
+        id: Option<AccountId>,
+    },
+    /// Account has been created
+    AccountCreate {
+        account_descriptor: AccountDescriptor,
+    },
+    /// Account has been changed
+    /// (emitted on new address generation)
+    AccountUpdate {
+        account_descriptor: AccountDescriptor,
+    },
     /// Emitted after successful RPC connection
     /// after the initial state negotiation.
     ServerStatus {
@@ -99,53 +141,78 @@ pub enum Events {
         url: Option<String>,
     },
 
-    /// Successful start of [`UtxoProcessor`](crate::utxo::processor::UtxoProcessor).
+    /// Successful start of [`UtxoProcessor`].
     /// This event signifies that the application can
     /// start interfacing with the UTXO processor.
     UtxoProcStart,
-    /// [`UtxoProcessor`](crate::utxo::processor::UtxoProcessor) has shut down.
+    /// [`UtxoProcessor`] has shut down.
     UtxoProcStop,
     /// Occurs when UtxoProcessor has failed to connect to the node
-    /// for an unknown reason. (general error trap)
-    UtxoProcError { message: String },
+    /// for an unknown reason. Can also occur during general unexpected
+    /// UtxoProcessor processing errors, such as node disconnection
+    /// then submitting an outgoing transaction. This is a general
+    /// error trap for logging purposes and is safe to ignore.
+    UtxoProcError {
+        message: String,
+    },
     /// DAA score change
-    DAAScoreChange { current_daa_score: u64 },
+    DAAScoreChange {
+        current_daa_score: u64,
+    },
     /// New incoming pending UTXO/transaction
     Pending {
         record: TransactionRecord,
-        /// `true` if the transaction is a result of an earlier
-        /// created outgoing transaction. (such as a UTXO returning
-        /// change to the account)
-        is_outgoing: bool,
     },
     /// Pending UTXO has been removed (reorg)
-    Reorg { record: TransactionRecord },
-    /// UtxoProcessor has received a foreign unknown transaction
-    /// withdrawing funds from the wallet. This occurs when another
-    /// instance of the wallet creates an outgoing transaction.
-    External { record: TransactionRecord },
+    Reorg {
+        record: TransactionRecord,
+    },
+    /// Coinbase stasis UTXO has been removed (reorg)
+    /// NOTE: These transactions should be ignored by clients.
+    Stasis {
+        record: TransactionRecord,
+    },
     /// Transaction has been confirmed
     Maturity {
         record: TransactionRecord,
-        /// `true` if the transaction is a result of an earlier
-        /// created outgoing transaction. (such as a UTXO returning
-        /// change to the account)
-        is_outgoing: bool,
     },
-    /// Emitted when a transaction has been created and broadcasted
-    /// by the Transaction [`Generator`](crate::tx::generator::Generator)
-    Outgoing { record: TransactionRecord },
+    /// Emitted when a transaction has been discovered
+    /// during the UTXO scan. This event is generated
+    /// when a runtime [`Account`]
+    /// initiates address monitoring and performs
+    /// an initial scan of the UTXO set.
+    ///
+    /// This event is emitted when UTXOs are
+    /// registered with the UtxoContext using the
+    /// [`UtxoContext::extend_from_scan()`](UtxoContext::extend_from_scan) method.
+    ///
+    /// NOTE: if using runtime [`Wallet`],
+    /// the wallet will not emit this event if it detects
+    /// that the transaction already exist in its transaction
+    /// record set. If it doesn't, the wallet will create
+    /// such record and emit this event only once. These
+    /// transactions will be subsequently available when
+    /// accessing the wallet's transaction record set.
+    /// (i.e. when using runtime Wallet, this event can be
+    /// ignored and transaction record can be accessed from
+    /// the transaction history instead).
+    Discovery {
+        record: TransactionRecord,
+    },
     /// UtxoContext (Account) balance update. Emitted for each
     /// balance change within the UtxoContext.
     Balance {
-        #[serde(rename = "matureUtxoSize")]
-        mature_utxo_size: usize,
-        #[serde(rename = "pendingUtxoSize")]
-        pending_utxo_size: usize,
+        // #[serde(rename = "matureUtxoSize")]
+        // mature_utxo_size: usize,
+        // #[serde(rename = "pendingUtxoSize")]
+        // pending_utxo_size: usize,
         balance: Option<Balance>,
         /// If UtxoContext is bound to a Runtime Account, this
         /// field will contain the account id. Otherwise, it will
         /// contain a developer-assigned internal id.
         id: UtxoContextId,
+    },
+    Error {
+        message: String,
     },
 }
