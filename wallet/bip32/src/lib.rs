@@ -24,7 +24,7 @@ pub use address_type::AddressType;
 pub use attrs::ExtendedKeyAttrs;
 pub use child_number::ChildNumber;
 pub use derivation_path::DerivationPath;
-pub use mnemonic::{Language, Mnemonic};
+pub use mnemonic::{Language, Mnemonic, WordCount};
 pub use prefix::Prefix;
 pub use private_key::PrivateKey;
 pub use public_key::PublicKey;

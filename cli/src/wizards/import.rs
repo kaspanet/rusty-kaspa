@@ -3,7 +3,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::KaspaCli;
 use kaspa_bip32::{Language, Mnemonic};
-use kaspa_wallet_core::storage::AccountKind;
+use kaspa_wallet_core::account::{BIP32_ACCOUNT_KIND, LEGACY_ACCOUNT_KIND, MULTISIG_ACCOUNT_KIND};
 use std::sync::Arc;
 
 pub async fn prompt_for_mnemonic(term: &Arc<Terminal>) -> Result<Vec<String>> {
@@ -53,15 +53,15 @@ pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>, account_kind: Acco
     let mnemonic = prompt_for_mnemonic(&term).await?;
     tprintln!(ctx);
     let length = mnemonic.len();
-    match account_kind {
-        AccountKind::Legacy if length != 12 => Err(Error::Custom(format!("wrong mnemonic length ({length})"))),
-        AccountKind::Bip32 if length != 24 => Err(Error::Custom(format!("wrong mnemonic length ({length})"))),
+    match account_kind.as_ref() {
+        LEGACY_ACCOUNT_KIND if length != 12 => Err(Error::Custom(format!("wrong mnemonic length ({length})"))),
+        BIP32_ACCOUNT_KIND if length != 24 => Err(Error::Custom(format!("wrong mnemonic length ({length})"))),
 
-        AccountKind::Legacy | AccountKind::Bip32 | AccountKind::MultiSig => Ok(()),
+        LEGACY_ACCOUNT_KIND | BIP32_ACCOUNT_KIND | MULTISIG_ACCOUNT_KIND => Ok(()),
         _ => Err(Error::Custom("unsupported account kind".to_owned())),
     }?;
 
-    let payment_secret = if account_kind == AccountKind::Legacy {
+    let payment_secret = if account_kind == LEGACY_ACCOUNT_KIND {
         None
     } else {
         tpara!(
@@ -92,8 +92,8 @@ pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>, account_kind: Acco
     let mnemonic = mnemonic.join(" ");
     let mnemonic = Mnemonic::new(mnemonic.trim(), Language::English)?;
 
-    let account = if !matches!(account_kind, AccountKind::MultiSig) {
-        wallet.import_with_mnemonic(wallet_secret, payment_secret.as_ref(), mnemonic, account_kind).await?
+    let account = if account_kind != MULTISIG_ACCOUNT_KIND {
+        wallet.import_with_mnemonic(&wallet_secret, payment_secret.as_ref(), mnemonic, account_kind).await?
     } else {
         let mut mnemonics_secrets = vec![(mnemonic, payment_secret)];
         while matches!(
@@ -123,7 +123,7 @@ pub(crate) async fn import_with_mnemonic(ctx: &Arc<KaspaCli>, account_kind: Acco
         }
         let n_required: u16 = term.ask(false, "Enter the minimum number of signatures required: ").await?.parse()?;
 
-        wallet.import_multisig_with_mnemonic(wallet_secret, mnemonics_secrets, n_required, additional_xpubs).await?
+        wallet.import_multisig_with_mnemonic(&wallet_secret, mnemonics_secrets, n_required, additional_xpubs).await?
     };
 
     tprintln!(ctx, "\naccount imported: {}\n", account.get_list_string()?);

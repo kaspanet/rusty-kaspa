@@ -1,4 +1,10 @@
+//!
+//! Primitives for declaring transaction fees.
+//!
+
 use crate::result::Result;
+use borsh::{BorshDeserialize, BorshSerialize};
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 use workflow_wasm::prelude::*;
 
@@ -24,7 +30,7 @@ use workflow_wasm::prelude::*;
 /// 1. Use estimation to check that the funds are sufficient.
 /// 2. Check balance and ensure that there is a sufficient amount of funds.
 ///
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum Fees {
     /// Fee management disabled (sweep transactions, pays all fees)
     None,

@@ -207,8 +207,10 @@ struct Inner {
     mass_calculator: MassCalculator,
     network_type: NetworkType,
 
-    // Utxo Context
-    utxo_context: Option<UtxoContext>,
+    // Source Utxo Context (Used for source UtxoEntry aggregation)
+    source_utxo_context: Option<UtxoContext>,
+    // Destination Utxo Context (Used only during transfer transactions)
+    destination_utxo_context: Option<UtxoContext>,
     // Event multiplexer
     multiplexer: Option<Multiplexer<Box<Events>>>,
     // typically a number of keys required to sign the transaction
@@ -253,13 +255,14 @@ impl Generator {
             network_type,
             multiplexer,
             utxo_iterator,
-            utxo_context,
+            source_utxo_context: utxo_context,
             sig_op_count,
             minimum_signatures,
             change_address,
             final_transaction_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
+            destination_utxo_context,
         } = settings;
 
         let mass_calculator = MassCalculator::new(&network_type.into());
@@ -299,9 +302,6 @@ impl Generator {
             return Err(Error::GeneratorChangeAddressNetworkTypeMismatch);
         }
 
-        // if final_transaction_amount.is_none() && !matches!(final_transaction_priority_fee, Fees::None) {
-        // }
-
         let context = Mutex::new(Context {
             utxo_source_iterator: utxo_iterator,
             number_of_transactions: 0,
@@ -333,7 +333,7 @@ impl Generator {
             signer,
             abortable: abortable.cloned(),
             mass_calculator,
-            utxo_context,
+            source_utxo_context: utxo_context,
             sig_op_count,
             minimum_signatures,
             change_address,
@@ -345,6 +345,7 @@ impl Generator {
             final_transaction_outputs_mass,
             final_transaction_payload,
             final_transaction_payload_mass,
+            destination_utxo_context,
         };
         Ok(Self { inner: Arc::new(inner) })
     }
@@ -354,8 +355,13 @@ impl Generator {
     }
 
     /// The underlying [`UtxoContext`] (if available).
-    pub fn utxo_context(&self) -> &Option<UtxoContext> {
-        &self.inner.utxo_context
+    pub fn source_utxo_context(&self) -> &Option<UtxoContext> {
+        &self.inner.source_utxo_context
+    }
+
+    /// Signifies that the transaction is a transfer between accounts
+    pub fn destination_utxo_context(&self) -> &Option<UtxoContext> {
+        &self.inner.destination_utxo_context
     }
 
     /// Core [`Multiplexer<Events>`] (if available)
@@ -675,6 +681,9 @@ impl Generator {
                     self.inner.final_transaction_payload.clone(),
                 );
 
+                // for internal testing, please keep commented out
+                // script_engine_validator(self, &tx, &utxo_entry_references, &addresses);
+
                 context.final_transaction_id = Some(tx.id());
                 context.number_of_transactions += 1;
 
@@ -776,3 +785,50 @@ impl Generator {
         }
     }
 }
+
+/*
+//
+// this function is used for short-circuiting the transaction generation process
+// against the script engine. Until additional unit tests are developed, please
+// keep this here for reference.
+//
+fn script_engine_validator(generator : &Generator, tx: &Transaction, utxo_entry_references: &Vec<UtxoEntryReference>, addresses : &HashSet<Address>) -> Result<()> {
+
+    use kaspa_consensus_core::tx::{PopulatedTransaction,VerifiableTransaction,MutableTransaction};
+    use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
+    use kaspa_consensus_core::errors::tx::TxRuleError;
+    use kaspa_txscript::{SigCacheKey,TxScriptEngine,caches::Cache};
+
+    let sig_cache = Cache::<SigCacheKey, bool>::new(1000);
+    let entries = utxo_entry_references
+        .iter()
+        .map(|utxo_entry_reference|utxo_entry_reference.utxo.entry.clone()).collect::<Vec<_>>();
+
+    let mtx = MutableTransaction::with_entries(tx.clone(),entries.clone());
+    let tx_addresses = addresses.iter().cloned().collect::<Vec<_>>();
+
+    let signer = generator.signer().as_ref().expect("no signer in tx generator");
+    let signed_tx = signer.try_sign(mtx, &tx_addresses)?;
+
+    let tx = PopulatedTransaction::new(signed_tx.as_ref(),entries);
+    let mut reused_values = SigHashReusedValues::new();
+    for (i, (input, entry)) in tx.populated_inputs().enumerate() {
+        match TxScriptEngine::from_transaction_input(&tx, input, i, entry, &mut reused_values, &sig_cache)
+            .map_err(TxRuleError::SignatureInvalid).map_err(|e|e.to_string()) {
+                Ok(mut engine) => {
+                    match engine.execute().map_err(TxRuleError::SignatureInvalid).map_err(|e|e.to_string()) {
+                        Ok(_) => { },
+                        Err(err) => {
+                            println!("TxScriptEngine::execute error: {:?}", err);
+                        }
+                    }
+                },
+                Err(err) => {
+                    println!("TxScriptEngine::from_transaction_input error: {:?}", err);
+                }
+            };
+    }
+
+    Ok(())
+}
+*/

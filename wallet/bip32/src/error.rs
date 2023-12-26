@@ -92,6 +92,9 @@ pub enum Error {
 
     #[error(transparent)]
     WorkflowWasm(#[from] workflow_wasm::error::Error),
+
+    #[error("Mnemonic word count is not supported ({0})")]
+    WordCount(usize),
 }
 
 impl From<ErrorImpl> for Error {

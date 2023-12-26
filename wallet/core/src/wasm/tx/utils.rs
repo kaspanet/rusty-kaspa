@@ -19,7 +19,7 @@ pub fn create_transaction_js(
     payload: JsValue,
     sig_op_count: JsValue,
     minimum_signatures: JsValue,
-) -> crate::Result<SignableTransaction> {
+) -> crate::result::Result<SignableTransaction> {
     let change_address = Address::try_from(change_address)?;
     let params = get_consensus_params_by_address(&change_address);
     let mc = MassCalculator::new(params);
@@ -73,7 +73,7 @@ pub fn create_transaction_js(
 
 /// Creates a set of transactions using transaction [`Generator`].
 #[wasm_bindgen(js_name=createTransactions)]
-pub async fn create_transactions_js(settings: GeneratorSettingsObject) -> crate::Result<Object> {
+pub async fn create_transactions_js(settings: GeneratorSettingsObject) -> Result<Object> {
     let generator = Generator::ctor(settings)?;
     if is_web() {
         // yield after each generated transaction if operating in the browser
@@ -103,7 +103,7 @@ pub async fn create_transactions_js(settings: GeneratorSettingsObject) -> crate:
 
 /// Creates a set of transactions using transaction [`Generator`].
 #[wasm_bindgen(js_name=estimateTransactions)]
-pub async fn estimate_js(settings: GeneratorSettingsObject) -> crate::Result<GeneratorSummary> {
+pub async fn estimate_js(settings: GeneratorSettingsObject) -> Result<GeneratorSummary> {
     let generator = Generator::ctor(settings)?;
     if is_web() {
         // yield after each generated transaction if operating in the browser
