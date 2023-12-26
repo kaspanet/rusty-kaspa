@@ -4,17 +4,31 @@ use parking_lot::RwLock;
 use rand::Rng;
 use std::{collections::hash_map::RandomState, hash::BuildHasher, sync::Arc};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CachePolicy {
+    Empty,
     Unit(usize),
     Tracked(usize),
+    LowerBoundedTracked { max_size: usize, min_units: usize },
 }
 
-impl CachePolicy {
-    pub fn max_size(&self) -> usize {
-        match *self {
-            CachePolicy::Unit(max_size) => max_size,
-            CachePolicy::Tracked(max_size) => max_size,
+#[derive(Clone)]
+struct CachePolicyInner {
+    /// Indicates if this policy was set to be tracked.
+    tracked: bool,
+    /// The max size of this cache. Units depend on policy.
+    max_size: usize,
+    /// Min units to keep in the cache even if passing tracked size limit.
+    min_units: usize,
+}
+
+impl From<CachePolicy> for CachePolicyInner {
+    fn from(policy: CachePolicy) -> Self {
+        match policy {
+            CachePolicy::Empty => CachePolicyInner { tracked: false, max_size: 0, min_units: 0 },
+            CachePolicy::Unit(max_size) => CachePolicyInner { tracked: false, max_size, min_units: 0 },
+            CachePolicy::Tracked(max_size) => CachePolicyInner { tracked: true, max_size, min_units: 0 },
+            CachePolicy::LowerBoundedTracked { max_size, min_units } => CachePolicyInner { tracked: true, max_size, min_units },
         }
     }
 }
@@ -47,7 +61,7 @@ where
     TData: Clone + Send + Sync + MemSizeEstimator,
 {
     inner: Arc<RwLock<Inner<TKey, TData, S>>>,
-    policy: CachePolicy,
+    policy: CachePolicyInner,
 }
 
 impl<TKey, TData, S> Cache<TKey, TData, S>
@@ -57,10 +71,8 @@ where
     S: BuildHasher + Default,
 {
     pub fn new(policy: CachePolicy) -> Self {
-        let prealloc_size = match policy {
-            CachePolicy::Unit(max_size) => max_size,
-            CachePolicy::Tracked(_) => 0,
-        };
+        let policy: CachePolicyInner = policy.into();
+        let prealloc_size = if policy.tracked { 0 } else { policy.max_size };
         Self { inner: Arc::new(RwLock::new(Inner::new(prealloc_size))), policy }
     }
 
@@ -73,21 +85,22 @@ where
     }
 
     fn insert_impl(&self, inner: &mut Inner<TKey, TData, S>, key: TKey, data: TData) {
-        match self.policy {
-            CachePolicy::Unit(max_size) => {
-                if inner.map.len() == max_size {
-                    inner.map.swap_remove_index(rand::thread_rng().gen_range(0..max_size));
+        match self.policy.tracked {
+            false => {
+                if inner.map.len() == self.policy.max_size {
+                    inner.map.swap_remove_index(rand::thread_rng().gen_range(0..self.policy.max_size));
                 }
                 inner.map.insert(key, data);
             }
-            CachePolicy::Tracked(max_size) => {
+            true => {
                 let new_data_size = data.estimate_mem_size().agnostic_size();
                 inner.tracked_size += new_data_size;
                 if let Some(removed) = inner.map.insert(key, data) {
                     inner.tracked_size -= removed.estimate_mem_size().agnostic_size();
                 }
 
-                while inner.tracked_size > max_size {
+                // We allow passing tracked size limit as long as there are no more than min_units units
+                while inner.tracked_size > self.policy.max_size && inner.map.len() > self.policy.min_units {
                     if let Some((_, v)) = inner.map.swap_remove_index(rand::thread_rng().gen_range(0..inner.map.len())) {
                         inner.tracked_size -= v.estimate_mem_size().agnostic_size();
                     }
@@ -97,7 +110,7 @@ where
     }
 
     pub fn insert(&self, key: TKey, data: TData) {
-        if self.policy.max_size() == 0 {
+        if self.policy.max_size == 0 {
             return;
         }
 
@@ -106,7 +119,7 @@ where
     }
 
     pub fn insert_many(&self, iter: &mut impl Iterator<Item = (TKey, TData)>) {
-        if self.policy.max_size() == 0 {
+        if self.policy.max_size == 0 {
             return;
         }
         let mut write_guard = self.inner.write();
@@ -120,15 +133,15 @@ where
         F: Fn(&mut TData),
     {
         if let Some(data) = inner.map.get_mut(&key) {
-            match self.policy {
-                CachePolicy::Unit(_) => {
+            match self.policy.tracked {
+                false => {
                     op(data);
                 }
-                CachePolicy::Tracked(max_size) => {
+                true => {
                     inner.tracked_size -= data.estimate_mem_size().agnostic_size();
                     op(data);
                     inner.tracked_size += data.estimate_mem_size().agnostic_size();
-                    while inner.tracked_size > max_size {
+                    while inner.tracked_size > self.policy.max_size && inner.map.len() > self.policy.min_units {
                         if let Some((_, v)) = inner.map.swap_remove_index(rand::thread_rng().gen_range(0..inner.map.len())) {
                             inner.tracked_size -= v.estimate_mem_size().agnostic_size();
                         }
@@ -142,7 +155,7 @@ where
     where
         F: Fn(&mut TData),
     {
-        if self.policy.max_size() == 0 {
+        if self.policy.max_size == 0 {
             return;
         }
         let mut write_guard = self.inner.write();
@@ -152,7 +165,7 @@ where
     fn remove_impl(&self, inner: &mut Inner<TKey, TData, S>, key: &TKey) -> Option<TData> {
         match inner.map.swap_remove(key) {
             Some(data) => {
-                if matches!(self.policy, CachePolicy::Tracked(_)) {
+                if self.policy.tracked {
                     inner.tracked_size -= data.estimate_mem_size().agnostic_size();
                 }
                 Some(data)
@@ -162,7 +175,7 @@ where
     }
 
     pub fn remove(&self, key: &TKey) -> Option<TData> {
-        if self.policy.max_size() == 0 {
+        if self.policy.max_size == 0 {
             return None;
         }
         let mut write_guard = self.inner.write();
@@ -170,7 +183,7 @@ where
     }
 
     pub fn remove_many(&self, key_iter: &mut impl Iterator<Item = TKey>) {
-        if self.policy.max_size() == 0 {
+        if self.policy.max_size == 0 {
             return;
         }
         let mut write_guard = self.inner.write();
@@ -180,12 +193,12 @@ where
     }
 
     pub fn remove_all(&self) {
-        if self.policy.max_size() == 0 {
+        if self.policy.max_size == 0 {
             return;
         }
         let mut write_guard = self.inner.write();
         write_guard.map.clear();
-        if matches!(self.policy, CachePolicy::Tracked(_)) {
+        if self.policy.tracked {
             write_guard.tracked_size = 0;
         }
     }

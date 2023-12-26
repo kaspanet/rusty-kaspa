@@ -359,7 +359,7 @@ mod address_store_with_cache {
 
     impl Store {
         fn new(db: Arc<DB>) -> Self {
-            let db_store = DbAddressesStore::new(db, CachePolicy::Unit(0));
+            let db_store = DbAddressesStore::new(db, CachePolicy::Empty);
             let mut addresses = HashMap::new();
             for (key, entry) in db_store.iterator().map(|res| res.unwrap()) {
                 addresses.insert(key, entry);

@@ -389,7 +389,7 @@ mod tests {
         let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let cache_policy = CachePolicy::Unit(test.blocks.len() / 3);
         let reachability = RwLock::new(DbReachabilityStore::new(db.clone(), cache_policy, cache_policy));
-        let mut relations = DbRelationsStore::with_prefix(db.clone(), &[], CachePolicy::Unit(0), CachePolicy::Unit(0));
+        let mut relations = DbRelationsStore::with_prefix(db.clone(), &[], CachePolicy::Empty, CachePolicy::Empty);
 
         // Add blocks via a staging store
         {

@@ -6,7 +6,7 @@ use crate::{
         block_window_cache::BlockWindowCacheStore,
         daa::DbDaaStore,
         depth::DbDepthStore,
-        ghostdag::{CompactGhostdagData, DbGhostdagStore, GhostdagData},
+        ghostdag::{CompactGhostdagData, DbGhostdagStore},
         headers::DbHeadersStore,
         headers_selected_tip::DbHeadersSelectedTipStore,
         past_pruning_points::DbPastPruningPointsStore,
@@ -27,8 +27,7 @@ use crate::{
 
 use itertools::Itertools;
 
-use kaspa_consensus_core::{blockstatus::BlockStatus, config::constants::perf, BlockHashSet, KType};
-use kaspa_core::info;
+use kaspa_consensus_core::{blockstatus::BlockStatus, config::constants::perf, BlockHashSet};
 use kaspa_database::{prelude::CachePolicy, registry::DatabaseStorePrefixes};
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
@@ -89,20 +88,22 @@ impl ConsensusStorage {
             perf::bounded_cache_size(pruning_size_for_caches, 15_000_000, size_of::<Hash>() + size_of::<CompactGhostdagData>());
 
         // Cache sizes which are tracked per unit
-        let relations_cache_size = 40_000_000 / size_of::<Hash>();
-        let relations_children_cache_size = 5_000_000 / size_of::<Hash>();
+        let parents_cache_size = 40_000_000 / size_of::<Hash>();
+        let children_cache_size = 5_000_000 / size_of::<Hash>();
         let reachability_relations_cache_size = 40_000_000 / size_of::<Hash>();
         let reachability_relations_children_cache_size = 5_000_000 / size_of::<Hash>();
         let transactions_cache_size = 40_000usize; // Tracked units are txs (TODO)
 
         // Cache sizes represented and tracked as bytes
-        // TODO: unit approx for noise magnitude + higher block levels lower bound
-        let ghostdag_cache_bytes = 100_000_000usize;
-        let headers_cache_bytes = 100_000_000usize;
-        let utxo_diffs_cache_bytes = 50_000_000usize;
+        let ghostdag_cache_bytes = 80_000_000usize;
+        let headers_cache_bytes = 80_000_000usize;
+        let utxo_diffs_cache_bytes = 40_000_000usize;
 
         // Add stochastic noise to cache sizes to avoid predictable and equal sizes across all network nodes
         let noise = |size| size + rand::thread_rng().gen_range(0..16);
+
+        // Number of units lower bound for level-related caches
+        let unit_lower_bound = 2 * params.pruning_proof_m as usize;
 
         // Headers
         let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), CachePolicy::Unit(noise(statuses_cache_size)))));
@@ -110,22 +111,13 @@ impl ConsensusStorage {
             (0..=params.max_block_level)
                 .map(|level| {
                     // = size / 2^level
-                    let level_normalized_cache_size = relations_cache_size.checked_shr(level as u32).unwrap_or(0);
-                    let cache_policy =
-                        if level_normalized_cache_size > 2 * params.pruning_proof_m as usize * params.max_block_parents as usize {
-                            CachePolicy::Tracked(noise(level_normalized_cache_size))
-                        } else {
-                            CachePolicy::Unit(noise(2 * params.pruning_proof_m as usize))
-                        };
-                    let level_normalized_children_cache_size = relations_children_cache_size.checked_shr(level as u32).unwrap_or(0);
-                    let children_cache_policy = if level_normalized_children_cache_size
-                        > 2 * params.pruning_proof_m as usize * params.max_block_parents as usize
-                    {
-                        CachePolicy::Tracked(noise(level_normalized_children_cache_size))
-                    } else {
-                        CachePolicy::Unit(noise(2 * params.pruning_proof_m as usize))
-                    };
-                    DbRelationsStore::new(db.clone(), level, cache_policy, children_cache_policy)
+                    let parents_level_size = parents_cache_size.checked_shr(level as u32).unwrap_or(0);
+                    let parents_cache_policy =
+                        CachePolicy::LowerBoundedTracked { max_size: noise(parents_level_size), min_units: noise(unit_lower_bound) };
+                    let children_level_size = children_cache_size.checked_shr(level as u32).unwrap_or(0);
+                    let children_cache_policy =
+                        CachePolicy::LowerBoundedTracked { max_size: noise(children_level_size), min_units: noise(unit_lower_bound) };
+                    DbRelationsStore::new(db.clone(), level, parents_cache_policy, children_cache_policy)
                 })
                 .collect_vec(),
         ));
@@ -142,24 +134,14 @@ impl ConsensusStorage {
             CachePolicy::Tracked(noise(reachability_relations_children_cache_size)),
         )));
 
-        // TODO
-        let max_ghostdag_data_size =
-            size_of::<GhostdagData>() + 248 * size_of::<Hash>() + params.ghostdag_k as usize * size_of::<(Hash, KType)>();
-
-        info!("Max GD data: {}, cache items: {}", max_ghostdag_data_size, ghostdag_cache_bytes / max_ghostdag_data_size);
-
         let ghostdag_stores = Arc::new(
             (0..=params.max_block_level)
                 .map(|level| {
                     // = size / 2^level
-                    let level_normalized_cache_bytes = ghostdag_cache_bytes.checked_shr(level as u32).unwrap_or(0);
-                    let cache_policy = if level_normalized_cache_bytes > 2 * params.pruning_proof_m as usize * max_ghostdag_data_size {
-                        CachePolicy::Tracked(noise(level_normalized_cache_bytes))
-                    } else {
-                        CachePolicy::Unit(noise(2 * params.pruning_proof_m as usize))
-                    };
-                    let compact_cache_size =
-                        max(ghostdag_compact_cache_size.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m as usize);
+                    let level_cache_bytes = ghostdag_cache_bytes.checked_shr(level as u32).unwrap_or(0);
+                    let cache_policy =
+                        CachePolicy::LowerBoundedTracked { max_size: noise(level_cache_bytes), min_units: noise(unit_lower_bound) };
+                    let compact_cache_size = max(ghostdag_compact_cache_size.checked_shr(level as u32).unwrap_or(0), unit_lower_bound);
                     Arc::new(DbGhostdagStore::new(db.clone(), level, cache_policy, CachePolicy::Unit(noise(compact_cache_size))))
                 })
                 .collect_vec(),

@@ -274,7 +274,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                     .build()
                     .unwrap();
 
-                let headers_store = DbHeadersStore::new(consensus_db, CachePolicy::Unit(0), CachePolicy::Unit(0));
+                let headers_store = DbHeadersStore::new(consensus_db, CachePolicy::Empty, CachePolicy::Empty);
 
                 if headers_store.has(config.genesis.hash).unwrap() {
                     info!("Genesis is found in active consensus DB. No action needed.");

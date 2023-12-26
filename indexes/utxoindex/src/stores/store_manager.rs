@@ -30,7 +30,7 @@ impl Store {
         Self {
             utxoindex_tips_store: DbUtxoIndexTipsStore::new(db.clone()),
             circulating_supply_store: DbCirculatingSupplyStore::new(db.clone()),
-            utxos_by_script_public_key_store: DbUtxoSetByScriptPublicKeyStore::new(db, CachePolicy::Unit(0)),
+            utxos_by_script_public_key_store: DbUtxoSetByScriptPublicKeyStore::new(db, CachePolicy::Empty),
         }
     }
 
