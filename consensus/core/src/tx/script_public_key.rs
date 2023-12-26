@@ -34,11 +34,17 @@ use wasm_bindgen::prelude::wasm_bindgen;
 pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
 
 /// Represents a Kaspad ScriptPublicKey
-#[derive(Default, Debug, PartialEq, Eq, Clone, Hash)]
+#[derive(Default, PartialEq, Eq, Clone, Hash)]
 #[wasm_bindgen(inspectable)]
 pub struct ScriptPublicKey {
     pub version: ScriptPublicKeyVersion,
     pub(super) script: ScriptVec, // Kept private to preserve read-only semantics
+}
+
+impl std::fmt::Debug for ScriptPublicKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ScriptPublicKey").field("version", &self.version).field("script", &self.script.to_hex()).finish()
+    }
 }
 
 impl FromHex for ScriptPublicKey {

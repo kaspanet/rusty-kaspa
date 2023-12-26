@@ -17,6 +17,65 @@ pub enum Error {
 
     #[error("Secp256k1 -> {0}")]
     Secp256k1Error(#[from] secp256k1::Error),
+
+    #[error("The transaction is partially signed")]
+    PartiallySigned,
+
+    #[error("The transaction is fully signed")]
+    FullySigned,
+}
+
+/// A wrapper enum that represents the transaction signed state. A transaction
+/// contained by this enum can be either fully signed or partially signed.
+pub enum Signed {
+    Fully(SignableTransaction),
+    Partially(SignableTransaction),
+}
+
+impl Signed {
+    /// Returns the transaction if it is fully signed, otherwise returns an error
+    pub fn fully_signed(self) -> std::result::Result<SignableTransaction, Error> {
+        match self {
+            Signed::Fully(tx) => Ok(tx),
+            Signed::Partially(_) => Err(Error::PartiallySigned),
+        }
+    }
+
+    /// Returns the transaction if it is fully signed, otherwise returns the
+    /// transaction as an error `Err(tx)`.
+    #[allow(clippy::result_large_err)]
+    pub fn try_fully_signed(self) -> std::result::Result<SignableTransaction, SignableTransaction> {
+        match self {
+            Signed::Fully(tx) => Ok(tx),
+            Signed::Partially(tx) => Err(tx),
+        }
+    }
+
+    /// Returns the transaction if it is partially signed, otherwise fail with an error
+    pub fn partially_signed(self) -> std::result::Result<SignableTransaction, Error> {
+        match self {
+            Signed::Fully(_) => Err(Error::FullySigned),
+            Signed::Partially(tx) => Ok(tx),
+        }
+    }
+
+    /// Returns the transaction if it is partially signed, otherwise returns the
+    /// transaction as an error `Err(tx)`.
+    #[allow(clippy::result_large_err)]
+    pub fn try_partially_signed(self) -> std::result::Result<SignableTransaction, SignableTransaction> {
+        match self {
+            Signed::Fully(tx) => Err(tx),
+            Signed::Partially(tx) => Ok(tx),
+        }
+    }
+
+    /// Returns the transaction regardless of whether it is fully or partially signed
+    pub fn unwrap(self) -> SignableTransaction {
+        match self {
+            Signed::Fully(tx) => tx,
+            Signed::Partially(tx) => tx,
+        }
+    }
 }
 
 /// Sign a transaction using schnorr
@@ -63,7 +122,8 @@ pub fn sign_with_multiple(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8
 
 /// TODO (aspect) - merge this with `v1` fn above or refactor wallet core to use the script engine.
 /// Sign a transaction using schnorr
-pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8; 32]>) -> SignableTransaction {
+#[allow(clippy::result_large_err)]
+pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8; 32]>) -> Signed {
     let mut map = BTreeMap::new();
     for privkey in privkeys {
         let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &privkey).unwrap();
@@ -73,6 +133,7 @@ pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: Vec<
     }
 
     let mut reused_values = SigHashReusedValues::new();
+    let mut additional_signatures_required = false;
     for i in 0..mutable_tx.tx.inputs.len() {
         let script = mutable_tx.entries[i].as_ref().unwrap().script_public_key.script();
         if let Some(schnorr_key) = map.get(&script.to_vec()) {
@@ -81,9 +142,15 @@ pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: Vec<
             let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
             // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)
             mutable_tx.tx.inputs[i].signature_script = std::iter::once(65u8).chain(sig).chain([SIG_HASH_ALL.to_u8()]).collect();
+        } else {
+            additional_signatures_required = true;
         }
     }
-    mutable_tx
+    if additional_signatures_required {
+        Signed::Partially(mutable_tx)
+    } else {
+        Signed::Fully(mutable_tx)
+    }
 }
 
 pub fn verify(tx: &impl crate::tx::VerifiableTransaction) -> Result<(), Error> {

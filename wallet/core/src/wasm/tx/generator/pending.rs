@@ -37,12 +37,12 @@ impl PendingTransaction {
 
     #[wasm_bindgen(getter, js_name = aggregateInputAmount)]
     pub fn aggregate_input_value(&self) -> BigInt {
-        BigInt::from(self.inner.input_aggregate_value())
+        BigInt::from(self.inner.aggregate_input_value())
     }
 
     #[wasm_bindgen(getter, js_name = aggregateOutputAmount)]
     pub fn aggregate_output_value(&self) -> BigInt {
-        BigInt::from(self.inner.output_aggregate_value())
+        BigInt::from(self.inner.aggregate_output_value())
     }
 
     #[wasm_bindgen(getter, js_name = "type")]
@@ -65,7 +65,7 @@ impl PendingTransaction {
     }
 
     /// Sign transaction with supplied [`Array`] or [`PrivateKey`] or an array of
-    /// raw private key bytes (encoded as [`Uint8Array`] or as hex strings)
+    /// raw private key bytes (encoded as `Uint8Array` or as hex strings)
     pub fn sign(&self, js_value: JsValue) -> Result<()> {
         if let Ok(keys) = js_value.dyn_into::<Array>() {
             let keys =
