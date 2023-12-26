@@ -33,7 +33,7 @@ impl MassCalculator {
     /// if the cost to the network to spend coins is more than 1/3 of the minimum
     /// transaction relay fee, it is considered dust.
     ///
-    /// It is exposed by [MiningManager] for use by transaction generators and wallets.
+    /// It is exposed by `MiningManager` for use by transaction generators and wallets.
     #[wasm_bindgen(js_name=isTransactionOutputDust)]
     pub fn is_transaction_output_dust(transaction_output: JsValue) -> Result<bool> {
         let transaction_output = TransactionOutput::try_from(transaction_output)?;

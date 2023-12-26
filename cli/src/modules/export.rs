@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_wallet_core::runtime::{Account, MultiSig};
+use kaspa_wallet_core::account::{multisig::MultiSig, Account, MULTISIG_ACCOUNT_KIND};
 
 #[derive(Default, Handler)]
 #[help("Export transactions, a wallet or a private key")]
@@ -18,7 +18,7 @@ impl Export {
         match what.as_str() {
             "mnemonic" => {
                 let account = ctx.account().await?;
-                if matches!(account.account_kind(), AccountKind::MultiSig) {
+                if account.account_kind() == MULTISIG_ACCOUNT_KIND {
                     let account = account.downcast_arc::<MultiSig>()?;
                     export_multisig_account(ctx, account).await
                 } else {
@@ -31,7 +31,7 @@ impl Export {
 }
 
 async fn export_multisig_account(ctx: Arc<KaspaCli>, account: Arc<MultiSig>) -> Result<()> {
-    match &account.prv_key_data_ids {
+    match &account.prv_key_data_ids() {
         None => Err(Error::KeyDataNotFound),
         Some(v) if v.is_empty() => Err(Error::KeyDataNotFound),
         Some(prv_key_data_ids) => {
@@ -40,14 +40,13 @@ async fn export_multisig_account(ctx: Arc<KaspaCli>, account: Arc<MultiSig>) -> 
                 return Err(Error::WalletSecretRequired);
             }
 
-            tprintln!(ctx, "required signatures: {}", account.minimum_signatures);
+            tprintln!(ctx, "required signatures: {}", account.minimum_signatures());
             tprintln!(ctx, "");
 
-            let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
             let prv_key_data_store = ctx.store().as_prv_key_data_store()?;
             let mut generated_xpub_keys = Vec::with_capacity(prv_key_data_ids.len());
             for (id, prv_key_data_id) in prv_key_data_ids.iter().enumerate() {
-                let prv_key_data = prv_key_data_store.load_key_data(&access_ctx, prv_key_data_id).await?.unwrap();
+                let prv_key_data = prv_key_data_store.load_key_data(&wallet_secret, prv_key_data_id).await?.unwrap();
                 let mnemonic = prv_key_data.as_mnemonic(None).unwrap().unwrap();
 
                 tprintln!(ctx, "mnemonic {}:", id + 1);
@@ -55,12 +54,11 @@ async fn export_multisig_account(ctx: Arc<KaspaCli>, account: Arc<MultiSig>) -> 
                 tprintln!(ctx, "{}", mnemonic.phrase());
                 tprintln!(ctx, "");
 
-                let xpub_key = prv_key_data.create_xpub(None, AccountKind::MultiSig, 0).await?; // todo it can be done concurrently
-                let xpub_prefix = kaspa_bip32::Prefix::XPUB;
-                generated_xpub_keys.push(xpub_key.to_string(Some(xpub_prefix)));
+                let xpub_key = prv_key_data.create_xpub(None, MULTISIG_ACCOUNT_KIND.into(), 0).await?; // todo it can be done concurrently
+                generated_xpub_keys.push(xpub_key);
             }
 
-            let additional = account.xpub_keys.iter().filter(|xpub| !generated_xpub_keys.contains(xpub));
+            let additional = account.xpub_keys().iter().filter(|xpub| !generated_xpub_keys.contains(xpub));
             additional.enumerate().for_each(|(idx, xpub)| {
                 if idx == 0 {
                     tprintln!(ctx, "additional xpubs: ");
@@ -80,8 +78,7 @@ async fn export_single_key_account(ctx: Arc<KaspaCli>, account: Arc<dyn Account>
         return Err(Error::WalletSecretRequired);
     }
 
-    let access_ctx: Arc<dyn AccessContextT> = Arc::new(AccessContext::new(wallet_secret));
-    let prv_key_data = ctx.store().as_prv_key_data_store()?.load_key_data(&access_ctx, prv_key_data_id).await?;
+    let prv_key_data = ctx.store().as_prv_key_data_store()?.load_key_data(&wallet_secret, prv_key_data_id).await?;
     let Some(keydata) = prv_key_data else { return Err(Error::KeyDataNotFound) };
     let payment_secret = if keydata.payload.is_encrypted() {
         let payment_secret = Secret::new(ctx.term().ask(true, "Enter payment password: ").await?.trim().as_bytes().to_vec());

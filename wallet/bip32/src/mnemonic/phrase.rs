@@ -4,26 +4,43 @@ use super::{
     bits::{BitWriter, IterExt},
     language::Language,
 };
+use crate::Result;
 use crate::{Error, KEY_SIZE};
-//use alloc::{format, string::String};
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use kaspa_utils::hex::*;
 use rand_core::{CryptoRng, RngCore};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use zeroize::{Zeroize, Zeroizing};
-
-//#[cfg(feature = "bip39")]
 use wasm_bindgen::prelude::*;
+use zeroize::{Zeroize, Zeroizing};
 use {super::seed::Seed, hmac::Hmac, sha2::Sha512};
 
-use kaspa_utils::hex::*;
-//use workflow_wasm::jsvalue::*;
-use crate::Result;
 /// Number of PBKDF2 rounds to perform when deriving the seed
-//#[cfg(feature = "bip39")]
 const PBKDF2_ROUNDS: u32 = 2048;
 
 /// Source entropy for a BIP39 mnemonic phrase
-pub type Entropy = [u8; KEY_SIZE];
-//use std::convert::TryInto;
+pub type Entropy32 = [u8; KEY_SIZE];
+pub type Entropy16 = [u8; 16];
+
+#[derive(Default, Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum WordCount {
+    #[default]
+    Words12,
+    Words24,
+}
+
+impl TryFrom<usize> for WordCount {
+    type Error = Error;
+    fn try_from(word_count: usize) -> Result<Self> {
+        match word_count {
+            12 => Ok(WordCount::Words12),
+            24 => Ok(WordCount::Words24),
+            _ => Err(Error::WordCount(word_count)),
+        }
+    }
+}
+
 /// BIP39 mnemonic phrases: sequences of words representing cryptographic keys.
 #[derive(Clone)]
 #[wasm_bindgen(inspectable)]
@@ -42,11 +59,6 @@ pub struct Mnemonic {
 impl Mnemonic {
     #[wasm_bindgen(constructor)]
     pub fn constructor(phrase: String, language: Option<Language>) -> Result<Mnemonic> {
-        //let vec: Vec<u8> = entropy.try_as_vec_u8().unwrap_or_else(|err| panic!("invalid entropy {err}"));
-        //let entropy = <Vec<u8> as TryInto<Entropy>>::try_into(vec).unwrap_or_else(|vec| panic!("invalid mnemonic: {vec:?}"));
-
-        //Mnemonic { language, entropy, phrase }
-
         Mnemonic::new(phrase, language.unwrap_or(Language::English))
     }
 
@@ -66,8 +78,9 @@ impl Mnemonic {
     }
 
     #[wasm_bindgen(js_name = random)]
-    pub fn create_random() -> Result<Mnemonic> {
-        Mnemonic::random(rand::thread_rng(), Default::default())
+    pub fn create_random_js(word_count: JsValue) -> Result<Mnemonic> {
+        let word_count = word_count.as_f64().unwrap_or(24.0) as usize;
+        Mnemonic::random(word_count.try_into()?, Default::default())
     }
 
     #[wasm_bindgen(getter, js_name = phrase)]
@@ -88,11 +101,24 @@ impl Mnemonic {
 }
 
 impl Mnemonic {
+    pub fn random(word_count: WordCount, language: Language) -> Result<Mnemonic> {
+        Mnemonic::random_impl(word_count, rand::thread_rng(), language)
+    }
+
     /// Create a random BIP39 mnemonic phrase.
-    pub fn random(mut rng: impl RngCore + CryptoRng, language: Language) -> Result<Self> {
-        let mut entropy = Entropy::default();
-        rng.fill_bytes(&mut entropy);
-        Self::from_entropy(entropy.to_vec(), language)
+    pub fn random_impl(word_count: WordCount, mut rng: impl RngCore + CryptoRng, language: Language) -> Result<Self> {
+        match word_count {
+            WordCount::Words24 => {
+                let mut entropy = Entropy32::default();
+                rng.fill_bytes(&mut entropy);
+                Self::from_entropy(entropy.to_vec(), language)
+            }
+            WordCount::Words12 => {
+                let mut entropy = Entropy16::default();
+                rng.fill_bytes(&mut entropy);
+                Self::from_entropy(entropy.to_vec(), language)
+            }
+        }
     }
 
     /// Create a new BIP39 mnemonic phrase from the given entropy

@@ -1,8 +1,11 @@
+//!
+//! Id references used to associate transactions with Account or UtxoContext ids.
+//!
+
 use crate::imports::*;
-use crate::runtime::{Account, AccountId};
 use crate::utxo::{UtxoContextBinding as UtxoProcessorBinding, UtxoContextId};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type", content = "id")]
 pub enum Binding {
@@ -32,5 +35,11 @@ impl Binding {
             Binding::Custom(id) => id.to_hex(),
             Binding::Account(id) => id.to_hex(),
         }
+    }
+}
+
+impl AsRef<Binding> for Binding {
+    fn as_ref(&self) -> &Binding {
+        self
     }
 }

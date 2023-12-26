@@ -1,22 +1,19 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime;
-use crate::secret::Secret;
 use crate::storage::local::interface::LocalStore;
-use crate::storage::PrvKeyDataId;
-use crate::storage::{self, Hint};
+use crate::storage::{PrvKeyDataId, WalletDescriptor};
+use crate::wallet as native;
 use crate::wasm::wallet::account::Account;
 use crate::wasm::wallet::keydata::PrvKeyDataInfo;
 use kaspa_wrpc_client::wasm::RpcClient;
 use kaspa_wrpc_client::WrpcEncoding;
-use runtime::AccountKind;
 use workflow_core::sendable::Sendable;
 use workflow_wasm::channel::EventDispatcher;
 
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
 pub struct Wallet {
-    pub(crate) wallet: Arc<runtime::Wallet>,
+    pub(crate) wallet: Arc<native::Wallet>,
     #[wasm_bindgen(getter_with_clone)]
     pub rpc: RpcClient,
     #[wasm_bindgen(getter_with_clone)]
@@ -38,7 +35,7 @@ impl Wallet {
         let rpc_api: Arc<DynRpcApi> = rpc.client().rpc_api().clone();
         let rpc_ctl = rpc.client().rpc_ctl().clone();
         let rpc_binding = Rpc::new(rpc_api, rpc_ctl);
-        let wallet = Arc::new(runtime::Wallet::try_with_rpc(Some(rpc_binding), store, network_id)?);
+        let wallet = Arc::new(native::Wallet::try_with_rpc(Some(rpc_binding), store, network_id)?);
         let events = EventDispatcher::default();
 
         Ok(Self { wallet, events, rpc })
@@ -103,11 +100,8 @@ impl Wallet {
     }
 
     #[wasm_bindgen(js_name = "descriptor")]
-    pub fn descriptor(&self) -> Result<JsValue> {
-        match self.wallet.descriptor()? {
-            Some(desc) => Ok(JsValue::from(desc)),
-            None => Ok(JsValue::UNDEFINED),
-        }
+    pub fn descriptor(&self) -> Option<WalletDescriptor> {
+        self.wallet.descriptor()
     }
 
     pub async fn exists(&self, name: JsValue) -> Result<bool> {
@@ -123,45 +117,45 @@ impl Wallet {
         self.wallet.exists(name.as_deref()).await
     }
 
-    #[wasm_bindgen(js_name = "createWallet")]
-    pub async fn create_wallet(&self, wallet_args: &JsValue) -> Result<String> {
-        let wallet_args: WalletCreateArgs = wallet_args.try_into()?;
-        let descriptor = self.wallet.create_wallet(wallet_args.into()).await?;
-        Ok(descriptor.unwrap_or_default())
-    }
+    // #[wasm_bindgen(js_name = "createWallet")]
+    // pub async fn create_wallet(&self, wallet_args: &JsValue) -> Result<()> {
+    //     let wallet_args: WalletCreateArgs = wallet_args.try_into()?;
+    //     let (_wallet_descriptor, _storage_descriptor) = self.wallet.create_wallet(wallet_args.into()).await?;
+    //     Ok(())
+    // }
 
-    #[wasm_bindgen(js_name = "createPrvKeyData")]
-    pub async fn create_prv_key_data(&self, args: &JsValue) -> Result<Object> {
-        let prv_key_data_args: PrvKeyDataCreateArgs = args.try_into()?;
-        let (prv_key_data_id, mnemonic) = self.wallet.create_prv_key_data(prv_key_data_args.into()).await?;
-        let object = Object::new();
-        object.set("id", &JsValue::from(prv_key_data_id.to_hex()))?;
-        object.set("mnemonic", &JsValue::from(mnemonic.phrase_string()))?;
-        Ok(object)
-    }
+    // #[wasm_bindgen(js_name = "createPrvKeyData")]
+    // pub async fn create_prv_key_data(&self, args: &JsValue) -> Result<Object> {
+    //     let prv_key_data_args: PrvKeyDataCreateArgs = args.try_into()?;
+    //     let (prv_key_data_id, mnemonic) = self.wallet.create_prv_key_data(prv_key_data_args.into()).await?;
+    //     let object = Object::new();
+    //     object.set("id", &JsValue::from(prv_key_data_id.to_hex()))?;
+    //     object.set("mnemonic", &JsValue::from(mnemonic.phrase_string()))?;
+    //     Ok(object)
+    // }
 
-    #[wasm_bindgen(js_name = "createAccount")]
-    pub async fn create_account(&self, prv_key_data_id: String, account_args: &JsValue) -> Result<JsValue> {
-        let _account_args: AccountCreateArgs = account_args.try_into()?;
-        let _prv_key_data_id =
-            PrvKeyDataId::from_hex(&prv_key_data_id).map_err(|err| Error::KeyId(format!("{} : {err}", prv_key_data_id)))?;
+    // #[wasm_bindgen(js_name = "createAccount")]
+    // pub async fn create_account(&self, prv_key_data_id: String, account_args: &JsValue) -> Result<JsValue> {
+    //     let _account_args: AccountCreateArgs = account_args.try_into()?;
+    //     let _prv_key_data_id =
+    //         PrvKeyDataId::from_hex(&prv_key_data_id).map_err(|err| Error::KeyId(format!("{} : {err}", prv_key_data_id)))?;
 
-        todo!()
+    //     todo!()
 
-        // match account_args.account_kind {
-        //     AccountKind::Bip32 | AccountKind::Legacy => {
-        //         let account = self.wallet.create_bip32_account(prv_key_data_id, account_args.into()).await?;
-        //         Ok(Account::try_new(account).await?.into())
-        //     }
-        //     AccountKind::MultiSig => {
-        //         todo!()
-        //     }
-        // }
-    }
+    //     // match account_args.account_kind {
+    //     //     AccountKind::Bip32 | AccountKind::Legacy => {
+    //     //         let account = self.wallet.create_bip32_account(prv_key_data_id, account_args.into()).await?;
+    //     //         Ok(Account::try_new(account).await?.into())
+    //     //     }
+    //     //     AccountKind::MultiSig => {
+    //     //         todo!()
+    //     //     }
+    //     // }
+    // }
 
-    pub async fn ping(&self) -> bool {
-        self.wallet.ping().await
-    }
+    // pub async fn ping(&self) -> bool {
+    //     self.wallet.ping().await.is_ok()
+    // }
 
     pub async fn start(&self) -> Result<()> {
         self.events.start_notification_task(self.wallet.multiplexer()).await?;
@@ -212,81 +206,99 @@ impl TryFrom<JsValue> for WalletCtorArgs {
     }
 }
 
-struct WalletCreateArgs {
-    pub title: Option<String>,
-    pub filename: Option<String>,
-    pub user_hint: Option<Hint>,
-    pub wallet_secret: Secret,
-    pub overwrite_wallet_storage: bool,
-}
+// struct WalletCreateArgs {
+//     pub title: Option<String>,
+//     pub filename: Option<String>,
+//     pub user_hint: Option<Hint>,
+//     pub wallet_secret: Secret,
+//     pub overwrite_wallet_storage: bool,
+// }
 
-impl TryFrom<&JsValue> for WalletCreateArgs {
-    type Error = Error;
-    fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Some(object) = Object::try_from(js_value) {
-            Ok(WalletCreateArgs {
-                title: object.try_get_string("title")?,
-                filename: object.try_get_string("filename")?,
-                user_hint: object.try_get_string("hint")?.map(Hint::from),
-                wallet_secret: object.get_string("walletSecret")?.into(),
-                overwrite_wallet_storage: object.try_get_bool("overwrite")?.unwrap_or(false),
-            })
-        } else if let Some(secret) = js_value.as_string() {
-            Ok(WalletCreateArgs {
-                title: None,
-                filename: None,
-                user_hint: None,
-                wallet_secret: secret.into(),
-                overwrite_wallet_storage: false,
-            })
-        } else {
-            Err("WalletCreateArgs argument must be an object or a secret".into())
-        }
-    }
-}
+// impl TryFrom<&JsValue> for WalletCreateArgs {
+//     type Error = Error;
+//     fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
+//         if let Some(object) = Object::try_from(js_value) {
+//             Ok(WalletCreateArgs {
+//                 title: object.try_get_string("title")?,
+//                 filename: object.try_get_string("filename")?,
+//                 user_hint: object.try_get_string("hint")?.map(Hint::from),
+//                 wallet_secret: object.get_string("walletSecret")?.into(),
+//                 overwrite_wallet_storage: object.try_get_bool("overwrite")?.unwrap_or(false),
+//             })
+//         } else if let Some(secret) = js_value.as_string() {
+//             Ok(WalletCreateArgs {
+//                 title: None,
+//                 filename: None,
+//                 user_hint: None,
+//                 wallet_secret: secret.into(),
+//                 overwrite_wallet_storage: false,
+//             })
+//         } else {
+//             Err("WalletCreateArgs argument must be an object or a secret".into())
+//         }
+//     }
+// }
 
-impl From<WalletCreateArgs> for runtime::WalletCreateArgs {
-    fn from(args: WalletCreateArgs) -> Self {
-        Self {
-            title: args.title,
-            filename: args.filename,
-            user_hint: args.user_hint,
-            wallet_secret: args.wallet_secret,
-            overwrite_wallet_storage: args.overwrite_wallet_storage,
-        }
-    }
-}
+// impl From<WalletCreateArgs> for native::WalletCreateArgs {
+//     fn from(args: WalletCreateArgs) -> Self {
+//         Self {
+//             title: args.title,
+//             filename: args.filename,
+//             user_hint: args.user_hint,
+//             wallet_secret: args.wallet_secret,
+//             overwrite_wallet_storage: args.overwrite_wallet_storage,
+//         }
+//     }
+// }
 
-struct PrvKeyDataCreateArgs {
-    pub name: Option<String>,
-    pub wallet_secret: Secret,
-    pub payment_secret: Option<Secret>,
-    pub mnemonic: Option<String>,
-}
+// struct PrvKeyDataCreateArgs {
+//     pub name: Option<String>,
+//     pub wallet_secret: Secret,
+//     pub payment_secret: Option<Secret>,
+//     pub mnemonic: MnemonicVariant,
+// }
 
-impl TryFrom<&JsValue> for PrvKeyDataCreateArgs {
-    type Error = Error;
-    fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Some(object) = Object::try_from(js_value) {
-            Ok(PrvKeyDataCreateArgs {
-                name: object.try_get_string("name")?,
-                wallet_secret: object.get_string("walletSecret")?.into(),
-                payment_secret: object.try_get_string("paymentSecret")?.map(|s| s.into()),
-                mnemonic: object.try_get_string("mnemonic")?,
-            })
-        } else if let Some(secret) = js_value.as_string() {
-            Ok(PrvKeyDataCreateArgs { name: None, wallet_secret: secret.into(), payment_secret: None, mnemonic: None })
-        } else {
-            Err("PrvKeyDataCreateArgs argument must be an object or a secret".into())
-        }
-    }
-}
+// impl TryFrom<&JsValue> for PrvKeyDataCreateArgs {
+//     type Error = Error;
+//     fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
+//         if let Some(object) = Object::try_from(js_value) {
+//             let mnemonic = object.get_value("mnemonic")?;
+//             let mnemonic = if let Some(mnemonic) = mnemonic.as_string() {
+//                 MnemonicVariant::Phrase(mnemonic)
+//             } else if let Some(words) = mnemonic.as_f64().map(|n| n as usize) {
+//                 let word_count = WordCount::try_from(words)?;
+//                 MnemonicVariant::Random(word_count)
+//             } else {
+//                 return Err(
+//                     "PrvKeyDataCreateArgs argument must be a phrase or a number of words for random mnemonic generation (12 or 24)"
+//                         .into(),
+//                 );
+//             };
 
-impl From<PrvKeyDataCreateArgs> for runtime::PrvKeyDataCreateArgs {
-    fn from(args: PrvKeyDataCreateArgs) -> Self {
-        Self { name: args.name, wallet_secret: args.wallet_secret, payment_secret: args.payment_secret, mnemonic: args.mnemonic }
-    }
-}
+//             Ok(PrvKeyDataCreateArgs {
+//                 name: object.try_get_string("name")?,
+//                 wallet_secret: object.get_string("walletSecret")?.into(),
+//                 payment_secret: object.try_get_string("paymentSecret")?.map(|s| s.into()),
+//                 mnemonic,
+//             })
+//         } else if let Some(secret) = js_value.as_string() {
+//             Ok(PrvKeyDataCreateArgs {
+//                 name: None,
+//                 wallet_secret: secret.into(),
+//                 payment_secret: None,
+//                 mnemonic: MnemonicVariant::Random(WordCount::Words12),
+//             })
+//         } else {
+//             Err("PrvKeyDataCreateArgs argument must be an object or a secret".into())
+//         }
+//     }
+// }
+
+// impl From<PrvKeyDataCreateArgs> for runtime::PrvKeyDataCreateArgs {
+//     fn from(args: PrvKeyDataCreateArgs) -> Self {
+//         Self { name: args.name, wallet_secret: args.wallet_secret, payment_secret: args.payment_secret, mnemonic: args.mnemonic }
+//     }
+// }
 
 // impl Drop for PrvKeyDataCreateArgs {
 //     fn drop(&mut self) {
@@ -296,50 +308,47 @@ impl From<PrvKeyDataCreateArgs> for runtime::PrvKeyDataCreateArgs {
 //     }
 // }
 
-struct AccountCreateArgs {
-    pub name: Option<String>,
-    pub title: Option<String>,
-    pub account_kind: storage::AccountKind,
-    pub wallet_secret: Secret,
-    pub payment_secret: Option<String>,
-}
+// struct AccountCreateArgs {
+//     pub name: Option<String>,
+//     pub account_kind: storage::AccountKind,
+//     pub wallet_secret: Secret,
+//     pub payment_secret: Option<String>,
+// }
 
-impl TryFrom<&JsValue> for AccountCreateArgs {
-    type Error = Error;
-    fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Some(object) = Object::try_from(js_value) {
-            let account_kind = object.get::<AccountKind>("accountKind")?;
-            // let account_kind = if let Some(kind) = kind.as_f64() {
-            //     AccountKind::try_from(kind as u8)?
-            // } else if let Some(kind) = kind.as_string() {
-            //     AccountKind::from_str(kind.as_str())?
-            // } else if kind.is_undefined() {
-            //     AccountKind::default()
-            // } else {
-            //     return Err(Error::Custom("AccountCreateArgs is missing `accountKind` property".to_string()));
-            // };
+// impl TryFrom<&JsValue> for AccountCreateArgs {
+//     type Error = Error;
+//     fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
+//         if let Some(object) = Object::try_from(js_value) {
+//             let account_kind = object.get::<AccountKind>("accountKind")?;
+//             // let account_kind = if let Some(kind) = kind.as_f64() {
+//             //     AccountKind::try_from(kind as u8)?
+//             // } else if let Some(kind) = kind.as_string() {
+//             //     AccountKind::from_str(kind.as_str())?
+//             // } else if kind.is_undefined() {
+//             //     AccountKind::default()
+//             // } else {
+//             //     return Err(Error::Custom("AccountCreateArgs is missing `accountKind` property".to_string()));
+//             // };
 
-            Ok(AccountCreateArgs {
-                name: object.try_get_string("name")?,
-                title: object.try_get_string("title")?,
-                account_kind,
-                wallet_secret: object.get_string("walletSecret")?.into(),
-                payment_secret: object.try_get_string("paymentSecret")?,
-            })
-        } else {
-            Err("AccountCreateArgs argument must be an object".into())
-        }
-    }
-}
+//             Ok(AccountCreateArgs {
+//                 name: object.try_get_string("name")?,
+//                 account_kind,
+//                 wallet_secret: object.get_string("walletSecret")?.into(),
+//                 payment_secret: object.try_get_string("paymentSecret")?,
+//             })
+//         } else {
+//             Err("AccountCreateArgs argument must be an object".into())
+//         }
+//     }
+// }
 
-impl From<AccountCreateArgs> for runtime::AccountCreateArgs {
-    fn from(args: AccountCreateArgs) -> Self {
-        runtime::AccountCreateArgs {
-            name: args.name,
-            title: args.title,
-            account_kind: args.account_kind,
-            wallet_secret: args.wallet_secret,
-            payment_secret: args.payment_secret.map(|s| s.into()),
-        }
-    }
-}
+// impl From<AccountCreateArgs> for runtime::AssocAccountCreateArgs {
+//     fn from(args: AccountCreateArgs) -> Self {
+//         runtime::AssocAccountCreateArgs {
+//             account_name: args.name,
+//             account_kind: args.account_kind,
+//             wallet_secret: args.wallet_secret,
+//             payment_secret: args.payment_secret.map(|s| s.into()),
+//         }
+//     }
+// }

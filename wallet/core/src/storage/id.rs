@@ -1,10 +1,15 @@
+//!
+//! General-purpose Id traits used by storage data collections.
+//!
+
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_utils::hex::ToHex;
 use std::cmp::Eq;
 use std::fmt::Debug;
 use std::hash::Hash;
 
-use crate::storage::{Account, AccountId, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, TransactionRecord};
+use crate::deterministic::AccountId;
+use crate::storage::{AccountStorage, PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, TransactionRecord};
 
 pub trait IdT {
     type Id: Eq + Hash + Debug + ToHex;
@@ -25,7 +30,7 @@ impl IdT for PrvKeyDataInfo {
     }
 }
 
-impl IdT for Account {
+impl IdT for AccountStorage {
     type Id = AccountId;
     fn id(&self) -> &AccountId {
         &self.id

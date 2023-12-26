@@ -1,5 +1,4 @@
 use crate::imports::*;
-use kaspa_wallet_core::runtime::balance::*;
 use workflow_core::channel::*;
 use workflow_terminal::clear::*;
 use workflow_terminal::cursor::*;
@@ -110,16 +109,21 @@ impl Monitor {
         let events = events.lock().unwrap();
         events.iter().for_each(|event| match event.deref() {
             Events::DAAScoreChange { .. } => {}
-            Events::Balance { balance, id, mature_utxo_size, pending_utxo_size } => {
+            Events::Balance { balance, id } => {
                 let network_id = wallet.network_id().expect("missing network type");
                 let network_type = NetworkType::from(network_id);
-                let balance = BalanceStrings::from((balance, &network_type, None));
+                let balance_strings = BalanceStrings::from((balance, &network_type, None));
                 let id = id.short();
 
-                let pending_utxo_info = if *pending_utxo_size > 0 { format!("({pending_utxo_size} pending)") } else { "".to_string() };
-                let utxo_info = style(format!("{} UTXOs {pending_utxo_info}", mature_utxo_size.separated_string())).dim();
+                let mature_utxo_count =
+                    balance.as_ref().map(|balance| balance.mature_utxo_count.separated_string()).unwrap_or("N/A".to_string());
+                let pending_utxo_count = balance.as_ref().map(|balance| balance.pending_utxo_count).unwrap_or(0);
 
-                tprintln!(ctx, "{} {id}: {balance}   {utxo_info}", style("balance".pad_to_width(8)).blue());
+                let pending_utxo_info =
+                    if pending_utxo_count > 0 { format!("({pending_utxo_count} pending)") } else { "".to_string() };
+                let utxo_info = style(format!("{mature_utxo_count} UTXOs {pending_utxo_info}")).dim();
+
+                tprintln!(ctx, "{} {id}: {balance_strings}   {utxo_info}", style("balance".pad_to_width(8)).blue());
             }
             _ => {}
         });

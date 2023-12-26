@@ -1,3 +1,8 @@
+//!
+//! Transaction generator implementation used to construct
+//! Kaspa transactions.
+//!
+
 #[allow(clippy::module_inception)]
 pub mod generator;
 pub mod iterator;
@@ -16,4 +21,4 @@ pub use stream::*;
 pub use summary::*;
 
 #[cfg(test)]
-mod test;
+pub mod test;

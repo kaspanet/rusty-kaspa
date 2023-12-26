@@ -59,11 +59,11 @@ impl ScriptBuilder {
     /// chooses canonical opcodes depending on the length of the data.
     ///
     /// A zero length buffer will lead to a push of empty data onto the stack (Op0 = OpFalse)
-    /// and any push of data greater than [`MAX_SCRIPT_ELEMENT_SIZE`] will not modify
+    /// and any push of data greater than [`MAX_SCRIPT_ELEMENT_SIZE`](kaspa_txscript::MAX_SCRIPT_ELEMENT_SIZE) will not modify
     /// the script since that is not allowed by the script engine.
     ///
     /// Also, the script will not be modified if pushing the data would cause the script to
-    /// exceed the maximum allowed script engine size [`MAX_SCRIPTS_SIZE`].
+    /// exceed the maximum allowed script engine size [`MAX_SCRIPTS_SIZE`](kaspa_txscript::MAX_SCRIPTS_SIZE).
     #[wasm_bindgen(js_name = "addData")]
     pub fn add_data(&self, data: JsValue) -> Result<ScriptBuilder> {
         let data = data.try_as_vec_u8()?;

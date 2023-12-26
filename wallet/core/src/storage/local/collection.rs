@@ -1,3 +1,7 @@
+//!
+//! Ordered collections used to store wallet primitives.
+//!
+
 use crate::error::Error;
 use crate::result::Result;
 use std::collections::HashMap;
@@ -77,15 +81,15 @@ where
         Ok(())
     }
 
-    pub fn store_multiple(&mut self, data: &[&Data]) -> Result<()> {
-        for data in data.iter() {
-            let id = data.id();
-            if self.map.get(id).is_some() {
-                self.map.remove(id);
-                self.vec.retain(|d| d.id() != id);
+    pub fn store_multiple(&mut self, data: Vec<Data>) -> Result<()> {
+        for data in data.into_iter() {
+            let id = data.id().clone();
+            if self.map.get(&id).is_some() {
+                self.map.remove(&id);
+                self.vec.retain(|d| d.id() != &id);
             }
 
-            let data = Arc::new((*data).clone());
+            let data = Arc::new(data);
             self.map.insert(id.clone(), data.clone());
             self.vec.push(data);
         }
@@ -110,13 +114,12 @@ where
     }
 
     pub fn load_multiple(&self, ids: &[Id]) -> Result<Vec<Arc<Data>>> {
-        Ok(ids
-            .iter()
+        ids.iter()
             .map(|id| match self.map.get(id).cloned() {
-                Some(data) => data,
-                None => panic!("requested id `{}` was not found in collection", id),
+                Some(data) => Ok(data),
+                None => Err(Error::KeyId(id.to_string())),
             })
-            .collect())
+            .collect::<Result<Vec<_>>>()
     }
 
     pub fn range(&self, range: std::ops::Range<usize>) -> Result<Vec<Arc<Data>>> {

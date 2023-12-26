@@ -1,3 +1,7 @@
+//!
+//! Location (file path) representation & multi-platform helper utilities.
+//!
+
 use crate::imports::*;
 use crate::result::Result;
 use std::path::{Path, PathBuf};
@@ -21,18 +25,18 @@ impl Storage {
 
 impl Storage {
     pub fn default_wallet_store() -> Self {
-        Self::try_new(&format!("{}.wallet", super::DEFAULT_WALLET_FILE)).unwrap()
+        Self::try_new(&format!("{}.wallet", super::default_wallet_file())).unwrap()
     }
 
     pub fn default_settings_store() -> Self {
-        Self::try_new(&format!("{}.settings", super::DEFAULT_SETTINGS_FILE)).unwrap()
+        Self::try_new(&format!("{}.settings", super::default_wallet_file())).unwrap()
     }
 
     pub fn try_new(name: &str) -> Result<Storage> {
         let filename = if runtime::is_web() {
             PathBuf::from(name)
         } else {
-            let filename = Path::new(super::DEFAULT_STORAGE_FOLDER).join(name);
+            let filename = Path::new(super::default_storage_folder()).join(name);
             fs::resolve_path(filename.to_str().unwrap())?
         };
 
@@ -48,6 +52,13 @@ impl Storage {
         };
 
         Ok(Storage { filename })
+    }
+
+    pub fn rename_sync(&mut self, filename: &str) -> Result<()> {
+        let target_filename = Path::new(filename).to_path_buf();
+        workflow_store::fs::rename_sync(self.filename(), &target_filename)?;
+        self.filename = target_filename;
+        Ok(())
     }
 
     pub fn filename(&self) -> &PathBuf {
@@ -68,10 +79,11 @@ impl Storage {
     }
 
     pub async fn ensure_dir(&self) -> Result<()> {
-        let file = self.filename();
-        if file.exists() {
+        if self.exists().await? {
             return Ok(());
         }
+
+        let file = self.filename();
 
         if let Some(dir) = file.parent() {
             fs::create_dir_all(dir).await?;
@@ -80,11 +92,11 @@ impl Storage {
     }
 
     pub fn ensure_dir_sync(&self) -> Result<()> {
-        let file = self.filename();
-        if file.exists() {
+        if self.exists_sync()? {
             return Ok(());
         }
 
+        let file = self.filename();
         if let Some(dir) = file.parent() {
             fs::create_dir_all_sync(dir)?;
         }

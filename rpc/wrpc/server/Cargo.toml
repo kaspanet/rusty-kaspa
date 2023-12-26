@@ -22,7 +22,6 @@ kaspa-rpc-core.workspace = true
 kaspa-rpc-macros.workspace = true
 kaspa-rpc-service.workspace = true
 kaspa-utils.workspace = true
-kaspa-wrpc-core.workspace = true
 log.workspace = true
 num_cpus.workspace = true
 paste.workspace = true

@@ -1,6 +1,9 @@
 use kaspa_addresses::Version;
 use kaspa_bip32::secp256k1::XOnlyPublicKey;
-use kaspa_wallet_core::message::{sign_message, verify_message, PersonalMessage};
+use kaspa_wallet_core::{
+    account::{BIP32_ACCOUNT_KIND, KEYPAIR_ACCOUNT_KIND},
+    message::{sign_message, verify_message, PersonalMessage},
+};
 
 use crate::imports::*;
 
@@ -126,8 +129,8 @@ impl Message {
     async fn get_address_private_key(self: Arc<Self>, ctx: &Arc<KaspaCli>, kaspa_address: Address) -> Result<[u8; 32]> {
         let account = ctx.wallet().account()?;
 
-        match account.account_kind() {
-            AccountKind::Bip32 => {
+        match account.account_kind().as_ref() {
+            BIP32_ACCOUNT_KIND => {
                 let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
                 let keydata = account.prv_key_data(wallet_secret).await?;
                 let account = account.clone().as_derivation_capable().expect("expecting derivation capable");
@@ -142,7 +145,7 @@ impl Message {
 
                 Err(Error::custom("Could not find address in any derivation path in account"))
             }
-            AccountKind::Keypair => {
+            KEYPAIR_ACCOUNT_KIND => {
                 let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;
                 let keydata = account.prv_key_data(wallet_secret).await?;
                 let decrypted_privkey = keydata.payload.decrypt(payment_secret.as_ref()).unwrap();

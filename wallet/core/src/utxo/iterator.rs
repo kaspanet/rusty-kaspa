@@ -1,3 +1,7 @@
+//!
+//! Associative iterator over the UTXO set.
+//!
+
 use crate::utxo::{UtxoContext, UtxoEntryReference};
 
 pub struct UtxoIterator {

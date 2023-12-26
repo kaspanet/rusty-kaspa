@@ -1,16 +1,13 @@
 use crate::error::Error;
 use crate::helpers::*;
 use crate::imports::*;
-pub use crate::metrics;
 use crate::modules::miner::Miner;
 use crate::modules::node::Node;
 use crate::notifier::{Notification, Notifier};
 use crate::result::Result;
 use kaspa_daemon::{DaemonEvent, DaemonKind, Daemons};
 use kaspa_wallet_core::rpc::DynRpcApi;
-use kaspa_wallet_core::runtime::{Account, BalanceStrings};
 use kaspa_wallet_core::storage::{IdT, PrvKeyDataInfo};
-use kaspa_wallet_core::{runtime::Wallet, Events};
 use kaspa_wrpc_client::KaspaRpcClient;
 use workflow_core::channel::*;
 use workflow_core::time::Instant;
@@ -192,6 +189,7 @@ impl KaspaCli {
     }
 
     pub fn register_metrics(self: &Arc<Self>) -> Result<()> {
+        use crate::modules::metrics;
         register_handlers!(self, self.handlers(), [metrics]);
         Ok(())
     }
@@ -282,6 +280,7 @@ impl KaspaCli {
 
                         if let Ok(msg) = msg {
                             match *msg {
+                                Events::Error { message } => { terrorln!(this,"{message}"); },
                                 Events::UtxoProcStart => {},
                                 Events::UtxoProcStop => {},
                                 Events::UtxoProcError { message } => {
@@ -336,95 +335,117 @@ impl KaspaCli {
 
                                 },
                                 Events::AccountSelection { .. } => { },
+                                Events::WalletCreate { .. } => { },
                                 Events::WalletError { .. } => { },
-                                Events::WalletOpen |
-                                Events::WalletReload => {
+                                // Events::WalletReady { .. } => { },
 
-                                    // load all accounts
-                                    if let Err(err) = this.wallet().activate_all_stored_accounts().await {
-                                        terrorln!(this, "{err}");
-                                    }
-
+                                Events::WalletOpen { .. } |
+                                Events::WalletReload { .. } => { },
+                                Events::WalletClose => {
+                                    this.term().refresh_prompt();
+                                },
+                                Events::PrvKeyDataCreate { .. } => { },
+                                Events::AccountDeactivation { .. } => { },
+                                Events::AccountActivation { .. } => {
                                     // list all accounts
                                     this.list().await.unwrap_or_else(|err|terrorln!(this, "{err}"));
 
                                     // load default account if only one account exists
                                     this.wallet().autoselect_default_account_if_single().await.ok();
                                     this.term().refresh_prompt();
-
                                 },
-                                Events::WalletClose => {
-                                    this.term().refresh_prompt();
-                                },
+                                Events::AccountCreate { .. } => { },
+                                Events::AccountUpdate { .. } => { },
                                 Events::DAAScoreChange { current_daa_score } => {
                                     if this.is_mutted() && this.flags.get(Track::Daa) {
                                         tprintln!(this, "{NOTIFY} DAA: {current_daa_score}");
                                     }
                                 },
+                                Events::Discovery { .. } => { }
                                 Events::Reorg {
                                     record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
                                         let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_with_state(&this.wallet,Some("reorg"),include_utxos).await;
+                                        let tx = record.format_transaction_with_state(&this.wallet,Some("reorg"),include_utxos).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
-                                Events::External {
+                                Events::Stasis {
                                     record
                                 } => {
-                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
+                                    // Pending and coinbase stasis fall under the same `Track` category
+                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
                                         let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_with_state(&this.wallet,Some("external"),include_utxos).await;
+                                        let tx = record.format_transaction_with_state(&this.wallet,Some("stasis"),include_utxos).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
+                                // Events::External {
+                                //     record
+                                // } => {
+                                //     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
+                                //         let include_utxos = this.flags.get(Track::Utxo);
+                                //         let tx = record.format_with_state(&this.wallet,Some("external"),include_utxos).await;
+                                //         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
+                                //     }
+                                // },
                                 Events::Pending {
-                                    record, is_outgoing : _
+                                    record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
                                         let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_with_state(&this.wallet,Some("pending"),include_utxos).await;
+                                        let tx = record.format_transaction_with_state(&this.wallet,Some("pending"),include_utxos).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
                                 Events::Maturity {
-                                    record, is_outgoing : _
-                                } => {
-                                    if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
-                                        let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_with_state(&this.wallet,Some("confirmed"),include_utxos).await;
-                                        tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
-                                    }
-                                },
-                                Events::Outgoing {
                                     record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
                                         let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_with_state(&this.wallet,Some("confirmed"),include_utxos).await;
+                                        let tx = record.format_transaction_with_state(&this.wallet,Some("confirmed"),include_utxos).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
+                                // Events::Outgoing {
+                                //     record
+                                // } => {
+                                //     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
+                                //         let include_utxos = this.flags.get(Track::Utxo);
+                                //         let tx = record.format_with_state(&this.wallet,Some("confirmed"),include_utxos).await;
+                                //         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
+                                //     }
+                                // },
+                                // Events::Change {
+                                //     record
+                                // } => {
+                                //     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
+                                //         let include_utxos = this.flags.get(Track::Utxo);
+                                //         let tx = record.format_with_state(&this.wallet,Some("change"),include_utxos).await;
+                                //         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
+                                //     }
+                                // },
                                 Events::Balance {
                                     balance,
                                     id,
-                                    mature_utxo_size,
-                                    pending_utxo_size,
                                 } => {
 
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Balance)) {
                                         let network_id = this.wallet.network_id().expect("missing network type");
                                         let network_type = NetworkType::from(network_id);
-                                        let balance = BalanceStrings::from((&balance,&network_type, None));
+                                        let balance_strings = BalanceStrings::from((&balance,&network_type, None));
                                         let id = id.short();
 
-                                        let pending_utxo_info = if pending_utxo_size > 0 {
-                                            format!("({pending_utxo_size} pending)")
-                                        } else { "".to_string() };
-                                        let utxo_info = style(format!("{} UTXOs {pending_utxo_info}", mature_utxo_size.separated_string())).dim();
+                                        let mature_utxo_count = balance.as_ref().map(|balance|balance.mature_utxo_count.separated_string()).unwrap_or("N/A".to_string());
+                                        let pending_utxo_count = balance.as_ref().map(|balance|balance.pending_utxo_count).unwrap_or(0);
 
-                                        tprintln!(this, "{NOTIFY} {} {id}: {balance}   {utxo_info}",style("balance".pad_to_width(8)).blue());
+                                        let pending_utxo_info = if pending_utxo_count > 0 {
+                                            format!("({} pending)", pending_utxo_count)
+                                        } else { "".to_string() };
+                                        let utxo_info = style(format!("{mature_utxo_count} UTXOs {pending_utxo_info}")).dim();
+
+                                        tprintln!(this, "{NOTIFY} {} {id}: {balance_strings}   {utxo_info}",style("balance".pad_to_width(8)).blue());
                                     }
 
                                     this.term().refresh_prompt();
@@ -757,9 +778,10 @@ impl Cli for KaspaCli {
             }
         }
 
-        if let Some(name) = self.wallet.name() {
-            if name != "kaspa" {
-                prompt.push(name);
+        if let Some(descriptor) = self.wallet.descriptor() {
+            let title = descriptor.title.unwrap_or(descriptor.filename);
+            if title.to_lowercase().as_str() != "kaspa" {
+                prompt.push(title);
             }
 
             if let Ok(account) = self.wallet.account() {

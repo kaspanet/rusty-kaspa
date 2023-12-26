@@ -64,7 +64,8 @@ impl RpcClient {
 
     /// Connect to the Kaspa RPC server. This function starts a background
     /// task that connects and reconnects to the server if the connection
-    /// is terminated.  Use [`disconnect()`] to terminate the connection.
+    /// is terminated.  Use [`disconnect()`](Self::disconnect()) to
+    /// terminate the connection.
     pub async fn connect(&self, args: JsValue) -> Result<()> {
         let options: ConnectOptions = args.try_into()?;
 
@@ -188,8 +189,7 @@ impl RpcClient {
     ///
     #[wasm_bindgen(js_name = parseUrl)]
     pub fn parse_url(url: &str, encoding: Encoding, network: Network) -> Result<String> {
-        let url_ = KaspaRpcClient::parse_url(Some(url.to_string()), encoding, network.try_into()?)?;
-        let url_ = url_.ok_or(Error::custom(format!("received a malformed URL: {url}")))?;
+        let url_ = KaspaRpcClient::parse_url(url.to_string(), encoding, network.try_into()?)?;
         Ok(url_)
     }
 }

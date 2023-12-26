@@ -33,8 +33,9 @@ impl History {
                 let store = ctx.wallet().store().as_transaction_record_store()?;
                 match store.load_single(&binding, &network_id, &txid).await {
                     Ok(tx) => {
-                        let lines =
-                            tx.format_with_args(&ctx.wallet(), None, current_daa_score, true, true, Some(account.clone())).await;
+                        let lines = tx
+                            .format_transaction_with_args(&ctx.wallet(), None, current_daa_score, true, true, Some(account.clone()))
+                            .await;
                         lines.iter().for_each(|line| tprintln!(ctx, "{line}"));
                     }
                     Err(_) => {
@@ -108,7 +109,14 @@ impl History {
                 match store.load_single(&binding, &network_id, &id).await {
                     Ok(tx) => {
                         let lines = tx
-                            .format_with_args(&ctx.wallet(), None, current_daa_score, include_utxo, true, Some(account.clone()))
+                            .format_transaction_with_args(
+                                &ctx.wallet(),
+                                None,
+                                current_daa_score,
+                                include_utxo,
+                                true,
+                                Some(account.clone()),
+                            )
                             .await;
                         lines.iter().for_each(|line| tprintln!(ctx, "{line}"));
                     }

@@ -125,11 +125,11 @@ impl Server {
     }
 
     pub async fn disconnect(&self, connection: Connection) {
-        log_info!("WebSocket disconnected: {}", connection.peer());
+        // log_info!("WebSocket disconnected: {}", connection.peer());
         if let Some(rpc_core) = &self.inner.rpc_core {
             if let Some(listener_id) = connection.listener_id() {
                 rpc_core.wrpc_notifier.unregister_listener(listener_id).unwrap_or_else(|err| {
-                    format!("WebSocket {} (disconnected) error unregistering the notification listener: {err}", connection.peer());
+                    log_error!("WebSocket {} (disconnected) error unregistering the notification listener: {err}", connection.peer());
                 });
             }
         } else {

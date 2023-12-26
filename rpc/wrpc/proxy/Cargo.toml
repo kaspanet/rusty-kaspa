@@ -14,7 +14,6 @@ kaspa-consensus-core.workspace = true
 kaspa-grpc-client.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-rpc-macros.workspace = true
-kaspa-wrpc-core.workspace = true
 kaspa-wrpc-server.workspace = true
 num_cpus.workspace = true
 thiserror.workspace = true

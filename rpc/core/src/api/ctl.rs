@@ -23,7 +23,7 @@ struct Inner {
 }
 
 /// RPC channel control helper. This is a companion
-/// struct to [`RpcApi`](crate::api::RpcApi) that
+/// struct to [`RpcApi`](crate::api::rpc::RpcApi) that
 /// provides signaling for RPC open/close events as
 /// well as an optional connection descriptor (URL).
 #[derive(Default, Clone)]
@@ -40,7 +40,7 @@ impl RpcCtl {
         Self { inner: Arc::new(Inner { descriptor: Mutex::new(Some(descriptor.to_string())), ..Inner::default() }) }
     }
 
-    /// Obtain internal multiplexer (MPMC channel for [`RpcCtlOp`] operations)
+    /// Obtain internal multiplexer (MPMC channel for [`RpcState`] operations)
     pub fn multiplexer(&self) -> &Multiplexer<RpcState> {
         &self.inner.multiplexer
     }

@@ -1,27 +1,16 @@
-// use futures::future::join_all;
-use crate::imports::{AtomicBool, Ordering};
+use crate::derivation::traits::*;
+use crate::imports::*;
 use hmac::Mac;
 use kaspa_addresses::{Address, Prefix as AddressPrefix, Version as AddressVersion};
-use ripemd::Ripemd160;
-use sha2::{Digest, Sha256};
-use std::{
-    collections::HashMap,
-    fmt::Debug,
-    str::FromStr,
-    sync::{Arc, Mutex, MutexGuard},
-};
-use zeroize::Zeroizing;
-
-use crate::derivation::traits::*;
-use crate::result::Result;
-use async_trait::async_trait;
+use kaspa_bip32::types::{ChainCode, HmacSha512, KeyFingerprint, PublicKeyBytes, KEY_SIZE};
 use kaspa_bip32::{
-    types::*, AddressType, ChildNumber, DerivationPath, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix,
+    AddressType, ChildNumber, DerivationPath, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, ExtendedPublicKey, Prefix,
     PrivateKey, PublicKey, SecretKey, SecretKeyExt,
 };
+use ripemd::Ripemd160;
+use sha2::{Digest, Sha256};
+use std::fmt::Debug;
 use wasm_bindgen::prelude::*;
-
-//pub const CACHE_LIMIT: u32 = 10_000;
 
 fn get_fingerprint<K>(private_key: &K) -> KeyFingerprint
 where
@@ -398,12 +387,12 @@ impl WalletDerivationManagerV0 {
         let digest = Ripemd160::digest(Sha256::digest(&public_key.to_bytes()[1..]));
         let fingerprint = digest[..4].try_into().expect("digest truncated");
 
-        let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(Error::Hmac)?;
+        let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(kaspa_bip32::Error::Hmac)?;
         hmac.update(&public_key.to_bytes());
 
         let (key, chain_code) = Self::derive_public_key_child(public_key, child_number, hmac)?;
 
-        let depth = attrs.depth.checked_add(1).ok_or(Error::Depth)?;
+        let depth = attrs.depth.checked_add(1).ok_or(kaspa_bip32::Error::Depth)?;
 
         let attrs = ExtendedKeyAttrs { parent_fingerprint: fingerprint, child_number, chain_code, depth };
 
@@ -458,7 +447,7 @@ impl WalletDerivationManagerV0 {
 
         let (private_key, chain_code) = Self::derive_key(private_key, child_number, hmac)?;
 
-        let depth = attrs.depth.checked_add(1).ok_or(Error::Depth)?;
+        let depth = attrs.depth.checked_add(1).ok_or(kaspa_bip32::Error::Depth)?;
 
         let attrs = ExtendedKeyAttrs { parent_fingerprint: fingerprint, child_number, chain_code, depth };
 
@@ -489,7 +478,7 @@ impl WalletDerivationManagerV0 {
     where
         K: PrivateKey<PublicKey = secp256k1::PublicKey>,
     {
-        let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(Error::Hmac)?;
+        let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(kaspa_bip32::Error::Hmac)?;
         if hardened {
             hmac.update(&[0]);
             hmac.update(&private_key.to_bytes());
@@ -608,36 +597,14 @@ impl WalletDerivationManagerTrait for WalletDerivationManagerV0 {
     }
 
     fn from_extended_public_key_str(_xpub: &str, _cosigner_index: Option<u32>) -> Result<Self> {
-        // let extended_public_key = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(xpub)?;
-        // let wallet = Self::from_extended_public_key(extended_public_key, cosigner_index).await?;
-        // Ok(wallet)
-        todo!()
+        unreachable!();
     }
 
     fn from_extended_public_key(
         _extended_public_key: ExtendedPublicKey<secp256k1::PublicKey>,
         _cosigner_index: Option<u32>,
     ) -> Result<Self> {
-        // let receive_wallet =
-        //     Self::derive_child_pubkey_manager(extended_public_key.clone(), AddressType::Receive, cosigner_index).await?;
-
-        // println!("###: public_key {:?}", receive_wallet.public_key);
-        // println!("###: attrs {:?}", receive_wallet.attrs());
-        // println!("###: fingerprint {:?}", receive_wallet.fingerprint);
-        // println!("###: hmac {:?}", receive_wallet.hmac);
-
-        // let change_wallet =
-        //     Self::derive_child_pubkey_manager(extended_public_key.clone(), AddressType::Change, cosigner_index).await?;
-
-        // let wallet = Self {
-        //     extended_public_key,
-        //     receive_pubkey_manager: Arc::new(receive_wallet),
-        //     change_pubkey_manager: Arc::new(change_wallet),
-        // };
-
-        // Ok(wallet)
-
-        todo!()
+        unreachable!();
     }
 
     fn receive_pubkey_manager(&self) -> Arc<dyn PubkeyDerivationManagerTrait> {

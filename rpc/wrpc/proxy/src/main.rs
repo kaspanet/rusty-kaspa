@@ -4,7 +4,6 @@ mod result;
 use clap::Parser;
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_rpc_core::api::ops::RpcApiOps;
-use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
 use kaspa_wrpc_server::{
     connection::Connection,
     router::Router,
@@ -15,6 +14,7 @@ use result::Result;
 use std::sync::Arc;
 use workflow_log::*;
 use workflow_rpc::server::prelude::*;
+use workflow_rpc::server::WebSocketCounters;
 
 #[derive(Debug, Parser)]
 #[clap(name = "proxy")]
@@ -80,13 +80,17 @@ async fn main() -> Result<()> {
     log_info!("");
     log_info!("Proxy routing to `{}` on {}", network_type, options.grpc_proxy_address.as_ref().unwrap());
 
-    let counters = Arc::new(WrpcServerCounters::default());
+    let counters = Arc::new(WebSocketCounters::default());
     let tasks = threads.unwrap_or_else(num_cpus::get);
-    let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, encoding, None, options.clone(), counters));
+    let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, encoding, None, options.clone()));
 
     let router = Arc::new(Router::new(rpc_handler.server.clone()));
-    let server =
-        RpcServer::new_with_encoding::<Server, Connection, RpcApiOps, Id64>(encoding, rpc_handler.clone(), router.interface.clone());
+    let server = RpcServer::new_with_encoding::<Server, Connection, RpcApiOps, Id64>(
+        encoding,
+        rpc_handler.clone(),
+        router.interface.clone(),
+        Some(counters),
+    );
 
     log_info!("Kaspa wRPC server is listening on {}", options.listen_address);
     log_info!("Using `{encoding}` protocol encoding");

@@ -1,5 +1,5 @@
 //!
-//! [`keypair`](mod@keypair) module encapsulates [`Keypair`] and [`PrivateKey`].
+//! [`keypair`](mod@self) module encapsulates [`Keypair`] and [`PrivateKey`].
 //! The [`Keypair`] provides access to the secret and public keys.
 //!
 //! ```javascript
@@ -22,6 +22,8 @@ use crate::result::Result;
 use js_sys::{Array, Uint8Array};
 use kaspa_addresses::{Address, Version as AddressVersion};
 use kaspa_consensus_core::network::wasm::Network;
+#[allow(unused_imports)] // needed for rust doc!
+use kaspa_consensus_core::network::NetworkType;
 use secp256k1::{Secp256k1, XOnlyPublicKey};
 use serde_wasm_bindgen::to_value;
 use std::str::FromStr;

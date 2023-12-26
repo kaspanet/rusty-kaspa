@@ -8,6 +8,7 @@ use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 #[cfg(feature = "devnet-prealloc")]
 use kaspa_txscript::pay_to_address_script;
+use std::ffi::OsString;
 #[cfg(feature = "devnet-prealloc")]
 use std::sync::Arc;
 
@@ -320,7 +321,8 @@ pub fn cli() -> Command {
                 .help("Interval in seconds for performance metrics collection."),
         )
         .arg(arg!(--"disable-upnp" "Disable upnp"))
-        .arg(arg!(--"nodnsseed" "Disable DNS seeding for peers"));
+        .arg(arg!(--"nodnsseed" "Disable DNS seeding for peers"))
+        ;
 
     #[cfg(feature = "devnet-prealloc")]
     let cmd = cmd
@@ -332,55 +334,72 @@ pub fn cli() -> Command {
 }
 
 pub fn parse_args() -> Args {
-    let m: clap::ArgMatches = cli().get_matches();
-    let defaults: Args = Default::default();
+    match Args::parse(std::env::args_os()) {
+        Ok(args) => args,
+        Err(err) => {
+            println!("{err}");
+            std::process::exit(1);
+        }
+    }
+}
 
-    Args {
-        appdir: m.get_one::<String>("appdir").cloned(),
-        logdir: m.get_one::<String>("logdir").cloned(),
-        no_log_files: m.get_one::<bool>("nologfiles").cloned().unwrap_or(defaults.no_log_files),
-        rpclisten: m.get_one::<ContextualNetAddress>("rpclisten").cloned(),
-        rpclisten_borsh: m.get_one::<WrpcNetAddress>("rpclisten-borsh").cloned(),
-        rpclisten_json: m.get_one::<WrpcNetAddress>("rpclisten-json").cloned(),
-        unsafe_rpc: m.get_one::<bool>("unsaferpc").cloned().unwrap_or(defaults.unsafe_rpc),
-        wrpc_verbose: false,
-        log_level: m.get_one::<String>("log_level").cloned().unwrap(),
-        async_threads: m.get_one::<usize>("async_threads").cloned().unwrap_or(defaults.async_threads),
-        connect_peers: m.get_many::<ContextualNetAddress>("connect-peers").unwrap_or_default().copied().collect(),
-        add_peers: m.get_many::<ContextualNetAddress>("add-peers").unwrap_or_default().copied().collect(),
-        listen: m.get_one::<ContextualNetAddress>("listen").cloned(),
-        outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
-        inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
-        rpc_max_clients: m.get_one::<usize>("rpcmaxclients").cloned().unwrap_or(defaults.rpc_max_clients),
-        reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
-        enable_unsynced_mining: m.get_one::<bool>("enable-unsynced-mining").cloned().unwrap_or(defaults.enable_unsynced_mining),
-        enable_mainnet_mining: m.get_one::<bool>("enable-mainnet-mining").cloned().unwrap_or(defaults.enable_mainnet_mining),
-        utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
-        testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
-        testnet_suffix: m.get_one::<u32>("netsuffix").cloned().unwrap_or(defaults.testnet_suffix),
-        devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
-        simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
-        archival: m.get_one::<bool>("archival").cloned().unwrap_or(defaults.archival),
-        sanity: m.get_one::<bool>("sanity").cloned().unwrap_or(defaults.sanity),
-        yes: m.get_one::<bool>("yes").cloned().unwrap_or(defaults.yes),
-        user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
-        externalip: m.get_one::<ContextualNetAddress>("externalip").cloned(),
-        perf_metrics: m.get_one::<bool>("perf-metrics").cloned().unwrap_or(defaults.perf_metrics),
-        perf_metrics_interval_sec: m
-            .get_one::<u64>("perf-metrics-interval-sec")
-            .cloned()
-            .unwrap_or(defaults.perf_metrics_interval_sec),
-        // Note: currently used programmatically by benchmarks and not exposed to CLI users
-        block_template_cache_lifetime: defaults.block_template_cache_lifetime,
+impl Args {
+    pub fn parse<I, T>(itr: I) -> Result<Args, clap::Error>
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<OsString> + Clone,
+    {
+        let m: clap::ArgMatches = cli().try_get_matches_from(itr)?;
+        let defaults: Args = Default::default();
 
-        #[cfg(feature = "devnet-prealloc")]
-        num_prealloc_utxos: m.get_one::<u64>("num-prealloc-utxos").cloned(),
-        #[cfg(feature = "devnet-prealloc")]
-        prealloc_address: m.get_one::<String>("prealloc-address").cloned(),
-        #[cfg(feature = "devnet-prealloc")]
-        prealloc_amount: m.get_one::<u64>("prealloc-amount").cloned().unwrap_or(defaults.prealloc_amount),
-        disable_upnp: m.get_one::<bool>("disable-upnp").cloned().unwrap_or(defaults.disable_upnp),
-        disable_dns_seeding: m.get_one::<bool>("nodnsseed").cloned().unwrap_or(defaults.disable_dns_seeding),
+        let args = Args {
+            appdir: m.get_one::<String>("appdir").cloned(),
+            logdir: m.get_one::<String>("logdir").cloned(),
+            no_log_files: m.get_one::<bool>("nologfiles").cloned().unwrap_or(defaults.no_log_files),
+            rpclisten: m.get_one::<ContextualNetAddress>("rpclisten").cloned(),
+            rpclisten_borsh: m.get_one::<WrpcNetAddress>("rpclisten-borsh").cloned(),
+            rpclisten_json: m.get_one::<WrpcNetAddress>("rpclisten-json").cloned(),
+            unsafe_rpc: m.get_one::<bool>("unsaferpc").cloned().unwrap_or(defaults.unsafe_rpc),
+            wrpc_verbose: false,
+            log_level: m.get_one::<String>("log_level").cloned().unwrap(),
+            async_threads: m.get_one::<usize>("async_threads").cloned().unwrap_or(defaults.async_threads),
+            connect_peers: m.get_many::<ContextualNetAddress>("connect-peers").unwrap_or_default().copied().collect(),
+            add_peers: m.get_many::<ContextualNetAddress>("add-peers").unwrap_or_default().copied().collect(),
+            listen: m.get_one::<ContextualNetAddress>("listen").cloned(),
+            outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
+            inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
+            rpc_max_clients: m.get_one::<usize>("rpcmaxclients").cloned().unwrap_or(defaults.rpc_max_clients),
+            reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
+            enable_unsynced_mining: m.get_one::<bool>("enable-unsynced-mining").cloned().unwrap_or(defaults.enable_unsynced_mining),
+            enable_mainnet_mining: m.get_one::<bool>("enable-mainnet-mining").cloned().unwrap_or(defaults.enable_mainnet_mining),
+            utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
+            testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
+            testnet_suffix: m.get_one::<u32>("netsuffix").cloned().unwrap_or(defaults.testnet_suffix),
+            devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
+            simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
+            archival: m.get_one::<bool>("archival").cloned().unwrap_or(defaults.archival),
+            sanity: m.get_one::<bool>("sanity").cloned().unwrap_or(defaults.sanity),
+            yes: m.get_one::<bool>("yes").cloned().unwrap_or(defaults.yes),
+            user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
+            externalip: m.get_one::<ContextualNetAddress>("externalip").cloned(),
+            perf_metrics: m.get_one::<bool>("perf-metrics").cloned().unwrap_or(defaults.perf_metrics),
+            perf_metrics_interval_sec: m
+                .get_one::<u64>("perf-metrics-interval-sec")
+                .cloned()
+                .unwrap_or(defaults.perf_metrics_interval_sec),
+            // Note: currently used programmatically by benchmarks and not exposed to CLI users
+            block_template_cache_lifetime: defaults.block_template_cache_lifetime,
+            disable_upnp: m.get_one::<bool>("disable-upnp").cloned().unwrap_or(defaults.disable_upnp),
+            disable_dns_seeding: m.get_one::<bool>("nodnsseed").cloned().unwrap_or(defaults.disable_dns_seeding),
+
+            #[cfg(feature = "devnet-prealloc")]
+            num_prealloc_utxos: m.get_one::<u64>("num-prealloc-utxos").cloned(),
+            #[cfg(feature = "devnet-prealloc")]
+            prealloc_address: m.get_one::<String>("prealloc-address").cloned(),
+            #[cfg(feature = "devnet-prealloc")]
+            prealloc_amount: m.get_one::<u64>("prealloc-amount").cloned().unwrap_or(defaults.prealloc_amount),
+        };
+        Ok(args)
     }
 }
 

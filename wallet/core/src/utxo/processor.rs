@@ -1,4 +1,11 @@
-use futures::{select_biased, FutureExt};
+//!
+//! Implements [`UtxoProcessor`], which is the main component
+//! of the UTXO subsystem. It is responsible for managing and
+//! coordinating multiple [`UtxoContext`] instances acting as
+//! a hub for UTXO event dispersal and related processing.
+//!
+
+use crate::imports::*;
 use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, UtxosChangedScope, VirtualDaaScoreChangedScope},
@@ -11,25 +18,31 @@ use kaspa_wrpc_client::KaspaRpcClient;
 use workflow_core::channel::{Channel, DuplexChannel};
 use workflow_core::task::spawn;
 
-use crate::imports::*;
+use crate::events::Events;
 use crate::result::Result;
-use crate::utxo::{PendingUtxoEntryReference, UtxoContext, UtxoEntryId, UtxoEntryReference};
-use crate::{events::Events, runtime::SyncMonitor};
+use crate::utxo::{
+    Maturity, OutgoingTransaction, PendingUtxoEntryReference, SyncMonitor, UtxoContext, UtxoEntryId, UtxoEntryReference,
+};
+use crate::wallet::WalletBusMessage;
+use async_std::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 use kaspa_rpc_core::{
     notify::connection::{ChannelConnection, ChannelType},
     Notification,
 };
-use std::collections::HashMap;
+
+use super::UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA;
 
 pub struct Inner {
-    /// UTXOs pending maturity (confirmation)
+    /// Coinbase UTXOs in stasis
+    stasis: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
+    /// UTXOs pending maturity
     pending: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
+    /// Outgoing Transactions
+    outgoing: DashMap<TransactionId, OutgoingTransaction>,
+    outgoing_longevity_period: u64,
     /// Address to UtxoContext map (maps all addresses used by
     /// all UtxoContexts to their respective UtxoContexts)
     address_to_utxo_context_map: DashMap<Arc<Address>, UtxoContext>,
-    /// UtxoContexts that have recoverable UTXOs (UTXOs used in
-    /// outgoing transactions, that have not yet been confirmed)
-    recoverable_contexts: DashSet<UtxoContext>,
     // ---
     current_daa_score: Arc<AtomicU64>,
     network_id: Arc<Mutex<Option<NetworkId>>>,
@@ -41,14 +54,23 @@ pub struct Inner {
     notification_channel: Channel<Notification>,
     sync_proc: SyncMonitor,
     multiplexer: Multiplexer<Box<Events>>,
+    wallet_bus: Option<Channel<WalletBusMessage>>,
+    notification_lock: AsyncMutex<()>,
 }
 
 impl Inner {
-    pub fn new(rpc: Option<Rpc>, network_id: Option<NetworkId>, multiplexer: Multiplexer<Box<Events>>) -> Self {
+    pub fn new(
+        rpc: Option<Rpc>,
+        network_id: Option<NetworkId>,
+        multiplexer: Multiplexer<Box<Events>>,
+        wallet_bus: Option<Channel<WalletBusMessage>>,
+    ) -> Self {
         Self {
+            stasis: DashMap::new(),
             pending: DashMap::new(),
+            outgoing: DashMap::new(),
+            outgoing_longevity_period: UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::Relaxed),
             address_to_utxo_context_map: DashMap::new(),
-            recoverable_contexts: DashSet::new(),
             current_daa_score: Arc::new(AtomicU64::new(0)),
             network_id: Arc::new(Mutex::new(network_id)),
             rpc: Mutex::new(rpc.clone()),
@@ -59,6 +81,8 @@ impl Inner {
             notification_channel: Channel::<Notification>::unbounded(),
             sync_proc: SyncMonitor::new(rpc.clone(), &multiplexer),
             multiplexer,
+            wallet_bus,
+            notification_lock: AsyncMutex::new(()),
         }
     }
 }
@@ -69,9 +93,14 @@ pub struct UtxoProcessor {
 }
 
 impl UtxoProcessor {
-    pub fn new(rpc: Option<Rpc>, network_id: Option<NetworkId>, multiplexer: Option<Multiplexer<Box<Events>>>) -> Self {
+    pub fn new(
+        rpc: Option<Rpc>,
+        network_id: Option<NetworkId>,
+        multiplexer: Option<Multiplexer<Box<Events>>>,
+        wallet_bus: Option<Channel<WalletBusMessage>>,
+    ) -> Self {
         let multiplexer = multiplexer.unwrap_or_default();
-        UtxoProcessor { inner: Arc::new(Inner::new(rpc, network_id, multiplexer)) }
+        UtxoProcessor { inner: Arc::new(Inner::new(rpc, network_id, multiplexer, wallet_bus)) }
     }
 
     pub fn rpc_api(&self) -> Arc<DynRpcApi> {
@@ -96,6 +125,10 @@ impl UtxoProcessor {
         Ok(())
     }
 
+    pub fn wallet_bus(&self) -> &Option<Channel<WalletBusMessage>> {
+        &self.inner.wallet_bus
+    }
+
     pub fn has_rpc(&self) -> bool {
         self.inner.rpc.lock().unwrap().is_some()
     }
@@ -104,12 +137,16 @@ impl UtxoProcessor {
         &self.inner.multiplexer
     }
 
+    pub async fn notification_lock(&self) -> AsyncMutexGuard<()> {
+        self.inner.notification_lock.lock().await
+    }
+
     pub fn sync_proc(&self) -> &SyncMonitor {
         &self.inner.sync_proc
     }
 
-    pub fn listener_id(&self) -> ListenerId {
-        self.inner.listener_id.lock().unwrap().expect("missing listener_id in UtxoProcessor::listener_id()")
+    pub fn listener_id(&self) -> Result<ListenerId> {
+        self.inner.listener_id.lock().unwrap().ok_or(Error::ListenerId)
     }
 
     pub fn set_network_id(&self, network_id: NetworkId) {
@@ -122,6 +159,14 @@ impl UtxoProcessor {
 
     pub fn pending(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference> {
         &self.inner.pending
+    }
+
+    pub fn outgoing(&self) -> &DashMap<TransactionId, OutgoingTransaction> {
+        &self.inner.outgoing
+    }
+
+    pub fn stasis(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference> {
+        &self.inner.stasis
     }
 
     pub fn current_daa_score(&self) -> Option<u64> {
@@ -150,7 +195,7 @@ impl UtxoProcessor {
             if !addresses.is_empty() {
                 let addresses = addresses.into_iter().map(|address| (*address).clone()).collect::<Vec<_>>();
                 let utxos_changed_scope = UtxosChangedScope { addresses };
-                self.rpc_api().start_notify(self.listener_id(), Scope::UtxosChanged(utxos_changed_scope)).await?;
+                self.rpc_api().start_notify(self.listener_id()?, Scope::UtxosChanged(utxos_changed_scope)).await?;
             } else {
                 log_error!("registering empty address list!");
             }
@@ -167,7 +212,7 @@ impl UtxoProcessor {
             if !addresses.is_empty() {
                 let addresses = addresses.into_iter().map(|address| (*address).clone()).collect::<Vec<_>>();
                 let utxos_changed_scope = UtxosChangedScope { addresses };
-                self.rpc_api().stop_notify(self.listener_id(), Scope::UtxosChanged(utxos_changed_scope)).await?;
+                self.rpc_api().stop_notify(self.listener_id()?, Scope::UtxosChanged(utxos_changed_scope)).await?;
             } else {
                 log_error!("unregistering empty address list!");
             }
@@ -193,59 +238,141 @@ impl UtxoProcessor {
         self.inner.current_daa_score.store(current_daa_score, Ordering::SeqCst);
         self.notify(Events::DAAScoreChange { current_daa_score }).await?;
         self.handle_pending(current_daa_score).await?;
-        self.handle_recoverable(current_daa_score).await?;
+        self.handle_outgoing(current_daa_score).await?;
         Ok(())
     }
 
     pub async fn handle_pending(&self, current_daa_score: u64) -> Result<()> {
-        let mature_entries = {
+        let (mature_entries, revived_entries) = {
+            // scan and remove any pending entries that gained maturity
             let mut mature_entries = vec![];
             let pending_entries = &self.inner.pending;
-            pending_entries.retain(|_, pending| {
-                if pending.is_mature(current_daa_score) {
-                    mature_entries.push(pending.clone());
+            pending_entries.retain(|_, pending_entry| match pending_entry.maturity(current_daa_score) {
+                Maturity::Confirmed => {
+                    mature_entries.push(pending_entry.clone());
                     false
-                } else {
-                    true
+                }
+                _ => true,
+            });
+
+            // scan and remove any stasis entries that can now become pending
+            // or gained maturity
+            let mut revived_entries = vec![];
+            let stasis_entries = &self.inner.stasis;
+            stasis_entries.retain(|_, stasis_entry| {
+                match stasis_entry.maturity(current_daa_score) {
+                    Maturity::Confirmed => {
+                        mature_entries.push(stasis_entry.clone());
+                        false
+                    }
+                    Maturity::Pending => {
+                        revived_entries.push(stasis_entry.clone());
+                        // relocate from stasis to pending ...
+                        pending_entries.insert(stasis_entry.id(), stasis_entry.clone());
+                        false
+                    }
+                    Maturity::Stasis => true,
                 }
             });
-            mature_entries
+            (mature_entries, revived_entries)
         };
 
         // ------
 
         let promotions =
             HashMap::group_from(mature_entries.into_iter().map(|utxo| (utxo.inner.utxo_context.clone(), utxo.inner.entry.clone())));
-        let contexts = promotions.keys().cloned().collect::<Vec<_>>();
+        let mut updated_contexts: HashSet<UtxoContext> = HashSet::from_iter(promotions.keys().cloned());
 
         for (context, utxos) in promotions.into_iter() {
             context.promote(utxos).await?;
         }
 
-        for context in contexts.into_iter() {
+        // ------
+
+        let revivals =
+            HashMap::group_from(revived_entries.into_iter().map(|utxo| (utxo.inner.utxo_context.clone(), utxo.inner.entry.clone())));
+        updated_contexts.extend(revivals.keys().cloned());
+
+        for (context, utxos) in revivals.into_iter() {
+            context.revive(utxos).await?;
+        }
+
+        for context in updated_contexts.into_iter() {
             context.update_balance().await?;
         }
 
         Ok(())
     }
 
-    async fn handle_recoverable(&self, current_daa_score: u64) -> Result<()> {
-        self.inner.recoverable_contexts.retain(|context| context.recover(current_daa_score));
+    async fn handle_outgoing(&self, current_daa_score: u64) -> Result<()> {
+        let longevity = self.inner.outgoing_longevity_period;
+
+        self.inner.outgoing.retain(|_, outgoing| {
+            if outgoing.acceptance_daa_score() != 0 && (outgoing.acceptance_daa_score() + longevity) < current_daa_score {
+                outgoing.originating_context().remove_outgoing_transaction(&outgoing.id());
+                false
+            } else {
+                true
+            }
+        });
 
         Ok(())
     }
 
-    pub fn register_recoverable_context(&self, context: &UtxoContext) {
-        self.inner.recoverable_contexts.insert(context.clone());
+    pub fn register_outgoing_transaction(&self, outgoing_transaction: OutgoingTransaction) {
+        self.inner.outgoing.insert(outgoing_transaction.id(), outgoing_transaction);
+    }
+
+    pub fn cancel_outgoing_transaction(&self, transaction_id: TransactionId) {
+        self.inner.outgoing.remove(&transaction_id);
+    }
+
+    pub async fn handle_discovery(&self, record: TransactionRecord) -> Result<()> {
+        if let Some(wallet_bus) = self.wallet_bus() {
+            // if UtxoProcessor has an associated wallet_bus installed
+            // by the wallet, cascade the discovery to the wallet so that
+            // it can check if the record exists in its storage and handle
+            // it in accordance to its policies.
+            wallet_bus.sender.send(WalletBusMessage::Discovery { record }).await?;
+        } else {
+            // otherwise we fetch the unixtime and broadcast the discovery event
+            let transaction_daa_score = record.block_daa_score();
+            match self.rpc_api().get_daa_score_timestamp_estimate(vec![transaction_daa_score]).await {
+                Ok(timestamps) => {
+                    if let Some(timestamp) = timestamps.first() {
+                        let mut record = record.clone();
+                        record.set_unixtime(*timestamp);
+                        self.notify(Events::Discovery { record }).await?;
+                    } else {
+                        self.notify(Events::Error {
+                            message: format!(
+                                "Unable to obtain DAA to unixtime for DAA {transaction_daa_score}, timestamp data is empty"
+                            ),
+                        })
+                        .await?;
+                    }
+                }
+                Err(err) => {
+                    self.notify(Events::Error { message: format!("Unable to resolve DAA to unixtime: {err}") }).await?;
+                }
+            }
+        }
+
+        Ok(())
     }
 
     pub async fn handle_utxo_changed(&self, utxos: UtxosChangedNotification) -> Result<()> {
+        let current_daa_score = self.current_daa_score().expect("DAA score expected when handling UTXO Changed notifications");
+
+        let mut updated_contexts: HashSet<UtxoContext> = HashSet::default();
+
         let removed = (*utxos.removed).clone().into_iter().filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
         let removed = HashMap::group_from(removed);
         for (address, entries) in removed.into_iter() {
             if let Some(utxo_context) = self.address_to_utxo_context(&address) {
+                updated_contexts.insert(utxo_context.clone());
                 let entries = entries.into_iter().map(|entry| entry.into()).collect::<Vec<_>>();
-                utxo_context.handle_utxo_removed(entries).await?;
+                utxo_context.handle_utxo_removed(entries, current_daa_score).await?;
             } else {
                 log_error!("receiving UTXO Changed 'removed' notification for an unknown address: {}", address);
             }
@@ -255,11 +382,18 @@ impl UtxoProcessor {
         let added = HashMap::group_from(added);
         for (address, entries) in added.into_iter() {
             if let Some(utxo_context) = self.address_to_utxo_context(&address) {
+                updated_contexts.insert(utxo_context.clone());
                 let entries = entries.into_iter().map(|entry| entry.into()).collect::<Vec<UtxoEntryReference>>();
-                utxo_context.handle_utxo_added(entries).await?;
+                utxo_context.handle_utxo_added(entries, current_daa_score).await?;
             } else {
                 log_error!("receiving UTXO Changed 'added' notification for an unknown address: {}", address);
             }
+        }
+
+        // iterate over all affected utxo contexts and
+        // update as well as notify their balances.
+        for context in updated_contexts.iter() {
+            context.update_balance().await?;
         }
 
         Ok(())
@@ -380,7 +514,7 @@ impl UtxoProcessor {
     }
 
     async fn handle_notification(&self, notification: Notification) -> Result<()> {
-        // log_info!("handling notification: {:?}", notification);
+        let _lock = self.notification_lock().await;
 
         match notification {
             Notification::VirtualDaaScoreChanged(virtual_daa_score_changed_notification) => {
@@ -461,9 +595,10 @@ impl UtxoProcessor {
                     notification = notification_receiver.recv().fuse() => {
                         match notification {
                             Ok(notification) => {
-                                this.handle_notification(notification).await.unwrap_or_else(|err| {
+                                if let Err(err) = this.handle_notification(notification).await {
+                                    this.notify(Events::UtxoProcError { message: err.to_string() }).await.ok();
                                     log_error!("error while handling notification: {err}");
-                                });
+                                }
                             }
                             Err(err) => {
                                 log_error!("RPC notification channel error: {err}");
@@ -500,5 +635,20 @@ impl UtxoProcessor {
             self.inner.task_ctl.signal(()).await.expect("UtxoProcessor::stop_task() `signal` error");
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod mock {
+    use super::*;
+
+    impl UtxoProcessor {
+        pub fn mock_set_connected(&self, connected: bool) {
+            self.inner.is_connected.store(connected, Ordering::SeqCst);
+        }
+
+        // pub fn mock_set_daa_score(&self, connected : bool) {
+        //     self.inner.is_connected.store(connected, Ordering::SeqCst);
+        // }
     }
 }

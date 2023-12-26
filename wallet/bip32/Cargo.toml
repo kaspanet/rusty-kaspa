@@ -10,6 +10,7 @@ include = ["src/**/*.rs", "Cargo.toml", "src/**/*.txt"]
 # include.workspace = true
 
 [dependencies]
+borsh.workspace = true
 bs58.workspace = true
 getrandom = { workspace = true, features = ["js"] }
 hmac.workspace = true
@@ -21,6 +22,7 @@ rand_core.workspace = true
 rand.workspace = true
 ripemd.workspace = true
 secp256k1.workspace = true
+serde.workspace = true
 sha2.workspace = true
 subtle.workspace = true
 thiserror.workspace = true

@@ -1,6 +1,6 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime::balance as native;
+use crate::utxo::balance as native;
 
 #[wasm_bindgen]
 pub struct Balance {

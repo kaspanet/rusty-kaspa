@@ -120,7 +120,7 @@ impl TransactionValidator {
         Ok(())
     }
 
-    fn check_scripts(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
+    pub fn check_scripts(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
         let mut reused_values = SigHashReusedValues::new();
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
             let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &mut reused_values, &self.sig_cache)

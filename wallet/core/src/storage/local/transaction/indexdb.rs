@@ -1,8 +1,12 @@
+//!
+//! Web browser IndexedDB implementation of the transaction storage.
+//!
+
 use crate::imports::*;
 use crate::result::Result;
-use crate::storage::interface::StorageStream;
-use crate::storage::{Binding, TransactionRecordStore};
-use crate::storage::{TransactionMetadata, TransactionRecord};
+use crate::storage::interface::{StorageStream, TransactionRangeResult};
+use crate::storage::TransactionRecord;
+use crate::storage::{Binding, TransactionKind, TransactionRecordStore};
 
 pub struct Inner {
     known_databases: HashMap<String, HashSet<String>>,
@@ -59,10 +63,6 @@ impl TransactionStore {
         }
         Ok(())
     }
-
-    pub async fn store_transaction_metadata(&self, _id: TransactionId, _metadata: TransactionMetadata) -> Result<()> {
-        Ok(())
-    }
 }
 
 #[async_trait]
@@ -71,9 +71,9 @@ impl TransactionRecordStore for TransactionStore {
         Ok(Box::pin(TransactionIdStream::try_new(self, binding, network_id).await?))
     }
 
-    // async fn transaction_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionRecord>> {
-    //     Ok(Box::pin(TransactionRecordStream::try_new(&self.transactions, binding, network_id).await?))
-    // }
+    async fn transaction_data_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<Arc<TransactionRecord>>> {
+        Ok(Box::pin(TransactionRecordStream::try_new(self, binding, network_id).await?))
+    }
 
     async fn load_single(&self, _binding: &Binding, _network_id: &NetworkId, _id: &TransactionId) -> Result<Arc<TransactionRecord>> {
         Err(Error::NotImplemented)
@@ -88,6 +88,17 @@ impl TransactionRecordStore for TransactionStore {
         Ok(vec![])
     }
 
+    async fn load_range(
+        &self,
+        _binding: &Binding,
+        _network_id: &NetworkId,
+        _filter: Option<Vec<TransactionKind>>,
+        _range: std::ops::Range<usize>,
+    ) -> Result<TransactionRangeResult> {
+        let result = TransactionRangeResult { transactions: vec![], total: 0 };
+        Ok(result)
+    }
+
     async fn store(&self, _transaction_records: &[&TransactionRecord]) -> Result<()> {
         Ok(())
     }
@@ -96,7 +107,22 @@ impl TransactionRecordStore for TransactionStore {
         Ok(())
     }
 
-    async fn store_transaction_metadata(&self, _id: TransactionId, _metadata: TransactionMetadata) -> Result<()> {
+    async fn store_transaction_note(
+        &self,
+        _binding: &Binding,
+        _network_id: &NetworkId,
+        _id: TransactionId,
+        _note: Option<String>,
+    ) -> Result<()> {
+        Ok(())
+    }
+    async fn store_transaction_metadata(
+        &self,
+        _binding: &Binding,
+        _network_id: &NetworkId,
+        _id: TransactionId,
+        _metadata: Option<String>,
+    ) -> Result<()> {
         Ok(())
     }
 }
@@ -112,6 +138,24 @@ impl TransactionIdStream {
 
 impl Stream for TransactionIdStream {
     type Item = Result<Arc<TransactionId>>;
+
+    #[allow(unused_mut)]
+    fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Poll::Ready(None)
+    }
+}
+
+#[derive(Clone)]
+pub struct TransactionRecordStream {}
+
+impl TransactionRecordStream {
+    pub(crate) async fn try_new(_store: &TransactionStore, _binding: &Binding, _network_id: &NetworkId) -> Result<Self> {
+        Ok(Self {})
+    }
+}
+
+impl Stream for TransactionRecordStream {
+    type Item = Result<Arc<TransactionRecord>>;
 
     #[allow(unused_mut)]
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {

@@ -10,7 +10,9 @@ impl Connect {
         if let Some(wrpc_client) = ctx.wallet().wrpc_client().as_ref() {
             let url = argv.first().cloned().or_else(|| ctx.wallet().settings().get(WalletSettings::Server));
             let network_type = ctx.wallet().network_id()?;
-            let url = wrpc_client.parse_url_with_network_type(url, network_type.into()).map_err(|e| e.to_string())?;
+            let url = url
+                .map(|url| wrpc_client.parse_url_with_network_type(url, network_type.into()).map_err(|e| e.to_string()))
+                .transpose()?;
             let options = ConnectOptions { block_async_connect: true, strategy: ConnectStrategy::Fallback, url, ..Default::default() };
             wrpc_client.connect(options).await.map_err(|e| e.to_string())?;
         } else {

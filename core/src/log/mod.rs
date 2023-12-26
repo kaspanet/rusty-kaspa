@@ -4,7 +4,7 @@
 //! crate log (ie. `log.workspace = true`) when target architecture is not wasm32.
 
 #[allow(unused_imports)]
-use log::{Level, LevelFilter};
+pub use log::{Level, LevelFilter};
 
 cfg_if::cfg_if! {
     if #[cfg(not(target_arch = "wasm32"))] {

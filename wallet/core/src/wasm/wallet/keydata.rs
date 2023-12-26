@@ -1,17 +1,16 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::runtime;
 use crate::storage::keydata;
 
 #[wasm_bindgen]
 pub struct PrvKeyDataInfo {
     inner: Arc<keydata::PrvKeyDataInfo>,
     #[allow(dead_code)]
-    wallet: Arc<runtime::Wallet>,
+    wallet: Arc<Wallet>,
 }
 
 impl PrvKeyDataInfo {
-    pub fn new(wallet: Arc<runtime::Wallet>, inner: Arc<keydata::PrvKeyDataInfo>) -> PrvKeyDataInfo {
+    pub fn new(wallet: Arc<Wallet>, inner: Arc<keydata::PrvKeyDataInfo>) -> PrvKeyDataInfo {
         PrvKeyDataInfo { wallet, inner }
     }
 }

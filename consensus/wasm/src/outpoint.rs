@@ -143,7 +143,7 @@ impl From<TransactionOutpoint> for cctx::TransactionOutpoint {
 }
 
 impl TransactionOutpoint {
-    pub fn fake() -> Self {
-        Self::new(TransactionId::from_slice(&[0; kaspa_hashes::HASH_SIZE]), 0)
+    pub fn simulated() -> Self {
+        Self::new(TransactionId::from_slice(&rand::random::<[u8; kaspa_hashes::HASH_SIZE]>()), 0)
     }
 }

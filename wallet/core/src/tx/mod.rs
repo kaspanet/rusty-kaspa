@@ -1,3 +1,7 @@
+//!
+//! Transaction generation and processing primitives.
+//!
+
 pub mod consensus;
 pub mod fees;
 pub mod generator;

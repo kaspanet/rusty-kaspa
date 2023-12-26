@@ -15,7 +15,7 @@ pub use kaspa_daemon::{
     CpuMiner, CpuMinerConfig, CpuMinerCtl, DaemonEvent, DaemonKind, DaemonStatus, Daemons, Kaspad, KaspadConfig, KaspadCtl,
     Result as DaemonResult,
 };
-pub use kaspa_wallet_core::{DefaultSettings, SettingsStore, SettingsStoreT};
+pub use kaspa_wallet_core::settings::{DefaultSettings, SettingsStore, SettingsStoreT};
 pub use nw_sys::prelude::*;
 pub use regex::Regex;
 pub use serde::{Deserialize, Serialize};

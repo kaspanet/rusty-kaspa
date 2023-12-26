@@ -42,6 +42,10 @@ pub mod track;
 pub mod transfer;
 pub mod wallet;
 
+// this module is registered manually within
+// applications that support metrics
+pub mod metrics;
+
 // TODO
 // broadcast
 // create-unsigned-tx

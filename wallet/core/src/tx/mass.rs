@@ -1,5 +1,8 @@
-use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput, SCRIPT_VECTOR_SIZE};
+//!
+//! Transaction mass calculator.
+//!
 
+use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput, SCRIPT_VECTOR_SIZE};
 use kaspa_consensus_core::{config::params::Params, constants::*, subnets::SUBNETWORK_ID_SIZE};
 use kaspa_hashes::HASH_SIZE;
 
@@ -43,7 +46,7 @@ pub fn calc_minimum_required_transaction_relay_fee(mass: u64) -> u64 {
 /// if the cost to the network to spend coins is more than 1/3 of the minimum
 /// transaction relay fee, it is considered dust.
 ///
-/// It is exposed by [MiningManager] for use by transaction generators and wallets.
+/// It is exposed by `MiningManager` for use by transaction generators and wallets.
 pub fn is_transaction_output_dust(transaction_output: &TransactionOutput) -> bool {
     // Unspendable outputs are considered dust.
     //

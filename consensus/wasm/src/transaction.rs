@@ -150,12 +150,12 @@ impl Transaction {
 
     #[wasm_bindgen(getter, js_name = gas)]
     pub fn get_gas(&self) -> u64 {
-        self.inner().lock_time
+        self.inner().gas
     }
 
     #[wasm_bindgen(setter, js_name = gas)]
     pub fn set_gas(&self, v: u64) {
-        self.inner().lock_time = v;
+        self.inner().gas = v;
     }
 
     #[wasm_bindgen(getter = subnetworkId)]

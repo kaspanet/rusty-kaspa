@@ -1,16 +1,19 @@
+//!
+//! Async streams for async iteration of wallet primitives.
+//!
+
 use crate::imports::*;
 use crate::result::Result;
 use crate::storage::local::cache::Cache;
-use crate::storage::*;
 
 #[derive(Clone)]
 struct StoreStreamInner {
-    cache: Arc<Mutex<Cache>>,
+    cache: Arc<RwLock<Cache>>,
     cursor: usize,
 }
 
 impl StoreStreamInner {
-    fn new(cache: Arc<Mutex<Cache>>) -> Self {
+    fn new(cache: Arc<RwLock<Cache>>) -> Self {
         Self { cache, cursor: 0 }
     }
 }
@@ -26,7 +29,7 @@ pub struct PrvKeyDataInfoStream {
 }
 
 impl PrvKeyDataInfoStream {
-    pub(crate) fn new(cache: Arc<Mutex<Cache>>) -> Self {
+    pub(crate) fn new(cache: Arc<RwLock<Cache>>) -> Self {
         Self { inner: StoreStreamInner::new(cache) }
     }
 }
@@ -36,7 +39,7 @@ impl Stream for PrvKeyDataInfoStream {
 
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let cache = self.inner.cache.clone();
-        let cache = cache.lock().unwrap();
+        let cache = cache.read().unwrap();
         let vec = &cache.prv_key_data_info.vec;
         if self.inner.cursor < vec.len() {
             let prv_key_data_info = vec[self.inner.cursor].clone();
@@ -54,17 +57,17 @@ pub struct AccountStream {
 }
 
 impl AccountStream {
-    pub(crate) fn new(cache: Arc<Mutex<Cache>>, filter: Option<PrvKeyDataId>) -> Self {
+    pub(crate) fn new(cache: Arc<RwLock<Cache>>, filter: Option<PrvKeyDataId>) -> Self {
         Self { inner: StoreStreamInner::new(cache), filter }
     }
 }
 
 impl Stream for AccountStream {
-    type Item = Result<(Arc<Account>, Option<Arc<Metadata>>)>;
+    type Item = Result<(Arc<AccountStorage>, Option<Arc<AccountMetadata>>)>;
 
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let cache = self.inner.cache.clone();
-        let cache = cache.lock().unwrap();
+        let cache = cache.read().unwrap();
         let accounts = &cache.accounts.vec;
         let metadata = &cache.metadata.map;
 
@@ -73,18 +76,11 @@ impl Stream for AccountStream {
                 let account = accounts[self.inner.cursor].clone();
                 self.inner.cursor += 1;
 
-                match &account.data {
-                    AccountData::MultiSig(MultiSig { prv_key_data_ids: Some(prv_key_data_ids), .. })
-                        if prv_key_data_ids.binary_search(&filter).is_ok() =>
-                    {
-                        let meta = metadata.get(&account.id).cloned();
-                        return Poll::Ready(Some(Ok((account, meta))));
-                    }
-                    _ if account.prv_key_data_id == Some(filter) => {
-                        let meta = metadata.get(&account.id).cloned();
-                        return Poll::Ready(Some(Ok((account, meta))));
-                    }
-                    _ => continue,
+                if account.prv_key_data_ids.contains(&filter) {
+                    let meta = metadata.get(&account.id).cloned();
+                    return Poll::Ready(Some(Ok((account, meta))));
+                } else {
+                    continue;
                 }
             }
             Poll::Ready(None)
@@ -105,7 +101,7 @@ pub struct AddressBookEntryStream {
 }
 
 impl AddressBookEntryStream {
-    pub(crate) fn new(cache: Arc<Mutex<Cache>>) -> Self {
+    pub(crate) fn new(cache: Arc<RwLock<Cache>>) -> Self {
         Self { inner: StoreStreamInner::new(cache) }
     }
 }
@@ -115,7 +111,7 @@ impl Stream for AddressBookEntryStream {
 
     fn poll_next(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let cache = self.inner.cache.clone();
-        let cache = cache.lock().unwrap();
+        let cache = cache.read().unwrap();
         let vec = &cache.address_book; //transaction_records.vec;
 
         if self.inner.cursor < vec.len() {

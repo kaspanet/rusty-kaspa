@@ -6,7 +6,7 @@ use std::collections::HashMap;
 // One possible implementation: u64 of transaction id xor'd with 4 bytes of transaction index.
 pub type CompactUtxoCollection = HashMap<TransactionOutpoint, CompactUtxoEntry>;
 
-/// A collection of utxos indexed via; [`ScriptPublicKey`] => [`TransactionOutpoint`] => [`CompactUtxo`].
+/// A collection of utxos indexed via; [`ScriptPublicKey`] => [`TransactionOutpoint`] => [`CompactUtxoEntry`].
 pub type UtxoSetByScriptPublicKey = HashMap<ScriptPublicKey, CompactUtxoCollection>;
 
 /// A map of balance by script public key

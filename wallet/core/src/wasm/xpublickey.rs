@@ -1,6 +1,6 @@
 use crate::derivation::gen1::WalletDerivationManager;
 use crate::derivation::traits::WalletDerivationManagerTrait;
-use crate::Result;
+use crate::result::Result;
 use kaspa_bip32::ExtendedPublicKey;
 use kaspa_bip32::{ExtendedPrivateKey, SecretKey};
 use std::str::FromStr;

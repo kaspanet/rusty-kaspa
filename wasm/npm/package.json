@@ -1,6 +1,6 @@
 {
   "name": "kaspa",
-  "version": "0.1.2",
+  "version": "0.13.0",
   "description": "Kaspa SDK",
   "main": "index.js",
   "scripts": {
@@ -23,7 +23,7 @@
   "homepage": "https://github.com/kaspanet/rusty-kaspa#readme",
   "dependencies": {
     "isomorphic-ws": "5.0.0",
-    "ws": "8.13.0",
-    "kaspa-wasm": "0.1.2"
+    "ws": "8.14.2",
+    "kaspa-wasm": "0.13.0"
   }
 }
