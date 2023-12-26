@@ -1,5 +1,5 @@
 use crate::imports::*;
-use kaspa_cli_lib::metrics::MetricsSnapshot;
+use kaspa_metrics_core::MetricsSnapshot;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 pub enum MetricsOps {

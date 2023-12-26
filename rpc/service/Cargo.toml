@@ -27,8 +27,8 @@ kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 kaspa-utils-tower.workspace = true
 kaspa-utxoindex.workspace = true
-kaspa-wrpc-core.workspace = true
 
 async-trait.workspace = true
 log.workspace = true
 tokio.workspace = true
+workflow-rpc.workspace = true

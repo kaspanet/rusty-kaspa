@@ -4,8 +4,11 @@ use crate::{
     types::*, ChildNumber, DerivationPath, Error, ExtendedKey, ExtendedKeyAttrs, ExtendedPrivateKey, KeyFingerprint, Prefix,
     PrivateKey, PublicKey, PublicKeyBytes, Result, KEY_SIZE,
 };
+use borsh::{BorshDeserialize, BorshSerialize};
 use core::str::FromStr;
 use hmac::Mac;
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use std::fmt;
 
 /// Extended public secp256k1 ECDSA verification key.
 //#[cfg(feature = "secp256k1")]
@@ -14,9 +17,7 @@ use hmac::Mac;
 
 /// Extended public keys derived using BIP32.
 ///
-/// Generic around a [`PublicKey`] type. When the `secp256k1` feature of this
-/// crate is enabled, the [`XPub`] type provides a convenient alias for
-/// extended ECDSA/secp256k1 public keys.
+/// Generic around a [`PublicKey`] type.
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 pub struct ExtendedPublicKey<K: PublicKey> {
     /// Derived public key
@@ -131,5 +132,113 @@ where
         } else {
             Err(Error::Crypto(secp256k1::Error::InvalidPublicKey))
         }
+    }
+}
+
+impl fmt::Display for ExtendedPublicKey<secp256k1::PublicKey> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.to_string(None).fmt(f)
+    }
+}
+
+impl<K> ExtendedPublicKey<K>
+where
+    K: PublicKey,
+{
+    // a unique number used for binary
+    // serialization data alignment check
+    const STORAGE_MAGIC: u16 = 0x4b58;
+    // binary serialization version
+    const STORAGE_VERSION: u16 = 0;
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+struct Header {
+    magic: u16,
+    version: u16,
+}
+
+impl<K> BorshSerialize for ExtendedPublicKey<K>
+where
+    K: PublicKey,
+{
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        Header { version: Self::STORAGE_VERSION, magic: Self::STORAGE_MAGIC }.serialize(writer)?;
+        writer.write_all(self.public_key.to_bytes().as_slice())?;
+        BorshSerialize::serialize(&self.attrs, writer)?;
+        Ok(())
+    }
+}
+
+impl<K> BorshDeserialize for ExtendedPublicKey<K>
+where
+    K: PublicKey,
+{
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let Header { version, magic } = Header::deserialize(buf)?;
+        if magic != Self::STORAGE_MAGIC {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "Invalid extended public key magic value"));
+        }
+        if version != Self::STORAGE_VERSION {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "Invalid extended public key version"));
+        }
+
+        let public_key_bytes: [u8; KEY_SIZE + 1] = buf[..KEY_SIZE + 1]
+            .try_into()
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Invalid extended public key"))?;
+        let public_key = K::from_bytes(public_key_bytes)
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Invalid extended public key"))?;
+        *buf = &buf[KEY_SIZE + 1..];
+        let attrs = ExtendedKeyAttrs::deserialize(buf)?;
+        Ok(Self { public_key, attrs })
+    }
+}
+
+impl<K> Serialize for ExtendedPublicKey<K>
+where
+    K: Serialize + PublicKey,
+{
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string(None))
+    }
+}
+
+struct ExtendedPublicKeyVisitor<'de, K>
+where
+    K: Deserialize<'de> + PublicKey,
+{
+    phantom: std::marker::PhantomData<&'de K>,
+}
+
+impl<'de, K> de::Visitor<'de> for ExtendedPublicKeyVisitor<'de, K>
+where
+    K: Deserialize<'de> + PublicKey,
+{
+    type Value = ExtendedPublicKey<K>;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a string containing network_type and optional suffix separated by a '-'")
+    }
+
+    fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+    where
+        E: de::Error,
+    {
+        ExtendedPublicKey::<K>::from_str(value).map_err(|err| de::Error::custom(err.to_string()))
+    }
+}
+
+impl<'de, K> Deserialize<'de> for ExtendedPublicKey<K>
+where
+    K: Deserialize<'de> + PublicKey + 'de,
+{
+    fn deserialize<D>(deserializer: D) -> std::result::Result<ExtendedPublicKey<K>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        deserializer.deserialize_str(ExtendedPublicKeyVisitor::<'de, K> { phantom: std::marker::PhantomData::<&'de K> })
     }
 }
