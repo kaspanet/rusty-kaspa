@@ -1,4 +1,3 @@
-
 [package]
 name = "kaspa-os"
 description = "Kaspa Node & Wallet Manager"
@@ -35,6 +34,7 @@ kaspa-cli.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-core.workspace = true
 kaspa-daemon.workspace = true
+kaspa-metrics-core.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-wallet-core.workspace = true
 nw-sys.workspace = true

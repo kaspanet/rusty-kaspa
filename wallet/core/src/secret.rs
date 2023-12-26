@@ -1,6 +1,12 @@
+//!
+//! Secret container for sensitive data. Performs zeroization on drop.
+//!
+
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct Secret(Vec<u8>);
 
 impl Secret {

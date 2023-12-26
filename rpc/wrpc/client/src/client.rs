@@ -141,13 +141,13 @@ impl Debug for Inner {
 #[async_trait]
 impl SubscriptionManager for Inner {
     async fn start_notify(&self, _: ListenerId, scope: Scope) -> NotifyResult<()> {
-        log_trace!("[WrpcClient] start_notify: {:?}", scope);
+        // log_trace!("[WrpcClient] start_notify: {:?}", scope);
         self.start_notify_to_client(scope).await.map_err(|err| NotifyError::General(err.to_string()))?;
         Ok(())
     }
 
     async fn stop_notify(&self, _: ListenerId, scope: Scope) -> NotifyResult<()> {
-        log_trace!("[WrpcClient] stop_notify: {:?}", scope);
+        // log_trace!("[WrpcClient] stop_notify: {:?}", scope);
         self.stop_notify_to_client(scope).await.map_err(|err| NotifyError::General(err.to_string()))?;
         Ok(())
     }
@@ -301,23 +301,15 @@ impl KaspaRpcClient {
         self.notification_mode
     }
 
-    // pub fn ctl_multiplexer(&self) -> &Multiplexer<Ctl> {
-    //     &self.inner.ctl_multiplexer
-    // }
-
     pub fn ctl(&self) -> &RpcCtl {
         &self.inner.rpc_ctl
     }
 
-    pub fn parse_url_with_network_type(&self, url: Option<String>, network_type: NetworkType) -> Result<Option<String>> {
+    pub fn parse_url_with_network_type(&self, url: String, network_type: NetworkType) -> Result<String> {
         Self::parse_url(url, self.inner.encoding, network_type)
     }
 
-    pub fn parse_url(url: Option<String>, encoding: Encoding, network_type: NetworkType) -> Result<Option<String>> {
-        let Some(url) = url else {
-            return Ok(None);
-        };
-
+    pub fn parse_url(url: String, encoding: Encoding, network_type: NetworkType) -> Result<String> {
         let parse_output = parse_host(&url).map_err(|err| Error::Custom(err.to_string()))?;
         let scheme = parse_output.scheme.map(Ok).unwrap_or_else(|| {
             if !application_runtime::is_web() {
@@ -340,7 +332,7 @@ impl KaspaRpcClient {
         });
         let path_str = parse_output.path;
 
-        Ok(Some(format!("{}://{}:{}{}", scheme, parse_output.host.to_string(), port, path_str)))
+        Ok(format!("{}://{}:{}{}", scheme, parse_output.host.to_string(), port, path_str))
     }
 
     async fn start_rpc_ctl_service(&self) -> Result<()> {
@@ -356,12 +348,10 @@ impl KaspaRpcClient {
                         if let Ok(msg) = msg {
                             match msg {
                                 WrpcCtl::Open => {
-                                    // inner.rpc_ctl.set_descriptor(Some(inner.rpc.url()));
                                     inner.rpc_ctl.signal_open().await.expect("(KaspaRpcClient) rpc_ctl.signal_open() error");
                                 }
                                 WrpcCtl::Close => {
                                     inner.rpc_ctl.signal_close().await.expect("(KaspaRpcClient) rpc_ctl.signal_close() error");
-                                    // inner.rpc_ctl.set_descriptor(None);
                                 }
                             }
                         } else {
