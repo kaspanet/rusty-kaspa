@@ -106,7 +106,7 @@ impl Bip32 {
         let inner = Arc::new(Inner::new(wallet, id, storage_key, settings));
 
         let derivation =
-            AddressDerivationManager::new(wallet, BIP32_ACCOUNT_KIND.into(), &xpub_keys, ecdsa, 0, None, 1, Default::default())
+            AddressDerivationManager::new(wallet, BIP32_ACCOUNT_KIND.into(), &xpub_keys, ecdsa, account_index, None, 1, Default::default())
                 .await?;
 
         Ok(Self { inner, prv_key_data_id, account_index, xpub_keys, ecdsa, derivation })
@@ -126,7 +126,7 @@ impl Bip32 {
             BIP32_ACCOUNT_KIND.into(),
             &xpub_keys,
             ecdsa,
-            0,
+            account_index,
             None,
             1,
             address_derivation_indexes,
