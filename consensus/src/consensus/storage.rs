@@ -28,6 +28,7 @@ use crate::{
 use itertools::Itertools;
 
 use kaspa_consensus_core::{blockstatus::BlockStatus, config::constants::perf, BlockHashSet, KType};
+use kaspa_core::info;
 use kaspa_database::{prelude::CachePolicy, registry::DatabaseStorePrefixes};
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
@@ -88,17 +89,17 @@ impl ConsensusStorage {
             perf::bounded_cache_size(pruning_size_for_caches, 15_000_000, size_of::<Hash>() + size_of::<CompactGhostdagData>());
 
         // Cache sizes which are tracked per unit
-        let relations_cache_size = 35_000_000 / size_of::<Hash>();
+        let relations_cache_size = 40_000_000 / size_of::<Hash>();
         let relations_children_cache_size = 5_000_000 / size_of::<Hash>();
-        let reachability_relations_cache_size = 35_000_000 / size_of::<Hash>();
+        let reachability_relations_cache_size = 40_000_000 / size_of::<Hash>();
         let reachability_relations_children_cache_size = 5_000_000 / size_of::<Hash>();
         let transactions_cache_size = 40_000usize; // Tracked units are txs (TODO)
 
         // Cache sizes represented and tracked as bytes
         // TODO: unit approx for noise magnitude + higher block levels lower bound
-        let ghostdag_cache_bytes = 70_000_000usize;
-        let headers_cache_bytes = 70_000_000usize;
-        let utxo_diffs_cache_bytes = 35_000_000usize;
+        let ghostdag_cache_bytes = 100_000_000usize;
+        let headers_cache_bytes = 100_000_000usize;
+        let utxo_diffs_cache_bytes = 50_000_000usize;
 
         // Add stochastic noise to cache sizes to avoid predictable and equal sizes across all network nodes
         let noise = |size| size + rand::thread_rng().gen_range(0..16);
@@ -141,9 +142,11 @@ impl ConsensusStorage {
             CachePolicy::Tracked(noise(reachability_relations_children_cache_size)),
         )));
 
-        let max_ghostdag_data_size = size_of::<GhostdagData>()
-            + params.mergeset_size_limit as usize * size_of::<Hash>()
-            + params.ghostdag_k as usize * size_of::<(Hash, KType)>();
+        // TODO
+        let max_ghostdag_data_size =
+            size_of::<GhostdagData>() + 248 * size_of::<Hash>() + params.ghostdag_k as usize * size_of::<(Hash, KType)>();
+
+        info!("Max GD data: {}, cache items: {}", max_ghostdag_data_size, ghostdag_cache_bytes / max_ghostdag_data_size);
 
         let ghostdag_stores = Arc::new(
             (0..=params.max_block_level)
