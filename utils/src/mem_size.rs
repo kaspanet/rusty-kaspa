@@ -2,12 +2,17 @@ use std::{collections::HashSet, mem::size_of, sync::Arc};
 
 use parking_lot::RwLock;
 
+#[derive(Debug, Clone, Copy)]
+pub enum MemMode {
+    Bytes,
+    Units,
+}
+
 pub trait MemSizeEstimator {
-    fn estimate_size(&self, bytes_mode: bool) -> usize {
-        if bytes_mode {
-            self.estimate_mem_bytes()
-        } else {
-            self.estimate_mem_units()
+    fn estimate_size(&self, mem_mode: MemMode) -> usize {
+        match mem_mode {
+            MemMode::Bytes => self.estimate_mem_bytes(),
+            MemMode::Units => self.estimate_mem_units(),
         }
     }
 

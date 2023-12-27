@@ -30,6 +30,7 @@ use itertools::Itertools;
 use kaspa_consensus_core::{blockstatus::BlockStatus, config::constants::perf, BlockHashSet};
 use kaspa_database::{prelude::CachePolicy, registry::DatabaseStorePrefixes};
 use kaspa_hashes::Hash;
+use kaspa_utils::mem_size::MemMode;
 use parking_lot::RwLock;
 use rand::Rng;
 use std::{cmp::max, mem::size_of, ops::DerefMut, sync::Arc};
@@ -115,13 +116,13 @@ impl ConsensusStorage {
                     let parents_cache_policy = CachePolicy::LowerBoundedTracked {
                         max_size: noise(parents_level_size),
                         min_units: noise(unit_lower_bound),
-                        bytes_mode: false,
+                        mem_mode: MemMode::Units,
                     };
                     let children_level_size = children_cache_size.checked_shr(level as u32).unwrap_or(0);
                     let children_cache_policy = CachePolicy::LowerBoundedTracked {
                         max_size: noise(children_level_size),
                         min_units: noise(unit_lower_bound),
-                        bytes_mode: false,
+                        mem_mode: MemMode::Units,
                     };
                     DbRelationsStore::new(db.clone(), level, parents_cache_policy, children_cache_policy)
                 })
@@ -130,14 +131,14 @@ impl ConsensusStorage {
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(
             db.clone(),
             CachePolicy::Unit(noise(reachability_data_cache_size)),
-            CachePolicy::Tracked(noise(reachability_sets_cache_size), false),
+            CachePolicy::Tracked(noise(reachability_sets_cache_size), MemMode::Units),
         )));
 
         let reachability_relations_store = Arc::new(RwLock::new(DbRelationsStore::with_prefix(
             db.clone(),
             DatabaseStorePrefixes::ReachabilityRelations.as_ref(),
-            CachePolicy::Tracked(noise(reachability_parents_cache_size), false),
-            CachePolicy::Tracked(noise(reachability_children_cache_size), false),
+            CachePolicy::Tracked(noise(reachability_parents_cache_size), MemMode::Units),
+            CachePolicy::Tracked(noise(reachability_children_cache_size), MemMode::Units),
         )));
 
         let ghostdag_stores = Arc::new(
@@ -148,7 +149,7 @@ impl ConsensusStorage {
                     let cache_policy = CachePolicy::LowerBoundedTracked {
                         max_size: noise(level_cache_bytes),
                         min_units: noise(unit_lower_bound),
-                        bytes_mode: true,
+                        mem_mode: MemMode::Bytes,
                     };
                     let compact_cache_size = max(ghostdag_compact_cache_size.checked_shr(level as u32).unwrap_or(0), unit_lower_bound);
                     Arc::new(DbGhostdagStore::new(db.clone(), level, cache_policy, CachePolicy::Unit(noise(compact_cache_size))))
@@ -159,7 +160,7 @@ impl ConsensusStorage {
         let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), CachePolicy::Unit(noise(daa_excluded_cache_size))));
         let headers_store = Arc::new(DbHeadersStore::new(
             db.clone(),
-            CachePolicy::Tracked(noise(headers_cache_bytes), true),
+            CachePolicy::Tracked(noise(headers_cache_bytes), MemMode::Bytes),
             CachePolicy::Unit(noise((3600 * params.bps() as usize).max(perf_params.header_data_cache_size))),
         ));
         let depth_store = Arc::new(DbDepthStore::new(db.clone(), CachePolicy::Unit(noise(perf_params.header_data_cache_size))));
@@ -174,8 +175,9 @@ impl ConsensusStorage {
 
         // Txs
         let block_transactions_store =
-            Arc::new(DbBlockTransactionsStore::new(db.clone(), CachePolicy::Tracked(noise(transactions_cache_size), false)));
-        let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), CachePolicy::Tracked(noise(utxo_diffs_cache_bytes), true)));
+            Arc::new(DbBlockTransactionsStore::new(db.clone(), CachePolicy::Tracked(noise(transactions_cache_size), MemMode::Units)));
+        let utxo_diffs_store =
+            Arc::new(DbUtxoDiffsStore::new(db.clone(), CachePolicy::Tracked(noise(utxo_diffs_cache_bytes), MemMode::Bytes)));
         let utxo_multisets_store =
             Arc::new(DbUtxoMultisetsStore::new(db.clone(), CachePolicy::Unit(noise(perf_params.block_data_cache_size))));
         let acceptance_data_store =

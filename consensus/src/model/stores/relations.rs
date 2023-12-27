@@ -410,6 +410,7 @@ mod tests {
     use super::*;
     use crate::processes::relations::RelationsStoreExtensions;
     use kaspa_database::create_temp_db;
+    use kaspa_utils::mem_size::MemMode;
 
     #[test]
     fn test_memory_relations_store() {
@@ -419,7 +420,12 @@ mod tests {
     #[test]
     fn test_db_relations_store() {
         let (lt, db) = create_temp_db!(kaspa_database::prelude::ConnBuilder::default().with_files_limit(10));
-        test_relations_store(DbRelationsStore::new(db, 0, CachePolicy::Tracked(2, false), CachePolicy::Tracked(2, false)));
+        test_relations_store(DbRelationsStore::new(
+            db,
+            0,
+            CachePolicy::Tracked(2, MemMode::Units),
+            CachePolicy::Tracked(2, MemMode::Units),
+        ));
         drop(lt)
     }
 
