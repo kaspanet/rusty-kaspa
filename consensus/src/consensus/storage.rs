@@ -7,7 +7,7 @@ use crate::{
         daa::DbDaaStore,
         depth::DbDepthStore,
         ghostdag::{CompactGhostdagData, DbGhostdagStore},
-        headers::DbHeadersStore,
+        headers::{CompactHeaderData, DbHeadersStore},
         headers_selected_tip::DbHeadersSelectedTipStore,
         past_pruning_points::DbPastPruningPointsStore,
         pruning::DbPruningStore,
@@ -25,15 +25,13 @@ use crate::{
     processes::{reachability::inquirer as reachability, relations},
 };
 
+use super::cache_policy_builder::CachePolicyBuilder as PolicyBuilder;
 use itertools::Itertools;
-
-use kaspa_consensus_core::{blockstatus::BlockStatus, config::constants::perf, BlockHashSet};
-use kaspa_database::{prelude::CachePolicy, registry::DatabaseStorePrefixes};
+use kaspa_consensus_core::{blockstatus::BlockStatus, BlockHashSet, BlueWorkType};
+use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
-use kaspa_utils::mem_size::MemMode;
 use parking_lot::RwLock;
-use rand::Rng;
-use std::{cmp::max, mem::size_of, ops::DerefMut, sync::Arc};
+use std::{mem::size_of, ops::DerefMut, sync::Arc};
 
 pub struct ConsensusStorage {
     // DB
@@ -75,129 +73,149 @@ impl ConsensusStorage {
         let params = &config.params;
         let perf_params = &config.perf;
 
-        let pruning_size_for_caches = (params.pruning_depth + params.finality_depth) as usize;
+        // Lower and upper bounds
+        let pruning_depth = params.pruning_depth as usize;
+        let pruning_size_for_caches = (params.pruning_depth + params.finality_depth) as usize; // Upper bound for any block/header related data
+        let level_lower_bound = 2 * params.pruning_proof_m as usize; // Number of items lower bound for level-related caches
 
-        // Calculate cache sizes which are related to pruning depth
-        let daa_excluded_cache_size =
-            perf::bounded_cache_size(params.pruning_depth as usize, 30_000_000, size_of::<Hash>() + size_of::<BlockHashSet>()); // required only above the pruning point; expected empty sets
-        let statuses_cache_size =
-            perf::bounded_cache_size(pruning_size_for_caches, 30_000_000, size_of::<Hash>() + size_of::<BlockStatus>());
-        let reachability_data_cache_size =
-            perf::bounded_cache_size(pruning_size_for_caches, 20_000_000, size_of::<Hash>() + size_of::<ReachabilityData>());
-        let reachability_sets_cache_size = perf::bounded_cache_size(pruning_size_for_caches, 20_000_000, size_of::<Hash>());
-        let ghostdag_compact_cache_size =
-            perf::bounded_cache_size(pruning_size_for_caches, 15_000_000, size_of::<Hash>() + size_of::<CompactGhostdagData>());
+        // Budgets in bytes
+        let daa_excluded_budget = 30_000_000;
+        let statuses_budget = 30_000_000;
+        let reachability_data_budget = 20_000_000;
+        let reachability_sets_budget = 20_000_000;
+        let ghostdag_compact_budget = 15_000_000;
+        let headers_compact_budget = 5_000_000;
+        let parents_budget = 40_000_000;
+        let children_budget = 5_000_000;
+        let ghostdag_budget = 80_000_000;
+        let headers_budget = 80_000_000;
+        let utxo_diffs_budget = 40_000_000;
+        let block_window_budget = 250_000_000;
 
-        // Cache sizes which are tracked per unit
-        let parents_cache_size = 40_000_000 / size_of::<Hash>();
-        let children_cache_size = 5_000_000 / size_of::<Hash>(); // Children relations are hardly used in consensus processing so the cache can be small
-        let reachability_parents_cache_size = 40_000_000 / size_of::<Hash>();
-        let reachability_children_cache_size = 5_000_000 / size_of::<Hash>();
-        let transactions_cache_size = 40_000usize; // Tracked units are txs
+        // Unit sizes in bytes
+        let daa_excluded_bytes = size_of::<Hash>() + size_of::<BlockHashSet>();
+        let status_bytes = size_of::<Hash>() + size_of::<BlockStatus>();
+        let reachability_data_bytes = size_of::<Hash>() + size_of::<ReachabilityData>();
+        let ghostdag_compact_bytes = size_of::<Hash>() + size_of::<CompactGhostdagData>();
+        let headers_compact_bytes = size_of::<Hash>() + size_of::<CompactHeaderData>();
+        let block_window_bytes = params.difficulty_window_size(0) * (size_of::<Hash>() + size_of::<BlueWorkType>());
 
-        // Cache sizes represented and tracked as bytes
-        let ghostdag_cache_bytes = 80_000_000usize;
-        let headers_cache_bytes = 80_000_000usize;
-        let utxo_diffs_cache_bytes = 40_000_000usize;
-
-        // Number of units lower bound for level-related caches
-        let unit_lower_bound = 2 * params.pruning_proof_m as usize;
-
-        // Add stochastic noise to cache sizes to avoid predictable and equal sizes across all network nodes
-        let noise = |size| size + rand::thread_rng().gen_range(0..16);
+        // Cache policy builders
+        let daa_excluded_builder =
+            PolicyBuilder::new().max_items(pruning_depth).bytes_budget(daa_excluded_budget).unit_bytes(daa_excluded_bytes).untracked(); // Required only above the pruning point. Expected empty sets.
+        let statuses_builder =
+            PolicyBuilder::new().max_items(pruning_size_for_caches).bytes_budget(statuses_budget).unit_bytes(status_bytes).untracked();
+        let reachability_data_builder = PolicyBuilder::new()
+            .max_items(pruning_size_for_caches)
+            .bytes_budget(reachability_data_budget)
+            .unit_bytes(reachability_data_bytes)
+            .untracked();
+        let ghostdag_compact_builder = PolicyBuilder::new()
+            .max_items(pruning_size_for_caches)
+            .bytes_budget(ghostdag_compact_budget)
+            .unit_bytes(ghostdag_compact_bytes)
+            .min_items(level_lower_bound)
+            .untracked();
+        let headers_compact_builder = PolicyBuilder::new()
+            .max_items(pruning_size_for_caches)
+            .bytes_budget(headers_compact_budget)
+            .unit_bytes(headers_compact_bytes)
+            .untracked();
+        let parents_builder = PolicyBuilder::new()
+            .bytes_budget(parents_budget)
+            .unit_bytes(size_of::<Hash>())
+            .min_items(level_lower_bound)
+            .tracked_units();
+        let children_builder = PolicyBuilder::new()
+            .bytes_budget(children_budget)
+            .unit_bytes(size_of::<Hash>())
+            .min_items(level_lower_bound)
+            .tracked_units();
+        let reachability_sets_builder = PolicyBuilder::new()
+            .max_items(pruning_size_for_caches)
+            .bytes_budget(reachability_sets_budget)
+            .unit_bytes(size_of::<Hash>())
+            .tracked_units();
+        let block_window_builder = PolicyBuilder::new()
+            .max_items(perf_params.block_window_cache_size)
+            .bytes_budget(block_window_budget)
+            .unit_bytes(block_window_bytes)
+            .untracked();
+        let ghostdag_builder = PolicyBuilder::new().bytes_budget(ghostdag_budget).tracked_bytes();
+        let headers_builder = PolicyBuilder::new().bytes_budget(headers_budget).tracked_bytes();
+        let utxo_diffs_builder = PolicyBuilder::new().bytes_budget(utxo_diffs_budget).tracked_bytes();
+        let block_data_builder = PolicyBuilder::new().max_items(perf_params.block_data_cache_size).untracked();
+        let header_data_builder = PolicyBuilder::new().max_items(perf_params.header_data_cache_size).untracked();
+        let utxo_set_builder = PolicyBuilder::new().max_items(perf_params.utxo_set_cache_size).untracked();
+        let transactions_builder = PolicyBuilder::new().max_items(40_000).tracked_units(); // Tracked units are txs
+        let past_pruning_points_builder = PolicyBuilder::new().max_items(1024).untracked();
 
         // Headers
-        let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), CachePolicy::Count(noise(statuses_cache_size)))));
+        let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), statuses_builder.build())));
         let relations_stores = Arc::new(RwLock::new(
             (0..=params.max_block_level)
                 .map(|level| {
-                    // = size / 2^level
-                    let parents_level_size = parents_cache_size.checked_shr(level as u32).unwrap_or(0);
-                    let parents_cache_policy = CachePolicy::LowerBoundedTracked {
-                        max_size: noise(parents_level_size),
-                        min_items: noise(unit_lower_bound),
-                        mem_mode: MemMode::Units,
-                    };
-                    let children_level_size = children_cache_size.checked_shr(level as u32).unwrap_or(0);
-                    let children_cache_policy = CachePolicy::LowerBoundedTracked {
-                        max_size: noise(children_level_size),
-                        min_items: noise(unit_lower_bound),
-                        mem_mode: MemMode::Units,
-                    };
-                    DbRelationsStore::new(db.clone(), level, parents_cache_policy, children_cache_policy)
+                    DbRelationsStore::new(
+                        db.clone(),
+                        level,
+                        parents_builder.downscale(level).build(),
+                        children_builder.downscale(level).build(),
+                    )
                 })
                 .collect_vec(),
         ));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(
             db.clone(),
-            CachePolicy::Count(noise(reachability_data_cache_size)),
-            CachePolicy::Tracked(noise(reachability_sets_cache_size), MemMode::Units),
+            reachability_data_builder.build(),
+            reachability_sets_builder.build(),
         )));
 
         let reachability_relations_store = Arc::new(RwLock::new(DbRelationsStore::with_prefix(
             db.clone(),
             DatabaseStorePrefixes::ReachabilityRelations.as_ref(),
-            CachePolicy::Tracked(noise(reachability_parents_cache_size), MemMode::Units),
-            CachePolicy::Tracked(noise(reachability_children_cache_size), MemMode::Units),
+            parents_builder.build(),
+            children_builder.build(),
         )));
 
         let ghostdag_stores = Arc::new(
             (0..=params.max_block_level)
                 .map(|level| {
-                    // = size / 2^level
-                    let level_cache_bytes = ghostdag_cache_bytes.checked_shr(level as u32).unwrap_or(0);
-                    let cache_policy = CachePolicy::LowerBoundedTracked {
-                        max_size: noise(level_cache_bytes),
-                        min_items: noise(unit_lower_bound),
-                        mem_mode: MemMode::Bytes,
-                    };
-                    let compact_cache_size = max(ghostdag_compact_cache_size.checked_shr(level as u32).unwrap_or(0), unit_lower_bound);
-                    Arc::new(DbGhostdagStore::new(db.clone(), level, cache_policy, CachePolicy::Count(noise(compact_cache_size))))
+                    Arc::new(DbGhostdagStore::new(
+                        db.clone(),
+                        level,
+                        ghostdag_builder.downscale(level).build(),
+                        ghostdag_compact_builder.downscale(level).build(),
+                    ))
                 })
                 .collect_vec(),
         );
         let ghostdag_primary_store = ghostdag_stores[0].clone();
-        let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), CachePolicy::Count(noise(daa_excluded_cache_size))));
-        let headers_store = Arc::new(DbHeadersStore::new(
-            db.clone(),
-            CachePolicy::Tracked(noise(headers_cache_bytes), MemMode::Bytes),
-            CachePolicy::Count(noise((3600 * params.bps() as usize).max(perf_params.header_data_cache_size))),
-        ));
-        let depth_store = Arc::new(DbDepthStore::new(db.clone(), CachePolicy::Count(noise(perf_params.header_data_cache_size))));
-        let selected_chain_store = Arc::new(RwLock::new(DbSelectedChainStore::new(
-            db.clone(),
-            CachePolicy::Count(noise(perf_params.header_data_cache_size)),
-        )));
+        let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), daa_excluded_builder.build()));
+        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), headers_builder.build(), headers_compact_builder.build()));
+        let depth_store = Arc::new(DbDepthStore::new(db.clone(), header_data_builder.build()));
+        let selected_chain_store = Arc::new(RwLock::new(DbSelectedChainStore::new(db.clone(), header_data_builder.build())));
 
         // Pruning
         let pruning_point_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
-        let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), CachePolicy::Count(1024)));
-        let pruning_utxoset_stores =
-            Arc::new(RwLock::new(PruningUtxosetStores::new(db.clone(), CachePolicy::Count(noise(perf_params.utxo_set_cache_size)))));
+        let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), past_pruning_points_builder.build()));
+        let pruning_utxoset_stores = Arc::new(RwLock::new(PruningUtxosetStores::new(db.clone(), utxo_set_builder.build())));
 
         // Txs
-        let block_transactions_store =
-            Arc::new(DbBlockTransactionsStore::new(db.clone(), CachePolicy::Tracked(noise(transactions_cache_size), MemMode::Units)));
-        let utxo_diffs_store =
-            Arc::new(DbUtxoDiffsStore::new(db.clone(), CachePolicy::Tracked(noise(utxo_diffs_cache_bytes), MemMode::Bytes)));
-        let utxo_multisets_store =
-            Arc::new(DbUtxoMultisetsStore::new(db.clone(), CachePolicy::Count(noise(perf_params.block_data_cache_size))));
-        let acceptance_data_store =
-            Arc::new(DbAcceptanceDataStore::new(db.clone(), CachePolicy::Count(noise(perf_params.block_data_cache_size))));
+        let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), transactions_builder.build()));
+        let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), utxo_diffs_builder.build()));
+        let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), block_data_builder.build()));
+        let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), block_data_builder.build()));
 
         // Tips
         let headers_selected_tip_store = Arc::new(RwLock::new(DbHeadersSelectedTipStore::new(db.clone())));
         let body_tips_store = Arc::new(RwLock::new(DbTipsStore::new(db.clone())));
 
         // Block windows
-        let block_window_cache_for_difficulty =
-            Arc::new(BlockWindowCacheStore::new(CachePolicy::Count(noise(perf_params.block_window_cache_size))));
-        let block_window_cache_for_past_median_time =
-            Arc::new(BlockWindowCacheStore::new(CachePolicy::Count(noise(perf_params.block_window_cache_size))));
+        let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(block_window_builder.build()));
+        let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(block_window_builder.build()));
 
         // Virtual stores
-        let virtual_stores =
-            Arc::new(RwLock::new(VirtualStores::new(db.clone(), CachePolicy::Count(noise(perf_params.utxo_set_cache_size)))));
+        let virtual_stores = Arc::new(RwLock::new(VirtualStores::new(db.clone(), utxo_set_builder.build())));
 
         // Ensure that reachability stores are initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();

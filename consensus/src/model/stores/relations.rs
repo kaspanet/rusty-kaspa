@@ -423,8 +423,8 @@ mod tests {
         test_relations_store(DbRelationsStore::new(
             db,
             0,
-            CachePolicy::Tracked(2, MemMode::Units),
-            CachePolicy::Tracked(2, MemMode::Units),
+            CachePolicy::Tracked { max_size: 2, min_items: 0, mem_mode: MemMode::Units },
+            CachePolicy::Tracked { max_size: 2, min_items: 0, mem_mode: MemMode::Units },
         ));
         drop(lt)
     }

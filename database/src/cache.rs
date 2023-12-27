@@ -10,14 +10,10 @@ pub enum CachePolicy {
     Empty,
     /// The cache bounds the number of items it holds w/o tracking their inner size
     Count(usize),
-    /// Items are tracked by size and the cache never allows the accumulated tracked size
-    /// to surpass the provided [`usize`] argument. [`MemMode`] determines whether items are tracked
-    /// by bytes or by units
-    Tracked(usize, MemMode),
     /// Items are tracked by size with a `max_size` limit but the cache will pass this limit if
     /// there are no more than `min_items` items overall in the cache. `mem_mode` determines whether
     /// items are tracked by bytes or by units
-    LowerBoundedTracked { max_size: usize, min_items: usize, mem_mode: MemMode },
+    Tracked { max_size: usize, min_items: usize, mem_mode: MemMode },
 }
 
 #[derive(Clone)]
@@ -38,8 +34,7 @@ impl From<CachePolicy> for CachePolicyInner {
         match policy {
             CachePolicy::Empty => CachePolicyInner { tracked: false, max_size: 0, min_items: 0, mem_mode: MemMode::Undefined },
             CachePolicy::Count(max_size) => CachePolicyInner { tracked: false, max_size, min_items: 0, mem_mode: MemMode::Undefined },
-            CachePolicy::Tracked(max_size, mem_mode) => CachePolicyInner { tracked: true, max_size, min_items: 0, mem_mode },
-            CachePolicy::LowerBoundedTracked { max_size, min_items, mem_mode } => {
+            CachePolicy::Tracked { max_size, min_items, mem_mode } => {
                 CachePolicyInner { tracked: true, max_size, min_items, mem_mode }
             }
         }
@@ -62,8 +57,8 @@ where
     TData: Clone + Send + Sync + MemSizeEstimator,
     S: BuildHasher + Default,
 {
-    /// Evicts items until meeting cache policy requirements
-    fn evict(&mut self, policy: &CachePolicyInner) {
+    /// Evicts items until meeting cache policy requirements (in tracked mode)
+    fn tracked_evict(&mut self, policy: &CachePolicyInner) {
         // We allow passing tracked size limit as long as there are no more than min_items items
         while self.tracked_size > policy.max_size && self.map.len() > policy.min_items {
             if let Some((_, v)) = self.map.swap_remove_index(rand::thread_rng().gen_range(0..self.map.len())) {
@@ -79,7 +74,7 @@ where
             if let Some(removed) = self.map.insert(key, data) {
                 self.tracked_size -= removed.estimate_size(policy.mem_mode);
             }
-            self.evict(policy);
+            self.tracked_evict(policy);
         } else {
             if self.map.len() == policy.max_size {
                 self.map.swap_remove_index(rand::thread_rng().gen_range(0..policy.max_size));
@@ -97,7 +92,7 @@ where
                 self.tracked_size -= data.estimate_size(policy.mem_mode);
                 op(data);
                 self.tracked_size += data.estimate_size(policy.mem_mode);
-                self.evict(policy);
+                self.tracked_evict(policy);
             } else {
                 op(data);
             }

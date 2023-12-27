@@ -110,9 +110,7 @@ pub mod perf {
     //! The constants in this module should all be revisited if mainnet consensus parameters change.
     //!
 
-    use crate::{config::params::Params, BlueWorkType};
-    use kaspa_hashes::Hash;
-    use std::mem::size_of;
+    use crate::config::params::Params;
 
     /// The default target depth for reachability reindexes.
     pub const DEFAULT_REINDEX_DEPTH: u64 = 100;
@@ -168,21 +166,9 @@ pub mod perf {
 
     impl PerfParams {
         pub fn adjust_to_consensus_params(&mut self, consensus_params: &Params) {
-            self.block_data_cache_size *= consensus_params.bps().clamp(1, 10) as usize; // Allow caching up to 10x over the baseline
-            self.block_window_cache_size = calculate_difficulty_window_cache_size(consensus_params);
+            // Allow caching up to 10x over the baseline
+            self.block_data_cache_size *= consensus_params.bps().clamp(1, 10) as usize;
         }
-    }
-
-    /// Bounds the cache size according to the "memory budget" (represented in bytes) and the approximate size of each unit in bytes
-    pub fn bounded_cache_size(desired_size: usize, memory_budget_bytes: usize, approx_unit_bytes: usize) -> usize {
-        let max_cache_size = memory_budget_bytes / approx_unit_bytes;
-        usize::min(desired_size, max_cache_size)
-    }
-
-    pub fn calculate_difficulty_window_cache_size(consensus_params: &Params) -> usize {
-        let window_memory_budget = 250_000_000usize; // 250MB
-        let single_window_byte_size = consensus_params.difficulty_window_size(0) * (size_of::<Hash>() + size_of::<BlueWorkType>());
-        bounded_cache_size(BASELINE_BLOCK_WINDOW_CACHE_SIZE, window_memory_budget, single_window_byte_size)
     }
 }
 
