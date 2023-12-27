@@ -9,7 +9,7 @@ pub enum CachePolicy {
     /// An empty cache (avoids acquiring locks etc so considered perf-free)
     Empty,
     /// The cache bounds the number of items it holds w/o tracking their inner size
-    Unit(usize),
+    Count(usize),
     /// Items are tracked by size and the cache never allows the accumulated tracked size
     /// to surpass the provided [`usize`] argument. [`MemMode`] determines whether items are tracked
     /// by bytes or by units
@@ -24,12 +24,12 @@ pub enum CachePolicy {
 struct CachePolicyInner {
     /// Indicates if this cache was set to be tracked.
     tracked: bool,
-    /// The max size of this cache. Units (bytes or some logical unit) depend on
-    /// caller logic and the implementation of `MemSizeEstimator`.
+    /// The max size of this cache. Size units are bytes or a logical unit depending on `mem_mode`.
+    /// The implementation of `MemSizeEstimator` is expected to support the provided mode.
     max_size: usize,
     /// Minimum number of items to keep in the cache even if passing tracked size limit.
     min_items: usize,
-    /// Indicates whether tracking is in bytes mode
+    /// Indicates whether tracking is in bytes mode, units mode or undefined
     mem_mode: MemMode,
 }
 
@@ -37,7 +37,7 @@ impl From<CachePolicy> for CachePolicyInner {
     fn from(policy: CachePolicy) -> Self {
         match policy {
             CachePolicy::Empty => CachePolicyInner { tracked: false, max_size: 0, min_items: 0, mem_mode: MemMode::Undefined },
-            CachePolicy::Unit(max_size) => CachePolicyInner { tracked: false, max_size, min_items: 0, mem_mode: MemMode::Undefined },
+            CachePolicy::Count(max_size) => CachePolicyInner { tracked: false, max_size, min_items: 0, mem_mode: MemMode::Undefined },
             CachePolicy::Tracked(max_size, mem_mode) => CachePolicyInner { tracked: true, max_size, min_items: 0, mem_mode },
             CachePolicy::LowerBoundedTracked { max_size, min_items, mem_mode } => {
                 CachePolicyInner { tracked: true, max_size, min_items, mem_mode }

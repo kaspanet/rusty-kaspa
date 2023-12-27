@@ -388,7 +388,7 @@ impl PruningProofManager {
         let proof_pp = proof_pp_header.hash;
         let proof_pp_level = calc_block_level(proof_pp_header, self.max_block_level);
         let (db_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
-        let cache_policy = CachePolicy::Unit(2 * self.pruning_proof_m as usize);
+        let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize);
         let headers_store = Arc::new(DbHeadersStore::new(db.clone(), cache_policy, cache_policy)); // TODO: Think about cache size
         let ghostdag_stores = (0..=self.max_block_level)
             .map(|level| Arc::new(DbGhostdagStore::new(db.clone(), level, cache_policy, cache_policy)))
@@ -398,8 +398,8 @@ impl PruningProofManager {
                 DbRelationsStore::new(
                     db.clone(),
                     level,
-                    CachePolicy::Unit(2 * self.pruning_proof_m as usize),
-                    CachePolicy::Unit(2 * self.pruning_proof_m as usize),
+                    CachePolicy::Count(2 * self.pruning_proof_m as usize),
+                    CachePolicy::Count(2 * self.pruning_proof_m as usize),
                 )
             })
             .collect_vec();

@@ -107,7 +107,7 @@ impl ConsensusStorage {
         let noise = |size| size + rand::thread_rng().gen_range(0..16);
 
         // Headers
-        let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), CachePolicy::Unit(noise(statuses_cache_size)))));
+        let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), CachePolicy::Count(noise(statuses_cache_size)))));
         let relations_stores = Arc::new(RwLock::new(
             (0..=params.max_block_level)
                 .map(|level| {
@@ -130,7 +130,7 @@ impl ConsensusStorage {
         ));
         let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(
             db.clone(),
-            CachePolicy::Unit(noise(reachability_data_cache_size)),
+            CachePolicy::Count(noise(reachability_data_cache_size)),
             CachePolicy::Tracked(noise(reachability_sets_cache_size), MemMode::Units),
         )));
 
@@ -152,26 +152,28 @@ impl ConsensusStorage {
                         mem_mode: MemMode::Bytes,
                     };
                     let compact_cache_size = max(ghostdag_compact_cache_size.checked_shr(level as u32).unwrap_or(0), unit_lower_bound);
-                    Arc::new(DbGhostdagStore::new(db.clone(), level, cache_policy, CachePolicy::Unit(noise(compact_cache_size))))
+                    Arc::new(DbGhostdagStore::new(db.clone(), level, cache_policy, CachePolicy::Count(noise(compact_cache_size))))
                 })
                 .collect_vec(),
         );
         let ghostdag_primary_store = ghostdag_stores[0].clone();
-        let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), CachePolicy::Unit(noise(daa_excluded_cache_size))));
+        let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), CachePolicy::Count(noise(daa_excluded_cache_size))));
         let headers_store = Arc::new(DbHeadersStore::new(
             db.clone(),
             CachePolicy::Tracked(noise(headers_cache_bytes), MemMode::Bytes),
-            CachePolicy::Unit(noise((3600 * params.bps() as usize).max(perf_params.header_data_cache_size))),
+            CachePolicy::Count(noise((3600 * params.bps() as usize).max(perf_params.header_data_cache_size))),
         ));
-        let depth_store = Arc::new(DbDepthStore::new(db.clone(), CachePolicy::Unit(noise(perf_params.header_data_cache_size))));
-        let selected_chain_store =
-            Arc::new(RwLock::new(DbSelectedChainStore::new(db.clone(), CachePolicy::Unit(noise(perf_params.header_data_cache_size)))));
+        let depth_store = Arc::new(DbDepthStore::new(db.clone(), CachePolicy::Count(noise(perf_params.header_data_cache_size))));
+        let selected_chain_store = Arc::new(RwLock::new(DbSelectedChainStore::new(
+            db.clone(),
+            CachePolicy::Count(noise(perf_params.header_data_cache_size)),
+        )));
 
         // Pruning
         let pruning_point_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
-        let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), CachePolicy::Unit(1024)));
+        let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), CachePolicy::Count(1024)));
         let pruning_utxoset_stores =
-            Arc::new(RwLock::new(PruningUtxosetStores::new(db.clone(), CachePolicy::Unit(noise(perf_params.utxo_set_cache_size)))));
+            Arc::new(RwLock::new(PruningUtxosetStores::new(db.clone(), CachePolicy::Count(noise(perf_params.utxo_set_cache_size)))));
 
         // Txs
         let block_transactions_store =
@@ -179,9 +181,9 @@ impl ConsensusStorage {
         let utxo_diffs_store =
             Arc::new(DbUtxoDiffsStore::new(db.clone(), CachePolicy::Tracked(noise(utxo_diffs_cache_bytes), MemMode::Bytes)));
         let utxo_multisets_store =
-            Arc::new(DbUtxoMultisetsStore::new(db.clone(), CachePolicy::Unit(noise(perf_params.block_data_cache_size))));
+            Arc::new(DbUtxoMultisetsStore::new(db.clone(), CachePolicy::Count(noise(perf_params.block_data_cache_size))));
         let acceptance_data_store =
-            Arc::new(DbAcceptanceDataStore::new(db.clone(), CachePolicy::Unit(noise(perf_params.block_data_cache_size))));
+            Arc::new(DbAcceptanceDataStore::new(db.clone(), CachePolicy::Count(noise(perf_params.block_data_cache_size))));
 
         // Tips
         let headers_selected_tip_store = Arc::new(RwLock::new(DbHeadersSelectedTipStore::new(db.clone())));
@@ -189,13 +191,13 @@ impl ConsensusStorage {
 
         // Block windows
         let block_window_cache_for_difficulty =
-            Arc::new(BlockWindowCacheStore::new(CachePolicy::Unit(noise(perf_params.block_window_cache_size))));
+            Arc::new(BlockWindowCacheStore::new(CachePolicy::Count(noise(perf_params.block_window_cache_size))));
         let block_window_cache_for_past_median_time =
-            Arc::new(BlockWindowCacheStore::new(CachePolicy::Unit(noise(perf_params.block_window_cache_size))));
+            Arc::new(BlockWindowCacheStore::new(CachePolicy::Count(noise(perf_params.block_window_cache_size))));
 
         // Virtual stores
         let virtual_stores =
-            Arc::new(RwLock::new(VirtualStores::new(db.clone(), CachePolicy::Unit(noise(perf_params.utxo_set_cache_size)))));
+            Arc::new(RwLock::new(VirtualStores::new(db.clone(), CachePolicy::Count(noise(perf_params.utxo_set_cache_size)))));
 
         // Ensure that reachability stores are initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();

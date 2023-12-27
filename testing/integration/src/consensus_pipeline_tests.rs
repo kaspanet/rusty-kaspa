@@ -44,7 +44,7 @@ async fn test_concurrent_pipeline() {
     }
 
     // Clone with a new cache in order to verify correct writes to the DB itself
-    let store = consensus.reachability_store().read().clone_with_new_cache(CachePolicy::Unit(10_000), CachePolicy::Unit(10_000));
+    let store = consensus.reachability_store().read().clone_with_new_cache(CachePolicy::Count(10_000), CachePolicy::Count(10_000));
 
     // Assert intervals
     store.validate_intervals(blockhash::ORIGIN).unwrap();
@@ -117,7 +117,7 @@ async fn test_concurrent_pipeline_random() {
     }
 
     // Clone with a new cache in order to verify correct writes to the DB itself
-    let store = consensus.reachability_store().read().clone_with_new_cache(CachePolicy::Unit(10_000), CachePolicy::Unit(10_000));
+    let store = consensus.reachability_store().read().clone_with_new_cache(CachePolicy::Count(10_000), CachePolicy::Count(10_000));
 
     // Assert intervals
     store.validate_intervals(blockhash::ORIGIN).unwrap();

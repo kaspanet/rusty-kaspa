@@ -228,7 +228,7 @@ mod tests {
     #[test]
     fn test_delete_all() {
         let (_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
-        let access = CachedDbAccess::<Hash, u64>::new(db.clone(), CachePolicy::Unit(2), vec![1, 2]);
+        let access = CachedDbAccess::<Hash, u64>::new(db.clone(), CachePolicy::Count(2), vec![1, 2]);
 
         access.write_many(DirectDbWriter::new(&db), &mut (0..16).map(|i| (i.into(), 2))).unwrap();
         assert_eq!(16, access.iterator().count());
