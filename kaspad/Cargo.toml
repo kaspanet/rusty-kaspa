@@ -29,7 +29,6 @@ kaspa-index-processor.workspace = true
 kaspa-mining.workspace = true
 kaspa-p2p-flows.workspace = true
 kaspa-perf-monitor.workspace = true
-kaspa-rpc-core.workspace = true
 kaspa-rpc-service.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
@@ -41,15 +40,8 @@ async-channel.workspace = true
 clap.workspace = true
 dhat = { workspace = true, optional = true }
 dirs.workspace = true
-futures-util.workspace = true
 log.workspace = true
 num_cpus.workspace = true
-rand.workspace = true
-rayon.workspace = true
-tempfile.workspace = true
-thiserror.workspace = true
-tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
-workflow-log.workspace = true
 
 [features]
 heap = ["dhat", "kaspa-alloc/heap"]

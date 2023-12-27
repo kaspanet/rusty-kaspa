@@ -12,7 +12,6 @@ async-channel.workspace = true
 async-trait.workspace = true
 borsh.workspace = true
 derive_more.workspace = true
-futures-util.workspace = true
 futures.workspace = true
 itertools.workspace = true
 kaspa-addresses.workspace = true
@@ -27,9 +26,7 @@ paste.workspace = true
 rand.workspace = true
 serde.workspace = true
 thiserror.workspace = true
-triggered.workspace = true
 workflow-core.workspace = true
-workflow-log.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }

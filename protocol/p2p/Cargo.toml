@@ -26,9 +26,6 @@ kaspa-hashes.workspace = true
 kaspa-math.workspace = true
 kaspa-utils.workspace = true
 kaspa-utils-tower.workspace = true
-
-borsh.workspace = true
-ctrlc.workspace = true
 futures = { workspace = true, features = ["alloc"] }
 h2.workspace = true
 itertools.workspace = true
@@ -36,7 +33,6 @@ log.workspace = true
 parking_lot.workspace = true
 prost.workspace = true
 seqlock.workspace = true
-serde.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = [ "rt-multi-thread", "macros", "signal" ] }
 tokio-stream = { workspace = true, features = ["net"] }

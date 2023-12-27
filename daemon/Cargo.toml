@@ -10,12 +10,9 @@ license.workspace = true
 [dependencies]
 async-trait.workspace = true
 borsh.workspace = true
-cfg-if.workspace = true
 downcast-rs.workspace = true
-futures.workspace = true
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
-kaspa-wallet-core.workspace = true
 nw-sys.workspace = true
 serde.workspace = true
 thiserror.workspace = true

@@ -47,7 +47,6 @@ regex.workspace = true
 separator.workspace = true
 serde_json.workspace = true
 serde.workspace = true
-textwrap.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-core.workspace = true

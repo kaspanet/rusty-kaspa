@@ -12,9 +12,5 @@ legacy-rpc = ["kaspa-cli/legacy-rpc"]
 default = []
 
 [dependencies]
-async-std.workspace = true
-async-trait.workspace = true
 kaspa-cli.workspace = true
 tokio.workspace = true
-workflow-log.workspace = true
-workflow-terminal.workspace = true

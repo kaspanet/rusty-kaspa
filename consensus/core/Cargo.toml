@@ -8,16 +8,12 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-async-trait.workspace = true
 borsh.workspace = true
-cfg-if.workspace = true
 faster-hex.workspace = true
 futures-util.workspace = true
-getrandom.workspace = true
 itertools.workspace = true
 js-sys.workspace = true
 kaspa-addresses.workspace = true
-kaspa-core.workspace = true
 kaspa-hashes.workspace = true
 kaspa-math.workspace = true
 kaspa-merkle.workspace = true
@@ -33,7 +29,6 @@ smallvec.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-core.workspace = true
-workflow-log.workspace = true
 workflow-wasm.workspace = true
 
 [dev-dependencies]

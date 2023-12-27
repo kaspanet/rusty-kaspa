@@ -14,18 +14,13 @@ kaspa-consensusmanager.workspace = true
 kaspa-core.workspace = true
 kaspa-hashes.workspace = true
 kaspa-mining-errors.workspace = true
-kaspa-muhash.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
-
-futures-util.workspace = true
 itertools.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true
-serde.workspace = true
 smallvec.workspace = true
-thiserror.workspace = true
 tokio = { workspace = true, features = [ "rt-multi-thread", "macros", "signal" ] }
 
 [dev-dependencies]

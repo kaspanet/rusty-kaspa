@@ -13,23 +13,10 @@ kaspa-core.workspace = true
 kaspa-notify.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-utils.workspace = true
-
-async-channel.workspace = true
-async-stream.workspace = true
-async-trait.workspace = true
 faster-hex.workspace = true
-futures.workspace = true
-h2.workspace = true
-log.workspace = true
 paste.workspace = true
 prost.workspace = true
-rand.workspace = true
-regex.workspace = true
-thiserror.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
-tokio-stream.workspace = true
 tonic = { workspace = true, features = ["tls", "gzip"] }
-triggered.workspace = true
 workflow-core.workspace = true
 
 [build-dependencies]

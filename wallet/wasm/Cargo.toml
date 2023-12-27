@@ -15,11 +15,7 @@ default = []
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-async-trait.workspace = true
-js-sys.workspace = true
 kaspa-cli.workspace = true
 wasm-bindgen-futures.workspace = true
 wasm-bindgen.workspace = true
-workflow-log.workspace = true
 workflow-terminal.workspace = true
-workflow-wasm.workspace = true

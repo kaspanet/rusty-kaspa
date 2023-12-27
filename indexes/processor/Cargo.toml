@@ -13,7 +13,6 @@ kaspa-consensus-notify.workspace = true
 kaspa-consensusmanager.workspace = true
 kaspa-core.workspace = true
 kaspa-database.workspace = true
-kaspa-hashes.workspace = true
 kaspa-index-core.workspace = true
 kaspa-notify.workspace = true
 kaspa-utils.workspace = true
@@ -22,12 +21,9 @@ kaspa-utxoindex.workspace = true
 async-channel.workspace = true
 async-trait.workspace = true
 derive_more.workspace = true
-futures.workspace = true
 log.workspace = true
-paste.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = [ "rt-multi-thread", "macros", "signal" ]}
-triggered.workspace = true
 
 [dev-dependencies]
 kaspa-consensus.workspace = true
