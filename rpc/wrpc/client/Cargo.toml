@@ -35,3 +35,6 @@ workflow-dom.workspace = true
 workflow-log.workspace = true
 workflow-rpc.workspace = true
 workflow-wasm.workspace = true
+
+[package.metadata.cargo-machete]
+ignored = ["wasm-bindgen-futures"]

@@ -19,3 +19,6 @@ kaspa-cli.workspace = true
 wasm-bindgen-futures.workspace = true
 wasm-bindgen.workspace = true
 workflow-terminal.workspace = true
+
+[package.metadata.cargo-machete]
+ignored = ["kaspa-cli", "wasm-bindgen-futures"]

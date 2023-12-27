@@ -18,3 +18,6 @@ kaspa-notify.workspace = true
 kaspa-utils.workspace = true
 log.workspace = true
 paste.workspace = true
+
+[package.metadata.cargo-machete]
+ignored = ["log", "paste"]

@@ -63,3 +63,6 @@ features = [
     # 'CanvasRenderingContext2d'
 ]
 
+[package.metadata.cargo-machete]
+ignored = ["kaspa-cli", "wasm-bindgen-futures"]
+

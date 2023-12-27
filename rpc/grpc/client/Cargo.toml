@@ -26,3 +26,6 @@ regex.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 tonic = { workspace = true, features = ["gzip"] }
+
+[package.metadata.cargo-machete]
+ignored = ["log"]

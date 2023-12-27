@@ -14,3 +14,6 @@ default = []
 [dependencies]
 kaspa-cli.workspace = true
 tokio.workspace = true
+
+[package.metadata.cargo-machete]
+ignored = ["kaspa-cli"]

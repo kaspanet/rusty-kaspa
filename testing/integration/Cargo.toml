@@ -54,3 +54,6 @@ kaspa-txscript-errors.workspace = true
 [features]
 html_reports = []
 devnet-prealloc = ["kaspad/devnet-prealloc"]
+
+[package.metadata.cargo-machete]
+ignored = ["kaspad"]

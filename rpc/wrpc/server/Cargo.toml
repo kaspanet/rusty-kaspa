@@ -32,3 +32,6 @@ workflow-rpc.workspace = true
 # as used in the release deployment in GitHub CI
 # see: https://github.com/rust-cross/cargo-zigbuild/issues/127
 openssl = { version = "0.10", features = ["vendored"] }
+
+[package.metadata.cargo-machete]
+ignored = ["log"]

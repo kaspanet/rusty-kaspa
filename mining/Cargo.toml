@@ -31,3 +31,6 @@ secp256k1.workspace = true
 [[bench]]
 name = "bench"
 harness = false
+
+[package.metadata.cargo-machete]
+ignored = ["log"]

@@ -44,3 +44,6 @@ tonic-build = { workspace = true, features = ["prost"] }
 
 [dev-dependencies]
 hex.workspace = true
+
+[package.metadata.cargo-machete]
+ignored = ["prost"]

@@ -37,3 +37,6 @@ cc.workspace = true
 [[bench]]
 name = "bench"
 harness = false
+
+[package.metadata.cargo-machete]
+ignored = ["serde"]

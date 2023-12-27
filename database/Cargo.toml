@@ -22,3 +22,6 @@ serde.workspace = true
 smallvec.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
+
+[package.metadata.cargo-machete]
+ignored = ["num-traits"]
