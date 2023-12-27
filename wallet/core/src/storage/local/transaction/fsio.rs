@@ -317,6 +317,6 @@ async fn write(path: &Path, record: &TransactionRecord, secret: Option<&Secret>,
     } else {
         Encryptable::from(record.clone())
     };
-    fs::write_json(path, &data).await?;
+    fs::write(path, &data.try_to_vec()?).await?;
     Ok(())
 }
