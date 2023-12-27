@@ -386,8 +386,10 @@ impl Interface for LocalStore {
     }
 
     async fn open(&self, wallet_secret: &Secret, args: OpenArgs) -> Result<()> {
-        if self.inner()?.is_modified() {
-            panic!("LocalStore::open called while modified flag is true!");
+        if let Some(inner) = self.inner.lock().unwrap().as_ref() {
+            if inner.is_modified() {
+                panic!("LocalStore::open called while modified flag is true!");
+            }
         }
 
         let location = self.location.lock().unwrap().clone().unwrap();
@@ -412,11 +414,10 @@ impl Interface for LocalStore {
         let mut descriptors = vec![];
         for filename in wallets.into_iter() {
             let path = folder.join(format!("{}.wallet", filename));
-            let title = fs::read_to_string(&path)
-                .await
-                .ok()
-                .and_then(|json| serde_json::Value::from_str(json.as_str()).ok())
-                .and_then(|data| data.get("name").and_then(|v| v.as_str()).map(|v| v.to_string()));
+            // TODO - refactor on native to read directly from file (skip temporary buffer creation)
+            let wallet_data = fs::read(&path).await;
+            let title =
+                wallet_data.ok().and_then(|data| WalletStorage::try_from_slice(data.as_slice()).ok()).and_then(|wallet| wallet.title);
             descriptors.push(WalletDescriptor { title, filename });
         }
 
