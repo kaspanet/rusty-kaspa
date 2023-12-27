@@ -176,10 +176,8 @@ impl VirtualStateProcessor {
             thread_pool,
 
             genesis: params.genesis.clone(),
-            // TODO (TEMP): remove TN11 bounds when restarting/HF TN11, see comments in bps.rs
-            // (changing these values here is a way to influence the mined templates w/o breaking consensus)
-            max_block_parents: params.max_block_parents.min(16),
-            mergeset_size_limit: params.mergeset_size_limit.min(248),
+            max_block_parents: params.max_block_parents,
+            mergeset_size_limit: params.mergeset_size_limit,
             pruning_depth: params.pruning_depth,
 
             db,
