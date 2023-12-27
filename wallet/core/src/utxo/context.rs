@@ -640,8 +640,15 @@ impl UtxoContext {
     }
 
     pub async fn register_addresses(&self, addresses: &[Address]) -> Result<()> {
+        if addresses.is_empty() {
+            log_error!("utxo processor: register for an empty address set");
+        }
+
         let local = self.addresses();
 
+        // addresses are filtered for a known address set where
+        // addresses can already be registered with the processor
+        // as a part of address space (Scan window) pre-caching.
         let addresses = addresses
             .iter()
             .filter_map(|address| {
@@ -654,7 +661,9 @@ impl UtxoContext {
             })
             .collect::<Vec<_>>();
 
-        self.processor().register_addresses(addresses, self).await?;
+        if addresses.is_not_empty() {
+            self.processor().register_addresses(addresses, self).await?;
+        }
 
         Ok(())
     }
