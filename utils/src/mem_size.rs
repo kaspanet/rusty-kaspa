@@ -1,6 +1,6 @@
 //! Defines a [`MemSizeEstimator`] trait and a companying [`MemMode`] which are used to
-//! estimate sizes of run-time objects in memory including deep heap allocations. See
-//! struct-level docs for moew details.
+//! estimate sizes of run-time objects in memory, including deep heap allocations. See
+//! struct-level docs for more details.
 
 use std::{collections::HashSet, mem::size_of, sync::Arc};
 
@@ -11,32 +11,36 @@ use parking_lot::RwLock;
 pub enum MemMode {
     Bytes,
     Units,
+    Undefined,
 }
 
 /// The contract for estimating deep memory size owned by this object. Implementors
-/// are expected to support only a single function - bytes or units. Objects with pre-compliation
-/// known static size or which are containers of items with static size should implement the `_units`
-/// estimation and return the number of logical items (usually 1 or the number of items in
+/// are expected to support only a single function - bytes or units. Objects with pre-compilation
+/// known static size or which are containers of items with known static size should implement the `_units`
+/// estimation and return the number of logical items (either 1 or the number of items in
 /// the container). Objects with varying runtime sizes should implement the `_bytes` estimation.
 ///
 /// By panicking on the remaining unimplemented function we ensure that tests will catch any inconsistency over the
 /// used units between the object implementing the contract and the code using its size for various purposes (e.g. cache
-/// size tracking)
+/// size tracking).
+/// Exceptions to the above are objects which delegate the estimation to an underlying inner field (such as Arc or RwLock),
+/// which should implement both methods and rely on the inner object to be implemented correctly
 pub trait MemSizeEstimator {
     /// Estimates the size of this object depending on the passed mem mode
     fn estimate_size(&self, mem_mode: MemMode) -> usize {
         match mem_mode {
             MemMode::Bytes => self.estimate_mem_bytes(),
             MemMode::Units => self.estimate_mem_units(),
+            MemMode::Undefined => unimplemented!(),
         }
     }
 
-    /// Estimates the (deep) size of this object in bytes (including heap owend inner data)
+    /// Estimates the (deep) size of this object in bytes (including heap owned inner data)
     fn estimate_mem_bytes(&self) -> usize {
         unimplemented!()
     }
 
-    /// Estimates the number of units this object holds in memory where the unit size is usually
+    /// Estimates the number of units this object holds in memory where the unit byte size is usually
     /// a constant known to the caller as well (and hence we avoid computing it over and over)
     fn estimate_mem_units(&self) -> usize {
         unimplemented!()

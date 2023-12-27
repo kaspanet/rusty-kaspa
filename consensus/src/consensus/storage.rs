@@ -115,13 +115,13 @@ impl ConsensusStorage {
                     let parents_level_size = parents_cache_size.checked_shr(level as u32).unwrap_or(0);
                     let parents_cache_policy = CachePolicy::LowerBoundedTracked {
                         max_size: noise(parents_level_size),
-                        min_units: noise(unit_lower_bound),
+                        min_items: noise(unit_lower_bound),
                         mem_mode: MemMode::Units,
                     };
                     let children_level_size = children_cache_size.checked_shr(level as u32).unwrap_or(0);
                     let children_cache_policy = CachePolicy::LowerBoundedTracked {
                         max_size: noise(children_level_size),
-                        min_units: noise(unit_lower_bound),
+                        min_items: noise(unit_lower_bound),
                         mem_mode: MemMode::Units,
                     };
                     DbRelationsStore::new(db.clone(), level, parents_cache_policy, children_cache_policy)
@@ -148,7 +148,7 @@ impl ConsensusStorage {
                     let level_cache_bytes = ghostdag_cache_bytes.checked_shr(level as u32).unwrap_or(0);
                     let cache_policy = CachePolicy::LowerBoundedTracked {
                         max_size: noise(level_cache_bytes),
-                        min_units: noise(unit_lower_bound),
+                        min_items: noise(unit_lower_bound),
                         mem_mode: MemMode::Bytes,
                     };
                     let compact_cache_size = max(ghostdag_compact_cache_size.checked_shr(level as u32).unwrap_or(0), unit_lower_bound);
