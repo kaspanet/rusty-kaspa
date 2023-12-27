@@ -22,12 +22,12 @@ use crate::{
         virtual_state::VirtualStores,
         DB,
     },
-    processes::{reachability::inquirer as reachability, relations},
+    processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations},
 };
 
 use super::cache_policy_builder::CachePolicyBuilder as PolicyBuilder;
 use itertools::Itertools;
-use kaspa_consensus_core::{blockstatus::BlockStatus, BlockHashSet, BlueWorkType};
+use kaspa_consensus_core::{blockstatus::BlockStatus, BlockHashSet};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
@@ -78,19 +78,19 @@ impl ConsensusStorage {
         let pruning_size_for_caches = (params.pruning_depth + params.finality_depth) as usize; // Upper bound for any block/header related data
         let level_lower_bound = 2 * params.pruning_proof_m as usize; // Number of items lower bound for level-related caches
 
-        // Budgets in bytes
+        // Budgets in bytes. All byte budgets overall sum up to ~1GB of memory (which obviously takes more low level alloc space)
         let daa_excluded_budget = 30_000_000;
         let statuses_budget = 30_000_000;
         let reachability_data_budget = 20_000_000;
         let reachability_sets_budget = 20_000_000;
         let ghostdag_compact_budget = 15_000_000;
         let headers_compact_budget = 5_000_000;
-        let parents_budget = 40_000_000;
-        let children_budget = 5_000_000;
-        let ghostdag_budget = 80_000_000;
+        let parents_budget = 40_000_000; // x 3 for reachability and levels
+        let children_budget = 5_000_000; // x 3 for reachability and levels
+        let ghostdag_budget = 80_000_000; // x 2 for levels
         let headers_budget = 80_000_000;
         let utxo_diffs_budget = 40_000_000;
-        let block_window_budget = 250_000_000;
+        let block_window_budget = 200_000_000; // x 2 for difficulty and median time
 
         // Unit sizes in bytes
         let daa_excluded_bytes = size_of::<Hash>() + size_of::<BlockHashSet>();
@@ -98,7 +98,8 @@ impl ConsensusStorage {
         let reachability_data_bytes = size_of::<Hash>() + size_of::<ReachabilityData>();
         let ghostdag_compact_bytes = size_of::<Hash>() + size_of::<CompactGhostdagData>();
         let headers_compact_bytes = size_of::<Hash>() + size_of::<CompactHeaderData>();
-        let block_window_bytes = params.difficulty_window_size(0) * (size_of::<Hash>() + size_of::<BlueWorkType>());
+        let difficulty_window_bytes = params.difficulty_window_size(0) * size_of::<SortableBlock>();
+        let median_window_bytes = params.past_median_time_window_size(0) * size_of::<SortableBlock>();
 
         // Cache policy builders
         let daa_excluded_builder =
@@ -136,10 +137,15 @@ impl ConsensusStorage {
             .bytes_budget(reachability_sets_budget)
             .unit_bytes(size_of::<Hash>())
             .tracked_units();
-        let block_window_builder = PolicyBuilder::new()
+        let difficulty_window_builder = PolicyBuilder::new()
             .max_items(perf_params.block_window_cache_size)
             .bytes_budget(block_window_budget)
-            .unit_bytes(block_window_bytes)
+            .unit_bytes(difficulty_window_bytes)
+            .untracked();
+        let median_window_builder = PolicyBuilder::new()
+            .max_items(perf_params.block_window_cache_size)
+            .bytes_budget(block_window_budget)
+            .unit_bytes(median_window_bytes)
             .untracked();
         let ghostdag_builder = PolicyBuilder::new().bytes_budget(ghostdag_budget).tracked_bytes();
         let headers_builder = PolicyBuilder::new().bytes_budget(headers_budget).tracked_bytes();
@@ -150,7 +156,7 @@ impl ConsensusStorage {
         let transactions_builder = PolicyBuilder::new().max_items(40_000).tracked_units(); // Tracked units are txs.
         let past_pruning_points_builder = PolicyBuilder::new().max_items(1024).untracked();
 
-        // TODO: consider tracking transactions by bytes (preferably by saving the size in a field)
+        // TODO: consider tracking transactions by bytes (preferably by saving the size in a field on the block level)
         // TODO: consider tracking UtxoDiff byte sizes more accurately including the exact size of ScriptPublicKey
 
         // Headers
@@ -214,8 +220,8 @@ impl ConsensusStorage {
         let body_tips_store = Arc::new(RwLock::new(DbTipsStore::new(db.clone())));
 
         // Block windows
-        let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(block_window_builder.build()));
-        let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(block_window_builder.build()));
+        let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(difficulty_window_builder.build()));
+        let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(median_window_builder.build()));
 
         // Virtual stores
         let virtual_stores = Arc::new(RwLock::new(VirtualStores::new(db.clone(), utxo_set_builder.build())));
