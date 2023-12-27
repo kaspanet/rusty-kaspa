@@ -147,8 +147,11 @@ impl ConsensusStorage {
         let block_data_builder = PolicyBuilder::new().max_items(perf_params.block_data_cache_size).untracked();
         let header_data_builder = PolicyBuilder::new().max_items(perf_params.header_data_cache_size).untracked();
         let utxo_set_builder = PolicyBuilder::new().max_items(perf_params.utxo_set_cache_size).untracked();
-        let transactions_builder = PolicyBuilder::new().max_items(40_000).tracked_units(); // Tracked units are txs
+        let transactions_builder = PolicyBuilder::new().max_items(40_000).tracked_units(); // Tracked units are txs.
         let past_pruning_points_builder = PolicyBuilder::new().max_items(1024).untracked();
+
+        // TODO: consider tracking transactions by bytes (preferably by saving the size in a field)
+        // TODO: consider tracking UtxoDiff byte sizes more accurately including the exact size of ScriptPublicKey
 
         // Headers
         let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), statuses_builder.build())));

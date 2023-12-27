@@ -10,8 +10,8 @@ pub enum CachePolicy {
     Empty,
     /// The cache bounds the number of items it holds w/o tracking their inner size
     Count(usize),
-    /// Items are tracked by size with a `max_size` limit but the cache will pass this limit if
-    /// there are no more than `min_items` items overall in the cache. `mem_mode` determines whether
+    /// Items are tracked by size with a `max_size` limit overall. The cache will pass this limit
+    /// if there are no more than `min_items` items in the cache. `mem_mode` determines whether
     /// items are tracked by bytes or by units
     Tracked { max_size: usize, min_items: usize, mem_mode: MemMode },
 }
@@ -141,7 +141,7 @@ where
 {
     pub fn new(policy: CachePolicy) -> Self {
         let policy: CachePolicyInner = policy.into();
-        let prealloc_size = if policy.tracked { 0 } else { policy.max_size };
+        let prealloc_size = if policy.tracked { 0 } else { policy.max_size }; // TODO: estimate prealloc also in tracked mode
         Self { inner: Arc::new(RwLock::new(Inner::new(prealloc_size))), policy }
     }
 
