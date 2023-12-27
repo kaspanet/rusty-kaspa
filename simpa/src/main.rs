@@ -69,7 +69,7 @@ struct Args {
     #[arg(short, long)]
     virtual_threads: Option<usize>,
 
-    /// If on, validates all headers before starting to validate block bodies
+    /// If on, validates headers first before starting to validate block bodies
     #[arg(short = 'f', long, default_value_t = false)]
     headers_first: bool,
 
