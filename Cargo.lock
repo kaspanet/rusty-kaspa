@@ -2347,6 +2347,7 @@ dependencies = [
  "kaspa-notify",
  "kaspa-rpc-core",
  "kaspa-utils",
+ "log",
  "paste",
  "prost",
  "tonic",
