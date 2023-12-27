@@ -18,6 +18,9 @@ jobs:
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Machete
+        uses: bnjbvr/cargo-machete@main
+
       - name: Cache
         uses: actions/cache@v3
         with:
@@ -28,6 +31,9 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Run cargo machete #checks for unused dependencies
+        run: cargo machete
 
       - name: Run cargo check
         run: cargo check --tests --workspace --benches
@@ -100,9 +106,6 @@ jobs:
       - name: Install cargo-nextest
         run: cargo install cargo-nextest
 
-      - name: Install Machete
-        uses: bnjbvr/cargo-machete@main
-
       - name: Cache
         uses: actions/cache@v3
         with:
@@ -113,9 +116,6 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-      
-      - name: Run cargo machete
-        run: cargo machete
 
       - name: Run cargo build with devnet-prealloc feature
         run: cargo build --release --features devnet-prealloc --workspace --all --tests --benches
