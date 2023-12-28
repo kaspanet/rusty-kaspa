@@ -95,17 +95,11 @@ impl CountersSnapshot {
 
 fn to_human_readable(mut number_to_format: f64, precision: usize, suffix: &str) -> String {
     const UNITS: [&str; 7] = ["", "K", "M", "G", "T", "P", "E"];
-    let mut found_unit = "";
-    for unit in UNITS {
-        if number_to_format < 1000.0 {
-            found_unit = unit;
-            break;
-        } else {
-            number_to_format /= 1000.0
-        }
-    }
-
-    format!("{number_to_format:.precision$}{}{}", found_unit, suffix)
+    const DIV: [f64; 7] =
+        [1.0, 1_000.0, 1_000_000.0, 1_000_000_000.0, 1_000_000_000_000.0, 1_000_000_000_000_000.0, 1_000_000_000_000_000_000.0];
+    let i = (number_to_format.log(1000.0) as usize).min(UNITS.len() - 1);
+    number_to_format /= DIV[i];
+    format!("{number_to_format:.precision$}{}{}", UNITS[i], suffix)
 }
 
 pub struct ProcessMetricsDisplay<'a>(&'a CountersSnapshot);
@@ -116,7 +110,7 @@ impl Display for ProcessMetricsDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "process metrics: RSS: {} ({}), VIRT: {} ({}), FD: {}, cores: {}, total cpu usage: {:.4}",
+            "process metrics: RAM: {} ({}), VIRT: {} ({}), FD: {}, cores: {}, total cpu usage: {:.4}",
             self.0.resident_set_size,
             to_human_readable(self.0.resident_set_size as f64, 2, "B"),
             self.0.virtual_memory_size,
