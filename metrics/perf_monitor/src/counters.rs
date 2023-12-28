@@ -83,11 +83,20 @@ pub struct CountersSnapshot {
     pub disk_io_write_per_sec: f64,
 }
 
-fn to_human_readable(mut number_to_format: f64, precision: usize, suffix: &str) -> String {
-    let units = ["", "K", "M", "G", "T", "P", "E"];
-    let mut found_unit = "";
+impl CountersSnapshot {
+    pub fn to_process_metrics_display(&self) -> ProcessMetricsDisplay {
+        ProcessMetricsDisplay(self)
+    }
 
-    for unit in units {
+    pub fn to_io_metrics_display(&self) -> IoMetricsDisplay {
+        IoMetricsDisplay(self)
+    }
+}
+
+fn to_human_readable(mut number_to_format: f64, precision: usize, suffix: &str) -> String {
+    const UNITS: [&str; 7] = ["", "K", "M", "G", "T", "P", "E"];
+    let mut found_unit = "";
+    for unit in UNITS {
         if number_to_format < 1000.0 {
             found_unit = unit;
             break;
@@ -99,31 +108,39 @@ fn to_human_readable(mut number_to_format: f64, precision: usize, suffix: &str) 
     format!("{number_to_format:.precision$}{}{}", found_unit, suffix)
 }
 
-impl Display for CountersSnapshot {
+pub struct ProcessMetricsDisplay<'a>(&'a CountersSnapshot);
+
+pub struct IoMetricsDisplay<'a>(&'a CountersSnapshot);
+
+impl Display for ProcessMetricsDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Performance Metrics")?;
-        writeln!(
-            f,
-            "Process Metrics: RSS: {} ({}), VIRT: {} ({}), cores: {}, cpu usage (per core): {}",
-            self.resident_set_size,
-            to_human_readable(self.resident_set_size as f64, 2, "B"),
-            self.virtual_memory_size,
-            to_human_readable(self.virtual_memory_size as f64, 2, "B"),
-            self.core_num,
-            self.cpu_usage
-        )?;
         write!(
             f,
-            "Disk IO Metrics: FD: {}, read: {} ({}), write: {} ({}), read rate: {} ({}), write rate: {} ({})",
-            self.fd_num,
-            self.disk_io_read_bytes,
-            to_human_readable(self.disk_io_read_bytes as f64, 0, "B"),
-            self.disk_io_write_bytes,
-            to_human_readable(self.disk_io_write_bytes as f64, 0, "B"),
-            self.disk_io_read_per_sec,
-            to_human_readable(self.disk_io_read_per_sec, 0, "B/s"),
-            self.disk_io_write_per_sec,
-            to_human_readable(self.disk_io_write_per_sec, 0, "B/s")
+            "process metrics: RSS: {} ({}), VIRT: {} ({}), cores: {}, cpu usage: {}",
+            self.0.resident_set_size,
+            to_human_readable(self.0.resident_set_size as f64, 2, "B"),
+            self.0.virtual_memory_size,
+            to_human_readable(self.0.virtual_memory_size as f64, 2, "B"),
+            self.0.core_num,
+            self.0.cpu_usage
+        )
+    }
+}
+
+impl Display for IoMetricsDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "disk io metrics: FD: {}, read: {} ({}), write: {} ({}), read rate: {} ({}), write rate: {} ({})",
+            self.0.fd_num,
+            self.0.disk_io_read_bytes,
+            to_human_readable(self.0.disk_io_read_bytes as f64, 0, "B"),
+            self.0.disk_io_write_bytes,
+            to_human_readable(self.0.disk_io_write_bytes as f64, 0, "B"),
+            self.0.disk_io_read_per_sec,
+            to_human_readable(self.0.disk_io_read_per_sec, 0, "B/s"),
+            self.0.disk_io_write_per_sec,
+            to_human_readable(self.0.disk_io_write_per_sec, 0, "B/s")
         )
     }
 }
