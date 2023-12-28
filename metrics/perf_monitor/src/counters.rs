@@ -116,13 +116,14 @@ impl Display for ProcessMetricsDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "process metrics: RSS: {} ({}), VIRT: {} ({}), cores: {}, cpu usage: {}",
+            "process metrics: RSS: {} ({}), VIRT: {} ({}), FD: {}, cores: {}, total cpu usage: {:.4}",
             self.0.resident_set_size,
             to_human_readable(self.0.resident_set_size as f64, 2, "B"),
             self.0.virtual_memory_size,
             to_human_readable(self.0.virtual_memory_size as f64, 2, "B"),
+            self.0.fd_num,
             self.0.core_num,
-            self.0.cpu_usage
+            self.0.cpu_usage,
         )
     }
 }
@@ -131,8 +132,7 @@ impl Display for IoMetricsDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "disk io metrics: FD: {}, read: {} ({}), write: {} ({}), read rate: {} ({}), write rate: {} ({})",
-            self.0.fd_num,
+            "disk io metrics: read: {} ({}), write: {} ({}), read rate: {:.3} ({}), write rate: {:.3} ({})",
             self.0.disk_io_read_bytes,
             to_human_readable(self.0.disk_io_read_bytes as f64, 0, "B"),
             self.0.disk_io_write_bytes,
