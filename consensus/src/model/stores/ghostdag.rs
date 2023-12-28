@@ -2,17 +2,19 @@ use crate::processes::ghostdag::ordering::SortableBlock;
 use kaspa_consensus_core::trusted::ExternalGhostdagData;
 use kaspa_consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use kaspa_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
-use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey};
+use kaspa_database::prelude::{CachePolicy, StoreError};
 use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
 use kaspa_hashes::Hash;
 
 use itertools::EitherOrBoth::{Both, Left, Right};
 use itertools::Itertools;
+use kaspa_utils::mem_size::MemSizeEstimator;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::iter::once;
+use std::mem::size_of;
 use std::{cell::RefCell, sync::Arc};
 
 /// Re-export for convenience
@@ -33,6 +35,21 @@ pub struct CompactGhostdagData {
     pub blue_score: u64,
     pub blue_work: BlueWorkType,
     pub selected_parent: Hash,
+}
+
+impl MemSizeEstimator for GhostdagData {
+    fn estimate_mem_bytes(&self) -> usize {
+        let mut bytes = size_of::<Self>();
+        bytes += (self.mergeset_blues.len() + self.mergeset_reds.len()) * size_of::<Hash>();
+        bytes += self.blues_anticone_sizes.len() * size_of::<(Hash, KType)>();
+        bytes
+    }
+}
+
+impl MemSizeEstimator for CompactGhostdagData {
+    fn estimate_mem_units(&self) -> usize {
+        1
+    }
 }
 
 impl From<&GhostdagData> for CompactGhostdagData {
@@ -245,7 +262,7 @@ pub struct DbGhostdagStore {
 }
 
 impl DbGhostdagStore {
-    pub fn new(db: Arc<DB>, level: BlockLevel, cache_size: u64) -> Self {
+    pub fn new(db: Arc<DB>, level: BlockLevel, cache_policy: CachePolicy, compact_cache_policy: CachePolicy) -> Self {
         assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
         let lvl_bytes = level.to_le_bytes();
         let prefix = DatabaseStorePrefixes::Ghostdag.into_iter().chain(lvl_bytes).collect_vec();
@@ -253,13 +270,13 @@ impl DbGhostdagStore {
         Self {
             db: Arc::clone(&db),
             level,
-            access: CachedDbAccess::new(db.clone(), cache_size, prefix),
-            compact_access: CachedDbAccess::new(db, cache_size, compact_prefix),
+            access: CachedDbAccess::new(db.clone(), cache_policy, prefix),
+            compact_access: CachedDbAccess::new(db, compact_cache_policy, compact_prefix),
         }
     }
 
-    pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.db), self.level, cache_size)
+    pub fn clone_with_new_cache(&self, cache_policy: CachePolicy, compact_cache_policy: CachePolicy) -> Self {
+        Self::new(Arc::clone(&self.db), self.level, cache_policy, compact_cache_policy)
     }
 
     pub fn insert_batch(&self, batch: &mut WriteBatch, hash: Hash, data: &Arc<GhostdagData>) -> Result<(), StoreError> {
@@ -285,15 +302,24 @@ impl DbGhostdagStore {
 
 impl GhostdagStoreReader for DbGhostdagStore {
     fn get_blue_score(&self, hash: Hash) -> Result<u64, StoreError> {
-        Ok(self.access.read(hash)?.blue_score)
+        if let Some(ghostdag_data) = self.access.read_from_cache(hash) {
+            return Ok(ghostdag_data.blue_score);
+        }
+        Ok(self.compact_access.read(hash)?.blue_score)
     }
 
     fn get_blue_work(&self, hash: Hash) -> Result<BlueWorkType, StoreError> {
-        Ok(self.access.read(hash)?.blue_work)
+        if let Some(ghostdag_data) = self.access.read_from_cache(hash) {
+            return Ok(ghostdag_data.blue_work);
+        }
+        Ok(self.compact_access.read(hash)?.blue_work)
     }
 
     fn get_selected_parent(&self, hash: Hash) -> Result<Hash, StoreError> {
-        Ok(self.access.read(hash)?.selected_parent)
+        if let Some(ghostdag_data) = self.access.read_from_cache(hash) {
+            return Ok(ghostdag_data.selected_parent);
+        }
+        Ok(self.compact_access.read(hash)?.selected_parent)
     }
 
     fn get_mergeset_blues(&self, hash: Hash) -> Result<BlockHashes, StoreError> {

@@ -4,6 +4,7 @@ mod pow_hashers;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_utils::{
     hex::{FromHex, ToHex},
+    mem_size::MemSizeEstimator,
     serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref,
 };
 use std::{
@@ -164,6 +165,12 @@ impl FromHex for Hash {
     type Error = faster_hex::Error;
     fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
         Self::from_str(hex_str)
+    }
+}
+
+impl MemSizeEstimator for Hash {
+    fn estimate_mem_units(&self) -> usize {
+        1
     }
 }
 

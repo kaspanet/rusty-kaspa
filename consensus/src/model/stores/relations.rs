@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use kaspa_consensus_core::BlockHashSet;
 use kaspa_consensus_core::{blockhash::BlockHashes, BlockHashMap, BlockHasher, BlockLevel};
-use kaspa_database::prelude::{BatchDbWriter, DbWriter};
+use kaspa_database::prelude::{BatchDbWriter, CachePolicy, DbWriter};
 use kaspa_database::prelude::{CachedDbAccess, DbKey, DirectDbWriter};
 use kaspa_database::prelude::{DirectWriter, MemoryWriter};
 use kaspa_database::prelude::{ReadLock, StoreError};
@@ -44,24 +44,24 @@ pub struct DbRelationsStore {
 }
 
 impl DbRelationsStore {
-    pub fn new(db: Arc<DB>, level: BlockLevel, cache_size: u64) -> Self {
+    pub fn new(db: Arc<DB>, level: BlockLevel, cache_policy: CachePolicy, children_cache_policy: CachePolicy) -> Self {
         assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
         let lvl_bytes = level.to_le_bytes();
         let parents_prefix = DatabaseStorePrefixes::RelationsParents.into_iter().chain(lvl_bytes).collect_vec();
 
         Self {
             db: Arc::clone(&db),
-            children_store: DbChildrenStore::new(db.clone(), level, cache_size),
-            parents_access: CachedDbAccess::new(Arc::clone(&db), cache_size, parents_prefix),
+            children_store: DbChildrenStore::new(db.clone(), level, children_cache_policy),
+            parents_access: CachedDbAccess::new(Arc::clone(&db), cache_policy, parents_prefix),
         }
     }
 
-    pub fn with_prefix(db: Arc<DB>, prefix: &[u8], cache_size: u64) -> Self {
+    pub fn with_prefix(db: Arc<DB>, prefix: &[u8], cache_policy: CachePolicy, children_cache_policy: CachePolicy) -> Self {
         let parents_prefix = prefix.iter().copied().chain(DatabaseStorePrefixes::RelationsParents).collect_vec();
         Self {
             db: Arc::clone(&db),
-            parents_access: CachedDbAccess::new(Arc::clone(&db), cache_size, parents_prefix),
-            children_store: DbChildrenStore::with_prefix(db, prefix, cache_size),
+            parents_access: CachedDbAccess::new(Arc::clone(&db), cache_policy, parents_prefix),
+            children_store: DbChildrenStore::with_prefix(db, prefix, children_cache_policy),
         }
     }
 
@@ -410,6 +410,7 @@ mod tests {
     use super::*;
     use crate::processes::relations::RelationsStoreExtensions;
     use kaspa_database::create_temp_db;
+    use kaspa_utils::mem_size::MemMode;
 
     #[test]
     fn test_memory_relations_store() {
@@ -419,7 +420,12 @@ mod tests {
     #[test]
     fn test_db_relations_store() {
         let (lt, db) = create_temp_db!(kaspa_database::prelude::ConnBuilder::default().with_files_limit(10));
-        test_relations_store(DbRelationsStore::new(db, 0, 2));
+        test_relations_store(DbRelationsStore::new(
+            db,
+            0,
+            CachePolicy::Tracked { max_size: 2, min_items: 0, mem_mode: MemMode::Units },
+            CachePolicy::Tracked { max_size: 2, min_items: 0, mem_mode: MemMode::Units },
+        ));
         drop(lt)
     }
 

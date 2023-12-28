@@ -58,8 +58,6 @@ impl<const BPS: u64> Bps<BPS> {
         let val = (Self::ghostdag_k() / 2) as u8;
         if val < 10 {
             10
-        // TODO (TEMP): uncomment when restarting TN11 or when implementing a TN11 HF
-        /*
         } else if val > 16 {
             // We currently limit the number of parents by 16 in order to preserve processing performance
             // and to prevent number of parent references per network round from growing quadratically with
@@ -69,21 +67,19 @@ impl<const BPS: u64> Bps<BPS> {
             // be merged after a log number of rounds. For mainnet this requires an increase to the value of GHOSTDAG
             // K accompanied by a short security analysis, or moving to the parameterless DAGKNIGHT.
             16
-         */
         } else {
             val
         }
     }
 
     pub const fn mergeset_size_limit() -> u64 {
-        Self::ghostdag_k() as u64 * 10
-    }
-
-    // TODO (TEMP): rename to mergeset_size_limit when restarting TN11 or when implementing a TN11 HF
-    pub const fn _mergeset_size_limit() -> u64 {
         let val = Self::ghostdag_k() as u64 * 2;
         if val < 180 {
             180
+        } else if val > 512 {
+            // Bounded relatively low because we have storage complexity of O(#headers * mergeset_limit) coming
+            // from reachability and GHOSTDAG stores (GHOSTDAG is avoidable but reachability is must).
+            512
         } else {
             val
         }
@@ -97,15 +93,24 @@ impl<const BPS: u64> Bps<BPS> {
         BPS * NEW_FINALITY_DURATION
     }
 
+    /// Limit used to previously calculate the pruning depth.
+    const fn prev_mergeset_size_limit() -> u64 {
+        Self::ghostdag_k() as u64 * 10
+    }
+
     pub const fn pruning_depth() -> u64 {
         // Based on the analysis at https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf
         // and on the decomposition of merge depth (rule R-I therein) from finality depth (φ)
         // We add an additional merge depth unit as a safety margin for anticone finalization
         Self::finality_depth()
             + Self::merge_depth_bound() * 2
-            + 4 * Self::mergeset_size_limit() * Self::ghostdag_k() as u64
+            + 4 * Self::prev_mergeset_size_limit() * Self::ghostdag_k() as u64
             + 2 * Self::ghostdag_k() as u64
             + 2
+
+        // TODO (HF or restart of TN11):
+        // Return `Self::finality_depth() * 3` and assert that this value is equal or larger than the above expression.
+        // This will give us a round easy number to track which is not sensitive to minor changes in other related params.
     }
 
     pub const fn pruning_proof_m() -> u64 {

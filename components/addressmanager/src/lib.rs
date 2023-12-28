@@ -15,7 +15,7 @@ use itertools::{
 };
 use kaspa_consensus_core::config::Config;
 use kaspa_core::{debug, info, task::tick::TickService, time::unix_now, warn};
-use kaspa_database::prelude::{StoreResultExtensions, DB};
+use kaspa_database::prelude::{CachePolicy, StoreResultExtensions, DB};
 use kaspa_utils::networking::IpAddress;
 use local_ip_address::list_afinet_netifas;
 use parking_lot::Mutex;
@@ -61,7 +61,7 @@ pub struct AddressManager {
 impl AddressManager {
     pub fn new(config: Arc<Config>, db: Arc<DB>, tick_service: Arc<TickService>) -> (Arc<Mutex<Self>>, Option<Extender>) {
         let mut instance = Self {
-            banned_address_store: DbBannedAddressesStore::new(db.clone(), MAX_ADDRESSES as u64),
+            banned_address_store: DbBannedAddressesStore::new(db.clone(), CachePolicy::Count(MAX_ADDRESSES)),
             address_store: address_store_with_cache::new(db),
             local_net_addresses: Vec::new(),
             config,
@@ -337,7 +337,7 @@ mod address_store_with_cache {
     };
 
     use itertools::Itertools;
-    use kaspa_database::prelude::DB;
+    use kaspa_database::prelude::{CachePolicy, DB};
     use kaspa_utils::networking::PrefixBucket;
     use rand::{
         distributions::{WeightedError, WeightedIndex},
@@ -359,7 +359,8 @@ mod address_store_with_cache {
 
     impl Store {
         fn new(db: Arc<DB>) -> Self {
-            let db_store = DbAddressesStore::new(db, 0);
+            // We manage the cache ourselves on this level, so we disable the inner builtin cache
+            let db_store = DbAddressesStore::new(db, CachePolicy::Empty);
             let mut addresses = HashMap::new();
             for (key, entry) in db_store.iterator().map(|res| res.unwrap()) {
                 addresses.insert(key, entry);
