@@ -82,7 +82,7 @@ impl ConsensusStorage {
         let daa_excluded_budget = 30_000_000;
         let statuses_budget = 30_000_000;
         let reachability_data_budget = 20_000_000;
-        let reachability_sets_budget = 20_000_000;
+        let reachability_sets_budget = 20_000_000; // x 2 for tree children and future covering set
         let ghostdag_compact_budget = 15_000_000;
         let headers_compact_budget = 5_000_000;
         let parents_budget = 40_000_000; // x 3 for reachability and levels
@@ -93,7 +93,7 @@ impl ConsensusStorage {
         let block_window_budget = 200_000_000; // x 2 for difficulty and median time
 
         // Unit sizes in bytes
-        let daa_excluded_bytes = size_of::<Hash>() + size_of::<BlockHashSet>();
+        let daa_excluded_bytes = size_of::<Hash>() + size_of::<BlockHashSet>(); // Expected empty sets
         let status_bytes = size_of::<Hash>() + size_of::<BlockStatus>();
         let reachability_data_bytes = size_of::<Hash>() + size_of::<ReachabilityData>();
         let ghostdag_compact_bytes = size_of::<Hash>() + size_of::<CompactGhostdagData>();
@@ -103,7 +103,7 @@ impl ConsensusStorage {
 
         // Cache policy builders
         let daa_excluded_builder =
-            PolicyBuilder::new().max_items(pruning_depth).bytes_budget(daa_excluded_budget).unit_bytes(daa_excluded_bytes).untracked(); // Required only above the pruning point. Expected empty sets.
+            PolicyBuilder::new().max_items(pruning_depth).bytes_budget(daa_excluded_budget).unit_bytes(daa_excluded_bytes).untracked(); // Required only above the pruning point
         let statuses_builder =
             PolicyBuilder::new().max_items(pruning_size_for_caches).bytes_budget(statuses_budget).unit_bytes(status_bytes).untracked();
         let reachability_data_builder = PolicyBuilder::new()
@@ -132,11 +132,8 @@ impl ConsensusStorage {
             .unit_bytes(size_of::<Hash>())
             .min_items(level_lower_bound)
             .tracked_units();
-        let reachability_sets_builder = PolicyBuilder::new()
-            .max_items(pruning_size_for_caches)
-            .bytes_budget(reachability_sets_budget)
-            .unit_bytes(size_of::<Hash>())
-            .tracked_units();
+        let reachability_sets_builder =
+            PolicyBuilder::new().bytes_budget(reachability_sets_budget).unit_bytes(size_of::<Hash>()).tracked_units();
         let difficulty_window_builder = PolicyBuilder::new()
             .max_items(perf_params.block_window_cache_size)
             .bytes_budget(block_window_budget)
