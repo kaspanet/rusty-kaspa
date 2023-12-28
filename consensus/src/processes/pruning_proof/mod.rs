@@ -3,7 +3,10 @@ use std::{
     collections::{hash_map::Entry, BinaryHeap},
     collections::{hash_map::Entry::Vacant, VecDeque},
     ops::{Deref, DerefMut},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 use itertools::Itertools;
@@ -115,6 +118,8 @@ pub struct PruningProofManager {
     pruning_proof_m: u64,
     anticone_finalization_depth: u64,
     ghostdag_k: KType,
+
+    is_consensus_exiting: Arc<AtomicBool>,
 }
 
 impl PruningProofManager {
@@ -132,6 +137,7 @@ impl PruningProofManager {
         pruning_proof_m: u64,
         anticone_finalization_depth: u64,
         ghostdag_k: KType,
+        is_consensus_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
             db,
@@ -162,6 +168,8 @@ impl PruningProofManager {
             pruning_proof_m,
             anticone_finalization_depth,
             ghostdag_k,
+
+            is_consensus_exiting,
         }
     }
 
@@ -437,6 +445,11 @@ impl PruningProofManager {
 
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         for level in (0..=self.max_block_level).rev() {
+            // Before processing this level, check if the process is exiting so we can end early
+            if self.is_consensus_exiting.load(Ordering::Relaxed) {
+                return Err(PruningImportError::PruningValidationInterrupted);
+            }
+
             info!("Validating level {level} from the pruning point proof ({} headers)", proof[level as usize].len());
             let level_idx = level as usize;
             let mut selected_tip = None;
