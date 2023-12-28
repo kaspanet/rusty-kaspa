@@ -8,6 +8,7 @@ use kaspa_consensus_core::{
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
 use kaspa_core::{core::Core, info, trace};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
+use kaspa_database::prelude::CachePolicy;
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
@@ -273,7 +274,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                     .build()
                     .unwrap();
 
-                let headers_store = DbHeadersStore::new(consensus_db, 0);
+                let headers_store = DbHeadersStore::new(consensus_db, CachePolicy::Empty, CachePolicy::Empty);
 
                 if headers_store.has(config.genesis.hash).unwrap() {
                     info!("Genesis is found in active consensus DB. No action needed.");
