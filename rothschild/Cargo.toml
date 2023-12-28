@@ -26,3 +26,4 @@ rayon.workspace = true
 parking_lot.workspace = true
 num_cpus.workspace = true 
 futures.workspace = true
+kaspa-testing-integration.workspace = true

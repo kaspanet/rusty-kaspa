@@ -4503,6 +4503,7 @@ dependencies = [
  "kaspa-core",
  "kaspa-grpc-client",
  "kaspa-rpc-core",
+ "kaspa-testing-integration",
  "kaspa-txscript",
  "kaspa-utils",
  "log",

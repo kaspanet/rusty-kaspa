@@ -8,7 +8,6 @@ use std::{
 };
 
 use clap::{Arg, Command};
-use futures::future::join_all;
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
@@ -21,8 +20,9 @@ use kaspa_consensus_core::{
 use kaspa_core::{info, kaspad_env::version, time::unix_now, warn};
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode};
+use kaspa_testing_integration::common::client_pool::ClientPool;
 use kaspa_txscript::pay_to_address_script;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use rayon::prelude::*;
 use secp256k1::{rand::thread_rng, KeyPair};
 use tokio::{
@@ -148,10 +148,10 @@ async fn main() {
     let utxos_len = Arc::new(AtomicUsize::new(utxos.len()));
 
     {
-        let rpc_client = rpc_client.clone();
         let pending = pending.clone();
         let utxos_len = utxos_len.clone();
-        tokio::spawn(async move { submit_loop(submit_tx_recv, schnorr_key, rpc_client, pending, utxos_len).await });
+        let rpc_address = args.rpc_server.clone();
+        tokio::spawn(async move { submit_loop(submit_tx_recv, schnorr_key, rpc_address, pending, utxos_len).await });
     }
 
     let mut ticker = interval(Duration::from_secs_f64(1.0 / (args.tps as f64)));
@@ -190,15 +190,66 @@ struct TxToSign {
     utxos: Box<[(TransactionOutpoint, UtxoEntry)]>,
 }
 
+struct ClientPoolArg {
+    tx: Transaction,
+    amount_used: u64,
+    utxos_len: Arc<AtomicUsize>,
+    pending: Arc<RwLock<HashMap<TransactionOutpoint, u64>>>,
+    stats: Arc<Mutex<Stats>>,
+}
+
 async fn submit_loop(
     mut submit_tx_recv: mpsc::Receiver<TxToSign>,
     schnorr_key: KeyPair,
-    rpc_client: GrpcClient,
+    rpc_address: String,
     pending: Arc<RwLock<HashMap<TransactionOutpoint, u64>>>,
     utxos_len: Arc<AtomicUsize>,
 ) {
-    let mut stats = Stats { num_txs: 0, since: unix_now(), num_utxos: 0, utxos_amount: 0, num_outs: 0 };
+    let stats = Arc::new(Mutex::new(Stats { num_txs: 0, since: unix_now(), num_utxos: 0, utxos_amount: 0, num_outs: 0 }));
     let num_cpus = num_cpus::get();
+
+    let mut rpc_clients = Vec::with_capacity(num_cpus);
+    for _ in 0..num_cpus {
+        rpc_clients.push(Arc::new(new_rpc_client(&rpc_address).await));
+    }
+
+    let submit_tx_pool = ClientPool::new(rpc_clients, 1000, |c, arg: ClientPoolArg| async move {
+        let ClientPoolArg { tx, amount_used, utxos_len, pending, stats } = arg;
+        match c.submit_transaction(tx.as_ref().into(), false).await {
+            Ok(_) => {
+                let mut stats = stats.lock();
+                stats.num_txs += 1;
+                stats.num_utxos += tx.inputs.len();
+                stats.utxos_amount += amount_used;
+                stats.num_outs += tx.outputs.len();
+                let now = unix_now();
+                let time_past = now - stats.since;
+                if time_past > 10_000 {
+                    let pending_len = pending.read().len();
+                    let utxos_len = utxos_len.load(Ordering::SeqCst);
+                    info!(
+                            "Tx rate: {:.1}/sec, avg UTXO amount: {}, avg UTXOs per tx: {}, avg outs per tx: {}, estimated available UTXOs: {}",
+                            1000f64 * (stats.num_txs as f64) / (time_past as f64),
+                            (stats.utxos_amount / stats.num_utxos as u64),
+                            stats.num_utxos / stats.num_txs,
+                            stats.num_outs / stats.num_txs,
+                            if utxos_len > pending_len { utxos_len - pending_len } else { 0 },
+                        );
+                    stats.since = now;
+                    stats.num_txs = 0;
+                    stats.num_utxos = 0;
+                    stats.utxos_amount = 0;
+                    stats.num_outs = 0;
+                }
+            }
+            Err(e) => {
+                warn!("RPC error when submitting {}: {}", tx.id(), e);
+            }
+        }
+        false
+    });
+    let tx_sender = submit_tx_pool.sender();
+
     loop {
         match submit_tx_recv.recv().await {
             Some(tx) => {
@@ -222,39 +273,17 @@ async fn submit_loop(
                         (signed_tx.tx, amount_used)
                     })
                     .collect();
-                let tasks = signed_txs.iter().map(|(tx, _)| rpc_client.submit_transaction(tx.into(), false)).collect_vec();
-                for (rpc_result, (tx, amount_used)) in join_all(tasks).await.into_iter().zip(signed_txs) {
-                    match rpc_result {
-                        Ok(_) => {}
-                        Err(e) => {
-                            warn!("RPC error when submitting {}: {}", tx.id(), e);
-                            continue;
-                        }
-                    }
-
-                    stats.num_txs += 1;
-                    stats.num_utxos += tx.inputs.len();
-                    stats.utxos_amount += amount_used;
-                    stats.num_outs += tx.outputs.len();
-                    let now = unix_now();
-                    let time_past = now - stats.since;
-                    if time_past > 10_000 {
-                        let pending_len = pending.read().len();
-                        let utxos_len = utxos_len.load(Ordering::SeqCst);
-                        info!(
-                            "Tx rate: {:.1}/sec, avg UTXO amount: {}, avg UTXOs per tx: {}, avg outs per tx: {}, estimated available UTXOs: {}",
-                            1000f64 * (stats.num_txs as f64) / (time_past as f64),
-                            (stats.utxos_amount / stats.num_utxos as u64),
-                            stats.num_utxos / stats.num_txs,
-                            stats.num_outs / stats.num_txs,
-                            if utxos_len > pending_len { utxos_len - pending_len } else { 0 },
-                        );
-                        stats.since = now;
-                        stats.num_txs = 0;
-                        stats.num_utxos = 0;
-                        stats.utxos_amount = 0;
-                        stats.num_outs = 0;
-                    }
+                for (tx, amount_used) in signed_txs {
+                    tx_sender
+                        .send(ClientPoolArg {
+                            tx,
+                            amount_used,
+                            utxos_len: utxos_len.clone(),
+                            pending: pending.clone(),
+                            stats: stats.clone(),
+                        })
+                        .await
+                        .unwrap();
                 }
             }
             None => return,
