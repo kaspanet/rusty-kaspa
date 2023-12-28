@@ -8,6 +8,7 @@ use std::{
 };
 
 use clap::{Arg, Command};
+use futures::future::join_all;
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
@@ -82,21 +83,17 @@ pub fn cli() -> Command {
         )
 }
 
+async fn new_rpc_client(address: &str) -> GrpcClient {
+    GrpcClient::connect(NotificationMode::Direct, format!("grpc://{}", address), true, None, false, Some(500_000), Default::default())
+        .await
+        .unwrap()
+}
+
 #[tokio::main]
 async fn main() {
     kaspa_core::log::init_logger(None, "");
     let args = Args::parse();
-    let rpc_client = GrpcClient::connect(
-        NotificationMode::Direct,
-        format!("grpc://{}", args.rpc_server),
-        true,
-        None,
-        false,
-        Some(500_000),
-        Default::default(),
-    )
-    .await
-    .unwrap();
+    let rpc_client = new_rpc_client(&args.rpc_server).await;
     info!("Connected to RPC");
     let pending = Arc::new(RwLock::new(HashMap::new()));
 
@@ -163,7 +160,7 @@ async fn main() {
     let mut maximize_inputs = false;
     let mut last_refresh = unix_now();
     loop {
-        ticker.tick().await;
+        // ticker.tick().await;
         maximize_inputs = should_maximize_inputs(maximize_inputs, &utxos, &pending.read());
         let now = unix_now();
         let has_funds = match maybe_send_tx(kaspa_addr.clone(), &mut utxos, pending.clone(), maximize_inputs).await {
@@ -225,8 +222,9 @@ async fn submit_loop(
                         (signed_tx.tx, amount_used)
                     })
                     .collect();
-                for (tx, amount_used) in signed_txs {
-                    match rpc_client.submit_transaction((&tx).into(), false).await {
+                let tasks = signed_txs.iter().map(|(tx, _)| rpc_client.submit_transaction(tx.into(), false)).collect_vec();
+                for (rpc_result, (tx, amount_used)) in join_all(tasks).await.into_iter().zip(signed_txs) {
+                    match rpc_result {
                         Ok(_) => {}
                         Err(e) => {
                             warn!("RPC error when submitting {}: {}", tx.id(), e);
@@ -240,7 +238,7 @@ async fn submit_loop(
                     stats.num_outs += tx.outputs.len();
                     let now = unix_now();
                     let time_past = now - stats.since;
-                    if time_past > 50_000 {
+                    if time_past > 10_000 {
                         let pending_len = pending.read().len();
                         let utxos_len = utxos_len.load(Ordering::SeqCst);
                         info!(
@@ -284,7 +282,7 @@ fn should_maximize_inputs(
 async fn pause_if_mempool_is_full(rpc_client: &GrpcClient) {
     loop {
         let mempool_size = rpc_client.get_info().await.unwrap().mempool_size;
-        if mempool_size < 10_000 {
+        if mempool_size < 200_000 {
             break;
         }
 

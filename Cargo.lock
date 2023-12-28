@@ -4496,6 +4496,7 @@ version = "0.13.1"
 dependencies = [
  "clap 4.4.11",
  "faster-hex 0.6.1",
+ "futures",
  "itertools 0.11.0",
  "kaspa-addresses",
  "kaspa-consensus-core",
