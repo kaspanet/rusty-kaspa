@@ -4505,6 +4505,9 @@ dependencies = [
  "kaspa-txscript",
  "kaspa-utils",
  "log",
+ "num_cpus",
+ "parking_lot",
+ "rayon",
  "secp256k1",
  "tokio",
 ]

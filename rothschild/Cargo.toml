@@ -22,3 +22,6 @@ itertools.workspace = true
 log.workspace = true
 secp256k1 = { workspace = true, features = ["global-context", "rand-std"] }
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
+rayon.workspace = true
+parking_lot.workspace = true
+num_cpus.workspace = true
