@@ -127,24 +127,29 @@ impl ConnectionManager {
 
             if !is_connected && request.next_attempt <= SystemTime::now() {
                 debug!("Connecting to peer request {}", address);
-                if self.p2p_adaptor.connect_peer(address.to_string()).await.is_err() {
-                    debug!("Failed connecting to peer request {}", address);
-                    if request.is_permanent {
-                        const MAX_ACCOUNTABLE_ATTEMPTS: u32 = 4;
-                        let retry_duration = Duration::from_secs(30u64 * 2u64.pow(min(request.attempts, MAX_ACCOUNTABLE_ATTEMPTS)));
-                        debug!("Will retry peer request {} in {}", address, DurationString::from(retry_duration));
-                        new_requests.insert(
-                            address,
-                            ConnectionRequest {
-                                next_attempt: SystemTime::now() + retry_duration,
-                                attempts: request.attempts + 1,
-                                is_permanent: true,
-                            },
-                        );
+                match self.p2p_adaptor.connect_peer(address.to_string()).await {
+                    Err(err) => {
+                        debug!("Failed connecting to peer request: {}, {}", address, err);
+                        if request.is_permanent {
+                            const MAX_ACCOUNTABLE_ATTEMPTS: u32 = 4;
+                            let retry_duration =
+                                Duration::from_secs(30u64 * 2u64.pow(min(request.attempts, MAX_ACCOUNTABLE_ATTEMPTS)));
+                            debug!("Will retry peer request {} in {}", address, DurationString::from(retry_duration));
+                            new_requests.insert(
+                                address,
+                                ConnectionRequest {
+                                    next_attempt: SystemTime::now() + retry_duration,
+                                    attempts: request.attempts + 1,
+                                    is_permanent: true,
+                                },
+                            );
+                        }
                     }
-                } else if request.is_permanent {
-                    // Permanent requests are kept forever
-                    new_requests.insert(address, ConnectionRequest::new(true));
+                    Ok(_) if request.is_permanent => {
+                        // Permanent requests are kept forever
+                        new_requests.insert(address, ConnectionRequest::new(true));
+                    }
+                    Ok(_) => {}
                 }
             } else {
                 new_requests.insert(address, request);
@@ -186,7 +191,7 @@ impl ConnectionManager {
             if progressing && !jobs.is_empty() {
                 // Log only if progress was made
                 info!(
-                    "Connection manager: has {}/{} outgoing P2P connections, trying to obtain {} additional connections...",
+                    "Connection manager: has {}/{} outgoing P2P connections, trying to obtain {} additional connection(s)...",
                     self.outbound_target - missing_connections,
                     self.outbound_target,
                     jobs.len(),

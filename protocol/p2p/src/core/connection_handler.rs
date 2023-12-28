@@ -165,8 +165,8 @@ impl ConnectionHandler {
                     return Err(ConnectionError::ProtocolError(err));
                 }
                 Err(err) => {
+                    debug!("P2P, connect retry #{} failed with error {:?}, peer: {:?}", counter, err, address);
                     if counter < retry_attempts {
-                        debug!("P2P, connect retry #{} failed with error {:?}, peer: {:?}", counter, err, address);
                         // Await `retry_interval` time before retrying
                         tokio::time::sleep(retry_interval).await;
                     } else {
