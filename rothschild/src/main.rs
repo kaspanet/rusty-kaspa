@@ -14,6 +14,7 @@ use kaspa_core::{info, kaspad_env::version, time::unix_now, warn};
 use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode};
 use kaspa_txscript::pay_to_address_script;
+use rayon::prelude::*;
 use secp256k1::{rand::thread_rng, KeyPair};
 use tokio::time::{interval, MissedTickBehavior};
 
@@ -135,17 +136,30 @@ async fn main() {
     );
 
     let mut utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending, coinbase_maturity).await;
-    let mut ticker = interval(Duration::from_secs_f64(1.0 / (args.tps.min(100) as f64)));
+    let mut ticker = interval(Duration::from_secs(1));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     let mut maximize_inputs = false;
     let mut last_refresh = unix_now();
+    // This allows us to keep track of the UTXOs we already tried to use for this period
+    // until the UTXOs are refreshed. At that point, this will be reset as well.
+    let mut next_available_utxo_index = 0;
     loop {
         ticker.tick().await;
         maximize_inputs = should_maximize_inputs(maximize_inputs, &utxos, &pending);
         let now = unix_now();
-        let has_funds =
-            maybe_send_tx(&rpc_client, kaspa_addr.clone(), &mut utxos, &mut pending, schnorr_key, &mut stats, maximize_inputs).await;
+        let has_funds = maybe_send_tx(
+            args.tps,
+            &rpc_client,
+            kaspa_addr.clone(),
+            &mut utxos,
+            &mut pending,
+            schnorr_key,
+            &mut stats,
+            maximize_inputs,
+            &mut next_available_utxo_index,
+        )
+        .await;
         if !has_funds {
             info!("Has not enough funds");
         }
@@ -154,6 +168,7 @@ async fn main() {
             tokio::time::sleep(Duration::from_millis(100)).await; // We don't want this operation to be too frequent since its heavy on the node, so we wait some time before executing it.
             utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending, coinbase_maturity).await;
             last_refresh = unix_now();
+            next_available_utxo_index = 0;
             pause_if_mempool_is_full(&rpc_client).await;
         }
         clean_old_pending_outpoints(&mut pending);
@@ -197,7 +212,7 @@ async fn refresh_utxos(
     coinbase_maturity: u64,
 ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
     populate_pending_outpoints_from_mempool(rpc_client, kaspa_addr.clone(), pending).await;
-    fetch_spendable_utxos(rpc_client, kaspa_addr, coinbase_maturity).await
+    fetch_spendable_utxos(rpc_client, kaspa_addr, coinbase_maturity, pending).await
 }
 
 async fn populate_pending_outpoints_from_mempool(
@@ -220,12 +235,16 @@ async fn fetch_spendable_utxos(
     rpc_client: &GrpcClient,
     kaspa_addr: Address,
     coinbase_maturity: u64,
+    pending: &mut HashMap<TransactionOutpoint, u64>,
 ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
     let resp = rpc_client.get_utxos_by_addresses(vec![kaspa_addr]).await.unwrap();
     let dag_info = rpc_client.get_block_dag_info().await.unwrap();
     let mut utxos = Vec::with_capacity(resp.len());
-    for resp_entry in
-        resp.into_iter().filter(|resp_entry| is_utxo_spendable(&resp_entry.utxo_entry, dag_info.virtual_daa_score, coinbase_maturity))
+    for resp_entry in resp
+        .into_iter()
+        .filter(|resp_entry| is_utxo_spendable(&resp_entry.utxo_entry, dag_info.virtual_daa_score, coinbase_maturity))
+        // Eliminates UTXOs we already tried to spend so we don't try to spend them again in this period
+        .filter(|utxo| !pending.contains_key(&utxo.outpoint))
     {
         utxos.push((resp_entry.outpoint, resp_entry.utxo_entry));
     }
@@ -243,6 +262,7 @@ fn is_utxo_spendable(entry: &UtxoEntry, virtual_daa_score: u64, coinbase_maturit
 }
 
 async fn maybe_send_tx(
+    tps: u64,
     rpc_client: &GrpcClient,
     kaspa_addr: Address,
     utxos: &mut Vec<(TransactionOutpoint, UtxoEntry)>,
@@ -250,32 +270,64 @@ async fn maybe_send_tx(
     schnorr_key: KeyPair,
     stats: &mut Stats,
     maximize_inputs: bool,
+    next_available_utxo_index: &mut usize,
 ) -> bool {
     let num_outs = if maximize_inputs { 1 } else { 2 };
-    let (selected_utxos, selected_amount) = select_utxos(utxos, DEFAULT_SEND_AMOUNT, num_outs, maximize_inputs, pending);
-    if selected_amount == 0 {
+
+    let mut has_fund = false;
+
+    let selected_utxos_groups = (0..tps)
+        .map(|_| {
+            let (selected_utxos, selected_amount) =
+                select_utxos(utxos, DEFAULT_SEND_AMOUNT, num_outs, maximize_inputs, next_available_utxo_index);
+            if selected_amount == 0 {
+                return None;
+            }
+
+            // If any iteration successfully selected UTXOs, we assume to still
+            // have funds in this tick
+            has_fund = true;
+
+            let now = unix_now();
+            for input in selected_utxos.iter() {
+                pending.insert(input.0, now);
+            }
+
+            Some((selected_utxos, selected_amount))
+        })
+        .collect::<Vec<_>>();
+
+    if !has_fund {
         return false;
     }
 
-    let tx = generate_tx(schnorr_key, &selected_utxos, selected_amount, num_outs, &kaspa_addr);
+    let txs = selected_utxos_groups
+        .into_par_iter()
+        .map(|utxo_option| {
+            if let Some((selected_utxos, selected_amount)) = utxo_option {
+                let tx = generate_tx(schnorr_key, &selected_utxos, selected_amount, num_outs, &kaspa_addr);
 
-    let now = unix_now();
-    for input in tx.inputs.iter() {
-        pending.insert(input.previous_outpoint, now);
-    }
+                return Some((tx, selected_utxos.len(), selected_utxos.into_iter().map(|(_, entry)| entry.amount).sum::<u64>()));
+            }
 
-    match rpc_client.submit_transaction((&tx).into(), false).await {
-        Ok(_) => {}
-        Err(e) => {
-            warn!("RPC error: {}", e);
-            return true;
+            None
+        })
+        .collect::<Vec<_>>();
+
+    for (tx, selected_utxos_len, selected_utxos_amount) in txs.into_iter().flatten() {
+        match rpc_client.submit_transaction((&tx).into(), false).await {
+            Ok(_) => {}
+            Err(e) => {
+                warn!("RPC error: {}", e);
+            }
         }
+
+        stats.num_txs += 1;
+        stats.num_utxos += selected_utxos_len;
+        stats.utxos_amount += selected_utxos_amount;
+        stats.num_outs += tx.outputs.len();
     }
 
-    stats.num_txs += 1;
-    stats.num_utxos += selected_utxos.len();
-    stats.utxos_amount += selected_utxos.into_iter().map(|(_, entry)| entry.amount).sum::<u64>();
-    stats.num_outs += tx.outputs.len();
     let now = unix_now();
     let time_past = now - stats.since;
     if time_past > 10_000 {
@@ -340,16 +392,20 @@ fn select_utxos(
     min_amount: u64,
     num_outs: u64,
     maximize_utxos: bool,
-    pending: &HashMap<TransactionOutpoint, u64>,
+    next_available_utxo_index: &mut usize,
 ) -> (Vec<(TransactionOutpoint, UtxoEntry)>, u64) {
     const MAX_UTXOS: usize = 84;
     let mut selected_amount: u64 = 0;
     let mut selected = Vec::new();
-    for (outpoint, entry) in utxos.iter().filter(|(op, _)| !pending.contains_key(op)).cloned() {
+
+    while next_available_utxo_index < &mut utxos.len() {
+        let (outpoint, entry) = utxos[*next_available_utxo_index].clone();
         selected_amount += entry.amount;
         selected.push((outpoint, entry));
 
         let fee = required_fee(selected.len(), num_outs);
+
+        *next_available_utxo_index += 1;
 
         if selected_amount >= min_amount + fee && (!maximize_utxos || selected.len() == MAX_UTXOS) {
             return (selected, selected_amount - fee);
