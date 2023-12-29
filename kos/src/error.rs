@@ -7,6 +7,7 @@ use workflow_nw::ipc::ResponseError;
 use workflow_wasm::printable::Printable;
 
 #[derive(Error, Debug)]
+#[allow(clippy::enum_variant_names)]
 pub enum Error {
     #[error("{0}")]
     Custom(String),

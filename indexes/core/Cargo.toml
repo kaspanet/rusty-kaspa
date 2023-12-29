@@ -11,6 +11,7 @@ license.workspace = true
 derive_more.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-notify.workspace = true
+kaspa-utils.workspace = true
 paste.workspace = true
 serde.workspace = true
 

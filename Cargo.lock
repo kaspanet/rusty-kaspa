@@ -2408,6 +2408,7 @@ dependencies = [
  "derive_more",
  "kaspa-consensus-core",
  "kaspa-notify",
+ "kaspa-utils",
  "paste",
  "serde",
 ]
