@@ -19,8 +19,7 @@ pub use kaspa_wallet_core::settings::{DefaultSettings, SettingsStore, SettingsSt
 pub use nw_sys::prelude::*;
 
 pub use serde::{Deserialize, Serialize};
-pub use serde_json::{Value};
-
+pub use serde_json::Value;
 
 pub use wasm_bindgen::prelude::*;
 pub use workflow_core::channel::*;
