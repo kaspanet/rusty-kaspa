@@ -225,7 +225,7 @@ async fn main() {
         }
         if !has_funds || now - last_refresh > 60_000 {
             info!("Refetching UTXO set");
-            tokio::time::sleep(Duration::from_fmillis(100)).await; // We don't want this operation to be too frequent since its heavy on the node, so we wait some time before executing it.
+            tokio::time::sleep(Duration::from_millis(100)).await; // We don't want this operation to be too frequent since its heavy on the node, so we wait some time before executing it.
             utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending, coinbase_maturity).await;
             last_refresh = unix_now();
             next_available_utxo_index = 0;
