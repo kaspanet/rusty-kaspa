@@ -23,7 +23,6 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 async-trait.workspace = true
-borsh.workspace = true
 cfg-if.workspace = true
 convert_case.workspace = true
 dashmap.workspace = true
@@ -53,7 +52,6 @@ workflow-core.workspace = true
 workflow-dom.workspace = true
 workflow-log.workspace = true
 workflow-node.workspace = true
-workflow-nw.workspace = true
 workflow-store.workspace = true
 workflow-terminal.workspace = true
 workflow-wasm.workspace = true
