@@ -114,13 +114,13 @@ async fn main() {
         return;
     };
 
-    let kaspa_addr = Address::new(
+    let kaspa_addr = Arc::new(Address::new(
         kaspa_addresses::Prefix::Testnet,
         kaspa_addresses::Version::PubKey,
         &schnorr_key.x_only_public_key().0.serialize(),
-    );
+    ));
 
-    info!("Using Rothschild with private key {} and address {}", schnorr_key.display_secret(), String::from(&kaspa_addr));
+    info!("Using Rothschild with private key {} and address {}", schnorr_key.display_secret(), String::from(kaspa_addr.as_ref()));
     let info = rpc_client.get_block_dag_info().await.unwrap();
     let coinbase_maturity = match info.network.suffix {
         Some(11) => TESTNET11_PARAMS.coinbase_maturity,
@@ -144,7 +144,7 @@ async fn main() {
 
     let (submit_tx_send, submit_tx_recv) = mpsc::channel(100);
 
-    let mut utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), pending.clone(), coinbase_maturity).await;
+    let mut utxos = refresh_utxos(&rpc_client, (*kaspa_addr).clone(), pending.clone(), coinbase_maturity).await;
     let utxos_len = Arc::new(AtomicUsize::new(utxos.len()));
 
     {
@@ -176,7 +176,7 @@ async fn main() {
         if !has_funds || now - last_refresh > 60_000 {
             info!("Refetching UTXO set");
             tokio::time::sleep(Duration::from_millis(100)).await; // We don't want this operation to be too frequent since it's heavy on the node, so we wait some time before executing it.
-            utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), pending.clone(), coinbase_maturity).await;
+            utxos = refresh_utxos(&rpc_client, (*kaspa_addr).clone(), pending.clone(), coinbase_maturity).await;
             utxos_len.store(utxos.len(), Ordering::Relaxed);
             last_refresh = unix_now();
             pause_if_mempool_is_full(&rpc_client).await;
@@ -185,9 +185,11 @@ async fn main() {
     }
 }
 
-struct TxToSign {
-    tx: Transaction,
+struct UtxosForSubmission {
     utxos: Box<[(TransactionOutpoint, UtxoEntry)]>,
+    selected_amount: u64,
+    num_outs: u64,
+    kaspa_addr: Arc<Address>,
 }
 
 struct ClientPoolArg {
@@ -199,7 +201,7 @@ struct ClientPoolArg {
 }
 
 async fn submit_loop(
-    mut submit_tx_recv: mpsc::Receiver<TxToSign>,
+    mut submit_tx_recv: mpsc::Receiver<UtxosForSubmission>,
     schnorr_key: KeyPair,
     rpc_address: String,
     pending: Arc<RwLock<HashMap<TransactionOutpoint, u64>>>,
@@ -243,6 +245,8 @@ async fn submit_loop(
                 }
             }
             Err(e) => {
+                let mut tx = tx;
+                tx.finalize();
                 warn!("RPC error when submitting {}: {}", tx.id(), e);
             }
         }
@@ -263,13 +267,14 @@ async fn submit_loop(
                 }
                 let signed_txs: Vec<_> = chunk
                     .into_par_iter()
-                    .map(|tx| {
+                    .map(|UtxosForSubmission { utxos, selected_amount, num_outs, kaspa_addr }| {
+                        let tx = generate_tx(&utxos, selected_amount, num_outs, &kaspa_addr);
                         let signed_tx = sign(
-                            MutableTransaction::with_entries(tx.tx, tx.utxos.iter().map(|(_, entry)| entry.clone()).collect_vec()),
+                            MutableTransaction::with_entries(tx, utxos.iter().map(|(_, entry)| entry.clone()).collect_vec()),
                             schnorr_key,
                         );
 
-                        let amount_used = tx.utxos.into_iter().map(|(_, entry)| entry.amount).sum::<u64>();
+                        let amount_used = utxos.into_iter().map(|(_, entry)| entry.amount).sum::<u64>();
                         (signed_tx.tx, amount_used)
                     })
                     .collect();
@@ -375,28 +380,28 @@ fn is_utxo_spendable(entry: &UtxoEntry, virtual_daa_score: u64, coinbase_maturit
 }
 
 async fn maybe_send_tx(
-    kaspa_addr: Address,
+    kaspa_addr: Arc<Address>,
     utxos: &mut Vec<(TransactionOutpoint, UtxoEntry)>,
     pending: Arc<RwLock<HashMap<TransactionOutpoint, u64>>>,
     maximize_inputs: bool,
-) -> Option<TxToSign> {
+) -> Option<UtxosForSubmission> {
     let num_outs = if maximize_inputs { 1 } else { 2 };
     let (selected_utxos, selected_amount) = select_utxos(utxos, DEFAULT_SEND_AMOUNT, num_outs, maximize_inputs, &pending.read());
     if selected_amount == 0 {
         return None;
     }
 
-    let tx = generate_tx(&selected_utxos, selected_amount, num_outs, &kaspa_addr);
+    // let tx = generate_tx(&selected_utxos, selected_amount, num_outs, &kaspa_addr);
 
     let now = unix_now();
     {
         let mut pending_write = pending.write();
-        for input in tx.inputs.iter() {
-            pending_write.insert(input.previous_outpoint, now);
+        for (outpoint, _) in selected_utxos.iter() {
+            pending_write.insert(*outpoint, now);
         }
     }
 
-    Some(TxToSign { tx, utxos: selected_utxos.into() })
+    Some(UtxosForSubmission { utxos: selected_utxos.into(), selected_amount, num_outs, kaspa_addr: kaspa_addr.clone() })
 }
 
 fn clean_old_pending_outpoints(pending: &mut HashMap<TransactionOutpoint, u64>) {
@@ -425,7 +430,7 @@ fn generate_tx(utxos: &[(TransactionOutpoint, UtxoEntry)], send_amount: u64, num
     let outputs = (0..num_outs)
         .map(|_| TransactionOutput { value: send_amount / num_outs, script_public_key: script_public_key.clone() })
         .collect_vec();
-    let unsigned_tx = Transaction::new(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+    let unsigned_tx = Transaction::new_non_finalized(TX_VERSION, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
     unsigned_tx
 }
 
