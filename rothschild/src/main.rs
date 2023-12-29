@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use clap::{Arg, Command};
+use clap::{Arg, ArgAction, Command};
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
@@ -36,6 +36,8 @@ pub struct Args {
     pub private_key: Option<String>,
     pub tps: u64,
     pub rpc_server: String,
+    pub threads: u8,
+    pub unleashed: bool,
 }
 
 impl Args {
@@ -45,6 +47,8 @@ impl Args {
             private_key: m.get_one::<String>("private-key").cloned(),
             tps: m.get_one::<u64>("tps").cloned().unwrap(),
             rpc_server: m.get_one::<String>("rpcserver").cloned().unwrap_or("localhost:16210".to_owned()),
+            threads: m.get_one::<u8>("threads").cloned().unwrap(),
+            unleashed: m.get_one::<bool>("unleashed").cloned().unwrap_or(false),
         }
     }
 }
@@ -71,6 +75,14 @@ pub fn cli() -> Command {
                 .default_value("localhost:16210")
                 .help("RPC server"),
         )
+        .arg(
+            Arg::new("threads")
+                .long("threads")
+                .default_value("2")
+                .value_parser(clap::value_parser!(u8))
+                .help("The number of threads to use for TX generation. Set to 0 to use 1 thread per core. Default is 2."),
+        )
+        .arg(Arg::new("unleashed").long("unleashed").action(ArgAction::SetTrue).hide(true).help("Allow higher TPS"))
 }
 
 async fn new_rpc_client(address: &str) -> GrpcClient {
@@ -129,6 +141,8 @@ async fn main() {
         kaspa_addresses::Version::PubKey,
         &schnorr_key.x_only_public_key().0.serialize(),
     );
+
+    rayon::ThreadPoolBuilder::new().num_threads(args.threads as usize).build_global().unwrap();
 
     info!("Using Rothschild with private key {} and address {}", schnorr_key.display_secret(), String::from(&kaspa_addr));
     let info = rpc_client.get_block_dag_info().await.unwrap();
@@ -204,12 +218,13 @@ async fn main() {
     // This allows us to keep track of the UTXOs we already tried to use for this period
     // until the UTXOs are refreshed. At that point, this will be reset as well.
     let mut next_available_utxo_index = 0;
+    let target_tps = args.tps.min(if args.unleashed { u64::MAX } else { 100 });
     loop {
         ticker.tick().await;
         maximize_inputs = should_maximize_inputs(maximize_inputs, &utxos, &pending);
         let now = unix_now();
         let has_funds = maybe_send_tx(
-            args.tps,
+            target_tps,
             &tx_sender,
             kaspa_addr.clone(),
             &mut utxos,
