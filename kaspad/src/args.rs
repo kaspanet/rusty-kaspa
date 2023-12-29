@@ -101,7 +101,7 @@ impl Default for Args {
             user_agent_comments: vec![],
             yes: false,
             perf_metrics: false,
-            perf_metrics_interval_sec: 1,
+            perf_metrics_interval_sec: 10,
             externalip: None,
             block_template_cache_lifetime: None,
 
