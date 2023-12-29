@@ -4494,6 +4494,7 @@ dependencies = [
 name = "rothschild"
 version = "0.13.1"
 dependencies = [
+ "async-channel 2.1.1",
  "clap 4.4.11",
  "criterion",
  "faster-hex 0.6.1",
@@ -4503,9 +4504,11 @@ dependencies = [
  "kaspa-core",
  "kaspa-grpc-client",
  "kaspa-rpc-core",
+ "kaspa-testing-integration",
  "kaspa-txscript",
  "kaspa-utils",
  "log",
+ "parking_lot",
  "rayon",
  "secp256k1",
  "tokio",

@@ -158,6 +158,27 @@ impl Transaction {
         tx.finalize();
         tx
     }
+
+    pub fn new_non_finalized(
+        version: u16,
+        inputs: Vec<TransactionInput>,
+        outputs: Vec<TransactionOutput>,
+        lock_time: u64,
+        subnetwork_id: SubnetworkId,
+        gas: u64,
+        payload: Vec<u8>,
+    ) -> Self {
+        Self {
+            version,
+            inputs,
+            outputs,
+            lock_time,
+            subnetwork_id,
+            gas,
+            payload,
+            id: Default::default(), // Temp init before the finalize below
+        }
+    }
 }
 
 impl Transaction {
