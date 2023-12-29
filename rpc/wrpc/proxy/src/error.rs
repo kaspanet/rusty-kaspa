@@ -1,4 +1,5 @@
 #[derive(thiserror::Error, Debug)]
+#[allow(clippy::enum_variant_names)]
 pub enum Error {
     #[error("{0}")]
     Other(String),

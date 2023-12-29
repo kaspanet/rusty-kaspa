@@ -15,10 +15,10 @@ pub use kaspa_rpc_core::{
     api::ops::RpcApiOps,
     api::rpc::RpcApi,
     error::RpcResult,
-    notify::{collector::RpcCoreCollector, connection::ChannelConnection, mode::NotificationMode},
+    notify::{connection::ChannelConnection, mode::NotificationMode},
     prelude::*,
 };
-pub use regex::Regex;
+
 pub use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -27,7 +27,6 @@ pub use wasm_bindgen::prelude::*;
 pub use workflow_core::{
     channel::{Channel, DuplexChannel, Receiver},
     task::spawn,
-    trigger::Listener,
 };
 pub use workflow_log::*;
 pub use workflow_rpc::client::prelude::{Encoding as WrpcEncoding, *};

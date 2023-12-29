@@ -22,7 +22,6 @@ kaspa-utils.workspace = true
 async-channel.workspace = true
 clap.workspace = true
 dhat = { workspace = true, optional = true }
-futures-util.workspace = true
 futures.workspace = true
 indexmap.workspace = true
 itertools.workspace = true

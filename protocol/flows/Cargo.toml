@@ -29,7 +29,6 @@ itertools.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 rand.workspace = true
-thiserror.workspace = true
 tokio = { workspace = true, features = [ "rt-multi-thread", "macros", "signal" ] }
 tokio-stream = { workspace = true, features = ["net"] }
 uuid = { workspace = true, features = ["v4", "fast-rng"] }

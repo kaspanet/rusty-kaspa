@@ -19,7 +19,6 @@ serde.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-core.workspace = true
-workflow-log.workspace = true
 workflow-wasm.workspace = true
 
 [dev-dependencies]

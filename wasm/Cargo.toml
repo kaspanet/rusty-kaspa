@@ -17,7 +17,6 @@ js-sys.workspace = true
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-wasm.workspace = true
-kaspa-core.workspace = true
 kaspa-math.workspace = true
 kaspa-pow.workspace = true
 kaspa-rpc-core.workspace = true
@@ -26,7 +25,6 @@ kaspa-wallet-core.workspace = true
 kaspa-wrpc-client.workspace = true
 num.workspace = true
 wasm-bindgen.workspace = true
-workflow-log.workspace = true
 
 [features] 
 wallet = [] 

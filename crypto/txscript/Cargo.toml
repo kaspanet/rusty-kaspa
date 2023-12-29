@@ -24,7 +24,6 @@ serde.workspace = true
 sha2.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
-wasm-bindgen.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

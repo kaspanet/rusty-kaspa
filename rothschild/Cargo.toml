@@ -14,7 +14,6 @@ kaspa-grpc-client.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-addresses.workspace = true
 kaspa-txscript.workspace = true
-kaspa-utils.workspace = true
 
 clap.workspace = true
 faster-hex.workspace = true

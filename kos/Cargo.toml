@@ -26,19 +26,14 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 async-trait.workspace = true
 borsh.workspace = true
-cfg-if.workspace = true
 downcast.workspace = true
 futures.workspace = true
-js-sys.workspace = true
 kaspa-cli.workspace = true
-kaspa-consensus-core.workspace = true
 kaspa-core.workspace = true
 kaspa-daemon.workspace = true
 kaspa-metrics-core.workspace = true
-kaspa-rpc-core.workspace = true
 kaspa-wallet-core.workspace = true
 nw-sys.workspace = true
-regex.workspace = true
 serde_json.workspace = true
 serde.workspace = true
 thiserror.workspace = true
@@ -65,4 +60,7 @@ features = [
     # 'HtmlCanvasElement',
     # 'CanvasRenderingContext2d'
 ]
+
+[package.metadata.cargo-machete]
+ignored = ["kaspa-cli", "wasm-bindgen-futures"]
 

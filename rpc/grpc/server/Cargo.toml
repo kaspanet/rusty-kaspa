@@ -19,23 +19,16 @@ kaspa-utils-tower.workspace = true
 kaspa-utils.workspace = true
 
 async-channel.workspace = true
-async-stream.workspace = true
 async-trait.workspace = true
-faster-hex.workspace = true
 futures.workspace = true
 h2.workspace = true
 itertools.workspace = true
 log.workspace = true
-once_cell.workspace = true
 parking_lot.workspace = true
-paste.workspace = true
-prost.workspace = true
-rand.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
 tokio-stream.workspace = true
 tonic = { workspace = true, features = ["gzip"] }
-triggered.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

@@ -8,21 +8,17 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-async-channel.workspace = true
-async-trait.workspace = true
 derive_more.workspace = true
-futures.workspace = true
 kaspa-consensus-core.workspace = true
-kaspa-hashes.workspace = true
 kaspa-notify.workspace = true
 kaspa-utils.workspace = true
-log.workspace = true
 paste.workspace = true
 serde.workspace = true
-thiserror.workspace = true
-triggered.workspace = true
 
 [dev-dependencies]
 # parking_lot.workspace = true
 # tokio = { workspace = true, features = ["rt", "macros"] }
 # rand = {workspace = true,  features = [ "small_rng" ]}
+
+[package.metadata.cargo-machete]
+ignored = ["paste"]

@@ -32,3 +32,6 @@ async-trait.workspace = true
 log.workspace = true
 tokio.workspace = true
 workflow-rpc.workspace = true
+
+[package.metadata.cargo-machete]
+ignored = ["log"]
