@@ -15,7 +15,6 @@ kaspa-rpc-core.workspace = true
 kaspa-addresses.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
-kaspa-testing-integration.workspace = true
 async-channel.workspace = true
 parking_lot.workspace = true
 

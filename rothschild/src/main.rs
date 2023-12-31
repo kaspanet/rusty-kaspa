@@ -11,9 +11,8 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
 };
 use kaspa_core::{info, kaspad_env::version, time::unix_now, warn};
-use kaspa_grpc_client::GrpcClient;
+use kaspa_grpc_client::{ClientPool, GrpcClient};
 use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode};
-use kaspa_testing_integration::common::client_pool::ClientPool;
 use kaspa_txscript::pay_to_address_script;
 use parking_lot::Mutex;
 use rayon::prelude::*;
