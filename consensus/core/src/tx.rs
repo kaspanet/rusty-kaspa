@@ -159,16 +159,7 @@ impl Transaction {
         gas: u64,
         payload: Vec<u8>,
     ) -> Self {
-        Self {
-            version,
-            inputs,
-            outputs,
-            lock_time,
-            subnetwork_id,
-            gas,
-            payload,
-            id: Default::default(), // Temp init before the finalize below
-        }
+        Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, id: Default::default() }
     }
 }
 
