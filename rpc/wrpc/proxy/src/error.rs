@@ -16,7 +16,7 @@ pub enum Error {
     WebSocket(#[from] workflow_rpc::server::WebSocketError),
 
     #[error(transparent)]
-    RpcError(#[from] workflow_rpc::error::Error),
+    WorkflowRpc(#[from] workflow_rpc::error::Error),
 }
 
 impl From<String> for Error {
