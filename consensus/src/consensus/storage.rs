@@ -6,8 +6,8 @@ use crate::{
         block_window_cache::BlockWindowCacheStore,
         daa::DbDaaStore,
         depth::DbDepthStore,
-        ghostdag::{DbGhostdagStore, GhostdagData},
-        headers::DbHeadersStore,
+        ghostdag::{CompactGhostdagData, DbGhostdagStore},
+        headers::{CompactHeaderData, DbHeadersStore},
         headers_selected_tip::DbHeadersSelectedTipStore,
         past_pruning_points::DbPastPruningPointsStore,
         pruning::DbPruningStore,
@@ -22,17 +22,16 @@ use crate::{
         virtual_state::VirtualStores,
         DB,
     },
-    processes::{reachability::inquirer as reachability, relations},
+    processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations},
 };
 
+use super::cache_policy_builder::CachePolicyBuilder as PolicyBuilder;
 use itertools::Itertools;
-
-use kaspa_consensus_core::{blockstatus::BlockStatus, config::constants::perf, BlockHashSet};
+use kaspa_consensus_core::{blockstatus::BlockStatus, BlockHashSet};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
-use rand::Rng;
-use std::{cmp::max, mem::size_of, ops::DerefMut, sync::Arc};
+use std::{mem::size_of, ops::DerefMut, sync::Arc};
 
 pub struct ConsensusStorage {
     // DB
@@ -74,91 +73,155 @@ impl ConsensusStorage {
         let params = &config.params;
         let perf_params = &config.perf;
 
-        let pruning_size_for_caches = params.pruning_depth + params.finality_depth;
+        // Lower and upper bounds
+        let pruning_depth = params.pruning_depth as usize;
+        let pruning_size_for_caches = (params.pruning_depth + params.finality_depth) as usize; // Upper bound for any block/header related data
+        let level_lower_bound = 2 * params.pruning_proof_m as usize; // Number of items lower bound for level-related caches
 
-        // Calculate cache sizes which are related to pruning depth
-        let daa_excluded_cache_size =
-            perf::bounded_cache_size(params.pruning_depth, 100_000_000u64, size_of::<Hash>() + size_of::<BlockHashSet>()); // required only above the pruning point; 100MB budget; expected empty sets
-        let statuses_cache_size =
-            perf::bounded_cache_size(pruning_size_for_caches, 100_000_000u64, size_of::<Hash>() + size_of::<BlockStatus>());
-        let relations_cache_size = perf::bounded_cache_size(
-            pruning_size_for_caches,
-            200_000_000u64,
-            size_of::<Hash>() + perf::approx_direct_header_parents(params) * size_of::<Hash>(),
-        );
-        let reachability_relations_cache_size = perf::bounded_cache_size(
-            pruning_size_for_caches,
-            100_000_000u64,
-            size_of::<Hash>() + perf::approx_direct_header_parents(params) * size_of::<Hash>(),
-        );
-        let reachability_cache_size = perf::bounded_cache_size(
-            pruning_size_for_caches,
-            200_000_000u64,
-            size_of::<ReachabilityData>() + perf::approx_mergeset_size(params) * size_of::<Hash>(),
-        );
-        let ghostdag_cache_size = perf::bounded_cache_size(
-            pruning_size_for_caches,
-            200_000_000u64,
-            size_of::<GhostdagData>() + perf::approx_mergeset_size(params) * size_of::<Hash>() * 2,
-        );
+        // Budgets in bytes. All byte budgets overall sum up to ~1GB of memory (which obviously takes more low level alloc space)
+        let daa_excluded_budget = 30_000_000;
+        let statuses_budget = 30_000_000;
+        let reachability_data_budget = 20_000_000;
+        let reachability_sets_budget = 20_000_000; // x 2 for tree children and future covering set
+        let ghostdag_compact_budget = 15_000_000;
+        let headers_compact_budget = 5_000_000;
+        let parents_budget = 40_000_000; // x 3 for reachability and levels
+        let children_budget = 5_000_000; // x 3 for reachability and levels
+        let ghostdag_budget = 80_000_000; // x 2 for levels
+        let headers_budget = 80_000_000;
+        let utxo_diffs_budget = 40_000_000;
+        let block_window_budget = 200_000_000; // x 2 for difficulty and median time
 
-        // Add stochastic noise to cache sizes to avoid predictable and equal sizes across all network nodes
-        let noise = |size| size + rand::thread_rng().gen_range(0..16);
+        // Unit sizes in bytes
+        let daa_excluded_bytes = size_of::<Hash>() + size_of::<BlockHashSet>(); // Expected empty sets
+        let status_bytes = size_of::<Hash>() + size_of::<BlockStatus>();
+        let reachability_data_bytes = size_of::<Hash>() + size_of::<ReachabilityData>();
+        let ghostdag_compact_bytes = size_of::<Hash>() + size_of::<CompactGhostdagData>();
+        let headers_compact_bytes = size_of::<Hash>() + size_of::<CompactHeaderData>();
+        let difficulty_window_bytes = params.difficulty_window_size(0) * size_of::<SortableBlock>();
+        let median_window_bytes = params.past_median_time_window_size(0) * size_of::<SortableBlock>();
+
+        // Cache policy builders
+        let daa_excluded_builder =
+            PolicyBuilder::new().max_items(pruning_depth).bytes_budget(daa_excluded_budget).unit_bytes(daa_excluded_bytes).untracked(); // Required only above the pruning point
+        let statuses_builder =
+            PolicyBuilder::new().max_items(pruning_size_for_caches).bytes_budget(statuses_budget).unit_bytes(status_bytes).untracked();
+        let reachability_data_builder = PolicyBuilder::new()
+            .max_items(pruning_size_for_caches)
+            .bytes_budget(reachability_data_budget)
+            .unit_bytes(reachability_data_bytes)
+            .untracked();
+        let ghostdag_compact_builder = PolicyBuilder::new()
+            .max_items(pruning_size_for_caches)
+            .bytes_budget(ghostdag_compact_budget)
+            .unit_bytes(ghostdag_compact_bytes)
+            .min_items(level_lower_bound)
+            .untracked();
+        let headers_compact_builder = PolicyBuilder::new()
+            .max_items(pruning_size_for_caches)
+            .bytes_budget(headers_compact_budget)
+            .unit_bytes(headers_compact_bytes)
+            .untracked();
+        let parents_builder = PolicyBuilder::new()
+            .bytes_budget(parents_budget)
+            .unit_bytes(size_of::<Hash>())
+            .min_items(level_lower_bound)
+            .tracked_units();
+        let children_builder = PolicyBuilder::new()
+            .bytes_budget(children_budget)
+            .unit_bytes(size_of::<Hash>())
+            .min_items(level_lower_bound)
+            .tracked_units();
+        let reachability_sets_builder =
+            PolicyBuilder::new().bytes_budget(reachability_sets_budget).unit_bytes(size_of::<Hash>()).tracked_units();
+        let difficulty_window_builder = PolicyBuilder::new()
+            .max_items(perf_params.block_window_cache_size)
+            .bytes_budget(block_window_budget)
+            .unit_bytes(difficulty_window_bytes)
+            .untracked();
+        let median_window_builder = PolicyBuilder::new()
+            .max_items(perf_params.block_window_cache_size)
+            .bytes_budget(block_window_budget)
+            .unit_bytes(median_window_bytes)
+            .untracked();
+        let ghostdag_builder = PolicyBuilder::new().bytes_budget(ghostdag_budget).tracked_bytes();
+        let headers_builder = PolicyBuilder::new().bytes_budget(headers_budget).tracked_bytes();
+        let utxo_diffs_builder = PolicyBuilder::new().bytes_budget(utxo_diffs_budget).tracked_bytes();
+        let block_data_builder = PolicyBuilder::new().max_items(perf_params.block_data_cache_size).untracked();
+        let header_data_builder = PolicyBuilder::new().max_items(perf_params.header_data_cache_size).untracked();
+        let utxo_set_builder = PolicyBuilder::new().max_items(perf_params.utxo_set_cache_size).untracked();
+        let transactions_builder = PolicyBuilder::new().max_items(40_000).tracked_units(); // Tracked units are txs.
+        let past_pruning_points_builder = PolicyBuilder::new().max_items(1024).untracked();
+
+        // TODO: consider tracking transactions by bytes (preferably by saving the size in a field on the block level)
+        // TODO: consider tracking UtxoDiff byte sizes more accurately including the exact size of ScriptPublicKey
 
         // Headers
-        let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), noise(statuses_cache_size))));
+        let statuses_store = Arc::new(RwLock::new(DbStatusesStore::new(db.clone(), statuses_builder.build())));
         let relations_stores = Arc::new(RwLock::new(
             (0..=params.max_block_level)
                 .map(|level| {
-                    let cache_size = max(relations_cache_size.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m);
-                    DbRelationsStore::new(db.clone(), level, noise(cache_size))
+                    DbRelationsStore::new(
+                        db.clone(),
+                        level,
+                        parents_builder.downscale(level).build(),
+                        children_builder.downscale(level).build(),
+                    )
                 })
                 .collect_vec(),
         ));
-        let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(db.clone(), noise(reachability_cache_size))));
+        let reachability_store = Arc::new(RwLock::new(DbReachabilityStore::new(
+            db.clone(),
+            reachability_data_builder.build(),
+            reachability_sets_builder.build(),
+        )));
 
         let reachability_relations_store = Arc::new(RwLock::new(DbRelationsStore::with_prefix(
             db.clone(),
             DatabaseStorePrefixes::ReachabilityRelations.as_ref(),
-            noise(reachability_relations_cache_size),
+            parents_builder.build(),
+            children_builder.build(),
         )));
+
         let ghostdag_stores = Arc::new(
             (0..=params.max_block_level)
                 .map(|level| {
-                    let cache_size = max(ghostdag_cache_size.checked_shr(level as u32).unwrap_or(0), 2 * params.pruning_proof_m);
-                    Arc::new(DbGhostdagStore::new(db.clone(), level, noise(cache_size)))
+                    Arc::new(DbGhostdagStore::new(
+                        db.clone(),
+                        level,
+                        ghostdag_builder.downscale(level).build(),
+                        ghostdag_compact_builder.downscale(level).build(),
+                    ))
                 })
                 .collect_vec(),
         );
         let ghostdag_primary_store = ghostdag_stores[0].clone();
-        let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), noise(daa_excluded_cache_size)));
-        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), noise(perf_params.headers_cache_size)));
-        let depth_store = Arc::new(DbDepthStore::new(db.clone(), noise(perf_params.header_data_cache_size)));
-        let selected_chain_store =
-            Arc::new(RwLock::new(DbSelectedChainStore::new(db.clone(), noise(perf_params.header_data_cache_size))));
+        let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), daa_excluded_builder.build()));
+        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), headers_builder.build(), headers_compact_builder.build()));
+        let depth_store = Arc::new(DbDepthStore::new(db.clone(), header_data_builder.build()));
+        let selected_chain_store = Arc::new(RwLock::new(DbSelectedChainStore::new(db.clone(), header_data_builder.build())));
 
         // Pruning
         let pruning_point_store = Arc::new(RwLock::new(DbPruningStore::new(db.clone())));
-        let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), 4));
-        let pruning_utxoset_stores =
-            Arc::new(RwLock::new(PruningUtxosetStores::new(db.clone(), noise(perf_params.utxo_set_cache_size))));
+        let past_pruning_points_store = Arc::new(DbPastPruningPointsStore::new(db.clone(), past_pruning_points_builder.build()));
+        let pruning_utxoset_stores = Arc::new(RwLock::new(PruningUtxosetStores::new(db.clone(), utxo_set_builder.build())));
 
         // Txs
-        let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), noise(perf_params.block_data_cache_size)));
-        let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), noise(perf_params.block_data_cache_size)));
-        let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), noise(perf_params.block_data_cache_size)));
-        let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), noise(perf_params.block_data_cache_size)));
+        let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), transactions_builder.build()));
+        let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), utxo_diffs_builder.build()));
+        let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), block_data_builder.build()));
+        let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), block_data_builder.build()));
 
         // Tips
         let headers_selected_tip_store = Arc::new(RwLock::new(DbHeadersSelectedTipStore::new(db.clone())));
         let body_tips_store = Arc::new(RwLock::new(DbTipsStore::new(db.clone())));
 
         // Block windows
-        let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(noise(perf_params.block_window_cache_size)));
-        let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(noise(perf_params.block_window_cache_size)));
+        let block_window_cache_for_difficulty = Arc::new(BlockWindowCacheStore::new(difficulty_window_builder.build()));
+        let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(median_window_builder.build()));
 
         // Virtual stores
-        let virtual_stores = Arc::new(RwLock::new(VirtualStores::new(db.clone(), noise(perf_params.utxo_set_cache_size))));
+        let virtual_stores = Arc::new(RwLock::new(VirtualStores::new(db.clone(), utxo_set_builder.build())));
 
         // Ensure that reachability stores are initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();

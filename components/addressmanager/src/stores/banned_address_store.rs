@@ -1,14 +1,21 @@
 use kaspa_database::{
+    prelude::{CachePolicy, StoreError, StoreResult},
     prelude::{CachedDbAccess, DirectDbWriter, DB},
-    prelude::{StoreError, StoreResult},
     registry::DatabaseStorePrefixes,
 };
+use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, Ipv6Addr};
 use std::{error::Error, fmt::Display, sync::Arc};
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub struct ConnectionBanTimestamp(pub u64);
+
+impl MemSizeEstimator for ConnectionBanTimestamp {
+    fn estimate_mem_units(&self) -> usize {
+        1
+    }
+}
 
 pub trait BannedAddressesStoreReader {
     fn get(&self, address: IpAddr) -> Result<ConnectionBanTimestamp, StoreError>;
@@ -70,8 +77,8 @@ pub struct DbBannedAddressesStore {
 }
 
 impl DbBannedAddressesStore {
-    pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::BannedAddresses.into()) }
+    pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::BannedAddresses.into()) }
     }
 
     pub fn iterator(&self) -> impl Iterator<Item = Result<(IpAddr, ConnectionBanTimestamp), Box<dyn Error>>> + '_ {

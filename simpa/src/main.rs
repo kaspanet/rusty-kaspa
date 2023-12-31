@@ -24,7 +24,7 @@ use kaspa_core::{info, task::service::AsyncService, task::tick::TickService, tim
 use kaspa_database::prelude::ConnBuilder;
 use kaspa_database::{create_temp_db, load_existing_db};
 use kaspa_hashes::Hash;
-use kaspa_perf_monitor::builder::Builder;
+use kaspa_perf_monitor::{builder::Builder, counters::CountersSnapshot};
 use kaspa_utils::fd_budget;
 use simulator::network::KaspaNetworkSimulator;
 use std::{collections::VecDeque, sync::Arc, time::Duration};
@@ -69,8 +69,8 @@ struct Args {
     #[arg(short, long)]
     virtual_threads: Option<usize>,
 
-    /// If on, validates all headers before starting to validate block bodies
-    #[arg(short, long, default_value_t = false)]
+    /// If on, validates headers first before starting to validate block bodies
+    #[arg(short = 'f', long, default_value_t = false)]
     headers_first: bool,
 
     /// Logging level for all subsystems {off, error, warn, info, debug, trace}
@@ -145,8 +145,10 @@ fn main_impl(mut args: Args) {
 
     let stop_perf_monitor = args.perf_metrics.then(|| {
         let ts = Arc::new(TickService::new());
-        let cb = move |counters| {
-            trace!("metrics: {:?}", counters);
+
+        let cb = move |counters: CountersSnapshot| {
+            trace!("[{}] {}", kaspa_perf_monitor::SERVICE_NAME, counters.to_process_metrics_display());
+            trace!("[{}] {}", kaspa_perf_monitor::SERVICE_NAME, counters.to_io_metrics_display());
             #[cfg(feature = "heap")]
             trace!("heap stats: {:?}", dhat::HeapStats::get());
         };
