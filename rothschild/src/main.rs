@@ -208,8 +208,11 @@ async fn main() {
     });
     let tx_sender = submit_tx_pool.sender();
 
+    let target_tps = args.tps.min(if args.unleashed { u64::MAX } else { 100 });
+    let should_tick_per_second = target_tps * MILLIS_PER_TICK / 1000 == 0;
+    let avg_txs_per_tick = if should_tick_per_second { target_tps } else { target_tps * MILLIS_PER_TICK / 1000 };
     let mut utxos = refresh_utxos(&rpc_client, kaspa_addr.clone(), &mut pending, coinbase_maturity).await;
-    let mut ticker = interval(Duration::from_millis(MILLIS_PER_TICK));
+    let mut ticker = interval(Duration::from_millis(if should_tick_per_second { 1000 } else { MILLIS_PER_TICK }));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     let mut maximize_inputs = false;
@@ -217,13 +220,24 @@ async fn main() {
     // This allows us to keep track of the UTXOs we already tried to use for this period
     // until the UTXOs are refreshed. At that point, this will be reset as well.
     let mut next_available_utxo_index = 0;
-    let target_tps = args.tps.min(if args.unleashed { u64::MAX } else { 100 });
+    // Tracker so we can try to send as close as possible to the target TPS
+    let mut remaining_txs_in_interval = target_tps;
+
     loop {
         ticker.tick().await;
         maximize_inputs = should_maximize_inputs(maximize_inputs, &utxos, &pending);
+        let txs_to_send = if remaining_txs_in_interval > avg_txs_per_tick * 2 {
+            remaining_txs_in_interval -= avg_txs_per_tick;
+            avg_txs_per_tick
+        } else {
+            let count = remaining_txs_in_interval;
+            remaining_txs_in_interval = target_tps;
+            count
+        };
+
         let now = unix_now();
         let has_funds = maybe_send_tx(
-            target_tps,
+            txs_to_send,
             &tx_sender,
             kaspa_addr.clone(),
             &mut utxos,
@@ -336,7 +350,7 @@ fn is_utxo_spendable(entry: &UtxoEntry, virtual_daa_score: u64, coinbase_maturit
 }
 
 async fn maybe_send_tx(
-    tps: u64,
+    txs_to_send: u64,
     tx_sender: &async_channel::Sender<ClientPoolArg>,
     kaspa_addr: Address,
     utxos: &mut Vec<(TransactionOutpoint, UtxoEntry)>,
@@ -350,7 +364,7 @@ async fn maybe_send_tx(
 
     let mut has_fund = false;
 
-    let selected_utxos_groups = (0..tps * MILLIS_PER_TICK / 1000)
+    let selected_utxos_groups = (0..txs_to_send)
         .map(|_| {
             let (selected_utxos, selected_amount) =
                 select_utxos(utxos, DEFAULT_SEND_AMOUNT, num_outs, maximize_inputs, next_available_utxo_index);
