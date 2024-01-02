@@ -70,6 +70,9 @@ pub struct ConsensusStorage {
 
 impl ConsensusStorage {
     pub fn new(db: Arc<DB>, config: Arc<Config>) -> Arc<Self> {
+        let scale_factor = 0.5;
+        let scaled = |s| (s as f64 * scale_factor) as usize;
+
         let params = &config.params;
         let perf_params = &config.perf;
 
@@ -79,19 +82,19 @@ impl ConsensusStorage {
         let level_lower_bound = 2 * params.pruning_proof_m as usize; // Number of items lower bound for level-related caches
 
         // Budgets in bytes. All byte budgets overall sum up to ~1GB of memory (which obviously takes more low level alloc space)
-        let daa_excluded_budget = 30_000_000;
-        let statuses_budget = 30_000_000;
-        let reachability_data_budget = 20_000_000;
-        let reachability_sets_budget = 20_000_000; // x 2 for tree children and future covering set
-        let ghostdag_compact_budget = 15_000_000;
-        let headers_compact_budget = 5_000_000;
-        let parents_budget = 40_000_000; // x 3 for reachability and levels
-        let children_budget = 5_000_000; // x 3 for reachability and levels
-        let ghostdag_budget = 80_000_000; // x 2 for levels
-        let headers_budget = 80_000_000;
-        let transactions_budget = 40_000_000;
-        let utxo_diffs_budget = 40_000_000;
-        let block_window_budget = 200_000_000; // x 2 for difficulty and median time
+        let daa_excluded_budget = scaled(30_000_000);
+        let statuses_budget = scaled(30_000_000);
+        let reachability_data_budget = scaled(20_000_000);
+        let reachability_sets_budget = scaled(20_000_000); // x 2 for tree children and future covering set
+        let ghostdag_compact_budget = scaled(15_000_000);
+        let headers_compact_budget = scaled(5_000_000);
+        let parents_budget = scaled(40_000_000); // x 3 for reachability and levels
+        let children_budget = scaled(5_000_000); // x 3 for reachability and levels
+        let ghostdag_budget = scaled(80_000_000); // x 2 for levels
+        let headers_budget = scaled(80_000_000);
+        let transactions_budget = scaled(40_000_000);
+        let utxo_diffs_budget = scaled(40_000_000);
+        let block_window_budget = scaled(200_000_000); // x 2 for difficulty and median time
 
         // Unit sizes in bytes
         let daa_excluded_bytes = size_of::<Hash>() + size_of::<BlockHashSet>(); // Expected empty sets
