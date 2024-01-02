@@ -89,6 +89,7 @@ impl ConsensusStorage {
         let children_budget = 5_000_000; // x 3 for reachability and levels
         let ghostdag_budget = 80_000_000; // x 2 for levels
         let headers_budget = 80_000_000;
+        let transactions_budget = 40_000_000;
         let utxo_diffs_budget = 40_000_000;
         let block_window_budget = 200_000_000; // x 2 for difficulty and median time
 
@@ -150,10 +151,9 @@ impl ConsensusStorage {
         let block_data_builder = PolicyBuilder::new().max_items(perf_params.block_data_cache_size).untracked();
         let header_data_builder = PolicyBuilder::new().max_items(perf_params.header_data_cache_size).untracked();
         let utxo_set_builder = PolicyBuilder::new().max_items(perf_params.utxo_set_cache_size).untracked();
-        let transactions_builder = PolicyBuilder::new().max_items(40_000).tracked_units(); // Tracked units are txs.
+        let transactions_builder = PolicyBuilder::new().bytes_budget(transactions_budget).tracked_bytes();
         let past_pruning_points_builder = PolicyBuilder::new().max_items(1024).untracked();
 
-        // TODO: consider tracking transactions by bytes (preferably by saving the size in a field on the block level)
         // TODO: consider tracking UtxoDiff byte sizes more accurately including the exact size of ScriptPublicKey
 
         // Headers
