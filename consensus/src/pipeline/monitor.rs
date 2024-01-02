@@ -50,13 +50,14 @@ impl ConsensusMonitor {
             let now = Instant::now();
 
             info!(
-                "Processed {} blocks and {} headers in the last {:.2}s ({} transactions; {} parent references; {} UTXO-validated blocks; {:.2} avg txs per block; {} avg block mass)", 
+                "Processed {} blocks and {} headers in the last {:.2}s ({} transactions; {} UTXO-validated blocks; {:.2} parents; {:.2} mergesets; {:.2} TPB; {:.1} mass)", 
                 delta.body_counts,
                 delta.header_counts,
                 (now - last_log_time).as_secs_f64(),
                 delta.txs_counts,
-                delta.dep_counts,
                 delta.chain_block_counts,
+                if delta.header_counts != 0 { delta.dep_counts as f64 / delta.header_counts as f64 } else { 0f64 },
+                if delta.header_counts != 0 { delta.mergeset_counts as f64 / delta.header_counts as f64 } else { 0f64 },
                 if delta.body_counts != 0 { delta.txs_counts as f64 / delta.body_counts as f64 } else{ 0f64 },
                 if delta.body_counts != 0 { delta.mass_counts / delta.body_counts } else{ 0 },
             );
