@@ -4,7 +4,7 @@ use crate::{
     flowcontext::orphans::OrphanOutput,
 };
 use kaspa_consensus_core::{api::BlockValidationFutures, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
-use kaspa_consensusmanager::ConsensusProxy;
+use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
 use kaspa_core::{debug, info};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
@@ -152,25 +152,16 @@ impl HandleRelayInvsFlow {
 
             let BlockValidationFutures { block_task, mut virtual_state_task } = session.validate_and_insert_block(block.clone());
 
-            let ancestor_blocks = match block_task.await {
+            let ancestor_batch = match block_task.await {
                 Ok(_) => Default::default(),
                 Err(RuleError::MissingParents(missing_parents)) => {
                     debug!("Block {} is orphan and has missing parents: {:?}", block.hash(), missing_parents);
-                    if let Some(mut orphan_ancestors) = self.process_orphan(&session, block.clone(), inv.known_within_range).await? {
-                        let mut ancestor_blocks = Vec::with_capacity(orphan_ancestors.len());
-                        let mut ancestor_block_tasks = Vec::with_capacity(orphan_ancestors.len());
-                        orphan_ancestors.sort_by(|a, b| a.header.blue_work.partial_cmp(&b.header.blue_work).unwrap());
-                        for block in orphan_ancestors {
-                            let BlockValidationFutures { block_task: ancestor_block_task, virtual_state_task: ancestor_virtual_task } =
-                                session.validate_and_insert_block(block.clone());
-                            ancestor_block_tasks.push(ancestor_block_task);
-                            ancestor_blocks.push((block, ancestor_virtual_task));
-                        }
-                        // Block is possibly not an orphan, retrying
+                    if let Some(mut ancestor_batch) = self.process_orphan(&session, block.clone(), inv.known_within_range).await? {
+                        // Block is not an orphan, retrying
                         let BlockValidationFutures { block_task: block_task_inner, virtual_state_task: virtual_state_task_inner } =
                             session.validate_and_insert_block(block.clone());
                         virtual_state_task = virtual_state_task_inner;
-                        for block_task in ancestor_block_tasks {
+                        for block_task in ancestor_batch.block_tasks.take().unwrap() {
                             match block_task.await {
                                 Ok(_) => {}
                                 // We disconnect on invalidness even though this is not a direct relay from this peer, because
@@ -182,12 +173,11 @@ impl HandleRelayInvsFlow {
                             Ok(_) => info!(
                                 "Retried orphan block {} successfully (unorphaned {} ancestors)",
                                 block.hash(),
-                                ancestor_blocks.len()
+                                ancestor_batch.blocks.len()
                             ),
-                            Err(RuleError::MissingParents(_)) => continue, // TODO: should not be possible
                             Err(rule_error) => return Err(rule_error.into()),
                         }
-                        ancestor_blocks
+                        ancestor_batch
                     } else {
                         continue;
                     }
@@ -199,9 +189,10 @@ impl HandleRelayInvsFlow {
             // The only mining rule which permanently excludes a block is the merge depth bound
             // (as opposed to "max parents" and "mergeset size limit" rules)
             if broadcast {
-                let msgs = ancestor_blocks
+                let msgs = ancestor_batch
+                    .blocks
                     .iter()
-                    .map(|(b, _)| make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(b.hash().into()) }))
+                    .map(|b| make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(b.hash().into()) }))
                     .collect();
                 self.ctx.hub().broadcast_many(msgs).await;
 
@@ -215,7 +206,7 @@ impl HandleRelayInvsFlow {
             // can continue processing the following relay blocks
             let ctx = self.ctx.clone();
             tokio::spawn(async move {
-                ctx.on_new_block(&session, ancestor_blocks, block, virtual_state_task).await;
+                ctx.on_new_block(&session, ancestor_batch, block, virtual_state_task).await;
                 ctx.log_block_event(BlockLogEvent::Relay(inv.hash));
             });
         }
@@ -251,14 +242,14 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    /// Process the orphan block. Returns `false` if the block has no missing roots, indicating
-    /// a retry is recommended
+    /// Process the orphan block. Returns `Some(BlockProcessingBatch)` if the block has no missing roots, where
+    /// the batch includes ancestor blocks and their consensus processing batch. This indicates a retry is recommended.
     async fn process_orphan(
         &mut self,
         consensus: &ConsensusProxy,
         block: Block,
         mut known_within_range: bool,
-    ) -> Result<Option<Vec<Block>>, ProtocolError> {
+    ) -> Result<Option<BlockProcessingBatch>, ProtocolError> {
         // Return if the block has been orphaned from elsewhere already
         if self.ctx.is_known_orphan(block.hash()).await {
             return Ok(None);
@@ -286,8 +277,8 @@ impl HandleRelayInvsFlow {
                 // Note that no roots means it is still possible there is a known orphan ancestor in the orphan pool. However
                 // we should still retry consensus in this case because the ancestor might have been queued to consensus
                 // already and consensus handles dependencies with improved (pipeline) concurrency and overlapping
-                Some(OrphanOutput::NoRoots(orphan_ancestors)) => {
-                    return Ok(Some(orphan_ancestors));
+                Some(OrphanOutput::NoRoots(ancestor_batch)) => {
+                    return Ok(Some(ancestor_batch));
                 }
                 Some(OrphanOutput::Roots(roots)) => self.enqueue_orphan_roots(hash, roots, known_within_range),
                 None | Some(OrphanOutput::Unknown) => {}

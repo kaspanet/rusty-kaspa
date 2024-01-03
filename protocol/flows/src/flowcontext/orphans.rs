@@ -3,7 +3,7 @@ use kaspa_consensus_core::{
     api::{BlockValidationFuture, BlockValidationFutures},
     block::Block,
 };
-use kaspa_consensusmanager::ConsensusProxy;
+use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
 use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use kaspa_utils::option::OptionExtensions;
@@ -20,15 +20,16 @@ use super::process_queue::ProcessQueue;
 pub enum OrphanOutput {
     /// Block is orphan with the provided missing roots
     Roots(Vec<Hash>),
-    /// Block has no missing roots (but it might have known orphan ancestors)
-    NoRoots(Vec<Block>),
+    /// Block has no missing roots (but it might have known orphan ancestors which are returned
+    /// along with their corresponding consensus processing tasks)
+    NoRoots(BlockProcessingBatch),
     /// The block does not exist in the orphan pool
     Unknown,
 }
 
 #[derive(Debug)]
 enum FindRootsOutput {
-    /// Block is orphan with the provided missing roots
+    /// Block is orphan with the provided missing roots and a possible set of known orphan ancestors
     Roots(Vec<Hash>, HashSet<Hash>),
     /// Block has no missing roots (but it might have known orphan ancestors)
     NoRoots(HashSet<Hash>),
@@ -76,9 +77,9 @@ impl OrphanBlocksPool {
             match self.get_orphan_roots(consensus, orphan_block.header.direct_parents().iter().copied().collect()).await {
                 FindRootsOutput::Roots(roots, orphan_ancestors) => (roots, orphan_ancestors),
                 FindRootsOutput::NoRoots(orphan_ancestors) => {
-                    let blocks =
+                    let blocks: Vec<_> =
                         orphan_ancestors.into_iter().map(|h| self.orphans.remove(&h).expect("orphan ancestor").block).collect();
-                    return Some(OrphanOutput::NoRoots(blocks));
+                    return Some(OrphanOutput::NoRoots(consensus.validate_and_insert_block_batch(blocks)));
                 }
             };
 
@@ -306,10 +307,12 @@ mod tests {
         let b = Block::from_precomputed_hash(9.into(), vec![]);
         let c = Block::from_precomputed_hash(10.into(), roots.clone());
         let d = Block::from_precomputed_hash(11.into(), vec![10.into()]);
+
         let e = Block::from_precomputed_hash(12.into(), vec![10.into()]);
         let f = Block::from_precomputed_hash(13.into(), vec![12.into()]);
         let g = Block::from_precomputed_hash(14.into(), vec![13.into()]);
         let h = Block::from_precomputed_hash(15.into(), vec![14.into()]);
+        let k = Block::from_precomputed_hash(16.into(), vec![15.into()]);
 
         pool.add_orphan(&consensus, c.clone()).await.unwrap();
         pool.add_orphan(&consensus, d.clone()).await.unwrap();
@@ -326,18 +329,18 @@ mod tests {
         assert!(pool.orphans.is_empty());
 
         // Test revalidation
-        pool.add_orphan(&consensus, d.clone()).await.unwrap();
-        pool.add_orphan(&consensus, e.clone()).await.unwrap();
         pool.add_orphan(&consensus, f.clone()).await.unwrap();
-        pool.add_orphan(&consensus, h.clone()).await.unwrap();
-        assert_eq!(pool.orphans.len(), 4);
+        pool.add_orphan(&consensus, g.clone()).await.unwrap();
+        pool.add_orphan(&consensus, k.clone()).await.unwrap();
+        assert_eq!(pool.orphans.len(), 3);
+        consensus.validate_and_insert_block(e.clone()).virtual_state_task.await.unwrap();
         pool.revalidate_orphans(&consensus).await;
         assert_eq!(pool.orphans.len(), 1);
-        assert!(pool.orphans.contains_key(&h.hash())); // h's parent, g, was never inserted to the pool
-        pool.add_orphan(&consensus, g.clone()).await.unwrap();
+        assert!(pool.orphans.contains_key(&k.hash())); // k's parent, h, was never inserted to the pool
+        consensus.validate_and_insert_block(h.clone()).virtual_state_task.await.unwrap();
         pool.revalidate_orphans(&consensus).await;
         assert!(pool.orphans.is_empty());
 
-        drop((a, b, c, d, e, f, g, h));
+        drop((a, b, c, d, e, f, g, h, k));
     }
 }

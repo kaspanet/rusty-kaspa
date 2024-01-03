@@ -17,7 +17,7 @@ use kaspa_consensus_notify::{
     notification::{Notification, PruningPointUtxoSetOverrideNotification},
     root::ConsensusNotificationRoot,
 };
-use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager, ConsensusProxy};
+use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusInstance, ConsensusManager, ConsensusProxy};
 use kaspa_core::{
     debug, info,
     kaspad_env::{name, version},
@@ -542,7 +542,7 @@ impl FlowContext {
     pub async fn on_new_block(
         &self,
         consensus: &ConsensusProxy,
-        ancestor_blocks: Vec<(Block, BlockValidationFuture)>,
+        ancestor_batch: BlockProcessingBatch,
         block: Block,
         virtual_state_task: BlockValidationFuture,
     ) {
@@ -560,9 +560,7 @@ impl FlowContext {
         blocks.sort_by(|a, b| a.0.header.blue_work.partial_cmp(&b.0.header.blue_work).unwrap());
         // Use a ProcessQueue so we get rid of duplicates
         let mut transactions_to_broadcast = ProcessQueue::new();
-        for (block, virtual_state_task) in
-            ancestor_blocks.into_iter().chain(once((block, virtual_state_task))).chain(blocks.into_iter())
-        {
+        for (block, virtual_state_task) in ancestor_batch.zip().chain(once((block, virtual_state_task))).chain(blocks.into_iter()) {
             // We only care about waiting for virtual to process the block at this point, before proceeding with post-processing
             // actions such as updating the mempool. We know this will not err since `block_task` already completed w/o error
             let _ = virtual_state_task.await;
