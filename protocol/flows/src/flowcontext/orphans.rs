@@ -21,9 +21,17 @@ pub enum OrphanOutput {
     /// Block is orphan with the provided missing roots
     Roots(Vec<Hash>),
     /// Block has no missing roots (but it might have known orphan ancestors)
-    NoRoots,
+    NoRoots(Vec<Block>),
     /// The block does not exist in the orphan pool
     Unknown,
+}
+
+#[derive(Debug)]
+enum FindRootsOutput {
+    /// Block is orphan with the provided missing roots
+    Roots(Vec<Hash>, HashSet<Hash>),
+    /// Block has no missing roots (but it might have known orphan ancestors)
+    NoRoots(HashSet<Hash>),
 }
 
 struct OrphanBlock {
@@ -63,11 +71,35 @@ impl OrphanBlocksPool {
         if self.orphans.contains_key(&orphan_hash) {
             return None;
         }
+
+        let (roots, orphan_ancestors) =
+            match self.get_orphan_roots(consensus, orphan_block.header.direct_parents().iter().copied().collect()).await {
+                FindRootsOutput::Roots(roots, orphan_ancestors) => (roots, orphan_ancestors),
+                FindRootsOutput::NoRoots(orphan_ancestors) => {
+                    let blocks =
+                        orphan_ancestors.into_iter().map(|h| self.orphans.remove(&h).expect("orphan ancestor").block).collect();
+                    return Some(OrphanOutput::NoRoots(blocks));
+                }
+            };
+
         if self.orphans.len() == self.max_orphans {
+            let retry_if_ancestor = !orphan_ancestors.is_empty() && orphan_ancestors.len() < self.max_orphans / 2;
             debug!("Orphan blocks pool size exceeded. Evicting a random orphan block.");
-            // Evict a random orphan in order to keep pool size under the limit
-            if let Some((evicted, _)) = self.orphans.swap_remove_index(rand::thread_rng().gen_range(0..self.max_orphans)) {
-                debug!("Evicted {} from the orphan blocks pool", evicted);
+            loop {
+                // Evict a random orphan in order to keep pool size under the limit
+                let rand_index = rand::thread_rng().gen_range(0..orphan_ancestors.len());
+                if retry_if_ancestor {
+                    // IndexMap has no API for getting a removable Entry by index
+                    if let Some(rand_hash) = self.orphans.get_index(rand_index).map(|(&h, _)| h) {
+                        if orphan_ancestors.contains(&rand_hash) {
+                            continue; // Do not evict an ancestor of this new orphan
+                        }
+                    }
+                }
+                if let Some((evicted, _)) = self.orphans.swap_remove_index(rand_index) {
+                    debug!("Evicted {} from the orphan blocks pool", evicted);
+                    break;
+                }
             }
         }
         for parent in orphan_block.header.direct_parents() {
@@ -77,8 +109,8 @@ impl OrphanBlocksPool {
         }
         // Insert
         self.orphans.insert(orphan_block.hash(), OrphanBlock::new(orphan_block, self.iterate_child_orphans(orphan_hash).collect()));
-        // Get roots
-        Some(self.get_orphan_roots(consensus, orphan_hash).await)
+        // Return roots
+        Some(OrphanOutput::Roots(roots))
     }
 
     /// Returns whether this block is in the orphan pool.
@@ -90,19 +122,24 @@ impl OrphanBlocksPool {
     /// not in the orphan pool AND do not exist consensus-wise or are header-only. Given an orphan relayed by
     /// a peer, these blocks should be the next-in-line to be requested from that peer.
     pub async fn get_orphan_roots_if_known(&self, consensus: &ConsensusProxy, orphan: Hash) -> OrphanOutput {
-        if !self.orphans.contains_key(&orphan) {
-            return OrphanOutput::Unknown;
+        if let Some(orphan_block) = self.orphans.get(&orphan) {
+            match self.get_orphan_roots(consensus, orphan_block.block.header.direct_parents().iter().copied().collect()).await {
+                FindRootsOutput::Roots(roots, _) => OrphanOutput::Roots(roots),
+                FindRootsOutput::NoRoots(_) => OrphanOutput::NoRoots(Default::default()),
+            }
+        } else {
+            OrphanOutput::Unknown
         }
-        self.get_orphan_roots(consensus, orphan).await
     }
 
-    /// Internal get roots method. Assumes 'orphan' is within the pool
-    async fn get_orphan_roots(&self, consensus: &ConsensusProxy, orphan: Hash) -> OrphanOutput {
+    /// Internal get roots method
+    async fn get_orphan_roots(&self, consensus: &ConsensusProxy, mut queue: VecDeque<Hash>) -> FindRootsOutput {
         let mut roots = Vec::new();
-        let mut queue = VecDeque::from([orphan]);
-        let mut visited = HashSet::from([orphan]); // We avoid the custom block hasher here. See comment on `orphans` above.
+        let mut visited: HashSet<_> = queue.iter().copied().collect();
+        let mut orphan_ancestors = HashSet::new();
         while let Some(current) = queue.pop_front() {
             if let Some(block) = self.orphans.get(&current) {
+                orphan_ancestors.insert(current);
                 for parent in block.block.header.direct_parents().iter().copied() {
                     if visited.insert(parent) {
                         queue.push_back(parent);
@@ -118,9 +155,9 @@ impl OrphanBlocksPool {
         }
 
         if roots.is_empty() {
-            OrphanOutput::NoRoots
+            FindRootsOutput::NoRoots(orphan_ancestors)
         } else {
-            OrphanOutput::Roots(roots)
+            FindRootsOutput::Roots(roots, orphan_ancestors)
         }
     }
 
