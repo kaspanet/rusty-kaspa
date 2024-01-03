@@ -17,7 +17,7 @@ use kaspa_consensus_notify::{
     notification::{Notification, PruningPointUtxoSetOverrideNotification},
     root::ConsensusNotificationRoot,
 };
-use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager, ConsensusProxy};
+use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusInstance, ConsensusManager, ConsensusProxy};
 use kaspa_core::{
     debug, info,
     kaspad_env::{name, version},
@@ -102,7 +102,7 @@ impl BlockEventLogger {
 
     /// Start the logger listener. Must be called from an async tokio context
     fn start(&self) {
-        let chunk_limit = self.bps * 4; // We prefer that the 1 sec timeout forces the log, but nonetheless still want a reasonable bound on each chunk
+        let chunk_limit = self.bps * 10; // We prefer that the 1 sec timeout forces the log, but nonetheless still want a reasonable bound on each chunk
         let receiver = self.receiver.lock().take().expect("expected to be called once");
         tokio::spawn(async move {
             let chunk_stream = UnboundedReceiverStream::new(receiver).chunks_timeout(chunk_limit, Duration::from_secs(1));
@@ -110,7 +110,7 @@ impl BlockEventLogger {
             while let Some(chunk) = chunk_stream.next().await {
                 #[derive(Default)]
                 struct LogSummary {
-                    // Representative
+                    // Representatives
                     relay_rep: Option<Hash>,
                     submit_rep: Option<Hash>,
                     orphan_rep: Option<Hash>,
@@ -511,7 +511,7 @@ impl FlowContext {
         // Broadcast as soon as the block has been validated and inserted into the DAG
         self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) })).await;
 
-        self.on_new_block(consensus, block, virtual_state_task).await;
+        self.on_new_block(consensus, Default::default(), block, virtual_state_task).await;
         self.log_block_event(BlockLogEvent::Submit(hash));
 
         Ok(())
@@ -539,7 +539,13 @@ impl FlowContext {
     /// and possibly rebroadcast manually added transactions when not in IBD.
     ///
     /// _GO-KASPAD: OnNewBlock + broadcastTransactionsAfterBlockAdded_
-    pub async fn on_new_block(&self, consensus: &ConsensusProxy, block: Block, virtual_state_task: BlockValidationFuture) {
+    pub async fn on_new_block(
+        &self,
+        consensus: &ConsensusProxy,
+        ancestor_batch: BlockProcessingBatch,
+        block: Block,
+        virtual_state_task: BlockValidationFuture,
+    ) {
         let hash = block.hash();
         let mut blocks = self.unorphan_blocks(consensus, hash).await;
 
@@ -554,7 +560,7 @@ impl FlowContext {
         blocks.sort_by(|a, b| a.0.header.blue_work.partial_cmp(&b.0.header.blue_work).unwrap());
         // Use a ProcessQueue so we get rid of duplicates
         let mut transactions_to_broadcast = ProcessQueue::new();
-        for (block, virtual_state_task) in once((block, virtual_state_task)).chain(blocks.into_iter()) {
+        for (block, virtual_state_task) in ancestor_batch.zip().chain(once((block, virtual_state_task))).chain(blocks.into_iter()) {
             // We only care about waiting for virtual to process the block at this point, before proceeding with post-processing
             // actions such as updating the mempool. We know this will not err since `block_task` already completed w/o error
             let _ = virtual_state_task.await;
@@ -568,8 +574,8 @@ impl FlowContext {
             }
         }
 
-        // Don't relay transactions when in IBD
-        if self.is_ibd_running() {
+        // Transaction relay is disabled if the node is out of sync and thus not mining
+        if !consensus.async_is_nearly_synced().await {
             return;
         }
 
