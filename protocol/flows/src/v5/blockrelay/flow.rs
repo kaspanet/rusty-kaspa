@@ -169,13 +169,13 @@ impl HandleRelayInvsFlow {
                                 Err(rule_error) => return Err(rule_error.into()),
                             }
                         }
-                        match ancestor_batch.blocks.len() {
-                            0 => {}
-                            // Use warn in order to track if this rare case ever happens
-                            n => warn!("Unorphaned {} ancestors successfully", n),
-                        }
+
                         match block_task_inner.await {
-                            Ok(_) => info!("Retried orphan block {} successfully", block.hash(),),
+                            Ok(_) => match ancestor_batch.blocks.len() {
+                                0 => info!("Retried orphan block {} successfully", block.hash()),
+                                // Use warn in order to track this rare case more easily
+                                n => warn!("Unorphaned {} ancestors and retried orphan block {} successfully", n, block.hash()),
+                            },
                             Err(rule_error) => return Err(rule_error.into()),
                         }
                         ancestor_batch
