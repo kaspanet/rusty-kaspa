@@ -141,7 +141,11 @@ impl Miner {
             .take(self.target_txs_per_block as usize)
             .collect::<Vec<_>>()
             .into_par_iter()
-            .map(|mutable_tx| sign(mutable_tx, schnorr_key).tx)
+            .map(|mutable_tx| {
+                let mut signed_tx = sign(mutable_tx, schnorr_key).tx;
+                signed_tx.finalize();
+                signed_tx
+            })
             .collect::<Vec<_>>();
 
         for outpoint in txs.iter().flat_map(|t| t.inputs.iter().map(|i| i.previous_outpoint)) {
@@ -168,7 +172,7 @@ impl Miner {
     }
 
     fn create_unsigned_tx(&self, outpoint: TransactionOutpoint, input_amount: u64, multiple_outputs: bool) -> Transaction {
-        Transaction::new(
+        Transaction::new_non_finalized(
             0,
             vec![TransactionInput::new(outpoint, vec![], 0, 0)],
             if multiple_outputs && input_amount > 4 {

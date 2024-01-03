@@ -27,7 +27,13 @@ prost.workspace = true
 rand.workspace = true
 regex.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio = { workspace = true, features = [
+    "rt-multi-thread",
+    "macros",
+    "sync",
+    "time",
+] }
 tokio-stream.workspace = true
 tonic = { workspace = true, features = ["gzip"] }
 triggered.workspace = true
+futures-util.workspace = true

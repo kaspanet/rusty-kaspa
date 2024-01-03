@@ -2385,6 +2385,7 @@ dependencies = [
  "async-trait",
  "faster-hex 0.6.1",
  "futures",
+ "futures-util",
  "h2",
  "kaspa-core",
  "kaspa-grpc-core",
@@ -4494,7 +4495,9 @@ dependencies = [
 name = "rothschild"
 version = "0.13.1"
 dependencies = [
+ "async-channel 2.1.1",
  "clap 4.4.11",
+ "criterion",
  "faster-hex 0.6.1",
  "itertools 0.11.0",
  "kaspa-addresses",
@@ -4505,6 +4508,8 @@ dependencies = [
  "kaspa-txscript",
  "kaspa-utils",
  "log",
+ "parking_lot",
+ "rayon",
  "secp256k1",
  "tokio",
 ]
