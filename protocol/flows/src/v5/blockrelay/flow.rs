@@ -274,10 +274,10 @@ impl HandleRelayInvsFlow {
             match self.ctx.add_orphan(consensus, block).await {
                 // There is a sync gap between consensus and the orphan pool, meaning that consensus might have indicated
                 // that this block is orphan, but by the time it got to the orphan pool we discovered it no longer has missing roots.
-                // We signal this to the caller by returning false, triggering a consensus processing retry.
-                // Note that no roots means it is still possible there is a known orphan ancestor in the orphan pool. However
-                // we should still retry consensus in this case because the ancestor might have been queued to consensus
-                // already and consensus handles dependencies with improved (pipeline) concurrency and overlapping
+                // In such a case, the orphan pool will queue the known orphan ancestors to consensus and will return the block processing
+                // batch.
+                // We signal this to the caller by returning the batch of processed ancestors, indicating a consensus processing retry
+                // should be performed for this block as well.
                 Some(OrphanOutput::NoRoots(ancestor_batch)) => {
                     return Ok(Some(ancestor_batch));
                 }
