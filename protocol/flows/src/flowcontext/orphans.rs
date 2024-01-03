@@ -95,7 +95,7 @@ impl OrphanBlocksPool {
             // Retry up to a logarithmic number of times
             for i in 0..self.max_orphans_log {
                 // Evict a random orphan in order to keep pool size under the limit
-                let rand_index = rand::thread_rng().gen_range(0..orphan_ancestors.len());
+                let rand_index = rand::thread_rng().gen_range(0..self.orphans.len());
                 if !orphan_ancestors.is_empty() {
                     // IndexMap has no API for getting a removable Entry by index
                     if let Some(rand_hash) = self.orphans.get_index(rand_index).map(|(&h, _)| h) {
