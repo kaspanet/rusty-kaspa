@@ -5,7 +5,7 @@ use crate::{
 };
 use kaspa_consensus_core::{api::BlockValidationFutures, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
 use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
-use kaspa_core::{debug, info};
+use kaspa_core::{debug, info, warn};
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
@@ -169,12 +169,13 @@ impl HandleRelayInvsFlow {
                                 Err(rule_error) => return Err(rule_error.into()),
                             }
                         }
+                        match ancestor_batch.blocks.len() {
+                            0 => {}
+                            // Use warn in order to track if this rare case ever happens
+                            n => warn!("Unorphaned {} ancestors successfully", n),
+                        }
                         match block_task_inner.await {
-                            Ok(_) => info!(
-                                "Retried orphan block {} successfully (unorphaned {} ancestors)",
-                                block.hash(),
-                                ancestor_batch.blocks.len()
-                            ),
+                            Ok(_) => info!("Retried orphan block {} successfully", block.hash(),),
                             Err(rule_error) => return Err(rule_error.into()),
                         }
                         ancestor_batch
