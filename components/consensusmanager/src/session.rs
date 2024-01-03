@@ -21,6 +21,8 @@ use std::{ops::Deref, sync::Arc};
 
 pub use tokio::task::spawn_blocking;
 
+use crate::BlockProcessingBatch;
+
 #[derive(Clone)]
 pub struct SessionOwnedReadGuard(Arc<RfRwLockOwnedReadGuard>);
 
@@ -156,6 +158,19 @@ impl ConsensusSessionOwned {
 impl ConsensusSessionOwned {
     pub fn validate_and_insert_block(&self, block: Block) -> BlockValidationFutures {
         self.consensus.validate_and_insert_block(block)
+    }
+
+    pub fn validate_and_insert_block_batch(&self, mut batch: Vec<Block>) -> BlockProcessingBatch {
+        // Sort by blue work in order to ensure topological order
+        batch.sort_by(|a, b| a.header.blue_work.partial_cmp(&b.header.blue_work).unwrap());
+        let (block_tasks, virtual_state_tasks) = batch
+            .iter()
+            .map(|b| {
+                let BlockValidationFutures { block_task, virtual_state_task } = self.consensus.validate_and_insert_block(b.clone());
+                (block_task, virtual_state_task)
+            })
+            .unzip();
+        BlockProcessingBatch::new(batch, block_tasks, virtual_state_tasks)
     }
 
     pub fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFutures {
