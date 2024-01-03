@@ -84,8 +84,10 @@ impl OrphanBlocksPool {
             };
 
         if self.orphans.len() == self.max_orphans {
+            // Avoid evicting ancestors only if they are not the majority of the pool (otherwise the retry loop might take too long)
             let retry_if_ancestor = !orphan_ancestors.is_empty() && orphan_ancestors.len() < self.max_orphans / 2;
             debug!("Orphan blocks pool size exceeded. Evicting a random orphan block.");
+            // Loop is expected to converge in a logarithmic number of steps
             loop {
                 // Evict a random orphan in order to keep pool size under the limit
                 let rand_index = rand::thread_rng().gen_range(0..orphan_ancestors.len());
