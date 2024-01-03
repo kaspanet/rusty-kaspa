@@ -58,7 +58,7 @@ pub struct OrphanBlocksPool {
     orphans: IndexMap<Hash, OrphanBlock>,
     /// Max number of orphans to keep in the pool
     max_orphans: usize,
-    /// The loge base 2 of `max_orphans`
+    /// The log base 2 of `max_orphans`
     max_orphans_log: usize,
 }
 
@@ -149,7 +149,9 @@ impl OrphanBlocksPool {
         }
     }
 
-    /// Internal get roots method
+    /// Internal get roots method. The arg `queue` is the set of blocks to perform BFS from and
+    /// search through the orphan pool and consensus until finding any unknown roots or finding
+    /// out that no ancestor is missing.
     async fn get_orphan_roots(&self, consensus: &ConsensusProxy, mut queue: VecDeque<Hash>) -> FindRootsOutput {
         let mut roots = Vec::new();
         let mut visited: HashSet<_> = queue.iter().copied().collect();
