@@ -6,7 +6,7 @@ use rocksdb::WriteBatch;
 
 use std::sync::Arc;
 
-use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbWriter};
+use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DbWriter};
 use kaspa_database::prelude::{CachedDbItem, DB};
 use kaspa_database::prelude::{StoreError, StoreResult};
 use kaspa_hashes::Hash;
@@ -38,17 +38,17 @@ pub struct DbSelectedChainStore {
 }
 
 impl DbSelectedChainStore {
-    pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
+    pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
         Self {
             db: Arc::clone(&db),
-            access_hash_by_index: CachedDbAccess::new(db.clone(), cache_size, DatabaseStorePrefixes::ChainHashByIndex.into()),
-            access_index_by_hash: CachedDbAccess::new(db.clone(), cache_size, DatabaseStorePrefixes::ChainIndexByHash.into()),
+            access_hash_by_index: CachedDbAccess::new(db.clone(), cache_policy, DatabaseStorePrefixes::ChainHashByIndex.into()),
+            access_index_by_hash: CachedDbAccess::new(db.clone(), cache_policy, DatabaseStorePrefixes::ChainIndexByHash.into()),
             access_highest_index: CachedDbItem::new(db, DatabaseStorePrefixes::ChainHighestIndex.into()),
         }
     }
 
-    pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.db), cache_size)
+    pub fn clone_with_new_cache(&self, cache_policy: CachePolicy) -> Self {
+        Self::new(Arc::clone(&self.db), cache_policy)
     }
 }
 

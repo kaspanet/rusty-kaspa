@@ -1,4 +1,4 @@
-use crate::{db::DB, errors::StoreError};
+use crate::{cache::CachePolicy, db::DB, errors::StoreError};
 
 use super::prelude::{Cache, DbKey, DbWriter};
 use parking_lot::{RwLock, RwLockReadGuard};
@@ -54,8 +54,8 @@ where
     S: BuildHasher + Default,
     W: BuildHasher + Default + Send + Sync,
 {
-    pub fn new(db: Arc<DB>, cache_size: u64, prefix: Vec<u8>) -> Self {
-        Self { inner: DbSetAccess::new(db, prefix), cache: Cache::new(cache_size) }
+    pub fn new(db: Arc<DB>, cache_policy: CachePolicy, prefix: Vec<u8>) -> Self {
+        Self { inner: DbSetAccess::new(db, prefix), cache: Cache::new(cache_policy) }
     }
 
     pub fn read_from_cache(&self, key: TKey) -> Option<ReadLock<HashSet<TData, W>>> {
@@ -80,9 +80,9 @@ where
 
     pub fn write(&self, writer: impl DbWriter, key: TKey, data: TData) -> Result<(), StoreError> {
         // We cache the new item only if the set entry already exists in the cache
-        if let Some(locked_entry) = self.cache.get(&key) {
+        self.cache.update_if_entry_exists(key.clone(), |locked_entry| {
             locked_entry.write().insert(data.clone());
-        }
+        });
         self.inner.write(writer, key, data)
     }
 
@@ -93,9 +93,9 @@ where
 
     pub fn delete(&self, writer: impl DbWriter, key: TKey, data: TData) -> Result<(), StoreError> {
         // We remove the item from cache only if the full set entry already exists in the cache
-        if let Some(locked_entry) = self.cache.get(&key) {
+        self.cache.update_if_entry_exists(key.clone(), |locked_entry| {
             locked_entry.write().remove(&data);
-        }
+        });
         self.inner.delete(writer, key, data)?;
         Ok(())
     }

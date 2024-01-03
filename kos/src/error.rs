@@ -33,22 +33,22 @@ pub enum Error {
     Terminal(#[from] workflow_terminal::error::Error),
 
     #[error("channel error")]
-    RecvError(#[from] workflow_core::channel::RecvError),
+    Recv(#[from] workflow_core::channel::RecvError),
 
     #[error(transparent)]
-    CallbackError(#[from] workflow_wasm::callback::CallbackError),
+    Callback(#[from] workflow_wasm::callback::CallbackError),
 
     #[error("{0}")]
-    DowncastError(String),
+    Downcast(String),
 
     #[error("Channel error")]
-    ChannelError(String),
+    Channel(String),
 
     #[error(transparent)]
     Daemon(#[from] kaspa_daemon::error::Error),
 
     #[error(transparent)]
-    WalletError(#[from] kaspa_wallet_core::error::Error),
+    Wallet(#[from] kaspa_wallet_core::error::Error),
 
     #[error(transparent)]
     Dom(#[from] workflow_dom::error::Error),
@@ -96,12 +96,12 @@ impl From<&str> for Error {
 
 impl<T> From<DowncastError<T>> for Error {
     fn from(e: DowncastError<T>) -> Self {
-        Error::DowncastError(e.to_string())
+        Error::Downcast(e.to_string())
     }
 }
 
 impl<T> From<ChannelError<T>> for Error {
     fn from(e: ChannelError<T>) -> Error {
-        Error::ChannelError(e.to_string())
+        Error::Channel(e.to_string())
     }
 }
