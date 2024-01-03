@@ -58,11 +58,17 @@ pub struct OrphanBlocksPool {
     orphans: IndexMap<Hash, OrphanBlock>,
     /// Max number of orphans to keep in the pool
     max_orphans: usize,
+    /// The loge base 2 of `max_orphans`
+    max_orphans_log: usize,
 }
 
 impl OrphanBlocksPool {
     pub fn new(max_orphans: usize) -> Self {
-        Self { orphans: IndexMap::with_capacity(max_orphans), max_orphans }
+        Self {
+            orphans: IndexMap::with_capacity(max_orphans),
+            max_orphans,
+            max_orphans_log: (max_orphans as f64).log2().ceil() as usize,
+        }
     }
 
     /// Adds the provided block to the orphan pool. Returns None if the block is already
@@ -84,14 +90,13 @@ impl OrphanBlocksPool {
             };
 
         if self.orphans.len() == self.max_orphans {
-            // Avoid evicting ancestors only if they are not the majority of the pool (otherwise the retry loop might take too long)
-            let retry_if_ancestor = !orphan_ancestors.is_empty() && orphan_ancestors.len() < self.max_orphans / 2;
-            debug!("Orphan blocks pool size exceeded. Evicting a random orphan block.");
-            // Loop is expected to converge in a logarithmic number of steps
-            loop {
+            let mut eviction_succeeded = false;
+            debug!("Orphan blocks pool size exceeded. Trying to evict a random orphan block.");
+            // Retry up to a logarithmic number of times
+            for i in 0..self.max_orphans_log {
                 // Evict a random orphan in order to keep pool size under the limit
                 let rand_index = rand::thread_rng().gen_range(0..orphan_ancestors.len());
-                if retry_if_ancestor {
+                if !orphan_ancestors.is_empty() {
                     // IndexMap has no API for getting a removable Entry by index
                     if let Some(rand_hash) = self.orphans.get_index(rand_index).map(|(&h, _)| h) {
                         if orphan_ancestors.contains(&rand_hash) {
@@ -100,9 +105,18 @@ impl OrphanBlocksPool {
                     }
                 }
                 if let Some((evicted, _)) = self.orphans.swap_remove_index(rand_index) {
-                    debug!("Evicted {} from the orphan blocks pool", evicted);
+                    debug!("Evicted {} from the orphan blocks pool for new block {} (after {} retries)", evicted, orphan_hash, i);
+                    eviction_succeeded = true;
                     break;
                 }
+            }
+            if !eviction_succeeded {
+                // All retries have found an existing ancestor, so we reject the new block
+                debug!(
+                    "Tried to evict a random orphan for new orphan {}, but all {} retries found an existing ancestor. Rejecting.",
+                    orphan_hash, self.max_orphans_log
+                );
+                return None;
             }
         }
         for parent in orphan_block.header.direct_parents() {
