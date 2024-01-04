@@ -213,8 +213,7 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    fn enqueue_orphan_roots(&mut self, orphan: Hash, roots: Vec<Hash>, known_within_range: bool) {
-        self.ctx.log_block_event(BlockLogEvent::OrphanRoots(orphan, roots.len()));
+    fn enqueue_orphan_roots(&mut self, _orphan: Hash, roots: Vec<Hash>, known_within_range: bool) {
         self.invs_route.enqueue_indirect_invs(roots, known_within_range)
     }
 
@@ -281,7 +280,10 @@ impl HandleRelayInvsFlow {
                 Some(OrphanOutput::NoRoots(ancestor_batch)) => {
                     return Ok(Some(ancestor_batch));
                 }
-                Some(OrphanOutput::Roots(roots)) => self.enqueue_orphan_roots(hash, roots, known_within_range),
+                Some(OrphanOutput::Roots(roots)) => {
+                    self.ctx.log_block_event(BlockLogEvent::Orphaned(hash, roots.len()));
+                    self.enqueue_orphan_roots(hash, roots, known_within_range)
+                }
                 None | Some(OrphanOutput::Unknown) => {}
             }
         } else {
