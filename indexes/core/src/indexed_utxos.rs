@@ -31,11 +31,7 @@ impl CompactUtxoEntry {
     }
 }
 
-impl MemSizeEstimator for CompactUtxoEntry {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
+impl MemSizeEstimator for CompactUtxoEntry {}
 
 impl From<UtxoEntry> for CompactUtxoEntry {
     fn from(utxo_entry: UtxoEntry) -> Self {

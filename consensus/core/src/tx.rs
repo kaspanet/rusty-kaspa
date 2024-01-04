@@ -45,11 +45,7 @@ impl UtxoEntry {
     }
 }
 
-impl MemSizeEstimator for UtxoEntry {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
+impl MemSizeEstimator for UtxoEntry {}
 
 pub type TransactionIndexType = u32;
 

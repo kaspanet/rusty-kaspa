@@ -49,11 +49,7 @@ pub struct CompactHeaderData {
     pub blue_score: u64,
 }
 
-impl MemSizeEstimator for CompactHeaderData {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
+impl MemSizeEstimator for CompactHeaderData {}
 
 impl From<&Header> for CompactHeaderData {
     fn from(header: &Header) -> Self {
