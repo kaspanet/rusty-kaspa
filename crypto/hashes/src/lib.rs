@@ -168,11 +168,7 @@ impl FromHex for Hash {
     }
 }
 
-impl MemSizeEstimator for Hash {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
+impl MemSizeEstimator for Hash {}
 
 #[wasm_bindgen]
 impl Hash {

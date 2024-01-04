@@ -21,11 +21,7 @@ pub enum BlockStatus {
     StatusHeaderOnly,
 }
 
-impl MemSizeEstimator for BlockStatus {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
+impl MemSizeEstimator for BlockStatus {}
 
 impl BlockStatus {
     pub fn has_block_header(self) -> bool {

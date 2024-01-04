@@ -46,11 +46,7 @@ impl MemSizeEstimator for GhostdagData {
     }
 }
 
-impl MemSizeEstimator for CompactGhostdagData {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
+impl MemSizeEstimator for CompactGhostdagData {}
 
 impl From<&GhostdagData> for CompactGhostdagData {
     fn from(value: &GhostdagData) -> Self {

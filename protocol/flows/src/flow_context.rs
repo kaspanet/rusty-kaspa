@@ -78,8 +78,6 @@ pub enum BlockLogEvent {
     Submit(Hash),
     /// Orphaned block with x missing roots
     Orphaned(Hash, usize),
-    /// Detected a known orphan with x missing roots
-    OrphanRoots(Hash, usize),
     /// Unorphaned x blocks with hash being a representative
     Unorphaned(Hash, usize),
 }
@@ -176,9 +174,6 @@ impl BlockEventLogger {
                             summary.orphan_count += 1;
                             summary.orphan_rep = Some(hash)
                         }
-                        BlockLogEvent::OrphanRoots(_, roots_count) => {
-                            summary.orphan_roots_count += roots_count;
-                        }
                         BlockLogEvent::Unorphaned(hash, count) => {
                             summary.unorphan_count += count;
                             summary.unorphan_rep = Some(hash)
@@ -198,25 +193,15 @@ impl BlockEventLogger {
                     }
                 }
 
-                match (summary.unorphan_count, summary.orphan_count, summary.orphan_roots_count) {
-                    (0, 0, 0) => {}
-                    (1, 0, 0) => info!("Unorphaned block {}", summary.unorphan()),
-                    (n, 0, 0) => info!("Unorphaned {} block(s) ...{}", n, summary.unorphan()),
-                    (0, m, 0) => info!("Orphaned {} block(s) ...{}", m, summary.orphan()),
-                    (0, m, l) => info!("Orphaned {} block(s) ...{} and queued {} missing roots", m, summary.orphan(), l),
-                    (n, m, 0) => {
-                        info!("Unorphaned {} block(s) ...{}, orphaned {} block(s) ...{}", n, summary.unorphan(), m, summary.orphan(),)
-                    }
-                    (n, m, l) => {
-                        info!(
-                            "Unorphaned {} block(s) ...{}, orphaned {} block(s) ...{} and queued {} missing roots",
-                            n,
-                            summary.unorphan(),
-                            m,
-                            summary.orphan(),
-                            l
-                        )
-                    }
+                match (summary.orphan_count, summary.orphan_roots_count) {
+                    (0, 0) => {}
+                    (n, m) => info!("Orphaned {} block(s) ...{} and queued {} missing roots", n, summary.orphan(), m),
+                }
+
+                match summary.unorphan_count {
+                    0 => {}
+                    1 => info!("Unorphaned block {}", summary.unorphan()),
+                    n => info!("Unorphaned {} block(s) ...{}", n, summary.unorphan()),
                 }
             }
         });
@@ -454,7 +439,6 @@ impl FlowContext {
     }
 
     pub async fn add_orphan(&self, consensus: &ConsensusProxy, orphan_block: Block) -> Option<OrphanOutput> {
-        self.log_block_event(BlockLogEvent::Orphaned(orphan_block.hash(), 0));
         self.orphans_pool.write().await.add_orphan(consensus, orphan_block).await
     }
 
@@ -524,11 +508,8 @@ impl FlowContext {
             match event {
                 BlockLogEvent::Relay(hash) => info!("Accepted block {} via relay", hash),
                 BlockLogEvent::Submit(hash) => info!("Accepted block {} via submit block", hash),
-                BlockLogEvent::Orphaned(orphan, _) => {
-                    info!("Received a block with missing parents, adding to orphan pool: {}", orphan)
-                }
-                BlockLogEvent::OrphanRoots(orphan, roots_count) => {
-                    info!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots_count)
+                BlockLogEvent::Orphaned(orphan, roots_count) => {
+                    info!("Received a block with {} missing ancestors, adding to orphan pool: {}", roots_count, orphan)
                 }
                 _ => {}
             }

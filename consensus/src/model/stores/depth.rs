@@ -28,11 +28,7 @@ struct BlockDepthInfo {
     finality_point: Hash,
 }
 
-impl MemSizeEstimator for BlockDepthInfo {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
+impl MemSizeEstimator for BlockDepthInfo {}
 
 /// A DB + cache implementation of `DepthStore` trait, with concurrency support.
 #[derive(Clone)]

@@ -54,7 +54,7 @@ pub struct Config {
 
     pub user_agent_comments: Vec<String>,
 
-    // If undefined, sets it to 0.0.0.0
+    /// If undefined, sets it to 0.0.0.0
     pub p2p_listen_address: ContextualNetAddress,
 
     pub externalip: Option<NetAddress>,
@@ -63,7 +63,11 @@ pub struct Config {
 
     #[cfg(feature = "devnet-prealloc")]
     pub initial_utxo_set: Arc<UtxoCollection>,
+
     pub disable_upnp: bool,
+
+    /// A scale factor to apply to memory allocation bounds
+    pub ram_scale: f64,
 }
 
 impl Config {
@@ -90,6 +94,7 @@ impl Config {
             #[cfg(feature = "devnet-prealloc")]
             initial_utxo_set: Default::default(),
             disable_upnp: false,
+            ram_scale: 1.0,
         }
     }
 

@@ -29,11 +29,7 @@ pub(crate) struct ReachabilityData {
     pub height: u64,
 }
 
-impl MemSizeEstimator for ReachabilityData {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
+impl MemSizeEstimator for ReachabilityData {}
 
 impl ReachabilityData {
     pub fn new(parent: Hash, interval: Interval, height: u64) -> Self {

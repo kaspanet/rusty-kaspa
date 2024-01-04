@@ -59,7 +59,7 @@ impl ConsensusMonitor {
                 if delta.header_counts != 0 { delta.dep_counts as f64 / delta.header_counts as f64 } else { 0f64 },
                 if delta.header_counts != 0 { delta.mergeset_counts as f64 / delta.header_counts as f64 } else { 0f64 },
                 if delta.body_counts != 0 { delta.txs_counts as f64 / delta.body_counts as f64 } else{ 0f64 },
-                if delta.body_counts != 0 { delta.mass_counts / delta.body_counts } else{ 0 },
+                if delta.body_counts != 0 { delta.mass_counts as f64 / delta.body_counts as f64 } else{ 0f64 },
             );
 
             last_snapshot = snapshot;
