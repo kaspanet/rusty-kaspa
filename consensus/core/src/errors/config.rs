@@ -8,6 +8,12 @@ pub enum ConfigError {
     #[error("Configuration: --logdir and --nologfiles cannot be used together")]
     MixedLogDirAndNoLogFiles,
 
+    #[error("Configuration: --ram-scale cannot be set below 0.1")]
+    RamScaleTooLow,
+
+    #[error("Configuration: --ram-scale cannot be set above 10.0")]
+    RamScaleTooHigh,
+
     #[cfg(feature = "devnet-prealloc")]
     #[error("Cannot preallocate UTXOs on any network except devnet")]
     PreallocUtxosOnNonDevnet,
