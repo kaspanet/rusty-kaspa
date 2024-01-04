@@ -18,8 +18,4 @@ impl Notify<Notification> for ChannelNotify {
         self.sender.try_send(notification)?;
         Ok(())
     }
-
-    fn has_subscription(&self, _event: kaspa_notify::events::EventType) -> bool {
-        unimplemented!()
-    }
 }
