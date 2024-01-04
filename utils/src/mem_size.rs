@@ -15,10 +15,10 @@ pub enum MemMode {
 }
 
 /// The contract for estimating deep memory size owned by this object. Implementors
-/// are expected to support only a single function - bytes or units. Objects with pre-compilation
-/// known static size or which are containers of items with known static size should implement the `_units`
-/// estimation and return the number of logical items (either 1 or the number of items in
-/// the container). Objects with varying runtime sizes should implement the `_bytes` estimation.
+/// are expected to support only a single function - bytes or units. Objects which are
+/// containers of items with pre-compilation known static size should implement the `_units`
+/// estimation and return the number of logical items (i.e. number of items in
+/// the container). Objects with more complex and varying runtime sizes should implement the `_bytes` estimation.
 ///
 /// By panicking on the remaining unimplemented function we ensure that tests will catch any inconsistency over the
 /// used units between the object implementing the contract and the code using its size for various purposes (e.g. cache
@@ -47,46 +47,14 @@ pub trait MemSizeEstimator {
     }
 }
 
-impl MemSizeEstimator for u64 {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
-impl MemSizeEstimator for u32 {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
-impl MemSizeEstimator for u16 {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
-impl MemSizeEstimator for u8 {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
-impl MemSizeEstimator for i64 {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
-impl MemSizeEstimator for i32 {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
-impl MemSizeEstimator for i16 {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
-impl MemSizeEstimator for i8 {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
+impl MemSizeEstimator for u64 {}
+impl MemSizeEstimator for u32 {}
+impl MemSizeEstimator for u16 {}
+impl MemSizeEstimator for u8 {}
+impl MemSizeEstimator for i64 {}
+impl MemSizeEstimator for i32 {}
+impl MemSizeEstimator for i16 {}
+impl MemSizeEstimator for i8 {}
 
 impl<T> MemSizeEstimator for Vec<T> {
     fn estimate_mem_units(&self) -> usize {
