@@ -74,7 +74,7 @@ use kaspa_core::{debug, info, time::unix_now, trace, warn};
 use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
-use kaspa_notify::notifier::Notify;
+use kaspa_notify::{events::EventType, notifier::Notify};
 
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
@@ -314,16 +314,18 @@ impl VirtualStateProcessor {
         self.notification_root
             .notify(Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score)))
             .expect("expecting an open unbounded channel");
-        // TODO: Fetch acceptance data only if there's a subscriber for the below notification.
-        let added_chain_blocks_acceptance_data =
-            chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
-        self.notification_root
-            .notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
-                chain_path.added.into(),
-                chain_path.removed.into(),
-                Arc::new(added_chain_blocks_acceptance_data),
-            )))
-            .expect("expecting an open unbounded channel");
+        if self.notification_root.has_subscription(EventType::VirtualChainChanged) {
+            // check for subscriptions before the heavy lifting
+            let added_chain_blocks_acceptance_data =
+                chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
+            self.notification_root
+                .notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
+                    chain_path.added.into(),
+                    chain_path.removed.into(),
+                    Arc::new(added_chain_blocks_acceptance_data),
+                )))
+                .expect("expecting an open unbounded channel");
+        }
     }
 
     pub(crate) fn virtual_finality_point(&self, virtual_ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {
