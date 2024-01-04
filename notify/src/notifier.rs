@@ -33,6 +33,8 @@ where
     N: Notification,
 {
     fn notify(&self, notification: N) -> Result<()>;
+
+    fn has_subscription(&self, event: EventType) -> bool;
 }
 
 pub type DynNotify<N> = Arc<dyn Notify<N>>;
@@ -139,6 +141,10 @@ where
 {
     fn notify(&self, notification: N) -> Result<()> {
         self.inner.notify(notification)
+    }
+
+    fn has_subscription(&self, event: EventType) -> bool {
+        self.inner.has_subscription(event)
     }
 }
 
@@ -353,6 +359,10 @@ where
         self.execute_subscribe_command(id, scope, Command::Stop)
     }
 
+    fn has_subscription(&self, event: EventType) -> bool {
+        self.enabled_events[event]
+    }
+
     fn renew_subscriptions(&self) -> Result<()> {
         let subscriptions = self.subscriptions.lock();
         EVENT_TYPE_ARRAY.iter().copied().filter(|x| self.enabled_events[*x] && subscriptions[*x].active()).try_for_each(|x| {
@@ -443,6 +453,10 @@ pub mod test_helpers {
     {
         fn notify(&self, notification: N) -> Result<()> {
             Ok(self.sender.try_send(notification)?)
+        }
+
+        fn has_subscription(&self, _event: EventType) -> bool {
+            unimplemented!()
         }
     }
 

@@ -63,6 +63,10 @@ impl Notify<Notification> for ConnectionInner {
         self.send(Connection::into_message(&notification, &self.messenger.encoding().into()))
             .map_err(|err| NotifyError::General(err.to_string()))
     }
+
+    fn has_subscription(&self, _event: kaspa_notify::events::EventType) -> bool {
+        unimplemented!()
+    }
 }
 
 /// [`Connection`] represents a currently connected WebSocket RPC channel.

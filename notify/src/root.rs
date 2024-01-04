@@ -1,6 +1,6 @@
 use crate::{
     error::Result,
-    events::EventArray,
+    events::{EventArray, EventType},
     listener::ListenerId,
     notification::Notification,
     notifier::Notify,
@@ -58,6 +58,10 @@ where
 {
     fn notify(&self, notification: N) -> Result<()> {
         self.inner.notify(notification)
+    }
+
+    fn has_subscription(&self, event: EventType) -> bool {
+        self.inner.has_subscription(event)
     }
 }
 
@@ -130,6 +134,11 @@ where
 
     fn stop_notify(&self, scope: Scope) -> Result<()> {
         self.execute_subscribe_command(scope, Command::Stop)
+    }
+
+    fn has_subscription(&self, event: EventType) -> bool {
+        let subscription = &self.subscriptions.read()[event];
+        subscription.active()
     }
 }
 
