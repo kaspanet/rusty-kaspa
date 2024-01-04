@@ -70,7 +70,7 @@ pub struct ConsensusStorage {
 
 impl ConsensusStorage {
     pub fn new(db: Arc<DB>, config: Arc<Config>) -> Arc<Self> {
-        let scale_factor = 0.5;
+        let scale_factor = config.ram_scale;
         let scaled = |s| (s as f64 * scale_factor) as usize;
 
         let params = &config.params;
