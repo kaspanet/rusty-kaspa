@@ -1,7 +1,7 @@
 use kaspa_consensus_core::constants::TX_VERSION;
 
 pub(crate) const DEFAULT_MAXIMUM_TRANSACTION_COUNT: u64 = 1_000_000;
-pub(crate) const DEFAULT_MAXIMUM_READY_TRANSACTION_COUNT: u64 = 100_000;
+pub(crate) const DEFAULT_MAXIMUM_READY_TRANSACTION_COUNT: u64 = 50_000;
 pub(crate) const DEFAULT_MAXIMUM_BUILD_BLOCK_TEMPLATE_ATTEMPTS: u64 = 5;
 
 pub(crate) const DEFAULT_TRANSACTION_EXPIRE_INTERVAL_SECONDS: u64 = 60;
@@ -134,5 +134,10 @@ impl Config {
         max_block_mass: u64,
     ) -> Self {
         Self { block_spam_txs, ..Self::build_default(target_milliseconds_per_block, relay_non_std_transactions, max_block_mass) }
+    }
+
+    pub fn apply_ram_scale(mut self, ram_scale: f64) -> Self {
+        self.maximum_transaction_count = (self.maximum_transaction_count as f64 * ram_scale.min(1.0)) as u64; // Allow only scaling down
+        self
     }
 }
