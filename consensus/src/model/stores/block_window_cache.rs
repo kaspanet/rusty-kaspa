@@ -22,11 +22,7 @@ pub struct BlockWindowHeap {
     origin: WindowOrigin,
 }
 
-impl MemSizeEstimator for BlockWindowHeap {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
+impl MemSizeEstimator for BlockWindowHeap {}
 
 impl BlockWindowHeap {
     pub fn new(origin: WindowOrigin) -> Self {
