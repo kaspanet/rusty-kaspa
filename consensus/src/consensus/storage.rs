@@ -95,6 +95,7 @@ impl ConsensusStorage {
         let transactions_budget = scaled(40_000_000);
         let utxo_diffs_budget = scaled(40_000_000);
         let block_window_budget = scaled(200_000_000); // x 2 for difficulty and median time
+        let acceptance_data_budget = scaled(40_000_000);
 
         // Unit sizes in bytes
         let daa_excluded_bytes = size_of::<Hash>() + size_of::<BlockHashSet>(); // Expected empty sets
@@ -155,6 +156,7 @@ impl ConsensusStorage {
         let header_data_builder = PolicyBuilder::new().max_items(perf_params.header_data_cache_size).untracked();
         let utxo_set_builder = PolicyBuilder::new().max_items(perf_params.utxo_set_cache_size).untracked();
         let transactions_builder = PolicyBuilder::new().bytes_budget(transactions_budget).tracked_bytes();
+        let acceptance_data_builder = PolicyBuilder::new().bytes_budget(acceptance_data_budget).tracked_bytes();
         let past_pruning_points_builder = PolicyBuilder::new().max_items(1024).untracked();
 
         // TODO: consider tracking UtxoDiff byte sizes more accurately including the exact size of ScriptPublicKey
@@ -213,7 +215,7 @@ impl ConsensusStorage {
         let block_transactions_store = Arc::new(DbBlockTransactionsStore::new(db.clone(), transactions_builder.build()));
         let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), utxo_diffs_builder.build()));
         let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), block_data_builder.build()));
-        let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), block_data_builder.build()));
+        let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), acceptance_data_builder.build()));
 
         // Tips
         let headers_selected_tip_store = Arc::new(RwLock::new(DbHeadersSelectedTipStore::new(db.clone())));
