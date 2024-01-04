@@ -33,10 +33,6 @@ where
     N: Notification,
 {
     fn notify(&self, notification: N) -> Result<()>;
-
-    fn has_subscription(&self, _event: EventType) -> bool {
-        unimplemented!()
-    }
 }
 
 pub type DynNotify<N> = Arc<dyn Notify<N>>;

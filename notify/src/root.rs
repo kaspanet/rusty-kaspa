@@ -50,6 +50,10 @@ where
     pub fn is_closed(&self) -> bool {
         self.inner.sender.is_closed()
     }
+
+    pub fn has_subscription(&self, event: EventType) -> bool {
+        self.inner.has_subscription(event)
+    }
 }
 
 impl<N> Notify<N> for Root<N>
@@ -58,10 +62,6 @@ where
 {
     fn notify(&self, notification: N) -> Result<()> {
         self.inner.notify(notification)
-    }
-
-    fn has_subscription(&self, event: EventType) -> bool {
-        self.inner.has_subscription(event)
     }
 }
 
