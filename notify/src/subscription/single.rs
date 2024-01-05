@@ -8,13 +8,17 @@ use crate::{
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::ScriptPublicKeys;
+use kaspa_core::trace;
 use kaspa_txscript::pay_to_address_script;
 use std::{
     collections::HashSet,
-    fmt::Debug,
+    fmt::{Debug, Display},
     hash::{Hash, Hasher},
     ops::Deref,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 /// Subscription with a all or none scope.
@@ -148,21 +152,27 @@ impl Subscription for VirtualChainChangedSubscription {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+static UTXOS_CHANGED_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
+
+#[derive(Clone, Debug)]
 pub struct UtxosChangedSubscription {
     active: bool,
     script_pub_keys: ScriptPublicKeys,
     addresses: Vec<Address>,
     addresses_hash: kaspa_consensus_core::Hash,
+    address_count: usize,
 }
 
 impl UtxosChangedSubscription {
     pub fn new(active: bool, mut addresses: Vec<Address>) -> Self {
+        let cnt = UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst);
         addresses.sort();
         // Hashing addresses is deterministic because the vector is sorted
         let addresses_hash = hash(&addresses);
         let script_pub_keys = addresses.iter().map(pay_to_address_script).collect();
-        Self { active, script_pub_keys, addresses, addresses_hash }
+        let subscription = Self { active, script_pub_keys, address_count: addresses.len(), addresses, addresses_hash };
+        trace!("UtxosChangedSubscription: {} in total (new {})", cnt + 1, subscription);
+        subscription
     }
 
     pub fn contains_address(&self, address: &Address) -> bool {
@@ -171,6 +181,21 @@ impl UtxosChangedSubscription {
 
     pub fn to_all(&self) -> bool {
         self.script_pub_keys.is_empty()
+    }
+}
+
+impl Default for UtxosChangedSubscription {
+    fn default() -> Self {
+        let cnt = UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst);
+        let subscription = Self {
+            active: false,
+            script_pub_keys: Default::default(),
+            addresses: Default::default(),
+            addresses_hash: Default::default(),
+            address_count: 0,
+        };
+        trace!("UtxosChangedSubscription: {} in total (default {})", cnt + 1, subscription);
+        subscription
     }
 }
 
@@ -187,11 +212,18 @@ impl Display for UtxosChangedSubscription {
         match (self.active, self.address_count) {
             (false, _) => write!(f, "none"),
             (true, 0) => write!(f, "all"),
+            (true, 1) => write!(f, "1 address"),
             (true, n) => write!(f, "{} addresses", n),
         }
     }
 }
 
+impl Drop for UtxosChangedSubscription {
+    fn drop(&mut self) {
+        let cnt = UTXOS_CHANGED_SUBSCRIPTIONS.fetch_sub(1, Ordering::SeqCst);
+        trace!("UtxosChangedSubscription: {} in total (drop {})", cnt - 1, self);
+    }
+}
 
 impl PartialEq for UtxosChangedSubscription {
     fn eq(&self, other: &Self) -> bool {
