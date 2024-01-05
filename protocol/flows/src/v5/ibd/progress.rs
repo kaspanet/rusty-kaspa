@@ -56,7 +56,7 @@ impl ProgressReporter {
                 percent,
                 DateTime::from_timestamp(current_timestamp as i64 / 1000, 1000 * (current_timestamp as u32 % 1000))
                     .expect("consensus validated the timestamp is within a valid range")
-                    .format("%Y-%m-%d %H:%M:%S.%3f"),
+                    .format("%Y-%m-%d %H:%M:%S.%3f:%z"),
             );
             self.last_reported_percent = percent;
         }
