@@ -456,6 +456,7 @@ impl Inner {
         Ok(inner)
     }
 
+    #[allow(unused_variables)]
     async fn try_connect(
         url: String,
         request_sender: KaspadRequestSender,
@@ -475,7 +476,6 @@ impl Inner {
         #[cfg(feature = "heap")]
         let channel =
             tonic::transport::Channel::builder(url.parse::<tonic::transport::Uri>().map_err(|e| Error::String(e.to_string()))?)
-                .timeout(tokio::time::Duration::from_millis(request_timeout))
                 .connect()
                 .await?;
 
@@ -489,14 +489,21 @@ impl Inner {
             .service(channel);
 
         // Build the gRPC client with an interceptor setting the request timeout
+        #[cfg(not(feature = "heap"))]
         let request_timeout = tokio::time::Duration::from_millis(request_timeout);
+        #[cfg(not(feature = "heap"))]
         let mut client = RpcClient::with_interceptor(channel, move |mut req: tonic::Request<()>| {
             req.set_timeout(request_timeout);
             Ok(req)
-        })
-        .send_compressed(CompressionEncoding::Gzip)
-        .accept_compressed(CompressionEncoding::Gzip)
-        .max_decoding_message_size(RPC_MAX_MESSAGE_SIZE);
+        });
+
+        #[cfg(feature = "heap")]
+        let mut client = RpcClient::new(channel);
+
+        client = client
+            .send_compressed(CompressionEncoding::Gzip)
+            .accept_compressed(CompressionEncoding::Gzip)
+            .max_decoding_message_size(RPC_MAX_MESSAGE_SIZE);
 
         // Force the opening of the stream when connected to a go kaspad server.
         // This is also needed for querying server capabilities.
