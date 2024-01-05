@@ -1,7 +1,7 @@
-#[ctor::ctor]
-fn init_allocator() {
-    kaspa_alloc::init_allocator_with_default_settings();
-}
+#[cfg(feature = "heap")]
+#[global_allocator]
+#[cfg(not(feature = "heap"))]
+static ALLOC: dhat::Alloc = dhat::Alloc;
 
 pub mod common;
 
@@ -24,7 +24,3 @@ pub mod notify_benchmarks;
 
 #[cfg(test)]
 pub mod rpc_tests;
-
-#[cfg(feature = "heap")]
-#[global_allocator]
-static ALLOC: dhat::Alloc = dhat::Alloc;

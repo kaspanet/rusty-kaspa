@@ -29,15 +29,15 @@ use std::{
 use tokio::join;
 
 /// Run this benchmark with the following command line:
-/// `cargo test --package kaspa-testing-integration --lib --features heap,devnet-prealloc --profile release -- notify_benchmarks::bench_utxos_changed_subscriptions_footprint --exact --nocapture --ignored`
+/// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc --profile release -- notify_benchmarks::bench_utxos_changed_subscriptions_footprint --exact --nocapture --ignored`
+/// `cargo test --package kaspa-testing-integration --lib --features heap,devnet-prealloc --profile heap -- notify_benchmarks::bench_utxos_changed_subscriptions_footprint --exact --nocapture --ignored`
 #[tokio::test]
 #[ignore = "bmk"]
 async fn bench_utxos_changed_subscriptions_footprint() {
     init_allocator_with_default_settings();
     kaspa_core::panic::configure_panic();
-    //kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_rpc_core=debug,kaspa_grpc_core=debug,kaspa_grpc_server=debug,kaspa_notify=debug,kaspa_mining::monitor=debug");
     kaspa_core::log::try_init_logger(
-        "info,kaspa_core::time=debug,kaspa_rpc_core=debug,kaspa_grpc_client=debug,kaspa_notify=debug,kaspa_mining::monitor=debug,kaspa_testing_integration::notify_benchmarks=debug",
+        "info,kaspa_core::time=debug,kaspa_rpc_core=debug,kaspa_grpc_client=debug,kaspa_notify=debug,kaspa_notify::subscription::single=trace,kaspa_mining::monitor=debug,kaspa_testing_integration::notify_benchmarks=trace",
     );
 
     // Constants
@@ -328,7 +328,7 @@ async fn bench_utxos_changed_subscriptions_footprint() {
         warn!("Basic notifications started");
 
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
             warn!("Starting UTXOs notifications...");
             join_all(notify_clients.iter().cloned().enumerate().map(|(i, client)| {
                 tokio::spawn(async move {
@@ -360,7 +360,7 @@ async fn bench_utxos_changed_subscriptions_footprint() {
             .await;
             warn!("UTXOs notifications started");
 
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            tokio::time::sleep(std::time::Duration::from_secs(20)).await;
             warn!("Stopping UTXOs notifications...");
             join_all(notify_clients.iter().cloned().map(|client| {
                 tokio::spawn(async move {
