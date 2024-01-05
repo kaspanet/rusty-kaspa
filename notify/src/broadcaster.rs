@@ -8,9 +8,11 @@ use async_channel::{Receiver, Sender};
 use core::fmt::Debug;
 use derive_more::Deref;
 use futures::{future::FutureExt, select_biased};
+use indexmap::IndexMap;
 use kaspa_core::{debug, trace};
 use std::{
     collections::HashMap,
+    fmt::Display,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -22,7 +24,7 @@ type ConnectionSet<T> = HashMap<ListenerId, T>;
 
 /// Broadcast plan
 #[derive(Deref)]
-struct Plan<C: Connection>(HashMap<DynSubscription, HashMap<C::Encoding, ConnectionSet<C>>>);
+struct Plan<C: Connection>(IndexMap<DynSubscription, HashMap<C::Encoding, ConnectionSet<C>>>);
 
 impl<C> Plan<C>
 where
@@ -92,6 +94,7 @@ where
     C: Connection,
 {
     name: &'static str,
+    index: usize,
     started: Arc<AtomicBool>,
     ctl: Channel<Ctl<C>>,
     incoming: Receiver<N>,
@@ -105,9 +108,10 @@ where
     N: Notification,
     C: Connection<Notification = N>,
 {
-    pub fn new(name: &'static str, incoming: Receiver<N>, _sync: Option<Sender<()>>) -> Self {
+    pub fn new(name: &'static str, index: usize, incoming: Receiver<N>, _sync: Option<Sender<()>>) -> Self {
         Self {
             name,
+            index,
             started: Arc::new(AtomicBool::default()),
             ctl: Channel::unbounded(),
             incoming,
@@ -125,7 +129,7 @@ where
         if self.started.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
         }
-        trace!("[Broadcaster-{}] Starting notification broadcasting task", self.name);
+        trace!("[{}] Starting notification broadcasting task", self);
         workflow_core::task::spawn(async move {
             // Broadcasting plan by event type
             let mut plan = EventArray::<Plan<C>>::default();
@@ -137,10 +141,13 @@ where
                         if let Ok(ctl) = ctl {
                             match ctl {
                                 Ctl::Register(subscription, id, connection) => {
-                                    plan[subscription.event_type()].insert(subscription, id, connection);
+                                    let event_type = subscription.event_type();
+                                    plan[event_type].insert(subscription, id, connection);
+                                    debug!("[{}] insert {} subscription, count = {}, capacity = {}", self, event_type, plan[event_type].len(), plan[event_type].capacity());
                                 },
                                 Ctl::Unregister(event_type, id) => {
                                     plan[event_type].remove(&id);
+                                    debug!("[{}] remove {} subscription, count = {}, capacity = {}", self, event_type, plan[event_type].len(), plan[event_type].capacity());
                                 },
                             }
                         } else {
@@ -162,11 +169,11 @@ where
                                             // ... to listeners connections
                                             match connection.send(message.clone()).await {
                                                 Ok(_) => {
-                                                    trace!("[Broadcaster-{}] sent notification {notification} to listener {id}", self.name);
+                                                    trace!("[{}] sent notification {notification} to listener {id}", self);
                                                 },
                                                 Err(_) => {
                                                     if connection.is_closed() {
-                                                        trace!("[Broadcaster-{}] could not send a notification to listener {id} because its connection is closed - removing it", self.name);
+                                                        trace!("[{}] could not send a notification to listener {id} because its connection is closed - removing it", self);
                                                         purge.push(*id);
                                                     }
                                                 }
@@ -190,7 +197,7 @@ where
                     let _ = sync.try_send(());
                 }
             }
-            debug!("[Broadcaster-{}] notification stream ended", self.name);
+            debug!("[{}] notification stream ended", self);
             let _ = self.shutdown.drain();
             let _ = self.shutdown.try_send(());
         });
@@ -208,14 +215,24 @@ where
     }
 
     async fn join_notification_broadcasting_task(&self) -> Result<()> {
-        trace!("[Broadcaster-{}] joining", self.name);
+        trace!("[{}] joining", self);
         self.shutdown.recv().await?;
-        debug!("[Broadcaster-{}] terminated", self.name);
+        debug!("[{}] terminated", self);
         Ok(())
     }
 
     pub async fn join(&self) -> Result<()> {
         self.join_notification_broadcasting_task().await
+    }
+}
+
+impl<N, C> Display for Broadcaster<N, C>
+where
+    N: Notification,
+    C: Connection<Notification = N>,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Broadcaster-{}-{}", self.name, self.index)
     }
 }
 
@@ -251,7 +268,7 @@ mod tests {
             const IDENT: &str = "test";
             let (sync_sender, sync_receiver) = unbounded();
             let (notification_sender, notification_receiver) = unbounded();
-            let broadcaster = Arc::new(TestBroadcaster::new(IDENT, notification_receiver, Some(sync_sender)));
+            let broadcaster = Arc::new(TestBroadcaster::new(IDENT, 0, notification_receiver, Some(sync_sender)));
             let mut listeners = Vec::with_capacity(listener_count);
             let mut notification_receivers = Vec::with_capacity(listener_count);
             for _ in 0..listener_count {

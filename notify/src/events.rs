@@ -18,6 +18,13 @@ macro_rules! event_type_enum {
                 }
             }
         }
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    $($name::$variant_name => write!(f, stringify!($variant_name))),*
+                }
+            }
+        }
         pub const EVENT_TYPE_ARRAY: [EventType; EVENT_COUNT] = [
             $($name::$variant_name),*
         ];

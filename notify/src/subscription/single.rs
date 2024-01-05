@@ -182,10 +182,21 @@ impl Deref for UtxosChangedSubscription {
     }
 }
 
+impl Display for UtxosChangedSubscription {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match (self.active, self.address_count) {
+            (false, _) => write!(f, "none"),
+            (true, 0) => write!(f, "all"),
+            (true, n) => write!(f, "{} addresses", n),
+        }
+    }
+}
+
+
 impl PartialEq for UtxosChangedSubscription {
     fn eq(&self, other: &Self) -> bool {
         self.active == other.active
-            && self.addresses.len() == other.addresses.len()
+            && self.addresses.len() == other.addresses.len() && self.addresses_hash == other.addresses_hash
             // addresses are sorted, so they can be compared sequentially
             && self.addresses.iter().zip(other.addresses.iter()).all(|(left, right)| *left == *right)
     }
