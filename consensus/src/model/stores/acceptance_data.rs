@@ -1,4 +1,6 @@
 use kaspa_consensus_core::acceptance_data::AcceptanceData;
+use kaspa_consensus_core::acceptance_data::AcceptedTxEntry;
+use kaspa_consensus_core::acceptance_data::MergesetBlockAcceptanceData;
 use kaspa_consensus_core::BlockHasher;
 use kaspa_database::prelude::CachePolicy;
 use kaspa_database::prelude::StoreError;
@@ -6,7 +8,11 @@ use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
+use kaspa_utils::mem_size::MemSizeEstimator;
 use rocksdb::WriteBatch;
+use serde::Deserialize;
+use serde::Serialize;
+use std::mem::size_of;
 use std::sync::Arc;
 
 pub trait AcceptanceDataStoreReader {
@@ -18,11 +24,24 @@ pub trait AcceptanceDataStore: AcceptanceDataStoreReader {
     fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
 
+/// Simple wrapper for implementing `MemSizeEstimator`
+#[derive(Clone, Serialize, Deserialize)]
+struct AcceptanceDataEntry(Arc<AcceptanceData>);
+
+impl MemSizeEstimator for AcceptanceDataEntry {
+    fn estimate_mem_bytes(&self) -> usize {
+        self.0.iter().map(|l| l.accepted_transactions.len()).sum::<usize>() * size_of::<AcceptedTxEntry>()
+            + self.0.len() * size_of::<MergesetBlockAcceptanceData>()
+            + size_of::<AcceptanceData>()
+            + size_of::<Self>()
+    }
+}
+
 /// A DB + cache implementation of `DbAcceptanceDataStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbAcceptanceDataStore {
     db: Arc<DB>,
-    access: CachedDbAccess<Hash, Arc<AcceptanceData>, BlockHasher>,
+    access: CachedDbAccess<Hash, AcceptanceDataEntry, BlockHasher>,
 }
 
 impl DbAcceptanceDataStore {
@@ -38,7 +57,7 @@ impl DbAcceptanceDataStore {
         if self.access.has(hash)? {
             return Err(StoreError::HashAlreadyExists(hash));
         }
-        self.access.write(BatchDbWriter::new(batch), hash, acceptance_data)?;
+        self.access.write(BatchDbWriter::new(batch), hash, AcceptanceDataEntry(acceptance_data))?;
         Ok(())
     }
 
@@ -49,7 +68,7 @@ impl DbAcceptanceDataStore {
 
 impl AcceptanceDataStoreReader for DbAcceptanceDataStore {
     fn get(&self, hash: Hash) -> Result<Arc<AcceptanceData>, StoreError> {
-        self.access.read(hash)
+        Ok(self.access.read(hash)?.0)
     }
 }
 
@@ -58,7 +77,7 @@ impl AcceptanceDataStore for DbAcceptanceDataStore {
         if self.access.has(hash)? {
             return Err(StoreError::HashAlreadyExists(hash));
         }
-        self.access.write(DirectDbWriter::new(&self.db), hash, acceptance_data)?;
+        self.access.write(DirectDbWriter::new(&self.db), hash, AcceptanceDataEntry(acceptance_data))?;
         Ok(())
     }
 

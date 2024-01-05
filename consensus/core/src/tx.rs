@@ -45,11 +45,7 @@ impl UtxoEntry {
     }
 }
 
-impl MemSizeEstimator for UtxoEntry {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
+impl MemSizeEstimator for UtxoEntry {}
 
 pub type TransactionIndexType = u32;
 
@@ -145,18 +141,21 @@ impl Transaction {
         gas: u64,
         payload: Vec<u8>,
     ) -> Self {
-        let mut tx = Self {
-            version,
-            inputs,
-            outputs,
-            lock_time,
-            subnetwork_id,
-            gas,
-            payload,
-            id: Default::default(), // Temp init before the finalize below
-        };
+        let mut tx = Self::new_non_finalized(version, inputs, outputs, lock_time, subnetwork_id, gas, payload);
         tx.finalize();
         tx
+    }
+
+    pub fn new_non_finalized(
+        version: u16,
+        inputs: Vec<TransactionInput>,
+        outputs: Vec<TransactionOutput>,
+        lock_time: u64,
+        subnetwork_id: SubnetworkId,
+        gas: u64,
+        payload: Vec<u8>,
+    ) -> Self {
+        Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, id: Default::default() }
     }
 }
 

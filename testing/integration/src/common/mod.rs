@@ -6,7 +6,6 @@ use std::{
 
 pub mod client;
 pub mod client_notify;
-pub mod client_pool;
 pub mod daemon;
 pub mod listener;
 pub mod memory_monitor;

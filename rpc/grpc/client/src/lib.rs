@@ -4,6 +4,7 @@ use self::{
 };
 use async_channel::{Receiver, Sender};
 use async_trait::async_trait;
+pub use client_pool::ClientPool;
 use connection_event::ConnectionEvent;
 use futures::{future::FutureExt, pin_mut, select};
 use kaspa_core::{debug, error, trace};
@@ -56,6 +57,8 @@ pub mod error;
 mod resolver;
 #[macro_use]
 mod route;
+
+mod client_pool;
 
 pub type GrpcClientCollector = CollectorFrom<RpcCoreConverter>;
 pub type GrpcClientNotify = DynNotify<Notification>;

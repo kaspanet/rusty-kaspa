@@ -4,8 +4,10 @@ use kaspa_core::{core::Core, debug, service::Service};
 use parking_lot::RwLock;
 use std::{collections::VecDeque, ops::Deref, sync::Arc, thread::JoinHandle};
 
+mod batch;
 mod session;
 
+pub use batch::BlockProcessingBatch;
 pub use session::{
     spawn_blocking, ConsensusInstance, ConsensusProxy, ConsensusSessionBlocking, SessionLock, SessionReadGuard, SessionWriteGuard,
 };
