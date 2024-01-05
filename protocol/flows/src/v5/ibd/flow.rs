@@ -63,6 +63,11 @@ pub enum IbdType {
     DownloadHeadersProof,
 }
 
+struct QueueChunkOutput {
+    jobs: Vec<BlockValidationFuture>,
+    daa_score: u64,
+    timestamp: u64,
+}
 // TODO: define a peer banning strategy
 
 impl IbdFlow {
@@ -520,11 +525,12 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         let mut progress_reporter = ProgressReporter::new(low_header.daa_score, high_header.daa_score, "blocks");
 
         let mut iter = hashes.chunks(IBD_BATCH_SIZE);
-        let (mut prev_jobs, mut prev_daa_score, mut prev_timestamp) =
+        let QueueChunkOutput { jobs: mut prev_jobs, daa_score: mut prev_daa_score, timestamp: mut prev_timestamp } =
             self.queue_block_processing_chunk(consensus, iter.next().expect("hashes was non empty")).await?;
 
         for chunk in iter {
-            let (current_jobs, current_daa_score, current_timestamp) = self.queue_block_processing_chunk(consensus, chunk).await?;
+            let QueueChunkOutput { jobs: current_jobs, daa_score: current_daa_score, timestamp: current_timestamp } =
+                self.queue_block_processing_chunk(consensus, chunk).await?;
             let prev_chunk_len = prev_jobs.len();
             // Join the previous chunk so that we always concurrently process a chunk and receive another
             try_join_all(prev_jobs).await?;
@@ -546,7 +552,7 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         &mut self,
         consensus: &ConsensusProxy,
         chunk: &[Hash],
-    ) -> Result<(Vec<BlockValidationFuture>, u64, u64), ProtocolError> {
+    ) -> Result<QueueChunkOutput, ProtocolError> {
         let mut jobs = Vec::with_capacity(chunk.len());
         let mut current_daa_score = 0;
         let mut current_timestamp = 0;
@@ -570,6 +576,6 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
             jobs.push(consensus.validate_and_insert_block(block).virtual_state_task);
         }
 
-        Ok((jobs, current_daa_score, current_timestamp))
+        Ok(QueueChunkOutput { jobs, daa_score: current_daa_score, timestamp: current_timestamp })
     }
 }
