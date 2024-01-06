@@ -560,7 +560,7 @@ impl FlowContext {
             return;
         }
 
-        self.broadcast_transactions(transactions_to_broadcast).await;
+        self.broadcast_transactions(transactions_to_broadcast, false).await;
 
         if self.should_run_mempool_scanning_task().await {
             // Spawn a task executing the removal of expired low priority transactions and, if time has come too,
@@ -580,7 +580,7 @@ impl FlowContext {
                         mining_manager.revalidate_high_priority_transactions(&consensus_clone, tx).await;
                     });
                     while let Some(transactions) = rx.recv().await {
-                        let _ = context.broadcast_transactions(transactions).await;
+                        let _ = context.broadcast_transactions(transactions, false).await;
                     }
                 }
                 context.mempool_scanning_is_done().await;
@@ -614,7 +614,7 @@ impl FlowContext {
     ) -> Result<(), ProtocolError> {
         let accepted_transactions =
             self.mining_manager().clone().validate_and_insert_transaction(consensus, transaction, Priority::High, orphan).await?;
-        self.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await;
+        self.broadcast_transactions(accepted_transactions.iter().map(|x| x.id()), false).await;
         Ok(())
     }
 
@@ -641,8 +641,8 @@ impl FlowContext {
     ///
     /// The broadcast itself may happen only during a subsequent call to this function since it is done at most
     /// after a predefined interval or when the queue length is larger than the Inv message capacity.
-    pub async fn broadcast_transactions<I: IntoIterator<Item = TransactionId>>(&self, transaction_ids: I) {
-        self.transactions_spread.write().await.broadcast_transactions(transaction_ids).await
+    pub async fn broadcast_transactions<I: IntoIterator<Item = TransactionId>>(&self, transaction_ids: I, should_throttle: bool) {
+        self.transactions_spread.write().await.broadcast_transactions(transaction_ids, should_throttle).await
     }
 }
 

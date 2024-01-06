@@ -77,7 +77,7 @@ impl TransactionsSpread {
     /// capacity.
     ///
     /// _GO-KASPAD: EnqueueTransactionIDsForPropagation_
-    pub async fn broadcast_transactions<I: IntoIterator<Item = TransactionId>>(&mut self, transaction_ids: I) {
+    pub async fn broadcast_transactions<I: IntoIterator<Item = TransactionId>>(&mut self, transaction_ids: I, should_throttle: bool) {
         self.transaction_ids.enqueue_chunk(transaction_ids);
 
         let now = Instant::now();
@@ -89,13 +89,17 @@ impl TransactionsSpread {
             let ids = self.transaction_ids.dequeue_chunk(MAX_INV_PER_TX_INV_MSG).map(|x| x.into()).collect_vec();
             debug!("Transaction propagation: broadcasting {} transactions", ids.len());
             let msg = make_message!(Payload::InvTransactions, InvTransactionsMessage { ids });
-            self.broadcast(msg).await;
+            self.broadcast(msg, should_throttle).await;
         }
 
         self.last_broadcast_time = Instant::now();
     }
 
-    async fn broadcast(&self, msg: KaspadMessage) {
-        self.hub.broadcast(msg).await
+    async fn broadcast(&self, msg: KaspadMessage, should_throttle: bool) {
+        if should_throttle {
+            self.hub.broadcast_some(msg, 0.5).await
+        } else {
+            self.hub.broadcast(msg).await
+        }
     }
 }

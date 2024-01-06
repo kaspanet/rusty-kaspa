@@ -8,6 +8,7 @@ use std::{
 use tokio::sync::mpsc::Receiver as MpscReceiver;
 
 use super::peer::PeerKey;
+use rand::seq::SliceRandom;
 
 #[derive(Debug)]
 pub(crate) enum HubEvent {
@@ -98,6 +99,21 @@ impl Hub {
     /// Broadcast a message to all peers
     pub async fn broadcast(&self, msg: KaspadMessage) {
         let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
+        for router in peers {
+            let _ = router.enqueue(msg.clone()).await;
+        }
+    }
+
+    /// Broadcast a message to some peers given a percentage
+    pub async fn broadcast_some(&self, msg: KaspadMessage, percentage: f64) {
+        let percentage = percentage.clamp(0.0, 1.0);
+
+        let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
+
+        let peers_to_select = ((percentage * peers.len() as f64) as usize).min(1);
+
+        let peers = peers.choose_multiple(&mut rand::thread_rng(), peers_to_select).cloned().collect::<Vec<_>>();
+
         for router in peers {
             let _ = router.enqueue(msg.clone()).await;
         }
