@@ -4,6 +4,7 @@ pub use super::{
     genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TESTNET11_GENESIS, TESTNET_GENESIS},
 };
 use crate::{
+    constants::STORAGE_MASS_PARAMETER,
     network::{NetworkId, NetworkType},
     BlockLevel, KType,
 };
@@ -75,6 +76,12 @@ pub struct Params {
     pub mass_per_script_pub_key_byte: u64,
     pub mass_per_sig_op: u64,
     pub max_block_mass: u64,
+
+    /// The parameter for scaling inverse KAS value to mass units (unpublished KIP-0009)
+    pub storage_mass_parameter: u64,
+
+    /// DAA score from which storage mass calculation and transaction mass field are activated as a consensus rule
+    pub storage_mass_activation_daa_score: u64,
 
     /// DAA score after which the pre-deflationary period switches to the deflationary period
     pub deflationary_phase_daa_score: u64,
@@ -340,6 +347,9 @@ pub const MAINNET_PARAMS: Params = Params {
     mass_per_sig_op: 1000,
     max_block_mass: 500_000,
 
+    storage_mass_parameter: STORAGE_MASS_PARAMETER,
+    storage_mass_activation_daa_score: u64::MAX,
+
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
     // switches to the deflationary period. This number is calculated as follows:
     // We define a year as 365.25 days
@@ -396,6 +406,9 @@ pub const TESTNET_PARAMS: Params = Params {
     mass_per_sig_op: 1000,
     max_block_mass: 500_000,
 
+    storage_mass_parameter: STORAGE_MASS_PARAMETER,
+    storage_mass_activation_daa_score: u64::MAX,
+
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
     // switches to the deflationary period. This number is calculated as follows:
     // We define a year as 365.25 days
@@ -447,19 +460,18 @@ pub const TESTNET11_PARAMS: Params = Params {
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
-    // This is technically a soft fork from the Go implementation since kaspad's consensus doesn't
-    // check these rules, but in practice it's enforced by the network layer that limits the message
-    // size to 1 GB.
-    // These values should be lowered to more reasonable amounts on the next planned HF/SF.
-    max_tx_inputs: 1_000_000_000,
-    max_tx_outputs: 1_000_000_000,
-    max_signature_script_len: 1_000_000_000,
-    max_script_public_key_len: 1_000_000_000,
+    max_tx_inputs: 10_000,
+    max_tx_outputs: 10_000,
+    max_signature_script_len: 1_000_000,
+    max_script_public_key_len: 1_000_000,
 
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
     max_block_mass: 500_000,
+
+    storage_mass_parameter: STORAGE_MASS_PARAMETER,
+    storage_mass_activation_daa_score: 23_325_109, // ~ 1/7/2024 8:55pm UTC
 
     skip_proof_of_work: false,
     max_block_level: 250,
@@ -500,19 +512,18 @@ pub const SIMNET_PARAMS: Params = Params {
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
-    // This is technically a soft fork from the Go implementation since kaspad's consensus doesn't
-    // check these rules, but in practice it's enforced by the network layer that limits the message
-    // size to 1 GB.
-    // These values should be lowered to more reasonable amounts on the next planned HF/SF.
-    max_tx_inputs: 1_000_000_000,
-    max_tx_outputs: 1_000_000_000,
-    max_signature_script_len: 1_000_000_000,
-    max_script_public_key_len: 1_000_000_000,
+    max_tx_inputs: 10_000,
+    max_tx_outputs: 10_000,
+    max_signature_script_len: 1_000_000,
+    max_script_public_key_len: 1_000_000,
 
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
     max_block_mass: 500_000,
+
+    storage_mass_parameter: STORAGE_MASS_PARAMETER,
+    storage_mass_activation_daa_score: 0,
 
     skip_proof_of_work: true, // For simnet only, PoW can be simulated by default
     max_block_level: 250,
@@ -556,6 +567,9 @@ pub const DEVNET_PARAMS: Params = Params {
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
     max_block_mass: 500_000,
+
+    storage_mass_parameter: STORAGE_MASS_PARAMETER,
+    storage_mass_activation_daa_score: u64::MAX,
 
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
     // switches to the deflationary period. This number is calculated as follows:

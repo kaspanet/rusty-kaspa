@@ -13,7 +13,7 @@ use kaspa_consensus_core::{
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{Transaction, TransactionOutpoint, UtxoEntry},
+    tx::{EditableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath, Hash,
 };
 use kaspa_utils::sync::rwlock::*;
@@ -180,6 +180,11 @@ impl ConsensusSessionOwned {
     pub fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
         // This method performs pure calculations so no need for an async wrapper
         self.consensus.calculate_transaction_mass(transaction)
+    }
+
+    pub fn calculate_transaction_storage_mass(&self, transaction: &EditableTransaction) -> u64 {
+        // This method performs pure calculations so no need for an async wrapper
+        self.consensus.calculate_transaction_storage_mass(transaction)
     }
 
     pub async fn async_get_virtual_daa_score(&self) -> u64 {
