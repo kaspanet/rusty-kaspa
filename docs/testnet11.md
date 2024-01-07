@@ -4,10 +4,6 @@
 
 In the future testnet 11 will act as a staging zone for all sorts of crazy experiments, allowing us to stress test various approaches and ideas on a global scale with the participation of the community. The approaches we decide to adopt will then be stress tested for longer periods on testnet 10 before being incorporated into the mainnet.
 
-## The first experiment
-
-The goal of the first experiment is to stress load the network in terms of block rates and transaction rates, in varying network conditions. In particular, we are curious to see how the network responds to *mildly* varying hash rates, so we encourage users to freely join and leave the network, or set up several nodes. **However**, we kindly ask users not to abuse the hashrate and **only use the [CPU kaspa miner](https://github.com/elichai/kaspa-miner)** (which is currently the only miner that supports testnet-11). Turning on a GPU rig (or, god forbid, a KS02) to increase the global hashrate by 10000% at once might be amusing, but not very productive.
-
 ## Overview
 
 On the software side, participating requires three components:
