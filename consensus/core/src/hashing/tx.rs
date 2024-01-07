@@ -47,7 +47,10 @@ fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags
     //      1. Avoid passing a boolean and hash the mass only if > 0 (requires setting the mass to 0 on BBT).
     //      2. Use TxEncodingFlags to avoid including the mass for tx ID
     if include_mass_field {
-        hasher.update(tx.mass().to_le_bytes());
+        let mass = tx.mass();
+        if mass > 0 {
+            hasher.update(mass.to_le_bytes());
+        }
     }
 }
 
