@@ -67,6 +67,7 @@ pub struct Args {
 
     pub disable_upnp: bool,
     pub disable_dns_seeding: bool,
+    pub ram_scale: f64,
 }
 
 impl Default for Args {
@@ -114,6 +115,7 @@ impl Default for Args {
 
             disable_upnp: false,
             disable_dns_seeding: false,
+            ram_scale: 1.0,
         }
     }
 }
@@ -124,6 +126,7 @@ impl Args {
         config.disable_upnp = self.disable_upnp;
         config.unsafe_rpc = self.unsafe_rpc;
         config.enable_unsynced_mining = self.enable_unsynced_mining;
+        config.enable_mainnet_mining = self.enable_mainnet_mining;
         config.is_archival = self.archival;
         // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
         config.enable_sanity_checks = true;
@@ -131,6 +134,7 @@ impl Args {
         config.block_template_cache_lifetime = self.block_template_cache_lifetime;
         config.p2p_listen_address = self.listen.unwrap_or(ContextualNetAddress::unspecified());
         config.externalip = self.externalip.map(|v| v.normalize(config.default_p2p_port()));
+        config.ram_scale = self.ram_scale;
 
         #[cfg(feature = "devnet-prealloc")]
         if let Some(num_prealloc_utxos) = self.num_prealloc_utxos {
@@ -322,6 +326,14 @@ pub fn cli() -> Command {
         )
         .arg(arg!(--"disable-upnp" "Disable upnp"))
         .arg(arg!(--"nodnsseed" "Disable DNS seeding for peers"))
+        .arg(
+            Arg::new("ram-scale")
+                .long("ram-scale")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(f64))
+                .help("Apply a scale factor to memory allocation bounds. Nodes with limited RAM (~4-8GB) should set this to ~0.3-0.5 respectively. Nodes with 
+a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance especially for syncing peers faster"),
+        )
         ;
 
     #[cfg(feature = "devnet-prealloc")]
@@ -391,6 +403,7 @@ impl Args {
             block_template_cache_lifetime: defaults.block_template_cache_lifetime,
             disable_upnp: m.get_one::<bool>("disable-upnp").cloned().unwrap_or(defaults.disable_upnp),
             disable_dns_seeding: m.get_one::<bool>("nodnsseed").cloned().unwrap_or(defaults.disable_dns_seeding),
+            ram_scale: m.get_one::<f64>("ram-scale").cloned().unwrap_or(defaults.ram_scale),
 
             #[cfg(feature = "devnet-prealloc")]
             num_prealloc_utxos: m.get_one::<u64>("num-prealloc-utxos").cloned(),

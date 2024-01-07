@@ -28,11 +28,7 @@ pub struct ConsensusEntry {
     creation_timestamp: u64,
 }
 
-impl MemSizeEstimator for ConsensusEntry {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
+impl MemSizeEstimator for ConsensusEntry {}
 
 impl ConsensusEntry {
     pub fn new(key: u64, directory_name: String, creation_timestamp: u64) -> Self {

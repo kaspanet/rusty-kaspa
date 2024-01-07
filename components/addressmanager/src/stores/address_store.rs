@@ -18,11 +18,7 @@ pub struct Entry {
     pub address: NetAddress,
 }
 
-impl MemSizeEstimator for Entry {
-    fn estimate_mem_units(&self) -> usize {
-        1
-    }
-}
+impl MemSizeEstimator for Entry {}
 
 pub trait AddressesStoreReader {
     fn get(&self, key: AddressKey) -> Result<Entry, StoreError>;
