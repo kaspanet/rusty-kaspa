@@ -80,6 +80,10 @@ pub struct TransactionInput {
     #[serde(with = "serde_bytes")]
     pub signature_script: Vec<u8>, // TODO: Consider using SmallVec
     pub sequence: u64,
+
+    // TODO: Since this field is used for calculating mass context free, and we already commit
+    // to the mass in a dedicated field (on the tx level), it follows that this field is no longer
+    // needed, and can be removed if we ever implement a v2 transaction
     pub sig_op_count: u8,
 }
 
