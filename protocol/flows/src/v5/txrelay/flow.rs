@@ -89,6 +89,7 @@ impl RelayTransactionsFlow {
         let mut should_throttle = false;
 
         loop {
+            // TODO: Extract should_throttle logic to a separate function
             let now = unix_now();
             if now - last_checked_time > 10000 {
                 let next_snapshot = self.ctx.mining_manager().clone().snapshot();
@@ -98,7 +99,7 @@ impl RelayTransactionsFlow {
                 curr_snapshot = next_snapshot;
 
                 if snapshot_delta.low_priority_tx_counts > 0 {
-                    let tps = snapshot_delta.low_priority_tx_counts / 10;
+                    let tps = snapshot_delta.low_priority_tx_counts / self.ctx.config.params.bps();
                     if !should_throttle && tps > MAX_TPS_THRESHOLD {
                         warn!("P2P tx relay threshold exceeded. Throttling relay. Current: {}, Max: {}", tps, MAX_TPS_THRESHOLD);
                         should_throttle = true;

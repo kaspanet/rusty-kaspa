@@ -97,9 +97,8 @@ impl TransactionsSpread {
 
     async fn broadcast(&self, msg: KaspadMessage, should_throttle: bool) {
         if should_throttle {
-            // Broadcast to only half of the peers
-            // TODO: Figure out the better percentage
-            self.hub.broadcast_to_some_peers(msg, 0.5).await
+            // TODO: Figure out a better number
+            self.hub.broadcast_to_some_peers(msg, 8).await
         } else {
             self.hub.broadcast(msg).await
         }

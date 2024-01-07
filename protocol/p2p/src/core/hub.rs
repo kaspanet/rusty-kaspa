@@ -1,4 +1,5 @@
 use crate::{common::ProtocolError, pb::KaspadMessage, ConnectionInitializer, Peer, Router};
+use core::num;
 use kaspa_core::{debug, info, warn};
 use parking_lot::RwLock;
 use std::{
@@ -105,14 +106,12 @@ impl Hub {
     }
 
     /// Broadcast a message to some peers given a percentage
-    pub async fn broadcast_to_some_peers(&self, msg: KaspadMessage, percentage: f64) {
-        let percentage = percentage.clamp(0.0, 1.0);
-
+    pub async fn broadcast_to_some_peers(&self, msg: KaspadMessage, num_peers: usize) {
+        assert!(num_peers > 0);
         let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
-
-        let peers_to_select = ((percentage * peers.len() as f64) as usize).min(1);
-
-        let peers = peers.choose_multiple(&mut rand::thread_rng(), peers_to_select).cloned().collect::<Vec<_>>();
+        // TODO: At least some of the peers should be outbound, because an attacker can gain less control
+        // over the set of outbound peers.
+        let peers = peers.choose_multiple(&mut rand::thread_rng(), num_peers).cloned().collect::<Vec<_>>();
 
         for router in peers {
             let _ = router.enqueue(msg.clone()).await;

@@ -560,6 +560,7 @@ impl FlowContext {
             return;
         }
 
+        // TODO: Throttle these transactions as well if needed
         self.broadcast_transactions(transactions_to_broadcast, false).await;
 
         if self.should_run_mempool_scanning_task().await {
@@ -580,7 +581,12 @@ impl FlowContext {
                         mining_manager.revalidate_high_priority_transactions(&consensus_clone, tx).await;
                     });
                     while let Some(transactions) = rx.recv().await {
-                        let _ = context.broadcast_transactions(transactions, false).await;
+                        let _ = context
+                            .broadcast_transactions(
+                                transactions,
+                                true, // We throttle high priority even when the network is not flooded since they will be rebroadcast if not accepted within reasonable time.
+                            )
+                            .await;
                     }
                 }
                 context.mempool_scanning_is_done().await;
@@ -614,7 +620,11 @@ impl FlowContext {
     ) -> Result<(), ProtocolError> {
         let accepted_transactions =
             self.mining_manager().clone().validate_and_insert_transaction(consensus, transaction, Priority::High, orphan).await?;
-        self.broadcast_transactions(accepted_transactions.iter().map(|x| x.id()), false).await;
+        self.broadcast_transactions(
+            accepted_transactions.iter().map(|x| x.id()),
+            false, // RPC transactions are considered high priority, so we don't want to throttle them
+        )
+        .await;
         Ok(())
     }
 
