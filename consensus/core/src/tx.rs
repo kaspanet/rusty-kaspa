@@ -386,23 +386,11 @@ impl MutableTransaction {
     pub fn from_tx(tx: Transaction) -> Self {
         Self::new(std::sync::Arc::new(tx))
     }
-
-    pub fn from_editable(tx: EditableTransaction) -> Self {
-        Self {
-            tx: std::sync::Arc::from(tx.tx),
-            entries: tx.entries,
-            calculated_fee: tx.calculated_fee,
-            calculated_mass: tx.calculated_mass,
-        }
-    }
 }
 
 /// Alias for a fully mutable and owned transaction which can be populated with external data
 /// and can also be modified internally and signed etc.
 pub type SignableTransaction = MutableTransaction<Transaction>;
-
-/// Alias for a fully mutable and owned transaction but which is owned via a `Box` on the heap
-pub type EditableTransaction = MutableTransaction<Box<Transaction>>;
 
 #[cfg(test)]
 mod tests {

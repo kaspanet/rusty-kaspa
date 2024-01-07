@@ -59,7 +59,7 @@ use kaspa_consensus_core::{
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{EditableTransaction, MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
@@ -441,7 +441,7 @@ impl ConsensusApi for Consensus {
         self.services.mass_calculator.calc_tx_mass(transaction)
     }
 
-    fn calculate_transaction_storage_mass(&self, transaction: &EditableTransaction) -> u64 {
+    fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {
         self.services.mass_calculator.calc_tx_storage_mass(&transaction.as_verifiable())
     }
 

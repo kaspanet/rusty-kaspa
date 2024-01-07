@@ -44,9 +44,9 @@ impl MassCalculator {
     ///     2. At least one input (unless coinbase)
     ///
     /// Otherwise this function should never fail.
-    pub fn calc_tx_storage_mass(&self, tx: &impl VerifiableTransaction) -> u64 {
+    pub fn calc_tx_storage_mass(&self, tx: &impl VerifiableTransaction) -> Option<u64> {
         if tx.is_coinbase() {
-            return 0;
+            return Some(0);
         }
         /* The code below computes the following formula:
 
@@ -59,21 +59,17 @@ impl MassCalculator {
         See the (to date unpublished) KIP-0009 for more details
         */
 
-        // Since we are doing integer division, we we perform the multiplication with C over the inner
-        // fractions, otherwise we'll get a sum of zeros or ones
+        // Since we are doing integer division, we perform the multiplication with C over the inner
+        // fractions, otherwise we'll get a sum of zeros or ones.
+        //
+        // If sum of fractions overflowed (nearly impossible, requires 10^7 outputs for C = 10^12),
+        // we return `None` indicating mass is incomputable
         let harmonic_outs = tx
             .tx()
             .outputs
             .iter()
             .map(|out| self.storage_mass_parameter / out.value)
-            .fold(0u64, |total, current| total.saturating_add(current)); // C·|O|/H(O)
-
-        if harmonic_outs == u64::MAX {
-            // Sum of fractions was saturated. Return u64::MAX to indicate a mass which is certainly too high.
-            // This requires a huge unrealistic number of outputs to happen even in the worst-case, but we treat
-            // it just in case.
-            return harmonic_outs;
-        }
+            .try_fold(0u64, |total, current| total.checked_add(current))?; // C·|O|/H(O)
 
         // Total supply is bounded, so a sum of existing UTXO entries cannot overflow (nor can it be zero)
         let sum_ins = tx.populated_inputs().map(|(_, entry)| entry.amount).sum::<u64>(); // |I|·A(I)
@@ -81,10 +77,10 @@ impl MassCalculator {
         let mean_ins = sum_ins / ins_len;
 
         // Inner fraction must be with C and over the mean value, in order to maximize precision.
-        // We can saturate the overall expression at u64::MAX since we lower-bound by zero below anyway
+        // We can saturate the overall expression at u64::MAX since we lower-bound the subtraction below by zero anyway
         let arithmetic_ins = ins_len.saturating_mul(self.storage_mass_parameter / mean_ins); // C·|I|/A(I)
 
-        harmonic_outs.saturating_sub(arithmetic_ins) // max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
+        Some(harmonic_outs.saturating_sub(arithmetic_ins)) // max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
     }
 }
 

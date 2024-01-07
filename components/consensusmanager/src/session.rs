@@ -13,7 +13,7 @@ use kaspa_consensus_core::{
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{EditableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath, Hash,
 };
 use kaspa_utils::sync::rwlock::*;
@@ -182,7 +182,7 @@ impl ConsensusSessionOwned {
         self.consensus.calculate_transaction_mass(transaction)
     }
 
-    pub fn calculate_transaction_storage_mass(&self, transaction: &EditableTransaction) -> u64 {
+    pub fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {
         // This method performs pure calculations so no need for an async wrapper
         self.consensus.calculate_transaction_storage_mass(transaction)
     }

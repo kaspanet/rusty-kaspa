@@ -19,7 +19,7 @@ use crate::{
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{EditableTransaction, MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_hashes::Hash;
@@ -82,7 +82,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn calculate_transaction_storage_mass(&self, transaction: &EditableTransaction) -> u64 {
+    fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {
         unimplemented!()
     }
 
