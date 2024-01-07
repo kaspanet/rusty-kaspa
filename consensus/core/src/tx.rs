@@ -6,6 +6,8 @@ use kaspa_utils::mem_size::MemSizeEstimator;
 use kaspa_utils::{serde_bytes, serde_bytes_fixed_ref};
 pub use script_public_key::{scriptvec, ScriptPublicKey, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, SCRIPT_VECTOR_SIZE};
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering::SeqCst;
 use std::{
     fmt::Display,
     ops::Range,
@@ -112,6 +114,36 @@ impl TransactionOutput {
     }
 }
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct TransactionMass(AtomicU64); // TODO: using atomic as a temp solution for mutating this field through the mempool
+
+impl Eq for TransactionMass {}
+
+impl PartialEq for TransactionMass {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.load(SeqCst) == other.0.load(SeqCst)
+    }
+}
+
+impl Clone for TransactionMass {
+    fn clone(&self) -> Self {
+        Self(AtomicU64::new(self.0.load(SeqCst)))
+    }
+}
+
+impl BorshDeserialize for TransactionMass {
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let mass: u64 = borsh::BorshDeserialize::deserialize(buf)?;
+        Ok(Self(AtomicU64::new(mass)))
+    }
+}
+
+impl BorshSerialize for TransactionMass {
+    fn serialize<W: std::io::prelude::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        borsh::BorshSerialize::serialize(&self.0.load(SeqCst), writer)
+    }
+}
+
 /// Represents a Kaspa transaction
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -124,6 +156,9 @@ pub struct Transaction {
     pub gas: u64,
     #[serde(with = "serde_bytes")]
     pub payload: Vec<u8>,
+
+    #[serde(default)]
+    mass: TransactionMass,
 
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
@@ -155,7 +190,7 @@ impl Transaction {
         gas: u64,
         payload: Vec<u8>,
     ) -> Self {
-        Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, id: Default::default() }
+        Self { version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass: Default::default(), id: Default::default() }
     }
 }
 
@@ -176,6 +211,16 @@ impl Transaction {
     /// Returns the transaction ID
     pub fn id(&self) -> TransactionId {
         self.id
+    }
+
+    /// Set the mass field of this transaction. The mass field is expected depending on hard-forks which are currently
+    /// activated only on some testnets. The field has no effect on tx ID so no need to finalize following this call.
+    pub fn set_mass(&self, mass: u64) {
+        self.mass.0.store(mass, SeqCst)
+    }
+
+    pub fn mass(&self) -> u64 {
+        self.mass.0.load(SeqCst)
     }
 }
 
@@ -478,9 +523,9 @@ mod tests {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
             13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
             43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72,
-            73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 69, 146, 193,
-            64, 98, 49, 45, 0, 77, 32, 25, 122, 77, 15, 211, 252, 61, 210, 82, 177, 39, 153, 127, 33, 188, 172, 138, 38, 67, 75, 241,
-            176,
+            73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 0, 0, 0, 0, 0,
+            0, 0, 0, 69, 146, 193, 64, 98, 49, 45, 0, 77, 32, 25, 122, 77, 15, 211, 252, 61, 210, 82, 177, 39, 153, 127, 33, 188, 172,
+            138, 38, 67, 75, 241, 176,
         ];
         assert_eq!(expected_bts, bts);
         assert_eq!(tx, bincode::deserialize(&bts).unwrap());
@@ -526,6 +571,7 @@ mod tests {
   "subnetworkId": "0100000000000000000000000000000000000000",
   "gas": 9,
   "payload": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60616263",
+  "mass": 0,
   "id": "4592c14062312d004d20197a4d0fd3fc3dd252b127997f21bcac8a26434bf1b0"
 }"#;
         assert_eq!(expected_str, str);
