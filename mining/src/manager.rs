@@ -54,7 +54,6 @@ impl MiningManager {
     }
 
     pub fn new_with_extended_config(
-        block_spam_txs: bool,
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
         max_block_mass: u64,
@@ -62,13 +61,8 @@ impl MiningManager {
         cache_lifetime: Option<u64>,
         counters: Arc<MiningCounters>,
     ) -> Self {
-        let config = Config::build_default_with_spam_blocking_option(
-            block_spam_txs,
-            target_time_per_block,
-            relay_non_std_transactions,
-            max_block_mass,
-        )
-        .apply_ram_scale(ram_scale);
+        let config =
+            Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass).apply_ram_scale(ram_scale);
         Self::with_config(config, cache_lifetime, counters)
     }
 
