@@ -156,6 +156,8 @@ impl ConsensusServices {
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
             tx_script_cache_counters,
+            mass_calculator.clone(),
+            params.storage_mass_activation_daa_score,
         );
 
         let pruning_point_manager = PruningPointManager::new(

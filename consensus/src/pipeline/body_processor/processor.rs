@@ -79,7 +79,7 @@ pub struct BlockBodyProcessor {
     // Counters
     counters: Arc<ProcessingCounters>,
 
-    // Storage mass hardfork
+    /// Storage mass hardfork DAA score
     pub(crate) storage_mass_activation_daa_score: u64,
 }
 
