@@ -70,7 +70,7 @@ impl BlockBodyProcessor {
                     return Err(RuleError::MassFieldTooLow(tx.id(), committed_contextual_mass, calculated_tx_compute_mass));
                 }
                 // Sum over the committed masses
-                total_mass += committed_contextual_mass;
+                total_mass = total_mass.saturating_add(committed_contextual_mass);
                 if total_mass > self.max_block_mass {
                     return Err(RuleError::ExceedsMassLimit(self.max_block_mass));
                 }
@@ -78,7 +78,7 @@ impl BlockBodyProcessor {
         } else {
             for tx in block.transactions.iter() {
                 let calculated_tx_mass = self.mass_calculator.calc_tx_compute_mass(tx);
-                total_mass += calculated_tx_mass;
+                total_mass = total_mass.saturating_add(calculated_tx_mass);
                 if total_mass > self.max_block_mass {
                     return Err(RuleError::ExceedsMassLimit(self.max_block_mass));
                 }
