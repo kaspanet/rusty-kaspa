@@ -200,7 +200,7 @@ impl VirtualStateProcessor {
             .expected_coinbase_transaction(daa_score, miner_data, ghostdag_data, mergeset_rewards, mergeset_non_daa)
             .unwrap()
             .tx;
-        if hashing::tx::hash(coinbase) != hashing::tx::hash(&expected_coinbase) {
+        if hashing::tx::hash(coinbase, false) != hashing::tx::hash(&expected_coinbase, false) {
             Err(BadCoinbaseTransaction)
         } else {
             Ok(())

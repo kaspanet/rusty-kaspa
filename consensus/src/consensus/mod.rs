@@ -247,6 +247,7 @@ impl Consensus {
             pruning_lock.clone(),
             notification_root.clone(),
             counters.clone(),
+            params.storage_mass_activation_daa_score,
         ));
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(

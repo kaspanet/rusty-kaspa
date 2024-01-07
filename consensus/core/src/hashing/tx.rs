@@ -10,9 +10,9 @@ pub const TX_ENCODING_FULL: TxEncodingFlags = 0;
 pub const TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT: TxEncodingFlags = 1;
 
 /// Returns the transaction hash. Note that this is different than the transaction ID.
-pub fn hash(tx: &Transaction) -> Hash {
+pub fn hash(tx: &Transaction, include_mass_field_if_non_zero: bool) -> Hash {
     let mut hasher = kaspa_hashes::TransactionHash::new();
-    write_transaction(&mut hasher, tx, TX_ENCODING_FULL);
+    write_transaction(&mut hasher, tx, TX_ENCODING_FULL, include_mass_field_if_non_zero);
     hasher.finalize()
 }
 
@@ -23,12 +23,17 @@ pub(crate) fn id(tx: &Transaction) -> TransactionId {
 
     let encoding_flags = if tx.is_coinbase() { TX_ENCODING_FULL } else { TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT };
     let mut hasher = kaspa_hashes::TransactionID::new();
-    write_transaction(&mut hasher, tx, encoding_flags);
+    write_transaction(&mut hasher, tx, encoding_flags, false);
     hasher.finalize()
 }
 
 /// Write the transaction into the provided hasher according to the encoding flags
-fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags: TxEncodingFlags) {
+fn write_transaction<T: Hasher>(
+    hasher: &mut T,
+    tx: &Transaction,
+    encoding_flags: TxEncodingFlags,
+    include_mass_field_if_non_zero: bool,
+) {
     hasher.update(tx.version.to_le_bytes()).write_len(tx.inputs.len());
     for input in tx.inputs.iter() {
         // Write the tx input
@@ -42,6 +47,13 @@ fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags
     }
 
     hasher.update(tx.lock_time.to_le_bytes()).update(&tx.subnetwork_id).update(tx.gas.to_le_bytes()).write_var_bytes(&tx.payload);
+
+    if include_mass_field_if_non_zero {
+        let mass = tx.mass();
+        if mass > 0 {
+            hasher.update(mass.to_le_bytes());
+        }
+    }
 }
 
 #[inline(always)]
@@ -149,7 +161,12 @@ mod tests {
 
         for (i, test) in tests.iter().enumerate() {
             assert_eq!(test.tx.id(), Hash::from_str(test.expected_id).unwrap(), "transaction id failed for test {}", i + 1);
-            assert_eq!(hash(&test.tx), Hash::from_str(test.expected_hash).unwrap(), "transaction hash failed for test {}", i + 1);
+            assert_eq!(
+                hash(&test.tx, false),
+                Hash::from_str(test.expected_hash).unwrap(),
+                "transaction hash failed for test {}",
+                i + 1
+            );
         }
 
         // Avoid compiler warnings on the last clone
