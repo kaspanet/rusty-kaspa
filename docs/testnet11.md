@@ -27,7 +27,7 @@ Since we want the test condition to be as close as possible to organic, we encou
 
 The venue for discussing and monitoring the experiment will be the \#testnet channel on Discord. We encourage participants to describe the experience in general, and also tell us what hardware they are using and how well it handles the load.
 
-The minimal hardware requirements are 16GB of RAM, preferably a CPU with at least 8 cores, and an SSD drive with at least 100GB of free space (the 150GB for a safety margin is preferable).
+The recommended hardware requirements are 16GB of RAM, preferably a CPU with at least 8 cores, and an SSD drive with at least 100GB of free space (the 150GB for a safety margin is preferable). It might also be possible to operate with 8GB of ram, by passing the `--ram-scale=0.6` parameter to `kaspad`.
 
 ## Setup Instructions
 
@@ -66,7 +66,7 @@ If you want to transmit transactions, first create a Rothschild wallet
 
 Like kaspad, the Rothschild window should remain open and undisturbed.
 
-For mining, grab `kaspa-miner` from within the latest [Release](https://github.com/elichai/kaspa-miner/releases) and run it with the following flags (this is currently the only miner that supports testnet-11):
+For mining, grab `kaspa-miner` from within the latest [Release](https://github.com/elichai/kaspa-miner/releases) and run it with the following flags (**this is currently the only miner that supports testnet-11**):
     ```
     kaspa-miner --testnet --mining-address <address> -p 16210 -t 1
     ```
