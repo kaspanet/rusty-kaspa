@@ -2696,6 +2696,7 @@ name = "kaspa-p2p-flows"
 version = "0.13.1"
 dependencies = [
  "async-trait",
+ "chrono",
  "futures",
  "indexmap 2.1.0",
  "itertools 0.11.0",
