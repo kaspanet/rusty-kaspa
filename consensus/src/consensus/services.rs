@@ -140,8 +140,12 @@ impl ConsensusServices {
             params.target_time_per_block,
         );
 
-        let mass_calculator =
-            MassCalculator::new(params.mass_per_tx_byte, params.mass_per_script_pub_key_byte, params.mass_per_sig_op);
+        let mass_calculator = MassCalculator::new(
+            params.mass_per_tx_byte,
+            params.mass_per_script_pub_key_byte,
+            params.mass_per_sig_op,
+            params.storage_mass_parameter,
+        );
 
         let transaction_validator = TransactionValidator::new(
             params.max_tx_inputs,
@@ -152,6 +156,8 @@ impl ConsensusServices {
             params.coinbase_payload_script_public_key_max_len,
             params.coinbase_maturity,
             tx_script_cache_counters,
+            mass_calculator.clone(),
+            params.storage_mass_activation_daa_score,
         );
 
         let pruning_point_manager = PruningPointManager::new(
