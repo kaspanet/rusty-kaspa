@@ -24,7 +24,7 @@ pub struct TransactionValidator {
     coinbase_maturity: u64,
     sig_cache: Cache<SigCacheKey, bool>,
 
-    mass_calculator: MassCalculator,
+    pub(crate) mass_calculator: MassCalculator,
 
     /// Storage mass hardfork DAA score
     storage_mass_activation_daa_score: u64,

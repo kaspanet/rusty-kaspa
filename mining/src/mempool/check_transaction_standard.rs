@@ -168,13 +168,10 @@ impl Mempool {
     /// maxStandardP2SHSigOps signature operations.
     /// In addition, makes sure that the transaction's fee is above the minimum for acceptance
     /// into the mempool and relay.
-    pub(crate) fn check_transaction_standard_in_context(
-        &self,
-        transaction: &MutableTransaction,
-        contextual_mass: u64,
-    ) -> NonStandardResult<()> {
+    pub(crate) fn check_transaction_standard_in_context(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
-
+        let contextual_mass = transaction.tx.mass();
+        assert!(contextual_mass > 0, "expected to be set by consensus");
         if contextual_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
             return Err(NonStandardError::RejectContextualMass(transaction_id, contextual_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
         }

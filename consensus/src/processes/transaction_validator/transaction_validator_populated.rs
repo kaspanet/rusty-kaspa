@@ -8,7 +8,7 @@ use super::{
     TransactionValidator,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TxValidationFlags {
     /// Perform full validation including script verification
     Full,
@@ -16,6 +16,9 @@ pub enum TxValidationFlags {
     /// Perform fee and sequence/maturity validations but skip script checks. This is usually
     /// an optimization to be applied when it is known that scripts were already checked
     SkipScriptChecks,
+
+    /// When validating mempool transactions, we just set this value ourselves
+    SkipMassCheck,
 }
 
 impl TransactionValidator {
@@ -28,7 +31,7 @@ impl TransactionValidator {
         self.check_transaction_coinbase_maturity(tx, pov_daa_score)?;
         let total_in = self.check_transaction_input_amounts(tx)?;
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
-        if pov_daa_score > self.storage_mass_activation_daa_score {
+        if flags != TxValidationFlags::SkipMassCheck && pov_daa_score > self.storage_mass_activation_daa_score {
             // Storage mass hardfork was activated
             self.check_mass_commitment(tx)?;
 
@@ -38,7 +41,7 @@ impl TransactionValidator {
         }
         Self::check_sequence_lock(tx, pov_daa_score)?;
         match flags {
-            TxValidationFlags::Full => {
+            TxValidationFlags::Full | TxValidationFlags::SkipMassCheck => {
                 Self::check_sig_op_counts(tx)?;
                 self.check_scripts(tx)?;
             }
