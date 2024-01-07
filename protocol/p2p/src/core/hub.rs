@@ -105,7 +105,7 @@ impl Hub {
     }
 
     /// Broadcast a message to some peers given a percentage
-    pub async fn broadcast_some(&self, msg: KaspadMessage, percentage: f64) {
+    pub async fn broadcast_to_some_peers(&self, msg: KaspadMessage, percentage: f64) {
         let percentage = percentage.clamp(0.0, 1.0);
 
         let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
