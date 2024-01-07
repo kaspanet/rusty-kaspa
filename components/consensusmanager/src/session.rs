@@ -177,9 +177,9 @@ impl ConsensusSessionOwned {
         self.consensus.validate_and_insert_trusted_block(tb)
     }
 
-    pub fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
+    pub fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
         // This method performs pure calculations so no need for an async wrapper
-        self.consensus.calculate_transaction_mass(transaction)
+        self.consensus.calculate_transaction_compute_mass(transaction)
     }
 
     pub fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {

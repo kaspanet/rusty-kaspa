@@ -99,8 +99,8 @@ impl TransactionValidator {
         let calculated_contextual_mass = self
             .mass_calculator
             .calc_tx_storage_mass(tx)
-            .and_then(|m| m.checked_add(self.mass_calculator.calc_tx_mass(tx.tx())))
-            .ok_or(TxRuleError::MassIncomputable())?;
+            .and_then(|m| m.checked_add(self.mass_calculator.calc_tx_compute_mass(tx.tx())))
+            .ok_or(TxRuleError::MassIncomputable)?;
         let committed_contextual_mass = tx.tx().mass();
         if committed_contextual_mass != calculated_contextual_mass {
             return Err(TxRuleError::WrongMass(calculated_contextual_mass, committed_contextual_mass));

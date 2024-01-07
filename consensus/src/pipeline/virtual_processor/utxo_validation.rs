@@ -296,7 +296,7 @@ impl VirtualStateProcessor {
             .mass_calculator
             .calc_tx_storage_mass(&mutable_tx.as_verifiable())
             .and_then(|m| m.checked_add(mutable_tx.calculated_compute_mass.unwrap()))
-            .ok_or(TxRuleError::MassIncomputable())?;
+            .ok_or(TxRuleError::MassIncomputable)?;
 
         // Set the inner mass field
         mutable_tx.tx.set_mass(contextual_mass);

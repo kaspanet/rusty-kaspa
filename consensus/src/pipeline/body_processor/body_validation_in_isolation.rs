@@ -62,7 +62,7 @@ impl BlockBodyProcessor {
         if storage_mass_activated {
             for tx in block.transactions.iter() {
                 // This is only the compute part of the mass, the storage part cannot be computed here
-                let calculated_tx_compute_mass = self.mass_calculator.calc_tx_mass(tx);
+                let calculated_tx_compute_mass = self.mass_calculator.calc_tx_compute_mass(tx);
                 let committed_contextual_mass = tx.mass();
                 // We only check the lower-bound here, a precise check of the mass commitment
                 // is done when validating the tx in context
@@ -77,7 +77,7 @@ impl BlockBodyProcessor {
             }
         } else {
             for tx in block.transactions.iter() {
-                let calculated_tx_mass = self.mass_calculator.calc_tx_mass(tx);
+                let calculated_tx_mass = self.mass_calculator.calc_tx_compute_mass(tx);
                 total_mass += calculated_tx_mass;
                 if total_mass > self.max_block_mass {
                     return Err(RuleError::ExceedsMassLimit(self.max_block_mass));

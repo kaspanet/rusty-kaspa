@@ -78,7 +78,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
+    fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
         unimplemented!()
     }
 

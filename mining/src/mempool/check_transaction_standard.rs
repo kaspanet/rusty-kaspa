@@ -196,7 +196,7 @@ impl Mempool {
                 }
             }
 
-            // For now, until wallets adapt, we don't require fee as function of full contextual_mass (but the fee/mass ratio will effect tx selection to block template)
+            // TODO: For now, until wallets adapt, we don't require fee as function of full contextual_mass (but the fee/mass ratio will affect tx selection to block template)
             let minimum_fee = self.minimum_required_transaction_relay_fee(transaction.calculated_compute_mass.unwrap());
             if transaction.calculated_fee.unwrap() < minimum_fee {
                 return Err(NonStandardError::RejectInsufficientFee(transaction_id, transaction.calculated_fee.unwrap(), minimum_fee));

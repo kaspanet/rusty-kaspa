@@ -23,7 +23,7 @@ impl Mempool {
     ) -> RuleResult<MutableTransaction> {
         self.validate_transaction_unacceptance(&transaction)?;
         // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
-        transaction.calculated_compute_mass = Some(consensus.calculate_transaction_mass(&transaction.tx));
+        transaction.calculated_compute_mass = Some(consensus.calculate_transaction_compute_mass(&transaction.tx));
         self.validate_transaction_in_isolation(&transaction)?;
         self.transaction_pool.check_double_spends(&transaction)?;
         self.populate_mempool_entries(&mut transaction);

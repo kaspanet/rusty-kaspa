@@ -438,8 +438,8 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.populate_mempool_transactions_in_parallel(transactions)
     }
 
-    fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
-        self.services.mass_calculator.calc_tx_mass(transaction)
+    fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
+        self.services.mass_calculator.calc_tx_compute_mass(transaction)
     }
 
     fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {

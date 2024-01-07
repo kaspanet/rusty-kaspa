@@ -146,7 +146,7 @@ impl ConsensusApi for ConsensusMock {
         transactions.iter_mut().map(|x| self.validate_mempool_transaction(x)).collect()
     }
 
-    fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
+    fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
         if transaction.is_coinbase() {
             0
         } else {

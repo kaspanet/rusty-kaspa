@@ -84,7 +84,7 @@ pub enum TxRuleError {
     WrongSigOpCount(usize, u64, u64),
 
     #[error("contextual mass (including storage mass) is incomputable")]
-    MassIncomputable(),
+    MassIncomputable,
 
     #[error("calculated contextual mass (including storage mass) {0} is not equal to the committed mass field {1}")]
     WrongMass(u64, u64),

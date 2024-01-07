@@ -18,7 +18,9 @@ impl MassCalculator {
         Self { mass_per_tx_byte, mass_per_script_pub_key_byte, mass_per_sig_op, storage_mass_parameter }
     }
 
-    pub fn calc_tx_mass(&self, tx: &Transaction) -> u64 {
+    /// Calculates the compute mass of this transaction. This does not include the storage mass calculation below which
+    /// requires full UTXO context
+    pub fn calc_tx_compute_mass(&self, tx: &Transaction) -> u64 {
         if tx.is_coinbase() {
             return 0;
         }
