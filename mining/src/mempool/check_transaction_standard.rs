@@ -168,8 +168,16 @@ impl Mempool {
     /// maxStandardP2SHSigOps signature operations.
     /// In addition, makes sure that the transaction's fee is above the minimum for acceptance
     /// into the mempool and relay.
-    pub(crate) fn check_transaction_standard_in_context(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
+    pub(crate) fn check_transaction_standard_in_context(
+        &self,
+        transaction: &MutableTransaction,
+        contextual_mass: u64,
+    ) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
+
+        if contextual_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
+            return Err(NonStandardError::RejectContextualMass(transaction_id, contextual_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
+        }
 
         for (i, input) in transaction.tx.inputs.iter().enumerate() {
             // It is safe to elide existence and index checks here since
@@ -191,6 +199,7 @@ impl Mempool {
                 }
             }
 
+            // For now, until wallets adapt, we don't require fee as function of full contextual_mass (but the fee/mass ratio will effect tx selection to block template)
             let minimum_fee = self.minimum_required_transaction_relay_fee(transaction.calculated_compute_mass.unwrap());
             if transaction.calculated_fee.unwrap() < minimum_fee {
                 return Err(NonStandardError::RejectInsufficientFee(transaction_id, transaction.calculated_fee.unwrap(), minimum_fee));

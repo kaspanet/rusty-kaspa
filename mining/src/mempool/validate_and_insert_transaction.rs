@@ -68,7 +68,16 @@ impl Mempool {
             }
         }
 
-        self.validate_transaction_in_context(&transaction)?;
+        // Calc the new mass including storage mass
+        let contextual_mass = consensus
+            .calculate_transaction_storage_mass(&transaction)
+            .and_then(|m| m.checked_add(transaction.calculated_compute_mass.unwrap()))
+            .ok_or(RuleError::RejectStorageMassIncomputable(transaction_id))?;
+
+        self.validate_transaction_in_context(&transaction, contextual_mass)?;
+
+        // Set the inner mass field post all validations
+        transaction.tx.set_mass(contextual_mass);
 
         // Before adding the transaction, check if there is room in the pool
         self.transaction_pool.limit_transaction_count(1, &transaction)?.iter().try_for_each(|x| {
@@ -102,7 +111,8 @@ impl Mempool {
         Ok(())
     }
 
-    fn validate_transaction_in_context(&self, transaction: &MutableTransaction) -> RuleResult<()> {
+    fn validate_transaction_in_context(&self, transaction: &MutableTransaction, contextual_mass: u64) -> RuleResult<()> {
+        // TODO: seems like this can be removed now
         if self.config.block_spam_txs {
             // TEMP: apply go-kaspad mempool dust prevention patch
             // Note: we do not apply the part of the patch which modifies BBT since
@@ -119,7 +129,7 @@ impl Mempool {
         }
 
         if !self.config.accept_non_standard {
-            self.check_transaction_standard_in_context(transaction)?;
+            self.check_transaction_standard_in_context(transaction, contextual_mass)?;
         }
         Ok(())
     }

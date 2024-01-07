@@ -151,6 +151,10 @@ impl ConsensusApi for ConsensusMock {
         }
     }
 
+    fn calculate_transaction_storage_mass(&self, _transaction: &MutableTransaction) -> Option<u64> {
+        Some(0)
+    }
+
     fn get_virtual_daa_score(&self) -> u64 {
         0
     }
