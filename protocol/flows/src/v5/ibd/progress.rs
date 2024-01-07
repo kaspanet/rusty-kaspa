@@ -50,7 +50,7 @@ impl ProgressReporter {
         let percent = ((relative_daa_score as f64 / (self.high_daa_score - self.low_daa_score) as f64) * 100.0) as i32;
         if percent > self.last_reported_percent {
             let date = match Local.timestamp_opt(current_timestamp as i64 / 1000, 1000 * (current_timestamp as u32 % 1000)) {
-                LocalResult::None | LocalResult::Ambiguous(_, _) => "couldn't parse date".into(),
+                LocalResult::None | LocalResult::Ambiguous(_, _) => "cannot parse date".into(),
                 LocalResult::Single(date) => date.format("%Y-%m-%d %H:%M:%S.%3f:%z").to_string(),
             };
             info!("IBD: Processed {} {} ({}%) last block timestamp: {}", self.processed, self.object_name, percent, date);
