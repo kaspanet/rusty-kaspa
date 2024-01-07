@@ -111,9 +111,7 @@ impl Hub {
         let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
         // TODO: At least some of the peers should be outbound, because an attacker can gain less control
         // over the set of outbound peers.
-        let peers = peers.choose_multiple(&mut rand::thread_rng(), num_peers).cloned().collect::<Vec<_>>();
-
-        for router in peers {
+        for router in peers.choose_multiple(&mut rand::thread_rng(), num_peers).cloned() {
             let _ = router.enqueue(msg.clone()).await;
         }
     }
