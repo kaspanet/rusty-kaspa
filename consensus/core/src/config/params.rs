@@ -427,6 +427,8 @@ pub const TESTNET11_PARAMS: Params = Params {
     dns_seeders: &[
         // This DNS seeder is run by Tiram
         "seeder1-testnet-11.kaspad.net",
+        // This DNS seeder is run by supertypo
+        "n-testnet-11.kaspa.ws",
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 11),
     genesis: TESTNET11_GENESIS,
