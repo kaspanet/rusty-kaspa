@@ -473,7 +473,7 @@ pub const TESTNET11_PARAMS: Params = Params {
     max_block_mass: 500_000,
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
-    storage_mass_activation_daa_score: 23_325_109, // ~ 1/7/2024 8:55pm UTC
+    storage_mass_activation_daa_score: 0,
 
     skip_proof_of_work: false,
     max_block_level: 250,
