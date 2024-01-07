@@ -1,5 +1,6 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use kaspa_consensus_core::{hashing::sighash::SigHashReusedValues, tx::VerifiableTransaction};
+use kaspa_core::warn;
 use kaspa_txscript::{get_sig_op_count, TxScriptEngine};
 
 use super::{
@@ -30,6 +31,10 @@ impl TransactionValidator {
         if pov_daa_score > self.storage_mass_activation_daa_score {
             // Storage mass hardfork was activated
             self.check_mass_commitment(tx)?;
+
+            if pov_daa_score < self.storage_mass_activation_daa_score + 10 {
+                warn!("--------- Storage mass hardfork was activated successfully!!! --------- (DAA score: {})", pov_daa_score);
+            }
         }
         Self::check_sequence_lock(tx, pov_daa_score)?;
         match flags {
