@@ -131,6 +131,9 @@ impl ConsensusApi for ConsensusMock {
         let total_in: u64 = mutable_tx.entries.iter().map(|x| x.as_ref().unwrap().amount).sum();
         let total_out: u64 = mutable_tx.tx.outputs.iter().map(|x| x.value).sum();
         let calculated_fee = total_in - total_out;
+        mutable_tx
+            .tx
+            .set_mass(self.calculate_transaction_storage_mass(mutable_tx).unwrap() + mutable_tx.calculated_compute_mass.unwrap());
         mutable_tx.calculated_fee = Some(calculated_fee);
         Ok(())
     }
