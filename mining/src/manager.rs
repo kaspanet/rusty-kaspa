@@ -17,7 +17,7 @@ use crate::{
         topological_sort::IntoIterTopologically,
         tx_query::TransactionQuery,
     },
-    MiningCounters,
+    MempoolCountersSnapshot, MiningCounters,
 };
 use itertools::Itertools;
 use kaspa_consensus_core::{
@@ -872,5 +872,9 @@ impl MiningManagerProxy {
     /// nor accepted.
     pub async fn unknown_transactions(self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
         spawn_blocking(move || self.inner.unknown_transactions(transactions)).await.unwrap()
+    }
+
+    pub fn snapshot(&self) -> MempoolCountersSnapshot {
+        self.inner.counters.snapshot()
     }
 }
