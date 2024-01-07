@@ -2742,6 +2742,7 @@ dependencies = [
  "log",
  "parking_lot",
  "prost",
+ "rand 0.8.5",
  "seqlock",
  "serde",
  "thiserror",
