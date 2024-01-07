@@ -18,7 +18,7 @@ impl CandidateTransaction {
         Self {
             tx: tx.tx.clone(),
             calculated_fee: tx.calculated_fee.expect("fee is expected to be populated"),
-            calculated_mass: tx.calculated_mass.expect("mass is expected to be populated"),
+            calculated_mass: tx.calculated_compute_mass.expect("mass is expected to be populated"),
         }
     }
 }

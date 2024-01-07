@@ -425,7 +425,7 @@ impl MiningManager {
         transactions[lower_bound..]
             .iter()
             .position(|tx| {
-                mass += tx.calculated_mass.unwrap();
+                mass += tx.calculated_compute_mass.unwrap();
                 mass >= self.config.maximum_mass_per_block
             })
             // Make sure the upper bound is greater than the lower bound, allowing to handle a very unlikely,

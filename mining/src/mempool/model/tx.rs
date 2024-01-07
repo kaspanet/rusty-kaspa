@@ -22,7 +22,7 @@ impl MempoolTransaction {
     }
 
     pub(crate) fn fee_rate(&self) -> f64 {
-        self.mtx.calculated_fee.unwrap() as f64 / self.mtx.calculated_mass.unwrap() as f64
+        self.mtx.calculated_fee.unwrap() as f64 / self.mtx.calculated_compute_mass.unwrap() as f64
     }
 
     pub(crate) fn is_parent_of(&self, transaction: &MutableTransaction) -> bool {

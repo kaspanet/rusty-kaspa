@@ -60,10 +60,10 @@ impl Mempool {
         // almost as much to process as the sender fees, limit the maximum
         // size of a transaction. This also helps mitigate CPU exhaustion
         // attacks.
-        if transaction.calculated_mass.unwrap() > MAXIMUM_STANDARD_TRANSACTION_MASS {
+        if transaction.calculated_compute_mass.unwrap() > MAXIMUM_STANDARD_TRANSACTION_MASS {
             return Err(NonStandardError::RejectMass(
                 transaction_id,
-                transaction.calculated_mass.unwrap(),
+                transaction.calculated_compute_mass.unwrap(),
                 MAXIMUM_STANDARD_TRANSACTION_MASS,
             ));
         }
@@ -191,7 +191,7 @@ impl Mempool {
                 }
             }
 
-            let minimum_fee = self.minimum_required_transaction_relay_fee(transaction.calculated_mass.unwrap());
+            let minimum_fee = self.minimum_required_transaction_relay_fee(transaction.calculated_compute_mass.unwrap());
             if transaction.calculated_fee.unwrap() < minimum_fee {
                 return Err(NonStandardError::RejectInsufficientFee(transaction_id, transaction.calculated_fee.unwrap(), minimum_fee));
             }
@@ -403,7 +403,7 @@ mod tests {
 
         fn new_mtx(tx: Transaction, mass: u64) -> MutableTransaction {
             let mut mtx = MutableTransaction::from_tx(tx);
-            mtx.calculated_mass = Some(mass);
+            mtx.calculated_compute_mass = Some(mass);
             mtx
         }
 
