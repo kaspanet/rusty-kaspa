@@ -10,9 +10,9 @@ pub const TX_ENCODING_FULL: TxEncodingFlags = 0;
 pub const TX_ENCODING_EXCLUDE_SIGNATURE_SCRIPT: TxEncodingFlags = 1;
 
 /// Returns the transaction hash. Note that this is different than the transaction ID.
-pub fn hash(tx: &Transaction, include_mass_field_if_non_zero: bool) -> Hash {
+pub fn hash(tx: &Transaction, include_mass_field: bool) -> Hash {
     let mut hasher = kaspa_hashes::TransactionHash::new();
-    write_transaction(&mut hasher, tx, TX_ENCODING_FULL, include_mass_field_if_non_zero);
+    write_transaction(&mut hasher, tx, TX_ENCODING_FULL, include_mass_field);
     hasher.finalize()
 }
 
@@ -28,12 +28,7 @@ pub(crate) fn id(tx: &Transaction) -> TransactionId {
 }
 
 /// Write the transaction into the provided hasher according to the encoding flags
-fn write_transaction<T: Hasher>(
-    hasher: &mut T,
-    tx: &Transaction,
-    encoding_flags: TxEncodingFlags,
-    include_mass_field_if_non_zero: bool,
-) {
+fn write_transaction<T: Hasher>(hasher: &mut T, tx: &Transaction, encoding_flags: TxEncodingFlags, include_mass_field: bool) {
     hasher.update(tx.version.to_le_bytes()).write_len(tx.inputs.len());
     for input in tx.inputs.iter() {
         // Write the tx input
@@ -48,11 +43,11 @@ fn write_transaction<T: Hasher>(
 
     hasher.update(tx.lock_time.to_le_bytes()).update(&tx.subnetwork_id).update(tx.gas.to_le_bytes()).write_var_bytes(&tx.payload);
 
-    if include_mass_field_if_non_zero {
-        let mass = tx.mass();
-        if mass > 0 {
-            hasher.update(mass.to_le_bytes());
-        }
+    // TODO:
+    //      1. Avoid passing a boolean and hash the mass only if > 0 (requires setting the mass to 0 on BBT).
+    //      2. Use TxEncodingFlags to avoid including the mass for tx ID
+    if include_mass_field {
+        hasher.update(tx.mass().to_le_bytes());
     }
 }
 
