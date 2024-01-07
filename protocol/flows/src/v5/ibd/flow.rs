@@ -63,6 +63,11 @@ pub enum IbdType {
     DownloadHeadersProof,
 }
 
+struct QueueChunkOutput {
+    jobs: Vec<BlockValidationFuture>,
+    daa_score: u64,
+    timestamp: u64,
+}
 // TODO: define a peer banning strategy
 
 impl IbdFlow {
@@ -372,12 +377,18 @@ impl IbdFlow {
         let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route);
 
         if let Some(chunk) = chunk_stream.next().await? {
-            let mut prev_daa_score = chunk.last().expect("chunk is never empty").daa_score;
+            let (mut prev_daa_score, mut prev_timestamp) = {
+                let last_header = chunk.last().expect("chunk is never empty");
+                (last_header.daa_score, last_header.timestamp)
+            };
             let mut prev_jobs: Vec<BlockValidationFuture> =
                 chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).virtual_state_task).collect();
 
             while let Some(chunk) = chunk_stream.next().await? {
-                let current_daa_score = chunk.last().expect("chunk is never empty").daa_score;
+                let (current_daa_score, current_timestamp) = {
+                    let last_header = chunk.last().expect("chunk is never empty");
+                    (last_header.daa_score, last_header.timestamp)
+                };
                 let current_jobs = chunk
                     .into_iter()
                     .map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).virtual_state_task)
@@ -386,8 +397,9 @@ impl IbdFlow {
                 // Join the previous chunk so that we always concurrently process a chunk and receive another
                 try_join_all(prev_jobs).await?;
                 // Log the progress
-                progress_reporter.report(prev_chunk_len, prev_daa_score);
+                progress_reporter.report(prev_chunk_len, prev_daa_score, prev_timestamp);
                 prev_daa_score = current_daa_score;
+                prev_timestamp = current_timestamp;
                 prev_jobs = current_jobs;
             }
 
@@ -513,17 +525,19 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         let mut progress_reporter = ProgressReporter::new(low_header.daa_score, high_header.daa_score, "blocks");
 
         let mut iter = hashes.chunks(IBD_BATCH_SIZE);
-        let (mut prev_jobs, mut prev_daa_score) =
+        let QueueChunkOutput { jobs: mut prev_jobs, daa_score: mut prev_daa_score, timestamp: mut prev_timestamp } =
             self.queue_block_processing_chunk(consensus, iter.next().expect("hashes was non empty")).await?;
 
         for chunk in iter {
-            let (current_jobs, current_daa_score) = self.queue_block_processing_chunk(consensus, chunk).await?;
+            let QueueChunkOutput { jobs: current_jobs, daa_score: current_daa_score, timestamp: current_timestamp } =
+                self.queue_block_processing_chunk(consensus, chunk).await?;
             let prev_chunk_len = prev_jobs.len();
             // Join the previous chunk so that we always concurrently process a chunk and receive another
             try_join_all(prev_jobs).await?;
             // Log the progress
-            progress_reporter.report(prev_chunk_len, prev_daa_score);
+            progress_reporter.report(prev_chunk_len, prev_daa_score, prev_timestamp);
             prev_daa_score = current_daa_score;
+            prev_timestamp = current_timestamp;
             prev_jobs = current_jobs;
         }
 
@@ -538,9 +552,10 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         &mut self,
         consensus: &ConsensusProxy,
         chunk: &[Hash],
-    ) -> Result<(Vec<BlockValidationFuture>, u64), ProtocolError> {
+    ) -> Result<QueueChunkOutput, ProtocolError> {
         let mut jobs = Vec::with_capacity(chunk.len());
         let mut current_daa_score = 0;
+        let mut current_timestamp = 0;
         self.router
             .enqueue(make_message!(
                 Payload::RequestIbdBlocks,
@@ -557,9 +572,10 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
             }
             current_daa_score = block.header.daa_score;
+            current_timestamp = block.header.timestamp;
             jobs.push(consensus.validate_and_insert_block(block).virtual_state_task);
         }
 
-        Ok((jobs, current_daa_score))
+        Ok(QueueChunkOutput { jobs, daa_score: current_daa_score, timestamp: current_timestamp })
     }
 }
