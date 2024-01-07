@@ -146,7 +146,7 @@ impl RelayTransactionsFlow {
         let curr_p2p_tps = 1000 * snapshot_delta.low_priority_tx_counts / (snapshot_delta.elapsed_time.as_millis().max(1) as u64);
         let overage = if should_throttle && curr_p2p_tps > MAX_TPS_THRESHOLD { curr_p2p_tps - MAX_TPS_THRESHOLD } else { 0 };
 
-        let limit = MAX_TPS_THRESHOLD - overage;
+        let limit = MAX_TPS_THRESHOLD.saturating_sub(overage);
 
         for transaction_id in transaction_ids {
             if let Some(req) = self.ctx.try_adding_transaction_request(transaction_id) {
