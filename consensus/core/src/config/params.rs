@@ -235,8 +235,8 @@ impl Params {
             // This period is smaller than the above mainnet calculation in order to ensure that an IBDing miner
             // with significant testnet hashrate does not overwhelm the network with deep side-DAGs.
             //
-            // We use DAA duration as baseline and scale it down with BPS
-            let max_expected_duration_without_blocks_in_milliseconds = self.target_time_per_block * NEW_DIFFICULTY_WINDOW_DURATION; // = DAA duration in milliseconds / bps
+            // We use DAA duration as baseline and scale it down with BPS (and divide by 3 for mining only when very close to current time on TN11)
+            let max_expected_duration_without_blocks_in_milliseconds = self.target_time_per_block * NEW_DIFFICULTY_WINDOW_DURATION / 3; // = DAA duration in milliseconds / bps / 3
             unix_now() < sink_timestamp + max_expected_duration_without_blocks_in_milliseconds
         }
     }
