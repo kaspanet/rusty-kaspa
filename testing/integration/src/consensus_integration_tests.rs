@@ -25,7 +25,7 @@ use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::blockhash::new_unique;
 use kaspa_consensus_core::blockstatus::BlockStatus;
-use kaspa_consensus_core::constants::BLOCK_VERSION;
+use kaspa_consensus_core::constants::{BLOCK_VERSION, STORAGE_MASS_PARAMETER};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::header::Header;
 use kaspa_consensus_core::network::{NetworkId, NetworkType::Mainnet};
@@ -828,6 +828,8 @@ impl KaspadGoParams {
             mass_per_script_pub_key_byte: self.MassPerScriptPubKeyByte,
             mass_per_sig_op: self.MassPerSigOp,
             max_block_mass: self.MaxBlockMass,
+            storage_mass_parameter: STORAGE_MASS_PARAMETER,
+            storage_mass_activation_daa_score: u64::MAX,
             deflationary_phase_daa_score: self.DeflationaryPhaseDaaScore,
             pre_deflationary_phase_base_subsidy: self.PreDeflationaryPhaseBaseSubsidy,
             coinbase_maturity: MAINNET_PARAMS.coinbase_maturity,
