@@ -1,5 +1,4 @@
 use crate::{common::ProtocolError, pb::KaspadMessage, ConnectionInitializer, Peer, Router};
-use core::num;
 use kaspa_core::{debug, info, warn};
 use parking_lot::RwLock;
 use std::{
@@ -111,7 +110,7 @@ impl Hub {
         let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
         // TODO: At least some of the peers should be outbound, because an attacker can gain less control
         // over the set of outbound peers.
-        for router in peers.choose_multiple(&mut rand::thread_rng(), num_peers).cloned() {
+        for router in peers.choose_multiple(&mut rand::thread_rng(), num_peers) {
             let _ = router.enqueue(msg.clone()).await;
         }
     }
