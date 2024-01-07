@@ -158,6 +158,7 @@ pub struct Transaction {
     pub payload: Vec<u8>,
 
     #[serde(default)]
+    #[borsh_skip] // Skipped for now as it is only required for consensus storage and miner grpc
     mass: TransactionMass,
 
     // A field that is used to cache the transaction ID.
