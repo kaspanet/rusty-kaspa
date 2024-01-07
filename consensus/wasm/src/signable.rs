@@ -122,7 +122,7 @@ impl SignableTransaction {
 impl From<SignableTransaction> for tx::SignableTransaction {
     fn from(mtx: SignableTransaction) -> Self {
         let tx = &mtx.tx.lock().unwrap().clone();
-        Self { tx: tx.into(), entries: mtx.entries.into(), calculated_fee: None, calculated_mass: None }
+        Self { tx: tx.into(), entries: mtx.entries.into(), calculated_fee: None, calculated_compute_mass: None }
     }
 }
 

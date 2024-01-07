@@ -5,6 +5,7 @@ use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, pro
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
 use kaspa_consensus::pipeline::ProcessingCounters;
+use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::{
     block::Block,
     coinbase::MinerData,
@@ -45,6 +46,7 @@ use kaspa_notify::{
     subscriber::{Subscriber, SubscriptionManager},
 };
 use kaspa_p2p_flows::flow_context::FlowContext;
+use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
 use kaspa_rpc_core::{
     api::{
@@ -281,9 +283,23 @@ impl RpcApi for RpcCoreService {
         trace!("incoming SubmitBlockRequest for block {}", hash);
         match self.flow_context.submit_rpc_block(&session, block.clone()).await {
             Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
+            Err(ProtocolError::RuleError(RuleError::BadMerkleRoot(h1, h2))) => {
+                warn!(
+                    "The RPC submitted block triggered a {} error: {}. 
+NOTE: This error usually indicates an RPC conversion error between the node and the miner. If you are on TN11 this is likely to reflect using a NON-SUPPORTED miner.",
+                    stringify!(RuleError::BadMerkleRoot),
+                    RuleError::BadMerkleRoot(h1, h2)
+                );
+                if self.config.net.is_mainnet() {
+                    warn!("Printing the full block for debug purposes:\n{:?}", block);
+                }
+                Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
+            }
             Err(err) => {
-                warn!("The RPC submitted block triggered an error: {}\nPrinting the full header for debug purposes:\n{:?}", err, err);
-                // error = format!("Block rejected. Reason: {}", err))
+                warn!(
+                    "The RPC submitted block triggered an error: {}\nPrinting the full header for debug purposes:\n{:?}",
+                    err, block
+                );
                 Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
             }
         }

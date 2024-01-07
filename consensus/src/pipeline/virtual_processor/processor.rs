@@ -53,7 +53,7 @@ use kaspa_consensus_core::{
     coinbase::MinerData,
     config::genesis::GenesisBlock,
     header::Header,
-    merkle::calc_hash_merkle_root,
+    merkle::calc_hash_merkle_root_with_options,
     pruning::PruningPointsList,
     tx::{MutableTransaction, Transaction},
     utxo::{
@@ -152,6 +152,9 @@ pub struct VirtualStateProcessor {
 
     // Counters
     counters: Arc<ProcessingCounters>,
+
+    // Storage mass hardfork DAA score
+    pub(crate) storage_mass_activation_daa_score: u64,
 }
 
 impl VirtualStateProcessor {
@@ -211,6 +214,7 @@ impl VirtualStateProcessor {
             pruning_lock,
             notification_root,
             counters,
+            storage_mass_activation_daa_score: params.storage_mass_activation_daa_score,
         }
     }
 
@@ -943,7 +947,11 @@ impl VirtualStateProcessor {
         txs.insert(0, coinbase.tx);
         let version = BLOCK_VERSION;
         let parents_by_level = self.parents_manager.calc_block_parents(pruning_info.pruning_point, &virtual_state.parents);
-        let hash_merkle_root = calc_hash_merkle_root(txs.iter());
+
+        // Hash according to hardfork activation
+        let storage_mass_activated = virtual_state.daa_score > self.storage_mass_activation_daa_score;
+        let hash_merkle_root = calc_hash_merkle_root_with_options(txs.iter(), storage_mass_activated);
+
         let accepted_id_merkle_root = kaspa_merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min

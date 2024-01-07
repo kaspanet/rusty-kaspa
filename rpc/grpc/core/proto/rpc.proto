@@ -64,6 +64,7 @@ message RpcTransaction {
   uint64 gas = 6;
   string payload = 8;
   RpcTransactionVerboseData verboseData = 9;
+  uint64 mass = 10;
 }
 
 message RpcTransactionInput {

@@ -67,6 +67,7 @@ impl From<&Transaction> for protowire::TransactionMessage {
             subnetwork_id: Some((&tx.subnetwork_id).into()),
             gas: tx.gas,
             payload: tx.payload.clone(),
+            mass: tx.mass(),
         }
     }
 }
@@ -135,7 +136,7 @@ impl TryFrom<protowire::TransactionMessage> for Transaction {
     type Error = ConversionError;
 
     fn try_from(tx: protowire::TransactionMessage) -> Result<Self, Self::Error> {
-        Ok(Self::new(
+        let transaction = Self::new(
             tx.version.try_into()?,
             tx.inputs.into_iter().map(|i| i.try_into()).collect::<Result<Vec<TransactionInput>, Self::Error>>()?,
             tx.outputs.into_iter().map(|i| i.try_into()).collect::<Result<Vec<TransactionOutput>, Self::Error>>()?,
@@ -143,6 +144,8 @@ impl TryFrom<protowire::TransactionMessage> for Transaction {
             tx.subnetwork_id.try_into_ex()?,
             tx.gas,
             tx.payload,
-        ))
+        );
+        transaction.set_mass(tx.mass);
+        Ok(transaction)
     }
 }

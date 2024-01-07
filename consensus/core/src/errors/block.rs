@@ -103,6 +103,9 @@ pub enum RuleError {
     #[error("block exceeded mass limit of {0}")]
     ExceedsMassLimit(u64),
 
+    #[error("transaction {0} has mass field of {1} but mass should be at least {2}")]
+    MassFieldTooLow(TransactionId, u64, u64),
+
     #[error("outpoint {0} is spent more than once on the same block")]
     DoubleSpendInSameBlock(TransactionOutpoint),
 

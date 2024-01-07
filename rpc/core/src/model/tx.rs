@@ -91,6 +91,7 @@ pub struct RpcTransaction {
     pub subnetwork_id: RpcSubnetworkId,
     pub gas: u64,
     pub payload: Vec<u8>,
+    pub mass: u64,
     pub verbose_data: Option<RpcTransactionVerboseData>,
 }
 

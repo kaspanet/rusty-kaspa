@@ -2,8 +2,12 @@ use crate::{hashing, tx::Transaction};
 use kaspa_hashes::Hash;
 use kaspa_merkle::calc_merkle_root;
 
+pub fn calc_hash_merkle_root_with_options<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>, include_mass_field: bool) -> Hash {
+    calc_merkle_root(txs.map(|tx| hashing::tx::hash(tx, include_mass_field)))
+}
+
 pub fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
-    calc_merkle_root(txs.map(hashing::tx::hash))
+    calc_merkle_root(txs.map(|tx| hashing::tx::hash(tx, false)))
 }
 
 #[cfg(test)]

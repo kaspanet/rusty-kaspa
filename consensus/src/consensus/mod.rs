@@ -247,6 +247,7 @@ impl Consensus {
             pruning_lock.clone(),
             notification_root.clone(),
             counters.clone(),
+            params.storage_mass_activation_daa_score,
         ));
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
@@ -437,8 +438,12 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.populate_mempool_transactions_in_parallel(transactions)
     }
 
-    fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
-        self.services.mass_calculator.calc_tx_mass(transaction)
+    fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
+        self.services.mass_calculator.calc_tx_compute_mass(transaction)
+    }
+
+    fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {
+        self.services.mass_calculator.calc_tx_storage_mass(&transaction.as_verifiable())
     }
 
     fn get_virtual_daa_score(&self) -> u64 {

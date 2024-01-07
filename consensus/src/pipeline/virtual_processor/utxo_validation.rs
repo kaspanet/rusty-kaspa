@@ -200,7 +200,7 @@ impl VirtualStateProcessor {
             .expected_coinbase_transaction(daa_score, miner_data, ghostdag_data, mergeset_rewards, mergeset_non_daa)
             .unwrap()
             .tx;
-        if hashing::tx::hash(coinbase) != hashing::tx::hash(&expected_coinbase) {
+        if hashing::tx::hash(coinbase, false) != hashing::tx::hash(&expected_coinbase, false) {
             Err(BadCoinbaseTransaction)
         } else {
             Ok(())
@@ -290,11 +290,22 @@ impl VirtualStateProcessor {
     ) -> TxResult<()> {
         self.populate_mempool_transaction_in_utxo_context(mutable_tx, utxo_view)?;
 
+        // Calc the full contextual mass including storage mass
+        let contextual_mass = self
+            .transaction_validator
+            .mass_calculator
+            .calc_tx_storage_mass(&mutable_tx.as_verifiable())
+            .and_then(|m| m.checked_add(mutable_tx.calculated_compute_mass.unwrap()))
+            .ok_or(TxRuleError::MassIncomputable)?;
+
+        // Set the inner mass field
+        mutable_tx.tx.set_mass(contextual_mass);
+
         // At this point we know all UTXO entries are populated, so we can safely pass the tx as verifiable
         let calculated_fee = self.transaction_validator.validate_populated_transaction_and_get_fee(
             &mutable_tx.as_verifiable(),
             pov_daa_score,
-            TxValidationFlags::Full,
+            TxValidationFlags::SkipMassCheck, // we can skip the mass check since we just set it
         )?;
         mutable_tx.calculated_fee = Some(calculated_fee);
         Ok(())

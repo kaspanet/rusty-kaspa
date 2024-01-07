@@ -149,7 +149,7 @@ impl ConsensusStorage {
             .bytes_budget(block_window_budget)
             .unit_bytes(median_window_bytes)
             .untracked();
-        let ghostdag_builder = PolicyBuilder::new().bytes_budget(ghostdag_budget).tracked_bytes();
+        let ghostdag_builder = PolicyBuilder::new().bytes_budget(ghostdag_budget).min_items(level_lower_bound).tracked_bytes();
         let headers_builder = PolicyBuilder::new().bytes_budget(headers_budget).tracked_bytes();
         let utxo_diffs_builder = PolicyBuilder::new().bytes_budget(utxo_diffs_budget).tracked_bytes();
         let block_data_builder = PolicyBuilder::new().max_items(perf_params.block_data_cache_size).untracked();

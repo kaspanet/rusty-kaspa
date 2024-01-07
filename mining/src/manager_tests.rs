@@ -81,12 +81,12 @@ mod tests {
                     tx.calculated_fee.unwrap()
                 );
                 assert_eq!(
-                    tx_to_insert.calculated_mass.unwrap(),
-                    tx.calculated_mass.unwrap(),
+                    tx_to_insert.calculated_compute_mass.unwrap(),
+                    tx.calculated_compute_mass.unwrap(),
                     "wrong mass in transaction {}: expected: {}, got: {}",
                     tx.id(),
-                    tx_to_insert.calculated_mass.unwrap(),
-                    tx.calculated_mass.unwrap()
+                    tx_to_insert.calculated_compute_mass.unwrap(),
+                    tx.calculated_compute_mass.unwrap()
                 );
             }
             assert!(found_exact_match, "missing transaction {} in the mempool, no exact match", tx_to_insert.id());
@@ -927,7 +927,7 @@ mod tests {
         let mut mutable_tx = MutableTransaction::from_tx(transaction);
         mutable_tx.calculated_fee = Some(DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE);
         // Please note: this is the ConsensusMock version of the calculated_mass which differs from Consensus
-        mutable_tx.calculated_mass = Some(transaction_estimated_serialized_size(&mutable_tx.tx));
+        mutable_tx.calculated_compute_mass = Some(transaction_estimated_serialized_size(&mutable_tx.tx));
         mutable_tx.entries[0] = Some(entry);
 
         mutable_tx

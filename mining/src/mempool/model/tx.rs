@@ -22,7 +22,9 @@ impl MempoolTransaction {
     }
 
     pub(crate) fn fee_rate(&self) -> f64 {
-        self.mtx.calculated_fee.unwrap() as f64 / self.mtx.calculated_mass.unwrap() as f64
+        let contextual_mass = self.mtx.tx.mass();
+        assert!(contextual_mass > 0, "expected to be called for validated txs only");
+        self.mtx.calculated_fee.unwrap() as f64 / contextual_mass as f64
     }
 
     pub(crate) fn is_parent_of(&self, transaction: &MutableTransaction) -> bool {

@@ -1,5 +1,6 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use kaspa_consensus_core::{hashing::sighash::SigHashReusedValues, tx::VerifiableTransaction};
+use kaspa_core::warn;
 use kaspa_txscript::{get_sig_op_count, TxScriptEngine};
 
 use super::{
@@ -7,7 +8,7 @@ use super::{
     TransactionValidator,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TxValidationFlags {
     /// Perform full validation including script verification
     Full,
@@ -15,6 +16,9 @@ pub enum TxValidationFlags {
     /// Perform fee and sequence/maturity validations but skip script checks. This is usually
     /// an optimization to be applied when it is known that scripts were already checked
     SkipScriptChecks,
+
+    /// When validating mempool transactions, we just set this value ourselves
+    SkipMassCheck,
 }
 
 impl TransactionValidator {
@@ -27,9 +31,17 @@ impl TransactionValidator {
         self.check_transaction_coinbase_maturity(tx, pov_daa_score)?;
         let total_in = self.check_transaction_input_amounts(tx)?;
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
+        if flags != TxValidationFlags::SkipMassCheck && pov_daa_score > self.storage_mass_activation_daa_score {
+            // Storage mass hardfork was activated
+            self.check_mass_commitment(tx)?;
+
+            if pov_daa_score < self.storage_mass_activation_daa_score + 10 {
+                warn!("--------- Storage mass hardfork was activated successfully!!! --------- (DAA score: {})", pov_daa_score);
+            }
+        }
         Self::check_sequence_lock(tx, pov_daa_score)?;
         match flags {
-            TxValidationFlags::Full => {
+            TxValidationFlags::Full | TxValidationFlags::SkipMassCheck => {
                 Self::check_sig_op_counts(tx)?;
                 self.check_scripts(tx)?;
             }
@@ -81,6 +93,19 @@ impl TransactionValidator {
         }
 
         Ok(total_out)
+    }
+
+    fn check_mass_commitment(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
+        let calculated_contextual_mass = self
+            .mass_calculator
+            .calc_tx_storage_mass(tx)
+            .and_then(|m| m.checked_add(self.mass_calculator.calc_tx_compute_mass(tx.tx())))
+            .ok_or(TxRuleError::MassIncomputable)?;
+        let committed_contextual_mass = tx.tx().mass();
+        if committed_contextual_mass != calculated_contextual_mass {
+            return Err(TxRuleError::WrongMass(calculated_contextual_mass, committed_contextual_mass));
+        }
+        Ok(())
     }
 
     fn check_sequence_lock(tx: &impl VerifiableTransaction, pov_daa_score: u64) -> TxResult<()> {
@@ -153,7 +178,7 @@ mod tests {
         let mut params = MAINNET_PARAMS.clone();
         params.max_tx_inputs = 10;
         params.max_tx_outputs = 15;
-        let tv = TransactionValidator::new(
+        let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
             params.max_signature_script_len,
@@ -214,7 +239,7 @@ mod tests {
         let mut params = MAINNET_PARAMS.clone();
         params.max_tx_inputs = 10;
         params.max_tx_outputs = 15;
-        let tv = TransactionValidator::new(
+        let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
             params.max_signature_script_len,
@@ -276,7 +301,7 @@ mod tests {
         let mut params = MAINNET_PARAMS.clone();
         params.max_tx_inputs = 10;
         params.max_tx_outputs = 15;
-        let tv = TransactionValidator::new(
+        let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
             params.max_signature_script_len,
@@ -338,7 +363,7 @@ mod tests {
         let mut params = MAINNET_PARAMS.clone();
         params.max_tx_inputs = 10;
         params.max_tx_outputs = 15;
-        let tv = TransactionValidator::new(
+        let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
             params.max_signature_script_len,
@@ -401,7 +426,7 @@ mod tests {
         let mut params = MAINNET_PARAMS.clone();
         params.max_tx_inputs = 10;
         params.max_tx_outputs = 15;
-        let tv = TransactionValidator::new(
+        let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
             params.max_signature_script_len,
@@ -464,7 +489,7 @@ mod tests {
         let mut params = MAINNET_PARAMS.clone();
         params.max_tx_inputs = 10;
         params.max_tx_outputs = 15;
-        let tv = TransactionValidator::new(
+        let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
             params.max_signature_script_len,
@@ -527,7 +552,7 @@ mod tests {
     fn check_non_push_only_script_sig_test() {
         // We test a situation where the script itself is valid, but the script signature is not push only
         let params = MAINNET_PARAMS.clone();
-        let tv = TransactionValidator::new(
+        let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
             params.max_signature_script_len,
@@ -581,7 +606,7 @@ mod tests {
     #[test]
     fn test_sign() {
         let params = MAINNET_PARAMS.clone();
-        let tv = TransactionValidator::new(
+        let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
             params.max_signature_script_len,
