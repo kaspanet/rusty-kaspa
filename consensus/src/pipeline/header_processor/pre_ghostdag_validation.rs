@@ -36,7 +36,8 @@ impl HeaderProcessor {
     }
 
     fn check_block_timestamp_in_isolation(&self, header: &Header) -> BlockProcessResult<()> {
-        let max_block_time = unix_now() + self.timestamp_deviation_tolerance * self.target_time_per_block;
+        // Timestamp deviation tolerance is in seconds so we multiply by 1000 to get milliseconds (without BPS dependency)
+        let max_block_time = unix_now() + self.timestamp_deviation_tolerance * 1000;
         if header.timestamp > max_block_time {
             return Err(RuleError::TimeTooFarIntoTheFuture(header.timestamp, max_block_time));
         }
