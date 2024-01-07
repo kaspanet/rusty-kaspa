@@ -59,14 +59,29 @@ impl BlockBodyProcessor {
 
     fn check_block_mass(self: &Arc<Self>, block: &Block, storage_mass_activated: bool) -> BlockProcessResult<u64> {
         let mut total_mass: u64 = 0;
-        for tx in block.transactions.iter() {
-            let calculated_tx_mass = self.mass_calculator.calc_tx_mass(tx);
-            if storage_mass_activated && tx.mass() < calculated_tx_mass {
-                return Err(RuleError::MassFieldTooLow(tx.id(), tx.mass(), calculated_tx_mass));
+        if storage_mass_activated {
+            for tx in block.transactions.iter() {
+                // This is only the compute part of the mass, the storage part cannot be computed here
+                let calculated_tx_compute_mass = self.mass_calculator.calc_tx_mass(tx);
+                let committed_contextual_mass = tx.mass();
+                // We only check the lower-bound here, a precise check of the mass commitment
+                // is done when validating the tx in context
+                if committed_contextual_mass < calculated_tx_compute_mass {
+                    return Err(RuleError::MassFieldTooLow(tx.id(), committed_contextual_mass, calculated_tx_compute_mass));
+                }
+                // Sum over the committed masses
+                total_mass += committed_contextual_mass;
+                if total_mass > self.max_block_mass {
+                    return Err(RuleError::ExceedsMassLimit(self.max_block_mass));
+                }
             }
-            total_mass += calculated_tx_mass;
-            if total_mass > self.max_block_mass {
-                return Err(RuleError::ExceedsMassLimit(self.max_block_mass));
+        } else {
+            for tx in block.transactions.iter() {
+                let calculated_tx_mass = self.mass_calculator.calc_tx_mass(tx);
+                total_mass += calculated_tx_mass;
+                if total_mass > self.max_block_mass {
+                    return Err(RuleError::ExceedsMassLimit(self.max_block_mass));
+                }
             }
         }
         Ok(total_mass)
