@@ -221,7 +221,7 @@ impl PruningProcessor {
         drop(pruning_utxoset_write);
 
         if self.config.enable_sanity_checks {
-            info!("Doing a sanity check that the new UTXO set has the expected UTXO commitment");
+            info!("Performing a sanity check that the new UTXO set has the expected UTXO commitment");
             self.assert_utxo_commitment(new_pruning_point);
         }
         true
