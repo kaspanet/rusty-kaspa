@@ -131,6 +131,9 @@ impl ConsensusApi for ConsensusMock {
         let total_in: u64 = mutable_tx.entries.iter().map(|x| x.as_ref().unwrap().amount).sum();
         let total_out: u64 = mutable_tx.tx.outputs.iter().map(|x| x.value).sum();
         let calculated_fee = total_in - total_out;
+        mutable_tx
+            .tx
+            .set_mass(self.calculate_transaction_storage_mass(mutable_tx).unwrap() + mutable_tx.calculated_compute_mass.unwrap());
         mutable_tx.calculated_fee = Some(calculated_fee);
         Ok(())
     }
@@ -143,12 +146,16 @@ impl ConsensusApi for ConsensusMock {
         transactions.iter_mut().map(|x| self.validate_mempool_transaction(x)).collect()
     }
 
-    fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
+    fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
         if transaction.is_coinbase() {
             0
         } else {
             transaction_estimated_serialized_size(transaction)
         }
+    }
+
+    fn calculate_transaction_storage_mass(&self, _transaction: &MutableTransaction) -> Option<u64> {
+        Some(0)
     }
 
     fn get_virtual_daa_score(&self) -> u64 {
