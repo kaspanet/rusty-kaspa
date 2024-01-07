@@ -15,10 +15,8 @@ pub(crate) struct CandidateTransaction {
 
 impl CandidateTransaction {
     pub(crate) fn from_mutable(tx: &MutableTransaction) -> Self {
-        Self {
-            tx: tx.tx.clone(),
-            calculated_fee: tx.calculated_fee.expect("fee is expected to be populated"),
-            calculated_mass: tx.calculated_mass.expect("mass is expected to be populated"),
-        }
+        let mass = tx.tx.mass();
+        assert_ne!(mass, 0, "mass field is expected to be set when inserting to the mempool");
+        Self { tx: tx.tx.clone(), calculated_fee: tx.calculated_fee.expect("fee is expected to be populated"), calculated_mass: mass }
     }
 }

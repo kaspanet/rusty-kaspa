@@ -9,7 +9,7 @@ use crate::mempool::{
 };
 use kaspa_consensus_core::{
     api::ConsensusApi,
-    constants::{SOMPI_PER_KASPA, UNACCEPTED_DAA_SCORE},
+    constants::UNACCEPTED_DAA_SCORE,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_core::{debug, info};
@@ -23,7 +23,7 @@ impl Mempool {
     ) -> RuleResult<MutableTransaction> {
         self.validate_transaction_unacceptance(&transaction)?;
         // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
-        transaction.calculated_mass = Some(consensus.calculate_transaction_mass(&transaction.tx));
+        transaction.calculated_compute_mass = Some(consensus.calculate_transaction_compute_mass(&transaction.tx));
         self.validate_transaction_in_isolation(&transaction)?;
         self.transaction_pool.check_double_spends(&transaction)?;
         self.populate_mempool_entries(&mut transaction);
@@ -103,21 +103,6 @@ impl Mempool {
     }
 
     fn validate_transaction_in_context(&self, transaction: &MutableTransaction) -> RuleResult<()> {
-        if self.config.block_spam_txs {
-            // TEMP: apply go-kaspad mempool dust prevention patch
-            // Note: we do not apply the part of the patch which modifies BBT since
-            // we do not support BBT on mainnet yet
-            let has_coinbase_input = transaction.entries.iter().any(|e| e.as_ref().unwrap().is_coinbase);
-            let num_extra_outs = transaction.tx.outputs.len() as i64 - transaction.tx.inputs.len() as i64;
-            if !has_coinbase_input
-                && num_extra_outs > 2
-                && transaction.calculated_fee.unwrap() < num_extra_outs as u64 * SOMPI_PER_KASPA
-            {
-                kaspa_core::trace!("Rejected spam tx {} from mempool ({} outputs)", transaction.id(), transaction.tx.outputs.len());
-                return Err(RuleError::RejectSpamTransaction(transaction.id()));
-            }
-        }
-
         if !self.config.accept_non_standard {
             self.check_transaction_standard_in_context(transaction)?;
         }

@@ -78,6 +78,9 @@ pub struct BlockBodyProcessor {
 
     // Counters
     counters: Arc<ProcessingCounters>,
+
+    /// Storage mass hardfork DAA score
+    pub(crate) storage_mass_activation_daa_score: u64,
 }
 
 impl BlockBodyProcessor {
@@ -104,6 +107,7 @@ impl BlockBodyProcessor {
         pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
+        storage_mass_activation_daa_score: u64,
     ) -> Self {
         Self {
             receiver,
@@ -126,6 +130,7 @@ impl BlockBodyProcessor {
             task_manager: BlockTaskDependencyManager::new(),
             notification_root,
             counters,
+            storage_mass_activation_daa_score,
         }
     }
 
