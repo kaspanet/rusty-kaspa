@@ -189,7 +189,7 @@ async fn test_client_server_notifications() {
 
 fn create_server(core_service: Arc<RpcCoreMock>) -> Arc<Adaptor> {
     let manager = Manager::new(128);
-    Adaptor::server(get_free_net_address(), 1, manager, core_service.clone(), core_service.core_notifier(), Default::default())
+    Adaptor::server(get_free_net_address(), 1, manager, core_service.clone(), core_service.core_notifier(), 3, Default::default())
 }
 
 async fn create_client(server_address: NetAddress) -> GrpcClient {

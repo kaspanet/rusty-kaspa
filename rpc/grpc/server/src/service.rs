@@ -17,6 +17,7 @@ pub struct GrpcService {
     config: Arc<Config>,
     core_service: Arc<RpcCoreService>,
     rpc_max_clients: usize,
+    broadcasters: usize,
     shutdown: SingleTrigger,
     counters: Arc<TowerConnectionCounters>,
 }
@@ -27,9 +28,10 @@ impl GrpcService {
         config: Arc<Config>,
         core_service: Arc<RpcCoreService>,
         rpc_max_clients: usize,
+        broadcasters: usize,
         counters: Arc<TowerConnectionCounters>,
     ) -> Self {
-        Self { net_address: address, config, core_service, rpc_max_clients, shutdown: Default::default(), counters }
+        Self { net_address: address, config, core_service, rpc_max_clients, broadcasters, shutdown: Default::default(), counters }
     }
 }
 
@@ -51,6 +53,7 @@ impl AsyncService for GrpcService {
             manager,
             self.core_service.clone(),
             self.core_service.notifier(),
+            self.broadcasters,
             self.counters.clone(),
         );
 

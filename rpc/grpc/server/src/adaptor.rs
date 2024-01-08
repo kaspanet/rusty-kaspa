@@ -37,10 +37,12 @@ impl Adaptor {
         manager: Manager,
         core_service: DynRpcService,
         core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
+        broadcasters: usize,
         counters: Arc<TowerConnectionCounters>,
     ) -> Arc<Self> {
         let (manager_sender, manager_receiver) = mpsc_channel(Self::manager_channel_size());
-        let connection_handler = ConnectionHandler::new(network_bps, manager_sender, core_service.clone(), core_notifier, counters);
+        let connection_handler =
+            ConnectionHandler::new(network_bps, manager_sender, core_service.clone(), core_notifier, broadcasters, counters);
         let server_termination = connection_handler.serve(serve_address);
         let adaptor = Arc::new(Adaptor::new(Some(server_termination), connection_handler, manager, serve_address));
         adaptor.manager.clone().start_event_loop(manager_receiver);

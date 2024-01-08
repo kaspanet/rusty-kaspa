@@ -85,6 +85,7 @@ impl ConnectionHandler {
         manager_sender: MpscSender<ManagerEvent>,
         core_service: DynRpcService,
         core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
+        broadcasters: usize,
         counters: Arc<TowerConnectionCounters>,
     ) -> Self {
         // Prepare core objects
@@ -99,7 +100,7 @@ impl ConnectionHandler {
         let subscriber = Arc::new(Subscriber::new(GRPC_SERVER, core_events, core_notifier, core_listener_id));
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
         let notifier: Arc<Notifier<Notification, Connection>> =
-            Arc::new(Notifier::new(GRPC_SERVER, core_events, vec![collector], vec![subscriber], 10, policies));
+            Arc::new(Notifier::new(GRPC_SERVER, core_events, vec![collector], vec![subscriber], broadcasters, policies));
         let server_context = ServerContext::new(core_service, notifier);
         let interface = Arc::new(Factory::new_interface(server_context.clone(), network_bps));
         let running = Default::default();

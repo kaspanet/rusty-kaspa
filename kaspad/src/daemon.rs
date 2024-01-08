@@ -458,8 +458,15 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         p2p_tower_counters.clone(),
         grpc_tower_counters.clone(),
     ));
-    let grpc_service =
-        Arc::new(GrpcService::new(grpc_server_addr, config, rpc_core_service.clone(), args.rpc_max_clients, grpc_tower_counters));
+    let grpc_service_broadcasters: usize = 3; // TODO: add a command line argument or derive from other arg/config/host-related fields
+    let grpc_service = Arc::new(GrpcService::new(
+        grpc_server_addr,
+        config,
+        rpc_core_service.clone(),
+        args.rpc_max_clients,
+        grpc_service_broadcasters,
+        grpc_tower_counters,
+    ));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
