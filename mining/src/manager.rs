@@ -17,7 +17,7 @@ use crate::{
         topological_sort::IntoIterTopologically,
         tx_query::TransactionQuery,
     },
-    MiningCounters,
+    MempoolCountersSnapshot, MiningCounters,
 };
 use itertools::Itertools;
 use kaspa_consensus_core::{
@@ -54,7 +54,6 @@ impl MiningManager {
     }
 
     pub fn new_with_extended_config(
-        block_spam_txs: bool,
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
         max_block_mass: u64,
@@ -62,13 +61,8 @@ impl MiningManager {
         cache_lifetime: Option<u64>,
         counters: Arc<MiningCounters>,
     ) -> Self {
-        let config = Config::build_default_with_spam_blocking_option(
-            block_spam_txs,
-            target_time_per_block,
-            relay_non_std_transactions,
-            max_block_mass,
-        )
-        .apply_ram_scale(ram_scale);
+        let config =
+            Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass).apply_ram_scale(ram_scale);
         Self::with_config(config, cache_lifetime, counters)
     }
 
@@ -425,7 +419,7 @@ impl MiningManager {
         transactions[lower_bound..]
             .iter()
             .position(|tx| {
-                mass += tx.calculated_mass.unwrap();
+                mass += tx.calculated_compute_mass.unwrap();
                 mass >= self.config.maximum_mass_per_block
             })
             // Make sure the upper bound is greater than the lower bound, allowing to handle a very unlikely,
@@ -872,5 +866,9 @@ impl MiningManagerProxy {
     /// nor accepted.
     pub async fn unknown_transactions(self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
         spawn_blocking(move || self.inner.unknown_transactions(transactions)).await.unwrap()
+    }
+
+    pub fn snapshot(&self) -> MempoolCountersSnapshot {
+        self.inner.counters.snapshot()
     }
 }
