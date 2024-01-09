@@ -11,6 +11,9 @@ use indexed_db_futures::prelude::*;
 use workflow_core::task::call_async_no_send;
 
 const TRANSACTIONS_STORE_NAME: &str = "transactions";
+const TRANSACTIONS_STORE_ID_INDEX: &str = "id";
+const TRANSACTIONS_STORE_TIMESTAMP_INDEX: &str = "timestamp";
+const TRANSACTIONS_STORE_BORSH_DATA_INDEX: &str = "borsh_data";
 
 pub struct Inner {
     known_databases: HashMap<String, HashSet<String>>,
@@ -25,7 +28,22 @@ impl Inner {
             fn on_upgrade_needed(evt: &IdbVersionChangeEvent) -> Result<(), JsValue> {
                 // Check if the object store exists; create it if it doesn't
                 if let None = evt.db().object_store_names().find(|n| n == TRANSACTIONS_STORE_NAME) {
-                    evt.db().create_object_store(TRANSACTIONS_STORE_NAME)?;
+                    let object_store = evt.db().create_object_store(TRANSACTIONS_STORE_NAME)?;
+                    object_store.create_index_with_params(
+                        TRANSACTIONS_STORE_ID_INDEX,
+                        &IdbKeyPath::str(TRANSACTIONS_STORE_ID_INDEX),
+                        &IdbIndexParameters::new().unique(true),
+                    )?;
+                    object_store.create_index_with_params(
+                        TRANSACTIONS_STORE_TIMESTAMP_INDEX,
+                        &IdbKeyPath::str(TRANSACTIONS_STORE_TIMESTAMP_INDEX),
+                        &IdbIndexParameters::new().unique(false),
+                    )?;
+                    object_store.create_index_with_params(
+                        TRANSACTIONS_STORE_BORSH_DATA_INDEX,
+                        &IdbKeyPath::str(TRANSACTIONS_STORE_BORSH_DATA_INDEX),
+                        &IdbIndexParameters::new().unique(false),
+                    )?;
                 }
                 Ok(())
             }
@@ -144,13 +162,48 @@ impl TransactionRecordStore for TransactionStore {
             Ok(Arc::new(transaction_record))
         })
     }
+
     async fn load_multiple(
         &self,
-        _binding: &Binding,
-        _network_id: &NetworkId,
-        _ids: &[TransactionId],
+        binding: &Binding,
+        network_id: &NetworkId,
+        ids: &[TransactionId],
     ) -> Result<Vec<Arc<TransactionRecord>>> {
-        Ok(vec![])
+        let binding_str = binding.to_hex();
+        let network_id_str = network_id.to_string();
+        let db_name = self.make_db_name(&binding_str, &network_id_str);
+
+        let id_strs = ids.iter().map(|id| id.to_string()).collect::<Vec<_>>();
+
+        let inner_guard = self.inner.clone();
+        let inner = inner_guard.lock().unwrap().clone();
+
+        call_async_no_send!(async move {
+            let db = inner.open_db(db_name).await?;
+
+            let idb_tx = db
+                .transaction_on_one_with_mode(&TRANSACTIONS_STORE_NAME, IdbTransactionMode::Readonly)
+                .map_err(|err| Error::Custom(format!("Failed to open indexdb transaction for reading {:?}", err)))?;
+            let store = idb_tx
+                .object_store(&TRANSACTIONS_STORE_NAME)
+                .map_err(|err| Error::Custom(format!("Failed to open indexdb object store for reading {:?}", err)))?;
+
+            let mut transaction_records = Vec::with_capacity(id_strs.len());
+            for id_str in id_strs {
+                let js_value: JsValue = store
+                    .get_owned(&id_str)
+                    .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
+                    .await
+                    .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
+                    .ok_or_else(|| Error::Custom(format!("Transaction record not found in indexdb")))?;
+
+                let transaction_record = TransactionRecord::try_from(js_value)
+                    .map_err(|err| Error::Custom(format!("Failed to deserialize transaction record from indexdb {:?}", err)))?;
+                transaction_records.push(Arc::new(transaction_record));
+            }
+
+            Ok(transaction_records)
+        })
     }
 
     async fn load_range(
@@ -164,7 +217,11 @@ impl TransactionRecordStore for TransactionStore {
         Ok(result)
     }
 
-    async fn store(&self, _transaction_records: &[&TransactionRecord]) -> Result<()> {
+    async fn store(&self, transaction_records: &[&TransactionRecord]) -> Result<()> {
+        for transaction_record in transaction_records {
+            let mut borsh_data = vec![];
+            <TransactionRecord as BorshSerialize>::serialize(transaction_record, &mut borsh_data)?;
+        }
         Ok(())
     }
 
