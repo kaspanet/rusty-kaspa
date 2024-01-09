@@ -271,10 +271,10 @@ mod tests {
             let broadcaster = Arc::new(TestBroadcaster::new(IDENT, 0, notification_receiver, Some(sync_sender)));
             let mut listeners = Vec::with_capacity(listener_count);
             let mut notification_receivers = Vec::with_capacity(listener_count);
-            for _ in 0..listener_count {
+            for i in 0..listener_count {
                 let (sender, receiver) = unbounded();
                 let connection = TestConnection::new(IDENT, sender, ChannelType::Closable);
-                let listener = Listener::new(connection);
+                let listener = Listener::new(i as ListenerId, connection);
                 listeners.push(listener);
                 notification_receivers.push(receiver);
             }

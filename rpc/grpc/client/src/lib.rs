@@ -76,6 +76,7 @@ pub struct GrpcClient {
     subscriptions: Option<Arc<DirectSubscriptions>>,
     policies: MutationPolicies,
     notification_mode: NotificationMode,
+    client_id: ListenerId,
 }
 
 const GRPC_CLIENT: &str = "grpc-client";
@@ -125,7 +126,8 @@ impl GrpcClient {
             inner.clone().spawn_connection_monitor(notifier.clone(), subscriptions.clone());
         }
 
-        Ok(Self { inner, notifier, collector, subscriptions, policies, notification_mode })
+        let client_id = u64::from_le_bytes(rand::random::<[u8; 8]>());
+        Ok(Self { inner, notifier, collector, subscriptions, policies, notification_mode, client_id })
     }
 
     #[inline(always)]
@@ -238,7 +240,7 @@ impl RpcApi for GrpcClient {
     fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
         match self.notification_mode {
             NotificationMode::MultiListeners => self.notifier.as_ref().unwrap().register_new_listener(connection),
-            NotificationMode::Direct => ListenerId::default(),
+            NotificationMode::Direct => self.client_id,
         }
     }
 
@@ -263,8 +265,11 @@ impl RpcApi for GrpcClient {
             }
             NotificationMode::Direct => {
                 let event: EventType = (&scope).into();
-                self.subscriptions.as_ref().unwrap().lock().await[event]
-                    .mutate(Mutation::new(Command::Start, scope.clone()), self.policies.clone());
+                self.subscriptions.as_ref().unwrap().lock().await[event].mutate(
+                    Mutation::new(Command::Start, scope.clone()),
+                    self.policies.clone(),
+                    self.client_id,
+                );
                 self.inner.start_notify_to_client(scope).await?;
             }
         }
@@ -280,8 +285,11 @@ impl RpcApi for GrpcClient {
                 }
                 NotificationMode::Direct => {
                     let event: EventType = (&scope).into();
-                    self.subscriptions.as_ref().unwrap().lock().await[event]
-                        .mutate(Mutation::new(Command::Stop, scope.clone()), self.policies.clone());
+                    self.subscriptions.as_ref().unwrap().lock().await[event].mutate(
+                        Mutation::new(Command::Stop, scope.clone()),
+                        self.policies.clone(),
+                        self.client_id,
+                    );
                     self.inner.stop_notify_to_client(scope).await?;
                 }
             }

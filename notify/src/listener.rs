@@ -16,6 +16,7 @@ pub(crate) struct Listener<C>
 where
     C: Connection,
 {
+    id: ListenerId,
     connection: C,
     pub(crate) subscriptions: EventArray<DynSubscription>,
 }
@@ -24,8 +25,8 @@ impl<C> Listener<C>
 where
     C: Connection,
 {
-    pub fn new(connection: C) -> Self {
-        Self { connection, subscriptions: ArrayBuilder::single() }
+    pub fn new(id: ListenerId, connection: C) -> Self {
+        Self { id, connection, subscriptions: ArrayBuilder::single() }
     }
 
     pub fn connection(&self) -> C {
@@ -38,7 +39,7 @@ where
     /// in the subscription state and None otherwise.
     pub fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies) -> Option<Vec<Mutation>> {
         let event_type = mutation.event_type();
-        self.subscriptions[event_type].mutate(mutation, policies)
+        self.subscriptions[event_type].mutate(mutation, policies, self.id)
     }
 
     pub fn close(&self) {

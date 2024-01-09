@@ -257,7 +257,7 @@ where
             // This is very unlikely to happen but still, check for duplicates
             if let Entry::Vacant(e) = listeners.entry(id) {
                 trace!("[Notifier {}] registering listener {id}", self.name);
-                let listener = Listener::new(connection);
+                let listener = Listener::new(id, connection);
                 e.insert(listener);
                 return id;
             }

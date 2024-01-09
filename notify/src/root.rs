@@ -99,6 +99,8 @@ impl<N> Inner<N>
 where
     N: Notification,
 {
+    const ROOT_LISTENER_ID: ListenerId = 1;
+
     fn new(sender: Sender<N>) -> Self {
         let subscriptions = RwLock::new(ArrayBuilder::single());
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
@@ -117,7 +119,7 @@ where
     pub fn execute_subscribe_command(&self, scope: Scope, command: Command) -> Result<()> {
         let mutation = Mutation::new(command, scope);
         let mut subscriptions = self.subscriptions.write();
-        subscriptions[mutation.event_type()].mutate(mutation, self.policies.clone());
+        subscriptions[mutation.event_type()].mutate(mutation, self.policies.clone(), Self::ROOT_LISTENER_ID);
         Ok(())
     }
 

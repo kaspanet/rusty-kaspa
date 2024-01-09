@@ -1,3 +1,5 @@
+use crate::listener::ListenerId;
+
 use super::{events::EventType, notification::Notification, scope::Scope};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -112,16 +114,21 @@ impl Eq for dyn Compounded {}
 pub type CompoundedSubscription = Box<dyn Compounded>;
 
 pub trait Single: Subscription + AsAny + DynHash + DynEq + Debug + Send + Sync {
-    fn mutated_and_mutations(&self, mutation: Mutation, policies: MutationPolicies) -> Option<(DynSubscription, Vec<Mutation>)>;
+    fn mutated_and_mutations(
+        &self,
+        mutation: Mutation,
+        policies: MutationPolicies,
+        listener_id: ListenerId,
+    ) -> Option<(DynSubscription, Vec<Mutation>)>;
 }
 
 pub trait MutateSingle: Deref<Target = dyn Single> {
-    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies) -> Option<Vec<Mutation>>;
+    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies, listener_id: ListenerId) -> Option<Vec<Mutation>>;
 }
 
 impl MutateSingle for Arc<dyn Single> {
-    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies) -> Option<Vec<Mutation>> {
-        self.mutated_and_mutations(mutation, policies).map(|(mutated, mutations)| {
+    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies, listener_id: ListenerId) -> Option<Vec<Mutation>> {
+        self.mutated_and_mutations(mutation, policies, listener_id).map(|(mutated, mutations)| {
             *self = mutated;
             mutations
         })
