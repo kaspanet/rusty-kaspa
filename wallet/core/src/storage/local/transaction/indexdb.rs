@@ -7,9 +7,34 @@ use crate::result::Result;
 use crate::storage::interface::{StorageStream, TransactionRangeResult};
 use crate::storage::TransactionRecord;
 use crate::storage::{Binding, TransactionKind, TransactionRecordStore};
+use indexed_db_futures::prelude::*;
+use workflow_core::task::call_async_no_send;
+
+const TRANSACTIONS_STORE_NAME: &str = "transactions";
 
 pub struct Inner {
     known_databases: HashMap<String, HashSet<String>>,
+}
+
+impl Inner {
+    async fn open_db(&self, db_name: String) -> Result<IdbDatabase> {
+        call_async_no_send!(async move {
+            let mut db_req: OpenDbRequest = IdbDatabase::open_u32(&db_name, 1)
+                .map_err(|err| Error::Custom(format!("Failed to open indexdb database {:?}", err)))?;
+
+            fn on_upgrade_needed(evt: &IdbVersionChangeEvent) -> Result<(), JsValue> {
+                // Check if the object store exists; create it if it doesn't
+                if let None = evt.db().object_store_names().find(|n| n == TRANSACTIONS_STORE_NAME) {
+                    evt.db().create_object_store(TRANSACTIONS_STORE_NAME)?;
+                }
+                Ok(())
+            }
+
+            db_req.set_on_upgrade_needed(Some(on_upgrade_needed));
+
+            db_req.await.map_err(|err| Error::Custom(format!("Open database request failed for indexdb database {:?}", err)))
+        })
+    }
 }
 
 pub struct TransactionStore {
@@ -40,8 +65,13 @@ impl TransactionStore {
         }
     }
 
-    pub fn register_database(&self, binding: &str, network_id: &str) -> Result<()> {
+    pub async fn register_database(&self, binding: &str, network_id: &str) -> Result<()> {
+        let db_name = self.make_db_name(binding, network_id);
+
         let mut inner = self.inner();
+
+        inner.open_db(db_name).await?;
+
         if let Some(network_ids) = inner.known_databases.get_mut(binding) {
             network_ids.insert(network_id.to_string());
         } else {
@@ -59,7 +89,7 @@ impl TransactionStore {
         let network_id = network_id.to_string();
         if !self.database_is_registered(&binding_hex, &network_id) {
             // - TODO
-            self.register_database(&binding_hex, &network_id)?;
+            self.register_database(&binding_hex, &network_id).await?;
         }
         Ok(())
     }
@@ -75,10 +105,33 @@ impl TransactionRecordStore for TransactionStore {
         Ok(Box::pin(TransactionRecordStream::try_new(self, binding, network_id).await?))
     }
 
-    async fn load_single(&self, _binding: &Binding, _network_id: &NetworkId, _id: &TransactionId) -> Result<Arc<TransactionRecord>> {
-        Err(Error::NotImplemented)
-    }
+    async fn load_single(&self, binding: &Binding, network_id: &NetworkId, id: &TransactionId) -> Result<Arc<TransactionRecord>> {
+        let binding_str = binding.to_hex();
+        let network_id_str = network_id.to_string();
+        let id_str = id.to_string();
+        let db_name = self.make_db_name(&binding_str, &network_id_str);
 
+        let mut inner = self.inner();
+
+        call_async_no_send!(async move {
+            let db = inner.open_db(db_name).await?;
+
+            let idb_tx = db
+                .transaction_on_one_with_mode(&TRANSACTIONS_STORE_NAME, IdbTransactionMode::Readonly)
+                .map_err(|err| Error::Custom(format!("Failed to open indexdb transaction for reading {:?}", err)))?;
+            let store = idb_tx
+                .object_store(&TRANSACTIONS_STORE_NAME)
+                .map_err(|err| Error::Custom(format!("Failed to open indexdb object store for reading {:?}", err)))?;
+
+            let _value: Option<JsValue> = store
+                .get_owned(&id_str)
+                .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
+                .await
+                .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?;
+
+            Err(Error::NotImplemented)
+        })
+    }
     async fn load_multiple(
         &self,
         _binding: &Binding,
