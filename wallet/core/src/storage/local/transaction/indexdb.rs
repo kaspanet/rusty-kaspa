@@ -8,6 +8,7 @@ use crate::storage::interface::{StorageStream, TransactionRangeResult};
 use crate::storage::TransactionRecord;
 use crate::storage::{Binding, TransactionKind, TransactionRecordStore};
 use indexed_db_futures::prelude::*;
+use itertools::Itertools;
 use workflow_core::task::call_async_no_send;
 
 const TRANSACTIONS_STORE_NAME: &str = "transactions";
@@ -218,11 +219,53 @@ impl TransactionRecordStore for TransactionStore {
     }
 
     async fn store(&self, transaction_records: &[&TransactionRecord]) -> Result<()> {
-        for transaction_record in transaction_records {
-            let mut borsh_data = vec![];
-            <TransactionRecord as BorshSerialize>::serialize(transaction_record, &mut borsh_data)?;
+        struct StorableItem {
+            db_name: String,
+            id: String,
+            js_value: JsValue,
         }
-        Ok(())
+
+        let items = transaction_records
+            .iter()
+            .map(|transaction_record| {
+                let binding_str = transaction_record.binding.to_hex();
+                let network_id_str = transaction_record.network_id.to_string();
+                let db_name = self.make_db_name(&binding_str, &network_id_str);
+
+                let id = transaction_record.id.to_string();
+                let js_value = transaction_record.to_js_value()?;
+                Ok(StorableItem { db_name, id, js_value })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        let inner_guard = self.inner.clone();
+        let inner = inner_guard.lock().unwrap().clone();
+
+        call_async_no_send!(async move {
+            let mut items_grouped = HashMap::new();
+            for (key, group) in &items.into_iter().group_by(|item| item.db_name.clone()) {
+                items_grouped.insert(key, group.collect::<Vec<_>>());
+            }
+
+            for (db_name, items) in items_grouped {
+                let db = inner.open_db(db_name).await?;
+
+                let idb_tx = db
+                    .transaction_on_one_with_mode(&TRANSACTIONS_STORE_NAME, IdbTransactionMode::Readwrite)
+                    .map_err(|err| Error::Custom(format!("Failed to open indexdb transaction for writing {:?}", err)))?;
+                let store = idb_tx
+                    .object_store(&TRANSACTIONS_STORE_NAME)
+                    .map_err(|err| Error::Custom(format!("Failed to open indexdb object store for writing {:?}", err)))?;
+
+                for item in items {
+                    store
+                        .put_key_val_owned(item.id.as_str(), &item.js_value)
+                        .map_err(|_err| Error::Custom("Failed to put transaction record in indexdb object store".to_string()))?;
+                }
+            }
+
+            Ok(())
+        })
     }
 
     async fn remove(&self, _binding: &Binding, _network_id: &NetworkId, _ids: &[&TransactionId]) -> Result<()> {

@@ -6,6 +6,8 @@ use super::*;
 use crate::imports::*;
 use crate::storage::Binding;
 use crate::tx::PendingTransactionInner;
+use js_sys::{Date, Uint8Array};
+use wasm_bindgen::__rt::IntoJsResult;
 use workflow_core::time::{unixtime_as_millis_u64, unixtime_to_locale_string};
 
 pub use kaspa_consensus_core::tx::TransactionId;
@@ -471,6 +473,36 @@ impl TransactionRecord {
             note: None,
         })
     }
+
+    pub fn to_js_value(&self) -> Result<JsValue, Error> {
+        let id = self.id.to_string();
+        let unixtime_msec = self.unixtime_msec;
+        let mut borsh_data = vec![];
+        <TransactionRecord as BorshSerialize>::serialize(self, &mut borsh_data)?;
+
+        let id_js_value = JsValue::from_str(&id);
+        let timestamp_js_value = match unixtime_msec {
+            Some(unixtime_msec) => {
+                let unixtime_sec = (unixtime_msec / 1000) as u32;
+
+                let date = Date::new_0();
+                date.set_utc_seconds(unixtime_sec);
+                date.into()
+            }
+            None => JsValue::NULL,
+        };
+
+        let borsh_data_uint8_arr = Uint8Array::from(borsh_data.as_slice());
+        let borsh_data_js_value = borsh_data_uint8_arr.into();
+
+        let obj = Object::new();
+        obj.set("id", &id_js_value)?;
+        obj.set("timestamp", &timestamp_js_value)?;
+        obj.set("borshData", &borsh_data_js_value)?;
+
+        let value = JsValue::from(obj);
+        Ok(value)
+    }
 }
 
 impl Zeroize for TransactionRecord {
@@ -522,7 +554,7 @@ impl TryFrom<JsValue> for TransactionRecord {
 
     fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
         if let Some(object) = Object::try_from(&value) {
-            let borsh_data_jsv = object.get_value("borsh-data")?;
+            let borsh_data_jsv = object.get_value("borshData")?;
             let borsh_data = borsh_data_jsv
                 .try_as_vec_u8()
                 .map_err(|err| Error::Custom(format!("failed to get blob from transaction record object: {:?}", err)))?;
@@ -531,5 +563,13 @@ impl TryFrom<JsValue> for TransactionRecord {
         } else {
             Err(Error::Custom("supplied argument must be an object".to_string()))
         }
+    }
+}
+
+impl TryFrom<&TransactionRecord> for JsValue {
+    type Error = Error;
+
+    fn try_from(transaction_record: &TransactionRecord) -> std::result::Result<Self, Self::Error> {
+        transaction_record.to_js_value()
     }
 }
