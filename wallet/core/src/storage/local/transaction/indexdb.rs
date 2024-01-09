@@ -111,9 +111,10 @@ impl TransactionRecordStore for TransactionStore {
         let id_str = id.to_string();
         let db_name = self.make_db_name(&binding_str, &network_id_str);
 
-        let mut inner = self.inner();
+        let inner_guard = self.inner.clone();
 
         call_async_no_send!(async move {
+            let inner = inner_guard.lock().unwrap();
             let db = inner.open_db(db_name).await?;
 
             let idb_tx = db
@@ -123,13 +124,22 @@ impl TransactionRecordStore for TransactionStore {
                 .object_store(&TRANSACTIONS_STORE_NAME)
                 .map_err(|err| Error::Custom(format!("Failed to open indexdb object store for reading {:?}", err)))?;
 
-            let _value: Option<JsValue> = store
+            let js_value: JsValue = store
                 .get_owned(&id_str)
                 .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
                 .await
-                .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?;
+                .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
+                .ok_or_else(|| Error::Custom(format!("Transaction record not found in indexdb")))?;
 
-            Err(Error::NotImplemented)
+            // let id = js_value.
+
+            // let transaction_record = js_value
+            //     .into_serde::<TransactionRecord>()
+            //     .map_err(|err| Error::Custom(format!("Failed to deserialize transaction record from indexdb {:?}", err)))?;
+            //
+            // Ok(Arc::new(transaction_record))
+
+            Err(Error::Custom(format!("Not implemented")))
         })
     }
     async fn load_multiple(
