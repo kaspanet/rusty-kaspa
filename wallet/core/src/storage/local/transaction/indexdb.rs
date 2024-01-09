@@ -138,15 +138,10 @@ impl TransactionRecordStore for TransactionStore {
                 .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
                 .ok_or_else(|| Error::Custom(format!("Transaction record not found in indexdb")))?;
 
-            // let id = js_value.
+            let transaction_record = TransactionRecord::try_from(js_value)
+                .map_err(|err| Error::Custom(format!("Failed to deserialize transaction record from indexdb {:?}", err)))?;
 
-            // let transaction_record = js_value
-            //     .into_serde::<TransactionRecord>()
-            //     .map_err(|err| Error::Custom(format!("Failed to deserialize transaction record from indexdb {:?}", err)))?;
-            //
-            // Ok(Arc::new(transaction_record))
-
-            Err(Error::Custom(format!("Not implemented")))
+            Ok(Arc::new(transaction_record))
         })
     }
     async fn load_multiple(

@@ -79,6 +79,15 @@ impl std::fmt::Display for UtxoContextId {
     }
 }
 
+impl TryFrom<JsValue> for UtxoContextId {
+    type Error = Error;
+
+    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
+        let id: Hash = value.try_into()?;
+        Ok(UtxoContextId(id))
+    }
+}
+
 pub enum UtxoEntryVariant {
     Mature(UtxoEntryReference),
     Pending(UtxoEntryReference),

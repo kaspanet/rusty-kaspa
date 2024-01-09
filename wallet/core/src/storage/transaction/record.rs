@@ -516,3 +516,27 @@ impl BorshDeserialize for TransactionRecord {
         Ok(Self { id, unixtime_msec: unixtime, value, binding, block_daa_score, network_id, transaction_data, note, metadata })
     }
 }
+
+impl TryFrom<JsValue> for TransactionRecord {
+    type Error = Error;
+
+    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
+        if let Some(object) = Object::try_from(&value) {
+            let transaction_record = Self {
+                id: object.get_value("id")?.try_into()?,
+                unixtime_msec: object.try_get_value("unixtimeMsec")?.map(|value| value.try_as_u64()).transpose()?,
+                value: object.get_u64("value")?,
+                binding: object.get_value("binding")?.try_into()?,
+                block_daa_score: object.get_u64("blockDaaScore")?,
+                network_id: object.get_value("networkId")?.try_into()?,
+                transaction_data: object.get_value("transactionData")?.try_into()?,
+                note: object.try_get_string("note")?,
+                metadata: object.try_get_string("metadata")?,
+            };
+
+            Ok(transaction_record)
+        } else {
+            Err(Error::Custom("supplied argument must be an object".to_string()))
+        }
+    }
+}

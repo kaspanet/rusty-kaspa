@@ -33,3 +33,11 @@ impl From<&UtxoEntryReference> for UtxoRecord {
         }
     }
 }
+
+impl TryFrom<JsValue> for UtxoRecord {
+    type Error = Error;
+
+    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
+        todo!()
+    }
+}

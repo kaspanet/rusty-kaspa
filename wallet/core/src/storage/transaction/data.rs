@@ -392,3 +392,56 @@ impl BorshDeserialize for TransactionData {
         }
     }
 }
+
+impl TryFrom<JsValue> for TransactionData {
+    type Error = Error;
+
+    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
+        if let Some(object) = Object::try_from(&value) {
+            let transaction_data_type = object.get_string("type")?;
+            let transaction = object.get_value("transaction")?;
+            let transaction_object =
+                Object::try_from(&transaction).ok_or_else(|| Error::Custom("supplied argument must be an object".to_string()))?;
+
+            return match &*transaction_data_type {
+                "reorg" => {
+                    let utxo_entries = transaction_object
+                        .get_vec("utxoEntries")?
+                        .into_iter()
+                        .map(|jsv| UtxoRecord::try_from(jsv))
+                        .collect::<Result<Vec<UtxoRecord>, Error>>()?;
+
+                    let aggregate_input_value: u64 = transaction_object.get_u64("value")?;
+                    Ok(TransactionData::Reorg { utxo_entries, aggregate_input_value })
+                }
+                "incoming" => {
+                    todo!()
+                }
+                "stasis" => {
+                    todo!()
+                }
+                "external" => {
+                    todo!()
+                }
+                "batch" => {
+                    todo!()
+                }
+                "outgoing" => {
+                    todo!()
+                }
+                "transfer-incoming" => {
+                    todo!()
+                }
+                "transfer-outgoing" => {
+                    todo!()
+                }
+                "change" => {
+                    todo!()
+                }
+                _ => Err(Error::Custom(format!("invalid transaction data type: {}", transaction_data_type))),
+            };
+        } else {
+            Err(Error::Custom("supplied argument must be an object".to_string()))
+        }
+    }
+}
