@@ -38,17 +38,20 @@ impl Inner {
 }
 
 pub struct TransactionStore {
-    inner: Arc<Mutex<Inner>>,
+    inner: Arc<Mutex<Arc<Inner>>>,
     name: String,
 }
 
 impl TransactionStore {
     pub fn new(name: &str) -> TransactionStore {
-        TransactionStore { inner: Arc::new(Mutex::new(Inner { known_databases: HashMap::default() })), name: name.to_string() }
+        TransactionStore {
+            inner: Arc::new(Mutex::new(Arc::new(Inner { known_databases: HashMap::default() }))),
+            name: name.to_string(),
+        }
     }
 
     #[inline(always)]
-    fn inner(&self) -> MutexGuard<Inner> {
+    fn inner(&self) -> MutexGuard<Arc<Inner>> {
         self.inner.lock().unwrap()
     }
 
@@ -72,13 +75,17 @@ impl TransactionStore {
 
         inner.open_db(db_name).await?;
 
-        if let Some(network_ids) = inner.known_databases.get_mut(binding) {
+        let mut known_databases = inner.known_databases.clone();
+
+        if let Some(network_ids) = known_databases.get_mut(binding) {
             network_ids.insert(network_id.to_string());
         } else {
             let mut network_ids = HashSet::new();
             network_ids.insert(network_id.to_string());
-            inner.known_databases.insert(binding.to_string(), network_ids);
+            known_databases.insert(binding.to_string(), network_ids);
         }
+
+        *inner = Arc::new(Inner { known_databases });
 
         Ok(())
     }
@@ -112,9 +119,9 @@ impl TransactionRecordStore for TransactionStore {
         let db_name = self.make_db_name(&binding_str, &network_id_str);
 
         let inner_guard = self.inner.clone();
+        let inner = inner_guard.lock().unwrap().clone();
 
         call_async_no_send!(async move {
-            let inner = inner_guard.lock().unwrap();
             let db = inner.open_db(db_name).await?;
 
             let idb_tx = db
