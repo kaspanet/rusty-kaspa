@@ -54,15 +54,6 @@ impl std::fmt::Display for AccountId {
     }
 }
 
-impl TryFrom<JsValue> for AccountId {
-    type Error = Error;
-
-    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
-        let hash = Hash::try_from(value)?;
-        Ok(AccountId(hash))
-    }
-}
-
 seal! { 0xa7a4, {
     // IMPORTANT: This data structure is meant to be deterministic
     // so it can not contain any new fields or be changed.

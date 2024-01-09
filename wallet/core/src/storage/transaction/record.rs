@@ -522,18 +522,11 @@ impl TryFrom<JsValue> for TransactionRecord {
 
     fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
         if let Some(object) = Object::try_from(&value) {
-            let transaction_record = Self {
-                id: object.get_value("id")?.try_into()?,
-                unixtime_msec: object.try_get_value("unixtimeMsec")?.map(|value| value.try_as_u64()).transpose()?,
-                value: object.get_u64("value")?,
-                binding: object.get_value("binding")?.try_into()?,
-                block_daa_score: object.get_u64("blockDaaScore")?,
-                network_id: object.get_value("networkId")?.try_into()?,
-                transaction_data: object.get_value("transactionData")?.try_into()?,
-                note: object.try_get_string("note")?,
-                metadata: object.try_get_string("metadata")?,
-            };
-
+            let borsh_data_jsv = object.get_value("borsh-data")?;
+            let borsh_data = borsh_data_jsv
+                .try_as_vec_u8()
+                .map_err(|err| Error::Custom(format!("failed to get blob from transaction record object: {:?}", err)))?;
+            let transaction_record = <TransactionRecord as BorshDeserialize>::deserialize(&mut borsh_data.as_slice())?;
             Ok(transaction_record)
         } else {
             Err(Error::Custom("supplied argument must be an object".to_string()))

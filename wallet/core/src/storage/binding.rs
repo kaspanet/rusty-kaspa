@@ -43,26 +43,3 @@ impl AsRef<Binding> for Binding {
         self
     }
 }
-
-impl TryFrom<JsValue> for Binding {
-    type Error = Error;
-
-    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Some(object) = Object::try_from(&value) {
-            let binding_type = object.get_string("type")?;
-            return match &*binding_type {
-                "custom" => {
-                    let id: UtxoContextId = object.get_value("id")?.try_into()?;
-                    Ok(Binding::Custom(id))
-                }
-                "account" => {
-                    let id: AccountId = object.get_value("id")?.try_into()?;
-                    Ok(Binding::Account(id))
-                }
-                _ => Err(Error::Custom(format!("invalid binding type: {}", binding_type))),
-            };
-        } else {
-            Err(Error::Custom("supplied argument must be an object".to_string()))
-        }
-    }
-}
