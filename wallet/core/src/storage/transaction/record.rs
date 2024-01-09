@@ -474,7 +474,7 @@ impl TransactionRecord {
         })
     }
 
-    pub fn to_js_value(&self) -> Result<JsValue, Error> {
+    pub fn to_js_value(&self, secret: Option<&Secret>, encryption_kind: EncryptionKind) -> Result<JsValue, Error> {
         let id = self.id.to_string();
         let unixtime_msec = self.unixtime_msec;
         let mut borsh_data = vec![];
@@ -492,7 +492,13 @@ impl TransactionRecord {
             None => JsValue::NULL,
         };
 
-        let borsh_data_uint8_arr = Uint8Array::from(borsh_data.as_slice());
+        let encryped_data = if let Some(secret) = secret {
+            Encryptable::from(self.clone()).into_encrypted(secret, encryption_kind)?
+        } else {
+            Encryptable::from(self.clone())
+        };
+        let encryped_data_vec = encryped_data.try_to_vec()?;
+        let borsh_data_uint8_arr = Uint8Array::from(encryped_data_vec.as_slice());
         let borsh_data_js_value = borsh_data_uint8_arr.into();
 
         let obj = Object::new();
@@ -502,6 +508,22 @@ impl TransactionRecord {
 
         let value = JsValue::from(obj);
         Ok(value)
+    }
+
+    pub fn from_js_value(js_value: &JsValue, secret: Option<&Secret>) -> Result<Self, Error> {
+        if let Some(object) = Object::try_from(&js_value) {
+            let borsh_data_jsv = object.get_value("borshData")?;
+            let borsh_data = borsh_data_jsv
+                .try_as_vec_u8()
+                .map_err(|err| Error::Custom(format!("failed to get blob from transaction record object: {:?}", err)))?;
+
+            let encryptable = Encryptable::<TransactionRecord>::try_from_slice(borsh_data.as_slice())?;
+            let transaction_record = encryptable.decrypt(secret)?;
+
+            Ok(transaction_record.0)
+        } else {
+            Err(Error::Custom("supplied argument must be an object".to_string()))
+        }
     }
 }
 
@@ -546,30 +568,5 @@ impl BorshDeserialize for TransactionRecord {
         let metadata = BorshDeserialize::deserialize(buf)?;
 
         Ok(Self { id, unixtime_msec: unixtime, value, binding, block_daa_score, network_id, transaction_data, note, metadata })
-    }
-}
-
-impl TryFrom<JsValue> for TransactionRecord {
-    type Error = Error;
-
-    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Some(object) = Object::try_from(&value) {
-            let borsh_data_jsv = object.get_value("borshData")?;
-            let borsh_data = borsh_data_jsv
-                .try_as_vec_u8()
-                .map_err(|err| Error::Custom(format!("failed to get blob from transaction record object: {:?}", err)))?;
-            let transaction_record = <TransactionRecord as BorshDeserialize>::deserialize(&mut borsh_data.as_slice())?;
-            Ok(transaction_record)
-        } else {
-            Err(Error::Custom("supplied argument must be an object".to_string()))
-        }
-    }
-}
-
-impl TryFrom<&TransactionRecord> for JsValue {
-    type Error = Error;
-
-    fn try_from(transaction_record: &TransactionRecord) -> std::result::Result<Self, Self::Error> {
-        transaction_record.to_js_value()
     }
 }

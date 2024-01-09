@@ -16,6 +16,8 @@ const TRANSACTIONS_STORE_ID_INDEX: &str = "id";
 const TRANSACTIONS_STORE_TIMESTAMP_INDEX: &str = "timestamp";
 const TRANSACTIONS_STORE_BORSH_DATA_INDEX: &str = "borsh_data";
 
+const ENCRYPTION_KIND: EncryptionKind = EncryptionKind::XChaCha20Poly1305;
+
 pub struct Inner {
     known_databases: HashMap<String, HashSet<String>>,
 }
@@ -157,7 +159,7 @@ impl TransactionRecordStore for TransactionStore {
                 .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
                 .ok_or_else(|| Error::Custom(format!("Transaction record not found in indexdb")))?;
 
-            let transaction_record = TransactionRecord::try_from(js_value)
+            let transaction_record = TransactionRecord::from_js_value(&js_value, None)
                 .map_err(|err| Error::Custom(format!("Failed to deserialize transaction record from indexdb {:?}", err)))?;
 
             Ok(Arc::new(transaction_record))
@@ -198,7 +200,7 @@ impl TransactionRecordStore for TransactionStore {
                     .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
                     .ok_or_else(|| Error::Custom(format!("Transaction record not found in indexdb")))?;
 
-                let transaction_record = TransactionRecord::try_from(js_value)
+                let transaction_record = TransactionRecord::from_js_value(&js_value, None)
                     .map_err(|err| Error::Custom(format!("Failed to deserialize transaction record from indexdb {:?}", err)))?;
                 transaction_records.push(Arc::new(transaction_record));
             }
@@ -233,7 +235,7 @@ impl TransactionRecordStore for TransactionStore {
                 let db_name = self.make_db_name(&binding_str, &network_id_str);
 
                 let id = transaction_record.id.to_string();
-                let js_value = transaction_record.to_js_value()?;
+                let js_value = transaction_record.to_js_value(None, ENCRYPTION_KIND)?;
                 Ok(StorableItem { db_name, id, js_value })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -325,12 +327,12 @@ impl TransactionRecordStore for TransactionStore {
                 .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
                 .ok_or_else(|| Error::Custom(format!("Transaction record not found in indexdb")))?;
 
-            let mut transaction_record = TransactionRecord::try_from(js_value)
+            let mut transaction_record = TransactionRecord::from_js_value(&js_value, None)
                 .map_err(|err| Error::Custom(format!("Failed to deserialize transaction record from indexdb {:?}", err)))?;
 
             transaction_record.note = note;
 
-            let new_js_value = transaction_record.to_js_value()?;
+            let new_js_value = transaction_record.to_js_value(None, ENCRYPTION_KIND)?;
 
             store
                 .put_key_val_owned(id_str.as_str(), &new_js_value)
@@ -372,12 +374,12 @@ impl TransactionRecordStore for TransactionStore {
                 .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
                 .ok_or_else(|| Error::Custom(format!("Transaction record not found in indexdb")))?;
 
-            let mut transaction_record = TransactionRecord::try_from(js_value)
+            let mut transaction_record = TransactionRecord::from_js_value(&js_value, None)
                 .map_err(|err| Error::Custom(format!("Failed to deserialize transaction record from indexdb {:?}", err)))?;
 
             transaction_record.metadata = metadata;
 
-            let new_js_value = transaction_record.to_js_value()?;
+            let new_js_value = transaction_record.to_js_value(None, ENCRYPTION_KIND)?;
 
             store
                 .put_key_val_owned(id_str.as_str(), &new_js_value)
