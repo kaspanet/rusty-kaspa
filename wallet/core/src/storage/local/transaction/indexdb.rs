@@ -242,12 +242,7 @@ impl TransactionRecordStore for TransactionStore {
         let inner = inner_guard.lock().unwrap().clone();
 
         call_async_no_send!(async move {
-            let mut items_grouped = HashMap::new();
-            for (key, group) in &items.into_iter().group_by(|item| item.db_name.clone()) {
-                items_grouped.insert(key, group.collect::<Vec<_>>());
-            }
-
-            for (db_name, items) in items_grouped {
+            for (db_name, items) in &items.into_iter().group_by(|item| item.db_name.clone()) {
                 let db = inner.open_db(db_name).await?;
 
                 let idb_tx = db
@@ -268,27 +263,128 @@ impl TransactionRecordStore for TransactionStore {
         })
     }
 
-    async fn remove(&self, _binding: &Binding, _network_id: &NetworkId, _ids: &[&TransactionId]) -> Result<()> {
-        Ok(())
+    async fn remove(&self, binding: &Binding, network_id: &NetworkId, ids: &[&TransactionId]) -> Result<()> {
+        let binding_str = binding.to_hex();
+        let network_id_str = network_id.to_string();
+        let db_name = self.make_db_name(&binding_str, &network_id_str);
+
+        let id_strs = ids.iter().map(|id| id.to_string()).collect::<Vec<_>>();
+
+        let inner_guard = self.inner.clone();
+        let inner = inner_guard.lock().unwrap().clone();
+
+        call_async_no_send!(async move {
+            let db = inner.open_db(db_name).await?;
+
+            let idb_tx = db
+                .transaction_on_one_with_mode(&TRANSACTIONS_STORE_NAME, IdbTransactionMode::Readwrite)
+                .map_err(|err| Error::Custom(format!("Failed to open indexdb transaction for writing {:?}", err)))?;
+            let store = idb_tx
+                .object_store(&TRANSACTIONS_STORE_NAME)
+                .map_err(|err| Error::Custom(format!("Failed to open indexdb object store for writing {:?}", err)))?;
+
+            for id_str in id_strs {
+                store
+                    .delete_owned(&id_str)
+                    .map_err(|_err| Error::Custom("Failed to delete transaction record from indexdb object store".to_string()))?;
+            }
+
+            Ok(())
+        })
     }
 
     async fn store_transaction_note(
         &self,
-        _binding: &Binding,
-        _network_id: &NetworkId,
-        _id: TransactionId,
-        _note: Option<String>,
+        binding: &Binding,
+        network_id: &NetworkId,
+        id: TransactionId,
+        note: Option<String>,
     ) -> Result<()> {
-        Ok(())
+        let binding_str = binding.to_hex();
+        let network_id_str = network_id.to_string();
+        let id_str = id.to_string();
+        let db_name = self.make_db_name(&binding_str, &network_id_str);
+
+        let inner_guard = self.inner.clone();
+        let inner = inner_guard.lock().unwrap().clone();
+
+        call_async_no_send!(async move {
+            let db = inner.open_db(db_name).await?;
+
+            let idb_tx = db
+                .transaction_on_one_with_mode(&TRANSACTIONS_STORE_NAME, IdbTransactionMode::Readwrite)
+                .map_err(|err| Error::Custom(format!("Failed to open indexdb transaction for writing {:?}", err)))?;
+            let store = idb_tx
+                .object_store(&TRANSACTIONS_STORE_NAME)
+                .map_err(|err| Error::Custom(format!("Failed to open indexdb object store for writing {:?}", err)))?;
+
+            let js_value: JsValue = store
+                .get_owned(&id_str)
+                .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
+                .await
+                .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
+                .ok_or_else(|| Error::Custom(format!("Transaction record not found in indexdb")))?;
+
+            let mut transaction_record = TransactionRecord::try_from(js_value)
+                .map_err(|err| Error::Custom(format!("Failed to deserialize transaction record from indexdb {:?}", err)))?;
+
+            transaction_record.note = note;
+
+            let new_js_value = transaction_record.to_js_value()?;
+
+            store
+                .put_key_val_owned(id_str.as_str(), &new_js_value)
+                .map_err(|_err| Error::Custom("Failed to update transaction record in indexdb object store".to_string()))?;
+
+            Ok(())
+        })
     }
+
     async fn store_transaction_metadata(
         &self,
-        _binding: &Binding,
-        _network_id: &NetworkId,
-        _id: TransactionId,
-        _metadata: Option<String>,
+        binding: &Binding,
+        network_id: &NetworkId,
+        id: TransactionId,
+        metadata: Option<String>,
     ) -> Result<()> {
-        Ok(())
+        let binding_str = binding.to_hex();
+        let network_id_str = network_id.to_string();
+        let id_str = id.to_string();
+        let db_name = self.make_db_name(&binding_str, &network_id_str);
+
+        let inner_guard = self.inner.clone();
+        let inner = inner_guard.lock().unwrap().clone();
+
+        call_async_no_send!(async move {
+            let db = inner.open_db(db_name).await?;
+
+            let idb_tx = db
+                .transaction_on_one_with_mode(&TRANSACTIONS_STORE_NAME, IdbTransactionMode::Readwrite)
+                .map_err(|err| Error::Custom(format!("Failed to open indexdb transaction for writing {:?}", err)))?;
+            let store = idb_tx
+                .object_store(&TRANSACTIONS_STORE_NAME)
+                .map_err(|err| Error::Custom(format!("Failed to open indexdb object store for writing {:?}", err)))?;
+
+            let js_value: JsValue = store
+                .get_owned(&id_str)
+                .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
+                .await
+                .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
+                .ok_or_else(|| Error::Custom(format!("Transaction record not found in indexdb")))?;
+
+            let mut transaction_record = TransactionRecord::try_from(js_value)
+                .map_err(|err| Error::Custom(format!("Failed to deserialize transaction record from indexdb {:?}", err)))?;
+
+            transaction_record.metadata = metadata;
+
+            let new_js_value = transaction_record.to_js_value()?;
+
+            store
+                .put_key_val_owned(id_str.as_str(), &new_js_value)
+                .map_err(|_err| Error::Custom("Failed to update transaction record in indexdb object store".to_string()))?;
+
+            Ok(())
+        })
     }
 }
 
