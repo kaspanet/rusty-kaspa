@@ -1,4 +1,8 @@
-use crate::flowcontext::{orphans::OrphanBlocksPool, process_queue::ProcessQueue, transactions::TransactionsSpread};
+use crate::flowcontext::{
+    orphans::{OrphanBlocksPool, OrphanOutput},
+    process_queue::ProcessQueue,
+    transactions::TransactionsSpread,
+};
 use crate::{v5, v6};
 use async_trait::async_trait;
 use futures::future::join_all;
@@ -13,7 +17,7 @@ use kaspa_consensus_notify::{
     notification::{Notification, PruningPointUtxoSetOverrideNotification},
     root::ConsensusNotificationRoot,
 };
-use kaspa_consensusmanager::{ConsensusInstance, ConsensusManager, ConsensusProxy};
+use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusInstance, ConsensusManager, ConsensusProxy};
 use kaspa_core::{
     debug, info,
     kaspad_env::{name, version},
@@ -34,9 +38,9 @@ use kaspa_p2p_lib::{
 use kaspa_utils::iter::IterExtensions;
 use kaspa_utils::networking::PeerId;
 use parking_lot::{Mutex, RwLock};
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::time::Instant;
+use std::{collections::hash_map::Entry, fmt::Display};
 use std::{
     iter::once,
     ops::Deref,
@@ -59,55 +63,145 @@ const PROTOCOL_VERSION: u32 = 6;
 /// See `check_orphan_resolution_range`
 const BASELINE_ORPHAN_RESOLUTION_RANGE: u32 = 5;
 
+/// Orphans are kept as full blocks so we cannot hold too much of them in memory
+const MAX_ORPHANS_UPPER_BOUND: usize = 1024;
+
 /// The min time to wait before allowing another parallel request
 const REQUEST_SCOPE_WAIT_TIME: Duration = Duration::from_secs(1);
 
+/// Represents a block event to be logged
 #[derive(Debug, PartialEq)]
-pub enum BlockSource {
-    Relay,
-    Submit,
+pub enum BlockLogEvent {
+    /// Accepted block via *relay*
+    Relay(Hash),
+    /// Accepted block via *submit block*
+    Submit(Hash),
+    /// Orphaned block with x missing roots
+    Orphaned(Hash, usize),
+    /// Unorphaned x blocks with hash being a representative
+    Unorphaned(Hash, usize),
 }
 
-pub struct AcceptedBlockLogger {
+pub struct BlockEventLogger {
     bps: usize,
-    sender: UnboundedSender<(Hash, BlockSource)>,
-    receiver: Mutex<Option<UnboundedReceiver<(Hash, BlockSource)>>>,
+    sender: UnboundedSender<BlockLogEvent>,
+    receiver: Mutex<Option<UnboundedReceiver<BlockLogEvent>>>,
 }
 
-impl AcceptedBlockLogger {
+impl BlockEventLogger {
     pub fn new(bps: usize) -> Self {
         let (sender, receiver) = unbounded_channel();
         Self { bps, sender, receiver: Mutex::new(Some(receiver)) }
     }
 
-    pub fn log(&self, hash: Hash, source: BlockSource) {
-        self.sender.send((hash, source)).unwrap();
+    pub fn log(&self, event: BlockLogEvent) {
+        self.sender.send(event).unwrap();
     }
 
     /// Start the logger listener. Must be called from an async tokio context
     fn start(&self) {
-        let chunk_limit = self.bps * 4; // We prefer that the 1 sec timeout forces the log, but nonetheless still want a reasonable bound on each chunk
+        let chunk_limit = self.bps * 10; // We prefer that the 1 sec timeout forces the log, but nonetheless still want a reasonable bound on each chunk
         let receiver = self.receiver.lock().take().expect("expected to be called once");
         tokio::spawn(async move {
             let chunk_stream = UnboundedReceiverStream::new(receiver).chunks_timeout(chunk_limit, Duration::from_secs(1));
             tokio::pin!(chunk_stream);
             while let Some(chunk) = chunk_stream.next().await {
-                if let Some((i, h)) =
-                    chunk.iter().filter_map(|(h, s)| if *s == BlockSource::Submit { Some(*h) } else { None }).enumerate().last()
-                {
-                    let submit = i + 1; // i is the last index so i + 1 is the number of submit blocks
-                    let relay = chunk.len() - submit;
-                    match (submit, relay) {
-                        (1, 0) => info!("Accepted block {} via submit block", h),
-                        (n, 0) => info!("Accepted {} blocks ...{} via submit block", n, h),
-                        (n, m) => info!("Accepted {} blocks ...{}, {} via relay and {} via submit block", n + m, h, m, n),
+                #[derive(Default)]
+                struct LogSummary {
+                    // Representatives
+                    relay_rep: Option<Hash>,
+                    submit_rep: Option<Hash>,
+                    orphan_rep: Option<Hash>,
+                    unorphan_rep: Option<Hash>,
+                    // Counts
+                    relay_count: usize,
+                    submit_count: usize,
+                    orphan_count: usize,
+                    unorphan_count: usize,
+                    orphan_roots_count: usize,
+                }
+
+                struct LogHash {
+                    op: Option<Hash>,
+                }
+
+                impl From<Option<Hash>> for LogHash {
+                    fn from(op: Option<Hash>) -> Self {
+                        Self { op }
                     }
-                } else {
-                    let h = chunk.last().expect("chunk is never empty").0;
-                    match chunk.len() {
-                        1 => info!("Accepted block {} via relay", h),
-                        n => info!("Accepted {} blocks ...{} via relay", n, h),
+                }
+
+                impl Display for LogHash {
+                    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                        if let Some(hash) = self.op {
+                            hash.fmt(f)
+                        } else {
+                            Ok(())
+                        }
                     }
+                }
+
+                impl LogSummary {
+                    fn relay(&self) -> LogHash {
+                        self.relay_rep.into()
+                    }
+
+                    fn submit(&self) -> LogHash {
+                        self.submit_rep.into()
+                    }
+
+                    fn orphan(&self) -> LogHash {
+                        self.orphan_rep.into()
+                    }
+
+                    fn unorphan(&self) -> LogHash {
+                        self.unorphan_rep.into()
+                    }
+                }
+
+                let summary = chunk.into_iter().fold(LogSummary::default(), |mut summary, ev| {
+                    match ev {
+                        BlockLogEvent::Relay(hash) => {
+                            summary.relay_count += 1;
+                            summary.relay_rep = Some(hash)
+                        }
+                        BlockLogEvent::Submit(hash) => {
+                            summary.submit_count += 1;
+                            summary.submit_rep = Some(hash)
+                        }
+                        BlockLogEvent::Orphaned(hash, roots_count) => {
+                            summary.orphan_roots_count += roots_count;
+                            summary.orphan_count += 1;
+                            summary.orphan_rep = Some(hash)
+                        }
+                        BlockLogEvent::Unorphaned(hash, count) => {
+                            summary.unorphan_count += count;
+                            summary.unorphan_rep = Some(hash)
+                        }
+                    }
+                    summary
+                });
+
+                match (summary.submit_count, summary.relay_count) {
+                    (0, 0) => {}
+                    (1, 0) => info!("Accepted block {} via submit block", summary.submit()),
+                    (n, 0) => info!("Accepted {} blocks ...{} via submit block", n, summary.submit()),
+                    (0, 1) => info!("Accepted block {} via relay", summary.relay()),
+                    (0, m) => info!("Accepted {} blocks ...{} via relay", m, summary.relay()),
+                    (n, m) => {
+                        info!("Accepted {} blocks ...{}, {} via relay and {} via submit block", n + m, summary.submit(), m, n)
+                    }
+                }
+
+                match (summary.orphan_count, summary.orphan_roots_count) {
+                    (0, 0) => {}
+                    (n, m) => info!("Orphaned {} block(s) ...{} and queued {} missing roots", n, summary.orphan(), m),
+                }
+
+                match summary.unorphan_count {
+                    0 => {}
+                    1 => info!("Unorphaned block {}", summary.unorphan()),
+                    n => info!("Unorphaned {} block(s) ...{}", n, summary.unorphan()),
                 }
             }
         });
@@ -124,7 +218,7 @@ pub struct FlowContextInner {
     transactions_spread: AsyncRwLock<TransactionsSpread>,
     shared_transaction_requests: Arc<Mutex<HashMap<TransactionId, RequestScopeMetadata>>>,
     is_ibd_running: Arc<AtomicBool>,
-    ibd_peer_key: Arc<RwLock<Option<PeerKey>>>,
+    ibd_metadata: Arc<RwLock<Option<IbdMetadata>>>,
     pub address_manager: Arc<Mutex<AddressManager>>,
     connection_manager: RwLock<Option<Arc<ConnectionManager>>>,
     mining_manager: MiningManagerProxy,
@@ -132,10 +226,11 @@ pub struct FlowContextInner {
     notification_root: Arc<ConsensusNotificationRoot>,
 
     // Special sampling logger used only for high-bps networks where logs must be throttled
-    accepted_block_logger: Option<AcceptedBlockLogger>,
+    block_event_logger: Option<BlockEventLogger>,
 
     // Orphan parameters
     orphan_resolution_range: u32,
+    max_orphans: usize,
 }
 
 #[derive(Clone)]
@@ -152,6 +247,14 @@ impl Drop for IbdRunningGuard {
         let result = self.indicator.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst);
         assert!(result.is_ok())
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct IbdMetadata {
+    /// The peer from which current IBD is syncing from
+    peer: PeerKey,
+    /// The DAA score of the relay block which triggered the current IBD
+    daa_score: u64,
 }
 
 pub struct RequestScopeMetadata {
@@ -203,11 +306,11 @@ impl FlowContext {
     ) -> Self {
         let hub = Hub::new();
 
-        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (config.bps() as f64).log2().min(3.0) as u32;
+        let orphan_resolution_range = BASELINE_ORPHAN_RESOLUTION_RANGE + (config.bps() as f64).log2().ceil() as u32;
 
-        // The maximum amount of orphans allowed in the orphans pool. This number is an
-        // approximation of how many orphans there can possibly be on average.
-        let max_orphans = 2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k as usize;
+        // The maximum amount of orphans allowed in the orphans pool. This number is an approximation
+        // of how many orphans there can possibly be on average bounded by an upper bound.
+        let max_orphans = (2u64.pow(orphan_resolution_range) as usize * config.ghostdag_k as usize).min(MAX_ORPHANS_UPPER_BOUND);
         Self {
             inner: Arc::new(FlowContextInner {
                 node_id: Uuid::new_v4().into(),
@@ -217,15 +320,16 @@ impl FlowContext {
                 transactions_spread: AsyncRwLock::new(TransactionsSpread::new(hub.clone())),
                 shared_transaction_requests: Arc::new(Mutex::new(HashMap::new())),
                 is_ibd_running: Default::default(),
-                ibd_peer_key: Default::default(),
+                ibd_metadata: Default::default(),
                 hub,
                 address_manager,
                 connection_manager: Default::default(),
                 mining_manager,
                 tick_service,
                 notification_root,
-                accepted_block_logger: if config.bps() > 1 { Some(AcceptedBlockLogger::new(config.bps() as usize)) } else { None },
+                block_event_logger: if config.bps() > 1 { Some(BlockEventLogger::new(config.bps() as usize)) } else { None },
                 orphan_resolution_range,
+                max_orphans,
                 config,
             }),
         }
@@ -239,8 +343,12 @@ impl FlowContext {
         self.orphan_resolution_range
     }
 
+    pub fn max_orphans(&self) -> usize {
+        self.max_orphans
+    }
+
     pub fn start_async_services(&self) {
-        if let Some(logger) = self.accepted_block_logger.as_ref() {
+        if let Some(logger) = self.block_event_logger.as_ref() {
             logger.start();
         }
     }
@@ -269,9 +377,9 @@ impl FlowContext {
         &self.mining_manager
     }
 
-    pub fn try_set_ibd_running(&self, peer_key: PeerKey) -> Option<IbdRunningGuard> {
+    pub fn try_set_ibd_running(&self, peer: PeerKey, relay_daa_score: u64) -> Option<IbdRunningGuard> {
         if self.is_ibd_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
-            self.ibd_peer_key.write().replace(peer_key);
+            self.ibd_metadata.write().replace(IbdMetadata { peer, daa_score: relay_daa_score });
             Some(IbdRunningGuard { indicator: self.is_ibd_running.clone() })
         } else {
             None
@@ -282,9 +390,19 @@ impl FlowContext {
         self.is_ibd_running.load(Ordering::SeqCst)
     }
 
+    /// If IBD is running, returns the IBD peer we are syncing from
     pub fn ibd_peer_key(&self) -> Option<PeerKey> {
         if self.is_ibd_running() {
-            *self.ibd_peer_key.read()
+            self.ibd_metadata.read().map(|md| md.peer)
+        } else {
+            None
+        }
+    }
+
+    /// If IBD is running, returns the DAA score of the relay block which triggered it
+    pub fn ibd_relay_daa_score(&self) -> Option<u64> {
+        if self.is_ibd_running() {
+            self.ibd_metadata.read().map(|md| md.daa_score)
         } else {
             None
         }
@@ -320,21 +438,16 @@ impl FlowContext {
         Self::try_adding_request_impl(req, &self.shared_transaction_requests)
     }
 
-    pub async fn add_orphan(&self, orphan_block: Block) {
-        if self.is_log_throttled() {
-            debug!("Received a block with missing parents, adding to orphan pool: {}", orphan_block.hash());
-        } else {
-            info!("Received a block with missing parents, adding to orphan pool: {}", orphan_block.hash());
-        }
-        self.orphans_pool.write().await.add_orphan(orphan_block)
+    pub async fn add_orphan(&self, consensus: &ConsensusProxy, orphan_block: Block) -> Option<OrphanOutput> {
+        self.orphans_pool.write().await.add_orphan(consensus, orphan_block).await
     }
 
     pub async fn is_known_orphan(&self, hash: Hash) -> bool {
         self.orphans_pool.read().await.is_known_orphan(hash)
     }
 
-    pub async fn get_orphan_roots(&self, consensus: &ConsensusProxy, orphan: Hash) -> Option<Vec<Hash>> {
-        self.orphans_pool.read().await.get_orphan_roots(consensus, orphan).await
+    pub async fn get_orphan_roots_if_known(&self, consensus: &ConsensusProxy, orphan: Hash) -> OrphanOutput {
+        self.orphans_pool.read().await.get_orphan_roots_if_known(consensus, orphan).await
     }
 
     pub async fn unorphan_blocks(&self, consensus: &ConsensusProxy, root: Hash) -> Vec<(Block, BlockValidationFuture)> {
@@ -349,15 +462,23 @@ impl FlowContext {
                 Err(e) => warn!("Validation failed for orphan block {}: {}", block.hash(), e),
             }
         }
-        match unorphaned_blocks.len() {
-            0 => {}
-            1 => info!("Unorphaned block {}", unorphaned_blocks[0].0.hash()),
-            n => match self.is_log_throttled() {
-                true => info!("Unorphaned {} blocks ...{}", n, unorphaned_blocks.last().unwrap().0.hash()),
-                false => info!("Unorphaned {} blocks: {}", n, unorphaned_blocks.iter().map(|b| b.0.hash()).reusable_format(", ")),
-            },
+
+        // Log or send to event logger
+        if !unorphaned_blocks.is_empty() {
+            if let Some(logger) = self.block_event_logger.as_ref() {
+                logger.log(BlockLogEvent::Unorphaned(unorphaned_blocks[0].0.hash(), unorphaned_blocks.len()));
+            } else {
+                match unorphaned_blocks.len() {
+                    1 => info!("Unorphaned block {}", unorphaned_blocks[0].0.hash()),
+                    n => info!("Unorphaned {} blocks: {}", n, unorphaned_blocks.iter().map(|b| b.0.hash()).reusable_format(", ")),
+                }
+            }
         }
         unorphaned_blocks
+    }
+
+    pub async fn revalidate_orphans(&self, consensus: &ConsensusProxy) -> (Vec<Hash>, Vec<BlockValidationFuture>) {
+        self.orphans_pool.write().await.revalidate_orphans(consensus).await
     }
 
     /// Adds the rpc-submitted block to the DAG and propagates it to peers.
@@ -374,36 +495,38 @@ impl FlowContext {
         // Broadcast as soon as the block has been validated and inserted into the DAG
         self.hub.broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(hash.into()) })).await;
 
-        let ctx = self.clone();
-        let consensus = consensus.clone();
-        tokio::spawn(async move {
-            ctx.on_new_block(&consensus, block, virtual_state_task).await;
-            ctx.log_block_acceptance(hash, BlockSource::Submit);
-        });
+        self.on_new_block(consensus, Default::default(), block, virtual_state_task).await;
+        self.log_block_event(BlockLogEvent::Submit(hash));
 
         Ok(())
     }
 
-    pub fn log_block_acceptance(&self, hash: Hash, source: BlockSource) {
-        if let Some(logger) = self.accepted_block_logger.as_ref() {
-            logger.log(hash, source)
+    pub fn log_block_event(&self, event: BlockLogEvent) {
+        if let Some(logger) = self.block_event_logger.as_ref() {
+            logger.log(event)
         } else {
-            match source {
-                BlockSource::Relay => info!("Accepted block {} via relay", hash),
-                BlockSource::Submit => info!("Accepted block {} via submit block", hash),
+            match event {
+                BlockLogEvent::Relay(hash) => info!("Accepted block {} via relay", hash),
+                BlockLogEvent::Submit(hash) => info!("Accepted block {} via submit block", hash),
+                BlockLogEvent::Orphaned(orphan, roots_count) => {
+                    info!("Received a block with {} missing ancestors, adding to orphan pool: {}", roots_count, orphan)
+                }
+                _ => {}
             }
         }
-    }
-
-    pub fn is_log_throttled(&self) -> bool {
-        self.accepted_block_logger.is_some()
     }
 
     /// Updates the mempool after a new block arrival, relays newly unorphaned transactions
     /// and possibly rebroadcast manually added transactions when not in IBD.
     ///
     /// _GO-KASPAD: OnNewBlock + broadcastTransactionsAfterBlockAdded_
-    pub async fn on_new_block(&self, consensus: &ConsensusProxy, block: Block, virtual_state_task: BlockValidationFuture) {
+    pub async fn on_new_block(
+        &self,
+        consensus: &ConsensusProxy,
+        ancestor_batch: BlockProcessingBatch,
+        block: Block,
+        virtual_state_task: BlockValidationFuture,
+    ) {
         let hash = block.hash();
         let mut blocks = self.unorphan_blocks(consensus, hash).await;
 
@@ -418,7 +541,7 @@ impl FlowContext {
         blocks.sort_by(|a, b| a.0.header.blue_work.partial_cmp(&b.0.header.blue_work).unwrap());
         // Use a ProcessQueue so we get rid of duplicates
         let mut transactions_to_broadcast = ProcessQueue::new();
-        for (block, virtual_state_task) in once((block, virtual_state_task)).chain(blocks.into_iter()) {
+        for (block, virtual_state_task) in ancestor_batch.zip().chain(once((block, virtual_state_task))).chain(blocks.into_iter()) {
             // We only care about waiting for virtual to process the block at this point, before proceeding with post-processing
             // actions such as updating the mempool. We know this will not err since `block_task` already completed w/o error
             let _ = virtual_state_task.await;
@@ -432,12 +555,13 @@ impl FlowContext {
             }
         }
 
-        // Don't relay transactions when in IBD
-        if self.is_ibd_running() {
+        // Transaction relay is disabled if the node is out of sync and thus not mining
+        if !consensus.async_is_nearly_synced().await {
             return;
         }
 
-        self.broadcast_transactions(transactions_to_broadcast).await;
+        // TODO: Throttle these transactions as well if needed
+        self.broadcast_transactions(transactions_to_broadcast, false).await;
 
         if self.should_run_mempool_scanning_task().await {
             // Spawn a task executing the removal of expired low priority transactions and, if time has come too,
@@ -457,7 +581,12 @@ impl FlowContext {
                         mining_manager.revalidate_high_priority_transactions(&consensus_clone, tx).await;
                     });
                     while let Some(transactions) = rx.recv().await {
-                        let _ = context.broadcast_transactions(transactions).await;
+                        let _ = context
+                            .broadcast_transactions(
+                                transactions,
+                                true, // We throttle high priority even when the network is not flooded since they will be rebroadcast if not accepted within reasonable time.
+                            )
+                            .await;
                     }
                 }
                 context.mempool_scanning_is_done().await;
@@ -491,7 +620,11 @@ impl FlowContext {
     ) -> Result<(), ProtocolError> {
         let accepted_transactions =
             self.mining_manager().clone().validate_and_insert_transaction(consensus, transaction, Priority::High, orphan).await?;
-        self.broadcast_transactions(accepted_transactions.iter().map(|x| x.id())).await;
+        self.broadcast_transactions(
+            accepted_transactions.iter().map(|x| x.id()),
+            false, // RPC transactions are considered high priority, so we don't want to throttle them
+        )
+        .await;
         Ok(())
     }
 
@@ -518,8 +651,8 @@ impl FlowContext {
     ///
     /// The broadcast itself may happen only during a subsequent call to this function since it is done at most
     /// after a predefined interval or when the queue length is larger than the Inv message capacity.
-    pub async fn broadcast_transactions<I: IntoIterator<Item = TransactionId>>(&self, transaction_ids: I) {
-        self.transactions_spread.write().await.broadcast_transactions(transaction_ids).await
+    pub async fn broadcast_transactions<I: IntoIterator<Item = TransactionId>>(&self, transaction_ids: I, should_throttle: bool) {
+        self.transactions_spread.write().await.broadcast_transactions(transaction_ids, should_throttle).await
     }
 }
 

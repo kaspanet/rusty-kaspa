@@ -1,9 +1,11 @@
 use futures_util::future::try_join_all;
+use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_consensus::{
     config::ConfigBuilder, consensus::test_consensus::TestConsensus, params::MAINNET_PARAMS,
     processes::reachability::tests::StoreValidationExtensions,
 };
 use kaspa_consensus_core::{api::ConsensusApi, blockhash};
+use kaspa_database::prelude::CachePolicy;
 use kaspa_hashes::Hash;
 use rand_distr::{Distribution, Poisson};
 use std::cmp::min;
@@ -11,6 +13,7 @@ use tokio::join;
 
 #[tokio::test]
 async fn test_concurrent_pipeline() {
+    init_allocator_with_default_settings();
     let config = ConfigBuilder::new(MAINNET_PARAMS).skip_proof_of_work().edit_consensus_params(|p| p.genesis.hash = 1.into()).build();
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
@@ -31,7 +34,7 @@ async fn test_concurrent_pipeline() {
 
     for (hash, parents) in blocks {
         // Submit to consensus twice to make sure duplicates are handled
-        let b = consensus.build_block_with_parents(hash, parents).to_immutable();
+        let b: kaspa_consensus_core::block::Block = consensus.build_block_with_parents(hash, parents).to_immutable();
         let results = join!(
             consensus.validate_and_insert_block(b.clone()).virtual_state_task,
             consensus.validate_and_insert_block(b).virtual_state_task
@@ -41,7 +44,7 @@ async fn test_concurrent_pipeline() {
     }
 
     // Clone with a new cache in order to verify correct writes to the DB itself
-    let store = consensus.reachability_store().read().clone_with_new_cache(10000);
+    let store = consensus.reachability_store().read().clone_with_new_cache(CachePolicy::Count(10_000), CachePolicy::Count(10_000));
 
     // Assert intervals
     store.validate_intervals(blockhash::ORIGIN).unwrap();
@@ -76,6 +79,7 @@ async fn test_concurrent_pipeline() {
 
 #[tokio::test]
 async fn test_concurrent_pipeline_random() {
+    init_allocator_with_default_settings();
     let genesis: Hash = blockhash::new_unique();
     let bps = 8;
     let delay = 2;
@@ -113,7 +117,7 @@ async fn test_concurrent_pipeline_random() {
     }
 
     // Clone with a new cache in order to verify correct writes to the DB itself
-    let store = consensus.reachability_store().read().clone_with_new_cache(10000);
+    let store = consensus.reachability_store().read().clone_with_new_cache(CachePolicy::Count(10_000), CachePolicy::Count(10_000));
 
     // Assert intervals
     store.validate_intervals(blockhash::ORIGIN).unwrap();

@@ -2,6 +2,7 @@ use crate::processes::ghostdag::ordering::SortableBlock;
 use kaspa_consensus_core::BlockHasher;
 use kaspa_database::prelude::Cache;
 use kaspa_hashes::Hash;
+use kaspa_utils::mem_size::MemSizeEstimator;
 use std::{
     cmp::Reverse,
     collections::BinaryHeap,
@@ -20,6 +21,8 @@ pub struct BlockWindowHeap {
     pub blocks: BinaryHeap<Reverse<SortableBlock>>,
     origin: WindowOrigin,
 }
+
+impl MemSizeEstimator for BlockWindowHeap {}
 
 impl BlockWindowHeap {
     pub fn new(origin: WindowOrigin) -> Self {

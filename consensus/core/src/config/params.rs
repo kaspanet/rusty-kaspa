@@ -4,6 +4,7 @@ pub use super::{
     genesis::{GenesisBlock, DEVNET_GENESIS, GENESIS, SIMNET_GENESIS, TESTNET11_GENESIS, TESTNET_GENESIS},
 };
 use crate::{
+    constants::STORAGE_MASS_PARAMETER,
     network::{NetworkId, NetworkType},
     BlockLevel, KType,
 };
@@ -75,6 +76,12 @@ pub struct Params {
     pub mass_per_script_pub_key_byte: u64,
     pub mass_per_sig_op: u64,
     pub max_block_mass: u64,
+
+    /// The parameter for scaling inverse KAS value to mass units (unpublished KIP-0009)
+    pub storage_mass_parameter: u64,
+
+    /// DAA score from which storage mass calculation and transaction mass field are activated as a consensus rule
+    pub storage_mass_activation_daa_score: u64,
 
     /// DAA score after which the pre-deflationary period switches to the deflationary period
     pub deflationary_phase_daa_score: u64,
@@ -197,7 +204,7 @@ impl Params {
     }
 
     /// Returns the depth at which the anticone of a chain block is final (i.e., is a permanently closed set).
-    /// Based on the analysis at https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf
+    /// Based on the analysis at <https://github.com/kaspanet/docs/blob/main/Reference/prunality/Prunality.pdf>
     /// and on the decomposition of merge depth (rule R-I therein) from finality depth (φ)
     pub fn anticone_finalization_depth(&self) -> u64 {
         let anticone_finalization_depth = self.finality_depth
@@ -216,10 +223,22 @@ impl Params {
 
     /// Returns whether the sink timestamp is recent enough and the node is considered synced or nearly synced.
     pub fn is_nearly_synced(&self, sink_timestamp: u64, sink_daa_score: u64) -> bool {
-        // We consider the node close to being synced if the sink (virtual selected parent) block
-        // timestamp is within DAA window duration far in the past. Blocks mined over such DAG state would
-        // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
-        unix_now() < sink_timestamp + self.expected_daa_window_duration_in_milliseconds(sink_daa_score)
+        if self.net.is_mainnet() {
+            // We consider the node close to being synced if the sink (virtual selected parent) block
+            // timestamp is within DAA window duration far in the past. Blocks mined over such DAG state would
+            // enter the DAA window of fully-synced nodes and thus contribute to overall network difficulty
+            unix_now() < sink_timestamp + self.expected_daa_window_duration_in_milliseconds(sink_daa_score)
+        } else {
+            // For testnets we consider the node to be synced if the sink timestamp is within a time range which
+            // is overwhelmingly unlikely to pass without mined blocks even if net hashrate decreased dramatically.
+            //
+            // This period is smaller than the above mainnet calculation in order to ensure that an IBDing miner
+            // with significant testnet hashrate does not overwhelm the network with deep side-DAGs.
+            //
+            // We use DAA duration as baseline and scale it down with BPS (and divide by 3 for mining only when very close to current time on TN11)
+            let max_expected_duration_without_blocks_in_milliseconds = self.target_time_per_block * NEW_DIFFICULTY_WINDOW_DURATION / 3; // = DAA duration in milliseconds / bps / 3
+            unix_now() < sink_timestamp + max_expected_duration_without_blocks_in_milliseconds
+        }
     }
 
     pub fn network_name(&self) -> String {
@@ -328,6 +347,9 @@ pub const MAINNET_PARAMS: Params = Params {
     mass_per_sig_op: 1000,
     max_block_mass: 500_000,
 
+    storage_mass_parameter: STORAGE_MASS_PARAMETER,
+    storage_mass_activation_daa_score: u64::MAX,
+
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
     // switches to the deflationary period. This number is calculated as follows:
     // We define a year as 365.25 days
@@ -384,6 +406,9 @@ pub const TESTNET_PARAMS: Params = Params {
     mass_per_sig_op: 1000,
     max_block_mass: 500_000,
 
+    storage_mass_parameter: STORAGE_MASS_PARAMETER,
+    storage_mass_activation_daa_score: u64::MAX,
+
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
     // switches to the deflationary period. This number is calculated as follows:
     // We define a year as 365.25 days
@@ -402,6 +427,8 @@ pub const TESTNET11_PARAMS: Params = Params {
     dns_seeders: &[
         // This DNS seeder is run by Tiram
         "seeder1-testnet-11.kaspad.net",
+        // This DNS seeder is run by supertypo
+        "n-testnet-11.kaspa.ws",
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 11),
     genesis: TESTNET11_GENESIS,
@@ -435,19 +462,18 @@ pub const TESTNET11_PARAMS: Params = Params {
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
-    // This is technically a soft fork from the Go implementation since kaspad's consensus doesn't
-    // check these rules, but in practice it's enforced by the network layer that limits the message
-    // size to 1 GB.
-    // These values should be lowered to more reasonable amounts on the next planned HF/SF.
-    max_tx_inputs: 1_000_000_000,
-    max_tx_outputs: 1_000_000_000,
-    max_signature_script_len: 1_000_000_000,
-    max_script_public_key_len: 1_000_000_000,
+    max_tx_inputs: 10_000,
+    max_tx_outputs: 10_000,
+    max_signature_script_len: 1_000_000,
+    max_script_public_key_len: 1_000_000,
 
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
     max_block_mass: 500_000,
+
+    storage_mass_parameter: STORAGE_MASS_PARAMETER,
+    storage_mass_activation_daa_score: 0,
 
     skip_proof_of_work: false,
     max_block_level: 250,
@@ -488,19 +514,18 @@ pub const SIMNET_PARAMS: Params = Params {
     coinbase_payload_script_public_key_max_len: 150,
     max_coinbase_payload_len: 204,
 
-    // This is technically a soft fork from the Go implementation since kaspad's consensus doesn't
-    // check these rules, but in practice it's enforced by the network layer that limits the message
-    // size to 1 GB.
-    // These values should be lowered to more reasonable amounts on the next planned HF/SF.
-    max_tx_inputs: 1_000_000_000,
-    max_tx_outputs: 1_000_000_000,
-    max_signature_script_len: 1_000_000_000,
-    max_script_public_key_len: 1_000_000_000,
+    max_tx_inputs: 10_000,
+    max_tx_outputs: 10_000,
+    max_signature_script_len: 1_000_000,
+    max_script_public_key_len: 1_000_000,
 
     mass_per_tx_byte: 1,
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
     max_block_mass: 500_000,
+
+    storage_mass_parameter: STORAGE_MASS_PARAMETER,
+    storage_mass_activation_daa_score: 0,
 
     skip_proof_of_work: true, // For simnet only, PoW can be simulated by default
     max_block_level: 250,
@@ -544,6 +569,9 @@ pub const DEVNET_PARAMS: Params = Params {
     mass_per_script_pub_key_byte: 10,
     mass_per_sig_op: 1000,
     max_block_mass: 500_000,
+
+    storage_mass_parameter: STORAGE_MASS_PARAMETER,
+    storage_mass_activation_daa_score: u64::MAX,
 
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
     // switches to the deflationary period. This number is calculated as follows:

@@ -1,9 +1,10 @@
 use kaspa_database::{
     prelude::DB,
+    prelude::{CachePolicy, StoreError, StoreResult},
     prelude::{CachedDbAccess, DirectDbWriter},
-    prelude::{StoreError, StoreResult},
     registry::DatabaseStorePrefixes,
 };
+use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 use std::net::Ipv6Addr;
 use std::{error::Error, fmt::Display, sync::Arc};
@@ -16,6 +17,8 @@ pub struct Entry {
     pub connection_failed_count: u64,
     pub address: NetAddress,
 }
+
+impl MemSizeEstimator for Entry {}
 
 pub trait AddressesStoreReader {
     fn get(&self, key: AddressKey) -> Result<Entry, StoreError>;
@@ -74,8 +77,8 @@ pub struct DbAddressesStore {
 }
 
 impl DbAddressesStore {
-    pub fn new(db: Arc<DB>, cache_size: u64) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, DatabaseStorePrefixes::Addresses.into()) }
+    pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::Addresses.into()) }
     }
 
     pub fn iterator(&self) -> impl Iterator<Item = Result<(AddressKey, Entry), Box<dyn Error>>> + '_ {

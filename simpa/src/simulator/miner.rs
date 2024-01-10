@@ -3,6 +3,7 @@ use itertools::Itertools;
 use kaspa_consensus::consensus::Consensus;
 use kaspa_consensus::model::stores::virtual_state::VirtualStateStoreReader;
 use kaspa_consensus::params::Params;
+use kaspa_consensus::processes::mass::MassCalculator;
 use kaspa_consensus_core::api::ConsensusApi;
 use kaspa_consensus_core::block::{Block, TemplateBuildMode, TemplateTransactionSelector};
 use kaspa_consensus_core::coinbase::MinerData;
@@ -73,6 +74,9 @@ pub struct Miner {
     target_txs_per_block: u64,
     target_blocks: Option<u64>,
     max_cached_outpoints: usize,
+
+    // Mass calculator
+    mass_calculator: MassCalculator,
 }
 
 impl Miner {
@@ -104,6 +108,12 @@ impl Miner {
             target_txs_per_block,
             target_blocks,
             max_cached_outpoints: 10_000,
+            mass_calculator: MassCalculator::new(
+                params.mass_per_tx_byte,
+                params.mass_per_script_pub_key_byte,
+                params.mass_per_sig_op,
+                params.storage_mass_parameter,
+            ),
         }
     }
 
@@ -141,7 +151,18 @@ impl Miner {
             .take(self.target_txs_per_block as usize)
             .collect::<Vec<_>>()
             .into_par_iter()
-            .map(|mutable_tx| sign(mutable_tx, schnorr_key).tx)
+            .map(|mutable_tx| {
+                let signed_tx = sign(mutable_tx, schnorr_key);
+                let mass = self
+                    .mass_calculator
+                    .calc_tx_storage_mass(&signed_tx.as_verifiable())
+                    .and_then(|v| v.checked_add(self.mass_calculator.calc_tx_compute_mass(&signed_tx.tx)))
+                    .unwrap();
+                signed_tx.tx.set_mass(mass);
+                let mut signed_tx = signed_tx.tx;
+                signed_tx.finalize();
+                signed_tx
+            })
             .collect::<Vec<_>>();
 
         for outpoint in txs.iter().flat_map(|t| t.inputs.iter().map(|i| i.previous_outpoint)) {
@@ -168,7 +189,7 @@ impl Miner {
     }
 
     fn create_unsigned_tx(&self, outpoint: TransactionOutpoint, input_amount: u64, multiple_outputs: bool) -> Transaction {
-        Transaction::new(
+        Transaction::new_non_finalized(
             0,
             vec![TransactionInput::new(outpoint, vec![], 0, 0)],
             if multiple_outputs && input_amount > 4 {

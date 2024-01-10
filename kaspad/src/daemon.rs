@@ -8,14 +8,18 @@ use kaspa_consensus_core::{
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
 use kaspa_core::{core::Core, info, trace};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
+use kaspa_database::prelude::CachePolicy;
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_utils_tower::counters::TowerConnectionCounters;
 
 use kaspa_addressmanager::AddressManager;
 use kaspa_consensus::{consensus::factory::Factory as ConsensusFactory, pipeline::ProcessingCounters};
-use kaspa_consensus::{consensus::factory::MultiConsensusManagementStore, pipeline::monitor::ConsensusMonitor};
+use kaspa_consensus::{
+    consensus::factory::MultiConsensusManagementStore, model::stores::headers::DbHeadersStore, pipeline::monitor::ConsensusMonitor,
+};
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::task::runtime::AsyncRuntime;
 use kaspa_index_processor::service::IndexService;
@@ -26,9 +30,18 @@ use kaspa_mining::{
 };
 use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
 
-use kaspa_perf_monitor::builder::Builder as PerfMonitorBuilder;
+use kaspa_perf_monitor::{builder::Builder as PerfMonitorBuilder, counters::CountersSnapshot};
 use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
-use kaspa_wrpc_server::service::{Options as WrpcServerOptions, ServerCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
+use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WebSocketCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
+
+/// Desired soft FD limit that needs to be configured
+/// for the kaspad process.
+pub const DESIRED_DAEMON_SOFT_FD_LIMIT: u64 = 8 * 1024;
+/// Minimum acceptable soft FD limit for the kaspad
+/// process. (Rusty Kaspa will operate with the minimal
+/// acceptable limit of `4096`, but a setting below
+/// this value may impact the database performance).
+pub const MINIMUM_DAEMON_SOFT_FD_LIMIT: u64 = 4 * 1024;
 
 use crate::args::Args;
 
@@ -71,6 +84,12 @@ pub fn validate_args(args: &Args) -> ConfigResult<()> {
     }
     if args.logdir.is_some() && args.no_log_files {
         return Err(ConfigError::MixedLogDirAndNoLogFiles);
+    }
+    if args.ram_scale < 0.1 {
+        return Err(ConfigError::RamScaleTooLow);
+    }
+    if args.ram_scale > 10.0 {
+        return Err(ConfigError::RamScaleTooHigh);
     }
     Ok(())
 }
@@ -221,7 +240,10 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
     let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);
     let meta_db_dir = db_dir.join(META_DB);
 
-    if args.reset_db && db_dir.exists() {
+    let mut is_db_reset_needed = args.reset_db;
+
+    // Reset Condition: User explicitly requested a reset
+    if is_db_reset_needed && db_dir.exists() {
         let msg = "Reset DB was requested -- this means the current databases will be fully deleted, 
 do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm all interactive questions)";
         get_user_approval_or_exit(msg, args.yes);
@@ -243,23 +265,69 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         .build()
         .unwrap();
 
+    // Reset Condition: Need to reset DB if we can't find genesis in current DB
+    if !is_db_reset_needed && (args.testnet || args.devnet || args.simnet) {
+        // Non-mainnet can be restarted, and when it does we need to reset the DB.
+        // This will check if the current Genesis can be found the active consensus
+        // DB (if one exists), and if not then ask to reset the DB.
+        let active_consensus_dir_name = MultiConsensusManagementStore::new(meta_db.clone()).active_consensus_dir_name().unwrap();
+
+        match active_consensus_dir_name {
+            Some(dir_name) => {
+                let consensus_db = kaspa_database::prelude::ConnBuilder::default()
+                    .with_db_path(consensus_db_dir.clone().join(dir_name))
+                    .with_files_limit(1)
+                    .build()
+                    .unwrap();
+
+                let headers_store = DbHeadersStore::new(consensus_db, CachePolicy::Empty, CachePolicy::Empty);
+
+                if headers_store.has(config.genesis.hash).unwrap() {
+                    info!("Genesis is found in active consensus DB. No action needed.");
+                } else {
+                    let msg = "Genesis not found in active consensus DB. This happens when Testnet 11 is restarted and your database needs to be fully deleted. Do you confirm the delete? (y/n)";
+                    get_user_approval_or_exit(msg, args.yes);
+
+                    is_db_reset_needed = true;
+                }
+            }
+            None => {
+                info!("Consensus not initialized yet. Skipping genesis check.");
+            }
+        }
+    }
+
+    // Reset Condition: Need to reset if we're upgrading from kaspad DB version
     // TEMP: upgrade from Alpha version or any version before this one
-    if meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some()) {
-        let msg = "Node database is from an older Kaspad version and needs to be fully deleted, do you confirm the delete? (y/n)";
+    if !is_db_reset_needed
+        && (meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some())
+            || MultiConsensusManagementStore::new(meta_db.clone()).should_upgrade().unwrap())
+    {
+        let msg =
+            "Node database is from a different Kaspad *DB* version and needs to be fully deleted, do you confirm the delete? (y/n)";
         get_user_approval_or_exit(msg, args.yes);
 
         info!("Deleting databases from previous Kaspad version");
 
+        is_db_reset_needed = true;
+    }
+
+    // Will be true if any of the other condition above except args.reset_db
+    // has set is_db_reset_needed to true
+    if is_db_reset_needed && !args.reset_db {
         // Drop so that deletion works
         drop(meta_db);
 
         // Delete
-        fs::remove_dir_all(db_dir).unwrap();
+        fs::remove_dir_all(db_dir.clone()).unwrap();
 
         // Recreate the empty folders
         fs::create_dir_all(consensus_db_dir.as_path()).unwrap();
         fs::create_dir_all(meta_db_dir.as_path()).unwrap();
-        fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+
+        if args.utxoindex {
+            fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+        }
 
         // Reopen the DB
         meta_db = kaspa_database::prelude::ConnBuilder::default()
@@ -278,7 +346,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let p2p_server_addr = args.listen.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_p2p_port());
     // connect_peers means no DNS seeding and no outbound peers
     let outbound_target = if connect_peers.is_empty() { args.outbound_target } else { 0 };
-    let dns_seeders = if connect_peers.is_empty() { config.dns_seeders } else { &[] };
+    let dns_seeders = if connect_peers.is_empty() && !args.disable_dns_seeding { config.dns_seeders } else { &[] };
 
     let grpc_server_addr = args.rpclisten.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_rpc_port());
 
@@ -294,6 +362,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let wrpc_borsh_counters = Arc::new(WrpcServerCounters::default());
     let wrpc_json_counters = Arc::new(WrpcServerCounters::default());
     let tx_script_cache_counters = Arc::new(TxScriptCacheCounters::default());
+    let p2p_tower_counters = Arc::new(TowerConnectionCounters::default());
+    let grpc_tower_counters = Arc::new(TowerConnectionCounters::default());
 
     // Use `num_cpus` background threads for the consensus database as recommended by rocksdb
     let consensus_db_parallelism = num_cpus::get();
@@ -314,8 +384,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         .with_fetch_interval(Duration::from_secs(args.perf_metrics_interval_sec))
         .with_tick_service(tick_service.clone());
     let perf_monitor = if args.perf_metrics {
-        let cb = move |counters| {
-            trace!("[{}] metrics: {:?}", kaspa_perf_monitor::SERVICE_NAME, counters);
+        let cb = move |counters: CountersSnapshot| {
+            trace!("[{}] {}", kaspa_perf_monitor::SERVICE_NAME, counters.to_process_metrics_display());
+            trace!("[{}] {}", kaspa_perf_monitor::SERVICE_NAME, counters.to_io_metrics_display());
             #[cfg(feature = "heap")]
             trace!("[{}] heap stats: {:?}", kaspa_perf_monitor::SERVICE_NAME, dhat::HeapStats::get());
         };
@@ -342,11 +413,11 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let (address_manager, port_mapping_extender_svc) = AddressManager::new(config.clone(), meta_db, tick_service.clone());
 
     let mining_monitor = Arc::new(MiningMonitor::new(mining_counters.clone(), tx_script_cache_counters.clone(), tick_service.clone()));
-    let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_spam_blocking_option(
-        network.is_mainnet(),
+    let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_extended_config(
         config.target_time_per_block,
         false,
         config.max_block_mass,
+        config.ram_scale,
         config.block_template_cache_lifetime,
         mining_counters,
     )));
@@ -368,6 +439,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         args.inbound_limit,
         dns_seeders,
         config.default_p2p_port(),
+        p2p_tower_counters.clone(),
     ));
 
     let rpc_core_service = Arc::new(RpcCoreService::new(
@@ -377,14 +449,17 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         mining_manager,
         flow_context,
         index_service.as_ref().map(|x| x.utxoindex().unwrap()),
-        config,
+        config.clone(),
         core.clone(),
         processing_counters,
         wrpc_borsh_counters.clone(),
         wrpc_json_counters.clone(),
         perf_monitor.clone(),
+        p2p_tower_counters.clone(),
+        grpc_tower_counters.clone(),
     ));
-    let grpc_service = Arc::new(GrpcService::new(grpc_server_addr, rpc_core_service.clone(), args.rpc_max_clients));
+    let grpc_service =
+        Arc::new(GrpcService::new(grpc_server_addr, config, rpc_core_service.clone(), args.rpc_max_clients, grpc_tower_counters));
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));

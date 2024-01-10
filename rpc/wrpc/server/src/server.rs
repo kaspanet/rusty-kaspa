@@ -96,9 +96,17 @@ impl Server {
             // Provider::GrpcClient
 
             log_info!("Routing wrpc://{peer} -> {grpc_proxy_address}");
-            let grpc_client = GrpcClient::connect(NotificationMode::Direct, grpc_proxy_address.to_owned(), false, None, true, None)
-                .await
-                .map_err(|e| WebSocketError::Other(e.to_string()))?;
+            let grpc_client = GrpcClient::connect(
+                NotificationMode::Direct,
+                grpc_proxy_address.to_owned(),
+                false,
+                None,
+                true,
+                None,
+                Default::default(),
+            )
+            .await
+            .map_err(|e| WebSocketError::Other(e.to_string()))?;
             // log_trace!("Creating proxy relay...");
             Some(Arc::new(grpc_client))
         } else {
@@ -117,11 +125,11 @@ impl Server {
     }
 
     pub async fn disconnect(&self, connection: Connection) {
-        log_info!("WebSocket disconnected: {}", connection.peer());
+        // log_info!("WebSocket disconnected: {}", connection.peer());
         if let Some(rpc_core) = &self.inner.rpc_core {
             if let Some(listener_id) = connection.listener_id() {
                 rpc_core.wrpc_notifier.unregister_listener(listener_id).unwrap_or_else(|err| {
-                    format!("WebSocket {} (disconnected) error unregistering the notification listener: {err}", connection.peer());
+                    log_error!("WebSocket {} (disconnected) error unregistering the notification listener: {err}", connection.peer());
                 });
             }
         } else {

@@ -3,6 +3,7 @@ use kaspa_core::debug;
 use kaspa_notify::notifier::Notifier;
 use kaspa_rpc_core::{api::rpc::DynRpcService, notify::connection::ChannelConnection, Notification, RpcResult};
 use kaspa_utils::networking::NetAddress;
+use kaspa_utils_tower::counters::TowerConnectionCounters;
 use std::{ops::Deref, sync::Arc};
 use tokio::sync::{mpsc::channel as mpsc_channel, oneshot::Sender as OneshotSender};
 
@@ -32,12 +33,14 @@ impl Adaptor {
 
     pub fn server(
         serve_address: NetAddress,
+        network_bps: u64,
         manager: Manager,
         core_service: DynRpcService,
         core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
+        counters: Arc<TowerConnectionCounters>,
     ) -> Arc<Self> {
         let (manager_sender, manager_receiver) = mpsc_channel(Self::manager_channel_size());
-        let connection_handler = ConnectionHandler::new(manager_sender, core_service.clone(), core_notifier);
+        let connection_handler = ConnectionHandler::new(network_bps, manager_sender, core_service.clone(), core_notifier, counters);
         let server_termination = connection_handler.serve(serve_address);
         let adaptor = Arc::new(Adaptor::new(Some(server_termination), connection_handler, manager, serve_address));
         adaptor.manager.clone().start_event_loop(manager_receiver);

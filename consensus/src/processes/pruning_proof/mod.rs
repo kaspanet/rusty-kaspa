@@ -3,7 +3,10 @@ use std::{
     collections::{hash_map::Entry, BinaryHeap},
     collections::{hash_map::Entry::Vacant, VecDeque},
     ops::{Deref, DerefMut},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 use itertools::Itertools;
@@ -24,7 +27,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::{debug, info, trace};
 use kaspa_database::{
-    prelude::{ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions},
+    prelude::{CachePolicy, ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions},
     utils::DbLifetime,
 };
 use kaspa_hashes::Hash;
@@ -130,6 +133,8 @@ pub struct PruningProofManager {
     pruning_proof_m: u64,
     anticone_finalization_depth: u64,
     ghostdag_k: KType,
+
+    is_consensus_exiting: Arc<AtomicBool>,
 }
 
 impl PruningProofManager {
@@ -148,6 +153,7 @@ impl PruningProofManager {
         pruning_proof_m: u64,
         anticone_finalization_depth: u64,
         ghostdag_k: KType,
+        is_consensus_exiting: Arc<AtomicBool>,
     ) -> Self {
         Self {
             db,
@@ -180,11 +186,12 @@ impl PruningProofManager {
             anticone_finalization_depth,
             ghostdag_k,
             ghostdag_manager,
+
+            is_consensus_exiting,
         }
     }
 
     pub fn import_pruning_points(&self, pruning_points: &[Arc<Header>]) {
-        // TODO: Also write validate_pruning_points
         for (i, header) in pruning_points.iter().enumerate() {
             self.past_pruning_points_store.set(i as u64, header.hash).unwrap();
 
@@ -401,16 +408,24 @@ impl PruningProofManager {
         }
     }
 
-    fn init_validate_pruning_point_proof_stores_and_processes(&self) -> TempProofContext {
+    fn init_validate_pruning_point_proof_stores_and_processes(&self, proof: &PruningPointProof) -> TempProofContext {
+        if proof[0].is_empty() {
+            return Err(PruningImportError::PruningProofNotEnoughHeaders);
+        }
+
+        let headers_estimate = self.estimate_proof_unique_size(proof);
+
         let (db_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
-        let headers_store = Arc::new(DbHeadersStore::new(db.clone(), 2 * self.pruning_proof_m)); // TODO: Think about cache size
+        let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize);
+        let headers_store =
+            Arc::new(DbHeadersStore::new(db.clone(), CachePolicy::Count(headers_estimate), CachePolicy::Count(headers_estimate)));
         let proof_levels_ghostdag_stores = (0..=self.max_block_level)
-            .map(|level| Arc::new(DbGhostdagStore::new(db.clone(), level, 2 * self.pruning_proof_m)))
+            .map(|level| Arc::new(DbGhostdagStore::new(db.clone(), level, cache_policy, cache_policy)))
             .collect_vec();
         let mut relations_stores =
-            (0..=self.max_block_level).map(|level| DbRelationsStore::new(db.clone(), level, 2 * self.pruning_proof_m)).collect_vec();
+            (0..=self.max_block_level).map(|level| DbRelationsStore::new(db.clone(), level, cache_policy, cache_policy)).collect_vec();
         let reachability_stores = (0..=self.max_block_level)
-            .map(|level| Arc::new(RwLock::new(DbReachabilityStore::with_block_level(db.clone(), 2 * self.pruning_proof_m, level))))
+            .map(|level| Arc::new(RwLock::new(DbReachabilityStore::with_block_level(db.clone(), cache_policy, cache_policy, level))))
             .collect_vec();
 
         let reachability_services = (0..=self.max_block_level)
@@ -474,6 +489,11 @@ impl PruningProofManager {
 
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         for level in (0..=self.max_block_level).rev() {
+            // Before processing this level, check if the process is exiting so we can end early
+            if self.is_consensus_exiting.load(Ordering::Relaxed) {
+                return Err(PruningImportError::PruningValidationInterrupted);
+            }
+
             info!("Validating level {level} from the pruning point proof ({} headers)", proof[level as usize].len());
             let level_idx = level as usize;
             let mut selected_tip = None;
@@ -769,7 +789,7 @@ impl PruningProofManager {
                     }
 
                     headers.push(self.headers_store.get_header(current).unwrap());
-                    for child in self.relations_stores.read()[level].get_children(current).unwrap().iter().copied() {
+                    for child in self.relations_stores.read()[level].get_children(current).read().unwrap().iter().copied() {
                         queue.push(Reverse(SortableBlock::new(
                             child,
                             self.proof_levels_ghostdag_stores[level].get_blue_work(child).unwrap(),

@@ -8,6 +8,7 @@ use std::{
 use tokio::sync::mpsc::Receiver as MpscReceiver;
 
 use super::peer::PeerKey;
+use rand::seq::SliceRandom;
 
 #[derive(Debug)]
 pub(crate) enum HubEvent {
@@ -103,6 +104,18 @@ impl Hub {
         }
     }
 
+    /// Broadcast a message to some peers given a percentage
+    pub async fn broadcast_to_some_peers(&self, msg: KaspadMessage, num_peers: usize) {
+        assert!(num_peers > 0);
+        let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
+        // TODO: At least some of the peers should be outbound, because an attacker can gain less control
+        // over the set of outbound peers.
+        let peers = peers.choose_multiple(&mut rand::thread_rng(), num_peers).cloned().collect::<Vec<_>>();
+        for router in peers {
+            let _ = router.enqueue(msg.clone()).await;
+        }
+    }
+
     /// Broadcast a vector of messages to all peers
     pub async fn broadcast_many(&self, msgs: Vec<KaspadMessage>) {
         if msgs.is_empty() {
@@ -136,6 +149,11 @@ impl Hub {
     /// Returns a list of all currently active peers
     pub fn active_peers(&self) -> Vec<Peer> {
         self.peers.read().values().map(|r| r.as_ref().into()).collect()
+    }
+
+    /// Returns the number of currently active peers
+    pub fn active_peers_len(&self) -> usize {
+        self.peers.read().len()
     }
 
     /// Returns whether there are currently active peers

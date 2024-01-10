@@ -53,7 +53,7 @@ use kaspa_consensus_core::{
     coinbase::MinerData,
     config::genesis::GenesisBlock,
     header::Header,
-    merkle::calc_hash_merkle_root,
+    merkle::calc_hash_merkle_root_with_options,
     pruning::PruningPointsList,
     tx::{MutableTransaction, Transaction},
     utxo::{
@@ -74,13 +74,13 @@ use kaspa_core::{debug, info, time::unix_now, trace, warn};
 use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
-use kaspa_notify::notifier::Notify;
+use kaspa_notify::{events::EventType, notifier::Notify};
 
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
 use kaspa_utils::binary_heap::BinaryHeapExtensions;
 use parking_lot::{RwLock, RwLockUpgradableReadGuard};
-use rand::seq::SliceRandom;
+use rand::{seq::SliceRandom, Rng};
 use rayon::{
     prelude::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator},
     ThreadPool,
@@ -152,6 +152,9 @@ pub struct VirtualStateProcessor {
 
     // Counters
     counters: Arc<ProcessingCounters>,
+
+    // Storage mass hardfork DAA score
+    pub(crate) storage_mass_activation_daa_score: u64,
 }
 
 impl VirtualStateProcessor {
@@ -211,6 +214,7 @@ impl VirtualStateProcessor {
             pruning_lock,
             notification_root,
             counters,
+            storage_mass_activation_daa_score: params.storage_mass_activation_daa_score,
         }
     }
 
@@ -265,6 +269,7 @@ impl VirtualStateProcessor {
             .read()
             .get()
             .unwrap()
+            .read()
             .iter()
             .copied()
             .filter(|&h| self.reachability_service.is_dag_ancestor_of(finality_point, h))
@@ -313,16 +318,18 @@ impl VirtualStateProcessor {
         self.notification_root
             .notify(Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score)))
             .expect("expecting an open unbounded channel");
-        // TODO: Fetch acceptance data only if there's a subscriber for the below notification.
-        let added_chain_blocks_acceptance_data =
-            chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
-        self.notification_root
-            .notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
-                chain_path.added.into(),
-                chain_path.removed.into(),
-                Arc::new(added_chain_blocks_acceptance_data),
-            )))
-            .expect("expecting an open unbounded channel");
+        if self.notification_root.has_subscription(EventType::VirtualChainChanged) {
+            // check for subscriptions before the heavy lifting
+            let added_chain_blocks_acceptance_data =
+                chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
+            self.notification_root
+                .notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
+                    chain_path.added.into(),
+                    chain_path.removed.into(),
+                    Arc::new(added_chain_blocks_acceptance_data),
+                )))
+                .expect("expecting an open unbounded channel");
+        }
     }
 
     pub(crate) fn virtual_finality_point(&self, virtual_ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {
@@ -521,7 +528,9 @@ impl VirtualStateProcessor {
         drop(selected_chain_write);
     }
 
-    /// Returns the max number of tips to consider as virtual parents in a single virtual resolve operation
+    /// Returns the max number of tips to consider as virtual parents in a single virtual resolve operation.
+    ///
+    /// Guaranteed to be `>= self.max_block_parents`
     fn max_virtual_parent_candidates(&self) -> usize {
         // Limit to max_block_parents x 3 candidates. This way we avoid going over thousands of tips when the network isn't healthy.
         // There's no specific reason for a factor of 3, and its not a consensus rule, just an estimation for reducing the amount
@@ -573,11 +582,7 @@ impl VirtualStateProcessor {
                     let filtering_blue_work = self.ghostdag_store.get_blue_work(filtering_root).unwrap_or_default();
                     return (
                         candidate,
-                        heap.into_sorted_iter()
-                            .take(self.max_virtual_parent_candidates())
-                            .take_while(|s| s.blue_work >= filtering_blue_work)
-                            .map(|s| s.hash)
-                            .collect(),
+                        heap.into_sorted_iter().take_while(|s| s.blue_work >= filtering_blue_work).map(|s| s.hash).collect(),
                     );
                 } else {
                     debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate)
@@ -613,16 +618,32 @@ impl VirtualStateProcessor {
         // TODO: tests
 
         // Mergeset increasing might traverse DAG areas which are below the finality point and which theoretically
-        // can borderline with pruned data, hence we acquire the prune lock to insure data consistency. Note that
+        // can borderline with pruned data, hence we acquire the prune lock to ensure data consistency. Note that
         // the final selected mergeset can never be pruned (this is the essence of the prunality proof), however
         // we might touch such data prior to validating the bounded merge rule. All in all, this function is short
         // enough so we avoid making further optimizations
         let _prune_guard = self.pruning_lock.blocking_read();
         let max_block_parents = self.max_block_parents as usize;
+        let max_candidates = self.max_virtual_parent_candidates();
 
         // Prioritize half the blocks with highest blue work and pick the rest randomly to ensure diversity between nodes
-        if candidates.len() > max_block_parents / 2 {
-            // `make_contiguous` should be a no op since the deque was just built
+        if candidates.len() > max_candidates {
+            // make_contiguous should be a no op since the deque was just built
+            let slice = candidates.make_contiguous();
+
+            // Keep slice[..max_block_parents / 2] as is, choose max_candidates - max_block_parents / 2 in random
+            // from the remainder of the slice while swapping them to slice[max_block_parents / 2..max_candidates].
+            //
+            // Inspired by rand::partial_shuffle (which lacks the guarantee on chosen elements location).
+            for i in max_block_parents / 2..max_candidates {
+                let j = rand::thread_rng().gen_range(i..slice.len()); // i < max_candidates < slice.len()
+                slice.swap(i, j);
+            }
+
+            // Truncate the unchosen elements
+            candidates.truncate(max_candidates);
+        } else if candidates.len() > max_block_parents / 2 {
+            // Fallback to a simpler algo in this case
             candidates.make_contiguous()[max_block_parents / 2..].shuffle(&mut rand::thread_rng());
         }
 
@@ -926,7 +947,11 @@ impl VirtualStateProcessor {
         txs.insert(0, coinbase.tx);
         let version = BLOCK_VERSION;
         let parents_by_level = self.parents_manager.calc_block_parents(pruning_info.pruning_point, &virtual_state.parents);
-        let hash_merkle_root = calc_hash_merkle_root(txs.iter());
+
+        // Hash according to hardfork activation
+        let storage_mass_activated = virtual_state.daa_score > self.storage_mass_activation_daa_score;
+        let hash_merkle_root = calc_hash_merkle_root_with_options(txs.iter(), storage_mass_activated);
+
         let accepted_id_merkle_root = kaspa_merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min

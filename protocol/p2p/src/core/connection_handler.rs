@@ -7,6 +7,10 @@ use crate::{ConnectionInitializer, Router};
 use futures::FutureExt;
 use kaspa_core::{debug, info};
 use kaspa_utils::networking::NetAddress;
+use kaspa_utils_tower::{
+    counters::TowerConnectionCounters,
+    middleware::{measure_request_body_size_layer, CountBytesBody, MapResponseBodyLayer, ServiceBuilder},
+};
 use std::net::ToSocketAddrs;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -16,6 +20,7 @@ use tokio::sync::mpsc::{channel as mpsc_channel, Sender as MpscSender};
 use tokio::sync::oneshot::{channel as oneshot_channel, Sender as OneshotSender};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
+use tonic::codegen::Body;
 use tonic::transport::{Error as TonicError, Server as TonicServer};
 use tonic::{Request, Response, Status as TonicStatus, Streaming};
 
@@ -46,11 +51,16 @@ pub struct ConnectionHandler {
     /// Cloned on each new connection so that routers can communicate with a central hub
     hub_sender: MpscSender<HubEvent>,
     initializer: Arc<dyn ConnectionInitializer>,
+    counters: Arc<TowerConnectionCounters>,
 }
 
 impl ConnectionHandler {
-    pub(crate) fn new(hub_sender: MpscSender<HubEvent>, initializer: Arc<dyn ConnectionInitializer>) -> Self {
-        Self { hub_sender, initializer }
+    pub(crate) fn new(
+        hub_sender: MpscSender<HubEvent>,
+        initializer: Arc<dyn ConnectionInitializer>,
+        counters: Arc<TowerConnectionCounters>,
+    ) -> Self {
+        Self { hub_sender, initializer, counters }
     }
 
     /// Launches a P2P server listener loop
@@ -58,6 +68,10 @@ impl ConnectionHandler {
         let (termination_sender, termination_receiver) = oneshot_channel::<()>();
         let connection_handler = self.clone();
         info!("P2P Server starting on: {}", serve_address);
+
+        let bytes_tx = self.counters.bytes_tx.clone();
+        let bytes_rx = self.counters.bytes_rx.clone();
+
         tokio::spawn(async move {
             let proto_server = ProtoP2pServer::new(connection_handler)
                 .accept_compressed(tonic::codec::CompressionEncoding::Gzip)
@@ -66,6 +80,8 @@ impl ConnectionHandler {
 
             // TODO: check whether we should set tcp_keepalive
             let serve_result = TonicServer::builder()
+                .layer(measure_request_body_size_layer(bytes_rx, |b| b))
+                .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, bytes_tx.clone())))
                 .add_service(proto_server)
                 .serve_with_shutdown(serve_address.into(), termination_receiver.map(drop))
                 .await;
@@ -91,6 +107,13 @@ impl ConnectionHandler {
             .tcp_keepalive(Some(Duration::from_millis(Self::keep_alive())))
             .connect()
             .await?;
+
+        let channel = ServiceBuilder::new()
+            .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, self.counters.bytes_rx.clone())))
+            .layer(measure_request_body_size_layer(self.counters.bytes_tx.clone(), |body| {
+                body.map_err(|e| tonic::Status::from_error(Box::new(e))).boxed_unsync()
+            }))
+            .service(channel);
 
         let mut client = ProtoP2pClient::new(channel)
             .send_compressed(tonic::codec::CompressionEncoding::Gzip)
@@ -142,8 +165,8 @@ impl ConnectionHandler {
                     return Err(ConnectionError::ProtocolError(err));
                 }
                 Err(err) => {
+                    debug!("P2P, connect retry #{} failed with error {:?}, peer: {:?}", counter, err, address);
                     if counter < retry_attempts {
-                        debug!("P2P, connect retry #{} failed with error {:?}, peer: {:?}", counter, err, address);
                         // Await `retry_interval` time before retrying
                         tokio::time::sleep(retry_interval).await;
                     } else {

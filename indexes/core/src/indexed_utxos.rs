@@ -1,4 +1,5 @@
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
+use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -6,7 +7,7 @@ use std::collections::HashMap;
 // One possible implementation: u64 of transaction id xor'd with 4 bytes of transaction index.
 pub type CompactUtxoCollection = HashMap<TransactionOutpoint, CompactUtxoEntry>;
 
-/// A collection of utxos indexed via; [`ScriptPublicKey`] => [`TransactionOutpoint`] => [`CompactUtxo`].
+/// A collection of utxos indexed via; [`ScriptPublicKey`] => [`TransactionOutpoint`] => [`CompactUtxoEntry`].
 pub type UtxoSetByScriptPublicKey = HashMap<ScriptPublicKey, CompactUtxoCollection>;
 
 /// A map of balance by script public key
@@ -22,12 +23,16 @@ pub struct CompactUtxoEntry {
     pub block_daa_score: u64,
     pub is_coinbase: bool,
 }
+
 impl CompactUtxoEntry {
     /// Creates a new [`CompactUtxoEntry`]
     pub fn new(amount: u64, block_daa_score: u64, is_coinbase: bool) -> Self {
         Self { amount, block_daa_score, is_coinbase }
     }
 }
+
+impl MemSizeEstimator for CompactUtxoEntry {}
+
 impl From<UtxoEntry> for CompactUtxoEntry {
     fn from(utxo_entry: UtxoEntry) -> Self {
         Self { amount: utxo_entry.amount, block_daa_score: utxo_entry.block_daa_score, is_coinbase: utxo_entry.is_coinbase }

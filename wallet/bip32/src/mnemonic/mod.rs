@@ -10,7 +10,4 @@ mod phrase;
 //#[cfg(feature = "bip39")]
 pub(crate) mod seed;
 
-pub use self::{language::Language, phrase::Mnemonic};
-
-//#[cfg(feature = "bip39")]
-pub use self::seed::Seed;
+pub use self::{language::Language, phrase::Mnemonic, phrase::WordCount};

@@ -1,3 +1,7 @@
+//!
+//! Message signing and verification functions.
+//!
+
 use kaspa_hashes::{Hash, PersonalMessageSigningHash};
 use secp256k1::{Error, XOnlyPublicKey};
 

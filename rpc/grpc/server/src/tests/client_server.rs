@@ -189,12 +189,12 @@ async fn test_client_server_notifications() {
 
 fn create_server(core_service: Arc<RpcCoreMock>) -> Arc<Adaptor> {
     let manager = Manager::new(128);
-    Adaptor::server(get_free_net_address(), manager, core_service.clone(), core_service.core_notifier())
+    Adaptor::server(get_free_net_address(), 1, manager, core_service.clone(), core_service.core_notifier(), Default::default())
 }
 
 async fn create_client(server_address: NetAddress) -> GrpcClient {
     let server_url = format!("grpc://localhost:{}", server_address.port);
-    GrpcClient::connect(NotificationMode::Direct, server_url, false, None, false, None).await.unwrap()
+    GrpcClient::connect(NotificationMode::Direct, server_url, false, None, false, None, Default::default()).await.unwrap()
 }
 
 fn get_free_net_address() -> NetAddress {

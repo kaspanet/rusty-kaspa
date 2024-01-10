@@ -1,5 +1,5 @@
 use crate::derivation::gen1::WalletDerivationManager;
-use crate::Result;
+use crate::result::Result;
 use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
 use kaspa_consensus_wasm::PrivateKey;
 use std::str::FromStr;

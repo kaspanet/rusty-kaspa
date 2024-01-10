@@ -65,7 +65,7 @@ impl ConsensusConverter {
             transaction_ids: block.transactions.iter().map(|x| x.id()).collect(),
             is_header_only: block_status.is_header_only(),
             blue_score: ghostdag_data.blue_score,
-            children_hashes: (*children).clone(),
+            children_hashes: children,
             merge_set_blues_hashes: ghostdag_data.mergeset_blues,
             merge_set_reds_hashes: ghostdag_data.mergeset_reds,
             is_chain_block,
@@ -124,8 +124,8 @@ impl ConsensusConverter {
         if include_verbose_data {
             let verbose_data = Some(RpcTransactionVerboseData {
                 transaction_id: transaction.id(),
-                hash: hash(transaction),
-                mass: consensus.calculate_transaction_mass(transaction),
+                hash: hash(transaction, false),
+                mass: consensus.calculate_transaction_compute_mass(transaction),
                 // TODO: make block_hash an option
                 block_hash: header.map_or_else(RpcHash::default, |x| x.hash),
                 block_time: header.map_or(0, |x| x.timestamp),
@@ -138,6 +138,7 @@ impl ConsensusConverter {
                 subnetwork_id: transaction.subnetwork_id.clone(),
                 gas: transaction.gas,
                 payload: transaction.payload.clone(),
+                mass: transaction.mass(),
                 verbose_data,
             }
         } else {

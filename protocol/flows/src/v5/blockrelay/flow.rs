@@ -1,10 +1,11 @@
 use crate::{
-    flow_context::{BlockSource, FlowContext, RequestScope},
+    flow_context::{BlockLogEvent, FlowContext, RequestScope},
     flow_trait::Flow,
+    flowcontext::orphans::OrphanOutput,
 };
 use kaspa_consensus_core::{api::BlockValidationFutures, block::Block, blockstatus::BlockStatus, errors::block::RuleError};
-use kaspa_consensusmanager::ConsensusProxy;
-use kaspa_core::{debug, info};
+use kaspa_consensusmanager::{BlockProcessingBatch, ConsensusProxy};
+use kaspa_core::debug;
 use kaspa_hashes::Hash;
 use kaspa_p2p_lib::{
     common::ProtocolError,
@@ -17,13 +18,19 @@ use std::{collections::VecDeque, sync::Arc};
 
 pub struct RelayInvMessage {
     hash: Hash,
-    is_indirect: bool,
+
+    /// Indicates whether this inv is an orphan root of a previously relayed descendent
+    /// (i.e. this inv was indirectly queued)
+    is_orphan_root: bool,
+
+    /// Indicates whether this inv is already known to be within orphan resolution range
+    known_within_range: bool,
 }
 
 /// Encapsulates an incoming invs route which also receives data locally
 pub struct TwoWayIncomingRoute {
     incoming_route: SharedIncomingRoute,
-    indirect_invs: VecDeque<Hash>,
+    indirect_invs: VecDeque<RelayInvMessage>,
 }
 
 impl TwoWayIncomingRoute {
@@ -31,17 +38,18 @@ impl TwoWayIncomingRoute {
         Self { incoming_route, indirect_invs: VecDeque::new() }
     }
 
-    pub fn enqueue_indirect_invs<I: IntoIterator<Item = Hash>>(&mut self, iter: I) {
-        self.indirect_invs.extend(iter)
+    pub fn enqueue_indirect_invs<I: IntoIterator<Item = Hash>>(&mut self, iter: I, known_within_range: bool) {
+        // All indirect invs are orphan roots; not all are known to be within orphan resolution range
+        self.indirect_invs.extend(iter.into_iter().map(|h| RelayInvMessage { hash: h, is_orphan_root: true, known_within_range }))
     }
 
     pub async fn dequeue(&mut self) -> Result<RelayInvMessage, ProtocolError> {
         if let Some(inv) = self.indirect_invs.pop_front() {
-            Ok(RelayInvMessage { hash: inv, is_indirect: true })
+            Ok(inv)
         } else {
             let msg = dequeue!(self.incoming_route, Payload::InvRelayBlock)?;
             let inv = msg.try_into()?;
-            Ok(RelayInvMessage { hash: inv, is_indirect: false })
+            Ok(RelayInvMessage { hash: inv, is_orphan_root: false, known_within_range: false })
         }
     }
 }
@@ -98,9 +106,14 @@ impl HandleRelayInvsFlow {
                 }
             }
 
-            if self.ctx.is_known_orphan(inv.hash).await {
-                self.enqueue_orphan_roots(&session, inv.hash).await;
-                continue;
+            match self.ctx.get_orphan_roots_if_known(&session, inv.hash).await {
+                OrphanOutput::Unknown => {}           // Keep processing this inv
+                OrphanOutput::NoRoots(_) => continue, // Existing orphan w/o missing roots
+                OrphanOutput::Roots(roots) => {
+                    // Known orphan with roots to enqueue
+                    self.enqueue_orphan_roots(inv.hash, roots, inv.known_within_range);
+                    continue;
+                }
             }
 
             if self.ctx.is_ibd_running() && !session.async_is_nearly_synced().await {
@@ -129,7 +142,7 @@ impl HandleRelayInvsFlow {
 
             // We do not apply the skip heuristic below if inv was queued indirectly (as an orphan root), since
             // that means the process started by a proper and relevant relay block
-            if !inv.is_indirect && !broadcast {
+            if !inv.is_orphan_root && !broadcast {
                 debug!(
                     "Relay block {} has lower blue work than virtual's merge depth root ({} <= {}), hence we are skipping it",
                     inv.hash, block.header.blue_work, blue_work_threshold
@@ -137,22 +150,55 @@ impl HandleRelayInvsFlow {
                 continue;
             }
 
-            let BlockValidationFutures { block_task, virtual_state_task } = session.validate_and_insert_block(block.clone());
+            let BlockValidationFutures { block_task, mut virtual_state_task } = session.validate_and_insert_block(block.clone());
 
-            match block_task.await {
-                Ok(_) => {}
+            let ancestor_batch = match block_task.await {
+                Ok(_) => Default::default(),
                 Err(RuleError::MissingParents(missing_parents)) => {
                     debug!("Block {} is orphan and has missing parents: {:?}", block.hash(), missing_parents);
-                    self.process_orphan(&session, block, inv.is_indirect).await?;
-                    continue;
+                    if let Some(mut ancestor_batch) = self.process_orphan(&session, block.clone(), inv.known_within_range).await? {
+                        // Block is not an orphan, retrying
+                        let BlockValidationFutures { block_task: block_task_inner, virtual_state_task: virtual_state_task_inner } =
+                            session.validate_and_insert_block(block.clone());
+                        virtual_state_task = virtual_state_task_inner;
+                        for block_task in ancestor_batch.block_tasks.take().unwrap() {
+                            match block_task.await {
+                                Ok(_) => {}
+                                // We disconnect on invalidness even though this is not a direct relay from this peer, because
+                                // current relay is a descendant of this block (i.e. this peer claims all its ancestors are valid)
+                                Err(rule_error) => return Err(rule_error.into()),
+                            }
+                        }
+
+                        match block_task_inner.await {
+                            Ok(_) => match ancestor_batch.blocks.len() {
+                                0 => debug!("Retried orphan block {} successfully", block.hash()),
+                                n => {
+                                    self.ctx.log_block_event(BlockLogEvent::Unorphaned(ancestor_batch.blocks[0].hash(), n));
+                                    debug!("Unorphaned {} ancestors and retried orphan block {} successfully", n, block.hash())
+                                }
+                            },
+                            Err(rule_error) => return Err(rule_error.into()),
+                        }
+                        ancestor_batch
+                    } else {
+                        continue;
+                    }
                 }
                 Err(rule_error) => return Err(rule_error.into()),
-            }
+            };
 
             // As a policy, we only relay blocks who stand a chance to enter past(virtual).
             // The only mining rule which permanently excludes a block is the merge depth bound
             // (as opposed to "max parents" and "mergeset size limit" rules)
             if broadcast {
+                let msgs = ancestor_batch
+                    .blocks
+                    .iter()
+                    .map(|b| make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(b.hash().into()) }))
+                    .collect();
+                self.ctx.hub().broadcast_many(msgs).await;
+
                 self.ctx
                     .hub()
                     .broadcast(make_message!(Payload::InvRelayBlock, InvRelayBlockMessage { hash: Some(inv.hash.into()) }))
@@ -163,24 +209,14 @@ impl HandleRelayInvsFlow {
             // can continue processing the following relay blocks
             let ctx = self.ctx.clone();
             tokio::spawn(async move {
-                ctx.on_new_block(&session, block, virtual_state_task).await;
-                ctx.log_block_acceptance(inv.hash, BlockSource::Relay);
+                ctx.on_new_block(&session, ancestor_batch, block, virtual_state_task).await;
+                ctx.log_block_event(BlockLogEvent::Relay(inv.hash));
             });
         }
     }
 
-    async fn enqueue_orphan_roots(&mut self, consensus: &ConsensusProxy, orphan: Hash) {
-        if let Some(roots) = self.ctx.get_orphan_roots(consensus, orphan).await {
-            if roots.is_empty() {
-                return;
-            }
-            if self.ctx.is_log_throttled() {
-                debug!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
-            } else {
-                info!("Block {} has {} missing ancestors. Adding them to the invs queue...", orphan, roots.len());
-            }
-            self.invs_route.enqueue_indirect_invs(roots)
-        }
+    fn enqueue_orphan_roots(&mut self, _orphan: Hash, roots: Vec<Hash>, known_within_range: bool) {
+        self.invs_route.enqueue_indirect_invs(roots, known_within_range)
     }
 
     async fn request_block(
@@ -208,19 +244,50 @@ impl HandleRelayInvsFlow {
         }
     }
 
-    async fn process_orphan(&mut self, consensus: &ConsensusProxy, block: Block, is_indirect_inv: bool) -> Result<(), ProtocolError> {
+    /// Process the orphan block. Returns `Some(BlockProcessingBatch)` if the block has no missing roots, where
+    /// the batch includes ancestor blocks and their consensus processing batch. This indicates a retry is recommended.
+    async fn process_orphan(
+        &mut self,
+        consensus: &ConsensusProxy,
+        block: Block,
+        mut known_within_range: bool,
+    ) -> Result<Option<BlockProcessingBatch>, ProtocolError> {
         // Return if the block has been orphaned from elsewhere already
         if self.ctx.is_known_orphan(block.hash()).await {
-            return Ok(());
+            return Ok(None);
         }
 
-        // Add the block to the orphan pool if it's within orphan resolution range.
-        // If the block is indirect it means one of its descendants was already is resolution range, so
-        // we can avoid the query.
-        if is_indirect_inv || self.check_orphan_resolution_range(consensus, block.hash(), self.msg_route.id()).await? {
+        /* We orphan a block if one of the following holds:
+                1. It is known to be within orphan resolution range (no-op)
+                2. It holds the IBD DAA score heuristic conditions (local op)
+                3. We resolve its orphan range by interacting with the peer (peer op)
+
+            Note that we check the conditions by the order of their cost and avoid making expensive calls if not needed.
+        */
+        let should_orphan = known_within_range || self.check_orphan_ibd_conditions(block.header.daa_score) || {
+            // Inner scope to evaluate orphan resolution range and reassign the `known_within_range` variable
+            known_within_range = self.check_orphan_resolution_range(consensus, block.hash(), self.msg_route.id()).await?;
+            known_within_range
+        };
+
+        if should_orphan {
             let hash = block.hash();
-            self.ctx.add_orphan(block).await;
-            self.enqueue_orphan_roots(consensus, hash).await;
+            match self.ctx.add_orphan(consensus, block).await {
+                // There is a sync gap between consensus and the orphan pool, meaning that consensus might have indicated
+                // that this block is orphan, but by the time it got to the orphan pool we discovered it no longer has missing roots.
+                // In such a case, the orphan pool will queue the known orphan ancestors to consensus and will return the block processing
+                // batch.
+                // We signal this to the caller by returning the batch of processed ancestors, indicating a consensus processing retry
+                // should be performed for this block as well.
+                Some(OrphanOutput::NoRoots(ancestor_batch)) => {
+                    return Ok(Some(ancestor_batch));
+                }
+                Some(OrphanOutput::Roots(roots)) => {
+                    self.ctx.log_block_event(BlockLogEvent::Orphaned(hash, roots.len()));
+                    self.enqueue_orphan_roots(hash, roots, known_within_range)
+                }
+                None | Some(OrphanOutput::Unknown) => {}
+            }
         } else {
             // Send the block to IBD flow via the dedicated job channel. If the channel has a pending job, we prefer
             // the block with higher blue work, since it is usually more recent
@@ -229,13 +296,36 @@ impl HandleRelayInvsFlow {
                 Err(TrySendError::Closed(_)) => return Err(ProtocolError::ConnectionClosed), // This indicates that IBD flow has exited
             }
         }
-        Ok(())
+        Ok(None)
     }
 
-    /// Finds out whether the given block hash should be retrieved via the unorphaning
-    /// mechanism or via IBD. This method sends a BlockLocator request to the peer with
-    /// a limit of `ctx.orphan_resolution_range`. In the response, if we know none of the hashes,
-    /// we should retrieve the given block `hash` via IBD. Otherwise, via unorphaning.
+    /// Applies an heuristic to check whether we should store the orphan block in the orphan pool for IBD considerations.
+    ///
+    /// When IBD is going on it is guaranteed to sync all blocks in past(R) where R is the relay block triggering the
+    /// IBD. Frequently, if the IBD is short and fast enough, R will be within short distance from the syncer tips once
+    /// the IBD is over. However antipast(R) is usually not in orphan resolution range so these blocks will not be kept
+    /// leading to another IBD and so on.
+    ///
+    /// By checking whether the current orphan DAA score is within the range (R - M/10, R + M/2)** we make sure that in this
+    /// case we keep ~M/2 blocks in the orphan pool which are all unorphaned when IBD completes (see revalidate_orphans),
+    /// and the node reaches full sync state asap. We use M/10 for the lower bound since we only want to cover anticone(R)
+    /// in that region (which is expectedly small), whereas the M/2 upper bound is for covering the most early segment in
+    /// future(R). Overall we avoid keeping more than ~M/2 in order to not enter the area where blocks start getting evicted
+    /// from the orphan pool.
+    ///
+    /// **where R is the DAA score of R, and M is the orphans pool size limit
+    fn check_orphan_ibd_conditions(&self, orphan_daa_score: u64) -> bool {
+        if let Some(ibd_daa_score) = self.ctx.ibd_relay_daa_score() {
+            let max_orphans = self.ctx.max_orphans() as u64;
+            orphan_daa_score + max_orphans / 10 > ibd_daa_score && orphan_daa_score < ibd_daa_score + max_orphans / 2
+        } else {
+            false
+        }
+    }
+
+    /// Checks whether the given block hash is within orphan resolution range. This method sends a BlockLocator
+    /// request to the peer with a limit of `ctx.orphan_resolution_range`. In the response, if we know one of the
+    /// hashes, we should retrieve the given block via unorphaning.
     async fn check_orphan_resolution_range(
         &mut self,
         consensus: &ConsensusProxy,
@@ -251,7 +341,14 @@ impl HandleRelayInvsFlow {
             .await?;
         let msg = dequeue_with_timeout!(self.msg_route, Payload::BlockLocator)?;
         let locator_hashes: Vec<Hash> = msg.try_into()?;
-        for h in locator_hashes {
+        // Locator hashes are sent from later to earlier, so it makes sense to query consensus in reverse. Technically
+        // with current syncer-side implementations (in both go-kaspa and this codebase) we could query only the last one,
+        // but we prefer not relying on such details for correctness
+        //
+        // The current syncer-side implementation sends a full locator even though it suffices to only send the
+        // most early block. We keep it this way in order to allow future syncee-side implementations to do more
+        // with the full incremental info and because it is only a small set of hashes.
+        for h in locator_hashes.into_iter().rev() {
             if consensus.async_get_block_status(h).await.is_some_and(|s| s.has_block_body()) {
                 return Ok(true);
             }

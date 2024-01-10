@@ -1,8 +1,12 @@
+//!
+//! Kaspa value formatting and parsing utilities.
+//!
+
 use crate::result::Result;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::constants::*;
 use kaspa_consensus_core::network::NetworkType;
-use separator::Separatable;
+use separator::{separated_float, separated_int, separated_uint_with_output, Separatable};
 use workflow_log::style;
 
 pub fn try_kaspa_str_to_sompi<S: Into<String>>(s: S) -> Result<Option<u64>> {
@@ -41,6 +45,11 @@ pub fn sompi_to_kaspa_string(sompi: u64) -> String {
     sompi_to_kaspa(sompi).separated_string()
 }
 
+#[inline]
+pub fn sompi_to_kaspa_string_with_trailing_zeroes(sompi: u64) -> String {
+    separated_float!(format!("{:.8}", sompi_to_kaspa(sompi)))
+}
+
 pub fn kaspa_suffix(network_type: &NetworkType) -> &'static str {
     match network_type {
         NetworkType::Mainnet => "KAS",
@@ -52,7 +61,14 @@ pub fn kaspa_suffix(network_type: &NetworkType) -> &'static str {
 
 #[inline]
 pub fn sompi_to_kaspa_string_with_suffix(sompi: u64, network_type: &NetworkType) -> String {
-    let kas = sompi_to_kaspa(sompi).separated_string();
+    let kas = sompi_to_kaspa_string(sompi);
+    let suffix = kaspa_suffix(network_type);
+    format!("{kas} {suffix}")
+}
+
+#[inline]
+pub fn sompi_to_kaspa_string_with_trailing_zeroes_and_suffix(sompi: u64, network_type: &NetworkType) -> String {
+    let kas = sompi_to_kaspa_string_with_trailing_zeroes(sompi);
     let suffix = kaspa_suffix(network_type);
     format!("{kas} {suffix}")
 }
@@ -81,7 +97,14 @@ fn str_to_sompi(amount: &str) -> Result<u64> {
     let integer = amount[..dot_idx].parse::<u64>()? * SOMPI_PER_KASPA;
     let decimal = &amount[dot_idx + 1..];
     let decimal_len = decimal.len();
-    let decimal =
-        if decimal_len <= 8 { decimal.parse::<u64>()? * 10u64.pow(8 - decimal_len as u32) } else { decimal[..8].parse::<u64>()? };
+    let decimal = if decimal_len == 0 {
+        0
+    } else if decimal_len <= 8 {
+        decimal.parse::<u64>()? * 10u64.pow(8 - decimal_len as u32)
+    } else {
+        // TODO - discuss how to handle values longer than 8 decimal places
+        // (reject, truncate, ceil(), etc.)
+        decimal[..8].parse::<u64>()?
+    };
     Ok(integer + decimal)
 }

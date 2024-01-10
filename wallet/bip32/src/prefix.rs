@@ -1,6 +1,7 @@
 //! Extended key prefixes.
 
 use crate::{Error, ExtendedKey, Result, Version};
+use borsh::{BorshDeserialize, BorshSerialize};
 use core::{
     fmt::{self, Debug, Display},
     str,
@@ -11,7 +12,7 @@ use core::{
 /// The BIP32 spec describes these as "versions" and gives examples for
 /// `xprv`/`xpub` (mainnet) and `tprv`/`tpub` (testnet), however in practice
 /// there are many more used (e.g. `ypub`, `zpub`).
-#[derive(Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Eq, PartialEq, PartialOrd, Ord, BorshSerialize, BorshDeserialize)]
 #[non_exhaustive]
 pub struct Prefix {
     /// ASCII characters representing the prefix.

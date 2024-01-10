@@ -5,10 +5,10 @@ use kaspa_consensus_core::{
         utxo_view::UtxoView,
     },
 };
-use kaspa_database::prelude::StoreError;
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use kaspa_database::prelude::{CachePolicy, StoreError};
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 use std::{error::Error, fmt::Display, sync::Arc};
@@ -96,12 +96,12 @@ pub struct DbUtxoSetStore {
 }
 
 impl DbUtxoSetStore {
-    pub fn new(db: Arc<DB>, cache_size: u64, prefix: Vec<u8>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_size, prefix.clone()), prefix }
+    pub fn new(db: Arc<DB>, cache_policy: CachePolicy, prefix: Vec<u8>) -> Self {
+        Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, prefix.clone()), prefix }
     }
 
-    pub fn clone_with_new_cache(&self, cache_size: u64) -> Self {
-        Self::new(Arc::clone(&self.db), cache_size, self.prefix.clone())
+    pub fn clone_with_new_cache(&self, cache_policy: CachePolicy) -> Self {
+        Self::new(Arc::clone(&self.db), cache_policy, self.prefix.clone())
     }
 
     /// See comment at [`UtxoSetStore::write_diff`]
@@ -127,8 +127,7 @@ impl DbUtxoSetStore {
 
     /// Clear the store completely in DB and cache
     pub fn clear(&mut self) -> Result<(), StoreError> {
-        let writer = DirectDbWriter::new(&self.db);
-        self.access.delete_all(writer)
+        self.access.delete_all(DirectDbWriter::new(&self.db))
     }
 
     /// Write directly from an iterator and do not cache any data. NOTE: this action also clears the cache

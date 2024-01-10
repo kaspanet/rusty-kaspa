@@ -8,6 +8,7 @@ use crate::{
     block_count::BlockCount,
     blockstatus::BlockStatus,
     coinbase::MinerData,
+    daa_score_timestamp::DaaScoreTimestamp,
     errors::{
         block::{BlockProcessResult, RuleError},
         coinbase::CoinbaseResult,
@@ -77,7 +78,11 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn calculate_transaction_mass(&self, transaction: &Transaction) -> u64 {
+    fn calculate_transaction_compute_mass(&self, transaction: &Transaction) -> u64 {
+        unimplemented!()
+    }
+
+    fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {
         unimplemented!()
     }
 
@@ -136,7 +141,15 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
+        unimplemented!()
+    }
+
     fn get_virtual_parents(&self) -> BlockHashSet {
+        unimplemented!()
+    }
+
+    fn get_virtual_parents_len(&self) -> usize {
         unimplemented!()
     }
 
@@ -150,6 +163,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_tips(&self) -> Vec<Hash> {
+        unimplemented!()
+    }
+
+    fn get_tips_len(&self) -> usize {
         unimplemented!()
     }
 
@@ -237,7 +254,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_block_children(&self, hash: Hash) -> Option<Arc<Vec<Hash>>> {
+    fn get_block_children(&self, hash: Hash) -> Option<Vec<Hash>> {
         unimplemented!()
     }
 

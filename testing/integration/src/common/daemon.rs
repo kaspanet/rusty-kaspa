@@ -8,7 +8,7 @@ use kaspad_lib::{args::Args, daemon::create_core_with_runtime};
 use std::{sync::Arc, time::Duration};
 use tempfile::TempDir;
 
-use super::client_pool::ClientPool;
+use kaspa_grpc_client::ClientPool;
 
 pub struct Daemon {
     // Type and suffix of the daemon network
@@ -77,9 +77,17 @@ impl Daemon {
     }
 
     pub async fn new_client(&self) -> GrpcClient {
-        GrpcClient::connect(NotificationMode::Direct, format!("grpc://localhost:{}", self.rpc_port), true, None, false, Some(500_000))
-            .await
-            .unwrap()
+        GrpcClient::connect(
+            NotificationMode::Direct,
+            format!("grpc://localhost:{}", self.rpc_port),
+            true,
+            None,
+            false,
+            Some(500_000),
+            Default::default(),
+        )
+        .await
+        .unwrap()
     }
 
     pub async fn new_client_pool<T: Send + 'static, F, R>(

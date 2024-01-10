@@ -5,6 +5,7 @@ use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, pro
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
 use kaspa_consensus::pipeline::ProcessingCounters;
+use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::{
     block::Block,
     coinbase::MinerData,
@@ -33,6 +34,7 @@ use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
     notifier::IndexNotifier,
 };
+use kaspa_mining::model::tx_query::TransactionQuery;
 use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::Orphan};
 use kaspa_notify::{
     collector::DynCollector,
@@ -44,6 +46,7 @@ use kaspa_notify::{
     subscriber::{Subscriber, SubscriptionManager},
 };
 use kaspa_p2p_flows::flow_context::FlowContext;
+use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
 use kaspa_rpc_core::{
     api::{
@@ -56,13 +59,15 @@ use kaspa_rpc_core::{
 };
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
+use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
-use kaspa_wrpc_core::ServerCounters as WrpcServerCounters;
 use std::{
+    collections::HashMap,
     iter::once,
     sync::{atomic::Ordering, Arc},
     vec,
 };
+use workflow_rpc::server::WebSocketCounters as WrpcServerCounters;
 
 /// A service implementing the Rpc API at kaspa_rpc_core level.
 ///
@@ -97,6 +102,8 @@ pub struct RpcCoreService {
     wrpc_json_counters: Arc<WrpcServerCounters>,
     shutdown: SingleTrigger,
     perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
+    p2p_tower_counters: Arc<TowerConnectionCounters>,
+    grpc_tower_counters: Arc<TowerConnectionCounters>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -116,6 +123,8 @@ impl RpcCoreService {
         wrpc_borsh_counters: Arc<WrpcServerCounters>,
         wrpc_json_counters: Arc<WrpcServerCounters>,
         perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
+        p2p_tower_counters: Arc<TowerConnectionCounters>,
+        grpc_tower_counters: Arc<TowerConnectionCounters>,
     ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
@@ -178,6 +187,8 @@ impl RpcCoreService {
             wrpc_json_counters,
             shutdown: SingleTrigger::default(),
             perf_monitor,
+            p2p_tower_counters,
+            grpc_tower_counters,
         }
     }
 
@@ -221,6 +232,17 @@ impl RpcCoreService {
         // Other network types can be used in an isolated environment without peers
         !matches!(self.flow_context.config.net.network_type, Mainnet | Testnet) || self.flow_context.hub().has_peers()
     }
+
+    fn extract_tx_query(&self, filter_transaction_pool: bool, include_orphan_pool: bool) -> RpcResult<TransactionQuery> {
+        match (filter_transaction_pool, include_orphan_pool) {
+            (true, true) => Ok(TransactionQuery::OrphansOnly),
+            // Note that the first `true` indicates *filtering* transactions and the second `false` indicates not including
+            // orphan txs -- hence the query would be empty by definition and is thus useless
+            (true, false) => Err(RpcError::InconsistentMempoolTxQuery),
+            (false, true) => Ok(TransactionQuery::All),
+            (false, false) => Ok(TransactionQuery::TransactionsOnly),
+        }
+    }
 }
 
 #[async_trait]
@@ -261,9 +283,23 @@ impl RpcApi for RpcCoreService {
         trace!("incoming SubmitBlockRequest for block {}", hash);
         match self.flow_context.submit_rpc_block(&session, block.clone()).await {
             Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
+            Err(ProtocolError::RuleError(RuleError::BadMerkleRoot(h1, h2))) => {
+                warn!(
+                    "The RPC submitted block triggered a {} error: {}. 
+NOTE: This error usually indicates an RPC conversion error between the node and the miner. If you are on TN11 this is likely to reflect using a NON-SUPPORTED miner.",
+                    stringify!(RuleError::BadMerkleRoot),
+                    RuleError::BadMerkleRoot(h1, h2)
+                );
+                if self.config.net.is_mainnet() {
+                    warn!("Printing the full block for debug purposes:\n{:?}", block);
+                }
+                Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
+            }
             Err(err) => {
-                warn!("The RPC submitted block triggered an error: {}\nPrinting the full header for debug purposes:\n{:?}", err, err);
-                // error = format!("Block rejected. Reason: {}", err))
+                warn!(
+                    "The RPC submitted block triggered an error: {}\nPrinting the full header for debug purposes:\n{:?}",
+                    err, block
+                );
                 Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
             }
         }
@@ -366,7 +402,7 @@ impl RpcApi for RpcCoreService {
         let is_nearly_synced = self.consensus_manager.consensus().unguarded_session().async_is_nearly_synced().await;
         Ok(GetInfoResponse {
             p2p_id: self.flow_context.node_id.to_string(),
-            mempool_size: self.mining_manager.clone().transaction_count(true, false).await as u64,
+            mempool_size: self.mining_manager.clone().transaction_count(TransactionQuery::TransactionsOnly).await as u64,
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
             is_synced: self.has_sufficient_peer_connectivity() && is_nearly_synced,
@@ -376,12 +412,8 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_mempool_entry_call(&self, request: GetMempoolEntryRequest) -> RpcResult<GetMempoolEntryResponse> {
-        let Some(transaction) = self
-            .mining_manager
-            .clone()
-            .get_transaction(request.transaction_id, !request.filter_transaction_pool, request.include_orphan_pool)
-            .await
-        else {
+        let query = self.extract_tx_query(request.filter_transaction_pool, request.include_orphan_pool)?;
+        let Some(transaction) = self.mining_manager.clone().get_transaction(request.transaction_id, query).await else {
             return Err(RpcError::TransactionNotFound(request.transaction_id));
         };
         let session = self.consensus_manager.consensus().unguarded_session();
@@ -389,9 +421,9 @@ impl RpcApi for RpcCoreService {
     }
 
     async fn get_mempool_entries_call(&self, request: GetMempoolEntriesRequest) -> RpcResult<GetMempoolEntriesResponse> {
+        let query = self.extract_tx_query(request.filter_transaction_pool, request.include_orphan_pool)?;
         let session = self.consensus_manager.consensus().unguarded_session();
-        let (transactions, orphans) =
-            self.mining_manager.clone().get_all_transactions(!request.filter_transaction_pool, request.include_orphan_pool).await;
+        let (transactions, orphans) = self.mining_manager.clone().get_all_transactions(query).await;
         let mempool_entries = transactions
             .iter()
             .chain(orphans.iter())
@@ -404,13 +436,10 @@ impl RpcApi for RpcCoreService {
         &self,
         request: GetMempoolEntriesByAddressesRequest,
     ) -> RpcResult<GetMempoolEntriesByAddressesResponse> {
+        let query = self.extract_tx_query(request.filter_transaction_pool, request.include_orphan_pool)?;
         let session = self.consensus_manager.consensus().unguarded_session();
         let script_public_keys = request.addresses.iter().map(pay_to_address_script).collect();
-        let grouped_txs = self
-            .mining_manager
-            .clone()
-            .get_transactions_by_addresses(script_public_keys, !request.filter_transaction_pool, request.include_orphan_pool)
-            .await;
+        let grouped_txs = self.mining_manager.clone().get_transactions_by_addresses(script_public_keys, query).await;
         let mempool_entries = grouped_txs
             .owners
             .iter()
@@ -530,6 +559,64 @@ impl RpcApi for RpcCoreService {
         let circulating_sompi =
             self.utxoindex.clone().unwrap().get_circulating_supply().await.map_err(|e| RpcError::General(e.to_string()))?;
         Ok(GetCoinSupplyResponse::new(MAX_SOMPI, circulating_sompi))
+    }
+
+    async fn get_daa_score_timestamp_estimate_call(
+        &self,
+        request: GetDaaScoreTimestampEstimateRequest,
+    ) -> RpcResult<GetDaaScoreTimestampEstimateResponse> {
+        let session = self.consensus_manager.consensus().session().await;
+        // TODO: cache samples based on sufficient recency of the data and append sink data
+        let mut headers = session.async_get_chain_block_samples().await;
+        let mut requested_daa_scores = request.daa_scores.clone();
+        let mut daa_score_timestamp_map = HashMap::<u64, u64>::new();
+
+        headers.reverse();
+        requested_daa_scores.sort_by(|a, b| b.cmp(a));
+
+        let mut header_idx = 0;
+        let mut req_idx = 0;
+
+        // Loop runs at O(n + m) where n = # pp headers, m = # requested daa_scores
+        // Loop will always end because in the worst case the last header with daa_score = 0 (the genesis)
+        // will cause every remaining requested daa_score to be "found in range"
+        //
+        // TODO: optimize using binary search over the samples to obtain O(m log n) complexity (which is an improvement assuming m << n)
+        while header_idx < headers.len() && req_idx < request.daa_scores.len() {
+            let header = headers.get(header_idx).unwrap();
+            let curr_daa_score = requested_daa_scores[req_idx];
+
+            // Found daa_score in range
+            if header.daa_score <= curr_daa_score {
+                // For daa_score later than the last header, we estimate in milliseconds based on the difference
+                let time_adjustment = if header_idx == 0 {
+                    // estimate milliseconds = (daa_score * target_time_per_block)
+                    (curr_daa_score - header.daa_score).checked_mul(self.config.target_time_per_block).unwrap_or(u64::MAX)
+                } else {
+                    // "next" header is the one that we processed last iteration
+                    let next_header = &headers[header_idx - 1];
+                    // Unlike DAA scores which are monotonic (over the selected chain), timestamps are not strictly monotonic, so we avoid assuming so
+                    let time_between_headers = next_header.timestamp.checked_sub(header.timestamp).unwrap_or_default();
+                    let score_between_query_and_header = (curr_daa_score - header.daa_score) as f64;
+                    let score_between_headers = (next_header.daa_score - header.daa_score) as f64;
+                    // Interpolate the timestamp delta using the estimated fraction based on DAA scores
+                    ((time_between_headers as f64) * (score_between_query_and_header / score_between_headers)) as u64
+                };
+
+                let daa_score_timestamp = header.timestamp.checked_add(time_adjustment).unwrap_or(u64::MAX);
+                daa_score_timestamp_map.insert(curr_daa_score, daa_score_timestamp);
+
+                // Process the next daa score that's <= than current one (at earlier idx)
+                req_idx += 1;
+            } else {
+                header_idx += 1;
+            }
+        }
+
+        // Note: it is safe to assume all entries exist in the map since the first sampled header is expected to have daa_score=0
+        let timestamps = request.daa_scores.iter().map(|curr_daa_score| daa_score_timestamp_map[curr_daa_score]).collect();
+
+        Ok(GetDaaScoreTimestampEstimateResponse::new(timestamps))
     }
 
     async fn ping_call(&self, _: PingRequest) -> RpcResult<PingResponse> {
@@ -683,39 +770,72 @@ impl RpcApi for RpcCoreService {
             disk_io_write_bytes,
             disk_io_read_per_sec,
             disk_io_write_per_sec,
-            ..
         } = self.perf_monitor.snapshot();
+
         let process_metrics = req.process_metrics.then_some(ProcessMetrics {
             resident_set_size,
             virtual_memory_size,
-            core_num: core_num as u64,
-            cpu_usage,
-            fd_num: fd_num as u64,
+            core_num: core_num as u32,
+            cpu_usage: cpu_usage as f32,
+            fd_num: fd_num as u32,
             disk_io_read_bytes,
             disk_io_write_bytes,
-            disk_io_read_per_sec,
-            disk_io_write_per_sec,
-            borsh_live_connections: self.wrpc_borsh_counters.live_connections.load(Ordering::Relaxed),
-            borsh_connection_attempts: self.wrpc_borsh_counters.connection_attempts.load(Ordering::Relaxed),
-            borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed),
-            json_live_connections: self.wrpc_json_counters.live_connections.load(Ordering::Relaxed),
-            json_connection_attempts: self.wrpc_json_counters.connection_attempts.load(Ordering::Relaxed),
-            json_handshake_failures: self.wrpc_json_counters.handshake_failures.load(Ordering::Relaxed),
+            disk_io_read_per_sec: disk_io_read_per_sec as f32,
+            disk_io_write_per_sec: disk_io_write_per_sec as f32,
         });
 
-        let consensus_metrics = req.consensus_metrics.then_some(ConsensusMetrics {
-            blocks_submitted: self.processing_counters.blocks_submitted.load(Ordering::SeqCst),
-            header_counts: self.processing_counters.header_counts.load(Ordering::SeqCst),
-            dep_counts: self.processing_counters.dep_counts.load(Ordering::SeqCst),
-            body_counts: self.processing_counters.body_counts.load(Ordering::SeqCst),
-            txs_counts: self.processing_counters.txs_counts.load(Ordering::SeqCst),
-            chain_block_counts: self.processing_counters.chain_block_counts.load(Ordering::SeqCst),
-            mass_counts: self.processing_counters.mass_counts.load(Ordering::SeqCst),
+        let connection_metrics = req.connection_metrics.then_some(ConnectionMetrics {
+            borsh_live_connections: self.wrpc_borsh_counters.active_connections.load(Ordering::Relaxed) as u32,
+            borsh_connection_attempts: self.wrpc_borsh_counters.total_connections.load(Ordering::Relaxed) as u64,
+            borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed) as u64,
+            json_live_connections: self.wrpc_json_counters.active_connections.load(Ordering::Relaxed) as u32,
+            json_connection_attempts: self.wrpc_json_counters.total_connections.load(Ordering::Relaxed) as u64,
+            json_handshake_failures: self.wrpc_json_counters.handshake_failures.load(Ordering::Relaxed) as u64,
+
+            active_peers: self.flow_context.hub().active_peers_len() as u32,
         });
+
+        let bandwidth_metrics = req.bandwidth_metrics.then_some(BandwidthMetrics {
+            borsh_bytes_tx: self.wrpc_borsh_counters.tx_bytes.load(Ordering::Relaxed) as u64,
+            borsh_bytes_rx: self.wrpc_borsh_counters.rx_bytes.load(Ordering::Relaxed) as u64,
+            json_bytes_tx: self.wrpc_json_counters.tx_bytes.load(Ordering::Relaxed) as u64,
+            json_bytes_rx: self.wrpc_json_counters.rx_bytes.load(Ordering::Relaxed) as u64,
+            p2p_bytes_tx: self.p2p_tower_counters.bytes_tx.load(Ordering::Relaxed) as u64,
+            p2p_bytes_rx: self.p2p_tower_counters.bytes_rx.load(Ordering::Relaxed) as u64,
+            grpc_bytes_tx: self.grpc_tower_counters.bytes_tx.load(Ordering::Relaxed) as u64,
+            grpc_bytes_rx: self.grpc_tower_counters.bytes_rx.load(Ordering::Relaxed) as u64,
+        });
+
+        let consensus_metrics = if req.consensus_metrics {
+            let session = self.consensus_manager.consensus().unguarded_session();
+            let block_count = session.async_estimate_block_count().await;
+
+            Some(ConsensusMetrics {
+                node_blocks_submitted_count: self.processing_counters.blocks_submitted.load(Ordering::SeqCst),
+                node_headers_processed_count: self.processing_counters.header_counts.load(Ordering::SeqCst),
+                node_dependencies_processed_count: self.processing_counters.dep_counts.load(Ordering::SeqCst),
+                node_bodies_processed_count: self.processing_counters.body_counts.load(Ordering::SeqCst),
+                node_transactions_processed_count: self.processing_counters.txs_counts.load(Ordering::SeqCst),
+                node_chain_blocks_processed_count: self.processing_counters.chain_block_counts.load(Ordering::SeqCst),
+                node_mass_processed_count: self.processing_counters.mass_counts.load(Ordering::SeqCst),
+                // ---
+                node_database_blocks_count: block_count.block_count,
+                node_database_headers_count: block_count.header_count,
+                // ---
+                network_mempool_size: self.mining_manager.clone().transaction_count(TransactionQuery::TransactionsOnly).await as u64,
+                network_tip_hashes_count: session.async_get_tips_len().await as u32,
+                network_difficulty: self.consensus_converter.get_difficulty_ratio(session.async_get_virtual_bits().await),
+                network_past_median_time: session.async_get_virtual_past_median_time().await,
+                network_virtual_parent_hashes_count: session.async_get_virtual_parents_len().await as u32,
+                network_virtual_daa_score: session.async_get_virtual_daa_score().await,
+            })
+        } else {
+            None
+        };
 
         let server_time = unix_now();
 
-        let response = GetMetricsResponse { server_time, process_metrics, consensus_metrics };
+        let response = GetMetricsResponse { server_time, process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics };
 
         Ok(response)
     }

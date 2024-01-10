@@ -39,6 +39,10 @@ pub enum DatabaseStorePrefixes {
     GhostdagProof = 29,
     GhostdagCompactProof = 30,
 
+    // ---- Decomposed reachability stores ----
+    ReachabilityTreeChildren = 30,
+    ReachabilityFutureCoveringSet = 31,
+
     // ---- Metadata ----
     MultiConsensusMetadata = 124,
     ConsensusEntries = 125,

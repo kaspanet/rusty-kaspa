@@ -5,7 +5,7 @@ use crate::{
         Flow,
     },
 };
-use futures::future::try_join_all;
+use futures::future::{join_all, select, try_join_all, Either};
 use kaspa_consensus_core::{
     api::BlockValidationFuture,
     block::Block,
@@ -32,6 +32,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use tokio::time::sleep;
 
 use super::{progress::ProgressReporter, HeadersChunk, PruningPointUtxosetChunkStream, IBD_BATCH_SIZE};
 
@@ -62,6 +63,11 @@ pub enum IbdType {
     DownloadHeadersProof,
 }
 
+struct QueueChunkOutput {
+    jobs: Vec<BlockValidationFuture>,
+    daa_score: u64,
+    timestamp: u64,
+}
 // TODO: define a peer banning strategy
 
 impl IbdFlow {
@@ -71,7 +77,7 @@ impl IbdFlow {
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         while let Ok(relay_block) = self.relay_receiver.recv().await {
-            if let Some(_guard) = self.ctx.try_set_ibd_running(self.router.key()) {
+            if let Some(_guard) = self.ctx.try_set_ibd_running(self.router.key(), relay_block.header.daa_score) {
                 info!("IBD started with peer {}", self.router);
 
                 match self.ibd(relay_block).await {
@@ -112,11 +118,16 @@ impl IbdFlow {
                 match self.ibd_with_headers_proof(&staging, negotiation_output.syncer_virtual_selected_parent, &relay_block).await {
                     Ok(()) => {
                         spawn_blocking(|| staging.commit()).await.unwrap();
+                        info!(
+                            "Header download stage of IBD with headers proof completed successfully from {}. Committed staging consensus.",
+                            self.router
+                        );
                         self.ctx.on_pruning_point_utxoset_override();
                         // This will reobtain the freshly committed staging consensus
                         session = self.ctx.consensus().session().await;
                     }
                     Err(e) => {
+                        info!("IBD with headers proof from {} was unsuccessful ({})", self.router, e);
                         staging.cancel();
                         return Err(e);
                     }
@@ -129,7 +140,27 @@ impl IbdFlow {
 
         // Relay block might be in the antipast of syncer sink, thus
         // check its past for missing bodies as well.
-        self.sync_missing_block_bodies(&session, relay_block.hash()).await
+        self.sync_missing_block_bodies(&session, relay_block.hash()).await?;
+
+        // Following IBD we revalidate orphans since many of them might have been processed during the IBD
+        // or are now processable
+        let (queued_hashes, virtual_processing_tasks) = self.ctx.revalidate_orphans(&session).await;
+        let mut unorphaned_hashes = Vec::with_capacity(queued_hashes.len());
+        let results = join_all(virtual_processing_tasks).await;
+        for (hash, result) in queued_hashes.into_iter().zip(results) {
+            match result {
+                Ok(_) => unorphaned_hashes.push(hash),
+                // We do not return the error and disconnect here since we don't know
+                // that this peer was the origin of the orphan block
+                Err(e) => warn!("Validation failed for orphan block {}: {}", hash, e),
+            }
+        }
+        match unorphaned_hashes.len() {
+            0 => {}
+            n => info!("IBD post processing: unorphaned {} blocks ...{}", n, unorphaned_hashes.last().unwrap()),
+        }
+
+        Ok(())
     }
 
     async fn determine_ibd_type(
@@ -346,12 +377,18 @@ impl IbdFlow {
         let mut chunk_stream = HeadersChunkStream::new(&self.router, &mut self.incoming_route);
 
         if let Some(chunk) = chunk_stream.next().await? {
-            let mut prev_daa_score = chunk.last().expect("chunk is never empty").daa_score;
+            let (mut prev_daa_score, mut prev_timestamp) = {
+                let last_header = chunk.last().expect("chunk is never empty");
+                (last_header.daa_score, last_header.timestamp)
+            };
             let mut prev_jobs: Vec<BlockValidationFuture> =
                 chunk.into_iter().map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).virtual_state_task).collect();
 
             while let Some(chunk) = chunk_stream.next().await? {
-                let current_daa_score = chunk.last().expect("chunk is never empty").daa_score;
+                let (current_daa_score, current_timestamp) = {
+                    let last_header = chunk.last().expect("chunk is never empty");
+                    (last_header.daa_score, last_header.timestamp)
+                };
                 let current_jobs = chunk
                     .into_iter()
                     .map(|h| consensus.validate_and_insert_block(Block::from_header_arc(h)).virtual_state_task)
@@ -360,8 +397,9 @@ impl IbdFlow {
                 // Join the previous chunk so that we always concurrently process a chunk and receive another
                 try_join_all(prev_jobs).await?;
                 // Log the progress
-                progress_reporter.report(prev_chunk_len, prev_daa_score);
+                progress_reporter.report(prev_chunk_len, prev_daa_score, prev_timestamp);
                 prev_daa_score = current_daa_score;
+                prev_timestamp = current_timestamp;
                 prev_jobs = current_jobs;
             }
 
@@ -461,7 +499,23 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
 
     async fn sync_missing_block_bodies(&mut self, consensus: &ConsensusProxy, high: Hash) -> Result<(), ProtocolError> {
         // TODO: query consensus in batches
-        let hashes = consensus.async_get_missing_block_body_hashes(high).await?;
+        let sleep_task = sleep(Duration::from_secs(2));
+        let hashes_task = consensus.async_get_missing_block_body_hashes(high);
+        tokio::pin!(sleep_task);
+        tokio::pin!(hashes_task);
+        let hashes = match select(sleep_task, hashes_task).await {
+            Either::Left((_, hashes_task)) => {
+                // We select between the tasks in order to inform the user if this operation is taking too long. On full IBD
+                // this operation requires traversing the full DAG which indeed might take several seconds or even minutes.
+                info!(
+                    "IBD: searching for missing block bodies to request from peer {}. This operation might take several seconds.",
+                    self.router
+                );
+                // Now re-await the original task
+                hashes_task.await
+            }
+            Either::Right((hashes_result, _)) => hashes_result,
+        }?;
         if hashes.is_empty() {
             return Ok(());
         }
@@ -471,17 +525,19 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         let mut progress_reporter = ProgressReporter::new(low_header.daa_score, high_header.daa_score, "blocks");
 
         let mut iter = hashes.chunks(IBD_BATCH_SIZE);
-        let (mut prev_jobs, mut prev_daa_score) =
+        let QueueChunkOutput { jobs: mut prev_jobs, daa_score: mut prev_daa_score, timestamp: mut prev_timestamp } =
             self.queue_block_processing_chunk(consensus, iter.next().expect("hashes was non empty")).await?;
 
         for chunk in iter {
-            let (current_jobs, current_daa_score) = self.queue_block_processing_chunk(consensus, chunk).await?;
+            let QueueChunkOutput { jobs: current_jobs, daa_score: current_daa_score, timestamp: current_timestamp } =
+                self.queue_block_processing_chunk(consensus, chunk).await?;
             let prev_chunk_len = prev_jobs.len();
             // Join the previous chunk so that we always concurrently process a chunk and receive another
             try_join_all(prev_jobs).await?;
             // Log the progress
-            progress_reporter.report(prev_chunk_len, prev_daa_score);
+            progress_reporter.report(prev_chunk_len, prev_daa_score, prev_timestamp);
             prev_daa_score = current_daa_score;
+            prev_timestamp = current_timestamp;
             prev_jobs = current_jobs;
         }
 
@@ -496,9 +552,10 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
         &mut self,
         consensus: &ConsensusProxy,
         chunk: &[Hash],
-    ) -> Result<(Vec<BlockValidationFuture>, u64), ProtocolError> {
+    ) -> Result<QueueChunkOutput, ProtocolError> {
         let mut jobs = Vec::with_capacity(chunk.len());
         let mut current_daa_score = 0;
+        let mut current_timestamp = 0;
         self.router
             .enqueue(make_message!(
                 Payload::RequestIbdBlocks,
@@ -515,9 +572,10 @@ staging selected tip ({}) is too small or negative. Aborting IBD...",
                 return Err(ProtocolError::OtherOwned(format!("sent header of {} where expected block with body", block.hash())));
             }
             current_daa_score = block.header.daa_score;
+            current_timestamp = block.header.timestamp;
             jobs.push(consensus.validate_and_insert_block(block).virtual_state_task);
         }
 
-        Ok((jobs, current_daa_score))
+        Ok(QueueChunkOutput { jobs, daa_score: current_daa_score, timestamp: current_timestamp })
     }
 }

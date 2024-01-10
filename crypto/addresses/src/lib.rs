@@ -11,25 +11,25 @@ mod bech32;
 
 #[derive(Error, PartialEq, Eq, Debug, Clone)]
 pub enum AddressError {
-    #[error("Invalid prefix {0}")]
+    #[error("The address has an invalid prefix {0}")]
     InvalidPrefix(String),
 
-    #[error("Prefix is missing")]
+    #[error("The address prefix is missing")]
     MissingPrefix,
 
-    #[error("Invalid version {0}")]
+    #[error("The address has an invalid version {0}")]
     InvalidVersion(u8),
 
-    #[error("Invalid version {0}")]
+    #[error("The address has an invalid version {0}")]
     InvalidVersionString(String),
 
-    #[error("Invalid character {0}")]
+    #[error("The address contains an invalid character {0}")]
     DecodingError(char),
 
-    #[error("Checksum is invalid")]
+    #[error("The address checksum is invalid")]
     BadChecksum,
 
-    #[error("Invalid address")]
+    #[error("The address is invalid")]
     InvalidAddress,
 
     #[error("{0}")]
@@ -180,7 +180,7 @@ pub const PAYLOAD_VECTOR_SIZE: usize = 36;
 pub type PayloadVec = SmallVec<[u8; PAYLOAD_VECTOR_SIZE]>;
 
 /// Kaspa `Address` struct that serializes to and from an address format string: `kaspa:qz0s...t8cv`.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 #[wasm_bindgen(inspectable)]
 pub struct Address {
     #[wasm_bindgen(skip)]
@@ -189,6 +189,16 @@ pub struct Address {
     pub version: Version,
     #[wasm_bindgen(skip)]
     pub payload: PayloadVec,
+}
+
+impl std::fmt::Debug for Address {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.version == Version::PubKey {
+            write!(f, "{}", String::from(self))
+        } else {
+            write!(f, "{} ({})", String::from(self), self.version)
+        }
+    }
 }
 
 impl Address {
@@ -209,27 +219,27 @@ impl Address {
 
     /// Convert an address to a string.
     #[wasm_bindgen(js_name = toString)]
-    pub fn to_str(&self) -> String {
+    pub fn address_to_string(&self) -> String {
         self.into()
     }
 
-    #[wasm_bindgen(getter)]
-    pub fn version(&self) -> String {
+    #[wasm_bindgen(getter, js_name = "version")]
+    pub fn version_to_string(&self) -> String {
         self.version.to_string()
     }
 
-    #[wasm_bindgen(getter)]
-    pub fn prefix(&self) -> String {
+    #[wasm_bindgen(getter, js_name = "prefix")]
+    pub fn prefix_to_string(&self) -> String {
         self.prefix.to_string()
     }
 
-    #[wasm_bindgen(setter)]
-    pub fn set_prefix(&mut self, prefix: &str) {
+    #[wasm_bindgen(setter, js_name = "setPrefix")]
+    pub fn set_prefix_from_str(&mut self, prefix: &str) {
         self.prefix = Prefix::try_from(prefix).unwrap_or_else(|err| panic!("Address::prefix() - invalid prefix `{prefix}`: {err}"));
     }
 
-    #[wasm_bindgen(getter)]
-    pub fn payload(&self) -> String {
+    #[wasm_bindgen(getter, js_name = "payload")]
+    pub fn payload_to_string(&self) -> String {
         self.encode_payload()
     }
 
@@ -242,7 +252,7 @@ impl Address {
 
 impl Display for Address {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_str())
+        write!(f, "{}", String::from(self))
     }
 }
 
@@ -517,7 +527,7 @@ impl From<AddressList> for Vec<Address> {
 impl TryFrom<JsValue> for AddressList {
     type Error = AddressError;
     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        js_value.try_into()
+        js_value.as_ref().try_into()
     }
 }
 
@@ -632,7 +642,12 @@ mod tests {
         let expected = Address::constructor("kaspa:qpauqsvk7yf9unexwmxsnmg547mhyga37csh0kj53q6xxgl24ydxjsgzthw5j");
 
         use web_sys::console;
-        console::log_4(&"address: ".into(), &expected.version().into(), &expected.prefix().into(), &expected.payload().into());
+        console::log_4(
+            &"address: ".into(),
+            &expected.version_to_string().into(),
+            &expected.prefix_to_string().into(),
+            &expected.payload_to_string().into(),
+        );
 
         let obj = Object::new();
         obj.set("version", &JsValue::from_str("PubKey")).unwrap();

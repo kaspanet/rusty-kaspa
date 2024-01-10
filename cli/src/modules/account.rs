@@ -1,3 +1,7 @@
+use kaspa_wallet_core::account::BIP32_ACCOUNT_KIND;
+use kaspa_wallet_core::account::LEGACY_ACCOUNT_KIND;
+use kaspa_wallet_core::account::MULTISIG_ACCOUNT_KIND;
+
 use crate::imports::*;
 use crate::wizards;
 
@@ -26,20 +30,20 @@ impl Account {
                     tprintln!(ctx, "usage: 'account name <name>' or 'account name remove'");
                     return Ok(());
                 } else {
-                    let (secret, _) = ctx.ask_wallet_secret(None).await?;
+                    let (wallet_secret, _) = ctx.ask_wallet_secret(None).await?;
                     let _ = ctx.notifier().show(Notification::Processing).await;
                     let account = ctx.select_account().await?;
                     let name = argv.remove(0);
                     if name == "remove" {
-                        account.rename(secret, None).await?;
+                        account.rename(&wallet_secret, None).await?;
                     } else {
-                        account.rename(secret, Some(name.as_str())).await?;
+                        account.rename(&wallet_secret, Some(name.as_str())).await?;
                     }
                 }
             }
             "create" => {
                 let account_kind = if argv.is_empty() {
-                    AccountKind::Bip32
+                    BIP32_ACCOUNT_KIND.into()
                 } else {
                     let kind = argv.remove(0);
                     kind.parse::<AccountKind>()?
@@ -109,11 +113,11 @@ impl Account {
                                 Secret::new(ctx.term().ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
                             let ctx_ = ctx.clone();
                             wallet
-                                .import_gen0_keydata(
-                                    import_secret,
-                                    wallet_secret,
+                                .import_legacy_keydata(
+                                    &import_secret,
+                                    &wallet_secret,
                                     None,
-                                    Some(Arc::new(move |processed: usize, balance, txid| {
+                                    Some(Arc::new(move |processed: usize, _, balance, txid| {
                                         if let Some(txid) = txid {
                                             tprintln!(
                                                 ctx_,
@@ -152,15 +156,15 @@ impl Account {
                         let account_kind = argv.remove(0);
                         let account_kind = account_kind.parse::<AccountKind>()?;
 
-                        match account_kind {
-                            AccountKind::Legacy | AccountKind::Bip32 => {
+                        match account_kind.as_ref() {
+                            LEGACY_ACCOUNT_KIND | BIP32_ACCOUNT_KIND => {
                                 if !argv.is_empty() {
                                     tprintln!(ctx, "too many arguments: {}\r\n", argv.join(" "));
                                     return Ok(());
                                 }
                                 crate::wizards::import::import_with_mnemonic(&ctx, account_kind, &argv).await?;
                             }
-                            AccountKind::MultiSig => {
+                            MULTISIG_ACCOUNT_KIND => {
                                 crate::wizards::import::import_with_mnemonic(&ctx, account_kind, &argv).await?;
                             }
                             _ => {
@@ -253,7 +257,7 @@ impl Account {
                 window,
                 sweep,
                 &abortable,
-                Some(Arc::new(move |processed: usize, balance, txid| {
+                Some(Arc::new(move |processed: usize, _, balance, txid| {
                     if let Some(txid) = txid {
                         tprintln!(
                             ctx_,

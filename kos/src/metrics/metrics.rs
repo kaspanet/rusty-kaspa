@@ -1,6 +1,6 @@
 use super::toolbar::*;
 use crate::imports::*;
-use kaspa_cli_lib::metrics::{Metric, MetricsSnapshot};
+use kaspa_metrics_core::{Metric, MetricsSnapshot};
 use std::collections::HashMap;
 use workflow_core::time::{HOURS, MINUTES};
 use workflow_d3::container::*;
@@ -26,7 +26,7 @@ impl Metrics {
     pub async fn try_new() -> Result<Arc<Self>> {
         workflow_d3::load().await?;
 
-        let core_ipc_target = get_ipc_target(Modules::Core).await?.expect("Unable to aquire background window");
+        let core_ipc_target = get_ipc_target(Modules::Core).await?.expect("Unable to acquire background window");
         let core = Arc::new(CoreIpc::new(core_ipc_target));
 
         let settings = Arc::new(SettingsStore::<MetricsSettings>::try_new("metrics")?);
@@ -149,7 +149,7 @@ impl Metrics {
         let si = true;
         for metric in Metric::list() {
             let value = data.get(&metric);
-            self.graph(&metric).ingest(data.unixtime, value, &data.format(&metric, si)).await?;
+            self.graph(&metric).ingest(data.unixtime_millis, value, &data.format(&metric, si, false)).await?;
         }
 
         yield_executor().await;
@@ -165,7 +165,7 @@ impl Metrics {
         self.init_graphs().await?;
 
         // this call reflects from core to terminal
-        // initiating metrica data relay
+        // initiating metrics data relay
         self.core.metrics_ready().await?;
 
         Ok(())

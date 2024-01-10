@@ -28,8 +28,14 @@ pub trait RpcApi: Sync + Send + AnySync {
 
     // ---
 
-    async fn get_metrics(&self, process_metrics: bool, consensus_metrics: bool) -> RpcResult<GetMetricsResponse> {
-        self.get_metrics_call(GetMetricsRequest { process_metrics, consensus_metrics }).await
+    async fn get_metrics(
+        &self,
+        process_metrics: bool,
+        connection_metrics: bool,
+        bandwidth_metrics: bool,
+        consensus_metrics: bool,
+    ) -> RpcResult<GetMetricsResponse> {
+        self.get_metrics_call(GetMetricsRequest { process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics }).await
     }
     async fn get_metrics_call(&self, request: GetMetricsRequest) -> RpcResult<GetMetricsResponse>;
 
@@ -289,6 +295,14 @@ pub trait RpcApi: Sync + Send + AnySync {
         self.get_coin_supply_call(GetCoinSupplyRequest {}).await
     }
     async fn get_coin_supply_call(&self, request: GetCoinSupplyRequest) -> RpcResult<GetCoinSupplyResponse>;
+
+    async fn get_daa_score_timestamp_estimate(&self, daa_scores: Vec<u64>) -> RpcResult<Vec<u64>> {
+        Ok(self.get_daa_score_timestamp_estimate_call(GetDaaScoreTimestampEstimateRequest { daa_scores }).await?.timestamps)
+    }
+    async fn get_daa_score_timestamp_estimate_call(
+        &self,
+        request: GetDaaScoreTimestampEstimateRequest,
+    ) -> RpcResult<GetDaaScoreTimestampEstimateResponse>;
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API

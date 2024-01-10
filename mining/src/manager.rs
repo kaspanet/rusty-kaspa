@@ -15,8 +15,9 @@ use crate::{
         candidate_tx::CandidateTransaction,
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
         topological_sort::IntoIterTopologically,
+        tx_query::TransactionQuery,
     },
-    MiningCounters,
+    MempoolCountersSnapshot, MiningCounters,
 };
 use itertools::Itertools;
 use kaspa_consensus_core::{
@@ -52,20 +53,16 @@ impl MiningManager {
         Self::with_config(config, cache_lifetime, counters)
     }
 
-    pub fn new_with_spam_blocking_option(
-        block_spam_txs: bool,
+    pub fn new_with_extended_config(
         target_time_per_block: u64,
         relay_non_std_transactions: bool,
         max_block_mass: u64,
+        ram_scale: f64,
         cache_lifetime: Option<u64>,
         counters: Arc<MiningCounters>,
     ) -> Self {
-        let config = Config::build_default_with_spam_blocking_option(
-            block_spam_txs,
-            target_time_per_block,
-            relay_non_std_transactions,
-            max_block_mass,
-        );
+        let config =
+            Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass).apply_ram_scale(ram_scale);
         Self::with_config(config, cache_lifetime, counters)
     }
 
@@ -422,7 +419,7 @@ impl MiningManager {
         transactions[lower_bound..]
             .iter()
             .position(|tx| {
-                mass += tx.calculated_mass.unwrap();
+                mass += tx.calculated_compute_mass.unwrap();
                 mass >= self.config.maximum_mass_per_block
             })
             // Make sure the upper bound is greater than the lower bound, allowing to handle a very unlikely,
@@ -435,43 +432,35 @@ impl MiningManager {
     /// Try to return a mempool transaction by its id.
     ///
     /// Note: the transaction is an orphan if tx.is_fully_populated() returns false.
-    pub fn get_transaction(
-        &self,
-        transaction_id: &TransactionId,
-        include_transaction_pool: bool,
-        include_orphan_pool: bool,
-    ) -> Option<MutableTransaction> {
-        assert!(include_transaction_pool || include_orphan_pool, "at least one of either transactions or orphans must be included");
-        self.mempool.read().get_transaction(transaction_id, include_transaction_pool, include_orphan_pool)
+    pub fn get_transaction(&self, transaction_id: &TransactionId, query: TransactionQuery) -> Option<MutableTransaction> {
+        self.mempool.read().get_transaction(transaction_id, query)
     }
 
     /// Returns whether the mempool holds this transaction in any form.
-    pub fn has_transaction(&self, transaction_id: &TransactionId, include_transaction_pool: bool, include_orphan_pool: bool) -> bool {
-        assert!(include_transaction_pool || include_orphan_pool, "at least one of either transactions or orphans must be included");
-        self.mempool.read().has_transaction(transaction_id, include_transaction_pool, include_orphan_pool)
+    pub fn has_transaction(&self, transaction_id: &TransactionId, query: TransactionQuery) -> bool {
+        self.mempool.read().has_transaction(transaction_id, query)
     }
 
-    pub fn get_all_transactions(
-        &self,
-        include_transaction_pool: bool,
-        include_orphan_pool: bool,
-    ) -> (Vec<MutableTransaction>, Vec<MutableTransaction>) {
+    pub fn get_all_transactions(&self, query: TransactionQuery) -> (Vec<MutableTransaction>, Vec<MutableTransaction>) {
         const TRANSACTION_CHUNK_SIZE: usize = 1000;
-        assert!(include_transaction_pool || include_orphan_pool, "at least one of either transactions or orphans must be included");
         // read lock on mempool by transaction chunks
-        let transactions = if include_transaction_pool {
-            let transaction_ids = self.mempool.read().get_all_transaction_ids(true, false).0;
-            let mut transactions = Vec::with_capacity(self.mempool.read().transaction_count(true, false));
+        let transactions = if query.include_transaction_pool() {
+            let transaction_ids = self.mempool.read().get_all_transaction_ids(TransactionQuery::TransactionsOnly).0;
+            let mut transactions = Vec::with_capacity(self.mempool.read().transaction_count(TransactionQuery::TransactionsOnly));
             for chunks in transaction_ids.chunks(TRANSACTION_CHUNK_SIZE) {
                 let mempool = self.mempool.read();
-                transactions.extend(chunks.iter().filter_map(|x| mempool.get_transaction(x, true, false)));
+                transactions.extend(chunks.iter().filter_map(|x| mempool.get_transaction(x, TransactionQuery::TransactionsOnly)));
             }
             transactions
         } else {
             vec![]
         };
         // read lock on mempool
-        let orphans = if include_orphan_pool { self.mempool.read().get_all_transactions(false, true).1 } else { vec![] };
+        let orphans = if query.include_orphan_pool() {
+            self.mempool.read().get_all_transactions(TransactionQuery::OrphansOnly).1
+        } else {
+            vec![]
+        };
         (transactions, orphans)
     }
 
@@ -482,17 +471,14 @@ impl MiningManager {
     pub fn get_transactions_by_addresses(
         &self,
         script_public_keys: &ScriptPublicKeySet,
-        include_transaction_pool: bool,
-        include_orphan_pool: bool,
+        query: TransactionQuery,
     ) -> GroupedOwnerTransactions {
-        assert!(include_transaction_pool || include_orphan_pool, "at least one of either transactions or orphans must be included");
         // TODO: break the monolithic lock
-        self.mempool.read().get_transactions_by_addresses(script_public_keys, include_transaction_pool, include_orphan_pool)
+        self.mempool.read().get_transactions_by_addresses(script_public_keys, query)
     }
 
-    pub fn transaction_count(&self, include_transaction_pool: bool, include_orphan_pool: bool) -> usize {
-        assert!(include_transaction_pool || include_orphan_pool, "at least one of either transactions or orphans must be included");
-        self.mempool.read().transaction_count(include_transaction_pool, include_orphan_pool)
+    pub fn transaction_count(&self, query: TransactionQuery) -> usize {
+        self.mempool.read().transaction_count(query)
     }
 
     pub fn handle_new_block_transactions(
@@ -565,7 +551,7 @@ impl MiningManager {
         let mut transactions = Vec::with_capacity(transaction_ids.len());
         for chunk in &transaction_ids.iter().chunks(TRANSACTION_CHUNK_SIZE) {
             let mempool = self.mempool.read();
-            transactions.extend(chunk.filter_map(|x| mempool.get_transaction(x, true, false)));
+            transactions.extend(chunk.filter_map(|x| mempool.get_transaction(x, TransactionQuery::TransactionsOnly)));
         }
 
         let mut valid: usize = 0;
@@ -592,7 +578,7 @@ impl MiningManager {
                 if mempool.has_accepted_transaction(&transaction_id) {
                     accepted += 1;
                     None
-                } else if mempool.has_transaction(&transaction_id, true, false) {
+                } else if mempool.has_transaction(&transaction_id, TransactionQuery::TransactionsOnly) {
                     x.clear_entries();
                     mempool.populate_mempool_entries(&mut x);
                     match x.is_fully_populated() {
@@ -648,7 +634,7 @@ impl MiningManager {
                             valid += 1;
                         }
                         Err(RuleError::RejectMissingOutpoint) => {
-                            let transaction = mempool.get_transaction(&transaction_id, true, false).unwrap();
+                            let transaction = mempool.get_transaction(&transaction_id, TransactionQuery::TransactionsOnly).unwrap();
                             let missing_txs = transaction
                                 .entries
                                 .iter()
@@ -829,39 +815,21 @@ impl MiningManagerProxy {
     /// Try to return a mempool transaction by its id.
     ///
     /// Note: the transaction is an orphan if tx.is_fully_populated() returns false.
-    pub async fn get_transaction(
-        self,
-        transaction_id: TransactionId,
-        include_transaction_pool: bool,
-        include_orphan_pool: bool,
-    ) -> Option<MutableTransaction> {
-        spawn_blocking(move || self.inner.get_transaction(&transaction_id, include_transaction_pool, include_orphan_pool))
-            .await
-            .unwrap()
+    pub async fn get_transaction(self, transaction_id: TransactionId, query: TransactionQuery) -> Option<MutableTransaction> {
+        spawn_blocking(move || self.inner.get_transaction(&transaction_id, query)).await.unwrap()
     }
 
     /// Returns whether the mempool holds this transaction in any form.
-    pub async fn has_transaction(
-        self,
-        transaction_id: TransactionId,
-        include_transaction_pool: bool,
-        include_orphan_pool: bool,
-    ) -> bool {
-        spawn_blocking(move || self.inner.has_transaction(&transaction_id, include_transaction_pool, include_orphan_pool))
-            .await
-            .unwrap()
+    pub async fn has_transaction(self, transaction_id: TransactionId, query: TransactionQuery) -> bool {
+        spawn_blocking(move || self.inner.has_transaction(&transaction_id, query)).await.unwrap()
     }
 
-    pub async fn transaction_count(self, include_transaction_pool: bool, include_orphan_pool: bool) -> usize {
-        spawn_blocking(move || self.inner.transaction_count(include_transaction_pool, include_orphan_pool)).await.unwrap()
+    pub async fn transaction_count(self, query: TransactionQuery) -> usize {
+        spawn_blocking(move || self.inner.transaction_count(query)).await.unwrap()
     }
 
-    pub async fn get_all_transactions(
-        self,
-        include_transaction_pool: bool,
-        include_orphan_pool: bool,
-    ) -> (Vec<MutableTransaction>, Vec<MutableTransaction>) {
-        spawn_blocking(move || self.inner.get_all_transactions(include_transaction_pool, include_orphan_pool)).await.unwrap()
+    pub async fn get_all_transactions(self, query: TransactionQuery) -> (Vec<MutableTransaction>, Vec<MutableTransaction>) {
+        spawn_blocking(move || self.inner.get_all_transactions(query)).await.unwrap()
     }
 
     /// get_transactions_by_addresses returns the sending and receiving transactions for
@@ -871,14 +839,9 @@ impl MiningManagerProxy {
     pub async fn get_transactions_by_addresses(
         self,
         script_public_keys: ScriptPublicKeySet,
-        include_transaction_pool: bool,
-        include_orphan_pool: bool,
+        query: TransactionQuery,
     ) -> GroupedOwnerTransactions {
-        spawn_blocking(move || {
-            self.inner.get_transactions_by_addresses(&script_public_keys, include_transaction_pool, include_orphan_pool)
-        })
-        .await
-        .unwrap()
+        spawn_blocking(move || self.inner.get_transactions_by_addresses(&script_public_keys, query)).await.unwrap()
     }
 
     /// Returns whether a transaction id was registered as accepted in the mempool, meaning
@@ -903,5 +866,9 @@ impl MiningManagerProxy {
     /// nor accepted.
     pub async fn unknown_transactions(self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
         spawn_blocking(move || self.inner.unknown_transactions(transactions)).await.unwrap()
+    }
+
+    pub fn snapshot(&self) -> MempoolCountersSnapshot {
+        self.inner.counters.snapshot()
     }
 }

@@ -1,8 +1,14 @@
+//!
+//! Local file system transaction storage (native+NodeJS fs IO).
+//!
+
+use crate::encryption::*;
 use crate::imports::*;
 use crate::result::Result;
-use crate::storage::interface::StorageStream;
-use crate::storage::{Binding, TransactionRecordStore};
-use crate::storage::{TransactionMetadata, TransactionRecord};
+use crate::secret::Secret;
+use crate::storage::interface::{StorageStream, TransactionRangeResult};
+use crate::storage::TransactionRecord;
+use crate::storage::{Binding, TransactionKind, TransactionRecordStore};
 use kaspa_utils::hex::ToHex;
 use std::{
     collections::VecDeque,
@@ -60,7 +66,8 @@ impl TransactionStore {
         let mut transactions = VecDeque::new();
         match fs::readdir(folder, true).await {
             Ok(mut files) => {
-                files.sort_by_key(|f| f.metadata().unwrap().created());
+                // we reverse the order of the files so that the newest files are first
+                files.sort_by_key(|f| std::cmp::Reverse(f.metadata().unwrap().created()));
 
                 for file in files {
                     if let Ok(id) = TransactionId::from_hex(file.file_name()) {
@@ -82,10 +89,6 @@ impl TransactionStore {
             }
         }
     }
-
-    pub async fn store_transaction_metadata(&self, _id: TransactionId, _metadata: TransactionMetadata) -> Result<()> {
-        Ok(())
-    }
 }
 
 #[async_trait]
@@ -94,14 +97,14 @@ impl TransactionRecordStore for TransactionStore {
         Ok(Box::pin(TransactionIdStream::try_new(self, binding, network_id).await?))
     }
 
-    // async fn transaction_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<TransactionRecord>> {
-    //     Ok(Box::pin(TransactionRecordStream::try_new(&self.transactions, binding, network_id).await?))
-    // }
+    async fn transaction_data_iter(&self, binding: &Binding, network_id: &NetworkId) -> Result<StorageStream<Arc<TransactionRecord>>> {
+        Ok(Box::pin(TransactionRecordStream::try_new(self, binding, network_id).await?))
+    }
 
     async fn load_single(&self, binding: &Binding, network_id: &NetworkId, id: &TransactionId) -> Result<Arc<TransactionRecord>> {
         let folder = self.make_folder(binding, network_id);
         let path = folder.join(id.to_hex());
-        Ok(Arc::new(fs::read_json::<TransactionRecord>(&path).await?))
+        Ok(Arc::new(read(&path, None).await?))
     }
 
     async fn load_multiple(
@@ -115,18 +118,79 @@ impl TransactionRecordStore for TransactionStore {
 
         for id in ids {
             let path = folder.join(&id.to_hex());
-            let tx: TransactionRecord = fs::read_json(&path).await?;
-            transactions.push(Arc::new(tx));
+            match read(&path, None).await {
+                Ok(tx) => {
+                    transactions.push(Arc::new(tx));
+                }
+                Err(err) => {
+                    log_error!("Error loading transaction {id}: {:?}", err);
+                }
+            }
         }
 
         Ok(transactions)
+    }
+
+    async fn load_range(
+        &self,
+        binding: &Binding,
+        network_id: &NetworkId,
+        filter: Option<Vec<TransactionKind>>,
+        range: std::ops::Range<usize>,
+    ) -> Result<TransactionRangeResult> {
+        let folder = self.ensure_folder(binding, network_id).await?;
+        let ids = self.enumerate(binding, network_id).await?;
+        let mut transactions = vec![];
+
+        let total = if let Some(filter) = filter {
+            let mut located = 0;
+
+            for id in ids {
+                let path = folder.join(&id.to_hex());
+
+                match read(&path, None).await {
+                    Ok(tx) => {
+                        if filter.contains(&tx.kind()) {
+                            if located >= range.start && located < range.end {
+                                transactions.push(Arc::new(tx));
+                            }
+
+                            located += 1;
+                        }
+                    }
+                    Err(err) => {
+                        log_error!("Error loading transaction {id}: {:?}", err);
+                    }
+                }
+            }
+
+            located
+        } else {
+            let iter = ids.iter().skip(range.start).take(range.len());
+
+            for id in iter {
+                let path = folder.join(&id.to_hex());
+                match read(&path, None).await {
+                    Ok(tx) => {
+                        transactions.push(Arc::new(tx));
+                    }
+                    Err(err) => {
+                        log_error!("Error loading transaction {id}: {:?}", err);
+                    }
+                }
+            }
+
+            ids.len()
+        };
+
+        Ok(TransactionRangeResult { transactions, total: total as u64 })
     }
 
     async fn store(&self, transaction_records: &[&TransactionRecord]) -> Result<()> {
         for tx in transaction_records {
             let folder = self.ensure_folder(tx.binding(), tx.network_id()).await?;
             let filename = folder.join(tx.id().to_hex());
-            fs::write_json(&filename, tx).await?;
+            write(&filename, tx, None, EncryptionKind::XChaCha20Poly1305).await?;
         }
 
         Ok(())
@@ -142,7 +206,32 @@ impl TransactionRecordStore for TransactionStore {
         Ok(())
     }
 
-    async fn store_transaction_metadata(&self, _id: TransactionId, _metadata: TransactionMetadata) -> Result<()> {
+    async fn store_transaction_note(
+        &self,
+        binding: &Binding,
+        network_id: &NetworkId,
+        id: TransactionId,
+        note: Option<String>,
+    ) -> Result<()> {
+        let folder = self.make_folder(binding, network_id);
+        let path = folder.join(id.to_hex());
+        let mut transaction = read(&path, None).await?;
+        transaction.note = note;
+        write(&path, &transaction, None, EncryptionKind::XChaCha20Poly1305).await?;
+        Ok(())
+    }
+    async fn store_transaction_metadata(
+        &self,
+        binding: &Binding,
+        network_id: &NetworkId,
+        id: TransactionId,
+        metadata: Option<String>,
+    ) -> Result<()> {
+        let folder = self.make_folder(binding, network_id);
+        let path = folder.join(id.to_hex());
+        let mut transaction = read(&path, None).await?;
+        transaction.metadata = metadata;
+        write(&path, &transaction, None, EncryptionKind::XChaCha20Poly1305).await?;
         Ok(())
     }
 }
@@ -175,19 +264,17 @@ impl Stream for TransactionIdStream {
     }
 }
 
-/*
 #[derive(Clone)]
 pub struct TransactionRecordStream {
-    store: Arc<TransactionStore>,
-    folder: PathBuf,
     transactions: VecDeque<TransactionId>,
+    folder: PathBuf,
 }
 
 impl TransactionRecordStream {
-    pub(crate) async fn try_new(store: &Arc<TransactionStore>, binding: &Binding, network_id: &NetworkId) -> Result<Self> {
-        let folder = store.make_folder(binding, network_id)?;
+    pub(crate) async fn try_new(store: &TransactionStore, binding: &Binding, network_id: &NetworkId) -> Result<Self> {
+        let folder = store.make_folder(binding, network_id);
         let transactions = store.enumerate(binding, network_id).await?;
-        Ok(Self { store: store.clone(), folder, transactions })
+        Ok(Self { transactions, folder })
     }
 }
 
@@ -199,13 +286,37 @@ impl Stream for TransactionRecordStream {
             Poll::Ready(None)
         } else {
             let id = self.transactions.pop_front().unwrap();
-            let filename = id.to_hex();
-            let path = self.folder.join(filename);
-            match fs::read_json::<TransactionRecord>(&path).await {
-                Ok(tx) => Poll::Ready(Some(Ok(Arc::new(tx)))),
-                Err(e) => Poll::Ready(Some(Err(e))),
+            let path = self.folder.join(id.to_hex());
+            match read_sync(&path, None) {
+                Ok(transaction_data) => Poll::Ready(Some(Ok(Arc::new(transaction_data)))),
+                Err(err) => Poll::Ready(Some(Err(err))),
             }
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.transactions.len(), Some(self.transactions.len()))
+    }
 }
-*/
+
+async fn read(path: &Path, secret: Option<&Secret>) -> Result<TransactionRecord> {
+    let bytes = fs::read(path).await?;
+    let encryptable = Encryptable::<TransactionRecord>::try_from_slice(bytes.as_slice())?;
+    Ok(encryptable.decrypt(secret)?.unwrap())
+}
+
+fn read_sync(path: &Path, secret: Option<&Secret>) -> Result<TransactionRecord> {
+    let bytes = fs::read_sync(path)?;
+    let encryptable = Encryptable::<TransactionRecord>::try_from_slice(bytes.as_slice())?;
+    Ok(encryptable.decrypt(secret)?.unwrap())
+}
+
+async fn write(path: &Path, record: &TransactionRecord, secret: Option<&Secret>, encryption_kind: EncryptionKind) -> Result<()> {
+    let data = if let Some(secret) = secret {
+        Encryptable::from(record.clone()).into_encrypted(secret, encryption_kind)?
+    } else {
+        Encryptable::from(record.clone())
+    };
+    fs::write(path, &data.try_to_vec()?).await?;
+    Ok(())
+}

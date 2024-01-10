@@ -38,7 +38,7 @@ impl Rpc {
                 tprintln!(ctx, "ok");
             }
             RpcApiOps::GetMetrics => {
-                let result = rpc.get_metrics(true, true).await?;
+                let result = rpc.get_metrics(true, true, true, true).await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::GetServerInfo => {
@@ -84,10 +84,15 @@ impl Rpc {
                 let result = rpc.get_connected_peer_info_call(GetConnectedPeerInfoRequest {}).await?;
                 self.println(&ctx, result);
             }
-            // RpcApiOps::AddPeer => {
-            //     let result = rpc.add_peer_call(AddPeerRequest {  }).await?;
-            //     self.println(&ctx, result);
-            // }
+            RpcApiOps::AddPeer => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Usage: rpc addpeer <ip:port> [true|false for 'is_permanent']"));
+                }
+                let peer_address = argv.remove(0).parse::<RpcContextualPeerAddress>()?;
+                let is_permanent = argv.remove(0).parse::<bool>().unwrap_or(false);
+                let result = rpc.add_peer_call(AddPeerRequest { peer_address, is_permanent }).await?;
+                self.println(&ctx, result);
+            }
             // RpcApiOps::SubmitTransaction => {
             //     let result = rpc.submit_transaction_call(SubmitTransactionRequest {  }).await?;
             //     self.println(&ctx, result);
@@ -206,6 +211,23 @@ impl Rpc {
             RpcApiOps::GetCoinSupply => {
                 let result = rpc.get_coin_supply_call(GetCoinSupplyRequest {}).await?;
                 self.println(&ctx, result);
+            }
+            RpcApiOps::GetDaaScoreTimestampEstimate => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Please specify a daa_score"));
+                }
+                let daa_score_result = argv.iter().map(|s| s.parse::<u64>()).collect::<std::result::Result<Vec<_>, _>>();
+
+                match daa_score_result {
+                    Ok(daa_scores) => {
+                        let result =
+                            rpc.get_daa_score_timestamp_estimate_call(GetDaaScoreTimestampEstimateRequest { daa_scores }).await?;
+                        self.println(&ctx, result);
+                    }
+                    Err(_err) => {
+                        return Err(Error::custom("Could not parse daa_scores to u64"));
+                    }
+                }
             }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");

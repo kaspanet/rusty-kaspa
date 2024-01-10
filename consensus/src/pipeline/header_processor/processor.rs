@@ -362,12 +362,14 @@ impl HeaderProcessor {
                     .unwrap_or_else(|| Arc::new(self.proof_levels_ghostdag_managers[level].ghostdag(&ctx.known_parents[level])))
             })
             .collect_vec();
-        ctx.primary_ghostdag_data = Some(
-            self.ghostdag_store
-                .get_data(ctx.hash)
-                .unwrap_option()
-                .unwrap_or_else(|| Arc::new(self.ghostdag_manager.ghostdag(&ctx.known_parents[0]))),
-        );
+        let primary_gd = self
+            .ghostdag_store
+            .get_data(ctx.hash)
+            .unwrap_option()
+            .unwrap_or_else(|| Arc::new(self.ghostdag_manager.ghostdag(&ctx.known_parents[0])));
+        let mergeset_size = primary_gd.mergeset_size();
+        ctx.primary_ghostdag_data = Some(primary_gd);
+        self.counters.mergeset_counts.fetch_add(mergeset_size as u64, Ordering::Relaxed);
         ctx.ghostdag_data = Some(ghostdag_data);
     }
 

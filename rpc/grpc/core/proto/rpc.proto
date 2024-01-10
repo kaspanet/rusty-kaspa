@@ -64,6 +64,7 @@ message RpcTransaction {
   uint64 gas = 6;
   string payload = 8;
   RpcTransactionVerboseData verboseData = 9;
+  uint64 mass = 10;
 }
 
 message RpcTransactionInput {
@@ -754,21 +755,36 @@ message PingResponseMessage{
 message ProcessMetrics{
   uint64 residentSetSize = 1;
   uint64 virtualMemorySize = 2;
-  uint64 coreNum = 3;
-  double cpuUsage = 4;
-  uint64 fdNum = 5;
+  uint32 coreNum = 3;
+  float cpuUsage = 4;
+  uint32 fdNum = 5;
   uint64 diskIoReadBytes = 6;
   uint64 diskIoWriteBytes = 7;
-  double diskIoReadPerSec = 8;
-  double diskIoWritePerSec = 9;
+  float diskIoReadPerSec = 8;
+  float diskIoWritePerSec = 9;
+}
 
-  uint64 borshLiveConnections = 31;
+message ConnectionMetrics {
+  uint32 borshLiveConnections = 31;
   uint64 borshConnectionAttempts = 32;
   uint64 borshHandshakeFailures = 33;
 
-  uint64 jsonLiveConnections = 41;
+  uint32 jsonLiveConnections = 41;
   uint64 jsonConnectionAttempts = 42;
   uint64 jsonHandshakeFailures = 43;
+  
+  uint32 activePeers = 51;
+}
+
+message BandwidthMetrics {
+  uint64 borshBytesTx = 61;
+  uint64 borshBytesRx = 62;
+  uint64 jsonBytesTx = 63;
+  uint64 jsonBytesRx = 64;
+  uint64 grpcP2pBytesTx = 65;
+  uint64 grpcP2pBytesRx = 66;
+  uint64 grpcUserBytesTx = 67;
+  uint64 grpcUserBytesRx = 68;
 }
 
 message ConsensusMetrics{
@@ -779,17 +795,30 @@ message ConsensusMetrics{
   uint64 txsCounts = 5;
   uint64 chainBlockCounts = 6;
   uint64 massCounts = 7;
+  
+  uint64 blockCount = 11;
+  uint64 headerCount = 12;
+  uint64 mempoolSize = 13;
+  uint32 tipHashesCount = 14;
+  double difficulty = 15;
+  uint64 pastMedianTime = 16;
+  uint32 virtualParentHashesCount = 17;
+  uint64 virtualDaaScore = 18;
 }
 
 message GetMetricsRequestMessage{
   bool processMetrics = 1;
-  bool consensusMetrics = 2;
+  bool connectionMetrics = 2;
+  bool bandwidthMetrics = 3;
+  bool consensusMetrics = 4;
 }
 
 message GetMetricsResponseMessage{
   uint64 serverTime = 1;
   ProcessMetrics processMetrics = 11;
-  ConsensusMetrics consensusMetrics = 12;
+  ConnectionMetrics connectionMetrics = 12;
+  BandwidthMetrics bandwidthMetrics = 13;
+  ConsensusMetrics consensusMetrics = 14;
   RPCError error = 1000;
 }
 
@@ -812,4 +841,13 @@ message GetSyncStatusRequestMessage{
 message GetSyncStatusResponseMessage{
   bool isSynced = 1;
   RPCError error = 1000;
+}
+
+message GetDaaScoreTimestampEstimateRequestMessage {
+        repeated uint64 daa_scores = 1;
+}
+
+message GetDaaScoreTimestampEstimateResponseMessage{
+        repeated uint64 timestamps = 1;
+        RPCError error = 1000;
 }
