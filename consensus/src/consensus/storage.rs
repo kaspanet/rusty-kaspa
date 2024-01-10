@@ -50,8 +50,8 @@ pub struct ConsensusStorage {
     pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
 
     // Append-only stores
-    pub proof_levels_ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
-    pub ghostdag_store: Arc<DbGhostdagStore>,
+    pub ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
+    pub ghostdag_primary_store: Arc<DbGhostdagStore>,
     pub headers_store: Arc<DbHeadersStore>,
     pub block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub past_pruning_points_store: Arc<DbPastPruningPointsStore>,
@@ -187,7 +187,7 @@ impl ConsensusStorage {
             parents_builder.build(),
             children_builder.build(),
         )));
-        let proof_levels_ghostdag_stores = Arc::new(
+        let ghostdag_stores = Arc::new(
             (0..=params.max_block_level)
                 .map(|level| {
                     Arc::new(DbGhostdagStore::new(
@@ -237,8 +237,8 @@ impl ConsensusStorage {
             relations_stores,
             reachability_relations_store,
             reachability_store,
-            proof_levels_ghostdag_stores,
-            ghostdag_store,
+            ghostdag_stores,
+            ghostdag_primary_store,
             pruning_point_store,
             headers_selected_tip_store,
             body_tips_store,

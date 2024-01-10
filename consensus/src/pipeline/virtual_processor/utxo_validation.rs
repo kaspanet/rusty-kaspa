@@ -79,7 +79,7 @@ impl VirtualStateProcessor {
         for (i, (merged_block, txs)) in once((ctx.selected_parent(), selected_parent_transactions))
             .chain(
                 ctx.ghostdag_data
-                    .consensus_ordered_mergeset_without_selected_parent(self.ghostdag_store.deref())
+                    .consensus_ordered_mergeset_without_selected_parent(self.ghostdag_primary_store.deref())
                     .map(|b| (b, self.block_transactions_store.get(b).unwrap())),
             )
             .enumerate()

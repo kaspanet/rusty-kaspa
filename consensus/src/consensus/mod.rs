@@ -233,7 +233,7 @@ impl Consensus {
             block_processors_pool,
             db.clone(),
             storage.statuses_store.clone(),
-            storage.ghostdag_store.clone(),
+            storage.ghostdag_primary_store.clone(),
             storage.headers_store.clone(),
             storage.block_transactions_store.clone(),
             storage.body_tips_store.clone(),
@@ -473,7 +473,7 @@ impl ConsensusApi for Consensus {
 
     fn get_virtual_merge_depth_blue_work_threshold(&self) -> BlueWorkType {
         // PRUNE SAFETY: merge depth root is never close to being pruned (in terms of block depth)
-        self.get_virtual_merge_depth_root().map_or(BlueWorkType::ZERO, |root| self.ghostdag_store.get_blue_work(root).unwrap())
+        self.get_virtual_merge_depth_root().map_or(BlueWorkType::ZERO, |root| self.ghostdag_primary_store.get_blue_work(root).unwrap())
     }
 
     fn get_sink(&self) -> Hash {
@@ -791,7 +791,7 @@ impl ConsensusApi for Consensus {
             Some(BlockStatus::StatusInvalid) => return Err(ConsensusError::InvalidBlock(hash)),
             _ => {}
         };
-        let ghostdag = self.ghostdag_store.get_data(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))?;
+        let ghostdag = self.ghostdag_primary_store.get_data(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))?;
         Ok((&*ghostdag).into())
     }
 
@@ -843,7 +843,7 @@ impl ConsensusApi for Consensus {
         Ok(self
             .services
             .window_manager
-            .block_window(&self.ghostdag_store.get_data(hash).unwrap(), WindowType::SampledDifficultyWindow)
+            .block_window(&self.ghostdag_primary_store.get_data(hash).unwrap(), WindowType::SampledDifficultyWindow)
             .unwrap()
             .deref()
             .iter()
@@ -882,7 +882,7 @@ impl ConsensusApi for Consensus {
         match start_hash {
             Some(hash) => {
                 self.validate_block_exists(hash)?;
-                let ghostdag_data = self.ghostdag_store.get_data(hash).unwrap();
+                let ghostdag_data = self.ghostdag_primary_store.get_data(hash).unwrap();
                 self.estimate_network_hashes_per_second_impl(&ghostdag_data, window_size)
             }
             None => {
