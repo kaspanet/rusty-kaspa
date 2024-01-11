@@ -12,3 +12,4 @@ mimalloc.workspace = true
 
 [features]
 heap = []
+mimalloc = []

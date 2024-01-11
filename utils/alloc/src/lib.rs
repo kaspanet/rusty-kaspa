@@ -1,11 +1,9 @@
-#[cfg(not(feature = "heap"))]
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(all(not(feature = "heap"), any(target_os = "linux", target_os = "windows", feature = "mimalloc")))]
 extern "C" {
     fn mi_option_set_enabled(_: mi_option_e, val: bool);
 }
 
-#[cfg(not(feature = "heap"))]
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(all(not(feature = "heap"), any(target_os = "linux", target_os = "windows", feature = "mimalloc")))]
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
 #[repr(C)]
@@ -41,18 +39,14 @@ enum mi_option_e {
     _mi_option_last,
 }
 
-#[cfg(not(feature = "heap"))]
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(not(feature = "heap"), any(not(target_os = "macos"), feature = "mimalloc")))]
 use mimalloc::MiMalloc;
-#[cfg(not(feature = "heap"))]
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(not(feature = "heap"), any(not(target_os = "macos"), feature = "mimalloc")))]
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
 pub fn init_allocator_with_default_settings() {
-    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-    #[cfg(not(feature = "heap"))]
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(all(not(feature = "heap"), any(target_os = "linux", target_os = "windows", feature = "mimalloc")))]
     unsafe {
         // Empirical tests show that this option results in the smallest RSS.
         mi_option_set_enabled(mi_option_e::mi_option_purge_decommits, false)
