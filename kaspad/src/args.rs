@@ -67,6 +67,7 @@ pub struct Args {
 
     pub disable_upnp: bool,
     pub disable_dns_seeding: bool,
+    pub disable_grpc: bool,
     pub ram_scale: f64,
 }
 
@@ -115,6 +116,7 @@ impl Default for Args {
 
             disable_upnp: false,
             disable_dns_seeding: false,
+            disable_grpc: false,
             ram_scale: 1.0,
         }
     }
@@ -326,6 +328,7 @@ pub fn cli() -> Command {
         )
         .arg(arg!(--"disable-upnp" "Disable upnp"))
         .arg(arg!(--"nodnsseed" "Disable DNS seeding for peers"))
+        .arg(arg!(--"nogrpc" "Disable gRPC server"))
         .arg(
             Arg::new("ram-scale")
                 .long("ram-scale")
@@ -403,6 +406,7 @@ impl Args {
             block_template_cache_lifetime: defaults.block_template_cache_lifetime,
             disable_upnp: m.get_one::<bool>("disable-upnp").cloned().unwrap_or(defaults.disable_upnp),
             disable_dns_seeding: m.get_one::<bool>("nodnsseed").cloned().unwrap_or(defaults.disable_dns_seeding),
+            disable_grpc: m.get_one::<bool>("nogrpc").cloned().unwrap_or(defaults.disable_grpc),
             ram_scale: m.get_one::<f64>("ram-scale").cloned().unwrap_or(defaults.ram_scale),
 
             #[cfg(feature = "devnet-prealloc")]
@@ -497,5 +501,5 @@ impl Args {
       --devnet                              Use the development test network
       --override-dag-params-file=           Overrides DAG params (allowed only on devnet)
   -s, --service=                            Service command {install, remove, start, stop}
-
+      --nogrpc                              Don't initialize the gRPC server
 */
