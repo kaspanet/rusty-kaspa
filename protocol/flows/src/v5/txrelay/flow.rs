@@ -54,6 +54,13 @@ pub struct RelayTransactionsFlow {
     spam_counter: u64,
 }
 
+/// Holds the state information for whether we will throttle tx relay or not
+struct ThrottlingState {
+    should_throttle: bool,
+    last_checked_time: u64,
+    curr_snapshot: MempoolCountersSnapshot,
+}
+
 #[async_trait::async_trait]
 impl Flow for RelayTransactionsFlow {
     fn router(&self) -> Option<Arc<Router>> {
@@ -84,31 +91,15 @@ impl RelayTransactionsFlow {
 
     async fn start_impl(&mut self) -> Result<(), ProtocolError> {
         // trace!("Starting relay transactions flow with {}", self.router.identity());
-        let mut last_checked_time = unix_now();
-        let mut curr_snapshot = self.ctx.mining_manager().clone().snapshot();
-        let mut should_throttle = false;
+        let mut throttling_state = ThrottlingState {
+            should_throttle: false,
+            last_checked_time: unix_now(),
+            curr_snapshot: self.ctx.mining_manager().clone().snapshot(),
+        };
 
         loop {
-            // TODO: Extract should_throttle logic to a separate function
-            let now = unix_now();
-            if now > last_checked_time + 10000 {
-                let next_snapshot = self.ctx.mining_manager().clone().snapshot();
-                let snapshot_delta = &next_snapshot - &curr_snapshot;
+            self.check_tx_throttling(&mut throttling_state);
 
-                last_checked_time = now;
-                curr_snapshot = next_snapshot;
-
-                if snapshot_delta.low_priority_tx_counts > 0 {
-                    let tps = snapshot_delta.low_priority_tx_counts / self.ctx.config.params.bps();
-                    if !should_throttle && tps > MAX_TPS_THRESHOLD {
-                        warn!("P2P tx relay threshold exceeded. Throttling relay. Current: {}, Max: {}", tps, MAX_TPS_THRESHOLD);
-                        should_throttle = true;
-                    } else if should_throttle && tps < MAX_TPS_THRESHOLD / 2 {
-                        warn!("P2P tx relay threshold back to normal. Current: {}, Max: {}", tps, MAX_TPS_THRESHOLD);
-                        should_throttle = false;
-                    }
-                }
-            }
             // Loop over incoming block inv messages
             let inv: Vec<TransactionId> = dequeue!(self.invs_route, Payload::InvTransactions)?.try_into()?;
             // trace!("Receive an inv message from {} with {} transaction ids", self.router.identity(), inv.len());
@@ -124,8 +115,8 @@ impl RelayTransactionsFlow {
                 continue;
             }
 
-            let requests = self.request_transactions(inv, should_throttle, &curr_snapshot).await?;
-            self.receive_transactions(session, requests, should_throttle).await?;
+            let requests = self.request_transactions(inv, throttling_state.should_throttle, &throttling_state.curr_snapshot).await?;
+            self.receive_transactions(session, requests, throttling_state.should_throttle).await?;
         }
     }
 
@@ -195,6 +186,29 @@ impl RelayTransactionsFlow {
                 // One reason this may happen is the invs_route being full and preventing
                 // the router from routing other incoming messages
                 Err(ProtocolError::Timeout(DEFAULT_TIMEOUT))
+            }
+        }
+    }
+
+    /// If in the last 10 seconds we exceeded the TPS threshold, we will throttle tx relay
+    fn check_tx_throttling(&self, throttling_state: &mut ThrottlingState) {
+        let now = unix_now();
+        if now > 10000 + throttling_state.last_checked_time {
+            let next_snapshot = self.ctx.mining_manager().clone().snapshot();
+            let snapshot_delta = &next_snapshot - &throttling_state.curr_snapshot;
+
+            throttling_state.last_checked_time = now;
+            throttling_state.curr_snapshot = next_snapshot;
+
+            if snapshot_delta.low_priority_tx_counts > 0 {
+                let tps = snapshot_delta.low_priority_tx_counts / self.ctx.config.params.bps();
+                if !throttling_state.should_throttle && tps > MAX_TPS_THRESHOLD {
+                    warn!("P2P tx relay threshold exceeded. Throttling relay. Current: {}, Max: {}", tps, MAX_TPS_THRESHOLD);
+                    throttling_state.should_throttle = true;
+                } else if throttling_state.should_throttle && tps < MAX_TPS_THRESHOLD / 2 {
+                    warn!("P2P tx relay threshold back to normal. Current: {}, Max: {}", tps, MAX_TPS_THRESHOLD);
+                    throttling_state.should_throttle = false;
+                }
             }
         }
     }

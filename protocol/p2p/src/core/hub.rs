@@ -85,6 +85,28 @@ impl Hub {
         }
     }
 
+    /// Selects a random subset of peers, trying to select at least half for outbound when possible
+    fn select_some_peers(&self, num_peers: usize) -> Vec<Arc<Router>> {
+        let (outbound_peers, inbound_peers): (Vec<_>, Vec<_>) =
+            self.peers.read().values().cloned().partition(|peer| peer.is_outbound());
+
+        let mut required_outbound_count = (num_peers + 1) / 2;
+
+        // If won't be enough inbound peers to meet the num_peers after we've selected only half for outbound,
+        // try to require more outbound peers for the difference
+        if inbound_peers.len() + required_outbound_count < num_peers {
+            required_outbound_count = num_peers - inbound_peers.len();
+        }
+
+        let thread_rng = &mut rand::thread_rng();
+        // Randomly select about half from outbound
+        let mut peers = outbound_peers.choose_multiple(thread_rng, required_outbound_count).cloned().collect::<Vec<_>>();
+        // Then select the rest from inbound
+        peers.extend(inbound_peers.choose_multiple(thread_rng, num_peers - peers.len()).cloned().collect::<Vec<_>>());
+
+        peers
+    }
+
     /// Send a message to a specific peer
     pub async fn send(&self, peer_key: PeerKey, msg: KaspadMessage) -> Result<bool, ProtocolError> {
         let op = self.peers.read().get(&peer_key).cloned();
@@ -104,13 +126,12 @@ impl Hub {
         }
     }
 
-    /// Broadcast a message to some peers given a percentage
+    /// Broadcast a message to only some number of peers
     pub async fn broadcast_to_some_peers(&self, msg: KaspadMessage, num_peers: usize) {
         assert!(num_peers > 0);
-        let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
-        // TODO: At least some of the peers should be outbound, because an attacker can gain less control
-        // over the set of outbound peers.
-        let peers = peers.choose_multiple(&mut rand::thread_rng(), num_peers).cloned().collect::<Vec<_>>();
+
+        let peers = self.select_some_peers(num_peers);
+
         for router in peers {
             let _ = router.enqueue(msg.clone()).await;
         }
