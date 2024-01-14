@@ -498,7 +498,7 @@ impl UtxoContext {
                     consumed += tx.aggregate_input_value();
                 } else {
                     // compound tx has no payment value
-                    outgoing += tx.aggregate_output_value();
+                    outgoing += tx.fees() + tx.aggregate_output_value();
                     consumed += tx.aggregate_input_value()
                 }
             }
