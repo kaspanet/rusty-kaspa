@@ -334,8 +334,16 @@ impl KaspaRpcClient {
         });
         let path_str = parse_output.path;
 
-        // Do not include port if (using SSL or the path was supplied) and the port was not explicitly supplied
-        if (scheme == "wss" || scheme == "wrpcs" || !path_str.is_empty()) && parse_output.port.is_none() {
+        // Do not automatically include port if:
+        //  1) the URL contains a scheme
+        //  2) the URL contains a path
+        //  3) explicitly specified in the URL,
+        //
+        //  This means wss://host.com or host.com/path will remain as-is
+        //  while host.com or 1.2.3.4 will be converted to host.com:port
+        //  or 1.2.3.4:port where port is based on the network type.
+        //
+        if (parse_output.scheme.is_some() || !path_str.is_empty()) && parse_output.port.is_none() {
             Ok(format!("{}://{}:{}", scheme, parse_output.host.to_string(), path_str))
         } else {
             Ok(format!("{}://{}:{}{}", scheme, parse_output.host.to_string(), port, path_str))
