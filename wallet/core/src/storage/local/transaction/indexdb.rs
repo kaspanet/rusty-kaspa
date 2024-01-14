@@ -216,6 +216,8 @@ impl TransactionRecordStore for TransactionStore {
         _filter: Option<Vec<TransactionKind>>,
         _range: std::ops::Range<usize>,
     ) -> Result<TransactionRangeResult> {
+        log_info!("DEBUG IDB: Loading transaction records for range {:?}", _range);
+
         let result = TransactionRangeResult { transactions: vec![], total: 0 };
         Ok(result)
     }
