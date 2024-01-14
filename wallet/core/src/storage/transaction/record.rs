@@ -7,7 +7,6 @@ use crate::imports::*;
 use crate::storage::Binding;
 use crate::tx::PendingTransactionInner;
 use js_sys::{Date, Uint8Array};
-use wasm_bindgen::__rt::IntoJsResult;
 use workflow_core::time::{unixtime_as_millis_u64, unixtime_to_locale_string};
 
 pub use kaspa_consensus_core::tx::TransactionId;
@@ -504,7 +503,7 @@ impl TransactionRecord {
         let obj = Object::new();
         obj.set("id", &id_js_value)?;
         obj.set("timestamp", &timestamp_js_value)?;
-        obj.set("borshData", &borsh_data_js_value)?;
+        obj.set("data", &borsh_data_js_value)?;
 
         let value = JsValue::from(obj);
         Ok(value)
@@ -512,7 +511,7 @@ impl TransactionRecord {
 
     pub fn from_js_value(js_value: &JsValue, secret: Option<&Secret>) -> Result<Self, Error> {
         if let Some(object) = Object::try_from(&js_value) {
-            let borsh_data_jsv = object.get_value("borshData")?;
+            let borsh_data_jsv = object.get_value("data")?;
             let borsh_data = borsh_data_jsv
                 .try_as_vec_u8()
                 .map_err(|err| Error::Custom(format!("failed to get blob from transaction record object: {:?}", err)))?;
