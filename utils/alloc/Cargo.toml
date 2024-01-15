@@ -8,9 +8,12 @@ edition.workspace = true
 include.workspace = true
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
-mimalloc.workspace = true
+mimalloc = { version = "0.1.39", default-features = false, features = [
+    'override',
+] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# override is unstable in MacOS and is thus excluded
 mimalloc = { version = "0.1.39", default-features = false }
 
 [features]
