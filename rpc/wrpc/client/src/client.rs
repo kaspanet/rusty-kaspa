@@ -309,28 +309,45 @@ impl KaspaRpcClient {
 
     pub fn parse_url(url: String, encoding: Encoding, network_type: NetworkType) -> Result<String> {
         let parse_output = parse_host(&url).map_err(|err| Error::Custom(err.to_string()))?;
-        let scheme = parse_output.scheme.map(Ok).unwrap_or_else(|| {
-            if !application_runtime::is_web() {
-                return Ok("ws");
-            }
-            let location = window().location();
-            let protocol =
-                location.protocol().map_err(|_| Error::AddressError("Unable to obtain window location protocol".to_string()))?;
-            if protocol == "http:" || protocol == "chrome-extension:" {
-                Ok("ws")
-            } else if protocol == "https:" {
-                Ok("wss")
-            } else {
-                Err(Error::Custom(format!("Unsupported protocol: {}", protocol)))
-            }
-        })?;
+        let scheme = parse_output
+            .scheme
+            .map(Ok)
+            .unwrap_or_else(|| {
+                if !application_runtime::is_web() {
+                    return Ok("ws");
+                }
+                let location = window().location();
+                let protocol =
+                    location.protocol().map_err(|_| Error::AddressError("Unable to obtain window location protocol".to_string()))?;
+                if protocol == "http:" || protocol == "chrome-extension:" {
+                    Ok("ws")
+                } else if protocol == "https:" {
+                    Ok("wss")
+                } else {
+                    Err(Error::Custom(format!("Unsupported protocol: {}", protocol)))
+                }
+            })?
+            .to_lowercase();
         let port = parse_output.port.unwrap_or_else(|| match encoding {
             WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
             WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
         });
         let path_str = parse_output.path;
 
-        Ok(format!("{}://{}:{}{}", scheme, parse_output.host.to_string(), port, path_str))
+        // Do not automatically include port if:
+        //  1) the URL contains a scheme
+        //  2) the URL contains a path
+        //  3) explicitly specified in the URL,
+        //
+        //  This means wss://host.com or host.com/path will remain as-is
+        //  while host.com or 1.2.3.4 will be converted to host.com:port
+        //  or 1.2.3.4:port where port is based on the network type.
+        //
+        if (parse_output.scheme.is_some() || !path_str.is_empty()) && parse_output.port.is_none() {
+            Ok(format!("{}://{}:{}", scheme, parse_output.host.to_string(), path_str))
+        } else {
+            Ok(format!("{}://{}:{}{}", scheme, parse_output.host.to_string(), port, path_str))
+        }
     }
 
     async fn start_rpc_ctl_service(&self) -> Result<()> {

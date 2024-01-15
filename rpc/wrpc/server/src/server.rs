@@ -89,7 +89,7 @@ impl Server {
     }
 
     pub async fn connect(&self, peer: &SocketAddr, messenger: Arc<Messenger>) -> Result<Connection> {
-        log_info!("WebSocket connected: {}", peer);
+        // log_trace!("WebSocket connected: {}", peer);
         let id = self.inner.next_connection_id.fetch_add(1, Ordering::SeqCst);
 
         let grpc_client = if let Some(grpc_proxy_address) = &self.inner.options.grpc_proxy_address {
@@ -110,8 +110,6 @@ impl Server {
             // log_trace!("Creating proxy relay...");
             Some(Arc::new(grpc_client))
         } else {
-            // Provider::RpcCore
-
             None
         };
         let connection = Connection::new(id, peer, messenger, grpc_client);
