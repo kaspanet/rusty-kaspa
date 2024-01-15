@@ -57,6 +57,10 @@ impl OutgoingTransaction {
         self.inner.pending_transaction.aggregate_input_value()
     }
 
+    pub fn aggregate_output_value(&self) -> u64 {
+        self.inner.pending_transaction.aggregate_output_value()
+    }
+
     pub fn pending_transaction(&self) -> &PendingTransaction {
         &self.inner.pending_transaction
     }
