@@ -68,11 +68,12 @@ impl TransactionRecord {
     }
 
     pub fn maturity(&self, current_daa_score: u64) -> Maturity {
-        // TODO - refactor @ high BPS processing
+        let params = NetworkParams::from(self.network_id);
+
         let maturity = if self.is_coinbase() {
-            crate::utxo::UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst)
+            params.coinbase_transaction_maturity_period_daa
         } else {
-            crate::utxo::UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::SeqCst)
+            params.user_transaction_maturity_period_daa
         };
 
         if current_daa_score < self.block_daa_score() + maturity {
@@ -121,10 +122,11 @@ impl TransactionRecord {
     // a progress value based on the pending period. It is assumed
     // that transactions in stasis are not visible to the user.
     pub fn maturity_progress(&self, current_daa_score: u64) -> Option<f64> {
+        let params = NetworkParams::from(self.network_id);
         let maturity = if self.is_coinbase() {
-            crate::utxo::UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst)
+            params.coinbase_transaction_maturity_period_daa
         } else {
-            crate::utxo::UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::SeqCst)
+            params.user_transaction_maturity_period_daa
         };
 
         if current_daa_score < self.block_daa_score + maturity {
