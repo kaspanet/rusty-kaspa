@@ -3,21 +3,16 @@
 //!
 
 use crate::imports::*;
-use crate::utxo::{
-    UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA, UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA,
-    UTXO_STASIS_PERIOD_COINBASE_TRANSACTION_DAA,
-};
 pub use kaspa_consensus_wasm::{TryIntoUtxoEntryReferences, UtxoEntryReference};
 
 pub enum Maturity {
-    /// Coinbase UTXO that has not reached [`UTXO_STASIS_PERIOD_COINBASE_TRANSACTION_DAA`]
+    /// Coinbase UTXO that has not reached stasis period.
     Stasis,
-    /// Coinbase UTXO that has reached [`UTXO_STASIS_PERIOD_COINBASE_TRANSACTION_DAA`]
-    /// but has not reached [`UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA`] or
-    /// user UTXO that has not reached [`UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA`]
+    /// Coinbase UTXO that has reached stasis period
+    /// but has not reached coinbase maturity period or
+    /// user UTXO that has not reached user maturity period.
     Pending,
-    /// UTXO that has reached [`UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA`] or
-    /// [`UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA`] respectively.
+    /// UTXO that has reached maturity period.
     Confirmed,
 }
 
@@ -32,30 +27,29 @@ impl std::fmt::Display for Maturity {
 }
 
 pub trait UtxoEntryReferenceExtension {
-    fn maturity(&self, current_daa_score: u64) -> Maturity;
-    fn balance(&self, current_daa_score: u64) -> Balance;
+    fn maturity(&self, params: &NetworkParams, current_daa_score: u64) -> Maturity;
+    fn balance(&self, params: &NetworkParams, current_daa_score: u64) -> Balance;
 }
 
 impl UtxoEntryReferenceExtension for UtxoEntryReference {
-    fn maturity(&self, current_daa_score: u64) -> Maturity {
+    fn maturity(&self, params: &NetworkParams, current_daa_score: u64) -> Maturity {
         if self.is_coinbase() {
-            if self.block_daa_score() + UTXO_STASIS_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst) > current_daa_score {
+            if self.block_daa_score() + params.coinbase_transaction_stasis_period_daa > current_daa_score {
                 Maturity::Stasis
-            } else if self.block_daa_score() + UTXO_MATURITY_PERIOD_COINBASE_TRANSACTION_DAA.load(Ordering::SeqCst) > current_daa_score
-            {
+            } else if self.block_daa_score() + params.coinbase_transaction_maturity_period_daa > current_daa_score {
                 Maturity::Pending
             } else {
                 Maturity::Confirmed
             }
-        } else if self.block_daa_score() + UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::SeqCst) > current_daa_score {
+        } else if self.block_daa_score() + params.user_transaction_maturity_period_daa > current_daa_score {
             Maturity::Pending
         } else {
             Maturity::Confirmed
         }
     }
 
-    fn balance(&self, current_daa_score: u64) -> Balance {
-        match self.maturity(current_daa_score) {
+    fn balance(&self, params: &NetworkParams, current_daa_score: u64) -> Balance {
+        match self.maturity(params, current_daa_score) {
             Maturity::Pending => Balance::new(0, self.amount(), self.amount(), 0, 1, 0),
             Maturity::Stasis => Balance::new(0, 0, 0, 0, 0, 1),
             Maturity::Confirmed => Balance::new(self.amount(), 0, 0, 1, 0, 0),

@@ -62,6 +62,8 @@ impl Scan {
     }
 
     pub async fn scan_with_address_manager(&self, address_manager: &Arc<AddressManager>, utxo_context: &UtxoContext) -> Result<()> {
+        let params = utxo_context.processor().network_params()?;
+
         let window_size = self.window_size.unwrap_or(DEFAULT_WINDOW_SIZE) as u32;
         let extent = self.extent.expect("address manager requires an extent");
 
@@ -105,7 +107,7 @@ impl Scan {
                 }
 
                 let balance: Balance = refs.iter().fold(Balance::default(), |mut balance, r| {
-                    let entry_balance = r.balance(self.current_daa_score);
+                    let entry_balance = r.balance(params, self.current_daa_score);
                     balance.mature += entry_balance.mature;
                     balance.pending += entry_balance.pending;
                     balance.mature_utxo_count += entry_balance.mature_utxo_count;
@@ -141,6 +143,7 @@ impl Scan {
     }
 
     pub async fn scan_with_address_set(&self, address_set: &HashSet<Address>, utxo_context: &UtxoContext) -> Result<()> {
+        let params = utxo_context.processor().network_params()?;
         let address_vec = address_set.iter().cloned().collect::<Vec<_>>();
 
         utxo_context.register_addresses(&address_vec).await?;
@@ -148,7 +151,7 @@ impl Scan {
         let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
 
         let balance: Balance = refs.iter().fold(Balance::default(), |mut balance, r| {
-            let entry_balance = r.balance(self.current_daa_score);
+            let entry_balance = r.balance(params, self.current_daa_score);
             balance.mature += entry_balance.mature;
             balance.pending += entry_balance.pending;
             balance.mature_utxo_count += entry_balance.mature_utxo_count;
