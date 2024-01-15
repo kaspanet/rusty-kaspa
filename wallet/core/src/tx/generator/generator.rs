@@ -205,7 +205,7 @@ struct Inner {
     abortable: Option<Abortable>,
     signer: Option<Arc<dyn SignerT>>,
     mass_calculator: MassCalculator,
-    network_type: NetworkType,
+    network_id: NetworkId,
 
     // Source Utxo Context (Used for source UtxoEntry aggregation)
     source_utxo_context: Option<UtxoContext>,
@@ -252,7 +252,7 @@ pub struct Generator {
 impl Generator {
     pub fn try_new(settings: GeneratorSettings, signer: Option<Arc<dyn SignerT>>, abortable: Option<&Abortable>) -> Result<Self> {
         let GeneratorSettings {
-            network_type,
+            network_id,
             multiplexer,
             utxo_iterator,
             source_utxo_context: utxo_context,
@@ -265,7 +265,8 @@ impl Generator {
             destination_utxo_context,
         } = settings;
 
-        let mass_calculator = MassCalculator::new(&network_type.into());
+        let network_type = NetworkType::from(network_id);
+        let mass_calculator = MassCalculator::new(&network_id.into());
 
         let (final_transaction_outputs, final_transaction_amount) = match final_transaction_destination {
             PaymentDestination::Change => {
@@ -327,7 +328,7 @@ impl Generator {
         }
 
         let inner = Inner {
-            network_type,
+            network_id,
             multiplexer,
             context,
             signer,
@@ -351,7 +352,11 @@ impl Generator {
     }
 
     pub fn network_type(&self) -> NetworkType {
-        self.inner.network_type
+        self.inner.network_id.into()
+    }
+
+    pub fn network_id(&self) -> NetworkId {
+        self.inner.network_id
     }
 
     /// The underlying [`UtxoContext`] (if available).
@@ -776,7 +781,7 @@ impl Generator {
         let context = self.context();
 
         GeneratorSummary {
-            network_type: self.inner.network_type,
+            network_id: self.inner.network_id,
             aggregated_utxos: context.aggregated_utxos,
             aggregated_fees: context.aggregate_fees,
             final_transaction_amount: self.inner.final_transaction_amount,
