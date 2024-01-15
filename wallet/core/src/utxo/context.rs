@@ -498,23 +498,23 @@ impl UtxoContext {
                     consumed += tx.aggregate_input_value();
                 } else {
                     // compound tx has no payment value
-                    // we skip them, accumulating only fees
-                    // as fees are the only component that will
-                    // reduce the final balance after the
-                    // compound process
-                    outgoing += tx.fees();
+                    outgoing += tx.fees() + tx.aggregate_output_value();
+                    consumed += tx.aggregate_input_value()
                 }
             }
         }
 
-        Balance::new(
-            (mature + consumed) - outgoing,
-            pending,
-            outgoing,
-            context.mature.len(),
-            context.pending.len(),
-            context.stasis.len(),
-        )
+        // TODO - remove this check once we are confident that
+        // this condition does not occur. This is a temporary
+        // log for a fixed bug, but we want to keep the check
+        // just in case.
+        if mature + consumed < outgoing {
+            log_error!("Error: outgoing transaction value exceeds available balance");
+        }
+
+        let mature = (mature + consumed).saturating_sub(outgoing);
+
+        Balance::new(mature, pending, outgoing, context.mature.len(), context.pending.len(), context.stasis.len())
     }
 
     pub(crate) async fn handle_utxo_added(&self, utxos: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
