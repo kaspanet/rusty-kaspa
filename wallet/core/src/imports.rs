@@ -20,7 +20,7 @@ pub use crate::storage::*;
 pub use crate::types::*;
 pub use crate::utxo::balance::Balance;
 pub use crate::utxo::scan::{Scan, ScanExtent};
-pub use crate::utxo::{Maturity, OutgoingTransaction, UtxoContext, UtxoEntryReference, UtxoProcessor};
+pub use crate::utxo::{Maturity, NetworkParams, OutgoingTransaction, UtxoContext, UtxoEntryReference, UtxoProcessor};
 pub use crate::wallet::*;
 pub use crate::{storage, utils};
 

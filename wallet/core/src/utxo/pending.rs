@@ -47,8 +47,8 @@ impl PendingUtxoEntryReference {
     }
 
     #[inline(always)]
-    pub fn maturity(&self, current_daa_score: u64) -> Maturity {
-        self.inner().entry.maturity(current_daa_score)
+    pub fn maturity(&self, params: &NetworkParams, current_daa_score: u64) -> Maturity {
+        self.inner().entry.maturity(params, current_daa_score)
     }
 }
 

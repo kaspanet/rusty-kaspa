@@ -30,8 +30,6 @@ use kaspa_rpc_core::{
     Notification,
 };
 
-use super::UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA;
-
 pub struct Inner {
     /// Coinbase UTXOs in stasis
     stasis: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
@@ -39,7 +37,6 @@ pub struct Inner {
     pending: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
     /// Outgoing Transactions
     outgoing: DashMap<TransactionId, OutgoingTransaction>,
-    outgoing_longevity_period: u64,
     /// Address to UtxoContext map (maps all addresses used by
     /// all UtxoContexts to their respective UtxoContexts)
     address_to_utxo_context_map: DashMap<Arc<Address>, UtxoContext>,
@@ -69,7 +66,6 @@ impl Inner {
             stasis: DashMap::new(),
             pending: DashMap::new(),
             outgoing: DashMap::new(),
-            outgoing_longevity_period: UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::Relaxed),
             address_to_utxo_context_map: DashMap::new(),
             current_daa_score: Arc::new(AtomicU64::new(0)),
             network_id: Arc::new(Mutex::new(network_id)),
@@ -155,6 +151,11 @@ impl UtxoProcessor {
 
     pub fn network_id(&self) -> Result<NetworkId> {
         (*self.inner.network_id.lock().unwrap()).ok_or(Error::MissingNetworkId)
+    }
+
+    pub fn network_params(&self) -> Result<&'static NetworkParams> {
+        let network_id = (*self.inner.network_id.lock().unwrap()).ok_or(Error::MissingNetworkId)?;
+        Ok(network_id.into())
     }
 
     pub fn pending(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference> {
@@ -243,11 +244,13 @@ impl UtxoProcessor {
     }
 
     pub async fn handle_pending(&self, current_daa_score: u64) -> Result<()> {
+        let params = self.network_params()?;
+
         let (mature_entries, revived_entries) = {
             // scan and remove any pending entries that gained maturity
             let mut mature_entries = vec![];
             let pending_entries = &self.inner.pending;
-            pending_entries.retain(|_, pending_entry| match pending_entry.maturity(current_daa_score) {
+            pending_entries.retain(|_, pending_entry| match pending_entry.maturity(params, current_daa_score) {
                 Maturity::Confirmed => {
                     mature_entries.push(pending_entry.clone());
                     false
@@ -260,7 +263,7 @@ impl UtxoProcessor {
             let mut revived_entries = vec![];
             let stasis_entries = &self.inner.stasis;
             stasis_entries.retain(|_, stasis_entry| {
-                match stasis_entry.maturity(current_daa_score) {
+                match stasis_entry.maturity(params, current_daa_score) {
                     Maturity::Confirmed => {
                         mature_entries.push(stasis_entry.clone());
                         false
@@ -305,7 +308,7 @@ impl UtxoProcessor {
     }
 
     async fn handle_outgoing(&self, current_daa_score: u64) -> Result<()> {
-        let longevity = self.inner.outgoing_longevity_period;
+        let longevity = self.network_params()?.user_transaction_maturity_period_daa;
 
         self.inner.outgoing.retain(|_, outgoing| {
             if outgoing.acceptance_daa_score() != 0 && (outgoing.acceptance_daa_score() + longevity) < current_daa_score {
