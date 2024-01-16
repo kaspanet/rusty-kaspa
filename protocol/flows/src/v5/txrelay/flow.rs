@@ -13,7 +13,7 @@ use kaspa_mining::{
         tx::{Orphan, Priority},
     },
     model::tx_query::TransactionQuery,
-    MempoolCountersSnapshot,
+    RpcTxCounterSnapshot,
 };
 use kaspa_p2p_lib::{
     common::{ProtocolError, DEFAULT_TIMEOUT},
@@ -58,8 +58,7 @@ pub struct RelayTransactionsFlow {
 struct ThrottlingState {
     should_throttle: bool,
     last_checked_time: u64,
-    curr_snapshot: MempoolCountersSnapshot,
-    bps: u64,
+    curr_snapshot: RpcTxCounterSnapshot,
 }
 
 #[async_trait::async_trait]
@@ -95,14 +94,13 @@ impl RelayTransactionsFlow {
         let mut throttling_state = ThrottlingState {
             should_throttle: false,
             last_checked_time: unix_now(),
-            curr_snapshot: self.ctx.mining_manager().clone().snapshot(),
-            bps: self.ctx.config.params.bps(),
+            curr_snapshot: self.ctx.mining_manager().clone().rpc_tx_snapshot(),
         };
 
         loop {
             let now = unix_now();
             if now > 10000 + throttling_state.last_checked_time {
-                let next_snapshot = self.ctx.mining_manager().clone().snapshot();
+                let next_snapshot = self.ctx.mining_manager().clone().rpc_tx_snapshot();
                 check_tx_throttling(&mut throttling_state, next_snapshot);
                 throttling_state.last_checked_time = now;
             }
@@ -131,13 +129,13 @@ impl RelayTransactionsFlow {
         &self,
         transaction_ids: Vec<TransactionId>,
         should_throttle: bool,
-        curr_snapshot: &MempoolCountersSnapshot,
+        curr_snapshot: &RpcTxCounterSnapshot,
     ) -> Result<Vec<RequestScope<TransactionId>>, ProtocolError> {
         // Build a vector with the transaction ids unknown in the mempool and not already requested
         // by another peer
         let transaction_ids = self.ctx.mining_manager().clone().unknown_transactions(transaction_ids).await;
         let mut requests = Vec::new();
-        let snapshot_delta = curr_snapshot - &self.ctx.mining_manager().clone().snapshot();
+        let snapshot_delta = curr_snapshot - &self.ctx.mining_manager().clone().rpc_tx_snapshot();
 
         // To reduce the P2P TPS to below the threshold, we need to request up to a max of
         // whatever the balances overage. If MAX_TPS_THRESHOLD is 3000 and the current TPS is 4000,
@@ -305,13 +303,13 @@ impl RequestTransactionsFlow {
 }
 
 /// If in the last 10 seconds we exceeded the TPS threshold, we will throttle tx relay
-fn check_tx_throttling(throttling_state: &mut ThrottlingState, next_snapshot: MempoolCountersSnapshot) {
+fn check_tx_throttling(throttling_state: &mut ThrottlingState, next_snapshot: RpcTxCounterSnapshot) {
     let snapshot_delta = &next_snapshot - &throttling_state.curr_snapshot;
 
     throttling_state.curr_snapshot = next_snapshot;
 
     if snapshot_delta.low_priority_tx_counts > 0 {
-        let tps = snapshot_delta.low_priority_tx_counts / throttling_state.bps;
+        let tps = 1000 * snapshot_delta.low_priority_tx_counts / snapshot_delta.elapsed_time.as_millis().max(1) as u64;
         if !throttling_state.should_throttle && tps > MAX_TPS_THRESHOLD {
             warn!("P2P tx relay threshold exceeded. Throttling relay. Current: {}, Max: {}", tps, MAX_TPS_THRESHOLD);
             throttling_state.should_throttle = true;
@@ -328,54 +326,50 @@ mod tests {
 
     use super::*;
 
-    fn create_snapshot(low_priority_tx_counts: u64) -> MempoolCountersSnapshot {
-        MempoolCountersSnapshot {
-            low_priority_tx_counts,
-            // Default values below
-            elapsed_time: Duration::from_millis(0),
-            high_priority_tx_counts: 0,
-            block_tx_counts: 0,
-            tx_accepted_counts: 0,
-            input_counts: 0,
-            output_counts: 0,
-            ready_txs_sample: 0,
-            txs_sample: 0,
-            orphans_sample: 0,
-            accepted_sample: 0,
-        }
+    fn create_snapshot(low_priority_tx_counts: u64, elapsed_time: u64) -> RpcTxCounterSnapshot {
+        RpcTxCounterSnapshot { low_priority_tx_counts, elapsed_time: Duration::from_millis(elapsed_time) }
     }
 
     #[test]
     fn test_check_tx_throttling() {
-        let bps = 10;
-        let mut throttling_state =
-            ThrottlingState { should_throttle: false, last_checked_time: 0, curr_snapshot: create_snapshot(0), bps };
+        let mut elapsed_time = 0; // in milliseconds
+        let mut rpc_tx_counts = 0;
+        let mut throttling_state = ThrottlingState {
+            should_throttle: false,
+            last_checked_time: 0,
+            curr_snapshot: create_snapshot(rpc_tx_counts, elapsed_time),
+        };
 
         // Below threshold
-        let mut rpc_tx_counts = bps * MAX_TPS_THRESHOLD / 3;
-        check_tx_throttling(&mut throttling_state, create_snapshot(rpc_tx_counts));
+        rpc_tx_counts += MAX_TPS_THRESHOLD / 3;
+        elapsed_time += 1000;
+        check_tx_throttling(&mut throttling_state, create_snapshot(rpc_tx_counts, elapsed_time));
         assert!(!throttling_state.should_throttle);
 
         // Still below threshold
-        rpc_tx_counts += bps * MAX_TPS_THRESHOLD;
-        check_tx_throttling(&mut throttling_state, create_snapshot(rpc_tx_counts));
+        rpc_tx_counts += MAX_TPS_THRESHOLD;
+        elapsed_time += 1000;
+        check_tx_throttling(&mut throttling_state, create_snapshot(rpc_tx_counts, elapsed_time));
         assert!(!throttling_state.should_throttle);
 
         // Go above threshold. Note, this is not sensitive to tight bounds and can allow for up to (bps - 1) in excess of threshold
         // before triggering throttling.
-        rpc_tx_counts += bps * (MAX_TPS_THRESHOLD + 1);
-        check_tx_throttling(&mut throttling_state, create_snapshot(rpc_tx_counts));
+        rpc_tx_counts += MAX_TPS_THRESHOLD + 1;
+        elapsed_time += 1000;
+        check_tx_throttling(&mut throttling_state, create_snapshot(rpc_tx_counts, elapsed_time));
         assert!(throttling_state.should_throttle);
 
         // Go below threshold but not enough to stop throttling
         // (need to be below threshold / 2 to stop throttling)
-        rpc_tx_counts += bps * MAX_TPS_THRESHOLD / 2;
-        check_tx_throttling(&mut throttling_state, create_snapshot(rpc_tx_counts));
+        rpc_tx_counts += MAX_TPS_THRESHOLD / 2;
+        elapsed_time += 1000;
+        check_tx_throttling(&mut throttling_state, create_snapshot(rpc_tx_counts, elapsed_time));
         assert!(throttling_state.should_throttle);
 
         // Go below threshold to stop throttling
-        rpc_tx_counts += bps * (MAX_TPS_THRESHOLD - 1) / 2;
-        check_tx_throttling(&mut throttling_state, create_snapshot(rpc_tx_counts));
+        rpc_tx_counts += (MAX_TPS_THRESHOLD - 1) / 2;
+        elapsed_time += 1000;
+        check_tx_throttling(&mut throttling_state, create_snapshot(rpc_tx_counts, elapsed_time));
         assert!(!throttling_state.should_throttle);
     }
 }
