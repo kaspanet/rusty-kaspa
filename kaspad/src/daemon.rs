@@ -348,7 +348,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let outbound_target = if connect_peers.is_empty() { args.outbound_target } else { 0 };
     let dns_seeders = if connect_peers.is_empty() && !args.disable_dns_seeding { config.dns_seeders } else { &[] };
 
-    let grpc_server_addr = args.rpclisten.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_rpc_port());
+    let grpc_server_addr = args.rpclisten.unwrap_or(ContextualNetAddress::loopback()).normalize(config.default_rpc_port());
 
     let core = Arc::new(Core::new());
 
@@ -459,14 +459,18 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         grpc_tower_counters.clone(),
     ));
     let grpc_service_broadcasters: usize = 3; // TODO: add a command line argument or derive from other arg/config/host-related fields
-    let grpc_service = Arc::new(GrpcService::new(
-        grpc_server_addr,
-        config,
-        rpc_core_service.clone(),
-        args.rpc_max_clients,
-        grpc_service_broadcasters,
-        grpc_tower_counters,
-    ));
+    let grpc_service = if !args.disable_grpc {
+        Some(Arc::new(GrpcService::new(
+            grpc_server_addr,
+            config,
+            rpc_core_service.clone(),
+            args.rpc_max_clients,
+            grpc_service_broadcasters,
+            grpc_tower_counters,
+        )))
+    } else {
+        None
+    };
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
@@ -479,7 +483,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         async_runtime.register(Arc::new(port_mapping_extender_svc))
     };
     async_runtime.register(rpc_core_service.clone());
-    async_runtime.register(grpc_service);
+    if let Some(grpc_service) = grpc_service {
+        async_runtime.register(grpc_service)
+    }
     async_runtime.register(p2p_service);
     async_runtime.register(consensus_monitor);
     async_runtime.register(mining_monitor);

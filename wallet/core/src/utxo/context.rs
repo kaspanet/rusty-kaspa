@@ -11,7 +11,7 @@ use crate::result::Result;
 use crate::storage::TransactionRecord;
 use crate::tx::PendingTransaction;
 use crate::utxo::{
-    Maturity, OutgoingTransaction, PendingUtxoEntryReference, UtxoContextBinding, UtxoEntryId, UtxoEntryReference,
+    Maturity, NetworkParams, OutgoingTransaction, PendingUtxoEntryReference, UtxoContextBinding, UtxoEntryId, UtxoEntryReference,
     UtxoEntryReferenceExtension, UtxoProcessor,
 };
 use kaspa_hashes::Hash;
@@ -304,7 +304,8 @@ impl UtxoContext {
             if force_maturity {
                 context.mature.sorted_insert_binary_asc_by_key(utxo_entry.clone(), |entry| entry.amount_as_ref());
             } else {
-                match utxo_entry.maturity(current_daa_score) {
+                let params = NetworkParams::from(self.processor().network_id()?);
+                match utxo_entry.maturity(&params, current_daa_score) {
                     Maturity::Stasis => {
                         context.stasis.insert(utxo_entry.id().clone(), utxo_entry.clone());
                         self.processor()
@@ -428,10 +429,12 @@ impl UtxoContext {
             let mut pending = vec![];
             let mut mature = vec![];
 
+            let params = NetworkParams::from(self.processor().network_id()?);
+
             for utxo_entry in utxo_entries.into_iter() {
                 if let std::collections::hash_map::Entry::Vacant(e) = context.map.entry(utxo_entry.id()) {
                     e.insert(utxo_entry.clone());
-                    match utxo_entry.maturity(current_daa_score) {
+                    match utxo_entry.maturity(&params, current_daa_score) {
                         Maturity::Stasis => {
                             context.stasis.insert(utxo_entry.id().clone(), utxo_entry.clone());
                             self.processor()
@@ -495,27 +498,29 @@ impl UtxoContext {
                     consumed += tx.aggregate_input_value();
                 } else {
                     // compound tx has no payment value
-                    // we skip them, accumulating only fees
-                    // as fees are the only component that will
-                    // reduce the final balance after the
-                    // compound process
-                    outgoing += tx.fees();
+                    outgoing += tx.fees() + tx.aggregate_output_value();
+                    consumed += tx.aggregate_input_value()
                 }
             }
         }
 
-        Balance::new(
-            (mature + consumed) - outgoing,
-            pending,
-            outgoing,
-            context.mature.len(),
-            context.pending.len(),
-            context.stasis.len(),
-        )
+        // TODO - remove this check once we are confident that
+        // this condition does not occur. This is a temporary
+        // log for a fixed bug, but we want to keep the check
+        // just in case.
+        if mature + consumed < outgoing {
+            log_error!("Error: outgoing transaction value exceeds available balance");
+        }
+
+        let mature = (mature + consumed).saturating_sub(outgoing);
+
+        Balance::new(mature, pending, outgoing, context.mature.len(), context.pending.len(), context.stasis.len())
     }
 
     pub(crate) async fn handle_utxo_added(&self, utxos: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
         // add UTXOs to account set
+
+        let params = NetworkParams::from(self.processor().network_id()?);
 
         let mut accepted_outgoing_transactions = AHashSet::new();
 
@@ -527,7 +532,7 @@ impl UtxoContext {
 
             let force_maturity_if_outgoing = outgoing_transaction.is_some();
             let is_coinbase_stasis =
-                utxos.first().map(|utxo| matches!(utxo.maturity(current_daa_score), Maturity::Stasis)).unwrap_or_default();
+                utxos.first().map(|utxo| matches!(utxo.maturity(&params, current_daa_score), Maturity::Stasis)).unwrap_or_default();
 
             for utxo in utxos.iter() {
                 if let Err(err) = self.insert(utxo.clone(), current_daa_score, force_maturity_if_outgoing).await {
