@@ -828,11 +828,6 @@ impl Wallet {
                 }
             }
 
-            Events::SyncState { sync_state } => {
-                if sync_state.is_synced() && self.is_open() {
-                    self.reload(false).await?;
-                }
-            }
             _ => {}
         }
 
