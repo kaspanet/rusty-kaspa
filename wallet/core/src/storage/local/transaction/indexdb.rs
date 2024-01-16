@@ -31,7 +31,7 @@ impl Inner {
 
             fn on_upgrade_needed(evt: &IdbVersionChangeEvent) -> Result<(), JsValue> {
                 // Check if the object store exists; create it if it doesn't
-                if evt.db().object_store_names().find(|n| n == TRANSACTIONS_STORE_NAME).is_none() {
+                if !evt.db().object_store_names().any(|n| n == TRANSACTIONS_STORE_NAME) {
                     let object_store = evt.db().create_object_store(TRANSACTIONS_STORE_NAME)?;
                     object_store.create_index_with_params(
                         TRANSACTIONS_STORE_ID_INDEX,
@@ -93,9 +93,11 @@ impl TransactionStore {
     pub async fn register_database(&self, binding: &str, network_id: &str) -> Result<()> {
         let db_name = self.make_db_name(binding, network_id);
 
-        let mut inner = self.inner();
+        let inner = self.inner().clone();
 
         inner.open_db(db_name).await?;
+
+        let mut inner = self.inner();
 
         let mut known_databases = inner.known_databases.clone();
 
