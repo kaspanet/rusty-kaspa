@@ -70,8 +70,8 @@ impl MiningCounters {
         }
     }
 
-    pub fn rpc_tx_snapshot(&self) -> RpcTxCounterSnapshot {
-        RpcTxCounterSnapshot {
+    pub fn p2p_tx_count_sample(&self) -> P2pTxCountSample {
+        P2pTxCountSample {
             elapsed_time: (Instant::now() - self.creation_time),
             low_priority_tx_counts: self.low_priority_tx_counts.load(Ordering::Relaxed),
         }
@@ -161,14 +161,14 @@ impl core::ops::Sub for &MempoolCountersSnapshot {
     }
 }
 
-/// Contains a snapshot of only the RPC transaction counter and time elapsed
-pub struct RpcTxCounterSnapshot {
+/// Contains a snapshot of only the P2P transaction counter and time elapsed
+pub struct P2pTxCountSample {
     pub elapsed_time: Duration,
     pub low_priority_tx_counts: u64,
 }
 
-impl core::ops::Sub for &RpcTxCounterSnapshot {
-    type Output = RpcTxCounterSnapshot;
+impl core::ops::Sub for &P2pTxCountSample {
+    type Output = P2pTxCountSample;
 
     fn sub(self, rhs: Self) -> Self::Output {
         Self::Output {

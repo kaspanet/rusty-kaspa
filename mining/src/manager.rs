@@ -17,7 +17,7 @@ use crate::{
         topological_sort::IntoIterTopologically,
         tx_query::TransactionQuery,
     },
-    MempoolCountersSnapshot, MiningCounters, RpcTxCounterSnapshot,
+    MempoolCountersSnapshot, MiningCounters, P2pTxCountSample,
 };
 use itertools::Itertools;
 use kaspa_consensus_core::{
@@ -872,7 +872,7 @@ impl MiningManagerProxy {
         self.inner.counters.snapshot()
     }
 
-    pub fn rpc_tx_snapshot(&self) -> RpcTxCounterSnapshot {
-        self.inner.counters.rpc_tx_snapshot()
+    pub fn p2p_tx_count_sample(&self) -> P2pTxCountSample {
+        self.inner.counters.p2p_tx_count_sample()
     }
 }
