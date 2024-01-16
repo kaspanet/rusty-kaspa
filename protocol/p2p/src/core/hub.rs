@@ -90,21 +90,23 @@ impl Hub {
         let (outbound_peers, inbound_peers): (Vec<_>, Vec<_>) =
             self.peers.read().values().cloned().partition(|peer| peer.is_outbound());
 
-        let mut required_outbound_count = (num_peers + 1) / 2;
+        let mut outbound_count = ((num_peers + 1) / 2).min(outbound_peers.len());
 
-        // If won't be enough inbound peers to meet the num_peers after we've selected only half for outbound,
+        // If there won't be enough inbound peers to meet the num_peers after we've selected only half for outbound,
         // try to require more outbound peers for the difference
-        if inbound_peers.len() + required_outbound_count < num_peers {
-            required_outbound_count = num_peers - inbound_peers.len();
+        if inbound_peers.len() + outbound_count < num_peers {
+            outbound_count = (num_peers - inbound_peers.len()).min(outbound_peers.len());
         }
 
-        let thread_rng = &mut rand::thread_rng();
-        // Randomly select about half from outbound
-        let mut peers = outbound_peers.choose_multiple(thread_rng, required_outbound_count).cloned().collect::<Vec<_>>();
-        // Then select the rest from inbound
-        peers.extend(inbound_peers.choose_multiple(thread_rng, num_peers - peers.len()).cloned().collect::<Vec<_>>());
+        let inbound_count = (num_peers - outbound_count).min(inbound_peers.len());
 
-        peers
+        let thread_rng = &mut rand::thread_rng();
+
+        outbound_peers
+            .choose_multiple(thread_rng, outbound_count) // Randomly select about half from outbound
+            .chain(inbound_peers.choose_multiple(thread_rng, inbound_count)) // Then select the rest from inbound
+            .cloned()
+            .collect()
     }
 
     /// Send a message to a specific peer
