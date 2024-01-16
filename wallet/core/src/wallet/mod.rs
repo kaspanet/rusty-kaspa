@@ -158,9 +158,9 @@ impl Wallet {
             // notify reload event
             self.notify(Events::WalletReload { wallet_descriptor, account_descriptors }).await?;
 
-            // it is the responsibility of the client to re-activate accounts
-            // just like with WalletOpen, the client should fetch transaction
-            // history and only then re-activate the account.
+            // if `reactivate` is false, it is the responsibility of the client
+            // to re-activate accounts. just like with WalletOpen, the client
+            // should fetch transaction history and only then re-activate the accounts.
 
             if reactivate {
                 // restarting accounts will post discovery and balance events
