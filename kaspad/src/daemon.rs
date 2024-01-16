@@ -10,6 +10,7 @@ use kaspa_core::{core::Core, info, trace};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
 use kaspa_database::prelude::CachePolicy;
 use kaspa_grpc_server::service::GrpcService;
+use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::networking::ContextualNetAddress;
@@ -395,7 +396,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         Arc::new(perf_monitor_builder.build())
     };
 
-    let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
+    let subscription_context = SubscriptionContext::new();
+    let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv, subscription_context.clone()));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
         let utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
@@ -404,7 +406,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
             .build()
             .unwrap();
         let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
-        let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex)));
+        let index_service = Arc::new(IndexService::new(&notify_service.notifier(), subscription_context.clone(), Some(utxoindex)));
         Some(index_service)
     } else {
         None
@@ -448,6 +450,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         index_service.as_ref().map(|x| x.notifier()),
         mining_manager,
         flow_context,
+        subscription_context,
         index_service.as_ref().map(|x| x.utxoindex().unwrap()),
         config.clone(),
         core.clone(),

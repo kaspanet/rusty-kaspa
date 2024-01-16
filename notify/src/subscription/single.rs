@@ -2,7 +2,10 @@ use crate::{
     events::EventType,
     listener::ListenerId,
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
-    subscription::{Command, DynSubscription, Mutation, MutationPolicies, Single, Subscription, UtxosChangedMutationPolicy},
+    subscription::{
+        context::SubscriptionContext, Command, DynSubscription, Mutation, MutationPolicies, Single, Subscription,
+        UtxosChangedMutationPolicy,
+    },
 };
 use itertools::Itertools;
 use kaspa_addresses::Address;
@@ -40,6 +43,7 @@ impl Single for OverallSubscription {
         &self,
         mutation: Mutation,
         _: MutationPolicies,
+        _: &SubscriptionContext,
         _: ListenerId,
     ) -> Option<(DynSubscription, Vec<Mutation>)> {
         assert_eq!(self.event_type(), mutation.event_type());
@@ -89,6 +93,7 @@ impl Single for VirtualChainChangedSubscription {
         &self,
         mutation: Mutation,
         _: MutationPolicies,
+        _: &SubscriptionContext,
         _: ListenerId,
     ) -> Option<(DynSubscription, Vec<Mutation>)> {
         assert_eq!(self.event_type(), mutation.event_type());
@@ -246,6 +251,7 @@ impl Single for UtxosChangedSubscription {
         &self,
         mutation: Mutation,
         policies: MutationPolicies,
+        _: &SubscriptionContext,
         listener_id: ListenerId,
     ) -> Option<(DynSubscription, Vec<Mutation>)> {
         assert_eq!(self.event_type(), mutation.event_type());
@@ -546,19 +552,21 @@ mod tests {
 
     struct MutationTests {
         tests: Vec<MutationTest>,
+        context: SubscriptionContext,
     }
 
     impl MutationTests {
         pub const LISTENER_ID: ListenerId = 1;
 
         fn new(tests: Vec<MutationTest>) -> Self {
-            Self { tests }
+            let context = SubscriptionContext::new();
+            Self { tests, context }
         }
 
         fn run(&self) {
             for test in self.tests.iter() {
                 let mut new_state = test.state.clone();
-                let result = new_state.mutate(test.mutation.clone(), Default::default(), Self::LISTENER_ID);
+                let result = new_state.mutate(test.mutation.clone(), Default::default(), &self.context, Self::LISTENER_ID);
                 assert_eq!(test.new_state.active(), new_state.active(), "Testing '{}': wrong new state activity", test.name);
                 assert_eq!(*test.new_state, *new_state, "Testing '{}': wrong new state", test.name);
                 assert_eq!(test.result, result, "Testing '{}': wrong result", test.name);

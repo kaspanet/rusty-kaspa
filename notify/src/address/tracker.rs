@@ -68,7 +68,8 @@ impl From<Vec<AddressIndex>> for AddressIndexes {
     }
 }
 
-pub struct Inner {
+#[derive(Debug)]
+struct Inner {
     script_pub_keys: IndexMap<ScriptPublicKey, RefCount>,
 }
 
@@ -152,6 +153,7 @@ impl Inner {
 }
 
 /// Tracker of multiple [`Address`](kaspa_addresses::Address), indexing and counting registrations
+#[derive(Debug)]
 pub struct AddressTracker {
     inner: RwLock<Inner>,
 }

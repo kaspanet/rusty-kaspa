@@ -1,6 +1,6 @@
 use crate::{connection_handler::ConnectionHandler, manager::Manager};
 use kaspa_core::debug;
-use kaspa_notify::notifier::Notifier;
+use kaspa_notify::{notifier::Notifier, subscription::context::SubscriptionContext};
 use kaspa_rpc_core::{api::rpc::DynRpcService, notify::connection::ChannelConnection, Notification, RpcResult};
 use kaspa_utils::networking::NetAddress;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
@@ -37,12 +37,20 @@ impl Adaptor {
         manager: Manager,
         core_service: DynRpcService,
         core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
+        subscription_context: SubscriptionContext,
         broadcasters: usize,
         counters: Arc<TowerConnectionCounters>,
     ) -> Arc<Self> {
         let (manager_sender, manager_receiver) = mpsc_channel(Self::manager_channel_size());
-        let connection_handler =
-            ConnectionHandler::new(network_bps, manager_sender, core_service.clone(), core_notifier, broadcasters, counters);
+        let connection_handler = ConnectionHandler::new(
+            network_bps,
+            manager_sender,
+            core_service.clone(),
+            core_notifier,
+            subscription_context,
+            broadcasters,
+            counters,
+        );
         let server_termination = connection_handler.serve(serve_address);
         let adaptor = Arc::new(Adaptor::new(Some(server_termination), connection_handler, manager, serve_address));
         adaptor.manager.clone().start_event_loop(manager_receiver);

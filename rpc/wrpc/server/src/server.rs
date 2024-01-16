@@ -75,8 +75,15 @@ impl Server {
             let collector = Arc::new(WrpcServiceCollector::new(WRPC_SERVER, notification_channel.receiver(), converter));
             let subscriber = Arc::new(Subscriber::new(WRPC_SERVER, enabled_events, service.notifier(), listener_id));
             let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
-            let wrpc_notifier =
-                Arc::new(Notifier::new(WRPC_SERVER, enabled_events, vec![collector], vec![subscriber], tasks, policies));
+            let wrpc_notifier = Arc::new(Notifier::new(
+                WRPC_SERVER,
+                enabled_events,
+                vec![collector],
+                vec![subscriber],
+                service.subscription_context(),
+                tasks,
+                policies,
+            ));
             Some(RpcCore { service, wrpc_notifier })
         } else {
             None
@@ -111,6 +118,7 @@ impl Server {
             let grpc_client = GrpcClient::connect(
                 NotificationMode::Direct,
                 grpc_proxy_address.to_owned(),
+                None,
                 false,
                 None,
                 true,

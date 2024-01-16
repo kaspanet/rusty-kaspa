@@ -2,7 +2,7 @@ use crate::error::Error;
 use crate::imports::*;
 use crate::parse::parse_host;
 use kaspa_consensus_core::network::NetworkType;
-use kaspa_notify::subscription::{MutationPolicies, UtxosChangedMutationPolicy};
+use kaspa_notify::subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy};
 use kaspa_rpc_core::{
     api::ctl::RpcCtl,
     notify::collector::{RpcCoreCollector, RpcCoreConverter},
@@ -173,12 +173,18 @@ pub struct KaspaRpcClient {
 
 impl KaspaRpcClient {
     /// Create a new `KaspaRpcClient` with the given Encoding and URL
-    pub fn new(encoding: Encoding, url: &str) -> Result<KaspaRpcClient> {
-        Self::new_with_args(encoding, NotificationMode::Direct, url)
+    // FIXME
+    pub fn new(encoding: Encoding, url: &str, subscription_context: Option<SubscriptionContext>) -> Result<KaspaRpcClient> {
+        Self::new_with_args(encoding, NotificationMode::Direct, url, subscription_context)
     }
 
     /// Extended constructor that accepts [`NotificationMode`] argument.
-    pub fn new_with_args(encoding: Encoding, notification_mode: NotificationMode, url: &str) -> Result<KaspaRpcClient> {
+    pub fn new_with_args(
+        encoding: Encoding,
+        notification_mode: NotificationMode,
+        url: &str,
+        subscription_context: Option<SubscriptionContext>,
+    ) -> Result<KaspaRpcClient> {
         let inner = Arc::new(Inner::new(encoding, url)?);
         let notifier = if matches!(notification_mode, NotificationMode::MultiListeners) {
             let enabled_events = EVENT_TYPE_ARRAY[..].into();
@@ -186,7 +192,15 @@ impl KaspaRpcClient {
             let collector = Arc::new(RpcCoreCollector::new(WRPC_CLIENT, inner.notification_channel_receiver(), converter));
             let subscriber = Arc::new(Subscriber::new(WRPC_CLIENT, enabled_events, inner.clone(), 0));
             let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
-            Some(Arc::new(Notifier::new(WRPC_CLIENT, enabled_events, vec![collector], vec![subscriber], 3, policies)))
+            Some(Arc::new(Notifier::new(
+                WRPC_CLIENT,
+                enabled_events,
+                vec![collector],
+                vec![subscriber],
+                subscription_context.unwrap_or_default(),
+                3,
+                policies,
+            )))
         } else {
             None
         };

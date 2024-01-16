@@ -1,4 +1,7 @@
-use crate::{events::EVENT_TYPE_ARRAY, subscription::MutationPolicies};
+use crate::{
+    events::EVENT_TYPE_ARRAY,
+    subscription::{context::SubscriptionContext, MutationPolicies},
+};
 
 use super::{
     broadcaster::Broadcaster,
@@ -80,10 +83,11 @@ where
         enabled_events: EventSwitches,
         collectors: Vec<DynCollector<N>>,
         subscribers: Vec<Arc<Subscriber>>,
+        subscription_context: SubscriptionContext,
         broadcasters: usize,
         policies: MutationPolicies,
     ) -> Self {
-        Self::with_sync(name, enabled_events, collectors, subscribers, broadcasters, policies, None)
+        Self::with_sync(name, enabled_events, collectors, subscribers, subscription_context, broadcasters, policies, None)
     }
 
     pub fn with_sync(
@@ -91,11 +95,27 @@ where
         enabled_events: EventSwitches,
         collectors: Vec<DynCollector<N>>,
         subscribers: Vec<Arc<Subscriber>>,
+        subscription_context: SubscriptionContext,
         broadcasters: usize,
         policies: MutationPolicies,
         _sync: Option<Sender<()>>,
     ) -> Self {
-        Self { inner: Arc::new(Inner::new(name, enabled_events, collectors, subscribers, broadcasters, policies, _sync)) }
+        Self {
+            inner: Arc::new(Inner::new(
+                name,
+                enabled_events,
+                collectors,
+                subscribers,
+                subscription_context,
+                broadcasters,
+                policies,
+                _sync,
+            )),
+        }
+    }
+
+    pub fn subscription_context(&self) -> &SubscriptionContext {
+        &self.inner.subscription_context
     }
 
     pub fn start(self: Arc<Self>) {
@@ -193,6 +213,9 @@ where
     /// Subscribers
     subscribers: Vec<Arc<Subscriber>>,
 
+    /// Subscription context
+    subscription_context: SubscriptionContext,
+
     /// Mutation policies
     policies: MutationPolicies,
 
@@ -213,6 +236,7 @@ where
         enabled_events: EventSwitches,
         collectors: Vec<DynCollector<N>>,
         subscribers: Vec<Arc<Subscriber>>,
+        subscription_context: SubscriptionContext,
         broadcasters: usize,
         policies: MutationPolicies,
         _sync: Option<Sender<()>>,
@@ -231,6 +255,7 @@ where
             broadcasters,
             collectors,
             subscribers,
+            subscription_context,
             policies,
             name,
             _sync,
@@ -317,7 +342,9 @@ where
     ) -> Result<()> {
         let event: EventType = (&scope).into();
         debug!("[Notifier {}] {command} notifying about {scope} to listener {id} - {}", self.name, listener.connection());
-        if let Some(mutations) = listener.mutate(Mutation::new(command, scope.clone()), self.policies.clone()) {
+        if let Some(mutations) =
+            listener.mutate(Mutation::new(command, scope.clone()), self.policies.clone(), &self.subscription_context)
+        {
             trace!("[Notifier {}] {command} notifying listener {id} about {scope:?} involves mutations {mutations:?}", self.name);
             // Update broadcasters
             match listener.subscriptions[event].active() {
@@ -746,6 +773,7 @@ mod tests {
             let (subscription_sender, subscription_receiver) = unbounded();
             let collector = Arc::new(TestCollector::new(IDENT, notification_receiver, Arc::new(TestConverter::new())));
             let subscription_manager = Arc::new(SubscriptionManagerMock::new(subscription_sender));
+            let subscription_context = SubscriptionContext::new();
             let subscriber =
                 Arc::new(Subscriber::new("test", EVENT_TYPE_ARRAY[..].into(), subscription_manager, SUBSCRIPTION_MANAGER_ID));
             let notifier = Arc::new(TestNotifier::with_sync(
@@ -753,6 +781,7 @@ mod tests {
                 EVENT_TYPE_ARRAY[..].into(),
                 vec![collector],
                 vec![subscriber],
+                subscription_context,
                 1,
                 Default::default(),
                 Some(sync_sender),

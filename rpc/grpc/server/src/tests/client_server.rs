@@ -21,6 +21,7 @@ async fn test_client_server_sanity_check() {
 
     let client = create_client(server.serve_address()).await;
     assert_eq!(server.active_connections().len(), 1, "the client failed to connect to the server");
+    assert!(client.handle_message_id() && client.handle_stop_notify(), "the client failed to collect server features");
 
     // Stop the fake service
     rpc_core_service.join().await;
@@ -189,12 +190,21 @@ async fn test_client_server_notifications() {
 
 fn create_server(core_service: Arc<RpcCoreMock>) -> Arc<Adaptor> {
     let manager = Manager::new(128);
-    Adaptor::server(get_free_net_address(), 1, manager, core_service.clone(), core_service.core_notifier(), 3, Default::default())
+    Adaptor::server(
+        get_free_net_address(),
+        1,
+        manager,
+        core_service.clone(),
+        core_service.core_notifier(),
+        core_service.subscription_context(),
+        3,
+        Default::default(),
+    )
 }
 
 async fn create_client(server_address: NetAddress) -> GrpcClient {
     let server_url = format!("grpc://localhost:{}", server_address.port);
-    GrpcClient::connect(NotificationMode::Direct, server_url, false, None, false, None, Default::default()).await.unwrap()
+    GrpcClient::connect(NotificationMode::Direct, server_url, None, false, None, false, None, Default::default()).await.unwrap()
 }
 
 fn get_free_net_address() -> NetAddress {

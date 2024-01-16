@@ -53,6 +53,7 @@ impl AsyncService for GrpcService {
             manager,
             self.core_service.clone(),
             self.core_service.notifier(),
+            self.core_service.subscription_context(),
             self.broadcasters,
             self.counters.clone(),
         );

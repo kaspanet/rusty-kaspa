@@ -12,7 +12,7 @@ use kaspa_core::{
 use kaspa_notify::{
     events::{EventSwitches, EVENT_TYPE_ARRAY},
     subscriber::Subscriber,
-    subscription::{MutationPolicies, UtxosChangedMutationPolicy},
+    subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
 };
 use kaspa_utils::triggers::SingleTrigger;
 use std::sync::Arc;
@@ -25,12 +25,24 @@ pub struct NotifyService {
 }
 
 impl NotifyService {
-    pub fn new(root: Arc<ConsensusNotificationRoot>, notification_receiver: Receiver<Notification>) -> Self {
+    pub fn new(
+        root: Arc<ConsensusNotificationRoot>,
+        notification_receiver: Receiver<Notification>,
+        subscription_context: SubscriptionContext,
+    ) -> Self {
         let root_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
         let collector = Arc::new(ConsensusCollector::new(NOTIFY_SERVICE, notification_receiver, Arc::new(ConsensusConverter::new())));
         let subscriber = Arc::new(Subscriber::new(NOTIFY_SERVICE, root_events, root, 0));
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
-        let notifier = Arc::new(ConsensusNotifier::new(NOTIFY_SERVICE, root_events, vec![collector], vec![subscriber], 1, policies));
+        let notifier = Arc::new(ConsensusNotifier::new(
+            NOTIFY_SERVICE,
+            root_events,
+            vec![collector],
+            vec![subscriber],
+            subscription_context,
+            1,
+            policies,
+        ));
         Self { notifier, shutdown: SingleTrigger::default() }
     }
 

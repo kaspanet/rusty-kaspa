@@ -3,6 +3,7 @@ use kaspa_consensus_core::network::NetworkId;
 use kaspa_core::{core::Core, signals::Shutdown};
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_grpc_client::GrpcClient;
+use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspad_lib::{args::Args, daemon::create_core_with_runtime};
 use std::{sync::Arc, time::Duration};
@@ -13,6 +14,7 @@ use kaspa_grpc_client::ClientPool;
 pub struct Daemon {
     // Type and suffix of the daemon network
     pub network: NetworkId,
+    pub context: SubscriptionContext,
 
     // Daemon ports
     pub rpc_port: u16,
@@ -58,8 +60,9 @@ impl Daemon {
         args.appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
 
         let network = args.network();
+        let context = SubscriptionContext::new();
         let (core, _) = create_core_with_runtime(&Default::default(), &args, fd_total_budget);
-        Daemon { network, rpc_port, p2p_port, core, workers: None, _appdir_tempdir: appdir_tempdir }
+        Daemon { network, context, rpc_port, p2p_port, core, workers: None, _appdir_tempdir: appdir_tempdir }
     }
 
     pub async fn start(&mut self) -> GrpcClient {
@@ -80,6 +83,7 @@ impl Daemon {
         GrpcClient::connect(
             NotificationMode::Direct,
             format!("grpc://localhost:{}", self.rpc_port),
+            Some(self.context.clone()),
             true,
             None,
             false,
@@ -102,6 +106,7 @@ impl Daemon {
         GrpcClient::connect(
             NotificationMode::MultiListeners,
             format!("grpc://localhost:{}", self.rpc_port),
+            Some(self.context.clone()),
             true,
             None,
             false,

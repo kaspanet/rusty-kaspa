@@ -18,7 +18,7 @@ use kaspa_notify::{
     events::EVENT_TYPE_ARRAY,
     notifier::Notifier,
     subscriber::Subscriber,
-    subscription::{MutationPolicies, UtxosChangedMutationPolicy},
+    subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
 };
 use kaspa_rpc_core::{
     api::rpc::DynRpcService,
@@ -85,6 +85,7 @@ impl ConnectionHandler {
         manager_sender: MpscSender<ManagerEvent>,
         core_service: DynRpcService,
         core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
+        subscription_context: SubscriptionContext,
         broadcasters: usize,
         counters: Arc<TowerConnectionCounters>,
     ) -> Self {
@@ -99,8 +100,15 @@ impl ConnectionHandler {
         let collector = Arc::new(GrpcServiceCollector::new(GRPC_SERVER, core_channel.receiver(), converter));
         let subscriber = Arc::new(Subscriber::new(GRPC_SERVER, core_events, core_notifier, core_listener_id));
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
-        let notifier: Arc<Notifier<Notification, Connection>> =
-            Arc::new(Notifier::new(GRPC_SERVER, core_events, vec![collector], vec![subscriber], broadcasters, policies));
+        let notifier: Arc<Notifier<Notification, Connection>> = Arc::new(Notifier::new(
+            GRPC_SERVER,
+            core_events,
+            vec![collector],
+            vec![subscriber],
+            subscription_context,
+            broadcasters,
+            policies,
+        ));
         let server_context = ServerContext::new(core_service, notifier);
         let interface = Arc::new(Factory::new_interface(server_context.clone(), network_bps));
         let running = Default::default();

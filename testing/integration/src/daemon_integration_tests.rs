@@ -26,9 +26,11 @@ async fn daemon_sanity_test() {
     let total_fd_limit = 10;
     let mut kaspad1 = Daemon::new_random(total_fd_limit);
     let rpc_client1 = kaspad1.start().await;
+    assert!(rpc_client1.handle_message_id() && rpc_client1.handle_stop_notify(), "the client failed to collect server features");
 
     let mut kaspad2 = Daemon::new_random(total_fd_limit);
     let rpc_client2 = kaspad2.start().await;
+    assert!(rpc_client2.handle_message_id() && rpc_client2.handle_stop_notify(), "the client failed to collect server features");
 
     tokio::time::sleep(Duration::from_secs(1)).await;
     rpc_client1.disconnect().await.unwrap();

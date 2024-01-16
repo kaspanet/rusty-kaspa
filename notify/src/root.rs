@@ -7,7 +7,8 @@ use crate::{
     scope::Scope,
     subscriber::SubscriptionManager,
     subscription::{
-        array::ArrayBuilder, Command, DynSubscription, MutateSingle, Mutation, MutationPolicies, UtxosChangedMutationPolicy,
+        array::ArrayBuilder, context::SubscriptionContext, Command, DynSubscription, MutateSingle, Mutation, MutationPolicies,
+        UtxosChangedMutationPolicy,
     },
 };
 use async_channel::Sender;
@@ -36,7 +37,12 @@ where
     N: Notification,
 {
     pub fn new(sender: Sender<N>) -> Self {
-        let inner = Arc::new(Inner::new(sender));
+        let subscription_context = SubscriptionContext::new();
+        Self::with_context(sender, subscription_context)
+    }
+
+    pub fn with_context(sender: Sender<N>, subscription_context: SubscriptionContext) -> Self {
+        let inner = Arc::new(Inner::new(sender, subscription_context));
         Self { inner }
     }
 
@@ -92,6 +98,7 @@ where
 {
     sender: Sender<N>,
     subscriptions: RwLock<EventArray<DynSubscription>>,
+    subscription_context: SubscriptionContext,
     policies: MutationPolicies,
 }
 
@@ -101,10 +108,10 @@ where
 {
     const ROOT_LISTENER_ID: ListenerId = 1;
 
-    fn new(sender: Sender<N>) -> Self {
+    fn new(sender: Sender<N>, subscription_context: SubscriptionContext) -> Self {
         let subscriptions = RwLock::new(ArrayBuilder::single());
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
-        Self { sender, subscriptions, policies }
+        Self { sender, subscriptions, subscription_context, policies }
     }
 
     fn send(&self, notification: N) -> Result<()> {
@@ -119,7 +126,12 @@ where
     pub fn execute_subscribe_command(&self, scope: Scope, command: Command) -> Result<()> {
         let mutation = Mutation::new(command, scope);
         let mut subscriptions = self.subscriptions.write();
-        subscriptions[mutation.event_type()].mutate(mutation, self.policies.clone(), Self::ROOT_LISTENER_ID);
+        subscriptions[mutation.event_type()].mutate(
+            mutation,
+            self.policies.clone(),
+            &self.subscription_context,
+            Self::ROOT_LISTENER_ID,
+        );
         Ok(())
     }
 

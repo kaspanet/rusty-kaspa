@@ -11,7 +11,7 @@ use kaspa_notify::{
     connection::ChannelType,
     events::{EventSwitches, EventType},
     scope::{PruningPointUtxoSetOverrideScope, UtxosChangedScope},
-    subscription::{MutationPolicies, UtxosChangedMutationPolicy},
+    subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
 };
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::UtxoIndexProxy;
@@ -26,7 +26,11 @@ pub struct IndexService {
 }
 
 impl IndexService {
-    pub fn new(consensus_notifier: &Arc<ConsensusNotifier>, utxoindex: Option<UtxoIndexProxy>) -> Self {
+    pub fn new(
+        consensus_notifier: &Arc<ConsensusNotifier>,
+        subscription_context: SubscriptionContext,
+        utxoindex: Option<UtxoIndexProxy>,
+    ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
         let consensus_notify_listener_id = consensus_notifier.register_new_listener(ConsensusChannelConnection::new(
@@ -40,7 +44,7 @@ impl IndexService {
         let events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
         let collector = Arc::new(Processor::new(utxoindex.clone(), consensus_notify_channel.receiver()));
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
-        let notifier = Arc::new(IndexNotifier::new(INDEX_SERVICE, events, vec![collector], vec![], 1, policies));
+        let notifier = Arc::new(IndexNotifier::new(INDEX_SERVICE, events, vec![collector], vec![], subscription_context, 1, policies));
 
         // Manually subscribe to index-processor related event types
         consensus_notifier

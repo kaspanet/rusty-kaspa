@@ -27,6 +27,7 @@ kaspa-grpc-server.workspace = true
 kaspa-hashes.workspace = true
 kaspa-index-processor.workspace = true
 kaspa-mining.workspace = true
+kaspa-notify.workspace = true
 kaspa-p2p-flows.workspace = true
 kaspa-perf-monitor.workspace = true
 kaspa-rpc-core.workspace = true

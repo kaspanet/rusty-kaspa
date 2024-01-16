@@ -64,8 +64,12 @@ impl Wallet {
     }
 
     pub fn try_with_wrpc(store: Arc<dyn Interface>, network_id: Option<NetworkId>) -> Result<Wallet> {
-        let rpc_client =
-            Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, NotificationMode::MultiListeners, "wrpc://127.0.0.1:17110")?);
+        let rpc_client = Arc::new(KaspaRpcClient::new_with_args(
+            WrpcEncoding::Borsh,
+            NotificationMode::MultiListeners,
+            "wrpc://127.0.0.1:17110",
+            None,
+        )?);
         let rpc_ctl = rpc_client.ctl().clone();
         let rpc_api: Arc<DynRpcApi> = rpc_client;
         let rpc = Rpc::new(rpc_api, rpc_ctl);

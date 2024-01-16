@@ -23,7 +23,8 @@ use kaspa_notify::{
     scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
     subscription::{
-        array::ArrayBuilder, Command, DynSubscription, MutateSingle, Mutation, MutationPolicies, UtxosChangedMutationPolicy,
+        array::ArrayBuilder, context::SubscriptionContext, Command, DynSubscription, MutateSingle, Mutation, MutationPolicies,
+        UtxosChangedMutationPolicy,
     },
 };
 use kaspa_rpc_core::{
@@ -74,6 +75,7 @@ pub struct GrpcClient {
     /// In direct mode, a Collector relaying incoming notifications to any provided DynNotify
     collector: Option<Arc<GrpcClientCollector>>,
     subscriptions: Option<Arc<DirectSubscriptions>>,
+    subscription_context: SubscriptionContext,
     policies: MutationPolicies,
     notification_mode: NotificationMode,
     client_id: ListenerId,
@@ -85,6 +87,7 @@ impl GrpcClient {
     pub async fn connect(
         notification_mode: NotificationMode,
         url: String,
+        subscription_context: Option<SubscriptionContext>,
         reconnect: bool,
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
@@ -105,13 +108,21 @@ impl GrpcClient {
         .await?;
         let converter = Arc::new(RpcCoreConverter::new());
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
+        let subscription_context = subscription_context.unwrap_or_default();
         let (notifier, collector, subscriptions) = match notification_mode {
             NotificationMode::MultiListeners => {
                 let enabled_events = EVENT_TYPE_ARRAY[..].into();
                 let collector = Arc::new(GrpcClientCollector::new(GRPC_CLIENT, inner.notification_channel_receiver(), converter));
                 let subscriber = Arc::new(Subscriber::new(GRPC_CLIENT, enabled_events, inner.clone(), 0));
-                let notifier: GrpcClientNotifier =
-                    Notifier::new(GRPC_CLIENT, enabled_events, vec![collector], vec![subscriber], 3, policies.clone());
+                let notifier: GrpcClientNotifier = Notifier::new(
+                    GRPC_CLIENT,
+                    enabled_events,
+                    vec![collector],
+                    vec![subscriber],
+                    subscription_context.clone(),
+                    3,
+                    policies.clone(),
+                );
                 (Some(Arc::new(notifier)), None, None)
             }
             NotificationMode::Direct => {
@@ -127,7 +138,7 @@ impl GrpcClient {
         }
 
         let client_id = u64::from_le_bytes(rand::random::<[u8; 8]>());
-        Ok(Self { inner, notifier, collector, subscriptions, policies, notification_mode, client_id })
+        Ok(Self { inner, notifier, collector, subscriptions, subscription_context, policies, notification_mode, client_id })
     }
 
     #[inline(always)]
@@ -268,6 +279,7 @@ impl RpcApi for GrpcClient {
                 self.subscriptions.as_ref().unwrap().lock().await[event].mutate(
                     Mutation::new(Command::Start, scope.clone()),
                     self.policies.clone(),
+                    &self.subscription_context,
                     self.client_id,
                 );
                 self.inner.start_notify_to_client(scope).await?;
@@ -288,6 +300,7 @@ impl RpcApi for GrpcClient {
                     self.subscriptions.as_ref().unwrap().lock().await[event].mutate(
                         Mutation::new(Command::Stop, scope.clone()),
                         self.policies.clone(),
+                        &self.subscription_context,
                         self.client_id,
                     );
                     self.inner.stop_notify_to_client(scope).await?;
@@ -513,10 +526,6 @@ impl Inner {
             .accept_compressed(CompressionEncoding::Gzip)
             .max_decoding_message_size(RPC_MAX_MESSAGE_SIZE);
 
-        // Force the opening of the stream when connected to a go kaspad server.
-        // This is also needed for querying server capabilities.
-        request_sender.send(GetInfoRequestMessage {}.into()).await?;
-
         // Prepare a request receiver stream
         let stream_receiver = request_receiver.clone();
         let request_stream = async_stream::stream! {
@@ -530,6 +539,7 @@ impl Inner {
 
         // Collect server capabilities as stated in GetInfoResponse
         let mut server_features = ServerFeatures::default();
+        request_sender.send(GetInfoRequestMessage {}.into()).await?;
         match stream.message().await? {
             Some(ref msg) => {
                 trace!("GRPC client: try_connect - GetInfo got a response");

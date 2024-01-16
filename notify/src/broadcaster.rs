@@ -246,6 +246,7 @@ mod tests {
         notifier::test_helpers::{
             overall_test_steps, utxos_changed_test_steps, virtual_chain_changed_test_steps, Step, TestConnection,
         },
+        subscription::context::SubscriptionContext,
     };
     use async_channel::{unbounded, Sender};
 
@@ -256,6 +257,7 @@ mod tests {
         broadcaster: Arc<TestBroadcaster>,
         /// Listeners, vector index = ListenerId
         listeners: Vec<Listener<TestConnection>>,
+        subscription_context: SubscriptionContext,
         ctl_sender: Sender<Ctl<TestConnection>>,
         sync_receiver: Receiver<()>,
         notification_sender: Sender<TestNotification>,
@@ -270,6 +272,7 @@ mod tests {
             let (notification_sender, notification_receiver) = unbounded();
             let broadcaster = Arc::new(TestBroadcaster::new(IDENT, 0, notification_receiver, Some(sync_sender)));
             let mut listeners = Vec::with_capacity(listener_count);
+            let subscription_context = SubscriptionContext::new();
             let mut notification_receivers = Vec::with_capacity(listener_count);
             for i in 0..listener_count {
                 let (sender, receiver) = unbounded();
@@ -282,6 +285,7 @@ mod tests {
                 name,
                 broadcaster: broadcaster.clone(),
                 listeners,
+                subscription_context,
                 ctl_sender: broadcaster.ctl.sender.clone(),
                 sync_receiver,
                 notification_sender,
@@ -299,7 +303,7 @@ mod tests {
                 for (idx, mutation) in step.mutations.iter().enumerate() {
                     if let Some(ref mutation) = mutation {
                         let event = mutation.event_type();
-                        if self.listeners[idx].mutate(mutation.clone(), Default::default()).is_some() {
+                        if self.listeners[idx].mutate(mutation.clone(), Default::default(), &self.subscription_context).is_some() {
                             let ctl = match mutation.active() {
                                 true => Ctl::Register(
                                     self.listeners[idx].subscriptions[event].clone(),

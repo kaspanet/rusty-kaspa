@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use clap::{Arg, ArgAction, Command};
 use itertools::Itertools;
-use kaspa_addresses::Address;
+use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
     config::params::{TESTNET11_PARAMS, TESTNET_PARAMS},
     constants::{SOMPI_PER_KASPA, TX_VERSION},
@@ -12,6 +12,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::{info, kaspad_env::version, time::unix_now, warn};
 use kaspa_grpc_client::{ClientPool, GrpcClient};
+use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode};
 use kaspa_txscript::pay_to_address_script;
 use parking_lot::Mutex;
@@ -22,6 +23,8 @@ use tokio::time::{interval, MissedTickBehavior};
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
 const FEE_PER_MASS: u64 = 10;
 const MILLIS_PER_TICK: u64 = 10;
+const ADDRESS_PREFIX: Prefix = Prefix::Testnet;
+const ADDRESS_VERSION: Version = Version::PubKey;
 
 struct Stats {
     num_txs: usize,
@@ -84,10 +87,19 @@ pub fn cli() -> Command {
         .arg(Arg::new("unleashed").long("unleashed").action(ArgAction::SetTrue).hide(true).help("Allow higher TPS"))
 }
 
-async fn new_rpc_client(address: &str) -> GrpcClient {
-    GrpcClient::connect(NotificationMode::Direct, format!("grpc://{}", address), true, None, false, Some(500_000), Default::default())
-        .await
-        .unwrap()
+async fn new_rpc_client(subscription_context: &SubscriptionContext, address: &str) -> GrpcClient {
+    GrpcClient::connect(
+        NotificationMode::Direct,
+        format!("grpc://{}", address),
+        Some(subscription_context.clone()),
+        true,
+        None,
+        false,
+        Some(500_000),
+        Default::default(),
+    )
+    .await
+    .unwrap()
 }
 
 struct ClientPoolArg {
@@ -104,9 +116,11 @@ async fn main() {
     kaspa_core::log::init_logger(None, "");
     let args = Args::parse();
     let stats = Arc::new(Mutex::new(Stats { num_txs: 0, since: unix_now(), num_utxos: 0, utxos_amount: 0, num_outs: 0 }));
+    let subscription_context = SubscriptionContext::new();
     let rpc_client = GrpcClient::connect(
         NotificationMode::Direct,
         format!("grpc://{}", args.rpc_server),
+        Some(subscription_context.clone()),
         true,
         None,
         false,
@@ -124,8 +138,7 @@ async fn main() {
         secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap()
     } else {
         let (sk, pk) = &secp256k1::generate_keypair(&mut thread_rng());
-        let kaspa_addr =
-            Address::new(kaspa_addresses::Prefix::Testnet, kaspa_addresses::Version::PubKey, &pk.x_only_public_key().0.serialize());
+        let kaspa_addr = Address::new(ADDRESS_PREFIX, ADDRESS_VERSION, &pk.x_only_public_key().0.serialize());
         info!(
             "Generated private key {} and address {}. Send some funds to this address and rerun rothschild with `--private-key {}`",
             sk.display_secret(),
@@ -135,11 +148,7 @@ async fn main() {
         return;
     };
 
-    let kaspa_addr = Address::new(
-        kaspa_addresses::Prefix::Testnet,
-        kaspa_addresses::Version::PubKey,
-        &schnorr_key.x_only_public_key().0.serialize(),
-    );
+    let kaspa_addr = Address::new(ADDRESS_PREFIX, ADDRESS_VERSION, &schnorr_key.x_only_public_key().0.serialize());
 
     rayon::ThreadPoolBuilder::new().num_threads(args.threads as usize).build_global().unwrap();
 
@@ -168,7 +177,7 @@ async fn main() {
     const CLIENT_POOL_SIZE: usize = 8;
     let mut rpc_clients = Vec::with_capacity(CLIENT_POOL_SIZE);
     for _ in 0..CLIENT_POOL_SIZE {
-        rpc_clients.push(Arc::new(new_rpc_client(&args.rpc_server).await));
+        rpc_clients.push(Arc::new(new_rpc_client(&subscription_context, &args.rpc_server).await));
     }
 
     let submit_tx_pool = ClientPool::new(rpc_clients, 1000, |c, arg: ClientPoolArg| async move {

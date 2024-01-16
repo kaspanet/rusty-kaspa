@@ -1,6 +1,6 @@
-use crate::listener::ListenerId;
-
-use super::{events::EventType, notification::Notification, scope::Scope};
+use crate::{
+    events::EventType, listener::ListenerId, notification::Notification, scope::Scope, subscription::context::SubscriptionContext,
+};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
@@ -14,6 +14,7 @@ use std::{
 
 pub mod array;
 pub mod compounded;
+pub mod context;
 pub mod single;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -118,17 +119,30 @@ pub trait Single: Subscription + AsAny + DynHash + DynEq + Debug + Send + Sync {
         &self,
         mutation: Mutation,
         policies: MutationPolicies,
+        context: &SubscriptionContext,
         listener_id: ListenerId,
     ) -> Option<(DynSubscription, Vec<Mutation>)>;
 }
 
 pub trait MutateSingle: Deref<Target = dyn Single> {
-    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies, listener_id: ListenerId) -> Option<Vec<Mutation>>;
+    fn mutate(
+        &mut self,
+        mutation: Mutation,
+        policies: MutationPolicies,
+        context: &SubscriptionContext,
+        listener_id: ListenerId,
+    ) -> Option<Vec<Mutation>>;
 }
 
 impl MutateSingle for Arc<dyn Single> {
-    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies, listener_id: ListenerId) -> Option<Vec<Mutation>> {
-        self.mutated_and_mutations(mutation, policies, listener_id).map(|(mutated, mutations)| {
+    fn mutate(
+        &mut self,
+        mutation: Mutation,
+        policies: MutationPolicies,
+        context: &SubscriptionContext,
+        listener_id: ListenerId,
+    ) -> Option<Vec<Mutation>> {
+        self.mutated_and_mutations(mutation, policies, context, listener_id).map(|(mutated, mutations)| {
             *self = mutated;
             mutations
         })

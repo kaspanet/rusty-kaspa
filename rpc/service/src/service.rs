@@ -36,6 +36,7 @@ use kaspa_index_core::{
 };
 use kaspa_mining::model::tx_query::TransactionQuery;
 use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::Orphan};
+use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_notify::subscription::{MutationPolicies, UtxosChangedMutationPolicy};
 use kaspa_notify::{
     collector::DynCollector,
@@ -117,6 +118,7 @@ impl RpcCoreService {
         index_notifier: Option<Arc<IndexNotifier>>,
         mining_manager: MiningManagerProxy,
         flow_context: Arc<FlowContext>,
+        subscription_context: SubscriptionContext,
         utxoindex: Option<UtxoIndexProxy>,
         config: Arc<Config>,
         core: Arc<Core>,
@@ -176,7 +178,8 @@ impl RpcCoreService {
 
         // Create the rcp-core notifier
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
-        let notifier = Arc::new(Notifier::new(RPC_CORE, EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1, policies));
+        let notifier =
+            Arc::new(Notifier::new(RPC_CORE, EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, subscription_context, 1, policies));
 
         Self {
             consensus_manager,
@@ -212,6 +215,11 @@ impl RpcCoreService {
     #[inline(always)]
     pub fn notifier(&self) -> Arc<Notifier<Notification, ChannelConnection>> {
         self.notifier.clone()
+    }
+
+    #[inline(always)]
+    pub fn subscription_context(&self) -> SubscriptionContext {
+        self.notifier.subscription_context().clone()
     }
 
     async fn get_utxo_set_by_script_public_key<'a>(
