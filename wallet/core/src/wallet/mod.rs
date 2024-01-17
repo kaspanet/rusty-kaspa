@@ -125,7 +125,7 @@ impl Wallet {
     }
 
     pub async fn reset(self: &Arc<Self>, clear_legacy_cache: bool) -> Result<()> {
-        self.utxo_processor().clear().await?;
+        self.utxo_processor().cleanup().await?;
 
         self.select(None).await?;
 
@@ -140,7 +140,7 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn reload(self: &Arc<Self>) -> Result<()> {
+    pub async fn reload(self: &Arc<Self>, reactivate: bool) -> Result<()> {
         if self.is_open() {
             // similar to reset(), but effectively reboots the wallet
 
@@ -148,15 +148,25 @@ impl Wallet {
             let account_descriptors = Some(accounts.iter().map(|account| account.descriptor()).collect::<Result<Vec<_>>>()?);
             let wallet_descriptor = self.store().descriptor();
 
+            // shutdown all accounts
             let futures = accounts.iter().map(|account| account.clone().stop());
             join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
 
-            self.utxo_processor().clear().await?;
+            // reset utxo processor
+            self.utxo_processor().cleanup().await?;
 
-            let futures = accounts.into_iter().map(|account| account.start());
-            join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
-
+            // notify reload event
             self.notify(Events::WalletReload { wallet_descriptor, account_descriptors }).await?;
+
+            // if `reactivate` is false, it is the responsibility of the client
+            // to re-activate accounts. just like with WalletOpen, the client
+            // should fetch transaction history and only then re-activate the accounts.
+
+            if reactivate {
+                // restarting accounts will post discovery and balance events
+                let futures = accounts.into_iter().map(|account| account.start());
+                join_all(futures).await.into_iter().collect::<Result<Vec<_>>>()?;
+            }
         }
 
         Ok(())
@@ -818,11 +828,6 @@ impl Wallet {
                 }
             }
 
-            Events::SyncState { sync_state: _ } => {
-                // if sync_state.is_synced() && self.is_open() {
-                //     self.reload().await?;
-                // }
-            }
             _ => {}
         }
 

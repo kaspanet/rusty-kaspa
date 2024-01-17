@@ -105,6 +105,15 @@ impl WalletApi for super::Wallet {
         Ok(WalletCloseResponse {})
     }
 
+    async fn wallet_reload_call(self: Arc<Self>, request: WalletReloadRequest) -> Result<WalletReloadResponse> {
+        let WalletReloadRequest { reactivate } = request;
+        if !self.is_open() {
+            return Err(Error::WalletNotOpen);
+        }
+        self.reload(reactivate).await?;
+        Ok(WalletReloadResponse {})
+    }
+
     async fn wallet_rename_call(self: Arc<Self>, request: WalletRenameRequest) -> Result<WalletRenameResponse> {
         let WalletRenameRequest { wallet_secret, title, filename } = request;
         self.rename(title, filename, &wallet_secret).await?;

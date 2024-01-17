@@ -138,6 +138,17 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// Close the currently open wallet
     async fn wallet_close_call(self: Arc<Self>, request: WalletCloseRequest) -> Result<WalletCloseResponse>;
 
+    /// Wrapper around [`wallet_reload_call()`](Self::wallet_reload_call)
+    async fn wallet_reload(self: Arc<Self>, reactivate: bool) -> Result<()> {
+        self.wallet_reload_call(WalletReloadRequest { reactivate }).await?;
+        Ok(())
+    }
+
+    /// Reload the currently open wallet. This call will re-read the wallet data from the
+    /// storage subsystem (disk, localstorage etc) and optionally re-activate all accounts that were
+    /// active before the reload.
+    async fn wallet_reload_call(self: Arc<Self>, request: WalletReloadRequest) -> Result<WalletReloadResponse>;
+
     /// Wrapper around [`wallet_rename_call()`](Self::wallet_rename_call)
     async fn wallet_rename(self: Arc<Self>, title: Option<&str>, filename: Option<&str>, wallet_secret: Secret) -> Result<()> {
         self.wallet_rename_call(WalletRenameRequest {
