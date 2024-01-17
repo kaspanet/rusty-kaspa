@@ -26,11 +26,13 @@ impl From<Vec<u8>> for Secret {
         Secret(vec)
     }
 }
+
 impl From<&[u8]> for Secret {
     fn from(slice: &[u8]) -> Self {
         Secret(slice.to_vec())
     }
 }
+
 impl From<&str> for Secret {
     fn from(s: &str) -> Self {
         Secret(s.trim().as_bytes().to_vec())
