@@ -14,7 +14,6 @@ include = [
 ]
 
 [features]
-legacy-rpc = ["kaspa-wallet-core/legacy-rpc"]
 default = []
 
 [lib]

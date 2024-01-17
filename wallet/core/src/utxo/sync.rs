@@ -5,8 +5,8 @@
 
 use crate::imports::*;
 use crate::result::Result;
+use futures::pin_mut;
 use futures::stream::StreamExt;
-use futures::{pin_mut, TryFutureExt};
 use regex::Regex;
 struct Inner {
     task_ctl: DuplexChannel,
@@ -69,6 +69,7 @@ impl SyncMonitor {
     }
 
     pub async fn stop(&self) -> Result<()> {
+        self.inner.is_synced.store(false, Ordering::SeqCst);
         if self.is_running() {
             self.stop_task().await?;
         }
@@ -106,13 +107,7 @@ impl SyncMonitor {
     }
 
     async fn get_sync_status(&self) -> Result<bool> {
-        cfg_if! {
-            if #[cfg(feature = "legacy-rpc")] {
-                Ok(self.rpc_api().get_info().map_ok(|info| info.is_synced).await?)
-            } else {
-                Ok(self.rpc().get_sync_status().await?)
-            }
-        }
+        Ok(self.rpc_api().get_sync_status().await?)
     }
 
     pub async fn start_task(&self) -> Result<()> {

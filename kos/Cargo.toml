@@ -17,7 +17,6 @@ include = [
 
 [features]
 metrics = []
-legacy-rpc = ["kaspa-cli/legacy-rpc","kaspa-wallet-core/legacy-rpc"]
 default = ["metrics"]
 
 [lib]

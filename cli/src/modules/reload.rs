@@ -11,7 +11,7 @@ impl Reload {
 
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
         tprintln!(ctx, "{}", style("reloading wallet ...").magenta());
-        ctx.wallet().reload().await?;
+        ctx.wallet().reload(true).await?;
 
         Ok(())
     }
