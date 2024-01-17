@@ -70,6 +70,13 @@ impl MiningCounters {
         }
     }
 
+    pub fn p2p_tx_count_sample(&self) -> P2pTxCountSample {
+        P2pTxCountSample {
+            elapsed_time: (Instant::now() - self.creation_time),
+            low_priority_tx_counts: self.low_priority_tx_counts.load(Ordering::Relaxed),
+        }
+    }
+
     pub fn increase_tx_counts(&self, value: u64, priority: Priority) {
         match priority {
             Priority::Low => {
@@ -150,6 +157,23 @@ impl core::ops::Sub for &MempoolCountersSnapshot {
             txs_sample: (self.txs_sample + rhs.txs_sample) / 2,
             orphans_sample: (self.orphans_sample + rhs.orphans_sample) / 2,
             accepted_sample: (self.accepted_sample + rhs.accepted_sample) / 2,
+        }
+    }
+}
+
+/// Contains a snapshot of only the P2P transaction counter and time elapsed
+pub struct P2pTxCountSample {
+    pub elapsed_time: Duration,
+    pub low_priority_tx_counts: u64,
+}
+
+impl core::ops::Sub for &P2pTxCountSample {
+    type Output = P2pTxCountSample;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self::Output {
+            elapsed_time: self.elapsed_time.checked_sub(rhs.elapsed_time).unwrap_or_default(),
+            low_priority_tx_counts: self.low_priority_tx_counts.checked_sub(rhs.low_priority_tx_counts).unwrap_or_default(),
         }
     }
 }
