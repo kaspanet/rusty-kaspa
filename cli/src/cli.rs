@@ -299,6 +299,13 @@ impl KaspaCli {
                                     tprintln!(this, "Error: Kaspa node UTXO index is not enabled...")
                                 },
                                 Events::SyncState { sync_state } => {
+
+                                    if sync_state.is_synced() && this.wallet().is_open() {
+                                        if let Err(error) = this.wallet().reload(false).await {
+                                            terrorln!(this, "Unable to reload wallet: {error}");
+                                        }
+                                    }
+
                                     this.sync_state.lock().unwrap().replace(sync_state);
                                     this.term().refresh_prompt();
                                 }
