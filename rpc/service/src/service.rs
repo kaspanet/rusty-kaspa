@@ -268,7 +268,7 @@ impl RpcApi for RpcCoreService {
         let hash = block.hash();
 
         if !request.allow_non_daa_blocks {
-            let virtual_daa_score = session.async_get_virtual_daa_score().await;
+            let virtual_daa_score = session.get_virtual_daa_score();
 
             // A simple heuristic check which signals that the mined block is out of date
             // and should not be accepted unless user explicitly requests
@@ -629,17 +629,17 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
     async fn get_block_dag_info_call(&self, _: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
-        let block_count = session.async_estimate_block_count().await;
+        let consensus_stats = session.async_get_stats().await;
         Ok(GetBlockDagInfoResponse::new(
             self.config.net,
-            block_count.block_count,
-            block_count.header_count,
+            consensus_stats.block_counts.block_count,
+            consensus_stats.block_counts.header_count,
             session.async_get_tips().await,
-            self.consensus_converter.get_difficulty_ratio(session.async_get_virtual_bits().await),
-            session.async_get_virtual_past_median_time().await,
-            session.async_get_virtual_parents().await.iter().copied().collect::<Vec<_>>(),
+            self.consensus_converter.get_difficulty_ratio(consensus_stats.virtual_stats.bits),
+            consensus_stats.virtual_stats.past_median_time,
+            session.get_virtual_parents().iter().copied().collect::<Vec<_>>(),
             session.async_pruning_point().await,
-            session.async_get_virtual_daa_score().await,
+            consensus_stats.virtual_stats.daa_score,
             session.async_get_sink().await,
         ))
     }
@@ -843,7 +843,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     async fn get_server_info_call(&self, _request: GetServerInfoRequest) -> RpcResult<GetServerInfoResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
         let is_synced: bool = self.has_sufficient_peer_connectivity() && session.async_is_nearly_synced().await;
-        let virtual_daa_score = session.async_get_virtual_daa_score().await;
+        let virtual_daa_score = session.get_virtual_daa_score();
 
         Ok(GetServerInfoResponse {
             rpc_api_version: RPC_API_VERSION,
