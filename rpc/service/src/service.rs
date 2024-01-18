@@ -809,15 +809,16 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let consensus_metrics = if req.consensus_metrics {
             let session = self.consensus_manager.consensus().unguarded_session();
             let block_count = session.async_estimate_block_count().await;
+            let processing_counters_snapshot = self.processing_counters.snapshot();
 
             Some(ConsensusMetrics {
-                node_blocks_submitted_count: self.processing_counters.blocks_submitted.load(Ordering::SeqCst),
-                node_headers_processed_count: self.processing_counters.header_counts.load(Ordering::SeqCst),
-                node_dependencies_processed_count: self.processing_counters.dep_counts.load(Ordering::SeqCst),
-                node_bodies_processed_count: self.processing_counters.body_counts.load(Ordering::SeqCst),
-                node_transactions_processed_count: self.processing_counters.txs_counts.load(Ordering::SeqCst),
-                node_chain_blocks_processed_count: self.processing_counters.chain_block_counts.load(Ordering::SeqCst),
-                node_mass_processed_count: self.processing_counters.mass_counts.load(Ordering::SeqCst),
+                node_blocks_submitted_count: processing_counters_snapshot.blocks_submitted,
+                node_headers_processed_count: processing_counters_snapshot.header_counts,
+                node_dependencies_processed_count: processing_counters_snapshot.dep_counts,
+                node_bodies_processed_count: processing_counters_snapshot.body_counts,
+                node_transactions_processed_count: processing_counters_snapshot.txs_counts,
+                node_chain_blocks_processed_count: processing_counters_snapshot.chain_block_counts,
+                node_mass_processed_count: processing_counters_snapshot.mass_counts,
                 // ---
                 node_database_blocks_count: block_count.block_count,
                 node_database_headers_count: block_count.header_count,
