@@ -25,7 +25,6 @@ use crate::{
             statuses::StatusesStoreReader,
             tips::TipsStoreReader,
             utxo_set::{UtxoSetStore, UtxoSetStoreReader},
-            virtual_state::VirtualStateStoreReader,
             DB,
         },
     },
@@ -447,21 +446,21 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_virtual_daa_score(&self) -> u64 {
-        self.virtual_stores.read().state.get().unwrap().daa_score
+        self.lkg_virtual_state.load().daa_score
     }
 
     fn get_virtual_bits(&self) -> u32 {
-        self.virtual_stores.read().state.get().unwrap().bits
+        self.lkg_virtual_state.load().bits
     }
 
     fn get_virtual_past_median_time(&self) -> u64 {
-        self.virtual_stores.read().state.get().unwrap().past_median_time
+        self.lkg_virtual_state.load().past_median_time
     }
 
     fn get_virtual_merge_depth_root(&self) -> Option<Hash> {
         // TODO: consider saving the merge depth root as part of virtual state
         let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
-        let virtual_state = self.virtual_stores.read().state.get().unwrap();
+        let virtual_state = self.lkg_virtual_state.load();
         let virtual_ghostdag_data = &virtual_state.ghostdag_data;
         let root = self.services.depth_manager.calc_merge_depth_root(virtual_ghostdag_data, pruning_point);
         if root.is_origin() {
@@ -477,7 +476,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_sink(&self) -> Hash {
-        self.virtual_stores.read().state.get().unwrap().ghostdag_data.selected_parent
+        self.lkg_virtual_state.load().ghostdag_data.selected_parent
     }
 
     fn get_sink_timestamp(&self) -> u64 {
@@ -485,7 +484,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_virtual_state_approx_id(&self) -> VirtualStateApproxId {
-        self.virtual_stores.read().state.get().unwrap().to_virtual_state_approx_id()
+        self.lkg_virtual_state.load().to_virtual_state_approx_id()
     }
 
     fn get_source(&self) -> Hash {
@@ -601,11 +600,11 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
-        self.virtual_stores.read().state.get().unwrap().parents.iter().copied().collect()
+        self.lkg_virtual_state.load().parents.iter().copied().collect()
     }
 
     fn get_virtual_parents_len(&self) -> usize {
-        self.virtual_stores.read().state.get().unwrap().parents.len()
+        self.lkg_virtual_state.load().parents.len()
     }
 
     fn get_virtual_utxos(
@@ -728,7 +727,7 @@ impl ConsensusApi for Consensus {
     fn get_anticone(&self, hash: Hash) -> ConsensusResult<Vec<Hash>> {
         let _guard = self.pruning_lock.blocking_read();
         self.validate_block_exists(hash)?;
-        let virtual_state = self.virtual_stores.read().state.get().unwrap();
+        let virtual_state = self.lkg_virtual_state.load();
         Ok(self.services.dag_traversal_manager.anticone(hash, virtual_state.parents.iter().copied(), None)?)
     }
 
@@ -896,7 +895,7 @@ impl ConsensusApi for Consensus {
                 self.estimate_network_hashes_per_second_impl(&ghostdag_data, window_size)
             }
             None => {
-                let virtual_state = self.virtual_stores.read().state.get().unwrap();
+                let virtual_state = self.lkg_virtual_state.load();
                 self.estimate_network_hashes_per_second_impl(&virtual_state.ghostdag_data, window_size)
             }
         }
@@ -911,7 +910,6 @@ impl ConsensusApi for Consensus {
     }
 
     fn finality_point(&self) -> Hash {
-        self.virtual_processor
-            .virtual_finality_point(&self.virtual_stores.read().state.get().unwrap().ghostdag_data, self.pruning_point())
+        self.virtual_processor.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, self.pruning_point())
     }
 }
