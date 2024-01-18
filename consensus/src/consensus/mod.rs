@@ -502,8 +502,18 @@ impl ConsensusApi for Consensus {
     /// as such, it does not include non-daa blocks, and does not include headers stored as part of the pruning proof.  
     fn estimate_block_count(&self) -> BlockCount {
         // PRUNE SAFETY: node is either archival or source is the pruning point which its header is kept permanently
-        let count = self.get_virtual_daa_score() - self.get_header(self.get_source()).unwrap().daa_score;
-        BlockCount { header_count: count, block_count: count }
+        let source_score = self.headers_store.get_compact_header_data(self.get_source()).unwrap().daa_score;
+        let virtual_score = self.get_virtual_daa_score();
+        let header_count = self
+            .headers_store
+            .get_compact_header_data(self.get_headers_selected_tip())
+            .unwrap_option()
+            .map(|h| h.daa_score)
+            .unwrap_or(virtual_score)
+            .max(virtual_score)
+            - source_score;
+        let block_count = virtual_score - source_score;
+        BlockCount { header_count, block_count }
     }
 
     fn is_nearly_synced(&self) -> bool {
