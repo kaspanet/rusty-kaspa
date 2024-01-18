@@ -807,28 +807,27 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         });
 
         let consensus_metrics = if req.consensus_metrics {
-            let session = self.consensus_manager.consensus().unguarded_session();
-            let block_count = session.async_estimate_block_count().await;
-            let processing_counters_snapshot = self.processing_counters.snapshot();
+            let consensus_stats = self.consensus_manager.consensus().unguarded_session().async_get_stats().await;
+            let processing_counters = self.processing_counters.snapshot();
 
             Some(ConsensusMetrics {
-                node_blocks_submitted_count: processing_counters_snapshot.blocks_submitted,
-                node_headers_processed_count: processing_counters_snapshot.header_counts,
-                node_dependencies_processed_count: processing_counters_snapshot.dep_counts,
-                node_bodies_processed_count: processing_counters_snapshot.body_counts,
-                node_transactions_processed_count: processing_counters_snapshot.txs_counts,
-                node_chain_blocks_processed_count: processing_counters_snapshot.chain_block_counts,
-                node_mass_processed_count: processing_counters_snapshot.mass_counts,
+                node_blocks_submitted_count: processing_counters.blocks_submitted,
+                node_headers_processed_count: processing_counters.header_counts,
+                node_dependencies_processed_count: processing_counters.dep_counts,
+                node_bodies_processed_count: processing_counters.body_counts,
+                node_transactions_processed_count: processing_counters.txs_counts,
+                node_chain_blocks_processed_count: processing_counters.chain_block_counts,
+                node_mass_processed_count: processing_counters.mass_counts,
                 // ---
-                node_database_blocks_count: block_count.block_count,
-                node_database_headers_count: block_count.header_count,
+                node_database_blocks_count: consensus_stats.block_counts.block_count,
+                node_database_headers_count: consensus_stats.block_counts.header_count,
                 // ---
                 network_mempool_size: self.mining_manager.transaction_count_sample(TransactionQuery::TransactionsOnly),
-                network_tip_hashes_count: session.async_get_tips_len().await as u32,
-                network_difficulty: self.consensus_converter.get_difficulty_ratio(session.async_get_virtual_bits().await),
-                network_past_median_time: session.async_get_virtual_past_median_time().await,
-                network_virtual_parent_hashes_count: session.async_get_virtual_parents_len().await as u32,
-                network_virtual_daa_score: session.async_get_virtual_daa_score().await,
+                network_tip_hashes_count: consensus_stats.num_tips.try_into().unwrap_or(u32::MAX),
+                network_difficulty: self.consensus_converter.get_difficulty_ratio(consensus_stats.virtual_stats.bits),
+                network_past_median_time: consensus_stats.virtual_stats.past_median_time,
+                network_virtual_parent_hashes_count: consensus_stats.virtual_stats.num_parents,
+                network_virtual_daa_score: consensus_stats.virtual_stats.daa_score,
             })
         } else {
             None

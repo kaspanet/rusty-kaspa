@@ -40,9 +40,8 @@ use crate::{
 };
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
-    api::{BlockValidationFutures, ConsensusApi},
+    api::{stats::BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats},
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
-    block_count::BlockCount,
     blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -443,6 +442,18 @@ impl ConsensusApi for Consensus {
 
     fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {
         self.services.mass_calculator.calc_tx_storage_mass(&transaction.as_verifiable())
+    }
+
+    fn get_stats(&self) -> ConsensusStats {
+        // This method is designed to return stats asap and not depend on locks which
+        // might take time to acquire
+        ConsensusStats {
+            block_counts: self.estimate_block_count(),
+            // This call acquires the tips store read lock which is expected to be fast. If this
+            // turns out to be not fast enough then we should maintain an atomic integer holding this value
+            num_tips: self.get_tips_len() as u64,
+            virtual_stats: self.lkg_virtual_state.load().as_ref().into(),
+        }
     }
 
     fn get_virtual_daa_score(&self) -> u64 {

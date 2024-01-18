@@ -2,6 +2,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
+use kaspa_consensus_core::api::stats::VirtualStateStats;
 use kaspa_consensus_core::{
     block::VirtualStateApproxId, coinbase::BlockRewardData, config::genesis::GenesisBlock, tx::TransactionId,
     utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher,
@@ -76,6 +77,17 @@ impl VirtualState {
 
     pub fn to_virtual_state_approx_id(&self) -> VirtualStateApproxId {
         VirtualStateApproxId::new(self.daa_score, self.ghostdag_data.blue_work, self.ghostdag_data.selected_parent)
+    }
+}
+
+impl From<&VirtualState> for VirtualStateStats {
+    fn from(state: &VirtualState) -> Self {
+        Self {
+            num_parents: state.parents.len() as u32,
+            daa_score: state.daa_score,
+            bits: state.bits,
+            past_median_time: state.past_median_time,
+        }
     }
 }
 

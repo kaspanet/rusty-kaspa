@@ -4,9 +4,8 @@
 
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
-    api::{BlockValidationFutures, ConsensusApi, DynConsensus},
+    api::{BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus},
     block::Block,
-    block_count::BlockCount,
     blockstatus::BlockStatus,
     daa_score_timestamp::DaaScoreTimestamp,
     errors::consensus::ConsensusResult,
@@ -185,6 +184,10 @@ impl ConsensusSessionOwned {
     pub fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {
         // This method performs pure calculations so no need for an async wrapper
         self.consensus.calculate_transaction_storage_mass(transaction)
+    }
+
+    pub async fn async_get_stats(&self) -> ConsensusStats {
+        self.clone().spawn_blocking(|c| c.get_stats()).await
     }
 
     pub async fn async_get_virtual_daa_score(&self) -> u64 {
