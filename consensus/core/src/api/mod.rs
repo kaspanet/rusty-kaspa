@@ -23,6 +23,9 @@ use crate::{
     BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_hashes::Hash;
+
+pub mod counters;
+
 pub type BlockValidationFuture = BoxFuture<'static, BlockProcessResult<BlockStatus>>;
 
 /// A struct returned by consensus for block validation processing calls

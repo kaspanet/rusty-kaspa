@@ -4,7 +4,7 @@ use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
-use kaspa_consensus::pipeline::ProcessingCounters;
+use kaspa_consensus_core::api::counters::ProcessingCounters;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::{
     block::Block,
