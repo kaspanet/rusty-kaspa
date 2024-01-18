@@ -402,7 +402,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let is_nearly_synced = self.consensus_manager.consensus().unguarded_session().async_is_nearly_synced().await;
         Ok(GetInfoResponse {
             p2p_id: self.flow_context.node_id.to_string(),
-            mempool_size: self.mining_manager.clone().transaction_count(TransactionQuery::TransactionsOnly).await as u64,
+            mempool_size: self.mining_manager.transaction_count_sample(TransactionQuery::TransactionsOnly),
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
             is_synced: self.has_sufficient_peer_connectivity() && is_nearly_synced,
@@ -822,7 +822,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 node_database_blocks_count: block_count.block_count,
                 node_database_headers_count: block_count.header_count,
                 // ---
-                network_mempool_size: self.mining_manager.clone().transaction_count(TransactionQuery::TransactionsOnly).await as u64,
+                network_mempool_size: self.mining_manager.transaction_count_sample(TransactionQuery::TransactionsOnly),
                 network_tip_hashes_count: session.async_get_tips_len().await as u32,
                 network_difficulty: self.consensus_converter.get_difficulty_ratio(session.async_get_virtual_bits().await),
                 network_past_median_time: session.async_get_virtual_past_median_time().await,
