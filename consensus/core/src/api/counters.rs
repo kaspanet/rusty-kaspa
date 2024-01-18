@@ -44,14 +44,14 @@ impl core::ops::Sub for &ProcessingCountersSnapshot {
 
     fn sub(self, rhs: Self) -> Self::Output {
         Self::Output {
-            blocks_submitted: self.blocks_submitted.checked_sub(rhs.blocks_submitted).unwrap_or_default(),
-            header_counts: self.header_counts.checked_sub(rhs.header_counts).unwrap_or_default(),
-            dep_counts: self.dep_counts.checked_sub(rhs.dep_counts).unwrap_or_default(),
-            mergeset_counts: self.mergeset_counts.checked_sub(rhs.mergeset_counts).unwrap_or_default(),
-            body_counts: self.body_counts.checked_sub(rhs.body_counts).unwrap_or_default(),
-            txs_counts: self.txs_counts.checked_sub(rhs.txs_counts).unwrap_or_default(),
-            chain_block_counts: self.chain_block_counts.checked_sub(rhs.chain_block_counts).unwrap_or_default(),
-            mass_counts: self.mass_counts.checked_sub(rhs.mass_counts).unwrap_or_default(),
+            blocks_submitted: self.blocks_submitted.saturating_sub(rhs.blocks_submitted),
+            header_counts: self.header_counts.saturating_sub(rhs.header_counts),
+            dep_counts: self.dep_counts.saturating_sub(rhs.dep_counts),
+            mergeset_counts: self.mergeset_counts.saturating_sub(rhs.mergeset_counts),
+            body_counts: self.body_counts.saturating_sub(rhs.body_counts),
+            txs_counts: self.txs_counts.saturating_sub(rhs.txs_counts),
+            chain_block_counts: self.chain_block_counts.saturating_sub(rhs.chain_block_counts),
+            mass_counts: self.mass_counts.saturating_sub(rhs.mass_counts),
         }
     }
 }
