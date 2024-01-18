@@ -256,16 +256,16 @@ indexed_db_futures = "0.4.1"
 workflow-perf-monitor = { version = "0.0.2" }
 
 # workflow dependencies
-workflow-d3 = { version = "0.10.2" }
-workflow-nw = { version = "0.10.2" }
-workflow-log = { version = "0.10.2" }
-workflow-core = { version = "0.10.2" }
-workflow-wasm = { version = "0.10.2" }
-workflow-dom = { version = "0.10.2" }
-workflow-rpc = { version = "0.10.2" }
-workflow-node = { version = "0.10.2" }
-workflow-store = { version = "0.10.2" }
-workflow-terminal = { version = "0.10.2" }
+workflow-d3 = { version = "0.10.3" }
+workflow-nw = { version = "0.10.3" }
+workflow-log = { version = "0.10.3" }
+workflow-core = { version = "0.10.3" }
+workflow-wasm = { version = "0.10.3" }
+workflow-dom = { version = "0.10.3" }
+workflow-rpc = { version = "0.10.3" }
+workflow-node = { version = "0.10.3" }
+workflow-store = { version = "0.10.3" }
+workflow-terminal = { version = "0.10.3" }
 nw-sys = "0.1.6"
 
 # if below is enabled, this means that there is an ongoing work
