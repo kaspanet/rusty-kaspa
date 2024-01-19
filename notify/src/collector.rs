@@ -127,7 +127,10 @@ mod tests {
         converter::ConverterFrom,
         events::EventType,
         notifier::test_helpers::NotifyMock,
-        subscription::single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
+        subscription::{
+            context::SubscriptionContext,
+            single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
+        },
     };
     use derive_more::Display;
 
@@ -153,15 +156,19 @@ mod tests {
     }
 
     impl crate::notification::Notification for OutgoingNotification {
-        fn apply_overall_subscription(&self, _: &OverallSubscription) -> Option<Self> {
+        fn apply_overall_subscription(&self, _: &OverallSubscription, _: &SubscriptionContext) -> Option<Self> {
             unimplemented!()
         }
 
-        fn apply_virtual_chain_changed_subscription(&self, _: &VirtualChainChangedSubscription) -> Option<Self> {
+        fn apply_virtual_chain_changed_subscription(
+            &self,
+            _: &VirtualChainChangedSubscription,
+            _: &SubscriptionContext,
+        ) -> Option<Self> {
             unimplemented!()
         }
 
-        fn apply_utxos_changed_subscription(&self, _: &UtxosChangedSubscription) -> Option<Self> {
+        fn apply_utxos_changed_subscription(&self, _: &UtxosChangedSubscription, _: &SubscriptionContext) -> Option<Self> {
             unimplemented!()
         }
 

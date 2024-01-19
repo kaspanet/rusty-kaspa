@@ -3,7 +3,7 @@ use super::{
     connection::Connection, error::Result, events::EventArray, listener::ListenerId, notification::Notification,
     subscription::DynSubscription,
 };
-use crate::events::EventType;
+use crate::{events::EventType, subscription::context::SubscriptionContext};
 use async_channel::{Receiver, Sender};
 use core::fmt::Debug;
 use derive_more::Deref;
@@ -95,6 +95,7 @@ where
 {
     name: &'static str,
     index: usize,
+    context: SubscriptionContext,
     started: Arc<AtomicBool>,
     ctl: Channel<Ctl<C>>,
     incoming: Receiver<N>,
@@ -108,10 +109,17 @@ where
     N: Notification,
     C: Connection<Notification = N>,
 {
-    pub fn new(name: &'static str, index: usize, incoming: Receiver<N>, _sync: Option<Sender<()>>) -> Self {
+    pub fn new(
+        name: &'static str,
+        index: usize,
+        context: SubscriptionContext,
+        incoming: Receiver<N>,
+        _sync: Option<Sender<()>>,
+    ) -> Self {
         Self {
             name,
             index,
+            context,
             started: Arc::new(AtomicBool::default()),
             ctl: Channel::unbounded(),
             incoming,
@@ -130,6 +138,7 @@ where
             return;
         }
         trace!("[{}] Starting notification broadcasting task", self);
+        let context = self.context.clone();
         workflow_core::task::spawn(async move {
             // Broadcasting plan by event type
             let mut plan = EventArray::<Plan<C>>::default();
@@ -161,7 +170,7 @@ where
                             let event = notification.event_type();
                             for (subscription, encoding_set) in plan[event].iter() {
                                 // ... by subscription scope
-                                if let Some(applied_notification) = notification.apply_subscription(&**subscription) {
+                                if let Some(applied_notification) = notification.apply_subscription(&**subscription, &context) {
                                     for (encoding, connection_set) in encoding_set.iter() {
                                         // ... by message encoding
                                         let message = C::into_message(&applied_notification, encoding);
@@ -268,11 +277,12 @@ mod tests {
     impl Test {
         fn new(name: &'static str, listener_count: usize, steps: Vec<Step>) -> Self {
             const IDENT: &str = "test";
+            let subscription_context = SubscriptionContext::new();
             let (sync_sender, sync_receiver) = unbounded();
             let (notification_sender, notification_receiver) = unbounded();
-            let broadcaster = Arc::new(TestBroadcaster::new(IDENT, 0, notification_receiver, Some(sync_sender)));
+            let broadcaster =
+                Arc::new(TestBroadcaster::new(IDENT, 0, subscription_context.clone(), notification_receiver, Some(sync_sender)));
             let mut listeners = Vec::with_capacity(listener_count);
-            let subscription_context = SubscriptionContext::new();
             let mut notification_receivers = Vec::with_capacity(listener_count);
             for i in 0..listener_count {
                 let (sender, receiver) = unbounded();
@@ -300,10 +310,18 @@ mod tests {
             // Execute the test steps
             for (step_idx, step) in self.steps.iter().enumerate() {
                 // Apply the subscription mutations and register the changes into the broadcaster
+                //trace!("{} #{} - Initial Subscription Context {}", self.name, step_idx, self.subscription_context.address_tracker);
                 for (idx, mutation) in step.mutations.iter().enumerate() {
                     if let Some(ref mutation) = mutation {
                         let event = mutation.event_type();
                         if self.listeners[idx].mutate(mutation.clone(), Default::default(), &self.subscription_context).is_some() {
+                            // trace!(
+                            //     "{} #{} - Mutation {} - Subscription Context {}",
+                            //     self.name,
+                            //     step_idx,
+                            //     idx,
+                            //     self.subscription_context.address_tracker
+                            // );
                             let ctl = match mutation.active() {
                                 true => Ctl::Register(
                                     self.listeners[idx].subscriptions[event].clone(),
@@ -314,14 +332,14 @@ mod tests {
                             };
                             assert!(
                                 self.ctl_sender.send(ctl).await.is_ok(),
-                                "{} [#{}] - {}: sending a registration message failed",
+                                "{} #{} - {}: sending a registration message failed",
                                 self.name,
                                 step_idx,
                                 step.name
                             );
                             assert!(
                                 self.sync_receiver.recv().await.is_ok(),
-                                "{} [#{}] - {}: receiving a sync message failed",
+                                "{} #{} - {}: receiving a sync message failed",
                                 self.name,
                                 step_idx,
                                 step.name
@@ -331,16 +349,18 @@ mod tests {
                 }
 
                 // Send the notification
+                trace!("{} #{} - {}: sending a notification...", self.name, step_idx, step.name);
                 assert!(
                     self.notification_sender.send_blocking(step.notification.clone()).is_ok(),
-                    "{} [#{}] - {}: sending the notification failed",
+                    "{} #{} - {}: sending the notification failed",
                     self.name,
                     step_idx,
                     step.name
                 );
+                trace!("{} #{} - {}: receiving sync signal...", self.name, step_idx, step.name);
                 assert!(
                     self.sync_receiver.recv().await.is_ok(),
-                    "{} [#{}] - {}: receiving a sync message failed",
+                    "{} #{} - {}: receiving a sync message failed",
                     self.name,
                     step_idx,
                     step.name
@@ -349,16 +369,24 @@ mod tests {
                 // Check what the listeners do receive
                 for (idx, expected) in step.expected_notifications.iter().enumerate() {
                     if let Some(ref expected) = expected {
+                        assert!(
+                            !self.notification_receivers[idx].is_empty(),
+                            "{} #{} - {}: listener[{}] has no notification in its channel though some is expected",
+                            self.name,
+                            step_idx,
+                            step.name,
+                            idx
+                        );
                         let notification = self.notification_receivers[idx].recv().await.unwrap();
                         assert_eq!(
                             *expected, notification,
-                            "{} [#{}] - {}: listener[{}] got wrong notification",
+                            "{} #{} - {}: listener[{}] got wrong notification",
                             self.name, step_idx, step.name, idx
                         );
                     } else {
                         assert!(
                             self.notification_receivers[idx].is_empty(),
-                            "{} [#{}] - {}: listener[{}] has a notification in its channel but should not",
+                            "{} #{} - {}: listener[{}] has a notification in its channel but should not",
                             self.name,
                             step_idx,
                             step.name,

@@ -1,14 +1,17 @@
-use std::{ops::Deref, slice::Iter};
-
 use indexmap::{map::Entry, IndexMap};
 use kaspa_addresses::{Address, Prefix};
 use kaspa_consensus_core::tx::ScriptPublicKey;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use parking_lot::RwLock;
+use std::{
+    fmt::Display,
+    slice::{Chunks, Iter},
+};
 
 pub type AddressIndex = u32;
 pub type RefCount = u16;
 
+#[derive(Debug, Clone)]
 pub struct AddressIndexes(Vec<AddressIndex>);
 
 impl AddressIndexes {
@@ -52,13 +55,9 @@ impl AddressIndexes {
     pub fn iter(&self) -> Iter<'_, AddressIndex> {
         self.0.iter()
     }
-}
 
-impl Deref for AddressIndexes {
-    type Target = [AddressIndex];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    pub fn chunks(&self, chunk_size: usize) -> Chunks<'_, AddressIndex> {
+        self.0.chunks(chunk_size)
     }
 }
 
@@ -107,6 +106,7 @@ impl Inner {
             Entry::Occupied(entry) => entry.index() as AddressIndex,
             Entry::Vacant(entry) => {
                 let index = entry.index() as AddressIndex;
+                // trace!("AddressTracker insert #{} {}", index, extract_script_pub_key_address(entry.key(), Prefix::Mainnet).unwrap());
                 let _ = *entry.insert(0);
                 index
             }
@@ -116,6 +116,7 @@ impl Inner {
     fn inc_count(&mut self, address_idx: AddressIndex) {
         if let Some((_, count)) = self.script_pub_keys.get_index_mut(address_idx as usize) {
             *count += 1;
+            // trace!("AddressTracker inc count #{} to {}", address_idx, *count);
         }
     }
 
@@ -124,7 +125,8 @@ impl Inner {
             if *count == 0 {
                 panic!("Address tracker is trying to decrease an address counter that is already at zero");
             }
-            *count -= 1
+            *count -= 1;
+            // trace!("AddressTracker dec count #{} to {}", address_idx, *count);
         }
     }
 
@@ -158,6 +160,12 @@ pub struct AddressTracker {
     inner: RwLock<Inner>,
 }
 
+impl Display for AddressTracker {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} addresses", self.inner.read().script_pub_keys.len())
+    }
+}
+
 impl AddressTracker {
     const ADDRESS_CHUNK_SIZE: usize = 256;
 
@@ -186,14 +194,14 @@ impl AddressTracker {
     }
 
     pub fn contains(&self, indexes: &AddressIndexes, spk: &ScriptPublicKey) -> bool {
-        if let Some((address_idx, _)) = self.inner.read().get(spk) {
-            indexes.contains(address_idx)
-        } else {
-            false
-        }
+        self.get(spk).is_some_and(|(address_idx, _)| indexes.contains(address_idx))
     }
 
-    pub fn register(&mut self, indexes: &mut AddressIndexes, addresses: &[Address]) -> Vec<Address> {
+    pub fn contains_address(&self, indexes: &AddressIndexes, address: &Address) -> bool {
+        self.contains(indexes, &pay_to_address_script(address))
+    }
+
+    pub fn register(&self, indexes: &mut AddressIndexes, addresses: &[Address]) -> Vec<Address> {
         let mut added = Vec::with_capacity(addresses.len());
         for chunk in addresses.chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
@@ -209,7 +217,7 @@ impl AddressTracker {
         added
     }
 
-    pub fn unregister(&mut self, indexes: &mut AddressIndexes, addresses: &[Address]) -> Vec<Address> {
+    pub fn unregister(&self, indexes: &mut AddressIndexes, addresses: &[Address]) -> Vec<Address> {
         let mut removed = Vec::with_capacity(addresses.len());
         for chunk in addresses.chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
@@ -224,6 +232,13 @@ impl AddressTracker {
             }
         }
         removed
+    }
+
+    pub fn unregister_indexes(&self, indexes: &AddressIndexes) {
+        for chunk in indexes.chunks(Self::ADDRESS_CHUNK_SIZE) {
+            let mut inner = self.inner.write();
+            chunk.iter().for_each(|address_idx| inner.dec_count(*address_idx));
+        }
     }
 
     pub fn to_addresses(&self, indexes: &[AddressIndex], prefix: Prefix) -> Vec<Address> {

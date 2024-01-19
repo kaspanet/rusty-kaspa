@@ -244,7 +244,15 @@ where
         assert!(broadcasters > 0, "a notifier requires a minimum of one broadcaster");
         let notification_channel = Channel::unbounded();
         let broadcasters = (0..broadcasters)
-            .map(|idx| Arc::new(Broadcaster::new(name, idx, notification_channel.receiver.clone(), _sync.clone())))
+            .map(|idx| {
+                Arc::new(Broadcaster::new(
+                    name,
+                    idx,
+                    subscription_context.clone(),
+                    notification_channel.receiver.clone(),
+                    _sync.clone(),
+                ))
+            })
             .collect::<Vec<_>>();
         Self {
             enabled_events,
