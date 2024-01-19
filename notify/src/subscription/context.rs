@@ -1,14 +1,14 @@
-use crate::address::tracker::AddressTracker;
+use crate::address::tracker::Tracker;
 use std::{ops::Deref, sync::Arc};
 
 #[derive(Debug, Default)]
 pub struct SubscriptionContextInner {
-    pub address_tracker: AddressTracker,
+    pub address_tracker: Tracker,
 }
 
 impl SubscriptionContextInner {
     pub fn new() -> Self {
-        let address_tracker = AddressTracker::new();
+        let address_tracker = Tracker::new();
         Self { address_tracker }
     }
 }

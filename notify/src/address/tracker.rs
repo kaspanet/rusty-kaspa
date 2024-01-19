@@ -8,40 +8,51 @@ use std::{
     slice::{Chunks, Iter},
 };
 
-pub type AddressIndex = u32;
+pub trait Indexer {
+    fn contains(&self, index: Index) -> bool;
+    fn insert(&mut self, index: Index) -> bool;
+    fn remove(&mut self, index: Index) -> bool;
+}
+
+pub type Index = u32;
 pub type RefCount = u16;
 
 #[derive(Debug, Clone)]
-pub struct AddressIndexes(Vec<AddressIndex>);
+pub struct Counter {
+    pub index: Index,
+    pub count: RefCount,
+}
 
-impl AddressIndexes {
-    pub fn new(mut indexes: Vec<AddressIndex>) -> Self {
-        indexes.sort();
-        Self(indexes)
+impl Counter {
+    pub fn new(index: Index, count: RefCount) -> Self {
+        Self { index, count }
     }
+}
 
-    pub fn contains(&self, address_idx: AddressIndex) -> bool {
-        self.0.binary_search(&address_idx).is_ok()
+impl PartialEq for Counter {
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index
     }
+}
+impl Eq for Counter {}
 
-    pub(self) fn insert(&mut self, address_idx: AddressIndex) -> bool {
-        match self.0.binary_search(&address_idx) {
-            Ok(_) => false,
-            Err(index) => {
-                self.0.insert(index, address_idx);
-                true
-            }
-        }
+impl PartialOrd for Counter {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
+}
+impl Ord for Counter {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.index.cmp(&other.index)
+    }
+}
 
-    pub(self) fn remove(&mut self, address_idx: AddressIndex) -> bool {
-        match self.0.binary_search(&address_idx) {
-            Ok(index) => {
-                self.0.remove(index);
-                true
-            }
-            Err(_) => false,
-        }
+pub struct Counters(Vec<Counter>);
+
+impl Counters {
+    pub fn new(mut counters: Vec<Counter>) -> Self {
+        counters.sort();
+        Self(counters)
     }
 
     pub fn len(&self) -> usize {
@@ -52,17 +63,104 @@ impl AddressIndexes {
         self.0.is_empty()
     }
 
-    pub fn iter(&self) -> Iter<'_, AddressIndex> {
+    pub fn iter(&self) -> Iter<'_, Counter> {
         self.0.iter()
     }
 
-    pub fn chunks(&self, chunk_size: usize) -> Chunks<'_, AddressIndex> {
+    pub fn chunks(&self, chunk_size: usize) -> Chunks<'_, Counter> {
         self.0.chunks(chunk_size)
     }
 }
 
-impl From<Vec<AddressIndex>> for AddressIndexes {
-    fn from(item: Vec<AddressIndex>) -> Self {
+impl Indexer for Counters {
+    fn contains(&self, index: Index) -> bool {
+        self.0.binary_search(&Counter::new(index, 0)).is_ok()
+    }
+
+    fn insert(&mut self, index: Index) -> bool {
+        let item = Counter::new(index, 1);
+        match self.0.binary_search(&item) {
+            Ok(rank) => {
+                self.0[rank].count += 1;
+                false
+            }
+            Err(rank) => {
+                self.0.insert(rank, item);
+                true
+            }
+        }
+    }
+
+    fn remove(&mut self, index: Index) -> bool {
+        match self.0.binary_search(&Counter::new(index, 0)) {
+            Ok(rank) => {
+                if self.0[rank].count == 1 {
+                    self.0.remove(rank);
+                    true
+                } else {
+                    self.0[rank].count -= 1;
+                    false
+                }
+            }
+            Err(_) => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Indexes(Vec<Index>);
+
+impl Indexes {
+    pub fn new(mut indexes: Vec<Index>) -> Self {
+        indexes.sort();
+        Self(indexes)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn iter(&self) -> Iter<'_, Index> {
+        self.0.iter()
+    }
+
+    pub fn chunks(&self, chunk_size: usize) -> Chunks<'_, Index> {
+        self.0.chunks(chunk_size)
+    }
+}
+
+impl Indexer for Indexes {
+    fn contains(&self, index: Index) -> bool {
+        self.0.binary_search(&index).is_ok()
+    }
+
+    fn insert(&mut self, index: Index) -> bool {
+        match self.0.binary_search(&index) {
+            Ok(_) => false,
+            Err(rank) => {
+                self.0.insert(rank, index);
+                true
+            }
+        }
+    }
+
+    fn remove(&mut self, index: Index) -> bool {
+        match self.0.binary_search(&index) {
+            Ok(rank) => {
+                self.0.remove(rank);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+}
+
+impl From<Vec<Index>> for Indexes {
+    fn from(item: Vec<Index>) -> Self {
         Self::new(item)
     }
 }
@@ -81,31 +179,31 @@ impl Inner {
         Self { script_pub_keys: IndexMap::with_capacity(capacity) }
     }
 
-    fn get(&self, spk: &ScriptPublicKey) -> Option<(AddressIndex, RefCount)> {
-        self.script_pub_keys.get_full(spk).map(|(index, _, count)| (index as AddressIndex, *count))
+    fn get(&self, spk: &ScriptPublicKey) -> Option<(Index, RefCount)> {
+        self.script_pub_keys.get_full(spk).map(|(index, _, count)| (index as Index, *count))
     }
 
-    // fn get_address(&self, address: &Address) -> Option<(AddressIndex, RefCount)> {
+    // fn get_address(&self, address: &Address) -> Option<(Index, RefCount)> {
     //     let spk = pay_to_address_script(address);
-    //     self.script_pub_keys.get_full(&spk).map(|(index, _, count)| (index as AddressIndex, *count))
+    //     self.script_pub_keys.get_full(&spk).map(|(index, _, count)| (index as Index, *count))
     // }
 
-    // fn get_index(&self, address_idx: AddressIndex) -> Option<RefCount> {
-    //     self.script_pub_keys.get_index(address_idx as usize).map(|(_, count)| *count)
+    // fn get_index(&self, index: Index) -> Option<RefCount> {
+    //     self.script_pub_keys.get_index(index as usize).map(|(_, count)| *count)
     // }
 
-    fn get_index_address(&self, address_idx: AddressIndex, prefix: Prefix) -> Option<Address> {
+    fn get_index_address(&self, index: Index, prefix: Prefix) -> Option<Address> {
         self.script_pub_keys
-            .get_index(address_idx as usize)
+            .get_index(index as usize)
             .map(|(spk, _)| extract_script_pub_key_address(spk, prefix).expect("is retro-convertible"))
     }
 
-    fn get_or_insert(&mut self, spk: ScriptPublicKey) -> AddressIndex {
+    fn get_or_insert(&mut self, spk: ScriptPublicKey) -> Index {
         // TODO: reuse entries with counter at 0 when available and some map size threshold is reached
         match self.script_pub_keys.entry(spk) {
-            Entry::Occupied(entry) => entry.index() as AddressIndex,
+            Entry::Occupied(entry) => entry.index() as Index,
             Entry::Vacant(entry) => {
-                let index = entry.index() as AddressIndex;
+                let index = entry.index() as Index;
                 // trace!("AddressTracker insert #{} {}", index, extract_script_pub_key_address(entry.key(), Prefix::Mainnet).unwrap());
                 let _ = *entry.insert(0);
                 index
@@ -113,24 +211,24 @@ impl Inner {
         }
     }
 
-    fn inc_count(&mut self, address_idx: AddressIndex) {
-        if let Some((_, count)) = self.script_pub_keys.get_index_mut(address_idx as usize) {
+    fn inc_count(&mut self, index: Index) {
+        if let Some((_, count)) = self.script_pub_keys.get_index_mut(index as usize) {
             *count += 1;
-            // trace!("AddressTracker inc count #{} to {}", address_idx, *count);
+            // trace!("AddressTracker inc count #{} to {}", index, *count);
         }
     }
 
-    fn dec_count(&mut self, address_idx: AddressIndex) {
-        if let Some((_, count)) = self.script_pub_keys.get_index_mut(address_idx as usize) {
+    fn dec_count(&mut self, index: Index) {
+        if let Some((_, count)) = self.script_pub_keys.get_index_mut(index as usize) {
             if *count == 0 {
                 panic!("Address tracker is trying to decrease an address counter that is already at zero");
             }
             *count -= 1;
-            // trace!("AddressTracker dec count #{} to {}", address_idx, *count);
+            // trace!("AddressTracker dec count #{} to {}", index, *count);
         }
     }
 
-    // fn register_address(&mut self, address: &Address) -> AddressIndex {
+    // fn register_address(&mut self, address: &Address) -> Index {
     //     let spk = pay_to_address_script(address);
     //     let index = match self.script_pub_keys.get_full_mut(&spk) {
     //         Some((index, _, count)) => {
@@ -142,31 +240,31 @@ impl Inner {
     //             self.script_pub_keys.insert_full(spk, 1).0
     //         }
     //     };
-    //     index as AddressIndex
+    //     index as Index
     // }
 
-    // fn unregister_address(&mut self, address: &Address) -> Option<AddressIndex> {
+    // fn unregister_address(&mut self, address: &Address) -> Option<Index> {
     //     let spk = pay_to_address_script(address);
     //     self.script_pub_keys.get_full_mut(&spk).map(|(index, _, count)| {
     //         *count -= 1;
-    //         index as AddressIndex
+    //         index as Index
     //     })
     // }
 }
 
 /// Tracker of multiple [`Address`](kaspa_addresses::Address), indexing and counting registrations
 #[derive(Debug)]
-pub struct AddressTracker {
+pub struct Tracker {
     inner: RwLock<Inner>,
 }
 
-impl Display for AddressTracker {
+impl Display for Tracker {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} addresses", self.inner.read().script_pub_keys.len())
     }
 }
 
-impl AddressTracker {
+impl Tracker {
     const ADDRESS_CHUNK_SIZE: usize = 256;
 
     pub fn new() -> Self {
@@ -177,56 +275,56 @@ impl AddressTracker {
         Self { inner: RwLock::new(Inner::with_capacity(capacity)) }
     }
 
-    pub fn get(&self, spk: &ScriptPublicKey) -> Option<(AddressIndex, RefCount)> {
+    pub fn get(&self, spk: &ScriptPublicKey) -> Option<(Index, RefCount)> {
         self.inner.read().get(spk)
     }
 
-    // pub fn get_address(&self, address: &Address) -> Option<(AddressIndex, RefCount)> {
+    // pub fn get_address(&self, address: &Address) -> Option<(Index, RefCount)> {
     //     self.inner.read().get_address(address)
     // }
 
-    // pub fn get_index(&self, address_idx: AddressIndex) -> Option<RefCount> {
-    //     self.inner.read().get_index(address_idx)
+    // pub fn get_index(&self, index: Index) -> Option<RefCount> {
+    //     self.inner.read().get_index(index)
     // }
 
-    pub fn get_index_address(&self, address_idx: AddressIndex, prefix: Prefix) -> Option<Address> {
-        self.inner.read().get_index_address(address_idx, prefix)
+    pub fn get_index_address(&self, index: Index, prefix: Prefix) -> Option<Address> {
+        self.inner.read().get_index_address(index, prefix)
     }
 
-    pub fn contains(&self, indexes: &AddressIndexes, spk: &ScriptPublicKey) -> bool {
-        self.get(spk).is_some_and(|(address_idx, _)| indexes.contains(address_idx))
+    pub fn contains<T: Indexer>(&self, indexes: &T, spk: &ScriptPublicKey) -> bool {
+        self.get(spk).is_some_and(|(index, _)| indexes.contains(index))
     }
 
-    pub fn contains_address(&self, indexes: &AddressIndexes, address: &Address) -> bool {
+    pub fn contains_address<T: Indexer>(&self, indexes: &T, address: &Address) -> bool {
         self.contains(indexes, &pay_to_address_script(address))
     }
 
-    pub fn register(&self, indexes: &mut AddressIndexes, addresses: &[Address]) -> Vec<Address> {
+    pub fn register<T: Indexer>(&self, indexes: &mut T, addresses: &[Address]) -> Vec<Address> {
         let mut added = Vec::with_capacity(addresses.len());
         for chunk in addresses.chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
             for address in chunk {
                 let spk = pay_to_address_script(address);
-                let address_idx = inner.get_or_insert(spk);
-                if indexes.insert(address_idx) {
+                let index = inner.get_or_insert(spk);
+                if indexes.insert(index) {
                     added.push(address.clone());
-                    inner.inc_count(address_idx);
+                    inner.inc_count(index);
                 }
             }
         }
         added
     }
 
-    pub fn unregister(&self, indexes: &mut AddressIndexes, addresses: &[Address]) -> Vec<Address> {
+    pub fn unregister<T: Indexer>(&self, indexes: &mut T, addresses: &[Address]) -> Vec<Address> {
         let mut removed = Vec::with_capacity(addresses.len());
         for chunk in addresses.chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
             for address in chunk {
                 let spk = pay_to_address_script(address);
-                if let Some((address_idx, _)) = inner.get(&spk) {
-                    if indexes.remove(address_idx) {
+                if let Some((index, _)) = inner.get(&spk) {
+                    if indexes.remove(index) {
                         removed.push(address.clone());
-                        inner.dec_count(address_idx);
+                        inner.dec_count(index);
                     }
                 }
             }
@@ -234,19 +332,19 @@ impl AddressTracker {
         removed
     }
 
-    pub fn unregister_indexes(&self, indexes: &AddressIndexes) {
+    pub fn unregister_indexes(&self, indexes: &Indexes) {
         for chunk in indexes.chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
-            chunk.iter().for_each(|address_idx| inner.dec_count(*address_idx));
+            chunk.iter().for_each(|index| inner.dec_count(*index));
         }
     }
 
-    pub fn to_addresses(&self, indexes: &[AddressIndex], prefix: Prefix) -> Vec<Address> {
+    pub fn to_addresses(&self, indexes: &[Index], prefix: Prefix) -> Vec<Address> {
         let mut addresses = Vec::with_capacity(indexes.len());
         for chunk in indexes.chunks(Self::ADDRESS_CHUNK_SIZE) {
             let inner = self.inner.read();
-            chunk.iter().for_each(|address_idx| {
-                if let Some(address) = inner.get_index_address(*address_idx, prefix) {
+            chunk.iter().for_each(|index| {
+                if let Some(address) = inner.get_index_address(*index, prefix) {
                     addresses.push(address);
                 }
             });
@@ -255,7 +353,7 @@ impl AddressTracker {
     }
 }
 
-impl Default for AddressTracker {
+impl Default for Tracker {
     fn default() -> Self {
         Self::new()
     }

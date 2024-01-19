@@ -1,5 +1,5 @@
 use crate::{
-    address::tracker::AddressIndexes,
+    address::tracker::Indexes,
     events::EventType,
     listener::ListenerId,
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
@@ -169,7 +169,7 @@ static UTXOS_CHANGED_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug)]
 pub struct UtxosChangedSubscription {
     active: bool,
-    indexes: AddressIndexes,
+    indexes: Indexes,
     listener_id: ListenerId,
 }
 
@@ -180,8 +180,8 @@ impl UtxosChangedSubscription {
 
     pub fn with_capacity(active: bool, listener_id: ListenerId, capacity: usize) -> Self {
         let cnt = UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst);
-        let address_indexes = AddressIndexes::new(Vec::with_capacity(capacity));
-        let subscription = Self { active, indexes: address_indexes, listener_id };
+        let indexes = Indexes::new(Vec::with_capacity(capacity));
+        let subscription = Self { active, indexes, listener_id };
         trace!("UtxosChangedSubscription: {} in total (new {})", cnt + 1, subscription);
         subscription
     }
@@ -209,7 +209,7 @@ impl UtxosChangedSubscription {
     }
 
     pub fn to_addresses(&self, prefix: Prefix, context: &SubscriptionContext) -> Vec<Address> {
-        self.indexes.iter().filter_map(|address_idx| context.address_tracker.get_index_address(*address_idx, prefix)).collect_vec()
+        self.indexes.iter().filter_map(|index| context.address_tracker.get_index_address(*index, prefix)).collect_vec()
     }
 
     pub fn register(&mut self, addresses: &[Address], context: &SubscriptionContext) -> Vec<Address> {
