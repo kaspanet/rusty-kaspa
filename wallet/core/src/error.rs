@@ -236,7 +236,7 @@ pub enum Error {
     #[error("Priority fees can not be included into transactions with multiple outputs")]
     GeneratorIncludeFeesRequiresOneOutput,
 
-    #[error("Requested transaction is too heavy")]
+    #[error("Transaction exceeds the maximum allowed mass")]
     GeneratorTransactionIsTooHeavy,
 
     #[error("Invalid range {0}..{1}")]
@@ -265,6 +265,9 @@ pub enum Error {
 
     #[error("Missing RPC listener id (this may be a node connection issue)")]
     ListenerId,
+
+    #[error("Mass calculation error")]
+    MassCalculationError,
 }
 
 impl From<Aborted> for Error {
