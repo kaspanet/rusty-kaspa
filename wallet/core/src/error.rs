@@ -74,6 +74,9 @@ pub enum Error {
     #[error("No network selected. Please use `network (mainnet|testnet-10|testnet-11)` to select a network.")]
     MissingNetworkId,
 
+    #[error("RPC client version mismatch, please upgrade you client (needs: v{0}, connected to: v{1})")]
+    RpcApiVersion(String, String),
+
     #[error("Invalid or unsupported network id: {0}")]
     InvalidNetworkId(String),
 

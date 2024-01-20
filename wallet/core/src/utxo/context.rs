@@ -17,12 +17,6 @@ use crate::utxo::{
 use kaspa_hashes::Hash;
 use sorted_insert::SortedInsertBinaryByKey;
 
-// If enabled, upon submission of an outgoing transaction,
-// change UTXOs are immediately promoted to the mature set.
-// Otherwise they are treated as regular incoming transactions
-// and require a maturity period.
-// const SKIP_CHANGE_UTXO_PROMOTION: bool = true;
-
 static PROCESSOR_ID_SEQUENCER: AtomicU64 = AtomicU64::new(0);
 fn next_processor_id() -> Hash {
     let id = PROCESSOR_ID_SEQUENCER.fetch_add(1, Ordering::SeqCst);
