@@ -8,6 +8,7 @@ use crate::{tx::PaymentOutputs, utils::kaspa_to_sompi};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::tx::Transaction;
+use rand::prelude::*;
 use std::cell::RefCell;
 use std::fmt::Debug;
 use std::rc::Rc;
@@ -66,6 +67,7 @@ trait PendingTransactionExtension {
     fn expect<SOMPI>(self, expected: &Expected<SOMPI>) -> Self
     where
         SOMPI: Into<Sompi> + Debug + Copy;
+    fn validate(self) -> Self;
     fn accumulate(self, accumulator: &mut Accumulator) -> Self;
 }
 
@@ -79,6 +81,10 @@ impl PendingTransactionExtension for PendingTransaction {
         SOMPI: Into<Sompi> + Debug + Copy,
     {
         expect(&self, expected);
+        self
+    }
+    fn validate(self) -> Self {
+        validate(&self);
         self
     }
     fn accumulate(self, accumulator: &mut Accumulator) -> Self {
@@ -148,6 +154,28 @@ pub(crate) struct Expected<SOMPI: Into<Sompi>> {
     aggregate_input_value: SOMPI,
     output_count: usize,
     priority_fees: FeesExpected,
+}
+
+fn validate(pt: &PendingTransaction) {
+    let network_params = pt.generator().network_params();
+    let tx = pt.transaction();
+
+    let aggregate_input_value = pt.utxo_entries().iter().map(|o| o.amount()).sum::<u64>();
+    let aggregate_output_value = tx.outputs.iter().map(|o| o.value).sum::<u64>();
+    assert_ne!(
+        aggregate_input_value, aggregate_output_value,
+        "[validate] aggregate input and output values can not be the same due to fees"
+    );
+
+    let calc = MassCalculator::new(&pt.network_type().into(), network_params);
+    let compute_mass = calc.calc_mass_for_signed_transaction(&tx, 1);
+
+    let utxo_entries = pt.utxo_entries().iter().cloned().collect::<Vec<_>>();
+    let storage_mass = calc.calc_storage_mass_for_transaction(false, &utxo_entries, &tx.outputs).unwrap_or_default();
+
+    let calculated_mass = calc.combine_mass(compute_mass, storage_mass);
+
+    assert_eq!(pt.inner.mass, calculated_mass, "pending transaction mass does not match calculated mass");
 }
 
 fn expect<SOMPI>(pt: &PendingTransaction, expected: &Expected<SOMPI>)
@@ -297,6 +325,13 @@ impl Harness {
         self.clone()
     }
 
+    pub fn validate(self: &Rc<Self>) -> Rc<Self> {
+        while let Some(pt) = self.generator.generate_transaction().unwrap() {
+            pt.accumulate(&mut self.accumulator.borrow_mut()).validate();
+        }
+        self.clone()
+    }
+
     pub fn finalize(self: Rc<Self>) {
         let pt = self.generator.generate_transaction().unwrap();
         assert!(pt.is_none(), "expected no more transactions");
@@ -437,6 +472,44 @@ fn test_generator_sweep_two_utxos_with_priority_fees_rejection() -> Result<()> {
 }
 
 #[test]
+fn test_generator_compound_200k_10kas_transactions() -> Result<()> {
+    generator(test_network_id(), &[10.0; 200_000], &[], Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(190_000.0))].as_slice())
+        .unwrap()
+        .harness()
+        .validate()
+        .finalize();
+
+    Ok(())
+}
+
+#[test]
+fn test_generator_compound_100k_random_transactions() -> Result<()> {
+    let mut rng = StdRng::seed_from_u64(0);
+    let inputs: Vec<f64> = (0..100_000).map(|_| rng.gen_range(0.001..10.0)).collect();
+    let total = inputs.iter().sum::<f64>();
+    let outputs = [(output_address, Kaspa(total - 10.0))];
+    generator(test_network_id(), &inputs, &[], Fees::sender(Kaspa(5.0)), outputs.as_slice()).unwrap().harness().validate().finalize();
+
+    Ok(())
+}
+
+#[test]
+fn test_generator_random_outputs() -> Result<()> {
+    let mut rng = StdRng::seed_from_u64(0);
+    let outputs: Vec<f64> = (0..30).map(|_| rng.gen_range(1.0..10.0)).collect();
+    let total = outputs.iter().sum::<f64>();
+    let outputs: Vec<_> = outputs.into_iter().map(|v| (output_address, Kaspa(v))).collect();
+
+    generator(test_network_id(), &[total + 100.0], &[], Fees::sender(Kaspa(5.0)), outputs.as_slice())
+        .unwrap()
+        .harness()
+        .validate()
+        .finalize();
+
+    Ok(())
+}
+
+#[test]
 fn test_generator_dust_1_1() -> Result<()> {
     generator(
         test_network_id(),
@@ -458,31 +531,6 @@ fn test_generator_dust_1_1() -> Result<()> {
 
     Ok(())
 }
-
-// #[test]
-// fn test_generator_dust_2() -> Result<()> {
-//     generator(
-//         test_network_id(),
-//         &[10.0; 20],
-//         &[],
-//         Fees::sender(Kaspa(5.0)),
-//         // [(output_address, Kaspa(0.125)), (output_address, Kaspa(1.0))].as_slice(),
-//         [(output_address, Kaspa(0.1))].as_slice(),
-//         // [(output_address, Kaspa(0.1))].as_slice(),
-//     )
-//     .unwrap()
-//     .harness()
-//     .fetch(&Expected {
-//         is_final: true,
-//         input_count: 2,
-//         aggregate_input_value: Kaspa(20.0),
-//         output_count: 3,
-//         priority_fees: FeesExpected::sender(Kaspa(5.0)),
-//     })
-//     .finalize();
-
-//     Ok(())
-// }
 
 #[test]
 fn test_generator_inputs_2_outputs_2_fees_exclude() -> Result<()> {
@@ -628,59 +676,3 @@ fn test_generator_inputs_903_outputs_2_fees_exclude() -> Result<()> {
 
     Ok(())
 }
-
-// #[test]
-// fn test_generator_1m_utxos_w_1kas_to_990k_sender_fees() -> Result<()> {
-//     let harness = generator(
-//         test_network_id(),
-//         &[1.0; 1_000_000],
-//         &[],
-//         Fees::sender(Kaspa(5.0)),
-//         [(output_address, Kaspa(990_000.0))].as_slice(),
-//     )
-//     .unwrap()
-//     .harness();
-
-//     harness
-//         .drain(
-//             1174,
-//             &Expected {
-//                 is_final: false,
-//                 input_count: 843,
-//                 aggregate_input_value: Kaspa(843.0).into(),
-//                 output_count: 1,
-//                 priority_fees: FeesExpected::None,
-//             },
-//         )
-//         .fetch(&Expected {
-//             is_final: false,
-//             input_count: 325,
-//             aggregate_input_value: Kaspa(325.0).into(),
-//             output_count: 1,
-//             priority_fees: FeesExpected::None,
-//         })
-//         .fetch(&Expected {
-//             is_final: false,
-//             input_count: 843,
-//             aggregate_input_value: Sompi(710_648_15369544),
-//             output_count: 1,
-//             priority_fees: FeesExpected::None,
-//         })
-//         .fetch(&Expected {
-//             is_final: false,
-//             input_count: 332,
-//             aggregate_input_value: Sompi(279_357_66731392),
-//             output_count: 1,
-//             priority_fees: FeesExpected::None,
-//         })
-//         .fetch(&Expected {
-//             is_final: true,
-//             input_count: 2,
-//             aggregate_input_value: Sompi(990_005_81960862),
-//             output_count: 2,
-//             priority_fees: FeesExpected::sender(Kaspa(5.0)),
-//         })
-//         .finalize();
-
-//     Ok(())
-// }

@@ -333,20 +333,27 @@ impl Generator {
         let final_transaction_outputs_compute_mass = mass_calculator.calc_mass_for_outputs(&final_transaction_outputs);
         let final_transaction_payload = final_transaction_payload.unwrap_or_default();
         let final_transaction_payload_mass = mass_calculator.calc_mass_for_payload(final_transaction_payload.len());
-        // let final_transaction_output_values = final_transaction_outputs.iter().map(|output| output.value).collect::<Vec<_>>();
         let final_transaction_outputs_harmonic =
             mass_calculator.calc_storage_mass_output_harmonic(&final_transaction_outputs).ok_or(Error::MassCalculationError)?;
 
         // reject transactions where the payload and outputs are more than 2/3rds of the maximum tx mass
-        let mass_sanity_check = standard_change_output_mass + final_transaction_outputs_compute_mass + final_transaction_payload_mass;
-        if mass_sanity_check > MAXIMUM_STANDARD_TRANSACTION_MASS / 5 * 4 {
-            return Err(Error::GeneratorTransactionIsTooHeavy);
-        }
-
         let final_transaction = final_transaction_amount.map(|amount| FinalTransaction {
             value_no_fees: amount,
             value_with_priority_fee: amount + final_transaction_priority_fee.additional(),
         });
+
+        let mass_sanity_check = standard_change_output_mass + final_transaction_outputs_compute_mass + final_transaction_payload_mass;
+        if mass_sanity_check > MAXIMUM_STANDARD_TRANSACTION_MASS / 5 * 4 {
+            return Err(Error::GeneratorTransactionOutputsAreTooHeavy { mass: mass_sanity_check, kind: "compute mass" });
+        }
+
+        if let Some(final_transaction) = &final_transaction {
+            let perfect_output_storage_mass =
+                mass_calculator.calc_storage_mass(final_transaction_outputs_harmonic, final_transaction.value_with_priority_fee, 1);
+            if perfect_output_storage_mass > MAXIMUM_STANDARD_TRANSACTION_MASS / 5 * 4 {
+                return Err(Error::GeneratorTransactionOutputsAreTooHeavy { mass: perfect_output_storage_mass, kind: "storage mass" });
+            }
+        }
 
         let context = Mutex::new(Context {
             utxo_source_iterator: utxo_iterator,
@@ -786,7 +793,7 @@ impl Generator {
         };
 
         if storage_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
-            Err(Error::StorageMassExceedsMaximumTransactionMass)
+            Err(Error::StorageMassExceedsMaximumTransactionMass { storage_mass })
         } else {
             let transaction_mass = calc.combine_mass(compute_mass_with_change, storage_mass);
             let transaction_fees = calc.calc_minimum_transaction_fee_from_mass(transaction_mass);

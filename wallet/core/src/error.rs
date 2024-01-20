@@ -239,11 +239,14 @@ pub enum Error {
     #[error("Priority fees can not be included into transactions with multiple outputs")]
     GeneratorIncludeFeesRequiresOneOutput,
 
+    #[error("Transaction outputs exceed the maximum allowed mass")]
+    GeneratorTransactionOutputsAreTooHeavy { mass: u64, kind: &'static str },
+
     #[error("Transaction exceeds the maximum allowed mass")]
     GeneratorTransactionIsTooHeavy,
 
     #[error("Storage mass exceeds maximum")]
-    StorageMassExceedsMaximumTransactionMass,
+    StorageMassExceedsMaximumTransactionMass { storage_mass: u64 },
 
     #[error("Invalid range {0}..{1}")]
     InvalidRange(u64, u64),
