@@ -186,7 +186,7 @@ pub enum Error {
     InvalidAccountKind,
 
     #[error("Insufficient funds")]
-    InsufficientFunds,
+    InsufficientFunds { additional_needed: u64, origin: &'static str },
 
     #[error(transparent)]
     Utf8Error(#[from] std::str::Utf8Error),
@@ -238,6 +238,9 @@ pub enum Error {
 
     #[error("Transaction exceeds the maximum allowed mass")]
     GeneratorTransactionIsTooHeavy,
+
+    #[error("Storage mass exceeds maximum")]
+    StorageMassExceedsMaximumTransactionMass,
 
     #[error("Invalid range {0}..{1}")]
     InvalidRange(u64, u64),

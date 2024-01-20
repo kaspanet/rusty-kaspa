@@ -43,14 +43,14 @@ impl Fees {
         matches!(self, Fees::None)
     }
 
-    pub fn is_sender_pays(&self) -> bool {
+    pub fn sender_pays(&self) -> bool {
         matches!(self, Fees::SenderPays(_))
     }
 
-    pub fn is_receiver_pays(&self) -> bool {
+    pub fn receiver_pays(&self) -> bool {
         matches!(self, Fees::ReceiverPays(_))
     }
-    
+
     pub fn additional(&self) -> u64 {
         match self {
             Fees::SenderPays(fee) => *fee,
