@@ -67,6 +67,7 @@ use std::{
     sync::{atomic::Ordering, Arc},
     vec,
 };
+use tokio::join;
 use workflow_rpc::server::WebSocketCounters as WrpcServerCounters;
 
 /// A service implementing the Rpc API at kaspa_rpc_core level.
@@ -629,18 +630,19 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
     async fn get_block_dag_info_call(&self, _: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
-        let consensus_stats = session.async_get_stats().await;
+        let (consensus_stats, tips, pruning_point, sink) =
+            join!(session.async_get_stats(), session.async_get_tips(), session.async_pruning_point(), session.async_get_sink());
         Ok(GetBlockDagInfoResponse::new(
             self.config.net,
             consensus_stats.block_counts.block_count,
             consensus_stats.block_counts.header_count,
-            session.async_get_tips().await,
+            tips,
             self.consensus_converter.get_difficulty_ratio(consensus_stats.virtual_stats.bits),
             consensus_stats.virtual_stats.past_median_time,
-            session.get_virtual_parents().iter().copied().collect::<Vec<_>>(),
-            session.async_pruning_point().await,
+            session.get_virtual_parents().into_iter().collect::<Vec<_>>(),
+            pruning_point,
             consensus_stats.virtual_stats.daa_score,
-            session.async_get_sink().await,
+            sink,
         ))
     }
 
