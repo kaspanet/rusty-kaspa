@@ -1,10 +1,13 @@
+use std::ops::Deref;
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
+use kaspa_consensus_core::api::stats::VirtualStateStats;
 use kaspa_consensus_core::{
     block::VirtualStateApproxId, coinbase::BlockRewardData, config::genesis::GenesisBlock, tx::TransactionId,
     utxo::utxo_diff::UtxoDiff, BlockHashMap, BlockHashSet, HashMapCustomHasher,
 };
-use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
+use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter, StoreResultExtensions};
 use kaspa_database::prelude::{CachePolicy, StoreResult};
 use kaspa_database::prelude::{StoreError, DB};
 use kaspa_database::registry::DatabaseStorePrefixes;
@@ -77,6 +80,53 @@ impl VirtualState {
     }
 }
 
+impl From<&VirtualState> for VirtualStateStats {
+    fn from(state: &VirtualState) -> Self {
+        Self {
+            num_parents: state.parents.len() as u32,
+            daa_score: state.daa_score,
+            bits: state.bits,
+            past_median_time: state.past_median_time,
+        }
+    }
+}
+
+/// Represents the "last known good" virtual state. To be used by any logic which does not want to wait
+/// for a possible virtual state write to complete but can rather settle with the last known state
+#[derive(Clone, Default)]
+pub struct LkgVirtualState {
+    inner: Arc<ArcSwap<VirtualState>>,
+}
+
+/// Guard for accessing the last known good virtual state (lock-free)
+/// It's a simple newtype over arc_swap::Guard just to avoid explicit dependency
+pub struct LkgVirtualStateGuard(arc_swap::Guard<Arc<VirtualState>>);
+
+impl Deref for LkgVirtualStateGuard {
+    type Target = Arc<VirtualState>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl LkgVirtualState {
+    /// Provides a temporary borrow to the last known good virtual state.
+    pub fn load(&self) -> LkgVirtualStateGuard {
+        LkgVirtualStateGuard(self.inner.load())
+    }
+
+    /// Loads the last known good virtual state.
+    pub fn load_full(&self) -> Arc<VirtualState> {
+        self.inner.load_full()
+    }
+
+    // Kept private in order to make sure it is only updated by DbVirtualStateStore
+    fn store(&self, virtual_state: Arc<VirtualState>) {
+        self.inner.store(virtual_state)
+    }
+}
+
 /// Used in order to group virtual related stores under a single lock
 pub struct VirtualStores {
     pub state: DbVirtualStateStore,
@@ -84,9 +134,9 @@ pub struct VirtualStores {
 }
 
 impl VirtualStores {
-    pub fn new(db: Arc<DB>, utxoset_cache_policy: CachePolicy) -> Self {
+    pub fn new(db: Arc<DB>, lkg_virtual_state: LkgVirtualState, utxoset_cache_policy: CachePolicy) -> Self {
         Self {
-            state: DbVirtualStateStore::new(db.clone()),
+            state: DbVirtualStateStore::new(db.clone(), lkg_virtual_state),
             utxo_set: DbUtxoSetStore::new(db, utxoset_cache_policy, DatabaseStorePrefixes::VirtualUtxoset.into()),
         }
     }
@@ -106,15 +156,20 @@ pub trait VirtualStateStore: VirtualStateStoreReader {
 pub struct DbVirtualStateStore {
     db: Arc<DB>,
     access: CachedDbItem<Arc<VirtualState>>,
+    /// The "last known good" virtual state
+    lkg_virtual_state: LkgVirtualState,
 }
 
 impl DbVirtualStateStore {
-    pub fn new(db: Arc<DB>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbItem::new(db, DatabaseStorePrefixes::VirtualState.into()) }
+    pub fn new(db: Arc<DB>, lkg_virtual_state: LkgVirtualState) -> Self {
+        let access = CachedDbItem::new(db.clone(), DatabaseStorePrefixes::VirtualState.into());
+        // Init the LKG cache from DB store data
+        lkg_virtual_state.store(access.read().unwrap_option().unwrap_or_default());
+        Self { db, access, lkg_virtual_state }
     }
 
     pub fn clone_with_new_cache(&self) -> Self {
-        Self::new(Arc::clone(&self.db))
+        Self::new(self.db.clone(), self.lkg_virtual_state.clone())
     }
 
     pub fn is_initialized(&self) -> StoreResult<bool> {
@@ -126,6 +181,7 @@ impl DbVirtualStateStore {
     }
 
     pub fn set_batch(&mut self, batch: &mut WriteBatch, state: Arc<VirtualState>) -> StoreResult<()> {
+        self.lkg_virtual_state.store(state.clone()); // Keep the LKG cache up-to-date
         self.access.write(BatchDbWriter::new(batch), &state)
     }
 }
@@ -138,6 +194,7 @@ impl VirtualStateStoreReader for DbVirtualStateStore {
 
 impl VirtualStateStore for DbVirtualStateStore {
     fn set(&mut self, state: Arc<VirtualState>) -> StoreResult<()> {
+        self.lkg_virtual_state.store(state.clone()); // Keep the LKG cache up-to-date
         self.access.write(DirectDbWriter::new(&self.db), &state)
     }
 }

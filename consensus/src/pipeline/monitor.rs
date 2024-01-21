@@ -50,7 +50,7 @@ impl ConsensusMonitor {
             let now = Instant::now();
 
             info!(
-                "Processed {} blocks and {} headers in the last {:.2}s ({} transactions; {} UTXO-validated blocks; {:.2} parents; {:.2} mergesets; {:.2} TPB; {:.1} mass)", 
+                "Processed {} blocks and {} headers in the last {:.2}s ({} transactions; {} UTXO-validated blocks; {:.2} parents; {:.2} mergeset; {:.2} TPB; {:.1} mass)", 
                 delta.body_counts,
                 delta.header_counts,
                 (now - last_log_time).as_secs_f64(),

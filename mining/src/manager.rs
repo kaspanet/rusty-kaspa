@@ -875,4 +875,17 @@ impl MiningManagerProxy {
     pub fn p2p_tx_count_sample(&self) -> P2pTxCountSample {
         self.inner.counters.p2p_tx_count_sample()
     }
+
+    /// Returns a recent sample of transaction count which is not necessarily accurate
+    /// but is updated enough for being used as a stats/metric
+    pub fn transaction_count_sample(&self, query: TransactionQuery) -> u64 {
+        let mut count = 0;
+        if query.include_transaction_pool() {
+            count += self.inner.counters.txs_sample.load(std::sync::atomic::Ordering::Relaxed)
+        }
+        if query.include_orphan_pool() {
+            count += self.inner.counters.orphans_sample.load(std::sync::atomic::Ordering::Relaxed)
+        }
+        count
+    }
 }
