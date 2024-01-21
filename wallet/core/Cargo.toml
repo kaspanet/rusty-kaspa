@@ -10,8 +10,7 @@ license.workspace = true
 [features]
 no-unsafe-eval = ["workflow-core/no-unsafe-eval","workflow-rpc/no-unsafe-eval"]
 multi-user = []
-legacy-rpc = []
-default = ["legacy-rpc"]
+default = []
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -78,6 +77,7 @@ workflow-store.workspace = true
 workflow-wasm.workspace = true
 xxhash-rust.workspace = true
 zeroize.workspace = true
+indexed_db_futures.workspace = true
 
 [dependencies.web-sys]
 workspace = true

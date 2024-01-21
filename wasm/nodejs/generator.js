@@ -78,6 +78,7 @@ const { encoding, networkId, destinationAddress: destinationAddressArg } = requi
         // sequence of transactions
         // for a requested amount of KAS.
         // sign and submit these transactions
+        let pending;
         while (pending = await generator.next()) {
             await pending.sign([privateKey]);
             let txid = await pending.submit(rpc);

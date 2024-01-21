@@ -8,7 +8,7 @@ use std::{
 use tokio::sync::mpsc::Receiver as MpscReceiver;
 
 use super::peer::PeerKey;
-use rand::seq::SliceRandom;
+use rand::prelude::IteratorRandom;
 
 #[derive(Debug)]
 pub(crate) enum HubEvent {
@@ -85,6 +85,33 @@ impl Hub {
         }
     }
 
+    /// Selects a random subset of peers, trying to select at least half for outbound when possible
+    fn select_some_peers(&self, num_peers: usize) -> impl Iterator<Item = Arc<Router>> {
+        let peers = self.peers.read();
+        let total_outbound = peers.values().filter(|peer| peer.is_outbound()).count();
+        let total_inbound = peers.len() - total_outbound;
+
+        let mut outbound_count = ((num_peers + 1) / 2).min(total_outbound);
+
+        // If there won't be enough inbound peers to meet the num_peers after we've selected only half for outbound,
+        // try to require more outbound peers for the difference
+        if total_inbound + outbound_count < num_peers {
+            outbound_count = (num_peers - total_inbound).min(total_outbound);
+        }
+
+        let inbound_count = (num_peers - outbound_count).min(total_inbound);
+
+        let thread_rng = &mut rand::thread_rng();
+
+        peers
+            .values()
+            .filter(|peer| peer.is_outbound())
+            .cloned()
+            .choose_multiple(thread_rng, outbound_count) // Randomly select about half from outbound
+            .into_iter() // Then select the rest from inbound
+            .chain(peers.values().filter(|peer| !peer.is_outbound()).cloned().choose_multiple(thread_rng, inbound_count))
+    }
+
     /// Send a message to a specific peer
     pub async fn send(&self, peer_key: PeerKey, msg: KaspadMessage) -> Result<bool, ProtocolError> {
         let op = self.peers.read().get(&peer_key).cloned();
@@ -104,13 +131,12 @@ impl Hub {
         }
     }
 
-    /// Broadcast a message to some peers given a percentage
+    /// Broadcast a message to only some number of peers
     pub async fn broadcast_to_some_peers(&self, msg: KaspadMessage, num_peers: usize) {
         assert!(num_peers > 0);
-        let peers = self.peers.read().values().cloned().collect::<Vec<_>>();
-        // TODO: At least some of the peers should be outbound, because an attacker can gain less control
-        // over the set of outbound peers.
-        let peers = peers.choose_multiple(&mut rand::thread_rng(), num_peers).cloned().collect::<Vec<_>>();
+
+        let peers = self.select_some_peers(num_peers);
+
         for router in peers {
             let _ = router.enqueue(msg.clone()).await;
         }
