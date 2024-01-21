@@ -575,11 +575,15 @@ impl Generator {
 
         // NOTE: relay transactions have no storage mass
         // mass threshold reached, yield transaction
-        if data.aggregate_mass + input_compute_mass + self.inner.standard_change_output_compute_mass
+        if data.aggregate_mass
+            + input_compute_mass
+            + self.inner.standard_change_output_compute_mass
+            + self.inner.network_params.additional_compound_transaction_mass
             > MAXIMUM_STANDARD_TRANSACTION_MASS
         {
             context.utxo_stash.push_back(utxo_entry_reference);
-            data.aggregate_mass += self.inner.standard_change_output_compute_mass;
+            data.aggregate_mass +=
+                self.inner.standard_change_output_compute_mass + self.inner.network_params.additional_compound_transaction_mass;
             data.transaction_fees = self.calc_relay_transaction_compute_fees(data);
             stage.aggregate_fees += data.transaction_fees;
             context.aggregate_fees += data.transaction_fees;
@@ -807,14 +811,15 @@ impl Generator {
     fn generate_edge_transaction(&self, context: &mut Context, stage: &mut Stage, data: &mut Data) -> Result<Option<DataKind>> {
         let calc = &self.inner.mass_calculator;
 
-        let compute_mass = data.aggregate_mass + self.inner.standard_change_output_compute_mass;
+        let compute_mass = data.aggregate_mass
+            + self.inner.standard_change_output_compute_mass
+            + self.inner.network_params.additional_compound_transaction_mass;
         let compute_fees = calc.calc_minimum_transaction_fee_from_mass(compute_mass);
 
         // TODO - consider removing this as calculated storage mass should produce `0` value
         let edge_output_harmonic =
             calc.calc_storage_mass_output_harmonic_single(data.aggregate_input_value.saturating_sub(compute_fees));
         let storage_mass = self.calc_storage_mass(data, edge_output_harmonic);
-        // let storage_mass = calc.calc_storage_mass(edge_output_harmonic, data.aggregate_input_value, data.inputs.len() as u64);
         let transaction_mass = calc.combine_mass(compute_mass, storage_mass);
 
         if transaction_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {

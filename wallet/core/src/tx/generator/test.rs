@@ -168,12 +168,13 @@ fn validate(pt: &PendingTransaction) {
     );
 
     let calc = MassCalculator::new(&pt.network_type().into(), network_params);
+    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass };
     let compute_mass = calc.calc_mass_for_signed_transaction(&tx, 1);
 
     let utxo_entries = pt.utxo_entries().iter().cloned().collect::<Vec<_>>();
     let storage_mass = calc.calc_storage_mass_for_transaction(false, &utxo_entries, &tx.outputs).unwrap_or_default();
 
-    let calculated_mass = calc.combine_mass(compute_mass, storage_mass);
+    let calculated_mass = calc.combine_mass(compute_mass, storage_mass) + additional_mass;
 
     assert_eq!(pt.inner.mass, calculated_mass, "pending transaction mass does not match calculated mass");
 }
@@ -197,6 +198,8 @@ where
 
     let pt_fees = pt.fees();
     let calc = MassCalculator::new(&pt.network_type().into(), network_params);
+    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass };
+
     let compute_mass = calc.calc_mass_for_signed_transaction(&tx, 1);
 
     let utxo_entries = pt.utxo_entries().iter().cloned().collect::<Vec<_>>();
@@ -210,7 +213,7 @@ where
         );
     }
 
-    let calculated_mass = calc.combine_mass(compute_mass, storage_mass);
+    let calculated_mass = calc.combine_mass(compute_mass, storage_mass) + additional_mass;
     let calculated_fees = calc.calc_minimum_transaction_fee_from_mass(calculated_mass);
 
     if storage_mass != 0 {
@@ -578,7 +581,7 @@ fn test_generator_inputs_100_outputs_1_fees_exclude_success() -> Result<()> {
         .fetch(&Expected {
             is_final: true,
             input_count: 2,
-            aggregate_input_value: Sompi(999_99886776),
+            aggregate_input_value: Sompi(999_99886576),
             output_count: 2,
             // priority_fees: FeesExpected::sender(Kaspa(5.0)),
             priority_fees: FeesExpected::sender(Kaspa(0.0)),
@@ -617,7 +620,7 @@ fn test_generator_inputs_100_outputs_1_fees_include_success() -> Result<()> {
     .fetch(&Expected {
         is_final: true,
         input_count: 2,
-        aggregate_input_value: Sompi(8799900698 + 1199986078),
+        aggregate_input_value: Sompi(99_99886576),
         output_count: 1,
         priority_fees: FeesExpected::receiver(Kaspa(5.0)),
     })
@@ -668,7 +671,7 @@ fn test_generator_inputs_903_outputs_2_fees_exclude() -> Result<()> {
         .fetch(&Expected {
             is_final: true,
             input_count: 11,
-            aggregate_input_value: Sompi(9009_98982996),
+            aggregate_input_value: Sompi(9009_98981896),
             output_count: 2,
             priority_fees: FeesExpected::receiver(Kaspa(5.0)),
         })
