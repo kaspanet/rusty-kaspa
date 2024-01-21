@@ -261,9 +261,9 @@ pub fn encrypt_xchacha20poly1305(data: &[u8], secret: &Secret) -> Result<Vec<u8>
 #[wasm_bindgen(js_name = "decryptXChaCha20Poly1305")]
 pub fn js_decrypt_xchacha20poly1305(text: String, password: String) -> Result<String> {
     let secret = sha256_hash(password.as_bytes());
-    let encrypted = decrypt_xchacha20poly1305(text.as_bytes(), &secret)?;
-    let decoded = general_purpose::STANDARD.decode(encrypted)?;
-    Ok(String::from_utf8(decoded)?)
+    let bytes = general_purpose::STANDARD.decode(text)?;
+    let encrypted = decrypt_xchacha20poly1305(bytes.as_ref(), &secret)?;
+    Ok(String::from_utf8(encrypted.as_ref().to_vec())?)
 }
 
 pub fn decrypt_xchacha20poly1305(data: &[u8], secret: &Secret) -> Result<Secret> {

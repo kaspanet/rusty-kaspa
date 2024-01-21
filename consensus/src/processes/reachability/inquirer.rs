@@ -144,9 +144,9 @@ fn insert_to_future_covering_set(store: &mut (impl ReachabilityStore + ?Sized), 
 }
 
 /// Hint to the reachability algorithm that `hint` is a candidate to become
-/// the `virtual selected parent` (`VSP`). This might affect internal reachability heuristics such
+/// the `virtual selected parent` (`sink`). This might affect internal reachability heuristics such
 /// as moving the reindex point. The consensus runtime is expected to call this function
-/// for a new header selected tip which is `header only` / `pending UTXO verification`, or for a completely resolved `VSP`.
+/// for a new header selected tip which is `header only` / `pending UTXO verification`, or for a completely resolved `sink`.
 pub fn hint_virtual_selected_parent(store: &mut (impl ReachabilityStore + ?Sized), hint: Hash) -> Result<()> {
     try_advancing_reindex_root(
         store,

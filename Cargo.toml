@@ -131,6 +131,7 @@ kaspa-alloc = { version = "0.13.3", path = "utils/alloc" }
 # external
 aes = "0.8.3"
 ahash = "0.8.6"
+arc-swap = "1.6.0"
 argon2 = "0.5.2"
 async-channel = "2.0.0"
 async-std = { version = "1.12.0", features = ['attributes'] }
@@ -249,22 +250,23 @@ tower-http = { version = "0.4.4", features = [
 tower = "0.4.7"
 hyper = "0.14.27"
 chrono = "0.4.31"
+indexed_db_futures = "0.4.1"
 # workflow dependencies that are not a part of core libraries
 
 # workflow-perf-monitor = { path = "../../../workflow-perf-monitor-rs" }
 workflow-perf-monitor = { version = "0.0.2" }
 
 # workflow dependencies
-workflow-d3 = { version = "0.10.2" }
-workflow-nw = { version = "0.10.2" }
-workflow-log = { version = "0.10.2" }
-workflow-core = { version = "0.10.2" }
-workflow-wasm = { version = "0.10.2" }
-workflow-dom = { version = "0.10.2" }
-workflow-rpc = { version = "0.10.2" }
-workflow-node = { version = "0.10.2" }
-workflow-store = { version = "0.10.2" }
-workflow-terminal = { version = "0.10.2" }
+workflow-d3 = { version = "0.10.3" }
+workflow-nw = { version = "0.10.3" }
+workflow-log = { version = "0.10.3" }
+workflow-core = { version = "0.10.3" }
+workflow-wasm = { version = "0.10.3" }
+workflow-dom = { version = "0.10.3" }
+workflow-rpc = { version = "0.10.3" }
+workflow-node = { version = "0.10.3" }
+workflow-store = { version = "0.10.3" }
+workflow-terminal = { version = "0.10.3" }
 nw-sys = "0.1.6"
 
 # if below is enabled, this means that there is an ongoing work
