@@ -65,7 +65,7 @@ impl Subscription for OverallSubscription {
         self.active
     }
 
-    fn scope(&self) -> Scope {
+    fn scope(&self, _context: &SubscriptionContext) -> Scope {
         self.event_type.into()
     }
 }
@@ -159,7 +159,7 @@ impl Subscription for VirtualChainChangedSubscription {
         self.active
     }
 
-    fn scope(&self) -> Scope {
+    fn scope(&self, _context: &SubscriptionContext) -> Scope {
         VirtualChainChangedScope::new(self.include_accepted_transaction_ids).into()
     }
 }
@@ -426,9 +426,9 @@ impl Subscription for UtxosChangedSubscription {
         self.active
     }
 
-    fn scope(&self) -> Scope {
-        //UtxosChangedScope::new(self.to_addresses(Prefix::Mainnet, context)).into()
-        UtxosChangedScope::new(vec![]).into() // FIXME
+    fn scope(&self, context: &SubscriptionContext) -> Scope {
+        UtxosChangedScope::new(self.to_addresses(Prefix::Mainnet, context)).into()
+        // FIXME
     }
 }
 

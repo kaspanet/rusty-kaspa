@@ -60,8 +60,8 @@ async fn bench_utxos_changed_subscriptions_footprint() {
     #[cfg(not(feature = "heap"))]
     const MAX_MEMORY: u64 = 31_000_000_000;
 
-    const NOTIFY_CLIENTS: usize = 200;
-    const MAX_ADDRESSES: usize = 250_000;
+    const NOTIFY_CLIENTS: usize = 400;
+    const MAX_ADDRESSES: usize = 1_00_000;
 
     let tick_service = Arc::new(TickService::new());
     let memory_monitor = MemoryMonitor::new(tick_service.clone(), Duration::from_secs(1), MAX_MEMORY);

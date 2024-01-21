@@ -366,7 +366,7 @@ where
                     self.broadcasters.iter().try_for_each(|broadcaster| broadcaster.unregister(event, id))?;
                 }
             }
-            self.apply_mutations(event, mutations)?;
+            self.apply_mutations(event, mutations, &self.subscription_context)?;
         } else {
             trace!("[Notifier {}] {command} notifying listener {id} about {scope:?} is ignored (no mutation)", self.name);
             // In case we have a sync channel, report that the command was processed.
@@ -378,12 +378,12 @@ where
         Ok(())
     }
 
-    fn apply_mutations(&self, event: EventType, mutations: Vec<Mutation>) -> Result<()> {
+    fn apply_mutations(&self, event: EventType, mutations: Vec<Mutation>, context: &SubscriptionContext) -> Result<()> {
         let mut subscriptions = self.subscriptions.lock();
         // Compound mutations
         let mut compound_result = None;
         for mutation in mutations {
-            compound_result = subscriptions[event].compound(mutation);
+            compound_result = subscriptions[event].compound(mutation, context);
         }
         // Report to the parents
         if let Some(mutation) = compound_result {
@@ -410,7 +410,7 @@ where
     fn renew_subscriptions(&self) -> Result<()> {
         let subscriptions = self.subscriptions.lock();
         EVENT_TYPE_ARRAY.iter().copied().filter(|x| self.enabled_events[*x] && subscriptions[*x].active()).try_for_each(|x| {
-            let mutation = Mutation::new(Command::Start, subscriptions[x].scope());
+            let mutation = Mutation::new(Command::Start, subscriptions[x].scope(&self.subscription_context));
             self.subscribers.iter().try_for_each(|subscriber| subscriber.mutate(mutation.clone()))?;
             Ok(())
         })
@@ -847,6 +847,13 @@ mod tests {
                                 *expected_subscription, subscription,
                                 "{} - {}: the listener[{}] mutation {mutation:?} yielded the wrong subscription",
                                 self.name, step.name, idx
+                            );
+                            assert!(
+                                self.subscription_receiver.is_empty(),
+                                "{} - {}: listener[{}] mutation {mutation:?} yielded an extra subscription but should not",
+                                self.name,
+                                step.name,
+                                idx
                             );
                         } else {
                             assert!(

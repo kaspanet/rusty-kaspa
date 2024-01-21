@@ -98,11 +98,11 @@ impl Mutation {
 pub trait Subscription {
     fn event_type(&self) -> EventType;
     fn active(&self) -> bool;
-    fn scope(&self) -> Scope;
+    fn scope(&self, context: &SubscriptionContext) -> Scope;
 }
 
 pub trait Compounded: Subscription + AsAny + DynEq + CompoundedClone + Debug + Send + Sync {
-    fn compound(&mut self, mutation: Mutation) -> Option<Mutation>;
+    fn compound(&mut self, mutation: Mutation, context: &SubscriptionContext) -> Option<Mutation>;
 }
 
 impl PartialEq for dyn Compounded {

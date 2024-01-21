@@ -134,7 +134,7 @@ impl GrpcClient {
 
         if reconnect {
             // Start the connection monitor
-            inner.clone().spawn_connection_monitor(notifier.clone(), subscriptions.clone());
+            inner.clone().spawn_connection_monitor(notifier.clone(), subscriptions.clone(), subscription_context.clone());
         }
 
         let client_id = u64::from_le_bytes(rand::random::<[u8; 8]>());
@@ -562,6 +562,7 @@ impl Inner {
         self: Arc<Self>,
         notifier: Option<Arc<GrpcClientNotifier>>,
         subscriptions: Option<Arc<DirectSubscriptions>>,
+        subscription_context: &SubscriptionContext,
     ) -> RpcResult<()> {
         assert_ne!(
             notifier.is_some(),
@@ -593,7 +594,7 @@ impl Inner {
             let subscriptions = subscriptions.lock().await;
             for event in EVENT_TYPE_ARRAY {
                 if subscriptions[event].active() {
-                    self.clone().start_notify_to_client(subscriptions[event].scope()).await?;
+                    self.clone().start_notify_to_client(subscriptions[event].scope(subscription_context)).await?;
                 }
             }
         }
@@ -775,6 +776,7 @@ impl Inner {
         self: Arc<Self>,
         notifier: Option<Arc<GrpcClientNotifier>>,
         subscriptions: Option<Arc<DirectSubscriptions>>,
+        subscription_context: SubscriptionContext,
     ) {
         // Note: self is a cloned Arc here so that it can be used in the spawned task.
 
@@ -797,7 +799,7 @@ impl Inner {
                     _ = delay => {
                         trace!("GRPC client: connection monitor task - running");
                         if !self.is_connected() {
-                            match self.clone().reconnect(notifier.clone(), subscriptions.clone()).await {
+                            match self.clone().reconnect(notifier.clone(), subscriptions.clone(), &subscription_context).await {
                                 Ok(_) => {
                                     trace!("GRPC client: reconnection to server succeeded");
                                 },
