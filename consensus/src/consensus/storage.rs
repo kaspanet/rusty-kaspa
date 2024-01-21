@@ -19,7 +19,7 @@ use crate::{
         tips::DbTipsStore,
         utxo_diffs::DbUtxoDiffsStore,
         utxo_multisets::DbUtxoMultisetsStore,
-        virtual_state::VirtualStores,
+        virtual_state::{LkgVirtualState, VirtualStores},
         DB,
     },
     processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations},
@@ -66,6 +66,11 @@ pub struct ConsensusStorage {
     // Block window caches
     pub block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
     pub block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
+
+    // "Last Known Good" caches
+    /// The "last known good" virtual state. To be used by any logic which does not want to wait
+    /// for a possible virtual state write to complete but can rather settle with the last known state
+    pub lkg_virtual_state: LkgVirtualState,
 }
 
 impl ConsensusStorage {
@@ -226,7 +231,9 @@ impl ConsensusStorage {
         let block_window_cache_for_past_median_time = Arc::new(BlockWindowCacheStore::new(median_window_builder.build()));
 
         // Virtual stores
-        let virtual_stores = Arc::new(RwLock::new(VirtualStores::new(db.clone(), utxo_set_builder.build())));
+        let lkg_virtual_state = LkgVirtualState::default();
+        let virtual_stores =
+            Arc::new(RwLock::new(VirtualStores::new(db.clone(), lkg_virtual_state.clone(), utxo_set_builder.build())));
 
         // Ensure that reachability stores are initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();
@@ -256,6 +263,7 @@ impl ConsensusStorage {
             utxo_multisets_store,
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
+            lkg_virtual_state,
         })
     }
 }

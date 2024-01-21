@@ -30,7 +30,7 @@ use crate::{
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
             utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
-            virtual_state::{VirtualState, VirtualStateStore, VirtualStateStoreReader, VirtualStores},
+            virtual_state::{LkgVirtualState, VirtualState, VirtualStateStoreReader, VirtualStores},
             DB,
         },
     },
@@ -132,6 +132,10 @@ pub struct VirtualStateProcessor {
     pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
     pub(super) pruning_utxoset_stores: Arc<RwLock<PruningUtxosetStores>>,
 
+    /// The "last known good" virtual state. To be used by any logic which does not want to wait
+    /// for a possible virtual state write to complete but can rather settle with the last known state
+    pub lkg_virtual_state: LkgVirtualState,
+
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
@@ -199,6 +203,7 @@ impl VirtualStateProcessor {
             acceptance_data_store: storage.acceptance_data_store.clone(),
             virtual_stores: storage.virtual_stores.clone(),
             pruning_utxoset_stores: storage.pruning_utxoset_stores.clone(),
+            lkg_virtual_state: storage.lkg_virtual_state.clone(),
 
             ghostdag_manager: services.ghostdag_primary_manager.clone(),
             reachability_service: services.reachability_service.clone(),
@@ -1005,18 +1010,21 @@ impl VirtualStateProcessor {
     pub fn process_genesis(self: &Arc<Self>) {
         // Write the UTXO state of genesis
         self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), AcceptanceData::default());
-        // Init virtual stores
-        self.virtual_stores
-            .write()
-            .state
-            .set(Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]))))
-            .unwrap();
+
         // Init the virtual selected chain store
         let mut batch = WriteBatch::default();
         let mut selected_chain_write = self.selected_chain_store.write();
         selected_chain_write.init_with_pruning_point(&mut batch, self.genesis.hash).unwrap();
         self.db.write(batch).unwrap();
         drop(selected_chain_write);
+
+        // Init virtual state
+        self.commit_virtual_state(
+            self.virtual_stores.upgradable_read(),
+            Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]))),
+            &Default::default(),
+            &Default::default(),
+        );
     }
 
     // TODO: rename to reflect finalizing pruning point utxoset state and importing *to* virtual utxoset
@@ -1108,7 +1116,7 @@ impl VirtualStateProcessor {
         // finality_point.finality_point), meaning this function can only detect finality violations
         // in depth of 2*finality_depth, and can give false negatives for smaller finality violations.
         let current_pp = self.pruning_point_store.read().pruning_point().unwrap();
-        let vf = self.virtual_finality_point(&self.virtual_stores.read().state.get().unwrap().ghostdag_data, current_pp);
+        let vf = self.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, current_pp);
         let vff = self.depth_manager.calc_finality_point(&self.ghostdag_primary_store.get_data(vf).unwrap(), current_pp);
 
         let last_known_pp = pp_list.iter().rev().find(|pp| match self.statuses_store.read().get(pp.hash).unwrap_option() {

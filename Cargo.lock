@@ -2233,6 +2233,7 @@ dependencies = [
 name = "kaspa-consensus"
 version = "0.13.3"
 dependencies = [
+ "arc-swap",
  "async-channel 2.1.1",
  "bincode",
  "criterion",
@@ -2885,7 +2886,6 @@ version = "0.13.3"
 dependencies = [
  "async-trait",
  "kaspa-addresses",
- "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
  "kaspa-consensusmanager",

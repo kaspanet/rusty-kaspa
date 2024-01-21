@@ -5,7 +5,6 @@ use std::sync::Arc;
 use crate::{
     acceptance_data::AcceptanceData,
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
-    block_count::BlockCount,
     blockstatus::BlockStatus,
     coinbase::MinerData,
     daa_score_timestamp::DaaScoreTimestamp,
@@ -23,6 +22,12 @@ use crate::{
     BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_hashes::Hash;
+
+pub use self::stats::{BlockCount, ConsensusStats};
+
+pub mod counters;
+pub mod stats;
+
 pub type BlockValidationFuture = BoxFuture<'static, BlockProcessResult<BlockStatus>>;
 
 /// A struct returned by consensus for block validation processing calls
@@ -83,6 +88,11 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {
+        unimplemented!()
+    }
+
+    /// Returns an aggregation of consensus stats. Designed to be a fast call.
+    fn get_stats(&self) -> ConsensusStats {
         unimplemented!()
     }
 

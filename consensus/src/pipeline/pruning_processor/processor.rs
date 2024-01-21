@@ -18,7 +18,6 @@ use crate::{
             statuses::StatusesStoreReader,
             tips::{TipsStore, TipsStoreReader},
             utxo_diffs::UtxoDiffsStoreReader,
-            virtual_state::VirtualStateStoreReader,
         },
     },
     processes::{pruning_proof::PruningProofManager, reachability::inquirer as reachability, relations},
@@ -494,7 +493,7 @@ impl PruningProcessor {
 
     fn assert_data_rebuilding(&self, ref_data: Arc<PruningPointTrustedData>, new_pruning_point: Hash) {
         info!("Rebuilding pruning point trusted data (sanity test)");
-        let virtual_state = self.virtual_stores.read().state.get().unwrap();
+        let virtual_state = self.lkg_virtual_state.load();
         let built_data = self
             .pruning_proof_manager
             .calculate_pruning_point_anticone_and_trusted_data(new_pruning_point, virtual_state.parents.iter().copied());
