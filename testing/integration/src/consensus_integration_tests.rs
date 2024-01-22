@@ -1095,7 +1095,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
 
     let tc_history_root = tc.get_history_root();
-    assert_eq!(txindex.read().get_history_root().unwrap().unwrap(), tc_history_root); // This fails without the `sleep(Duration::from_secs(5)).await;`    `.
+    assert_eq!(txindex.read().get_history_root().unwrap().unwrap(), tc_history_root); // This often fails, and is reason for `sleep(Duration::from_secs(10)).await;`    `.
     assert_eq!(txindex.read().get_sink().unwrap().unwrap(), tc.get_sink());
 
     let mut consensus_chain = tc.get_virtual_chain_from_block(tc_history_root, None, usize::MAX).unwrap().added;
@@ -1105,8 +1105,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let mut accepted_tx_count = 0;
     for (accepting_block_hash, acceptance_data) in consensus_chain.into_iter().zip(consensus_acceptance_data) {
         for (i, mergeset) in acceptance_data.iter().enumerate() {
-            let indexed_block_acceptance_offset =
-                txindex.read().get_block_acceptance_offset(mergeset.block_hash).unwrap().unwrap();
+            let indexed_block_acceptance_offset = txindex.read().get_block_acceptance_offset(mergeset.block_hash).unwrap().unwrap();
             assert_eq!(indexed_block_acceptance_offset.acceptance_data_index, i as u16);
             assert_eq!(indexed_block_acceptance_offset.accepting_block, accepting_block_hash);
             accepted_block_count += 1;
