@@ -8,7 +8,6 @@ use crate::{
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
-            acceptance_data::AcceptanceDataStoreReader,
             ghostdag::{CompactGhostdagData, GhostdagStoreReader},
             headers::HeaderStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
@@ -412,31 +411,6 @@ impl PruningProcessor {
                 let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
                 let mut statuses_write = self.statuses_store.write();
 
-                // Collect Data before data is gone.
-                let chain_acceptance_data_pruned_notification = if is_subscribed // check if someone is subscribed
-                //TODO: are these just sanity checks, that may be removed?
-                && self.reachability_service.is_chain_ancestor_of(current, new_pruning_point) // check if it is a chain block
-                && self.acceptance_data_store.has(current).unwrap()
-                // check if acceptance data has already been pruned
-                {
-                    // TODO: this may be inefficient,
-                    // but is required for now to keep the txindex recoverable in during pruning interruptions.
-                    // ideally we have some better iteration over chain path in while loop above.
-                    let source = self
-                        .reachability_service
-                        .forward_chain_iterator(current, new_pruning_point, false)
-                        .skip(1)
-                        .find(|future| !keep_blocks.contains(future));
-
-                    Some(Notification::ChainAcceptanceDataPruned(ChainAcceptanceDataPrunedNotification::new(
-                        current,
-                        self.acceptance_data_store.get(current).expect("expected get"),
-                        source.unwrap_or(new_pruning_point),
-                    )))
-                } else {
-                    None
-                };
-
                 // Prune data related to block bodies and UTXO state
                 self.utxo_multisets_store.delete_batch(&mut batch, current).unwrap();
                 self.utxo_diffs_store.delete_batch(&mut batch, current).unwrap();
@@ -496,14 +470,6 @@ impl PruningProcessor {
                 drop(level_relations_write);
 
                 reachability_read = self.reachability_store.upgradable_read();
-
-                // Notify subscribers after data is gone, and check if we can exit
-                if let Some(chain_acceptance_data_pruned_notification) = chain_acceptance_data_pruned_notification {
-                    self.notification_root
-                        .notify(chain_acceptance_data_pruned_notification)
-                        .expect("expecting an open unbounded channel");
-                    is_notification_sent = true;
-                }
             }
         }
 

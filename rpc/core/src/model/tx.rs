@@ -4,7 +4,7 @@ use kaspa_consensus_core::tx::{
     ScriptPublicKey, ScriptVec, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
     UtxoEntry,
 };
-use kaspa_index_core::models::txindex::AcceptanceDataIndexType;
+use kaspa_index_core::models::txindex::MergesetIndexType;
 use serde::{Deserialize, Serialize};
 
 use crate::prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId};

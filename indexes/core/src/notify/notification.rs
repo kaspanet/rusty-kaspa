@@ -5,6 +5,7 @@ use kaspa_consensus_notify::notification::{
     ChainAcceptanceDataPrunedNotification as ConsensusChainAcceptanceDataPrunedNotification,
     PruningPointUtxoSetOverrideNotification as ConsensusPruningPointUtxoSetOverrideNotification,
     VirtualChainChangedNotification as ConsensusVirtualChainChangedNotification,
+    PruningPointAdvancementNotification as ConsensusPruningPointAdvancementNotification,
 };
 use kaspa_hashes::Hash;
 use kaspa_notify::{
@@ -34,8 +35,8 @@ pub enum Notification {
     #[display(fmt = "VirtualChainChanged notification")]
     VirtualChainChanged(VirtualChainChangedNotification),
 
-    #[display(fmt = "ChainAcceptanceDataPruned notification")]
-    ChainAcceptanceDataPruned(ChainAcceptanceDataPrunedNotification),
+    #[display(fmt = "PruningPointAdvancement notification")]
+    PruningPointAdvancement(PruningPointAdvancementNotification),
 }
 }
 
@@ -73,62 +74,15 @@ impl NotificationTrait for Notification {
         self.into()
     }
 }
-
 #[derive(Debug, Clone)]
-pub struct ChainAcceptanceDataPrunedNotification {
-    pub chain_hash_pruned: Hash,
-    pub mergeset_block_acceptance_data_pruned: Arc<AcceptanceData>,
-    pub source: Hash,
+pub struct PruningPointAdvancementNotification {
+    pub pruning_point_hash: Hash,
+    pub pruning_point_bluescore: u64,
 }
 
-impl ChainAcceptanceDataPrunedNotification {
-    pub fn new(chain_hash_pruned: Hash, mergeset_block_acceptance_data_pruned: Arc<AcceptanceData>, source: Hash) -> Self {
-        Self { chain_hash_pruned, mergeset_block_acceptance_data_pruned, source }
-    }
-}
-
-impl From<ConsensusChainAcceptanceDataPrunedNotification> for ChainAcceptanceDataPrunedNotification {
-    fn from(value: ConsensusChainAcceptanceDataPrunedNotification) -> Self {
-        Self {
-            chain_hash_pruned: value.chain_hash_pruned,
-            mergeset_block_acceptance_data_pruned: value.mergeset_block_acceptance_data_pruned,
-            source: value.source,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct VirtualChainChangedNotification {
-    pub added_chain_block_hashes: Arc<Vec<Hash>>,
-    pub removed_chain_block_hashes: Arc<Vec<Hash>>,
-    pub added_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
-    pub removed_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
-}
-
-impl VirtualChainChangedNotification {
-    pub fn new(
-        added_chain_block_hashes: Arc<Vec<Hash>>,
-        removed_chain_block_hashes: Arc<Vec<Hash>>,
-        added_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
-        removed_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
-    ) -> Self {
-        Self {
-            added_chain_block_hashes,
-            removed_chain_block_hashes,
-            added_chain_blocks_acceptance_data,
-            removed_chain_blocks_acceptance_data,
-        }
-    }
-}
-
-impl From<ConsensusVirtualChainChangedNotification> for VirtualChainChangedNotification {
-    fn from(value: ConsensusVirtualChainChangedNotification) -> Self {
-        Self {
-            added_chain_block_hashes: value.added_chain_block_hashes,
-            removed_chain_block_hashes: value.removed_chain_block_hashes,
-            added_chain_blocks_acceptance_data: value.added_chain_blocks_acceptance_data,
-            removed_chain_blocks_acceptance_data: value.removed_chain_blocks_acceptance_data,
-        }
+impl From<ConsensusPruningPointAdvancementNotification> for PruningPointAdvancementNotification {
+    fn from(item: ConsensusPruningPointAdvancementNotification) -> Self {
+        Self { pruning_point_hash: item.pruning_point_hash, pruning_point_bluescore: item.pruning_point_bluescore }
     }
 }
 #[derive(Debug, Clone, Default)]

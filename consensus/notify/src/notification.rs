@@ -43,8 +43,8 @@ pub enum Notification {
     #[display(fmt = "NewBlockTemplate notification")]
     NewBlockTemplate(NewBlockTemplateNotification),
 
-    #[display(fmt = "ChainAcceptanceDataPruned notification notification: chain hash pruned: {}, mergset block acceptance pruned: {} source: {}", "_0.chain_hash_pruned", "_0.mergeset_block_acceptance_data_pruned.len()", "_0.source")]
-    ChainAcceptanceDataPruned(ChainAcceptanceDataPrunedNotification),
+    #[display(fmt = "PruningPointAdvancement notification")]
+    PruningPointAdvancement(PruningPointAdvancementNotification),
 }
 }
 
@@ -107,19 +107,6 @@ pub struct BlockAddedNotification {
 impl BlockAddedNotification {
     pub fn new(block: Block) -> Self {
         Self { block }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ChainAcceptanceDataPrunedNotification {
-    pub chain_hash_pruned: Hash,
-    pub mergeset_block_acceptance_data_pruned: Arc<AcceptanceData>,
-    pub source: Hash,
-}
-
-impl ChainAcceptanceDataPrunedNotification {
-    pub fn new(chain_hash_pruned: Hash, mergeset_block_acceptance_data_pruned: Arc<AcceptanceData>, source: Hash) -> Self {
-        Self { chain_hash_pruned, mergeset_block_acceptance_data_pruned, source }
     }
 }
 
@@ -208,3 +195,10 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 
 #[derive(Debug, Clone)]
 pub struct NewBlockTemplateNotification {}
+
+
+#[derive(Debug, Clone)]
+pub struct PruningPointAdvancementNotification {
+    pub pruning_point_hash: Hash,
+    pub pruning_point_bluescore: u64,
+}

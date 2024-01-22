@@ -537,6 +537,10 @@ impl ConsensusApi for Consensus {
         pruning_point
     }
 
+    fn get_history_root(&self) -> Hash {
+        self.pruning_point_store.read().history_root().unwrap()
+    }
+
     /// Estimates number of blocks and headers stored in the node
     ///
     /// This is an estimation based on the daa score difference between the node's `source` and `sink`'s daa score,

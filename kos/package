@@ -1,0 +1,24 @@
+
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        $INSTALLER = "snap"
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+        $INSTALLER = "dmg"
+elif [[ "$OSTYPE" == "cygwin" ]]; then
+        $INSTALLER = "innosetup"
+elif [[ "$OSTYPE" == "msys" ]]; then
+        $INSTALLER = "innosetup"
+elif [[ "$OSTYPE" == "win32" ]]; then
+        $INSTALLER = "innosetup"
+elif [[ "$OS" == "Windows"* ]]; then
+        $INSTALLER = "innosetup"
+elif [[ "$OSTYPE" == "freebsd"* ]]; then
+        echo "FreeBSD is not supported"
+else
+        echo "Unknown operating system"
+fi
+
+if [ "$1" = "--dev" ]; then
+        cargo nw build --sdk $INSTALLER
+else
+        cargo nw build $INSTALLER
+fi

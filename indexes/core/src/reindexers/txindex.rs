@@ -1,5 +1,5 @@
 use crate::models::txindex::{
-    AcceptanceDataIndexType, BlockAcceptanceOffset, BlockAcceptanceOffsetDiff, TxHashSet, TxOffset, TxOffsetById, TxOffsetDiff,
+    BlockAcceptanceOffset, BlockAcceptanceOffsetDiff, MergesetIndexType, TxHashSet, TxOffset, TxOffsetById, TxOffsetDiff,
 };
 use kaspa_consensus_core::{BlockHashMap, BlockHashSet, HashMapCustomHasher};
 use kaspa_consensus_notify::notification::{

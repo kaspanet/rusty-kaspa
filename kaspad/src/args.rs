@@ -324,6 +324,7 @@ pub fn cli() -> Command {
 Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0 memory footprint as long as unused but to sub-optimal footprint if used.", 
 0, Tracker::MAX_ADDRESS_UPPER_BOUND, Tracker::DEFAULT_MAX_ADDRESSES)),
         )
+        .arg(arg!(--txindex "Enable the TX index"))           
         .arg(arg!(--testnet "Use the test network"))
         .arg(
             Arg::new("netsuffix")

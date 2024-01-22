@@ -57,6 +57,9 @@ impl Scope {
 #[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct BlockAddedScope {}
 
+#[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub struct ChainAcceptanceDataPrunedScope {}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct VirtualChainChangedScope {
     pub include_accepted_transaction_ids: bool,
