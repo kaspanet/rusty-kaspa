@@ -250,10 +250,6 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.is_nearly_synced()).await
     }
 
-<<<<<<< HEAD
-    pub async fn async_get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
-        self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(hash)).await
-=======
     pub async fn async_get_virtual_chain_from_block(
         &self,
         low: Hash,
@@ -261,7 +257,6 @@ impl ConsensusSessionOwned {
         max_blocks: usize,
     ) -> ConsensusResult<ChainPath> {
         self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(low, high, max_blocks)).await
->>>>>>> txindex_done
     }
 
     pub async fn async_get_virtual_utxos(
