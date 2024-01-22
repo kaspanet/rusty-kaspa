@@ -31,10 +31,10 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
         Self { genesis_hash, ghostdag_store, relations_store, reachability_service }
     }
 
-    pub fn calculate_chain_path(&self, from: Hash, to: Hash) -> ChainPath {
+    pub fn calculate_chain_path(&self, from: Hash, to: Hash, max_traversal_allowed: usize) -> ChainPath {
         let mut removed = Vec::new();
         let mut common_ancestor = from;
-        for current in self.reachability_service.default_backward_chain_iterator(from) {
+        for current in self.reachability_service.default_backward_chain_iterator(from).take(max_traversal_allowed) {
             if !self.reachability_service.is_chain_ancestor_of(current, to) {
                 removed.push(current);
             } else {
@@ -42,9 +42,22 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
                 break;
             }
         }
-        // It is more intuitive to use forward iterator here, but going downwards the selected chain is faster.
-        let mut added = self.reachability_service.backward_chain_iterator(to, common_ancestor, false).collect_vec();
-        added.reverse();
+        if max_traversal_allowed == usize::MAX {
+            //
+            // Use backward chain iterator
+            // It is more intuitive to use forward iterator here, but going downwards the selected chain is faster.
+            let mut added = self.reachability_service.backward_chain_iterator(to, common_ancestor, false).collect_vec();
+            added.reverse();
+            return ChainPath { added, removed };
+        }
+        // Use forward chain iterator, to acertain a üath from the common ancestor to the target.
+        let max_added_traversal_allowed = max_traversal_allowed - removed.len();
+        let added = self
+            .reachability_service
+            .forward_chain_iterator(common_ancestor, to, true)
+            .skip(1)
+            .take(max_added_traversal_allowed)
+            .collect_vec();
         ChainPath { added, removed }
     }
 

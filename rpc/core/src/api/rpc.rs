@@ -304,6 +304,12 @@ pub trait RpcApi: Sync + Send + AnySync {
         request: GetDaaScoreTimestampEstimateRequest,
     ) -> RpcResult<GetDaaScoreTimestampEstimateResponse>;
 
+    async fn get_transaction_data(&self, request: GetTransactionDataRequest) -> RpcResult<GetTransactionDataResponse> {
+        self.get_transaction_data_call(request).await
+    }
+
+    async fn get_transaction_data_call(&self, request: GetTransactionDataRequest) -> RpcResult<GetTransactionDataResponse>;
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

@@ -50,9 +50,18 @@ pub enum DatabaseStorePrefixes {
     BannedAddresses = 129,
 
     // ---- Indexes ----
+    // 1) UTXO index
     UtxoIndex = 192,
     UtxoIndexTips = 193,
     CirculatingSupply = 194,
+
+    // 2) TX index
+    // TxIndexUnacceptedOffsets = 198, - reserved for future use
+    TxIndexAcceptedOffsets = 199,
+    // TxIndexTips = 200, - reserved for future use
+    TxIndexSink = 201,
+    TxIndexSource = 202,
+    TxIndexMergedBlockAcceptance = 203, // Move to acceptance index eventually.
 
     // ---- Separator ----
     /// Reserved as a separator

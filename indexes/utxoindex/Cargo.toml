@@ -11,6 +11,7 @@ license.workspace = true
 futures.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensusmanager.workspace = true
+kaspa-consensus-notify.workspace = true
 kaspa-core.workspace = true
 kaspa-database.workspace = true
 kaspa-hashes.workspace = true

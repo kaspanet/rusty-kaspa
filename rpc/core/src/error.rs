@@ -53,11 +53,17 @@ pub enum RpcError {
     #[error("If includeTransactions is set, then includeBlockVerboseData must be set as well.")]
     InvalidGetBlocksRequest,
 
+    #[error("If includeVerboseData is set, then inlcudeTransactions must be set as well.")]
+    InvalidGetTransactionDataRequest,
+
     #[error("Transaction {0} not found")]
     TransactionNotFound(TransactionId),
 
     #[error("Method unavailable. Run the node with the --utxoindex argument.")]
     NoUtxoIndex,
+
+    #[error("Method unavailable. Run the node with the --txindex argument.")]
+    NoTxIndex,
 
     #[error("Method unavailable. No connection manager is currently available.")]
     NoConnectionManager,

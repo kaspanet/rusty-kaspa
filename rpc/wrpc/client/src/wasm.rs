@@ -323,6 +323,7 @@ build_wrpc_wasm_bindgen_interface!(
         GetSubnetwork,
         // GetUtxosByAddresses,
         GetVirtualChainFromBlock,
+        GetTransactionData,
         ResolveFinalityConflict,
         SubmitBlock,
         // SubmitTransaction,

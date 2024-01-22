@@ -55,6 +55,31 @@ message RpcBlockVerboseData{
   bool isChainBlock = 20;
 }
 
+/// AcceptanceData signifies information about when and where data was accepted in the block DAG.
+/// This information is suitable for confirmation counting!
+message RpcTransactionAcceptanceData {
+  string acceptingBlockHash = 1;
+  uint32 acceptingBlockMergesetIndex = 2;
+  uint64 acceptingBlockTime = 3;
+  uint64 acceptingBlockDaaScore = 4; // note: this signifies network "time", and should not be used for confirmation counting.
+  uint64 acceptingBlockBlueScore = 5; // note: use this score for confirmation counting.
+}
+
+/// InclusionData signifies information about when and where data was included in the block DAG.
+/// This information is NOT suitable for confirmation counting!
+message RpcTransactionInclusionData {
+  string includingBlockHash = 1;
+  uint32 includingBlockTransactionIndex = 2;
+  uint64 includingBlockTime = 3;
+  uint64 includingBlockDaaScore = 4;
+}
+
+message RpcTransactionData {
+  RpcTransaction transaction = 2;
+  RpcTransactionAcceptanceData acceptanceData = 3;
+  RpcTransactionInclusionData inclusionData = 4;
+}
+
 message RpcTransaction {
   uint32 version = 1;
   repeated RpcTransactionInput inputs = 2;
@@ -844,10 +869,26 @@ message GetSyncStatusResponseMessage{
 }
 
 message GetDaaScoreTimestampEstimateRequestMessage {
-        repeated uint64 daa_scores = 1;
+  repeated uint64 daa_scores = 1;
 }
 
 message GetDaaScoreTimestampEstimateResponseMessage{
-        repeated uint64 timestamps = 1;
-        RPCError error = 1000;
+  repeated uint64 timestamps = 1;
+  RPCError error = 1000;
+}
+
+// This requires the the node to be run with `--txindex`
+message GetTransactionDataRequestMessage {
+  repeated string transactionIds = 1;
+  bool includeTransactions = 2;
+  bool includeAcceptanceData = 3;
+  bool includeInclusionData = 4;
+  bool includeVerboseData = 5;
+
+}
+// This requires the the node to be run with `--txindex`
+message GetTransactionDataResponseMessage{
+  repeated RpcTransactionData transactionData = 1;
+  
+  RPCError error = 1000;
 }

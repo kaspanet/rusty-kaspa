@@ -1,8 +1,10 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::{
-    ScriptPublicKey, ScriptVec, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+    ScriptPublicKey, ScriptVec, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
+    UtxoEntry,
 };
+use kaspa_index_core::models::txindex::MergesetIndexType;
 use serde::{Deserialize, Serialize};
 
 use crate::prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId};
@@ -64,12 +66,42 @@ impl RpcTransactionOutput {
     pub fn from_transaction_outputs(other: Vec<TransactionOutput>) -> Vec<Self> {
         other.into_iter().map(Self::from).collect()
     }
+
+    pub fn populate_verbose_data(&mut self, verbose_data: RpcTransactionOutputVerboseData) {
+        self.verbose_data = Some(verbose_data);
+    }
 }
 
 impl From<TransactionOutput> for RpcTransactionOutput {
     fn from(output: TransactionOutput) -> Self {
         Self { value: output.value, script_public_key: output.script_public_key, verbose_data: None }
     }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcTransactionData {
+    pub transaction: Option<RpcTransaction>,
+    pub inclusion_data: Option<RpcTransactionInclusionData>,
+    pub acceptance_data: Option<RpcTransactionAcceptanceData>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcTransactionInclusionData {
+    pub including_block_hash: RpcHash,
+    pub including_block_transaction_index: TransactionIndexType,
+    pub including_block_time: u64,
+    pub including_block_daa_score: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcTransactionAcceptanceData {
+    pub accepting_block_hash: RpcHash,
+    pub accepting_block_mergeset_index: MergesetIndexType,
+    pub accepting_block_time: u64,
+    pub accepting_block_daa_score: u64, // use this as indication for network time, NOT confirmation counting!
+    pub accepting_block_blue_score: u64, // use this for Confirmation counting!
 }
 
 /// Represent Kaspa transaction output verbose data
@@ -95,6 +127,12 @@ pub struct RpcTransaction {
     pub verbose_data: Option<RpcTransactionVerboseData>,
 }
 
+impl RpcTransaction {
+    pub fn populate_verbose_data(&mut self, verbose_data: RpcTransactionVerboseData) {
+        self.verbose_data = Some(verbose_data);
+    }
+}
+
 /// Represent Kaspa transaction verbose data
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
@@ -102,10 +140,11 @@ pub struct RpcTransactionVerboseData {
     pub transaction_id: RpcTransactionId,
     pub hash: RpcHash,
     pub mass: u64,
-    pub block_hash: RpcHash,
-    pub block_time: u64,
+    // TODO: deprecate this field, use `RpcTransactionData.inclusion_data` instead, for next rpc breaking release
+    pub block_hash: RpcHash, // including block hash
+    // TODO: deprecate this field, use `RpcTransactionData.inclusion_data` instead, for next rpc breaking release
+    pub block_time: u64, // including block header ts in milliseconds
 }
-
 /// Represents accepted transaction ids
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]

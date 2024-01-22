@@ -7,6 +7,33 @@ use std::str::FromStr;
 // rpc_core to protowire
 // ----------------------------------------------------------------------------
 
+from!(item: &kaspa_rpc_core::RpcTransactionData, protowire::RpcTransactionData, {
+    Self {
+        transaction: item.transaction.as_ref().map(|x| x.into()),
+        inclusion_data: item.inclusion_data.as_ref().map(|x| x.into()),
+        acceptance_data: item.acceptance_data.as_ref().map(|x| x.into()),
+    }
+});
+
+from!(item: &kaspa_rpc_core::RpcTransactionAcceptanceData, protowire::RpcTransactionAcceptanceData,  {
+    Self {
+        accepting_block_hash: item.accepting_block_hash.to_string(),
+        accepting_block_mergeset_index: u32::from(item.accepting_block_mergeset_index),
+        accepting_block_time: item.accepting_block_time,
+        accepting_block_daa_score: item.accepting_block_daa_score,
+        accepting_block_blue_score: item.accepting_block_blue_score,
+    }
+});
+
+from!(item: &kaspa_rpc_core::RpcTransactionInclusionData, protowire::RpcTransactionInclusionData, {
+    Self {
+        including_block_hash: item.including_block_hash.to_string(),
+        including_block_transaction_index: item.including_block_transaction_index,
+        including_block_time: item.including_block_time,
+        including_block_daa_score: item.including_block_daa_score,
+    }
+});
+
 from!(item: &kaspa_rpc_core::RpcTransaction, protowire::RpcTransaction, {
     Self {
         version: item.version.into(),
@@ -93,6 +120,33 @@ from!(item: &kaspa_rpc_core::RpcUtxosByAddressesEntry, protowire::RpcUtxosByAddr
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
+
+try_from!(item: &protowire::RpcTransactionData, kaspa_rpc_core::RpcTransactionData, {
+    Self {
+        transaction: item.transaction.as_ref().map(kaspa_rpc_core::RpcTransaction::try_from).transpose()?,
+        inclusion_data: item.inclusion_data.as_ref().map(kaspa_rpc_core::RpcTransactionInclusionData::try_from).transpose()?,
+        acceptance_data: item.acceptance_data.as_ref().map(kaspa_rpc_core::RpcTransactionAcceptanceData::try_from).transpose()?,
+    }
+});
+
+try_from!(item: &protowire::RpcTransactionAcceptanceData, kaspa_rpc_core::RpcTransactionAcceptanceData, {
+    Self {
+        accepting_block_hash: RpcHash::from_str(&item.accepting_block_hash)?,
+        accepting_block_mergeset_index: u16::try_from(item.accepting_block_mergeset_index)?,
+        accepting_block_time: item.accepting_block_time,
+        accepting_block_daa_score: item.accepting_block_daa_score,
+        accepting_block_blue_score: item.accepting_block_blue_score,
+    }
+});
+
+try_from!(item: &protowire::RpcTransactionInclusionData, kaspa_rpc_core::RpcTransactionInclusionData, {
+    Self {
+        including_block_hash: RpcHash::from_str(&item.including_block_hash)?,
+        including_block_transaction_index: item.including_block_transaction_index,
+        including_block_time: item.including_block_time,
+        including_block_daa_score: item.including_block_daa_score,
+    }
+});
 
 try_from!(item: &protowire::RpcTransaction, kaspa_rpc_core::RpcTransaction, {
     Self {

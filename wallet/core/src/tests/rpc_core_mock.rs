@@ -234,6 +234,10 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn get_transaction_data_call(&self, _request: GetTransactionDataRequest) -> RpcResult<GetTransactionDataResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

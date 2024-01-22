@@ -27,6 +27,7 @@ members = [
     "indexes/core",
     "indexes/processor",
     "indexes/utxoindex",
+    "indexes/txindex",
     "rpc/macros",
     "rpc/core",
     "rpc/service",
@@ -74,6 +75,9 @@ include = [
 ]
 
 [workspace.dependencies]
+mimalloc = { version = "0.1.39", default-features = false, features = [
+    'override',
+] }
 # kaspa-testing-integration = { version = "0.13.3", path = "testing/integration" }
 kaspa-addresses = { version = "0.13.3", path = "crypto/addresses" }
 kaspa-addressmanager = { version = "0.13.3", path = "components/addressmanager" }
@@ -114,6 +118,7 @@ kaspa-txscript-errors = { version = "0.13.3", path = "crypto/txscript/errors" }
 kaspa-utils = { version = "0.13.3", path = "utils" }
 kaspa-utils-tower = { version = "0.13.3", path = "utils/tower" }
 kaspa-utxoindex = { version = "0.13.3", path = "indexes/utxoindex" }
+kaspa-txindex = { version = "0.13.3", path = "indexes/txindex" }
 kaspa-wallet = { version = "0.13.3", path = "wallet/native" }
 kaspa-wallet-cli-wasm = { version = "0.13.3", path = "wallet/wasm" }
 kaspa-wallet-core = { version = "0.13.3", path = "wallet/core" }

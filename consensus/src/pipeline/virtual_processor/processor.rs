@@ -289,7 +289,7 @@ impl VirtualStateProcessor {
         assert_eq!(virtual_ghostdag_data.selected_parent, new_sink);
 
         let sink_multiset = self.utxo_multisets_store.get(new_sink).unwrap();
-        let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_sink, new_sink);
+        let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_sink, new_sink, usize::MAX);
         let new_virtual_state = self
             .calculate_and_commit_virtual_state(
                 virtual_read,
@@ -324,14 +324,16 @@ impl VirtualStateProcessor {
             .notify(Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score)))
             .expect("expecting an open unbounded channel");
         if self.notification_root.has_subscription(EventType::VirtualChainChanged) {
-            // check for subscriptions before the heavy lifting
             let added_chain_blocks_acceptance_data =
                 chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
+            let removed_chain_blocks_acceptance_data =
+                chain_path.removed.iter().copied().map(|removed| self.acceptance_data_store.get(removed).unwrap()).collect_vec();
             self.notification_root
                 .notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
                     chain_path.added.into(),
                     chain_path.removed.into(),
                     Arc::new(added_chain_blocks_acceptance_data),
+                    Arc::new(removed_chain_blocks_acceptance_data),
                 )))
                 .expect("expecting an open unbounded channel");
         }

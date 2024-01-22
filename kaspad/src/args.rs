@@ -40,6 +40,7 @@ pub struct Args {
     pub listen: Option<ContextualNetAddress>,
     pub user_agent_comments: Vec<String>,
     pub utxoindex: bool,
+    pub txindex: bool,
     pub reset_db: bool,
     pub outbound_target: usize,
     pub inbound_limit: usize,
@@ -81,6 +82,7 @@ impl Default for Args {
             unsafe_rpc: false,
             async_threads: num_cpus::get(),
             utxoindex: false,
+            txindex: false,
             reset_db: false,
             outbound_target: 8,
             inbound_limit: 128,
@@ -123,8 +125,9 @@ impl Default for Args {
 }
 
 impl Args {
-    pub fn apply_to_config(&self, config: &mut Config) {
+    pub fn apply_to_consensus_config(&self, config: &mut Config) {
         config.utxoindex = self.utxoindex;
+        config.txindex = self.utxoindex;
         config.disable_upnp = self.disable_upnp;
         config.unsafe_rpc = self.unsafe_rpc;
         config.enable_unsynced_mining = self.enable_unsynced_mining;
@@ -288,6 +291,7 @@ pub fn cli() -> Command {
                 .help("Allow mainnet mining (do not use unless you know what you are doing)"),
         )
         .arg(arg!(--utxoindex "Enable the UTXO index"))
+        .arg(arg!(--txindex "Enable the TX index"))           
         .arg(arg!(--testnet "Use the test network"))
         .arg(
             Arg::new("netsuffix")
@@ -388,6 +392,7 @@ impl Args {
             enable_unsynced_mining: m.get_one::<bool>("enable-unsynced-mining").cloned().unwrap_or(defaults.enable_unsynced_mining),
             enable_mainnet_mining: m.get_one::<bool>("enable-mainnet-mining").cloned().unwrap_or(defaults.enable_mainnet_mining),
             utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
+            txindex: m.get_one::<bool>("txindex").cloned().unwrap_or(defaults.txindex),
             testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
             testnet_suffix: m.get_one::<u32>("netsuffix").cloned().unwrap_or(defaults.testnet_suffix),
             devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
@@ -491,6 +496,7 @@ impl Args {
       --maxutxocachesize=                   Max size of loaded UTXO into ram from the disk in bytes (default:
                                             5000000000)
       --utxoindex                           Enable the UTXO index
+      --txindex                             Enable the TX index
       --archival                            Run as an archival node: don't delete old block data when moving the
                                             pruning point (Warning: heavy disk usage)'
       --protocol-version=                   Use non default p2p protocol version (default: 5)

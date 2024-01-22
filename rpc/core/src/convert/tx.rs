@@ -1,9 +1,39 @@
-use crate::{RpcError, RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
-use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput};
+use crate::{
+    RpcError, RpcResult, RpcTransaction, RpcTransactionAcceptanceData, RpcTransactionInclusionData, RpcTransactionInput,
+    RpcTransactionOutput,
+};
+use kaspa_consensus_core::{
+    header::CompactHeaderData,
+    tx::{Transaction, TransactionInput, TransactionOutput},
+};
+use kaspa_index_core::models::txindex::{BlockAcceptanceOffset, TxOffset};
 
 // ----------------------------------------------------------------------------
 // consensus_core to rpc_core
 // ----------------------------------------------------------------------------
+
+impl From<(&BlockAcceptanceOffset, &CompactHeaderData)> for RpcTransactionAcceptanceData {
+    fn from(item: (&BlockAcceptanceOffset, &CompactHeaderData)) -> Self {
+        Self {
+            accepting_block_hash: item.0.accepting_block,
+            accepting_block_mergeset_index: item.0.mergeset_index,
+            accepting_block_blue_score: item.1.blue_score,
+            accepting_block_time: item.1.timestamp,
+            accepting_block_daa_score: item.1.daa_score,
+        }
+    }
+}
+
+impl From<(&TxOffset, &CompactHeaderData)> for RpcTransactionInclusionData {
+    fn from(item: (&TxOffset, &CompactHeaderData)) -> Self {
+        Self {
+            including_block_hash: item.0.including_block,
+            including_block_transaction_index: item.0.transaction_index,
+            including_block_daa_score: item.1.daa_score,
+            including_block_time: item.1.timestamp,
+        }
+    }
+}
 
 impl From<&Transaction> for RpcTransaction {
     fn from(item: &Transaction) -> Self {

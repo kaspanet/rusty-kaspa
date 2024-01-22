@@ -15,7 +15,7 @@ use crate::{
         pruning::PruningImportResult,
         tx::TxResult,
     },
-    header::Header,
+    header::{CompactHeaderData, Header},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
@@ -58,6 +58,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn validate_and_insert_trusted_block(&self, tb: TrustedBlock) -> BlockValidationFutures {
+        unimplemented!()
+    }
+
+    fn get_block_transactions(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
         unimplemented!()
     }
 
@@ -131,6 +135,10 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_history_root(&self) -> Hash {
+        unimplemented!()
+    }
+
     /// source refers to the earliest block from which the current node has full header & block data  
     fn get_source(&self) -> Hash {
         unimplemented!()
@@ -147,7 +155,14 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
+    /// Gets the virtual chain paths from `low` to the `high` hash, or until max_blocks is reached
+    ///
+    /// Note:   
+    /// 1) Specifying the `high` hash as `None` will calculate the chain path up to the current sink.
+    /// 2) Specifying `max_blocks` as `None` will impose no limit.
+    /// 3) `max_blocks` limit will populate removed chain path and then the added chain path, up to max_blocks.
+    /// 3.1) use usize::MAX to get all blocks in the chain path, with optimized performance, (in cases where batching is not required)
+    fn get_virtual_chain_from_block(&self, low: Hash, high: Option<Hash>, max_blocks: usize) -> ConsensusResult<ChainPath> {
         unimplemented!()
     }
 
@@ -204,6 +219,10 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn find_highest_common_chain_block(&self, low: Hash, high: Hash) -> ConsensusResult<Hash> {
+        unimplemented!()
+    }
+
     fn is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {
         unimplemented!()
     }
@@ -213,6 +232,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_header(&self, hash: Hash) -> ConsensusResult<Arc<Header>> {
+        unimplemented!()
+    }
+
+    fn get_compact_header(&self, hash: Hash) -> ConsensusResult<CompactHeaderData> {
         unimplemented!()
     }
 

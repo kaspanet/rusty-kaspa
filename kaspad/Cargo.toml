@@ -35,6 +35,7 @@ kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 kaspa-utils-tower.workspace = true
 kaspa-utxoindex.workspace = true
+kaspa-txindex.workspace = true
 kaspa-wrpc-server.workspace = true
 
 async-channel.workspace = true

@@ -6,6 +6,7 @@ mod item;
 mod key;
 mod writer;
 
+pub mod cache_policy_builder;
 pub mod registry;
 mod set_access;
 pub mod utils;

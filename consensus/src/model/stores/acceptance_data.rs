@@ -1,6 +1,6 @@
 use kaspa_consensus_core::acceptance_data::AcceptanceData;
-use kaspa_consensus_core::acceptance_data::AcceptedTxEntry;
 use kaspa_consensus_core::acceptance_data::MergesetBlockAcceptanceData;
+use kaspa_consensus_core::acceptance_data::TxEntry;
 use kaspa_consensus_core::BlockHasher;
 use kaspa_database::prelude::CachePolicy;
 use kaspa_database::prelude::StoreError;
@@ -17,20 +17,20 @@ use std::sync::Arc;
 
 pub trait AcceptanceDataStoreReader {
     fn get(&self, hash: Hash) -> Result<Arc<AcceptanceData>, StoreError>;
+    fn has(&self, hash: Hash) -> Result<bool, StoreError>;
 }
 
 pub trait AcceptanceDataStore: AcceptanceDataStoreReader {
     fn insert(&self, hash: Hash, acceptance_data: Arc<AcceptanceData>) -> Result<(), StoreError>;
     fn delete(&self, hash: Hash) -> Result<(), StoreError>;
 }
-
 /// Simple wrapper for implementing `MemSizeEstimator`
 #[derive(Clone, Serialize, Deserialize)]
 struct AcceptanceDataEntry(Arc<AcceptanceData>);
 
 impl MemSizeEstimator for AcceptanceDataEntry {
     fn estimate_mem_bytes(&self) -> usize {
-        self.0.iter().map(|l| l.accepted_transactions.len()).sum::<usize>() * size_of::<AcceptedTxEntry>()
+        self.0.iter().map(|l| l.accepted_transactions.len()).sum::<usize>() * size_of::<TxEntry>()
             + self.0.len() * size_of::<MergesetBlockAcceptanceData>()
             + size_of::<AcceptanceData>()
             + size_of::<Self>()
@@ -69,6 +69,10 @@ impl DbAcceptanceDataStore {
 impl AcceptanceDataStoreReader for DbAcceptanceDataStore {
     fn get(&self, hash: Hash) -> Result<Arc<AcceptanceData>, StoreError> {
         Ok(self.access.read(hash)?.0)
+    }
+
+    fn has(&self, hash: Hash) -> Result<bool, StoreError> {
+        self.access.has(hash)
     }
 }
 

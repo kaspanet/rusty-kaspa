@@ -229,6 +229,25 @@ impl Rpc {
                     }
                 }
             }
+            RpcApiOps::GetTransactionData => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Missing transaction Ids to query"));
+                }
+                let transaction_ids = argv
+                    .iter()
+                    .map(|transaction_id| RpcHash::from_hex(transaction_id.as_str()))
+                    .collect::<std::result::Result<Vec<_>, _>>()?;
+                let result = rpc
+                    .get_transaction_data_call(GetTransactionDataRequest {
+                        transaction_ids,
+                        include_transactions: true,
+                        include_acceptance_data: true,
+                        include_inclusion_data: true,
+                        include_verbose_data: true,
+                    })
+                    .await?;
+                self.println(&ctx, result);
+            }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");
                 return Ok(());

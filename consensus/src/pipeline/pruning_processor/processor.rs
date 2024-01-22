@@ -8,6 +8,7 @@ use crate::{
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
+            acceptance_data::AcceptanceDataStoreReader,
             ghostdag::{CompactGhostdagData, GhostdagStoreReader},
             headers::HeaderStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
@@ -33,11 +34,17 @@ use kaspa_consensus_core::{
     trusted::ExternalGhostdagData,
     BlockHashSet,
 };
+use kaspa_consensus_notify::{
+    notification::{ChainAcceptanceDataPrunedNotification, Notification},
+    root::ConsensusNotificationRoot,
+};
+
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, warn};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
+use kaspa_notify::{events::EventType, notifier::Notify};
 use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
@@ -73,6 +80,9 @@ pub struct PruningProcessor {
     pruning_point_manager: DbPruningPointManager,
     pruning_proof_manager: Arc<PruningProofManager>,
 
+    // Notifier
+    notification_root: Arc<ConsensusNotificationRoot>,
+
     // Pruning lock
     pruning_lock: SessionLock,
 
@@ -97,6 +107,7 @@ impl PruningProcessor {
         db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
         services: &Arc<ConsensusServices>,
+        notification_root: &Arc<ConsensusNotificationRoot>,
         pruning_lock: SessionLock,
         config: Arc<Config>,
         is_consensus_exiting: Arc<AtomicBool>,
@@ -109,6 +120,7 @@ impl PruningProcessor {
             ghostdag_managers: services.ghostdag_managers.clone(),
             pruning_point_manager: services.pruning_point_manager.clone(),
             pruning_proof_manager: services.pruning_proof_manager.clone(),
+            notification_root: notification_root.clone(),
             pruning_lock,
             config,
             is_consensus_exiting,
@@ -382,6 +394,22 @@ impl PruningProcessor {
                 let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
                 let mut statuses_write = self.statuses_store.write();
 
+                //let pruned_acceptance_data = self.acceptance_data_store.clone().get(current).unwrap();
+                let chain_acceptance_pruned = if self.notification_root.has_subscription(EventType::ChainAcceptanceDataPruned) // check if someone is subscribed
+                //TODO: are these just sanity checks, that may be removed?
+                & self.reachability_service.is_chain_ancestor_of(current, new_pruning_point) // check if it is a chain block
+                && self.acceptance_data_store.has(current).unwrap()
+                // check if acceptance data has already been pruned
+                {
+                    Some(Notification::ChainAcceptanceDataPruned(ChainAcceptanceDataPrunedNotification::new(
+                        current,
+                        self.acceptance_data_store.get(current).expect("expected get"),
+                        new_pruning_point,
+                    )))
+                } else {
+                    None
+                };
+
                 // Prune data related to block bodies and UTXO state
                 self.utxo_multisets_store.delete_batch(&mut batch, current).unwrap();
                 self.utxo_diffs_store.delete_batch(&mut batch, current).unwrap();
@@ -441,6 +469,10 @@ impl PruningProcessor {
                 drop(level_relations_write);
 
                 reachability_read = self.reachability_store.upgradable_read();
+
+                if let Some(chain_acceptance_pruned) = chain_acceptance_pruned {
+                    self.notification_root.notify(chain_acceptance_pruned).unwrap();
+                };
             }
         }
 

@@ -26,6 +26,7 @@ kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 kaspa-utils-tower.workspace = true
 kaspa-utxoindex.workspace = true
+kaspa-txindex.workspace = true
 
 async-trait.workspace = true
 log.workspace = true

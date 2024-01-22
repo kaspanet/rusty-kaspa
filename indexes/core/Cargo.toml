@@ -8,19 +8,14 @@ include.workspace = true
 license.workspace = true
 
 [dependencies]
-async-channel.workspace = true
-async-trait.workspace = true
 derive_more.workspace = true
-futures.workspace = true
 kaspa-consensus-core.workspace = true
+kaspa-consensus-notify.workspace = true
 kaspa-hashes.workspace = true
 kaspa-notify.workspace = true
 kaspa-utils.workspace = true
-log.workspace = true
-paste.workspace = true
 serde.workspace = true
-thiserror.workspace = true
-triggered.workspace = true
+paste.workspace = true
 
 [dev-dependencies]
 # parking_lot.workspace = true

@@ -1,8 +1,8 @@
-pub mod cache_policy_builder;
 pub mod ctl;
 pub mod factory;
 pub mod services;
 pub mod storage;
+
 pub mod test_consensus;
 
 #[cfg(feature = "devnet-prealloc")]
@@ -17,7 +17,7 @@ use crate::{
             acceptance_data::AcceptanceDataStoreReader,
             block_transactions::BlockTransactionsStoreReader,
             ghostdag::{GhostdagData, GhostdagStoreReader},
-            headers::{CompactHeaderData, HeaderStoreReader},
+            headers::HeaderStoreReader,
             headers_selected_tip::HeadersSelectedTipStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::PruningStoreReader,
@@ -52,7 +52,7 @@ use kaspa_consensus_core::{
         tx::TxResult,
     },
     errors::{difficulty::DifficultyError, pruning::PruningImportError},
-    header::Header,
+    header::{CompactHeaderData, Header},
     muhash::MuHashExtensions,
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
@@ -267,6 +267,7 @@ impl Consensus {
             db.clone(),
             &storage,
             &services,
+            &notification_root,
             pruning_lock.clone(),
             config.clone(),
             is_consensus_exiting.clone(),
@@ -506,6 +507,10 @@ impl ConsensusApi for Consensus {
         self.pruning_point_store.read().pruning_point().unwrap()
     }
 
+    fn get_history_root(&self) -> Hash {
+        self.pruning_point_store.read().history_root().unwrap()
+    }
+
     /// Estimates number of blocks and headers stored in the node
     ///
     /// This is an estimation based on the daa score difference between the node's `source` and `sink`'s daa score,
@@ -533,14 +538,27 @@ impl ConsensusApi for Consensus {
         self.config.is_nearly_synced(compact.timestamp, compact.daa_score)
     }
 
-    fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
+    fn get_virtual_chain_from_block(&self, low: Hash, high: Option<Hash>, max_blocks: usize) -> ConsensusResult<ChainPath> {
         // Calculate chain changes between the given hash and the
         // sink. Note that we explicitly don't
         // do the calculation against the virtual itself so that we
         // won't later need to remove it from the result.
         let _guard = self.pruning_lock.blocking_read();
-        self.validate_block_exists(hash)?;
-        Ok(self.services.dag_traversal_manager.calculate_chain_path(hash, self.get_sink()))
+
+        self.validate_block_exists(low)?;
+        let sink = self.get_sink();
+        let high = if let Some(high) = high {
+            self.validate_block_exists(high)?;
+            let new_high = self.find_highest_common_chain_block(high, sink)?;
+            if !self.is_chain_ancestor_of(low, new_high)? {
+                return Err(ConsensusError::ExpectedAncestor(low, high));
+            };
+            new_high
+        } else {
+            sink
+        };
+
+        Ok(self.services.dag_traversal_manager.calculate_chain_path(low, high, max_blocks))
     }
 
     /// Returns a Vec of header samples since genesis
@@ -702,12 +720,23 @@ impl ConsensusApi for Consensus {
 
         Ok(())
     }
+    fn find_highest_common_chain_block(&self, low: Hash, high: Hash) -> ConsensusResult<Hash> {
+        self.validate_block_exists(low)?;
+        self.validate_block_exists(high)?;
+        Ok(self.services.sync_manager.find_highest_common_chain_block(low, high))
+    }
 
     fn is_chain_ancestor_of(&self, low: Hash, high: Hash) -> ConsensusResult<bool> {
         let _guard = self.pruning_lock.blocking_read();
         self.validate_block_exists(low)?;
         self.validate_block_exists(high)?;
         Ok(self.services.reachability_service.is_chain_ancestor_of(low, high))
+    }
+
+    fn is_chain_block(&self, this: Hash) -> ConsensusResult<bool> {
+        let _guard = self.pruning_lock.blocking_read();
+        self.validate_block_exists(this)?;
+        Ok(self.services.reachability_service.is_chain_ancestor_of(this, self.get_sink()))
     }
 
     // max_blocks has to be greater than the merge set size limit
@@ -722,6 +751,10 @@ impl ConsensusApi for Consensus {
 
     fn get_header(&self, hash: Hash) -> ConsensusResult<Arc<Header>> {
         self.headers_store.get_header(hash).unwrap_option().ok_or(ConsensusError::HeaderNotFound(hash))
+    }
+
+    fn get_compact_header(&self, hash: Hash) -> ConsensusResult<CompactHeaderData> {
+        self.headers_store.get_compact_header_data(hash).unwrap_option().ok_or(ConsensusError::HeaderNotFound(hash))
     }
 
     fn get_headers_selected_tip(&self) -> Hash {
@@ -805,6 +838,10 @@ impl ConsensusApi for Consensus {
         })
     }
 
+    fn get_block_transactions(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
+        self.block_transactions_store.get(hash).map_err(|_e| ConsensusError::MissingData(hash))
+    }
+
     fn get_ghostdag_data(&self, hash: Hash) -> ConsensusResult<ExternalGhostdagData> {
         match self.get_block_status(hash) {
             None => return Err(ConsensusError::HeaderNotFound(hash)),
@@ -830,9 +867,8 @@ impl ConsensusApi for Consensus {
     fn get_block_status(&self, hash: Hash) -> Option<BlockStatus> {
         self.statuses_store.read().get(hash).unwrap_option()
     }
-
     fn get_block_acceptance_data(&self, hash: Hash) -> ConsensusResult<Arc<AcceptanceData>> {
-        self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))
+        self.acceptance_data_store.get(hash).map_err(|_| ConsensusError::MissingData(hash))
     }
 
     fn get_blocks_acceptance_data(&self, hashes: &[Hash]) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
@@ -841,10 +877,6 @@ impl ConsensusApi for Consensus {
             .copied()
             .map(|hash| self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash)))
             .collect::<ConsensusResult<Vec<_>>>()
-    }
-
-    fn is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
-        self.is_chain_ancestor_of(hash, self.get_sink())
     }
 
     fn get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {

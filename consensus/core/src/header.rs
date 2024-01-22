@@ -2,13 +2,13 @@ use crate::{hashing, BlueWorkType};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use js_sys::{Array, Object};
 use kaspa_hashes::Hash;
-use kaspa_utils::hex::ToHex;
+use kaspa_utils::{hex::ToHex, mem_size::MemSizeEstimator};
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen::*;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::prelude::*;
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, Default)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]
 pub struct Header {
@@ -278,6 +278,22 @@ impl TryFrom<JsValue> for Header {
         } else {
             Err(Error::Custom("supplied argument must be an object".to_string()))
         }
+    }
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct CompactHeaderData {
+    pub daa_score: u64,
+    pub timestamp: u64,
+    pub bits: u32,
+    pub blue_score: u64,
+}
+
+impl MemSizeEstimator for CompactHeaderData {}
+
+impl From<&Header> for CompactHeaderData {
+    fn from(header: &Header) -> Self {
+        Self { daa_score: header.daa_score, timestamp: header.timestamp, bits: header.bits, blue_score: header.blue_score }
     }
 }
 

@@ -2,8 +2,8 @@ use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
 
 use async_channel::unbounded;
 use kaspa_consensus_core::{
-    config::ConfigBuilder,
-    errors::config::{ConfigError, ConfigResult},
+    config::ConfigBuilder as ConsensusConfigBuilder,
+    errors::config::{ConfigError as ConsensusConfigError, ConfigResult as ConsensusConfigResult},
 };
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
 use kaspa_core::{core::Core, info, trace};
@@ -31,10 +31,11 @@ use kaspa_mining::{
 use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
 
 use kaspa_perf_monitor::{builder::Builder as PerfMonitorBuilder, counters::CountersSnapshot};
+use kaspa_txindex::{api::TxIndexProxy, core::config::Config as TxIndexConfig, TxIndex};
 use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WebSocketCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
 
-/// Desired soft FD limit that needs to be configured
+/// Desired soft FD limit that needs to be consensus_configured
 /// for the kaspad process.
 pub const DESIRED_DAEMON_SOFT_FD_LIMIT: u64 = 8 * 1024;
 /// Minimum acceptable soft FD limit for the kaspad
@@ -48,6 +49,7 @@ use crate::args::Args;
 const DEFAULT_DATA_DIR: &str = "datadir";
 const CONSENSUS_DB: &str = "consensus";
 const UTXOINDEX_DB: &str = "utxoindex";
+const TXINDEX_DB: &str = "txindex";
 const META_DB: &str = "meta";
 const META_DB_FILE_LIMIT: i32 = 5;
 const DEFAULT_LOG_DIR: &str = "logs";
@@ -67,29 +69,29 @@ pub fn get_app_dir() -> PathBuf {
     return get_home_dir().join(".rusty-kaspa");
 }
 
-pub fn validate_args(args: &Args) -> ConfigResult<()> {
+pub fn validate_args(args: &Args) -> ConsensusConfigResult<()> {
     #[cfg(feature = "devnet-prealloc")]
     {
         if args.num_prealloc_utxos.is_some() && !(args.devnet || args.simnet) {
-            return Err(ConfigError::PreallocUtxosOnNonDevnet);
+            return Err(ConsensusConfigError::PreallocUtxosOnNonDevnet);
         }
 
         if args.prealloc_address.is_some() ^ args.num_prealloc_utxos.is_some() {
-            return Err(ConfigError::MissingPreallocNumOrAddress);
+            return Err(ConsensusConfigError::MissingPreallocNumOrAddress);
         }
     }
 
     if !args.connect_peers.is_empty() && !args.add_peers.is_empty() {
-        return Err(ConfigError::MixedConnectAndAddPeers);
+        return Err(ConsensusConfigError::MixedConnectAndAddPeers);
     }
     if args.logdir.is_some() && args.no_log_files {
-        return Err(ConfigError::MixedLogDirAndNoLogFiles);
+        return Err(ConsensusConfigError::MixedLogDirAndNoLogFiles);
     }
     if args.ram_scale < 0.1 {
-        return Err(ConfigError::RamScaleTooLow);
+        return Err(ConsensusConfigError::RamScaleTooLow);
     }
     if args.ram_scale > 10.0 {
-        return Err(ConfigError::RamScaleTooHigh);
+        return Err(ConsensusConfigError::RamScaleTooHigh);
     }
     Ok(())
 }
@@ -118,7 +120,7 @@ fn get_user_approval_or_exit(message: &str, approve: bool) {
     }
 }
 
-/// Runtime configuration struct for the application.
+/// Runtime consensus_configuration struct for the application.
 #[derive(Default)]
 pub struct Runtime {
     log_dir: Option<String>,
@@ -196,27 +198,40 @@ pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreS
 pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
     let mut fd_remaining = fd_total_budget;
-    let utxo_files_limit = if args.utxoindex {
-        let utxo_files_limit = fd_remaining * 10 / 100;
-        fd_remaining -= utxo_files_limit;
-        utxo_files_limit
+    let num_of_active_indexes = [args.utxoindex, args.txindex].iter().filter(|x| **x).count() as i32;
+    let index_budget = if num_of_active_indexes > 0 {
+        let index_budget = fd_remaining / 20 / 100;
+        fd_remaining -= index_budget;
+        index_budget
     } else {
         0
     };
+    let utxo_files_limit = if args.utxoindex { index_budget / num_of_active_indexes } else { 0 };
+    let mut tx_files_limit = if args.txindex { index_budget / num_of_active_indexes } else { 0 };
+
     // Make sure args forms a valid set of properties
     if let Err(err) = validate_args(args) {
         println!("{}", err);
         exit(1);
     }
 
-    let config = Arc::new(
-        ConfigBuilder::new(network.into())
+    let consensus_config = Arc::new(
+        ConsensusConfigBuilder::new(network.into())
             .adjust_perf_params_to_consensus_params()
-            .apply_args(|config| args.apply_to_config(config))
+            .apply_args(|consensus_config| args.apply_to_consensus_config(consensus_config))
             .build(),
     );
 
-    // TODO: Validate `config` forms a valid set of properties
+    let txindex_config = if args.txindex {
+        let txindex_config = TxIndexConfig::from(&consensus_config);
+        tx_files_limit += txindex_config.perf.extra_fd_budget as i32;
+        fd_remaining -= txindex_config.perf.extra_fd_budget as i32;
+        Some(Arc::new(txindex_config))
+    } else {
+        None
+    };
+
+    // TODO: Validate `consensus_config` forms a valid set of properties
 
     let app_dir = get_app_dir_from_args(args);
     let db_dir = app_dir.join(network.to_prefixed()).join(DEFAULT_DATA_DIR);
@@ -238,6 +253,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
 
     let consensus_db_dir = db_dir.join(CONSENSUS_DB);
     let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);
+    let txindex_db_dir = db_dir.join(TXINDEX_DB);
     let meta_db_dir = db_dir.join(META_DB);
 
     let mut is_db_reset_needed = args.reset_db;
@@ -256,6 +272,11 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     if args.utxoindex {
         info!("Utxoindex Data directory {}", utxoindex_db_dir.display());
         fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+    }
+
+    if args.txindex {
+        info!("Txindex Data directory {}", txindex_db_dir.display());
+        fs::create_dir_all(txindex_db_dir.as_path()).unwrap();
     }
 
     // DB used for addresses store and for multi-consensus management
@@ -282,7 +303,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
                 let headers_store = DbHeadersStore::new(consensus_db, CachePolicy::Empty, CachePolicy::Empty);
 
-                if headers_store.has(config.genesis.hash).unwrap() {
+                if headers_store.has(consensus_config.genesis.hash).unwrap() {
                     info!("Genesis is found in active consensus DB. No action needed.");
                 } else {
                     let msg = "Genesis not found in active consensus DB. This happens when Testnet 11 is restarted and your database needs to be fully deleted. Do you confirm the delete? (y/n)";
@@ -329,6 +350,10 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
             fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
         }
 
+        if args.txindex {
+            fs::create_dir_all(txindex_db_dir.as_path()).unwrap();
+        }
+
         // Reopen the DB
         meta_db = kaspa_database::prelude::ConnBuilder::default()
             .with_db_path(meta_db_dir)
@@ -341,14 +366,14 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         get_user_approval_or_exit("--archival is set to false although the node was previously archival. Proceeding may delete archived data. Do you confirm? (y/n)", args.yes);
     }
 
-    let connect_peers = args.connect_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect::<Vec<_>>();
-    let add_peers = args.add_peers.iter().map(|x| x.normalize(config.default_p2p_port())).collect();
-    let p2p_server_addr = args.listen.unwrap_or(ContextualNetAddress::unspecified()).normalize(config.default_p2p_port());
+    let connect_peers = args.connect_peers.iter().map(|x| x.normalize(consensus_config.default_p2p_port())).collect::<Vec<_>>();
+    let add_peers = args.add_peers.iter().map(|x| x.normalize(consensus_config.default_p2p_port())).collect();
+    let p2p_server_addr = args.listen.unwrap_or(ContextualNetAddress::unspecified()).normalize(consensus_config.default_p2p_port());
     // connect_peers means no DNS seeding and no outbound peers
     let outbound_target = if connect_peers.is_empty() { args.outbound_target } else { 0 };
-    let dns_seeders = if connect_peers.is_empty() && !args.disable_dns_seeding { config.dns_seeders } else { &[] };
+    let dns_seeders = if connect_peers.is_empty() && !args.disable_dns_seeding { consensus_config.dns_seeders } else { &[] };
 
-    let grpc_server_addr = args.rpclisten.unwrap_or(ContextualNetAddress::loopback()).normalize(config.default_rpc_port());
+    let grpc_server_addr = args.rpclisten.unwrap_or(ContextualNetAddress::loopback()).normalize(consensus_config.default_rpc_port());
 
     let core = Arc::new(Core::new());
 
@@ -369,7 +394,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let consensus_db_parallelism = num_cpus::get();
     let consensus_factory = Arc::new(ConsensusFactory::new(
         meta_db.clone(),
-        &config,
+        &consensus_config,
         consensus_db_dir,
         consensus_db_parallelism,
         notification_root.clone(),
@@ -396,36 +421,54 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     };
 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
-    let index_service: Option<Arc<IndexService>> = if args.utxoindex {
+    let index_service: Option<Arc<IndexService>> = if args.utxoindex || args.txindex {
         // Use only a single thread for none-consensus databases
-        let utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
-            .with_db_path(utxoindex_db_dir)
-            .with_files_limit(utxo_files_limit)
-            .build()
-            .unwrap();
-        let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
-        let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex)));
+        let utxoindex = if args.utxoindex {
+            let utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
+                .with_db_path(utxoindex_db_dir)
+                .with_files_limit(utxo_files_limit)
+                .build()
+                .unwrap();
+            Some(UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap()))
+        } else {
+            None
+        };
+
+        let txindex = if args.txindex {
+            let txindex_config = txindex_config.unwrap();
+            let txindex_db = kaspa_database::prelude::ConnBuilder::default()
+                .with_db_path(txindex_db_dir)
+                .with_files_limit(tx_files_limit)
+                .with_parallelism(1 + txindex_config.perf.db_parallelism)
+                .build()
+                .unwrap();
+            Some(TxIndexProxy::new(TxIndex::new(consensus_manager.clone(), txindex_db, txindex_config).unwrap()))
+        } else {
+            None
+        };
+
+        let index_service = Arc::new(IndexService::new(&notify_service.notifier(), utxoindex, txindex));
         Some(index_service)
     } else {
         None
     };
 
-    let (address_manager, port_mapping_extender_svc) = AddressManager::new(config.clone(), meta_db, tick_service.clone());
+    let (address_manager, port_mapping_extender_svc) = AddressManager::new(consensus_config.clone(), meta_db, tick_service.clone());
 
     let mining_monitor = Arc::new(MiningMonitor::new(mining_counters.clone(), tx_script_cache_counters.clone(), tick_service.clone()));
     let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_extended_config(
-        config.target_time_per_block,
+        consensus_config.target_time_per_block,
         false,
-        config.max_block_mass,
-        config.ram_scale,
-        config.block_template_cache_lifetime,
+        consensus_config.max_block_mass,
+        consensus_config.ram_scale,
+        consensus_config.block_template_cache_lifetime,
         mining_counters,
     )));
 
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),
         address_manager,
-        config.clone(),
+        consensus_config.clone(),
         mining_manager.clone(),
         tick_service.clone(),
         notification_root,
@@ -438,7 +481,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         outbound_target,
         args.inbound_limit,
         dns_seeders,
-        config.default_p2p_port(),
+        consensus_config.default_p2p_port(),
         p2p_tower_counters.clone(),
     ));
 
@@ -448,8 +491,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         index_service.as_ref().map(|x| x.notifier()),
         mining_manager,
         flow_context,
-        index_service.as_ref().map(|x| x.utxoindex().unwrap()),
-        config.clone(),
+        if let Some(ref index_service) = index_service { index_service.utxoindex() } else { None },
+        if let Some(ref index_service) = index_service { index_service.txindex() } else { None },
+        consensus_config.clone(),
         core.clone(),
         processing_counters,
         wrpc_borsh_counters.clone(),
@@ -471,8 +515,13 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     };
     async_runtime.register(rpc_core_service.clone());
     if !args.disable_grpc {
-        let grpc_service =
-            Arc::new(GrpcService::new(grpc_server_addr, config, rpc_core_service.clone(), args.rpc_max_clients, grpc_tower_counters));
+        let grpc_service = Arc::new(GrpcService::new(
+            grpc_server_addr,
+            consensus_config,
+            rpc_core_service.clone(),
+            args.rpc_max_clients,
+            grpc_tower_counters,
+        ));
         async_runtime.register(grpc_service);
     }
     async_runtime.register(p2p_service);

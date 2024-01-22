@@ -201,7 +201,7 @@ mod tests {
     use itertools::Itertools;
     use kaspa_consensus_core::{
         blockhash::{BlockHashes, ORIGIN},
-        header::Header,
+        header::{CompactHeaderData, Header},
         BlockHashSet, HashMapCustomHasher,
     };
     use kaspa_database::prelude::{ReadLock, StoreError, StoreResult};
@@ -236,10 +236,7 @@ mod tests {
             Ok(self.map.read().get(&hash).unwrap().header.clone())
         }
 
-        fn get_compact_header_data(
-            &self,
-            hash: kaspa_hashes::Hash,
-        ) -> Result<crate::model::stores::headers::CompactHeaderData, StoreError> {
+        fn get_compact_header_data(&self, hash: kaspa_hashes::Hash) -> Result<CompactHeaderData, StoreError> {
             unimplemented!()
         }
 

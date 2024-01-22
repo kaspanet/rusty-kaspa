@@ -18,7 +18,7 @@ pub enum Notification {
     #[display(fmt = "BlockAdded notification: block hash {}", "_0.block.header.hash")]
     BlockAdded(BlockAddedNotification),
 
-    #[display(fmt = "VirtualChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.added_chain_blocks_acceptance_data.len()")]
+    #[display(fmt = "VirtualChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions, {} accepted transactions removed", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.added_chain_blocks_acceptance_data.len()", "_0.removed_chain_blocks_acceptance_data.len()")]
     VirtualChainChanged(VirtualChainChangedNotification),
 
     #[display(fmt = "FinalityConflict notification: violating block hash {}", "_0.violating_block_hash")]
@@ -41,6 +41,9 @@ pub enum Notification {
 
     #[display(fmt = "NewBlockTemplate notification")]
     NewBlockTemplate(NewBlockTemplateNotification),
+
+    #[display(fmt = "ChainAcceptanceDataPruned notification notification: chain hash pruned: {}, mergset block acceptance pruned: {}, history root: {}", "_0.chain_hash_pruned", "_0.mergeset_block_acceptance_data_pruned.len()", "_0.history_root")]
+    ChainAcceptanceDataPruned(ChainAcceptanceDataPrunedNotification),
 }
 }
 
@@ -58,11 +61,15 @@ impl NotificationTrait for Notification {
                 // If the subscription excludes accepted transaction ids and the notification includes some
                 // then we must re-create the object and drop the ids, otherwise we can clone it as is.
                 if let Notification::VirtualChainChanged(ref payload) = self {
-                    if !subscription.include_accepted_transaction_ids() && !payload.added_chain_blocks_acceptance_data.is_empty() {
+                    if !(subscription.include_accepted_transaction_ids()
+                        || payload.added_chain_blocks_acceptance_data.is_empty()
+                            && payload.removed_chain_blocks_acceptance_data.is_empty())
+                    {
                         return Some(Notification::VirtualChainChanged(VirtualChainChangedNotification {
                             removed_chain_block_hashes: payload.removed_chain_block_hashes.clone(),
                             added_chain_block_hashes: payload.added_chain_block_hashes.clone(),
                             added_chain_blocks_acceptance_data: Arc::new(vec![]),
+                            removed_chain_blocks_acceptance_data: Arc::new(vec![]),
                         }));
                     }
                 }
@@ -95,18 +102,38 @@ impl BlockAddedNotification {
 }
 
 #[derive(Debug, Clone)]
+pub struct ChainAcceptanceDataPrunedNotification {
+    pub chain_hash_pruned: Hash,
+    pub mergeset_block_acceptance_data_pruned: Arc<AcceptanceData>,
+    pub history_root: Hash,
+}
+
+impl ChainAcceptanceDataPrunedNotification {
+    pub fn new(chain_hash_pruned: Hash, mergeset_block_acceptance_data_pruned: Arc<AcceptanceData>, history_root: Hash) -> Self {
+        Self { chain_hash_pruned, mergeset_block_acceptance_data_pruned, history_root }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct VirtualChainChangedNotification {
     pub added_chain_block_hashes: Arc<Vec<Hash>>,
     pub removed_chain_block_hashes: Arc<Vec<Hash>>,
     pub added_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
+    pub removed_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
 }
 impl VirtualChainChangedNotification {
     pub fn new(
         added_chain_block_hashes: Arc<Vec<Hash>>,
         removed_chain_block_hashes: Arc<Vec<Hash>>,
         added_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
+        removed_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
     ) -> Self {
-        Self { added_chain_block_hashes, removed_chain_block_hashes, added_chain_blocks_acceptance_data }
+        Self {
+            added_chain_block_hashes,
+            removed_chain_block_hashes,
+            added_chain_blocks_acceptance_data,
+            removed_chain_blocks_acceptance_data,
+        }
     }
 }
 
