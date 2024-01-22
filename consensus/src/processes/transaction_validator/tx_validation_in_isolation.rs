@@ -165,7 +165,7 @@ mod tests {
         let mut params = MAINNET_PARAMS.clone();
         params.max_tx_inputs = 10;
         params.max_tx_outputs = 15;
-        let tv = TransactionValidator::new(
+        let tv = TransactionValidator::new_for_tests(
             params.max_tx_inputs,
             params.max_tx_outputs,
             params.max_signature_script_len,

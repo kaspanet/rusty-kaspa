@@ -4,7 +4,8 @@ use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
-use kaspa_consensus::pipeline::ProcessingCounters;
+use kaspa_consensus_core::api::counters::ProcessingCounters;
+use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::{
     block::Block,
     coinbase::MinerData,
@@ -45,6 +46,7 @@ use kaspa_notify::{
     subscriber::{Subscriber, SubscriptionManager},
 };
 use kaspa_p2p_flows::flow_context::FlowContext;
+use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
 use kaspa_rpc_core::{
     api::{
@@ -65,6 +67,7 @@ use std::{
     sync::{atomic::Ordering, Arc},
     vec,
 };
+use tokio::join;
 use workflow_rpc::server::WebSocketCounters as WrpcServerCounters;
 
 /// A service implementing the Rpc API at kaspa_rpc_core level.
@@ -266,7 +269,7 @@ impl RpcApi for RpcCoreService {
         let hash = block.hash();
 
         if !request.allow_non_daa_blocks {
-            let virtual_daa_score = session.async_get_virtual_daa_score().await;
+            let virtual_daa_score = session.get_virtual_daa_score();
 
             // A simple heuristic check which signals that the mined block is out of date
             // and should not be accepted unless user explicitly requests
@@ -281,9 +284,23 @@ impl RpcApi for RpcCoreService {
         trace!("incoming SubmitBlockRequest for block {}", hash);
         match self.flow_context.submit_rpc_block(&session, block.clone()).await {
             Ok(_) => Ok(SubmitBlockResponse { report: SubmitBlockReport::Success }),
+            Err(ProtocolError::RuleError(RuleError::BadMerkleRoot(h1, h2))) => {
+                warn!(
+                    "The RPC submitted block triggered a {} error: {}. 
+NOTE: This error usually indicates an RPC conversion error between the node and the miner. If you are on TN11 this is likely to reflect using a NON-SUPPORTED miner.",
+                    stringify!(RuleError::BadMerkleRoot),
+                    RuleError::BadMerkleRoot(h1, h2)
+                );
+                if self.config.net.is_mainnet() {
+                    warn!("Printing the full block for debug purposes:\n{:?}", block);
+                }
+                Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
+            }
             Err(err) => {
-                warn!("The RPC submitted block triggered an error: {}\nPrinting the full header for debug purposes:\n{:?}", err, err);
-                // error = format!("Block rejected. Reason: {}", err))
+                warn!(
+                    "The RPC submitted block triggered an error: {}\nPrinting the full header for debug purposes:\n{:?}",
+                    err, block
+                );
                 Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::BlockInvalid) })
             }
         }
@@ -386,7 +403,7 @@ impl RpcApi for RpcCoreService {
         let is_nearly_synced = self.consensus_manager.consensus().unguarded_session().async_is_nearly_synced().await;
         Ok(GetInfoResponse {
             p2p_id: self.flow_context.node_id.to_string(),
-            mempool_size: self.mining_manager.clone().transaction_count(TransactionQuery::TransactionsOnly).await as u64,
+            mempool_size: self.mining_manager.transaction_count_sample(TransactionQuery::TransactionsOnly),
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
             is_synced: self.has_sufficient_peer_connectivity() && is_nearly_synced,
@@ -613,18 +630,19 @@ impl RpcApi for RpcCoreService {
 
     async fn get_block_dag_info_call(&self, _: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
-        let block_count = session.async_estimate_block_count().await;
+        let (consensus_stats, tips, pruning_point, sink) =
+            join!(session.async_get_stats(), session.async_get_tips(), session.async_pruning_point(), session.async_get_sink());
         Ok(GetBlockDagInfoResponse::new(
             self.config.net,
-            block_count.block_count,
-            block_count.header_count,
-            session.async_get_tips().await,
-            self.consensus_converter.get_difficulty_ratio(session.async_get_virtual_bits().await),
-            session.async_get_virtual_past_median_time().await,
-            session.async_get_virtual_parents().await.iter().copied().collect::<Vec<_>>(),
-            session.async_pruning_point().await,
-            session.async_get_virtual_daa_score().await,
-            session.async_get_sink().await,
+            consensus_stats.block_counts.block_count,
+            consensus_stats.block_counts.header_count,
+            tips,
+            self.consensus_converter.get_difficulty_ratio(consensus_stats.virtual_stats.bits),
+            consensus_stats.virtual_stats.past_median_time,
+            session.get_virtual_parents().into_iter().collect::<Vec<_>>(),
+            pruning_point,
+            consensus_stats.virtual_stats.daa_score,
+            sink,
         ))
     }
 
@@ -791,27 +809,27 @@ impl RpcApi for RpcCoreService {
         });
 
         let consensus_metrics = if req.consensus_metrics {
-            let session = self.consensus_manager.consensus().unguarded_session();
-            let block_count = session.async_estimate_block_count().await;
+            let consensus_stats = self.consensus_manager.consensus().unguarded_session().async_get_stats().await;
+            let processing_counters = self.processing_counters.snapshot();
 
             Some(ConsensusMetrics {
-                node_blocks_submitted_count: self.processing_counters.blocks_submitted.load(Ordering::SeqCst),
-                node_headers_processed_count: self.processing_counters.header_counts.load(Ordering::SeqCst),
-                node_dependencies_processed_count: self.processing_counters.dep_counts.load(Ordering::SeqCst),
-                node_bodies_processed_count: self.processing_counters.body_counts.load(Ordering::SeqCst),
-                node_transactions_processed_count: self.processing_counters.txs_counts.load(Ordering::SeqCst),
-                node_chain_blocks_processed_count: self.processing_counters.chain_block_counts.load(Ordering::SeqCst),
-                node_mass_processed_count: self.processing_counters.mass_counts.load(Ordering::SeqCst),
+                node_blocks_submitted_count: processing_counters.blocks_submitted,
+                node_headers_processed_count: processing_counters.header_counts,
+                node_dependencies_processed_count: processing_counters.dep_counts,
+                node_bodies_processed_count: processing_counters.body_counts,
+                node_transactions_processed_count: processing_counters.txs_counts,
+                node_chain_blocks_processed_count: processing_counters.chain_block_counts,
+                node_mass_processed_count: processing_counters.mass_counts,
                 // ---
-                node_database_blocks_count: block_count.block_count,
-                node_database_headers_count: block_count.header_count,
+                node_database_blocks_count: consensus_stats.block_counts.block_count,
+                node_database_headers_count: consensus_stats.block_counts.header_count,
                 // ---
-                network_mempool_size: self.mining_manager.clone().transaction_count(TransactionQuery::TransactionsOnly).await as u64,
-                network_tip_hashes_count: session.async_get_tips_len().await as u32,
-                network_difficulty: self.consensus_converter.get_difficulty_ratio(session.async_get_virtual_bits().await),
-                network_past_median_time: session.async_get_virtual_past_median_time().await,
-                network_virtual_parent_hashes_count: session.async_get_virtual_parents_len().await as u32,
-                network_virtual_daa_score: session.async_get_virtual_daa_score().await,
+                network_mempool_size: self.mining_manager.transaction_count_sample(TransactionQuery::TransactionsOnly),
+                network_tip_hashes_count: consensus_stats.num_tips.try_into().unwrap_or(u32::MAX),
+                network_difficulty: self.consensus_converter.get_difficulty_ratio(consensus_stats.virtual_stats.bits),
+                network_past_median_time: consensus_stats.virtual_stats.past_median_time,
+                network_virtual_parent_hashes_count: consensus_stats.virtual_stats.num_parents,
+                network_virtual_daa_score: consensus_stats.virtual_stats.daa_score,
             })
         } else {
             None
@@ -827,7 +845,7 @@ impl RpcApi for RpcCoreService {
     async fn get_server_info_call(&self, _request: GetServerInfoRequest) -> RpcResult<GetServerInfoResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
         let is_synced: bool = self.has_sufficient_peer_connectivity() && session.async_is_nearly_synced().await;
-        let virtual_daa_score = session.async_get_virtual_daa_score().await;
+        let virtual_daa_score = session.get_virtual_daa_score();
 
         Ok(GetServerInfoResponse {
             rpc_api_version: RPC_API_VERSION,

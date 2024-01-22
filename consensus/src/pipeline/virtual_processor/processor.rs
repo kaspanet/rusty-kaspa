@@ -30,7 +30,7 @@ use crate::{
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
             utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
-            virtual_state::{VirtualState, VirtualStateStore, VirtualStateStoreReader, VirtualStores},
+            virtual_state::{LkgVirtualState, VirtualState, VirtualStateStoreReader, VirtualStores},
             DB,
         },
     },
@@ -53,7 +53,7 @@ use kaspa_consensus_core::{
     coinbase::MinerData,
     config::genesis::GenesisBlock,
     header::Header,
-    merkle::calc_hash_merkle_root,
+    merkle::calc_hash_merkle_root_with_options,
     pruning::PruningPointsList,
     tx::{MutableTransaction, Transaction},
     utxo::{
@@ -74,7 +74,7 @@ use kaspa_core::{debug, info, time::unix_now, trace, warn};
 use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
-use kaspa_notify::notifier::Notify;
+use kaspa_notify::{events::EventType, notifier::Notify};
 
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
 use itertools::Itertools;
@@ -132,6 +132,10 @@ pub struct VirtualStateProcessor {
     pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
     pub(super) pruning_utxoset_stores: Arc<RwLock<PruningUtxosetStores>>,
 
+    /// The "last known good" virtual state. To be used by any logic which does not want to wait
+    /// for a possible virtual state write to complete but can rather settle with the last known state
+    pub lkg_virtual_state: LkgVirtualState,
+
     // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
@@ -152,6 +156,9 @@ pub struct VirtualStateProcessor {
 
     // Counters
     counters: Arc<ProcessingCounters>,
+
+    // Storage mass hardfork DAA score
+    pub(crate) storage_mass_activation_daa_score: u64,
 }
 
 impl VirtualStateProcessor {
@@ -196,6 +203,7 @@ impl VirtualStateProcessor {
             acceptance_data_store: storage.acceptance_data_store.clone(),
             virtual_stores: storage.virtual_stores.clone(),
             pruning_utxoset_stores: storage.pruning_utxoset_stores.clone(),
+            lkg_virtual_state: storage.lkg_virtual_state.clone(),
 
             ghostdag_manager: services.ghostdag_primary_manager.clone(),
             reachability_service: services.reachability_service.clone(),
@@ -211,6 +219,7 @@ impl VirtualStateProcessor {
             pruning_lock,
             notification_root,
             counters,
+            storage_mass_activation_daa_score: params.storage_mass_activation_daa_score,
         }
     }
 
@@ -314,16 +323,18 @@ impl VirtualStateProcessor {
         self.notification_root
             .notify(Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score)))
             .expect("expecting an open unbounded channel");
-        // TODO: Fetch acceptance data only if there's a subscriber for the below notification.
-        let added_chain_blocks_acceptance_data =
-            chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
-        self.notification_root
-            .notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
-                chain_path.added.into(),
-                chain_path.removed.into(),
-                Arc::new(added_chain_blocks_acceptance_data),
-            )))
-            .expect("expecting an open unbounded channel");
+        if self.notification_root.has_subscription(EventType::VirtualChainChanged) {
+            // check for subscriptions before the heavy lifting
+            let added_chain_blocks_acceptance_data =
+                chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
+            self.notification_root
+                .notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
+                    chain_path.added.into(),
+                    chain_path.removed.into(),
+                    Arc::new(added_chain_blocks_acceptance_data),
+                )))
+                .expect("expecting an open unbounded channel");
+        }
     }
 
     pub(crate) fn virtual_finality_point(&self, virtual_ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {
@@ -941,7 +952,11 @@ impl VirtualStateProcessor {
         txs.insert(0, coinbase.tx);
         let version = BLOCK_VERSION;
         let parents_by_level = self.parents_manager.calc_block_parents(pruning_info.pruning_point, &virtual_state.parents);
-        let hash_merkle_root = calc_hash_merkle_root(txs.iter());
+
+        // Hash according to hardfork activation
+        let storage_mass_activated = virtual_state.daa_score > self.storage_mass_activation_daa_score;
+        let hash_merkle_root = calc_hash_merkle_root_with_options(txs.iter(), storage_mass_activated);
+
         let accepted_id_merkle_root = kaspa_merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
@@ -995,18 +1010,21 @@ impl VirtualStateProcessor {
     pub fn process_genesis(self: &Arc<Self>) {
         // Write the UTXO state of genesis
         self.commit_utxo_state(self.genesis.hash, UtxoDiff::default(), MuHash::new(), AcceptanceData::default());
-        // Init virtual stores
-        self.virtual_stores
-            .write()
-            .state
-            .set(Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]))))
-            .unwrap();
+
         // Init the virtual selected chain store
         let mut batch = WriteBatch::default();
         let mut selected_chain_write = self.selected_chain_store.write();
         selected_chain_write.init_with_pruning_point(&mut batch, self.genesis.hash).unwrap();
         self.db.write(batch).unwrap();
         drop(selected_chain_write);
+
+        // Init virtual state
+        self.commit_virtual_state(
+            self.virtual_stores.upgradable_read(),
+            Arc::new(VirtualState::from_genesis(&self.genesis, self.ghostdag_manager.ghostdag(&[self.genesis.hash]))),
+            &Default::default(),
+            &Default::default(),
+        );
     }
 
     // TODO: rename to reflect finalizing pruning point utxoset state and importing *to* virtual utxoset
@@ -1098,7 +1116,7 @@ impl VirtualStateProcessor {
         // finality_point.finality_point), meaning this function can only detect finality violations
         // in depth of 2*finality_depth, and can give false negatives for smaller finality violations.
         let current_pp = self.pruning_point_store.read().pruning_point().unwrap();
-        let vf = self.virtual_finality_point(&self.virtual_stores.read().state.get().unwrap().ghostdag_data, current_pp);
+        let vf = self.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, current_pp);
         let vff = self.depth_manager.calc_finality_point(&self.ghostdag_primary_store.get_data(vf).unwrap(), current_pp);
 
         let last_known_pp = pp_list.iter().rev().find(|pp| match self.statuses_store.read().get(pp.hash).unwrap_option() {

@@ -35,6 +35,7 @@ itertools.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 prost.workspace = true
+rand.workspace = true
 seqlock.workspace = true
 serde.workspace = true
 thiserror.workspace = true

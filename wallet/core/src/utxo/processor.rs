@@ -11,8 +11,12 @@ use kaspa_notify::{
     scope::{Scope, UtxosChangedScope, VirtualDaaScoreChangedScope},
 };
 use kaspa_rpc_core::{
-    api::ctl::{RpcCtl, RpcState},
+    api::{
+        ctl::{RpcCtl, RpcState},
+        ops::RPC_API_VERSION,
+    },
     message::UtxosChangedNotification,
+    GetServerInfoResponse,
 };
 use kaspa_wrpc_client::KaspaRpcClient;
 use workflow_core::channel::{Channel, DuplexChannel};
@@ -30,8 +34,6 @@ use kaspa_rpc_core::{
     Notification,
 };
 
-use super::UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA;
-
 pub struct Inner {
     /// Coinbase UTXOs in stasis
     stasis: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
@@ -39,7 +41,6 @@ pub struct Inner {
     pending: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
     /// Outgoing Transactions
     outgoing: DashMap<TransactionId, OutgoingTransaction>,
-    outgoing_longevity_period: u64,
     /// Address to UtxoContext map (maps all addresses used by
     /// all UtxoContexts to their respective UtxoContexts)
     address_to_utxo_context_map: DashMap<Arc<Address>, UtxoContext>,
@@ -69,7 +70,6 @@ impl Inner {
             stasis: DashMap::new(),
             pending: DashMap::new(),
             outgoing: DashMap::new(),
-            outgoing_longevity_period: UTXO_MATURITY_PERIOD_USER_TRANSACTION_DAA.load(Ordering::Relaxed),
             address_to_utxo_context_map: DashMap::new(),
             current_daa_score: Arc::new(AtomicU64::new(0)),
             network_id: Arc::new(Mutex::new(network_id)),
@@ -157,6 +157,11 @@ impl UtxoProcessor {
         (*self.inner.network_id.lock().unwrap()).ok_or(Error::MissingNetworkId)
     }
 
+    pub fn network_params(&self) -> Result<&'static NetworkParams> {
+        let network_id = (*self.inner.network_id.lock().unwrap()).ok_or(Error::MissingNetworkId)?;
+        Ok(network_id.into())
+    }
+
     pub fn pending(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference> {
         &self.inner.pending
     }
@@ -171,11 +176,6 @@ impl UtxoProcessor {
 
     pub fn current_daa_score(&self) -> Option<u64> {
         self.is_connected().then_some(self.inner.current_daa_score.load(Ordering::SeqCst))
-    }
-
-    pub async fn clear(&self) -> Result<()> {
-        self.inner.address_to_utxo_context_map.clear();
-        Ok(())
     }
 
     pub fn address_to_utxo_context_map(&self) -> &DashMap<Arc<Address>, UtxoContext> {
@@ -243,11 +243,13 @@ impl UtxoProcessor {
     }
 
     pub async fn handle_pending(&self, current_daa_score: u64) -> Result<()> {
+        let params = self.network_params()?;
+
         let (mature_entries, revived_entries) = {
             // scan and remove any pending entries that gained maturity
             let mut mature_entries = vec![];
             let pending_entries = &self.inner.pending;
-            pending_entries.retain(|_, pending_entry| match pending_entry.maturity(current_daa_score) {
+            pending_entries.retain(|_, pending_entry| match pending_entry.maturity(params, current_daa_score) {
                 Maturity::Confirmed => {
                     mature_entries.push(pending_entry.clone());
                     false
@@ -260,7 +262,7 @@ impl UtxoProcessor {
             let mut revived_entries = vec![];
             let stasis_entries = &self.inner.stasis;
             stasis_entries.retain(|_, stasis_entry| {
-                match stasis_entry.maturity(current_daa_score) {
+                match stasis_entry.maturity(params, current_daa_score) {
                     Maturity::Confirmed => {
                         mature_entries.push(stasis_entry.clone());
                         false
@@ -305,7 +307,7 @@ impl UtxoProcessor {
     }
 
     async fn handle_outgoing(&self, current_daa_score: u64) -> Result<()> {
-        let longevity = self.inner.outgoing_longevity_period;
+        let longevity = self.network_params()?.user_transaction_maturity_period_daa;
 
         self.inner.outgoing.retain(|_, outgoing| {
             if outgoing.acceptance_daa_score() != 0 && (outgoing.acceptance_daa_score() + longevity) < current_daa_score {
@@ -407,70 +409,47 @@ impl UtxoProcessor {
         self.sync_proc().is_synced()
     }
 
-    cfg_if! {
-        if #[cfg(feature = "legacy-rpc")] {
+    pub async fn init_state_from_server(&self) -> Result<bool> {
+        let GetServerInfoResponse {
+            server_version,
+            network_id: server_network_id,
+            has_utxo_index,
+            is_synced,
+            virtual_daa_score,
+            rpc_api_version,
+        } = self.rpc_api().get_server_info().await?;
 
-            pub async fn init_state_from_server(&self) -> Result<()> {
-
-                let kaspa_rpc_core::GetInfoResponse { is_synced, is_utxo_indexed: has_utxo_index, server_version, .. } = self.rpc_api().get_info().await?;
-
-                if !has_utxo_index {
-                    self.notify(Events::UtxoIndexNotEnabled { url: self.rpc_url() }).await?;
-                    return Err(Error::MissingUtxoIndex);
-                }
-
-                let kaspa_rpc_core::GetBlockDagInfoResponse { virtual_daa_score, network: server_network_id, .. } = self.rpc_api().get_block_dag_info().await?;
-
-                let network_id = self.network_id()?;
-                if network_id != server_network_id {
-                    return Err(Error::InvalidNetworkType(network_id.to_string(), server_network_id.to_string()));
-                }
-
-                self.inner.current_daa_score.store(virtual_daa_score, Ordering::SeqCst);
-
-                log_trace!("Connected to kaspad: '{server_version}' on '{server_network_id}';  SYNC: {is_synced}  DAA: {virtual_daa_score}");
-
-                self.sync_proc().track(is_synced).await?;
-                self.notify(Events::ServerStatus { server_version, is_synced, network_id, url: self.rpc_url() }).await?;
-
-                Ok(())
-            }
-
-        } else {
-
-            pub async fn init_state_from_server(&self) -> Result<()> {
-
-                let GetServerInfoResponse { server_version, network_id: server_network_id, has_utxo_index, is_synced, virtual_daa_score } =
-                self.rpc().get_server_info().await?;
-
-                if !has_utxo_index {
-                    self.notify(Events::UtxoIndexNotEnabled { url: self.rpc_url() }).await?;
-                    return Err(Error::MissingUtxoIndex);
-                }
-
-                let network_id = self.network_id()?;
-                let server_network_id = NetworkId::from(server_network_id);
-                if network_id != server_network_id {
-                    return Err(Error::InvalidNetworkType(network_id.to_string(), server_network_id.to_string()));
-                }
-
-                self.inner.current_daa_score.store(virtual_daa_score, Ordering::SeqCst);
-
-                log_trace!("Connected to kaspad: '{server_version}' on '{server_network_id}';  SYNC: {is_synced}  DAA: {virtual_daa_score}");
-                self.sync_proc().track(is_synced).await?;
-                self.notify(Events::ServerStatus { server_version, is_synced, network_id, url: self.rpc_url() }).await?;
-
-                Ok(())
-            }
+        if !has_utxo_index {
+            self.notify(Events::UtxoIndexNotEnabled { url: self.rpc_url() }).await?;
+            return Err(Error::MissingUtxoIndex);
         }
+
+        let network_id = self.network_id()?;
+        if network_id != server_network_id {
+            return Err(Error::InvalidNetworkType(network_id.to_string(), server_network_id.to_string()));
+        }
+
+        if rpc_api_version[0] > RPC_API_VERSION[0] || rpc_api_version[1] > RPC_API_VERSION[1] {
+            let current = RPC_API_VERSION.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(".");
+            let connected = rpc_api_version.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(".");
+            return Err(Error::RpcApiVersion(current, connected));
+        }
+
+        self.inner.current_daa_score.store(virtual_daa_score, Ordering::SeqCst);
+
+        log_trace!("Connected to kaspad: '{server_version}' on '{server_network_id}';  SYNC: {is_synced}  DAA: {virtual_daa_score}");
+        self.notify(Events::ServerStatus { server_version, is_synced, network_id, url: self.rpc_url() }).await?;
+
+        Ok(is_synced)
     }
 
     pub async fn handle_connect_impl(&self) -> Result<()> {
-        self.init_state_from_server().await?;
-
+        let is_synced = self.init_state_from_server().await?;
         self.inner.is_connected.store(true, Ordering::SeqCst);
         self.register_notification_listener().await?;
         self.notify(Events::UtxoProcStart).await?;
+        self.sync_proc().track(is_synced).await?;
+
         Ok(())
     }
 
@@ -487,9 +466,18 @@ impl UtxoProcessor {
 
     pub async fn handle_disconnect(&self) -> Result<()> {
         self.inner.is_connected.store(false, Ordering::SeqCst);
-        self.notify(Events::UtxoProcStop).await?;
         self.unregister_notification_listener().await?;
+        self.notify(Events::UtxoProcStop).await?;
+        self.cleanup().await?;
 
+        Ok(())
+    }
+
+    pub async fn cleanup(&self) -> Result<()> {
+        self.inner.pending.clear();
+        self.inner.stasis.clear();
+        self.inner.outgoing.clear();
+        self.inner.address_to_utxo_context_map.clear();
         Ok(())
     }
 

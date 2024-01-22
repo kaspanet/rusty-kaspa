@@ -60,10 +60,10 @@ impl Mempool {
         // almost as much to process as the sender fees, limit the maximum
         // size of a transaction. This also helps mitigate CPU exhaustion
         // attacks.
-        if transaction.calculated_mass.unwrap() > MAXIMUM_STANDARD_TRANSACTION_MASS {
+        if transaction.calculated_compute_mass.unwrap() > MAXIMUM_STANDARD_TRANSACTION_MASS {
             return Err(NonStandardError::RejectMass(
                 transaction_id,
-                transaction.calculated_mass.unwrap(),
+                transaction.calculated_compute_mass.unwrap(),
                 MAXIMUM_STANDARD_TRANSACTION_MASS,
             ));
         }
@@ -170,6 +170,11 @@ impl Mempool {
     /// into the mempool and relay.
     pub(crate) fn check_transaction_standard_in_context(&self, transaction: &MutableTransaction) -> NonStandardResult<()> {
         let transaction_id = transaction.id();
+        let contextual_mass = transaction.tx.mass();
+        assert!(contextual_mass > 0, "expected to be set by consensus");
+        if contextual_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
+            return Err(NonStandardError::RejectContextualMass(transaction_id, contextual_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
+        }
 
         for (i, input) in transaction.tx.inputs.iter().enumerate() {
             // It is safe to elide existence and index checks here since
@@ -191,7 +196,8 @@ impl Mempool {
                 }
             }
 
-            let minimum_fee = self.minimum_required_transaction_relay_fee(transaction.calculated_mass.unwrap());
+            // TODO: For now, until wallets adapt, we don't require fee as function of full contextual_mass (but the fee/mass ratio will affect tx selection to block template)
+            let minimum_fee = self.minimum_required_transaction_relay_fee(transaction.calculated_compute_mass.unwrap());
             if transaction.calculated_fee.unwrap() < minimum_fee {
                 return Err(NonStandardError::RejectInsufficientFee(transaction_id, transaction.calculated_fee.unwrap(), minimum_fee));
             }
@@ -403,7 +409,7 @@ mod tests {
 
         fn new_mtx(tx: Transaction, mass: u64) -> MutableTransaction {
             let mut mtx = MutableTransaction::from_tx(tx);
-            mtx.calculated_mass = Some(mass);
+            mtx.calculated_compute_mass = Some(mass);
             mtx
         }
 

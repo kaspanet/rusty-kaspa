@@ -11,10 +11,10 @@ Your feedback, contributions, and issue reports will be integral to evolving thi
   <details>
   <summary>Building on Linux</summary>
   
-  1. Install  general prerequisites
+  1. Install general prerequisites
 
       ```bash
-      sudo apt install build-essential libssl-dev pkg-config 
+      sudo apt install curl git build-essential libssl-dev pkg-config 
       ```
 
   2. Install Protobuf (required for gRPC)
