@@ -368,7 +368,7 @@ impl PruningProcessor {
             if lock_acquire_time.elapsed() > Duration::from_millis(5) {
                 drop(reachability_read);
                 // An exit signal was received. Exit from this long running process.
-                if self.is_consensus_exiting.load(Ordering::Relaxed) {
+                if self.notification_root.is_closed() {
                     drop(prune_guard);
                     info!("Header and Block pruning interrupted: Process is exiting");
                     return;
