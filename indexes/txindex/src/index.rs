@@ -117,7 +117,7 @@ impl TxIndex {
             sync_from = *to_process_hashes.last().unwrap();
 
             //TODO: make txindex reindex accept a hash and acceptance data vec, for now use a pseudo notification.
-            let vspcc_notification = if !remove_segment {
+            let vspcc_notification = if remove_segment {
                 ConsensusVirtualChainChangedNotification {
                     added_chain_block_hashes: Arc::new(vec![]),
                     removed_chain_block_hashes: to_process_hashes.into(),
