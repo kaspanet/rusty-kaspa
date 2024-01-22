@@ -390,6 +390,12 @@ impl PruningProcessor {
             // If we have the lock for more than a few milliseconds, release and recapture to allow consensus progress during pruning
             if lock_acquire_time.elapsed() > Duration::from_millis(5) {
                 drop(reachability_read);
+                // An exit signal was received. Exit from this long running process.
+                if self.is_consensus_exiting.load(Ordering::Relaxed) {
+                    drop(prune_guard);
+                    info!("Header and Block pruning interrupted: Process is exiting");
+                    return;
+                }
                 prune_guard.blocking_yield();
                 lock_acquire_time = Instant::now();
                 reachability_read = self.reachability_store.upgradable_read();

@@ -27,7 +27,6 @@ impl PerfParams {
     pub fn new(consensus_config: &Arc<ConsensusConfig>, params: &Params) -> Self {
         let scale_factor = consensus_config.ram_scale;
         let scaled = |s| (s as f64 * scale_factor) as usize;
-
         let mem_budget_total = scaled(DEFAULT_MAX_TXINDEX_MEMORY_BUDGET);
         let resync_chunksize = scaled(bounded_size(
             params.max_blocks_in_mergeset_depth as usize,

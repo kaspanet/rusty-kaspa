@@ -122,7 +122,7 @@ kaspa-txscript-errors = { version = "0.14.1", path = "crypto/txscript/errors" }
 kaspa-utils = { version = "0.14.1", path = "utils" }
 kaspa-utils-tower = { version = "0.14.1", path = "utils/tower" }
 kaspa-utxoindex = { version = "0.14.1", path = "indexes/utxoindex" }
-kaspa-txindex = { version = "0.14.0", path = "indexes/txindex" }
+kaspa-txindex = { version = "0.14.1", path = "indexes/txindex" }
 kaspa-wallet = { version = "0.14.1", path = "wallet/native" }
 kaspa-wallet-cli-wasm = { version = "0.14.1", path = "wallet/wasm" }
 kaspa-wallet-keys = { version = "0.14.1", path = "wallet/keys" }

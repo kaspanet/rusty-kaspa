@@ -317,6 +317,9 @@ impl VirtualStateProcessor {
         self.notification_root
             .notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))
             .expect("expecting an open unbounded channel");
+        self.notification_root
+            .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)))
+            .expect("expecting an open unbounded channel");
         if is_new_sink {
             self.notification_root
                 .notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(sink_ghostdag_data.blue_score)))

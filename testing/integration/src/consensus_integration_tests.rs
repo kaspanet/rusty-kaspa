@@ -66,7 +66,9 @@ use std::cmp::{max, Ordering};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
+use tokio::time::sleep;
 
+use std::time::Duration;
 use std::{
     collections::HashMap,
     fs::File,
@@ -1080,6 +1082,9 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
     core.shutdown();
     core.join(joins);
+    // TODO: below tries to hide perhaps a race condition, required to keep txindex history root in sync with consensus history root.
+    // possibly related to pruning processor `.prune()` call exiting prematurely before notifying txindex of the new history root, or similar.
+    sleep(Duration::from_secs(10)).await;
 
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(tc.body_tips().iter().copied().any(|h| tc.block_status(h) == BlockStatus::StatusUTXOValid));
