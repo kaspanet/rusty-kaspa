@@ -561,7 +561,7 @@ async fn sanity_test() {
                     // We do not expect the txindex to be populated, in order to return results in this test.
                     // and we expect a single transaction data to be returned with None for all fields
                     assert_eq!(results.transaction_data.len(), 1);
-                    let rpc_transaction_data = results.transaction_data.get(0).unwrap();
+                    let rpc_transaction_data = results.transaction_data.first().unwrap();
                     assert!(rpc_transaction_data.transaction.is_none());
                     assert!(rpc_transaction_data.inclusion_data.is_none());
                     assert!(rpc_transaction_data.acceptance_data.is_none());
