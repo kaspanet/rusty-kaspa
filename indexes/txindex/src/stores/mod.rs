@@ -1,11 +1,11 @@
 mod accepted_tx_offsets;
-mod merged_block_acceptance;
+mod block_acceptance_offsets;
+mod history_root;
 mod sink;
-mod source;
 pub mod store_manager;
 
 pub use accepted_tx_offsets::*;
-pub use merged_block_acceptance::*;
+pub use block_acceptance_offsets::*;
+pub use history_root::*;
 pub use sink::*;
-pub use source::*;
 pub use store_manager::*;

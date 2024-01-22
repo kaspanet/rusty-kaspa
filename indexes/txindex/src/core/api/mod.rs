@@ -11,27 +11,28 @@ use parking_lot::RwLock;
 use std::{fmt::Debug, sync::Arc};
 
 pub trait TxIndexApi: Send + Sync + Debug {
-    // Resyncers.
+    // Sync.
 
     fn resync(&mut self) -> TxIndexResult<()>;
 
-    // Sync state
-
     fn is_synced(&self) -> TxIndexResult<bool>;
 
-    // Getters
+    // Getters:
 
-    fn get_merged_block_acceptance_offset(&self, hash: Hash) -> TxIndexResult<Option<BlockAcceptanceOffset>>;
+    fn get_block_acceptance_offset(&self, hash: Hash) -> TxIndexResult<Option<BlockAcceptanceOffset>>;
 
     fn get_tx_offset(&self, tx_id: TransactionId) -> TxIndexResult<Option<TxOffset>>;
 
     fn get_sink(&self) -> TxIndexResult<Option<Hash>>;
 
-    fn get_source(&self) -> TxIndexResult<Option<Hash>>;
+    fn get_history_root(&self) -> TxIndexResult<Option<Hash>>;
+
+    // Counters:
+
     // This potentially causes a large chunk of processing, so it should only be used only for tests.
-    fn count_all_merged_tx_ids(&self) -> TxIndexResult<usize>;
+    fn count_accepted_tx_offsets(&self) -> TxIndexResult<usize>;
     // This potentially causes a large chunk of processing, so it should only be used only for tests.
-    fn count_all_merged_blocks(&self) -> TxIndexResult<usize>;
+    fn count_block_acceptance_offsets(&self) -> TxIndexResult<usize>;
 
     // Updates
 
@@ -58,8 +59,8 @@ impl TxIndexProxy {
         spawn_blocking(move || self.inner.read().get_tx_offset(tx_id)).await.unwrap()
     }
 
-    pub async fn get_merged_block_acceptance_offset(self, hash: Hash) -> TxIndexResult<Option<BlockAcceptanceOffset>> {
-        spawn_blocking(move || self.inner.read().get_merged_block_acceptance_offset(hash)).await.unwrap()
+    pub async fn get_block_acceptance_offset(self, hash: Hash) -> TxIndexResult<Option<BlockAcceptanceOffset>> {
+        spawn_blocking(move || self.inner.read().get_block_acceptance_offset(hash)).await.unwrap()
     }
 
     pub async fn update_via_virtual_chain_changed(

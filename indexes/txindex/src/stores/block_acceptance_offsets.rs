@@ -11,38 +11,38 @@ use kaspa_index_core::models::txindex::{BlockAcceptanceOffset, BlockAcceptanceOf
 
 // Traits:
 
-pub trait TxIndexMergedBlockAcceptanceReader {
+pub trait TxIndexBlockAcceptanceOffsetsReader {
     /// Get [`TransactionOffset`] queried by [`TransactionId`],
     fn get(&self, block_hash: Hash) -> StoreResult<Option<BlockAcceptanceOffset>>;
     fn has(&self, block_hash: Hash) -> StoreResult<bool>;
     // This potentially causes a large chunk of processing, so it should only be used only for tests.
-    fn count_all_keys(&self) -> StoreResult<usize>;
+    fn count(&self) -> StoreResult<usize>;
 }
 
-pub trait TxIndexMergedBlockAcceptanceStore {
+pub trait TxIndexBlockAcceptanceOffsetsStore {
     fn write_diff_batch(
         &mut self,
         batch: &mut WriteBatch,
         block_acceptance_offset_changes: BlockAcceptanceOffsetDiff,
     ) -> StoreResult<()>;
     fn remove_many(&mut self, batch: &mut WriteBatch, block_hashes_to_remove: BlockHashSet) -> StoreResult<()>;
-    fn delete_all_batched(&mut self, batch: &mut WriteBatch) -> StoreResult<()>;
+    fn delete_all(&mut self, batch: &mut WriteBatch) -> StoreResult<()>;
 }
 
 // Implementations:
 
 #[derive(Clone)]
-pub struct DbTxIndexMergedBlockAcceptanceStore {
+pub struct DbTxIndexBlockAcceptanceOffsetsStore {
     access: CachedDbAccess<Hash, BlockAcceptanceOffset, BlockHasher>,
 }
 
-impl DbTxIndexMergedBlockAcceptanceStore {
+impl DbTxIndexBlockAcceptanceOffsetsStore {
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
-        Self { access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::TxIndexMergedBlockAcceptance.into()) }
+        Self { access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::TxIndexBlockAcceptanceOffsets.into()) }
     }
 }
 
-impl TxIndexMergedBlockAcceptanceReader for DbTxIndexMergedBlockAcceptanceStore {
+impl TxIndexBlockAcceptanceOffsetsReader for DbTxIndexBlockAcceptanceOffsetsStore {
     fn get(&self, block_hash: Hash) -> StoreResult<Option<BlockAcceptanceOffset>> {
         self.access.read(block_hash).map(Some).or_else(|e| if let StoreError::KeyNotFound(_) = e { Ok(None) } else { Err(e) })
     }
@@ -52,12 +52,12 @@ impl TxIndexMergedBlockAcceptanceReader for DbTxIndexMergedBlockAcceptanceStore 
     }
 
     // This potentially causes a large chunk of processing, so it should only be used only for tests.
-    fn count_all_keys(&self) -> StoreResult<usize> {
+    fn count(&self) -> StoreResult<usize> {
         Ok(self.access.iterator().count())
     }
 }
 
-impl TxIndexMergedBlockAcceptanceStore for DbTxIndexMergedBlockAcceptanceStore {
+impl TxIndexBlockAcceptanceOffsetsStore for DbTxIndexBlockAcceptanceOffsetsStore {
     fn write_diff_batch(
         &mut self,
         batch: &mut WriteBatch,
@@ -75,8 +75,8 @@ impl TxIndexMergedBlockAcceptanceStore for DbTxIndexMergedBlockAcceptanceStore {
         Ok(())
     }
 
-    /// Removes all [`TxOffsetById`] values and keys from the cache and db.
-    fn delete_all_batched(&mut self, batch: &mut WriteBatch) -> StoreResult<()> {
+    /// Removes all values and keys from the cache and db.
+    fn delete_all(&mut self, batch: &mut WriteBatch) -> StoreResult<()> {
         let mut writer = BatchDbWriter::new(batch);
         self.access.delete_all(&mut writer)
     }

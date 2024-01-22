@@ -368,7 +368,7 @@ impl PruningProcessor {
             if lock_acquire_time.elapsed() > Duration::from_millis(5) {
                 drop(reachability_read);
                 // An exit signal was received. Exit from this long running process.
-                if self.notification_root.is_closed() {
+                if self.is_consensus_exiting.load(Ordering::Relaxed) {
                     drop(prune_guard);
                     info!("Header and Block pruning interrupted: Process is exiting");
                     return;
@@ -471,7 +471,7 @@ impl PruningProcessor {
                 reachability_read = self.reachability_store.upgradable_read();
 
                 if let Some(chain_acceptance_pruned) = chain_acceptance_pruned {
-                    self.notification_root.notify(chain_acceptance_pruned).unwrap();
+                    self.notification_root.notify(chain_acceptance_pruned).expect("expecting an open unbounded channel");
                 };
             }
         }

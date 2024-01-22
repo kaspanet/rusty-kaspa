@@ -15,11 +15,11 @@ use kaspa_index_core::models::txindex::{BlockAcceptanceOffset, TxOffset};
 impl From<(&BlockAcceptanceOffset, &CompactHeaderData)> for RpcTransactionAcceptanceData {
     fn from(item: (&BlockAcceptanceOffset, &CompactHeaderData)) -> Self {
         Self {
-            accepting_block_hash: item.0.accepting_block,
-            accepting_block_mergeset_index: item.0.mergeset_index,
-            accepting_block_blue_score: item.1.blue_score,
-            accepting_block_time: item.1.timestamp,
-            accepting_block_daa_score: item.1.daa_score,
+            block_hash: item.0.accepting_block,
+            acceptance_data_index: item.0.acceptance_data_index,
+            timestamp: item.1.timestamp,
+            daa_score: item.1.daa_score,
+            blue_score: item.1.blue_score,
         }
     }
 }
@@ -27,10 +27,10 @@ impl From<(&BlockAcceptanceOffset, &CompactHeaderData)> for RpcTransactionAccept
 impl From<(&TxOffset, &CompactHeaderData)> for RpcTransactionInclusionData {
     fn from(item: (&TxOffset, &CompactHeaderData)) -> Self {
         Self {
-            including_block_hash: item.0.including_block,
-            including_block_transaction_index: item.0.transaction_index,
-            including_block_daa_score: item.1.daa_score,
-            including_block_time: item.1.timestamp,
+            block_hash: item.0.including_block,
+            transaction_index: item.0.transaction_index,
+            timestamp: item.1.timestamp,
+            daa_score: item.1.daa_score,
         }
     }
 }

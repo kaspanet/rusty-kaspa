@@ -13,8 +13,8 @@ pub trait TxIndexSinkReader {
 }
 
 pub trait TxIndexSinkStore: TxIndexSinkReader {
-    fn set_via_batch_writer(&mut self, batch: &mut WriteBatch, sink: Hash) -> StoreResult<()>;
-    fn remove_batch_via_batch_writer(&mut self, batch: &mut WriteBatch) -> StoreResult<()>;
+    fn set(&mut self, batch: &mut WriteBatch, sink: Hash) -> StoreResult<()>;
+    fn remove(&mut self, batch: &mut WriteBatch) -> StoreResult<()>;
 }
 
 /// A DB + cache implementation of `SinkStore` trait, with concurrent readers support.
@@ -36,12 +36,12 @@ impl TxIndexSinkReader for DbTxIndexSinkStore {
 }
 
 impl TxIndexSinkStore for DbTxIndexSinkStore {
-    fn set_via_batch_writer(&mut self, batch: &mut WriteBatch, sink: Hash) -> StoreResult<()> {
+    fn set(&mut self, batch: &mut WriteBatch, sink: Hash) -> StoreResult<()> {
         let mut writer = BatchDbWriter::new(batch);
         self.access.write(&mut writer, &sink)
     }
 
-    fn remove_batch_via_batch_writer(&mut self, batch: &mut WriteBatch) -> StoreResult<()> {
+    fn remove(&mut self, batch: &mut WriteBatch) -> StoreResult<()> {
         let mut writer = BatchDbWriter::new(batch);
         self.access.remove(&mut writer)
     }

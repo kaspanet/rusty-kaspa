@@ -17,20 +17,20 @@ from!(item: &kaspa_rpc_core::RpcTransactionData, protowire::RpcTransactionData, 
 
 from!(item: &kaspa_rpc_core::RpcTransactionAcceptanceData, protowire::RpcTransactionAcceptanceData,  {
     Self {
-        accepting_block_hash: item.accepting_block_hash.to_string(),
-        accepting_block_mergeset_index: u32::from(item.accepting_block_mergeset_index),
-        accepting_block_time: item.accepting_block_time,
-        accepting_block_daa_score: item.accepting_block_daa_score,
-        accepting_block_blue_score: item.accepting_block_blue_score,
+        block_hash: item.block_hash.to_string(),
+        acceptance_data_index: u32::from(item.acceptance_data_index),
+        timestamp: item.timestamp,
+        daa_score: item.daa_score,
+        blue_score: item.blue_score,
     }
 });
 
 from!(item: &kaspa_rpc_core::RpcTransactionInclusionData, protowire::RpcTransactionInclusionData, {
     Self {
-        including_block_hash: item.including_block_hash.to_string(),
-        including_block_transaction_index: item.including_block_transaction_index,
-        including_block_time: item.including_block_time,
-        including_block_daa_score: item.including_block_daa_score,
+        block_hash: item.block_hash.to_string(),
+        transaction_index: item.transaction_index,
+        timestamp: item.timestamp,
+        daa_score: item.daa_score,
     }
 });
 
@@ -131,20 +131,20 @@ try_from!(item: &protowire::RpcTransactionData, kaspa_rpc_core::RpcTransactionDa
 
 try_from!(item: &protowire::RpcTransactionAcceptanceData, kaspa_rpc_core::RpcTransactionAcceptanceData, {
     Self {
-        accepting_block_hash: RpcHash::from_str(&item.accepting_block_hash)?,
-        accepting_block_mergeset_index: u16::try_from(item.accepting_block_mergeset_index)?,
-        accepting_block_time: item.accepting_block_time,
-        accepting_block_daa_score: item.accepting_block_daa_score,
-        accepting_block_blue_score: item.accepting_block_blue_score,
+        block_hash: RpcHash::from_str(&item.block_hash)?,
+        acceptance_data_index: u16::try_from(item.acceptance_data_index)?,
+        timestamp: item.timestamp,
+        daa_score: item.daa_score,
+        blue_score: item.blue_score,
     }
 });
 
 try_from!(item: &protowire::RpcTransactionInclusionData, kaspa_rpc_core::RpcTransactionInclusionData, {
     Self {
-        including_block_hash: RpcHash::from_str(&item.including_block_hash)?,
-        including_block_transaction_index: item.including_block_transaction_index,
-        including_block_time: item.including_block_time,
-        including_block_daa_score: item.including_block_daa_score,
+        block_hash: RpcHash::from_str(&item.block_hash)?,
+        transaction_index: item.transaction_index,
+        timestamp: item.timestamp,
+        daa_score: item.daa_score,
     }
 });
 

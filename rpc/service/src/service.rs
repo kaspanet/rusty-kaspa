@@ -496,7 +496,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                         .txindex
                         .clone()
                         .unwrap()
-                        .get_merged_block_acceptance_offset(tx_offset.including_block)
+                        .get_block_acceptance_offset(tx_offset.including_block)
                         .await
                         .map_err(|err| RpcError::from(err.to_string()))?
                     {

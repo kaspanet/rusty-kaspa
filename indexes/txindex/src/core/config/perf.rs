@@ -10,7 +10,7 @@ use kaspa_database::cache_policy_builder::bounded_size;
 use kaspa_index_core::models::txindex::{BlockAcceptanceOffset, TxOffset};
 
 use crate::core::config::{
-    constants::{DEFAULT_TXINDEX_DB_PARALLELISM, DEFAULT_TXINDEX_EXTRA_FD_BUDGET, DEFAULT_TXINDEX_MEMORY_BUDGET},
+    constants::{DEFAULT_TXINDEX_DB_PARALLELISM, DEFAULT_TXINDEX_EXTRA_FD_BUDGET, DEFAULT_MAX_TXINDEX_MEMORY_BUDGET},
     params::Params,
 };
 
@@ -25,9 +25,13 @@ pub struct PerfParams {
 
 impl PerfParams {
     pub fn new(consensus_config: &Arc<ConsensusConfig>, params: &Params) -> Self {
-        let resync_chunksize = bounded_size(
+        let scale_factor = consensus_config.ram_scale;
+        let scaled = |s| (s as f64 * scale_factor) as usize;
+        
+        let mem_budget_total = scaled(DEFAULT_MAX_TXINDEX_MEMORY_BUDGET);
+        let resync_chunksize = scaled(bounded_size(
             params.max_blocks_in_mergeset_depth as usize,
-            DEFAULT_TXINDEX_MEMORY_BUDGET,
+            DEFAULT_MAX_TXINDEX_MEMORY_BUDGET,
             max(
                 //per chain block
                 ((size_of::<TransactionId>() + size_of::<TxOffset>()) * params.max_default_txs_per_block as usize
@@ -38,12 +42,12 @@ impl PerfParams {
                     + size_of::<Hash>())
                     * consensus_config.params.mergeset_size_limit as usize,
             ),
-        );
+        ));
 
         Self {
             unit_ratio_tx_offset_to_block_acceptance_offset: params.max_default_txs_per_block as usize,
             resync_chunksize,
-            mem_budget_total: DEFAULT_TXINDEX_MEMORY_BUDGET,
+            mem_budget_total,
             extra_fd_budget: DEFAULT_TXINDEX_EXTRA_FD_BUDGET,
             db_parallelism: DEFAULT_TXINDEX_DB_PARALLELISM,
         }

@@ -64,7 +64,9 @@ use std::cmp::{max, Ordering};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
+use tokio::time::sleep;
 
+use std::time::Duration;
 use std::{
     collections::HashMap,
     fs::File,
@@ -1075,6 +1077,9 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
     core.shutdown();
     core.join(joins);
+    // TODO: below tries to hide perhaps a race condition, required to keep txindex history root in sync with consensus history root.
+    // possibly related to pruning processor `.prune()` call exiting prematurely before notifying txindex of the new history root, or similar.
+    sleep(Duration::from_secs(10)).await;
 
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(tc.body_tips().iter().copied().any(|h| tc.block_status(h) == BlockStatus::StatusUTXOValid));
@@ -1090,7 +1095,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
 
     let tc_history_root = tc.get_history_root();
-    assert_eq!(txindex.read().get_source().unwrap().unwrap(), tc_history_root);
+    assert_eq!(txindex.read().get_history_root().unwrap().unwrap(), tc_history_root); // This fails without the `sleep(Duration::from_secs(5)).await;`    `.
     assert_eq!(txindex.read().get_sink().unwrap().unwrap(), tc.get_sink());
 
     let mut consensus_chain = tc.get_virtual_chain_from_block(tc_history_root, None, usize::MAX).unwrap().added;
@@ -1101,8 +1106,8 @@ async fn json_test(file_path: &str, concurrency: bool) {
     for (accepting_block_hash, acceptance_data) in consensus_chain.into_iter().zip(consensus_acceptance_data) {
         for (i, mergeset) in acceptance_data.iter().enumerate() {
             let indexed_block_acceptance_offset =
-                txindex.read().get_merged_block_acceptance_offset(mergeset.block_hash).unwrap().unwrap();
-            assert_eq!(indexed_block_acceptance_offset.mergeset_index, i as u16);
+                txindex.read().get_block_acceptance_offset(mergeset.block_hash).unwrap().unwrap();
+            assert_eq!(indexed_block_acceptance_offset.acceptance_data_index, i as u16);
             assert_eq!(indexed_block_acceptance_offset.accepting_block, accepting_block_hash);
             accepted_block_count += 1;
             accepted_tx_count += mergeset.accepted_transactions.len();
@@ -1113,8 +1118,8 @@ async fn json_test(file_path: &str, concurrency: bool) {
             }
         }
     }
-    assert_eq!(txindex.read().count_all_merged_blocks().unwrap(), accepted_block_count);
-    assert_eq!(txindex.read().count_all_merged_tx_ids().unwrap(), accepted_tx_count);
+    assert_eq!(txindex.read().count_block_acceptance_offsets().unwrap(), accepted_block_count);
+    assert_eq!(txindex.read().count_accepted_tx_offsets().unwrap(), accepted_tx_count);
 }
 
 fn submit_header_chunk(

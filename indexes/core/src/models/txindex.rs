@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 pub type TxHashSet = HashSet<TransactionId>;
 pub type TxOffsetById = HashMap<TransactionId, TxOffset>;
 pub type BlockAcceptanceOffsetByHash = BlockHashMap<BlockAcceptanceOffset>;
-pub type MergesetIndexType = u16;
+pub type AcceptanceDataIndexType = u16;
 
 /// A struct holding tx diffs to be committed to the txindex via `added` and `removed`.
 #[derive(Debug, Clone, Default)]
@@ -69,7 +69,7 @@ impl MemSizeEstimator for TxOffset {
 #[derive(Clone, Copy, Deserialize, Serialize, Debug, Hash)]
 pub struct BlockAcceptanceOffset {
     pub accepting_block: Hash,
-    pub mergeset_index: MergesetIndexType,
+    pub acceptance_data_index: AcceptanceDataIndexType,
 }
 
 impl MemSizeEstimator for BlockAcceptanceOffset {
@@ -83,7 +83,21 @@ impl MemSizeEstimator for BlockAcceptanceOffset {
 }
 
 impl BlockAcceptanceOffset {
-    pub fn new(accepting_block: Hash, mergeset_index: MergesetIndexType) -> Self {
-        Self { accepting_block, mergeset_index }
+    pub fn new(accepting_block: Hash, acceptance_data_index: AcceptanceDataIndexType) -> Self {
+        Self { accepting_block, acceptance_data_index }
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use kaspa_consensus_core::{config::params::Params, network::NetworkType};
+
+    use crate::models::txindex::AcceptanceDataIndexType;
+
+    #[test]
+    fn test_block_mergest_index_type_max() {
+        NetworkType::iter().for_each(|network_type| {
+            assert!(Params::from(network_type).mergeset_size_limit <= AcceptanceDataIndexType::MAX as u64);
+        });
     }
 }

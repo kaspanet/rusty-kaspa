@@ -4,7 +4,7 @@ use kaspa_consensus_core::tx::{
     ScriptPublicKey, ScriptVec, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
     UtxoEntry,
 };
-use kaspa_index_core::models::txindex::MergesetIndexType;
+use kaspa_index_core::models::txindex::AcceptanceDataIndexType;
 use serde::{Deserialize, Serialize};
 
 use crate::prelude::{RpcHash, RpcScriptClass, RpcSubnetworkId};
@@ -88,20 +88,20 @@ pub struct RpcTransactionData {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionInclusionData {
-    pub including_block_hash: RpcHash,
-    pub including_block_transaction_index: TransactionIndexType,
-    pub including_block_time: u64,
-    pub including_block_daa_score: u64,
+    pub block_hash: RpcHash,
+    pub transaction_index: TransactionIndexType,
+    pub timestamp: u64,
+    pub daa_score: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionAcceptanceData {
-    pub accepting_block_hash: RpcHash,
-    pub accepting_block_mergeset_index: MergesetIndexType,
-    pub accepting_block_time: u64,
-    pub accepting_block_daa_score: u64, // use this as indication for network time, NOT confirmation counting!
-    pub accepting_block_blue_score: u64, // use this for Confirmation counting!
+    pub block_hash: RpcHash,
+    pub acceptance_data_index: AcceptanceDataIndexType,
+    pub timestamp: u64,
+    pub daa_score: u64,  // use this as indication for network time, NOT confirmation counting!
+    pub blue_score: u64, // use this for Confirmation counting!
 }
 
 /// Represent Kaspa transaction output verbose data
@@ -143,7 +143,7 @@ pub struct RpcTransactionVerboseData {
     // TODO: deprecate this field, use `RpcTransactionData.inclusion_data` instead, for next rpc breaking release
     pub block_hash: RpcHash, // including block hash
     // TODO: deprecate this field, use `RpcTransactionData.inclusion_data` instead, for next rpc breaking release
-    pub block_time: u64, // including block header ts in milliseconds
+    pub block_time: u64, // including block header unix ts in milliseconds
 }
 /// Represents accepted transaction ids
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]

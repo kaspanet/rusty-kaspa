@@ -56,22 +56,22 @@ message RpcBlockVerboseData{
 }
 
 /// AcceptanceData signifies information about when and where data was accepted in the block DAG.
-/// This information is suitable for confirmation counting!
+/// This information, specifically the blockBlueScore, is suitable for confirmation counting!
 message RpcTransactionAcceptanceData {
-  string acceptingBlockHash = 1;
-  uint32 acceptingBlockMergesetIndex = 2;
-  uint64 acceptingBlockTime = 3;
-  uint64 acceptingBlockDaaScore = 4; // note: this signifies network "time", and should not be used for confirmation counting.
-  uint64 acceptingBlockBlueScore = 5; // note: use this score for confirmation counting.
+  string blockHash = 1;
+  uint32 acceptanceDataIndex = 2; // index of the acceptance data 
+  uint64 timestamp = 3; // unix timestamp in ms
+  uint64 daaScore = 4; // note: this signifies network "time", and should not be used for confirmation counting.
+  uint64 blueScore = 5; // note: use this score for confirmation counting.
 }
 
 /// InclusionData signifies information about when and where data was included in the block DAG.
 /// This information is NOT suitable for confirmation counting!
 message RpcTransactionInclusionData {
-  string includingBlockHash = 1;
-  uint32 includingBlockTransactionIndex = 2;
-  uint64 includingBlockTime = 3;
-  uint64 includingBlockDaaScore = 4;
+  string blockHash = 1;
+  uint32 transactionIndex = 2;
+  uint64 timestamp = 3; // unix timestamp in ms
+  uint64 daaScore = 4;
 }
 
 message RpcTransactionData {

@@ -14,13 +14,13 @@ pub trait TxIndexAcceptedTxOffsetsReader {
     fn get(&self, transaction_id: TransactionId) -> StoreResult<Option<TxOffset>>;
     fn has(&self, transaction_id: TransactionId) -> StoreResult<bool>;
     // This potentially causes a large chunk of processing, so it should only be used only for tests.
-    fn count_all_keys(&self) -> StoreResult<usize>;
+    fn count(&self) -> StoreResult<usize>;
 }
 
 pub trait TxIndexAcceptedTxOffsetsStore: TxIndexAcceptedTxOffsetsReader {
     fn write_diff_batch(&mut self, batch: &mut WriteBatch, tx_offset_changes: TxOffsetDiff) -> StoreResult<()>;
     fn remove_many(&mut self, batch: &mut WriteBatch, tx_offsets_to_remove: TxHashSet) -> StoreResult<()>;
-    fn delete_all_batched(&mut self, batch: &mut WriteBatch) -> StoreResult<()>;
+    fn delete_all(&mut self, batch: &mut WriteBatch) -> StoreResult<()>;
 }
 // Implementations:
 
@@ -31,7 +31,7 @@ pub struct DbTxIndexAcceptedTxOffsetsStore {
 
 impl DbTxIndexAcceptedTxOffsetsStore {
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
-        Self { access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::TxIndexAcceptedOffsets.into()) }
+        Self { access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::TxIndexAcceptedTxOffsets.into()) }
     }
 }
 
@@ -45,7 +45,7 @@ impl TxIndexAcceptedTxOffsetsReader for DbTxIndexAcceptedTxOffsetsStore {
     }
 
     // This potentially causes a large chunk of processing, so it should only be used only for tests.
-    fn count_all_keys(&self) -> StoreResult<usize> {
+    fn count(&self) -> StoreResult<usize> {
         Ok(self.access.iterator().count())
     }
 }
@@ -63,8 +63,8 @@ impl TxIndexAcceptedTxOffsetsStore for DbTxIndexAcceptedTxOffsetsStore {
         self.access.delete_many(&mut writer, &mut tx_offsets_to_remove.iter().cloned())?;
         Ok(())
     }
-    /// Removes all [`TxOffsetById`] values and keys from the cache and db.
-    fn delete_all_batched(&mut self, batch: &mut WriteBatch) -> StoreResult<()> {
+    /// Removes all values and keys from the cache and db.
+    fn delete_all(&mut self, batch: &mut WriteBatch) -> StoreResult<()> {
         let mut writer = BatchDbWriter::new(batch);
         self.access.delete_all(&mut writer)
     }
