@@ -14,7 +14,7 @@ use crate::{
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::{PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
-            relations::StagingRelationsStore,
+            relations::{StagingRelationsStore},
             selected_chain::SelectedChainStore,
             statuses::StatusesStoreReader,
             tips::{TipsStore, TipsStoreReader},
@@ -355,16 +355,31 @@ impl PruningProcessor {
         // The most efficient way to traverse the entire DAG from the bottom-up is via the reachability tree
         let mut queue = VecDeque::<Hash>::from_iter(reachability_read.get_children(ORIGIN).unwrap().iter().copied());
         let (mut counter, mut traversed) = (0, 0);
-        // For keeping track of the internal exit conditions.
-        let mut can_exit = true;
-        //cache if someone is subscribed to ChainAcceptanceDataPruned notification
-        let has_chain_acceptance_data_pruned_subscriber =
-            self.notification_root.has_subscription(EventType::ChainAcceptanceDataPruned);
+
+        let mut is_notification_sent = false;
+        let is_subscribed = self.notification_root.has_subscription(EventType::ChainAcceptanceDataPruned);
+
         info!("Header and Block pruning: starting traversal from: {} (genesis: {})", queue.iter().reusable_format(", "), genesis);
         while let Some(current) = queue.pop_front() {
+            
+            // Check for exit possibility
+            if (!is_subscribed // if noone is subscribed
+            || is_notification_sent) // OR we sent the notification
+            && self.is_consensus_exiting.load(Ordering::Relaxed) // AND consenus is exiting
+            // We may exit 
+            {
+                drop(reachability_read);
+                drop(prune_guard);
+                info!("Header and Block pruning interrupted: Process is exiting");
+                return;
+            }
+
             if reachability_read.is_dag_ancestor_of_result(new_pruning_point, current).unwrap() {
                 continue;
             }
+
+            is_notification_sent = false;
+
             traversed += 1;
             // Obtain the tree children of `current` and push them to the queue before possibly being deleted below
             queue.extend(reachability_read.get_children(current).unwrap().iter());
@@ -372,12 +387,6 @@ impl PruningProcessor {
             // If we have the lock for more than a few milliseconds, release and recapture to allow consensus progress during pruning
             if lock_acquire_time.elapsed() > Duration::from_millis(5) {
                 drop(reachability_read);
-                // An exit signal was received. Exit from this long running process - if we can.
-                if self.is_consensus_exiting.load(Ordering::Relaxed) && can_exit {
-                    drop(prune_guard);
-                    info!("Header and Block pruning interrupted: Process is exiting");
-                    return;
-                }
                 prune_guard.blocking_yield();
                 lock_acquire_time = Instant::now();
                 reachability_read = self.reachability_store.upgradable_read();
@@ -400,9 +409,9 @@ impl PruningProcessor {
                 let mut statuses_write = self.statuses_store.write();
 
                 // Collect Data before data is gone.
-                let chain_acceptance_pruned = if has_chain_acceptance_data_pruned_subscriber // check if someone is subscribed
+                let chain_acceptance_data_pruned_notification = if is_subscribed // check if someone is subscribed
                 //TODO: are these just sanity checks, that may be removed?
-                & self.reachability_service.is_chain_ancestor_of(current, new_pruning_point) // check if it is a chain block
+                && self.reachability_service.is_chain_ancestor_of(current, new_pruning_point) // check if it is a chain block
                 && self.acceptance_data_store.has(current).unwrap()
                 // check if acceptance data has already been pruned
                 {
@@ -475,13 +484,10 @@ impl PruningProcessor {
 
                 reachability_read = self.reachability_store.upgradable_read();
 
-                // we can exit if we have sent a [`ChainAcceptanceDataPruned`] notification,
-                // OR if we have no subscribers.
-                can_exit = chain_acceptance_pruned.is_some() || !has_chain_acceptance_data_pruned_subscriber;
-
                 // Notify subscribers after data is gone, and check if we can exit
-                if let Some(chain_acceptance_pruned) = chain_acceptance_pruned {
-                    self.notification_root.notify(chain_acceptance_pruned).expect("expecting an open unbounded channel");
+                if let Some(chain_acceptance_data_pruned_notification) = chain_acceptance_data_pruned_notification {
+                    self.notification_root.notify(chain_acceptance_data_pruned_notification).expect("expecting an open unbounded channel");
+                    is_notification_sent = true;
                 }
             }
         }

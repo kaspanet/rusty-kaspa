@@ -50,7 +50,7 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
             added.reverse();
             return ChainPath { added, removed };
         }
-        // Use forward chain iterator, to acertain a üath from the common ancestor to the target.
+        // Use forward chain iterator, to ascertain a path from the common ancestor to the target.
         let max_added_traversal_allowed = max_traversal_allowed - removed.len();
         let added = self
             .reachability_service
