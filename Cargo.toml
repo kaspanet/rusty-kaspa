@@ -120,7 +120,7 @@ kaspa-wallet-core = { version = "0.13.4", path = "wallet/core" }
 kaspa-wallet-macros = { version = "0.13.4", path = "wallet/macros" }
 kaspa-wasm = { version = "0.13.4", path = "wasm" }
 kaspa-wrpc-client = { version = "0.13.4", path = "rpc/wrpc/client" }
-kaspa-wrpc-core = { version = "0.13.3", path = "rpc/wrpc/core" }
+kaspa-wrpc-core = { version = "0.13.4", path = "rpc/wrpc/core" }
 kaspa-wrpc-proxy = { version = "0.13.4", path = "rpc/wrpc/proxy" }
 kaspa-wrpc-server = { version = "0.13.4", path = "rpc/wrpc/server" }
 kaspa-wrpc-wasm = { version = "0.13.4", path = "rpc/wrpc/wasm" }
