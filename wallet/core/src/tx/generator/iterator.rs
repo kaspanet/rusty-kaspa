@@ -1,6 +1,6 @@
-//! 
+//!
 //! [`Generator`] Iterator implementation that produces pending transactions.
-//! 
+//!
 
 use crate::result::Result;
 use crate::tx::{Generator, PendingTransaction};

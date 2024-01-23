@@ -15,7 +15,7 @@
 //! each level (stage) of this tree is submitted to the network in parallel.
 //!
 //!```text
-//! 
+//!
 //! Tx1 Tx2 Tx3 Tx4 Tx5 Tx6     | stage 0 (relays to stage 1)
 //!  |   |   |   |   |   |      |
 //!  +---+   +---+   +---+      |
@@ -25,9 +25,9 @@
 //!    +-------+-------+        |
 //!            |                |
 //!           Tx10              | stage 2 (final outbound transaction)
-//! 
+//!
 //!```
-//! 
+//!
 //! The generator will produce transactions in the following order:
 //! Tx1, Tx2, Tx3, Tx4, Tx5, Tx6, Tx7, Tx8, Tx9, Tx10
 //!
