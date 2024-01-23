@@ -32,6 +32,23 @@
 //! within native Rust applications as well as within the NodeJS
 //! and browser environments via WASM32.
 //!
+//! For JavaScript / TypeScript environments, there are two
+//! available NPM modules:
+//! - <https://www.npmjs.com/package/kaspa>
+//! - <https://www.npmjs.com/package/kaspa-wasm>
+//!
+//! The `kaspa-wasm` module is a pure WASM32 module that includes
+//! the entire wallet framework, but does not support RPC, while
+//! the `kaspa` module also includes `isomorphic-ws` simulating
+//! the W3C WebSocket available natively in browsers and supports RPC.
+//!
+//! JavaScript examples for using this framework can be found at:
+//! <https://github.com/kaspanet/rusty-kaspa/tree/master/wasm/nodejs>
+//!
+//! For pre-built browser-compatible WASM32 redistributables of this
+//! framework please see the releases section of the Rusty Kaspa
+//! repository at <https://github.com/kaspanet/rusty-kaspa/releases>.
+//!
 
 extern crate alloc;
 extern crate self as kaspa_wallet_core;
