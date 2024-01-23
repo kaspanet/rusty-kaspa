@@ -569,7 +569,7 @@ impl Generator {
                     || (self.inner.final_transaction_priority_fee.sender_pays()
                         && stage.aggregate_input_value >= final_transaction.value_with_priority_fee)
                     || (self.inner.final_transaction_priority_fee.receiver_pays()
-                        && stage.aggregate_input_value >= final_transaction.value_no_fees - context.aggregate_fees)
+                        && stage.aggregate_input_value >= final_transaction.value_no_fees.saturating_sub(context.aggregate_fees))
                 {
                     if let Some(kind) = self.try_finish_standard_stage_processing(context, stage, &mut data, final_transaction)? {
                         return Ok((kind, data));
