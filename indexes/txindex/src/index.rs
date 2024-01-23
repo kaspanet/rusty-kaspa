@@ -183,19 +183,43 @@ impl TxIndexApi for TxIndex {
         let txindex_sink = self.stores.sink_store.get()?;
         let consensus_sink = session.get_sink();
 
-        let resync_from =
-            txindex_history_root.filter(|txindex_history_root| *txindex_history_root == consensus_history_root).unwrap_or({
-                info!("[{0}] Resetting the DB: txindex and consensus history roots are not synced!", IDENT);
+        let resync_from = {
+            let mut handle_unsynced_histories = || -> TxIndexResult<Hash> {
+                info!(
+                    "[{0}] Resetting the DB: txindex history root: {1:?}; consensus history root {2} - not synced!",
+                    IDENT, txindex_history_root, consensus_history_root,
+                );
                 self.stores.delete_all()?; // we reset the txindex
                 self.stores.history_root_store.set(consensus_history_root)?; // We can set the history_root anew after clearing db
-                consensus_history_root
-            });
+                Ok(consensus_history_root)
+            };
+
+            let history_root = if let Some(txindex_history_root) = txindex_history_root {
+                if txindex_history_root == consensus_history_root {
+                    txindex_history_root
+                } else {
+                    handle_unsynced_histories()?
+                }
+            } else {
+                handle_unsynced_histories()?
+            };
+
+            if let Some(txindex_sink) = txindex_sink {
+                if session.is_chain_block(txindex_sink)? {
+                    txindex_sink
+                } else {
+                    session.find_highest_common_chain_block(txindex_sink, consensus_sink)?
+                }
+            } else {
+                history_root
+            }
+        };
         let resync_to = consensus_sink;
 
         let unsync_from = txindex_sink;
         let unsync_to = if let Some(txindex_sink) = txindex_sink {
             if txindex_sink != consensus_sink && !session.is_chain_block(txindex_sink)? {
-                Some(session.find_highest_common_chain_block(consensus_sink, txindex_sink)?)
+                Some(session.find_highest_common_chain_block(txindex_sink, consensus_sink)?)
             } else {
                 None
             }
