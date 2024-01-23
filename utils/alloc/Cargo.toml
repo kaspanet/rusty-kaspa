@@ -18,3 +18,5 @@ mimalloc = { version = "0.1.39", default-features = false }
 
 [features]
 heap = []
+
+[dependencies]
