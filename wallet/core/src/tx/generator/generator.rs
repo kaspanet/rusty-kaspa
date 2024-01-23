@@ -301,10 +301,13 @@ impl Generator {
                 (vec![], None)
             }
             PaymentDestination::PaymentOutputs(outputs) => {
-                // sanity check
+                // sanity checks
                 for output in outputs.iter() {
                     if NetworkType::try_from(output.address.prefix)? != network_type {
                         return Err(Error::GeneratorPaymentOutputNetworkTypeMismatch);
+                    }
+                    if output.amount == 0 {
+                        return Err(Error::GeneratorPaymentOutputZeroAmount);
                     }
                 }
 

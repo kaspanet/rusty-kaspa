@@ -357,7 +357,10 @@ impl MassCalculator {
     }
 
     pub fn calc_storage_mass_output_harmonic(&self, outputs: &[TransactionOutput]) -> Option<u64> {
-        outputs.iter().map(|out| self.storage_mass_parameter / out.value).try_fold(0u64, |total, current| total.checked_add(current))
+        outputs
+            .iter()
+            .map(|out| self.storage_mass_parameter.checked_div(out.value))
+            .try_fold(0u64, |total, current| current.and_then(|current| total.checked_add(current)))
     }
 
     pub fn calc_storage_mass_output_harmonic_single(&self, output_value: u64) -> u64 {

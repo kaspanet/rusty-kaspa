@@ -236,6 +236,9 @@ pub enum Error {
     #[error("Payment output address does not match supplied network type")]
     GeneratorPaymentOutputNetworkTypeMismatch,
 
+    #[error("Invalid transaction amount")]
+    GeneratorPaymentOutputZeroAmount,
+
     #[error("Priority fees can not be included into transactions with multiple outputs")]
     GeneratorIncludeFeesRequiresOneOutput,
 
