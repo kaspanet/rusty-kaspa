@@ -14,7 +14,8 @@
 //! This processing results in a creation of a transaction tree where
 //! each level (stage) of this tree is submitted to the network in parallel.
 //!
-//!
+//!```text
+//! 
 //! Tx1 Tx2 Tx3 Tx4 Tx5 Tx6     | stage 0 (relays to stage 1)
 //!  |   |   |   |   |   |      |
 //!  +---+   +---+   +---+      |
@@ -24,7 +25,9 @@
 //!    +-------+-------+        |
 //!            |                |
 //!           Tx10              | stage 2 (final outbound transaction)
-//!
+//! 
+//!```
+//! 
 //! The generator will produce transactions in the following order:
 //! Tx1, Tx2, Tx3, Tx4, Tx5, Tx6, Tx7, Tx8, Tx9, Tx10
 //!
@@ -70,29 +73,35 @@ use std::collections::VecDeque;
 
 use super::SignerT;
 
+// fee reduction - when a transactions has some storage mass
+// and the total mass is below this threshold (as well as
+// other conditions), we attempt to accumulate additional
+// inputs to reduce storage mass/fees
 const TRANSACTION_MASS_BOUNDARY_FOR_ADDITIONAL_INPUT_ACCUMULATION: u64 = MAXIMUM_STANDARD_TRANSACTION_MASS / 5 * 4;
+// optimization boundary - when aggregating inputs,
+// we don't perform any checks until we reach this mass
+// or the aggregate input amount reaches the requested
+// output amount
 const TRANSACTION_MASS_BOUNDARY_FOR_STAGE_INPUT_ACCUMULATION: u64 = MAXIMUM_STANDARD_TRANSACTION_MASS / 5 * 4;
 
 /// Mutable [`Generator`] state used to track the current transaction generation process.
 struct Context {
+    /// iterator containing UTXO entries available for transaction generation
     utxo_source_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
-    /// utxo_stage_iterator: Option<Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>>,
+    /// total number of UTXOs consumed by the single generator instance
     aggregated_utxos: usize,
     /// total fees of all transactions issued by
     /// the single generator instance
     aggregate_fees: u64,
     /// number of generated transactions
     number_of_transactions: usize,
-    /// UTXO entry accumulator for each stage
-    /// utxo_stage_accumulator: Vec<UtxoEntryReference>,
+    /// current tree stage
     stage: Option<Box<Stage>>,
     /// Rejected or "stashed" UTXO entries that are consumed before polling
     /// the iterator. This store is used in edge cases when UTXO entry from the
     /// iterator has been consumed but was rejected due to mass constraints or
     /// other conditions.
     utxo_stash: VecDeque<UtxoEntryReference>,
-    // / Final transaction outputs
-    // final_transaction_outputs: Vec<TransactionOutput>,
     /// final transaction id
     final_transaction_id: Option<TransactionId>,
     /// signifies that the generator is finished
@@ -105,10 +114,15 @@ struct Context {
 /// transactions processed during a stage.
 #[derive(Default)]
 struct Stage {
+    /// iterator containing UTXO entries from the previous tree stage
     utxo_iterator: Option<Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>>,
+    /// UTXOs generated during this stage
     utxo_accumulator: Vec<UtxoEntryReference>,
+    /// Total aggregate value of all inputs consumed during this stage
     aggregate_input_value: u64,
+    /// Total aggregate value of all fees incurred during this stage
     aggregate_fees: u64,
+    /// Total number of transactions generated during this stage
     number_of_transactions: usize,
 }
 
@@ -121,7 +135,6 @@ impl Stage {
             utxo_iterator: Some(utxo_iterator),
             utxo_accumulator: vec![],
             aggregate_input_value: 0,
-            // aggregate_mass: 0,
             aggregate_fees: 0,
             number_of_transactions: 0,
         }
@@ -173,18 +186,25 @@ impl DataKind {
 }
 
 ///
-///  Single transaction data accumulator.  This structure is used to accumulate
+/// Single transaction data accumulator.  This structure is used to accumulate
 /// and track all necessary transaction data and is then used to create
 /// an actual transaction.
 ///
 #[derive(Debug)]
 struct Data {
+    /// Transaction inputs accumulated during processing
     inputs: Vec<TransactionInput>,
+    /// UTXO entries referenced by transaction inputs
     utxo_entry_references: Vec<UtxoEntryReference>,
+    /// Addresses referenced by transaction inputs
     addresses: HashSet<Address>,
+    /// Aggregate transaction mass
     aggregate_mass: u64,
+    /// Transaction fees based on the aggregate mass
     transaction_fees: u64,
+    /// Aggregate value of all inputs
     aggregate_input_value: u64,
+    /// Optional change output value
     change_output_value: Option<u64>,
 }
 
@@ -204,26 +224,42 @@ impl Data {
     }
 }
 
+/// Helper struct for passing around transaction value
 struct FinalTransaction {
-    pub value_no_fees: u64,
-    pub value_with_priority_fee: u64,
+    /// Total output value required for the final transaction
+    value_no_fees: u64,
+    /// Total output value required for the final transaction + priority fees
+    value_with_priority_fee: u64,
 }
 
+/// Helper struct for obtaining properties related to
+/// transaction mass calculations.
 struct MassDisposition {
-    pub transaction_mass: u64,
-    pub storage_mass: u64,
-    pub transaction_fees: u64,
-    pub absorb_change_to_fees: bool,
+    /// Transaction mass derived from compute and storage mass
+    transaction_mass: u64,
+    /// Calculated storage mass
+    storage_mass: u64,
+    /// Calculated transaction fees
+    transaction_fees: u64,
+    /// Flag signaling that computed values require change to be absorbed to fees.
+    /// This occurs when the change is dust or the change is below the fees
+    /// produced by the storage mass.
+    absorb_change_to_fees: bool,
 }
 
 ///
 ///  Internal Generator settings and references
 ///
 struct Inner {
+    // Atomic abortable trigger that will cause the processing to halt with `Error::Aborted`
     abortable: Option<Abortable>,
+    // Optional signer that is passed on to the [`PendingTransaction`] allowing [`PendingTransaction`] to expose signing functions for convenience.
     signer: Option<Arc<dyn SignerT>>,
+    // Internal mass calculator (pre-configured with network params)
     mass_calculator: MassCalculator,
+    // Current network id
     network_id: NetworkId,
+    // Current network params
     network_params: NetworkParams,
 
     // Source Utxo Context (Used for source UtxoEntry aggregation)
@@ -248,8 +284,6 @@ struct Inner {
     final_transaction: Option<FinalTransaction>,
     // applies only to the final transaction
     final_transaction_priority_fee: Fees,
-    // transaction_amount + priority_fees
-    // final_transaction_amount_with_priority_fees: Option<u64>,
     // issued only in the final transaction
     final_transaction_outputs: Vec<TransactionOutput>,
     // pre-calculated partial harmonic for user outputs (does not include change)
@@ -273,6 +307,7 @@ pub struct Generator {
 }
 
 impl Generator {
+    /// Create a new [`Generator`] instance using [`GeneratorSettings`].
     pub fn try_new(settings: GeneratorSettings, signer: Option<Arc<dyn SignerT>>, abortable: Option<&Abortable>) -> Result<Self> {
         let GeneratorSettings {
             network_id,
@@ -350,14 +385,6 @@ impl Generator {
             return Err(Error::GeneratorTransactionOutputsAreTooHeavy { mass: mass_sanity_check, kind: "compute mass" });
         }
 
-        if let Some(final_transaction) = &final_transaction {
-            let perfect_output_storage_mass =
-                mass_calculator.calc_storage_mass(final_transaction_outputs_harmonic, final_transaction.value_with_priority_fee, 1);
-            if perfect_output_storage_mass > MAXIMUM_STANDARD_TRANSACTION_MASS / 5 * 4 {
-                return Err(Error::GeneratorTransactionOutputsAreTooHeavy { mass: perfect_output_storage_mass, kind: "storage mass" });
-            }
-        }
-
         let context = Mutex::new(Context {
             utxo_source_iterator: utxo_iterator,
             number_of_transactions: 0,
@@ -395,14 +422,17 @@ impl Generator {
         Ok(Self { inner: Arc::new(inner) })
     }
 
+    /// Returns the current [`NetworkType`]
     pub fn network_type(&self) -> NetworkType {
         self.inner.network_id.into()
     }
 
+    /// Returns the current [`NetworkId`]
     pub fn network_id(&self) -> NetworkId {
         self.inner.network_id
     }
 
+    /// Returns current [`NetworkParams`]
     pub fn network_params(&self) -> &NetworkParams {
         &self.inner.network_params
     }
@@ -584,6 +614,9 @@ impl Generator {
             + self.inner.network_params.additional_compound_transaction_mass
             > MAXIMUM_STANDARD_TRANSACTION_MASS
         {
+            // note, we've used input for mass boundary calc and now abandon it
+            // while preserving the UTXO entry reference to be used in the next iteration
+
             context.utxo_stash.push_back(utxo_entry_reference);
             data.aggregate_mass +=
                 self.inner.standard_change_output_compute_mass + self.inner.network_params.additional_compound_transaction_mass;
