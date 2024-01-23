@@ -16,12 +16,10 @@ use workflow_wasm::prelude::*;
 ///
 /// Fees can be:
 /// - `SenderPaysAll` - (standard) fees are added to outgoing transaction value
-/// - `ReceiverPaysTransfer` - aggregation fees are paid by sender, but final
-/// transaction fees, including priority fees are paid by the receiver.
 /// - `ReceiverPaysAll` - all transaction fees are paid by the receiver.
 ///
 /// NOTE: If priority fees are `0`, fee variants can be used control
-/// who pays the `relay` fees.
+/// who pays the `network` fees.
 ///
 /// NOTE: `ReceiverPays` variants can fail during the aggregation process
 /// if there are not enough funds to cover the final transaction.
@@ -34,17 +32,30 @@ use workflow_wasm::prelude::*;
 pub enum Fees {
     /// Fee management disabled (sweep transactions, pays all fees)
     None,
-    /// fees are are added to the transaction value
-    SenderPaysAll(u64),
-    /// all transaction fees are subtracted from transaction value
-    ReceiverPaysAll(u64),
-    /// final transaction fees are subtracted from transaction value
-    ReceiverPaysTransfer(u64),
+    /// all fees are are added to the final transaction value
+    SenderPays(u64),
+    /// all fees are subtracted from the final transaction value
+    ReceiverPays(u64),
 }
 
 impl Fees {
     pub fn is_none(&self) -> bool {
         matches!(self, Fees::None)
+    }
+
+    pub fn sender_pays(&self) -> bool {
+        matches!(self, Fees::SenderPays(_))
+    }
+
+    pub fn receiver_pays(&self) -> bool {
+        matches!(self, Fees::ReceiverPays(_))
+    }
+
+    pub fn additional(&self) -> u64 {
+        match self {
+            Fees::SenderPays(fee) => *fee,
+            _ => 0,
+        }
     }
 }
 
@@ -54,16 +65,16 @@ impl Fees {
 impl From<i64> for Fees {
     fn from(fee: i64) -> Self {
         if fee < 0 {
-            Fees::ReceiverPaysTransfer(fee.unsigned_abs())
+            Fees::ReceiverPays(fee.unsigned_abs())
         } else {
-            Fees::SenderPaysAll(fee as u64)
+            Fees::SenderPays(fee as u64)
         }
     }
 }
 
 impl From<u64> for Fees {
     fn from(fee: u64) -> Self {
-        Fees::SenderPaysAll(fee)
+        Fees::SenderPays(fee)
     }
 }
 
@@ -92,7 +103,7 @@ impl TryFrom<JsValue> for Fees {
         if fee.is_undefined() || fee.is_null() {
             Ok(Fees::None)
         } else if let Ok(fee) = fee.try_as_u64() {
-            Ok(Fees::SenderPaysAll(fee))
+            Ok(Fees::SenderPays(fee))
         } else {
             Err(crate::error::Error::custom("Invalid fee"))
         }

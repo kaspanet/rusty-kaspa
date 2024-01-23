@@ -13,7 +13,7 @@ use workflow_core::channel::Multiplexer;
 
 pub struct GeneratorSettings {
     // Network type
-    pub network_type: NetworkType,
+    pub network_id: NetworkId,
     // Event multiplexer
     pub multiplexer: Option<Multiplexer<Box<Events>>>,
     // Utxo iterator
@@ -43,7 +43,7 @@ impl GeneratorSettings {
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
     ) -> Result<Self> {
-        let network_type = account.utxo_context().processor().network_id()?.into();
+        let network_id = account.utxo_context().processor().network_id()?;
         let change_address = account.change_address()?;
         let multiplexer = account.wallet().multiplexer().clone();
         let sig_op_count = account.sig_op_count();
@@ -52,7 +52,7 @@ impl GeneratorSettings {
         let utxo_iterator = UtxoIterator::new(account.utxo_context());
 
         let settings = GeneratorSettings {
-            network_type,
+            network_id,
             multiplexer: Some(multiplexer),
             sig_op_count,
             minimum_signatures,
@@ -79,11 +79,11 @@ impl GeneratorSettings {
         final_transaction_payload: Option<Vec<u8>>,
         multiplexer: Option<Multiplexer<Box<Events>>>,
     ) -> Result<Self> {
-        let network_type = utxo_context.processor().network_id()?.into();
+        let network_id = utxo_context.processor().network_id()?;
         let utxo_iterator = UtxoIterator::new(&utxo_context);
 
         let settings = GeneratorSettings {
-            network_type,
+            network_id,
             multiplexer,
             sig_op_count,
             minimum_signatures,
@@ -101,6 +101,7 @@ impl GeneratorSettings {
     }
 
     pub fn try_new_with_iterator(
+        network_id: NetworkId,
         utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
         change_address: Address,
         sig_op_count: u8,
@@ -110,10 +111,8 @@ impl GeneratorSettings {
         final_transaction_payload: Option<Vec<u8>>,
         multiplexer: Option<Multiplexer<Box<Events>>>,
     ) -> Result<Self> {
-        let network_type = NetworkType::try_from(change_address.prefix)?;
-
         let settings = GeneratorSettings {
-            network_type,
+            network_id,
             multiplexer,
             sig_op_count,
             minimum_signatures,

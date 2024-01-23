@@ -7,14 +7,14 @@
 
 use crate::utils::*;
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_consensus_core::network::NetworkType;
+use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::tx::TransactionId;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct GeneratorSummary {
-    pub network_type: NetworkType,
+    pub network_id: NetworkId,
     pub aggregated_utxos: usize,
     pub aggregated_fees: u64,
     pub number_of_generated_transactions: usize,
@@ -24,7 +24,11 @@ pub struct GeneratorSummary {
 
 impl GeneratorSummary {
     pub fn network_type(&self) -> NetworkType {
-        self.network_type
+        self.network_id.into()
+    }
+
+    pub fn network_id(&self) -> NetworkId {
+        self.network_id
     }
 
     pub fn aggregated_utxos(&self) -> usize {
@@ -61,9 +65,9 @@ impl fmt::Display for GeneratorSummary {
             write!(
                 f,
                 "Amount: {}  Fees: {}  Total: {}  UTXOs: {}  {}",
-                sompi_to_kaspa_string_with_suffix(final_transaction_amount, &self.network_type),
-                sompi_to_kaspa_string_with_suffix(self.aggregated_fees, &self.network_type),
-                sompi_to_kaspa_string_with_suffix(total, &self.network_type),
+                sompi_to_kaspa_string_with_suffix(final_transaction_amount, &self.network_id),
+                sompi_to_kaspa_string_with_suffix(self.aggregated_fees, &self.network_id),
+                sompi_to_kaspa_string_with_suffix(total, &self.network_id),
                 self.aggregated_utxos,
                 transactions
             )?;
@@ -71,7 +75,7 @@ impl fmt::Display for GeneratorSummary {
             write!(
                 f,
                 "Fees: {}  UTXOs: {}  {}",
-                sompi_to_kaspa_string_with_suffix(self.aggregated_fees, &self.network_type),
+                sompi_to_kaspa_string_with_suffix(self.aggregated_fees, &self.network_id),
                 self.aggregated_utxos,
                 transactions
             )?;
