@@ -212,6 +212,8 @@ pub enum Events {
         /// contain a developer-assigned internal id.
         id: UtxoContextId,
     },
+    /// A general wallet framework error, emitted when an unexpected
+    /// error occurs within the wallet framework.
     Error {
         message: String,
     },
