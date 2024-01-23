@@ -1,5 +1,7 @@
+use crate::imports::NetworkParams;
 use crate::result::Result;
 use crate::tx::mass;
+// use crate::utxo::NetworkParams;
 use crate::wasm::tx::*;
 use kaspa_consensus_core::config::params::Params;
 use kaspa_consensus_core::tx as cctx;
@@ -10,19 +12,21 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub struct MassCalculator {
     mc: Arc<mass::MassCalculator>,
+    // params: Arc<Params>,
 }
 
 #[wasm_bindgen]
 impl MassCalculator {
     #[wasm_bindgen(constructor)]
     pub fn new(cp: ConsensusParams) -> Self {
-        let params = Params::from(cp);
-        Self { mc: Arc::new(mass::MassCalculator::new(&params)) }
+        let consensus_params = Params::from(cp);
+        let network_params = NetworkParams::from(consensus_params.net);
+        Self { mc: Arc::new(mass::MassCalculator::new(&consensus_params, &network_params)) }
     }
 
-    #[wasm_bindgen(js_name=isStandardOutputAmountDust)]
-    pub fn is_standard_output_amount_dust(amount: u64) -> bool {
-        mass::is_standard_output_amount_dust(amount)
+    #[wasm_bindgen(js_name=isDust)]
+    pub fn is_dust(&self, amount: u64) -> bool {
+        self.mc.is_dust(amount)
     }
 
     /// `isTransactionOutputDust()` returns whether or not the passed transaction output
@@ -136,12 +140,11 @@ impl MassCalculator {
 
     #[wasm_bindgen(js_name=calcMinimumTransactionRelayFeeFromMass)]
     pub fn calc_minimum_transaction_relay_fee_from_mass(&self, mass: u64) -> u32 {
-        self.mc.calc_minimum_transaction_relay_fee_from_mass(mass) as u32
+        self.mc.calc_minimum_transaction_fee_from_mass(mass) as u32
     }
 
     #[wasm_bindgen(js_name=calcMiniumTxRelayFee)]
     pub fn calc_minimum_transaction_relay_fee(&self, transaction: &Transaction, minimum_signatures: u16) -> Result<u32> {
-        // let transaction = Transaction::try_from(transaction)?;
         let tx = cctx::Transaction::from(transaction);
         Ok(self.mc.calc_minium_transaction_relay_fee(&tx, minimum_signatures) as u32)
     }

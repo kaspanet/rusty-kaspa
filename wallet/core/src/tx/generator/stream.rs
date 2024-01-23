@@ -1,3 +1,7 @@
+//!
+//! [`Generator`] async [`Stream`] implementation that produces pending transactions.
+//!
+
 use std::pin::Pin;
 use std::task::{Context, Poll};
 

@@ -2,9 +2,19 @@
 //! Transaction mass calculator.
 //!
 
+use crate::utxo::NetworkParams;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput, SCRIPT_VECTOR_SIZE};
 use kaspa_consensus_core::{config::params::Params, constants::*, subnets::SUBNETWORK_ID_SIZE};
+use kaspa_consensus_wasm::UtxoEntryReference;
 use kaspa_hashes::HASH_SIZE;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MassCombinationStrategy {
+    /// `MassCombinator::Add` adds the storage and compute mass.
+    Add,
+    /// `MassCombinator::Max` returns the maximum of the storage and compute mass.
+    Max,
+}
 
 // pub const ECDSA_SIGNATURE_SIZE: u64 = 64;
 // pub const SCHNORR_SIGNATURE_SIZE: u64 = 64;
@@ -107,12 +117,24 @@ pub fn is_transaction_output_dust(transaction_output: &TransactionOutput) -> boo
 pub const STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE: u64 = transaction_standard_output_serialized_byte_size() + 148;
 pub const STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE_3X: u64 = STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE * 3;
 
-pub fn is_standard_output_amount_dust(value: u64) -> bool {
-    match value.checked_mul(1000) {
-        Some(value_1000) => value_1000 / STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE_3X < MINIMUM_RELAY_TRANSACTION_FEE,
-        None => (value as u128 * 1000 / STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE_3X as u128) < MINIMUM_RELAY_TRANSACTION_FEE as u128,
-    }
-}
+// pub fn is_standard_output_amount_dust(value: u64) -> bool {
+//     match value.checked_mul(1000) {
+//         Some(value_1000) => value_1000 / STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE_3X < MINIMUM_RELAY_TRANSACTION_FEE,
+//         None => (value as u128 * 1000 / STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE_3X as u128) < MINIMUM_RELAY_TRANSACTION_FEE as u128,
+//     }
+// }
+
+// pub fn is_standard_output_amount_dust(network_params: &NetworkParams, value: u64) -> bool {
+// pub fn is_dust(_network_params: &NetworkParams, value: u64) -> bool {
+//     // if let Some(dust_threshold_sompi) = network_params.dust_threshold_sompi {
+//     //     return value < dust_threshold_sompi;
+//     // } else {
+//     match value.checked_mul(1000) {
+//         Some(value_1000) => value_1000 / STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE_3X < MINIMUM_RELAY_TRANSACTION_FEE,
+//         None => (value as u128 * 1000 / STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE_3X as u128) < MINIMUM_RELAY_TRANSACTION_FEE as u128,
+//     }
+//     // }
+// }
 
 // transaction_estimated_serialized_size is the estimated size of a transaction in some
 // serialization. This has to be deterministic, but not necessarily accurate, since
@@ -199,14 +221,25 @@ pub struct MassCalculator {
     mass_per_tx_byte: u64,
     mass_per_script_pub_key_byte: u64,
     mass_per_sig_op: u64,
+    storage_mass_parameter: u64,
+    mass_combination_strategy: MassCombinationStrategy,
 }
 
 impl MassCalculator {
-    pub fn new(params: &Params) -> Self {
+    pub fn new(consensus_params: &Params, network_params: &NetworkParams) -> Self {
         Self {
-            mass_per_tx_byte: params.mass_per_tx_byte,
-            mass_per_script_pub_key_byte: params.mass_per_script_pub_key_byte,
-            mass_per_sig_op: params.mass_per_sig_op,
+            mass_per_tx_byte: consensus_params.mass_per_tx_byte,
+            mass_per_script_pub_key_byte: consensus_params.mass_per_script_pub_key_byte,
+            mass_per_sig_op: consensus_params.mass_per_sig_op,
+            storage_mass_parameter: consensus_params.storage_mass_parameter,
+            mass_combination_strategy: network_params.mass_combination_strategy,
+        }
+    }
+
+    pub fn is_dust(&self, value: u64) -> bool {
+        match value.checked_mul(1000) {
+            Some(value_1000) => value_1000 / STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE_3X < MINIMUM_RELAY_TRANSACTION_FEE,
+            None => (value as u128 * 1000 / STANDARD_OUTPUT_SIZE_PLUS_INPUT_SIZE_3X as u128) < MINIMUM_RELAY_TRANSACTION_FEE as u128,
         }
     }
 
@@ -252,7 +285,7 @@ impl MassCalculator {
         SIGNATURE_SIZE * self.mass_per_tx_byte * minimum_signatures as u64 * number_of_inputs as u64
     }
 
-    pub fn calc_minimum_transaction_relay_fee_from_mass(&self, mass: u64) -> u64 {
+    pub fn calc_minimum_transaction_fee_from_mass(&self, mass: u64) -> u64 {
         calc_minimum_required_transaction_relay_fee(mass)
     }
 
@@ -263,5 +296,84 @@ impl MassCalculator {
     pub fn calc_minium_transaction_relay_fee(&self, tx: &Transaction, minimum_signatures: u16) -> u64 {
         let mass = self.calc_mass_for_transaction(tx) + self.calc_signature_mass_for_inputs(tx.inputs.len(), minimum_signatures);
         calc_minimum_required_transaction_relay_fee(mass)
+    }
+
+    pub fn calc_tx_storage_fee(&self, is_coinbase: bool, inputs: &[UtxoEntryReference], outputs: &[TransactionOutput]) -> u64 {
+        self.calc_fee_for_storage_mass(self.calc_storage_mass_for_transaction(is_coinbase, inputs, outputs).unwrap_or(u64::MAX))
+    }
+
+    pub fn calc_fee_for_storage_mass(&self, mass: u64) -> u64 {
+        mass
+    }
+
+    pub fn combine_mass(&self, compute_mass: u64, storage_mass: u64) -> u64 {
+        match self.mass_combination_strategy {
+            MassCombinationStrategy::Add => compute_mass + storage_mass,
+            MassCombinationStrategy::Max => std::cmp::max(compute_mass, storage_mass),
+        }
+    }
+
+    pub fn calc_storage_mass_for_transaction(
+        &self,
+        is_coinbase: bool,
+        inputs: &[UtxoEntryReference],
+        outputs: &[TransactionOutput],
+    ) -> Option<u64> {
+        if is_coinbase {
+            return Some(0);
+        }
+        /* The code below computes the following formula:
+
+                max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
+
+        where C is the mass storage parameter, O is the set of output values, I is the set of
+        input values, H(S) := |S|/sum_{s in S} 1 / s is the harmonic mean over the set S and
+        A(S) := sum_{s in S} / |S| is the arithmetic mean.
+
+        See the (to date unpublished) KIP-0009 for more details
+        */
+
+        // Since we are doing integer division, we perform the multiplication with C over the inner
+        // fractions, otherwise we'll get a sum of zeros or ones.
+        //
+        // If sum of fractions overflowed (nearly impossible, requires 10^7 outputs for C = 10^12),
+        // we return `None` indicating mass is incomputable
+
+        let harmonic_outs = outputs
+            .iter()
+            .map(|out| self.storage_mass_parameter / out.value)
+            .try_fold(0u64, |total, current| total.checked_add(current))?; // C·|O|/H(O)
+
+        // Total supply is bounded, so a sum of existing UTXO entries cannot overflow (nor can it be zero)
+        let sum_ins = inputs.iter().map(|entry| entry.amount()).sum::<u64>(); // |I|·A(I)
+        let ins_len = inputs.len() as u64;
+        let mean_ins = sum_ins / ins_len;
+
+        // Inner fraction must be with C and over the mean value, in order to maximize precision.
+        // We can saturate the overall expression at u64::MAX since we lower-bound the subtraction below by zero anyway
+        let arithmetic_ins = ins_len.saturating_mul(self.storage_mass_parameter / mean_ins); // C·|I|/A(I)
+
+        Some(harmonic_outs.saturating_sub(arithmetic_ins)) // max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
+    }
+
+    pub fn calc_storage_mass_output_harmonic(&self, outputs: &[TransactionOutput]) -> Option<u64> {
+        outputs
+            .iter()
+            .map(|out| self.storage_mass_parameter.checked_div(out.value))
+            .try_fold(0u64, |total, current| current.and_then(|current| total.checked_add(current)))
+    }
+
+    pub fn calc_storage_mass_output_harmonic_single(&self, output_value: u64) -> u64 {
+        self.storage_mass_parameter / output_value
+    }
+
+    pub fn calc_storage_mass_input_mean_arithmetic(&self, total_input_value: u64, number_of_inputs: u64) -> u64 {
+        let mean_input_value = total_input_value / number_of_inputs;
+        number_of_inputs.saturating_mul(self.storage_mass_parameter / mean_input_value)
+    }
+
+    pub fn calc_storage_mass(&self, output_harmonic: u64, total_input_value: u64, number_of_inputs: u64) -> u64 {
+        let input_arithmetic = self.calc_storage_mass_input_mean_arithmetic(total_input_value, number_of_inputs);
+        output_harmonic.saturating_sub(input_arithmetic)
     }
 }
