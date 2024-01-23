@@ -90,7 +90,10 @@ impl Semaphore {
         // which will awake us.
         // Avoiding the wait all together is harmful in the case there are listeners, since this thread
         // will most likely recapture the emptied slot before they wake up.
-        self.signal.listen().wait_timeout(Duration::from_micros(1));
+        //
+        // Tests and benchmarks show that 30 microseconds are sufficient for allowing other threads to capture the lock
+        // (Windows: ~10 micros, Linux: 30 micros, Macos: 30 micros always worked with 2 yields which is sufficient for our needs)
+        self.signal.listen().wait_timeout(Duration::from_micros(30));
         self.blocking_acquire(permits)
     }
 }
