@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
+use std::{fs, path::PathBuf, process::exit, sync::Arc, thread::spawn, time::Duration};
 
 use async_channel::unbounded;
 use kaspa_consensus_core::{
@@ -422,32 +422,40 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex || args.txindex {
-        // Use only a single thread for none-consensus databases
-        let utxoindex = if args.utxoindex {
-            let utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
+        // We spawn, and hence sync indexes, in parallel.
+        let utxoindex_jh = if args.utxoindex {
+            let utxoindex_db = kaspa_database::prelude::ConnBuilder::default() // Use only a single thread for none-consensus databases
                 .with_db_path(utxoindex_db_dir)
                 .with_files_limit(utxo_files_limit)
                 .build()
                 .unwrap();
-            Some(UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap()))
+            let utxoindex_consensus_manager = consensus_manager.clone();
+
+            Some(spawn(move || UtxoIndexProxy::new(UtxoIndex::new(utxoindex_consensus_manager, utxoindex_db).unwrap())))
         } else {
             None
         };
 
-        let txindex = if args.txindex {
+        let txindex_jh = if args.txindex {
             let txindex_config = txindex_config.unwrap();
-            let txindex_db = kaspa_database::prelude::ConnBuilder::default()
+            let txindex_db = kaspa_database::prelude::ConnBuilder::default() // Use only a single thread for none-consensus databases
                 .with_db_path(txindex_db_dir)
                 .with_files_limit(tx_files_limit)
                 .with_parallelism(1 + txindex_config.perf.db_parallelism)
                 .build()
                 .unwrap();
-            Some(TxIndexProxy::new(TxIndex::new(consensus_manager.clone(), txindex_db, txindex_config).unwrap()))
+            let txindex_consensus_manager = consensus_manager.clone();
+
+            Some(spawn(move || TxIndexProxy::new(TxIndex::new(txindex_consensus_manager, txindex_db, txindex_config).unwrap())))
         } else {
             None
         };
 
-        let index_service = Arc::new(IndexService::new(&notify_service.notifier(), utxoindex, txindex));
+        let index_service = Arc::new(IndexService::new(
+            &notify_service.notifier(),
+            utxoindex_jh.map(|jh| jh.join().unwrap()),
+            txindex_jh.map(|jh| jh.join().unwrap()),
+        ));
         Some(index_service)
     } else {
         None
