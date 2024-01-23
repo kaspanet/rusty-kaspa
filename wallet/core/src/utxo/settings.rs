@@ -9,36 +9,48 @@ pub struct NetworkParams {
     pub coinbase_transaction_maturity_period_daa: u64,
     pub coinbase_transaction_stasis_period_daa: u64,
     pub user_transaction_maturity_period_daa: u64,
+    pub mass_combination_strategy: MassCombinationStrategy,
+    pub additional_compound_transaction_mass: u64,
 }
 
 pub const MAINNET_NETWORK_PARAMS: NetworkParams = NetworkParams {
     coinbase_transaction_maturity_period_daa: 100,
     coinbase_transaction_stasis_period_daa: 50,
     user_transaction_maturity_period_daa: 10,
+    mass_combination_strategy: MassCombinationStrategy::Add,
+    additional_compound_transaction_mass: 0,
 };
 
 pub const TESTNET10_NETWORK_PARAMS: NetworkParams = NetworkParams {
     coinbase_transaction_maturity_period_daa: 100,
     coinbase_transaction_stasis_period_daa: 50,
     user_transaction_maturity_period_daa: 10,
+    mass_combination_strategy: MassCombinationStrategy::Add,
+    additional_compound_transaction_mass: 100,
 };
 
 pub const TESTNET11_NETWORK_PARAMS: NetworkParams = NetworkParams {
     coinbase_transaction_maturity_period_daa: 1_000,
     coinbase_transaction_stasis_period_daa: 500,
     user_transaction_maturity_period_daa: 100,
+    mass_combination_strategy: MassCombinationStrategy::Add,
+    additional_compound_transaction_mass: 100,
 };
 
 pub const DEVNET_NETWORK_PARAMS: NetworkParams = NetworkParams {
     coinbase_transaction_maturity_period_daa: 100,
     coinbase_transaction_stasis_period_daa: 50,
     user_transaction_maturity_period_daa: 10,
+    mass_combination_strategy: MassCombinationStrategy::Add,
+    additional_compound_transaction_mass: 0,
 };
 
 pub const SIMNET_NETWORK_PARAMS: NetworkParams = NetworkParams {
     coinbase_transaction_maturity_period_daa: 100,
     coinbase_transaction_stasis_period_daa: 50,
     user_transaction_maturity_period_daa: 10,
+    mass_combination_strategy: MassCombinationStrategy::Add,
+    additional_compound_transaction_mass: 0,
 };
 
 impl From<NetworkId> for &'static NetworkParams {

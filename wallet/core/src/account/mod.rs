@@ -514,6 +514,7 @@ pub trait DerivationCapableAccount: Account {
                     let utxos = utxos.into_iter().map(UtxoEntryReference::from).collect::<Vec<_>>();
 
                     let settings = GeneratorSettings::try_new_with_iterator(
+                        self.wallet().network_id()?,
                         Box::new(utxos.into_iter()),
                         change_address.clone(),
                         1,
