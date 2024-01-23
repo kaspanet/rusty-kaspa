@@ -135,10 +135,6 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_history_root(&self) -> Hash {
-        unimplemented!()
-    }
-
     /// source refers to the earliest block from which the current node has full header & block data  
     fn get_source(&self) -> Hash {
         unimplemented!()

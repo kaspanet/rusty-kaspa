@@ -13,7 +13,7 @@ use kaspa_utils::arc::ArcExtensions;
 #[derive(Clone, Debug, Default)]
 pub struct TxIndexReindexer {
     pub sink: Option<Hash>,
-    pub history_root: Option<Hash>,
+    pub source: Option<Hash>,
     pub block_acceptance_offsets_changes: BlockAcceptanceOffsetDiff,
     pub tx_offset_changes: TxOffsetDiff,
 }
@@ -67,7 +67,7 @@ impl From<ConsensusVirtualChainChangedNotification> for TxIndexReindexer {
 
         Self {
             sink,
-            history_root: None,
+            source: None,
             block_acceptance_offsets_changes: BlockAcceptanceOffsetDiff::new(
                 block_acceptance_offsets_to_add,
                 block_acceptance_offsets_to_remove,
@@ -91,7 +91,7 @@ impl From<ConsensusChainAcceptanceDataPrunedNotification> for TxIndexReindexer {
 
         Self {
             sink: None,
-            history_root: Some(notification.history_root),
+            source: Some(notification.source),
             block_acceptance_offsets_changes: BlockAcceptanceOffsetDiff::new(BlockHashMap::new(), block_acceptance_offsets_to_remove),
             tx_offset_changes: TxOffsetDiff::new(TxOffsetById::new(), tx_offsets_to_remove),
         }
@@ -269,7 +269,7 @@ pub mod test {
 
         // Check the new_sink and source:
         assert_eq!(reindexer.sink.unwrap(), sink);
-        assert!(reindexer.history_root.is_none());
+        assert!(reindexer.source.is_none());
 
         // Check the added offsets (i.e. accepted & reaccepted):
         let mut block_acceptance_offsets_added_count = 0;
@@ -350,7 +350,7 @@ pub mod test {
         let mergeset_block_b_pruned = Hash::from_u64_word(2);
         let mergeset_block_c_pruned = Hash::from_u64_word(3);
 
-        let history_root = Hash::from_u64_word(4);
+        let source = Hash::from_u64_word(4);
 
         // Define the tx ids;
         let tx_a_1 = TransactionId::from_u64_word(5);
@@ -386,7 +386,7 @@ pub mod test {
                     ],
                 },
             ]),
-            history_root,
+            source,
         };
 
         // Reindex
@@ -394,7 +394,7 @@ pub mod test {
 
         // Check the sink and source:
         assert!(reindexer.sink.is_none());
-        assert_eq!(reindexer.history_root.unwrap(), history_root);
+        assert_eq!(reindexer.source.unwrap(), source);
 
         // Check the added offsets:
         assert!(reindexer.block_acceptance_offsets_changes.added.is_empty());

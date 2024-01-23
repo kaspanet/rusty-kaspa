@@ -54,14 +54,14 @@ pub enum DatabaseStorePrefixes {
     UtxoIndex = 192,
     UtxoIndexTips = 193,
     CirculatingSupply = 194,
-    // Reserve 195 - 205 for UTXO index
+    // Reserve 195 - 200 for UTXO index
 
     // 2) TX index
     TxIndexAcceptedTxOffsets = 206,
     TxIndexBlockAcceptanceOffsets = 207,
     TxIndexSink = 208,
-    TxIndexHistoryRoot = 200,
-    // Reserve 209 - 219 for TX index
+    TxIndexSource = 209,
+    // Reserve 210 - 215 for TX index
 
     // ---- Separator ----
     /// Reserved as a separator

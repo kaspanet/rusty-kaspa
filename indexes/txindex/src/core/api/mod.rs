@@ -25,7 +25,7 @@ pub trait TxIndexApi: Send + Sync + Debug {
 
     fn get_sink(&self) -> TxIndexResult<Option<Hash>>;
 
-    fn get_history_root(&self) -> TxIndexResult<Option<Hash>>;
+    fn get_source(&self) -> TxIndexResult<Option<Hash>>;
 
     // Counters:
 

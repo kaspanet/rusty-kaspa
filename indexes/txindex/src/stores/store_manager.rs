@@ -17,8 +17,8 @@ use crate::{
     errors::TxIndexResult,
     stores::{
         accepted_tx_offsets::DbTxIndexAcceptedTxOffsetsStore, block_acceptance_offsets::DbTxIndexBlockAcceptanceOffsetsStore,
-        history_root::DbTxIndexHistoryRootStore, sink::DbTxIndexSinkStore, TxIndexAcceptedTxOffsetsStore,
-        TxIndexBlockAcceptanceOffsetsStore, TxIndexHistoryRootStore, TxIndexSinkStore,
+        sink::DbTxIndexSinkStore, source::DbTxIndexSourceStore, TxIndexAcceptedTxOffsetsStore, TxIndexBlockAcceptanceOffsetsStore,
+        TxIndexSinkStore, TxIndexSourceStore,
     },
     IDENT,
 };
@@ -27,7 +27,7 @@ use crate::{
 pub struct TxIndexStores {
     pub accepted_tx_offsets_store: DbTxIndexAcceptedTxOffsetsStore,
     pub block_acceptance_offsets_store: DbTxIndexBlockAcceptanceOffsetsStore,
-    pub history_root_store: DbTxIndexHistoryRootStore,
+    pub source_store: DbTxIndexSourceStore,
     pub sink_store: DbTxIndexSinkStore,
     db: Arc<DB>,
 }
@@ -53,7 +53,7 @@ impl TxIndexStores {
                 db.clone(),
                 block_acceptance_offsets_cache_policy,
             ),
-            history_root_store: DbTxIndexHistoryRootStore::new(db.clone()),
+            source_store: DbTxIndexSourceStore::new(db.clone()),
             sink_store: DbTxIndexSinkStore::new(db.clone()),
             db: db.clone(),
         })
@@ -70,7 +70,7 @@ impl TxIndexStores {
 
         let mut batch: rocksdb::WriteBatchWithTransaction<false> = WriteBatch::default();
 
-        self.history_root_store.remove(&mut batch)?;
+        self.source_store.remove(&mut batch)?;
         self.sink_store.remove(&mut batch)?;
         self.accepted_tx_offsets_store.delete_all(&mut batch)?;
         self.block_acceptance_offsets_store.delete_all(&mut batch)?;

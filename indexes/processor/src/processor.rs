@@ -426,12 +426,12 @@ mod tests {
 
         let chain_hash_pruned = generate_random_hash(rng);
         let mergeset_block_acceptance_data_pruned = generate_random_acceptance_data(rng, 18, 200, 1.0 / 3.0);
-        let history_root = generate_random_hash(rng);
+        let source = generate_random_hash(rng);
 
         let test_notification = consensus_notification::ChainAcceptanceDataPrunedNotification::new(
             chain_hash_pruned,
             Arc::new(mergeset_block_acceptance_data_pruned.clone()),
-            history_root,
+            source,
         );
 
         pipeline

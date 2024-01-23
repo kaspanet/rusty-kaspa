@@ -42,7 +42,7 @@ pub enum Notification {
     #[display(fmt = "NewBlockTemplate notification")]
     NewBlockTemplate(NewBlockTemplateNotification),
 
-    #[display(fmt = "ChainAcceptanceDataPruned notification notification: chain hash pruned: {}, mergset block acceptance pruned: {}, history root: {}", "_0.chain_hash_pruned", "_0.mergeset_block_acceptance_data_pruned.len()", "_0.history_root")]
+    #[display(fmt = "ChainAcceptanceDataPruned notification notification: chain hash pruned: {}, mergset block acceptance pruned: {} source: {}", "_0.chain_hash_pruned", "_0.mergeset_block_acceptance_data_pruned.len()", "_0.source")]
     ChainAcceptanceDataPruned(ChainAcceptanceDataPrunedNotification),
 }
 }
@@ -105,12 +105,12 @@ impl BlockAddedNotification {
 pub struct ChainAcceptanceDataPrunedNotification {
     pub chain_hash_pruned: Hash,
     pub mergeset_block_acceptance_data_pruned: Arc<AcceptanceData>,
-    pub history_root: Hash,
+    pub source: Hash,
 }
 
 impl ChainAcceptanceDataPrunedNotification {
-    pub fn new(chain_hash_pruned: Hash, mergeset_block_acceptance_data_pruned: Arc<AcceptanceData>, history_root: Hash) -> Self {
-        Self { chain_hash_pruned, mergeset_block_acceptance_data_pruned, history_root }
+    pub fn new(chain_hash_pruned: Hash, mergeset_block_acceptance_data_pruned: Arc<AcceptanceData>, source: Hash) -> Self {
+        Self { chain_hash_pruned, mergeset_block_acceptance_data_pruned, source }
     }
 }
 

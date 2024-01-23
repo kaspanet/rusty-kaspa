@@ -64,9 +64,7 @@ use std::cmp::{max, Ordering};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
-use tokio::time::sleep;
 
-use std::time::Duration;
 use std::{
     collections::HashMap,
     fs::File,
@@ -1077,9 +1075,6 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
     core.shutdown();
     core.join(joins);
-    // TODO: below tries to hide perhaps a race condition, required to keep txindex history root in sync with consensus history root.
-    // possibly related to pruning processor `.prune()` call exiting prematurely before notifying txindex of the new history root, or similar.
-    sleep(Duration::from_secs(10)).await;
 
     // Assert that at least one body tip was resolved with valid UTXO
     assert!(tc.body_tips().iter().copied().any(|h| tc.block_status(h) == BlockStatus::StatusUTXOValid));
@@ -1094,12 +1089,12 @@ async fn json_test(file_path: &str, concurrency: bool) {
     assert!(virtual_utxos.is_subset(&utxoindex_utxos));
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
 
-    let tc_history_root = tc.get_history_root();
-    assert_eq!(txindex.read().get_history_root().unwrap().unwrap(), tc_history_root); // This often fails, and is reason for `sleep(Duration::from_secs(10)).await;`    `.
+    let tc_source = tc.get_source();
+    assert_eq!(txindex.read().get_source().unwrap().unwrap(), tc_source); // This often fails, and is reason for `sleep(Duration::from_secs(10)).await;`    `.
     assert_eq!(txindex.read().get_sink().unwrap().unwrap(), tc.get_sink());
 
-    let mut consensus_chain = tc.get_virtual_chain_from_block(tc_history_root, None, usize::MAX).unwrap().added;
-    consensus_chain.insert(0, tc_history_root);
+    let mut consensus_chain = tc.get_virtual_chain_from_block(tc_source, None, usize::MAX).unwrap().added;
+    consensus_chain.insert(0, tc_source);
     let consensus_acceptance_data = tc.get_blocks_acceptance_data(&consensus_chain).unwrap();
     let mut accepted_block_count = 0;
     let mut accepted_tx_count = 0;

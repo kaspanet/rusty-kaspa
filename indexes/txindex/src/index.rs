@@ -22,7 +22,7 @@ use crate::{
     core::errors::TxIndexResult,
     stores::{
         TxIndexAcceptedTxOffsetsReader, TxIndexAcceptedTxOffsetsStore, TxIndexBlockAcceptanceOffsetsReader,
-        TxIndexBlockAcceptanceOffsetsStore, TxIndexHistoryRootReader, TxIndexHistoryRootStore, TxIndexSinkReader, TxIndexSinkStore,
+        TxIndexBlockAcceptanceOffsetsStore, TxIndexSinkReader, TxIndexSinkStore, TxIndexSourceReader, TxIndexSourceStore,
         TxIndexStores,
     },
     IDENT,
@@ -67,11 +67,11 @@ impl TxIndex {
         );
 
         trace!(
-            "[{0}] Updating: Reindex Removed: {1} Blocks with {2} Txs, with history root => {3:?}",
+            "[{0}] Updating: Reindex Removed: {1} Blocks with {2} Txs, with source => {3:?}",
             IDENT,
             reindexer.block_acceptance_offsets_changes.removed.len(),
             reindexer.tx_offset_changes.removed.len(),
-            reindexer.history_root,
+            reindexer.source,
         );
 
         let mut batch = WriteBatch::default();
@@ -79,8 +79,8 @@ impl TxIndex {
         self.stores.accepted_tx_offsets_store.write_diff_batch(&mut batch, reindexer.tx_offset_changes)?;
         self.stores.block_acceptance_offsets_store.write_diff_batch(&mut batch, reindexer.block_acceptance_offsets_changes)?;
 
-        if let Some(history_root) = reindexer.history_root {
-            self.stores.history_root_store.set_if_new(&mut batch, history_root)?;
+        if let Some(source) = reindexer.source {
+            self.stores.source_store.set_if_new(&mut batch, source)?;
         }
         if let Some(sink) = reindexer.sink {
             self.stores.sink_store.set(&mut batch, sink)?;
@@ -178,25 +178,25 @@ impl TxIndexApi for TxIndex {
         let session = futures::executor::block_on(consensus.session_blocking());
 
         // Gather the necessary potential block hashes to sync from and to.
-        let txindex_history_root = self.stores.history_root_store.get()?;
-        let consensus_history_root = session.get_history_root();
+        let txindex_source = self.stores.source_store.get()?;
+        let consensus_source = session.get_source();
         let txindex_sink = self.stores.sink_store.get()?;
         let consensus_sink = session.get_sink();
 
         let resync_from = {
             let mut handle_unsynced_histories = || -> TxIndexResult<Hash> {
                 info!(
-                    "[{0}] Resetting the DB: txindex history root: {1:?}; consensus history root {2} - not synced!",
-                    IDENT, txindex_history_root, consensus_history_root,
+                    "[{0}] Resetting the DB: TxIndex Source: {1:?}; Consensus source: {2} - not synced!",
+                    IDENT, txindex_source, consensus_source,
                 );
                 self.stores.delete_all()?; // we reset the txindex
-                self.stores.history_root_store.set(consensus_history_root)?; // We can set the history_root anew after clearing db
-                Ok(consensus_history_root)
+                self.stores.source_store.set(consensus_source)?; // We can set the source anew after clearing db
+                Ok(consensus_source)
             };
 
-            let history_root = if let Some(txindex_history_root) = txindex_history_root {
-                if txindex_history_root == consensus_history_root {
-                    txindex_history_root
+            let source = if let Some(txindex_source) = txindex_source {
+                if txindex_source == consensus_source {
+                    txindex_source
                 } else {
                     handle_unsynced_histories()?
                 }
@@ -211,7 +211,7 @@ impl TxIndexApi for TxIndex {
                     session.find_highest_common_chain_block(txindex_sink, consensus_sink)?
                 }
             } else {
-                history_root
+                source
             }
         };
         let resync_to = consensus_sink;
@@ -243,8 +243,8 @@ impl TxIndexApi for TxIndex {
 
         if let Some(txindex_sink) = self.stores.sink_store.get()? {
             if txindex_sink == session.get_sink() {
-                if let Some(txindex_source) = self.stores.history_root_store.get()? {
-                    if txindex_source == session.get_history_root() {
+                if let Some(txindex_source) = self.stores.source_store.get()? {
+                    if txindex_source == session.get_source() {
                         return Ok(true);
                     }
                 }
@@ -308,9 +308,9 @@ impl TxIndexApi for TxIndex {
         Ok(self.stores.sink_store.get()?)
     }
 
-    fn get_history_root(&self) -> TxIndexResult<Option<Hash>> {
+    fn get_source(&self) -> TxIndexResult<Option<Hash>> {
         trace!("[{0}] Getting: History root", IDENT);
-        Ok(self.stores.history_root_store.get()?)
+        Ok(self.stores.source_store.get()?)
     }
 }
 
@@ -340,7 +340,7 @@ mod tests {
     use kaspa_consensusmanager::ConsensusManager;
 
     use kaspa_database::{create_temp_db, prelude::ConnBuilder};
-    use kaspa_hashes::Hash;
+    use kaspa_hashes::{Hash, ZERO_HASH};
 
     use kaspa_index_core::models::txindex::AcceptanceDataIndexType;
     use parking_lot::RwLock;
@@ -352,7 +352,7 @@ mod tests {
     fn assert_equal_along_virtual_chain(virtual_chain: &ChainPath, test_consensus: Arc<TestConsensus>, txindex: Arc<RwLock<TxIndex>>) {
         assert!(txindex.write().is_synced().unwrap());
         assert_eq!(txindex.write().get_sink().unwrap().unwrap(), test_consensus.get_sink());
-        assert_eq!(txindex.write().get_history_root().unwrap().unwrap(), test_consensus.get_history_root());
+        assert_eq!(txindex.write().get_source().unwrap().unwrap(), test_consensus.get_source());
 
         // check intial state
         for (accepting_block_hash, acceptance_data) in
@@ -551,14 +551,14 @@ mod tests {
         let prune_notification = ChainAcceptanceDataPrunedNotification {
             chain_hash_pruned: block_h,
             mergeset_block_acceptance_data_pruned: acceptance_data_h.clone(),
-            history_root: block_i,
+            source: block_i,
         };
 
         let virtual_chain = ChainPath { added: vec![block_i], removed: vec![] };
 
         let mut batch = WriteBatch::default();
         tc.acceptance_data_store.delete_batch(&mut batch, block_h).unwrap();
-        tc.pruning_point_store.write().set_history_root(&mut batch, block_i).unwrap();
+        tc.pruning_point_store.write().set_batch(&mut batch, block_i, ZERO_HASH, 0).unwrap();
         tc_db.write(batch).unwrap();
 
         txindex.write().update_via_chain_acceptance_data_pruned(prune_notification).unwrap();

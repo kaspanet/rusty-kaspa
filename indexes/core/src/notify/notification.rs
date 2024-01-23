@@ -69,12 +69,12 @@ impl NotificationTrait for Notification {
 pub struct ChainAcceptanceDataPrunedNotification {
     pub chain_hash_pruned: Hash,
     pub mergeset_block_acceptance_data_pruned: Arc<AcceptanceData>,
-    pub history_root: Hash,
+    pub source: Hash,
 }
 
 impl ChainAcceptanceDataPrunedNotification {
-    pub fn new(chain_hash_pruned: Hash, mergeset_block_acceptance_data_pruned: Arc<AcceptanceData>, history_root: Hash) -> Self {
-        Self { chain_hash_pruned, mergeset_block_acceptance_data_pruned, history_root }
+    pub fn new(chain_hash_pruned: Hash, mergeset_block_acceptance_data_pruned: Arc<AcceptanceData>, source: Hash) -> Self {
+        Self { chain_hash_pruned, mergeset_block_acceptance_data_pruned, source }
     }
 }
 
@@ -83,7 +83,7 @@ impl From<ConsensusChainAcceptanceDataPrunedNotification> for ChainAcceptanceDat
         Self {
             chain_hash_pruned: value.chain_hash_pruned,
             mergeset_block_acceptance_data_pruned: value.mergeset_block_acceptance_data_pruned,
-            history_root: value.history_root,
+            source: value.source,
         }
     }
 }
