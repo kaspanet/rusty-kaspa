@@ -3275,10 +3275,14 @@ dependencies = [
 [[package]]
 name = "kaspa-addresses"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "borsh",
  "criterion",
@@ -3299,10 +3303,14 @@ dependencies = [
 [[package]]
 name = "kaspa-addressmanager"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "borsh",
  "igd-next",
@@ -3326,10 +3334,14 @@ dependencies = [
 [[package]]
 name = "kaspa-alloc"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "mimalloc",
 ]
@@ -3337,10 +3349,14 @@ dependencies = [
 [[package]]
 name = "kaspa-bip32"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "borsh",
  "bs58",
@@ -3371,10 +3387,14 @@ dependencies = [
 [[package]]
 name = "kaspa-cli"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-trait",
  "borsh",
@@ -3427,10 +3447,14 @@ dependencies = [
 [[package]]
 name = "kaspa-connectionmanager"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "duration-string",
  "futures-util",
@@ -3448,12 +3472,16 @@ dependencies = [
 [[package]]
 name = "kaspa-consensus"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
  "arc-swap",
  "async-channel 2.2.1",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "arc-swap",
  "async-channel 2.1.1",
@@ -3533,8 +3561,12 @@ name = "kaspa-consensus-core"
 version = "0.14.1"
 =======
 name = "kaspa-consensus-core"
+<<<<<<< HEAD
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-trait",
  "bincode",
@@ -3576,11 +3608,15 @@ dependencies = [
 [[package]]
 name = "kaspa-consensus-notify"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
  "async-channel 2.2.1",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-channel 2.1.1",
 >>>>>>> 580d90c4 (start)
@@ -3601,6 +3637,7 @@ dependencies = [
 [[package]]
 name = "kaspa-consensus-wasm"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
  "cfg-if 1.0.0",
@@ -3610,6 +3647,9 @@ dependencies = [
  "kaspa-consensus-client",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "faster-hex 0.6.1",
  "js-sys",
@@ -3633,10 +3673,14 @@ dependencies = [
 [[package]]
 name = "kaspa-consensusmanager"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "duration-string",
  "futures",
@@ -3655,10 +3699,14 @@ dependencies = [
 [[package]]
 name = "kaspa-core"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "cfg-if 1.0.0",
  "ctrlc",
@@ -3677,10 +3725,14 @@ dependencies = [
 [[package]]
 name = "kaspa-daemon"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-trait",
  "borsh",
@@ -3703,10 +3755,14 @@ dependencies = [
 [[package]]
 name = "kaspa-database"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "bincode",
  "enum-primitive-derive",
@@ -3733,11 +3789,15 @@ dependencies = [
 [[package]]
 name = "kaspa-grpc-client"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
  "async-channel 2.2.1",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-channel 2.1.1",
 >>>>>>> 580d90c4 (start)
@@ -3776,11 +3836,15 @@ dependencies = [
 [[package]]
 name = "kaspa-grpc-core"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
  "async-channel 2.2.1",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-channel 2.1.1",
 >>>>>>> 580d90c4 (start)
@@ -3811,11 +3875,15 @@ dependencies = [
 [[package]]
 name = "kaspa-grpc-server"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
  "async-channel 2.2.1",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-channel 2.1.1",
 >>>>>>> 580d90c4 (start)
@@ -3852,10 +3920,14 @@ dependencies = [
 [[package]]
 name = "kaspa-hashes"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "blake2b_simd",
  "borsh",
@@ -3877,6 +3949,7 @@ dependencies = [
 [[package]]
 name = "kaspa-index-core"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
 <<<<<<< HEAD
@@ -3886,6 +3959,9 @@ dependencies = [
 >>>>>>> 4364f37f (WASM SDK update, public node resolver and TypeScript bindings (#459))
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
 >>>>>>> 580d90c4 (start)
  "derive_more",
@@ -3901,11 +3977,15 @@ dependencies = [
 [[package]]
 name = "kaspa-index-processor"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
  "async-channel 2.2.1",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-channel 2.1.1",
 >>>>>>> 580d90c4 (start)
@@ -3936,10 +4016,14 @@ dependencies = [
 [[package]]
 name = "kaspa-math"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "borsh",
  "criterion",
@@ -3961,10 +4045,14 @@ dependencies = [
 [[package]]
 name = "kaspa-merkle"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "kaspa-hashes",
 ]
@@ -3972,10 +4060,14 @@ dependencies = [
 [[package]]
 name = "kaspa-metrics-core"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-trait",
  "borsh",
@@ -3992,10 +4084,14 @@ dependencies = [
 [[package]]
 name = "kaspa-mining"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "criterion",
  "futures-util",
@@ -4022,10 +4118,14 @@ dependencies = [
 [[package]]
 name = "kaspa-mining-errors"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "kaspa-consensus-core",
  "thiserror",
@@ -4034,10 +4134,14 @@ dependencies = [
 [[package]]
 name = "kaspa-muhash"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "criterion",
  "kaspa-hashes",
@@ -4050,6 +4154,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-notify"
+<<<<<<< HEAD
 <<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
@@ -4070,6 +4175,9 @@ dependencies = [
  "kaspa-math",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-channel 2.1.1",
  "async-trait",
@@ -4138,10 +4246,14 @@ dependencies = [
 [[package]]
 name = "kaspa-p2p-flows"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-trait",
  "chrono",
@@ -4177,10 +4289,14 @@ dependencies = [
 [[package]]
 name = "kaspa-p2p-lib"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "borsh",
  "ctrlc",
@@ -4212,10 +4328,14 @@ dependencies = [
 [[package]]
 name = "kaspa-perf-monitor"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "kaspa-core",
  "log",
@@ -4228,6 +4348,7 @@ dependencies = [
 [[package]]
 name = "kaspa-pow"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
  "criterion",
@@ -4235,6 +4356,9 @@ dependencies = [
  "kaspa-consensus-client",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "criterion",
  "js-sys",
@@ -4299,7 +4423,7 @@ dependencies = [
  "kaspa-consensus-client",
 =======
 name = "kaspa-rpc-core"
-version = "0.13.3"
+version = "0.13.4"
 dependencies = [
  "async-channel 2.1.1",
  "async-trait",
@@ -4340,10 +4464,14 @@ dependencies = [
 [[package]]
 name = "kaspa-rpc-macros"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "convert_case 0.6.0",
  "proc-macro-error",
@@ -4356,10 +4484,14 @@ dependencies = [
 [[package]]
 name = "kaspa-rpc-service"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-trait",
  "kaspa-addresses",
@@ -4393,6 +4525,7 @@ dependencies = [
 [[package]]
 name = "kaspa-testing-integration"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
  "async-channel 2.2.1",
@@ -4409,6 +4542,9 @@ dependencies = [
  "indexmap 2.2.6",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-channel 2.1.1",
  "bincode",
@@ -4480,10 +4616,14 @@ dependencies = [
 [[package]]
 name = "kaspa-txindex"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.13.4"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "bincode",
  "futures",
@@ -4507,10 +4647,14 @@ dependencies = [
 [[package]]
 name = "kaspa-txscript"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "blake2b_simd",
  "borsh",
@@ -4541,10 +4685,14 @@ dependencies = [
 [[package]]
 name = "kaspa-txscript-errors"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "secp256k1",
  "thiserror",
@@ -4553,11 +4701,15 @@ dependencies = [
 [[package]]
 name = "kaspa-utils"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
  "async-channel 2.2.1",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-channel 2.1.1",
 >>>>>>> 580d90c4 (start)
@@ -4591,6 +4743,7 @@ dependencies = [
 [[package]]
 name = "kaspa-utils-tower"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
  "cfg-if 1.0.0",
@@ -4598,6 +4751,9 @@ dependencies = [
  "hyper 0.14.28",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "cfg-if 1.0.0",
  "futures",
@@ -4617,10 +4773,14 @@ dependencies = [
 [[package]]
 name = "kaspa-utxoindex"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "futures",
  "kaspa-consensus",
@@ -4643,10 +4803,14 @@ dependencies = [
 [[package]]
 name = "kaspa-wallet"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-std",
  "async-trait",
@@ -4659,10 +4823,14 @@ dependencies = [
 [[package]]
 name = "kaspa-wallet-cli-wasm"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-trait",
  "js-sys",
@@ -4677,6 +4845,7 @@ dependencies = [
 [[package]]
 name = "kaspa-wallet-core"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
  "aes",
@@ -4688,6 +4857,9 @@ dependencies = [
  "base64 0.21.7",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "aes",
  "ahash 0.8.6",
@@ -4825,8 +4997,12 @@ name = "kaspa-wallet-macros"
 version = "0.14.1"
 =======
 name = "kaspa-wallet-macros"
+<<<<<<< HEAD
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "convert_case 0.5.0",
  "proc-macro-error",
@@ -4864,7 +5040,7 @@ dependencies = [
  "cfg-if 1.0.0",
 =======
 name = "kaspa-wasm"
-version = "0.13.3"
+version = "0.13.4"
 dependencies = [
 >>>>>>> 580d90c4 (start)
  "js-sys",
@@ -4907,10 +5083,14 @@ dependencies = [
 [[package]]
 name = "kaspa-wrpc-client"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-std",
  "async-trait",
@@ -4978,7 +5158,7 @@ dependencies = [
  "clap 4.5.4",
 =======
 name = "kaspa-wrpc-proxy"
-version = "0.13.3"
+version = "0.13.4"
 dependencies = [
  "async-trait",
  "clap 4.4.11",
@@ -4999,10 +5179,14 @@ dependencies = [
 [[package]]
 name = "kaspa-wrpc-server"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 =======
 version = "0.13.3"
 >>>>>>> 580d90c4 (start)
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-trait",
  "borsh",
@@ -5029,6 +5213,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wrpc-wasm"
+<<<<<<< HEAD
 <<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
@@ -5057,6 +5242,9 @@ dependencies = [
  "workflow-wasm",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "kaspa-wrpc-client",
 >>>>>>> 580d90c4 (start)
@@ -5065,12 +5253,16 @@ dependencies = [
 [[package]]
 name = "kaspad"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
  "async-channel 2.2.1",
  "clap 4.5.4",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-channel 2.1.1",
  "clap 4.4.11",
@@ -7011,12 +7203,16 @@ dependencies = [
 [[package]]
 name = "rothschild"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
  "async-channel 2.2.1",
  "clap 4.5.4",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-channel 2.1.1",
  "clap 4.4.11",
@@ -7608,6 +7804,7 @@ dependencies = [
 [[package]]
 name = "simpa"
 <<<<<<< HEAD
+<<<<<<< HEAD
 version = "0.14.1"
 dependencies = [
  "async-channel 2.2.1",
@@ -7618,6 +7815,9 @@ dependencies = [
  "indexmap 2.2.6",
 =======
 version = "0.13.3"
+=======
+version = "0.13.4"
+>>>>>>> fecac8ee (Cargo.toml update for 0.13.4 release (#404))
 dependencies = [
  "async-channel 2.1.1",
  "clap 4.4.11",
