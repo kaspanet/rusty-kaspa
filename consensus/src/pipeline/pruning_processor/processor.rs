@@ -14,7 +14,7 @@ use crate::{
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::{PruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
-            relations::{StagingRelationsStore},
+            relations::StagingRelationsStore,
             selected_chain::SelectedChainStore,
             statuses::StatusesStoreReader,
             tips::{TipsStore, TipsStoreReader},
@@ -361,12 +361,16 @@ impl PruningProcessor {
 
         info!("Header and Block pruning: starting traversal from: {} (genesis: {})", queue.iter().reusable_format(", "), genesis);
         while let Some(current) = queue.pop_front() {
-            
             // Check for exit possibility
-            if (!is_subscribed // if noone is subscribed
-            || is_notification_sent) // OR we sent the notification
-            && self.is_consensus_exiting.load(Ordering::Relaxed) // AND consenus is exiting
-            // We may exit 
+            if (
+                // if noone is subscribed
+                !is_subscribed
+                // OR we sent the notification
+                || is_notification_sent
+            )
+            // AND consenus is exiting
+            && self.is_consensus_exiting.load(Ordering::Relaxed)
+            // We may exit
             {
                 drop(reachability_read);
                 drop(prune_guard);
@@ -486,7 +490,9 @@ impl PruningProcessor {
 
                 // Notify subscribers after data is gone, and check if we can exit
                 if let Some(chain_acceptance_data_pruned_notification) = chain_acceptance_data_pruned_notification {
-                    self.notification_root.notify(chain_acceptance_data_pruned_notification).expect("expecting an open unbounded channel");
+                    self.notification_root
+                        .notify(chain_acceptance_data_pruned_notification)
+                        .expect("expecting an open unbounded channel");
                     is_notification_sent = true;
                 }
             }
