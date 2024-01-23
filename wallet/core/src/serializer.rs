@@ -4,6 +4,12 @@
 
 use crate::imports::*;
 
+/// A struct that contains the magic `u32` and the version `u32` values of the serialized data.
+/// This struct is used by various primitives in the wallet framework to serialize their
+/// versions and detect these versions when deserializing. This allows for future
+/// data storage compatibility of the wallet subsystem, even if serialized structures themselves
+/// change. The `magic` value is a unique `u32` value set by each structure and used to detect
+/// memory alignment errors during deserialization.
 #[derive(Debug, Clone)]
 pub struct StorageHeader {
     pub magic: u32,

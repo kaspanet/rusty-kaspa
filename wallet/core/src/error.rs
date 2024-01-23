@@ -18,6 +18,7 @@ use workflow_rpc::client::error::Error as RpcError;
 use workflow_wasm::jserror::*;
 use workflow_wasm::printable::*;
 
+/// [`Error`](enum@Error) variants emitted by the wallet framework.
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("{0}")]
