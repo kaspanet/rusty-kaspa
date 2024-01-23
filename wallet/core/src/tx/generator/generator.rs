@@ -601,8 +601,7 @@ impl Generator {
     ) -> Option<DataKind> {
         let UtxoEntryReference { utxo } = &utxo_entry_reference;
 
-        let input_sequence = data.inputs.len() as u64;
-        let input = TransactionInput::new(utxo.outpoint.clone().into(), vec![], input_sequence, self.inner.sig_op_count);
+        let input = TransactionInput::new(utxo.outpoint.clone().into(), vec![], 0, self.inner.sig_op_count);
         let input_amount = utxo.amount();
         let input_compute_mass = calc.calc_mass_for_input(&input) + self.inner.signature_mass_per_input;
 
