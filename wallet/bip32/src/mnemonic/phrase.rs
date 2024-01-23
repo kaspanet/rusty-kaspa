@@ -22,6 +22,7 @@ const PBKDF2_ROUNDS: u32 = 2048;
 pub type Entropy32 = [u8; KEY_SIZE];
 pub type Entropy16 = [u8; 16];
 
+/// Word count for a BIP39 mnemonic phrase. Identifies mnemonic as 12 or 24 word variants.
 #[derive(Default, Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum WordCount {

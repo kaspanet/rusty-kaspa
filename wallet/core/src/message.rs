@@ -14,6 +14,7 @@ impl AsRef<[u8]> for PersonalMessage<'_> {
     }
 }
 
+/// Sign a message with the given private key
 pub fn sign_message(msg: &PersonalMessage, privkey: &[u8; 32]) -> Result<Vec<u8>, Error> {
     let hash = calc_personal_message_hash(msg);
 
@@ -24,8 +25,11 @@ pub fn sign_message(msg: &PersonalMessage, privkey: &[u8; 32]) -> Result<Vec<u8>
     Ok(sig.to_vec())
 }
 
-/// Ok(()) if the signature matches the given message and pubkey
-/// Error if any of the inputs are incorrect, or the signature is invalid
+/// Verifies signed message.
+///
+/// Produces `Ok(())` if the signature matches the given message and [`secp256k1::Error`]
+/// if any of the inputs are incorrect, or the signature is invalid.
+///
 pub fn verify_message(msg: &PersonalMessage, signature: &Vec<u8>, pubkey: &XOnlyPublicKey) -> Result<(), Error> {
     let hash = calc_personal_message_hash(msg);
     let msg = secp256k1::Message::from_slice(hash.as_bytes().as_slice())?;

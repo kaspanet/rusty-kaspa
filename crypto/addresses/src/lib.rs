@@ -42,6 +42,7 @@ impl From<workflow_wasm::error::Error> for AddressError {
     }
 }
 
+/// Address prefix identifying the network type this address belongs to (such as `kaspa`, `kaspatest`, `kaspasim`, `kaspadev`).
 #[derive(
     PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
 )]

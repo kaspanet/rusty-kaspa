@@ -6,6 +6,7 @@ use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
+/// Secret container for sensitive data. Performs memory zeroization on drop.
 #[derive(Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct Secret(Vec<u8>);
 
