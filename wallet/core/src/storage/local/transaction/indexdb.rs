@@ -61,14 +61,14 @@ impl Inner {
 
 pub struct TransactionStore {
     inner: Arc<Mutex<Arc<Inner>>>,
-    name: String,
+    // name: String,
 }
 
 impl TransactionStore {
-    pub fn new(name: &str) -> TransactionStore {
+    pub fn new(_name: &str) -> TransactionStore {
         TransactionStore {
             inner: Arc::new(Mutex::new(Arc::new(Inner { known_databases: HashMap::default() }))),
-            name: name.to_string(),
+            // name: name.to_string(),
         }
     }
 
@@ -78,7 +78,8 @@ impl TransactionStore {
     }
 
     pub fn make_db_name(&self, binding: &str, network_id: &str) -> String {
-        format!("{}_{}_{}", self.name, binding, network_id)
+        // format!("{}_{}_{}", self.name, binding, network_id)
+        format!("{}_{}", binding, network_id)
     }
 
     pub fn database_is_registered(&self, binding: &str, network_id: &str) -> bool {
@@ -214,15 +215,50 @@ impl TransactionRecordStore for TransactionStore {
 
     async fn load_range(
         &self,
-        _binding: &Binding,
-        _network_id: &NetworkId,
+        binding: &Binding,
+        network_id: &NetworkId,
         _filter: Option<Vec<TransactionKind>>,
         _range: std::ops::Range<usize>,
     ) -> Result<TransactionRangeResult> {
-        log_info!("DEBUG IDB: Loading transaction records for range {:?}", _range);
+        // log_info!("DEBUG IDB: Loading transaction records for range {:?}", _range);
 
-        let result = TransactionRangeResult { transactions: vec![], total: 0 };
-        Ok(result)
+        let binding_str = binding.to_hex();
+        let network_id_str = network_id.to_string();
+        let db_name = self.make_db_name(&binding_str, &network_id_str);
+
+        let inner = self.inner().clone();
+
+        call_async_no_send!(async move {
+            let db = inner.open_db(db_name).await?;
+
+            let idb_tx = db
+                .transaction_on_one_with_mode(TRANSACTIONS_STORE_NAME, IdbTransactionMode::Readonly)
+                .map_err(|err| Error::Custom(format!("Failed to open indexdb transaction for reading {:?}", err)))?;
+
+            let store = idb_tx
+                .object_store(TRANSACTIONS_STORE_NAME)
+                .map_err(|err| Error::Custom(format!("Failed to open indexdb object store for reading {:?}", err)))?;
+
+            let array = store
+                .get_all()
+                .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
+                .await
+                .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?;
+
+            let transactions = array
+                .iter()
+                .filter_map(|js_value| match transaction_record_from_js_value(&js_value, None) {
+                    Ok(transaction_record) => Some(Arc::new(transaction_record)),
+                    Err(err) => {
+                        log_error!("Failed to deserialize transaction record from indexdb {:?}", err);
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            let total = transactions.len() as u64;
+            Ok(TransactionRangeResult { transactions, total })
+        })
     }
 
     async fn store(&self, transaction_records: &[&TransactionRecord]) -> Result<()> {
