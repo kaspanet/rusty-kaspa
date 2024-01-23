@@ -299,7 +299,7 @@ impl MassCalculator {
     }
 
     pub fn calc_tx_storage_fee(&self, is_coinbase: bool, inputs: &[UtxoEntryReference], outputs: &[TransactionOutput]) -> u64 {
-        self.calc_fee_for_storage_mass(self.calc_storage_mass_for_transaction(is_coinbase, inputs, outputs).unwrap_or(0))
+        self.calc_fee_for_storage_mass(self.calc_storage_mass_for_transaction(is_coinbase, inputs, outputs).unwrap_or(u64::MAX))
     }
 
     pub fn calc_fee_for_storage_mass(&self, mass: u64) -> u64 {
