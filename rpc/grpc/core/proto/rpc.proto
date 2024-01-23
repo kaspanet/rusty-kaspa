@@ -707,6 +707,7 @@ message GetInfoResponseMessage{
   uint64 mempoolSize = 2;
   string serverVersion = 3;
   bool isUtxoIndexed = 4;
+  bool isTxIndexed = 6;
   bool isSynced = 5;
   bool hasNotifyCommand = 11;
   bool hasMessageId = 12;

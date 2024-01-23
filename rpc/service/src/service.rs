@@ -540,6 +540,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             mempool_size: self.mining_manager.transaction_count_sample(TransactionQuery::TransactionsOnly),
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
+            is_tx_indexed: self.config.txindex,
             is_synced: self.has_sufficient_peer_connectivity() && is_nearly_synced,
             has_notify_command: true,
             has_message_id: true,

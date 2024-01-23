@@ -196,6 +196,8 @@ async fn sanity_test() {
                     assert_eq!(response.server_version, kaspa_core::kaspad_env::version().to_string());
                     assert_eq!(response.mempool_size, 0);
                     assert!(response.is_utxo_indexed);
+                    assert!(response.is_tx_indexed);
+                    //TODO: is_synced
                     assert!(response.has_message_id);
                     assert!(response.has_notify_command);
                 })

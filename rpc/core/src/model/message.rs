@@ -132,6 +132,7 @@ pub struct GetInfoResponse {
     pub mempool_size: u64,
     pub server_version: String,
     pub is_utxo_indexed: bool,
+    pub is_tx_indexed: bool,
     pub is_synced: bool,
     pub has_notify_command: bool,
     pub has_message_id: bool,

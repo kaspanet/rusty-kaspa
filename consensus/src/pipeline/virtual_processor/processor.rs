@@ -317,9 +317,6 @@ impl VirtualStateProcessor {
         self.notification_root
             .notify(Notification::NewBlockTemplate(NewBlockTemplateNotification {}))
             .expect("expecting an open unbounded channel");
-        self.notification_root
-            .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)))
-            .expect("expecting an open unbounded channel");
         if is_new_sink {
             self.notification_root
                 .notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(sink_ghostdag_data.blue_score)))
@@ -344,6 +341,11 @@ impl VirtualStateProcessor {
                 )))
                 .expect("expecting an open unbounded channel");
         }
+        // keep this after the virtual chain changed notification, so we commit to the txindex before the utxoindex.
+        // this should allow for higher hit rates when querying transactions in the txindex (and possibly a future addrindex).
+        self.notification_root
+            .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)))
+            .expect("expecting an open unbounded channel");
     }
 
     pub(crate) fn virtual_finality_point(&self, virtual_ghostdag_data: &GhostdagData, pruning_point: Hash) -> Hash {
