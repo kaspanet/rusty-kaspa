@@ -1090,7 +1090,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
 
     let tc_source = tc.get_source();
-    assert_eq!(txindex.read().get_source().unwrap().unwrap(), tc_source); // This often fails, and is reason for `sleep(Duration::from_secs(10)).await;`    `.
+    assert_eq!(txindex.read().get_source().unwrap().unwrap(), tc_source);
     assert_eq!(txindex.read().get_sink().unwrap().unwrap(), tc.get_sink());
 
     let mut consensus_chain = tc.get_virtual_chain_from_block(tc_source, None, usize::MAX).unwrap().added;
