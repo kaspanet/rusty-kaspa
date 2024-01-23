@@ -17,6 +17,7 @@ pub use crate::rpc::{DynRpcApi, RpcCtl};
 pub use crate::secret::Secret;
 pub use crate::serializer::*;
 pub use crate::storage::*;
+pub use crate::tx::MassCombinationStrategy;
 pub use crate::types::*;
 pub use crate::utxo::balance::Balance;
 pub use crate::utxo::scan::{Scan, ScanExtent};

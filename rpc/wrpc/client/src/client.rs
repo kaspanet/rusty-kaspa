@@ -346,7 +346,7 @@ impl KaspaRpcClient {
         //  or 1.2.3.4:port where port is based on the network type.
         //
         if (parse_output.scheme.is_some() || !path_str.is_empty()) && parse_output.port.is_none() {
-            Ok(format!("{}://{}:{}", scheme, parse_output.host.to_string(), path_str))
+            Ok(format!("{}://{}{}", scheme, parse_output.host.to_string(), path_str))
         } else {
             Ok(format!("{}://{}:{}{}", scheme, parse_output.host.to_string(), port, path_str))
         }
