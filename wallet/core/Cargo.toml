@@ -1,11 +1,13 @@
 [package]
 name = "kaspa-wallet-core"
 description = "Kaspa wallet library"
+keywords = ["kaspa", "wallet"]
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 include.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [features]
 no-unsafe-eval = ["workflow-core/no-unsafe-eval","workflow-rpc/no-unsafe-eval"]

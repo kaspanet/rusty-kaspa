@@ -1,10 +1,12 @@
 [package]
 name = "kaspa-cli"
-description = "Kaspa CLI library"
+description = "Kaspa CLI"
+keywords = ["kaspa", "wallet", "cli", "rpc"]
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
 include = [
     "src/**/*.rs",
     "src/**/*.txt",
