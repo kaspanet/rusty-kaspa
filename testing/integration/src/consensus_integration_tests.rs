@@ -13,6 +13,7 @@ use kaspa_consensus::model::stores::block_transactions::{
 };
 use kaspa_consensus::model::stores::ghostdag::{GhostdagStoreReader, KType as GhostdagKType};
 use kaspa_consensus::model::stores::headers::HeaderStoreReader;
+use kaspa_consensus::model::stores::pruning::PruningStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::relations::DbRelationsStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
@@ -1089,21 +1090,29 @@ async fn json_test(file_path: &str, concurrency: bool) {
     assert!(virtual_utxos.is_subset(&utxoindex_utxos));
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
 
-    let tc_source = tc.get_source();
-    assert_eq!(txindex.read().get_source().unwrap().unwrap(), tc_source);
+    // since pruning is interrupted by the shutdown, we most query virtual chain from the history root for residual data.
+    let tc_history_root = tc.pruning_point_store.read().history_root().unwrap();
+    assert_eq!(txindex.read().get_source().unwrap().unwrap(), tc.get_source());
     assert_eq!(txindex.read().get_sink().unwrap().unwrap(), tc.get_sink());
 
-    let mut consensus_chain = tc.get_virtual_chain_from_block(tc_source, None, usize::MAX).unwrap().added;
-    consensus_chain.insert(0, tc_source);
-    let consensus_acceptance_data = tc.get_blocks_acceptance_data(&consensus_chain).unwrap();
+    let mut consensus_chain = tc.get_virtual_chain_from_block(tc_history_root, None, usize::MAX).unwrap().added;
+    consensus_chain.insert(0, tc_history_root);
+    let (consensus_chain, consensus_acceptance_data) = consensus_chain
+        .into_iter()
+        .map(|hash| {
+            let acceptance_data = tc.get_block_acceptance_data(hash).ok();
+            (hash, acceptance_data)
+        })
+        .filter_map(|(hash, acceptance_data)| acceptance_data.map(|acceptance_data| (hash, acceptance_data)))
+        .unzip::<_, _, Vec<_>, Vec<_>>();
     let mut accepted_block_count = 0;
     let mut accepted_tx_count = 0;
     for (accepting_block_hash, acceptance_data) in consensus_chain.into_iter().zip(consensus_acceptance_data) {
+        accepted_block_count += acceptance_data.len();
         for (i, mergeset) in acceptance_data.iter().enumerate() {
             let indexed_block_acceptance_offset = txindex.read().get_block_acceptance_offset(mergeset.block_hash).unwrap().unwrap();
             assert_eq!(indexed_block_acceptance_offset.acceptance_data_index, i as u16);
             assert_eq!(indexed_block_acceptance_offset.accepting_block, accepting_block_hash);
-            accepted_block_count += 1;
             accepted_tx_count += mergeset.accepted_transactions.len();
             for tx_entry in mergeset.accepted_transactions.iter() {
                 let indexed_accepted_tx_offset = txindex.read().get_tx_offset(tx_entry.transaction_id).unwrap().unwrap();
