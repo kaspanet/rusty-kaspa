@@ -6,7 +6,7 @@ use kaspa_consensus_notify::notification::{
     VirtualChainChangedNotification as ConsensusVirtualChainChangedNotification,
 };
 use kaspa_consensusmanager::{ConsensusManager, ConsensusSessionBlocking};
-use kaspa_core::{error, info, trace};
+use kaspa_core::{debug, error, info, trace};
 use kaspa_database::prelude::DB;
 use kaspa_hashes::Hash;
 use kaspa_index_core::{
@@ -180,34 +180,49 @@ impl TxIndexApi for TxIndex {
         // Gather the necessary potential block hashes to sync from and to.
         let txindex_source = self.stores.source_store.get()?;
         let consensus_source = session.get_source();
+        let consensus_history_root = session.get_history_root();
         let txindex_sink = self.stores.sink_store.get()?;
         let consensus_sink = session.get_sink();
 
-        let resync_from = {
-            let mut handle_unsynced_histories = || -> TxIndexResult<Hash> {
-                info!(
-                    "[{0}] Resetting the DB: TxIndex Source: {1:?}; Consensus source: {2} - not synced!",
-                    IDENT, txindex_source, consensus_source,
-                );
-                self.stores.delete_all()?; // we reset the txindex
-                self.stores.source_store.set(consensus_source)?; // We can set the source anew after clearing db
-                Ok(consensus_source)
-            };
+        let mut handle_unsynced_histories = || -> TxIndexResult<Hash> {
+            self.stores.delete_all()?; // we reset the txindex
+            self.stores.source_store.set(consensus_source)?; // We can set the source anew after clearing db
+            Ok(consensus_source)
+        };
 
+        // Node is in a state of interrupted pruning
+        if consensus_history_root != consensus_source {
+            info!(
+                "[{0}] Resetting the DB: Consensus history root: {1}; Consensus source: {2} - not synced!",
+                IDENT, consensus_history_root, consensus_source,
+            );
+            // We have no guarantees txindex was syncing with consensus during the last pruning attempt so we most resync from scratch.
+            let _ = handle_unsynced_histories()?;
+        }
+
+        let resync_from = {
             let source = if let Some(txindex_source) = txindex_source {
                 if txindex_source == consensus_source {
+                    debug!("{0} source is synced with consensus source", IDENT);
                     txindex_source
                 } else {
+                    info!(
+                        "[{0}] Resetting the DB: Txindex source: {1}; Consensus source: {2} - not synced!",
+                        IDENT, txindex_source, consensus_source,
+                    );
                     handle_unsynced_histories()?
                 }
             } else {
+                info!("[{0}] Resetting the DB: no Txindex source found - not synced!", IDENT,);
                 handle_unsynced_histories()?
             };
 
             if let Some(txindex_sink) = txindex_sink {
                 if session.is_chain_block(txindex_sink)? {
+                    debug!("{0} resync from txindex sink", IDENT);
                     txindex_sink
                 } else {
+                    debug!("{0} sink is reorged - finding resync from via common ancestor", IDENT);
                     session.find_highest_common_chain_block(txindex_sink, consensus_sink)?
                 }
             } else {
@@ -219,6 +234,7 @@ impl TxIndexApi for TxIndex {
         let unsync_from = txindex_sink;
         let unsync_to = if let Some(txindex_sink) = txindex_sink {
             if txindex_sink != consensus_sink && !session.is_chain_block(txindex_sink)? {
+                debug!("{0} unsyncing from txindex sink to split point", IDENT);
                 Some(session.find_highest_common_chain_block(txindex_sink, consensus_sink)?)
             } else {
                 None
@@ -228,8 +244,10 @@ impl TxIndexApi for TxIndex {
         };
 
         if unsync_from.is_some() && unsync_to.is_some() {
+            debug!("{0} Unsyncing Reorged sink: {1} => {2}", IDENT, unsync_from.unwrap(), unsync_to.unwrap());
             self.sync_segement(unsync_from.unwrap(), unsync_to.unwrap(), true, &session)?;
         }
+        debug!("{0} Resyncing along virtual selected parent chain: {1} => {2}", IDENT, resync_from, resync_to);
         self.sync_segement(resync_from, resync_to, false, &session)?;
         Ok(())
     }

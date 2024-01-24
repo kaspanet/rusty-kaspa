@@ -135,8 +135,24 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    /// source refers to the earliest block from which the current node has full header & block data  
+    /// source refers to the earliest block from which the current node is guaranteed to have full header & block data  
     fn get_source(&self) -> Hash {
+        unimplemented!()
+    }
+
+    /// `history_root` refers to the hash from which the current node will start to prune blocks
+    ///
+    /// `pruning_point` refers to the hash of the block that the current node will prune up to
+    ///
+    /// if `history_root != pruning_point || source` the node is in the process of pruning, or will restart an interrupted pruning if relauched
+    ///
+    /// - If the node is pruning we can expect residual (to-be-pruned) data from the pruning process to exist between the the `history root` and the `pruning point` / `source`.
+    ///
+    /// if `history_root == pruning_point || source` the node is not pruning
+    ///
+    /// we can expect `history_root == source` if the node is an archival node.
+    ///
+    fn get_history_root(&self) -> Hash {
         unimplemented!()
     }
 
