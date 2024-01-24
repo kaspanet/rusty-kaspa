@@ -11,11 +11,11 @@ codebase within JavaScript environments such as Node.js and Web Browsers.
 
 ## Documentation
 
-- [**integrating with Kaspa** guide](https://kaspa-mdbook.aspectron.com/)
+- [**integrating with Kaspa** guide](https://kaspa.aspectron.org/)
 - [**Rustdoc** documentation](https://docs.rs/kaspa-wasm/latest/kaspa-wasm)
-- [**JSDoc** documentation](https://aspectron.com/docs/kaspa-wasm/)
+- [**JSDoc** documentation](https://kaspa.aspectron.org/jsdoc/)
 
-Please note that while WASM directly binds JacaScript and Rust resources, their names on JavaScript side
+Please note that while WASM directly binds JavaScript and Rust resources, their names on JavaScript side
 are different from their name in Rust as they conform to the 'camelCase' convention in JavaScript and 
 to the 'snake_case' convention in Rust. 
 
@@ -24,15 +24,8 @@ to the 'snake_case' convention in Rust.
 The APIs are currently separated into the following groups:
 
 - **Transaction API** — Bindings for primitives related to transactions.
-This includes basic primitives related to consensus transactions, as well as
-`MutableTransaction` and `VirtualTransaction` primitives usable for 
-transaction creation.
-
+- **RPC API** — [RPC interface bindings](https://docs.rs/kaspa-wasm/latest/kaspa-wasm/rpc) for the Kaspa node using WebSocket (wRPC) connections.
 - **Wallet API** — API for async core wallet processing tasks.
-
-- **RPC API** — [RPC interface bindings](https://docs.rs/kaspa-wasm/latest/kaspa-wasm/rpc) for the Kaspa node using WebSocket connections.
-Compatible with Rusty Kaspa as well as with the Golang node (kaspad) via the `kaspa-wrpc-proxy` 
-WebSocket / gRPC proxy (located in `rpc/wrpc/proxy`).
 
 ## Using RPC
 
@@ -46,13 +39,52 @@ WebSocket implementation. Two of such modules are [WebSocket](https://www.npmjs.
 (provides a custom implementation) and [isomorphic-ws](https://www.npmjs.com/package/isomorphic-ws) 
 (built on top of the ws WebSocket module).
 
-You can use the following shims:
 
-```js
-// `websocket` module
-globalThis.WebSocket = require('websocket').w3cwebsocket;
-// `isomorphic-ws` module
-globalThis.WebSocket = require('isomorphic-ws');
+## Loading in a Web App
+
+```html
+<html>
+    <head>
+        <script type="module">
+            import * as kaspa_wasm from './kaspa/kaspa-wasm.js';
+            (async () => {
+                const kaspa = await kaspa_wasm.default('./kaspa/kaspa-wasm_bg.wasm');
+                // ...
+            })();
+        </script>
+    </head>
+    <body></body>
+</html>
 ```
 
-For more details, please follow the [**integrating with Kaspa**](https://kaspa-mdbook.aspectron.com/) guide.
+## Loading in a Node.js App
+
+```javascript
+// W3C WebSocket module shim
+// this is provided by NPM `kaspa` module and is only needed
+// if you are building WASM libraries for NodeJS from source
+// globalThis.WebSocket = require('websocket').w3cwebsocket;
+
+let {RpcClient,Encoding,initConsolePanicHook} = require('./kaspa-rpc');
+
+// enabling console panic hooks allows WASM to print panic details to console
+// initConsolePanicHook();
+// enabling browser panic hooks will create a full-page DIV with panic details
+// this is useful for mobile devices where console is not available
+// initBrowserPanicHook();
+
+// if port is not specified, it will use the default port for the specified network
+const rpc = new RpcClient("127.0.0.1", Encoding.Borsh, "testnet-10");
+
+(async () => {
+    try {
+        await rpc.connect();
+        let info = await rpc.getInfo();
+        console.log(info);
+    } finally {
+        await rpc.disconnect();
+    }
+})();
+```
+
+For more details, please follow the [**integrating with Kaspa**](https://kaspa.aspectron.org/) guide.

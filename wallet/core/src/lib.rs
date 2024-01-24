@@ -38,9 +38,10 @@
 //! - <https://www.npmjs.com/package/kaspa-wasm>
 //!
 //! The `kaspa-wasm` module is a pure WASM32 module that includes
-//! the entire wallet framework, but does not support RPC, while
-//! the `kaspa` module also includes `isomorphic-ws` simulating
-//! the W3C WebSocket available natively in browsers and supports RPC.
+//! the entire wallet framework, but does not support RPC due to an absence
+//! of a native WebSocket in NodeJs environment, while
+//! the `kaspa` module includes `isomorphic-ws` dependency simulating
+//! the W3C WebSocket and thus supports RPC.
 //!
 //! JavaScript examples for using this framework can be found at:
 //! <https://github.com/kaspanet/rusty-kaspa/tree/master/wasm/nodejs>
