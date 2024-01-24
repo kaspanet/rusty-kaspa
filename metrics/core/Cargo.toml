@@ -1,5 +1,6 @@
 [package]
 name = "kaspa-metrics-core"
+description = "Tools for collecting and reporting Kaspa p2p node metrics"
 version.workspace = true
 authors.workspace = true
 license.workspace = true
