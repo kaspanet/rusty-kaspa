@@ -263,7 +263,7 @@ impl TxIndexApi for TxIndex {
             if txindex_sink == session.get_sink() {
                 if let Some(txindex_source) = self.stores.source_store.get()? {
                     let consensus_source = session.get_source();
-                    if txindex_source == consensus_source  && consensus_source == session.get_history_root() {
+                    if txindex_source == consensus_source && consensus_source == session.get_history_root() {
                         return Ok(true);
                     }
                 }
