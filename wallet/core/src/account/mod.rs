@@ -27,7 +27,7 @@ use workflow_core::abortable::Abortable;
 /// Notification callback type used by [`Account::sweep`] and [`Account::send`].
 /// Allows tracking in-flight transactions during transaction generation.
 pub type GenerationNotifier = Arc<dyn Fn(&PendingTransaction) + Send + Sync>;
-/// Scan notification callback type used by [`Account::derivation_scan`].
+/// Scan notification callback type used by [`DerivationCapableAccount::derivation_scan`].
 /// Provides derivation discovery scan progress information.
 pub type ScanNotifier = Arc<dyn Fn(usize, usize, u64, Option<TransactionId>) + Send + Sync>;
 
