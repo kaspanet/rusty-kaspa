@@ -49,6 +49,7 @@ WebSocket implementation. Two of such modules are [WebSocket](https://www.npmjs.
             import * as kaspa_wasm from './kaspa/kaspa-wasm.js';
             (async () => {
                 const kaspa = await kaspa_wasm.default('./kaspa/kaspa-wasm_bg.wasm');
+                // ...
             })();
         </script>
     </head>
@@ -60,22 +61,30 @@ WebSocket implementation. Two of such modules are [WebSocket](https://www.npmjs.
 
 ```javascript
 // W3C WebSocket module shim
-globalThis.WebSocket = require('websocket').w3cwebsocket;
+// this is provided by NPM `kaspa` module and is only needed
+// if you are building WASM libraries for NodeJS from source
+// globalThis.WebSocket = require('websocket').w3cwebsocket;
 
-let {RpcClient,Encoding,init_console_panic_hook,defer} = require('./kaspa-rpc');
-// init_console_panic_hook();
+let {RpcClient,Encoding,initConsolePanicHook} = require('./kaspa-rpc');
 
-let rpc = new RpcClient(Encoding.Borsh,"ws://127.0.0.1:17110");
+// enabling console panic hooks allows WASM to print panic details to console
+// initConsolePanicHook();
+// enabling browser panic hooks will create a full-page DIV with panic details
+// this is useful for mobile devices where console is not available
+// initBrowserPanicHook();
+
+// if port is not specified, it will use the default port for the specified network
+const rpc = new RpcClient("127.0.0.1", Encoding.Borsh, "testnet-10");
 
 (async () => {
-    await rpc.connect();
-
-    let info = await rpc.getInfo();
-    console.log(info);
-
-    await rpc.disconnect();
+    try {
+        await rpc.connect();
+        let info = await rpc.getInfo();
+        console.log(info);
+    } finally {
+        await rpc.disconnect();
+    }
 })();
 ```
-
 
 For more details, please follow the [**integrating with Kaspa**](https://kaspa.aspectron.org/) guide.
