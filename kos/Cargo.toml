@@ -6,7 +6,7 @@ version = "0.0.2"
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
-repository = "https://github.com/kaspanet/rusty-kaspa"
+repository.workspace = true
 include = [
     "src/**/*.rs",
     "src/**/*.txt",
