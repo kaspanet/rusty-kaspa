@@ -152,7 +152,7 @@ pub trait ConsensusApi: Send + Sync {
     ///
     /// we can expect `history_root == source` if the node is an archival node.
     ///
-    fn get_history_root(&self) -> Hash {
+    fn get_history_root(&self) -> Option<Hash> {
         unimplemented!()
     }
 

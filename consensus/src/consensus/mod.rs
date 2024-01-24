@@ -507,8 +507,8 @@ impl ConsensusApi for Consensus {
         self.pruning_point_store.read().pruning_point().unwrap()
     }
 
-    fn get_history_root(&self) -> Hash {
-        self.pruning_point_store.read().history_root().unwrap()
+    fn get_history_root(&self) -> Option<Hash> {
+        self.pruning_point_store.read().history_root().ok()
     }
 
     /// Estimates number of blocks and headers stored in the node

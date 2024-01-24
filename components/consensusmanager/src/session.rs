@@ -239,7 +239,7 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_source()).await
     }
 
-    pub async fn async_get_history_root(&self) -> Hash {
+    pub async fn async_get_history_root(&self) -> Option<Hash> {
         self.clone().spawn_blocking(|c| c.get_history_root()).await
     }
 

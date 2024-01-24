@@ -190,14 +190,16 @@ impl TxIndexApi for TxIndex {
             Ok(consensus_source)
         };
 
-        // Node is in a state of interrupted pruning
-        if consensus_history_root != consensus_source {
-            info!(
-                "[{0}] Resetting the DB: Consensus history root: {1}; Consensus source: {2} - not synced!",
-                IDENT, consensus_history_root, consensus_source,
-            );
-            // We have no guarantees txindex was syncing with consensus during the last pruning attempt so we most resync from scratch.
-            let _ = handle_unsynced_histories()?;
+        // Check if consensus is in a state of interrupted pruning
+        if let Some(consensus_history_root) = consensus_history_root {
+            if consensus_history_root != consensus_source {
+                info!(
+                    "[{0}] Resetting the DB: Consensus history root: {1}; Consensus source: {2} - not synced!",
+                    IDENT, consensus_history_root, consensus_source,
+                );
+                // We have no guarantees txindex was syncing with consensus during the last pruning attempt so we most resync from scratch.
+                let _ = handle_unsynced_histories()?;
+            }
         }
 
         let resync_from = {
@@ -262,9 +264,11 @@ impl TxIndexApi for TxIndex {
         if let Some(txindex_sink) = self.stores.sink_store.get()? {
             if txindex_sink == session.get_sink() {
                 if let Some(txindex_source) = self.stores.source_store.get()? {
-                    let consensus_source = session.get_source();
-                    if txindex_source == consensus_source && consensus_source == session.get_history_root() {
-                        return Ok(true);
+                    if let Some(consensus_history_root) = session.get_history_root() {
+                        let consensus_source = session.get_source();
+                        if consensus_source == txindex_source && consensus_history_root == txindex_source {
+                            return Ok(true);
+                        }
                     }
                 }
             }
@@ -578,6 +582,7 @@ mod tests {
         let mut batch = WriteBatch::default();
         tc.acceptance_data_store.delete_batch(&mut batch, block_h).unwrap();
         tc.pruning_point_store.write().set_batch(&mut batch, block_i, ZERO_HASH, 0).unwrap();
+        tc.pruning_point_store.write().set_history_root(&mut batch, block_i).unwrap();
         tc_db.write(batch).unwrap();
 
         txindex.write().update_via_chain_acceptance_data_pruned(prune_notification).unwrap();
