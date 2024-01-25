@@ -535,6 +535,7 @@ impl ConsensusApi for Consensus {
         }
         pruning_point
     }
+
     /// Estimates number of blocks and headers stored in the node
     ///
     /// This is an estimation based on the daa score difference between the node's `source` and `sink`'s daa score,

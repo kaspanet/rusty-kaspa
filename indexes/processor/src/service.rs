@@ -38,13 +38,20 @@ impl IndexService {
         let events: EventSwitches = match (utxoindex.is_some(), txindex.is_some()) {
             (true, true) => [
                 EventType::UtxosChanged,
+                // TODO: Below should be removable form the processor, it does nothing here..
                 EventType::PruningPointUtxoSetOverride,
                 EventType::VirtualChainChanged,
                 EventType::ChainAcceptanceDataPruned,
             ]
             .as_ref()
             .into(),
-            (true, false) => [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into(),
+            (true, false) => [
+                EventType::UtxosChanged,
+                // TODO: Below should be removable form the processor, it does nothing here..
+                EventType::PruningPointUtxoSetOverride,
+            ]
+            .as_ref()
+            .into(),
             (false, true) => [EventType::VirtualChainChanged, EventType::ChainAcceptanceDataPruned].as_ref().into(),
             (false, false) => {
                 warn!("At least one of utxoindex or txindex should be enabled to run the index processor");
@@ -60,6 +67,7 @@ impl IndexService {
             consensus_notifier
                 .try_start_notify(consensus_notify_listener_id, Scope::UtxosChanged(UtxosChangedScope::default()))
                 .expect("the subscription always succeeds");
+            // TODO: Below should be removable form the processor, it does nothing here..
             consensus_notifier
                 .try_start_notify(
                     consensus_notify_listener_id,

@@ -2,4 +2,4 @@ pub mod errors;
 pub mod processor;
 pub mod service;
 
-const IDENT: &str = "index-processor";
+const IDENT: &str = "IndexProcessor";
