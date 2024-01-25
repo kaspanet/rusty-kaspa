@@ -49,6 +49,7 @@ impl IndexService {
         let events: EventSwitches = match (utxoindex.is_some(), txindex.is_some()) {
             (true, true) => [
                 EventType::UtxosChanged,
+                // TODO: Below should be removable form the processor, it does nothing here..
                 EventType::PruningPointUtxoSetOverride,
                 EventType::VirtualChainChanged,
                 EventType::PruningPointAdvancement
