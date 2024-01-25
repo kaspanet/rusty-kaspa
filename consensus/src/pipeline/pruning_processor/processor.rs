@@ -419,10 +419,19 @@ impl PruningProcessor {
                 && self.acceptance_data_store.has(current).unwrap()
                 // check if acceptance data has already been pruned
                 {
+                    // TODO: this may be inefficient,
+                    // but is required for now to keep the txindex recoverable in during pruning interruptions.
+                    // ideally we have some better iteration over chain path in while loop above.
+                    let source = self
+                        .reachability_service
+                        .forward_chain_iterator(current, new_pruning_point, false)
+                        .skip(1)
+                        .find(|future| !keep_blocks.contains(future));
+
                     Some(Notification::ChainAcceptanceDataPruned(ChainAcceptanceDataPrunedNotification::new(
                         current,
                         self.acceptance_data_store.get(current).expect("expected get"),
-                        new_pruning_point,
+                        source.unwrap_or(new_pruning_point),
                     )))
                 } else {
                     None

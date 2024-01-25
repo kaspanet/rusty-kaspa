@@ -64,18 +64,14 @@ impl TxIndexStores {
     }
 
     /// Resets the txindex database:
-    pub fn delete_all(&mut self) -> TxIndexResult<()> {
+    pub fn delete_all(&mut self, batch: &mut WriteBatch) -> TxIndexResult<()> {
         // TODO: explore possibility of deleting and replacing whole db, currently there is an issue because of file lock and db being in an arc.
         trace!("[{0}] attempting to clear txindex database...", IDENT);
 
-        let mut batch: rocksdb::WriteBatchWithTransaction<false> = WriteBatch::default();
-
-        self.source_store.remove(&mut batch)?;
-        self.sink_store.remove(&mut batch)?;
-        self.accepted_tx_offsets_store.delete_all(&mut batch)?;
-        self.block_acceptance_offsets_store.delete_all(&mut batch)?;
-
-        self.db.write(batch)?;
+        self.source_store.remove(batch)?;
+        self.sink_store.remove(batch)?;
+        self.accepted_tx_offsets_store.delete_all(batch)?;
+        self.block_acceptance_offsets_store.delete_all(batch)?;
 
         trace!("[{0}] cleared txindex database", IDENT);
 

@@ -136,23 +136,17 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     /// source refers to the earliest block from which the current node is guaranteed to have full header & block data  
-    fn get_source(&self) -> Hash {
-        unimplemented!()
-    }
+    ///
+    /// Note:
+    ///
+    /// `exact == true`: the function will return the exact source,
+    /// during an actively processing consensus instance one can expect this hash to be pruned at any moment,
+    /// and thus it is not recommended to access this hash beyond start-up operations.
+    ///
+    /// `exact == false` Will return the hash upto which the node is expected to prune, even if below it such data
+    /// is still temporarily available, this is the recommended way to access the source hash for most use cases.
 
-    /// `history_root` refers to the hash from which the current node will start to prune blocks
-    ///
-    /// `pruning_point` refers to the hash of the block that the current node will prune up to
-    ///
-    /// if `history_root != pruning_point || source` the node is in the process of pruning, or will restart an interrupted pruning if relauched
-    ///
-    /// - If the node is pruning we can expect residual (to-be-pruned) data from the pruning process to exist between the the `history root` and the `pruning point` / `source`.
-    ///
-    /// if `history_root == pruning_point || source` the node is not pruning
-    ///
-    /// we can expect `history_root == source` if the node is an archival node.
-    ///
-    fn get_history_root(&self) -> Option<Hash> {
+    fn get_source(&self, exact: bool) -> Hash {
         unimplemented!()
     }
 

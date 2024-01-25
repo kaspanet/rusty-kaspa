@@ -46,7 +46,9 @@ impl TxIndex {
                 }
                 Err(e) => {
                     error!("[{0}] Failed to resync: {1}", IDENT, e);
-                    txindex.stores.delete_all()?; // we try and delete all, in order to remove any partial data that may have been written.
+                    let mut batch = WriteBatch::default();
+                    txindex.stores.delete_all(&mut batch)?; // we try and delete all, in order to remove any partial data that may have been written.
+                    txindex.stores.write_batch(batch)?;
                     return Err(e);
                 }
             };
@@ -80,7 +82,7 @@ impl TxIndex {
         self.stores.block_acceptance_offsets_store.write_diff_batch(&mut batch, reindexer.block_acceptance_offsets_changes)?;
 
         if let Some(source) = reindexer.source {
-            self.stores.source_store.set_if_new(&mut batch, source)?;
+            self.stores.source_store.set(&mut batch, source)?;
         }
         if let Some(sink) = reindexer.sink {
             self.stores.sink_store.set(&mut batch, sink)?;
@@ -179,30 +181,25 @@ impl TxIndexApi for TxIndex {
 
         // Gather the necessary potential block hashes to sync from and to.
         let txindex_source = self.stores.source_store.get()?;
-        let consensus_source = session.get_source();
-        let consensus_history_root = session.get_history_root();
+        let consensus_source = session.get_source(true);
         let txindex_sink = self.stores.sink_store.get()?;
         let consensus_sink = session.get_sink();
 
         let reset_db = {
-            debug!(
-                "[{0}] Reset db Check with: Consensus source {1:?}, Consensus history {2:?}, txindex_source {3:?}",
-                IDENT, consensus_source, consensus_history_root, txindex_source
-            );
-            match (consensus_history_root, txindex_source) {
-                (None, None) => true,                                               // No txindex source
-                (None, Some(txindex_source)) => consensus_source != txindex_source, // unsynced sources
-                (Some(_), None) => true,                                            // No txindex source
-                (Some(consensus_history_root), Some(txindex_source)) => {
-                    consensus_source != consensus_history_root || consensus_source != txindex_source
-                }
+            debug!("[{0}] Reset db Check with: Consensus source {1:?}, txindex_source {2:?}", IDENT, consensus_source, txindex_source);
+            if let Some(txindex_source) = txindex_source {
+                txindex_source != consensus_source
+            } else {
+                true
             }
         };
 
         if reset_db {
             debug!("[{0}] Reset db Check failed - resetting the db", IDENT);
-            self.stores.delete_all()?;
-            self.stores.source_store.set(consensus_source)?;
+            let mut batch = WriteBatch::default();
+            self.stores.delete_all(&mut batch)?;
+            self.stores.source_store.set(&mut batch, consensus_source)?;
+            self.stores.write_batch(batch)?;
         }
 
         let resync_points = if reset_db || txindex_sink.is_none() {
@@ -220,7 +217,7 @@ impl TxIndexApi for TxIndex {
         };
 
         let unsync_points = if txindex_sink.is_some() && !session.is_chain_block(txindex_sink.unwrap())? {
-            // We may unwrap txindex sink as we check is None in if condition.
+            // We may unwrap txindex sink as we check is Some in if condition.
             debug!("[{0}] Unsycing from reorged txindex sink", IDENT);
             Some((txindex_sink.unwrap(), session.find_highest_common_chain_block(txindex_sink.unwrap(), consensus_sink)?))
         } else {
@@ -247,11 +244,8 @@ impl TxIndexApi for TxIndex {
         if let Some(txindex_sink) = self.stores.sink_store.get()? {
             if txindex_sink == session.get_sink() {
                 if let Some(txindex_source) = self.stores.source_store.get()? {
-                    if let Some(consensus_history_root) = session.get_history_root() {
-                        let consensus_source = session.get_source();
-                        if consensus_source == txindex_source && consensus_history_root == txindex_source {
-                            return Ok(true);
-                        }
+                    if txindex_source == session.get_source(true) {
+                        return Ok(true);
                     }
                 }
             }
@@ -358,7 +352,7 @@ mod tests {
     fn assert_equal_along_virtual_chain(virtual_chain: &ChainPath, test_consensus: Arc<TestConsensus>, txindex: Arc<RwLock<TxIndex>>) {
         assert!(txindex.write().is_synced().unwrap());
         assert_eq!(txindex.write().get_sink().unwrap().unwrap(), test_consensus.get_sink());
-        assert_eq!(txindex.write().get_source().unwrap().unwrap(), test_consensus.get_source());
+        assert_eq!(txindex.write().get_source().unwrap().unwrap(), test_consensus.get_source(true));
 
         // check intial state
         for (accepting_block_hash, acceptance_data) in

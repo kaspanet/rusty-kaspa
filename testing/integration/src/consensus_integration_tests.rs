@@ -1092,7 +1092,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
     // since pruning is interrupted by the shutdown, we most query virtual chain from the history root for residual data.
     let tc_history_root = tc.pruning_point_store.read().history_root().unwrap();
-    assert_eq!(txindex.read().get_source().unwrap().unwrap(), tc.get_source());
+    assert_eq!(txindex.read().get_source().unwrap().unwrap(), tc.get_source(true));
     assert_eq!(txindex.read().get_sink().unwrap().unwrap(), tc.get_sink());
 
     let mut consensus_chain = tc.get_virtual_chain_from_block(tc_history_root, None, usize::MAX).unwrap().added;
