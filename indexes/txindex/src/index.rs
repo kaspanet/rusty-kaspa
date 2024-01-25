@@ -107,10 +107,20 @@ impl TxIndex {
         let mut percent_completed = (0f64, 0f64); // .0 holds the value of the former display
         let percent_display_granularity = 1.0; // in percent
         let mut instant = std::time::Instant::now();
+        let mut is_end = false;
+        let mut is_start = true;
 
-        while sync_from != sync_to {
-            let to_process_hashes =
+        while !is_end {
+            let mut to_process_hashes =
                 session.get_virtual_chain_from_block(sync_from, Some(sync_to), self.config.perf.resync_chunksize)?.added;
+
+            if is_start {
+                // Prepend `sync_from` as `get_virtual_chain_from_block` does not include the from block.
+                // this is important only in the first iteration.
+                assert!(to_process_hashes.first() != Some(&sync_from)); // sanity check
+                to_process_hashes.insert(0, sync_from);
+                is_start = false;
+            }
 
             let acceptance_data = Arc::new(
                 to_process_hashes.iter().filter_map(|hash| session.get_block_acceptance_data(*hash).ok()).collect::<Vec<_>>(),
@@ -145,7 +155,7 @@ impl TxIndex {
 
             self.update_with_reindexed_changes(txindex_reindexer)?;
 
-            let is_end = sync_from == sync_to;
+            is_end = sync_from == sync_to;
 
             if percent_completed.0 + percent_display_granularity <= percent_completed.1 || is_end {
                 let total_txs_processed_diff = total_txs_processed.1 - total_txs_processed.0;

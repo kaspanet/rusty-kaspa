@@ -508,20 +508,26 @@ impl ConsensusApi for Consensus {
         let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
 
         if exact {
+            // We require this guard from here on out, since we are accessing the history root.
+            let _pruning_guard = self.pruning_lock.blocking_read();
+
             let history_root = self.pruning_point_store.read().history_root().ok();
             if let Some(history_root) = history_root {
                 // in a state of interrupted pruning
                 if history_root != pruning_point {
-                    // We require this guard from here on out
-                    let _pruning_guard = self.pruning_lock.blocking_read();
                     // we scan up to the first chain block with a block body form ORIGIN
                     return self
                         .services
                         .reachability_service
                         .forward_chain_iterator(ORIGIN, pruning_point, false)
                         .skip(1) // skip ORIGIN
-                        .find(|this| self.statuses_store.read().get(*this).unwrap().has_block_body()) // find first chain block with body
-                        .unwrap(); // We expect somesuch block to exist
+                        .find(|this| {
+                            match self.statuses_store.read().get(*this).ok() {
+                                Some(res) => res.has_block_body(),
+                                None => false,
+                            }
+                        }) // find first chain block with body
+                        .unwrap(); // We expect some-such block to exist
                 } else {
                     return pruning_point;
                 }
