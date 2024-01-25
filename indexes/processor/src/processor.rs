@@ -65,7 +65,7 @@ impl Processor {
         }
         tokio::spawn(async move {
             debug!(
-                "[{0}] with TxIndex: {1}, UtxoIndex: {2}; - collecting task starting",
+                "[{0}] with UtxoIndex: {1}, TxIndex: {2}; - collecting task starting",
                 IDENT,
                 self.utxoindex.is_some(),
                 self.txindex.is_some()
