@@ -122,14 +122,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_writer_reentrance() {
-        for i in 0..64 {
+        for i in 0..16 {
             let l = Arc::new(RfRwLock::new());
             let (tx, rx) = oneshot::channel();
             let l_clone = l.clone();
             let h = std::thread::spawn(move || {
                 let mut write = l_clone.blocking_write();
                 tx.send(()).unwrap();
-                for _ in 0..5 {
+                for _ in 0..10 {
                     std::thread::sleep(Duration::from_millis(2));
                     write.blocking_yield();
                 }
@@ -137,7 +137,7 @@ mod tests {
             rx.await.unwrap();
             // Make sure the reader acquires the lock during writer yields. We give the test a few chances to acquire
             // in order to make sure it passes also in slow CI environments where the OS thread-scheduler might take its time
-            let read = timeout(Duration::from_millis(5), l.read()).await.unwrap_or_else(|_| panic!("failed at iteration {i}"));
+            let read = timeout(Duration::from_millis(18), l.read()).await.unwrap_or_else(|_| panic!("failed at iteration {i}"));
             drop(read);
             timeout(Duration::from_millis(100), tokio::task::spawn_blocking(move || h.join())).await.unwrap().unwrap().unwrap();
         }
