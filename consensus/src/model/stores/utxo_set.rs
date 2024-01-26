@@ -297,7 +297,7 @@ mod tests {
 
         // Test write_many
         // Write 2
-        utxo_diff.add = (0..2).map(|_| (generate_random_outpoint(&mut rng), generate_random_utxo(&mut rng).into())).collect();
+        utxo_diff.add = (0..2).map(|_| (generate_random_outpoint(&mut rng), generate_random_utxo(&mut rng))).collect();
         store.write_many(&utxo_diff.add.iter().map(|(o, v)| (*o, v.clone())).collect_vec()).unwrap();
         assert_eq!(store.count().unwrap(), store.iterator().count() as u64);
         assert_eq!(store.count().unwrap(), 2);
