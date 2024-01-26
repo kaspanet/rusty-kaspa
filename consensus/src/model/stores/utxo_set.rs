@@ -258,7 +258,7 @@ mod tests {
         );
         let mut rng: SmallRng = SmallRng::seed_from_u64(42u64);
         // test added only
-        let to_add = (0..2).into_iter().map(|_| (generate_random_outpoint(&mut rng), generate_random_utxo(&mut rng))).collect();
+        let to_add = (0..2).map(|_| (generate_random_outpoint(&mut rng), generate_random_utxo(&mut rng))).collect();
         let mut utxo_diff = UtxoDiff::new(to_add, HashMap::new());
 
         // Test write_diff
@@ -274,7 +274,7 @@ mod tests {
             utxo_diff.remove.insert(*o, v.clone());
         });
         utxo_diff.add.clear();
-        utxo_diff.add = (0..2).into_iter().map(|_| (generate_random_outpoint(&mut rng), generate_random_utxo(&mut rng))).collect();
+        utxo_diff.add = (0..2).map(|_| (generate_random_outpoint(&mut rng), generate_random_utxo(&mut rng))).collect();
 
         let mut batch = WriteBatch::default();
         store.write_diff_batch(&mut batch, &utxo_diff).unwrap();
@@ -298,7 +298,7 @@ mod tests {
         // Test write_many
         // Write 2
         utxo_diff.add =
-            (0..2).into_iter().map(|_| (generate_random_outpoint(&mut rng), generate_random_utxo(&mut rng).into())).collect();
+            (0..2).map(|_| (generate_random_outpoint(&mut rng), generate_random_utxo(&mut rng).into())).collect();
         store.write_many(&utxo_diff.add.iter().map(|(o, v)| (*o, v.clone())).collect_vec()).unwrap();
         assert_eq!(store.count().unwrap(), store.iterator().count() as u64);
         assert_eq!(store.count().unwrap(), 2);
@@ -308,7 +308,7 @@ mod tests {
         // write 2
         store
             .write_from_iterator_without_cache(
-                (0..2).into_iter().map(|_| (generate_random_outpoint(&mut rng), generate_random_utxo(&mut rng).into())),
+                (0..2).map(|_| (generate_random_outpoint(&mut rng), generate_random_utxo(&mut rng))),
             )
             .unwrap();
         assert_eq!(store.count().unwrap(), store.iterator().count() as u64);
