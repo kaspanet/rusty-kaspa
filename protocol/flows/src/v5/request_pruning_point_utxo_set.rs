@@ -49,7 +49,9 @@ impl RequestPruningPointUtxoSetFlow {
 
         let consensus = self.ctx.consensus();
         let mut session = consensus.session().await;
-
+        let is_first_loop = true;
+        let total_to_process = session.async_get_pruning_point_utxos_count().await;
+        let mut total_processed = 0;
         loop {
             // We avoid keeping the consensus session across the limitless dequeue call below
             let pruning_point_utxos =
@@ -57,7 +59,18 @@ impl RequestPruningPointUtxoSetFlow {
                     Err(ConsensusError::UnexpectedPruningPoint) => return self.send_unexpected_pruning_point_message().await,
                     res => res,
                 }?;
-            debug!("Retrieved {} UTXOs for pruning point {}", pruning_point_utxos.len(), expected_pp);
+
+            // Update the total processed count
+            total_processed += pruning_point_utxos.len();
+
+            debug!(
+                "Retrieved {0} + {1} / {2} UTXOs from pp {3} ({4:.0}%)",
+                total_processed,
+                pruning_point_utxos.len(),
+                total_to_process,
+                expected_pp,
+                (total_processed as f64 / total_to_process as f64) * 100.0
+            );
 
             // Send the chunk
             self.router
@@ -67,7 +80,8 @@ impl RequestPruningPointUtxoSetFlow {
                         outpoint_and_utxo_entry_pairs: pruning_point_utxos
                             .iter()
                             .map(|(outpoint, entry)| { (outpoint, entry).into() })
-                            .collect_vec()
+                            .collect_vec(),
+                        total_amount: if is_first_loop { total_to_process } else { 0u64 },
                     }
                 ))
                 .await?;

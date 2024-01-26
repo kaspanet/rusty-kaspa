@@ -25,14 +25,21 @@ pub enum SyncState {
         progress: u64,
     },
     UtxoSync {
-        chunks: u64,
+        processed: u64,
         total: u64,
     },
     TrustSync {
         processed: u64,
         total: u64,
     },
-    UtxoResync,
+    UtxoResync {
+        processed: u64,
+        total: u64,
+    },
+    UtxoTransfer {
+        processed: u64,
+        total: u64,
+    },
     /// General cases when the node is waiting
     /// for information from peers or waiting to
     /// connect to peers.

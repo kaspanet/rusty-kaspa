@@ -201,6 +201,7 @@ pub struct StateObserver {
     ibd_blocks: Regex,
     utxo_resync: Regex,
     utxo_sync: Regex,
+    utxo_transfer: Regex,
     trust_blocks: Regex,
     // accepted_block: Regex,
 }
@@ -211,8 +212,13 @@ impl Default for StateObserver {
             proof: Regex::new(r"Validating level (\d+) from the pruning point proof").unwrap(),
             ibd_headers: Regex::new(r"IBD: Processed (\d+) block headers \((\d+)%\)").unwrap(),
             ibd_blocks: Regex::new(r"IBD: Processed (\d+) blocks \((\d+)%\)").unwrap(),
-            utxo_resync: Regex::new(r"Resyncing the utxoindex...").unwrap(),
-            utxo_sync: Regex::new(r"Received (\d+) UTXO set chunks so far, totaling in (\d+) UTXOs").unwrap(),
+            utxo_resync: Regex::new(
+                r"[UtxoIndex] Resyncing - Utxos: (\d+) + (\d+) / (\d+) \((\d+)/s\); Circulating Supply: (\d+); (\d+)%",
+            )
+            .unwrap(),
+            // For Review - last two digits may be displayed as `NaN`, might this need an edit?
+            utxo_sync: Regex::new(r"Received (\d) + (\d) / (\d) signaled UTXOs \((\d)%\)").unwrap(),
+            utxo_transfer: Regex::new(r"Transfering from pruning to virtual store (\d) + (\d) / (\d) UTXOs \((\d)%\)").unwrap(),
             trust_blocks: Regex::new(r"Processed (\d) trusted blocks in the last .* (total (\d))").unwrap(),
             // accepted_block: Regex::new(r"Accepted block .* via").unwrap(),
         }
@@ -236,9 +242,9 @@ impl StateObserver {
                 }
             }
         } else if let Some(captures) = self.utxo_sync.captures(line) {
-            if let (Some(chunks), Some(total)) = (captures.get(1), captures.get(2)) {
-                if let (Ok(chunks), Ok(total)) = (chunks.as_str().parse::<u64>(), total.as_str().parse::<u64>()) {
-                    state = Some(SyncState::UtxoSync { chunks, total });
+            if let (Some(processed), Some(total)) = (captures.get(1), captures.get(3)) {
+                if let (Ok(processed), Ok(total)) = (processed.as_str().parse::<u64>(), total.as_str().parse::<u64>()) {
+                    state = Some(SyncState::UtxoSync { processed, total });
                 }
             }
         } else if let Some(captures) = self.trust_blocks.captures(line) {
@@ -253,8 +259,18 @@ impl StateObserver {
                     state = Some(SyncState::Proof { level });
                 }
             }
-        } else if self.utxo_resync.is_match(line) {
-            state = Some(SyncState::UtxoResync);
+        } else if let Some(captures) = self.utxo_resync.captures(line) {
+            if let (Some(processed), Some(total)) = (captures.get(1), captures.get(3)) {
+                if let (Ok(processed), Ok(total)) = (processed.as_str().parse::<u64>(), total.as_str().parse::<u64>()) {
+                    state = Some(SyncState::UtxoResync { processed, total })
+                }
+            }
+        } else if let Some(captues) = self.utxo_transfer.captures(line) {
+            if let (Some(processed), Some(total)) = (captues.get(1), captues.get(3)) {
+                if let (Ok(processed), Ok(total)) = (processed.as_str().parse::<u64>(), total.as_str().parse::<u64>()) {
+                    state = Some(SyncState::UtxoTransfer { processed, total })
+                }
+            }
         }
 
         state

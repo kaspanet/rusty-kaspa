@@ -127,11 +127,14 @@ impl TryFrom<protowire::BlockHeadersMessage> for Vec<Arc<Header>> {
     }
 }
 
-impl TryFrom<protowire::PruningPointUtxoSetChunkMessage> for Vec<(TransactionOutpoint, UtxoEntry)> {
+impl TryFrom<protowire::PruningPointUtxoSetChunkMessage> for (Vec<(TransactionOutpoint, UtxoEntry)>, usize) {
     type Error = ConversionError;
 
     fn try_from(msg: protowire::PruningPointUtxoSetChunkMessage) -> Result<Self, Self::Error> {
-        msg.outpoint_and_utxo_entry_pairs.into_iter().map(|p| p.try_into()).collect()
+        Ok((
+            msg.outpoint_and_utxo_entry_pairs.into_iter().map(|p| p.try_into()).collect::<Result<_, Self::Error>>()?,
+            msg.total_amount as usize,
+        ))
     }
 }
 

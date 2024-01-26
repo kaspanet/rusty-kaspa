@@ -717,10 +717,36 @@ impl KaspaCli {
                         .join(" "),
                     )
                 }
-                SyncState::UtxoSync { total, .. } => {
-                    Some([style("SYNC UTXO").red().to_string(), style(total.separated_string()).dim().to_string()].join(" "))
+                SyncState::UtxoSync { processed, total } => {
+                    let progress = processed * 100 / total;
+                    Some(
+                        [
+                            style("SYNC UTXO 1 / 3").red().to_string(),
+                            style(format!("{} ({}%)", processed.separated_string(), progress)).dim().to_string(),
+                        ]
+                        .join(" "),
+                    )
                 }
-                SyncState::UtxoResync => Some([style("SYNC").red().to_string(), style("UTXO").black().to_string()].join(" ")),
+                SyncState::UtxoTransfer { processed, total } => {
+                    let progress = processed * 100 / total;
+                    Some(
+                        [
+                            style("SYNC UTXO 2 / 3").red().to_string(),
+                            style(format!("{} ({}%)", processed.separated_string(), progress)).dim().to_string(),
+                        ]
+                        .join(" "),
+                    )
+                }
+                SyncState::UtxoResync { processed, total } => {
+                    let progress = processed * 100 / total;
+                    Some(
+                        [
+                            style("SYNC UTXO 3 / 3").red().to_string(),
+                            style(format!("{} ({}%)", processed.separated_string(), progress)).dim().to_string(),
+                        ]
+                        .join(" "),
+                    )
+                }
                 SyncState::NotSynced => Some([style("SYNC").red().to_string(), style("...").black().to_string()].join(" ")),
                 SyncState::Synced { .. } => None,
             }

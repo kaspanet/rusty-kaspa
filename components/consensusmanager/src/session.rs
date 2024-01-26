@@ -263,6 +263,10 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.get_virtual_utxos(from_outpoint, chunk_size, skip_first)).await
     }
 
+    pub async fn async_get_virtual_utxo_count(&self) -> u64 {
+        self.clone().spawn_blocking(|c| c.get_virtual_utxo_count()).await
+    }
+
     pub async fn async_get_tips(&self) -> Vec<Hash> {
         self.clone().spawn_blocking(|c| c.get_tips()).await
     }
@@ -381,6 +385,10 @@ impl ConsensusSessionOwned {
         self.clone()
             .spawn_blocking(move |c| c.get_pruning_point_utxos(expected_pruning_point, from_outpoint, chunk_size, skip_first))
             .await
+    }
+
+    pub async fn async_get_pruning_point_utxos_count(&self) -> u64 {
+        self.clone().spawn_blocking(|c| c.get_pruning_point_utxos_count()).await
     }
 
     pub async fn async_get_missing_block_body_hashes(&self, high: Hash) -> ConsensusResult<Vec<Hash>> {

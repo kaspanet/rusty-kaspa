@@ -159,6 +159,11 @@ message RequestPruningPointUTXOSetMessage{
 
 message PruningPointUtxoSetChunkMessage{
   repeated OutpointAndUtxoEntryPair outpointAndUtxoEntryPairs = 1;
+  // As this is a new field only nodes that support it will populate it.
+  // else we need to wait for a higher protocol version. 
+  // TODO: perhaps rework this to be a seperate message in new protocol version?
+  // currently processing this field with minimal overhead is a bit "clunky". 
+  uint64 totalAmount = 2; // This is the amount of UTXOs to process, and will only be populated in the first received chunk. 
 }
 
 message OutpointAndUtxoEntryPair{

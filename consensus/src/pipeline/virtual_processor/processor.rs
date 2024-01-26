@@ -30,6 +30,7 @@ use crate::{
             tips::{DbTipsStore, TipsStoreReader},
             utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
             utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
+            utxo_set::UtxoSetStoreReader,
             virtual_state::{LkgVirtualState, VirtualState, VirtualStateStoreReader, VirtualStores},
             DB,
         },
@@ -1058,8 +1059,19 @@ impl VirtualStateProcessor {
             let mut virtual_write = self.virtual_stores.write();
 
             virtual_write.utxo_set.clear().unwrap();
-            for chunk in &pruning_utxoset_read.utxo_set.iterator().map(|iter_result| iter_result.unwrap()).chunks(1000) {
+            let to_process = pruning_utxoset_read.utxo_set.count().unwrap();
+            let mut processed = 0;
+            let chunk_size = 1000;
+            for chunk in &pruning_utxoset_read.utxo_set.iterator().map(|iter_result| iter_result.unwrap()).chunks(chunk_size) {
+                info!(
+                    "Transfering from pruning to virtual store {0} + {1} / {2} UTXOs ({3}%)",
+                    processed,
+                    chunk_size,
+                    to_process,
+                    ((processed + chunk_size) as f64) * 100.0 / to_process as f64
+                );
                 virtual_write.utxo_set.write_from_iterator_without_cache(chunk).unwrap();
+                processed += chunk_size;
             }
         }
 
