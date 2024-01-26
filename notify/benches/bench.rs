@@ -5,7 +5,6 @@ use kaspa_notify::{address::tracker::Indexes, subscription::context::Subscriptio
 
 fn create_addresses(count: usize) -> Vec<Address> {
     (0..count)
-        .into_iter()
         .map(|i| Address::new(Prefix::Mainnet, kaspa_addresses::Version::PubKey, &Uint256::from_u64(i as u64).to_le_bytes()))
         .collect()
 }
