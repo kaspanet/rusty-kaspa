@@ -911,6 +911,10 @@ impl ConsensusApi for Consensus {
             Some(hash) => {
                 self.validate_block_exists(hash)?;
                 let ghostdag_data = self.ghostdag_primary_store.get_data(hash).unwrap();
+                // The selected parent header is used within to check for sampling activation, so we verify its existence first
+                if !self.headers_store.has(ghostdag_data.selected_parent).unwrap() {
+                    return Err(ConsensusError::DifficultyError(DifficultyError::InsufficientWindowData(0)));
+                }
                 self.estimate_network_hashes_per_second_impl(&ghostdag_data, window_size)
             }
             None => {

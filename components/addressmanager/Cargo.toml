@@ -6,6 +6,7 @@ edition.workspace = true
 authors.workspace = true
 include.workspace = true
 license.workspace = true
+repository.workspace = true
 
 [dependencies]
 borsh.workspace = true
