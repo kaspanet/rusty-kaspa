@@ -31,6 +31,34 @@ use tokio::join;
 /// Run this benchmark with the following command line:
 /// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc --profile release -- notify_benchmarks::bench_utxos_changed_subscriptions_footprint --exact --nocapture --ignored`
 /// `cargo test --package kaspa-testing-integration --lib --features heap,devnet-prealloc --profile heap -- notify_benchmarks::bench_utxos_changed_subscriptions_footprint --exact --nocapture --ignored`
+///
+/// Some configurations were tested with
+///
+/// NOTIFY_CLIENTS = 500
+/// MAX_ADDRESSES = 1_000_000
+/// WALLET_ADDRESSES = 800
+///
+/// and considering ACTIVE_UTXOS_CHANGED_SUBSCRIPTIONS & kaspa_notify::address::tracker::Indexes as
+///
+/// A) No UtxosChanged subscriptions:   false  IndexVec                    
+/// B) Sorted vector subscriptions:     true   IndexVec
+/// C) HashSet subscriptions:           true   IndexSet
+///
+/// After 4 hours runs, following approximate memory consumptions were measured:
+///
+/// - A => 10.5 GB
+/// - B => 12.7 GB
+/// - C => 13.8 GB
+///
+/// Conclusions:
+///
+/// - B consumes ~2.2 GB
+/// - C consumes ~3.3 GB, an increase of 50% over B
+///
+/// In current simple implementation, sorted vectors exhibit a worst case performance of O(N^2) for insertion
+/// and removal and O(log N) for lookups.
+///
+/// HashSets and HashMaps are consequently favored over sorted vectors, being a good tradeoff between speed and size.
 #[tokio::test]
 #[ignore = "bmk"]
 async fn bench_utxos_changed_subscriptions_footprint() {
@@ -60,8 +88,10 @@ async fn bench_utxos_changed_subscriptions_footprint() {
     #[cfg(not(feature = "heap"))]
     const MAX_MEMORY: u64 = 31_000_000_000;
 
-    const NOTIFY_CLIENTS: usize = 400;
-    const MAX_ADDRESSES: usize = 1_00_000;
+    const NOTIFY_CLIENTS: usize = 500;
+    const MAX_ADDRESSES: usize = 1_000_000;
+    const WALLET_ADDRESSES: usize = 800;
+    const ACTIVE_UTXOS_CHANGED_SUBSCRIPTIONS: bool = true;
 
     let tick_service = Arc::new(TickService::new());
     let memory_monitor = MemoryMonitor::new(tick_service.clone(), Duration::from_secs(1), MAX_MEMORY);
@@ -330,54 +360,64 @@ async fn bench_utxos_changed_subscriptions_footprint() {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(10)).await;
             warn!("Starting UTXOs notifications...");
-            join_all(notify_clients.iter().cloned().enumerate().map(|(i, client)| {
-                tokio::spawn(async move {
-                    loop {
-                        // Process in heaviest to lightest requests order, maximizing messages memory footprint
-                        // between notifiers and from notifier to broadcasters at grpc server and rpc core levels
-                        let max_address = ((NOTIFY_CLIENTS - i) * MAX_ADDRESSES / NOTIFY_CLIENTS) + 1;
-                        let min_address = max_address / 2;
-                        let addresses = (min_address..max_address)
-                            .map(|x| {
-                                Address::new(
-                                    network_id.into(),
-                                    kaspa_addresses::Version::PubKey,
-                                    &Uint256::from_u64(x as u64).to_le_bytes(),
-                                )
-                            })
-                            .collect_vec();
-                        match client.start_notify(0, UtxosChangedScope::new(addresses).into()).await {
-                            Ok(_) => {
-                                break;
-                            }
-                            Err(_) => {
-                                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            if ACTIVE_UTXOS_CHANGED_SUBSCRIPTIONS {
+                join_all(notify_clients.iter().cloned().enumerate().map(|(i, client)| {
+                    tokio::spawn(async move {
+                        loop {
+                            // Process in heaviest to lightest requests order, maximizing messages memory footprint
+                            // between notifiers and from notifier to broadcasters at grpc server and rpc core levels
+                            let max_address = ((NOTIFY_CLIENTS - i) * MAX_ADDRESSES / NOTIFY_CLIENTS) + 1;
+                            let min_address = if (NOTIFY_CLIENTS - i) % (NOTIFY_CLIENTS / 5) == 0 {
+                                // Create a typical UTXOs monitoring service subscription scope
+                                0
+                            } else {
+                                // Create a typical wallet subscription scope
+                                max_address.max(WALLET_ADDRESSES) - WALLET_ADDRESSES
+                            };
+                            let addresses = (min_address..max_address)
+                                .map(|x| {
+                                    Address::new(
+                                        network_id.into(),
+                                        kaspa_addresses::Version::PubKey,
+                                        &Uint256::from_u64(x as u64).to_le_bytes(),
+                                    )
+                                })
+                                .collect_vec();
+                            match client.start_notify(0, UtxosChangedScope::new(addresses).into()).await {
+                                Ok(_) => {
+                                    break;
+                                }
+                                Err(_) => {
+                                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                                }
                             }
                         }
-                    }
-                })
-            }))
-            .await;
-            warn!("UTXOs notifications started");
+                    })
+                }))
+                .await;
+                warn!("UTXOs notifications started");
+            }
 
             tokio::time::sleep(std::time::Duration::from_secs(20)).await;
             warn!("Stopping UTXOs notifications...");
-            join_all(notify_clients.iter().cloned().map(|client| {
-                tokio::spawn(async move {
-                    loop {
-                        match client.stop_notify(0, UtxosChangedScope::new(vec![]).into()).await {
-                            Ok(_) => {
-                                break;
-                            }
-                            Err(_) => {
-                                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            if ACTIVE_UTXOS_CHANGED_SUBSCRIPTIONS {
+                join_all(notify_clients.iter().cloned().map(|client| {
+                    tokio::spawn(async move {
+                        loop {
+                            match client.stop_notify(0, UtxosChangedScope::new(vec![]).into()).await {
+                                Ok(_) => {
+                                    break;
+                                }
+                                Err(_) => {
+                                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                                }
                             }
                         }
-                    }
-                })
-            }))
-            .await;
-            warn!("UTXOs notifications stopped");
+                    })
+                }))
+                .await;
+                warn!("UTXOs notifications stopped");
+            }
             if !exec.load(Ordering::Relaxed) {
                 kaspa_core::warn!("Test is over, stopping subscription loop");
                 break;

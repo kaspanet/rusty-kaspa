@@ -179,10 +179,13 @@ impl UtxosChangedSubscription {
     }
 
     pub fn with_capacity(active: bool, listener_id: ListenerId, capacity: usize) -> Self {
-        let cnt = UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst);
         let indexes = Indexes::new(Vec::with_capacity(capacity));
         let subscription = Self { active, indexes, listener_id };
-        trace!("UtxosChangedSubscription: {} in total (new {})", cnt + 1, subscription);
+        trace!(
+            "UtxosChangedSubscription: {} in total (new {})",
+            UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1,
+            subscription
+        );
         subscription
     }
 
@@ -227,18 +230,18 @@ impl UtxosChangedSubscription {
 
 impl Default for UtxosChangedSubscription {
     fn default() -> Self {
-        let cnt = UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst);
-        let subscription = Self::new(false, 0);
-        trace!("UtxosChangedSubscription: {} in total (default {})", cnt + 1, subscription);
-        subscription
+        Self::new(false, 0)
     }
 }
 
 impl Clone for UtxosChangedSubscription {
     fn clone(&self) -> Self {
-        let cnt = UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst);
         let subscription = Self { active: self.active, indexes: self.indexes.clone(), listener_id: self.listener_id };
-        trace!("UtxosChangedSubscription: {} in total (clone {})", cnt + 1, subscription);
+        trace!(
+            "UtxosChangedSubscription: {} in total (clone {})",
+            UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1,
+            subscription
+        );
         subscription
     }
 }
@@ -256,8 +259,12 @@ impl Display for UtxosChangedSubscription {
 
 impl Drop for UtxosChangedSubscription {
     fn drop(&mut self) {
-        let cnt = UTXOS_CHANGED_SUBSCRIPTIONS.fetch_sub(1, Ordering::SeqCst);
-        trace!("UtxosChangedSubscription: {} in total (drop {})", cnt - 1, self);
+        //let cnt = UTXOS_CHANGED_SUBSCRIPTIONS.fetch_sub(1, Ordering::SeqCst);
+        trace!(
+            "UtxosChangedSubscription: {} in total (drop {})",
+            UTXOS_CHANGED_SUBSCRIPTIONS.fetch_sub(1, Ordering::SeqCst) - 1,
+            self
+        );
     }
 }
 

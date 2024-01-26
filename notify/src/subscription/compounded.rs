@@ -160,8 +160,9 @@ impl UtxosChangedSubscription {
     pub fn to_addresses(&self, prefix: Prefix, context: &SubscriptionContext) -> Vec<Address> {
         self.indexes
             .iter()
-            .filter(|counter| counter.count > 0)
-            .filter_map(|counter| context.address_tracker.get_index_address(counter.index, prefix))
+            .filter_map(|(&index, &count)| {
+                (count > 0).then_some(()).and_then(|_| context.address_tracker.get_index_address(index, prefix))
+            })
             .collect_vec()
     }
 
@@ -391,7 +392,7 @@ mod tests {
             ],
             final_state: Box::new(UtxosChangedSubscription {
                 all: 0,
-                indexes: Counters::new(vec![
+                indexes: Counters::with_counters(vec![
                     Counter { index: 0, count: 0, locked: true },
                     Counter { index: 1, count: 0, locked: false },
                 ]),

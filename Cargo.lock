@@ -2689,15 +2689,18 @@ dependencies = [
  "async-channel 2.1.1",
  "async-trait",
  "borsh",
+ "criterion",
  "derive_more",
  "futures",
  "futures-util",
  "indexmap 2.1.0",
  "itertools 0.11.0",
  "kaspa-addresses",
+ "kaspa-alloc",
  "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-hashes",
+ "kaspa-math",
  "kaspa-txscript",
  "kaspa-txscript-errors",
  "kaspa-utils",
@@ -2711,6 +2714,7 @@ dependencies = [
  "triggered",
  "workflow-core",
  "workflow-log",
+ "workflow-perf-monitor",
 ]
 
 [[package]]

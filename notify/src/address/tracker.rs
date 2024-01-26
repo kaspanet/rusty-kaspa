@@ -1,12 +1,13 @@
 use indexmap::{map::Entry, IndexMap};
+use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix};
 use kaspa_consensus_core::tx::ScriptPublicKey;
 use kaspa_core::trace;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use parking_lot::RwLock;
 use std::{
+    collections::{hash_map, HashMap, HashSet},
     fmt::Display,
-    slice::{Chunks, Iter},
 };
 
 pub trait Indexer {
@@ -18,6 +19,76 @@ pub trait Indexer {
 
 pub type Index = u32;
 pub type RefCount = u16;
+
+/// Tracks reference count of indexes
+///
+/// Can be assigned to `CounterMap` or `CounterVec` that provide alternate implementations.
+pub type Counters = CounterMap;
+
+/// Tracks indexes
+///
+/// Can be assigned to `IndexSet` or `IndexVec` that provide alternate implementations.
+pub type Indexes = IndexSet;
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CounterMap(HashMap<Index, RefCount>);
+
+impl CounterMap {
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    pub fn with_counters(counters: Vec<Counter>) -> Self {
+        Self(counters.into_iter().map(|x| (x.index, x.count)).collect())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn iter(&self) -> hash_map::Iter<'_, Index, RefCount> {
+        self.0.iter()
+    }
+
+    pub fn chunks(&self, chunk_size: usize) -> itertools::IntoChunks<hash_map::Iter<'_, Index, RefCount>> {
+        self.0.iter().chunks(chunk_size)
+    }
+}
+
+impl Indexer for CounterMap {
+    fn contains(&self, index: Index) -> bool {
+        self.0.contains_key(&index)
+    }
+
+    fn insert(&mut self, index: Index) -> bool {
+        let mut result = true;
+        self.0
+            .entry(index)
+            .and_modify(|x| {
+                *x += 1;
+                result = *x == 1;
+            })
+            .or_insert(1);
+        result
+    }
+
+    fn remove(&mut self, index: Index) -> bool {
+        let mut result = false;
+        self.0.entry(index).and_modify(|x| {
+            if *x > 0 {
+                *x -= 1;
+                result = *x == 0
+            }
+        });
+        result
+    }
+
+    fn unlock(&mut self) {}
+}
 
 #[derive(Debug, Clone)]
 pub struct Counter {
@@ -63,9 +134,9 @@ impl Ord for Counter {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Counters(Vec<Counter>);
+pub struct CounterVec(Vec<Counter>);
 
-impl Counters {
+impl CounterVec {
     pub fn new(mut counters: Vec<Counter>) -> Self {
         counters.sort();
         Self(counters)
@@ -79,16 +150,16 @@ impl Counters {
         self.0.is_empty()
     }
 
-    pub fn iter(&self) -> Iter<'_, Counter> {
-        self.0.iter()
+    pub fn iter(&self) -> impl Iterator<Item = (&Index, &RefCount)> {
+        self.0.iter().map(|x| (&x.index, &x.count))
     }
 
-    pub fn chunks(&self, chunk_size: usize) -> Chunks<'_, Counter> {
-        self.0.chunks(chunk_size)
+    pub fn chunks(&self, chunk_size: usize) -> itertools::IntoChunks<impl Iterator<Item = (&Index, &RefCount)>> {
+        self.iter().chunks(chunk_size)
     }
 }
 
-impl Indexer for Counters {
+impl Indexer for CounterVec {
     fn contains(&self, index: Index) -> bool {
         self.0.binary_search(&Counter::new(index, 0)).is_ok()
     }
@@ -133,9 +204,56 @@ impl Indexer for Counters {
 }
 
 #[derive(Debug, Clone)]
-pub struct Indexes(Vec<Index>);
+pub struct IndexSet(HashSet<Index>);
 
-impl Indexes {
+impl IndexSet {
+    pub fn new(indexes: Vec<Index>) -> Self {
+        Self(indexes.into_iter().collect())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Index> {
+        self.0.iter()
+    }
+
+    pub fn chunks(&self, chunk_size: usize) -> itertools::IntoChunks<impl Iterator<Item = &Index>> {
+        self.0.iter().chunks(chunk_size)
+    }
+}
+
+impl Indexer for IndexSet {
+    fn contains(&self, index: Index) -> bool {
+        self.0.contains(&index)
+    }
+
+    fn insert(&mut self, index: Index) -> bool {
+        self.0.insert(index)
+    }
+
+    fn remove(&mut self, index: Index) -> bool {
+        self.0.remove(&index)
+    }
+
+    fn unlock(&mut self) {}
+}
+
+impl From<Vec<Index>> for IndexSet {
+    fn from(item: Vec<Index>) -> Self {
+        Self::new(item)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct IndexVec(Vec<Index>);
+
+impl IndexVec {
     pub fn new(mut indexes: Vec<Index>) -> Self {
         indexes.sort();
         Self(indexes)
@@ -149,16 +267,16 @@ impl Indexes {
         self.0.is_empty()
     }
 
-    pub fn iter(&self) -> Iter<'_, Index> {
+    pub fn iter(&self) -> impl Iterator<Item = &Index> {
         self.0.iter()
     }
 
-    pub fn chunks(&self, chunk_size: usize) -> Chunks<'_, Index> {
-        self.0.chunks(chunk_size)
+    pub fn chunks(&self, chunk_size: usize) -> itertools::IntoChunks<impl Iterator<Item = &Index>> {
+        self.iter().chunks(chunk_size)
     }
 }
 
-impl Indexer for Indexes {
+impl Indexer for IndexVec {
     fn contains(&self, index: Index) -> bool {
         self.0.binary_search(&index).is_ok()
     }
@@ -186,7 +304,7 @@ impl Indexer for Indexes {
     fn unlock(&mut self) {}
 }
 
-impl From<Vec<Index>> for Indexes {
+impl From<Vec<Index>> for IndexVec {
     fn from(item: Vec<Index>) -> Self {
         Self::new(item)
     }
@@ -209,15 +327,6 @@ impl Inner {
     fn get(&self, spk: &ScriptPublicKey) -> Option<(Index, RefCount)> {
         self.script_pub_keys.get_full(spk).map(|(index, _, count)| (index as Index, *count))
     }
-
-    // fn get_address(&self, address: &Address) -> Option<(Index, RefCount)> {
-    //     let spk = pay_to_address_script(address);
-    //     self.script_pub_keys.get_full(&spk).map(|(index, _, count)| (index as Index, *count))
-    // }
-
-    // fn get_index(&self, index: Index) -> Option<RefCount> {
-    //     self.script_pub_keys.get_index(index as usize).map(|(_, count)| *count)
-    // }
 
     fn get_index_address(&self, index: Index, prefix: Prefix) -> Option<Address> {
         self.script_pub_keys
@@ -254,32 +363,16 @@ impl Inner {
             trace!("AddressTracker dec count #{} to {}", index, *count);
         }
     }
-
-    // fn register_address(&mut self, address: &Address) -> Index {
-    //     let spk = pay_to_address_script(address);
-    //     let index = match self.script_pub_keys.get_full_mut(&spk) {
-    //         Some((index, _, count)) => {
-    //             *count += 1;
-    //             index
-    //         }
-    //         None => {
-    //             // TODO: reuse entries with counter at 0 when available and some map size is reached
-    //             self.script_pub_keys.insert_full(spk, 1).0
-    //         }
-    //     };
-    //     index as Index
-    // }
-
-    // fn unregister_address(&mut self, address: &Address) -> Option<Index> {
-    //     let spk = pay_to_address_script(address);
-    //     self.script_pub_keys.get_full_mut(&spk).map(|(index, _, count)| {
-    //         *count -= 1;
-    //         index as Index
-    //     })
-    // }
 }
 
-/// Tracker of multiple [`Address`](kaspa_addresses::Address), indexing and counting registrations
+/// Tracker of a set of [`Address`](kaspa_addresses::Address), indexing and counting registrations
+///
+/// #### Implementation design
+///
+/// Each [`Address`](kaspa_addresses::Address) is stored internally as a [`ScriptPubKey`](kaspa_consensus_core::tx::ScriptPublicKey).
+/// This prevents inter-network duplication and optimizes UTXOs filtering efficiency.
+///
+/// But consequently the address network prefix gets lost and must be globally provided when querying for addresses by indexes.
 #[derive(Debug)]
 pub struct Tracker {
     inner: RwLock<Inner>,
@@ -302,17 +395,21 @@ impl Tracker {
         Self { inner: RwLock::new(Inner::with_capacity(capacity)) }
     }
 
+    #[cfg(test)]
+    pub fn with_addresses(addresses: &[Address]) -> Self {
+        let tracker = Self { inner: RwLock::new(Inner::new()) };
+        for chunk in addresses.chunks(Self::ADDRESS_CHUNK_SIZE) {
+            let mut inner = tracker.inner.write();
+            for address in chunk {
+                let _ = inner.get_or_insert(pay_to_address_script(address));
+            }
+        }
+        tracker
+    }
+
     pub fn get(&self, spk: &ScriptPublicKey) -> Option<(Index, RefCount)> {
         self.inner.read().get(spk)
     }
-
-    // pub fn get_address(&self, address: &Address) -> Option<(Index, RefCount)> {
-    //     self.inner.read().get_address(address)
-    // }
-
-    // pub fn get_index(&self, index: Index) -> Option<RefCount> {
-    //     self.inner.read().get_index(index)
-    // }
 
     pub fn get_index_address(&self, index: Index, prefix: Prefix) -> Option<Address> {
         self.inner.read().get_index_address(index, prefix)
@@ -362,9 +459,9 @@ impl Tracker {
     }
 
     pub fn unregister_indexes(&self, indexes: &Indexes) {
-        for chunk in indexes.chunks(Self::ADDRESS_CHUNK_SIZE) {
+        for chunk in &indexes.chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
-            chunk.iter().for_each(|index| inner.dec_count(*index));
+            chunk.for_each(|index| inner.dec_count(*index));
         }
     }
 
