@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
 # include *.txt files for word lists
 include = ["src/**/*.rs", "Cargo.toml", "src/**/*.txt"]
 # include.workspace = true

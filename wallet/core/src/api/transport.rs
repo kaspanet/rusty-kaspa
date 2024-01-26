@@ -20,22 +20,29 @@ use async_trait::async_trait;
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_wallet_macros::{build_wallet_client_transport_interface, build_wallet_server_transport_interface};
 
+/// Transport interface supporting Borsh serialization
 #[async_trait]
 pub trait BorshTransport: Send + Sync {
     async fn call(&self, op: u64, request: Vec<u8>) -> Result<Vec<u8>>;
 }
 
+/// Transport interface supporting Serde JSON serialization
 #[async_trait]
 pub trait SerdeTransport: Send + Sync {
     async fn call(&self, op: &str, request: &str) -> Result<String>;
 }
 
+/// Transport interface enum supporting either Borsh and Serde JSON serialization
 #[derive(Clone)]
 pub enum Transport {
     Borsh(Arc<dyn BorshTransport>),
     Serde(Arc<dyn SerdeTransport>),
 }
 
+/// [`WalletServer`] is a server-side transport interface that declares
+/// API methods that can be invoked via Borsh or Serde messages containing
+/// serializations created using the [`Transport`] interface. The [`WalletServer`]
+/// is a counter-part to [`WalletClient`].
 pub struct WalletServer {
     pub wallet_api: Arc<dyn WalletApi>,
 }
@@ -90,6 +97,9 @@ impl WalletServer {
     ]}
 }
 
+/// [`WalletClient`] is a client-side transport interface declaring
+/// API methods that can be invoked via WalletApi method calls.
+/// [`WalletClient`] is a counter-part to [`WalletServer`].
 pub struct WalletClient {
     pub transport: Transport,
 }

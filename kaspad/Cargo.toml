@@ -1,6 +1,7 @@
 [package]
 name = "kaspad"
 description = "Kaspa full node daemon"
+keywords = ["kaspa", "blockdag"]
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
