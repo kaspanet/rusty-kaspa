@@ -146,6 +146,8 @@ impl UtxoIndexApi for UtxoIndex {
         let mut from_outpoint = None;
 
         let to_process = session.get_virtual_utxoset_size();
+        info!("[{0}] Resyncing {1} Utxos", IDENT, to_process);
+
         if to_process == 0 {
             // We may return early after setting some initial values.
             self.store.set_tips(consensus_tips, true)?;
@@ -158,7 +160,6 @@ impl UtxoIndexApi for UtxoIndex {
         let mut is_start = true;
         let mut is_end = false;
 
-        info!("[{0}] Resyncing {1} Utxos", IDENT, to_process);
         // While loop stops resync attempts from an empty utxo db, and unneeded processing when the utxo state size happens to be a multiple of [`RESYNC_CHUNK_SIZE`]
         while !is_end {
             // Potential optimization TODO: iterating virtual utxos into an [UtxoIndexChanges] struct is a bit of overhead (i.e. a potentially unneeded loop),
