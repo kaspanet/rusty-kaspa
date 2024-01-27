@@ -133,7 +133,7 @@ impl TryFrom<protowire::PruningPointUtxoSetChunkMessage> for (Vec<(TransactionOu
     fn try_from(msg: protowire::PruningPointUtxoSetChunkMessage) -> Result<Self, Self::Error> {
         Ok((
             msg.outpoint_and_utxo_entry_pairs.into_iter().map(|p| p.try_into()).collect::<Result<_, Self::Error>>()?,
-            msg.total_amount as usize,
+            msg.utxoset_size as usize,
         ))
     }
 }

@@ -145,19 +145,20 @@ impl UtxoIndexApi for UtxoIndex {
         let mut circulating_supply: CirculatingSupply = 0;
         let mut from_outpoint = None;
 
-        let mut utxos_processed = (0, 0); // .0 holds the value of the former display
-        let to_process_utxos = session.get_virtual_utxo_count();
-        if to_process_utxos == 0 {
+        let to_process = session.get_virtual_utxoset_size();
+        if to_process == 0 {
+            // We may return early after setting some initial values.
             self.store.set_tips(consensus_tips, true)?;
             return Ok(self.store.insert_circulating_supply(0u64, true)?);
         }
+        let mut processed = (0u64, 0u64); // .0 holds the value of the former display
         let mut percent_completed = (0f64, 0f64); // .0 holds the value of the former display
         let percent_display_granularity = 1.0; // in percent
         let mut instant = std::time::Instant::now();
         let mut is_start = true;
         let mut is_end = false;
 
-        info!("[{0}] Resyncing {1} Utxos", IDENT, to_process_utxos);
+        info!("[{0}] Resyncing {1} Utxos", IDENT, to_process);
         // While loop stops resync attempts from an empty utxo db, and unneeded processing when the utxo state size happens to be a multiple of [`RESYNC_CHUNK_SIZE`]
         while !is_end {
             // Potential optimization TODO: iterating virtual utxos into an [UtxoIndexChanges] struct is a bit of overhead (i.e. a potentially unneeded loop),
@@ -166,13 +167,10 @@ impl UtxoIndexApi for UtxoIndex {
             let chunk = session.get_virtual_utxos(from_outpoint, RESYNC_CHUNK_SIZE, !is_start);
             is_start = false;
             from_outpoint = Some(chunk.last().expect("expected a last outpoint").0);
-            utxos_processed.1 += chunk.len();
-            is_end = chunk.len() < RESYNC_CHUNK_SIZE;
-            if is_end {
-                // sanity check
-                assert_eq!(utxos_processed.1 as u64, to_process_utxos);
-            }
-            percent_completed.1 = (utxos_processed.1 as f64 / to_process_utxos as f64) * 100.0;
+            processed.1 += chunk.len() as u64;
+            is_end = processed.1 == to_process;
+
+            percent_completed.1 = (processed.1 as f64 / to_process as f64) * 100.0;
 
             let mut utxoindex_changes = UtxoIndexChanges::new();
             utxoindex_changes.add_utxos_from_vector(chunk);
@@ -182,19 +180,19 @@ impl UtxoIndexApi for UtxoIndex {
             self.store.update_utxo_state(&utxoindex_changes.utxo_changes.added, &utxoindex_changes.utxo_changes.removed, true)?;
 
             if percent_completed.0 + percent_display_granularity <= percent_completed.1 || is_end {
-                let utxos_processed_diff = utxos_processed.1 - utxos_processed.0;
+                let processed_diff = processed.1 - processed.0;
 
                 info!(
                     "[{0}] Resyncing - Utxos: {1} + {2} / {3} ({4:.0}/s); Circulating Supply: {5}; {6:.0}%",
                     IDENT,
-                    utxos_processed.1,
-                    utxos_processed_diff,
-                    to_process_utxos,
-                    utxos_processed_diff as f64 / instant.elapsed().as_secs_f64(),
+                    processed.1,
+                    processed_diff,
+                    to_process,
+                    processed_diff as f64 / instant.elapsed().as_secs_f64(),
                     circulating_supply,
                     if is_end { 100.0 } else { percent_completed.1 },
                 );
-                utxos_processed.0 = utxos_processed.1;
+                processed.0 = processed.1;
                 percent_completed.0 = percent_completed.1;
                 instant = std::time::Instant::now();
             }

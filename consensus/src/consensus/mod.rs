@@ -629,8 +629,8 @@ impl ConsensusApi for Consensus {
         iter.map(|item| item.unwrap()).collect()
     }
 
-    fn get_virtual_utxo_count(&self) -> u64 {
-        self.virtual_stores.read().utxo_set.count().unwrap()
+    fn get_virtual_utxoset_size(&self) -> u64 {
+        self.virtual_stores.read().utxo_set.size().unwrap()
     }
 
     fn get_tips(&self) -> Vec<Hash> {
@@ -665,8 +665,8 @@ impl ConsensusApi for Consensus {
         Ok(utxos)
     }
 
-    fn get_pruning_point_utxos_count(&self) -> u64 {
-        self.pruning_utxoset_stores.read().utxo_set.count().unwrap()
+    fn get_pruning_point_utxoset_size(&self) -> u64 {
+        self.pruning_utxoset_stores.read().utxo_set.size().unwrap()
     }
 
     fn modify_coinbase_payload(&self, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {

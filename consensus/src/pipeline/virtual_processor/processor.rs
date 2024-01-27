@@ -1059,12 +1059,12 @@ impl VirtualStateProcessor {
             let mut virtual_write = self.virtual_stores.write();
 
             virtual_write.utxo_set.clear().unwrap();
-            let to_process = pruning_utxoset_read.utxo_set.count().unwrap();
+            let to_process = pruning_utxoset_read.utxo_set.size().unwrap();
             let mut processed = 0;
             let chunk_size = 1000;
             for chunk in &pruning_utxoset_read.utxo_set.iterator().map(|iter_result| iter_result.unwrap()).chunks(chunk_size) {
                 info!(
-                    "Transfering from pruning to virtual store {0} + {1} / {2} UTXOs ({3}%)",
+                    "Transfering from pruning to virtual store {0} + {1} / {2} UTXOs ({3:.0}%)",
                     processed,
                     chunk_size,
                     to_process,

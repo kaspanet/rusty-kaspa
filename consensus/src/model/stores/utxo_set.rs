@@ -5,6 +5,7 @@ use kaspa_consensus_core::{
         utxo_view::UtxoView,
     },
 };
+use kaspa_core::info;
 use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_database::prelude::{CachePolicy, StoreError};
@@ -18,7 +19,7 @@ type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOut
 pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
     fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator;
-    fn count(&self) -> Result<u64, StoreError>;
+    fn size(&self) -> Result<u64, StoreError>;
 }
 
 pub trait UtxoSetStore: UtxoSetStoreReader {
@@ -94,34 +95,37 @@ pub struct DbUtxoSetStore {
     db: Arc<DB>,
     // Prefixes
     prefix: Vec<u8>,
-    count_prefix: Vec<u8>,
+    size_prefix: Vec<u8>,
     // Accesses
     access: CachedDbAccess<UtxoKey, Arc<UtxoEntry>>,
     // TODO: implement CachedAtomicDbItem store for such primitives.
     // Should be no need to use a RwLock implicitly here.
-    count: CachedDbItem<u64>,
+    size: CachedDbItem<u64>,
 }
 
 impl DbUtxoSetStore {
-    pub fn new(db: Arc<DB>, cache_policy: CachePolicy, prefix: Vec<u8>, count_prefix: Vec<u8>) -> Self {
+    pub fn new(db: Arc<DB>, cache_policy: CachePolicy, prefix: Vec<u8>, size_prefix: Vec<u8>) -> Self {
         let mut ret = Self {
             db: db.clone(),
             prefix: prefix.clone(),
             access: CachedDbAccess::new(db.clone(), cache_policy, prefix),
-            count_prefix: count_prefix.clone(),
-            count: CachedDbItem::new(db.clone(), count_prefix.clone()),
+            size_prefix: size_prefix.clone(),
+            size: CachedDbItem::new(db.clone(), size_prefix.clone()),
         };
 
         // TODO: remove this code in the next Hard Fork effort
-        // This does a one off count of the db for nodes running with the count feature.
-        match ret.count.read() {
+        // This does a one off count of the db for nodes running without the cached size item.
+        match ret.size.read() {
             Ok(_) => (),
             Err(err) => match err {
                 StoreError::KeyNotFound(_) => {
+                    // This is a one off count of the db for nodes running without the cached size item.
+                    // OR nodes are run from scratch. In which case the count is cheap and we do not care
+                    info!("Counting size of the UTXO set from scratch...");
                     let mut writer = DirectDbWriter::new(&db);
-                    ret.count.write(&mut writer, &(ret.access.iterator().count() as u64)).unwrap();
+                    ret.size.write(&mut writer, &(ret.access.iterator().count() as u64)).unwrap();
                 }
-                _ => panic!("Unexpected Error reading count from db {0}: {1}", *count_prefix.first().unwrap(), err),
+                _ => panic!("Unexpected Error reading size from db {0}: {1}", *size_prefix.first().unwrap(), err),
             },
         };
 
@@ -129,13 +133,13 @@ impl DbUtxoSetStore {
     }
 
     pub fn clone_with_new_cache(&self, cache_policy: CachePolicy) -> Self {
-        Self::new(Arc::clone(&self.db), cache_policy, self.prefix.clone(), self.count_prefix.clone())
+        Self::new(Arc::clone(&self.db), cache_policy, self.prefix.clone(), self.size_prefix.clone())
     }
 
     /// See comment at [`UtxoSetStore::write_diff`]
     pub fn write_diff_batch(&mut self, batch: &mut WriteBatch, utxo_diff: &impl ImmutableUtxoDiff) -> Result<(), StoreError> {
         let mut writer = BatchDbWriter::new(batch);
-        self.count.update(&mut writer, |count| (count + utxo_diff.added().len() as u64) - utxo_diff.removed().len() as u64)?;
+        self.size.update(&mut writer, |count| (count + utxo_diff.added().len() as u64) - utxo_diff.removed().len() as u64)?;
         self.access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
         Ok(())
@@ -159,7 +163,7 @@ impl DbUtxoSetStore {
     pub fn clear(&mut self) -> Result<(), StoreError> {
         let mut writer = DirectDbWriter::new(&self.db); // batch instead?
         self.access.delete_all(&mut writer)?;
-        self.count.write(&mut writer, &0u64)
+        self.size.write(&mut writer, &0u64)
     }
 
     /// Write directly from an iterator and do not cache any data. NOTE: this action also clears the cache
@@ -176,7 +180,7 @@ impl DbUtxoSetStore {
                 (o.into(), e)
             }),
         )?;
-        self.count.update(&mut writer, |c| c + count)?;
+        self.size.update(&mut writer, |c| c + count)?;
         Ok(())
     }
 }
@@ -201,15 +205,15 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
         }))
     }
 
-    fn count(&self) -> Result<u64, StoreError> {
-        self.count.read()
+    fn size(&self) -> Result<u64, StoreError> {
+        self.size.read()
     }
 }
 
 impl UtxoSetStore for DbUtxoSetStore {
     fn write_diff(&mut self, utxo_diff: &UtxoDiff) -> Result<(), StoreError> {
         let mut writer = DirectDbWriter::new(&self.db);
-        self.count.update(&mut writer, |count| count + utxo_diff.added().len() as u64 - utxo_diff.removed().len() as u64)?;
+        self.size.update(&mut writer, |count| count + utxo_diff.added().len() as u64 - utxo_diff.removed().len() as u64)?;
         self.access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
         Ok(())
@@ -217,7 +221,7 @@ impl UtxoSetStore for DbUtxoSetStore {
 
     fn write_many(&mut self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError> {
         let mut writer = DirectDbWriter::new(&self.db);
-        self.count.update(&mut writer, |count| count + utxos.len() as u64)?;
+        self.size.update(&mut writer, |count| count + utxos.len() as u64)?;
         self.access.write_many(&mut writer, &mut utxos.iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
         Ok(())
     }
@@ -248,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn test_count() {
+    fn test_size() {
         let (_db_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let mut store = DbUtxoSetStore::new(
             db.clone(),
@@ -256,6 +260,8 @@ mod tests {
             DatabaseStorePrefixes::VirtualUtxoset.into(),
             DatabaseStorePrefixes::VirtualUtxosetCount.into(),
         );
+        assert_eq!(store.size().unwrap(), 0);
+
         let mut rng: SmallRng = SmallRng::seed_from_u64(42u64);
         // test added only
         let to_add = (0..2).map(|_| (generate_random_outpoint(&mut rng), generate_random_utxo(&mut rng))).collect();
@@ -266,8 +272,8 @@ mod tests {
         let mut batch = WriteBatch::default();
         store.write_diff_batch(&mut batch, &utxo_diff).unwrap();
         db.write(batch).unwrap();
-        assert_eq!(store.count().unwrap(), store.iterator().count() as u64);
-        assert_eq!(store.count().unwrap(), 2);
+        assert_eq!(store.size().unwrap(), store.iterator().count() as u64);
+        assert_eq!(store.size().unwrap(), 2);
 
         // Write 2 & Remove 2
         utxo_diff.add.iter().take(2).for_each(|(o, v)| {
@@ -279,8 +285,8 @@ mod tests {
         let mut batch = WriteBatch::default();
         store.write_diff_batch(&mut batch, &utxo_diff).unwrap();
         db.write(batch).unwrap();
-        assert_eq!(store.count().unwrap(), store.iterator().count() as u64);
-        assert_eq!(store.count().unwrap(), 2);
+        assert_eq!(store.size().unwrap(), store.iterator().count() as u64);
+        assert_eq!(store.size().unwrap(), 2);
         utxo_diff.remove.clear();
         // Remove 2
 
@@ -291,16 +297,16 @@ mod tests {
         utxo_diff.add.clear();
         store.write_diff_batch(&mut batch, &utxo_diff).unwrap();
         db.write(batch).unwrap();
-        assert_eq!(store.count().unwrap(), store.iterator().count() as u64);
-        assert_eq!(store.count().unwrap(), 0);
+        assert_eq!(store.size().unwrap(), store.iterator().count() as u64);
+        assert_eq!(store.size().unwrap(), 0);
         utxo_diff.remove.clear();
 
         // Test write_many
         // Write 2
         utxo_diff.add = (0..2).map(|_| (generate_random_outpoint(&mut rng), generate_random_utxo(&mut rng))).collect();
         store.write_many(&utxo_diff.add.iter().map(|(o, v)| (*o, v.clone())).collect_vec()).unwrap();
-        assert_eq!(store.count().unwrap(), store.iterator().count() as u64);
-        assert_eq!(store.count().unwrap(), 2);
+        assert_eq!(store.size().unwrap(), store.iterator().count() as u64);
+        assert_eq!(store.size().unwrap(), 2);
         utxo_diff.add.clear();
 
         // Test Iterator
@@ -310,12 +316,12 @@ mod tests {
                 (0..2).map(|_| (generate_random_outpoint(&mut rng), Arc::new(generate_random_utxo(&mut rng)))),
             )
             .unwrap();
-        assert_eq!(store.count().unwrap(), store.iterator().count() as u64);
-        assert_eq!(store.count().unwrap(), 4);
+        assert_eq!(store.size().unwrap(), store.iterator().count() as u64);
+        assert_eq!(store.size().unwrap(), 4);
 
         // Test clear
         store.clear().unwrap();
-        assert_eq!(store.count().unwrap(), store.iterator().count() as u64);
-        assert_eq!(store.count().unwrap(), 0);
+        assert_eq!(store.size().unwrap(), store.iterator().count() as u64);
+        assert_eq!(store.size().unwrap(), 0);
     }
 }

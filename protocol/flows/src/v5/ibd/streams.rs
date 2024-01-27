@@ -142,12 +142,12 @@ pub struct PruningPointUtxosetChunkStream<'a, 'b> {
     incoming_route: &'b mut IncomingRoute,
     i: usize, // Chunk index
     utxo_count: usize,
-    amount_to_process: usize,
+    signaled_utxoset_size: usize,
 }
 
 impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
     pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute) -> Self {
-        Self { router, incoming_route, i: 0, utxo_count: 0, amount_to_process: 0 }
+        Self { router, incoming_route, i: 0, utxo_count: 0, signaled_utxoset_size: 0 }
     }
 
     pub async fn next(&mut self) -> Result<Option<(UtxosetChunk, usize)>, ProtocolError> {
@@ -189,16 +189,16 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
             self.i += 1;
             self.utxo_count += chunk.0.len();
             if chunk.1 > 0 {
-                self.amount_to_process = chunk.1;
+                self.signaled_utxoset_size = chunk.1;
             }
-            if self.i % IBD_BATCH_SIZE == 0 || self.i == self.amount_to_process {
+            if self.i % IBD_BATCH_SIZE == 0 || self.utxo_count == self.signaled_utxoset_size {
                 info!(
                     "Received {0} + {1} / {2} signaled UTXOs ({3:.0}%)",
                     self.utxo_count,
                     self.i,
-                    if self.amount_to_process > 0 { self.amount_to_process.to_string() } else { "NaN".to_string() },
-                    if self.amount_to_process > 0 {
-                        (self.amount_to_process as f64 / self.i as f64 * 100.0).to_string()
+                    if self.signaled_utxoset_size > 0 { self.signaled_utxoset_size.to_string() } else { "NaN".to_string() },
+                    if self.signaled_utxoset_size > 0 {
+                        (self.signaled_utxoset_size as f64 / self.i as f64 * 100.0).to_string()
                     } else {
                         "NaN".to_string()
                     }
