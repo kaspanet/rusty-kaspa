@@ -6,10 +6,10 @@ use kaspa_consensus_core::{
     },
 };
 use kaspa_core::info;
-use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_database::prelude::{CachePolicy, StoreError};
 use kaspa_database::prelude::{CachedDbItem, StoreResultExtensions};
+use kaspa_database::{prelude::DB, registry::DatabaseStorePrefixes};
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 use std::{error::Error, fmt::Display, sync::Arc};
@@ -104,32 +104,37 @@ pub struct DbUtxoSetStore {
 }
 
 impl DbUtxoSetStore {
+    const IDENT: &'static str = "DbUtxoSetStore";
+
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy, prefix: Vec<u8>, size_prefix: Vec<u8>) -> Self {
-        let mut ret = Self {
+        let access = CachedDbAccess::new(db.clone(), cache_policy, prefix.clone());
+
+        Self {
             db: db.clone(),
             prefix: prefix.clone(),
-            access: CachedDbAccess::new(db.clone(), cache_policy, prefix),
+            access: access.clone(),
             size_prefix: size_prefix.clone(),
-            size: CachedDbItem::new(db.clone(), size_prefix.clone()),
-        };
-
-        // TODO: remove this code in the next Hard Fork effort
-        // This does a one off count of the db for nodes running without the cached size item.
-        match ret.size.read() {
-            Ok(_) => (),
-            Err(err) => match err {
-                StoreError::KeyNotFound(_) => {
-                    // This is a one off count of the db for nodes running without the cached size item.
-                    // OR nodes are run from scratch. In which case the count is cheap and we do not care
-                    info!("Counting size of the UTXO set from scratch...");
-                    let mut writer = DirectDbWriter::new(&db);
-                    ret.size.write(&mut writer, &(ret.access.iterator().count() as u64)).unwrap();
-                }
-                _ => panic!("Unexpected Error reading size from db {0}: {1}", *size_prefix.first().unwrap(), err),
+            // TODO: remove eventually, this is once-off init code, to establish the size item, simply use the if condition directly after next hf.
+            size: if db.has_key(size_prefix.as_slice()).unwrap() || access.iterator().next().is_none() {
+                CachedDbItem::new_with_value(db.clone(), size_prefix.clone(), 0u64)
+            } else {
+                info!(
+                    "[{0}] Intializing new store: `{1:?}` for `{2:?}`...",
+                    Self::IDENT,
+                    DatabaseStorePrefixes::try_from(size_prefix.as_slice()[0]).unwrap(),
+                    DatabaseStorePrefixes::try_from(prefix.as_slice()[0]).unwrap()
+                );
+                let size_item = CachedDbItem::new_with_value(db.clone(), size_prefix.clone(), access.iterator().count() as u64);
+                info!(
+                    "[{0}] Finished initializing new store: {1:?} for {2:?} with {3} entries",
+                    Self::IDENT,
+                    DatabaseStorePrefixes::try_from(size_prefix.as_slice()[0]).unwrap(),
+                    DatabaseStorePrefixes::try_from(prefix.as_slice()[0]).unwrap(),
+                    size_item.read().unwrap()
+                );
+                size_item
             },
-        };
-
-        ret
+        }
     }
 
     pub fn clone_with_new_cache(&self, cache_policy: CachePolicy) -> Self {

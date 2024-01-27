@@ -26,6 +26,10 @@ impl<T> CachedDbItem<T> {
         Self { db, key, cached_item: Arc::new(RwLock::new(None)) }
     }
 
+    pub fn new_with_value(db: Arc<DB>, key: Vec<u8>, value: T) -> Self {
+        Self { db, key, cached_item: Arc::new(RwLock::new(Some(value))) }
+    }
+
     pub fn read(&self) -> Result<T, StoreError>
     where
         T: Clone + DeserializeOwned,

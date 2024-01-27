@@ -5,6 +5,8 @@ use std::path::PathBuf;
 pub use conn_builder::ConnBuilder;
 use kaspa_utils::fd_budget::FDGuard;
 
+use crate::prelude::StoreResult;
+
 mod conn_builder;
 
 /// The DB type used for Kaspad stores
@@ -16,6 +18,12 @@ pub struct DB {
 impl DB {
     pub fn new(inner: DBWithThreadMode<MultiThreaded>, fd_guard: FDGuard) -> Self {
         Self { inner, _fd_guard: fd_guard }
+    }
+
+    // Useful for testing if a key exists, and if it doesn't perform initialization logic
+    // Such as in cases when a new store is created for the node.
+    pub fn has_key(&self, key: &[u8]) -> StoreResult<bool> {
+        Ok(self.inner.get_pinned(key)?.is_some())
     }
 }
 
