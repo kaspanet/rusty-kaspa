@@ -1,5 +1,6 @@
 use crate::{
-    events::EventType, listener::ListenerId, notification::Notification, scope::Scope, subscription::context::SubscriptionContext,
+    error::Result, events::EventType, listener::ListenerId, notification::Notification, scope::Scope,
+    subscription::context::SubscriptionContext,
 };
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
@@ -121,7 +122,7 @@ pub trait Single: Subscription + AsAny + DynHash + DynEq + Debug + Send + Sync {
         policies: MutationPolicies,
         context: &SubscriptionContext,
         listener_id: ListenerId,
-    ) -> Option<(DynSubscription, Vec<Mutation>)>;
+    ) -> Result<Option<(DynSubscription, Vec<Mutation>)>>;
 }
 
 pub trait MutateSingle: Deref<Target = dyn Single> {
@@ -131,7 +132,7 @@ pub trait MutateSingle: Deref<Target = dyn Single> {
         policies: MutationPolicies,
         context: &SubscriptionContext,
         listener_id: ListenerId,
-    ) -> Option<Vec<Mutation>>;
+    ) -> Result<Option<Vec<Mutation>>>;
 }
 
 impl MutateSingle for Arc<dyn Single> {
@@ -141,11 +142,13 @@ impl MutateSingle for Arc<dyn Single> {
         policies: MutationPolicies,
         context: &SubscriptionContext,
         listener_id: ListenerId,
-    ) -> Option<Vec<Mutation>> {
-        self.mutated_and_mutations(mutation, policies, context, listener_id).map(|(mutated, mutations)| {
+    ) -> Result<Option<Vec<Mutation>>> {
+        let result = self.mutated_and_mutations(mutation, policies, context, listener_id)?;
+        let result = result.map(|(mutated, mutations)| {
             *self = mutated;
             mutations
-        })
+        });
+        Ok(result)
     }
 }
 

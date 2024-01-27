@@ -131,7 +131,7 @@ where
             self.policies.clone(),
             &self.subscription_context,
             Self::ROOT_LISTENER_ID,
-        );
+        )?;
         Ok(())
     }
 

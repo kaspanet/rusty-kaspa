@@ -351,7 +351,7 @@ where
         let event: EventType = (&scope).into();
         debug!("[Notifier {}] {command} notifying about {scope} to listener {id} - {}", self.name, listener.connection());
         if let Some(mutations) =
-            listener.mutate(Mutation::new(command, scope.clone()), self.policies.clone(), &self.subscription_context)
+            listener.mutate(Mutation::new(command, scope.clone()), self.policies.clone(), &self.subscription_context)?
         {
             trace!("[Notifier {}] {command} notifying listener {id} about {scope:?} involves mutations {mutations:?}", self.name);
             // Update broadcasters

@@ -11,7 +11,11 @@ pub struct SubscriptionContextInner {
 
 impl SubscriptionContextInner {
     pub fn new() -> Self {
-        let address_tracker = Tracker::new();
+        Self::with_options(None)
+    }
+
+    pub fn with_options(addresses_max_capacity: Option<usize>) -> Self {
+        let address_tracker = Tracker::new(addresses_max_capacity);
         Self { address_tracker }
     }
 

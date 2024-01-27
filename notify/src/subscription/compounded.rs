@@ -1,9 +1,8 @@
-use super::{context::SubscriptionContext, Compounded, Mutation, Subscription};
 use crate::{
-    address::tracker::Counters,
+    address::{error::Result, tracker::Counters},
     events::EventType,
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
-    subscription::Command,
+    subscription::{context::SubscriptionContext, Command, Compounded, Mutation, Subscription},
 };
 use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix};
@@ -166,7 +165,7 @@ impl UtxosChangedSubscription {
             .collect_vec()
     }
 
-    pub fn register(&mut self, addresses: &[Address], context: &SubscriptionContext) -> Vec<Address> {
+    pub fn register(&mut self, addresses: &[Address], context: &SubscriptionContext) -> Result<Vec<Address>> {
         context.address_tracker.register(&mut self.indexes, addresses)
     }
 
@@ -189,7 +188,7 @@ impl Compounded for UtxosChangedSubscription {
                         }
                     } else {
                         // Add(A)
-                        let added = self.register(&scope.addresses, context);
+                        let added = self.register(&scope.addresses, context).expect("compounded always registers");
                         if !added.is_empty() && self.all == 0 {
                             return Some(Mutation::new(Command::Start, UtxosChangedScope::new(added).into()));
                         }

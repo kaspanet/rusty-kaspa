@@ -1,3 +1,4 @@
+use crate::address::error::{Error, Result};
 use indexmap::{map::Entry, IndexMap};
 use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix};
@@ -313,15 +314,19 @@ impl From<Vec<Index>> for IndexVec {
 #[derive(Debug)]
 struct Inner {
     script_pub_keys: IndexMap<ScriptPublicKey, RefCount>,
+    max_capacity: Option<usize>,
 }
 
 impl Inner {
-    fn new() -> Self {
-        Self { script_pub_keys: IndexMap::new() }
+    fn new(max_capacity: Option<usize>) -> Self {
+        Self { script_pub_keys: IndexMap::new(), max_capacity }
     }
 
-    fn with_capacity(capacity: usize) -> Self {
-        Self { script_pub_keys: IndexMap::with_capacity(capacity) }
+    fn is_full(&self) -> bool {
+        match self.max_capacity {
+            Some(max_capacity) => self.script_pub_keys.len() >= max_capacity,
+            None => false,
+        }
     }
 
     fn get(&self, spk: &ScriptPublicKey) -> Option<(Index, RefCount)> {
@@ -334,16 +339,23 @@ impl Inner {
             .map(|(spk, _)| extract_script_pub_key_address(spk, prefix).expect("is retro-convertible"))
     }
 
-    fn get_or_insert(&mut self, spk: ScriptPublicKey) -> Index {
+    fn get_or_insert(&mut self, spk: ScriptPublicKey) -> Result<Index> {
         // TODO: reuse entries with counter at 0 when available and some map size threshold is reached
-        match self.script_pub_keys.entry(spk) {
-            Entry::Occupied(entry) => entry.index() as Index,
-            Entry::Vacant(entry) => {
-                let index = entry.index() as Index;
-                trace!("AddressTracker insert #{} {}", index, extract_script_pub_key_address(entry.key(), Prefix::Mainnet).unwrap());
-                let _ = *entry.insert(0);
-                index
-            }
+        match self.is_full() {
+            false => match self.script_pub_keys.entry(spk) {
+                Entry::Occupied(entry) => Ok(entry.index() as Index),
+                Entry::Vacant(entry) => {
+                    let index = entry.index() as Index;
+                    trace!(
+                        "AddressTracker insert #{} {}",
+                        index,
+                        extract_script_pub_key_address(entry.key(), Prefix::Mainnet).unwrap()
+                    );
+                    let _ = *entry.insert(0);
+                    Ok(index)
+                }
+            },
+            true => Err(Error::MaxCapacityReached),
         }
     }
 
@@ -387,17 +399,13 @@ impl Display for Tracker {
 impl Tracker {
     const ADDRESS_CHUNK_SIZE: usize = 256;
 
-    pub fn new() -> Self {
-        Self { inner: RwLock::new(Inner::new()) }
-    }
-
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self { inner: RwLock::new(Inner::with_capacity(capacity)) }
+    pub fn new(max_capacity: Option<usize>) -> Self {
+        Self { inner: RwLock::new(Inner::new(max_capacity)) }
     }
 
     #[cfg(test)]
     pub fn with_addresses(addresses: &[Address]) -> Self {
-        let tracker = Self { inner: RwLock::new(Inner::new()) };
+        let tracker = Self { inner: RwLock::new(Inner::new(None)) };
         for chunk in addresses.chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = tracker.inner.write();
             for address in chunk {
@@ -423,21 +431,39 @@ impl Tracker {
         self.contains(indexes, &pay_to_address_script(address))
     }
 
-    pub fn register<T: Indexer>(&self, indexes: &mut T, addresses: &[Address]) -> Vec<Address> {
+    pub fn register<T: Indexer>(&self, indexes: &mut T, addresses: &[Address]) -> Result<Vec<Address>> {
+        let mut rollback: bool = false;
         let mut added = Vec::with_capacity(addresses.len());
         indexes.unlock();
         for chunk in addresses.chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
             for address in chunk {
                 let spk = pay_to_address_script(address);
-                let index = inner.get_or_insert(spk);
-                if indexes.insert(index) {
-                    added.push(address.clone());
-                    inner.inc_count(index);
+                match inner.get_or_insert(spk) {
+                    Ok(index) => {
+                        if indexes.insert(index) {
+                            added.push(address.clone());
+                            inner.inc_count(index);
+                        }
+                    }
+                    Err(Error::MaxCapacityReached) => {
+                        // Rollback registration
+                        rollback = true;
+                        break;
+                    }
                 }
             }
+            if rollback {
+                break;
+            }
         }
-        added
+        match rollback {
+            false => Ok(added),
+            true => {
+                let _ = self.unregister(indexes, &added);
+                Err(Error::MaxCapacityReached)
+            }
+        }
     }
 
     pub fn unregister<T: Indexer>(&self, indexes: &mut T, addresses: &[Address]) -> Vec<Address> {
@@ -481,6 +507,6 @@ impl Tracker {
 
 impl Default for Tracker {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }

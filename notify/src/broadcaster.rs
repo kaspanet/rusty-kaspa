@@ -314,7 +314,11 @@ mod tests {
                 for (idx, mutation) in step.mutations.iter().enumerate() {
                     if let Some(ref mutation) = mutation {
                         let event = mutation.event_type();
-                        if self.listeners[idx].mutate(mutation.clone(), Default::default(), &self.subscription_context).is_some() {
+                        if self.listeners[idx]
+                            .mutate(mutation.clone(), Default::default(), &self.subscription_context)
+                            .unwrap()
+                            .is_some()
+                        {
                             // trace!(
                             //     "{} #{} - Mutation {} - Subscription Context {}",
                             //     self.name,

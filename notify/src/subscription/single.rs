@@ -1,5 +1,6 @@
 use crate::{
     address::tracker::Indexes,
+    error::Result,
     events::EventType,
     listener::ListenerId,
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
@@ -43,14 +44,14 @@ impl Single for OverallSubscription {
         _: MutationPolicies,
         _: &SubscriptionContext,
         _: ListenerId,
-    ) -> Option<(DynSubscription, Vec<Mutation>)> {
+    ) -> Result<Option<(DynSubscription, Vec<Mutation>)>> {
         assert_eq!(self.event_type(), mutation.event_type());
-        if self.active != mutation.active() {
+        Ok(if self.active != mutation.active() {
             let mutated = Self::new(self.event_type, mutation.active());
             Some((Arc::new(mutated), vec![mutation]))
         } else {
             None
-        }
+        })
     }
 }
 
@@ -93,9 +94,9 @@ impl Single for VirtualChainChangedSubscription {
         _: MutationPolicies,
         _: &SubscriptionContext,
         _: ListenerId,
-    ) -> Option<(DynSubscription, Vec<Mutation>)> {
+    ) -> Result<Option<(DynSubscription, Vec<Mutation>)>> {
         assert_eq!(self.event_type(), mutation.event_type());
-        if let Scope::VirtualChainChanged(ref scope) = mutation.scope {
+        Ok(if let Scope::VirtualChainChanged(ref scope) = mutation.scope {
             // Here we want the code to (almost) match a double entry table structure
             // by subscription state and by mutation
             #[allow(clippy::collapsible_else_if)]
@@ -144,7 +145,7 @@ impl Single for VirtualChainChangedSubscription {
             }
         } else {
             None
-        }
+        })
     }
 }
 
@@ -215,8 +216,8 @@ impl UtxosChangedSubscription {
         self.indexes.iter().filter_map(|index| context.address_tracker.get_index_address(*index, prefix)).collect_vec()
     }
 
-    pub fn register(&mut self, addresses: &[Address], context: &SubscriptionContext) -> Vec<Address> {
-        context.address_tracker.register(&mut self.indexes, addresses)
+    pub fn register(&mut self, addresses: &[Address], context: &SubscriptionContext) -> Result<Vec<Address>> {
+        Ok(context.address_tracker.register(&mut self.indexes, addresses)?)
     }
 
     pub fn unregister(&mut self, addresses: &[Address], context: &SubscriptionContext) -> Vec<Address> {
@@ -291,9 +292,9 @@ impl Single for UtxosChangedSubscription {
         policies: MutationPolicies,
         context: &SubscriptionContext,
         listener_id: ListenerId,
-    ) -> Option<(DynSubscription, Vec<Mutation>)> {
+    ) -> Result<Option<(DynSubscription, Vec<Mutation>)>> {
         assert_eq!(self.event_type(), mutation.event_type());
-        if let Scope::UtxosChanged(ref scope) = mutation.scope {
+        Ok(if let Scope::UtxosChanged(ref scope) = mutation.scope {
             // Here we want the code to (almost) match a double entry table structure
             // by subscription state and by mutation
             #[allow(clippy::collapsible_else_if)]
@@ -307,7 +308,7 @@ impl Single for UtxosChangedSubscription {
                     // Here is an exception to the aforementioned goal
                     // Mutations Add(A) && All
                     let mut mutated = Self::with_capacity(true, listener_id, scope.addresses.len());
-                    let addresses = mutated.register(&scope.addresses, context);
+                    let addresses = mutated.register(&scope.addresses, context)?;
                     let mutations = match policies.utxo_changed {
                         UtxosChangedMutationPolicy::AddressSet => {
                             Some(vec![Mutation::new(mutation.command, UtxosChangedScope::new(addresses).into())])
@@ -360,7 +361,7 @@ impl Single for UtxosChangedSubscription {
                         // Mutation Add(A)
                         if scope.addresses.iter().any(|address| !self.contains_address(address, context)) {
                             let mut mutated = (*self).clone();
-                            let added = mutated.register(&scope.addresses, context);
+                            let added = mutated.register(&scope.addresses, context)?;
                             let mutations = match policies.utxo_changed {
                                 UtxosChangedMutationPolicy::AddressSet => {
                                     Some(vec![Mutation::new(Command::Start, Scope::UtxosChanged(UtxosChangedScope::new(added)))])
@@ -403,7 +404,7 @@ impl Single for UtxosChangedSubscription {
                     if !scope.addresses.is_empty() {
                         // Mutation Add(A)
                         let mut mutated = Self::with_capacity(true, listener_id, scope.addresses.len());
-                        let added = mutated.register(&scope.addresses, context);
+                        let added = mutated.register(&scope.addresses, context)?;
                         let mutations = match policies.utxo_changed {
                             UtxosChangedMutationPolicy::AddressSet => Some(vec![
                                 Mutation::new(Command::Start, UtxosChangedScope::new(added).into()),
@@ -420,7 +421,7 @@ impl Single for UtxosChangedSubscription {
             }
         } else {
             None
-        }
+        })
     }
 }
 
@@ -607,7 +608,7 @@ mod tests {
         fn run(&self, context: &SubscriptionContext) {
             for test in self.tests.iter() {
                 let mut new_state = test.state.clone();
-                let result = new_state.mutate(test.mutation.clone(), Default::default(), context, Self::LISTENER_ID);
+                let result = new_state.mutate(test.mutation.clone(), Default::default(), context, Self::LISTENER_ID).unwrap();
                 assert_eq!(test.new_state.active(), new_state.active(), "Testing '{}': wrong new state activity", test.name);
                 assert_eq!(*test.new_state, *new_state, "Testing '{}': wrong new state", test.name);
                 assert_eq!(test.result, result, "Testing '{}': wrong result", test.name);

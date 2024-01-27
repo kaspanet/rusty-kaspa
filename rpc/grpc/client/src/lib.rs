@@ -281,7 +281,7 @@ impl RpcApi for GrpcClient {
                     self.policies.clone(),
                     &self.subscription_context,
                     self.client_id,
-                );
+                )?;
                 self.inner.start_notify_to_client(scope).await?;
             }
         }
@@ -302,7 +302,7 @@ impl RpcApi for GrpcClient {
                         self.policies.clone(),
                         &self.subscription_context,
                         self.client_id,
-                    );
+                    )?;
                     self.inner.stop_notify_to_client(scope).await?;
                 }
             }
