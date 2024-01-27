@@ -26,8 +26,12 @@ impl<T> CachedDbItem<T> {
         Self { db, key, cached_item: Arc::new(RwLock::new(None)) }
     }
 
-    pub fn new_with_value(db: Arc<DB>, key: Vec<u8>, value: T) -> Self {
-        Self { db, key, cached_item: Arc::new(RwLock::new(Some(value))) }
+    pub fn new_with_value(db: Arc<DB>, key: Vec<u8>, item: T) -> Self
+    where
+        T: Clone + Serialize,
+    {
+        db.put(key.clone(), bincode::serialize(&item.clone()).unwrap()).unwrap();
+        Self { db, key, cached_item: Arc::new(RwLock::new(Some(item))) }
     }
 
     pub fn read(&self) -> Result<T, StoreError>

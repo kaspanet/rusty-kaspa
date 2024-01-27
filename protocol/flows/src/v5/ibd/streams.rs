@@ -196,11 +196,11 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
                     "Received {0} + {1} / {2} signaled UTXOs ({3:.0}%)",
                     self.utxo_count,
                     self.i,
-                    if self.signaled_utxoset_size > 0 { self.signaled_utxoset_size.to_string() } else { "NaN".to_string() },
+                    if self.signaled_utxoset_size > 0 { self.signaled_utxoset_size.to_string() } else { f64::NAN.to_string() },
                     if self.signaled_utxoset_size > 0 {
-                        (self.signaled_utxoset_size as f64 / self.i as f64 * 100.0).to_string()
+                        (self.signaled_utxoset_size as f64 / self.i as f64) * 100.0
                     } else {
-                        "NaN".to_string()
+                        f64::NAN
                     }
                 );
                 self.router
