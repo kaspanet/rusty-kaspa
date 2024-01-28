@@ -200,7 +200,7 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
                     "[{0}]: Received {1} + {2} / {3} signaled UTXOs ({4:.0}%)",
                     Self::IDENT,
                     self.utxo_count,
-                    chunk.0.len(),
+                    chunk.0.len() * IBD_BATCH_SIZE,
                     if self.signaled_utxoset_size > 0 { self.signaled_utxoset_size.to_string() } else { f64::NAN.to_string() },
                     if self.signaled_utxoset_size > 0 {
                         (self.utxo_count as f64 / self.signaled_utxoset_size as f64) * 100.0
