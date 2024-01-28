@@ -191,13 +191,14 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
         if let Ok(Some(chunk)) = res {
             self.i += 1;
             self.utxo_count += chunk.0.len();
-            if self.i == 1 && chunk.1 > 0 { // We expect a signaled set size only in first chunk, and if `chunk.1 == 0`, we are probably ibding from a node without this feature. 
+            if self.i == 1 && chunk.1 > 0 {
+                // We expect a signaled set size only in first chunk, and if `chunk.1 == 0`, we are probably ibding from a node without this feature.
                 info!("[{0}]: Start Streaming of pruning point Utxo set; signaled set size: {1}", Self::IDENT, chunk.1);
                 self.signaled_utxoset_size = chunk.1;
             }
             if self.i % IBD_BATCH_SIZE == 0 || self.utxo_count == self.signaled_utxoset_size {
                 info!(
-                    "[{0}]: Received {1} + {2} / {3} signaled UTXOs ({4:.0}%)", 
+                    "[{0}]: Received {1} + {2} / {3} signaled UTXOs ({4:.0}%)",
                     Self::IDENT,
                     self.utxo_count,
                     chunk.0.len(),
