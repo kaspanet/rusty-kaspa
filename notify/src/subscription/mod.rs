@@ -236,7 +236,6 @@ impl<T: Eq + Any> DynEq for T {
 }
 
 pub trait CompoundedClone {
-    fn clone_arc(&self) -> Arc<dyn Compounded>;
     fn clone_box(&self) -> Box<dyn Compounded>;
 }
 
@@ -244,10 +243,6 @@ impl<T> CompoundedClone for T
 where
     T: 'static + Compounded + Clone,
 {
-    fn clone_arc(&self) -> Arc<dyn Compounded> {
-        Arc::new(self.clone())
-    }
-
     fn clone_box(&self) -> Box<dyn Compounded> {
         Box::new(self.clone())
     }
