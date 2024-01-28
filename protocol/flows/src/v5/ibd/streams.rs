@@ -146,6 +146,9 @@ pub struct PruningPointUtxosetChunkStream<'a, 'b> {
 }
 
 impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
+    
+    pub const IDENT: &'static str = "PruningPointUtxosetChunkStream";
+
     pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute) -> Self {
         Self { router, incoming_route, i: 0, utxo_count: 0, signaled_utxoset_size: 0 }
     }
@@ -160,7 +163,7 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
                                 Ok(Some(payload.try_into().map_err(|_| ConversionError::General)?))
                             }
                             Some(Payload::DonePruningPointUtxoSetChunks(_)) => {
-                                info!("Finished receiving the UTXO set. Total UTXOs: {}", self.utxo_count);
+                                info!("[{0}] Finished receiving the UTXO set. Total UTXOs: {1}", Self::IDENT, self.utxo_count);
                                 Ok(None)
                             }
                             Some(Payload::UnexpectedPruningPoint(_)) => {
@@ -188,17 +191,19 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
         if let Ok(Some(chunk)) = res {
             self.i += 1;
             self.utxo_count += chunk.0.len();
-            if chunk.1 > 0 {
+            if self.i == 1 && chunk.1 > 0 { // We expect a signaled set size only in first chunk, and if `chunk.1 == 0`, we are probably ibding from a node without this feature. 
+                info!("[{0}]: Start Streaming of pruning point Utxo set; signaled set size: {1}", Self::IDENT, chunk.1);
                 self.signaled_utxoset_size = chunk.1;
             }
             if self.i % IBD_BATCH_SIZE == 0 || self.utxo_count == self.signaled_utxoset_size {
                 info!(
-                    "Received {0} + {1} / {2} signaled UTXOs ({3:.0}%)",
+                    "[{0}]: Received {1} + {2} / {3} signaled UTXOs ({4:.0}%)", 
+                    Self::IDENT,
                     self.utxo_count,
-                    self.i,
+                    chunk.0.len(),
                     if self.signaled_utxoset_size > 0 { self.signaled_utxoset_size.to_string() } else { f64::NAN.to_string() },
                     if self.signaled_utxoset_size > 0 {
-                        (self.signaled_utxoset_size as f64 / self.i as f64) * 100.0
+                        (self.utxo_count as f64 / self.signaled_utxoset_size as f64) * 100.0
                     } else {
                         f64::NAN
                     }

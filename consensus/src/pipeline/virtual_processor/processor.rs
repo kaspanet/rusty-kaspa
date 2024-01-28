@@ -88,10 +88,7 @@ use rayon::{
 };
 use rocksdb::WriteBatch;
 use std::{
-    cmp::min,
-    collections::{BinaryHeap, HashMap, VecDeque},
-    ops::Deref,
-    sync::{atomic::Ordering, Arc},
+    cmp::min, collections::{BinaryHeap, HashMap, VecDeque}, ops::Deref, sync::{atomic::Ordering, Arc}, time::Instant
 };
 
 use super::errors::{PruningImportError, PruningImportResult};
@@ -163,6 +160,9 @@ pub struct VirtualStateProcessor {
 }
 
 impl VirtualStateProcessor {
+
+    pub const IDENT: &'static str = "VirtualStateProcessor";
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
@@ -1062,14 +1062,20 @@ impl VirtualStateProcessor {
             let to_process = pruning_utxoset_read.utxo_set.size().unwrap();
             let mut processed = 0;
             let chunk_size = 1000;
+            let mut instant = Instant::now();
+            info!("[{0}] Transfering {1} Utxos from pruning to virtual store..", Self::IDENT, to_process);
             for chunk in &pruning_utxoset_read.utxo_set.iterator().map(|iter_result| iter_result.unwrap()).chunks(chunk_size) {
-                info!(
-                    "Transfering from pruning to virtual store {0} + {1} / {2} UTXOs ({3:.0}%)",
-                    processed,
-                    chunk_size,
-                    to_process,
-                    ((processed + chunk_size) as f64) * 100.0 / to_process as f64
-                );
+                if instant.elapsed().as_secs() > 5 { // This is fast, so time-bound it to every 5 secs. 
+                    info!(
+                        "[{0}] Transfering from pruning to virtual store {1} + {2} / {3} UTXOs ({4:.0}%)",
+                        Self::IDENT,
+                        processed,
+                        chunk_size,
+                        to_process,
+                        ((processed + chunk_size) as f64) * 100.0 / to_process as f64
+                    );
+                    instant = Instant::now();
+                }
                 virtual_write.utxo_set.write_from_iterator_without_cache(chunk).unwrap();
                 processed += chunk_size;
             }

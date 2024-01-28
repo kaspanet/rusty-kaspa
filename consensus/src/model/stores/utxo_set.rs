@@ -147,6 +147,7 @@ impl DbUtxoSetStore {
         self.size.update(&mut writer, |count| (count + utxo_diff.added().len() as u64) - utxo_diff.removed().len() as u64)?;
         self.access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
+        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after reveiw
         Ok(())
     }
 
@@ -168,7 +169,9 @@ impl DbUtxoSetStore {
     pub fn clear(&mut self) -> Result<(), StoreError> {
         let mut writer = DirectDbWriter::new(&self.db); // batch instead?
         self.access.delete_all(&mut writer)?;
-        self.size.write(&mut writer, &0u64)
+        self.size.write(&mut writer, &0u64)?;
+        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after reveiw
+        Ok(())
     }
 
     /// Write directly from an iterator and do not cache any data. NOTE: this action also clears the cache
@@ -186,6 +189,7 @@ impl DbUtxoSetStore {
             }),
         )?;
         self.size.update(&mut writer, |c| c + count)?;
+        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after reveiw
         Ok(())
     }
 }
@@ -221,6 +225,7 @@ impl UtxoSetStore for DbUtxoSetStore {
         self.size.update(&mut writer, |count| count + utxo_diff.added().len() as u64 - utxo_diff.removed().len() as u64)?;
         self.access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
+        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after reveiw
         Ok(())
     }
 
@@ -228,6 +233,7 @@ impl UtxoSetStore for DbUtxoSetStore {
         let mut writer = DirectDbWriter::new(&self.db);
         self.size.update(&mut writer, |count| count + utxos.len() as u64)?;
         self.access.write_many(&mut writer, &mut utxos.iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
+        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after reveiw
         Ok(())
     }
 }

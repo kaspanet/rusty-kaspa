@@ -49,7 +49,7 @@ impl RequestPruningPointUtxoSetFlow {
 
         let consensus = self.ctx.consensus();
         let mut session = consensus.session().await;
-        let is_start = true;
+        let mut is_start = true;
         let to_process = session.async_get_pruning_point_utxoset_size().await;
         let mut processed = 0;
         loop {
@@ -100,6 +100,8 @@ impl RequestPruningPointUtxoSetFlow {
 
             // Mark the beginning of the next chunk
             from_outpoint = Some(pruning_point_utxos.last().expect("not empty by prev condition").0);
+
+            is_start = false;
         }
     }
 
