@@ -350,23 +350,26 @@ where
     ) -> Result<()> {
         let event: EventType = (&scope).into();
         debug!("[Notifier {}] {command} notifying about {scope} to listener {id} - {}", self.name, listener.connection());
-        if let Some(mutations) =
-            listener.mutate(Mutation::new(command, scope.clone()), self.policies.clone(), &self.subscription_context)?
-        {
-            trace!("[Notifier {}] {command} notifying listener {id} about {scope:?} involves mutations {mutations:?}", self.name);
+        let outcome = listener.mutate(Mutation::new(command, scope.clone()), self.policies.clone(), &self.subscription_context)?;
+        if outcome.has_changes() {
+            trace!(
+                "[Notifier {}] {command} notifying listener {id} about {scope:?} involves mutations {:?}",
+                self.name,
+                outcome.mutations
+            );
             // Update broadcasters
-            match listener.subscriptions[event].active() {
-                true => {
-                    let subscription = listener.subscriptions[event].clone();
+            match (listener.subscriptions[event].active(), outcome.mutated) {
+                (true, Some(subscription)) => {
                     self.broadcasters
                         .iter()
                         .try_for_each(|broadcaster| broadcaster.register(subscription.clone(), id, listener.connection()))?;
                 }
-                false => {
+                (true, None) => {}
+                (false, _) => {
                     self.broadcasters.iter().try_for_each(|broadcaster| broadcaster.unregister(event, id))?;
                 }
             }
-            self.apply_mutations(event, mutations, &self.subscription_context)?;
+            self.apply_mutations(event, outcome.mutations, &self.subscription_context)?;
         } else {
             trace!("[Notifier {}] {command} notifying listener {id} about {scope:?} is ignored (no mutation)", self.name);
             // In case we have a sync channel, report that the command was processed.

@@ -2,7 +2,7 @@ use std::fmt::Debug;
 extern crate derive_more;
 use crate::{
     error::Result,
-    subscription::{context::SubscriptionContext, DynSubscription, MutateSingle, MutationPolicies},
+    subscription::{context::SubscriptionContext, DynSubscription, MutateSingle, MutationOutcome, MutationPolicies},
 };
 
 use super::{
@@ -45,7 +45,7 @@ where
         mutation: Mutation,
         policies: MutationPolicies,
         context: &SubscriptionContext,
-    ) -> Result<Option<Vec<Mutation>>> {
+    ) -> Result<MutationOutcome> {
         let event_type = mutation.event_type();
         self.subscriptions[event_type].mutate(mutation, policies, context, self.id)
     }

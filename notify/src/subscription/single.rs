@@ -5,7 +5,7 @@ use crate::{
     listener::ListenerId,
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::{
-        context::SubscriptionContext, Command, DynSubscription, Mutation, MutationPolicies, Single, Subscription,
+        context::SubscriptionContext, Command, DynSubscription, Mutation, MutationOutcome, MutationPolicies, Single, Subscription,
         UtxosChangedMutationPolicy,
     },
 };
@@ -38,19 +38,19 @@ impl OverallSubscription {
 }
 
 impl Single for OverallSubscription {
-    fn mutated_and_mutations(
+    fn apply_mutation(
         &self,
         mutation: Mutation,
         _: MutationPolicies,
         _: &SubscriptionContext,
         _: ListenerId,
-    ) -> Result<Option<(DynSubscription, Vec<Mutation>)>> {
+    ) -> Result<MutationOutcome> {
         assert_eq!(self.event_type(), mutation.event_type());
         Ok(if self.active != mutation.active() {
             let mutated = Self::new(self.event_type, mutation.active());
-            Some((Arc::new(mutated), vec![mutation]))
+            MutationOutcome::with_mutated(Arc::new(mutated), vec![mutation])
         } else {
-            None
+            MutationOutcome::new()
         })
     }
 }
@@ -88,15 +88,15 @@ impl VirtualChainChangedSubscription {
 }
 
 impl Single for VirtualChainChangedSubscription {
-    fn mutated_and_mutations(
+    fn apply_mutation(
         &self,
         mutation: Mutation,
         _: MutationPolicies,
         _: &SubscriptionContext,
         _: ListenerId,
-    ) -> Result<Option<(DynSubscription, Vec<Mutation>)>> {
+    ) -> Result<MutationOutcome> {
         assert_eq!(self.event_type(), mutation.event_type());
-        Ok(if let Scope::VirtualChainChanged(ref scope) = mutation.scope {
+        let result = if let Scope::VirtualChainChanged(ref scope) = mutation.scope {
             // Here we want the code to (almost) match a double entry table structure
             // by subscription state and by mutation
             #[allow(clippy::collapsible_else_if)]
@@ -145,7 +145,12 @@ impl Single for VirtualChainChangedSubscription {
             }
         } else {
             None
-        })
+        };
+        let outcome = match result {
+            Some((mutated, mutations)) => MutationOutcome::with_mutated(mutated, mutations),
+            None => MutationOutcome::new(),
+        };
+        Ok(outcome)
     }
 }
 
@@ -286,15 +291,15 @@ impl Hash for UtxosChangedSubscription {
 }
 
 impl Single for UtxosChangedSubscription {
-    fn mutated_and_mutations(
+    fn apply_mutation(
         &self,
         mutation: Mutation,
         policies: MutationPolicies,
         context: &SubscriptionContext,
         listener_id: ListenerId,
-    ) -> Result<Option<(DynSubscription, Vec<Mutation>)>> {
+    ) -> Result<MutationOutcome> {
         assert_eq!(self.event_type(), mutation.event_type());
-        Ok(if let Scope::UtxosChanged(ref scope) = mutation.scope {
+        let result = if let Scope::UtxosChanged(ref scope) = mutation.scope {
             // Here we want the code to (almost) match a double entry table structure
             // by subscription state and by mutation
             #[allow(clippy::collapsible_else_if)]
@@ -421,7 +426,12 @@ impl Single for UtxosChangedSubscription {
             }
         } else {
             None
-        })
+        };
+        let outcome = match result {
+            Some((mutated, mutations)) => MutationOutcome::with_mutated(mutated, mutations),
+            None => MutationOutcome::new(),
+        };
+        Ok(outcome)
     }
 }
 
@@ -591,7 +601,7 @@ mod tests {
         state: DynSubscription,
         mutation: Mutation,
         new_state: DynSubscription,
-        result: Option<Vec<Mutation>>,
+        outcome: MutationOutcome,
     }
 
     struct MutationTests {
@@ -608,10 +618,11 @@ mod tests {
         fn run(&self, context: &SubscriptionContext) {
             for test in self.tests.iter() {
                 let mut new_state = test.state.clone();
-                let result = new_state.mutate(test.mutation.clone(), Default::default(), context, Self::LISTENER_ID).unwrap();
+                let outcome = new_state.mutate(test.mutation.clone(), Default::default(), context, Self::LISTENER_ID).unwrap();
                 assert_eq!(test.new_state.active(), new_state.active(), "Testing '{}': wrong new state activity", test.name);
                 assert_eq!(*test.new_state, *new_state, "Testing '{}': wrong new state", test.name);
-                assert_eq!(test.result, result, "Testing '{}': wrong result", test.name);
+                assert_eq!(test.outcome.has_new_state(), outcome.has_new_state(), "Testing '{}': wrong new state presence", test.name);
+                assert_eq!(test.outcome.mutations, outcome.mutations, "Testing '{}': wrong mutations", test.name);
             }
         }
     }
@@ -642,28 +653,28 @@ mod tests {
                 state: none(),
                 mutation: start_all(),
                 new_state: all(),
-                result: Some(vec![start_all()]),
+                outcome: MutationOutcome::with_mutated(all(), vec![start_all()]),
             },
             MutationTest {
                 name: "OverallSubscription None to None",
                 state: none(),
                 mutation: stop_all(),
                 new_state: none(),
-                result: None,
+                outcome: MutationOutcome::new(),
             },
             MutationTest {
                 name: "OverallSubscription All to All",
                 state: all(),
                 mutation: start_all(),
                 new_state: all(),
-                result: None,
+                outcome: MutationOutcome::new(),
             },
             MutationTest {
                 name: "OverallSubscription All to None",
                 state: all(),
                 mutation: stop_all(),
                 new_state: none(),
-                result: Some(vec![stop_all()]),
+                outcome: MutationOutcome::with_mutated(none(), vec![stop_all()]),
             },
         ]);
         tests.run(&context)
@@ -698,84 +709,84 @@ mod tests {
                 state: none(),
                 mutation: start_all(),
                 new_state: all(),
-                result: Some(vec![start_all()]),
+                outcome: MutationOutcome::with_mutated(all(), vec![start_all()]),
             },
             MutationTest {
                 name: "VirtualChainChangedSubscription None to Reduced",
                 state: none(),
                 mutation: start_reduced(),
                 new_state: reduced(),
-                result: Some(vec![start_reduced()]),
+                outcome: MutationOutcome::with_mutated(reduced(), vec![start_reduced()]),
             },
             MutationTest {
                 name: "VirtualChainChangedSubscription None to None (stop reduced)",
                 state: none(),
                 mutation: stop_reduced(),
                 new_state: none(),
-                result: None,
+                outcome: MutationOutcome::new(),
             },
             MutationTest {
                 name: "VirtualChainChangedSubscription None to None (stop all)",
                 state: none(),
                 mutation: stop_all(),
                 new_state: none(),
-                result: None,
+                outcome: MutationOutcome::new(),
             },
             MutationTest {
                 name: "VirtualChainChangedSubscription Reduced to All",
                 state: reduced(),
                 mutation: start_all(),
                 new_state: all(),
-                result: Some(vec![stop_reduced(), start_all()]),
+                outcome: MutationOutcome::with_mutated(all(), vec![stop_reduced(), start_all()]),
             },
             MutationTest {
                 name: "VirtualChainChangedSubscription Reduced to Reduced",
                 state: reduced(),
                 mutation: start_reduced(),
                 new_state: reduced(),
-                result: None,
+                outcome: MutationOutcome::new(),
             },
             MutationTest {
                 name: "VirtualChainChangedSubscription Reduced to None (stop reduced)",
                 state: reduced(),
                 mutation: stop_reduced(),
                 new_state: none(),
-                result: Some(vec![stop_reduced()]),
+                outcome: MutationOutcome::with_mutated(none(), vec![stop_reduced()]),
             },
             MutationTest {
                 name: "VirtualChainChangedSubscription Reduced to None (stop all)",
                 state: reduced(),
                 mutation: stop_all(),
                 new_state: none(),
-                result: Some(vec![stop_reduced()]),
+                outcome: MutationOutcome::with_mutated(none(), vec![stop_reduced()]),
             },
             MutationTest {
                 name: "VirtualChainChangedSubscription All to All",
                 state: all(),
                 mutation: start_all(),
                 new_state: all(),
-                result: None,
+                outcome: MutationOutcome::new(),
             },
             MutationTest {
                 name: "VirtualChainChangedSubscription All to Reduced",
                 state: all(),
                 mutation: start_reduced(),
                 new_state: reduced(),
-                result: Some(vec![start_reduced(), stop_all()]),
+                outcome: MutationOutcome::with_mutated(reduced(), vec![start_reduced(), stop_all()]),
             },
             MutationTest {
                 name: "VirtualChainChangedSubscription All to None (stop reduced)",
                 state: all(),
                 mutation: stop_reduced(),
                 new_state: none(),
-                result: Some(vec![stop_all()]),
+                outcome: MutationOutcome::with_mutated(none(), vec![stop_all()]),
             },
             MutationTest {
                 name: "VirtualChainChangedSubscription All to None (stop all)",
                 state: all(),
                 mutation: stop_all(),
                 new_state: none(),
-                result: Some(vec![stop_all()]),
+                outcome: MutationOutcome::with_mutated(none(), vec![stop_all()]),
             },
         ]);
         tests.run(&context)
@@ -823,112 +834,112 @@ mod tests {
                 state: none(),
                 mutation: start_all(),
                 new_state: all(),
-                result: Some(vec![start_all()]),
+                outcome: MutationOutcome::with_mutated(all(), vec![start_all()]),
             },
             MutationTest {
                 name: "UtxosChangedSubscription None to Selected 0 (add set)",
                 state: none(),
                 mutation: start_0(),
                 new_state: selected_0(),
-                result: Some(vec![start_0()]),
+                outcome: MutationOutcome::with_mutated(selected_0(), vec![start_0()]),
             },
             MutationTest {
                 name: "UtxosChangedSubscription None to None (stop set)",
                 state: none(),
                 mutation: stop_0(),
                 new_state: none(),
-                result: None,
+                outcome: MutationOutcome::new(),
             },
             MutationTest {
                 name: "UtxosChangedSubscription None to None (stop all)",
                 state: none(),
                 mutation: stop_all(),
                 new_state: none(),
-                result: None,
+                outcome: MutationOutcome::new(),
             },
             MutationTest {
                 name: "UtxosChangedSubscription Selected 01 to All (add all)",
                 state: selected_01(),
                 mutation: start_all(),
                 new_state: all(),
-                result: Some(vec![stop_01(), start_all()]),
+                outcome: MutationOutcome::with_mutated(all(), vec![stop_01(), start_all()]),
             },
             MutationTest {
                 name: "UtxosChangedSubscription Selected 01 to 01 (add set with total intersection)",
                 state: selected_01(),
                 mutation: start_1(),
                 new_state: selected_01(),
-                result: None,
+                outcome: MutationOutcome::new(),
             },
             MutationTest {
                 name: "UtxosChangedSubscription Selected 0 to 01 (add set with partial intersection)",
                 state: selected_0(),
                 mutation: start_01(),
                 new_state: selected_01(),
-                result: Some(vec![start_1()]),
+                outcome: MutationOutcome::with_mutated(selected_01(), vec![start_1()]),
             },
             MutationTest {
                 name: "UtxosChangedSubscription Selected 2 to 012 (add set with no intersection)",
                 state: selected_2(),
                 mutation: start_01(),
                 new_state: selected_012(),
-                result: Some(vec![start_01()]),
+                outcome: MutationOutcome::with_mutated(selected_012(), vec![start_01()]),
             },
             MutationTest {
                 name: "UtxosChangedSubscription Selected 01 to None (remove superset)",
                 state: selected_1(),
                 mutation: stop_01(),
                 new_state: none(),
-                result: Some(vec![stop_1()]),
+                outcome: MutationOutcome::with_mutated(none(), vec![stop_1()]),
             },
             MutationTest {
                 name: "UtxosChangedSubscription Selected 01 to None (remove set with total intersection)",
                 state: selected_01(),
                 mutation: stop_01(),
                 new_state: none(),
-                result: Some(vec![stop_01()]),
+                outcome: MutationOutcome::with_mutated(none(), vec![stop_01()]),
             },
             MutationTest {
                 name: "UtxosChangedSubscription Selected 02 to 2 (remove set with partial intersection)",
                 state: selected_02(),
                 mutation: stop_01(),
                 new_state: selected_2(),
-                result: Some(vec![stop_0()]),
+                outcome: MutationOutcome::with_mutated(selected_2(), vec![stop_0()]),
             },
             MutationTest {
                 name: "UtxosChangedSubscription Selected 02 to 02 (remove set with no intersection)",
                 state: selected_02(),
                 mutation: stop_1(),
                 new_state: selected_02(),
-                result: None,
+                outcome: MutationOutcome::new(),
             },
             MutationTest {
                 name: "UtxosChangedSubscription All to All (add all)",
                 state: all(),
                 mutation: start_all(),
                 new_state: all(),
-                result: None,
+                outcome: MutationOutcome::new(),
             },
             MutationTest {
                 name: "UtxosChangedSubscription All to Selected 01 (add set)",
                 state: all(),
                 mutation: start_01(),
                 new_state: selected_01(),
-                result: Some(vec![start_01(), stop_all()]),
+                outcome: MutationOutcome::with_mutated(selected_01(), vec![start_01(), stop_all()]),
             },
             MutationTest {
                 name: "UtxosChangedSubscription All to All (remove set)",
                 state: all(),
                 mutation: stop_01(),
                 new_state: all(),
-                result: None,
+                outcome: MutationOutcome::new(),
             },
             MutationTest {
                 name: "UtxosChangedSubscription All to None (remove all)",
                 state: all(),
                 mutation: stop_all(),
                 new_state: none(),
-                result: Some(vec![stop_all()]),
+                outcome: MutationOutcome::with_mutated(none(), vec![stop_all()]),
             },
         ]);
         tests.run(&context)

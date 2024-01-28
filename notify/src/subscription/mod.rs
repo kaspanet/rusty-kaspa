@@ -115,14 +115,56 @@ impl Eq for dyn Compounded {}
 
 pub type CompoundedSubscription = Box<dyn Compounded>;
 
+pub struct MutationOutcome {
+    pub mutated: Option<DynSubscription>,
+    pub mutations: Vec<Mutation>,
+}
+
+impl MutationOutcome {
+    pub fn new() -> Self {
+        Self { mutated: None, mutations: vec![] }
+    }
+
+    pub fn with_mutations(mutations: Vec<Mutation>) -> Self {
+        Self { mutated: None, mutations }
+    }
+
+    pub fn with_mutated(mutated: DynSubscription, mutations: Vec<Mutation>) -> Self {
+        Self { mutated: Some(mutated), mutations }
+    }
+
+    pub fn apply_to(self, target: &mut DynSubscription) -> Self {
+        if let Some(ref mutated) = self.mutated {
+            *target = mutated.clone();
+        }
+        self
+    }
+
+    #[inline(always)]
+    pub fn has_new_state(&self) -> bool {
+        self.mutated.is_some()
+    }
+
+    #[inline(always)]
+    pub fn has_changes(&self) -> bool {
+        self.has_new_state() || !self.mutations.is_empty()
+    }
+}
+
+impl Default for MutationOutcome {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub trait Single: Subscription + AsAny + DynHash + DynEq + Debug + Send + Sync {
-    fn mutated_and_mutations(
+    fn apply_mutation(
         &self,
         mutation: Mutation,
         policies: MutationPolicies,
         context: &SubscriptionContext,
         listener_id: ListenerId,
-    ) -> Result<Option<(DynSubscription, Vec<Mutation>)>>;
+    ) -> Result<MutationOutcome>;
 }
 
 pub trait MutateSingle: Deref<Target = dyn Single> {
@@ -132,7 +174,7 @@ pub trait MutateSingle: Deref<Target = dyn Single> {
         policies: MutationPolicies,
         context: &SubscriptionContext,
         listener_id: ListenerId,
-    ) -> Result<Option<Vec<Mutation>>>;
+    ) -> Result<MutationOutcome>;
 }
 
 impl MutateSingle for Arc<dyn Single> {
@@ -142,13 +184,9 @@ impl MutateSingle for Arc<dyn Single> {
         policies: MutationPolicies,
         context: &SubscriptionContext,
         listener_id: ListenerId,
-    ) -> Result<Option<Vec<Mutation>>> {
-        let result = self.mutated_and_mutations(mutation, policies, context, listener_id)?;
-        let result = result.map(|(mutated, mutations)| {
-            *self = mutated;
-            mutations
-        });
-        Ok(result)
+    ) -> Result<MutationOutcome> {
+        let outcome = self.apply_mutation(mutation, policies, context, listener_id)?.apply_to(self);
+        Ok(outcome)
     }
 }
 
