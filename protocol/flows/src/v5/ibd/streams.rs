@@ -146,7 +146,6 @@ pub struct PruningPointUtxosetChunkStream<'a, 'b> {
 }
 
 impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
-    
     pub const IDENT: &'static str = "PruningPointUtxosetChunkStream";
 
     pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute) -> Self {
