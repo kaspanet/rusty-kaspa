@@ -8,15 +8,17 @@ use crate::{
 };
 use kaspa_consensus_core::{tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
-use kaspa_core::{info, trace};
+use kaspa_core::{info, log::progressions::maybe_init_spinner, trace};
 use kaspa_database::prelude::{StoreError, StoreResult, DB};
 use kaspa_hashes::Hash;
 use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
-use kaspa_utils::arc::ArcExtensions;
+use kaspa_utils::{arc::ArcExtensions, option::OptionExtensions};
 use parking_lot::RwLock;
 use std::{
+    borrow::Cow,
     fmt::Debug,
     sync::{Arc, Weak},
+    time::Duration,
 };
 
 const RESYNC_CHUNK_SIZE: usize = 2048; //Increased from 1k (used in go-kaspad), for quicker resets, while still having a low memory footprint.
@@ -148,6 +150,9 @@ impl UtxoIndexApi for UtxoIndex {
         let mut current_chunk_size = virtual_utxo_batch.len();
         trace!("[{0}] resyncing with batch of {1} utxos from consensus db", IDENT, current_chunk_size);
         // While loop stops resync attempts from an empty utxo db, and unneeded processing when the utxo state size happens to be a multiple of [`RESYNC_CHUNK_SIZE`]
+        let pb = maybe_init_spinner(Cow::Borrowed(IDENT), "Resyncing UTXO set".into());
+        pb.is_some_perform(|pb| pb.enable_steady_tick(Duration::from_secs(1)));
+
         while current_chunk_size > 0 {
             // Potential optimization TODO: iterating virtual utxos into an [UtxoIndexChanges] struct is a bit of overhead (i.e. a potentially unneeded loop),
             // but some form of pre-iteration is done to extract and commit circulating supply separately.
@@ -160,6 +165,10 @@ impl UtxoIndexApi for UtxoIndex {
             circulating_supply += utxoindex_changes.supply_change as CirculatingSupply;
 
             self.store.update_utxo_state(&utxoindex_changes.utxo_changes.added, &utxoindex_changes.utxo_changes.removed, true)?;
+
+            pb.is_some_perform(|pb| {
+                pb.set_position(pb.position() + current_chunk_size as u64);
+            });
 
             if current_chunk_size < RESYNC_CHUNK_SIZE {
                 break;

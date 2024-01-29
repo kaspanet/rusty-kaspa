@@ -39,6 +39,7 @@ serde.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+indicatif.workspace = true
 
 rand = { workspace = true, features = ["small_rng"] }
 

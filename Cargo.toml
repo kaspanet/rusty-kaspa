@@ -176,6 +176,7 @@ hex = "0.4.3"
 hmac = { version = "0.12.1", default-features = false }
 home = "0.5.5"
 igd-next = { version = "0.14.2", features = ["aio_tokio"] }
+indicatif = "0.17.7"
 indexmap = "2.1.0"
 intertrait = "0.2.2"
 ipnet = "2.9.0"

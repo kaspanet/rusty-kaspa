@@ -13,6 +13,7 @@ use consts::*;
 mod appender;
 mod consts;
 mod logger;
+pub mod progressions;
     }
 }
 
@@ -38,7 +39,7 @@ cfg_if::cfg_if! {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn init_logger(log_dir: Option<&str>, filters: &str) {
+pub fn init_logger(log_dir: Option<&str>, filters: &str, init_progressions: bool) {
     use crate::log::appender::AppenderSpec;
     use log4rs::{config::Root, Config};
     use std::iter::once;
@@ -66,7 +67,13 @@ pub fn init_logger(log_dir: Option<&str>, filters: &str) {
         )
         .unwrap();
 
-    let _handle = log4rs::init_config(config).unwrap();
+    let _ = log4rs::init_config(config).unwrap();
+
+    if init_progressions {
+        progressions::init_multi_progress_bar(true);
+    } else {
+        progressions::init_multi_progress_bar(false);
+    }
 
     set_log_level(level);
 }
@@ -104,7 +111,8 @@ macro_rules! trace {
 #[macro_export]
 macro_rules! trace {
     ($($t:tt)*) => {
-        log::trace!($($t)*);
+        // Suspend progress bar while logging
+        kaspa_core::log::progressions::maybe_suspend(|| { log::trace!($($t)*); } );
     };
 }
 
@@ -122,7 +130,8 @@ macro_rules! debug {
 #[macro_export]
 macro_rules! debug {
     ($($t:tt)*) => (
-        log::debug!($($t)*);
+        // Suspend progress bar while logging
+        kaspa_core::log::progressions::maybe_suspend(|| { log::debug!($($t)*); } );
     )
 }
 
@@ -140,7 +149,8 @@ macro_rules! info {
 #[macro_export]
 macro_rules! info {
     ($($t:tt)*) => (
-        log::info!($($t)*);
+        // Suspend progress bar while logging
+        kaspa_core::log::progressions::maybe_suspend(|| { log::info!($($t)*); } );
     )
 }
 
@@ -158,7 +168,8 @@ macro_rules! warn {
 #[macro_export]
 macro_rules! warn {
     ($($t:tt)*) => (
-        log::warn!($($t)*);
+        // Suspend progress bar while logging
+        kaspa_core::log::progressions::maybe_suspend(|| { log::warn!($($t)*); } );
     )
 }
 
@@ -176,6 +187,7 @@ macro_rules! error {
 #[macro_export]
 macro_rules! error {
     ($($t:tt)*) => (
-        log::error!($($t)*);
+        // Suspend progress bar while logging
+        kaspa_core::log::progressions::maybe_suspend(|| { log::error!($($t)*); } );
     )
 }

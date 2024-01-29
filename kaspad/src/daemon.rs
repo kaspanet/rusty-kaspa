@@ -6,7 +6,7 @@ use kaspa_consensus_core::{
     errors::config::{ConfigError, ConfigResult},
 };
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
-use kaspa_core::{core::Core, info, trace};
+use kaspa_core::{core::Core, info, trace, warn};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
 use kaspa_database::prelude::CachePolicy;
 use kaspa_grpc_server::service::GrpcService;
@@ -160,8 +160,11 @@ impl Runtime {
         let log_dir = get_log_dir(args);
 
         // Initialize the logger
-        kaspa_core::log::init_logger(log_dir.as_deref(), &args.log_level);
+        kaspa_core::log::init_logger(log_dir.as_deref(), &args.log_level, args.progressions);
 
+        if args.progressions {
+            warn!("`--progressions` flag is work-in-progress and may not work as expected.")
+        }
         Self { log_dir: log_dir.map(|log_dir| log_dir.to_owned()) }
     }
 }

@@ -92,7 +92,7 @@ impl KaspaCli {
                     std::println!("halt");
                     1
                 });
-                kaspa_core::log::init_logger(None, "info");
+                kaspa_core::log::init_logger(None, "info", false);
             } else {
                 kaspa_core::log::set_log_level(LevelFilter::Info);
             }

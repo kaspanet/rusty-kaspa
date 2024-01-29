@@ -1,7 +1,12 @@
-use std::time::{Duration, Instant};
+use std::{
+    borrow::Cow,
+    time::{Duration, Instant},
+};
 
 use chrono::{Local, LocalResult, TimeZone};
-use kaspa_core::info;
+use indicatif::ProgressBar;
+use kaspa_core::{info, log::progressions::maybe_init_progress_bar};
+use kaspa_utils::option::OptionExtensions;
 
 /// Minimum number of items to report
 const REPORT_BATCH_GRANULARITY: usize = 500;
@@ -16,14 +21,18 @@ pub struct ProgressReporter {
     last_log_time: Instant,
     current_batch: usize,
     processed: usize,
+    progress_bar: Option<ProgressBar>,
 }
 
 impl ProgressReporter {
+    pub const IDENT: &'static str = "ProgressReporter";
+
     pub fn new(low_daa_score: u64, mut high_daa_score: u64, object_name: &'static str) -> Self {
         if high_daa_score <= low_daa_score {
             // Avoid a zero or negative diff
             high_daa_score = low_daa_score + 1;
         }
+
         Self {
             low_daa_score,
             high_daa_score,
@@ -32,10 +41,16 @@ impl ProgressReporter {
             last_log_time: Instant::now(),
             current_batch: 0,
             processed: 0,
+            progress_bar: maybe_init_progress_bar(
+                Cow::Borrowed(Self::IDENT),
+                format!("IBDing {0}", object_name).into(),
+                high_daa_score - low_daa_score,
+            ),
         }
     }
 
     pub fn report(&mut self, processed_delta: usize, current_daa_score: u64, current_timestamp: u64) {
+        self.progress_bar.is_some_perform(|pb| pb.set_position(self.processed as u64));
         self.current_batch += processed_delta;
         let now = Instant::now();
         if now - self.last_log_time < REPORT_TIME_GRANULARITY && self.current_batch < REPORT_BATCH_GRANULARITY && self.processed > 0 {

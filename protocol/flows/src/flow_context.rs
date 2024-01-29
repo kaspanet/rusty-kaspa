@@ -572,7 +572,7 @@ impl FlowContext {
             let mining_manager = self.mining_manager().clone();
             let consensus_clone = consensus.clone();
             let context = self.clone();
-            debug!("<> Starting mempool scanning task #{}...", self.mempool_scanning_job_count().await);
+            debug!("<> Starting mempool scanning task #{}...", futures::executor::block_on(self.mempool_scanning_job_count())); //TODO: find better way, tokio::spawn is not nice
             tokio::spawn(async move {
                 mining_manager.clone().expire_low_priority_transactions(&consensus_clone).await;
                 if context.should_rebroadcast().await {

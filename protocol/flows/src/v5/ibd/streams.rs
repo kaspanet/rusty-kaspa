@@ -2,12 +2,13 @@
 //! Logical stream abstractions used throughout the IBD negotiation protocols
 //!
 
+use indicatif::ProgressBar;
 use kaspa_consensus_core::{
     errors::consensus::ConsensusError,
     header::Header,
     tx::{TransactionOutpoint, UtxoEntry},
 };
-use kaspa_core::{debug, info};
+use kaspa_core::{debug, info, log::progressions::maybe_init_spinner};
 use kaspa_p2p_lib::{
     common::{ProtocolError, DEFAULT_TIMEOUT},
     convert::model::trusted::TrustedDataEntry,
@@ -18,7 +19,8 @@ use kaspa_p2p_lib::{
     },
     IncomingRoute, Router,
 };
-use std::sync::Arc;
+use kaspa_utils::option::OptionExtensions;
+use std::{borrow::Cow, sync::Arc};
 use tokio::time::timeout;
 
 pub const IBD_BATCH_SIZE: usize = 99;
@@ -142,11 +144,20 @@ pub struct PruningPointUtxosetChunkStream<'a, 'b> {
     incoming_route: &'b mut IncomingRoute,
     i: usize, // Chunk index
     utxo_count: usize,
+    pb: Option<ProgressBar>,
 }
 
 impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
+    pub const IDENT: &'static str = "PruningPointUtxosetChunkStream";
+
     pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute) -> Self {
-        Self { router, incoming_route, i: 0, utxo_count: 0 }
+        Self {
+            router,
+            incoming_route,
+            i: 0,
+            utxo_count: 0,
+            pb: maybe_init_spinner(Cow::Borrowed(Self::IDENT), "Downloading init UTXO set".into()),
+        }
     }
 
     pub async fn next(&mut self) -> Result<Option<UtxosetChunk>, ProtocolError> {
@@ -186,6 +197,11 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
             self.utxo_count += chunk.len();
             if self.i % IBD_BATCH_SIZE == 0 {
                 info!("Received {} UTXO set chunks so far, totaling in {} UTXOs", self.i, self.utxo_count);
+                self.pb.is_some_perform(|pb| {
+                    pb.set_position(self.utxo_count as u64);
+                    pb.tick()
+                });
+
                 self.router
                     .enqueue(make_message!(
                         Payload::RequestNextPruningPointUtxoSetChunk,

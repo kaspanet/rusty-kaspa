@@ -1983,6 +1983,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "indicatif"
+version = "0.17.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb28741c9db9a713d93deb3bb9515c20788cef5815265bee4980e87bde7e0f25"
+dependencies = [
+ "console",
+ "instant",
+ "number_prefix",
+ "portable-atomic",
+ "unicode-width",
+]
+
+[[package]]
 name = "inout"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2242,6 +2255,7 @@ dependencies = [
  "flate2",
  "futures-util",
  "indexmap 2.1.0",
+ "indicatif",
  "itertools 0.11.0",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
@@ -2375,10 +2389,12 @@ dependencies = [
  "cfg-if 1.0.0",
  "ctrlc",
  "futures-util",
+ "indicatif",
  "intertrait",
  "log",
  "log4rs",
  "num_cpus",
+ "once_cell",
  "thiserror",
  "tokio",
  "triggered",
@@ -2753,6 +2769,7 @@ dependencies = [
  "chrono",
  "futures",
  "indexmap 2.1.0",
+ "indicatif",
  "itertools 0.11.0",
  "kaspa-addressmanager",
  "kaspa-connectionmanager",
@@ -3008,6 +3025,7 @@ dependencies = [
  "event-listener 2.5.3",
  "faster-hex 0.6.1",
  "futures-util",
+ "indicatif",
  "ipnet",
  "itertools 0.11.0",
  "log",
@@ -3942,6 +3960,12 @@ checksum = "2819ce041d2ee131036f4fc9d6ae7ae125a3a40e97ba64d04fe799ad9dabbb44"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "number_prefix"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "830b246a0e5f20af87141b25c173cd1b609bd7779a4617d6ec582abaf90870f3"
 
 [[package]]
 name = "numtoa"

@@ -108,6 +108,9 @@ struct Args {
     #[arg(long, default_value_t = 10)]
     perf_metrics_interval_sec: u64,
 
+    #[arg(long, default_value_t = false)]
+    progressions: bool,
+
     /// Enable rocksdb statistics
     #[arg(long, default_value_t = false)]
     rocksdb_stats: bool,
@@ -133,7 +136,7 @@ fn main() {
     let args = Args::parse();
 
     // Initialize the logger
-    kaspa_core::log::init_logger(None, &args.log_level);
+    kaspa_core::log::init_logger(None, &args.log_level, args.progressions);
 
     // Configure the panic behavior
     kaspa_core::panic::configure_panic();
@@ -219,6 +222,7 @@ fn main_impl(mut args: Args) {
             notification_root,
             Default::default(),
             Default::default(),
+            Default::default(),
             unix_now(),
         ));
         (consensus, lifetime)
@@ -253,6 +257,7 @@ fn main_impl(mut args: Args) {
         config.clone(),
         Default::default(),
         notification_root,
+        Default::default(),
         Default::default(),
         Default::default(),
         unix_now(),

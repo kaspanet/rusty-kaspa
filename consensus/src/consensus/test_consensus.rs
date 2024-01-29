@@ -17,6 +17,7 @@ use kaspa_database::prelude::ConnBuilder;
 use std::future::Future;
 use std::{sync::Arc, thread::JoinHandle};
 
+use crate::pipeline::monitor::ConsensusProgressBars;
 use crate::pipeline::virtual_processor::test_block_builder::TestBlockBuilder;
 use crate::processes::window::WindowManager;
 use crate::{
@@ -51,12 +52,15 @@ impl TestConsensus {
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
         let counters = Default::default();
         let tx_script_cache_counters = Default::default();
+        let progress_bars = ConsensusProgressBars::new();
+        assert!(progress_bars.is_none()); // We don't want to have progress bars in tests!!!
         let consensus = Arc::new(Consensus::new(
             db,
             Arc::new(config.clone()),
             Default::default(),
             notification_root,
             counters,
+            progress_bars.into(),
             tx_script_cache_counters,
             0,
         ));
@@ -71,12 +75,15 @@ impl TestConsensus {
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
         let counters = Default::default();
         let tx_script_cache_counters = Default::default();
+        let progress_bars = ConsensusProgressBars::new();
+        assert!(progress_bars.is_none()); // We don't want to have progress bars in tests!!!
         let consensus = Arc::new(Consensus::new(
             db,
             Arc::new(config.clone()),
             Default::default(),
             notification_root,
             counters,
+            progress_bars.into(),
             tx_script_cache_counters,
             0,
         ));
@@ -92,12 +99,15 @@ impl TestConsensus {
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
         let counters = Default::default();
         let tx_script_cache_counters = Default::default();
+        let progress_bars = ConsensusProgressBars::new();
+        assert!(progress_bars.is_none()); // We don't want to have progress bars in tests!!!
         let consensus = Arc::new(Consensus::new(
             db,
             Arc::new(config.clone()),
             Default::default(),
             notification_root,
             counters,
+            progress_bars.into(),
             tx_script_cache_counters,
             0,
         ));

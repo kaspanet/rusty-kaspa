@@ -1,7 +1,10 @@
 #[cfg(feature = "devnet-prealloc")]
 use super::utxo_set_override::{set_genesis_utxo_commitment_from_config, set_initial_utxo_set};
 use super::{ctl::Ctl, Consensus};
-use crate::{model::stores::U64Key, pipeline::ProcessingCounters};
+use crate::{
+    model::stores::U64Key,
+    pipeline::{monitor::ConsensusProgressBars, ProcessingCounters},
+};
 use itertools::Itertools;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
@@ -235,6 +238,7 @@ pub struct Factory {
     db_parallelism: usize,
     notification_root: Arc<ConsensusNotificationRoot>,
     counters: Arc<ProcessingCounters>,
+    progress_bars: Arc<Option<ConsensusProgressBars>>,
     tx_script_cache_counters: Arc<TxScriptCacheCounters>,
     fd_budget: i32,
 }
@@ -264,6 +268,7 @@ impl Factory {
             db_parallelism,
             notification_root,
             counters,
+            progress_bars: ConsensusProgressBars::new().into(),
             tx_script_cache_counters,
             fd_budget,
         };
@@ -306,6 +311,7 @@ impl ConsensusFactory for Factory {
             session_lock.clone(),
             self.notification_root.clone(),
             self.counters.clone(),
+            self.progress_bars.clone(),
             self.tx_script_cache_counters.clone(),
             entry.creation_timestamp,
         ));
@@ -340,6 +346,7 @@ impl ConsensusFactory for Factory {
             session_lock.clone(),
             self.notification_root.clone(),
             self.counters.clone(),
+            self.progress_bars.clone(),
             self.tx_script_cache_counters.clone(),
             entry.creation_timestamp,
         ));

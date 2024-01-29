@@ -37,13 +37,18 @@ use kaspa_consensus_core::{
     BlockHashSet, BlockLevel,
 };
 use kaspa_consensusmanager::SessionLock;
+use kaspa_core::log::progressions::maybe_init_spinner;
 use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
-use kaspa_utils::vec::VecExtensions;
+use kaspa_utils::{option::OptionExtensions, vec::VecExtensions};
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
-use std::sync::{atomic::Ordering, Arc};
+use std::{
+    borrow::Cow,
+    sync::{atomic::Ordering, Arc},
+    time::Duration,
+};
 
 use super::super::ProcessingCounters;
 
@@ -157,6 +162,8 @@ pub struct HeaderProcessor {
 }
 
 impl HeaderProcessor {
+    pub const IDENT: &'static str = "HeaderProcessor";
+
     pub fn new(
         receiver: Receiver<BlockProcessingMessage>,
         body_sender: Sender<BlockProcessingMessage>,
@@ -210,6 +217,8 @@ impl HeaderProcessor {
     }
 
     pub fn worker(self: &Arc<HeaderProcessor>) {
+        let pb = maybe_init_spinner(Cow::Borrowed(Self::IDENT), Cow::Borrowed("Processing Blocks"));
+        pb.is_some_perform(|pb| pb.enable_steady_tick(Duration::from_secs(1)));
         while let Ok(msg) = self.receiver.recv() {
             match msg {
                 BlockProcessingMessage::Exit => {
@@ -225,6 +234,7 @@ impl HeaderProcessor {
                     }
                 }
             };
+            pb.is_some_perform(|pb| pb.inc(1));
         }
 
         // Wait until all workers are idle before exiting

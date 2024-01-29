@@ -2,11 +2,11 @@ extern crate kaspa_consensus;
 extern crate kaspa_core;
 extern crate kaspa_hashes;
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use kaspa_alloc::init_allocator_with_default_settings;
-use kaspa_core::{info, signals::Signals};
-use kaspa_utils::fd_budget;
+use kaspa_core::{info, log::progressions::maybe_init_spinner, signals::Signals};
+use kaspa_utils::{fd_budget, option::OptionExtensions};
 use kaspad_lib::{
     args::parse_args,
     daemon::{create_core, DESIRED_DAEMON_SOFT_FD_LIMIT, MINIMUM_DAEMON_SOFT_FD_LIMIT},
@@ -44,7 +44,10 @@ pub fn main() {
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();
+    let pb = maybe_init_spinner(std::borrow::Cow::Borrowed("Kaspad"), std::borrow::Cow::Borrowed("Setting up Daemon..."));
+    pb.is_some_perform(|pb| pb.set_message(std::borrow::Cow::Borrowed("Running...")));
 
     core.run();
+    pb.is_some_perform(|pb| pb.finish_with_message(std::borrow::Cow::Borrowed("Stopped...")));
     info!("Kaspad has stopped...");
 }

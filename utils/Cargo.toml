@@ -22,6 +22,7 @@ thiserror.workspace = true
 triggered.workspace = true
 uuid.workspace = true
 log.workspace = true
+indicatif.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rlimit.workspace = true

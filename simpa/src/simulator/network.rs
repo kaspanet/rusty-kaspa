@@ -84,6 +84,7 @@ impl KaspaNetworkSimulator {
                 notification_root,
                 Default::default(),
                 Default::default(),
+                Default::default(),
                 unix_now(),
             ));
             let handles = consensus.run_processors();

@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     cmp::{max, Reverse},
     collections::{hash_map::Entry, BinaryHeap},
     collections::{hash_map::Entry::Vacant, VecDeque},
@@ -25,11 +26,11 @@ use kaspa_consensus_core::{
     trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
-use kaspa_core::{debug, info, trace};
+use kaspa_core::{debug, info, log::progressions::maybe_init_progress_bar, trace};
 use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
-use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
+use kaspa_utils::{binary_heap::BinaryHeapExtensions, option::OptionExtensions, vec::VecExtensions};
 use thiserror::Error;
 
 use crate::{
@@ -123,6 +124,8 @@ pub struct PruningProofManager {
 }
 
 impl PruningProofManager {
+    const IDENT: &'static str = "PruningProofManager";
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: Arc<DB>,
@@ -444,6 +447,9 @@ impl PruningProofManager {
         }
 
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
+
+        let progress_bar =
+            maybe_init_progress_bar(Cow::Borrowed(Self::IDENT), Cow::Borrowed("Validating levels"), self.max_block_level as u64);
         for level in (0..=self.max_block_level).rev() {
             // Before processing this level, check if the process is exiting so we can end early
             if self.is_consensus_exiting.load(Ordering::Relaxed) {
@@ -530,6 +536,8 @@ impl PruningProofManager {
             }
 
             selected_tip_by_level[level_idx] = selected_tip;
+
+            progress_bar.is_some_perform(|pb| pb.set_position((self.max_block_level - level) as u64));
         }
 
         let pruning_read = self.pruning_point_store.read();

@@ -1,6 +1,8 @@
 use super::ProcessingCounters;
+use indicatif::ProgressBar;
 use kaspa_core::{
     info,
+    log::progressions::{maybe_init_spinner, MULTI_PROGRESS_BAR_ACTIVE},
     task::{
         service::{AsyncService, AsyncServiceFuture},
         tick::{TickReason, TickService},
@@ -8,11 +10,61 @@ use kaspa_core::{
     trace,
 };
 use std::{
-    sync::Arc,
+    borrow::Cow,
+    sync::{atomic::Ordering, Arc},
     time::{Duration, Instant},
 };
 
 const MONITOR: &str = "consensus-monitor";
+const SNAPSHOT_INTERVAL_IN_SECS: usize = 10;
+
+pub struct ConsensusProgressBars {
+    pub header_count: Option<ProgressBar>,
+    pub block_count: Option<ProgressBar>,
+    pub tx_count: Option<ProgressBar>,
+    pub chain_block_count: Option<ProgressBar>,
+    pub dep_count: Option<ProgressBar>,
+    pub mergeset_count: Option<ProgressBar>,
+    pub mass_count: Option<ProgressBar>,
+}
+
+impl ConsensusProgressBars {
+    pub fn new() -> Option<Self> {
+        if MULTI_PROGRESS_BAR_ACTIVE.load(Ordering::SeqCst) {
+            return Some(Self {
+                header_count: maybe_init_spinner(
+                    Cow::Borrowed(ConsensusMonitor::IDENT),
+                    Cow::Owned(format!("Header Count (last {}s)", SNAPSHOT_INTERVAL_IN_SECS).to_string()),
+                ),
+                block_count: maybe_init_spinner(
+                    Cow::Borrowed(ConsensusMonitor::IDENT),
+                    Cow::Owned(format!("Block Count (last {})", SNAPSHOT_INTERVAL_IN_SECS).to_string()),
+                ),
+                tx_count: maybe_init_spinner(
+                    Cow::Borrowed(ConsensusMonitor::IDENT),
+                    Cow::Owned(format!("Transaction Count (last {})", SNAPSHOT_INTERVAL_IN_SECS).to_string()),
+                ),
+                chain_block_count: maybe_init_spinner(
+                    Cow::Borrowed(ConsensusMonitor::IDENT),
+                    Cow::Owned(format!("Chain Block Count (last {})", SNAPSHOT_INTERVAL_IN_SECS).to_string()),
+                ),
+                dep_count: maybe_init_spinner(
+                    Cow::Borrowed(ConsensusMonitor::IDENT),
+                    Cow::Owned(format!("Dag Edges Count (last {})", SNAPSHOT_INTERVAL_IN_SECS).to_string()),
+                ),
+                mergeset_count: maybe_init_spinner(
+                    Cow::Borrowed(ConsensusMonitor::IDENT),
+                    Cow::Owned(format!("Mergeset Count (last {})", SNAPSHOT_INTERVAL_IN_SECS).to_string()),
+                ),
+                mass_count: maybe_init_spinner(
+                    Cow::Borrowed(ConsensusMonitor::IDENT),
+                    Cow::Owned(format!("Mass Count (last {})", SNAPSHOT_INTERVAL_IN_SECS).to_string()),
+                ),
+            });
+        }
+        None
+    }
+}
 
 pub struct ConsensusMonitor {
     // Counters
@@ -23,6 +75,8 @@ pub struct ConsensusMonitor {
 }
 
 impl ConsensusMonitor {
+    pub const IDENT: &'static str = "ConsensusMonitor";
+
     pub fn new(counters: Arc<ProcessingCounters>, tick_service: Arc<TickService>) -> ConsensusMonitor {
         ConsensusMonitor { counters, tick_service }
     }
