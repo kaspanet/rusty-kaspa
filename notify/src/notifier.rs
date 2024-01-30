@@ -348,6 +348,7 @@ where
         scope: Scope,
         command: Command,
     ) -> Result<()> {
+        let mut sync_feedback: bool = false;
         let event: EventType = (&scope).into();
         debug!("[Notifier {}] {command} notifying about {scope} to listener {id} - {}", self.name, listener.connection());
         let outcome = listener.mutate(Mutation::new(command, scope.clone()), self.policies.clone(), &self.subscription_context)?;
@@ -364,7 +365,9 @@ where
                         .iter()
                         .try_for_each(|broadcaster| broadcaster.register(subscription.clone(), id, listener.connection()))?;
                 }
-                (true, None) => {}
+                (true, None) => {
+                    sync_feedback = true;
+                }
                 (false, _) => {
                     self.broadcasters.iter().try_for_each(|broadcaster| broadcaster.unregister(event, id))?;
                 }
@@ -372,6 +375,9 @@ where
             self.apply_mutations(event, outcome.mutations, &self.subscription_context)?;
         } else {
             trace!("[Notifier {}] {command} notifying listener {id} about {scope:?} is ignored (no mutation)", self.name);
+            sync_feedback = true;
+        }
+        if sync_feedback {
             // In case we have a sync channel, report that the command was processed.
             // This is for test only.
             if let Some(ref sync) = self._sync {
@@ -473,6 +479,9 @@ pub mod test_helpers {
         subscriber::test_helpers::SubscriptionMessage,
     };
     use async_channel::Sender;
+    use std::time::Duration;
+
+    pub const SYNC_MAX_DELAY: Duration = Duration::from_secs(2);
 
     pub type TestConnection = ChannelConnection<TestNotification>;
     pub type TestNotifier = Notifier<TestNotification, ChannelConnection<TestNotification>>;
@@ -759,6 +768,7 @@ mod tests {
         subscriber::test_helpers::{SubscriptionManagerMock, SubscriptionMessage},
     };
     use async_channel::{unbounded, Receiver, Sender};
+    use tokio::time::timeout;
 
     const SUBSCRIPTION_MANAGER_ID: u64 = 0;
 
@@ -839,7 +849,7 @@ mod tests {
                         );
                         trace!("Receiving sync message #{step_idx} after subscribing");
                         assert!(
-                            self.sync_receiver.recv().await.is_ok(),
+                            timeout(SYNC_MAX_DELAY, self.sync_receiver.recv()).await.unwrap().is_ok(),
                             "{} - {}: receiving a sync message failed",
                             self.name,
                             step.name
@@ -879,7 +889,12 @@ mod tests {
                     step.name
                 );
                 trace!("Receiving sync message #{step_idx} after notifying");
-                assert!(self.sync_receiver.recv().await.is_ok(), "{} - {}: receiving a sync message failed", self.name, step.name);
+                assert!(
+                    timeout(SYNC_MAX_DELAY, self.sync_receiver.recv()).await.unwrap().is_ok(),
+                    "{} - {}: receiving a sync message failed",
+                    self.name,
+                    step.name
+                );
 
                 // Check what the listeners do receive
                 for (idx, expected_notifications) in step.expected_notifications.iter().enumerate() {

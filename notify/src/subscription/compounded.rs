@@ -158,6 +158,7 @@ pub struct UtxosChangedSubscription {
 impl UtxosChangedSubscription {
     pub fn to_addresses(&self, prefix: Prefix, context: &SubscriptionContext) -> Vec<Address> {
         self.indexes
+            .inner()
             .iter()
             .filter_map(|(&index, &count)| {
                 (count > 0).then_some(()).and_then(|_| context.address_tracker.get_index_address(index, prefix))
@@ -165,12 +166,12 @@ impl UtxosChangedSubscription {
             .collect_vec()
     }
 
-    pub fn register(&mut self, addresses: &[Address], context: &SubscriptionContext) -> Result<Vec<Address>> {
-        context.address_tracker.register(&mut self.indexes, addresses)
+    pub fn register(&self, addresses: &[Address], context: &SubscriptionContext) -> Result<Vec<Address>> {
+        context.address_tracker.register(&self.indexes, addresses)
     }
 
-    pub fn unregister(&mut self, addresses: &[Address], context: &SubscriptionContext) -> Vec<Address> {
-        context.address_tracker.unregister(&mut self.indexes, addresses)
+    pub fn unregister(&self, addresses: &[Address], context: &SubscriptionContext) -> Vec<Address> {
+        context.address_tracker.unregister(&self.indexes, addresses)
     }
 }
 
