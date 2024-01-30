@@ -1,5 +1,6 @@
 use super::ProcessingCounters;
 use indicatif::ProgressBar;
+use kaspa_consensus_core::api::counters::ProcessingCountersSnapshot;
 use kaspa_core::{
     info,
     log::progressions::{maybe_init_spinner, MULTI_PROGRESS_BAR_ACTIVE},
@@ -9,6 +10,7 @@ use kaspa_core::{
     },
     trace,
 };
+use kaspa_utils::option::OptionExtensions;
 use std::{
     borrow::Cow,
     sync::{atomic::Ordering, Arc},
@@ -32,37 +34,31 @@ impl ConsensusProgressBars {
     pub fn new() -> Option<Self> {
         if MULTI_PROGRESS_BAR_ACTIVE.load(Ordering::SeqCst) {
             return Some(Self {
-                header_count: maybe_init_spinner(
-                    Cow::Borrowed(ConsensusMonitor::IDENT),
-                    Cow::Owned(format!("Header Count (last {}s)", SNAPSHOT_INTERVAL_IN_SECS).to_string()),
-                ),
-                block_count: maybe_init_spinner(
-                    Cow::Borrowed(ConsensusMonitor::IDENT),
-                    Cow::Owned(format!("Block Count (last {})", SNAPSHOT_INTERVAL_IN_SECS).to_string()),
-                ),
-                tx_count: maybe_init_spinner(
-                    Cow::Borrowed(ConsensusMonitor::IDENT),
-                    Cow::Owned(format!("Transaction Count (last {})", SNAPSHOT_INTERVAL_IN_SECS).to_string()),
-                ),
+                header_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processing headers..."), true, true),
+                block_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processing block bodies..."), true, true),
+                tx_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processing transactions..."), true, true),
                 chain_block_count: maybe_init_spinner(
-                    Cow::Borrowed(ConsensusMonitor::IDENT),
-                    Cow::Owned(format!("Chain Block Count (last {})", SNAPSHOT_INTERVAL_IN_SECS).to_string()),
+                    Cow::Borrowed("Consensus"),
+                    Cow::Borrowed("Processing chain blocks..."),
+                    true,
+                    true,
                 ),
-                dep_count: maybe_init_spinner(
-                    Cow::Borrowed(ConsensusMonitor::IDENT),
-                    Cow::Owned(format!("Dag Edges Count (last {})", SNAPSHOT_INTERVAL_IN_SECS).to_string()),
-                ),
-                mergeset_count: maybe_init_spinner(
-                    Cow::Borrowed(ConsensusMonitor::IDENT),
-                    Cow::Owned(format!("Mergeset Count (last {})", SNAPSHOT_INTERVAL_IN_SECS).to_string()),
-                ),
-                mass_count: maybe_init_spinner(
-                    Cow::Borrowed(ConsensusMonitor::IDENT),
-                    Cow::Owned(format!("Mass Count (last {})", SNAPSHOT_INTERVAL_IN_SECS).to_string()),
-                ),
+                dep_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processing DAG edges..."), true, true),
+                mergeset_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processing mergesets..."), true, true),
+                mass_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processing transaction mass"), true, true),
             });
         }
         None
+    }
+
+    fn update(&self, counters: ProcessingCountersSnapshot) {
+        self.header_count.is_some_perform(|pb| pb.set_position(counters.header_counts as u64));
+        self.block_count.is_some_perform(|pb| pb.set_position(counters.body_counts as u64));
+        self.tx_count.is_some_perform(|pb| pb.set_position(counters.txs_counts as u64));
+        self.chain_block_count.is_some_perform(|pb| pb.set_position(counters.chain_block_counts as u64));
+        self.dep_count.is_some_perform(|pb| pb.set_position(counters.dep_counts as u64));
+        self.mergeset_count.is_some_perform(|pb| pb.set_position(counters.mergeset_counts as u64));
+        self.mass_count.is_some_perform(|pb| pb.set_position(counters.mass_counts as u64));
     }
 }
 
@@ -72,55 +68,73 @@ pub struct ConsensusMonitor {
 
     // Tick service
     tick_service: Arc<TickService>,
+
+    // Progress bars
+    progress_bars: Option<ConsensusProgressBars>,
 }
 
 impl ConsensusMonitor {
     pub const IDENT: &'static str = "ConsensusMonitor";
 
     pub fn new(counters: Arc<ProcessingCounters>, tick_service: Arc<TickService>) -> ConsensusMonitor {
-        ConsensusMonitor { counters, tick_service }
+        Self { counters, tick_service, progress_bars: ConsensusProgressBars::new() }
     }
 
     pub async fn worker(self: &Arc<ConsensusMonitor>) {
         let mut last_snapshot = self.counters.snapshot();
         let mut last_log_time = Instant::now();
-        let snapshot_interval = 10;
+        let mut last_progress_time = Instant::now();
+
+        let (log_snapshot_interval, progress_snapshot_interval) =
+            (Duration::from_secs(10), if self.progress_bars.is_some() { Duration::from_millis(1000) } else { Duration::MAX });
+
+        let snapshot_interval = log_snapshot_interval.min(progress_snapshot_interval);
+
         loop {
-            if let TickReason::Shutdown = self.tick_service.tick(Duration::from_secs(snapshot_interval)).await {
+            if let TickReason::Shutdown = self.tick_service.tick(snapshot_interval).await {
                 // Let the system print final logs before exiting
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 break;
             }
 
             let snapshot = self.counters.snapshot();
+            let now = Instant::now();
             if snapshot == last_snapshot {
                 // No update, avoid printing useless info
-                last_log_time = Instant::now();
+                last_log_time = now;
+                last_progress_time = now;
                 continue;
             }
 
-            // Subtract the snapshots
-            let delta = &snapshot - &last_snapshot;
-            let now = Instant::now();
+            if last_progress_time.elapsed() > progress_snapshot_interval {
+                if let Some(pbs) = &self.progress_bars {
+                    pbs.update(snapshot.clone())
+                };
+                last_progress_time = now;
+            }
 
-            info!(
-                "Processed {} blocks and {} headers in the last {:.2}s ({} transactions; {} UTXO-validated blocks; {:.2} parents; {:.2} mergeset; {:.2} TPB; {:.1} mass)", 
-                delta.body_counts,
-                delta.header_counts,
-                (now - last_log_time).as_secs_f64(),
-                delta.txs_counts,
-                delta.chain_block_counts,
-                if delta.header_counts != 0 { delta.dep_counts as f64 / delta.header_counts as f64 } else { 0f64 },
-                if delta.header_counts != 0 { delta.mergeset_counts as f64 / delta.header_counts as f64 } else { 0f64 },
-                if delta.body_counts != 0 { delta.txs_counts as f64 / delta.body_counts as f64 } else{ 0f64 },
-                if delta.body_counts != 0 { delta.mass_counts as f64 / delta.body_counts as f64 } else{ 0f64 },
-            );
+            if last_log_time.elapsed() > log_snapshot_interval {
+                // Subtract the snapshots
+                let delta = &snapshot - &last_snapshot;
 
+                info!(
+                 "Processed {} blocks and {} headers in the last {:.2}s ({} transactions; {} UTXO-validated blocks; {:.2} parents; {:.2} mergeset; {:.2} TPB; {:.1} mass)", 
+                 delta.body_counts,
+                 delta.header_counts,
+                 (now - last_log_time).as_secs_f64(),
+                 delta.txs_counts,
+                 delta.chain_block_counts,
+                 if delta.header_counts != 0 { delta.dep_counts as f64 / delta.header_counts as f64 } else { 0f64 },
+                 if delta.header_counts != 0 { delta.mergeset_counts as f64 / delta.header_counts as f64 } else { 0f64 },
+                 if delta.body_counts != 0 { delta.txs_counts as f64 / delta.body_counts as f64 } else{ 0f64 },
+                 if delta.body_counts != 0 { delta.mass_counts as f64 / delta.body_counts as f64 } else{ 0f64 },
+             );
+                last_log_time = now;
+            }
             last_snapshot = snapshot;
-            last_log_time = now;
         }
 
-        trace!("monitor thread exiting");
+        trace!("monitor thread exiting")
     }
 }
 

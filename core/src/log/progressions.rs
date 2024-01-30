@@ -8,18 +8,25 @@ use std::{
         Arc,
     },
 };
-
-pub const IDENT: &str = "MultiProgressBar";
-
-pub const DEFAULT_BAR_TEMPLATE: &str = "[{spinner:.cyan/blue}] {prefix:.green.>10.<10.bold}: {msg:.yellow.>10.<10} | {elapsed_precise:.>10.<10} | [{wide_bar:.cyan/blue}] | {human_pos:.<10}/{human_len:.<10} | {per_sec:.<10.>10} | {ET!: {eta}.>10.<10} | {{percent}%:.>10.<10} |";
-pub const DEFAULT_SPINNER_TEMPLATE: &str = "[{spinner:.cyan/blue}] {prefix:.green.>10.<10.bold}: {msg:.yellow.>10.<10} | {elapsed_precise:.>10.<10} | {human_pos:.<10} total {:.<10} | {per_sec.>10.<10} |";
-pub const DEFAULT_SPINNER_CHARS: &[&str] = &["|", "/", "-", "\\"];
-pub const DEFAULT_PROGRESS_CHARS: &str = "=> ";
+// Multi progress bar statics
 pub static MULTI_PROGRESS_BAR_ACTIVE: Lazy<Arc<AtomicBool>> = Lazy::new(|| Arc::new(AtomicBool::new(false)));
-
 pub static MULTI_PROGRESS_BAR: Lazy<Option<MultiProgress>> =
-    Lazy::new(|| if MULTI_PROGRESS_BAR_ACTIVE.load(Ordering::SeqCst) { Some(MultiProgress::new()) } else { None });
+Lazy::new(|| if MULTI_PROGRESS_BAR_ACTIVE.load(Ordering::SeqCst) { Some(MultiProgress::new()) } else { None });
 
+
+
+
+/// Init Lazy `MULTI_PROGRESS_BAR_ACTIVE` and `MULTI_PROGRESS_BAR` bar globally and activate depending on `activate`..
+/// 
+/// Note: `MULTI_PROGRESS_BAR_ACTIVE` and `MULTI_PROGRESS_BAR` are both Lazy statics,
+/// so they will only be initialized once, and only if they are used.
+/// As such, this function should be ensured to always 
+/// be called before any other function accessing these statics!!!
+/// 
+/// furthermore: as MULTI_PROGRESS_BAR interacts with the logging system,
+/// this function should be called before any other function interacting with the logging system.
+/// albeit, this should be gurtanteed by the fact that this function is paired with and called in the `init_logger` function internally.
+//#[cfg(not(target_arch = "wasm32"))]
 pub fn init_multi_progress_bar(activate: bool) {
     if activate {
         //info!("[{0}] Initializing active...", IDENT);
@@ -29,6 +36,8 @@ pub fn init_multi_progress_bar(activate: bool) {
                                         //println!("[{0}] Initialized: {1}", IDENT, MULTI_PROGRESS_BAR_ACTIVE.deref().load(Ordering::SeqCst));
 }
 
+/// Suspend all progress bars globally, if multi progress bars are globally enabled, else just perform func. 
+//#[cfg(not(target_arch = "wasm32"))]
 pub fn maybe_suspend<F, R>(f: F) -> R
 where
     F: FnOnce() -> R,
@@ -39,63 +48,97 @@ where
     f()
 }
 
-/// Returns an `Option<ProgrossBar>` depending on the state of the `MULTI_PROGRESS_BAR` i.e. if progressions are globally enabled.
-pub fn maybe_init_progress_bar(prefix: Cow<'static, str>, msg: Cow<'static, str>, len: u64) -> Option<ProgressBar> {
+/// Returns an [`Option<ProgrossBar>`], with a loading bar, depending on the state of the [`MULTI_PROGRESS_BAR`] 
+/// i.e. if progressions are globally enabled Some(ProgressBar) is returned, else None is returned.
+///
+/// Note: if end position is not known or infinite, perhaps use [`maybe_init_spinner`] instead.
+pub fn maybe_init_progress_bar(prefix: Cow<'static, str>, msg: Cow<'static, str>, len: u64, with_pos: bool, with_processed: bool, with_per_sec: bool, with_eta: bool, with_percent: bool) -> Option<ProgressBar> {
+    
+    const DEFAULT_SPINNER_CHARS: &[&str] = &["|", "/", "-", "\\"];
+    const DEFAULT_PROGRESS_CHARS: &str = "=> ";
+    const DEFAULT_INIT_INDENT: usize = 32;
+
     if let Some(mpb) = MULTI_PROGRESS_BAR.deref() {
-        //info!("[{0}] Adding Progress bar with prefix: {1}; message: {2}; and length: {3}", IDENT, prefix, msg, len); //TODO: change to debug / trace after reveiw.
+        let heading = format!(
+            "[{{spinner:.cyan/blue}}] {{prefix:.green.bold}}: {{msg:.yellow}} {:>indent$}| Time: {{elapsed_precise:8}} |",
+            " ",
+            indent = DEFAULT_INIT_INDENT - (prefix.chars().count() + msg.chars().count())
+        );
+        let bar = format!(" [{{wide_bar:.cyan/blue}}] |");
+        let processed = if with_pos { format!(" Total: {{human_pos:>14}}/{{len:14}} |") } else { "".to_string() };
+        let per_sec = if with_per_sec { format!(" Speed: {{per_sec:14}} |") } else { "".to_string() };
+        let eta = if with_eta { format!(" ETA: {{eta:8}} |") } else { "".to_string() };
+        let percent = if with_percent { format!(" {{percent:5}}% |") } else { "".to_string() };
+
         let style = ProgressStyle::default_bar()
-            .template(DEFAULT_BAR_TEMPLATE)
+            .template(&(heading + &bar + &processed + &per_sec + &eta + &percent))
             .expect("expected default bar template to be valid")
             .progress_chars(DEFAULT_PROGRESS_CHARS);
 
         let pb = ProgressBar::new(len).with_prefix(prefix).with_message(msg).with_style(style);
 
-        mpb.add(pb.clone());
+        // bars only go to the bottom level
+        mpb.insert(0, pb.clone());
 
         return Some(pb);
     };
     None
 }
 
-pub fn maybe_init_spinner(prefix: Cow<'static, str>, msg: Cow<'static, str>) -> Option<ProgressBar> {
+/// Returns an [`Option<ProgrossBar>`], with a loading bar, depending on the state of the [`MULTI_PROGRESS_BAR`] 
+/// i.e. if progressions are globally enabled Some(ProgressBar) is returned, else None is returned.
+///
+/// Note: if end position is known and finite, perhaps use [`maybe_init_progress_bar`] instead.
+pub fn maybe_init_spinner(
+    prefix: Cow<'static, str>,
+    msg: Cow<'static, str>,
+    with_pos: bool,
+    with_per_sec: bool,
+) -> Option<ProgressBar> {
+
+    const DEFAULT_SPINNER_CHARS: &[&str] = &["|", "/", "-", "\\"];
+    const DEFAULT_INIT_INDENT: usize = 42;
+
     if let Some(mpb) = MULTI_PROGRESS_BAR.deref() {
         //info!("[{0}] Adding Spinner with prefix: {1}; message: {2}", IDENT, prefix, msg); //TODO: change to debug / trace after reveiw.
+        //println!("{} : {} / {} : {}", prefix, prefix.chars().count(), msg, msg.chars().count());
+        let per_sec = if with_per_sec { format!(" Speed: {{per_sec:14}} |") } else { "".to_string() };
+        let pos = if with_pos { format!(" Total: {{human_pos:14}} |") } else { "".to_string() };
+        let heading = format!(
+            "[{{spinner:.cyan/blue}}] {{prefix:.green.bold}}: {{msg:.yellow}} {:>indent$}| Time: {{elapsed_precise:14}} |",
+            " ",
+            indent = DEFAULT_INIT_INDENT - (prefix.chars().count() + msg.chars().count())
+        );
         let style = ProgressStyle::default_spinner()
-            .template(DEFAULT_SPINNER_TEMPLATE)
+            .template(&(heading + &pos + &per_sec))
+            //.template(&format!("[{{spinner}}]{{prefix:.blue)}}: {{msg}}{:>50}|{:>indent$}{{elapsed_precise}}{:>indent$}|{:>indent$}{{human_pos}} total{:>indent$}|{:>indent$}{{per_sec}}{:>indent$}|", "","","","","","","", indent=DEFAULT_INDENT))
             .expect("expected default spinner template to be valid")
             .tick_strings(DEFAULT_SPINNER_CHARS);
 
         let pb = ProgressBar::new_spinner().with_prefix(prefix).with_message(msg).with_style(style);
 
-        mpb.add(pb.clone());
+        // spinners only go at the top level
+        mpb.insert_from_back(0, pb.clone());
 
         return Some(pb);
     };
     None
 }
 
-pub fn build_template_from(updates: Vec<(String, String, String)>) -> String {
-    let mut inner_message = String::new();
-    for (object, op, count) in updates {
-        inner_message.push_str(&format!(" {0} {1}: {2} |", object, op, count));
-    }
-    let prependage = "[{spinner:.cyan/blue}][{prefix:.green}]: {message} | {elapsed_precise} |".to_string();
-    format!("{0}{1}", prependage, inner_message).to_string()
-}
-
-#[cfg(test)]
 mod test {
     use crate::log::progressions::*;
     use std::{borrow::Cow, sync::atomic::Ordering};
-
+    use indicatif::MultiProgress;
+    use once_cell::sync::Lazy;
+    
     #[test]
     fn test_inits() {
         init_multi_progress_bar(false);
 
         assert!(MULTI_PROGRESS_BAR_ACTIVE.load(Ordering::SeqCst));
         assert!(MULTI_PROGRESS_BAR.is_some());
-        assert!(maybe_init_progress_bar(Cow::Borrowed("test"), Cow::Borrowed("test"), 0u64).is_some());
-        assert!(maybe_init_spinner(Cow::Borrowed("test"), Cow::Borrowed("test")).is_some());
+        assert!(maybe_init_progress_bar(Cow::Borrowed("test"), Cow::Borrowed("test"), 0u64, true, true, true, true, true).is_some());
+        assert!(maybe_init_spinner(Cow::Borrowed("test"), Cow::Borrowed("test"), true, true).is_some());
         MULTI_PROGRESS_BAR_ACTIVE.store(false, Ordering::SeqCst);
 
         // Required to reset the static variable.
@@ -115,7 +158,7 @@ mod test {
 
         assert!(!MULTI_PROGRESS_BAR_ACTIVE.load(Ordering::SeqCst));
         assert!(MULTI_PROGRESS_BAR.is_none());
-        assert!(maybe_init_progress_bar(Cow::Borrowed("test"), Cow::Borrowed("test"), 0u64).is_none());
-        assert!(maybe_init_spinner(Cow::Borrowed("test"), Cow::Borrowed("test")).is_none());
+        assert!(maybe_init_progress_bar(Cow::Borrowed("test"), Cow::Borrowed("test"), 0u64, true, true, true, true, true).is_none());
+        assert!(maybe_init_spinner(Cow::Borrowed("test"), Cow::Borrowed("test"), true, true).is_none());
     }
 }

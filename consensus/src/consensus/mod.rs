@@ -32,7 +32,6 @@ use crate::{
         body_processor::BlockBodyProcessor,
         deps_manager::{BlockProcessingMessage, BlockResultSender, BlockTask, VirtualStateProcessingMessage},
         header_processor::HeaderProcessor,
-        monitor::ConsensusProgressBars,
         pruning_processor::processor::{PruningProcessingMessage, PruningProcessor},
         virtual_processor::{errors::PruningImportResult, VirtualStateProcessor},
         ProcessingCounters,
@@ -121,9 +120,6 @@ pub struct Consensus {
     // Counters
     counters: Arc<ProcessingCounters>,
 
-    // Progress bars
-    progress_bars: Arc<Option<ConsensusProgressBars>>,
-
     // Config
     config: Arc<Config>,
 
@@ -149,7 +145,6 @@ impl Consensus {
         pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
-        progress_bars: Arc<Option<ConsensusProgressBars>>,
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
         creation_timestamp: u64,
     ) -> Self {
@@ -302,7 +297,6 @@ impl Consensus {
             pruning_lock,
             notification_root,
             counters,
-            progress_bars,
             config,
             creation_timestamp,
             is_consensus_exiting,
@@ -337,7 +331,6 @@ impl Consensus {
         let (vtx, vrx): (BlockResultSender, _) = oneshot::channel();
         self.block_sender.send(BlockProcessingMessage::Process(task, btx, vtx)).unwrap();
         self.counters.blocks_submitted.fetch_add(1, Ordering::Relaxed);
-        self.progress_bars.is_some_perform(|pbs| pbs.block_count.is_some_perform(|pb| pb.inc(1)));
         (async { brx.await.unwrap() }, async { vrx.await.unwrap() })
     }
 

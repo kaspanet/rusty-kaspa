@@ -238,7 +238,6 @@ pub struct Factory {
     db_parallelism: usize,
     notification_root: Arc<ConsensusNotificationRoot>,
     counters: Arc<ProcessingCounters>,
-    progress_bars: Arc<Option<ConsensusProgressBars>>,
     tx_script_cache_counters: Arc<TxScriptCacheCounters>,
     fd_budget: i32,
 }
@@ -268,7 +267,6 @@ impl Factory {
             db_parallelism,
             notification_root,
             counters,
-            progress_bars: ConsensusProgressBars::new().into(),
             tx_script_cache_counters,
             fd_budget,
         };
@@ -311,7 +309,6 @@ impl ConsensusFactory for Factory {
             session_lock.clone(),
             self.notification_root.clone(),
             self.counters.clone(),
-            self.progress_bars.clone(),
             self.tx_script_cache_counters.clone(),
             entry.creation_timestamp,
         ));
@@ -346,7 +343,6 @@ impl ConsensusFactory for Factory {
             session_lock.clone(),
             self.notification_root.clone(),
             self.counters.clone(),
-            self.progress_bars.clone(),
             self.tx_script_cache_counters.clone(),
             entry.creation_timestamp,
         ));

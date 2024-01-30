@@ -222,7 +222,6 @@ fn main_impl(mut args: Args) {
             notification_root,
             Default::default(),
             Default::default(),
-            Default::default(),
             unix_now(),
         ));
         (consensus, lifetime)
@@ -257,7 +256,6 @@ fn main_impl(mut args: Args) {
         config.clone(),
         Default::default(),
         notification_root,
-        Default::default(),
         Default::default(),
         Default::default(),
         unix_now(),

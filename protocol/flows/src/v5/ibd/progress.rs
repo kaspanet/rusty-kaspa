@@ -41,11 +41,8 @@ impl ProgressReporter {
             last_log_time: Instant::now(),
             current_batch: 0,
             processed: 0,
-            progress_bar: maybe_init_progress_bar(
-                Cow::Borrowed(Self::IDENT),
-                format!("IBDing {0}", object_name).into(),
-                high_daa_score - low_daa_score,
-            ),
+
+            progress_bar: None,
         }
     }
 

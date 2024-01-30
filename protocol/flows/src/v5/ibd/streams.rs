@@ -156,7 +156,7 @@ impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
             incoming_route,
             i: 0,
             utxo_count: 0,
-            pb: maybe_init_spinner(Cow::Borrowed(Self::IDENT), "Downloading init UTXO set".into()),
+            pb: maybe_init_spinner(Cow::Borrowed(Self::IDENT), "Downloading init UTXO set".into(), true, true),
         }
     }
 

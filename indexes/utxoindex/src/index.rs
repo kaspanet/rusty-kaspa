@@ -150,7 +150,7 @@ impl UtxoIndexApi for UtxoIndex {
         let mut current_chunk_size = virtual_utxo_batch.len();
         trace!("[{0}] resyncing with batch of {1} utxos from consensus db", IDENT, current_chunk_size);
         // While loop stops resync attempts from an empty utxo db, and unneeded processing when the utxo state size happens to be a multiple of [`RESYNC_CHUNK_SIZE`]
-        let pb = maybe_init_spinner(Cow::Borrowed(IDENT), "Resyncing UTXO set".into());
+        let pb = maybe_init_spinner(Cow::Borrowed(IDENT), "Resyncing UTXO set".into(), true, true);
         pb.is_some_perform(|pb| pb.enable_steady_tick(Duration::from_secs(1)));
 
         while current_chunk_size > 0 {

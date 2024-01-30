@@ -174,10 +174,10 @@ impl ConnectionManager {
 
         let mut progressing = true;
         let mut connecting = true;
-        let pb =
-            maybe_init_progress_bar(Cow::Borrowed(Self::IDENT), Cow::Borrowed("Searching for Peers"), self.outbound_target as u64);
+        //let pb =
+        //    maybe_init_progress_bar(Cow::Borrowed(Self::IDENT), Cow::Borrowed("Searching for Peers"), self.outbound_target as u64);
         while connecting && missing_connections > 0 {
-            pb.is_some_perform(|pb| pb.set_position((self.outbound_target - missing_connections) as u64));
+            //pb.is_some_perform(|pb| pb.set_position((self.outbound_target - missing_connections) as u64));
             if self.shutdown_signal.trigger.is_triggered() {
                 return;
             }

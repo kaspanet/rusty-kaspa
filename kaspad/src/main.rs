@@ -44,8 +44,8 @@ pub fn main() {
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();
-    let pb = maybe_init_spinner(std::borrow::Cow::Borrowed("Kaspad"), std::borrow::Cow::Borrowed("Setting up Daemon..."));
-    pb.is_some_perform(|pb| pb.set_message(std::borrow::Cow::Borrowed("Running...")));
+    let pb = maybe_init_spinner(std::borrow::Cow::Borrowed("Kaspad"), std::borrow::Cow::Borrowed("Running..."), false, false);
+    pb.is_some_perform(|pb| pb.enable_steady_tick(Duration::from_secs(1)));
 
     core.run();
     pb.is_some_perform(|pb| pb.finish_with_message(std::borrow::Cow::Borrowed("Stopped...")));
