@@ -74,7 +74,7 @@ impl Server {
             let converter = Arc::new(WrpcServiceConverter::new());
             let collector = Arc::new(WrpcServiceCollector::new(WRPC_SERVER, notification_channel.receiver(), converter));
             let subscriber = Arc::new(Subscriber::new(WRPC_SERVER, enabled_events, service.notifier(), listener_id));
-            let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
+            let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
             let wrpc_notifier = Arc::new(Notifier::new(
                 WRPC_SERVER,
                 enabled_events,

@@ -178,7 +178,7 @@ impl RpcCoreService {
         let protocol_converter = Arc::new(ProtocolConverter::new(flow_context.clone()));
 
         // Create the rcp-core notifier
-        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
         let notifier =
             Arc::new(Notifier::new(RPC_CORE, EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, subscription_context, 1, policies));
 

@@ -99,7 +99,7 @@ impl ConnectionHandler {
         let converter = Arc::new(GrpcServiceConverter::new());
         let collector = Arc::new(GrpcServiceCollector::new(GRPC_SERVER, core_channel.receiver(), converter));
         let subscriber = Arc::new(Subscriber::new(GRPC_SERVER, core_events, core_notifier, core_listener_id));
-        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
         let notifier: Arc<Notifier<Notification, Connection>> = Arc::new(Notifier::new(
             GRPC_SERVER,
             core_events,
