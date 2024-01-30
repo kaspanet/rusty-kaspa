@@ -24,3 +24,4 @@ num_cpus.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread", "time"] }
 indicatif.workspace = true
 once_cell.workspace = true
+console.workspace = true

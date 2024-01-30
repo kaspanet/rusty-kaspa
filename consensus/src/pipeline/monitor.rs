@@ -45,12 +45,7 @@ impl ConsensusProgressBars {
                 ),
                 dep_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processed DAG edges:"), true, true),
                 mergeset_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processed mergesets:"), true, true),
-                mass_count: maybe_init_spinner(
-                    Cow::Borrowed("Consensus"),
-                    Cow::Borrowed("Processed transaction mass:"),
-                    true,
-                    true,
-                ),
+                mass_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processed transaction mass:"), true, true),
             });
         }
         None
@@ -92,15 +87,10 @@ impl ConsensusMonitor {
     pub const IDENT: &'static str = "ConsensusMonitor";
 
     pub fn new(counters: Arc<ProcessingCounters>, tick_service: Arc<TickService>) -> ConsensusMonitor {
-        Self {
-            counters,
-            tick_service,
-            progress_bars: ConsensusProgressBars::new(),
-        }
+        Self { counters, tick_service, progress_bars: ConsensusProgressBars::new() }
     }
 
     pub async fn worker(self: &Arc<ConsensusMonitor>) {
-        
         let mut last_snapshot = self.counters.snapshot();
         let mut last_log_time = Instant::now();
         let log_snapshot_interval = Duration::from_secs(10);
@@ -108,7 +98,7 @@ impl ConsensusMonitor {
         let mut progress_snapshot_interval = None;
         let mut snapshot_interval = log_snapshot_interval;
 
-        if let Some(progress_pars) = self.progress_bars {
+        if self.progress_bars.is_some() {
             progress_snapshot_interval = Some(Duration::from_millis(1000)); // we want finer granularity for progress bars
             last_progress_time = Some(Instant::now());
             snapshot_interval = log_snapshot_interval.min(progress_snapshot_interval.unwrap());
@@ -131,17 +121,19 @@ impl ConsensusMonitor {
                 continue;
             }
 
-            if let Some(last_progress_time) = last_progress_time { 
-                if last_progress_time.elapsed() > progress_snapshot_interval {
-                    self.progress_bars.is_some_perform(|pbs| pbs.update_all(snapshot.clone()));
-                    last_progress_time = Some(now);
+            if let Some(ref mut last_progress_time) = last_progress_time {
+                if let Some(progress_snapshot_interval) = progress_snapshot_interval {
+                    if last_progress_time.elapsed() > progress_snapshot_interval {
+                        self.progress_bars.is_some_perform(|pbs| pbs.update_all(snapshot.clone()));
+                        *last_progress_time = now;
+                    }
                 }
             }
 
             if last_log_time.elapsed() > log_snapshot_interval {
-                 // Subtract the snapshots
-                 let delta = &snapshot - &last_snapshot;
-                 
+                // Subtract the snapshots
+                let delta = &snapshot - &last_snapshot;
+
                 info!(
                     "Processed {} blocks and {} headers in the last {:.2}s ({} transactions; {} UTXO-validated blocks; {:.2} parents; {:.2} mergeset; {:.2} TPB; {:.1} mass)", 
                     delta.body_counts,
@@ -155,14 +147,12 @@ impl ConsensusMonitor {
                     if delta.body_counts != 0 { delta.mass_counts as f64 / delta.body_counts as f64 } else{ 0f64 },
                 );
                 last_log_time = now;
-             }
-             last_snapshot = snapshot;
+            }
+            last_snapshot = snapshot;
         }
-        
+
         trace!("monitor thread exiting")
-
     }
-
 }
 
 // service trait implementation for Monitor

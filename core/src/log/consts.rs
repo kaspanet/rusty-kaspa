@@ -9,7 +9,6 @@ use std::{
     },
 };
 
-
 pub const DEFAULT_LOGGER_ENV: &str = "RUST_LOG";
 
 pub const LOG_FILE_NAME: &str = "rusty-kaspa.log";

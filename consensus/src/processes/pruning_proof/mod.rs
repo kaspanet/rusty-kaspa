@@ -448,8 +448,16 @@ impl PruningProofManager {
 
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
 
-        //let progress_bar =
-        //    maybe_init_progress_bar(Cow::Borrowed(Self::IDENT), Cow::Borrowed("Validating levels"), self.max_block_level as u64);
+        let progress_bar = maybe_init_progress_bar(
+            Cow::Borrowed("PruningValidator"),
+            Cow::Borrowed("Validating levels"),
+            self.max_block_level as u64,
+            true,
+            true,
+            true,
+            true,
+            true,
+        );
         for level in (0..=self.max_block_level).rev() {
             // Before processing this level, check if the process is exiting so we can end early
             if self.is_consensus_exiting.load(Ordering::Relaxed) {
@@ -537,7 +545,7 @@ impl PruningProofManager {
 
             selected_tip_by_level[level_idx] = selected_tip;
 
-            // progress_bar.is_some_perform(|pb| pb.set_position((self.max_block_level - level) as u64));
+            progress_bar.is_some_perform(|pb| pb.set_position((self.max_block_level - level) as u64));
         }
 
         let pruning_read = self.pruning_point_store.read();

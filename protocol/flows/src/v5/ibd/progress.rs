@@ -25,7 +25,6 @@ pub struct ProgressReporter {
 }
 
 impl ProgressReporter {
-    pub const IDENT: &'static str = "ProgressReporter";
 
     pub fn new(low_daa_score: u64, mut high_daa_score: u64, object_name: &'static str) -> Self {
         if high_daa_score <= low_daa_score {
@@ -42,7 +41,16 @@ impl ProgressReporter {
             current_batch: 0,
             processed: 0,
 
-            progress_bar: None,
+            progress_bar: maybe_init_progress_bar(
+                Cow::Borrowed("IBD"),
+                Cow::Owned(format!("Processing {0}", object_name)),
+                high_daa_score,
+                true,
+                true,
+                true,
+                true,
+                true,
+            ),
         }
     }
 
