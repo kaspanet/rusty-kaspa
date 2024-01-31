@@ -66,8 +66,7 @@ pub fn init_logger(log_dir: Option<&str>, filters: &str, init_progressions: bool
                 .build(loggers.root_level()),
         )
         .unwrap();
-    
-    
+
     let _ = log4rs::init_config(config).unwrap();
 
     if init_progressions {
@@ -144,7 +143,7 @@ macro_rules! debug {
             kaspa_core::log::progressions::maybe_suspend(|| log::debug!($($t)*));
         };
         log::debug!($($t)*);
-        /* 
+        /*
         if *kaspa_core::log::progressions::MULTI_PROGRESS_BAR_ACTIVE {
             let dr = kaspa_core::log::progressions::DEBUG_REPORTER.clone().unwrap();
             dr.set_message(format_args!($($t)*).to_string());

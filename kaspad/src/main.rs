@@ -2,11 +2,11 @@ extern crate kaspa_consensus;
 extern crate kaspa_core;
 extern crate kaspa_hashes;
 
-use std::{sync::Arc};
+use std::sync::Arc;
 
 use kaspa_alloc::init_allocator_with_default_settings;
-use kaspa_core::{signals::Signals};
-use kaspa_utils::{fd_budget};
+use kaspa_core::signals::Signals;
+use kaspa_utils::fd_budget;
 use kaspad_lib::{
     args::parse_args,
     daemon::{create_core, DESIRED_DAEMON_SOFT_FD_LIMIT, MINIMUM_DAEMON_SOFT_FD_LIMIT},
@@ -44,7 +44,7 @@ pub fn main() {
 
     // Bind the keyboard signal to the core
     Arc::new(Signals::new(&core)).init();
-    
+
     core.run();
     println!("Kaspad has stopped...");
 }

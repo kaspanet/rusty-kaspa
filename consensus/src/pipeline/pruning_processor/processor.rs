@@ -349,7 +349,7 @@ impl PruningProcessor {
         let starting_hash = reachability_read.get_children(ORIGIN).unwrap().first().copied().unwrap();
         let to_process = self.headers_store.get_compact_header_data(new_pruning_point).unwrap().daa_score
             - self.headers_store.get_compact_header_data(starting_hash).unwrap().daa_score;
-        
+
         let mut queue = VecDeque::<Hash>::from_iter(reachability_read.get_children(ORIGIN).unwrap().iter().copied());
         let (mut counter, mut traversed) = (0, 0);
         let pbws = maybe_init_progress_bar_spinner_pair(

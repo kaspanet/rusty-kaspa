@@ -172,10 +172,14 @@ impl HandleRelayInvsFlow {
 
                         match block_task_inner.await {
                             Ok(_) => match ancestor_batch.blocks.len() {
-                                0 => { debug!("Retried orphan block {} successfully", block.hash()); },
+                                0 => {
+                                    debug!("Retried orphan block {} successfully", block.hash());
+                                }
                                 n => {
                                     self.ctx.log_block_event(BlockLogEvent::Unorphaned(ancestor_batch.blocks[0].hash(), n));
-                                    { debug!("Unorphaned {} ancestors and retried orphan block {} successfully", n, block.hash()); }
+                                    {
+                                        debug!("Unorphaned {} ancestors and retried orphan block {} successfully", n, block.hash());
+                                    }
                                 }
                             },
                             Err(rule_error) => return Err(rule_error.into()),

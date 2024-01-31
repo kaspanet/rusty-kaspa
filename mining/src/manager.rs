@@ -524,8 +524,12 @@ impl MiningManager {
         }
         match expired_low_priority_transactions.len() {
             0 => {}
-            1 => { debug!("Removed transaction ({}) {}", TxRemovalReason::Expired, expired_low_priority_transactions[0]); },
-            n => { debug!("Removed {} transactions ({}): {}...", n, TxRemovalReason::Expired, expired_low_priority_transactions[0]); },
+            1 => {
+                debug!("Removed transaction ({}) {}", TxRemovalReason::Expired, expired_low_priority_transactions[0]);
+            }
+            n => {
+                debug!("Removed {} transactions ({}): {}...", n, TxRemovalReason::Expired, expired_low_priority_transactions[0]);
+            }
         }
     }
 

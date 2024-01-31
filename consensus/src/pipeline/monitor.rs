@@ -65,13 +65,13 @@ impl ConsensusProgressBars {
     }
 
     fn update_all(&self, counters: ProcessingCountersSnapshot) {
-        self.header_count.is_some_perform(|pb| pb.set_position(counters.header_counts as u64));
-        self.block_count.is_some_perform(|pb| pb.set_position(counters.body_counts as u64));
-        self.tx_count.is_some_perform(|pb| pb.set_position(counters.txs_counts as u64));
-        self.chain_block_count.is_some_perform(|pb| pb.set_position(counters.chain_block_counts as u64));
-        self.dep_count.is_some_perform(|pb| pb.set_position(counters.dep_counts as u64));
-        self.mergeset_count.is_some_perform(|pb| pb.set_position(counters.mergeset_counts as u64));
-        self.mass_count.is_some_perform(|pb| pb.set_position(counters.mass_counts as u64));
+        self.header_count.is_some_perform(|pb| pb.set_position(counters.header_counts));
+        self.block_count.is_some_perform(|pb| pb.set_position(counters.body_counts));
+        self.tx_count.is_some_perform(|pb| pb.set_position(counters.txs_counts));
+        self.chain_block_count.is_some_perform(|pb| pb.set_position(counters.chain_block_counts));
+        self.dep_count.is_some_perform(|pb| pb.set_position(counters.dep_counts));
+        self.mergeset_count.is_some_perform(|pb| pb.set_position(counters.mergeset_counts));
+        self.mass_count.is_some_perform(|pb| pb.set_position(counters.mass_counts));
     }
 
     fn finish_all(&self) {
