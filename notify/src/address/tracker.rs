@@ -44,6 +44,10 @@ impl CounterMap {
         Self(RwLock::new(HashMap::new()))
     }
 
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self(RwLock::new(HashMap::with_capacity(capacity)))
+    }
+
     #[cfg(test)]
     pub fn with_counters(counters: Vec<Counter>) -> Self {
         Self(RwLock::new(counters.into_iter().map(|x| (x.index, x.count)).collect()))
