@@ -135,8 +135,8 @@ impl ConnectionHandler {
                 .await;
 
             match serve_result {
-                Ok(_) => info!("GRPC Server stopped on: {}", serve_address),
-                Err(err) => panic!("GRPC Server {serve_address} stopped with error: {err:?}"),
+                Ok(_) => { info!("GRPC Server stopped on: {}", serve_address); },
+                Err(err) => { panic!("GRPC Server {serve_address} stopped with error: {err:?}"); },
             }
         });
 

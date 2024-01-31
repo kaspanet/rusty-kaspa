@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     cmp::min,
     collections::{HashMap, HashSet},
     net::{IpAddr, SocketAddr, ToSocketAddrs},
@@ -11,9 +10,12 @@ use duration_string::DurationString;
 use futures_util::future::join_all;
 use itertools::Itertools;
 use kaspa_addressmanager::{AddressManager, NetAddress};
-use kaspa_core::{debug, info, log::progressions::maybe_init_progress_bar, warn};
+use kaspa_core::{
+    debug, info,
+    warn,
+};
 use kaspa_p2p_lib::{common::ProtocolError, ConnectionError, Peer};
-use kaspa_utils::{option::OptionExtensions, triggers::SingleTrigger};
+use kaspa_utils::{triggers::SingleTrigger};
 use parking_lot::Mutex as ParkingLotMutex;
 use rand::{seq::SliceRandom, thread_rng};
 use tokio::{
@@ -174,16 +176,18 @@ impl ConnectionManager {
 
         let mut progressing = true;
         let mut connecting = true;
+        /*
         let pb = maybe_init_progress_bar(
             Cow::Borrowed("Connections"),
-            Cow::Borrowed("Searching for Peers"),
+            Cow::Borrowed("Finding Peers"),
             self.outbound_target as u64,
             true,
             true,
-            true,
-            true,
+            false,
+            false,
             true,
         );
+        */
         while connecting && missing_connections > 0 {
             //pb.is_some_perform(|pb| pb.set_position((self.outbound_target - missing_connections) as u64));
             if self.shutdown_signal.trigger.is_triggered() {
@@ -249,7 +253,7 @@ impl ConnectionManager {
             .await;
         }
 
-        pb.is_some_perform(|pb| pb.set_position((self.outbound_target - missing_connections) as u64))
+        //pb.is_some_perform(|pb| pb.set_position((self.outbound_target - missing_connections) as u64))
     }
 
     async fn handle_inbound_connections(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {

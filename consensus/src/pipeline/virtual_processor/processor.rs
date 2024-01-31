@@ -590,7 +590,7 @@ impl VirtualStateProcessor {
                         heap.into_sorted_iter().take_while(|s| s.blue_work >= filtering_blue_work).map(|s| s.hash).collect(),
                     );
                 } else {
-                    debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate)
+                    debug!("Block candidate {} has invalid UTXO state and is ignored from Virtual chain.", candidate);
                 }
             } else if finality_point != pruning_point {
                 // `finality_point == pruning_point` indicates we are at IBD start hence no warning required

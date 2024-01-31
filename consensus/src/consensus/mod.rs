@@ -72,7 +72,6 @@ use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_txscript::caches::TxScriptCacheCounters;
-use kaspa_utils::option::OptionExtensions;
 
 use std::{
     future::Future,

@@ -148,15 +148,13 @@ pub struct PruningPointUtxosetChunkStream<'a, 'b> {
 }
 
 impl<'a, 'b> PruningPointUtxosetChunkStream<'a, 'b> {
-    pub const IDENT: &'static str = "PruningPointUtxosetChunkStream";
-
     pub fn new(router: &'a Router, incoming_route: &'b mut IncomingRoute) -> Self {
         Self {
             router,
             incoming_route,
             i: 0,
             utxo_count: 0,
-            pb: maybe_init_spinner(Cow::Borrowed(Self::IDENT), "Downloading init UTXO set".into(), true, true),
+            pb: maybe_init_spinner(Cow::Borrowed("IBD"), "Loading UTXOs".into(), true, true, true),
         }
     }
 

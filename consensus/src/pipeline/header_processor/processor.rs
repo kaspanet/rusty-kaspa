@@ -39,15 +39,11 @@ use kaspa_consensus_core::{
 use kaspa_consensusmanager::SessionLock;
 use kaspa_database::prelude::{StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
-use kaspa_utils::{option::OptionExtensions, vec::VecExtensions};
+use kaspa_utils::vec::VecExtensions;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
-use std::{
-    borrow::Cow,
-    sync::{atomic::Ordering, Arc},
-    time::Duration,
-};
+use std::sync::{atomic::Ordering, Arc};
 
 use super::super::ProcessingCounters;
 

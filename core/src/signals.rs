@@ -1,6 +1,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 
+use crate::log::progressions::{maybe_exit_multi_progress, MULTI_PROGRESS_BAR_ACTIVE};
+
 pub trait Shutdown {
     fn shutdown(self: &Arc<Self>);
 }
@@ -28,6 +30,9 @@ impl<T: Shutdown + Send + Sync> Signals<T> {
             println!("^SIGTERM - shutting down...");
             if let Some(actual_target) = core.upgrade() {
                 actual_target.shutdown();
+                if *MULTI_PROGRESS_BAR_ACTIVE {
+                    maybe_exit_multi_progress();
+                }
             }
         })
         .expect("Error setting signal handler");

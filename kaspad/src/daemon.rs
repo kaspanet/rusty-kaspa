@@ -163,7 +163,7 @@ impl Runtime {
         kaspa_core::log::init_logger(log_dir.as_deref(), &args.log_level, args.progressions);
 
         if args.progressions {
-            warn!("`--progressions` flag is work-in-progress and may not work as expected.")
+            warn!("`--progressions` flag is work-in-progress and may not work as expected.");
         }
         Self { log_dir: log_dir.map(|log_dir| log_dir.to_owned()) }
     }

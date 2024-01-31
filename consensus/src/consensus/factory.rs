@@ -1,10 +1,7 @@
 #[cfg(feature = "devnet-prealloc")]
 use super::utxo_set_override::{set_genesis_utxo_commitment_from_config, set_initial_utxo_set};
 use super::{ctl::Ctl, Consensus};
-use crate::{
-    model::stores::U64Key,
-    pipeline::{monitor::ConsensusProgressBars, ProcessingCounters},
-};
+use crate::{model::stores::U64Key, pipeline::ProcessingCounters};
 use itertools::Itertools;
 use kaspa_consensus_core::config::Config;
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;

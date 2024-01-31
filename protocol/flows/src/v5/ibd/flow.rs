@@ -81,7 +81,7 @@ impl IbdFlow {
                 info!("IBD started with peer {}", self.router);
 
                 match self.ibd(relay_block).await {
-                    Ok(_) => info!("IBD with peer {} completed successfully", self.router),
+                    Ok(_) => { info!("IBD with peer {} completed successfully", self.router); },
                     Err(e) => {
                         info!("IBD with peer {} completed with error: {}", self.router, e);
                         return Err(e);
@@ -152,12 +152,12 @@ impl IbdFlow {
                 Ok(_) => unorphaned_hashes.push(hash),
                 // We do not return the error and disconnect here since we don't know
                 // that this peer was the origin of the orphan block
-                Err(e) => warn!("Validation failed for orphan block {}: {}", hash, e),
+                Err(e) => { warn!("Validation failed for orphan block {}: {}", hash, e); },
             }
         }
         match unorphaned_hashes.len() {
             0 => {}
-            n => info!("IBD post processing: unorphaned {} blocks ...{}", n, unorphaned_hashes.last().unwrap()),
+            n => { info!("IBD post processing: unorphaned {} blocks ...{}", n, unorphaned_hashes.last().unwrap()); },
         }
 
         Ok(())

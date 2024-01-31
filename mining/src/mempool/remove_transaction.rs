@@ -43,25 +43,25 @@ impl Mempool {
             TxRemovalReason::Muted => {}
             TxRemovalReason::DoubleSpend => match removed_transactions.len() {
                 0 => {}
-                1 => warn!("Removed transaction ({}) {}{}", reason, removed_transactions[0], extra_info),
-                n => warn!(
+                1 => { warn!("Removed transaction ({}) {}{}", reason, removed_transactions[0], extra_info); },
+                n => { warn!(
                     "Removed {} transactions ({}): {}{}",
                     n,
                     reason,
                     removed_transactions.iter().reusable_format(", "),
                     extra_info
-                ),
+                ); },
             },
             _ => match removed_transactions.len() {
                 0 => {}
-                1 => debug!("Removed transaction ({}) {}{}", reason, removed_transactions[0], extra_info),
-                n => debug!(
+                1 => { debug!("Removed transaction ({}) {}{}", reason, removed_transactions[0], extra_info); },
+                n => { debug!(
                     "Removed {} transactions ({}): {}{}",
                     n,
                     reason,
                     removed_transactions.iter().reusable_format(", "),
                     extra_info
-                ),
+                ); },
             },
         }
 

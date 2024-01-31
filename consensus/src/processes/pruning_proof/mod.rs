@@ -26,7 +26,11 @@ use kaspa_consensus_core::{
     trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
-use kaspa_core::{debug, info, log::progressions::maybe_init_progress_bar, trace};
+use kaspa_core::{
+    debug, info,
+    log::progressions::{maybe_init_progress_bar_spinner_pair, ProgressBarSpinnerPair},
+    trace,
+};
 use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
@@ -448,13 +452,13 @@ impl PruningProofManager {
 
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
 
-        let progress_bar = maybe_init_progress_bar(
+        let progress_bar = maybe_init_progress_bar_spinner_pair(
             Cow::Borrowed("PruningValidator"),
             Cow::Borrowed("Validating levels"),
             self.max_block_level as u64,
             true,
             true,
-            true,
+            false,
             true,
             true,
         );

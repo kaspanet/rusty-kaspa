@@ -138,8 +138,8 @@ impl WrpcService {
         let service = self.clone();
         tokio::spawn(async move {
             let _ = termination_receiver.await;
-            service.server.stop().unwrap_or_else(|err| warn!("wRPC unable to signal shutdown: `{err}`"));
-            service.server.join().await.unwrap_or_else(|err| warn!("wRPC error: `{err}"));
+            service.server.stop().unwrap_or_else(|err| { warn!("wRPC unable to signal shutdown: `{err}`"); });
+            service.server.join().await.unwrap_or_else(|err| { warn!("wRPC error: `{err}"); });
         });
 
         // Spawn a task running the server
@@ -148,8 +148,8 @@ impl WrpcService {
             let config = WebSocketConfig { max_message_size: Some(MAX_WRPC_MESSAGE_SIZE), ..Default::default() };
             let serve_result = self.server.listen(&listen_address, Some(config)).await;
             match serve_result {
-                Ok(_) => info!("WRPC Server stopped on: {}", listen_address),
-                Err(err) => panic!("WRPC Server {listen_address} stopped with error: {err:?}"),
+                Ok(_) => { info!("WRPC Server stopped on: {}", listen_address); },
+                Err(err) => { panic!("WRPC Server {listen_address} stopped with error: {err:?}"); },
             }
         });
 

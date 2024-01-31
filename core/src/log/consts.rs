@@ -1,14 +1,3 @@
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use once_cell::sync::Lazy;
-use std::{
-    borrow::Cow,
-    ops::Deref,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-};
-
 pub const DEFAULT_LOGGER_ENV: &str = "RUST_LOG";
 
 pub const LOG_FILE_NAME: &str = "rusty-kaspa.log";

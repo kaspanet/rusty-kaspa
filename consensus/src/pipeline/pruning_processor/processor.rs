@@ -34,14 +34,19 @@ use kaspa_consensus_core::{
     BlockHashSet,
 };
 use kaspa_consensusmanager::SessionLock;
-use kaspa_core::{debug, info, warn};
+use kaspa_core::{
+    debug, info,
+    log::progressions::{maybe_init_progress_bar_spinner_pair, ProgressBarSpinnerPair},
+    warn,
+};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
-use kaspa_utils::iter::IterExtensions;
+use kaspa_utils::{iter::IterExtensions, option::OptionExtensions};
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
+    borrow::Cow,
     collections::VecDeque,
     ops::Deref,
     sync::{
@@ -324,7 +329,7 @@ impl PruningProcessor {
                     pruned_tips.len(),
                     pruned_tips.iter().take(5.min((pruned_tips.len() + 1) / 2)).reusable_format(", "),
                     pruned_tips.iter().rev().take(5.min(pruned_tips.len() / 2)).reusable_format(", ")
-                )
+                );
             }
 
             // Prune the selected chain index below the pruning point
@@ -341,8 +346,22 @@ impl PruningProcessor {
 
         // Now we traverse the anti-future of the new pruning point starting from origin and going up.
         // The most efficient way to traverse the entire DAG from the bottom-up is via the reachability tree
+        let starting_hash = reachability_read.get_children(ORIGIN).unwrap().first().copied().unwrap();
+        let to_process = self.headers_store.get_compact_header_data(new_pruning_point).unwrap().daa_score
+            - self.headers_store.get_compact_header_data(starting_hash).unwrap().daa_score;
+        
         let mut queue = VecDeque::<Hash>::from_iter(reachability_read.get_children(ORIGIN).unwrap().iter().copied());
         let (mut counter, mut traversed) = (0, 0);
+        let pbws = maybe_init_progress_bar_spinner_pair(
+            Cow::Borrowed("Pruning"),
+            Cow::Borrowed("Pruning Blocks"),
+            to_process,
+            true,
+            true,
+            true,
+            true,
+            true,
+        );
         info!("Header and Block pruning: starting traversal from: {} (genesis: {})", queue.iter().reusable_format(", "), genesis);
         while let Some(current) = queue.pop_front() {
             if reachability_read.is_dag_ancestor_of_result(new_pruning_point, current).unwrap() {
@@ -367,6 +386,7 @@ impl PruningProcessor {
             }
 
             if traversed % 1000 == 0 {
+                pbws.is_some_perform(|pbws| pbws.set_position(traversed));
                 info!("Header and Block pruning: traversed: {}, pruned {}...", traversed, counter);
             }
 

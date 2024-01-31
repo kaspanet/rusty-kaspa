@@ -13,7 +13,7 @@ use kaspa_core::{
 use kaspa_utils::option::OptionExtensions;
 use std::{
     borrow::Cow,
-    sync::{atomic::Ordering, Arc},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -32,20 +32,33 @@ pub struct ConsensusProgressBars {
 
 impl ConsensusProgressBars {
     pub fn new() -> Option<Self> {
-        if MULTI_PROGRESS_BAR_ACTIVE.load(Ordering::SeqCst) {
+        if *MULTI_PROGRESS_BAR_ACTIVE {
             return Some(Self {
-                header_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processed headers:"), true, true),
-                block_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processed block bodies:"), true, true),
-                tx_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processed transactions:"), true, true),
-                chain_block_count: maybe_init_spinner(
+                header_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processed headers:"), false, true, true),
+                block_count: maybe_init_spinner(
                     Cow::Borrowed("Consensus"),
-                    Cow::Borrowed("Processed chain blocks:"),
+                    Cow::Borrowed("Processed block bodies:"),
+                    false,
                     true,
                     true,
                 ),
-                dep_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processed DAG edges:"), true, true),
-                mergeset_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processed mergesets:"), true, true),
-                mass_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processed transaction mass:"), true, true),
+                tx_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processed transactions:"), false, true, true),
+                chain_block_count: maybe_init_spinner(
+                    Cow::Borrowed("Consensus"),
+                    Cow::Borrowed("Processed chain blocks:"),
+                    false,
+                    true,
+                    true,
+                ),
+                dep_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processed DAG edges:"), false, true, true),
+                mergeset_count: maybe_init_spinner(
+                    Cow::Borrowed("Consensus"),
+                    Cow::Borrowed("Processed mergesets:"),
+                    false,
+                    true,
+                    true,
+                ),
+                mass_count: maybe_init_spinner(Cow::Borrowed("Consensus"), Cow::Borrowed("Processed tx mass:"), false, true, true),
             });
         }
         None
@@ -151,7 +164,7 @@ impl ConsensusMonitor {
             last_snapshot = snapshot;
         }
 
-        trace!("monitor thread exiting")
+        trace!("monitor thread exiting");
     }
 }
 
