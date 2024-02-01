@@ -1,23 +1,23 @@
 use kaspa_consensus_core::{
     tx::{TransactionIndexType, TransactionOutpoint, UtxoEntry},
-    utxo::{
-        utxo_diff::{ImmutableUtxoDiff, UtxoDiff},
-        utxo_view::UtxoView,
-    },
+    utxo::{utxo_diff::{ImmutableUtxoDiff, UtxoDiff}, utxo_view::UtxoView},
 };
-use kaspa_core::info;
+use kaspa_core::{debug, info, trace};
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_database::prelude::{CachePolicy, StoreError};
 use kaspa_database::prelude::{CachedDbItem, StoreResultExtensions};
 use kaspa_database::{prelude::DB, registry::DatabaseStorePrefixes};
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
-use std::{error::Error, fmt::Display, sync::Arc};
+use std::{collections::HashMap, error::Error, fmt::Display, sync::Arc};
 
 type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), Box<dyn Error>>> + 'a>;
 
 pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
+    fn has(&self, outpoint: &TransactionOutpoint) -> bool {
+        self.get(outpoint).ok().is_some()
+    }
     fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator;
     fn size(&self) -> Result<u64, StoreError>;
 }
@@ -144,10 +144,18 @@ impl DbUtxoSetStore {
     /// See comment at [`UtxoSetStore::write_diff`]
     pub fn write_diff_batch(&mut self, batch: &mut WriteBatch, utxo_diff: &impl ImmutableUtxoDiff) -> Result<(), StoreError> {
         let mut writer = BatchDbWriter::new(batch);
-        self.size.update(&mut writer, |count| (count + utxo_diff.added().len() as u64) - utxo_diff.removed().len() as u64)?;
-        self.access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
-        self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
-        //assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after reveiw
+        let mut dup_count = 0;
+        // this is one pass of pre-processing to avoid deleting and re-adding the same entry
+        // it is also useful for the size calculation
+        for (k, v) in utxo_diff.removed().iter() {
+            debug!("{:?} {:?}", k, v);
+            assert!(self.access.has((*k).into()).unwrap())
+        };
+        let mut to_delete = utxo_diff.removed().keys().filter_map(|o| if utxo_diff.added().contains_key(o) { dup_count = dup_count + 1; None } else { Some((*o).into()) }).collect::<Vec<UtxoKey>>().into_iter();
+        self.access.delete_many(&mut writer, &mut to_delete)?;
+        self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| { ((*o).into(), Arc::new(e.clone())) } ))?;
+        self.size.update(&mut writer, |count| (count + utxo_diff.added().len() as u64) - (utxo_diff.removed().len() - dup_count) as u64)?;
+        assert_eq!(self.access.iterator().count() as u64, self.size.read().unwrap()); //TODO: remove sanity check after review
         Ok(())
     }
 
@@ -167,10 +175,11 @@ impl DbUtxoSetStore {
 
     /// Clear the store completely in DB and cache
     pub fn clear(&mut self) -> Result<(), StoreError> {
-        let mut writer = DirectDbWriter::new(&self.db); // batch instead?
+        let mut batch = WriteBatch::default(); //  batch internally to keep consistency
+        let mut writer = BatchDbWriter::new(&mut batch);
         self.access.delete_all(&mut writer)?;
         self.size.write(&mut writer, &0u64)?;
-        //assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after reveiw
+        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after review
         Ok(())
     }
 
@@ -179,7 +188,8 @@ impl DbUtxoSetStore {
         &mut self,
         utxos: impl IntoIterator<Item = (TransactionOutpoint, Arc<UtxoEntry>)>,
     ) -> Result<(), StoreError> {
-        let mut writer = DirectDbWriter::new(&self.db); //  batch instead?
+        let mut batch = WriteBatch::default(); //  batch internally to keep consistency
+        let mut writer = BatchDbWriter::new(&mut batch);
         let mut count = 0u64;
         self.access.write_many_without_cache(
             &mut writer,
@@ -189,7 +199,8 @@ impl DbUtxoSetStore {
             }),
         )?;
         self.size.update(&mut writer, |c| c + count)?;
-        // assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after reveiw
+        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after review
+        self.db.write(batch)?;
         Ok(())
     }
 }
@@ -221,19 +232,26 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
 
 impl UtxoSetStore for DbUtxoSetStore {
     fn write_diff(&mut self, utxo_diff: &UtxoDiff) -> Result<(), StoreError> {
-        let mut writer = DirectDbWriter::new(&self.db);
-        self.size.update(&mut writer, |count| count + utxo_diff.added().len() as u64 - utxo_diff.removed().len() as u64)?;
-        self.access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
+        let mut batch = WriteBatch::default(); //  batch internally to keep consistency
+        let mut writer = BatchDbWriter::new(&mut batch);
+        let mut dup_count = 0;
+        // this is one pass of pre-processing to avoid deleting and re-adding the same entry
+        // it is also useful for the size calculation
+        let mut to_delete = utxo_diff.removed().keys().filter_map(|o| if utxo_diff.added().contains_key(o) { dup_count += 1; None } else { Some((*o).into()) }).collect::<Vec<UtxoKey>>().into_iter();
+        self.access.delete_many(&mut writer, &mut to_delete)?;
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
-        // assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after reveiw
+        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after review
+        self.db.write(batch)?;
         Ok(())
     }
 
     fn write_many(&mut self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError> {
-        let mut writer = DirectDbWriter::new(&self.db);
+        let mut batch = WriteBatch::default(); //  batch internally to keep consistency
+        let mut writer = BatchDbWriter::new(&mut batch);
         self.size.update(&mut writer, |count| count + utxos.len() as u64)?;
         self.access.write_many(&mut writer, &mut utxos.iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
-        // assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after reveiw
+        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after review
+        self.db.write(batch)?;
         Ok(())
     }
 }
