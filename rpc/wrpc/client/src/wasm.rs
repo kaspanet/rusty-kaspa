@@ -8,6 +8,7 @@ use kaspa_consensus_wasm::{SignableTransaction, Transaction};
 use kaspa_notify::notification::Notification as NotificationT;
 pub use kaspa_rpc_macros::{build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions};
 pub use serde_wasm_bindgen::from_value;
+pub use workflow_rpc::client::IConnectOptions;
 pub use workflow_wasm::serde::to_value;
 
 struct NotificationSink(Function);
@@ -66,7 +67,7 @@ impl RpcClient {
     /// task that connects and reconnects to the server if the connection
     /// is terminated.  Use [`disconnect()`](Self::disconnect()) to
     /// terminate the connection.
-    pub async fn connect(&self, args: JsValue) -> Result<()> {
+    pub async fn connect(&self, args: &IConnectOptions) -> Result<()> {
         let options: ConnectOptions = args.try_into()?;
 
         self.start_notification_task()?;
