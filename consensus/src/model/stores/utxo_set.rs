@@ -18,9 +18,6 @@ type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOut
 
 pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
-    fn has(&self, outpoint: &TransactionOutpoint) -> bool {
-        self.get(outpoint).ok().is_some()
-    }
     fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator;
     fn size(&self) -> Result<u64, StoreError>;
 }
@@ -155,7 +152,7 @@ impl DbUtxoSetStore {
             .filter_map(|o| {
                 if utxo_diff.added().contains_key(o) {
                     dup_count += 1;
-                    assert!(self.access.has((*o).into()).unwrap()); // TODO: remove sanity check after review
+                    self.access.get((*o).into()).unwrap(); // TODO: remove sanity check after review
                     None
                 } else {
                     Some((*o).into())
@@ -255,6 +252,7 @@ impl UtxoSetStore for DbUtxoSetStore {
             .filter_map(|o| {
                 if utxo_diff.added().contains_key(o) {
                     dup_count += 1;
+                    self.access.get((*o).into()).unwrap(); // TODO: remove sanity check after review
                     None
                 } else {
                     Some((*o).into())
