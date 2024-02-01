@@ -154,7 +154,7 @@ impl DbUtxoSetStore {
             .keys()
             .filter_map(|o| {
                 if utxo_diff.added().contains_key(o) {
-                    dup_count +=1;
+                    dup_count += 1;
                     assert!(self.access.has((*o).into()).unwrap()); // TODO: remove sanity check after review
                     None
                 } else {
