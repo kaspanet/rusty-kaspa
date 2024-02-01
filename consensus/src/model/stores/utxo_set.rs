@@ -1,15 +1,18 @@
 use kaspa_consensus_core::{
     tx::{TransactionIndexType, TransactionOutpoint, UtxoEntry},
-    utxo::{utxo_diff::{ImmutableUtxoDiff, UtxoDiff}, utxo_view::UtxoView},
+    utxo::{
+        utxo_diff::{ImmutableUtxoDiff, UtxoDiff},
+        utxo_view::UtxoView,
+    },
 };
-use kaspa_core::{debug, info, trace};
-use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
+use kaspa_core::info;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess};
 use kaspa_database::prelude::{CachePolicy, StoreError};
 use kaspa_database::prelude::{CachedDbItem, StoreResultExtensions};
 use kaspa_database::{prelude::DB, registry::DatabaseStorePrefixes};
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
-use std::{collections::HashMap, error::Error, fmt::Display, sync::Arc};
+use std::{error::Error, fmt::Display, sync::Arc};
 
 type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), Box<dyn Error>>> + 'a>;
 
@@ -145,16 +148,25 @@ impl DbUtxoSetStore {
     pub fn write_diff_batch(&mut self, batch: &mut WriteBatch, utxo_diff: &impl ImmutableUtxoDiff) -> Result<(), StoreError> {
         let mut writer = BatchDbWriter::new(batch);
         let mut dup_count = 0;
-        // this is one pass of pre-processing to avoid deleting and re-adding the same entry
-        // it is also useful for the size calculation
-        for (k, v) in utxo_diff.removed().iter() {
-            debug!("{:?} {:?}", k, v);
-            assert!(self.access.has((*k).into()).unwrap())
-        };
-        let mut to_delete = utxo_diff.removed().keys().filter_map(|o| if utxo_diff.added().contains_key(o) { dup_count = dup_count + 1; None } else { Some((*o).into()) }).collect::<Vec<UtxoKey>>().into_iter();
+
+        let mut to_delete = utxo_diff
+            .removed()
+            .keys()
+            .filter_map(|o| {
+                if utxo_diff.added().contains_key(o) {
+                    dup_count +=1;
+                    assert!(self.access.has((*o).into()).unwrap()); // TODO: remove sanity check after review
+                    None
+                } else {
+                    Some((*o).into())
+                }
+            })
+            .collect::<Vec<UtxoKey>>()
+            .into_iter();
         self.access.delete_many(&mut writer, &mut to_delete)?;
-        self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| { ((*o).into(), Arc::new(e.clone())) } ))?;
-        self.size.update(&mut writer, |count| (count + utxo_diff.added().len() as u64) - (utxo_diff.removed().len() - dup_count) as u64)?;
+        self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
+        self.size
+            .update(&mut writer, |count| (count + utxo_diff.added().len() as u64) - (utxo_diff.removed().len() - dup_count) as u64)?;
         assert_eq!(self.access.iterator().count() as u64, self.size.read().unwrap()); //TODO: remove sanity check after review
         Ok(())
     }
@@ -237,7 +249,19 @@ impl UtxoSetStore for DbUtxoSetStore {
         let mut dup_count = 0;
         // this is one pass of pre-processing to avoid deleting and re-adding the same entry
         // it is also useful for the size calculation
-        let mut to_delete = utxo_diff.removed().keys().filter_map(|o| if utxo_diff.added().contains_key(o) { dup_count += 1; None } else { Some((*o).into()) }).collect::<Vec<UtxoKey>>().into_iter();
+        let mut to_delete = utxo_diff
+            .removed()
+            .keys()
+            .filter_map(|o| {
+                if utxo_diff.added().contains_key(o) {
+                    dup_count += 1;
+                    None
+                } else {
+                    Some((*o).into())
+                }
+            })
+            .collect::<Vec<UtxoKey>>()
+            .into_iter();
         self.access.delete_many(&mut writer, &mut to_delete)?;
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
         assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after review
