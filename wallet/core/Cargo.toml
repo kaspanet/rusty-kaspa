@@ -97,5 +97,9 @@ features = [
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 home.workspace = true
 
+[dev-dependencies]
+hex-literal.workspace = true
+serde_repr.worksapce = true
+
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio.workspace = true
