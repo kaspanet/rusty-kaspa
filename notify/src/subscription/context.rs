@@ -1,28 +1,48 @@
-use crate::address::tracker::Tracker;
+use crate::{
+    address::tracker::Tracker,
+    listener::ListenerId,
+    subscription::{
+        single::{UtxosChangedState, UtxosChangedSubscription},
+        DynSubscription,
+    },
+};
 use std::{ops::Deref, sync::Arc};
 
 #[cfg(test)]
 use kaspa_addresses::Address;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SubscriptionContextInner {
     pub address_tracker: Tracker,
+    pub utxos_changed_subscription_to_all: DynSubscription,
 }
 
 impl SubscriptionContextInner {
+    const CONTEXT_LISTENER_ID: ListenerId = ListenerId::MAX;
+
     pub fn new() -> Self {
         Self::with_options(None)
     }
 
     pub fn with_options(addresses_max_capacity: Option<usize>) -> Self {
         let address_tracker = Tracker::new(addresses_max_capacity);
-        Self { address_tracker }
+        let utxos_changed_subscription_all =
+            Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID));
+        Self { address_tracker, utxos_changed_subscription_to_all: utxos_changed_subscription_all }
     }
 
     #[cfg(test)]
     pub fn with_addresses(addresses: &[Address]) -> Self {
         let address_tracker = Tracker::with_addresses(addresses);
-        Self { address_tracker }
+        let utxos_changed_subscription_all =
+            Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID));
+        Self { address_tracker, utxos_changed_subscription_to_all: utxos_changed_subscription_all }
+    }
+}
+
+impl Default for SubscriptionContextInner {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

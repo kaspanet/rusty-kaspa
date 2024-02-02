@@ -1,9 +1,12 @@
 extern crate derive_more;
-use super::{
-    connection::Connection, error::Result, events::EventArray, listener::ListenerId, notification::Notification,
-    subscription::DynSubscription,
+use crate::{
+    connection::Connection,
+    error::Result,
+    events::{EventArray, EventType},
+    listener::ListenerId,
+    notification::Notification,
+    subscription::{context::SubscriptionContext, BroadcastingSingle, DynSubscription},
 };
-use crate::{events::EventType, subscription::context::SubscriptionContext};
 use async_channel::{Receiver, Sender};
 use core::fmt::Debug;
 use derive_more::Deref;
@@ -157,7 +160,7 @@ where
                             match ctl {
                                 Ctl::Register(subscription, id, connection) => {
                                     let event_type = subscription.event_type();
-                                    plan[event_type].insert(subscription, id, connection);
+                                    plan[event_type].insert(subscription.broadcasting(&context), id, connection);
                                     debug!("[{}] insert {} subscription, count = {}, capacity = {}", self, event_type, plan[event_type].len(), plan[event_type].capacity());
                                 },
                                 Ctl::Unregister(event_type, id) => {

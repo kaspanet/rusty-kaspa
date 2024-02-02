@@ -5,8 +5,8 @@ use crate::{
     listener::ListenerId,
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::{
-        context::SubscriptionContext, Command, Mutation, MutationOutcome, MutationPolicies, Single, Subscription,
-        UtxosChangedMutationPolicy,
+        context::SubscriptionContext, BroadcastingSingle, Command, DynSubscription, Mutation, MutationOutcome, MutationPolicies,
+        Single, Subscription, UtxosChangedMutationPolicy,
     },
 };
 use itertools::Itertools;
@@ -522,6 +522,21 @@ impl Subscription for UtxosChangedSubscription {
     fn scope(&self, context: &SubscriptionContext) -> Scope {
         // TODO: consider using a provided prefix
         UtxosChangedScope::new(self.to_addresses(Prefix::Mainnet, context)).into()
+    }
+}
+
+impl BroadcastingSingle for DynSubscription {
+    fn broadcasting(self, context: &SubscriptionContext) -> DynSubscription {
+        match self.event_type() {
+            EventType::UtxosChanged => {
+                let utxos_changed_subscription = self.as_any().downcast_ref::<UtxosChangedSubscription>().unwrap();
+                match utxos_changed_subscription.to_all() {
+                    true => context.utxos_changed_subscription_to_all.clone(),
+                    false => self,
+                }
+            }
+            _ => self,
+        }
     }
 }
 

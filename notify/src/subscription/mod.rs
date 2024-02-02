@@ -175,6 +175,15 @@ impl MutateSingle for Arc<dyn Single> {
     }
 }
 
+pub trait BroadcastingSingle: Deref<Target = dyn Single> {
+    /// Returns the broadcasting instance of the subscription.
+    ///
+    /// This allows the grouping of all the wildcard utxos changed subscriptions under
+    /// the same unique instance in the broadcaster plans, allowing message optimizations
+    /// during broadcasting of the notifications.
+    fn broadcasting(self, context: &SubscriptionContext) -> DynSubscription;
+}
+
 impl Hash for dyn Single {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.dyn_hash(state);
