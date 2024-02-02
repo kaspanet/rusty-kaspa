@@ -1774,7 +1774,7 @@ mod test {
         }
 
         impl<'a> UnifiedWalletIntermediate<'a> {
-            fn to_wallet_type(mut self) -> WalletType<'a> {
+            fn into_wallet_type(mut self) -> WalletType<'a> {
                 let single = self.encrypted_mnemonics.len() == 1 && self.public_keys.len() == 1;
                 match (single, self.version) {
                     (true, WalletVersion::Zero) => WalletType::SingleV0(SingleWalletFileV0 {
@@ -1819,8 +1819,8 @@ mod test {
         let single_json_v1 = r#"{"version":1,"encryptedMnemonics":[{"cipher":"2022041df1a5bdcc26445952c53f96518641118bf0f990a01747d631d4607e5b53af3c9f4c07d6e3b84bc766445191b13d1f1fdf7ac96eae9c8859a9add660ac15b938356f936fdf614640d89627d368c57b22cf62844b1e1bcf3feceecbc6bf655df9519d7e3cfede6fe19d87a49e5709211b0b95c8d68781c70c4722bd8e25361492ef38d5cca21664a7f0838e4a1e2994d30c6d4b81d1397169570375ce56608439ae00e84c1f6acdd805f0ee22d4ba7b354c7f7cd4b2d18ce4fd6b8af785f95ed2a69361f318bc","salt":"044f5b890e48af4a7dcd7e7766af9380"}],"publicKeys":["kpub2KUE88roSn5peP1rEZnbRuKYw1fEPbhqBoXVWW7mLfkrLvQBAjUqwx7m1ezeSfqfecv9RUYePuHf99iW51i31WjwWjnzKDCUcTucBSiBbJA"],"minimumSignatures":1,"cosignerIndex":0,"lastUsedExternalIndex":0,"lastUsedInternalIndex":0,"ecdsa":false}"#.to_owned();
 
         let unified: UnifiedWalletIntermediate = serde_json::from_str(&single_json_v0).unwrap();
-        assert!(matches!(unified.to_wallet_type(), WalletType::SingleV0(_)));
+        assert!(matches!(unified.into_wallet_type(), WalletType::SingleV0(_)));
         let unified: UnifiedWalletIntermediate = serde_json::from_str(&single_json_v1).unwrap();
-        assert!(matches!(unified.to_wallet_type(), WalletType::SingleV1(_)));
+        assert!(matches!(unified.into_wallet_type(), WalletType::SingleV1(_)));
     }
 }
