@@ -2,6 +2,7 @@
 //!  WASM32 bindings for the wallet framework components.
 //!
 
+pub mod api;
 pub mod balance;
 pub mod message;
 pub mod tx;

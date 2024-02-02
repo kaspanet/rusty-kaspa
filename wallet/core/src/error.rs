@@ -171,6 +171,9 @@ pub enum Error {
     #[error("wallet secret is required")]
     WalletSecretRequired,
 
+    #[error("Supplied secret in key '{0}' is empty")]
+    SecretIsEmpty(String),
+
     #[error("task aborted")]
     Aborted,
 
@@ -185,6 +188,12 @@ pub enum Error {
 
     #[error("Account not active: {0}")]
     AccountNotActive(AccountId),
+
+    #[error("Invalid account id: {0}")]
+    InvalidAccountId(String),
+
+    #[error("Invalid id: {0}")]
+    InvalidKeyDataId(String),
 
     #[error("Invalid account type (must be one of: bip32|multisig|legacy")]
     InvalidAccountKind,
@@ -281,6 +290,9 @@ pub enum Error {
 
     #[error("Mass calculation error")]
     MassCalculationError,
+
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
 }
 
 impl From<Aborted> for Error {

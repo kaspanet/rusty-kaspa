@@ -65,8 +65,8 @@ impl WalletApi for super::Wallet {
     // -------------------------------------------------------------------------------------
 
     async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse> {
-        log_info!("Wallet received ping request '{:?}' ...", request.payload);
-        Ok(PingResponse { payload: request.payload })
+        log_info!("Wallet received ping request '{:?}' ...", request.message);
+        Ok(PingResponse { message: request.message })
     }
 
     async fn batch_call(self: Arc<Self>, _request: BatchRequest) -> Result<BatchResponse> {

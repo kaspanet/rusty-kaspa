@@ -47,8 +47,8 @@ pub trait WalletApi: Send + Sync + AnySync {
     // ---
 
     /// Wrapper around `ping_call()`.
-    async fn ping(self: Arc<Self>, payload: Option<u64>) -> Result<Option<u64>> {
-        Ok(self.ping_call(PingRequest { payload }).await?.payload)
+    async fn ping(self: Arc<Self>, message: Option<String>) -> Result<Option<String>> {
+        Ok(self.ping_call(PingRequest { message }).await?.message)
     }
     /// Ping the wallet service. Accepts an optional `u64` value that is returned in the response.
     async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse>;

@@ -40,7 +40,7 @@ impl AccountDescriptor {
 }
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-
+#[serde(rename_all = "camelCase")]
 pub enum AccountDescriptorProperty {
     AccountIndex,
     XpubKeys,

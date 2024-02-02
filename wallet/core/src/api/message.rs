@@ -12,13 +12,13 @@ use kaspa_addresses::Address;
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PingRequest {
-    pub payload: Option<u64>,
+    pub message: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PingResponse {
-    pub payload: Option<u64>,
+    pub message: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -208,9 +208,13 @@ pub struct PrvKeyDataCreateResponse {
     pub prv_key_data_id: PrvKeyDataId,
 }
 
+// TODO
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PrvKeyDataRemoveRequest {}
+pub struct PrvKeyDataRemoveRequest {
+    pub wallet_secret: Secret,
+    pub prv_key_data_id: PrvKeyDataId,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -286,6 +290,7 @@ pub struct AccountsCreateResponse {
     pub account_descriptor: AccountDescriptor,
 }
 
+// TODO
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsImportRequest {}
@@ -382,6 +387,8 @@ pub struct AccountsTransferResponse {
     pub generator_summary: GeneratorSummary,
     pub transaction_ids: Vec<TransactionId>,
 }
+
+// TODO: Use Generator Summary from WASM module...
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
