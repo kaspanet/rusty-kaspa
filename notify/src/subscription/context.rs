@@ -122,7 +122,9 @@ mod tests {
         trace!("Creating addresses...");
         let addresses = create_addresses(ITEM_LEN);
 
-        measure_consumed_memory(ITEM_LEN, NUM_ITEMS, || {(0..NUM_ITEMS).map(|_| SubscriptionContext::with_addresses(&addresses)).collect_vec()});
+        measure_consumed_memory(ITEM_LEN, NUM_ITEMS, || {
+            (0..NUM_ITEMS).map(|_| SubscriptionContext::with_addresses(&addresses)).collect_vec()
+        });
     }
 
     #[test]
@@ -205,6 +207,38 @@ mod tests {
 
         init_and_measure_consumed_memory(ITEM_LEN, NUM_ITEMS, || {
             (0..NUM_ITEMS).map(|_| (0..ITEM_LEN as Index).rev().collect::<HashSet<_>>()).collect_vec()
+        });
+    }
+
+    #[test]
+    #[ignore = "measuring consumed memory"]
+    // ITEM = HashSet<u32> emptied
+    //
+    //   ITEM_LEN    NUM_ITEMS     MEMORY/ITEM    MEM/IDX
+    // --------------------------------------------------
+    // 10_000_000           10      84'094'976        8.4
+    //  1_000_000          100      10'524'508       10.5
+    //    100_000        1_000         662_720        6.6
+    //     10_000       10_000          86_369        8.6
+    //      1_000      100_000          12_372       12.4
+    //        100    1_000_000             821        8.2
+    //         10   10_000_000             144       14.4
+    //          1   10_000_000             112      112.0
+    fn test_emptied_hash_set_u32_size() {
+        const ITEM_LEN: usize = 1_000_000;
+        const NUM_ITEMS: usize = 100;
+
+        init_and_measure_consumed_memory(ITEM_LEN, NUM_ITEMS, || {
+            (0..NUM_ITEMS)
+                .map(|_| {
+                    let mut set = (0..ITEM_LEN as Index).rev().collect::<HashSet<_>>();
+                    let original_capacity = set.capacity();
+                    let _ = set.drain();
+                    assert!(set.is_empty());
+                    assert_eq!(original_capacity, set.capacity());
+                    set
+                })
+                .collect_vec()
         });
     }
 

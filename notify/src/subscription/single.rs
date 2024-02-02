@@ -13,6 +13,7 @@ use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix};
 use kaspa_consensus_core::tx::ScriptPublicKey;
 use kaspa_core::trace;
+use parking_lot::RwLock;
 use std::{
     fmt::{Debug, Display},
     hash::{Hash, Hasher},
@@ -40,10 +41,10 @@ impl OverallSubscription {
 impl Single for OverallSubscription {
     fn apply_mutation(
         &self,
+        _: &Arc<dyn Single>,
         mutation: Mutation,
         _: MutationPolicies,
         _: &SubscriptionContext,
-        _: ListenerId,
     ) -> Result<MutationOutcome> {
         assert_eq!(self.event_type(), mutation.event_type());
         Ok(if self.active != mutation.active() {
@@ -90,10 +91,10 @@ impl VirtualChainChangedSubscription {
 impl Single for VirtualChainChangedSubscription {
     fn apply_mutation(
         &self,
+        _: &Arc<dyn Single>,
         mutation: Mutation,
         _: MutationPolicies,
         _: &SubscriptionContext,
-        _: ListenerId,
     ) -> Result<MutationOutcome> {
         assert_eq!(self.event_type(), mutation.event_type());
         let result = if let Scope::VirtualChainChanged(ref scope) = mutation.scope {
@@ -172,14 +173,67 @@ impl Subscription for VirtualChainChangedSubscription {
 
 static UTXOS_CHANGED_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UtxosChangedMutation {
+    None,
+    Remove,
+    Add,
+    All,
+}
+
+impl From<(Command, &UtxosChangedScope)> for UtxosChangedMutation {
+    fn from((command, scope): (Command, &UtxosChangedScope)) -> Self {
+        match (command, scope.addresses.is_empty()) {
+            (Command::Stop, true) => Self::None,
+            (Command::Stop, false) => Self::Remove,
+            (Command::Start, false) => Self::Add,
+            (Command::Start, true) => Self::All,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Hash, PartialEq, Eq)]
+pub enum UtxosChangedState {
+    /// Inactive
+    #[default]
+    None,
+
+    /// Active on a set of selected addresses
+    Selected,
+
+    /// Active on all addresses
+    All,
+}
+
+impl UtxosChangedState {
+    pub fn active(&self) -> bool {
+        match self {
+            UtxosChangedState::None => false,
+            UtxosChangedState::Selected | UtxosChangedState::All => true,
+        }
+    }
+}
+
+impl Display for UtxosChangedState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UtxosChangedState::None => write!(f, "none"),
+            UtxosChangedState::Selected => write!(f, "selected"),
+            UtxosChangedState::All => write!(f, "all"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct UtxosChangedSubscription {
-    active: bool,
+    /// State of the subscription
+    ///
+    /// Can be mutated without affecting neither equality nor hash of the struct
+    state: RwLock<UtxosChangedState>,
 
     /// Address indexes in `SubscriptionContext`
     ///
     /// Can be mutated without affecting neither equality nor hash of the struct
-    /// to the express condition of not altering `indexes.is_empty()`
     indexes: Indexes,
 
     /// ID of the listener owning this subscription
@@ -187,13 +241,14 @@ pub struct UtxosChangedSubscription {
 }
 
 impl UtxosChangedSubscription {
-    pub fn new(active: bool, listener_id: ListenerId) -> Self {
-        Self::with_capacity(active, listener_id, 0)
+    pub fn new(state: UtxosChangedState, listener_id: ListenerId) -> Self {
+        Self::with_capacity(state, listener_id, 0)
     }
 
-    pub fn with_capacity(active: bool, listener_id: ListenerId, capacity: usize) -> Self {
+    pub fn with_capacity(state: UtxosChangedState, listener_id: ListenerId, capacity: usize) -> Self {
         let indexes = Indexes::with_capacity(capacity);
-        let subscription = Self { active, indexes, listener_id };
+        let state = RwLock::new(state);
+        let subscription = Self { state, indexes, listener_id };
         trace!(
             "UtxosChangedSubscription: {} in total (new {})",
             UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1,
@@ -202,10 +257,26 @@ impl UtxosChangedSubscription {
         subscription
     }
 
+    #[cfg(test)]
     pub fn with_addresses(active: bool, addresses: &[Address], listener_id: ListenerId, context: &SubscriptionContext) -> Self {
-        let subscription = Self::with_capacity(active, listener_id, addresses.len());
+        let state = match (active, addresses.is_empty()) {
+            (false, _) => UtxosChangedState::None,
+            (true, false) => UtxosChangedState::Selected,
+            (true, true) => UtxosChangedState::All,
+        };
+        let subscription = Self::with_capacity(state, listener_id, addresses.len());
         let _ = subscription.register(addresses, context);
         subscription
+    }
+
+    #[inline(always)]
+    pub fn state(&self) -> UtxosChangedState {
+        *self.state.read()
+    }
+
+    #[inline(always)]
+    fn update_state(&self, new_state: UtxosChangedState) {
+        *self.state.write() = new_state;
     }
 
     pub fn contains(&self, spk: &ScriptPublicKey, context: &SubscriptionContext) -> bool {
@@ -236,20 +307,21 @@ impl UtxosChangedSubscription {
         context.address_tracker.unregister(&self.indexes, addresses)
     }
 
-    pub fn to_all(&self) -> bool {
-        self.indexes.is_empty()
+    pub fn unregister_indexes(&self, context: &SubscriptionContext) -> Vec<Address> {
+        // TODO: consider using a provided prefix
+        let removed = self.to_addresses(Prefix::Mainnet, context);
+        context.address_tracker.unregister_indexes(&self.indexes);
+        removed
     }
-}
 
-impl Default for UtxosChangedSubscription {
-    fn default() -> Self {
-        Self::new(false, 0)
+    pub fn to_all(&self) -> bool {
+        matches!(*self.state.read(), UtxosChangedState::All)
     }
 }
 
 impl Clone for UtxosChangedSubscription {
     fn clone(&self) -> Self {
-        let subscription = Self { active: self.active, indexes: self.indexes.clone(), listener_id: self.listener_id };
+        let subscription = Self { state: RwLock::new(self.state()), indexes: self.indexes.clone(), listener_id: self.listener_id };
         trace!(
             "UtxosChangedSubscription: {} in total (clone {})",
             UTXOS_CHANGED_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst) + 1,
@@ -261,11 +333,10 @@ impl Clone for UtxosChangedSubscription {
 
 impl Display for UtxosChangedSubscription {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match (self.active, self.indexes.len()) {
-            (false, _) => write!(f, "none"),
-            (true, 0) => write!(f, "all"),
-            (true, 1) => write!(f, "1 address"),
-            (true, n) => write!(f, "{} addresses", n),
+        let state = *self.state.read();
+        match state {
+            UtxosChangedState::None | UtxosChangedState::All => write!(f, "{}", state),
+            UtxosChangedState::Selected => write!(f, "{}({})", state, self.indexes.len()),
         }
     }
 }
@@ -281,51 +352,41 @@ impl Drop for UtxosChangedSubscription {
 }
 
 impl PartialEq for UtxosChangedSubscription {
-    /// Equality depends on subscription activity, wildcard and if active and not wildcard on listener ID.
-    ///
-    /// Address set is not considered in equality.
+    /// Equality is specifically bound to the listener ID
     fn eq(&self, other: &Self) -> bool {
-        self.active == other.active && (!self.active || self.to_all() || (self.listener_id == other.listener_id))
+        self.listener_id == other.listener_id
     }
 }
 impl Eq for UtxosChangedSubscription {}
 
 impl Hash for UtxosChangedSubscription {
-    /// Hash depends on subscription activity and if active and not wildcard on listener ID.
-    ///
-    /// Address set is not considered in hash.
+    /// Hash is specifically bound to the listener ID
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.active.hash(state);
-        if self.active && !self.to_all() {
-            self.listener_id.hash(state);
-        }
+        self.listener_id.hash(state);
     }
 }
 
 impl Single for UtxosChangedSubscription {
     fn apply_mutation(
         &self,
+        current: &Arc<dyn Single>,
         mutation: Mutation,
         policies: MutationPolicies,
         context: &SubscriptionContext,
-        listener_id: ListenerId,
     ) -> Result<MutationOutcome> {
         assert_eq!(self.event_type(), mutation.event_type());
         let outcome = if let Scope::UtxosChanged(ref scope) = mutation.scope {
-            // Here we want the code to (almost) match a double entry table structure
-            // by subscription state and by mutation
-            #[allow(clippy::collapsible_else_if)]
-            if !self.active {
-                // State None
-                if !mutation.active() {
-                    // Here is an exception to the aforementioned goal
-                    // State None <= Mutations None and Remove(R)
+            let state = *self.state.read();
+            let mutation_type = UtxosChangedMutation::from((mutation.command, scope));
+            match (state, mutation_type) {
+                (UtxosChangedState::None, UtxosChangedMutation::None | UtxosChangedMutation::Remove) => {
+                    // State None + Mutations None or Remove(R) => No change
                     MutationOutcome::new()
-                } else {
-                    // Here is an exception to the aforementioned goal
-                    // State None <= Mutations Add(A) && All
-                    let mutated = Self::with_capacity(true, listener_id, scope.addresses.len());
-                    let addresses = mutated.register(&scope.addresses, context)?;
+                }
+                (UtxosChangedState::None, UtxosChangedMutation::Add) => {
+                    // State None + Mutation Add(A) => Mutated new state Selected(A)
+                    let addresses = self.register(&scope.addresses, context)?;
+                    self.update_state(UtxosChangedState::Selected);
                     let mutations = match policies.utxo_changed {
                         UtxosChangedMutationPolicy::AddressSet => {
                             vec![Mutation::new(mutation.command, UtxosChangedScope::new(addresses).into())]
@@ -334,45 +395,33 @@ impl Single for UtxosChangedSubscription {
                             vec![Mutation::new(mutation.command, UtxosChangedScope::default().into())]
                         }
                     };
-                    MutationOutcome::with_mutated(Arc::new(mutated), mutations)
+                    MutationOutcome::with_mutated(current.clone(), mutations)
                 }
-            } else if !self.to_all() {
-                // State Selected(S)
-                if !mutation.active() {
-                    if scope.addresses.is_empty() {
-                        // State Selected(S) <= Mutation None
-                        let mutated = Self::new(false, listener_id);
-                        context.address_tracker.unregister_indexes(&self.indexes);
-                        let mutations = match policies.utxo_changed {
-                            UtxosChangedMutationPolicy::AddressSet => vec![Mutation::new(
-                                Command::Stop,
-                                UtxosChangedScope::new(self.to_addresses(Prefix::Mainnet, context)).into(), // FIXME
-                            )],
-                            UtxosChangedMutationPolicy::AllOrNothing => {
-                                vec![Mutation::new(Command::Stop, UtxosChangedScope::default().into())]
-                            }
-                        };
-                        MutationOutcome::with_mutated(Arc::new(mutated), mutations)
-                    } else {
-                        // State Selected(S) <= Mutation Remove(R)
-                        let unregistering = context.address_tracker.unregistering_indexes(&self.indexes, &scope.addresses);
-                        if unregistering.len() == self.indexes.len() {
-                            // If sets have same length, the mutated state is None
-                            let mutated = Self::new(false, listener_id);
-                            context.address_tracker.unregister_indexes(&self.indexes);
-                            let mutations = match policies.utxo_changed {
-                                UtxosChangedMutationPolicy::AddressSet => vec![Mutation::new(
-                                    Command::Stop,
-                                    UtxosChangedScope::new(self.to_addresses(Prefix::Mainnet, context)).into(), // FIXME
-                                )],
-                                UtxosChangedMutationPolicy::AllOrNothing => {
-                                    vec![Mutation::new(Command::Stop, UtxosChangedScope::default().into())]
-                                }
-                            };
-                            MutationOutcome::with_mutated(Arc::new(mutated), mutations)
-                        } else if !unregistering.is_empty() {
-                            // Some addresses are removed through inner mutability and state remains Selected(S)
-                            let removed = self.unregister(&scope.addresses, context);
+                (UtxosChangedState::None, UtxosChangedMutation::All) => {
+                    // State None + Mutation All => Mutated state All
+                    self.update_state(UtxosChangedState::All);
+                    let mutations = vec![Mutation::new(mutation.command, UtxosChangedScope::default().into())];
+                    MutationOutcome::with_mutated(current.clone(), mutations)
+                }
+                (UtxosChangedState::Selected, UtxosChangedMutation::None) => {
+                    // State Selected(S) + Mutation None => Mutated new state None
+                    let removed = self.unregister_indexes(context);
+                    assert!(!removed.is_empty(), "state Selected implies a non empty address set");
+                    let mutations = match policies.utxo_changed {
+                        UtxosChangedMutationPolicy::AddressSet => {
+                            vec![Mutation::new(Command::Stop, UtxosChangedScope::new(removed).into())]
+                        }
+                        UtxosChangedMutationPolicy::AllOrNothing => {
+                            vec![Mutation::new(Command::Stop, UtxosChangedScope::default().into())]
+                        }
+                    };
+                    MutationOutcome::with_mutated(current.clone(), mutations)
+                }
+                (UtxosChangedState::Selected, UtxosChangedMutation::Remove) => {
+                    // State Selected(S) + Mutation Remove(R) => Mutated state Selected(S – R) or mutated new state None or no change
+                    let removed = self.unregister(&scope.addresses, context);
+                    match (removed.is_empty(), self.indexes.is_empty()) {
+                        (false, false) => {
                             let mutations = match policies.utxo_changed {
                                 UtxosChangedMutationPolicy::AddressSet => {
                                     vec![Mutation::new(Command::Stop, UtxosChangedScope::new(removed).into())]
@@ -380,71 +429,78 @@ impl Single for UtxosChangedSubscription {
                                 UtxosChangedMutationPolicy::AllOrNothing => vec![],
                             };
                             MutationOutcome::with_mutations(mutations)
-                        } else {
-                            MutationOutcome::new()
                         }
-                    }
-                } else {
-                    if !scope.addresses.is_empty() {
-                        // State Selected(S) <= Mutation Add(A)
-                        if scope.addresses.iter().any(|address| !self.contains_address(address, context)) {
-                            let added = self.register(&scope.addresses, context)?;
+                        (false, true) => {
+                            self.update_state(UtxosChangedState::None);
                             let mutations = match policies.utxo_changed {
                                 UtxosChangedMutationPolicy::AddressSet => {
-                                    vec![Mutation::new(Command::Start, Scope::UtxosChanged(UtxosChangedScope::new(added)))]
+                                    vec![Mutation::new(Command::Stop, UtxosChangedScope::new(removed).into())]
+                                }
+                                UtxosChangedMutationPolicy::AllOrNothing => {
+                                    vec![Mutation::new(Command::Stop, UtxosChangedScope::default().into())]
+                                }
+                            };
+                            MutationOutcome::with_mutated(current.clone(), mutations)
+                        }
+                        (true, _) => MutationOutcome::new(),
+                    }
+                }
+                (UtxosChangedState::Selected, UtxosChangedMutation::Add) => {
+                    // State Selected(S) + Mutation Add(A) => Mutated state Selected(A ∪ S)
+                    let added = self.register(&scope.addresses, context)?;
+                    match added.is_empty() {
+                        false => {
+                            let mutations = match policies.utxo_changed {
+                                UtxosChangedMutationPolicy::AddressSet => {
+                                    vec![Mutation::new(Command::Start, UtxosChangedScope::new(added).into())]
                                 }
                                 UtxosChangedMutationPolicy::AllOrNothing => vec![],
                             };
                             MutationOutcome::with_mutations(mutations)
-                        } else {
-                            MutationOutcome::new()
                         }
-                    } else {
-                        // State Selected(S) <= Mutation All
-                        context.address_tracker.unregister_indexes(&self.indexes);
-                        let mutated = Self::new(true, listener_id);
-                        let mutations = match policies.utxo_changed {
-                            UtxosChangedMutationPolicy::AddressSet => vec![
-                                Mutation::new(
-                                    Command::Stop,
-                                    UtxosChangedScope::new(self.to_addresses(Prefix::Mainnet, context)).into(), // FIXME
-                                ),
-                                Mutation::new(Command::Start, UtxosChangedScope::default().into()),
-                            ],
-                            UtxosChangedMutationPolicy::AllOrNothing => vec![],
-                        };
-                        MutationOutcome::with_mutated(Arc::new(mutated), mutations)
+                        true => MutationOutcome::new(),
                     }
                 }
-            } else {
-                // State All
-                if !mutation.active() {
-                    if scope.addresses.is_empty() {
-                        // State All <= Mutation None
-                        let mutated = Self::new(false, listener_id);
-                        let mutations = vec![Mutation::new(Command::Stop, UtxosChangedScope::default().into())];
-                        MutationOutcome::with_mutated(Arc::new(mutated), mutations)
-                    } else {
-                        // State All <= Mutation Remove(R)
-                        MutationOutcome::new()
-                    }
-                } else {
-                    if !scope.addresses.is_empty() {
-                        // State All <= Mutation Add(A)
-                        let mutated = Self::with_capacity(true, listener_id, scope.addresses.len());
-                        let added = mutated.register(&scope.addresses, context)?;
-                        let mutations = match policies.utxo_changed {
-                            UtxosChangedMutationPolicy::AddressSet => vec![
-                                Mutation::new(Command::Start, UtxosChangedScope::new(added).into()),
-                                Mutation::new(Command::Stop, UtxosChangedScope::default().into()),
-                            ],
-                            UtxosChangedMutationPolicy::AllOrNothing => vec![],
-                        };
-                        MutationOutcome::with_mutated(Arc::new(mutated), mutations)
-                    } else {
-                        // State All <= Mutation All
-                        MutationOutcome::new()
-                    }
+                (UtxosChangedState::Selected, UtxosChangedMutation::All) => {
+                    // State Selected(S) + Mutation All => Mutated new state All
+                    let removed = self.unregister_indexes(context);
+                    assert!(!removed.is_empty(), "state Selected implies a non empty address set");
+                    self.update_state(UtxosChangedState::All);
+                    let mutations = match policies.utxo_changed {
+                        UtxosChangedMutationPolicy::AddressSet => vec![
+                            Mutation::new(Command::Stop, UtxosChangedScope::new(removed).into()),
+                            Mutation::new(Command::Start, UtxosChangedScope::default().into()),
+                        ],
+                        UtxosChangedMutationPolicy::AllOrNothing => vec![],
+                    };
+                    MutationOutcome::with_mutated(current.clone(), mutations)
+                }
+                (UtxosChangedState::All, UtxosChangedMutation::None) => {
+                    // State All + Mutation None => Mutated new state None
+                    self.update_state(UtxosChangedState::None);
+                    let mutations = vec![Mutation::new(Command::Stop, UtxosChangedScope::default().into())];
+                    MutationOutcome::with_mutated(current.clone(), mutations)
+                }
+                (UtxosChangedState::All, UtxosChangedMutation::Remove) => {
+                    // State All + Mutation Remove(R) => No change
+                    MutationOutcome::new()
+                }
+                (UtxosChangedState::All, UtxosChangedMutation::Add) => {
+                    // State All + Mutation Add(A) => Mutated new state Selectee(A)
+                    let added = self.register(&scope.addresses, context)?;
+                    self.update_state(UtxosChangedState::Selected);
+                    let mutations = match policies.utxo_changed {
+                        UtxosChangedMutationPolicy::AddressSet => vec![
+                            Mutation::new(Command::Start, UtxosChangedScope::new(added).into()),
+                            Mutation::new(Command::Stop, UtxosChangedScope::default().into()),
+                        ],
+                        UtxosChangedMutationPolicy::AllOrNothing => vec![],
+                    };
+                    MutationOutcome::with_mutated(current.clone(), mutations)
+                }
+                (UtxosChangedState::All, UtxosChangedMutation::All) => {
+                    // State All <= Mutation All
+                    MutationOutcome::new()
                 }
             }
         } else {
@@ -460,12 +516,12 @@ impl Subscription for UtxosChangedSubscription {
     }
 
     fn active(&self) -> bool {
-        self.active
+        self.state().active()
     }
 
     fn scope(&self, context: &SubscriptionContext) -> Scope {
+        // TODO: consider using a provided prefix
         UtxosChangedScope::new(self.to_addresses(Prefix::Mainnet, context)).into()
-        // FIXME
     }
 }
 
@@ -596,7 +652,7 @@ mod tests {
                     Comparison::new(3, 4, false),
                     Comparison::new(3, 5, false),
                     Comparison::new(4, 4, true),
-                    Comparison::new(4, 5, true),
+                    Comparison::new(4, 5, false),
                     Comparison::new(5, 5, true),
                 ],
             },
@@ -637,7 +693,7 @@ mod tests {
         fn run(&self, context: &SubscriptionContext) {
             for test in self.tests.iter() {
                 let mut new_state = test.state.clone();
-                let outcome = new_state.mutate(test.mutation.clone(), Default::default(), context, Self::LISTENER_ID).unwrap();
+                let outcome = new_state.mutate(test.mutation.clone(), Default::default(), context).unwrap();
                 assert_eq!(test.new_state.active(), new_state.active(), "Testing '{}': wrong new state activity", test.name);
                 assert_eq!(*test.new_state, *new_state, "Testing '{}': wrong new state", test.name);
                 assert_eq!(test.outcome.has_new_state(), outcome.has_new_state(), "Testing '{}': wrong new state presence", test.name);

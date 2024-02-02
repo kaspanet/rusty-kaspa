@@ -1,17 +1,21 @@
+use crate::{
+    events::{EventArray, EventType},
+    listener::ListenerId,
+    subscription::{compounded, single, CompoundedSubscription, DynSubscription},
+};
 use std::sync::Arc;
-
-use super::{compounded, single, CompoundedSubscription, DynSubscription};
-use crate::events::{EventArray, EventType};
 
 pub struct ArrayBuilder {}
 
 impl ArrayBuilder {
-    pub fn single() -> EventArray<DynSubscription> {
+    pub fn single(listener_id: ListenerId) -> EventArray<DynSubscription> {
         EventArray::from_fn(|i| {
             let event_type = EventType::try_from(i).unwrap();
             let subscription: DynSubscription = match event_type {
                 EventType::VirtualChainChanged => Arc::<single::VirtualChainChangedSubscription>::default(),
-                EventType::UtxosChanged => Arc::<single::UtxosChangedSubscription>::default(),
+                EventType::UtxosChanged => {
+                    Arc::new(single::UtxosChangedSubscription::new(single::UtxosChangedState::None, listener_id))
+                }
                 _ => Arc::new(single::OverallSubscription::new(event_type, false)),
             };
             subscription
@@ -38,7 +42,7 @@ mod tests {
 
     #[test]
     fn test_array_builder() {
-        let single = ArrayBuilder::single();
+        let single = ArrayBuilder::single(0);
         let compounded = ArrayBuilder::compounded();
         EVENT_TYPE_ARRAY.into_iter().for_each(|event| {
             assert_eq!(

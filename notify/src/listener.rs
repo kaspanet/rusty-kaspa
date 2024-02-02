@@ -19,7 +19,6 @@ pub(crate) struct Listener<C>
 where
     C: Connection,
 {
-    id: ListenerId,
     connection: C,
     pub(crate) subscriptions: EventArray<DynSubscription>,
 }
@@ -29,7 +28,7 @@ where
     C: Connection,
 {
     pub fn new(id: ListenerId, connection: C) -> Self {
-        Self { id, connection, subscriptions: ArrayBuilder::single() }
+        Self { connection, subscriptions: ArrayBuilder::single(id) }
     }
 
     pub fn connection(&self) -> C {
@@ -47,7 +46,7 @@ where
         context: &SubscriptionContext,
     ) -> Result<MutationOutcome> {
         let event_type = mutation.event_type();
-        self.subscriptions[event_type].mutate(mutation, policies, context, self.id)
+        self.subscriptions[event_type].mutate(mutation, policies, context)
     }
 
     pub fn close(&self) {

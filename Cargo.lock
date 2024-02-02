@@ -2920,6 +2920,7 @@ version = "0.13.4"
 dependencies = [
  "async-channel 2.1.1",
  "bincode",
+ "chrono",
  "criterion",
  "crossbeam-channel",
  "dhat",

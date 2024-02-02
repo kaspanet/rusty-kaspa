@@ -106,6 +106,7 @@ impl GrpcClient {
             counters,
         )
         .await?;
+        let client_id = u64::from_le_bytes(rand::random::<[u8; 8]>());
         let converter = Arc::new(RpcCoreConverter::new());
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
         let subscription_context = subscription_context.unwrap_or_default();
@@ -127,7 +128,7 @@ impl GrpcClient {
             }
             NotificationMode::Direct => {
                 let collector = GrpcClientCollector::new(GRPC_CLIENT, inner.notification_channel_receiver(), converter);
-                let subscriptions = ArrayBuilder::single();
+                let subscriptions = ArrayBuilder::single(client_id);
                 (None, Some(Arc::new(collector)), Some(Arc::new(Mutex::new(subscriptions))))
             }
         };
@@ -137,7 +138,6 @@ impl GrpcClient {
             inner.clone().spawn_connection_monitor(notifier.clone(), subscriptions.clone(), subscription_context.clone());
         }
 
-        let client_id = u64::from_le_bytes(rand::random::<[u8; 8]>());
         Ok(Self { inner, notifier, collector, subscriptions, subscription_context, policies, notification_mode, client_id })
     }
 
@@ -280,7 +280,6 @@ impl RpcApi for GrpcClient {
                     Mutation::new(Command::Start, scope.clone()),
                     self.policies.clone(),
                     &self.subscription_context,
-                    self.client_id,
                 )?;
                 self.inner.start_notify_to_client(scope).await?;
             }
@@ -301,7 +300,6 @@ impl RpcApi for GrpcClient {
                         Mutation::new(Command::Stop, scope.clone()),
                         self.policies.clone(),
                         &self.subscription_context,
-                        self.client_id,
                     )?;
                     self.inner.stop_notify_to_client(scope).await?;
                 }

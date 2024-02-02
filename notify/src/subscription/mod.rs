@@ -1,7 +1,4 @@
-use crate::{
-    error::Result, events::EventType, listener::ListenerId, notification::Notification, scope::Scope,
-    subscription::context::SubscriptionContext,
-};
+use crate::{error::Result, events::EventType, notification::Notification, scope::Scope, subscription::context::SubscriptionContext};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
@@ -160,32 +157,20 @@ impl Default for MutationOutcome {
 pub trait Single: Subscription + AsAny + DynHash + DynEq + Debug + Send + Sync {
     fn apply_mutation(
         &self,
+        arc_self: &Arc<dyn Single>,
         mutation: Mutation,
         policies: MutationPolicies,
         context: &SubscriptionContext,
-        listener_id: ListenerId,
     ) -> Result<MutationOutcome>;
 }
 
 pub trait MutateSingle: Deref<Target = dyn Single> {
-    fn mutate(
-        &mut self,
-        mutation: Mutation,
-        policies: MutationPolicies,
-        context: &SubscriptionContext,
-        listener_id: ListenerId,
-    ) -> Result<MutationOutcome>;
+    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies, context: &SubscriptionContext) -> Result<MutationOutcome>;
 }
 
 impl MutateSingle for Arc<dyn Single> {
-    fn mutate(
-        &mut self,
-        mutation: Mutation,
-        policies: MutationPolicies,
-        context: &SubscriptionContext,
-        listener_id: ListenerId,
-    ) -> Result<MutationOutcome> {
-        let outcome = self.apply_mutation(mutation, policies, context, listener_id)?.apply_to(self);
+    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies, context: &SubscriptionContext) -> Result<MutationOutcome> {
+        let outcome = self.apply_mutation(self, mutation, policies, context)?.apply_to(self);
         Ok(outcome)
     }
 }

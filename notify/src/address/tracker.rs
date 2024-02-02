@@ -15,6 +15,8 @@ pub trait Indexer {
     fn contains(&self, index: Index) -> bool;
     fn insert(&self, index: Index) -> bool;
     fn remove(&self, index: Index) -> bool;
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool;
 }
 
 pub type Index = u32;
@@ -53,16 +55,16 @@ impl CounterMap {
         Self(RwLock::new(counters.into_iter().map(|x| (x.index, x.count)).collect()))
     }
 
+    pub fn inner(&self) -> CounterMapReadGuard<'_, Index, RefCount> {
+        CounterMapReadGuard { guard: self.0.read() }
+    }
+
     pub fn len(&self) -> usize {
         self.0.read().len()
     }
 
     pub fn is_empty(&self) -> bool {
         self.0.read().is_empty()
-    }
-
-    pub fn inner(&self) -> CounterMapReadGuard<'_, Index, RefCount> {
-        CounterMapReadGuard { guard: self.0.read() }
     }
 }
 
@@ -106,6 +108,14 @@ impl Indexer for CounterMap {
             }
         });
         result
+    }
+
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
     }
 }
 
@@ -251,16 +261,16 @@ impl IndexSet {
         Self(RwLock::new(HashSet::with_capacity(capacity)))
     }
 
+    pub fn inner(&self) -> IndexSetReadGuard<'_, Index> {
+        IndexSetReadGuard { guard: self.0.read() }
+    }
+
     pub fn len(&self) -> usize {
         self.0.read().len()
     }
 
     pub fn is_empty(&self) -> bool {
         self.0.read().is_empty()
-    }
-
-    pub fn inner(&self) -> IndexSetReadGuard<'_, Index> {
-        IndexSetReadGuard { guard: self.0.read() }
     }
 }
 
@@ -288,6 +298,14 @@ impl Indexer for IndexSet {
 
     fn remove(&self, index: Index) -> bool {
         self.0.write().remove(&index)
+    }
+
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
     }
 }
 
@@ -552,14 +570,16 @@ impl Tracker {
 
     pub fn unregister<T: Indexer>(&self, indexes: &T, addresses: &[Address]) -> Vec<Address> {
         let mut removed = Vec::with_capacity(addresses.len());
-        for chunk in addresses.chunks(Self::ADDRESS_CHUNK_SIZE) {
-            let mut inner = self.inner.write();
-            for address in chunk {
-                let spk = pay_to_address_script(address);
-                if let Some((index, _)) = inner.get(&spk) {
-                    if indexes.remove(index) {
-                        removed.push(address.clone());
-                        inner.dec_count(index);
+        if !indexes.is_empty() {
+            for chunk in addresses.chunks(Self::ADDRESS_CHUNK_SIZE) {
+                let mut inner = self.inner.write();
+                for address in chunk {
+                    let spk = pay_to_address_script(address);
+                    if let Some((index, _)) = inner.get(&spk) {
+                        if indexes.remove(index) {
+                            removed.push(address.clone());
+                            inner.dec_count(index);
+                        }
                     }
                 }
             }
@@ -568,9 +588,9 @@ impl Tracker {
     }
 
     pub fn unregister_indexes(&self, indexes: &Indexes) {
-        for chunk in &indexes.inner().iter().chunks(Self::ADDRESS_CHUNK_SIZE) {
+        for chunk in &indexes.0.write().drain().chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
-            chunk.for_each(|index| inner.dec_count(*index));
+            chunk.for_each(|index| inner.dec_count(index));
         }
     }
 
