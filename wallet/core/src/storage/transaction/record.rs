@@ -11,6 +11,34 @@ use workflow_core::time::{unixtime_as_millis_u64, unixtime_to_locale_string};
 pub use kaspa_consensus_core::tx::TransactionId;
 use zeroize::Zeroize;
 
+#[wasm_bindgen(typescript_custom_section)]
+const ITransactionRecord: &'static str = r#"
+
+interface ITransactionData {
+    [key: string]: any;
+}
+
+interface ITransactionRecord {
+    id: string;
+    unixtimeMsec?: bigint;
+    value: bigint;
+    binding: string;
+    // binding: Binding;
+    blockDaaScore: bigint;
+    network: NetworkId;
+    data: ITransactionData;
+    note?: string;
+    metadata?: string;
+}
+"#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(extends = Object, typescript_type = "ITransactionRecord")]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub type ITransactionRecord;
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionRecord {
     pub id: TransactionId,
@@ -516,5 +544,17 @@ impl BorshDeserialize for TransactionRecord {
         let metadata = BorshDeserialize::deserialize(buf)?;
 
         Ok(Self { id, unixtime_msec: unixtime, value, binding, block_daa_score, network_id, transaction_data, note, metadata })
+    }
+}
+
+impl From<TransactionRecord> for JsValue {
+    fn from(record: TransactionRecord) -> Self {
+        serde_wasm_bindgen::to_value(&record).unwrap()
+    }
+}
+
+impl From<TransactionRecord> for ITransactionRecord {
+    fn from(record: TransactionRecord) -> Self {
+        JsValue::from(record).unchecked_into()
     }
 }

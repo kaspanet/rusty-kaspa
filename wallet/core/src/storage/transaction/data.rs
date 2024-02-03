@@ -11,7 +11,7 @@ pub use kaspa_consensus_core::tx::TransactionId;
 #[serde(tag = "type", content = "transaction")]
 // the reason the struct is renamed kebab-case and then
 // each field is renamed to camelCase is to force the
-// enum tags to be lower case.
+// enum tags to be lower-kebab-case.
 #[serde(rename_all = "kebab-case")]
 pub enum TransactionData {
     Reorg {

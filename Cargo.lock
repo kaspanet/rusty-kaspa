@@ -3110,6 +3110,7 @@ dependencies = [
  "cfb-mode",
  "cfg-if 1.0.0",
  "chacha20poly1305",
+ "convert_case 0.6.0",
  "dashmap",
  "derivative",
  "downcast",

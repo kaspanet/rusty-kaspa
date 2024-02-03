@@ -5,7 +5,9 @@
 use crate::derivation::AddressDerivationMeta;
 use crate::imports::*;
 use borsh::{BorshDeserialize, BorshSerialize};
+use convert_case::{Case, Casing};
 use kaspa_addresses::Address;
+use kaspa_wallet_macros::declare_wasm_interface as declare;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -71,6 +73,33 @@ pub enum AccountDescriptorValue {
     AddressDerivationMeta(AddressDerivationMeta),
     XPubKeys(ExtendedPublicKeys),
     Json(String),
+}
+
+impl TryFrom<AccountDescriptorValue> for JsValue {
+    type Error = Error;
+    fn try_from(value: AccountDescriptorValue) -> Result<Self> {
+        let js_value = match value {
+            AccountDescriptorValue::U64(value) => BigInt::from(value).into(),
+            AccountDescriptorValue::String(value) => JsValue::from(value),
+            AccountDescriptorValue::Bool(value) => JsValue::from(value),
+            AccountDescriptorValue::AddressDerivationMeta(value) => {
+                let object = Object::new();
+                object.set("receive", &value.receive().into())?;
+                object.set("change", &value.change().into())?;
+                object.into()
+            }
+            AccountDescriptorValue::XPubKeys(value) => {
+                let array = Array::new();
+                for xpub in value.iter() {
+                    array.push(&JsValue::from(xpub.to_string(None)));
+                }
+                array.into()
+            }
+            AccountDescriptorValue::Json(value) => JsValue::from(value),
+        };
+
+        Ok(js_value)
+    }
 }
 
 impl std::fmt::Display for AccountDescriptorValue {
@@ -177,5 +206,37 @@ impl AccountDescriptor {
 
     pub fn receive_address(&self) -> &Option<Address> {
         &self.receive_address
+    }
+}
+
+declare! {
+    IAccountDescriptor,
+    r#"
+    export interface IAccountDescriptor {
+        [key: string]: any
+    "#,
+}
+
+impl TryFrom<AccountDescriptor> for IAccountDescriptor {
+    type Error = Error;
+    fn try_from(descriptor: AccountDescriptor) -> Result<Self> {
+        let object = IAccountDescriptor::default();
+
+        object.set("kind", &descriptor.kind.into())?;
+        object.set("accountId", &descriptor.account_id.into())?;
+        object.set("accountName", &descriptor.account_name.into())?;
+        object.set("receiveAddress", &descriptor.receive_address.into())?;
+        object.set("changeAddress", &descriptor.change_address.into())?;
+
+        let prv_key_data_ids = js_sys::Array::from_iter(descriptor.prv_key_data_ids.into_iter().map(JsValue::from));
+        object.set("prvKeyDataIds", &prv_key_data_ids)?;
+
+        // let properties = Object::new();
+        for (property, value) in descriptor.properties {
+            let ident = property.to_string().to_case(Case::Camel);
+            object.set(&ident, &value.try_into()?)?;
+        }
+
+        Ok(object)
     }
 }

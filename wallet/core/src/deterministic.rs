@@ -65,6 +65,12 @@ impl TryFrom<&JsValue> for AccountId {
     }
 }
 
+impl From<AccountId> for JsValue {
+    fn from(value: AccountId) -> Self {
+        JsValue::from(value.to_hex())
+    }
+}
+
 impl std::fmt::Display for AccountId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)

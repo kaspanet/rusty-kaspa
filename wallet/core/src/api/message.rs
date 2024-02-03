@@ -82,7 +82,7 @@ pub struct WalletEnumerateRequest {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletEnumerateResponse {
-    pub wallet_list: Vec<WalletDescriptor>,
+    pub wallet_descriptors: Vec<WalletDescriptor>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -240,7 +240,7 @@ pub struct AccountsEnumerateRequest {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsEnumerateResponse {
-    pub descriptor_list: Vec<AccountDescriptor>,
+    pub account_descriptors: Vec<AccountDescriptor>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -328,14 +328,26 @@ pub struct AccountsGetRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsGetResponse {
-    pub descriptor: AccountDescriptor,
+    pub account_descriptor: AccountDescriptor,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
+#[wasm_bindgen]
 pub enum NewAddressKind {
     Receive,
     Change,
+}
+
+impl FromStr for NewAddressKind {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "receive" => Ok(Self::Receive),
+            "change" => Ok(Self::Change),
+            _ => Err(Error::custom(format!("Invalid address kind: {s}"))),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

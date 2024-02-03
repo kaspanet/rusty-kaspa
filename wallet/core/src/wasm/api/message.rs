@@ -1,8 +1,13 @@
 #![allow(non_snake_case)]
 
 use super::extensions::*;
+use crate::account::descriptor::IAccountDescriptor;
 use crate::api::message::*;
 use crate::imports::*;
+use crate::tx::{PaymentDestination, PaymentOutputs};
+use crate::wasm::tx::fees::IFees;
+use js_sys::Array;
+// use wasm_bindgen::convert::TryFromJsValue;
 // use crate::tx::{Fees, GeneratorSummary, PaymentDestination};
 // use kaspa_addresses::Address;
 // use wasm_bindgen::prelude::*;
@@ -44,7 +49,7 @@ declare! {
     IPingRequest,
     r#"
     export interface IPingRequest {
-        message: string | undefined,
+        message?: string;
     "#,
 }
 
@@ -57,7 +62,7 @@ declare! {
     IPingResponse,
     r#"
     export interface IPingResponse {
-        message: string | undefined,
+        message?: string;
     }
     "#,
 }
@@ -101,7 +106,7 @@ declare! {
     IFlushRequest,
     r#"
     export interface IFlushRequest {
-        walletSecret : string,
+        walletSecret : string;
     }
     "#,
 }
@@ -129,8 +134,8 @@ declare! {
     IConnectRequest,
     r#"
     export interface IConnectRequest {
-        url : string,
-        networkId : NetworkId | string,
+        url : string;
+        networkId : NetworkId | string;
     }
     "#,
 }
@@ -195,11 +200,11 @@ declare! {
     IGetStatusResponse,
     r#"
     export interface IGetStatusResponse {
-        isConnected : boolean,
-        isSynced : boolean,
-        isOpen : boolean,
-        url : string | undefined,
-        networkId : NetworkId | undefined,
+        isConnected : boolean;
+        isSynced : boolean;
+        isOpen : boolean;
+        url? : string;
+        networkId? : NetworkId;
     }
     "#,
 }
@@ -236,17 +241,16 @@ declare! {
     IWalletEnumerateResponse,
     r#"
     export interface IWalletEnumerateResponse {
-        // walletDescriptors: string[],
+        walletDescriptors: WalletDescriptor[];
     }
     "#,
 }
 
-// TODO
-try_from! ( _args: WalletEnumerateResponse, IWalletEnumerateResponse, {
-    todo!();
-    // let response = IWalletEnumerateResponse::default();
-    // // response.set("walletDescriptors", &JsValue::from_serde(&args.wallet_descriptors)?)?;
-    // Ok(response)
+try_from! ( args: WalletEnumerateResponse, IWalletEnumerateResponse, {
+    let response = IWalletEnumerateResponse::default();
+    let wallet_descriptors = Array::from_iter(args.wallet_descriptors.into_iter().map(JsValue::from));
+    response.set("walletDescriptors", &JsValue::from(&wallet_descriptors))?;
+    Ok(response)
 });
 
 // ---
@@ -294,9 +298,9 @@ declare! {
     IWalletOpenRequest,
     r#"
     export interface IWalletOpenRequest {
-        walletSecret: string,
-        walletFilename: string | undefined,
-        accountDescriptors: boolean,
+        walletSecret: string;
+        walletFilename?: string;
+        accountDescriptors: boolean;
     }
     "#,
 }
@@ -313,17 +317,17 @@ declare! {
     IWalletOpenResponse,
     r#"
     export interface IWalletOpenResponse {
-        accountDescriptors: IAccountDescriptor[],
+        accountDescriptors: IAccountDescriptor[];
     }
     "#  
 }
 
-try_from!(_args: WalletOpenResponse, IWalletOpenResponse, {
+try_from!(args: WalletOpenResponse, IWalletOpenResponse, {
     let response = IWalletOpenResponse::default();
-
-    // TODO - declare IAccountDescriptor
-    // set accountDescriptors property as array...
-
+    if let Some(account_descriptors) = args.account_descriptors {
+        let account_descriptors = account_descriptors.into_iter().map(IAccountDescriptor::try_from).collect::<Result<Vec<IAccountDescriptor>>>()?;
+        response.set("accountDescriptors", &Array::from_iter(account_descriptors.into_iter()))?;
+    }
     Ok(response)
 });
 
@@ -384,8 +388,8 @@ declare! {
     IWalletChangeSecretRequest,
     r#"
     export interface IWalletChangeSecretRequest {
-        oldWalletSecret: string,
-        newWalletSecret: string,
+        oldWalletSecret: string;
+        newWalletSecret: string;
     }
     "#,
 }
@@ -414,8 +418,8 @@ declare! {
     IWalletExportRequest,
     r#"
     export interface IWalletExportRequest {
-        walletSecret: string,
-        includeTransactions: bool,
+        walletSecret: string;
+        includeTransactions: bool;
     }
     "#,
 }
@@ -430,7 +434,7 @@ declare! {
     IWalletExportResponse,
     r#"
     export interface IWalletExportResponse {
-        walletData: string,
+        walletData: string;
     }
     "#,
 }
@@ -448,8 +452,8 @@ declare! {
     IWalletImportRequest,
     r#"
     export interface IWalletImportRequest {
-        walletSecret: string,
-        walletData: string,
+        walletSecret: string;
+        walletData: string;
     }
     "#,
 }
@@ -511,8 +515,8 @@ declare! {
     IPrvKeyDataCreateRequest,
     r#"
     export interface IPrvKeyDataCreateRequest {
-        walletSecret: string,
-        // prvKeyDataArgs: PrvKeyDataArgs,
+        walletSecret: string;
+        // prvKeyDataArgs: PrvKeyDataArgs;
     }
     "#,
 }
@@ -547,8 +551,8 @@ declare! {
     IPrvKeyDataRemoveRequest,
     r#"
     export interface IPrvKeyDataRemoveRequest {
-        walletSecret: string,
-        prvKeyDataId: string,
+        walletSecret: string;
+        prvKeyDataId: string;
     }
     "#,
 }
@@ -577,8 +581,8 @@ declare! {
     IPrvKeyDataGetRequest,
     r#"
     export interface IPrvKeyDataGetRequest {
-        walletSecret: string,
-        prvKeyDataId: string,
+        walletSecret: string;
+        prvKeyDataId: string;
     }
     "#,
 }
@@ -622,16 +626,17 @@ declare! {
     IAccountsEnumerateResponse,
     r#"
     export interface IAccountsEnumerateResponse {
-        // accountDescriptors: AccountDescriptor[],
+        accountDescriptors: IAccountDescriptor[];
     }
     "#,
 }
 
 // TODO
-try_from! ( _args: AccountsEnumerateResponse, IAccountsEnumerateResponse, {
-    todo!();
-    // let response = IAccountsEnumerateResponse::default();
-    // Ok(response)
+try_from! ( args: AccountsEnumerateResponse, IAccountsEnumerateResponse, {
+    let response = IAccountsEnumerateResponse::default();
+    let account_descriptors = args.account_descriptors.into_iter().map(IAccountDescriptor::try_from).collect::<Result<Vec<IAccountDescriptor>>>()?;
+    response.set("accountDescriptors", &Array::from_iter(account_descriptors.into_iter()))?;
+    Ok(response)
 });
 
 // ---
@@ -640,9 +645,9 @@ declare! {
     IAccountsRenameRequest,
     r#"
     export interface IAccountsRenameRequest {
-        accountId: string,
-        name: string | undefined,
-        walletSecret: string,
+        accountId: string;
+        name?: string;
+        walletSecret: string;
     }
     "#,
 }
@@ -706,7 +711,7 @@ declare! {
     IAccountsCreateRequest,
     r#"
     export interface IAccountsCreateRequest {
-        walletSecret: string,
+        walletSecret: string;
         // accountKind: AccountKind | string,
     }
     "#,
@@ -724,15 +729,15 @@ declare! {
     IAccountsCreateResponse,
     r#"
     export interface IAccountsCreateResponse {
-        // accountDescriptor : IAccountDescriptor
+        accountDescriptor : IAccountDescriptor;
     }
     "#,
 
 }
 
-try_from!(_args: AccountsCreateResponse, IAccountsCreateResponse, {
+try_from!(args: AccountsCreateResponse, IAccountsCreateResponse, {
     let response = IAccountsCreateResponse::default();
-    // response.set("accountId", &JsValue::from_str(&args.account_id.to_string()))?;
+    response.set("accountDescriptor", &IAccountDescriptor::try_from(args.account_descriptor)?.into())?;
     Ok(response)
 });
 
@@ -742,7 +747,7 @@ declare! {
     IAccountsImportRequest,
     r#"
     export interface IAccountsImportRequest {
-        walletSecret: string,
+        walletSecret: string;
         // TODO
     }
     "#,
@@ -772,10 +777,10 @@ try_from! ( _args: AccountsImportResponse, IAccountsImportResponse, {
 
 declare! {
     IAccountsActivateRequest,
-    "IAccountsActivateRequest | undefined",
+    "IAccountsActivateRequest?",
     r#"
     export interface IAccountsActivateRequest {
-        accountIds: string[] | undefined,
+        accountIds?: string[],
     }
     "#,
 }
@@ -802,10 +807,10 @@ try_from! ( _args: AccountsActivateResponse, IAccountsActivateResponse, {
 
 declare! {
     IAccountsDeactivateRequest,
-    "IAccountsDeactivateRequest | undefined",
+    "IAccountsDeactivateRequest?",
     r#"
     export interface IAccountsDeactivateRequest {
-        accountIds: string[] | undefined,
+        accountIds?: string[];
     }
     "#,
 }
@@ -834,7 +839,7 @@ declare! {
     IAccountsGetRequest,
     r#"
     export interface IAccountsGetRequest {
-        accountId: string,
+        accountId: string;
     }
     "#,
 }
@@ -850,16 +855,16 @@ declare! {
     IAccountsGetResponse,
     r#"
     export interface IAccountsGetResponse {
-        accountDescriptor: IAccountDescriptor,
+        accountDescriptor: IAccountDescriptor;
     }
     "#,
 }
 
 // TODO
-try_from! ( _args: AccountsGetResponse, IAccountsGetResponse, {
-    todo!();
-    // let response = IAccountsGetResponse::default();
-    // Ok(response)
+try_from! ( args: AccountsGetResponse, IAccountsGetResponse, {
+    let response = IAccountsGetResponse::default();
+    response.set("accountDescriptor", &IAccountDescriptor::try_from(args.account_descriptor)?.into())?;
+    Ok(response)
 });
 
 // ---
@@ -868,23 +873,30 @@ declare! {
     IAccountsCreateNewAddressRequest,
     r#"
     export interface IAccountCreateNewAddressRequest {
-        accountId: string,
-        // TODO addressKind (change, receive)
+        accountId: string;
+        addressKind?: NewAddressKind | string,
     }
     "#,
 }
 
-try_from!(_args: IAccountsCreateNewAddressRequest, AccountsCreateNewAddressRequest, {
-    todo!();
-    // let account_id = args.get_account_id("accountId")?;
-    // Ok(AccountCreateNewAddressRequest { account_id })
+try_from!(args: IAccountsCreateNewAddressRequest, AccountsCreateNewAddressRequest, {
+    let account_id = args.get_account_id("accountId")?;
+    let value = args.get_value("addressKind")?;
+    let kind: NewAddressKind = if let Some(string) = value.as_string() {
+        string.parse()?
+    } else if let Ok(kind) = NewAddressKind::try_from_js_value(value) {
+        kind
+    } else {
+        NewAddressKind::Receive
+    };
+    Ok(AccountsCreateNewAddressRequest { account_id, kind })
 });
 
 declare! {
     IAccountsCreateNewAddressResponse,
     r#"
     export interface IAccountsCreateNewAddressResponse {
-        address: Address,
+        address: Address;
     }
     "#,
 }
@@ -901,14 +913,29 @@ declare! {
     IAccountsSendRequest,
     r#"
     export interface IAccountSendRequest {
-        // TODO
+        accountId : string;
+        walletSecret : string;
+        paymentSecret? : string;
+        priorityFeeSompi? : bigint;
+        payload? : Uint8Array | string;
+        // TODO destination interface
+        destination? : [[Address, bigint]];
     }
     "#,
 }
 
-try_from! ( _args: IAccountsSendRequest, AccountsSendRequest, {
-    todo!();
-    // Ok(AccountSendRequest { })
+try_from! ( args: IAccountsSendRequest, AccountsSendRequest, {
+    let account_id = args.get_account_id("accountId")?;
+    let wallet_secret = args.get_secret("walletSecret")?;
+    let payment_secret = args.try_get_secret("paymentSecret")?;
+    let priority_fee_sompi = args.get::<IFees>("priorityFeeSompi")?.try_into()?;
+    let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
+
+    let outputs = args.get_value("destination")?;
+    let destination: PaymentDestination =
+        if outputs.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_from(outputs)?.into() };
+
+    Ok(AccountsSendRequest { account_id, wallet_secret, payment_secret, priority_fee_sompi, destination, payload })
 });
 
 declare! {

@@ -3,19 +3,21 @@ use crate::result::Result;
 use crate::tx::{generator as native, Fees, PaymentDestination, PaymentOutputs};
 use crate::utxo::{TryIntoUtxoEntryReferences, UtxoEntryReference};
 use crate::wasm::tx::generator::*;
+use crate::wasm::tx::IFees;
 use crate::wasm::wallet::Account;
 use crate::wasm::UtxoContext;
 
+// TODO-WASM fix outputs
 #[wasm_bindgen(typescript_custom_section)]
 const IGeneratorSettingsObject: &'static str = r#"
 interface IGeneratorSettingsObject {
     outputs: PaymentOutputs | Array<Array<number | string>>;
     changeAddress: Address | string;
-    priorityFee: bigint;
+    priorityFee?: bigint;
     utxoEntries: Array<UtxoEntryReference>;
-    sigOpCount: Uint8Array;
-    minimumSignatures: Uint16Array;
-    payload: Uint8Array | string;
+    sigOpCount?: number;
+    minimumSignatures?: number;
+    payload?: Uint8Array | string;
 }
 "#;
 
@@ -195,7 +197,7 @@ impl TryFrom<GeneratorSettingsObject> for GeneratorSettings {
 
         let change_address = args.try_get::<Address>("changeAddress")?; //.ok_or(Error::custom("changeAddress is required"))?;
 
-        let final_priority_fee = args.get::<Fees>("priorityFee")?;
+        let final_priority_fee = args.get::<IFees>("priorityFee")?.try_into()?;
 
         let generator_source = if let Some(utxo_entries) = args.try_get_value("entries")? {
             GeneratorSource::UtxoEntries(utxo_entries.try_into_utxo_entry_references()?)

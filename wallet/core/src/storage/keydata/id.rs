@@ -42,6 +42,12 @@ impl TryFrom<&JsValue> for KeyDataId {
     }
 }
 
+impl From<KeyDataId> for JsValue {
+    fn from(value: KeyDataId) -> Self {
+        JsValue::from(value.to_hex())
+    }
+}
+
 impl std::fmt::Debug for KeyDataId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "KeyDataId ({})", self.0.as_slice().to_hex())

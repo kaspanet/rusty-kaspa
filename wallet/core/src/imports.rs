@@ -48,6 +48,7 @@ pub use std::str::FromStr;
 pub use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 pub use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 pub use std::task::{Context, Poll};
+pub use wasm_bindgen::convert::TryFromJsValue;
 pub use wasm_bindgen::prelude::*;
 pub use workflow_core::prelude::*;
 pub use workflow_core::seal;

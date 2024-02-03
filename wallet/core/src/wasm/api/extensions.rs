@@ -3,6 +3,7 @@ use js_sys::Object;
 
 pub trait WalletApiObjectExtension {
     fn get_secret(&self, key: &str) -> Result<Secret>;
+    fn try_get_secret(&self, key: &str) -> Result<Option<Secret>>;
     fn get_network_id(&self, key: &str) -> Result<NetworkId>;
     fn get_prv_key_data_id(&self, key: &str) -> Result<PrvKeyDataId>;
     fn get_account_id(&self, key: &str) -> Result<AccountId>;
@@ -16,6 +17,19 @@ impl WalletApiObjectExtension for Object {
             Err(Error::SecretIsEmpty(key.to_string()))
         } else {
             Ok(Secret::from(string))
+        }
+    }
+
+    fn try_get_secret(&self, key: &str) -> Result<Option<Secret>> {
+        let string = self.try_get_value(key)?.and_then(|value| value.as_string());
+        if let Some(string) = string {
+            if string.is_empty() {
+                Err(Error::SecretIsEmpty(key.to_string()))
+            } else {
+                Ok(Some(Secret::from(string)))
+            }
+        } else {
+            Ok(None)
         }
     }
 

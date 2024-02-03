@@ -81,8 +81,8 @@ impl WalletApi for super::Wallet {
     }
 
     async fn wallet_enumerate_call(self: Arc<Self>, _request: WalletEnumerateRequest) -> Result<WalletEnumerateResponse> {
-        let wallet_list = self.store().wallet_list().await?;
-        Ok(WalletEnumerateResponse { wallet_list })
+        let wallet_descriptors = self.store().wallet_list().await?;
+        Ok(WalletEnumerateResponse { wallet_descriptors })
     }
 
     async fn wallet_create_call(self: Arc<Self>, request: WalletCreateRequest) -> Result<WalletCreateResponse> {
@@ -181,9 +181,9 @@ impl WalletApi for super::Wallet {
 
     async fn accounts_enumerate_call(self: Arc<Self>, _request: AccountsEnumerateRequest) -> Result<AccountsEnumerateResponse> {
         let account_list = self.accounts(None).await?.try_collect::<Vec<_>>().await?;
-        let descriptor_list = account_list.iter().map(|account| account.descriptor().unwrap()).collect::<Vec<_>>();
+        let account_descriptors = account_list.iter().map(|account| account.descriptor().unwrap()).collect::<Vec<_>>();
 
-        Ok(AccountsEnumerateResponse { descriptor_list })
+        Ok(AccountsEnumerateResponse { account_descriptors })
     }
 
     async fn accounts_activate_call(self: Arc<Self>, request: AccountsActivateRequest) -> Result<AccountsActivateResponse> {
@@ -229,8 +229,8 @@ impl WalletApi for super::Wallet {
     async fn accounts_get_call(self: Arc<Self>, request: AccountsGetRequest) -> Result<AccountsGetResponse> {
         let AccountsGetRequest { account_id } = request;
         let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
-        let descriptor = account.descriptor().unwrap();
-        Ok(AccountsGetResponse { descriptor })
+        let account_descriptor = account.descriptor().unwrap();
+        Ok(AccountsGetResponse { account_descriptor })
     }
 
     async fn accounts_create_new_address_call(
