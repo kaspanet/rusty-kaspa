@@ -16,6 +16,7 @@ declare! {
     export interface IFees {
         amount: bigint;
         source?: FeeSource;
+    }
     "#,
 }
 

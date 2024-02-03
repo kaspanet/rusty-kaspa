@@ -53,6 +53,7 @@
 
 extern crate alloc;
 extern crate self as kaspa_wallet_core;
+use wasm_bindgen::prelude::*;
 
 pub mod account;
 pub mod api;
@@ -79,6 +80,7 @@ pub mod wallet;
 pub mod wasm;
 
 /// Returns the version of the Wallet framework.
+#[wasm_bindgen]
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }

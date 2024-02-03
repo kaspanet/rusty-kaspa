@@ -214,6 +214,7 @@ declare! {
     r#"
     export interface IAccountDescriptor {
         [key: string]: any
+    }
     "#,
 }
 

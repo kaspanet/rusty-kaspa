@@ -50,6 +50,7 @@ declare! {
     r#"
     export interface IPingRequest {
         message?: string;
+    }
     "#,
 }
 
