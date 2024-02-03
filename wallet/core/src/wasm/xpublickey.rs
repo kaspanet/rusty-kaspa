@@ -1,6 +1,7 @@
 use crate::derivation::gen1::WalletDerivationManager;
 use crate::derivation::traits::WalletDerivationManagerTrait;
 use crate::result::Result;
+use crate::wasm::utils::*;
 use kaspa_bip32::ExtendedPublicKey;
 use kaspa_bip32::{ExtendedPrivateKey, SecretKey};
 use std::str::FromStr;
@@ -36,23 +37,23 @@ impl XPublicKey {
     }
 
     #[wasm_bindgen(js_name=receivePubkeys)]
-    pub async fn receive_pubkeys(&self, mut start: u32, mut end: u32) -> Result<JsValue> {
+    pub async fn receive_pubkeys(&self, mut start: u32, mut end: u32) -> Result<StringArray> {
         if start > end {
             (start, end) = (end, start);
         }
         let pubkeys = self.hd_wallet.receive_pubkey_manager().derive_pubkey_range(start..end)?;
         let pubkeys = to_value(&pubkeys)?;
-        Ok(pubkeys)
+        Ok(pubkeys.into())
     }
 
     #[wasm_bindgen(js_name=changePubkeys)]
-    pub async fn change_pubkeys(&self, mut start: u32, mut end: u32) -> Result<JsValue> {
+    pub async fn change_pubkeys(&self, mut start: u32, mut end: u32) -> Result<StringArray> {
         if start > end {
             (start, end) = (end, start);
         }
         let pubkeys = self.hd_wallet.change_pubkey_manager().derive_pubkey_range(start..end)?;
         let pubkeys = to_value(&pubkeys)?;
 
-        Ok(pubkeys)
+        Ok(pubkeys.into())
     }
 }

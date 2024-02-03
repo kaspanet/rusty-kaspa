@@ -2,6 +2,12 @@ use crate::result::Result;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::prelude::*;
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "Array<string>")]
+    pub type StringArray;
+}
+
 #[wasm_bindgen(js_name = "sompiToKaspa")]
 pub fn sompi_to_kaspa(sompi: JsValue) -> Result<f64> {
     let sompi = sompi.try_as_u64()?;
