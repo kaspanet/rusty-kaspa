@@ -1,9 +1,9 @@
 use crate::derivation::gen1::WalletDerivationManager;
 use crate::derivation::traits::WalletDerivationManagerTrait;
 use crate::result::Result;
-use crate::wasm::utils::*;
 use kaspa_bip32::ExtendedPublicKey;
 use kaspa_bip32::{ExtendedPrivateKey, SecretKey};
+use kaspa_consensus_wasm::StringArray;
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::serde::to_value;

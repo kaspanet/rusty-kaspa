@@ -9,6 +9,7 @@ pub mod signable;
 pub mod signer;
 pub mod transaction;
 pub mod txscript;
+pub mod types;
 pub mod utils;
 pub mod utxo;
 
@@ -20,5 +21,6 @@ pub use signable::*;
 pub use signer::*;
 pub use transaction::*;
 pub use txscript::*;
+pub use types::*;
 pub use utils::*;
 pub use utxo::*;
