@@ -57,6 +57,7 @@ impl From<&consensus_notify::VirtualChainChangedNotification> for VirtualChainCh
                         accepting_block_hash: hash.to_owned(),
                         // We collect accepted tx ids from all mergeset blocks
                         accepted_transaction_ids: acceptance_data
+                            .mergesets
                             .iter()
                             .flat_map(|x| x.accepted_transactions.iter().map(|tx| tx.transaction_id))
                             .collect(),

@@ -1069,7 +1069,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
     // through the reachability iterator
     assert_selected_chain_store_matches_virtual_chain(&tc);
     let virtual_utxos: HashSet<TransactionOutpoint> =
-        HashSet::from_iter(tc.get_virtual_utxos(None, usize::MAX, false).into_iter().map(|(outpoint, _)| outpoint));
+        HashSet::from_iter(tc.get_virtual_utxos(None, None, usize::MAX, false).into_iter().map(|(outpoint, _)| outpoint));
     let utxoindex_utxos = utxoindex.read().get_all_outpoints().unwrap();
     assert_eq!(virtual_utxos.len(), utxoindex_utxos.len());
     assert!(virtual_utxos.is_subset(&utxoindex_utxos));

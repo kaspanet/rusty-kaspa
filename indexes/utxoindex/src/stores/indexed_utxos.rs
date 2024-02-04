@@ -165,7 +165,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
         for script_public_key in script_public_keys.into_iter() {
             let script_public_key_bucket = ScriptPublicKeyBucket::from(&script_public_key);
             let utxos_by_script_public_keys_inner = CompactUtxoCollection::from_iter(
-                self.access.seek_iterator(Some(script_public_key_bucket.as_ref()), None, usize::MAX, false).map(|res| {
+                self.access.seek_iterator(Some(script_public_key_bucket.as_ref()), None, None, usize::MAX, false).map(|res| {
                     let (key, entry) = res.unwrap();
                     (TransactionOutpointKey(<[u8; TRANSACTION_OUTPOINT_KEY_SIZE]>::try_from(&key[..]).unwrap()).into(), entry)
                 }),
@@ -185,7 +185,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
             let script_public_key_bucket = ScriptPublicKeyBucket::from(&script_public_key);
             let balance: u64 = self
                 .access
-                .seek_iterator(Some(script_public_key_bucket.as_ref()), None, usize::MAX, false)
+                .seek_iterator(Some(script_public_key_bucket.as_ref()), None, None, usize::MAX, false)
                 .map(|res| {
                     entries_count += 1;
                     let (_, entry) = res.unwrap();
@@ -201,7 +201,7 @@ impl UtxoSetByScriptPublicKeyStoreReader for DbUtxoSetByScriptPublicKeyStore {
     // This can have a big memory footprint, so it should be used only for tests.
     fn get_all_outpoints(&self) -> StoreResult<HashSet<TransactionOutpoint>> {
         Ok(HashSet::from_iter(
-            self.access.iterator().map(|res| UtxoEntryFullAccessKey(Arc::new(res.unwrap().0.to_vec())).extract_outpoint()),
+            self.access.iterator(true).map(|res| UtxoEntryFullAccessKey(Arc::new(res.unwrap().0.to_vec())).extract_outpoint()),
         ))
     }
 }

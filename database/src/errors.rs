@@ -23,6 +23,12 @@ pub enum StoreError {
 
     #[error("bincode error {0}")]
     DeserializationError(#[from] Box<bincode::ErrorKind>),
+
+    #[error("invalid value length: expected {0}, got {1}")]
+    InvalidValueLength(usize, usize),
+
+    #[error("general error: {0}")]
+    General(String),
 }
 
 pub type StoreResult<T> = std::result::Result<T, StoreError>;

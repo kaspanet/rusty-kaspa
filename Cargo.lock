@@ -2909,6 +2909,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-scoreindex"
+version = "0.13.4"
+dependencies = [
+ "futures",
+ "kaspa-consensus",
+ "kaspa-consensus-core",
+ "kaspa-consensus-notify",
+ "kaspa-consensusmanager",
+ "kaspa-core",
+ "kaspa-database",
+ "kaspa-hashes",
+ "kaspa-index-core",
+ "kaspa-utils",
+ "log",
+ "parking_lot",
+ "rand 0.8.5",
+ "rocksdb",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "kaspa-testing-integration"
 version = "0.13.4"
 dependencies = [

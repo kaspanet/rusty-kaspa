@@ -621,11 +621,12 @@ impl ConsensusApi for Consensus {
     fn get_virtual_utxos(
         &self,
         from_outpoint: Option<TransactionOutpoint>,
+        to_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
         skip_first: bool,
     ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
         let virtual_stores = self.virtual_stores.read();
-        let iter = virtual_stores.utxo_set.seek_iterator(from_outpoint, chunk_size, skip_first);
+        let iter = virtual_stores.utxo_set.seek_iterator(from_outpoint, to_outpoint, chunk_size, skip_first);
         iter.map(|item| item.unwrap()).collect()
     }
 
@@ -641,6 +642,7 @@ impl ConsensusApi for Consensus {
         &self,
         expected_pruning_point: Hash,
         from_outpoint: Option<TransactionOutpoint>,
+        to_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
         skip_first: bool,
     ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
@@ -648,7 +650,7 @@ impl ConsensusApi for Consensus {
             return Err(ConsensusError::UnexpectedPruningPoint);
         }
         let pruning_utxoset_read = self.pruning_utxoset_stores.read();
-        let iter = pruning_utxoset_read.utxo_set.seek_iterator(from_outpoint, chunk_size, skip_first);
+        let iter = pruning_utxoset_read.utxo_set.seek_iterator(from_outpoint, to_outpoint, chunk_size, skip_first);
         let utxos = iter.map(|item| item.unwrap()).collect();
         drop(pruning_utxoset_read);
 

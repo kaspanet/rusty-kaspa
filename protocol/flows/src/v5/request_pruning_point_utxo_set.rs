@@ -53,7 +53,7 @@ impl RequestPruningPointUtxoSetFlow {
         loop {
             // We avoid keeping the consensus session across the limitless dequeue call below
             let pruning_point_utxos =
-                match session.async_get_pruning_point_utxos(expected_pp, from_outpoint, CHUNK_SIZE, chunks_sent != 0).await {
+                match session.async_get_pruning_point_utxos(expected_pp, from_outpoint, None, CHUNK_SIZE, chunks_sent != 0).await {
                     Err(ConsensusError::UnexpectedPruningPoint) => return self.send_unexpected_pruning_point_message().await,
                     res => res,
                 }?;

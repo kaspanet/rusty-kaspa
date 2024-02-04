@@ -166,6 +166,7 @@ pub trait ConsensusApi: Send + Sync {
     fn get_virtual_utxos(
         &self,
         from_outpoint: Option<TransactionOutpoint>,
+        to_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
         skip_first: bool,
     ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
@@ -295,6 +296,7 @@ pub trait ConsensusApi: Send + Sync {
         &self,
         expected_pruning_point: Hash,
         from_outpoint: Option<TransactionOutpoint>,
+        to_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
         skip_first: bool,
     ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {

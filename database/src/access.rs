@@ -2,9 +2,14 @@ use crate::{cache::CachePolicy, db::DB, errors::StoreError};
 
 use super::prelude::{Cache, DbKey, DbWriter};
 use kaspa_utils::mem_size::MemSizeEstimator;
-use rocksdb::{Direction, IterateBounds, IteratorMode, ReadOptions};
+use rocksdb::{IterateBounds, IteratorMode, ReadOptions};
 use serde::{de::DeserializeOwned, Serialize};
-use std::{collections::hash_map::RandomState, error::Error, hash::BuildHasher, sync::Arc};
+use std::{
+    collections::hash_map::RandomState,
+    error::Error,
+    hash::BuildHasher,
+    sync::Arc,
+};
 
 /// A concurrent DB store access with typed caching.
 #[derive(Clone)]
@@ -65,7 +70,7 @@ where
         }
     }
 
-    pub fn iterator(&self) -> impl Iterator<Item = Result<(Box<[u8]>, TData), Box<dyn Error>>> + '_
+    pub fn iterator(&self, reverse: bool) -> impl Iterator<Item = Result<(Box<[u8]>, TData), Box<dyn Error>>> + '_
     where
         TKey: Clone + AsRef<[u8]>,
         TData: DeserializeOwned, // We need `DeserializeOwned` since the slice coming from `db.get_pinned` has short lifetime
@@ -73,7 +78,7 @@ where
         let prefix_key = DbKey::prefix_only(&self.prefix);
         let mut read_opts = ReadOptions::default();
         read_opts.set_iterate_range(rocksdb::PrefixRange(prefix_key.as_ref()));
-        self.db.iterator_opt(IteratorMode::From(prefix_key.as_ref(), Direction::Forward), read_opts).map(move |iter_result| {
+        self.db.iterator_opt(if reverse { IteratorMode::End } else { IteratorMode::Start }, read_opts).map(move |iter_result| {
             match iter_result {
                 Ok((key, data_bytes)) => match bincode::deserialize(&data_bytes) {
                     Ok(data) => Ok((key[prefix_key.prefix_len()..].into(), data)),
@@ -170,7 +175,8 @@ where
     pub fn seek_iterator(
         &self,
         bucket: Option<&[u8]>,   // iter self.prefix if None, else append bytes to self.prefix.
-        seek_from: Option<TKey>, // iter whole range if None
+        seek_from: Option<TKey>, // iter prefix -> seek_to, if None start of prefix range (Inclusive, if skip_first is false, else true)
+        seek_to: Option<TKey>,   // iter seek_from -> prefix or till end of prefix range, if Some it is Exclusive.
         limit: usize,            // amount to take.
         skip_first: bool,        // skips the first value, (useful in conjunction with the seek-key, as to not re-retrieve).
     ) -> impl Iterator<Item = Result<(Box<[u8]>, TData), Box<dyn Error>>> + '_
@@ -189,13 +195,14 @@ where
 
         let mut read_opts = ReadOptions::default();
         read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
+        if let Some(seek_from) = &seek_from {
+            read_opts.set_iterate_lower_bound(DbKey::new(&self.prefix, seek_from.clone()).as_ref());
+        }
+        if let Some(seek_to) = &seek_to {
+            read_opts.set_iterate_upper_bound(DbKey::new(&self.prefix, seek_to.clone()).as_ref());
+        }
 
-        let mut db_iterator = match seek_from {
-            Some(seek_key) => {
-                self.db.iterator_opt(IteratorMode::From(DbKey::new(&self.prefix, seek_key).as_ref(), Direction::Forward), read_opts)
-            }
-            None => self.db.iterator_opt(IteratorMode::Start, read_opts),
-        };
+        let mut db_iterator = self.db.iterator_opt(IteratorMode::Start, read_opts);
 
         if skip_first {
             db_iterator.next();
@@ -231,16 +238,16 @@ mod tests {
         let access = CachedDbAccess::<Hash, u64>::new(db.clone(), CachePolicy::Count(2), vec![1, 2]);
 
         access.write_many(DirectDbWriter::new(&db), &mut (0..16).map(|i| (i.into(), 2))).unwrap();
-        assert_eq!(16, access.iterator().count());
+        assert_eq!(16, access.iterator(true).count());
         access.delete_all(DirectDbWriter::new(&db)).unwrap();
-        assert_eq!(0, access.iterator().count());
+        assert_eq!(0, access.iterator(false).count());
 
         access.write_many(DirectDbWriter::new(&db), &mut (0..16).map(|i| (i.into(), 2))).unwrap();
-        assert_eq!(16, access.iterator().count());
+        assert_eq!(16, access.iterator(false).count());
         let mut batch = WriteBatch::default();
         access.delete_all(BatchDbWriter::new(&mut batch)).unwrap();
-        assert_eq!(16, access.iterator().count());
+        assert_eq!(16, access.iterator(true).count());
         db.write(batch).unwrap();
-        assert_eq!(0, access.iterator().count());
+        assert_eq!(0, access.iterator(true).count());
     }
 }

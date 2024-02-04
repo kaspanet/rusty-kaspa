@@ -181,7 +181,7 @@ impl MultiConsensusManagementStore {
     }
 
     fn iterator(&self) -> impl Iterator<Item = Result<ConsensusEntry, Box<dyn Error>>> + '_ {
-        self.entries.iterator().map(|iter_result| match iter_result {
+        self.entries.iterator(true).map(|iter_result| match iter_result {
             Ok((_, entry)) => Ok(entry),
             Err(e) => Err(e),
         })

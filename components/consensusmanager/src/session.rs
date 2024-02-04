@@ -257,10 +257,11 @@ impl ConsensusSessionOwned {
     pub async fn async_get_virtual_utxos(
         &self,
         from_outpoint: Option<TransactionOutpoint>,
+        to_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
         skip_first: bool,
     ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
-        self.clone().spawn_blocking(move |c| c.get_virtual_utxos(from_outpoint, chunk_size, skip_first)).await
+        self.clone().spawn_blocking(move |c| c.get_virtual_utxos(from_outpoint, to_outpoint, chunk_size, skip_first)).await
     }
 
     pub async fn async_get_tips(&self) -> Vec<Hash> {
@@ -375,11 +376,12 @@ impl ConsensusSessionOwned {
         &self,
         expected_pruning_point: Hash,
         from_outpoint: Option<TransactionOutpoint>,
+        to_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
         skip_first: bool,
     ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
         self.clone()
-            .spawn_blocking(move |c| c.get_pruning_point_utxos(expected_pruning_point, from_outpoint, chunk_size, skip_first))
+            .spawn_blocking(move |c| c.get_pruning_point_utxos(expected_pruning_point, from_outpoint, to_outpoint, chunk_size, skip_first))
             .await
     }
 

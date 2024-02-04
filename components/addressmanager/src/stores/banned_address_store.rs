@@ -78,7 +78,7 @@ impl DbBannedAddressesStore {
     }
 
     pub fn iterator(&self) -> impl Iterator<Item = Result<(IpAddr, ConnectionBanTimestamp), Box<dyn Error>>> + '_ {
-        self.access.iterator().map(|iter_result| match iter_result {
+        self.access.iterator(true).map(|iter_result| match iter_result {
             Ok((key_bytes, connection_ban_timestamp)) => match <[u8; ADDRESS_KEY_SIZE]>::try_from(&key_bytes[..]) {
                 Ok(address_key_slice) => {
                     let addr_key = AddressKey(address_key_slice);

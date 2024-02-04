@@ -11,7 +11,7 @@ use crate::{
     },
 };
 use kaspa_consensus_core::{
-    acceptance_data::{AcceptedTxEntry, MergesetBlockAcceptanceData},
+    acceptance_data::{AcceptanceData, AcceptedTxEntry, MergesetBlockAcceptanceData},
     coinbase::*,
     hashing,
     header::Header,
@@ -38,7 +38,7 @@ pub(super) struct UtxoProcessingContext<'a> {
     pub multiset_hash: MuHash,
     pub mergeset_diff: UtxoDiff,
     pub accepted_tx_ids: Vec<TransactionId>,
-    pub mergeset_acceptance_data: Vec<MergesetBlockAcceptanceData>,
+    pub mergeset_acceptance_data: AcceptanceData,
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
 }
 
@@ -51,7 +51,7 @@ impl<'a> UtxoProcessingContext<'a> {
             mergeset_diff: UtxoDiff::default(),
             accepted_tx_ids: Vec::with_capacity(1), // We expect at least the selected parent coinbase tx
             mergeset_rewards: BlockHashMap::with_capacity(mergeset_size),
-            mergeset_acceptance_data: Vec::with_capacity(mergeset_size),
+            mergeset_acceptance_data: AcceptanceData { mergesets: Vec::with_capacity(mergeset_size), accepting_blue_score: 0 },
         }
     }
 
@@ -105,7 +105,7 @@ impl VirtualStateProcessor {
 
             if is_selected_parent {
                 // For the selected parent, we prepend the coinbase tx
-                ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
+                ctx.mergeset_acceptance_data.mergesets.push(MergesetBlockAcceptanceData {
                     block_hash: merged_block,
                     accepted_transactions: once(AcceptedTxEntry { transaction_id: validated_coinbase_id, index_within_block: 0 })
                         .chain(
@@ -115,14 +115,19 @@ impl VirtualStateProcessor {
                         )
                         .collect(),
                 });
+                // for review: is this a correct assumption?
+                ctx.mergeset_acceptance_data.accepting_blue_score = ctx.ghostdag_data.blue_score;
+            // for review: is this a correct assumption?
             } else {
-                ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
+                ctx.mergeset_acceptance_data.mergesets.push(MergesetBlockAcceptanceData {
                     block_hash: merged_block,
                     accepted_transactions: validated_transactions
                         .into_iter()
                         .map(|(tx, tx_idx)| AcceptedTxEntry { transaction_id: tx.id(), index_within_block: tx_idx })
                         .collect(),
                 });
+                // for review: is this a correct assumption?
+                ctx.mergeset_acceptance_data.accepting_blue_score = ctx.ghostdag_data.blue_score;
             }
 
             let coinbase_data = self.coinbase_manager.deserialize_coinbase_payload(&txs[0].payload).unwrap();
