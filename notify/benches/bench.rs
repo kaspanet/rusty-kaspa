@@ -9,7 +9,7 @@ fn create_addresses(count: usize) -> Vec<Address> {
         .collect()
 }
 
-fn create_and_fill_context(addresses: &[Address]) -> SubscriptionContext {
+fn create_and_fill_context(addresses: Vec<Address>) -> SubscriptionContext {
     let indexes = Indexes::new(vec![]);
     let context = SubscriptionContext::new();
     let _ = context.address_tracker.register(&indexes, addresses);
@@ -21,7 +21,7 @@ const ADDRESS_COUNT: usize = 1_000_000;
 pub fn bench_subscription_context(c: &mut Criterion) {
     c.bench_function("create_and_fill_context", |b| {
         let addresses = create_addresses(ADDRESS_COUNT);
-        b.iter(|| (black_box(create_and_fill_context(&addresses))))
+        b.iter(|| (black_box(create_and_fill_context(addresses.clone()))))
     });
 }
 

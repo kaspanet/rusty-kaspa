@@ -537,17 +537,17 @@ impl Tracker {
         )
     }
 
-    pub fn register<T: Indexer>(&self, indexes: &T, addresses: &[Address]) -> Result<Vec<Address>> {
+    pub fn register<T: Indexer>(&self, indexes: &T, mut addresses: Vec<Address>) -> Result<Vec<Address>> {
         let mut rollback: bool = false;
         let mut added = Vec::with_capacity(addresses.len());
-        'outer: for chunk in addresses.chunks(Self::ADDRESS_CHUNK_SIZE) {
+        'outer: for chunk in &addresses.drain(..).chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
             for address in chunk {
-                let spk = pay_to_address_script(address);
+                let spk = pay_to_address_script(&address);
                 match inner.get_or_insert(spk) {
                     Ok(index) => {
                         if indexes.insert(index) {
-                            added.push(address.clone());
+                            added.push(address);
                             inner.inc_count(index);
                         }
                     }
@@ -562,22 +562,22 @@ impl Tracker {
         match rollback {
             false => Ok(added),
             true => {
-                let _ = self.unregister(indexes, &added);
+                let _ = self.unregister(indexes, added);
                 Err(Error::MaxCapacityReached)
             }
         }
     }
 
-    pub fn unregister<T: Indexer>(&self, indexes: &T, addresses: &[Address]) -> Vec<Address> {
+    pub fn unregister<T: Indexer>(&self, indexes: &T, mut addresses: Vec<Address>) -> Vec<Address> {
         let mut removed = Vec::with_capacity(addresses.len());
         if !indexes.is_empty() {
-            for chunk in addresses.chunks(Self::ADDRESS_CHUNK_SIZE) {
+            for chunk in &addresses.drain(..).chunks(Self::ADDRESS_CHUNK_SIZE) {
                 let mut inner = self.inner.write();
                 for address in chunk {
-                    let spk = pay_to_address_script(address);
+                    let spk = pay_to_address_script(&address);
                     if let Some((index, _)) = inner.get(&spk) {
                         if indexes.remove(index) {
-                            removed.push(address.clone());
+                            removed.push(address);
                             inner.dec_count(index);
                         }
                     }

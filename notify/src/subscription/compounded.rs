@@ -166,11 +166,11 @@ impl UtxosChangedSubscription {
             .collect_vec()
     }
 
-    pub fn register(&self, addresses: &[Address], context: &SubscriptionContext) -> Result<Vec<Address>> {
+    pub fn register(&self, addresses: Vec<Address>, context: &SubscriptionContext) -> Result<Vec<Address>> {
         context.address_tracker.register(&self.indexes, addresses)
     }
 
-    pub fn unregister(&self, addresses: &[Address], context: &SubscriptionContext) -> Vec<Address> {
+    pub fn unregister(&self, addresses: Vec<Address>, context: &SubscriptionContext) -> Vec<Address> {
         context.address_tracker.unregister(&self.indexes, addresses)
     }
 }
@@ -189,7 +189,7 @@ impl Compounded for UtxosChangedSubscription {
                         }
                     } else {
                         // Add(A)
-                        let added = self.register(&scope.addresses, context).expect("compounded always registers");
+                        let added = self.register(scope.addresses, context).expect("compounded always registers");
                         if !added.is_empty() && self.all == 0 {
                             return Some(Mutation::new(Command::Start, UtxosChangedScope::new(added).into()));
                         }
@@ -198,7 +198,7 @@ impl Compounded for UtxosChangedSubscription {
                 Command::Stop => {
                     if !scope.addresses.is_empty() {
                         // Remove(R)
-                        let removed = self.unregister(&scope.addresses, context);
+                        let removed = self.unregister(scope.addresses, context);
                         if !removed.is_empty() && self.all == 0 {
                             return Some(Mutation::new(Command::Stop, UtxosChangedScope::new(removed).into()));
                         }
