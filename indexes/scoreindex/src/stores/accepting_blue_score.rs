@@ -6,7 +6,7 @@ use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 use std::{fmt::Display, sync::Arc};
 
-use crate::{AcceptingBlueScore, AcceptingBlueScoreHashPair, ScoreIndexChanges};
+use crate::{AcceptingBlueScore, AcceptingBlueScoreDiff, AcceptingBlueScoreHashPair};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct AcceptingBlueScoreKey([u8; std::mem::size_of::<AcceptingBlueScore>()]);
@@ -65,7 +65,7 @@ pub trait ScoreIndexAcceptingBlueScoreReader {
 }
 
 pub trait ScoreIndexAcceptingBlueScoreStore {
-    fn write_diff(&mut self, batch: &mut WriteBatch, diff: ScoreIndexChanges) -> StoreResult<()>;
+    fn write_diff(&mut self, batch: &mut WriteBatch, diff: AcceptingBlueScoreDiff) -> StoreResult<()>;
     fn remove_many(&mut self, batch: &mut WriteBatch, to_remove: Vec<AcceptingBlueScore>) -> StoreResult<()>;
     fn write_many(&mut self, batch: &mut WriteBatch, to_add: Vec<AcceptingBlueScoreHashPair>) -> StoreResult<()>;
     fn delete_all(&mut self, batch: &mut WriteBatch) -> StoreResult<()>;
@@ -138,7 +138,7 @@ impl ScoreIndexAcceptingBlueScoreReader for DbScoreIndexAcceptingBlueScoreStore 
 }
 
 impl ScoreIndexAcceptingBlueScoreStore for DbScoreIndexAcceptingBlueScoreStore {
-    fn write_diff(&mut self, batch: &mut WriteBatch, diff: ScoreIndexChanges) -> StoreResult<()> {
+    fn write_diff(&mut self, batch: &mut WriteBatch, diff: AcceptingBlueScoreDiff) -> StoreResult<()> {
         let mut writer = BatchDbWriter::new(batch);
         self.access.delete_many(&mut writer, &mut diff.to_remove.iter().map(|k| k.into()))?;
         self.access.write_many(&mut writer, &mut diff.to_add.iter().map(|pair| (pair.accepting_blue_score.into(), pair.hash)))?;

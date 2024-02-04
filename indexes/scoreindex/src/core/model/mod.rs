@@ -20,13 +20,13 @@ impl From<(AcceptingBlueScore, Hash)> for AcceptingBlueScoreHashPair {
     }
 }
 
-pub struct ScoreIndexChanges {
+pub struct AcceptingBlueScoreDiff {
     pub to_remove: Vec<AcceptingBlueScore>,
     pub to_add: Vec<AcceptingBlueScoreHashPair>,
     new_source: Option<AcceptingBlueScoreHashPair>,
 }
 
-impl ScoreIndexChanges {
+impl AcceptingBlueScoreDiff {
     pub fn new(
         to_remove: Vec<AcceptingBlueScore>,
         to_add: Vec<AcceptingBlueScoreHashPair>,

@@ -2,7 +2,7 @@ use std::{cmp::min, sync::Arc};
 
 use crate::{
     stores::{ScoreIndexAcceptingBlueScoreReader, ScoreIndexAcceptingBlueScoreStore, StoreManager},
-    AcceptingBlueScore, AcceptingBlueScoreHashPair, ScoreIndexResult, IDENT,
+    AcceptingBlueScore, AcceptingBlueScoreHashPair, ScoreIndexReindexer, ScoreIndexResult, IDENT,
 };
 use kaspa_consensus_notify::notification::VirtualChainChangedNotification;
 use kaspa_consensusmanager::{ConsensusManager, ConsensusSessionBlocking};
@@ -37,6 +37,21 @@ impl ScoreIndex {
             }
         }
         Ok(Arc::new(RwLock::new(scoreindex)))
+    }
+
+    fn update_via_reindexer(&mut self, reindexer: ScoreIndexReindexer) -> ScoreIndexResult<()> {
+        trace!(
+            "[{0}] Updating via reindexer: Range removed: {1:?}->{2:?}; Range added: {3:?}->{4:?}",
+            IDENT,
+            reindexer.accepting_blue_score_changes.to_remove.first(),
+            reindexer.accepting_blue_score_changes.to_remove.last(),
+            reindexer.accepting_blue_score_changes.to_add.first(),
+            reindexer.accepting_blue_score_changes.to_add.last(),
+        );
+        let mut batch = WriteBatch::default();
+        self.stores.accepting_blue_score_store.write_diff(&mut batch, reindexer.accepting_blue_score_changes)?;
+        self.stores.write_batch(batch)?;
+        Ok(())
     }
 
     fn sync_segement(
@@ -237,10 +252,16 @@ impl ScoreIndex {
     }
 
     pub fn update_via_virtual_chain_changed(
-        &self,
-        _virtual_chain_changed_notification: VirtualChainChangedNotification,
+        &mut self,
+        virtual_chain_changed_notification: VirtualChainChangedNotification,
     ) -> ScoreIndexResult<()> {
-        todo!()
+        trace!(
+            "[{0}] Updating via virtual chain changed notification: {1} added, {2} removed",
+            IDENT,
+            virtual_chain_changed_notification.added_chain_block_hashes.len(),
+            virtual_chain_changed_notification.removed_chain_block_hashes.len()
+        );
+        self.update_via_reindexer(ScoreIndexReindexer::from(virtual_chain_changed_notification))
     }
 }
 
