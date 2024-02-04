@@ -940,8 +940,8 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
     let tick_service = Arc::new(TickService::default());
     let (notification_send, notification_recv) = unbounded();
-    let tc = Arc::new(TestConsensus::with_notifier(&config, notification_send));
     let subscription_context = SubscriptionContext::new();
+    let tc = Arc::new(TestConsensus::with_notifier(&config, notification_send, subscription_context.clone()));
     let notify_service = Arc::new(NotifyService::new(tc.notification_root(), notification_recv, subscription_context.clone()));
 
     // External storage for storing block bodies. This allows separating header and body processing phases
