@@ -9,9 +9,9 @@ use crate::{errors::ScoreIndexResult, AcceptingBlueScore, AcceptingBlueScoreHash
 
 ///Utxoindex API targeted at retrieval calls.
 pub trait ScoreIndexApi: Send + Sync + Debug {
-    fn resync(&self) -> ScoreIndexResult<()>;
+    fn resync(&mut self) -> ScoreIndexResult<()>;
 
-    fn is_synced(&self) -> ScoreIndexResult<bool>;
+    fn is_synced(&mut self) -> ScoreIndexResult<bool>;
 
     fn get_accepting_blue_score_chain_blocks(
         &self,
@@ -23,7 +23,10 @@ pub trait ScoreIndexApi: Send + Sync + Debug {
 
     fn get_source(&self) -> ScoreIndexResult<Option<AcceptingBlueScoreHashPair>>;
 
-    fn update_via_virtual_chain_changed(&self, virtual_chain_changed_notification: VirtualChainChangedNotification) -> ScoreIndexResult<()>;
+    fn update_via_virtual_chain_changed(
+        &self,
+        virtual_chain_changed_notification: VirtualChainChangedNotification,
+    ) -> ScoreIndexResult<()>;
 }
 
 /// Async proxy for the UTXO index
@@ -42,7 +45,7 @@ impl ScoreIndexProxy {
         from: AcceptingBlueScore,
         to: AcceptingBlueScore,
     ) -> ScoreIndexResult<Arc<Vec<AcceptingBlueScoreHashPair>>> {
-        spawn_blocking(move || self.inner.read().get_accepting_blue_score_chain_blocks(from.clone(), to.clone())).await.unwrap()
+        spawn_blocking(move || self.inner.read().get_accepting_blue_score_chain_blocks(from, to)).await.unwrap()
     }
 
     pub async fn get_sink(self) -> ScoreIndexResult<Option<AcceptingBlueScoreHashPair>> {

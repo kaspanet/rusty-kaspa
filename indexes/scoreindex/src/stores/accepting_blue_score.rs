@@ -67,6 +67,7 @@ pub trait ScoreIndexAcceptingBlueScoreReader {
 pub trait ScoreIndexAcceptingBlueScoreStore {
     fn write_diff(&mut self, batch: &mut WriteBatch, diff: ScoreIndexChanges) -> StoreResult<()>;
     fn remove_many(&mut self, batch: &mut WriteBatch, to_remove: Vec<AcceptingBlueScore>) -> StoreResult<()>;
+    fn write_many(&mut self, batch: &mut WriteBatch, to_add: Vec<AcceptingBlueScoreHashPair>) -> StoreResult<()>;
     fn delete_all(&mut self, batch: &mut WriteBatch) -> StoreResult<()>;
 }
 
@@ -93,8 +94,7 @@ impl ScoreIndexAcceptingBlueScoreReader for DbScoreIndexAcceptingBlueScoreStore 
     }
 
     fn get_range(&self, from: AcceptingBlueScore, to: AcceptingBlueScore) -> StoreResult<Vec<AcceptingBlueScoreHashPair>> {
-        Ok(self
-            .access
+        self.access
             .seek_iterator(
                 None,
                 Some(from.into()),
@@ -107,15 +107,15 @@ impl ScoreIndexAcceptingBlueScoreReader for DbScoreIndexAcceptingBlueScoreStore 
                     accepting_blue_score: AcceptingBlueScoreKey::try_from(k.as_ref())?.into(),
                     hash: v,
                 }),
-                Err(err) => Err(StoreError::General(err.to_string())),
+                Err(err) => Err(StoreError::Undefined(err.to_string())),
             })
-            .collect::<StoreResult<Vec<AcceptingBlueScoreHashPair>>>()?)
+            .collect::<StoreResult<Vec<AcceptingBlueScoreHashPair>>>()
     }
 
     fn get_sink(&self) -> StoreResult<Option<AcceptingBlueScoreHashPair>> {
         let ret = self.access.iterator(false).next();
         if let Some(res) = ret {
-            let (k, v) = res.map_err(|err| StoreError::General(err.to_string()))?;
+            let (k, v) = res.map_err(|err| StoreError::Undefined(err.to_string()))?;
             return Ok(Some(AcceptingBlueScoreHashPair {
                 accepting_blue_score: AcceptingBlueScoreKey::try_from(k.as_ref())?.into(),
                 hash: v,
@@ -127,7 +127,7 @@ impl ScoreIndexAcceptingBlueScoreReader for DbScoreIndexAcceptingBlueScoreStore 
     fn get_source(&self) -> StoreResult<Option<AcceptingBlueScoreHashPair>> {
         let ret = self.access.iterator(true).next();
         if let Some(res) = ret {
-            let (k, v) = res.map_err(|err| StoreError::General(err.to_string()))?;
+            let (k, v) = res.map_err(|err| StoreError::Undefined(err.to_string()))?;
             return Ok(Some(AcceptingBlueScoreHashPair {
                 accepting_blue_score: AcceptingBlueScoreKey::try_from(k.as_ref())?.into(),
                 hash: v,
@@ -148,6 +148,11 @@ impl ScoreIndexAcceptingBlueScoreStore for DbScoreIndexAcceptingBlueScoreStore {
     fn remove_many(&mut self, batch: &mut WriteBatch, to_remove: Vec<AcceptingBlueScore>) -> StoreResult<()> {
         let writer = BatchDbWriter::new(batch);
         self.access.delete_many(writer, &mut to_remove.iter().map(|k| k.into()))
+    }
+
+    fn write_many(&mut self, batch: &mut WriteBatch, to_add: Vec<AcceptingBlueScoreHashPair>) -> StoreResult<()> {
+        let writer = BatchDbWriter::new(batch);
+        self.access.write_many(writer, &mut to_add.iter().map(|pair| (pair.accepting_blue_score.into(), pair.hash)))
     }
 
     fn delete_all(&mut self, batch: &mut WriteBatch) -> StoreResult<()> {

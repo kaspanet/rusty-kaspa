@@ -1,4 +1,5 @@
-use std::io;
+use kaspa_consensus_core::errors::consensus::ConsensusError;
+
 use thiserror::Error;
 
 use crate::IDENT;
@@ -11,7 +12,10 @@ pub enum ScoreIndexError {
     StoreAccessError(#[from] StoreError),
 
     #[error("[{IDENT}]: {0}")]
-    DBResetError(#[from] io::Error),
+    ConsensusQueryError(#[from] ConsensusError),
+
+    #[error("[{IDENT}]: {0}")]
+    RocksDBError(#[from] rocksdb::Error),
 }
 
 /// Results originating from the [`UtxoIndex`].

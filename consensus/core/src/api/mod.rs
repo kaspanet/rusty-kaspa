@@ -147,7 +147,14 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
+    /// Gets the virtual chain paths from `low` to the `high` hash, or until max_blocks is reached
+    ///
+    /// Note:   
+    /// 1) Specifying the `high` hash as `None` will calculate the chain path up to the current sink.
+    /// 2) Specifying `max_blocks` as `None` will impose no limit.
+    /// 3) `max_blocks` limit will populate removed chain path and then the added chain path, up to max_blocks.
+    /// 3.1) use usize::MAX to get all blocks in the chain path, with optimized performance, (in cases where batching is not required)
+    fn get_virtual_chain_from_block(&self, low: Hash, high: Option<Hash>, max_blocks: usize) -> ConsensusResult<ChainPath> {
         unimplemented!()
     }
 
@@ -289,6 +296,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
+        unimplemented!()
+    }
+
+    fn find_highest_common_chain_block(&self, low: Hash, high: Hash) -> ConsensusResult<Hash> {
         unimplemented!()
     }
 

@@ -7,7 +7,6 @@ use kaspa_core::{
     },
     trace, warn,
 };
-use parking_lot::{lock_api::RawRwLockTimed, RwLockReadGuard, RwLockWriteGuard};
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use crate::UPNP_REGISTRATION_NAME;

@@ -27,8 +27,8 @@ pub enum StoreError {
     #[error("invalid value length: expected {0}, got {1}")]
     InvalidValueLength(usize, usize),
 
-    #[error("general error: {0}")]
-    General(String),
+    #[error("undefined error: {0}")]
+    Undefined(String),
 }
 
 pub type StoreResult<T> = std::result::Result<T, StoreError>;

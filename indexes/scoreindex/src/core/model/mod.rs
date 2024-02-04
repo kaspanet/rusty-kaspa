@@ -1,10 +1,8 @@
-
-
 use kaspa_hashes::Hash;
 
 pub type AcceptingBlueScore = u64;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AcceptingBlueScoreHashPair {
     pub accepting_blue_score: AcceptingBlueScore,
     pub hash: Hash,

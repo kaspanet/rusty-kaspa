@@ -250,8 +250,13 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.is_nearly_synced()).await
     }
 
-    pub async fn async_get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
-        self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(hash)).await
+    pub async fn async_get_virtual_chain_from_block(
+        &self,
+        low: Hash,
+        high: Option<Hash>,
+        max_blocks: usize,
+    ) -> ConsensusResult<ChainPath> {
+        self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(low, high, max_blocks)).await
     }
 
     pub async fn async_get_virtual_utxos(
@@ -372,6 +377,10 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.is_chain_block(hash)).await
     }
 
+    pub async fn async_find_highest_common_chain_block(&self, low: Hash, high: Hash) -> ConsensusResult<Hash> {
+        self.clone().spawn_blocking(move |c| c.find_highest_common_chain_block(low, high)).await
+    }
+
     pub async fn async_get_pruning_point_utxos(
         &self,
         expected_pruning_point: Hash,
@@ -381,7 +390,9 @@ impl ConsensusSessionOwned {
         skip_first: bool,
     ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
         self.clone()
-            .spawn_blocking(move |c| c.get_pruning_point_utxos(expected_pruning_point, from_outpoint, to_outpoint, chunk_size, skip_first))
+            .spawn_blocking(move |c| {
+                c.get_pruning_point_utxos(expected_pruning_point, from_outpoint, to_outpoint, chunk_size, skip_first)
+            })
             .await
     }
 
