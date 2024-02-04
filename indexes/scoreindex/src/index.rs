@@ -12,7 +12,7 @@ use kaspa_hashes::ZERO_HASH;
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
 
-const RESYNC_CHUNKSIZE: u64 = 100_000u64; // about max 400 mbs of data under worst case (narrow dag): (32 bytes per hash, 4 bytes per accepting blue score) * 100_000.
+const RESYNC_CHUNKSIZE: u64 = 100_000u64; // about max 400 mbs of data under worst case (narrow dag syncing condition): (32 bytes per hash, 4 bytes per accepting blue score) * 100_000.
 
 pub struct ScoreIndex {
     stores: StoreManager,
@@ -219,18 +219,21 @@ impl ScoreIndex {
 
     pub fn get_accepting_blue_score_chain_blocks(
         &self,
-        _from: AcceptingBlueScore,
-        _to: AcceptingBlueScore,
+        from: AcceptingBlueScore,
+        to: AcceptingBlueScore,
     ) -> ScoreIndexResult<Arc<Vec<AcceptingBlueScoreHashPair>>> {
-        todo!()
+        trace!("[{0}] Getting accepting blue score chain blocks along {1} => {2}", IDENT, from, to);
+        Ok(Arc::new(self.stores.accepting_blue_score_store.get_range(from, to)?))
     }
 
     pub fn get_sink(&self) -> ScoreIndexResult<Option<AcceptingBlueScoreHashPair>> {
-        todo!()
+        trace!("[{0}] Getting sink", IDENT);
+        Ok(self.stores.accepting_blue_score_store.get_sink()?)
     }
 
     pub fn get_source(&self) -> ScoreIndexResult<Option<AcceptingBlueScoreHashPair>> {
-        todo!()
+        trace!("[{0}] Getting source", IDENT);
+        Ok(self.stores.accepting_blue_score_store.get_source()?)
     }
 
     pub fn update_via_virtual_chain_changed(
