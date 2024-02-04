@@ -167,16 +167,15 @@ jobs:
       - name: Build WASM32 SDK
         run: |
           cd wasm
-          wasm-pack build --target nodejs --out-dir wasm32-nodejs-sdk/kaspa
-          wasm-pack build --target web --out-dir wasm32-web-sdk/kaspa
-          cd ..
-          mkdir release || true
-          archive_nodejs="release/rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-nodejs.zip"
-          archive_web="release/rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-web.zip"
+          wasm-pack build --target nodejs --out-dir kaspa-wasm32-sdk-nodejs/kaspa
+          wasm-pack build --target web --out-dir kaspa-wasm32-sdk-web/kaspa
+          archive_nodejs="wasm/rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-nodejs.zip"
+          archive_web="wasm/rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-web.zip"
           asset_name_nodejs="rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-nodejs.zip"
           asset_name_web="rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-web.zip"
-          zip -jr "${archive_nodejs}" ./wasm/wasm32-nodejs-sdk/*
-          zip -jr "${archive_web}" ./wasm/wasm32-web-sdk/*
+          zip -r "rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-nodejs.zip" ./kaspa-wasm32-sdk-nodejs
+          zip -r "rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-web.zip" ./kaspa-wasm32-sdk-web
+          cd ..
           echo "archive_nodejs=${archive_nodejs}" >> $GITHUB_ENV
           echo "archive_web=${archive_web}" >> $GITHUB_ENV
           echo "asset_name_nodejs=${asset_name_nodejs}" >> $GITHUB_ENV
