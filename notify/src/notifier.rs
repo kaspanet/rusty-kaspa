@@ -19,7 +19,7 @@ use async_channel::Sender;
 use async_trait::async_trait;
 use core::fmt::Debug;
 use futures::future::join_all;
-use itertools::Itertools;
+use itertools::{repeat_n, Itertools};
 use kaspa_core::{debug, trace};
 use parking_lot::Mutex;
 use std::{
@@ -118,6 +118,10 @@ where
         &self.inner.subscription_context
     }
 
+    pub fn enabled_events(&self) -> &EventSwitches {
+        &self.inner.enabled_events
+    }
+
     pub fn start(self: Arc<Self>) {
         self.inner.clone().start(self.clone());
     }
@@ -213,6 +217,9 @@ where
     /// Subscribers
     subscribers: Vec<Arc<Subscriber>>,
 
+    /// Enabled Subscribers by event type
+    enabled_subscribers: EventArray<Vec<Arc<Subscriber>>>,
+
     /// Subscription context
     subscription_context: SubscriptionContext,
 
@@ -254,6 +261,10 @@ where
                 ))
             })
             .collect::<Vec<_>>();
+        let enabled_subscribers = EventArray::from_fn(|index| {
+            let event: EventType = index.try_into().unwrap();
+            subscribers.iter().filter(|&x| x.enabled_events()[event]).cloned().collect_vec()
+        });
         Self {
             enabled_events,
             listeners: Mutex::new(HashMap::new()),
@@ -263,6 +274,7 @@ where
             broadcasters,
             collectors,
             subscribers,
+            enabled_subscribers,
             subscription_context,
             policies,
             name,
@@ -332,10 +344,7 @@ where
                 trace!("[Notifier {}] {command} notifying listener {id} about {scope} error: listener id not found", self.name);
             }
         } else {
-            trace!(
-                "[Notifier {}] {command} notifying listener {id} about {scope:?} error: event type {event:?} is disabled",
-                self.name
-            );
+            trace!("[Notifier {}] {command} notifying listener {id} about {scope} error: event type {event:?} is disabled", self.name);
             return Err(Error::EventTypeDisabled);
         }
         Ok(())
@@ -351,11 +360,13 @@ where
         let mut sync_feedback: bool = false;
         let event = scope.event_type();
         let scope_trace = format!("{scope}");
+        debug!("[Notifier {}] {command} notifying about {scope_trace} to listener {id} - {}", self.name, listener.connection());
+        let outcome = listener.mutate(Mutation::new(command, scope), self.policies.clone(), &self.subscription_context)?;
         if outcome.has_changes() {
             trace!(
-                "[Notifier {}] {command} notifying listener {id} about {scope:?} involves mutations {:?}",
+                "[Notifier {}] {command} notifying listener {id} about {scope_trace} involves {} mutations",
                 self.name,
-                outcome.mutations
+                outcome.mutations.len(),
             );
             // Update broadcasters
             match (listener.subscriptions[event].active(), outcome.mutated) {
@@ -373,7 +384,7 @@ where
             }
             self.apply_mutations(event, outcome.mutations, &self.subscription_context)?;
         } else {
-            trace!("[Notifier {}] {command} notifying listener {id} about {scope:?} is ignored (no mutation)", self.name);
+            trace!("[Notifier {}] {command} notifying listener {id} about {scope_trace} is ignored (no mutation)", self.name);
             sync_feedback = true;
         }
         if sync_feedback {
@@ -395,7 +406,9 @@ where
         }
         // Report to the parents
         if let Some(mutation) = compound_result {
-            self.subscribers.iter().try_for_each(|x| x.mutate(mutation.clone()))?;
+            repeat_n(mutation, self.enabled_subscribers[event].len())
+                .zip(self.enabled_subscribers[event].iter())
+                .try_for_each(|(mutation, subscriber)| subscriber.mutate(mutation.clone()))?;
         }
         Ok(())
     }
