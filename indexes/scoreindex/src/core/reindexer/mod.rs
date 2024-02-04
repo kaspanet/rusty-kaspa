@@ -18,9 +18,10 @@ impl From<VirtualChainChangedNotification> for ScoreIndexReindexer {
                 .added_chain_blocks_acceptance_data
                 .iter()
                 .flat_map(|acceptance_data| {
-                    acceptance_data.mergesets.iter().map(|mergeset| {
-                        AcceptingBlueScoreHashPair::new(acceptance_data.accepting_blue_score, mergeset.block_hash)
-                    })
+                    acceptance_data
+                        .mergeset
+                        .iter()
+                        .map(|mergeset| AcceptingBlueScoreHashPair::new(acceptance_data.accepting_blue_score, mergeset.block_hash))
                 })
                 .collect(),
             None,

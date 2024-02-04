@@ -8,6 +8,7 @@ use crate::{
     model::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
+            acceptance_data::AcceptanceDataStoreReader,
             ghostdag::{CompactGhostdagData, GhostdagStoreReader},
             headers::HeaderStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
@@ -33,11 +34,16 @@ use kaspa_consensus_core::{
     trusted::ExternalGhostdagData,
     BlockHashSet,
 };
+use kaspa_consensus_notify::{
+    notification::{ChainAcceptanceDataPrunedNotification, Notification},
+    root::ConsensusNotificationRoot,
+};
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, warn};
 use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
+use kaspa_notify::{events::EventType, notifier::Notify};
 use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
@@ -73,6 +79,9 @@ pub struct PruningProcessor {
     pruning_point_manager: DbPruningPointManager,
     pruning_proof_manager: Arc<PruningProofManager>,
 
+    // Notifier
+    notification_root: Arc<ConsensusNotificationRoot>,
+
     // Pruning lock
     pruning_lock: SessionLock,
 
@@ -97,6 +106,7 @@ impl PruningProcessor {
         db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
         services: &Arc<ConsensusServices>,
+        notification_root: Arc<ConsensusNotificationRoot>,
         pruning_lock: SessionLock,
         config: Arc<Config>,
         is_consensus_exiting: Arc<AtomicBool>,
@@ -109,6 +119,7 @@ impl PruningProcessor {
             ghostdag_managers: services.ghostdag_managers.clone(),
             pruning_point_manager: services.pruning_point_manager.clone(),
             pruning_proof_manager: services.pruning_proof_manager.clone(),
+            notification_root: notification_root.clone(),
             pruning_lock,
             config,
             is_consensus_exiting,
@@ -343,11 +354,34 @@ impl PruningProcessor {
         // The most efficient way to traverse the entire DAG from the bottom-up is via the reachability tree
         let mut queue = VecDeque::<Hash>::from_iter(reachability_read.get_children(ORIGIN).unwrap().iter().copied());
         let (mut counter, mut traversed) = (0, 0);
+
+        let mut is_notification_sent = false;
+        let is_subscribed = self.notification_root.has_subscription(EventType::ChainAcceptanceDataPruned);
+
         info!("Header and Block pruning: starting traversal from: {} (genesis: {})", queue.iter().reusable_format(", "), genesis);
         while let Some(current) = queue.pop_front() {
+            // Check for exit possibility
+            if (
+                // if noone is subscribed
+                !is_subscribed
+                // OR we sent the notification
+                || is_notification_sent
+                )
+                        // AND consenus is exiting
+                        && self.is_consensus_exiting.load(Ordering::Relaxed)
+            // We may exit
+            {
+                drop(reachability_read);
+                drop(prune_guard);
+                info!("Header and Block pruning interrupted: Process is exiting");
+                return;
+            }
             if reachability_read.is_dag_ancestor_of_result(new_pruning_point, current).unwrap() {
                 continue;
             }
+
+            is_notification_sent = false;
+
             traversed += 1;
             // Obtain the tree children of `current` and push them to the queue before possibly being deleted below
             queue.extend(reachability_read.get_children(current).unwrap().iter());
@@ -355,12 +389,6 @@ impl PruningProcessor {
             // If we have the lock for more than a few milliseconds, release and recapture to allow consensus progress during pruning
             if lock_acquire_time.elapsed() > Duration::from_millis(5) {
                 drop(reachability_read);
-                // An exit signal was received. Exit from this long running process.
-                if self.is_consensus_exiting.load(Ordering::Relaxed) {
-                    drop(prune_guard);
-                    info!("Header and Block pruning interrupted: Process is exiting");
-                    return;
-                }
                 prune_guard.blocking_yield();
                 lock_acquire_time = Instant::now();
                 reachability_read = self.reachability_store.upgradable_read();
@@ -381,6 +409,31 @@ impl PruningProcessor {
                 let mut staging_relations = StagingRelationsStore::new(&mut reachability_relations_write);
                 let mut staging_reachability = StagingReachabilityStore::new(reachability_read);
                 let mut statuses_write = self.statuses_store.write();
+
+                // Collect Data before data is gone.
+                let chain_acceptance_data_pruned_notification = if is_subscribed // check if someone is subscribed
+                 //TODO: are these just sanity checks, that may be removed?
+                 && self.reachability_service.is_chain_ancestor_of(current, new_pruning_point) // check if it is a chain block
+                 && self.acceptance_data_store.has(current).unwrap()
+                // check if acceptance data has already been pruned
+                {
+                    // TODO: this may be inefficient,
+                    // but is required for now to keep the txindex recoverable in during pruning interruptions.
+                    // ideally we have some better iteration over chain path in while loop above.
+                    let source = self
+                        .reachability_service
+                        .forward_chain_iterator(current, new_pruning_point, false)
+                        .skip(1)
+                        .find(|future| !keep_blocks.contains(future));
+
+                    Some(Notification::ChainAcceptanceDataPruned(ChainAcceptanceDataPrunedNotification::new(
+                        current,
+                        self.acceptance_data_store.get(current).expect("expected get"),
+                        source.unwrap_or(new_pruning_point),
+                    )))
+                } else {
+                    None
+                };
 
                 // Prune data related to block bodies and UTXO state
                 self.utxo_multisets_store.delete_batch(&mut batch, current).unwrap();
@@ -441,6 +494,14 @@ impl PruningProcessor {
                 drop(level_relations_write);
 
                 reachability_read = self.reachability_store.upgradable_read();
+
+                // Notify subscribers after data is gone, and check if we can exit
+                if let Some(chain_acceptance_data_pruned_notification) = chain_acceptance_data_pruned_notification {
+                    self.notification_root
+                        .notify(chain_acceptance_data_pruned_notification)
+                        .expect("expecting an open unbounded channel");
+                    is_notification_sent = true;
+                }
             }
         }
 

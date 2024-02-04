@@ -131,8 +131,17 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    /// source refers to the earliest block from which the current node has full header & block data  
-    fn get_source(&self) -> Hash {
+    /// source refers to the earliest block from which the current node is guaranteed to have full header & block data  
+    ///
+    /// Note:
+    ///
+    /// `exact == true`: the function will return the exact source,
+    /// during an actively processing consensus instance one can expect this hash to be pruned at any moment,
+    /// and thus it is not recommended to access this hash beyond start-up operations.
+    ///
+    /// `exact == false` Will return the hash upto which the node is expected to prune, even if below it such data
+    /// is still temporarily available, this is the recommended way to access the source hash for most use cases.
+    fn get_source(&self, exact: bool) -> Hash {
         unimplemented!()
     }
 

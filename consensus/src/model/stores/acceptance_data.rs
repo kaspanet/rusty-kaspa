@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 pub trait AcceptanceDataStoreReader {
     fn get(&self, hash: Hash) -> Result<Arc<AcceptanceData>, StoreError>;
+    fn has(&self, hash: Hash) -> Result<bool, StoreError>;
 }
 
 pub trait AcceptanceDataStore: AcceptanceDataStoreReader {
@@ -30,8 +31,8 @@ struct AcceptanceDataEntry(Arc<AcceptanceData>);
 
 impl MemSizeEstimator for AcceptanceDataEntry {
     fn estimate_mem_bytes(&self) -> usize {
-        self.0.mergesets.iter().map(|l| l.accepted_transactions.len()).sum::<usize>() * size_of::<AcceptedTxEntry>()
-            + self.0.mergesets.len() * size_of::<MergesetBlockAcceptanceData>()
+        self.0.mergeset.iter().map(|l| l.accepted_transactions.len()).sum::<usize>() * size_of::<AcceptedTxEntry>()
+            + self.0.mergeset.len() * size_of::<MergesetBlockAcceptanceData>()
             + size_of::<AcceptanceData>()
             + size_of::<Self>()
     }
@@ -69,6 +70,10 @@ impl DbAcceptanceDataStore {
 impl AcceptanceDataStoreReader for DbAcceptanceDataStore {
     fn get(&self, hash: Hash) -> Result<Arc<AcceptanceData>, StoreError> {
         Ok(self.access.read(hash)?.0)
+    }
+
+    fn has(&self, hash: Hash) -> Result<bool, StoreError> {
+        self.access.has(hash)
     }
 }
 

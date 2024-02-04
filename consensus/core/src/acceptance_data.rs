@@ -5,7 +5,7 @@ use crate::tx::TransactionId;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AcceptanceData {
-    pub mergesets: Vec<MergesetBlockAcceptanceData>,
+    pub mergeset: Vec<MergesetBlockAcceptanceData>,
     pub accepting_blue_score: u64,
 }
 

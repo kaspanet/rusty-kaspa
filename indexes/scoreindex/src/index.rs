@@ -134,7 +134,7 @@ impl ScoreIndex {
         let scoreindex_source_blue_score_pair = self.stores.accepting_blue_score_store.get_source()?;
         let scoreindex_sink_blue_score_pair = self.stores.accepting_blue_score_store.get_sink()?;
         let consensus_source_blue_score_pair = {
-            let hash = session.get_source();
+            let hash = session.get_source(true);
             let blue_score = session.get_header(hash)?.blue_score;
             AcceptingBlueScoreHashPair::new(blue_score, hash)
         };
@@ -223,7 +223,7 @@ impl ScoreIndex {
         if let Some(scoreindex_sink) = self.stores.accepting_blue_score_store.get_sink()? {
             if scoreindex_sink.hash == session.get_sink() {
                 if let Some(scoreindex_source) = self.stores.accepting_blue_score_store.get_source()? {
-                    if scoreindex_source.hash == session.get_source() {
+                    if scoreindex_source.hash == session.get_source(true) {
                         return Ok(true);
                     }
                 }

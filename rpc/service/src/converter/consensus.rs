@@ -171,7 +171,7 @@ impl ConsensusConverter {
             .map(|(hash, block_data)| RpcAcceptedTransactionIds {
                 accepting_block_hash: hash.to_owned(),
                 accepted_transaction_ids: block_data
-                    .mergesets
+                    .mergeset
                     .iter()
                     .flat_map(|x| x.accepted_transactions.iter().map(|tx| tx.transaction_id))
                     .collect(),

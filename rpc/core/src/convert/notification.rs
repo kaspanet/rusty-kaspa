@@ -29,6 +29,9 @@ impl From<&consensus_notify::Notification> for Notification {
             consensus_notify::Notification::VirtualDaaScoreChanged(msg) => Notification::VirtualDaaScoreChanged(msg.into()),
             consensus_notify::Notification::PruningPointUtxoSetOverride(msg) => Notification::PruningPointUtxoSetOverride(msg.into()),
             consensus_notify::Notification::NewBlockTemplate(msg) => Notification::NewBlockTemplate(msg.into()),
+            consensus_notify::Notification::ChainAcceptanceDataPruned(_) => {
+                panic!("ChainAcceptanceDataPruned is not supported in RPC")
+            }
         }
     }
 }
@@ -57,7 +60,7 @@ impl From<&consensus_notify::VirtualChainChangedNotification> for VirtualChainCh
                         accepting_block_hash: hash.to_owned(),
                         // We collect accepted tx ids from all mergeset blocks
                         accepted_transaction_ids: acceptance_data
-                            .mergesets
+                            .mergeset
                             .iter()
                             .flat_map(|x| x.accepted_transactions.iter().map(|tx| tx.transaction_id))
                             .collect(),

@@ -42,16 +42,17 @@ use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::{stats::BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats},
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
-    blockhash::BlockHashExtensions,
+    blockhash::{BlockHashExtensions, ORIGIN},
     blockstatus::BlockStatus,
     coinbase::MinerData,
     daa_score_timestamp::DaaScoreTimestamp,
     errors::{
         coinbase::CoinbaseResult,
         consensus::{ConsensusError, ConsensusResult},
+        difficulty::DifficultyError,
+        pruning::PruningImportError,
         tx::TxResult,
     },
-    errors::{difficulty::DifficultyError, pruning::PruningImportError},
     header::Header,
     muhash::MuHashExtensions,
     network::NetworkType,
@@ -267,6 +268,7 @@ impl Consensus {
             db.clone(),
             &storage,
             &services,
+            notification_root.clone(),
             pruning_lock.clone(),
             config.clone(),
             is_consensus_exiting.clone(),
@@ -498,12 +500,41 @@ impl ConsensusApi for Consensus {
         self.lkg_virtual_state.load().to_virtual_state_approx_id()
     }
 
-    fn get_source(&self) -> Hash {
+    fn get_source(&self, exact: bool) -> Hash {
         if self.config.is_archival {
-            // we use the history root in archival cases.
+            // we may use the history root in archival cases directly
             return self.pruning_point_store.read().history_root().unwrap();
         }
-        self.pruning_point_store.read().pruning_point().unwrap()
+
+        let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
+
+        if exact {
+            // We require this guard from here on out, since we are accessing the history root.
+            let _pruning_guard = self.pruning_lock.blocking_read();
+
+            let history_root = self.pruning_point_store.read().history_root().ok();
+            if let Some(history_root) = history_root {
+                // in a state of interrupted pruning
+                if history_root != pruning_point {
+                    // we scan up to the first chain block with a block body form ORIGIN
+                    return self
+                            .services
+                            .reachability_service
+                            .forward_chain_iterator(ORIGIN, pruning_point, false)
+                            .skip(1) // skip ORIGIN
+                            .find(|this| {
+                                match self.statuses_store.read().get(*this).ok() {
+                                    Some(res) => res.has_block_body(),
+                                    None => false,
+                                }
+                            }) // find first chain block with body
+                            .unwrap(); // We expect some-such block to exist
+                } else {
+                    return pruning_point;
+                }
+            }
+        }
+        pruning_point
     }
 
     /// Estimates number of blocks and headers stored in the node
@@ -511,8 +542,8 @@ impl ConsensusApi for Consensus {
     /// This is an estimation based on the daa score difference between the node's `source` and `sink`'s daa score,
     /// as such, it does not include non-daa blocks, and does not include headers stored as part of the pruning proof.  
     fn estimate_block_count(&self) -> BlockCount {
-        // PRUNE SAFETY: node is either archival or source is the pruning point which its header is kept permanently
-        let source_score = self.headers_store.get_compact_header_data(self.get_source()).unwrap().daa_score;
+        // PRUNE SAFETY: node is either archival or none-exact source is the pruning point which its header is kept permanently
+        let source_score = self.headers_store.get_compact_header_data(self.get_source(false)).unwrap().daa_score;
         let virtual_score = self.get_virtual_daa_score();
         let header_count = self
             .headers_store

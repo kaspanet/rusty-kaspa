@@ -51,7 +51,7 @@ impl<'a> UtxoProcessingContext<'a> {
             mergeset_diff: UtxoDiff::default(),
             accepted_tx_ids: Vec::with_capacity(1), // We expect at least the selected parent coinbase tx
             mergeset_rewards: BlockHashMap::with_capacity(mergeset_size),
-            mergeset_acceptance_data: AcceptanceData { mergesets: Vec::with_capacity(mergeset_size), accepting_blue_score: 0 },
+            mergeset_acceptance_data: AcceptanceData { mergeset: Vec::with_capacity(mergeset_size), accepting_blue_score: 0 },
         }
     }
 
@@ -105,7 +105,7 @@ impl VirtualStateProcessor {
 
             if is_selected_parent {
                 // For the selected parent, we prepend the coinbase tx
-                ctx.mergeset_acceptance_data.mergesets.push(MergesetBlockAcceptanceData {
+                ctx.mergeset_acceptance_data.mergeset.push(MergesetBlockAcceptanceData {
                     block_hash: merged_block,
                     accepted_transactions: once(AcceptedTxEntry { transaction_id: validated_coinbase_id, index_within_block: 0 })
                         .chain(
@@ -119,7 +119,7 @@ impl VirtualStateProcessor {
                 ctx.mergeset_acceptance_data.accepting_blue_score = ctx.ghostdag_data.blue_score;
             // for review: is this a correct assumption?
             } else {
-                ctx.mergeset_acceptance_data.mergesets.push(MergesetBlockAcceptanceData {
+                ctx.mergeset_acceptance_data.mergeset.push(MergesetBlockAcceptanceData {
                     block_hash: merged_block,
                     accepted_transactions: validated_transactions
                         .into_iter()
