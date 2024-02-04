@@ -323,7 +323,7 @@ where
     }
 
     pub fn execute_subscribe_command(&self, id: ListenerId, scope: Scope, command: Command) -> Result<()> {
-        let event: EventType = (&scope).into();
+        let event = scope.event_type();
         if self.enabled_events[event] {
             let mut listeners = self.listeners.lock();
             if let Some(listener) = listeners.get_mut(&id) {
@@ -349,9 +349,8 @@ where
         command: Command,
     ) -> Result<()> {
         let mut sync_feedback: bool = false;
-        let event: EventType = (&scope).into();
-        debug!("[Notifier {}] {command} notifying about {scope} to listener {id} - {}", self.name, listener.connection());
-        let outcome = listener.mutate(Mutation::new(command, scope.clone()), self.policies.clone(), &self.subscription_context)?;
+        let event = scope.event_type();
+        let scope_trace = format!("{scope}");
         if outcome.has_changes() {
             trace!(
                 "[Notifier {}] {command} notifying listener {id} about {scope:?} involves mutations {:?}",

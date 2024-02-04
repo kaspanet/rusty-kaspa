@@ -275,7 +275,7 @@ impl RpcApi for GrpcClient {
                 self.notifier.clone().unwrap().try_start_notify(id, scope)?;
             }
             NotificationMode::Direct => {
-                let event: EventType = (&scope).into();
+                let event = scope.event_type();
                 self.subscriptions.as_ref().unwrap().lock().await[event].mutate(
                     Mutation::new(Command::Start, scope.clone()),
                     self.policies.clone(),
@@ -295,7 +295,7 @@ impl RpcApi for GrpcClient {
                     self.notifier.clone().unwrap().try_stop_notify(id, scope)?;
                 }
                 NotificationMode::Direct => {
-                    let event: EventType = (&scope).into();
+                    let event = scope.event_type();
                     self.subscriptions.as_ref().unwrap().lock().await[event].mutate(
                         Mutation::new(Command::Stop, scope.clone()),
                         self.policies.clone(),

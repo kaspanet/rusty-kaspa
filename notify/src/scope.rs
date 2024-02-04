@@ -46,6 +46,12 @@ pub enum Scope {
 }
 }
 
+impl Scope {
+    pub fn event_type(&self) -> EventType {
+        self.into()
+    }
+}
+
 #[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct BlockAddedScope {}
 

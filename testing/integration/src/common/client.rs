@@ -22,7 +22,7 @@ impl ListeningClient {
     }
 
     pub async fn start_notify(&mut self, scope: Scope) -> RpcResult<()> {
-        let event: EventType = (&scope).into();
+        let event = scope.event_type();
         match self.listeners.entry(event) {
             Entry::Occupied(e) => e.get().execute_subscribe_command(scope, Command::Start).await,
             Entry::Vacant(e) => {
@@ -34,7 +34,7 @@ impl ListeningClient {
 
     #[allow(dead_code)]
     pub async fn stop_notify(&mut self, scope: Scope) -> RpcResult<()> {
-        let event: EventType = (&scope).into();
+        let event = scope.event_type();
         match self.listeners.entry(event) {
             Entry::Occupied(e) => e.get().execute_subscribe_command(scope, Command::Stop).await,
             Entry::Vacant(_) => Ok(()),
