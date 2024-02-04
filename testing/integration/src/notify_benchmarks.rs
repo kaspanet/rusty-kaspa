@@ -20,13 +20,15 @@ use rand::thread_rng;
 use rand_distr::{Distribution, Exp};
 use std::{
     cmp::max,
+    io::Write,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc,
     },
     time::{Duration, Instant},
 };
 use tokio::join;
+use workflow_perf_monitor::mem::{get_process_memory_info, ProcessMemoryInfo};
 
 /// Run this benchmark with the following command line:
 /// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc --profile release -- notify_benchmarks::bench_utxos_changed_subscriptions_footprint --exact --nocapture --ignored`
@@ -158,6 +160,7 @@ async fn bench_utxos_changed_subscriptions_footprint() {
     let (sender, receiver) = async_channel::unbounded();
     bbt_client.start(Some(Arc::new(ChannelNotify::new(sender)))).await;
     bbt_client.start_notify(ListenerId::default(), Scope::NewBlockTemplate(NewBlockTemplateScope {})).await.unwrap();
+    let submitted_block_total_txs = Arc::new(AtomicUsize::new(0));
 
     let submit_block_pool = daemon
         .new_client_pool(SUBMIT_BLOCK_CLIENTS, 100, |c, block: RpcBlock| async move {
@@ -219,6 +222,7 @@ async fn bench_utxos_changed_subscriptions_footprint() {
     let block_sender = submit_block_pool.sender();
     let exec = executing.clone();
     let cc = Arc::new(bbt_client.clone());
+    let txs_counter = submitted_block_total_txs.clone();
     let miner_loop_task = tokio::spawn(async move {
         for i in 0..BLOCK_COUNT {
             // Simulate mining time
@@ -240,6 +244,7 @@ async fn bench_utxos_changed_subscriptions_footprint() {
             });
 
             let bs = block_sender.clone();
+            txs_counter.fetch_add(block.transactions.len() - 1, Ordering::SeqCst);
             tokio::spawn(async move {
                 // Simulate communication delay. TODO: consider adding gaussian noise
                 tokio::time::sleep(Duration::from_millis(comm_delay)).await;
@@ -357,8 +362,10 @@ async fn bench_utxos_changed_subscriptions_footprint() {
         .await;
         warn!("Basic notifications started");
 
+        let mut stopwatch = std::time::Instant::now();
         loop {
-            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            tokio::time::sleep(stopwatch + std::time::Duration::from_secs(300) - std::time::Instant::now()).await;
+            stopwatch = std::time::Instant::now();
             warn!("Starting UTXOs notifications...");
             if ACTIVE_UTXOS_CHANGED_SUBSCRIPTIONS {
                 join_all(notify_clients.iter().cloned().enumerate().map(|(i, client)| {
@@ -398,7 +405,8 @@ async fn bench_utxos_changed_subscriptions_footprint() {
                 warn!("UTXOs notifications started");
             }
 
-            tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+            tokio::time::sleep(stopwatch + std::time::Duration::from_secs(600) - std::time::Instant::now()).await;
+            stopwatch = std::time::Instant::now();
             warn!("Stopping UTXOs notifications...");
             if ACTIVE_UTXOS_CHANGED_SUBSCRIPTIONS {
                 join_all(notify_clients.iter().cloned().map(|client| {
@@ -428,7 +436,39 @@ async fn bench_utxos_changed_subscriptions_footprint() {
         }
     });
 
-    let _ = join!(memory_monitor_task, notification_receive_tasks, notify_task, miner_receiver_task, miner_loop_task, tx_sender_task);
+    let txs_counter = submitted_block_total_txs.clone();
+    let exec = executing.clone();
+    let stat_recorder_task = tokio::spawn(async move {
+        const STAT_FOLDER: &'static str = "../../../analyze/mem-logs";
+        std::fs::create_dir_all(STAT_FOLDER).unwrap();
+        let f =
+            std::fs::File::create(format!("{}/ucs-{}.csv", STAT_FOLDER, chrono::Local::now().format("%Y-%m-%d %H:%M:%S"))).unwrap();
+        let mut f = std::io::BufWriter::new(f);
+        let start_time = std::time::Instant::now();
+        let mut stopwatch = start_time;
+        loop {
+            tokio::time::sleep(stopwatch + std::time::Duration::from_secs(5) - std::time::Instant::now()).await;
+            stopwatch = std::time::Instant::now();
+            let ProcessMemoryInfo { resident_set_size, .. } = get_process_memory_info().unwrap();
+            let txs = txs_counter.load(Ordering::SeqCst);
+            writeln!(f, "{}, {}, {}", (stopwatch - start_time).as_millis() as f64 / 1000.0, txs, resident_set_size).unwrap();
+            f.flush().unwrap();
+            if !exec.load(Ordering::Relaxed) {
+                kaspa_core::warn!("Test is over, stopping stat recorder loop");
+                break;
+            }
+        }
+    });
+
+    let _ = join!(
+        memory_monitor_task,
+        notification_receive_tasks,
+        notify_task,
+        miner_receiver_task,
+        miner_loop_task,
+        tx_sender_task,
+        stat_recorder_task
+    );
 
     submit_block_pool.close();
     submit_tx_pool.close();
