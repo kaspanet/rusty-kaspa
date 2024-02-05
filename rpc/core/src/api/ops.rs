@@ -86,6 +86,10 @@ pub enum RpcApiOps {
     GetCoinSupply,
     /// Get DAA Score timestamp estimate
     GetDaaScoreTimestampEstimate,
+    /// Get the confirmed data for a accepting blue score range.
+    GetConfirmedDataByAcceptingBlueScore,
+    /// Get the confirmed data for a confirmation range.
+    GetConfirmedDataByConfirmations,
 
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,

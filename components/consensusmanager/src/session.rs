@@ -435,6 +435,10 @@ impl ConsensusSessionOwned {
     pub async fn async_finality_point(&self) -> Hash {
         self.clone().spawn_blocking(move |c| c.finality_point()).await
     }
+
+    pub async fn get_block_transactions(&self, block: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
+        self.clone().spawn_blocking(move |c| c.get_block_transactions(block)).await
+    }
 }
 
 pub type ConsensusProxy = ConsensusSessionOwned;

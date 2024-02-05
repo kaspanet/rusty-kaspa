@@ -2901,6 +2901,7 @@ dependencies = [
  "kaspa-p2p-lib",
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
+ "kaspa-scoreindex",
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-utils-tower",

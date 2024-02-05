@@ -57,6 +57,7 @@ use kaspa_rpc_core::{
     notify::connection::ChannelConnection,
     Notification, RpcError, RpcResult,
 };
+use kaspa_scoreindex::ScoreIndexProxy;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
@@ -93,6 +94,7 @@ pub struct RpcCoreService {
     mining_manager: MiningManagerProxy,
     flow_context: Arc<FlowContext>,
     utxoindex: Option<UtxoIndexProxy>,
+    scoreindex: Option<ScoreIndexProxy>,
     config: Arc<Config>,
     consensus_converter: Arc<ConsensusConverter>,
     index_converter: Arc<IndexConverter>,
@@ -118,6 +120,7 @@ impl RpcCoreService {
         mining_manager: MiningManagerProxy,
         flow_context: Arc<FlowContext>,
         utxoindex: Option<UtxoIndexProxy>,
+        scoreindex: Option<ScoreIndexProxy>,
         config: Arc<Config>,
         core: Arc<Core>,
         processing_counters: Arc<ProcessingCounters>,
@@ -137,6 +140,7 @@ impl RpcCoreService {
         consensus_events[EventType::ChainAcceptanceDataPruned] = false; // Not used in rpc
         consensus_events[EventType::UtxosChanged] = false;
         consensus_events[EventType::PruningPointUtxoSetOverride] = index_notifier.is_none();
+        consensus_events[EventType::VirtualChainChanged] = scoreindex.is_none();
         let consensus_converter = Arc::new(ConsensusConverter::new(consensus_manager.clone(), config.clone()));
         let consensus_collector = Arc::new(CollectorFromConsensus::new(
             "rpc-core <= consensus",
@@ -157,12 +161,25 @@ impl RpcCoreService {
                 .clone()
                 .register_new_listener(IndexChannelConnection::new(index_notify_channel.sender(), ChannelType::Closable));
 
-            let index_events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
+            let mut index_events = Vec::new();
+            if utxoindex.is_some() {
+                index_events.append(&mut vec![EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride])
+            }
+            if scoreindex.is_some() {
+                index_events.append(&mut vec![
+                    EventType::VirtualChainChanged,
+                    //EventType::ChainAcceptanceDataPruned, this is not used by the rpc, but if it is, it should be over the index service
+                ])
+            }
+
             let index_collector =
                 Arc::new(CollectorFromIndex::new("rpc-core <= index", index_notify_channel.receiver(), index_converter.clone()));
-            let index_subscriber =
-                Arc::new(Subscriber::new("rpc-core => index", index_events, index_notifier.clone(), index_notify_listener_id));
-
+            let index_subscriber = Arc::new(Subscriber::new(
+                "rpc-core => index",
+                index_events.as_slice().as_ref().into(),
+                index_notifier.clone(),
+                index_notify_listener_id,
+            ));
             collectors.push(index_collector);
             subscribers.push(index_subscriber);
         }
@@ -179,6 +196,7 @@ impl RpcCoreService {
             mining_manager,
             flow_context,
             utxoindex,
+            scoreindex,
             config,
             consensus_converter,
             index_converter,
@@ -864,6 +882,19 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetSyncStatusResponse { is_synced })
     }
 
+    async fn get_confirmed_data_by_accepting_blue_score_call(
+        &self,
+        request: GetConfirmedDataByAcceptingBlueScoreRequest,
+    ) -> RpcResult<GetConfirmedDataByAcceptingBlueScoreResponse> {
+        Ok(GetConfirmedDataByAcceptingBlueScoreResponse::default())
+    }
+
+    async fn get_confirmed_data_by_confirmations_call(
+        &self,
+        request: GetConfirmedDataByConfirmationsRequest,
+    ) -> RpcResult<GetConfirmedDataByConfirmationsResponse> {
+        Ok(GetConfirmedDataByConfirmationsResponse:)
+    }
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

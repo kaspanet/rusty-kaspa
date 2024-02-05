@@ -979,4 +979,8 @@ impl ConsensusApi for Consensus {
     fn finality_point(&self) -> Hash {
         self.virtual_processor.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, self.pruning_point())
     }
+
+    fn get_block_transactions(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
+        Ok(self.block_transactions_store.get(hash).map_err(|_| ConsensusError::BlockNotFound(hash))?)
+    }
 }

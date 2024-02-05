@@ -59,6 +59,8 @@ message KaspadRequest {
     GetServerInfoRequestMessage getServerInfoRequest = 1092;
     GetSyncStatusRequestMessage getSyncStatusRequest = 1094;
     GetDaaScoreTimestampEstimateRequestMessage GetDaaScoreTimestampEstimateRequest = 1096;
+    GetConfirmedDataByAcceptingBlueScoreRequestMessage getConfirmedDataByAcceotingBlueScoreRequest = 1098;
+    GetConfirmedDataByConfirmationsRequestMessage getConfirmedDataByConfirmationsRequest = 1100;
   }
 }
 
@@ -118,6 +120,8 @@ message KaspadResponse {
     GetServerInfoResponseMessage getServerInfoResponse = 1093;
     GetSyncStatusResponseMessage getSyncStatusResponse = 1095;
     GetDaaScoreTimestampEstimateResponseMessage GetDaaScoreTimestampEstimateResponse = 1097;
+    GetConfirmedDataByAcceptingBlueScoreResponseMessage getConfirmedDataByAcceotingBlueScoreResponse = 1099;
+    GetConfirmedDataByConfirmationsResponseMessage getConfirmedDataByConfirmationsResponse = 1101;
   }
 }
 

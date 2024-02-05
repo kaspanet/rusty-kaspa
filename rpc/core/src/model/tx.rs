@@ -1,7 +1,8 @@
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::{
-    ScriptPublicKey, ScriptVec, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
+    ScriptPublicKey, ScriptVec, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
+    UtxoEntry,
 };
 use serde::{Deserialize, Serialize};
 
@@ -112,4 +113,31 @@ pub struct RpcTransactionVerboseData {
 pub struct RpcAcceptedTransactionIds {
     pub accepting_block_hash: RpcHash,
     pub accepted_transaction_ids: Vec<RpcTransactionId>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcTransactionData {
+    pub transaction: Option<RpcTransaction>,
+    pub inclusion_data: Option<RpcTransactionInclusionData>,
+    pub acceptance_data: Option<RpcTransactionAcceptanceData>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcTransactionInclusionData {
+    pub block_hash: RpcHash,
+    pub transaction_index: TransactionIndexType,
+    pub timestamp: u64,
+    pub daa_score: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcTransactionAcceptanceData {
+    pub block_hash: RpcHash,
+    pub acceptance_data_index: u16,
+    pub timestamp: u64,
+    pub daa_score: u64,  // use this as indication for network time, NOT confirmation counting!
+    pub blue_score: u64, // use this for Confirmation counting!
 }
