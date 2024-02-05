@@ -2,7 +2,7 @@ use std::{cmp::min, sync::Arc};
 
 use crate::{
     stores::{ScoreIndexAcceptingBlueScoreReader, ScoreIndexAcceptingBlueScoreStore, StoreManager},
-    AcceptingBlueScore, AcceptingBlueScoreHashPair, ScoreIndexReindexer, ScoreIndexResult, IDENT,
+    AcceptingBlueScore, AcceptingBlueScoreHashPair, ScoreIndexApi, ScoreIndexReindexer, ScoreIndexResult, IDENT,
 };
 use kaspa_consensus_notify::notification::{ChainAcceptanceDataPrunedNotification, VirtualChainChangedNotification};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusSessionBlocking};
@@ -124,8 +124,8 @@ impl ScoreIndex {
     }
 }
 
-impl ScoreIndex {
-    pub fn resync(&mut self) -> ScoreIndexResult<()> {
+impl ScoreIndexApi for ScoreIndex {
+    fn resync(&mut self) -> ScoreIndexResult<()> {
         trace!("[{0}] Started Resyncing", IDENT);
         let consensus = self.consensus_manager.consensus();
         let session = futures::executor::block_on(consensus.session_blocking());
@@ -217,7 +217,7 @@ impl ScoreIndex {
         Ok(())
     }
 
-    pub fn is_synced(&self) -> ScoreIndexResult<bool> {
+    fn is_synced(&self) -> ScoreIndexResult<bool> {
         let consensus = self.consensus_manager.consensus();
         let session = futures::executor::block_on(consensus.session_blocking());
         if let Some(scoreindex_sink) = self.stores.accepting_blue_score_store.get_sink()? {
@@ -232,7 +232,7 @@ impl ScoreIndex {
         Ok(false)
     }
 
-    pub fn get_accepting_blue_score_chain_blocks(
+    fn get_accepting_blue_score_chain_blocks(
         &self,
         from: AcceptingBlueScore,
         to: AcceptingBlueScore,
@@ -241,17 +241,17 @@ impl ScoreIndex {
         Ok(Arc::new(self.stores.accepting_blue_score_store.get_range(from, to)?))
     }
 
-    pub fn get_sink(&self) -> ScoreIndexResult<Option<AcceptingBlueScoreHashPair>> {
+    fn get_sink(&self) -> ScoreIndexResult<Option<AcceptingBlueScoreHashPair>> {
         trace!("[{0}] Getting sink", IDENT);
         Ok(self.stores.accepting_blue_score_store.get_sink()?)
     }
 
-    pub fn get_source(&self) -> ScoreIndexResult<Option<AcceptingBlueScoreHashPair>> {
+    fn get_source(&self) -> ScoreIndexResult<Option<AcceptingBlueScoreHashPair>> {
         trace!("[{0}] Getting source", IDENT);
         Ok(self.stores.accepting_blue_score_store.get_source()?)
     }
 
-    pub fn update_via_virtual_chain_changed(
+    fn update_via_virtual_chain_changed(
         &mut self,
         virtual_chain_changed_notification: VirtualChainChangedNotification,
     ) -> ScoreIndexResult<()> {
@@ -264,7 +264,7 @@ impl ScoreIndex {
         self.update_via_reindexer(ScoreIndexReindexer::from(virtual_chain_changed_notification))
     }
 
-    pub fn update_via_chain_acceptance_data_pruned(
+    fn update_via_chain_acceptance_data_pruned(
         &mut self,
         chain_acceptance_data_pruned_notification: ChainAcceptanceDataPrunedNotification,
     ) -> ScoreIndexResult<()> {
@@ -274,6 +274,12 @@ impl ScoreIndex {
             chain_acceptance_data_pruned_notification.mergeset_block_acceptance_data_pruned.accepting_blue_score
         );
         self.update_via_reindexer(ScoreIndexReindexer::from(chain_acceptance_data_pruned_notification))
+    }
+}
+
+impl std::fmt::Debug for ScoreIndex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ScoreIndex").finish()
     }
 }
 

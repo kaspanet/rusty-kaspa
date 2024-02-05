@@ -3321,6 +3321,7 @@ dependencies = [
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
  "kaspa-rpc-service",
+ "kaspa-scoreindex",
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-utils-tower",

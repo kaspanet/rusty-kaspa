@@ -39,6 +39,7 @@ pub struct Args {
     pub add_peers: Vec<ContextualNetAddress>,
     pub listen: Option<ContextualNetAddress>,
     pub user_agent_comments: Vec<String>,
+    pub scoreindex: bool,
     pub utxoindex: bool,
     pub reset_db: bool,
     pub outbound_target: usize,
@@ -80,6 +81,7 @@ impl Default for Args {
             rpclisten_json: None,
             unsafe_rpc: false,
             async_threads: num_cpus::get(),
+            scoreindex: false,
             utxoindex: false,
             reset_db: false,
             outbound_target: 8,
@@ -125,6 +127,7 @@ impl Default for Args {
 impl Args {
     pub fn apply_to_config(&self, config: &mut Config) {
         config.utxoindex = self.utxoindex;
+        config.scoreindex = self.scoreindex;
         config.disable_upnp = self.disable_upnp;
         config.unsafe_rpc = self.unsafe_rpc;
         config.enable_unsynced_mining = self.enable_unsynced_mining;
@@ -287,6 +290,7 @@ pub fn cli() -> Command {
                 .hide(true)
                 .help("Allow mainnet mining (do not use unless you know what you are doing)"),
         )
+        .arg(arg!(--scoreindex "Enable the Score index"))
         .arg(arg!(--utxoindex "Enable the UTXO index"))
         .arg(arg!(--testnet "Use the test network"))
         .arg(
@@ -387,6 +391,7 @@ impl Args {
             reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
             enable_unsynced_mining: m.get_one::<bool>("enable-unsynced-mining").cloned().unwrap_or(defaults.enable_unsynced_mining),
             enable_mainnet_mining: m.get_one::<bool>("enable-mainnet-mining").cloned().unwrap_or(defaults.enable_mainnet_mining),
+            scoreindex: m.get_one::<bool>("scoreindex").cloned().unwrap_or(defaults.scoreindex),
             utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
             testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
             testnet_suffix: m.get_one::<u32>("netsuffix").cloned().unwrap_or(defaults.testnet_suffix),
@@ -490,6 +495,7 @@ impl Args {
                                             subnetworks.
       --maxutxocachesize=                   Max size of loaded UTXO into ram from the disk in bytes (default:
                                             5000000000)
+      --scoreindex                          Enable the Score index (for scanning by accepting blue score)
       --utxoindex                           Enable the UTXO index
       --archival                            Run as an archival node: don't delete old block data when moving the
                                             pruning point (Warning: heavy disk usage)'

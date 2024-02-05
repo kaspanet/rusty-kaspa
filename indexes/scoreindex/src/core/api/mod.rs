@@ -11,7 +11,7 @@ use crate::{errors::ScoreIndexResult, AcceptingBlueScore, AcceptingBlueScoreHash
 pub trait ScoreIndexApi: Send + Sync + Debug {
     fn resync(&mut self) -> ScoreIndexResult<()>;
 
-    fn is_synced(&mut self) -> ScoreIndexResult<bool>;
+    fn is_synced(&self) -> ScoreIndexResult<bool>;
 
     fn get_accepting_blue_score_chain_blocks(
         &self,
@@ -24,12 +24,12 @@ pub trait ScoreIndexApi: Send + Sync + Debug {
     fn get_source(&self) -> ScoreIndexResult<Option<AcceptingBlueScoreHashPair>>;
 
     fn update_via_virtual_chain_changed(
-        &self,
+        &mut self,
         virtual_chain_changed_notification: VirtualChainChangedNotification,
     ) -> ScoreIndexResult<()>;
 
     fn update_via_chain_acceptance_data_pruned(
-        &self,
+        &mut self,
         chain_acceptance_data_pruned_notification: ChainAcceptanceDataPrunedNotification,
     ) -> ScoreIndexResult<()>;
 }
