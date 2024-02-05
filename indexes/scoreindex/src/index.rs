@@ -314,7 +314,7 @@ pub mod test {
     use kaspa_consensus_core::{acceptance_data::AcceptanceData, config::Config};
     use kaspa_consensus_notify::notification::{ChainAcceptanceDataPrunedNotification, VirtualChainChangedNotification};
     use kaspa_consensusmanager::ConsensusManager;
-    use kaspa_core::console::warn;
+    use kaspa_core::warn;
     use kaspa_database::{create_temp_db, prelude::ConnBuilder};
     use kaspa_hashes::Hash;
 
@@ -414,7 +414,8 @@ pub mod test {
     #[test]
     fn test_scoreindex_resync() {
         kaspa_core::log::try_init_logger("WARN");
-        warn("Test is not implemented yet");
-        //TODO: implement test - ideally via simpa.
+        warn!("Test is not implemented yet..");
+        //TODO: implement test - ideally move to, and expand on simpa.
+        //see: https://github.com/kaspanet/rusty-kaspa/issues/59
     }
 }
