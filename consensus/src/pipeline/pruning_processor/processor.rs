@@ -367,8 +367,8 @@ impl PruningProcessor {
                 // OR we sent the notification
                 || is_notification_sent
                 )
-                        // AND consenus is exiting
-                        && self.is_consensus_exiting.load(Ordering::Relaxed)
+                // AND consenus is exiting
+                && self.is_consensus_exiting.load(Ordering::Relaxed)
             // We may exit
             {
                 drop(reachability_read);

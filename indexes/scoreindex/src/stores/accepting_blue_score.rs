@@ -8,24 +8,30 @@ use std::{fmt::Display, sync::Arc};
 
 use crate::{AcceptingBlueScore, AcceptingBlueScoreDiff, AcceptingBlueScoreHashPair};
 
+
+
+/// Some notes on the [`AcceptingBlueScoreKey`]:
+/// 1) Big endian is important for the ordering of the keys. as it allows us to iterate ranges. 
+/// 2) Rocks-db does not play well with 0 byte values, so we increment by 1 before converting it to bytes,
+/// and vice-versa, when converting from bytes to [`AcceptingBlueScore`], decrement by 1. This ensures we do not have 0 byte values.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct AcceptingBlueScoreKey([u8; std::mem::size_of::<AcceptingBlueScore>()]);
 
 impl From<AcceptingBlueScore> for AcceptingBlueScoreKey {
     fn from(accepting_blue_score: AcceptingBlueScore) -> Self {
-        Self(accepting_blue_score.to_le_bytes())
+        Self((accepting_blue_score + 1).to_be_bytes()) // Big endian  is important for the ordering of the keys.
     }
 }
 
 impl From<AcceptingBlueScoreKey> for AcceptingBlueScore {
     fn from(accepting_blue_score_key: AcceptingBlueScoreKey) -> Self {
-        AcceptingBlueScore::from_le_bytes(accepting_blue_score_key.0)
+        AcceptingBlueScore::from_be_bytes(accepting_blue_score_key.0) - 1// Big endian  is important for the ordering of the keys.
     }
 }
 
 impl From<&AcceptingBlueScore> for AcceptingBlueScoreKey {
     fn from(accepting_blue_score: &AcceptingBlueScore) -> Self {
-        Self(accepting_blue_score.to_le_bytes())
+        Self((accepting_blue_score + 1).to_be_bytes()) // Big endian  is important for the ordering of the keys.
     }
 }
 
@@ -62,6 +68,9 @@ pub trait ScoreIndexAcceptingBlueScoreReader {
     fn get_source(&self) -> StoreResult<Option<AcceptingBlueScoreHashPair>>;
     fn get_range(&self, from: AcceptingBlueScore, to: AcceptingBlueScore) -> StoreResult<Vec<AcceptingBlueScoreHashPair>>;
     fn has(&self, accepting_blue_score: AcceptingBlueScore) -> StoreResult<bool>;
+
+    //For tests only:
+    fn get_all(&self) -> StoreResult<Vec<AcceptingBlueScoreHashPair>>;
 }
 
 pub trait ScoreIndexAcceptingBlueScoreStore {
@@ -113,7 +122,7 @@ impl ScoreIndexAcceptingBlueScoreReader for DbScoreIndexAcceptingBlueScoreStore 
     }
 
     fn get_sink(&self) -> StoreResult<Option<AcceptingBlueScoreHashPair>> {
-        let ret = self.access.iterator(false).next();
+        let ret = self.access.iterator(true).next();
         if let Some(res) = ret {
             let (k, v) = res.map_err(|err| StoreError::Undefined(err.to_string()))?;
             return Ok(Some(AcceptingBlueScoreHashPair {
@@ -125,7 +134,7 @@ impl ScoreIndexAcceptingBlueScoreReader for DbScoreIndexAcceptingBlueScoreStore 
     }
 
     fn get_source(&self) -> StoreResult<Option<AcceptingBlueScoreHashPair>> {
-        let ret = self.access.iterator(true).next();
+        let ret = self.access.iterator(false).next();
         if let Some(res) = ret {
             let (k, v) = res.map_err(|err| StoreError::Undefined(err.to_string()))?;
             return Ok(Some(AcceptingBlueScoreHashPair {
@@ -134,6 +143,19 @@ impl ScoreIndexAcceptingBlueScoreReader for DbScoreIndexAcceptingBlueScoreStore 
             }));
         }
         Ok(None)
+    }
+
+    fn get_all(&self) -> StoreResult<Vec<AcceptingBlueScoreHashPair>> {
+        self.access
+            .iterator(false)
+            .map(|res| match res {
+                Ok((k, v)) => Ok(AcceptingBlueScoreHashPair {
+                    accepting_blue_score: AcceptingBlueScoreKey::try_from(k.as_ref())?.into(),
+                    hash: v,
+                }),
+                Err(err) => Err(StoreError::Undefined(err.to_string())),
+            })
+            .collect::<StoreResult<Vec<AcceptingBlueScoreHashPair>>>()
     }
 }
 

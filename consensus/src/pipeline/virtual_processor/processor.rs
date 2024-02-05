@@ -323,7 +323,7 @@ impl VirtualStateProcessor {
         self.notification_root
             .notify(Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score)))
             .expect("expecting an open unbounded channel");
-        if self.notification_root.has_subscription(EventType::VirtualChainChanged) {
+        if prev_sink != new_sink && self.notification_root.has_subscription(EventType::VirtualChainChanged) {
             // check for subscriptions before the heavy lifting
             let added_chain_blocks_acceptance_data =
                 chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();

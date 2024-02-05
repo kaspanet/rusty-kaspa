@@ -11,7 +11,7 @@ use kaspa_index_core::notifier::IndexNotifier;
 use kaspa_notify::{
     connection::ChannelType,
     events::EventType,
-    scope::{PruningPointUtxoSetOverrideScope, Scope, UtxosChangedScope},
+    scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
 };
 use kaspa_scoreindex::api::ScoreIndexProxy;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
@@ -40,28 +40,34 @@ impl IndexService {
 
         // Prepare the index-processor notifier
         // No subscriber is defined here because the subscription are manually created during the construction and never changed after that.
-        let mut events = HashSet::new();
+        let mut event_types = HashSet::<EventType>::new();
 
         if utxoindex.is_some() {
-            events.insert(EventType::UtxosChanged);
+            event_types.insert(EventType::UtxosChanged);
+            event_types.insert(EventType::PruningPointUtxoSetOverride);
         }
         if scoreindex.is_some() {
-            events.insert(EventType::VirtualChainChanged);
-            events.insert(EventType::ChainAcceptanceDataPruned);
+            event_types.insert(EventType::VirtualChainChanged);
+            event_types.insert(EventType::ChainAcceptanceDataPruned);
         }
 
-        let events = events.into_iter().collect::<Vec<EventType>>().as_slice().into();
+        let events = event_types.iter().cloned().collect::<Vec<EventType>>().as_slice().into();
 
         let collector = Arc::new(Processor::new(utxoindex.clone(), scoreindex.clone(), consensus_notify_channel.receiver()));
         let notifier = Arc::new(IndexNotifier::new(INDEX_SERVICE, events, vec![collector], vec![], 1));
 
         // Manually subscribe to index-processor related event types
-        consensus_notifier
-            .try_start_notify(consensus_notify_listener_id, Scope::UtxosChanged(UtxosChangedScope::default()))
-            .expect("the subscription always succeeds");
-        consensus_notifier
-            .try_start_notify(consensus_notify_listener_id, Scope::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideScope {}))
-            .expect("the subscription always succeeds");
+        for event in event_types.into_iter() {
+            let scope = match event {
+                EventType::UtxosChanged => Scope::UtxosChanged(UtxosChangedScope::default()),
+                EventType::VirtualChainChanged => Scope::VirtualChainChanged(VirtualChainChangedScope::new(true)),
+                _ => Scope::from(event),
+            };
+
+            consensus_notifier
+                .try_start_notify(consensus_notify_listener_id, scope)
+                .expect("the subscription always succeeds");
+        }
 
         Self { utxoindex, scoreindex, notifier, shutdown: SingleTrigger::default() }
     }

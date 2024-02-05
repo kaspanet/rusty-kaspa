@@ -201,7 +201,7 @@ mod tests {
             tc.init();
             let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
             let utxoindex = Some(UtxoIndexProxy::new(UtxoIndex::new(consensus_manager, utxoindex_db).unwrap()));
-            let processor = Arc::new(Processor::new(utxoindex, consensus_receiver));
+            let processor = Arc::new(Processor::new(utxoindex, None, consensus_receiver));
             let (processor_sender, processor_receiver) = unbounded();
             let notifier = Arc::new(NotifyMock::new(processor_sender));
             processor.clone().start(notifier);

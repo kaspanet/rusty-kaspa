@@ -520,7 +520,7 @@ impl ConsensusApi for Consensus {
                     return self
                             .services
                             .reachability_service
-                            .forward_chain_iterator(ORIGIN, pruning_point, false)
+                            .forward_chain_iterator(ORIGIN, pruning_point, true)
                             .skip(1) // skip ORIGIN
                             .find(|this| {
                                 match self.statuses_store.read().get(*this).ok() {

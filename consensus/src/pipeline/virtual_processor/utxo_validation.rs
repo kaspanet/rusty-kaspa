@@ -117,7 +117,6 @@ impl VirtualStateProcessor {
                 });
                 // for review: is this a correct assumption?
                 ctx.mergeset_acceptance_data.accepting_blue_score = ctx.ghostdag_data.blue_score;
-            // for review: is this a correct assumption?
             } else {
                 ctx.mergeset_acceptance_data.mergeset.push(MergesetBlockAcceptanceData {
                     block_hash: merged_block,

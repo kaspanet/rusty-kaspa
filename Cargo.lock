@@ -2964,6 +2964,7 @@ dependencies = [
  "kaspa-notify",
  "kaspa-pow",
  "kaspa-rpc-core",
+ "kaspa-scoreindex",
  "kaspa-txscript",
  "kaspa-txscript-errors",
  "kaspa-utils",

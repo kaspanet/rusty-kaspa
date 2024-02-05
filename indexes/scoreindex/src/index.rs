@@ -84,14 +84,19 @@ impl ScoreIndex {
                     ZERO_HASH,
                 );
             } else {
-                let to_add = session
+                let mut to_add = session
                     .get_virtual_chain_from_block(current.hash, None, RESYNC_CHUNKSIZE.try_into().unwrap())?
                     .added
                     .into_iter()
                     .take(RESYNC_CHUNKSIZE.try_into().unwrap())
                     .map(|h| AcceptingBlueScoreHashPair::new(session.get_header(h).unwrap().blue_score, h))
                     .collect::<Vec<_>>();
-                current = to_add.last().unwrap().clone();
+                if is_start { //get virtual chain is none-inclusive in respect to low, so we prepend the current.
+                    to_add.insert(0, current.clone());
+                }
+                if let Some(last) = to_add.last() {
+                    current = last.clone();
+                }
                 self.stores.accepting_blue_score_store.write_many(&mut batch, to_add)?;
             }
             total_blue_score_processed.1 = current.accepting_blue_score;
@@ -256,11 +261,14 @@ impl ScoreIndexApi for ScoreIndex {
         virtual_chain_changed_notification: VirtualChainChangedNotification,
     ) -> ScoreIndexResult<()> {
         trace!(
-            "[{0}] Updating via virtual chain changed notification: {1} added, {2} removed",
+            "[{0}] Updating via virtual chain changed notification: {1} added, {2} removed, {3:?}",
             IDENT,
             virtual_chain_changed_notification.added_chain_block_hashes.len(),
-            virtual_chain_changed_notification.removed_chain_block_hashes.len()
+            virtual_chain_changed_notification.removed_chain_block_hashes.len(),
+            virtual_chain_changed_notification
         );
+        assert_eq!(virtual_chain_changed_notification.added_chain_block_hashes.len(), virtual_chain_changed_notification.added_chain_blocks_acceptance_data.len());
+        assert_eq!(virtual_chain_changed_notification.removed_chain_block_hashes.len(), virtual_chain_changed_notification.removed_chain_blocks_acceptance_data.len());
         self.update_via_reindexer(ScoreIndexReindexer::from(virtual_chain_changed_notification))
     }
 
@@ -275,6 +283,11 @@ impl ScoreIndexApi for ScoreIndex {
         );
         self.update_via_reindexer(ScoreIndexReindexer::from(chain_acceptance_data_pruned_notification))
     }
+
+    fn get_all_hash_blue_score_pairs(&self) -> ScoreIndexResult<Arc<Vec<AcceptingBlueScoreHashPair>>> {
+        trace!("[{0}] Getting all hash blue score pairs", IDENT);
+        Ok(Arc::new(self.stores.accepting_blue_score_store.get_all()?))
+    }
 }
 
 impl std::fmt::Debug for ScoreIndex {
@@ -285,10 +298,8 @@ impl std::fmt::Debug for ScoreIndex {
 
 #[cfg(test)]
 pub mod test {
-    use super::*;
-
     #[test]
     fn test_score_index() {
-        todo!()
+        //todo!()
     }
 }

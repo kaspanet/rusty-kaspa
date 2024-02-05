@@ -32,6 +32,10 @@ pub trait ScoreIndexApi: Send + Sync + Debug {
         &mut self,
         chain_acceptance_data_pruned_notification: ChainAcceptanceDataPrunedNotification,
     ) -> ScoreIndexResult<()>;
+
+    //For tests only:
+
+    fn get_all_hash_blue_score_pairs(&self) -> ScoreIndexResult<Arc<Vec<AcceptingBlueScoreHashPair>>>;
 }
 
 /// Async proxy for the UTXO index
