@@ -951,7 +951,11 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
     let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
     let scoreindex = ScoreIndex::new(consensus_manager.clone(), scoreindex_db).unwrap();
-    let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(UtxoIndexProxy::new(utxoindex.clone())), Some(ScoreIndexProxy::new(scoreindex.clone()))));
+    let index_service = Arc::new(IndexService::new(
+        &notify_service.notifier(),
+        Some(UtxoIndexProxy::new(utxoindex.clone())),
+        Some(ScoreIndexProxy::new(scoreindex.clone())),
+    ));
 
     let async_runtime = Arc::new(AsyncRuntime::new(2));
     async_runtime.register(tick_service.clone());
@@ -1082,7 +1086,11 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let scoreindex_sink = scoreindex.read().get_sink().unwrap().unwrap();
     let scoreindex_source = scoreindex.read().get_source().unwrap().unwrap();
     let consensus_source = tc.get_source(true);
-    info!("ScoreIndex source blue score: {0}, consensus source blue score: {1}", scoreindex_source.accepting_blue_score, tc.get_header(consensus_source).unwrap().blue_score);
+    info!(
+        "ScoreIndex source blue score: {0}, consensus source blue score: {1}",
+        scoreindex_source.accepting_blue_score,
+        tc.get_header(consensus_source).unwrap().blue_score
+    );
     assert_eq!(scoreindex_sink.hash, tc.get_sink());
     assert_eq!(scoreindex_source.hash, tc.get_source(true));
 

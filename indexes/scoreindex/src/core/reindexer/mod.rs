@@ -18,9 +18,7 @@ impl From<VirtualChainChangedNotification> for ScoreIndexReindexer {
                 .added_chain_blocks_acceptance_data
                 .iter()
                 .zip(notification.added_chain_block_hashes.iter())
-                .map(|(acceptance_data, hash)| {
-                    AcceptingBlueScoreHashPair::new(acceptance_data.accepting_blue_score, *hash)
-                })
+                .map(|(acceptance_data, hash)| AcceptingBlueScoreHashPair::new(acceptance_data.accepting_blue_score, *hash))
                 .collect(),
         );
         Self { accepting_blue_score_changes }

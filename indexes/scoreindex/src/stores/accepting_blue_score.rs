@@ -8,10 +8,8 @@ use std::{fmt::Display, sync::Arc};
 
 use crate::{AcceptingBlueScore, AcceptingBlueScoreDiff, AcceptingBlueScoreHashPair};
 
-
-
 /// Some notes on the [`AcceptingBlueScoreKey`]:
-/// 1) Big endian is important for the ordering of the keys. as it allows us to iterate ranges. 
+/// 1) Big endian is important for the ordering of the keys. as it allows us to iterate ranges.
 /// 2) Rocks-db does not play well with 0 byte values, so we increment by 1 before converting it to bytes,
 /// and vice-versa, when converting from bytes to [`AcceptingBlueScore`], decrement by 1. This ensures we do not have 0 byte values.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -25,7 +23,7 @@ impl From<AcceptingBlueScore> for AcceptingBlueScoreKey {
 
 impl From<AcceptingBlueScoreKey> for AcceptingBlueScore {
     fn from(accepting_blue_score_key: AcceptingBlueScoreKey) -> Self {
-        AcceptingBlueScore::from_be_bytes(accepting_blue_score_key.0) - 1// Big endian  is important for the ordering of the keys.
+        AcceptingBlueScore::from_be_bytes(accepting_blue_score_key.0) - 1 // Big endian  is important for the ordering of the keys.
     }
 }
 

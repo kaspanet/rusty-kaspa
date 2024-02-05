@@ -64,9 +64,7 @@ impl IndexService {
                 _ => Scope::from(event),
             };
 
-            consensus_notifier
-                .try_start_notify(consensus_notify_listener_id, scope)
-                .expect("the subscription always succeeds");
+            consensus_notifier.try_start_notify(consensus_notify_listener_id, scope).expect("the subscription always succeeds");
         }
 
         Self { utxoindex, scoreindex, notifier, shutdown: SingleTrigger::default() }
