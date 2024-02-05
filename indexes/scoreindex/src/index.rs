@@ -298,8 +298,115 @@ impl std::fmt::Debug for ScoreIndex {
 
 #[cfg(test)]
 pub mod test {
+    use std::sync::Arc;
+
+    use kaspa_consensus::{consensus::test_consensus::{TestConsensus, TestConsensusFactory}, params::MAINNET_PARAMS};
+    use kaspa_consensus_core::{acceptance_data::AcceptanceData, config::Config};
+    use kaspa_consensus_notify::notification::{ChainAcceptanceDataPrunedNotification, VirtualChainChangedNotification};
+    use kaspa_consensusmanager::ConsensusManager;
+    use kaspa_core::console::warn;
+    use kaspa_database::{create_temp_db, prelude::ConnBuilder};
+    use kaspa_hashes::Hash;
+
+    use crate::{AcceptingBlueScoreHashPair, ScoreIndex, ScoreIndexApi};
+
     #[test]
-    fn test_score_index() {
-        //todo!()
+    fn test_scoreindex_update() {
+        kaspa_core::log::try_init_logger("TRACE");
+
+        // Set-up:
+        let (_scoreindex_db_lt, scoreindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+        let (_tc_db_lt, tc_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+
+        let tc_config = Config::new(MAINNET_PARAMS);
+
+        let tc = Arc::new(TestConsensus::with_db(tc_db.clone(), &tc_config));
+        let tcm = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
+        let scoreindex = ScoreIndex::new(tcm, scoreindex_db).unwrap();
+
+        // Define the block hashes:
+
+        let block_a_pair = AcceptingBlueScoreHashPair {
+            accepting_blue_score: 0,
+            hash: Hash::from_u64_word(1),
+        };
+        let block_b_pair = AcceptingBlueScoreHashPair {
+            accepting_blue_score: 1,
+            hash: Hash::from_u64_word(2),
+        };
+        let block_c_pair = AcceptingBlueScoreHashPair {
+            accepting_blue_score: 2,
+            hash: Hash::from_u64_word(3),
+        };
+        let block_d_pair = AcceptingBlueScoreHashPair {
+            accepting_blue_score: 2,
+            hash: Hash::from_u64_word(4),
+        };
+        
+        // add blocks a, b, c, to the scoreindex in one notification 
+        let update_1 = VirtualChainChangedNotification {
+            added_chain_block_hashes: vec![block_a_pair.hash, block_b_pair.hash, block_c_pair.hash].into(),
+            added_chain_blocks_acceptance_data: Arc::new(vec![Arc::new(AcceptanceData {
+                accepting_blue_score: block_a_pair.accepting_blue_score,
+                mergeset: vec![], // irrelevant
+            }), Arc::new(AcceptanceData {
+                accepting_blue_score: block_b_pair.accepting_blue_score,
+                mergeset: vec![], // irrelevant
+            }), Arc::new(AcceptanceData {
+                accepting_blue_score: block_c_pair.accepting_blue_score,
+                mergeset: vec![], // irrelevant
+            }),]),
+            removed_chain_block_hashes: vec![].into(),
+            removed_chain_blocks_acceptance_data: vec![].into(),
+        };
+
+        scoreindex.write().update_via_virtual_chain_changed(update_1).unwrap();
+        assert_eq!(scoreindex.read().get_source().unwrap().unwrap(), block_a_pair.clone());
+        assert_eq!(scoreindex.read().get_sink().unwrap().unwrap(), block_c_pair.clone());
+        assert_eq!(scoreindex.read().get_accepting_blue_score_chain_blocks(0, 3).unwrap(), vec![block_a_pair.clone(), block_b_pair.clone(), block_c_pair.clone()].into());
+        assert_eq!(scoreindex.read().get_all_hash_blue_score_pairs().unwrap().len(), 3);
+
+        // reorg block c from the scoreindex with block d in one notification
+        let update_2 = VirtualChainChangedNotification {
+            added_chain_block_hashes: vec![block_d_pair.clone().hash].into(),
+            added_chain_blocks_acceptance_data: Arc::new(vec![Arc::new(AcceptanceData {
+                accepting_blue_score: block_d_pair.accepting_blue_score.clone(),
+                mergeset: vec![], // irrelevant
+            })]),
+            removed_chain_block_hashes: vec![block_c_pair.clone().hash].into(),
+            removed_chain_blocks_acceptance_data: Arc::new(vec![Arc::new(AcceptanceData {
+                accepting_blue_score: block_c_pair.accepting_blue_score.clone(),
+                mergeset: vec![], // irrelevant
+            })]),
+        };
+
+        scoreindex.write().update_via_virtual_chain_changed(update_2).unwrap();
+        assert_eq!(scoreindex.read().get_source().unwrap().unwrap(), block_a_pair.clone());
+        assert_eq!(scoreindex.read().get_sink().unwrap().unwrap(), block_d_pair.clone());
+        assert_eq!(scoreindex.read().get_accepting_blue_score_chain_blocks(0, 2).unwrap(), vec![block_a_pair.clone(), block_b_pair.clone(), block_d_pair.clone()].into());
+        assert_eq!(scoreindex.read().get_all_hash_blue_score_pairs().unwrap().len(), 3);
+
+        // prune block a from the scoreindex in one notification
+        let update_3 = ChainAcceptanceDataPrunedNotification {
+            mergeset_block_acceptance_data_pruned: Arc::new(AcceptanceData {
+                accepting_blue_score: block_a_pair.accepting_blue_score,
+                mergeset: vec![], // irrelevant
+            }),
+            chain_hash_pruned: block_a_pair.hash,
+            source: block_b_pair.hash.clone(),
+        };
+
+        scoreindex.write().update_via_chain_acceptance_data_pruned(update_3).unwrap();
+        assert_eq!(scoreindex.read().get_source().unwrap().unwrap(), block_b_pair);
+        assert_eq!(scoreindex.read().get_sink().unwrap().unwrap(), block_d_pair);
+        assert_eq!(scoreindex.read().get_accepting_blue_score_chain_blocks(1, 2).unwrap(), vec![block_b_pair, block_d_pair].into());
+        assert_eq!(scoreindex.read().get_all_hash_blue_score_pairs().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_scoreindex_resync() {
+        kaspa_core::log::try_init_logger("WARN");
+        warn("Test is not implemented yet");
+        //TODO: implement test - ideally via simpa. 
     }
 }

@@ -73,6 +73,9 @@ struct Args {
     #[arg(short = 'f', long, default_value_t = false)]
     headers_first: bool,
 
+    #[arg(long, default_value_t = false)]
+    utxoindex: bool,
+
     /// Applies a scale factor to memory allocation bounds
     #[arg(long, default_value_t = 1.0)]
     ram_scale: f64,
