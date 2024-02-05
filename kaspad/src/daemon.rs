@@ -404,7 +404,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
             .build()
             .unwrap();
         let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
-        let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex)));
+        let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex), None));
         Some(index_service)
     } else {
         None

@@ -1,4 +1,4 @@
-use kaspa_consensus_notify::notification::VirtualChainChangedNotification;
+use kaspa_consensus_notify::notification::{ChainAcceptanceDataPrunedNotification, VirtualChainChangedNotification};
 
 use crate::{AcceptingBlueScoreDiff, AcceptingBlueScoreHashPair};
 
@@ -24,8 +24,15 @@ impl From<VirtualChainChangedNotification> for ScoreIndexReindexer {
                         .map(|mergeset| AcceptingBlueScoreHashPair::new(acceptance_data.accepting_blue_score, mergeset.block_hash))
                 })
                 .collect(),
-            None,
         );
+        Self { accepting_blue_score_changes }
+    }
+}
+
+impl From<ChainAcceptanceDataPrunedNotification> for ScoreIndexReindexer {
+    fn from(notification: ChainAcceptanceDataPrunedNotification) -> Self {
+        let accepting_blue_score_changes =
+            AcceptingBlueScoreDiff::new(vec![notification.mergeset_block_acceptance_data_pruned.accepting_blue_score], vec![]);
         Self { accepting_blue_score_changes }
     }
 }

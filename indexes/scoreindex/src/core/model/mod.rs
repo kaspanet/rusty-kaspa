@@ -23,23 +23,10 @@ impl From<(AcceptingBlueScore, Hash)> for AcceptingBlueScoreHashPair {
 pub struct AcceptingBlueScoreDiff {
     pub to_remove: Vec<AcceptingBlueScore>,
     pub to_add: Vec<AcceptingBlueScoreHashPair>,
-    new_source: Option<AcceptingBlueScoreHashPair>,
 }
 
 impl AcceptingBlueScoreDiff {
-    pub fn new(
-        to_remove: Vec<AcceptingBlueScore>,
-        to_add: Vec<AcceptingBlueScoreHashPair>,
-        source: Option<AcceptingBlueScoreHashPair>,
-    ) -> Self {
-        Self { to_remove, to_add, new_source: source }
-    }
-
-    pub fn sink(&self) -> Option<AcceptingBlueScoreHashPair> {
-        self.to_add.last().cloned()
-    }
-
-    pub fn source(&self) -> Option<AcceptingBlueScoreHashPair> {
-        self.new_source.clone()
+    pub fn new(to_remove: Vec<AcceptingBlueScore>, to_add: Vec<AcceptingBlueScoreHashPair>) -> Self {
+        Self { to_remove, to_add }
     }
 }

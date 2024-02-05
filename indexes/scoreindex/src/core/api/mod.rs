@@ -1,6 +1,6 @@
 use std::{fmt::Debug, sync::Arc};
 
-use kaspa_consensus_notify::notification::VirtualChainChangedNotification;
+use kaspa_consensus_notify::notification::{ChainAcceptanceDataPrunedNotification, VirtualChainChangedNotification};
 use kaspa_consensusmanager::spawn_blocking;
 
 use parking_lot::RwLock;
@@ -26,6 +26,11 @@ pub trait ScoreIndexApi: Send + Sync + Debug {
     fn update_via_virtual_chain_changed(
         &self,
         virtual_chain_changed_notification: VirtualChainChangedNotification,
+    ) -> ScoreIndexResult<()>;
+
+    fn update_via_chain_acceptance_data_pruned(
+        &self,
+        chain_acceptance_data_pruned_notification: ChainAcceptanceDataPrunedNotification,
     ) -> ScoreIndexResult<()>;
 }
 
@@ -61,5 +66,14 @@ impl ScoreIndexProxy {
         virtual_chain_changed_notification: VirtualChainChangedNotification,
     ) -> ScoreIndexResult<()> {
         spawn_blocking(move || self.inner.write().update_via_virtual_chain_changed(virtual_chain_changed_notification)).await.unwrap()
+    }
+
+    pub async fn update_via_chain_acceptance_data_pruned(
+        self,
+        chain_acceptance_data_pruned_notification: ChainAcceptanceDataPrunedNotification,
+    ) -> ScoreIndexResult<()> {
+        spawn_blocking(move || self.inner.write().update_via_chain_acceptance_data_pruned(chain_acceptance_data_pruned_notification))
+            .await
+            .unwrap()
     }
 }

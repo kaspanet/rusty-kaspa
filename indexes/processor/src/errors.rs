@@ -1,4 +1,5 @@
 use kaspa_notify::events::EventType;
+use kaspa_scoreindex::errors::ScoreIndexError;
 use kaspa_utxoindex::errors::UtxoIndexError;
 use thiserror::Error;
 
@@ -6,6 +7,9 @@ use thiserror::Error;
 pub enum IndexError {
     #[error("{0}")]
     UtxoIndexError(#[from] UtxoIndexError),
+
+    #[error("{0}")]
+    ScoreIndexError(#[from] ScoreIndexError),
 
     #[error("event type {0:?} is not supported")]
     NotSupported(EventType),

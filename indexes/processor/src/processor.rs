@@ -13,6 +13,7 @@ use kaspa_notify::{
     notification::Notification as NotificationTrait,
     notifier::DynNotify,
 };
+use kaspa_scoreindex::ScoreIndexProxy;
 use kaspa_utils::triggers::SingleTrigger;
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::sync::{
@@ -30,6 +31,9 @@ pub struct Processor {
     /// An optional UTXO indexer
     utxoindex: Option<UtxoIndexProxy>,
 
+    /// An optional Score indexer
+    scoreindex: Option<ScoreIndexProxy>,
+
     recv_channel: CollectorNotificationReceiver<ConsensusNotification>,
 
     /// Has this collector been started?
@@ -39,9 +43,14 @@ pub struct Processor {
 }
 
 impl Processor {
-    pub fn new(utxoindex: Option<UtxoIndexProxy>, recv_channel: CollectorNotificationReceiver<ConsensusNotification>) -> Self {
+    pub fn new(
+        utxoindex: Option<UtxoIndexProxy>,
+        scoreindex: Option<ScoreIndexProxy>,
+        recv_channel: CollectorNotificationReceiver<ConsensusNotification>,
+    ) -> Self {
         Self {
             utxoindex,
+            scoreindex,
             recv_channel,
             collect_shutdown: Arc::new(SingleTrigger::new()),
             is_started: Arc::new(AtomicBool::new(false)),
@@ -58,12 +67,13 @@ impl Processor {
 
             while let Ok(notification) = self.recv_channel.recv().await {
                 match self.process_notification(notification).await {
-                    Ok(notification) => match notifier.notify(notification) {
+                    Ok(Some(notification)) => match notifier.notify(notification) {
                         Ok(_) => (),
                         Err(err) => {
                             trace!("[Index processor] notification sender error: {err:?}");
                         }
                     },
+                    Ok(None) => (),
                     Err(err) => {
                         trace!("[Index processor] error while processing a consensus notification: {err:?}");
                     }
@@ -76,13 +86,21 @@ impl Processor {
         });
     }
 
-    async fn process_notification(self: &Arc<Self>, notification: ConsensusNotification) -> IndexResult<Notification> {
+    async fn process_notification(self: &Arc<Self>, notification: ConsensusNotification) -> IndexResult<Option<Notification>> {
         match notification {
             ConsensusNotification::UtxosChanged(utxos_changed) => {
-                Ok(Notification::UtxosChanged(self.process_utxos_changed(utxos_changed).await?))
+                Ok(Some(Notification::UtxosChanged(self.process_utxos_changed(utxos_changed).await?)))
             }
             ConsensusNotification::PruningPointUtxoSetOverride(_) => {
-                Ok(Notification::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification {}))
+                Ok(Some(Notification::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification {})))
+            }
+            ConsensusNotification::VirtualChainChanged(virtual_chain_changed_notification) => {
+                self.process_virtual_chain_changed(virtual_chain_changed_notification.clone()).await?;
+                Ok(Some(Notification::VirtualChainChanged(virtual_chain_changed_notification.into())))
+            }
+            ConsensusNotification::ChainAcceptanceDataPruned(chain_acceptance_data_pruned_notification) => {
+                self.process_chain_acceptance_data_pruned(chain_acceptance_data_pruned_notification).await?;
+                Ok(None)
             }
             _ => Err(IndexError::NotSupported(notification.event_type())),
         }
@@ -104,6 +122,29 @@ impl Processor {
             return Ok(converted_notification);
         };
         Err(IndexError::NotSupported(EventType::UtxosChanged))
+    }
+
+    async fn process_chain_acceptance_data_pruned(
+        self: &Arc<Self>,
+        notification: consensus_notification::ChainAcceptanceDataPrunedNotification,
+    ) -> IndexResult<()> {
+        trace!("[{IDENT}]: processing {:?}", notification);
+        if let Some(scoreindex) = self.scoreindex.clone() {
+            return Ok(scoreindex.update_via_chain_acceptance_data_pruned(notification).await?);
+        };
+        Err(IndexError::NotSupported(EventType::ChainAcceptanceDataPruned))
+    }
+
+    async fn process_virtual_chain_changed(
+        self: &Arc<Self>,
+        notification: consensus_notification::VirtualChainChangedNotification,
+    ) -> IndexResult<()> {
+        trace!("[{IDENT}]: processing {:?}", notification);
+        if let Some(scoreindex) = self.scoreindex.clone() {
+            scoreindex.update_via_virtual_chain_changed(notification.clone()).await?;
+            return Ok(());
+        };
+        Err(IndexError::NotSupported(EventType::VirtualChainChanged))
     }
 
     async fn join_collecting_task(&self) -> Result<()> {

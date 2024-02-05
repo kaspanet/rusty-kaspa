@@ -6,26 +6,33 @@ use kaspa_core::{
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace, warn,
 };
+
 use kaspa_index_core::notifier::IndexNotifier;
 use kaspa_notify::{
     connection::ChannelType,
-    events::{EventSwitches, EventType},
+    events::EventType,
     scope::{PruningPointUtxoSetOverrideScope, Scope, UtxosChangedScope},
 };
+use kaspa_scoreindex::api::ScoreIndexProxy;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::UtxoIndexProxy;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 const INDEX_SERVICE: &str = IDENT;
 
 pub struct IndexService {
     utxoindex: Option<UtxoIndexProxy>,
+    scoreindex: Option<ScoreIndexProxy>,
     notifier: Arc<IndexNotifier>,
     shutdown: SingleTrigger,
 }
 
 impl IndexService {
-    pub fn new(consensus_notifier: &Arc<ConsensusNotifier>, utxoindex: Option<UtxoIndexProxy>) -> Self {
+    pub fn new(
+        consensus_notifier: &Arc<ConsensusNotifier>,
+        utxoindex: Option<UtxoIndexProxy>,
+        scoreindex: Option<ScoreIndexProxy>,
+    ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
         let consensus_notify_listener_id = consensus_notifier
@@ -33,8 +40,19 @@ impl IndexService {
 
         // Prepare the index-processor notifier
         // No subscriber is defined here because the subscription are manually created during the construction and never changed after that.
-        let events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
-        let collector = Arc::new(Processor::new(utxoindex.clone(), consensus_notify_channel.receiver()));
+        let mut events = HashSet::new();
+
+        if utxoindex.is_some() {
+            events.insert(EventType::UtxosChanged);
+        }
+        if scoreindex.is_some() {
+            events.insert(EventType::VirtualChainChanged);
+            events.insert(EventType::ChainAcceptanceDataPruned);
+        }
+
+        let events = events.into_iter().collect::<Vec<EventType>>().as_slice().into();
+
+        let collector = Arc::new(Processor::new(utxoindex.clone(), scoreindex.clone(), consensus_notify_channel.receiver()));
         let notifier = Arc::new(IndexNotifier::new(INDEX_SERVICE, events, vec![collector], vec![], 1));
 
         // Manually subscribe to index-processor related event types
@@ -45,7 +63,7 @@ impl IndexService {
             .try_start_notify(consensus_notify_listener_id, Scope::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideScope {}))
             .expect("the subscription always succeeds");
 
-        Self { utxoindex, notifier, shutdown: SingleTrigger::default() }
+        Self { utxoindex, scoreindex, notifier, shutdown: SingleTrigger::default() }
     }
 
     pub fn notifier(&self) -> Arc<IndexNotifier> {
@@ -54,6 +72,10 @@ impl IndexService {
 
     pub fn utxoindex(&self) -> Option<UtxoIndexProxy> {
         self.utxoindex.clone()
+    }
+
+    pub fn scoreindex(&self) -> Option<ScoreIndexProxy> {
+        self.scoreindex.clone()
     }
 }
 

@@ -4,7 +4,7 @@ use crate::{
     stores::{ScoreIndexAcceptingBlueScoreReader, ScoreIndexAcceptingBlueScoreStore, StoreManager},
     AcceptingBlueScore, AcceptingBlueScoreHashPair, ScoreIndexReindexer, ScoreIndexResult, IDENT,
 };
-use kaspa_consensus_notify::notification::VirtualChainChangedNotification;
+use kaspa_consensus_notify::notification::{ChainAcceptanceDataPrunedNotification, VirtualChainChangedNotification};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusSessionBlocking};
 use kaspa_core::{error, info, trace};
 use kaspa_database::prelude::DB;
@@ -262,6 +262,18 @@ impl ScoreIndex {
             virtual_chain_changed_notification.removed_chain_block_hashes.len()
         );
         self.update_via_reindexer(ScoreIndexReindexer::from(virtual_chain_changed_notification))
+    }
+
+    pub fn update_via_chain_acceptance_data_pruned(
+        &mut self,
+        chain_acceptance_data_pruned_notification: ChainAcceptanceDataPrunedNotification,
+    ) -> ScoreIndexResult<()> {
+        trace!(
+            "[{0}] Updating via chain acceptance data pruned notification: Blue score: {1} removed",
+            IDENT,
+            chain_acceptance_data_pruned_notification.mergeset_block_acceptance_data_pruned.accepting_blue_score
+        );
+        self.update_via_reindexer(ScoreIndexReindexer::from(chain_acceptance_data_pruned_notification))
     }
 }
 
