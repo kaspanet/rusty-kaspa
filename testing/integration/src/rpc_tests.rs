@@ -195,6 +195,7 @@ async fn sanity_test() {
                     let response = rpc_client.get_info_call(GetInfoRequest {}).await.unwrap();
                     assert_eq!(response.server_version, kaspa_core::kaspad_env::version().to_string());
                     assert_eq!(response.mempool_size, 0);
+                    assert!(response.is_conf_indexed);
                     assert!(response.is_utxo_indexed);
                     assert!(response.has_message_id);
                     assert!(response.has_notify_command);

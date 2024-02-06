@@ -77,6 +77,7 @@ impl RpcApi for RpcCoreMock {
             p2p_id: "wallet-mock".to_string(),
             mempool_size: 1234,
             server_version: "mock".to_string(),
+            is_conf_indexed: false,
             is_utxo_indexed: false,
             is_synced: false,
             has_notify_command: false,

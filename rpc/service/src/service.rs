@@ -426,6 +426,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             p2p_id: self.flow_context.node_id.to_string(),
             mempool_size: self.mining_manager.transaction_count_sample(TransactionQuery::TransactionsOnly),
             server_version: version().to_string(),
+            is_conf_indexed: self.config.confindex,
             is_utxo_indexed: self.config.utxoindex,
             is_synced: self.has_sufficient_peer_connectivity() && is_nearly_synced,
             has_notify_command: true,

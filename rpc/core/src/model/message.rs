@@ -131,6 +131,7 @@ pub struct GetInfoResponse {
     pub p2p_id: String,
     pub mempool_size: u64,
     pub server_version: String,
+    pub is_conf_indexed: bool,
     pub is_utxo_indexed: bool,
     pub is_synced: bool,
     pub has_notify_command: bool,

@@ -706,6 +706,7 @@ message GetInfoResponseMessage{
   string p2pId = 1;
   uint64 mempoolSize = 2;
   string serverVersion = 3;
+  bool isConfIndexed = 6;
   bool isUtxoIndexed = 4;
   bool isSynced = 5;
   bool hasNotifyCommand = 11;
