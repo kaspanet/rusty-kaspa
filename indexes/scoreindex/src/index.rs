@@ -2,12 +2,12 @@ use std::{cmp::min, sync::Arc};
 
 use crate::{
     stores::{ScoreIndexAcceptingBlueScoreReader, ScoreIndexAcceptingBlueScoreStore, StoreManager},
-    AcceptingBlueScore, AcceptingBlueScoreHashPair, ScoreIndexApi, ScoreIndexReindexer, ScoreIndexResult, IDENT,
+    AcceptingBlueScore, AcceptingBlueScoreHashPair, ScoreIndexApi, ScoreIndexError, ScoreIndexReindexer, ScoreIndexResult, IDENT,
 };
 use kaspa_consensus_notify::notification::{ChainAcceptanceDataPrunedNotification, VirtualChainChangedNotification};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusSessionBlocking};
 use kaspa_core::{error, info, trace};
-use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{StoreError, DB};
 use kaspa_hashes::ZERO_HASH;
 use parking_lot::RwLock;
 use rocksdb::WriteBatch;
@@ -137,8 +137,16 @@ impl ScoreIndexApi for ScoreIndex {
         let session = futures::executor::block_on(consensus.session_blocking());
 
         // Gather the necessary potential block hashes to sync from and to.
-        let scoreindex_source_blue_score_pair = self.stores.accepting_blue_score_store.get_source()?;
-        let scoreindex_sink_blue_score_pair = self.stores.accepting_blue_score_store.get_sink()?;
+        let scoreindex_source_blue_score_pair = match self.stores.accepting_blue_score_store.get_source() {
+            Ok(scoreindex_source) => Some(scoreindex_source),
+            Err(StoreError::DbEmptyError) => None,
+            Err(err) => return Err(ScoreIndexError::from(err)),
+        };
+        let scoreindex_sink_blue_score_pair = match self.stores.accepting_blue_score_store.get_sink() {
+            Ok(scoreindex_sink) => Some(scoreindex_sink),
+            Err(StoreError::DbEmptyError) => None,
+            Err(err) => return Err(ScoreIndexError::from(err)),
+        };
         let consensus_source_blue_score_pair = {
             let hash = session.get_source(true);
             let blue_score = session.get_header(hash)?.blue_score;
@@ -226,15 +234,22 @@ impl ScoreIndexApi for ScoreIndex {
     fn is_synced(&self) -> ScoreIndexResult<bool> {
         let consensus = self.consensus_manager.consensus();
         let session = futures::executor::block_on(consensus.session_blocking());
-        if let Some(scoreindex_sink) = self.stores.accepting_blue_score_store.get_sink()? {
-            if scoreindex_sink.hash == session.get_sink() {
-                if let Some(scoreindex_source) = self.stores.accepting_blue_score_store.get_source()? {
-                    if scoreindex_source.hash == session.get_source(true) {
-                        return Ok(true);
-                    }
-                }
-            }
+
+        let scoreindex_source = match self.stores.accepting_blue_score_store.get_source() {
+            Ok(scoreindex_source) => scoreindex_source,
+            Err(StoreError::DbEmptyError) => return Ok(false),
+            Err(err) => return Err(ScoreIndexError::from(err)),
+        };
+        let scoreindex_sink = match self.stores.accepting_blue_score_store.get_source() {
+            Ok(scoreindex_source) => scoreindex_source,
+            Err(StoreError::DbEmptyError) => return Ok(false),
+            Err(err) => return Err(ScoreIndexError::from(err)),
+        };
+
+        if scoreindex_source.hash == session.get_source(true) && scoreindex_sink.hash == session.get_sink() {
+            return Ok(true);
         }
+
         Ok(false)
     }
 
@@ -247,12 +262,12 @@ impl ScoreIndexApi for ScoreIndex {
         Ok(Arc::new(self.stores.accepting_blue_score_store.get_range(from, to)?))
     }
 
-    fn get_sink(&self) -> ScoreIndexResult<Option<AcceptingBlueScoreHashPair>> {
+    fn get_sink(&self) -> ScoreIndexResult<AcceptingBlueScoreHashPair> {
         trace!("[{0}] Getting sink", IDENT);
         Ok(self.stores.accepting_blue_score_store.get_sink()?)
     }
 
-    fn get_source(&self) -> ScoreIndexResult<Option<AcceptingBlueScoreHashPair>> {
+    fn get_source(&self) -> ScoreIndexResult<AcceptingBlueScoreHashPair> {
         trace!("[{0}] Getting source", IDENT);
         Ok(self.stores.accepting_blue_score_store.get_source()?)
     }
@@ -267,14 +282,6 @@ impl ScoreIndexApi for ScoreIndex {
             virtual_chain_changed_notification.added_chain_block_hashes.len(),
             virtual_chain_changed_notification.removed_chain_block_hashes.len(),
             virtual_chain_changed_notification
-        );
-        assert_eq!(
-            virtual_chain_changed_notification.added_chain_block_hashes.len(),
-            virtual_chain_changed_notification.added_chain_blocks_acceptance_data.len()
-        );
-        assert_eq!(
-            virtual_chain_changed_notification.removed_chain_block_hashes.len(),
-            virtual_chain_changed_notification.removed_chain_blocks_acceptance_data.len()
         );
         self.update_via_reindexer(ScoreIndexReindexer::from(virtual_chain_changed_notification))
     }
@@ -363,8 +370,8 @@ pub mod test {
         };
 
         scoreindex.write().update_via_virtual_chain_changed(update_1).unwrap();
-        assert_eq!(scoreindex.read().get_source().unwrap().unwrap(), block_a_pair.clone());
-        assert_eq!(scoreindex.read().get_sink().unwrap().unwrap(), block_c_pair.clone());
+        assert_eq!(scoreindex.read().get_source().unwrap(), block_a_pair.clone());
+        assert_eq!(scoreindex.read().get_sink().unwrap(), block_c_pair.clone());
         assert_eq!(
             scoreindex.read().get_accepting_blue_score_chain_blocks(0, 3).unwrap(),
             vec![block_a_pair.clone(), block_b_pair.clone(), block_c_pair.clone()].into()
@@ -386,8 +393,8 @@ pub mod test {
         };
 
         scoreindex.write().update_via_virtual_chain_changed(update_2).unwrap();
-        assert_eq!(scoreindex.read().get_source().unwrap().unwrap(), block_a_pair.clone());
-        assert_eq!(scoreindex.read().get_sink().unwrap().unwrap(), block_d_pair.clone());
+        assert_eq!(scoreindex.read().get_source().unwrap(), block_a_pair.clone());
+        assert_eq!(scoreindex.read().get_sink().unwrap(), block_d_pair.clone());
         assert_eq!(
             scoreindex.read().get_accepting_blue_score_chain_blocks(0, 2).unwrap(),
             vec![block_a_pair.clone(), block_b_pair.clone(), block_d_pair.clone()].into()
@@ -405,8 +412,8 @@ pub mod test {
         };
 
         scoreindex.write().update_via_chain_acceptance_data_pruned(update_3).unwrap();
-        assert_eq!(scoreindex.read().get_source().unwrap().unwrap(), block_b_pair);
-        assert_eq!(scoreindex.read().get_sink().unwrap().unwrap(), block_d_pair);
+        assert_eq!(scoreindex.read().get_source().unwrap(), block_b_pair);
+        assert_eq!(scoreindex.read().get_sink().unwrap(), block_d_pair);
         assert_eq!(scoreindex.read().get_accepting_blue_score_chain_blocks(1, 2).unwrap(), vec![block_b_pair, block_d_pair].into());
         assert_eq!(scoreindex.read().get_all_hash_blue_score_pairs().unwrap().len(), 2);
     }

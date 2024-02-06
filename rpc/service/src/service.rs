@@ -48,6 +48,7 @@ use kaspa_notify::{
 use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
+use kaspa_rpc_core::api::rpc::MAX_SAFE_SCOREINDEX_RANGE;
 use kaspa_rpc_core::{
     api::{
         ops::RPC_API_VERSION,
@@ -62,6 +63,7 @@ use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
+use std::cmp::{max, min};
 use std::{
     collections::HashMap,
     iter::once,
@@ -884,16 +886,109 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
     async fn get_confirmed_data_by_accepting_blue_score_call(
         &self,
-        _request: GetConfirmedDataByAcceptingBlueScoreRequest,
+        request: GetConfirmedDataByAcceptingBlueScoreRequest,
     ) -> RpcResult<GetConfirmedDataByAcceptingBlueScoreResponse> {
-        Err(RpcError::NotImplemented)
+        // Validate
+        if !self.config.scoreindex {
+            return Err(RpcError::LowLargerThenHighRange(request.low, request.high));
+        } else if request.low >= request.high {
+            return Err(RpcError::NoScoreIndex);
+        } else if !self.config.unsafe_rpc && (request.high - request.low) > MAX_SAFE_SCOREINDEX_RANGE {
+            return Err(RpcError::LowHighRangeOutOfBounds(
+                request.low,
+                request.high,
+                request.high - request.low,
+                MAX_SAFE_SCOREINDEX_RANGE,
+            ));
+        };
+
+        let session = self.consensus_manager.consensus().session().await;
+        let scoreindex = self.scoreindex.clone().unwrap();
+
+        // modify low / high based on known node bounds
+        let low_bound =
+            scoreindex.clone().get_source().await.map_err(|err| RpcError::ScoreIndexError(err.to_string()))?.accepting_blue_score;
+        let high_bound =
+            scoreindex.clone().get_sink().await.map_err(|err| RpcError::ScoreIndexError(err.to_string()))?.accepting_blue_score;
+        let low = max(request.low, low_bound);
+        let high = min(request.high, high_bound);
+        let chain_block_blue_score_pairs = scoreindex
+            .get_accepting_blue_score_chain_blocks(
+                low + 1, // We plus one to force exclusivity.
+                high,
+            )
+            .await
+            .map_err(|err| RpcError::ScoreIndexError(err.to_string()))?;
+        let confirmed_data = self
+            .consensus_converter
+            .get_acceptance_data(
+                &session,
+                chain_block_blue_score_pairs.to_vec(),
+                high_bound,
+                request.include_chain_block_header,
+                request.include_merged_block_hashes,
+                request.include_merged_block_headers,
+                request.include_accepted_transaction_ids,
+                request.include_accepted_transactions,
+                request.include_verbose_data,
+            )
+            .await?;
+        Ok(GetConfirmedDataByAcceptingBlueScoreResponse { confirmed_data })
     }
 
     async fn get_confirmed_data_by_confirmations_call(
         &self,
-        _request: GetConfirmedDataByConfirmationsRequest,
+        request: GetConfirmedDataByConfirmationsRequest,
     ) -> RpcResult<GetConfirmedDataByConfirmationsResponse> {
-        Err(RpcError::NotImplemented)
+        // Validate
+        if !self.config.scoreindex {
+            return Err(RpcError::LowLargerThenHighRange(request.low, request.high));
+        } else if request.low >= request.high {
+            return Err(RpcError::NoScoreIndex);
+        } else if !self.config.unsafe_rpc && (request.high - request.low) > MAX_SAFE_SCOREINDEX_RANGE {
+            return Err(RpcError::LowHighRangeOutOfBounds(
+                request.low,
+                request.high,
+                request.high - request.low,
+                MAX_SAFE_SCOREINDEX_RANGE,
+            ));
+        };
+
+        let session = self.consensus_manager.consensus().session().await;
+        let scoreindex = self.scoreindex.clone().unwrap();
+
+        // modify low / high confirmation range based on known node bounds
+        let low_bound =
+            scoreindex.clone().get_source().await.map_err(|err| RpcError::ScoreIndexError(err.to_string()))?.accepting_blue_score;
+        let high_bound =
+            scoreindex.clone().get_sink().await.map_err(|err| RpcError::ScoreIndexError(err.to_string()))?.accepting_blue_score;
+        let bound_range = high_bound - low_bound;
+
+        let low = min(request.low, bound_range) - high_bound;
+        let high = min(request.high, bound_range) - high_bound;
+
+        let chain_block_blue_score_pairs = scoreindex
+            .get_accepting_blue_score_chain_blocks(
+                low + 1, // We plus one to force exclusivity.
+                high,
+            )
+            .await
+            .map_err(|err| RpcError::ScoreIndexError(err.to_string()))?;
+        let confirmed_data = self
+            .consensus_converter
+            .get_acceptance_data(
+                &session,
+                chain_block_blue_score_pairs.to_vec(),
+                high_bound,
+                request.include_chain_block_header,
+                request.include_merged_block_hashes,
+                request.include_merged_block_headers,
+                request.include_accepted_transaction_ids,
+                request.include_accepted_transactions,
+                request.include_verbose_data,
+            )
+            .await?;
+        Ok(GetConfirmedDataByConfirmationsResponse { confirmed_data })
     }
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API

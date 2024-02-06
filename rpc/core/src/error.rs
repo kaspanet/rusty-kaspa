@@ -32,6 +32,12 @@ pub enum RpcError {
     #[error("Invalid script class: {0}")]
     InvalidRpcScriptClass(String),
 
+    #[error("Range low >= high: low: {0} high: {1}")]
+    LowLargerThenHighRange(u64, u64),
+
+    #[error("Range Out of bounds: low: {0} high: {1}, window: {2}, allowed: {3}")]
+    LowHighRangeOutOfBounds(u64, u64, u64, u64),
+
     #[error("Missing required field {0}.{1}")]
     MissingRpcFieldError(String, String),
 
@@ -61,6 +67,9 @@ pub enum RpcError {
 
     #[error("Method unavailable. Run the node with the --scoreindex argument.")]
     NoScoreIndex,
+
+    #[error("ScoreIndexError: {0}")]
+    ScoreIndexError(String),
 
     #[error("Method unavailable. No connection manager is currently available.")]
     NoConnectionManager,

@@ -19,9 +19,9 @@ pub trait ScoreIndexApi: Send + Sync + Debug {
         to: AcceptingBlueScore,
     ) -> ScoreIndexResult<Arc<Vec<AcceptingBlueScoreHashPair>>>;
 
-    fn get_sink(&self) -> ScoreIndexResult<Option<AcceptingBlueScoreHashPair>>;
+    fn get_sink(&self) -> ScoreIndexResult<AcceptingBlueScoreHashPair>;
 
-    fn get_source(&self) -> ScoreIndexResult<Option<AcceptingBlueScoreHashPair>>;
+    fn get_source(&self) -> ScoreIndexResult<AcceptingBlueScoreHashPair>;
 
     fn update_via_virtual_chain_changed(
         &mut self,
@@ -57,11 +57,11 @@ impl ScoreIndexProxy {
         spawn_blocking(move || self.inner.read().get_accepting_blue_score_chain_blocks(from, to)).await.unwrap()
     }
 
-    pub async fn get_sink(self) -> ScoreIndexResult<Option<AcceptingBlueScoreHashPair>> {
+    pub async fn get_sink(self) -> ScoreIndexResult<AcceptingBlueScoreHashPair> {
         spawn_blocking(move || self.inner.read().get_sink()).await.unwrap()
     }
 
-    pub async fn get_source(self) -> ScoreIndexResult<Option<AcceptingBlueScoreHashPair>> {
+    pub async fn get_source(self) -> ScoreIndexResult<AcceptingBlueScoreHashPair> {
         spawn_blocking(move || self.inner.read().get_source()).await.unwrap()
     }
 

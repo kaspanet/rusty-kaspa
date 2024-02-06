@@ -11,6 +11,7 @@ use kaspa_notify::{listener::ListenerId, scope::Scope, subscription::Command};
 use std::sync::Arc;
 
 pub const MAX_SAFE_WINDOW_SIZE: u32 = 10_000;
+pub const MAX_SAFE_SCOREINDEX_RANGE: u64 = 60u64; // ~1 min worth of data.
 
 /// Client RPC Api
 ///

@@ -21,6 +21,9 @@ pub enum StoreError {
     #[error("rocksdb error {0}")]
     DbError(#[from] rocksdb::Error),
 
+    #[error("empty db error: Db is empty or does not exist")]
+    DbEmptyError,
+
     #[error("bincode error {0}")]
     DeserializationError(#[from] Box<bincode::ErrorKind>),
 

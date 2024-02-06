@@ -1083,8 +1083,8 @@ async fn json_test(file_path: &str, concurrency: bool) {
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
 
     assert!(scoreindex.read().is_synced().unwrap());
-    let scoreindex_sink = scoreindex.read().get_sink().unwrap().unwrap();
-    let scoreindex_source = scoreindex.read().get_source().unwrap().unwrap();
+    let scoreindex_sink = scoreindex.read().get_sink().unwrap();
+    let scoreindex_source = scoreindex.read().get_source().unwrap();
     let consensus_source = tc.get_source(true);
     info!(
         "ScoreIndex source blue score: {0}, consensus source blue score: {1}",

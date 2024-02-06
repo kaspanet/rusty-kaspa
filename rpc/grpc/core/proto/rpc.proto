@@ -28,11 +28,18 @@ message RpcMergeSetBlockAcceptanceData {
 message RpcConfirmedData {
   uint64 confirmations = 1;
   uint64 blueScore = 2;
-  uint64 daaScore = 3;
-  uint64 timestamp = 4;
-  string chainBlockHash = 5;
-  RpcBlock chainBlock = 6;
-  repeated RpcMergeSetBlockAcceptanceData mergeSetBlockAcceptanceData = 7;
+  string chainBlockHash = 3;
+  RpcBlock chainBlock = 4;
+  repeated RpcMergeSetBlockAcceptanceData mergeSetBlockAcceptanceData = 5;
+  RpcConfirmedDataVerboseData verboseData = 6;
+}
+
+message RpcConfirmedDataVerboseData{ 
+  uint64 daaScore = 1;
+  uint64 timestamp = 2;
+  string pruningPoint = 3;
+  string utxoCommitment = 4;
+  string acceptedIdMerkleRoot = 5;
 }
 
 message RpcBlock {

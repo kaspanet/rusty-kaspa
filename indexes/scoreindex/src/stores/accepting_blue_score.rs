@@ -62,8 +62,8 @@ impl Display for AcceptingBlueScoreKey {
 
 pub trait ScoreIndexAcceptingBlueScoreReader {
     fn get(&self, accepting_blue_score: AcceptingBlueScore) -> StoreResult<Hash>;
-    fn get_sink(&self) -> StoreResult<Option<AcceptingBlueScoreHashPair>>;
-    fn get_source(&self) -> StoreResult<Option<AcceptingBlueScoreHashPair>>;
+    fn get_sink(&self) -> StoreResult<AcceptingBlueScoreHashPair>;
+    fn get_source(&self) -> StoreResult<AcceptingBlueScoreHashPair>;
     fn get_range(&self, from: AcceptingBlueScore, to: AcceptingBlueScore) -> StoreResult<Vec<AcceptingBlueScoreHashPair>>;
     fn has(&self, accepting_blue_score: AcceptingBlueScore) -> StoreResult<bool>;
 
@@ -119,28 +119,28 @@ impl ScoreIndexAcceptingBlueScoreReader for DbScoreIndexAcceptingBlueScoreStore 
             .collect::<StoreResult<Vec<AcceptingBlueScoreHashPair>>>()
     }
 
-    fn get_sink(&self) -> StoreResult<Option<AcceptingBlueScoreHashPair>> {
+    fn get_sink(&self) -> StoreResult<AcceptingBlueScoreHashPair> {
         let ret = self.access.iterator(true).next();
         if let Some(res) = ret {
             let (k, v) = res.map_err(|err| StoreError::Undefined(err.to_string()))?;
-            return Ok(Some(AcceptingBlueScoreHashPair {
+            return Ok(AcceptingBlueScoreHashPair {
                 accepting_blue_score: AcceptingBlueScoreKey::try_from(k.as_ref())?.into(),
                 hash: v,
-            }));
+            });
         }
-        Ok(None)
+        Err(StoreError::DbEmptyError) // this is the only explanation for not finding the sink
     }
 
-    fn get_source(&self) -> StoreResult<Option<AcceptingBlueScoreHashPair>> {
+    fn get_source(&self) -> StoreResult<AcceptingBlueScoreHashPair> {
         let ret = self.access.iterator(false).next();
         if let Some(res) = ret {
             let (k, v) = res.map_err(|err| StoreError::Undefined(err.to_string()))?;
-            return Ok(Some(AcceptingBlueScoreHashPair {
+            return Ok(AcceptingBlueScoreHashPair {
                 accepting_blue_score: AcceptingBlueScoreKey::try_from(k.as_ref())?.into(),
                 hash: v,
-            }));
+            });
         }
-        Ok(None)
+        Err(StoreError::DbEmptyError) // this is the only explanation for not finding the source
     }
 
     fn get_all(&self) -> StoreResult<Vec<AcceptingBlueScoreHashPair>> {
