@@ -1,5 +1,5 @@
-use kaspa_notify::events::EventType;
 use kaspa_confindex::errors::ConfIndexError;
+use kaspa_notify::events::EventType;
 use kaspa_utxoindex::errors::UtxoIndexError;
 use thiserror::Error;
 

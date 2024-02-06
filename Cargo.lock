@@ -2213,6 +2213,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-confindex"
+version = "0.13.4"
+dependencies = [
+ "futures",
+ "kaspa-consensus",
+ "kaspa-consensus-core",
+ "kaspa-consensus-notify",
+ "kaspa-consensusmanager",
+ "kaspa-core",
+ "kaspa-database",
+ "kaspa-hashes",
+ "kaspa-index-core",
+ "kaspa-utils",
+ "log",
+ "parking_lot",
+ "rand 0.8.5",
+ "rocksdb",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "kaspa-connectionmanager"
 version = "0.13.4"
 dependencies = [
@@ -2572,6 +2594,7 @@ dependencies = [
  "async-trait",
  "derive_more",
  "futures",
+ "kaspa-confindex",
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
@@ -2581,7 +2604,6 @@ dependencies = [
  "kaspa-hashes",
  "kaspa-index-core",
  "kaspa-notify",
- "kaspa-confindex",
  "kaspa-utils",
  "kaspa-utxoindex",
  "log",
@@ -2888,6 +2910,7 @@ version = "0.13.4"
 dependencies = [
  "async-trait",
  "kaspa-addresses",
+ "kaspa-confindex",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
  "kaspa-consensusmanager",
@@ -2901,7 +2924,6 @@ dependencies = [
  "kaspa-p2p-lib",
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
- "kaspa-confindex",
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-utils-tower",
@@ -2909,28 +2931,6 @@ dependencies = [
  "log",
  "tokio",
  "workflow-rpc",
-]
-
-[[package]]
-name = "kaspa-confindex"
-version = "0.13.4"
-dependencies = [
- "futures",
- "kaspa-consensus",
- "kaspa-consensus-core",
- "kaspa-consensus-notify",
- "kaspa-consensusmanager",
- "kaspa-core",
- "kaspa-database",
- "kaspa-hashes",
- "kaspa-index-core",
- "kaspa-utils",
- "log",
- "parking_lot",
- "rand 0.8.5",
- "rocksdb",
- "serde",
- "thiserror",
 ]
 
 [[package]]
@@ -2949,6 +2949,7 @@ dependencies = [
  "kaspa-addresses",
  "kaspa-alloc",
  "kaspa-bip32",
+ "kaspa-confindex",
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
@@ -2965,7 +2966,6 @@ dependencies = [
  "kaspa-notify",
  "kaspa-pow",
  "kaspa-rpc-core",
- "kaspa-confindex",
  "kaspa-txscript",
  "kaspa-txscript-errors",
  "kaspa-utils",
@@ -3309,6 +3309,7 @@ dependencies = [
  "kaspa-addresses",
  "kaspa-addressmanager",
  "kaspa-alloc",
+ "kaspa-confindex",
  "kaspa-consensus",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
@@ -3323,7 +3324,6 @@ dependencies = [
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
  "kaspa-rpc-service",
- "kaspa-confindex",
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-utils-tower",

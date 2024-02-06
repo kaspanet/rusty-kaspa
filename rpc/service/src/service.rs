@@ -4,6 +4,7 @@ use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
+use kaspa_confindex::ConfIndexProxy;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::{
@@ -58,7 +59,6 @@ use kaspa_rpc_core::{
     notify::connection::ChannelConnection,
     Notification, RpcError, RpcResult,
 };
-use kaspa_confindex::ConfIndexProxy;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;

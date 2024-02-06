@@ -1,6 +1,6 @@
 [package]
 name = "kaspa-confindex"
-description = "Kaspa Score index"
+description = "Kaspa Confirmation index"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

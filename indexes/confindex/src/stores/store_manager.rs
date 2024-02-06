@@ -1,5 +1,5 @@
 use crate::{
-    stores::accepting_blue_score::{DbConfIndexAcceptingBlueScoreStore, ConfIndexAcceptingBlueScoreStore},
+    stores::accepting_blue_score::{ConfIndexAcceptingBlueScoreStore, DbConfIndexAcceptingBlueScoreStore},
     ConfIndexResult, IDENT,
 };
 use kaspa_core::trace;

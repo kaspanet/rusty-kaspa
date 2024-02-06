@@ -7,13 +7,13 @@ use kaspa_core::{
     trace, warn,
 };
 
+use kaspa_confindex::api::ConfIndexProxy;
 use kaspa_index_core::notifier::IndexNotifier;
 use kaspa_notify::{
     connection::ChannelType,
     events::EventType,
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
 };
-use kaspa_confindex::api::ConfIndexProxy;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::{collections::HashSet, sync::Arc};

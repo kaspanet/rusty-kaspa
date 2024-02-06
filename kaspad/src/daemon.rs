@@ -30,8 +30,8 @@ use kaspa_mining::{
 };
 use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
 
-use kaspa_perf_monitor::{builder::Builder as PerfMonitorBuilder, counters::CountersSnapshot};
 use kaspa_confindex::{api::ConfIndexProxy, ConfIndex};
+use kaspa_perf_monitor::{builder::Builder as PerfMonitorBuilder, counters::CountersSnapshot};
 use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WebSocketCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
 
@@ -207,7 +207,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
         0
     };
     let utxo_files_limit = if args.utxoindex { index_budget / num_of_active_indexes } else { 0 };
-    let score_files_limit = if args.confindex { index_budget / num_of_active_indexes } else { 0 };
+    let conf_files_limit = if args.confindex { index_budget / num_of_active_indexes } else { 0 };
     // Make sure args forms a valid set of properties
     if let Err(err) = validate_args(args) {
         println!("{}", err);

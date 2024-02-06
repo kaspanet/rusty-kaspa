@@ -3,6 +3,7 @@ use crate::{
     IDENT,
 };
 use async_trait::async_trait;
+use kaspa_confindex::ConfIndexProxy;
 use kaspa_consensus_notify::{notification as consensus_notification, notification::Notification as ConsensusNotification};
 use kaspa_core::{debug, trace};
 use kaspa_index_core::notification::{Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification};
@@ -13,7 +14,6 @@ use kaspa_notify::{
     notification::Notification as NotificationTrait,
     notifier::DynNotify,
 };
-use kaspa_confindex::ConfIndexProxy;
 use kaspa_utils::triggers::SingleTrigger;
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::sync::{
@@ -170,6 +170,7 @@ impl Collector<Notification> for Processor {
 mod tests {
     use super::*;
     use async_channel::{unbounded, Receiver, Sender};
+    use kaspa_confindex::ConfIndex;
     use kaspa_consensus::{config::Config, consensus::test_consensus::TestConsensus, params::DEVNET_PARAMS, test_helpers::*};
     use kaspa_consensus_core::{
         acceptance_data::{AcceptanceData, AcceptedTxEntry, MergesetBlockAcceptanceData},
@@ -180,7 +181,6 @@ mod tests {
     use kaspa_database::prelude::ConnBuilder;
     use kaspa_database::utils::DbLifetime;
     use kaspa_notify::notifier::test_helpers::NotifyMock;
-    use kaspa_confindex::ConfIndex;
     use kaspa_utxoindex::UtxoIndex;
     use rand::{rngs::SmallRng, Rng, SeedableRng};
     use std::sync::Arc;
