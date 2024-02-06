@@ -47,6 +47,7 @@ async fn sanity_test() {
         disable_upnp: true, // UPnP registration might take some time and is not needed for this test
         enable_unsynced_mining: true,
         block_template_cache_lifetime: Some(0),
+        confindex: true,
         utxoindex: true,
         unsafe_rpc: true,
         ..Default::default()

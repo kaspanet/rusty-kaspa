@@ -246,7 +246,7 @@ impl ConfIndexApi for ConfIndex {
             Err(StoreError::DbEmptyError) => return Ok(false),
             Err(err) => return Err(ConfIndexError::from(err)),
         };
-        let confindex_sink = match self.stores.accepting_blue_score_store.get_source() {
+        let confindex_sink = match self.stores.accepting_blue_score_store.get_sink() {
             Ok(confindex_source) => confindex_source,
             Err(StoreError::DbEmptyError) => return Ok(false),
             Err(err) => return Err(ConfIndexError::from(err)),
