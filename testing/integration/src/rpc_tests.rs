@@ -619,6 +619,46 @@ async fn sanity_test() {
                     rpc_client.stop_notify(id, PruningPointUtxoSetOverrideScope {}.into()).await.unwrap();
                 })
             }
+            KaspadPayloadOps::GetConfirmedDataByAcceptingBlueScore => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client
+                        .get_confirmed_data_by_accepting_blue_score_call(GetConfirmedDataByAcceptingBlueScoreRequest {
+                            low: 0u64,
+                            high: 1u64,
+                            include_chain_block_header: true,
+                            include_merged_block_hashes: true,
+                            include_merged_block_headers: true,
+                            include_accepted_transaction_ids: true,
+                            include_accepted_transactions: true,
+                            include_verbose_data: true,
+                        })
+                        .await
+                        .unwrap();
+                    // We only have genesis and it shouldn't be confirmed by subsequent blocks, so we expect an empty response
+                    assert!(response.confirmed_data.is_empty());
+                })
+            }
+            KaspadPayloadOps::GetConfirmedDataByConfirmations => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client
+                        .get_confirmed_data_by_confirmations_call(GetConfirmedDataByConfirmationsRequest {
+                            low: 0u64,
+                            high: 1u64,
+                            include_chain_block_header: true,
+                            include_merged_block_hashes: true,
+                            include_merged_block_headers: true,
+                            include_accepted_transaction_ids: true,
+                            include_accepted_transactions: true,
+                            include_verbose_data: true,
+                        })
+                        .await
+                        .unwrap();
+                    // We only have genesis and it shouldn't be confirmed by subsequent blocks, so we expect an empty response
+                    assert!(response.confirmed_data.is_empty());
+                })
+            }
         };
         tasks.push(task);
     }

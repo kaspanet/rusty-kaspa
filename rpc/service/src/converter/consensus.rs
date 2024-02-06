@@ -1,16 +1,16 @@
 use async_trait::async_trait;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
-    block::{self, Block},
+    block::Block,
     config::Config,
     hashing::tx::hash,
     header::Header,
-    tx::{MutableTransaction, Transaction, TransactionId, TransactionIndexType, TransactionInput, TransactionOutput},
+    tx::{MutableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput},
     ChainPath,
 };
 use kaspa_consensus_notify::notification::{self as consensus_notify, Notification as ConsensusNotification};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusProxy};
-use kaspa_hashes::Hash;
+
 use kaspa_math::Uint256;
 use kaspa_mining::model::{owner_txs::OwnerTransactions, TransactionIdSet};
 use kaspa_notify::converter::Converter;
@@ -19,14 +19,10 @@ use kaspa_rpc_core::{
     RpcMempoolEntry, RpcMempoolEntryByAddress, RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionOutput,
     RpcTransactionOutputVerboseData, RpcTransactionVerboseData,
 };
-use kaspa_scoreindex::AcceptingBlueScoreHashPair;
+
 use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
-use kaspa_utils::arc::ArcExtensions;
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Debug,
-    sync::Arc,
-};
+
+use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 /// Conversion of consensus_core to rpc_core structures
 pub struct ConsensusConverter {
@@ -50,87 +46,8 @@ impl ConsensusConverter {
         self.config.max_difficulty_target_f64 / target.as_f64()
     }
 
-    pub async fn get_acceptance_data(
-        &self,
-        consensus: &ConsensusProxy,
-        block_hash_pairs: Vec<AcceptingBlueScoreHashPair>,
-        sink_blue_score: u64,
-        include_chain_block_hash: bool,
-        include_chain_block: bool,
-        include_chain_block_verbose_data: bool,
-        include_merged_block_hashes: bool,
-        include_merged_blocks: bool,
-        include_merged_blocks_verbose_data: bool,
-        include_accepted_transaction_ids: bool,
-        include_accepted_transactions: bool,
-        include_accepted_transaction_verbose_data: bool,
-    ) -> RpcResult<Vec<RpcConfirmedData>> {
-        let acceptance_data = consensus.async_get_blocks_acceptance_data(vec![block_hash.clone()]).await?;
-        let mut confirmed_data_vec = Vec::<RpcConfirmedData>::with_capacity(block_hashes.len());
-        for (i, (acceptance, chain_block)) in acceptance_data.into_iter().zip(block_hashes.into_iter()).enumerate() {
-            confirmed_data_vec.push(RpcConfirmedData {
-                accepting_blue_score: block_hash_pairs[i].accepting_blue_score,
-                confirmations: block_hash_pairs[i].accepting_blue_score - sink_blue_score,
-                chain_block_hash: if include_chain_block_hash { Some(chain_block) } else { None },
-                chain_block_full: if include_chain_block {
-                    Some(
-                        self.get_block(
-                            consensus,
-                            chain_block,
-                            false, // we do not want to display potentially unconfirmed transactions in acceptance data
-                            false, // we do not want to display potentially unconfirmed transactions in acceptance data
-                        )
-                        .await?,
-                    )
-                } else {
-                    None
-                },
-                merged_block_hashes: if include_merged_block_hashes {
-                    Some(acceptance.mergeset.iter().map(|x| x.block_hash).collect())
-                } else {
-                    None
-                },
-                merged_blocks_full: if include_merged_blocks {
-                    Some(
-                        acceptance
-                            .mergeset
-                            .iter()
-                            .map(|x| {
-                                self.get_block(
-                                    consensus,
-                                    &x.block,
-                                    false, // we do not want to display potentially unconfirmed transactions in acceptance data
-                                    false, // we do not want to display potentially unconfirmed transactions in acceptance data
-                                )
-                                .await?
-                            })
-                            .collect(),
-                    )
-                } else {
-                    None
-                },
-                accepted_transactions: if include_accepted_transaction_ids {
-                    Some(acceptance.mergeset.iter().flat_map(|x| x.accepted_transactions.iter().map(|tx| tx.transaction_id).collect()))
-                } else {
-                    None
-                },
-                accepted_transactions_full: if include_accepted_transactions {
-                    Some(acceptance.mergeset.iter().flat_map(|x| {
-                        let txs = consensus.get_block_transactions(x.block.hash).await?;
-                        txs.retain(
-                            x.accepted_transactions
-                                .iter()
-                                .map(|e| e.index_within_block)
-                                .collect::<HashSet<TransactionIndexType>>()
-                                .contains(&i),
-                        );
-                        txs.into_iter()
-                            .map(|tx| self.get_transaction(&self, consensus, tx, None, include_accepted_transaction_verbose_data))
-                    }))
-                },
-            });
-        }
-        Ok(confirmed_data_vec)
+    pub async fn get_acceptance_data(&self) -> RpcResult<Vec<RpcConfirmedData>> {
+        todo!("get_acceptance_data")
     }
 
     /// Converts a consensus [`Block`] into an [`RpcBlock`], optionally including transaction verbose data.

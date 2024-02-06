@@ -218,6 +218,19 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn get_confirmed_data_by_accepting_blue_score_call(
+        &self,
+        _request: GetConfirmedDataByAcceptingBlueScoreRequest,
+    ) -> RpcResult<GetConfirmedDataByAcceptingBlueScoreResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
+    async fn get_confirmed_data_by_confirmations_call(
+        &self,
+        _request: GetConfirmedDataByConfirmationsRequest,
+    ) -> RpcResult<GetConfirmedDataByConfirmationsResponse> {
+        Err(RpcError::NotImplemented)
+    }
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

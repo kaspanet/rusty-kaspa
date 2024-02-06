@@ -17,15 +17,22 @@ message RPCError{
   string message = 1;
 }
 
-message RPCConfirmedData {
-  uint64 accepting_blue_score = 1;
-  uint64 confirmations = 2;
-  RpcHash chain_block_hash = 3;,
-  RpcBlock chain_block_full = 4;
-  repeated RpcHash merged_block_hashes = 5;
-  repeated RpcBlock merged_blocks_full = 6;
-  repeated RpcHash accepted_transactions = 7;
-  repeated RpcTransaction accepted_transactions_full = 8;
+message RpcMergeSetBlockAcceptanceData {
+  string block_hash = 1;
+  RpcBlock block = 2;
+  repeated string accepted_transaction_ids = 3;
+  repeated RpcTransaction accepted_transactions = 4;
+}
+
+
+message RpcConfirmedData {
+  uint64 confirmations = 1;
+  uint64 blueScore = 2;
+  uint64 daaScore = 3;
+  uint64 timestamp = 4;
+  string chainBlockHash = 5;
+  RpcBlock chainBlock = 6;
+  repeated RpcMergeSetBlockAcceptanceData mergeSetBlockAcceptanceData = 7;
 }
 
 message RpcBlock {
@@ -866,37 +873,31 @@ message GetDaaScoreTimestampEstimateResponseMessage{
 message GetConfirmedDataByAcceptingBlueScoreRequestMessage{
   uint64 low = 1;
   uint64 high = 2;
-  bool includeChainBlockHashes = 3;
-  bool includeChainBlocksFull = 4;
-  bool includeChainBlockVerboseData = 5;
-  bool includeMergedBlockHashes = 6;
-  bool includeMergedBlocksFull = 7;
-  bool includeMergedBlockVerboseData = 8;
-  bool includeTransactionIds = 9;
-  bool includeTransactionsFull = 10;
-  bool includeTransactionsVerboseData = 11;
+  bool includeChainBlockHeader = 3;
+  bool includeMergedBlockHashes = 4;
+  bool includeMergedBlockHeaders = 5;
+  bool includeAcceptedTransactionIds = 6;
+  bool includeAcceptedTransactions = 7;
+  bool includeVerboseData = 8;
 }
 
 message GetConfirmedDataByAcceptingBlueScoreResponseMessage{
-  repeated RPCConfirmedData confirmedData = 1;
+  repeated RpcConfirmedData confirmedData = 1;
   RPCError error = 1000;
 }
 
 message GetConfirmedDataByConfirmationsRequestMessage{
   uint64 low = 1;
   uint64 high = 2;
-  bool includeChainBlockHashes = 3;
-  bool includeChainBlocksFull = 4;
-  bool includeChainBlockVerboseData = 5;
-  bool includeMergedBlockHashes = 6;
-  bool includeMergedBlocksFull = 7;
-  bool includeMergedBlockVerboseData = 8;
-  bool includeTransactionIds = 9;
-  bool includeTransactionsFull = 10;
-  bool includeTransactionsVerboseData = 11;
+  bool includeChainBlockHeader = 3;
+  bool includeMergedBlockHashes = 4;
+  bool includeMergedBlockHeaders = 5;
+  bool includeAcceptedTransactionIds = 6;
+  bool includeAcceptedTransactions = 7;
+  bool includeVerboseData = 8;
 }
 
 message GetConfirmedDataByConfirmationsResponseMessage{
-  repeated RPCConfirmedData confirmedData = 1;
+  repeated RpcConfirmedData confirmedData = 1;
   RPCError error = 1000;
 }

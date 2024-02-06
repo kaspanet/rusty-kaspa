@@ -884,16 +884,16 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
     async fn get_confirmed_data_by_accepting_blue_score_call(
         &self,
-        request: GetConfirmedDataByAcceptingBlueScoreRequest,
+        _request: GetConfirmedDataByAcceptingBlueScoreRequest,
     ) -> RpcResult<GetConfirmedDataByAcceptingBlueScoreResponse> {
-        Ok(GetConfirmedDataByAcceptingBlueScoreResponse::default())
+        Err(RpcError::NotImplemented)
     }
 
     async fn get_confirmed_data_by_confirmations_call(
         &self,
-        request: GetConfirmedDataByConfirmationsRequest,
+        _request: GetConfirmedDataByConfirmationsRequest,
     ) -> RpcResult<GetConfirmedDataByConfirmationsResponse> {
-        Ok(GetConfirmedDataByConfirmationsResponse:)
+        Err(RpcError::NotImplemented)
     }
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API

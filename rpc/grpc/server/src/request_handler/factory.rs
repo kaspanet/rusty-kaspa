@@ -75,6 +75,8 @@ impl Factory {
                 GetServerInfo,
                 GetSyncStatus,
                 GetDaaScoreTimestampEstimate,
+                GetConfirmedDataByAcceptingBlueScore,
+                GetConfirmedDataByConfirmations,
                 NotifyBlockAdded,
                 NotifyNewBlockTemplate,
                 NotifyFinalityConflict,

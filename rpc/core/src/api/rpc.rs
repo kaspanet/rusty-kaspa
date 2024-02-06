@@ -306,32 +306,27 @@ pub trait RpcApi: Sync + Send + AnySync {
 
     async fn get_confirmed_data_by_accepting_blue_score(
         &self,
-        low: u64,
-        high: u64,
-        include_chain_block_hashes: bool,
-        include_chain_blocks_full: bool,
-        include_chain_block_verbose_data: bool,
+        low: u64,  // exclusive
+        high: u64, // inclusive
+        include_chain_block_header: bool,
         include_merged_block_hashes: bool,
-        include_merged_blocks_full: bool,
-        include_merged_block_verbose_data: bool,
-        include_transaction_ids: bool,
-        include_transactions_full: bool,
-        include_transactions_verbose_data: bool,
+        include_merged_block_headers: bool,
+        include_accepted_transaction_ids: bool,
+        include_accepted_transactions: bool,
+        include_verbose_data: bool,
     ) -> RpcResult<GetConfirmedDataByAcceptingBlueScoreResponse> {
-        Ok(self.get_confirmed_data_by_accepting_blue_score_call(GetConfirmedDataByAcceptingBlueScoreRequest::new(
-            low,
-            high,
-            include_chain_block_hashes,
-            include_chain_blocks_full,
-            include_chain_block_verbose_data,
-            include_merged_block_hashes,
-            include_merged_blocks_full,
-            include_merged_block_verbose_data,
-            include_transaction_ids,
-            include_transactions_full,
-            include_transactions_verbose_data,
-        ))
-        .await?)
+        Ok(self
+            .get_confirmed_data_by_accepting_blue_score_call(GetConfirmedDataByAcceptingBlueScoreRequest::new(
+                low,
+                high,
+                include_chain_block_header,
+                include_merged_block_hashes,
+                include_merged_block_headers,
+                include_accepted_transaction_ids,
+                include_accepted_transactions,
+                include_verbose_data,
+            ))
+            .await?)
     }
 
     async fn get_confirmed_data_by_accepting_blue_score_call(
@@ -341,32 +336,27 @@ pub trait RpcApi: Sync + Send + AnySync {
 
     async fn get_confirmed_data_by_confirmations(
         &self,
-        low: u64,
-        high: u64,
-        include_chain_block_hashes: bool,
-        include_chain_blocks_full: bool,
-        include_chain_block_verbose_data: bool,
+        low: u64,  // exclusive
+        high: u64, // inclusive
+        include_chain_block_header: bool,
         include_merged_block_hashes: bool,
-        include_merged_blocks_full: bool,
-        include_merged_block_verbose_data: bool,
-        include_transaction_ids: bool,
-        include_transactions_full: bool,
-        include_transactions_verbose_data: bool,
+        include_merged_block_headers: bool,
+        include_accepted_transaction_ids: bool,
+        include_accepted_transactions: bool,
+        include_verbose_data: bool,
     ) -> RpcResult<GetConfirmedDataByConfirmationsResponse> {
-        Ok(self.get_confirmed_data_by_confirmations_call(GetConfirmedDataByConfirmationsRequest::new(
-            low,
-            high,
-            include_chain_block_hashes,
-            include_chain_blocks_full,
-            include_chain_block_verbose_data,
-            include_merged_block_hashes,
-            include_merged_blocks_full,
-            include_merged_block_verbose_data,
-            include_transaction_ids,
-            include_transactions_full,
-            include_transactions_verbose_data,
-        ))
-        .await?)
+        Ok(self
+            .get_confirmed_data_by_confirmations_call(GetConfirmedDataByConfirmationsRequest::new(
+                low,
+                high,
+                include_chain_block_header,
+                include_merged_block_hashes,
+                include_merged_block_headers,
+                include_accepted_transaction_ids,
+                include_accepted_transactions,
+                include_verbose_data,
+            ))
+            .await?)
     }
 
     async fn get_confirmed_data_by_confirmations_call(

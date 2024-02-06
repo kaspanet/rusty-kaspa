@@ -981,6 +981,6 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_block_transactions(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
-        Ok(self.block_transactions_store.get(hash).map_err(|_| ConsensusError::BlockNotFound(hash))?)
+        self.block_transactions_store.get(hash).map_err(|_| ConsensusError::BlockNotFound(hash))
     }
 }
