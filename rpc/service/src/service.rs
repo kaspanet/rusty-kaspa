@@ -890,9 +890,9 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<GetConfirmedDataByAcceptingBlueScoreResponse> {
         // Validate
         if !self.config.scoreindex {
-            return Err(RpcError::LowLargerThenHighRange(request.low, request.high));
-        } else if request.low >= request.high {
             return Err(RpcError::NoScoreIndex);
+        } else if request.low >= request.high {
+            return Err(RpcError::LowLargerThenHighRange(request.low, request.high));
         } else if !self.config.unsafe_rpc && (request.high - request.low) > MAX_SAFE_SCOREINDEX_RANGE {
             return Err(RpcError::LowHighRangeOutOfBounds(
                 request.low,
@@ -942,9 +942,9 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<GetConfirmedDataByConfirmationsResponse> {
         // Validate
         if !self.config.scoreindex {
-            return Err(RpcError::LowLargerThenHighRange(request.low, request.high));
-        } else if request.low >= request.high {
             return Err(RpcError::NoScoreIndex);
+        } else if request.low >= request.high {
+            return Err(RpcError::LowLargerThenHighRange(request.low, request.high));
         } else if !self.config.unsafe_rpc && (request.high - request.low) > MAX_SAFE_SCOREINDEX_RANGE {
             return Err(RpcError::LowHighRangeOutOfBounds(
                 request.low,
@@ -964,8 +964,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             scoreindex.clone().get_sink().await.map_err(|err| RpcError::ScoreIndexError(err.to_string()))?.accepting_blue_score;
         let bound_range = high_bound - low_bound;
 
-        let low = min(request.low, bound_range) - high_bound;
-        let high = min(request.high, bound_range) - high_bound;
+        let low = high_bound - min(request.high, bound_range);
+        let high = high_bound - min(request.low, bound_range);
 
         let chain_block_blue_score_pairs = scoreindex
             .get_accepting_blue_score_chain_blocks(

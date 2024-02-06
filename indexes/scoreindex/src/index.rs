@@ -6,7 +6,7 @@ use crate::{
 };
 use kaspa_consensus_notify::notification::{ChainAcceptanceDataPrunedNotification, VirtualChainChangedNotification};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusSessionBlocking};
-use kaspa_core::{error, info, trace};
+use kaspa_core::{debug, error, info, trace};
 use kaspa_database::prelude::{StoreError, DB};
 use kaspa_hashes::ZERO_HASH;
 use parking_lot::RwLock;
@@ -61,7 +61,8 @@ impl ScoreIndex {
         remove_segment: bool,
         session: &ConsensusSessionBlocking<'_>,
     ) -> ScoreIndexResult<()> {
-        let total_blue_score_to_process = sync_from.accepting_blue_score - sync_to.accepting_blue_score;
+        debug!("sync_segement: sync_from: {:?}, sync_to: {:?}, remove_segment: {:?}", sync_from, sync_to, remove_segment);
+        let total_blue_score_to_process = sync_to.accepting_blue_score - sync_from.accepting_blue_score;
         let mut current =
             AcceptingBlueScoreHashPair::new(sync_from.accepting_blue_score, if remove_segment { ZERO_HASH } else { sync_from.hash });
         info!("[{0}] {1}: {2} Blue Scores", IDENT, if remove_segment { "Unsyncing" } else { "Syncing" }, total_blue_score_to_process);
@@ -80,7 +81,7 @@ impl ScoreIndex {
                     (current.accepting_blue_score..=(current.accepting_blue_score + RESYNC_CHUNKSIZE)).collect(),
                 )?;
                 current = AcceptingBlueScoreHashPair::new(
-                    min(current.accepting_blue_score + RESYNC_CHUNKSIZE, total_blue_score_to_process),
+                    min(current.accepting_blue_score + RESYNC_CHUNKSIZE, sync_to.accepting_blue_score),
                     ZERO_HASH,
                 );
             } else {
@@ -100,10 +101,11 @@ impl ScoreIndex {
                 }
                 self.stores.accepting_blue_score_store.write_many(&mut batch, to_add)?;
             }
-            total_blue_score_processed.1 = current.accepting_blue_score;
+            total_blue_score_processed.1 = current.accepting_blue_score - sync_from.accepting_blue_score;
             percent_completed.1 = total_blue_score_processed.1 as f64 / total_blue_score_to_process as f64 * 100.0;
             is_end = current.accepting_blue_score >= sync_to.accepting_blue_score;
             if is_start {
+                total_blue_score_processed.0 = sync_from.accepting_blue_score;
                 is_start = false
             };
             self.stores.write_batch(batch)?;
@@ -142,21 +144,25 @@ impl ScoreIndexApi for ScoreIndex {
             Err(StoreError::DbEmptyError) => None,
             Err(err) => return Err(ScoreIndexError::from(err)),
         };
+        debug!("scoreindex_source_blue_score_pair: {:?}", scoreindex_source_blue_score_pair);
         let scoreindex_sink_blue_score_pair = match self.stores.accepting_blue_score_store.get_sink() {
             Ok(scoreindex_sink) => Some(scoreindex_sink),
             Err(StoreError::DbEmptyError) => None,
             Err(err) => return Err(ScoreIndexError::from(err)),
         };
+        debug!("scoreindex_sink_blue_score_pair: {:?}", scoreindex_sink_blue_score_pair);
         let consensus_source_blue_score_pair = {
             let hash = session.get_source(true);
             let blue_score = session.get_header(hash)?.blue_score;
             AcceptingBlueScoreHashPair::new(blue_score, hash)
         };
+        debug!("consensus_source_blue_score_pair: {:?}", consensus_source_blue_score_pair);
         let consensus_sink_blue_score_pair = {
             let hash = session.get_sink();
             let blue_score = session.get_header(hash)?.blue_score;
             AcceptingBlueScoreHashPair::new(blue_score, hash)
         };
+        debug!("consensus_sink_blue_score_pair: {:?}", consensus_sink_blue_score_pair);
 
         let split_point_blue_score_pair = if let Some(scoreindex_sink_blue_score_pair) = scoreindex_sink_blue_score_pair.clone() {
             if scoreindex_sink_blue_score_pair == consensus_sink_blue_score_pair {

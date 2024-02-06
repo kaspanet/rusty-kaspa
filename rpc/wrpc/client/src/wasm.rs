@@ -325,6 +325,8 @@ build_wrpc_wasm_bindgen_interface!(
         GetVirtualChainFromBlock,
         ResolveFinalityConflict,
         SubmitBlock,
+        GetConfirmedDataByAcceptingBlueScore,
+        GetConfirmedDataByConfirmations,
         // SubmitTransaction,
         Unban,
     ]

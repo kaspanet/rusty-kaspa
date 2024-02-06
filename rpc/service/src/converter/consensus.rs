@@ -110,7 +110,7 @@ impl ConsensusConverter {
                 for mergeset in &acceptance_data.mergeset {
                     let merged_hash = if include_merged_block_hashes { Some(mergeset.block_hash) } else { None };
                     let merged_block = if include_merged_block_headers {
-                        let block = consensus.async_get_block(mergeset.block_hash).await?;
+                        let block = consensus.async_get_block_even_if_header_only(mergeset.block_hash).await?;
                         Some(self.get_block(consensus, &block, false, include_verbose_data).await?)
                     } else {
                         None
@@ -131,10 +131,10 @@ impl ConsensusConverter {
                                 included_accepted_transaction_ids.push(transaction_entry.transaction_id);
                             };
                             if include_accepted_transactions {
-                                let transaction = consensus.get_block_transactions(transaction_entry.transaction_id).await?;
+                                let transactions = consensus.async_get_block_transactions(mergeset.block_hash).await?;
                                 included_accepted_transactions.push(self.get_transaction(
                                     consensus,
-                                    transaction.get(transaction_entry.index_within_block as usize).expect("expected tx at index"),
+                                    transactions.get(transaction_entry.index_within_block as usize).expect("expected tx at index"),
                                     None,
                                     include_verbose_data,
                                 ));
@@ -153,7 +153,7 @@ impl ConsensusConverter {
                 vec![]
             };
             confirmed_data.push(RpcConfirmedData {
-                confirmations: pair.accepting_blue_score - sink_blue_score,
+                confirmations: sink_blue_score - pair.accepting_blue_score,
                 blue_score: pair.accepting_blue_score,
                 chain_block_hash: pair.hash,
                 chain_block,

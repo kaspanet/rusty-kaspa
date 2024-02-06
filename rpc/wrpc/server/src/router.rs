@@ -61,6 +61,8 @@ impl Router {
                 GetUtxosByAddresses,
                 GetSinkBlueScore,
                 GetVirtualChainFromBlock,
+                GetConfirmedDataByAcceptingBlueScore,
+                GetConfirmedDataByConfirmations,
                 Ping,
                 ResolveFinalityConflict,
                 Shutdown,
