@@ -63,7 +63,8 @@ impl ConfIndex {
     ) -> ConfIndexResult<()> {
         debug!("sync_segement: sync_from: {:?}, sync_to: {:?}, remove_segment: {:?}", sync_from, sync_to, remove_segment);
         let total_blue_score_to_process = sync_to.accepting_blue_score - sync_from.accepting_blue_score;
-        if total_blue_score_to_process == 0 { // nothing to do, we may exit early.
+        if total_blue_score_to_process == 0 {
+            // nothing to do, we may exit early.
             return Ok(());
         }
         let mut current =
