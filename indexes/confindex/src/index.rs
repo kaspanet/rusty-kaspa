@@ -62,11 +62,7 @@ impl ConfIndex {
         session: &ConsensusSessionBlocking<'_>,
     ) -> ConfIndexResult<()> {
         debug!("sync_segement: sync_from: {:?}, sync_to: {:?}, remove_segment: {:?}", sync_from, sync_to, remove_segment);
-        let total_blue_score_to_process = sync_to.accepting_blue_score - sync_from.accepting_blue_score;
-        if total_blue_score_to_process == 0 {
-            // nothing to do, we may exit early.
-            return Ok(());
-        }
+        let total_blue_score_to_process = sync_to.accepting_blue_score - sync_from.accepting_blue_score + 1; // +1 because since we resync inclusively
         let mut current =
             AcceptingBlueScoreHashPair::new(sync_from.accepting_blue_score, if remove_segment { ZERO_HASH } else { sync_from.hash });
         info!("[{0}] {1}: {2} Blue Scores", IDENT, if remove_segment { "Unsyncing" } else { "Syncing" }, total_blue_score_to_process);
@@ -105,7 +101,7 @@ impl ConfIndex {
                 }
                 self.stores.accepting_blue_score_store.write_many(&mut batch, to_add)?;
             }
-            total_blue_score_processed.1 = current.accepting_blue_score - sync_from.accepting_blue_score;
+            total_blue_score_processed.1 = current.accepting_blue_score - sync_from.accepting_blue_score + 1; // +1 because since we resync inclusively
             percent_completed.1 = total_blue_score_processed.1 as f64 / total_blue_score_to_process as f64 * 100.0;
             is_end = current.accepting_blue_score >= sync_to.accepting_blue_score;
             if is_start {
