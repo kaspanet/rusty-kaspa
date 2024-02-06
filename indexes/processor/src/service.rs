@@ -13,7 +13,7 @@ use kaspa_notify::{
     events::EventType,
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
 };
-use kaspa_scoreindex::api::ScoreIndexProxy;
+use kaspa_confindex::api::ConfIndexProxy;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::{collections::HashSet, sync::Arc};
@@ -22,7 +22,7 @@ const INDEX_SERVICE: &str = IDENT;
 
 pub struct IndexService {
     utxoindex: Option<UtxoIndexProxy>,
-    scoreindex: Option<ScoreIndexProxy>,
+    confindex: Option<ConfIndexProxy>,
     notifier: Arc<IndexNotifier>,
     shutdown: SingleTrigger,
 }
@@ -31,7 +31,7 @@ impl IndexService {
     pub fn new(
         consensus_notifier: &Arc<ConsensusNotifier>,
         utxoindex: Option<UtxoIndexProxy>,
-        scoreindex: Option<ScoreIndexProxy>,
+        confindex: Option<ConfIndexProxy>,
     ) -> Self {
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
@@ -46,14 +46,14 @@ impl IndexService {
             event_types.insert(EventType::UtxosChanged);
             event_types.insert(EventType::PruningPointUtxoSetOverride);
         }
-        if scoreindex.is_some() {
+        if confindex.is_some() {
             event_types.insert(EventType::VirtualChainChanged);
             event_types.insert(EventType::ChainAcceptanceDataPruned);
         }
 
         let events = event_types.iter().cloned().collect::<Vec<EventType>>().as_slice().into();
 
-        let collector = Arc::new(Processor::new(utxoindex.clone(), scoreindex.clone(), consensus_notify_channel.receiver()));
+        let collector = Arc::new(Processor::new(utxoindex.clone(), confindex.clone(), consensus_notify_channel.receiver()));
         let notifier = Arc::new(IndexNotifier::new(INDEX_SERVICE, events, vec![collector], vec![], 1));
 
         // Manually subscribe to index-processor related event types
@@ -67,7 +67,7 @@ impl IndexService {
             consensus_notifier.try_start_notify(consensus_notify_listener_id, scope).expect("the subscription always succeeds");
         }
 
-        Self { utxoindex, scoreindex, notifier, shutdown: SingleTrigger::default() }
+        Self { utxoindex, confindex, notifier, shutdown: SingleTrigger::default() }
     }
 
     pub fn notifier(&self) -> Arc<IndexNotifier> {
@@ -78,8 +78,8 @@ impl IndexService {
         self.utxoindex.clone()
     }
 
-    pub fn scoreindex(&self) -> Option<ScoreIndexProxy> {
-        self.scoreindex.clone()
+    pub fn confindex(&self) -> Option<ConfIndexProxy> {
+        self.confindex.clone()
     }
 }
 

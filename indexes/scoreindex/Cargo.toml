@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-scoreindex"
+name = "kaspa-confindex"
 description = "Kaspa Score index"
 version.workspace = true
 edition.workspace = true

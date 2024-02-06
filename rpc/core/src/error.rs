@@ -65,11 +65,11 @@ pub enum RpcError {
     #[error("Method unavailable. Run the node with the --utxoindex argument.")]
     NoUtxoIndex,
 
-    #[error("Method unavailable. Run the node with the --scoreindex argument.")]
-    NoScoreIndex,
+    #[error("Method unavailable. Run the node with the --confindex argument.")]
+    NoConfIndex,
 
-    #[error("ScoreIndexError: {0}")]
-    ScoreIndexError(String),
+    #[error("ConfIndexError: {0}")]
+    ConfIndexError(String),
 
     #[error("Method unavailable. No connection manager is currently available.")]
     NoConnectionManager,

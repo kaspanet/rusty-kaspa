@@ -13,7 +13,7 @@ use kaspa_notify::{
     notification::Notification as NotificationTrait,
     notifier::DynNotify,
 };
-use kaspa_scoreindex::ScoreIndexProxy;
+use kaspa_confindex::ConfIndexProxy;
 use kaspa_utils::triggers::SingleTrigger;
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::sync::{
@@ -32,7 +32,7 @@ pub struct Processor {
     utxoindex: Option<UtxoIndexProxy>,
 
     /// An optional Score indexer
-    scoreindex: Option<ScoreIndexProxy>,
+    confindex: Option<ConfIndexProxy>,
 
     recv_channel: CollectorNotificationReceiver<ConsensusNotification>,
 
@@ -45,12 +45,12 @@ pub struct Processor {
 impl Processor {
     pub fn new(
         utxoindex: Option<UtxoIndexProxy>,
-        scoreindex: Option<ScoreIndexProxy>,
+        confindex: Option<ConfIndexProxy>,
         recv_channel: CollectorNotificationReceiver<ConsensusNotification>,
     ) -> Self {
         Self {
             utxoindex,
-            scoreindex,
+            confindex,
             recv_channel,
             collect_shutdown: Arc::new(SingleTrigger::new()),
             is_started: Arc::new(AtomicBool::new(false)),
@@ -129,8 +129,8 @@ impl Processor {
         notification: consensus_notification::ChainAcceptanceDataPrunedNotification,
     ) -> IndexResult<()> {
         trace!("[{IDENT}]: processing {:?}", notification);
-        if let Some(scoreindex) = self.scoreindex.clone() {
-            return Ok(scoreindex.update_via_chain_acceptance_data_pruned(notification).await?);
+        if let Some(confindex) = self.confindex.clone() {
+            return Ok(confindex.update_via_chain_acceptance_data_pruned(notification).await?);
         };
         Err(IndexError::NotSupported(EventType::ChainAcceptanceDataPruned))
     }
@@ -140,8 +140,8 @@ impl Processor {
         notification: consensus_notification::VirtualChainChangedNotification,
     ) -> IndexResult<()> {
         trace!("[{IDENT}]: processing {:?}", notification);
-        if let Some(scoreindex) = self.scoreindex.clone() {
-            scoreindex.update_via_virtual_chain_changed(notification.clone()).await?;
+        if let Some(confindex) = self.confindex.clone() {
+            confindex.update_via_virtual_chain_changed(notification.clone()).await?;
             return Ok(());
         };
         Err(IndexError::NotSupported(EventType::VirtualChainChanged))
@@ -180,7 +180,7 @@ mod tests {
     use kaspa_database::prelude::ConnBuilder;
     use kaspa_database::utils::DbLifetime;
     use kaspa_notify::notifier::test_helpers::NotifyMock;
-    use kaspa_scoreindex::ScoreIndex;
+    use kaspa_confindex::ConfIndex;
     use kaspa_utxoindex::UtxoIndex;
     use rand::{rngs::SmallRng, Rng, SeedableRng};
     use std::sync::Arc;
@@ -194,25 +194,25 @@ mod tests {
         processor_receiver: Receiver<Notification>,
         test_consensus: TestConsensus,
         utxoindex_db_lifetime: DbLifetime,
-        scoreindex_db_lifetime: DbLifetime,
+        confindex_db_lifetime: DbLifetime,
     }
 
     impl NotifyPipeline {
         fn new() -> Self {
             let (consensus_sender, consensus_receiver) = unbounded();
             let (utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
-            let (scoreindex_db_lifetime, scoreindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+            let (confindex_db_lifetime, confindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
             let config = Arc::new(Config::new(DEVNET_PARAMS));
             let tc = TestConsensus::new(&config);
             tc.init();
             let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
             let utxoindex = Some(UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap()));
-            let scoreindex = Some(ScoreIndexProxy::new(ScoreIndex::new(consensus_manager, scoreindex_db).unwrap()));
-            let processor = Arc::new(Processor::new(utxoindex, scoreindex, consensus_receiver));
+            let confindex = Some(ConfIndexProxy::new(ConfIndex::new(consensus_manager, confindex_db).unwrap()));
+            let processor = Arc::new(Processor::new(utxoindex, confindex, consensus_receiver));
             let (processor_sender, processor_receiver) = unbounded();
             let notifier = Arc::new(NotifyMock::new(processor_sender));
             processor.clone().start(notifier);
-            Self { test_consensus: tc, consensus_sender, processor, processor_receiver, utxoindex_db_lifetime, scoreindex_db_lifetime }
+            Self { test_consensus: tc, consensus_sender, processor, processor_receiver, utxoindex_db_lifetime, confindex_db_lifetime }
         }
     }
 

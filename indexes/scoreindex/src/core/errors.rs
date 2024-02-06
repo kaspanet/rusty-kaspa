@@ -7,7 +7,7 @@ use kaspa_database::prelude::StoreError;
 
 /// Errors originating from the [`UtxoIndex`].
 #[derive(Error, Debug)]
-pub enum ScoreIndexError {
+pub enum ConfIndexError {
     #[error("[{IDENT}]: {0}")]
     StoreAccessError(#[from] StoreError),
 
@@ -19,4 +19,4 @@ pub enum ScoreIndexError {
 }
 
 /// Results originating from the [`UtxoIndex`].
-pub type ScoreIndexResult<T> = Result<T, ScoreIndexError>;
+pub type ConfIndexResult<T> = Result<T, ConfIndexError>;

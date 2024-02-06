@@ -54,7 +54,7 @@ pub enum DatabaseStorePrefixes {
     UtxoIndexTips = 193,
     CirculatingSupply = 194,
 
-    // ScoreIndex
+    // ConfIndex
     AcceptingBlueScore = 211,
 
     // ---- Separator ----

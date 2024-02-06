@@ -2,11 +2,11 @@ use kaspa_consensus_notify::notification::{ChainAcceptanceDataPrunedNotification
 
 use crate::{AcceptingBlueScoreDiff, AcceptingBlueScoreHashPair};
 
-pub struct ScoreIndexReindexer {
+pub struct ConfIndexReindexer {
     pub accepting_blue_score_changes: AcceptingBlueScoreDiff,
 }
 
-impl From<VirtualChainChangedNotification> for ScoreIndexReindexer {
+impl From<VirtualChainChangedNotification> for ConfIndexReindexer {
     fn from(notification: VirtualChainChangedNotification) -> Self {
         let accepting_blue_score_changes = AcceptingBlueScoreDiff::new(
             notification
@@ -25,7 +25,7 @@ impl From<VirtualChainChangedNotification> for ScoreIndexReindexer {
     }
 }
 
-impl From<ChainAcceptanceDataPrunedNotification> for ScoreIndexReindexer {
+impl From<ChainAcceptanceDataPrunedNotification> for ConfIndexReindexer {
     fn from(notification: ChainAcceptanceDataPrunedNotification) -> Self {
         let accepting_blue_score_changes =
             AcceptingBlueScoreDiff::new(vec![notification.mergeset_block_acceptance_data_pruned.accepting_blue_score], vec![]);

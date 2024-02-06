@@ -2581,7 +2581,7 @@ dependencies = [
  "kaspa-hashes",
  "kaspa-index-core",
  "kaspa-notify",
- "kaspa-scoreindex",
+ "kaspa-confindex",
  "kaspa-utils",
  "kaspa-utxoindex",
  "log",
@@ -2901,7 +2901,7 @@ dependencies = [
  "kaspa-p2p-lib",
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
- "kaspa-scoreindex",
+ "kaspa-confindex",
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-utils-tower",
@@ -2912,7 +2912,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-scoreindex"
+name = "kaspa-confindex"
 version = "0.13.4"
 dependencies = [
  "futures",
@@ -2965,7 +2965,7 @@ dependencies = [
  "kaspa-notify",
  "kaspa-pow",
  "kaspa-rpc-core",
- "kaspa-scoreindex",
+ "kaspa-confindex",
  "kaspa-txscript",
  "kaspa-txscript-errors",
  "kaspa-utils",
@@ -3323,7 +3323,7 @@ dependencies = [
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
  "kaspa-rpc-service",
- "kaspa-scoreindex",
+ "kaspa-confindex",
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-utils-tower",

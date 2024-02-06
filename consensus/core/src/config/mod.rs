@@ -44,7 +44,7 @@ pub struct Config {
 
     // TODO: move non-consensus parameters like utxoindex to a higher scoped Config
     /// Enable the Score index
-    pub scoreindex: bool,
+    pub confindex: bool,
 
     /// Enable RPC commands which affect the state of the node
     pub unsafe_rpc: bool,
@@ -87,7 +87,7 @@ impl Config {
             is_archival: false,
             enable_sanity_checks: false,
             utxoindex: false,
-            scoreindex: false,
+            confindex: false,
             unsafe_rpc: false,
             enable_unsynced_mining: false,
             enable_mainnet_mining: false,

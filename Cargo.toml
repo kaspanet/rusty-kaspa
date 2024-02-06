@@ -26,7 +26,7 @@ members = [
     "notify",
     "indexes/core",
     "indexes/processor",
-    "indexes/scoreindex",
+    "indexes/confindex",
     "indexes/utxoindex",
     "rpc/macros",
     "rpc/core",
@@ -114,7 +114,7 @@ kaspa-txscript = { version = "0.13.4", path = "crypto/txscript" }
 kaspa-txscript-errors = { version = "0.13.4", path = "crypto/txscript/errors" }
 kaspa-utils = { version = "0.13.4", path = "utils" }
 kaspa-utils-tower = { version = "0.13.4", path = "utils/tower" }
-kaspa-scoreindex = { version = "0.13.4", path = "indexes/scoreindex" }
+kaspa-confindex = { version = "0.13.4", path = "indexes/confindex" }
 kaspa-utxoindex = { version = "0.13.4", path = "indexes/utxoindex" }
 kaspa-wallet = { version = "0.13.4", path = "wallet/native" }
 kaspa-wallet-cli-wasm = { version = "0.13.4", path = "wallet/wasm" }

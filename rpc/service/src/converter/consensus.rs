@@ -1,12 +1,7 @@
 use async_trait::async_trait;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
-    block::Block,
-    config::Config,
-    hashing::tx::hash,
-    header::Header,
-    tx::{MutableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput},
-    ChainPath,
+    block::Block, config::Config, hashing::tx::hash, header::Header, tx::{MutableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput}, ChainPath
 };
 use kaspa_consensus_notify::notification::{self as consensus_notify, Notification as ConsensusNotification};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusProxy};
@@ -20,7 +15,7 @@ use kaspa_rpc_core::{
     RpcTransaction, RpcTransactionInput, RpcTransactionOutput, RpcTransactionOutputVerboseData, RpcTransactionVerboseData,
 };
 
-use kaspa_scoreindex::AcceptingBlueScoreHashPair;
+use kaspa_confindex::AcceptingBlueScoreHashPair;
 use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
 
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
@@ -132,12 +127,12 @@ impl ConsensusConverter {
                             };
                             if include_accepted_transactions {
                                 let transactions = consensus.async_get_block_transactions(mergeset.block_hash).await?;
-                                included_accepted_transactions.push(self.get_transaction(
-                                    consensus,
-                                    transactions.get(transaction_entry.index_within_block as usize).expect("expected tx at index"),
-                                    None,
-                                    include_verbose_data,
-                                ));
+                                    included_accepted_transactions.push(self.get_transaction(
+                                        consensus,
+                                        transactions.get(transaction_entry.index_within_block as usize).expect("expected tx at index"),
+                                        None,
+                                        include_verbose_data,
+                                    ));
                             };
                         }
                     }

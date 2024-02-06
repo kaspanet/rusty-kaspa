@@ -19,7 +19,7 @@ kaspa-index-core.workspace = true
 kaspa-notify.workspace = true
 kaspa-utils.workspace = true
 kaspa-utxoindex.workspace = true
-kaspa-scoreindex.workspace = true
+kaspa-confindex.workspace = true
 
 async-channel.workspace = true
 async-trait.workspace = true

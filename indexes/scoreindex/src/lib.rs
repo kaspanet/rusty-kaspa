@@ -3,7 +3,7 @@ mod stores;
 pub use core::*;
 mod index;
 
-pub const IDENT: &str = "ScoreIndex";
+pub const IDENT: &str = "ConfIndex";
 
 //Expose all things intended for external usage.
-pub use crate::index::ScoreIndex; //we expose this separately to initiate the index.
+pub use crate::index::ConfIndex; //we expose this separately to initiate the index.

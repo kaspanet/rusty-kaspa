@@ -53,7 +53,7 @@ use kaspa_database::prelude::{CachePolicy, ConnBuilder};
 use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
-use kaspa_scoreindex::{ScoreIndex, ScoreIndexApi, ScoreIndexProxy};
+use kaspa_confindex::{ConfIndex, ConfIndexApi, ConfIndexProxy};
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use kaspa_utxoindex::UtxoIndex;
@@ -947,14 +947,14 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let (_external_db_lifetime, external_storage) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let external_block_store = DbBlockTransactionsStore::new(external_storage, CachePolicy::Count(config.perf.block_data_cache_size));
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
-    let (_scoreindex_db_lifetime, scoreindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let (_confindex_db_lifetime, confindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
     let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
-    let scoreindex = ScoreIndex::new(consensus_manager.clone(), scoreindex_db).unwrap();
+    let confindex = ConfIndex::new(consensus_manager.clone(), confindex_db).unwrap();
     let index_service = Arc::new(IndexService::new(
         &notify_service.notifier(),
         Some(UtxoIndexProxy::new(utxoindex.clone())),
-        Some(ScoreIndexProxy::new(scoreindex.clone())),
+        Some(ConfIndexProxy::new(confindex.clone())),
     ));
 
     let async_runtime = Arc::new(AsyncRuntime::new(2));
@@ -1082,20 +1082,20 @@ async fn json_test(file_path: &str, concurrency: bool) {
     assert!(virtual_utxos.is_subset(&utxoindex_utxos));
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
 
-    assert!(scoreindex.read().is_synced().unwrap());
-    let scoreindex_sink = scoreindex.read().get_sink().unwrap();
-    let scoreindex_source = scoreindex.read().get_source().unwrap();
+    assert!(confindex.read().is_synced().unwrap());
+    let confindex_sink = confindex.read().get_sink().unwrap();
+    let confindex_source = confindex.read().get_source().unwrap();
     let consensus_source = tc.get_source(true);
     info!(
-        "ScoreIndex source blue score: {0}, consensus source blue score: {1}",
-        scoreindex_source.accepting_blue_score,
+        "ConfIndex source blue score: {0}, consensus source blue score: {1}",
+        confindex_source.accepting_blue_score,
         tc.get_header(consensus_source).unwrap().blue_score
     );
-    assert_eq!(scoreindex_sink.hash, tc.get_sink());
-    assert_eq!(scoreindex_source.hash, tc.get_source(true));
+    assert_eq!(confindex_sink.hash, tc.get_sink());
+    assert_eq!(confindex_source.hash, tc.get_source(true));
 
-    let vc = tc.reachability_service().forward_chain_iterator(scoreindex_source.hash, scoreindex_sink.hash, true).collect_vec();
-    let all_hash_blue_score_pairs = scoreindex.read().get_all_hash_blue_score_pairs().unwrap();
+    let vc = tc.reachability_service().forward_chain_iterator(confindex_source.hash, confindex_sink.hash, true).collect_vec();
+    let all_hash_blue_score_pairs = confindex.read().get_all_hash_blue_score_pairs().unwrap();
     assert_eq!(vc.len(), all_hash_blue_score_pairs.len());
     all_hash_blue_score_pairs.iter().zip(vc).for_each(|(pair, block)| {
         assert_eq!(pair.hash, block);

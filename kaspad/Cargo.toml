@@ -35,7 +35,7 @@ kaspa-rpc-service.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 kaspa-utils-tower.workspace = true
-kaspa-scoreindex.workspace = true
+kaspa-confindex.workspace = true
 kaspa-utxoindex.workspace = true
 kaspa-wrpc-server.workspace = true
 

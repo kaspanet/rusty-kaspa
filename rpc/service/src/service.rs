@@ -48,7 +48,7 @@ use kaspa_notify::{
 use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
-use kaspa_rpc_core::api::rpc::MAX_SAFE_SCOREINDEX_RANGE;
+use kaspa_rpc_core::api::rpc::MAX_SAFE_CONFINDEX_RANGE;
 use kaspa_rpc_core::{
     api::{
         ops::RPC_API_VERSION,
@@ -58,7 +58,7 @@ use kaspa_rpc_core::{
     notify::connection::ChannelConnection,
     Notification, RpcError, RpcResult,
 };
-use kaspa_scoreindex::ScoreIndexProxy;
+use kaspa_confindex::ConfIndexProxy;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
@@ -96,7 +96,7 @@ pub struct RpcCoreService {
     mining_manager: MiningManagerProxy,
     flow_context: Arc<FlowContext>,
     utxoindex: Option<UtxoIndexProxy>,
-    scoreindex: Option<ScoreIndexProxy>,
+    confindex: Option<ConfIndexProxy>,
     config: Arc<Config>,
     consensus_converter: Arc<ConsensusConverter>,
     index_converter: Arc<IndexConverter>,
@@ -122,7 +122,7 @@ impl RpcCoreService {
         mining_manager: MiningManagerProxy,
         flow_context: Arc<FlowContext>,
         utxoindex: Option<UtxoIndexProxy>,
-        scoreindex: Option<ScoreIndexProxy>,
+        confindex: Option<ConfIndexProxy>,
         config: Arc<Config>,
         core: Arc<Core>,
         processing_counters: Arc<ProcessingCounters>,
@@ -142,7 +142,7 @@ impl RpcCoreService {
         consensus_events[EventType::ChainAcceptanceDataPruned] = false; // Not used in rpc
         consensus_events[EventType::UtxosChanged] = false;
         consensus_events[EventType::PruningPointUtxoSetOverride] = index_notifier.is_none();
-        consensus_events[EventType::VirtualChainChanged] = scoreindex.is_none();
+        consensus_events[EventType::VirtualChainChanged] = confindex.is_none();
         let consensus_converter = Arc::new(ConsensusConverter::new(consensus_manager.clone(), config.clone()));
         let consensus_collector = Arc::new(CollectorFromConsensus::new(
             "rpc-core <= consensus",
@@ -167,7 +167,7 @@ impl RpcCoreService {
             if utxoindex.is_some() {
                 index_events.append(&mut vec![EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride])
             }
-            if scoreindex.is_some() {
+            if confindex.is_some() {
                 index_events.append(&mut vec![
                     EventType::VirtualChainChanged,
                     //EventType::ChainAcceptanceDataPruned, this is not used by the rpc, but if it is, it should be over the index service
@@ -198,7 +198,7 @@ impl RpcCoreService {
             mining_manager,
             flow_context,
             utxoindex,
-            scoreindex,
+            confindex,
             config,
             consensus_converter,
             index_converter,
@@ -889,36 +889,36 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         request: GetConfirmedDataByAcceptingBlueScoreRequest,
     ) -> RpcResult<GetConfirmedDataByAcceptingBlueScoreResponse> {
         // Validate
-        if !self.config.scoreindex {
-            return Err(RpcError::NoScoreIndex);
+        if !self.config.confindex {
+            return Err(RpcError::NoConfIndex);
         } else if request.low >= request.high {
             return Err(RpcError::LowLargerThenHighRange(request.low, request.high));
-        } else if !self.config.unsafe_rpc && (request.high - request.low) > MAX_SAFE_SCOREINDEX_RANGE {
+        } else if !self.config.unsafe_rpc && (request.high - request.low) > MAX_SAFE_CONFINDEX_RANGE {
             return Err(RpcError::LowHighRangeOutOfBounds(
                 request.low,
                 request.high,
                 request.high - request.low,
-                MAX_SAFE_SCOREINDEX_RANGE,
+                MAX_SAFE_CONFINDEX_RANGE,
             ));
         };
 
         let session = self.consensus_manager.consensus().session().await;
-        let scoreindex = self.scoreindex.clone().unwrap();
+        let confindex = self.confindex.clone().unwrap();
 
         // modify low / high based on known node bounds
         let low_bound =
-            scoreindex.clone().get_source().await.map_err(|err| RpcError::ScoreIndexError(err.to_string()))?.accepting_blue_score;
+            confindex.clone().get_source().await.map_err(|err| RpcError::ConfIndexError(err.to_string()))?.accepting_blue_score;
         let high_bound =
-            scoreindex.clone().get_sink().await.map_err(|err| RpcError::ScoreIndexError(err.to_string()))?.accepting_blue_score;
+            confindex.clone().get_sink().await.map_err(|err| RpcError::ConfIndexError(err.to_string()))?.accepting_blue_score;
         let low = max(request.low, low_bound);
         let high = min(request.high, high_bound);
-        let chain_block_blue_score_pairs = scoreindex
+        let chain_block_blue_score_pairs = confindex
             .get_accepting_blue_score_chain_blocks(
                 low + 1, // We plus one to force exclusivity.
                 high,
             )
             .await
-            .map_err(|err| RpcError::ScoreIndexError(err.to_string()))?;
+            .map_err(|err| RpcError::ConfIndexError(err.to_string()))?;
         let confirmed_data = self
             .consensus_converter
             .get_acceptance_data(
@@ -941,39 +941,39 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         request: GetConfirmedDataByConfirmationsRequest,
     ) -> RpcResult<GetConfirmedDataByConfirmationsResponse> {
         // Validate
-        if !self.config.scoreindex {
-            return Err(RpcError::NoScoreIndex);
+        if !self.config.confindex {
+            return Err(RpcError::NoConfIndex);
         } else if request.low >= request.high {
             return Err(RpcError::LowLargerThenHighRange(request.low, request.high));
-        } else if !self.config.unsafe_rpc && (request.high - request.low) > MAX_SAFE_SCOREINDEX_RANGE {
+        } else if !self.config.unsafe_rpc && (request.high - request.low) > MAX_SAFE_CONFINDEX_RANGE {
             return Err(RpcError::LowHighRangeOutOfBounds(
                 request.low,
                 request.high,
                 request.high - request.low,
-                MAX_SAFE_SCOREINDEX_RANGE,
+                MAX_SAFE_CONFINDEX_RANGE,
             ));
         };
 
         let session = self.consensus_manager.consensus().session().await;
-        let scoreindex = self.scoreindex.clone().unwrap();
+        let confindex = self.confindex.clone().unwrap();
 
         // modify low / high confirmation range based on known node bounds
         let low_bound =
-            scoreindex.clone().get_source().await.map_err(|err| RpcError::ScoreIndexError(err.to_string()))?.accepting_blue_score;
+            confindex.clone().get_source().await.map_err(|err| RpcError::ConfIndexError(err.to_string()))?.accepting_blue_score;
         let high_bound =
-            scoreindex.clone().get_sink().await.map_err(|err| RpcError::ScoreIndexError(err.to_string()))?.accepting_blue_score;
+            confindex.clone().get_sink().await.map_err(|err| RpcError::ConfIndexError(err.to_string()))?.accepting_blue_score;
         let bound_range = high_bound - low_bound;
 
         let low = high_bound - min(request.high, bound_range);
         let high = high_bound - min(request.low, bound_range);
 
-        let chain_block_blue_score_pairs = scoreindex
+        let chain_block_blue_score_pairs = confindex
             .get_accepting_blue_score_chain_blocks(
                 low + 1, // We plus one to force exclusivity.
                 high,
             )
             .await
-            .map_err(|err| RpcError::ScoreIndexError(err.to_string()))?;
+            .map_err(|err| RpcError::ConfIndexError(err.to_string()))?;
         let confirmed_data = self
             .consensus_converter
             .get_acceptance_data(

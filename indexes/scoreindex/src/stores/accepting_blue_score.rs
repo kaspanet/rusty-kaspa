@@ -60,7 +60,7 @@ impl Display for AcceptingBlueScoreKey {
 
 // Traits:
 
-pub trait ScoreIndexAcceptingBlueScoreReader {
+pub trait ConfIndexAcceptingBlueScoreReader {
     fn get(&self, accepting_blue_score: AcceptingBlueScore) -> StoreResult<Hash>;
     fn get_sink(&self) -> StoreResult<AcceptingBlueScoreHashPair>;
     fn get_source(&self) -> StoreResult<AcceptingBlueScoreHashPair>;
@@ -71,7 +71,7 @@ pub trait ScoreIndexAcceptingBlueScoreReader {
     fn get_all(&self) -> StoreResult<Vec<AcceptingBlueScoreHashPair>>;
 }
 
-pub trait ScoreIndexAcceptingBlueScoreStore {
+pub trait ConfIndexAcceptingBlueScoreStore {
     fn write_diff(&mut self, batch: &mut WriteBatch, diff: AcceptingBlueScoreDiff) -> StoreResult<()>;
     fn remove_many(&mut self, batch: &mut WriteBatch, to_remove: Vec<AcceptingBlueScore>) -> StoreResult<()>;
     fn write_many(&mut self, batch: &mut WriteBatch, to_add: Vec<AcceptingBlueScoreHashPair>) -> StoreResult<()>;
@@ -81,17 +81,17 @@ pub trait ScoreIndexAcceptingBlueScoreStore {
 // Implementations:
 
 #[derive(Clone)]
-pub struct DbScoreIndexAcceptingBlueScoreStore {
+pub struct DbConfIndexAcceptingBlueScoreStore {
     access: CachedDbAccess<AcceptingBlueScoreKey, Hash>,
 }
 
-impl DbScoreIndexAcceptingBlueScoreStore {
+impl DbConfIndexAcceptingBlueScoreStore {
     pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
         Self { access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::AcceptingBlueScore.into()) }
     }
 }
 
-impl ScoreIndexAcceptingBlueScoreReader for DbScoreIndexAcceptingBlueScoreStore {
+impl ConfIndexAcceptingBlueScoreReader for DbConfIndexAcceptingBlueScoreStore {
     fn get(&self, accepting_blue_score: AcceptingBlueScore) -> StoreResult<Hash> {
         self.access.read(accepting_blue_score.into())
     }
@@ -157,7 +157,7 @@ impl ScoreIndexAcceptingBlueScoreReader for DbScoreIndexAcceptingBlueScoreStore 
     }
 }
 
-impl ScoreIndexAcceptingBlueScoreStore for DbScoreIndexAcceptingBlueScoreStore {
+impl ConfIndexAcceptingBlueScoreStore for DbConfIndexAcceptingBlueScoreStore {
     fn write_diff(&mut self, batch: &mut WriteBatch, diff: AcceptingBlueScoreDiff) -> StoreResult<()> {
         let mut writer = BatchDbWriter::new(batch);
         self.access.delete_many(&mut writer, &mut diff.to_remove.iter().map(|k| k.into()))?;
