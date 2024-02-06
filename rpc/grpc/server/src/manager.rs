@@ -1,15 +1,15 @@
 use crate::connection::{Connection, ConnectionId};
-use itertools::Itertools;
 use kaspa_core::{debug, info, warn};
 use kaspa_notify::connection::Connection as ConnectionT;
 use parking_lot::RwLock;
 use std::{
-    collections::{hash_map::Entry::Occupied, HashMap},
+    collections::{hash_map::Entry::Occupied, HashMap, HashSet},
     sync::Arc,
+    time::Duration,
 };
 use thiserror::Error;
-use tokio::sync::mpsc::Receiver as MpscReceiver;
 use tokio::sync::oneshot::Sender as OneshotSender;
+use tokio::{sync::mpsc::Receiver as MpscReceiver, time::sleep};
 
 #[derive(Debug, Error)]
 pub(crate) enum RegistrationError {
@@ -108,13 +108,24 @@ impl Manager {
     }
 
     /// Terminate all connections
-    pub fn terminate_all_connections(&self) {
-        // Note that using drain here prevents unregister() to successfully find the entry...
-        let connections = self.connections.write().drain().map(|(_, cx)| cx).collect_vec();
-        for (i, connection) in connections.into_iter().enumerate().rev() {
-            connection.close();
-            // ... so we log explicitly here
-            info!("GRPC, end connection {} #{}", connection, i + 1);
+    pub async fn terminate_all_connections(&self) {
+        let mut closed_connections = HashSet::with_capacity(self.connections.read().len());
+        loop {
+            if let Some((id, connection)) = self
+                .connections
+                .read()
+                .iter()
+                .filter(|(id, _)| !closed_connections.contains(*id))
+                .map(|(id, cx)| (*id, cx.clone()))
+                .next()
+            {
+                closed_connections.insert(id);
+                connection.close();
+                continue;
+            } else if self.connections.read().is_empty() {
+                break;
+            }
+            sleep(Duration::from_millis(10)).await;
         }
     }
 

@@ -92,7 +92,7 @@ async fn test_client_server_connections() {
 
             // Terminate connections server-side
             if self.terminate_clients {
-                server.terminate_all_connections();
+                server.terminate_all_connections().await;
                 tokio::time::sleep(std::time::Duration::from_millis(25)).await;
                 for (i, client) in clients.iter().enumerate() {
                     assert!(!client.is_connected(), "server failed to disconnect client {}", i);
