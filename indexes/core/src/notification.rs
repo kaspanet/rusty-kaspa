@@ -106,11 +106,14 @@ impl UtxosChangedNotification {
         let mut result = HashMap::default();
         // FIXME
         // if utxo_set.len() < subscription.len() {
-        utxo_set.iter().for_each(|(script_public_key, collection)| {
-            if subscription.contains(script_public_key, context) {
-                result.insert(script_public_key.clone(), collection.clone());
-            }
-        });
+        {
+            let subscription_data = subscription.data();
+            utxo_set.iter().for_each(|(script_public_key, collection)| {
+                if subscription_data.contains(script_public_key, context) {
+                    result.insert(script_public_key.clone(), collection.clone());
+                }
+            });
+        }
         // } else {
         //     subscription.iter().filter(|script_public_key| utxo_set.contains_key(script_public_key)).for_each(|script_public_key| {
         //         if let Some(collection) = utxo_set.get(script_public_key) {

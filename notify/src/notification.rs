@@ -150,6 +150,7 @@ pub mod test_helpers {
             match subscription.active() {
                 true => {
                     if let TestNotification::UtxosChanged(ref payload) = self {
+                        let subscription = subscription.data();
                         if !subscription.to_all() {
                             // trace!("apply_utxos_changed_subscription: Notification payload {:?}", payload);
                             // trace!("apply_utxos_changed_subscription: Subscription content {:?}", subscription);

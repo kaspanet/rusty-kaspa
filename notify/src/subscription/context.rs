@@ -196,7 +196,7 @@ mod tests {
                 .map(|_| {
                     // Reserve the required capacity
                     // Note: the resulting allocated HashMap bucket count is (capacity * 8 / 7).next_power_of_two()
-                    let item = CounterMap::with_capacity(ITEM_LEN);
+                    let mut item = CounterMap::with_capacity(ITEM_LEN);
 
                     (0..ITEM_LEN as Index).for_each(|x| {
                         item.insert(x);
@@ -286,7 +286,7 @@ mod tests {
                 .map(|_| {
                     // Reserve the required capacity
                     // Note: the resulting allocated HashSet bucket count is (capacity * 8 / 7).next_power_of_two()
-                    let item = IndexSet::with_capacity(ITEM_LEN);
+                    let mut item = IndexSet::with_capacity(ITEM_LEN);
 
                     (0..ITEM_LEN as Index).for_each(|x| {
                         item.insert(x);

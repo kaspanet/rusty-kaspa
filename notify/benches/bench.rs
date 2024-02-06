@@ -10,9 +10,9 @@ fn create_addresses(count: usize) -> Vec<Address> {
 }
 
 fn create_and_fill_context(addresses: Vec<Address>) -> SubscriptionContext {
-    let indexes = Indexes::new(vec![]);
+    let mut indexes = Indexes::new(vec![]);
     let context = SubscriptionContext::new();
-    let _ = context.address_tracker.register(&indexes, addresses);
+    let _ = context.address_tracker.register(&mut indexes, addresses);
     context
 }
 
@@ -25,5 +25,6 @@ pub fn bench_subscription_context(c: &mut Criterion) {
     });
 }
 
+// `cargo bench --package kaspa-notify --bench bench`
 criterion_group!(benches, bench_subscription_context);
 criterion_main!(benches);

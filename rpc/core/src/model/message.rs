@@ -1008,7 +1008,8 @@ impl UtxosChangedNotification {
         subscription: &UtxosChangedSubscription,
         context: &SubscriptionContext,
     ) -> Vec<RpcUtxosByAddressesEntry> {
-        utxo_set.iter().filter(|x| subscription.contains(&x.utxo_entry.script_public_key, context)).cloned().collect()
+        let subscription_data = subscription.data();
+        utxo_set.iter().filter(|x| subscription_data.contains(&x.utxo_entry.script_public_key, context)).cloned().collect()
     }
 }
 

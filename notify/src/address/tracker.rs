@@ -5,7 +5,7 @@ use kaspa_addresses::{Address, Prefix};
 use kaspa_consensus_core::tx::ScriptPublicKey;
 use kaspa_core::trace;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
-use parking_lot::{RwLock, RwLockReadGuard};
+use parking_lot::RwLock;
 use std::{
     collections::{hash_map, hash_set, HashMap, HashSet},
     fmt::Display,
@@ -13,8 +13,8 @@ use std::{
 
 pub trait Indexer {
     fn contains(&self, index: Index) -> bool;
-    fn insert(&self, index: Index) -> bool;
-    fn remove(&self, index: Index) -> bool;
+    fn insert(&mut self, index: Index) -> bool;
+    fn remove(&mut self, index: Index) -> bool;
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool;
 }
@@ -28,68 +28,44 @@ pub type Counters = CounterMap;
 /// Tracks indexes
 pub type Indexes = IndexSet;
 
-pub struct CounterMapReadGuard<'a, K: 'a = Index, V: 'a = RefCount> {
-    guard: RwLockReadGuard<'a, HashMap<K, V>>,
-}
-
-impl<'a, K: 'a, V: 'a> CounterMapReadGuard<'a, K, V> {
-    pub fn iter(&'a self) -> hash_map::Iter<'a, K, V> {
-        self.guard.iter()
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct CounterMap(RwLock<HashMap<Index, RefCount>>);
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct CounterMap(HashMap<Index, RefCount>);
 
 impl CounterMap {
     pub fn new() -> Self {
-        Self(RwLock::new(HashMap::new()))
+        Self(HashMap::new())
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        Self(RwLock::new(HashMap::with_capacity(capacity)))
+        Self(HashMap::with_capacity(capacity))
     }
 
     #[cfg(test)]
     pub fn with_counters(counters: Vec<Counter>) -> Self {
-        Self(RwLock::new(counters.into_iter().map(|x| (x.index, x.count)).collect()))
+        Self(counters.into_iter().map(|x| (x.index, x.count)).collect())
     }
 
-    pub fn inner(&self) -> CounterMapReadGuard<'_, Index, RefCount> {
-        CounterMapReadGuard { guard: self.0.read() }
+    pub fn iter(&self) -> hash_map::Iter<'_, Index, RefCount> {
+        self.0.iter()
     }
 
     pub fn len(&self) -> usize {
-        self.0.read().len()
+        self.0.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.read().is_empty()
+        self.0.is_empty()
     }
 }
-
-impl Clone for CounterMap {
-    fn clone(&self) -> Self {
-        Self(RwLock::new(self.0.read().clone()))
-    }
-}
-
-impl PartialEq for CounterMap {
-    fn eq(&self, other: &Self) -> bool {
-        *self.0.read() == *other.0.read()
-    }
-}
-impl Eq for CounterMap {}
 
 impl Indexer for CounterMap {
     fn contains(&self, index: Index) -> bool {
-        self.0.read().contains_key(&index)
+        self.0.contains_key(&index)
     }
 
-    fn insert(&self, index: Index) -> bool {
+    fn insert(&mut self, index: Index) -> bool {
         let mut result = true;
         self.0
-            .write()
             .entry(index)
             .and_modify(|x| {
                 *x += 1;
@@ -99,9 +75,9 @@ impl Indexer for CounterMap {
         result
     }
 
-    fn remove(&self, index: Index) -> bool {
+    fn remove(&mut self, index: Index) -> bool {
         let mut result = false;
-        self.0.write().entry(index).and_modify(|x| {
+        self.0.entry(index).and_modify(|x| {
             if *x > 0 {
                 *x -= 1;
                 result = *x == 0
@@ -238,66 +214,47 @@ impl Ord for Counter {
 //     }
 // }
 
-pub struct IndexSetReadGuard<'a, T: 'a = Index> {
-    guard: RwLockReadGuard<'a, HashSet<T>>,
-}
-
-impl<'a, T: 'a> IndexSetReadGuard<'a, T> {
-    pub fn iter(&'a self) -> hash_set::Iter<'a, T> {
-        self.guard.iter()
-    }
-}
-
-/// Set of `Index` with inner mutability
-#[derive(Debug)]
-pub struct IndexSet(RwLock<HashSet<Index>>);
+/// Set of `Index`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexSet(HashSet<Index>);
 
 impl IndexSet {
     pub fn new(indexes: Vec<Index>) -> Self {
-        Self(RwLock::new(indexes.into_iter().collect()))
+        Self(indexes.into_iter().collect())
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
-        Self(RwLock::new(HashSet::with_capacity(capacity)))
+        Self(HashSet::with_capacity(capacity))
     }
 
-    pub fn inner(&self) -> IndexSetReadGuard<'_, Index> {
-        IndexSetReadGuard { guard: self.0.read() }
+    pub fn iter(&self) -> hash_set::Iter<'_, Index> {
+        self.0.iter()
     }
 
     pub fn len(&self) -> usize {
-        self.0.read().len()
+        self.0.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.read().is_empty()
+        self.0.is_empty()
     }
-}
 
-impl Clone for IndexSet {
-    fn clone(&self) -> Self {
-        Self(RwLock::new(self.0.read().clone()))
+    pub fn drain(&mut self) -> hash_set::Drain<'_, Index> {
+        self.0.drain()
     }
 }
-
-impl PartialEq for IndexSet {
-    fn eq(&self, other: &Self) -> bool {
-        *self.0.read() == *other.0.read()
-    }
-}
-impl Eq for IndexSet {}
 
 impl Indexer for IndexSet {
     fn contains(&self, index: Index) -> bool {
-        self.0.read().contains(&index)
+        self.0.contains(&index)
     }
 
-    fn insert(&self, index: Index) -> bool {
-        self.0.write().insert(index)
+    fn insert(&mut self, index: Index) -> bool {
+        self.0.insert(index)
     }
 
-    fn remove(&self, index: Index) -> bool {
-        self.0.write().remove(&index)
+    fn remove(&mut self, index: Index) -> bool {
+        self.0.remove(&index)
     }
 
     fn len(&self) -> usize {
@@ -361,6 +318,10 @@ impl Indexer for IndexSet {
 //         Self(indexes)
 //     }
 
+//     pub fn with_capacity(capacity: usize) -> Self {
+//         Self(Vec::with_capacity(capacity))
+//     }
+
 //     pub fn len(&self) -> usize {
 //         self.0.len()
 //     }
@@ -375,6 +336,10 @@ impl Indexer for IndexSet {
 
 //     pub fn chunks(&self, chunk_size: usize) -> itertools::IntoChunks<impl Iterator<Item = &Index>> {
 //         self.iter().chunks(chunk_size)
+//     }
+
+//     pub fn drain(&mut self) -> std::vec::Drain<'_, Index> {
+//         self.0.drain(..)
 //     }
 // }
 
@@ -403,7 +368,13 @@ impl Indexer for IndexSet {
 //         }
 //     }
 
-//     fn unlock(&mut self) {}
+//     fn len(&self) -> usize {
+//         self.len()
+//     }
+
+//     fn is_empty(&self) -> bool {
+//         self.is_empty()
+//     }
 // }
 
 #[derive(Debug)]
@@ -537,7 +508,7 @@ impl Tracker {
         )
     }
 
-    pub fn register<T: Indexer>(&self, indexes: &T, mut addresses: Vec<Address>) -> Result<Vec<Address>> {
+    pub fn register<T: Indexer>(&self, indexes: &mut T, mut addresses: Vec<Address>) -> Result<Vec<Address>> {
         let mut rollback: bool = false;
         {
             let mut inner = self.inner.write();
@@ -569,7 +540,7 @@ impl Tracker {
         }
     }
 
-    pub fn unregister<T: Indexer>(&self, indexes: &T, mut addresses: Vec<Address>) -> Vec<Address> {
+    pub fn unregister<T: Indexer>(&self, indexes: &mut T, mut addresses: Vec<Address>) -> Vec<Address> {
         if indexes.is_empty() {
             vec![]
         } else {
@@ -591,8 +562,8 @@ impl Tracker {
         }
     }
 
-    pub fn unregister_indexes(&self, indexes: &Indexes) {
-        for chunk in &indexes.0.write().drain().chunks(Self::ADDRESS_CHUNK_SIZE) {
+    pub fn unregister_indexes(&self, indexes: &mut Indexes) {
+        for chunk in &indexes.drain().chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
             chunk.for_each(|index| inner.dec_count(index));
         }
