@@ -1,5 +1,5 @@
 use crate::{
-    address::tracker::Indexes,
+    address::tracker::{Index, Indexes},
     error::Result,
     events::EventType,
     listener::ListenerId,
@@ -15,6 +15,7 @@ use kaspa_consensus_core::tx::ScriptPublicKey;
 use kaspa_core::trace;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
+    collections::hash_set,
     fmt::{Debug, Display},
     hash::{Hash, Hasher},
     sync::{
@@ -258,6 +259,10 @@ impl UtxosChangedSubscriptionData {
 
     pub fn is_empty(&self) -> bool {
         self.indexes.is_empty()
+    }
+
+    pub fn iter(&self) -> hash_set::Iter<'_, Index> {
+        self.indexes.iter()
     }
 
     pub fn contains_address(&self, address: &Address, context: &SubscriptionContext) -> bool {

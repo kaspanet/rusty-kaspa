@@ -5,7 +5,7 @@ use kaspa_addresses::{Address, Prefix};
 use kaspa_consensus_core::tx::ScriptPublicKey;
 use kaspa_core::trace;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
-use parking_lot::RwLock;
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
     collections::{hash_map, hash_set, HashMap, HashSet},
     fmt::Display,
@@ -399,6 +399,10 @@ impl Inner {
         self.script_pub_keys.get_full(spk).map(|(index, _, count)| (index as Index, *count))
     }
 
+    fn get_index(&self, index: Index) -> Option<&ScriptPublicKey> {
+        self.script_pub_keys.get_index(index as usize).map(|(spk, _)| spk)
+    }
+
     fn get_index_address(&self, index: Index, prefix: Prefix) -> Option<Address> {
         self.script_pub_keys
             .get_index(index as usize)
@@ -463,7 +467,7 @@ impl Display for Tracker {
 }
 
 impl Tracker {
-    const ADDRESS_CHUNK_SIZE: usize = 256;
+    const ADDRESS_CHUNK_SIZE: usize = 1024;
 
     pub fn new(max_capacity: Option<usize>) -> Self {
         Self { inner: RwLock::new(Inner::new(max_capacity)) }
@@ -479,6 +483,10 @@ impl Tracker {
             }
         }
         tracker
+    }
+
+    pub fn data(&self) -> TrackerReadGuard<'_> {
+        TrackerReadGuard { guard: self.inner.read() }
     }
 
     pub fn get(&self, spk: &ScriptPublicKey) -> Option<(Index, RefCount)> {
@@ -511,8 +519,13 @@ impl Tracker {
     pub fn register<T: Indexer>(&self, indexes: &mut T, mut addresses: Vec<Address>) -> Result<Vec<Address>> {
         let mut rollback: bool = false;
         {
+            let mut counter: usize = 0;
             let mut inner = self.inner.write();
             addresses.retain(|address| {
+                counter += 1;
+                if counter % Self::ADDRESS_CHUNK_SIZE == 0 {
+                    RwLockWriteGuard::bump(&mut inner);
+                }
                 let spk = pay_to_address_script(address);
                 match inner.get_or_insert(spk) {
                     Ok(index) => {
@@ -544,8 +557,13 @@ impl Tracker {
         if indexes.is_empty() {
             vec![]
         } else {
+            let mut counter: usize = 0;
             let mut inner = self.inner.write();
             addresses.retain(|address| {
+                counter += 1;
+                if counter % Self::ADDRESS_CHUNK_SIZE == 0 {
+                    RwLockWriteGuard::bump(&mut inner);
+                }
                 let spk = pay_to_address_script(address);
                 if let Some((index, _)) = inner.get(&spk) {
                     if indexes.remove(index) {
@@ -586,6 +604,20 @@ impl Tracker {
 impl Default for Tracker {
     fn default() -> Self {
         Self::new(None)
+    }
+}
+
+pub struct TrackerReadGuard<'a> {
+    guard: RwLockReadGuard<'a, Inner>,
+}
+
+impl<'a> TrackerReadGuard<'a> {
+    pub fn get_index(&'a self, index: Index) -> Option<&'a ScriptPublicKey> {
+        self.guard.get_index(index)
+    }
+
+    pub fn iter_keys(&'a self, indexes: &'a Indexes) -> impl Iterator<Item = Option<&'a ScriptPublicKey>> {
+        indexes.0.iter().cloned().map(|index| self.get_index(index))
     }
 }
 

@@ -104,23 +104,25 @@ impl UtxosChangedNotification {
         // As an optimization, we iterate over the smaller set (O(n)) among the two below
         // and check existence over the larger set (O(1))
         let mut result = HashMap::default();
-        // FIXME
-        // if utxo_set.len() < subscription.len() {
-        {
-            let subscription_data = subscription.data();
-            utxo_set.iter().for_each(|(script_public_key, collection)| {
-                if subscription_data.contains(script_public_key, context) {
-                    result.insert(script_public_key.clone(), collection.clone());
+        let subscription_data = subscription.data();
+        if utxo_set.len() < subscription_data.len() {
+            {
+                utxo_set.iter().for_each(|(script_public_key, collection)| {
+                    if subscription_data.contains(script_public_key, context) {
+                        result.insert(script_public_key.clone(), collection.clone());
+                    }
+                });
+            }
+        } else {
+            let tracker_data = context.address_tracker.data();
+            subscription_data.iter().for_each(|index| {
+                if let Some(script_public_key) = tracker_data.get_index(*index) {
+                    if let Some(collection) = utxo_set.get(script_public_key) {
+                        result.insert(script_public_key.clone(), collection.clone());
+                    }
                 }
             });
         }
-        // } else {
-        //     subscription.iter().filter(|script_public_key| utxo_set.contains_key(script_public_key)).for_each(|script_public_key| {
-        //         if let Some(collection) = utxo_set.get(script_public_key) {
-        //             result.insert(script_public_key.clone(), collection.clone());
-        //         }
-        //     });
-        // }
         result
     }
 }
