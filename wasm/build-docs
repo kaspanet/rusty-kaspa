@@ -1,2 +1,35 @@
-wasm-pack build --target web --out-dir web/kaspa
-jsdoc --destination docs/kaspa-wasm web/kaspa/kaspa_wasm.js ./README.md
+# wasm-pack build --target web --out-dir web/kaspa
+# jsdoc --destination docs/kaspa-wasm web/kaspa/kaspa_wasm.js ./README.md
+
+cd examples/nodejs/typescript
+
+# compile typescript
+tsc
+
+# Extract API
+api-extractor run --local --verbose
+
+# document API via md files
+api-documenter markdown --input-folder ./temp  --output-folder ./docs/src
+
+# copy SUMMARY.md file for mdbook
+cp docs/SUMMARY-tpl.md docs/src/SUMMARY.md
+
+cd docs/src
+
+search_dir=`ls **.md`
+names=""
+for entry in $search_dir
+do
+  names+="\n[$entry]($entry)"
+  #echo "$entry"
+done
+
+echo "\n$names" >> SUMMARY.md
+
+cd ../../
+
+# create documentation html files
+mdbook build --dest-dir ../../../../docs docs
+
+

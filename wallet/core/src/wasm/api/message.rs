@@ -420,7 +420,7 @@ declare! {
     r#"
     export interface IWalletExportRequest {
         walletSecret: string;
-        includeTransactions: bool;
+        includeTransactions: boolean;
     }
     "#,
 }
@@ -873,7 +873,7 @@ try_from! ( args: AccountsGetResponse, IAccountsGetResponse, {
 declare! {
     IAccountsCreateNewAddressRequest,
     r#"
-    export interface IAccountCreateNewAddressRequest {
+    export interface IAccountsCreateNewAddressRequest {
         accountId: string;
         addressKind?: NewAddressKind | string,
     }
@@ -913,7 +913,7 @@ try_from! ( args: AccountsCreateNewAddressResponse, IAccountsCreateNewAddressRes
 declare! {
     IAccountsSendRequest,
     r#"
-    export interface IAccountSendRequest {
+    export interface IAccountsSendRequest {
         accountId : string;
         walletSecret : string;
         paymentSecret? : string;
