@@ -778,7 +778,7 @@ try_from! ( _args: AccountsImportResponse, IAccountsImportResponse, {
 
 declare! {
     IAccountsActivateRequest,
-    "IAccountsActivateRequest?",
+    "IAccountsActivateRequest",
     r#"
     export interface IAccountsActivateRequest {
         accountIds?: string[],
@@ -808,7 +808,7 @@ try_from! ( _args: AccountsActivateResponse, IAccountsActivateResponse, {
 
 declare! {
     IAccountsDeactivateRequest,
-    "IAccountsDeactivateRequest?",
+    "IAccountsDeactivateRequest",
     r#"
     export interface IAccountsDeactivateRequest {
         accountIds?: string[];

@@ -4,5 +4,11 @@
     "private": true,
     "description": "",
     "license": "MIT",
-    "main": "lib/index.js"
+    "main": "lib/index.js",
+    "devDependencies": {
+        "typedoc": "^0.25.7"
+    },
+    "scripts": {
+        "docs": "npx typedoc src/index.ts --out ../../../docs"
+    }
 }
