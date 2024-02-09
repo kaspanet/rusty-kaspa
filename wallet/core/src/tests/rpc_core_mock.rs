@@ -3,7 +3,7 @@ use crate::imports::*;
 use async_channel::{unbounded, Receiver};
 use async_trait::async_trait;
 use kaspa_notify::events::EVENT_TYPE_ARRAY;
-use kaspa_notify::listener::ListenerId;
+use kaspa_notify::listener::{ListenerId, ListenerLifespan};
 use kaspa_notify::notifier::{Notifier, Notify};
 use kaspa_notify::scope::Scope;
 use kaspa_notify::subscription::context::SubscriptionContext;
@@ -249,7 +249,7 @@ impl RpcApi for RpcCoreMock {
     // Notification API
 
     fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
-        self.core_notifier.register_new_listener(connection)
+        self.core_notifier.register_new_listener(connection, ListenerLifespan::Dynamic)
     }
 
     async fn unregister_listener(&self, id: ListenerId) -> RpcResult<()> {

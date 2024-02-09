@@ -58,7 +58,7 @@ pub enum UtxosChangedMutationPolicy {
     AllOrNothing,
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct MutationPolicies {
     pub utxo_changed: UtxosChangedMutationPolicy,
 }

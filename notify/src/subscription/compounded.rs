@@ -156,6 +156,14 @@ pub struct UtxosChangedSubscription {
 }
 
 impl UtxosChangedSubscription {
+    pub fn new() -> Self {
+        Self { all: 0, indexes: Counters::new() }
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self { all: 0, indexes: Counters::with_capacity(capacity) }
+    }
+
     pub fn to_addresses(&self, prefix: Prefix, context: &SubscriptionContext) -> Vec<Address> {
         self.indexes
             .iter()

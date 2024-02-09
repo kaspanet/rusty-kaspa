@@ -1,6 +1,7 @@
 use crate::{
     events::EVENT_TYPE_ARRAY,
-    subscription::{context::SubscriptionContext, MutationPolicies},
+    listener::ListenerLifespan,
+    subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
 };
 
 use super::{
@@ -126,8 +127,8 @@ where
         self.inner.clone().start(self.clone());
     }
 
-    pub fn register_new_listener(&self, connection: C) -> ListenerId {
-        self.inner.clone().register_new_listener(connection)
+    pub fn register_new_listener(&self, connection: C, lifespan: ListenerLifespan) -> ListenerId {
+        self.inner.register_new_listener(connection, lifespan)
     }
 
     /// Resend the compounded subscription state of the notifier to its subscribers (its parents).
@@ -265,10 +266,14 @@ where
             let event: EventType = index.try_into().unwrap();
             subscribers.iter().filter(|&x| x.enabled_events()[event]).cloned().collect_vec()
         });
+        let utxos_changed_capacity = match policies.utxo_changed {
+            UtxosChangedMutationPolicy::AddressSet => subscription_context.address_tracker.max_capacity(),
+            UtxosChangedMutationPolicy::AllOrNothing => None,
+        };
         Self {
             enabled_events,
             listeners: Mutex::new(HashMap::new()),
-            subscriptions: Mutex::new(ArrayBuilder::compounded()),
+            subscriptions: Mutex::new(ArrayBuilder::compounded(utxos_changed_capacity)),
             started: Arc::new(AtomicBool::new(false)),
             notification_channel,
             broadcasters,
@@ -294,7 +299,7 @@ where
         }
     }
 
-    fn register_new_listener(self: &Arc<Self>, connection: C) -> ListenerId {
+    fn register_new_listener(self: &Arc<Self>, connection: C, lifespan: ListenerLifespan) -> ListenerId {
         let mut listeners = self.listeners.lock();
         loop {
             let id = u64::from_le_bytes(rand::random::<[u8; 8]>());
@@ -302,7 +307,10 @@ where
             // This is very unlikely to happen but still, check for duplicates
             if let Entry::Vacant(e) = listeners.entry(id) {
                 trace!("[Notifier {}] registering listener {id}", self.name);
-                let listener = Listener::new(id, connection);
+                let listener = match lifespan {
+                    ListenerLifespan::Static(policies) => Listener::new_static(id, connection, &self.subscription_context, policies),
+                    ListenerLifespan::Dynamic => Listener::new(id, connection),
+                };
                 e.insert(listener);
                 return id;
             }
@@ -361,7 +369,7 @@ where
         let event = scope.event_type();
         let scope_trace = format!("{scope}");
         debug!("[Notifier {}] {command} notifying about {scope_trace} to listener {id} - {}", self.name, listener.connection());
-        let outcome = listener.mutate(Mutation::new(command, scope), self.policies.clone(), &self.subscription_context)?;
+        let outcome = listener.mutate(Mutation::new(command, scope), self.policies, &self.subscription_context)?;
         if outcome.has_changes() {
             trace!(
                 "[Notifier {}] {command} notifying listener {id} about {scope_trace} involves {} mutations",
@@ -825,7 +833,7 @@ mod tests {
             for _ in 0..listener_count {
                 let (sender, receiver) = unbounded();
                 let connection = TestConnection::new(IDENT, sender, ChannelType::Closable);
-                listeners.push(notifier.register_new_listener(connection));
+                listeners.push(notifier.register_new_listener(connection, ListenerLifespan::Dynamic));
                 notification_receivers.push(receiver);
             }
             // Return the built test object

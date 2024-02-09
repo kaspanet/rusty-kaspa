@@ -18,7 +18,7 @@ use kaspa_notify::{
     collector::{Collector, CollectorFrom},
     error::{Error as NotifyError, Result as NotifyResult},
     events::{EventArray, EventType, EVENT_TYPE_ARRAY},
-    listener::ListenerId,
+    listener::{ListenerId, ListenerLifespan},
     notifier::{DynNotify, Notifier},
     scope::Scope,
     subscriber::{Subscriber, SubscriptionManager},
@@ -122,13 +122,13 @@ impl GrpcClient {
                     vec![subscriber],
                     subscription_context.clone(),
                     3,
-                    policies.clone(),
+                    policies,
                 );
                 (Some(Arc::new(notifier)), None, None)
             }
             NotificationMode::Direct => {
                 let collector = GrpcClientCollector::new(GRPC_CLIENT, inner.notification_channel_receiver(), converter);
-                let subscriptions = ArrayBuilder::single(client_id);
+                let subscriptions = ArrayBuilder::single(client_id, None);
                 (None, Some(Arc::new(collector)), Some(Arc::new(Mutex::new(subscriptions))))
             }
         };
@@ -250,7 +250,9 @@ impl RpcApi for GrpcClient {
     /// Register a new listener and returns an id identifying it.
     fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
         match self.notification_mode {
-            NotificationMode::MultiListeners => self.notifier.as_ref().unwrap().register_new_listener(connection),
+            NotificationMode::MultiListeners => {
+                self.notifier.as_ref().unwrap().register_new_listener(connection, ListenerLifespan::Dynamic)
+            }
             NotificationMode::Direct => self.client_id,
         }
     }
@@ -275,12 +277,14 @@ impl RpcApi for GrpcClient {
                 self.notifier.clone().unwrap().try_start_notify(id, scope)?;
             }
             NotificationMode::Direct => {
-                let event = scope.event_type();
-                self.subscriptions.as_ref().unwrap().lock().await[event].mutate(
-                    Mutation::new(Command::Start, scope.clone()),
-                    self.policies.clone(),
-                    &self.subscription_context,
-                )?;
+                if self.inner.will_reconnect() {
+                    let event = scope.event_type();
+                    self.subscriptions.as_ref().unwrap().lock().await[event].mutate(
+                        Mutation::new(Command::Start, scope.clone()),
+                        self.policies,
+                        &self.subscription_context,
+                    )?;
+                }
                 self.inner.start_notify_to_client(scope).await?;
             }
         }
@@ -295,12 +299,14 @@ impl RpcApi for GrpcClient {
                     self.notifier.clone().unwrap().try_stop_notify(id, scope)?;
                 }
                 NotificationMode::Direct => {
-                    let event = scope.event_type();
-                    self.subscriptions.as_ref().unwrap().lock().await[event].mutate(
-                        Mutation::new(Command::Stop, scope.clone()),
-                        self.policies.clone(),
-                        &self.subscription_context,
-                    )?;
+                    if self.inner.will_reconnect() {
+                        let event = scope.event_type();
+                        self.subscriptions.as_ref().unwrap().lock().await[event].mutate(
+                            Mutation::new(Command::Stop, scope.clone()),
+                            self.policies,
+                            &self.subscription_context,
+                        )?;
+                    }
                     self.inner.stop_notify_to_client(scope).await?;
                 }
             }

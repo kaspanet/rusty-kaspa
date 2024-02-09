@@ -11,7 +11,7 @@ fn create_addresses(count: usize) -> Vec<Address> {
 
 fn create_and_fill_context(addresses: Vec<Address>) -> SubscriptionContext {
     let mut indexes = Indexes::new(vec![]);
-    let context = SubscriptionContext::new();
+    let context = SubscriptionContext::with_options(Some(ADDRESS_COUNT));
     let _ = context.address_tracker.register(&mut indexes, addresses);
     context
 }

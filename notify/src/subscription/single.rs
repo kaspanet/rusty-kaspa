@@ -261,6 +261,10 @@ impl UtxosChangedSubscriptionData {
         self.indexes.is_empty()
     }
 
+    pub fn capacity(&self) -> usize {
+        self.indexes.capacity()
+    }
+
     pub fn iter(&self) -> hash_set::Iter<'_, Index> {
         self.indexes.iter()
     }

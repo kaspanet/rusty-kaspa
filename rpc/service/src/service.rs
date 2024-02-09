@@ -36,6 +36,7 @@ use kaspa_index_core::{
 };
 use kaspa_mining::model::tx_query::TransactionQuery;
 use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::Orphan};
+use kaspa_notify::listener::ListenerLifespan;
 use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_notify::subscription::{MutationPolicies, UtxosChangedMutationPolicy};
 use kaspa_notify::{
@@ -130,13 +131,18 @@ impl RpcCoreService {
         p2p_tower_counters: Arc<TowerConnectionCounters>,
         grpc_tower_counters: Arc<TowerConnectionCounters>,
     ) -> Self {
+        // This notifier UTXOs subscription granularity to index-processor or consensus notifier
+        let policies = match index_notifier {
+            Some(_) => MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet),
+            None => MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing),
+        };
+
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
-        let consensus_notify_listener_id = consensus_notifier.register_new_listener(ConsensusChannelConnection::new(
-            RPC_CORE,
-            consensus_notify_channel.sender(),
-            ChannelType::Closable,
-        ));
+        let consensus_notify_listener_id = consensus_notifier.register_new_listener(
+            ConsensusChannelConnection::new(RPC_CORE, consensus_notify_channel.sender(), ChannelType::Closable),
+            ListenerLifespan::Static(Default::default()),
+        );
 
         // Prepare the rpc-core notifier objects
         let mut consensus_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
@@ -158,11 +164,10 @@ impl RpcCoreService {
         let index_converter = Arc::new(IndexConverter::new(config.clone()));
         if let Some(ref index_notifier) = index_notifier {
             let index_notify_channel = Channel::<IndexNotification>::default();
-            let index_notify_listener_id = index_notifier.clone().register_new_listener(IndexChannelConnection::new(
-                RPC_CORE,
-                index_notify_channel.sender(),
-                ChannelType::Closable,
-            ));
+            let index_notify_listener_id = index_notifier.clone().register_new_listener(
+                IndexChannelConnection::new(RPC_CORE, index_notify_channel.sender(), ChannelType::Closable),
+                ListenerLifespan::Static(policies),
+            );
 
             let index_events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
             let index_collector =
@@ -178,7 +183,6 @@ impl RpcCoreService {
         let protocol_converter = Arc::new(ProtocolConverter::new(flow_context.clone()));
 
         // Create the rcp-core notifier
-        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
         let notifier =
             Arc::new(Notifier::new(RPC_CORE, EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, subscription_context, 1, policies));
 
@@ -883,7 +887,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
     /// Register a new listener and returns an id identifying it.
     fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
-        self.notifier.register_new_listener(connection)
+        self.notifier.register_new_listener(connection, ListenerLifespan::Dynamic)
     }
 
     /// Unregister an existing listener.

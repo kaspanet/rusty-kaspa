@@ -109,7 +109,7 @@ where
     const ROOT_LISTENER_ID: ListenerId = 1;
 
     fn new(sender: Sender<N>, subscription_context: SubscriptionContext) -> Self {
-        let subscriptions = RwLock::new(ArrayBuilder::single(Self::ROOT_LISTENER_ID));
+        let subscriptions = RwLock::new(ArrayBuilder::single(Self::ROOT_LISTENER_ID, None));
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
         Self { sender, subscriptions, subscription_context, policies }
     }
@@ -126,7 +126,7 @@ where
     pub fn execute_subscribe_command(&self, scope: Scope, command: Command) -> Result<()> {
         let mutation = Mutation::new(command, scope);
         let mut subscriptions = self.subscriptions.write();
-        subscriptions[mutation.event_type()].mutate(mutation, self.policies.clone(), &self.subscription_context)?;
+        subscriptions[mutation.event_type()].mutate(mutation, self.policies, &self.subscription_context)?;
         Ok(())
     }
 

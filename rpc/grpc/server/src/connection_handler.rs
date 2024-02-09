@@ -16,6 +16,7 @@ use kaspa_grpc_core::{
 use kaspa_notify::{
     connection::ChannelType,
     events::EVENT_TYPE_ARRAY,
+    listener::ListenerLifespan,
     notifier::Notifier,
     subscriber::Subscriber,
     subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
@@ -89,17 +90,21 @@ impl ConnectionHandler {
         broadcasters: usize,
         counters: Arc<TowerConnectionCounters>,
     ) -> Self {
+        // This notifier UTXOs subscription granularity to rpc-core notifier
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
+
         // Prepare core objects
         let core_channel = NotificationChannel::default();
-        let core_listener_id =
-            core_notifier.register_new_listener(ChannelConnection::new(GRPC_SERVER, core_channel.sender(), ChannelType::Closable));
+        let core_listener_id = core_notifier.register_new_listener(
+            ChannelConnection::new(GRPC_SERVER, core_channel.sender(), ChannelType::Closable),
+            ListenerLifespan::Static(policies),
+        );
 
         // Prepare internals
         let core_events = EVENT_TYPE_ARRAY[..].into();
         let converter = Arc::new(GrpcServiceConverter::new());
         let collector = Arc::new(GrpcServiceCollector::new(GRPC_SERVER, core_channel.receiver(), converter));
         let subscriber = Arc::new(Subscriber::new(GRPC_SERVER, core_events, core_notifier, core_listener_id));
-        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
         let notifier: Arc<Notifier<Notification, Connection>> = Arc::new(Notifier::new(
             GRPC_SERVER,
             core_events,

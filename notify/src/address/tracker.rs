@@ -3,13 +3,15 @@ use indexmap::{map::Entry, IndexMap};
 use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix};
 use kaspa_consensus_core::tx::ScriptPublicKey;
-use kaspa_core::trace;
+use kaspa_core::{debug, trace};
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
     collections::{hash_map, hash_set, HashMap, HashSet},
     fmt::Display,
 };
+
+pub const DEFAULT_TRACKER_CAPACITY: usize = 1_835_000;
 
 pub trait Indexer {
     fn contains(&self, index: Index) -> bool;
@@ -55,6 +57,10 @@ impl CounterMap {
 
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.0.capacity()
     }
 }
 
@@ -239,6 +245,10 @@ impl IndexSet {
         self.0.is_empty()
     }
 
+    pub fn capacity(&self) -> usize {
+        self.0.capacity()
+    }
+
     pub fn drain(&mut self) -> hash_set::Drain<'_, Index> {
         self.0.drain()
     }
@@ -385,7 +395,9 @@ struct Inner {
 
 impl Inner {
     fn new(max_capacity: Option<usize>) -> Self {
-        Self { script_pub_keys: IndexMap::new(), max_capacity }
+        let script_pub_keys = IndexMap::with_capacity(max_capacity.unwrap_or_default());
+        debug!("Creating an address tracker with a capacity of {}", script_pub_keys.capacity());
+        Self { script_pub_keys, max_capacity }
     }
 
     fn is_full(&self) -> bool {
@@ -598,6 +610,22 @@ impl Tracker {
             });
         }
         addresses
+    }
+
+    pub fn len(&self) -> usize {
+        self.inner.read().script_pub_keys.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.read().script_pub_keys.is_empty()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.inner.read().script_pub_keys.capacity()
+    }
+
+    pub fn max_capacity(&self) -> Option<usize> {
+        self.inner.read().max_capacity
     }
 }
 

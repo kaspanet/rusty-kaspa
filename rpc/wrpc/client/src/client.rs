@@ -2,7 +2,10 @@ use crate::error::Error;
 use crate::imports::*;
 use crate::parse::parse_host;
 use kaspa_consensus_core::network::NetworkType;
-use kaspa_notify::subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy};
+use kaspa_notify::{
+    listener::ListenerLifespan,
+    subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
+};
 use kaspa_rpc_core::{
     api::ctl::RpcCtl,
     notify::collector::{RpcCoreCollector, RpcCoreConverter},
@@ -460,7 +463,9 @@ impl RpcApi for KaspaRpcClient {
     /// Register a new listener and returns an id and a channel receiver.
     fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
         match self.notification_mode {
-            NotificationMode::MultiListeners => self.notifier.as_ref().unwrap().register_new_listener(connection),
+            NotificationMode::MultiListeners => {
+                self.notifier.as_ref().unwrap().register_new_listener(connection, ListenerLifespan::Dynamic)
+            }
             NotificationMode::Direct => ListenerId::default(),
         }
     }

@@ -53,7 +53,11 @@ pub struct SubscriptionContext {
 
 impl SubscriptionContext {
     pub fn new() -> Self {
-        let inner = Arc::new(SubscriptionContextInner::new());
+        Self::with_options(None)
+    }
+
+    pub fn with_options(addresses_max_capacity: Option<usize>) -> Self {
+        let inner = Arc::new(SubscriptionContextInner::with_options(addresses_max_capacity));
         Self { inner }
     }
 
@@ -92,29 +96,49 @@ mod tests {
             .collect()
     }
 
-    fn measure_consumed_memory<T, F: FnOnce() -> Vec<T>>(item_len: usize, num_items: usize, ctor: F) {
+    fn measure_consumed_memory<T, F: FnOnce() -> Vec<T>, F2: FnOnce(&T) -> (usize, usize)>(
+        item_len: usize,
+        num_items: usize,
+        ctor: F,
+        length_and_capacity: F2,
+    ) -> Vec<T> {
         let before = get_process_memory_info().unwrap();
 
         trace!("Creating items...");
-        let mut items = ctor();
+        let items = ctor();
 
         let after = get_process_memory_info().unwrap();
 
-        // This line prevents a potential compiler optimization discarding items before reading the process memory info
-        let _ = items.pop();
-
-        trace!("Item length: {}", item_len);
+        trace!("Required item length: {}", item_len);
         trace!("Memory consumed: {}", (after.resident_set_size - before.resident_set_size) / num_items as u64);
         trace!(
             "Memory/idx: {}",
             ((after.resident_set_size - before.resident_set_size) as f64 / num_items as f64 / item_len as f64 * 10.0).round() / 10.0
         );
+
+        let (len, capacity) = length_and_capacity(&items[0]);
+        match len > 0 {
+            true => trace!(
+                "Actual item: len = {}, capacity = {}, free space = +{:.1}%",
+                len,
+                capacity,
+                (capacity - len) as f64 * 100.0 / len as f64
+            ),
+            false => trace!("Actual item: len = {}, capacity = {}", len, capacity),
+        }
+
+        items
     }
 
-    fn init_and_measure_consumed_memory<T, F: FnOnce() -> Vec<T>>(item_len: usize, num_items: usize, ctor: F) {
+    fn init_and_measure_consumed_memory<T, F: FnOnce() -> Vec<T>, F2: FnOnce(&T) -> (usize, usize)>(
+        item_len: usize,
+        num_items: usize,
+        ctor: F,
+        length_and_capacity: F2,
+    ) -> Vec<T> {
         init_allocator_with_default_settings();
         kaspa_core::log::try_init_logger("INFO,kaspa_notify::subscription::context=trace");
-        measure_consumed_memory(item_len, num_items, ctor);
+        measure_consumed_memory(item_len, num_items, ctor, length_and_capacity)
     }
 
     #[test]
@@ -142,9 +166,12 @@ mod tests {
         trace!("Creating addresses...");
         let addresses = create_addresses(ITEM_LEN);
 
-        measure_consumed_memory(ITEM_LEN, NUM_ITEMS, || {
-            (0..NUM_ITEMS).map(|_| SubscriptionContext::with_addresses(&addresses)).collect_vec()
-        });
+        let _ = measure_consumed_memory(
+            ITEM_LEN,
+            NUM_ITEMS,
+            || (0..NUM_ITEMS).map(|_| SubscriptionContext::with_addresses(&addresses)).collect_vec(),
+            |x| (x.address_tracker.len(), x.address_tracker.capacity()),
+        );
     }
 
     #[test]
@@ -165,11 +192,16 @@ mod tests {
         const ITEM_LEN: usize = 1;
         const NUM_ITEMS: usize = 10_000_000;
 
-        init_and_measure_consumed_memory(ITEM_LEN, NUM_ITEMS, || {
-            (0..NUM_ITEMS)
-                .map(|_| (0..ITEM_LEN as Index).map(|i| (i, (ITEM_LEN as Index - i) as RefCount)).rev().collect::<HashMap<_, _>>())
-                .collect_vec()
-        });
+        let _ = init_and_measure_consumed_memory(
+            ITEM_LEN,
+            NUM_ITEMS,
+            || {
+                (0..NUM_ITEMS)
+                    .map(|_| (0..ITEM_LEN as Index).map(|i| (i, (ITEM_LEN as Index - i) as RefCount)).rev().collect::<HashMap<_, _>>())
+                    .collect_vec()
+            },
+            |x| (x.len(), x.capacity()),
+        );
     }
 
     #[test]
@@ -188,23 +220,28 @@ mod tests {
     //         10   10_000_000             249       24.9
     //          1   10_000_000             136      136.5
     fn test_counter_map_size() {
-        const ITEM_LEN: usize = 1;
+        const ITEM_LEN: usize = 10;
         const NUM_ITEMS: usize = 10_000_000;
 
-        init_and_measure_consumed_memory(ITEM_LEN, NUM_ITEMS, || {
-            (0..NUM_ITEMS)
-                .map(|_| {
-                    // Reserve the required capacity
-                    // Note: the resulting allocated HashMap bucket count is (capacity * 8 / 7).next_power_of_two()
-                    let mut item = CounterMap::with_capacity(ITEM_LEN);
+        let _ = init_and_measure_consumed_memory(
+            ITEM_LEN,
+            NUM_ITEMS,
+            || {
+                (0..NUM_ITEMS)
+                    .map(|_| {
+                        // Reserve the required capacity
+                        // Note: the resulting allocated HashMap bucket count is (capacity * 8 / 7).next_power_of_two()
+                        let mut item = CounterMap::with_capacity(ITEM_LEN);
 
-                    (0..ITEM_LEN as Index).for_each(|x| {
-                        item.insert(x);
-                    });
-                    item
-                })
-                .collect_vec()
-        });
+                        (0..ITEM_LEN as Index).for_each(|x| {
+                            item.insert(x);
+                        });
+                        item
+                    })
+                    .collect_vec()
+            },
+            |x| (x.len(), x.capacity()),
+        );
     }
 
     #[test]
@@ -222,12 +259,15 @@ mod tests {
     //         10   10_000_000             144       14.4
     //          1   10_000_000             112      112.0
     fn test_hash_set_u32_size() {
-        const ITEM_LEN: usize = 10_000_000;
-        const NUM_ITEMS: usize = 10;
+        const ITEM_LEN: usize = 1_000_000;
+        const NUM_ITEMS: usize = 100;
 
-        init_and_measure_consumed_memory(ITEM_LEN, NUM_ITEMS, || {
-            (0..NUM_ITEMS).map(|_| (0..ITEM_LEN as Index).rev().collect::<HashSet<_>>()).collect_vec()
-        });
+        let _ = init_and_measure_consumed_memory(
+            ITEM_LEN,
+            NUM_ITEMS,
+            || (0..NUM_ITEMS).map(|_| (0..ITEM_LEN as Index).rev().collect::<HashSet<_>>()).collect_vec(),
+            |x| (x.len(), x.capacity()),
+        );
     }
 
     #[test]
@@ -248,18 +288,23 @@ mod tests {
         const ITEM_LEN: usize = 1_000_000;
         const NUM_ITEMS: usize = 100;
 
-        init_and_measure_consumed_memory(ITEM_LEN, NUM_ITEMS, || {
-            (0..NUM_ITEMS)
-                .map(|_| {
-                    let mut set = (0..ITEM_LEN as Index).rev().collect::<HashSet<_>>();
-                    let original_capacity = set.capacity();
-                    let _ = set.drain();
-                    assert!(set.is_empty());
-                    assert_eq!(original_capacity, set.capacity());
-                    set
-                })
-                .collect_vec()
-        });
+        let _ = init_and_measure_consumed_memory(
+            ITEM_LEN,
+            NUM_ITEMS,
+            || {
+                (0..NUM_ITEMS)
+                    .map(|_| {
+                        let mut set = (0..ITEM_LEN as Index).rev().collect::<HashSet<_>>();
+                        let original_capacity = set.capacity();
+                        let _ = set.drain();
+                        assert!(set.is_empty());
+                        assert_eq!(original_capacity, set.capacity());
+                        set
+                    })
+                    .collect_vec()
+            },
+            |x| (x.len(), x.capacity()),
+        );
     }
 
     #[test]
@@ -281,20 +326,25 @@ mod tests {
         const ITEM_LEN: usize = 10_000_000;
         const NUM_ITEMS: usize = 10;
 
-        init_and_measure_consumed_memory(ITEM_LEN, NUM_ITEMS, || {
-            (0..NUM_ITEMS)
-                .map(|_| {
-                    // Reserve the required capacity
-                    // Note: the resulting allocated HashSet bucket count is (capacity * 8 / 7).next_power_of_two()
-                    let mut item = IndexSet::with_capacity(ITEM_LEN);
+        let _ = init_and_measure_consumed_memory(
+            ITEM_LEN,
+            NUM_ITEMS,
+            || {
+                (0..NUM_ITEMS)
+                    .map(|_| {
+                        // Reserve the required capacity
+                        // Note: the resulting allocated HashSet bucket count is (capacity * 8 / 7).next_power_of_two()
+                        let mut item = IndexSet::with_capacity(ITEM_LEN);
 
-                    (0..ITEM_LEN as Index).for_each(|x| {
-                        item.insert(x);
-                    });
-                    item
-                })
-                .collect_vec()
-        });
+                        (0..ITEM_LEN as Index).for_each(|x| {
+                            item.insert(x);
+                        });
+                        item
+                    })
+                    .collect_vec()
+            },
+            |x| (x.len(), x.capacity()),
+        );
     }
 
     #[test]
@@ -315,9 +365,12 @@ mod tests {
         const ITEM_LEN: usize = 10_000_000;
         const NUM_ITEMS: usize = 10;
 
-        init_and_measure_consumed_memory(ITEM_LEN, NUM_ITEMS, || {
-            (0..NUM_ITEMS).map(|_| (0..ITEM_LEN as Index).collect::<Vec<_>>()).collect_vec()
-        });
+        let _ = init_and_measure_consumed_memory(
+            ITEM_LEN,
+            NUM_ITEMS,
+            || (0..NUM_ITEMS).map(|_| (0..ITEM_LEN as Index).collect::<Vec<_>>()).collect_vec(),
+            |x| (x.len(), x.capacity()),
+        );
     }
 
     // #[test]
