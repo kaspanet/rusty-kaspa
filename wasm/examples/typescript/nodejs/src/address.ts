@@ -5,12 +5,7 @@ import {
     createAddress,
     NetworkType,
     initConsolePanicHook
-<<<<<<<< HEAD:wasm/examples/typescript/nodejs/address.ts
-} from "../../../nodejs/kaspa";
-========
-} from "../../kaspa/kaspa_wasm";
-
->>>>>>>> 7af888f91451fd34a01650cba4d6d0a3ae2185e5:wasm/examples/typescript/nodejs/src/address.ts
+} from "../../../../nodejs/kaspa";
 
 initConsolePanicHook();
 
