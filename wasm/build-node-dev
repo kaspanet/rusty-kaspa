@@ -1,1 +1,2 @@
-wasm-pack build --target nodejs --dev --out-dir nodejs/kaspa-dev $@
+echo "Warning - do not use resulting WASM binaries in production!"
+wasm-pack build --target nodejs --dev --out-dir nodejs/kaspa $@
