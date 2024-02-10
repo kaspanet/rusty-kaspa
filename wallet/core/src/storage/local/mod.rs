@@ -133,7 +133,7 @@ pub unsafe fn set_default_wallet_file(folder: String) -> Result<()> {
 /// This function should be called before using any
 /// other wallet SDK functions.
 ///
-/// @param {String} - the name to the wallet file or key.
+/// @param {String} folder - the name to the wallet file or key.
 ///
 #[wasm_bindgen(js_name = setDefaultWalletFile, skip_jsdoc)]
 pub fn js_set_default_wallet_file(folder: String) -> Result<()> {

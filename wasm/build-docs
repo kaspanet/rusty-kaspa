@@ -1,2 +1,3 @@
-wasm-pack build --target web --out-dir web/kaspa
-jsdoc --destination docs/kaspa-wasm web/kaspa/kaspa_wasm.js ./README.md
+wasm-pack build --target nodejs --dev --out-dir docs/kaspa $@
+
+typedoc --out docs/typedoc docs/index.ts

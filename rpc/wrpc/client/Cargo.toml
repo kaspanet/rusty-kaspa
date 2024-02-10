@@ -37,6 +37,7 @@ wasm-bindgen-futures.workspace = true
 wasm-bindgen.workspace = true
 workflow-core.workspace = true
 workflow-dom.workspace = true
+workflow-http.workspace = true
 workflow-log.workspace = true
 workflow-rpc.workspace = true
 workflow-wasm.workspace = true

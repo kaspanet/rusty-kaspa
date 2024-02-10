@@ -461,7 +461,7 @@ pub fn create_multisig_address(
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(extends = js_sys::Array, typescript_type="Array")]
+    #[wasm_bindgen(extends = js_sys::Array, typescript_type="Array<string>")]
     pub type PublicKeys;
 }
 

@@ -89,3 +89,13 @@ const rpc = new RpcClient("127.0.0.1", Encoding.Borsh, "testnet-10");
 ```
 
 For more details, please follow the [**integrating with Kaspa**](https://kaspa.aspectron.org/) guide.
+
+
+## Creating Documentation
+
+```bash
+npm install -g typedoc
+./build-docs
+```
+The resulting documentation will be located in `docs/typedoc/`
+
