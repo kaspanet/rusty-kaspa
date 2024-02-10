@@ -35,7 +35,7 @@ let { encoding, networkId, destinationAddress } = parseArgs();
     console.info(`Destination address: ${destinationAddress}`);
 
     // 1) Initialize RPC
-    const rpc = new RpcClient("127.0.0.1", encoding, networkId);
+    const rpc = new RpcClient("wss://eu-1.kaspa-ng.org/testnet-10", encoding, networkId);
 
     // 2) Create UtxoProcessor, passing RPC to it
     let processor = await new UtxoProcessor({ rpc, networkId });
@@ -50,6 +50,7 @@ let { encoding, networkId, destinationAddress } = parseArgs();
         console.log("event:", event);
     });
 
+
     console.log(processor);
 
     // 5) Once the environment is setup, connect to RPC
@@ -63,6 +64,6 @@ let { encoding, networkId, destinationAddress } = parseArgs();
     }
 
     // 6) Register the address list with the UtxoContext
-    await context.trackAddresses([sourceAddress, address], undefined);
+    await context.trackAddresses([sourceAddress], undefined);
 
 })();

@@ -33,6 +33,7 @@ impl UtxoProcessor {
         let events = EventDispatcher::new();
 
         inner.start().await?;
+        events.start_notification_task(inner.multiplexer()).await?;
 
         Ok(UtxoProcessor { inner, rpc, events })
     }
@@ -43,7 +44,9 @@ impl UtxoProcessor {
     // }
 
     pub async fn shutdown(&self) -> Result<()> {
-        self.inner().stop().await
+        self.inner().stop().await?;
+        self.events.stop_notification_task().await?;
+        Ok(())
     }
 }
 
