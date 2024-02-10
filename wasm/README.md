@@ -46,9 +46,10 @@ WebSocket implementation. Two of such modules are [WebSocket](https://www.npmjs.
 <html>
     <head>
         <script type="module">
-            import * as kaspa_wasm from './kaspa/kaspa-wasm.js';
+            import * as kaspa from './kaspa/kaspa-wasm.js';
             (async () => {
-                const kaspa = await kaspa_wasm.default('./kaspa/kaspa-wasm_bg.wasm');
+                await kaspa.default('./kaspa/kaspa-wasm_bg.wasm');
+                console.log(kaspa.version());
                 // ...
             })();
         </script>

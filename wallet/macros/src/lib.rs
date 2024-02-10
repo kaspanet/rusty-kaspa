@@ -23,8 +23,8 @@ pub fn declare_wasm_handlers(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 #[proc_macro_error]
-pub fn declare_wasm_interface(input: TokenStream) -> TokenStream {
-    wallet::wasm::declare_wasm_interface(input)
+pub fn declare_typescript_wasm_interface(input: TokenStream) -> TokenStream {
+    wallet::wasm::declare_typescript_wasm_interface(input)
 }
 
 // #[proc_macro]

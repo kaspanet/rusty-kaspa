@@ -18,7 +18,7 @@ pub struct Handler {
     pub fn_camel: Ident,
     pub request_type: Ident,
     pub response_type: Ident,
-    pub ty: Ident,
+    pub typename: Ident,
     pub ts_request_type: Ident,
     pub ts_response_type: Ident,
     pub ts_custom_section_ident: Ident,
@@ -40,7 +40,7 @@ impl Handler {
         let fn_camel = Ident::new(&name.to_case(Case::Camel), Span::call_site());
         let request_type = Ident::new(&format!("{name}Request"), Span::call_site());
         let response_type = Ident::new(&format!("{name}Response"), Span::call_site());
-        let ty = Ident::new(&name.to_string(), Span::call_site());
+        let typename = Ident::new(&name.to_string(), Span::call_site());
         let ts_request_type = Ident::new(&format!("I{name}Request"), Span::call_site());
         let ts_response_type = Ident::new(&format!("I{name}Response"), Span::call_site());
         let ts_custom_section_ident = Ident::new(&format!("TS_{}", name.to_uppercase()), Span::call_site());
@@ -55,7 +55,7 @@ impl Handler {
             fn_camel,
             request_type,
             response_type,
-            ty,
+            typename,
             ts_request_type,
             ts_response_type,
             ts_custom_section_ident,

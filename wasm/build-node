@@ -1,2 +1,1 @@
-# wasm-pack build --target nodejs --out-dir nodejs/kaspa $@
-wasm-pack build --target nodejs --out-dir examples/nodejs/kaspa $@
+wasm-pack build --target nodejs --out-dir nodejs/kaspa $@

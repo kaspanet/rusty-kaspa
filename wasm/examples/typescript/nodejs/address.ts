@@ -5,7 +5,7 @@ import {
     createAddress,
     NetworkType,
     initConsolePanicHook
-} from "../kaspa";
+} from "../../../nodejs/kaspa";
 
 initConsolePanicHook();
 
@@ -16,7 +16,7 @@ initConsolePanicHook();
 
     /*** Advanced ***/
     // HD Wallet-style public key generation
-    let xpub = await XPublicKey.fromMasterXPrv(
+    let xpub: XPublicKey = await XPublicKey.fromMasterXPrv(
         "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ",
         false,
         0n
@@ -25,12 +25,12 @@ initConsolePanicHook();
     console.log("xpub", xpub)
 
     // Generates the first 10 Receive Public keys and their addresses
-    let compressedPublicKeys = await xpub.receivePubkeys(0, 10);
-    let addresses = compressedPublicKeys.map(key => createAddress(key, NetworkType.Mainnet).toString());
+    let compressedPublicKeys: string[] = await xpub.receivePubkeys(0, 10);
+    let addresses: string[] = compressedPublicKeys.map(key => createAddress(key, NetworkType.Mainnet).toString());
     console.log("receive addresses", addresses);
 
     // Generates the first 10 Change Public keys and their addresses
-    let compressedChangePublicKeys = await xpub.changePubkeys(0, 10);
+    let compressedChangePublicKeys: string[] = await xpub.changePubkeys(0, 10);
     console.log("change address compressedChangePublicKeys", compressedChangePublicKeys)
     addresses = compressedChangePublicKeys.map(key => createAddress(key, NetworkType.Mainnet).toString());
     console.log("change addresses", addresses);

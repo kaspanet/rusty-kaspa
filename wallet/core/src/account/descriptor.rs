@@ -7,7 +7,7 @@ use crate::imports::*;
 use borsh::{BorshDeserialize, BorshSerialize};
 use convert_case::{Case, Casing};
 use kaspa_addresses::Address;
-use kaspa_wallet_macros::declare_wasm_interface as declare;
+use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

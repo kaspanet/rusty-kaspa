@@ -1,9 +1,6 @@
 use crate::handler::*;
-// use convert_case::{Case, Casing};
 use proc_macro2::{Literal, TokenStream};
-// use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, ToTokens};
-// use regex::Regex;
 use std::convert::Into;
 use syn::{
     parse::{Parse, ParseStream},
@@ -11,8 +8,6 @@ use syn::{
     punctuated::Punctuated,
     Error, Expr, ExprArray, ExprLit, Lit, Result, Token,
 };
-
-// TYPESCRIPT INTERFACE DECLARATIONS
 
 #[derive(Debug)]
 struct TsInterface {
@@ -52,7 +47,7 @@ impl Parse for TsInterface {
 impl ToTokens for TsInterface {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self { handler, alias, declaration } = self;
-        let Handler { ty, ts_custom_section_ident, .. } = handler;
+        let Handler { typename, ts_custom_section_ident, .. } = handler;
 
         quote! {
 
@@ -64,7 +59,7 @@ impl ToTokens for TsInterface {
             extern "C" {
                 #[wasm_bindgen(extends = js_sys::Object, typescript_type = #alias)]
                 #[derive(Default)]
-                pub type #ty;
+                pub type #typename;
             }
 
 
@@ -73,7 +68,7 @@ impl ToTokens for TsInterface {
     }
 }
 
-pub fn declare_wasm_interface(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn declare_typescript_wasm_interface(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let declaration = parse_macro_input!(input as TsInterface);
     let ts = declaration.to_token_stream();
     // println!("MACRO: {}", ts.to_string());

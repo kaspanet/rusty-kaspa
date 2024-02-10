@@ -1,6 +1,6 @@
 use crate::imports::*;
 use crate::tx::fees::Fees;
-use kaspa_wallet_macros::declare_wasm_interface as declare;
+use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 
 #[wasm_bindgen]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

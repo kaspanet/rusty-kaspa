@@ -12,7 +12,7 @@ use js_sys::Array;
 // use kaspa_addresses::Address;
 // use wasm_bindgen::prelude::*;
 
-use kaspa_wallet_macros::declare_wasm_interface as declare;
+use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 
 pub struct PlaceholderRequest;
 pub struct PlaceholderResponse;
