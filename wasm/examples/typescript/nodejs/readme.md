@@ -5,7 +5,7 @@
 ```bash
 npm install -g typescript
 npm install -g ts-node
-ts-node version
+ts-node src/version
 ```
 
 ### Using TS Compiler and NodeJS
@@ -13,7 +13,7 @@ ts-node version
 ```bash
 npm install -g typescript
 tsc
-node version
+node lib/version
 ```
 
 ### TypeScript install

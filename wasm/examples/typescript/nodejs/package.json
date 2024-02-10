@@ -5,7 +5,11 @@
     "description": "",
     "license": "MIT",
     "main": "lib/index.js",
+    "dependencies": {
+        "websocket": "1.0.34"
+    },
     "devDependencies": {
+        "@types/websocket": "^1.0.10",
         "typedoc": "^0.25.7"
     },
     "scripts": {
