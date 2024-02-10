@@ -5,7 +5,7 @@ import {
     createAddress,
     NetworkType,
     initConsolePanicHook
-} from "../../../nodejs/kaspa";
+} from "../../../../nodejs/kaspa";
 
 initConsolePanicHook();
 
