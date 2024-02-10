@@ -1,2 +1,7 @@
-wasm-pack build --target web --out-dir web/kaspa
-jsdoc --destination docs/kaspa-wasm web/kaspa/kaspa_wasm.js ./README.md
+# wasm-pack build --target web --out-dir web/kaspa
+# jsdoc --destination docs/kaspa-wasm web/kaspa/kaspa_wasm.js ./README.md
+
+wasm-pack build --target nodejs --dev --out-dir examples/nodejs/kaspa $@
+cd examples/nodejs/typescript
+npm install
+npm run docs

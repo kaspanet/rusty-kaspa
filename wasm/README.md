@@ -89,3 +89,22 @@ const rpc = new RpcClient("127.0.0.1", Encoding.Borsh, "testnet-10");
 ```
 
 For more details, please follow the [**integrating with Kaspa**](https://kaspa.aspectron.org/) guide.
+
+
+## Create Documentation
+
+- use `build-docs` script or follow following steps
+
+- create kaspa lib via build-node-dev
+    `build-node-dev`
+    it will create kaspa lib at `examples/nodejs/kaspa`
+
+- move to typescript dir
+    `cd examples/nodejs/typescript`
+
+- Install typedoc npm module
+    `npm install`
+
+- Create documentation
+    `npm run docs`
+    it will create documentation at `/wasm/docs`

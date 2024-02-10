@@ -1,0 +1,15 @@
+<html>
+    <head>
+        <script type="module">
+            import * as kaspa from './kaspa/kaspa_wasm.js';
+            (async () => {
+                const wasm = await kaspa.default('./kaspa/kaspa_wasm_bg.wasm');
+                console.log("kaspa", kaspa);
+                console.log("version", kaspa.version());
+            })();
+        </script>
+    </head>
+    <body>
+        <a href="xpub.html">XPub tests</a>
+    </body>
+</html>
