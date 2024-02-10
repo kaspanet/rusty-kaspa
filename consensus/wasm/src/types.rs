@@ -12,6 +12,6 @@ extern "C" {
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(typescript_type = "Array<string>?")]
+    #[wasm_bindgen(typescript_type = "Array<string> | undefined")]
     pub type StringArrayOrNone;
 }

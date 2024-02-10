@@ -19,7 +19,7 @@ declare! {
     export interface IRpcConfig {
         url: string;
         encoding?: Encoding;
-        network: Network;
+        network: NetworkId;
     }
     "#,
 }
