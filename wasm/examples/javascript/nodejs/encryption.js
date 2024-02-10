@@ -1,4 +1,4 @@
-const kaspa = require('./kaspa/kaspa_wasm');
+const kaspa = require('../../../nodejs/kaspa');
 
 kaspa.initConsolePanicHook();
 

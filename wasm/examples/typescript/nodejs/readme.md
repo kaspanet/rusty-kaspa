@@ -1,10 +1,21 @@
-1) Install typescript
-via npm
-`npm install -g typescript`
-more info at https://www.typescriptlang.org/download
+## Running TypeScript examples:
 
-2) Compile ts files
-`tsc`
+### Using TS Node
 
-3) Run js file via nodejs
-`node <file name>`
+```bash
+npm install -g typescript
+npm install -g ts-node
+ts-node version
+```
+
+### Using TS Compiler and NodeJS
+
+```bash
+npm install -g typescript
+tsc
+node version
+```
+
+### TypeScript install
+Additional info on typescript installation can be found here:
+https://www.typescriptlang.org/download

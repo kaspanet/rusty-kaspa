@@ -8,7 +8,7 @@ const {
     kaspaToSompi,
     createTransactions,
     initConsolePanicHook
-} = require('./kaspa/kaspa_wasm');
+} = require('../../../nodejs/kaspa');
 
 const { encoding, networkId, destinationAddress: destinationAddressArg } = require("./utils").parseArgs();
 

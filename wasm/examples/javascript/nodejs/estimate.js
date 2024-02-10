@@ -7,7 +7,7 @@ const {
     RpcClient,
     kaspaToSompi,
     initConsolePanicHook
-} = require('./kaspa/kaspa_wasm');
+} = require('../../../nodejs/kaspa');
 
 initConsolePanicHook();
 

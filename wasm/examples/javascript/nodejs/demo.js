@@ -7,7 +7,7 @@ const {
     createTransaction,
     signTransaction,
     initConsolePanicHook
-} = require('./kaspa/kaspa_wasm');
+} = require('../../../nodejs/kaspa');
 
 initConsolePanicHook();
 

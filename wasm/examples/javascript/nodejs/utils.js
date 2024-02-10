@@ -6,7 +6,7 @@ const {
     Address,
     Encoding,
     NetworkId,
-} = require('./kaspa/kaspa_wasm');
+} = require('../../../nodejs/kaspa');
 
 /**
  * Helper function to parse command line arguments for running the scripts

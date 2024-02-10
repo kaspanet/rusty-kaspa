@@ -1,4 +1,4 @@
-let kaspa = require('./kaspa/kaspa_wasm');
+let kaspa = require('../../../nodejs/kaspa');
 let {
     PrivateKey,
     PublicKey,
