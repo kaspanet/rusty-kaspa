@@ -87,7 +87,7 @@ impl Inner {
 
         let ws_config = WebSocketConfig {
             max_message_size: Some(1024 * 1024 * 1024), // 1Gb message size limit on native platforms
-            max_frame_size: None,
+            max_frame_size: Some(1024 * 1024 * 1024),
             accept_unmasked_frames: false,
             ..Default::default()
         };
