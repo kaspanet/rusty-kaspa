@@ -6,10 +6,23 @@ use kaspa_addresses::{Address, AddressList};
 use kaspa_consensus_core::network::{wasm::Network, NetworkType};
 use kaspa_consensus_wasm::{SignableTransaction, Transaction};
 use kaspa_notify::notification::Notification as NotificationT;
-pub use kaspa_rpc_macros::{build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions};
+pub use kaspa_rpc_macros::{
+    build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions, declare_typescript_wasm_interface as declare,
+};
 pub use serde_wasm_bindgen::from_value;
 pub use workflow_rpc::client::IConnectOptions;
 pub use workflow_wasm::serde::to_value;
+
+declare! {
+    IRpcConfig,
+    r#"
+    export interface IRpcConfig {
+        url: string;
+        encoding?: Encoding;
+        network: Network;
+    }
+    "#,
+}
 
 struct NotificationSink(Function);
 unsafe impl Send for NotificationSink {}

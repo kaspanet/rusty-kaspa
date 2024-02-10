@@ -3,6 +3,7 @@ pub use crate::result::Result;
 pub use async_trait::async_trait;
 pub use futures::*;
 pub use js_sys::Function;
+pub use kaspa_consensus_core::network::NetworkId;
 pub use kaspa_notify::{
     error::{Error as NotifyError, Result as NotifyResult},
     events::EVENT_TYPE_ARRAY,
@@ -18,6 +19,7 @@ pub use kaspa_rpc_core::{
     notify::{connection::ChannelConnection, mode::NotificationMode},
     prelude::*,
 };
+pub use serde::{Deserialize, Serialize};
 pub use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,

@@ -3,6 +3,7 @@ use proc_macro2::{Ident, Span};
 use quote::ToTokens;
 use syn::{Error, Expr, ExprArray, Result};
 
+#[derive(Debug)]
 pub struct Handler {
     pub name: String,
     pub fn_call: Ident,
@@ -11,6 +12,10 @@ pub struct Handler {
     pub fn_camel: Ident,
     pub request_type: Ident,
     pub response_type: Ident,
+    pub typename: Ident,
+    pub ts_request_type: Ident,
+    pub ts_response_type: Ident,
+    pub ts_custom_section_ident: Ident,
 
     // gPRC fields
     pub is_subscription: bool,
@@ -31,6 +36,11 @@ impl Handler {
         let fn_camel = Ident::new(&name.to_case(Case::Camel), Span::call_site());
         let request_type = Ident::new(&format!("{name}Request"), Span::call_site());
         let response_type = Ident::new(&format!("{name}Response"), Span::call_site());
+        let typename = Ident::new(&name.to_string(), Span::call_site());
+        let ts_request_type = Ident::new(&format!("I{name}Request"), Span::call_site());
+        let ts_response_type = Ident::new(&format!("I{name}Response"), Span::call_site());
+        let ts_custom_section_ident = Ident::new(&format!("TS_{}", name.to_uppercase()), Span::call_site());
+
         // gPRC fields
         let fallback_name = name.replace("StopNotifying", "Notify");
         let is_subscription = fallback_name.starts_with("Notify");
@@ -44,6 +54,10 @@ impl Handler {
             fn_camel,
             request_type,
             response_type,
+            typename,
+            ts_request_type,
+            ts_response_type,
+            ts_custom_section_ident,
             is_subscription,
             response_message_type,
             fallback_request_type,

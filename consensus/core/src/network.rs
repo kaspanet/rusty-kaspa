@@ -15,7 +15,7 @@ pub enum NetworkTypeError {
 }
 
 u8_try_from! {
-    #[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq)]
+    #[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq, Hash, Ord, PartialOrd)]
     #[serde(rename_all = "lowercase")]
     #[wasm_bindgen]
     pub enum NetworkType {
@@ -157,7 +157,7 @@ pub enum NetworkIdError {
     InvalidNetworkId(String),
 }
 
-#[derive(Clone, Copy, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[wasm_bindgen(inspectable)]
 pub struct NetworkId {
     #[wasm_bindgen(js_name = "type")]

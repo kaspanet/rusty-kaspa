@@ -3,8 +3,10 @@ use wasm_bindgen::JsError;
 use wasm_bindgen::JsValue;
 use workflow_core::channel::ChannelError;
 use workflow_core::sendable::*;
+use workflow_http::error::Error as HttpError;
 use workflow_rpc::client::error::Error as RpcError;
 use workflow_rpc::client::error::WebSocketError;
+use workflow_wasm::error::Error as WasmError;
 use workflow_wasm::printable::*;
 
 #[derive(Debug, Error)]
@@ -30,7 +32,7 @@ pub enum Error {
     #[error("Channel -> {0}")]
     ChannelError(String),
 
-    #[error("Serde WASM bindgen ser/deser error: {0}")]
+    #[error("Serde WASM bindgen serialization or deserialization error: {0}")]
     SerdeWasmBindgen(Sendable<Printable>),
 
     #[error("{0}")]
@@ -44,6 +46,12 @@ pub enum Error {
 
     #[error(transparent)]
     ConsensusWasm(#[from] kaspa_consensus_wasm::error::Error),
+
+    #[error(transparent)]
+    HttpError(#[from] HttpError),
+
+    #[error(transparent)]
+    WasmError(#[from] WasmError),
 }
 
 impl Error {

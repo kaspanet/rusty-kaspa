@@ -1,6 +1,6 @@
 use crate::handler::*;
 use convert_case::{Case, Casing};
-use proc_macro2::{Ident, Span, TokenStream};
+use proc_macro2::{Ident, Literal, Span, TokenStream};
 use quote::{quote, ToTokens};
 use regex::Regex;
 use std::convert::Into;
@@ -8,7 +8,7 @@ use syn::{
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
-    Error, Expr, ExprArray, Result, Token,
+    Error, Expr, ExprArray, ExprLit, Lit, Result, Token,
 };
 
 #[derive(Debug)]
@@ -167,6 +167,74 @@ impl ToTokens for RpcSubscriptions {
 pub fn build_wrpc_wasm_bindgen_subscriptions(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let rpc_table = parse_macro_input!(input as RpcSubscriptions);
     let ts = rpc_table.to_token_stream();
+    // println!("MACRO: {}", ts.to_string());
+    ts.into()
+}
+
+// #####################################################################
+
+#[derive(Debug)]
+struct TsInterface {
+    handler: Handler,
+    alias: Literal,
+    declaration: Expr,
+}
+
+impl Parse for TsInterface {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let parsed = Punctuated::<Expr, Token![,]>::parse_terminated(input).unwrap();
+
+        if parsed.len() == 2 {
+            let mut iter = parsed.iter();
+            let handler = Handler::new(iter.next().unwrap());
+            let alias = Literal::string(&handler.name);
+            let declaration = iter.next().unwrap().clone();
+            Ok(TsInterface { handler, alias, declaration })
+        } else if parsed.len() == 3 {
+            let mut iter = parsed.iter();
+            let handler = Handler::new(iter.next().unwrap());
+            let alias = match iter.next().unwrap().clone() {
+                Expr::Lit(ExprLit { lit: Lit::Str(lit_str), .. }) => Literal::string(&lit_str.value()),
+                _ => return Err(Error::new_spanned(parsed, "type spec must be a string literal".to_string())),
+            };
+            let declaration = iter.next().unwrap().clone();
+            Ok(TsInterface { handler, alias, declaration })
+        } else {
+            return Err(Error::new_spanned(
+                parsed,
+                "usage: declare_wasm_interface!(typescript_type, [alias], typescript declaration)".to_string(),
+            ));
+        }
+    }
+}
+
+impl ToTokens for TsInterface {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let Self { handler, alias, declaration } = self;
+        let Handler { typename, ts_custom_section_ident, .. } = handler;
+
+        quote! {
+
+
+            #[wasm_bindgen(typescript_custom_section)]
+            const #ts_custom_section_ident: &'static str = #declaration;
+
+            #[wasm_bindgen]
+            extern "C" {
+                #[wasm_bindgen(extends = js_sys::Object, typescript_type = #alias)]
+                #[derive(Default)]
+                pub type #typename;
+            }
+
+
+        }
+        .to_tokens(tokens);
+    }
+}
+
+pub fn declare_typescript_wasm_interface(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let declaration = parse_macro_input!(input as TsInterface);
+    let ts = declaration.to_token_stream();
     // println!("MACRO: {}", ts.to_string());
     ts.into()
 }
