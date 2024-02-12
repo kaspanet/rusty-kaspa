@@ -36,8 +36,12 @@ impl RpcCtl {
         Self { inner: Arc::new(Inner::default()) }
     }
 
-    pub fn with_descriptor<Str: ToString>(descriptor: Str) -> Self {
-        Self { inner: Arc::new(Inner { descriptor: Mutex::new(Some(descriptor.to_string())), ..Inner::default() }) }
+    pub fn with_descriptor<Str: ToString>(descriptor: Option<Str>) -> Self {
+        if let Some(descriptor) = descriptor {
+            Self { inner: Arc::new(Inner { descriptor: Mutex::new(Some(descriptor.to_string())), ..Inner::default() }) }
+        } else {
+            Self::default()
+        }
     }
 
     /// Obtain internal multiplexer (MPMC channel for [`RpcState`] operations)

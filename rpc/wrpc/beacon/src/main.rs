@@ -7,13 +7,21 @@ mod result;
 mod server;
 
 use args::*;
-// use tokio::*;
+use monitor::monitor;
+use result::Result;
 
 #[tokio::main]
 async fn main() {
+    if let Err(error) = run().await {
+        eprintln!("Error: {}", error);
+        std::process::exit(1);
+    }
+}
+async fn run() -> Result<()> {
     let args = Args::parse();
-    print!("Hello, world! {:#?}", args);
-
-    let (listener, app) = server::server(&args).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let (listener, app) = server::server(&args).await?;
+    monitor().start().await?;
+    axum::serve(listener, app).await?;
+    monitor().stop().await?;
+    Ok(())
 }

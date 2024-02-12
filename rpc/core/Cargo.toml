@@ -21,6 +21,7 @@ kaspa-mining-errors.workspace = true
 kaspa-notify.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
+kaspa-rpc-macros.workspace = true
 
 async-channel.workspace = true
 async-trait.workspace = true
@@ -36,6 +37,7 @@ smallvec.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 wasm-bindgen.workspace = true
+js-sys.workspace = true
 workflow-core.workspace = true
 workflow-wasm.workspace = true
 

@@ -1,0 +1,1 @@
+wasm-pack build --target web --dev --out-dir web/kaspa $@

@@ -8,6 +8,7 @@ use kaspa_consensus_wasm::Keypair;
 use workflow_core::abortable::Abortable;
 use workflow_wasm::abi::ref_from_abi;
 
+/// @category Wallet SDK
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
 pub struct Account {

@@ -4,6 +4,7 @@ use crate::tx::generator as native;
 use kaspa_consensus_wasm::{PrivateKey, Transaction};
 use kaspa_wrpc_client::wasm::RpcClient;
 
+/// @category Wallet SDK
 #[wasm_bindgen(inspectable)]
 pub struct PendingTransaction {
     inner: native::PendingTransaction,

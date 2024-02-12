@@ -22,8 +22,7 @@
   },
   "homepage": "https://github.com/kaspanet/rusty-kaspa#readme",
   "dependencies": {
-    "isomorphic-ws": "5.0.0",
-    "ws": "8.14.2",
+    "websocket": "1.0.34",
     "kaspa-wasm": "0.13.0"
   }
 }

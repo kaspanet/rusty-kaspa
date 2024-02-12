@@ -5,12 +5,13 @@ use crate::storage::{PrvKeyDataId, WalletDescriptor};
 use crate::wallet as native;
 use crate::wasm::wallet::account::Account;
 use crate::wasm::wallet::keydata::PrvKeyDataInfo;
-use kaspa_wrpc_client::wasm::RpcClient;
+use kaspa_wrpc_client::wasm::{RpcClient, RpcConfig};
 use kaspa_wrpc_client::WrpcEncoding;
 use workflow_core::sendable::Sendable;
 use workflow_rpc::client::IConnectOptions;
 use workflow_wasm::channel::EventDispatcher;
 
+/// @category Wallet SDK
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
 pub struct Wallet {
@@ -28,11 +29,14 @@ impl Wallet {
         let WalletCtorArgs { resident, network_id, encoding, url } = WalletCtorArgs::try_from(js_value)?;
 
         let store = Arc::new(LocalStore::try_new(resident)?);
-        let rpc = RpcClient::new(
-            url.unwrap_or("wrpc://127.0.0.1:17110".to_string()).as_str(),
-            encoding.unwrap_or(WrpcEncoding::Borsh),
-            None,
-        )?;
+
+        let rpc_config = RpcConfig {
+            url: url.or(Some("wrpc://127.0.0.1:17110".to_string())),
+            encoding: encoding.unwrap_or(WrpcEncoding::Borsh),
+            network_id,
+        };
+
+        let rpc = RpcClient::new(Some(rpc_config))?;
         let rpc_api: Arc<DynRpcApi> = rpc.client().rpc_api().clone();
         let rpc_ctl = rpc.client().rpc_ctl().clone();
         let rpc_binding = Rpc::new(rpc_api, rpc_ctl);

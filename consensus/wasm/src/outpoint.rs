@@ -58,6 +58,7 @@ impl TryFrom<&JsValue> for TransactionOutpointInner {
 /// NOTE: This struct is immutable - to create a custom outpoint
 /// use the `TransactionOutpoint::new` constructor. (in JavaScript
 /// use `new TransactionOutpoint(transactionId, index)`).
+/// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]

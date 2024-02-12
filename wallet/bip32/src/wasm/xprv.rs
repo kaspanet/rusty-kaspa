@@ -5,6 +5,7 @@ use crate::{
 use kaspa_utils::hex::*;
 use wasm_bindgen::prelude::*;
 
+/// @category Wallet SDK
 #[wasm_bindgen]
 pub struct XPrv {
     inner: ExtendedPrivateKey<SecretKey>,

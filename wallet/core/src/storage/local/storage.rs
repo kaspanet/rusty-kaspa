@@ -9,6 +9,7 @@ use workflow_core::runtime;
 use workflow_store::fs;
 
 /// Wallet file storage interface
+/// @category Wallet SDK
 #[wasm_bindgen(inspectable)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Storage {

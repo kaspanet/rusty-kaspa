@@ -21,6 +21,7 @@ impl PaymentDestination {
     }
 }
 
+/// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct PaymentOutput {
@@ -71,6 +72,7 @@ impl From<PaymentOutput> for PaymentDestination {
     }
 }
 
+/// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[wasm_bindgen]
 pub struct PaymentOutputs {

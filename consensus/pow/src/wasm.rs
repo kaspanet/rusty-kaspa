@@ -10,6 +10,7 @@ use workflow_wasm::error::Error;
 use workflow_wasm::prelude::*;
 use workflow_wasm::result::Result;
 
+/// @category PoW
 #[wasm_bindgen(inspectable)]
 pub struct State {
     inner: crate::State,

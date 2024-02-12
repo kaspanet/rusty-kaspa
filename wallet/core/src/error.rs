@@ -293,6 +293,9 @@ pub enum Error {
 
     #[error("Invalid argument: {0}")]
     InvalidArgument(String),
+
+    #[error("Unable to convert BigInt value {0}")]
+    BigInt(String),
 }
 
 impl From<Aborted> for Error {

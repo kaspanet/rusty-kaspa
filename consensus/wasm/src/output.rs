@@ -2,14 +2,13 @@ use crate::imports::*;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[wasm_bindgen(inspectable)]
 pub struct TransactionOutputInner {
     pub value: u64,
-    #[wasm_bindgen(js_name = scriptPublicKey, getter_with_clone)]
     pub script_public_key: ScriptPublicKey,
 }
 
 /// Represents a Kaspad transaction output
+/// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]
@@ -29,13 +28,6 @@ impl TransactionOutput {
     pub fn script_length(&self) -> usize {
         self.inner().script_public_key.script().len()
     }
-
-    // pub fn set_amount(&self, amount: u64) {
-    //     self.inner().value = amount;
-    // }
-    // pub fn value(&self) -> u64 {
-    //     self.inner().value
-    // }
 }
 
 #[wasm_bindgen]

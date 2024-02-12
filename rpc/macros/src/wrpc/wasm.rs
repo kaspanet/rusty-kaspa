@@ -42,37 +42,38 @@ impl ToTokens for RpcHandlers {
         let mut targets_with_args = Vec::new();
 
         for handler in self.handlers_no_args.elems.iter() {
-            let Handler { fn_call, fn_camel, fn_no_suffix, request_type, response_type, .. } = Handler::new(handler);
+            let Handler { fn_call, fn_camel, fn_no_suffix, ts_request_type, ts_response_type, request_type, response_type, .. } =
+                Handler::new(handler);
 
             targets_no_args.push(quote! {
 
                 #[wasm_bindgen(js_name = #fn_camel)]
-                pub async fn #fn_no_suffix(&self) -> Result<JsValue> {
-                    let value: JsValue = js_sys::Object::new().into();
-                    let request: #request_type = from_value(value)?;
+                pub async fn #fn_no_suffix(&self, request : Option<#ts_request_type>) -> Result<#ts_response_type> {
+                    let request: #request_type = request.unwrap_or_default().try_into()?;
                     // log_info!("request: {:#?}",request);
                     let result: RpcResult<#response_type> = self.client.#fn_call(request).await;
                     // log_info!("result: {:#?}",result);
 
                     let response: #response_type = result.map_err(|err|wasm_bindgen::JsError::new(&err.to_string()))?;
                     //log_info!("response: {:#?}",response);
-                    workflow_wasm::serde::to_value(&response).map_err(|err|err.into())
+                    Ok(response.try_into()?)
                 }
 
             });
         }
 
         for handler in self.handlers_with_args.elems.iter() {
-            let Handler { fn_call, fn_camel, fn_no_suffix, request_type, response_type, .. } = Handler::new(handler);
+            let Handler { fn_call, fn_camel, fn_no_suffix, ts_request_type, ts_response_type, request_type, response_type, .. } =
+                Handler::new(handler);
 
             targets_with_args.push(quote! {
 
                 #[wasm_bindgen(js_name = #fn_camel)]
-                pub async fn #fn_no_suffix(&self, request: JsValue) -> Result<JsValue> {
-                    let request: #request_type = from_value(request)?;
+                pub async fn #fn_no_suffix(&self, request: #ts_request_type) -> Result<#ts_response_type> {
+                    let request: #request_type = request.try_into()?; //from_value(request)?;
                     let result: RpcResult<#response_type> = self.client.#fn_call(request).await;
                     let response: #response_type = result.map_err(|err|wasm_bindgen::JsError::new(&err.to_string()))?;
-                    workflow_wasm::serde::to_value(&response).map_err(|err|err.into())
+                    Ok(response.try_into()?)
                 }
 
             });

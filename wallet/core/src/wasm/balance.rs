@@ -2,6 +2,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::utxo::balance as native;
 
+/// @category Wallet SDK
 #[wasm_bindgen]
 pub struct Balance {
     inner: native::Balance,
@@ -31,6 +32,7 @@ impl From<native::Balance> for Balance {
     }
 }
 
+/// @category Wallet SDK
 #[wasm_bindgen]
 pub struct BalanceStrings {
     inner: native::BalanceStrings,

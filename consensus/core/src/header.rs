@@ -8,6 +8,7 @@ use serde_wasm_bindgen::*;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::prelude::*;
 
+/// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]

@@ -21,6 +21,7 @@ pub const HASH_SIZE: usize = 32;
 pub use hashers::*;
 
 // TODO: Check if we use hash more as an array of u64 or of bytes and change the default accordingly
+/// @category General
 #[derive(Eq, Clone, Copy, Default, PartialOrd, Ord, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[wasm_bindgen]
 pub struct Hash([u8; HASH_SIZE]);

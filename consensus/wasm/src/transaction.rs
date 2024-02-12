@@ -21,6 +21,7 @@ pub struct TransactionInner {
 }
 
 /// Represents a Kaspa transaction
+/// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct Transaction {

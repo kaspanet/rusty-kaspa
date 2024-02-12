@@ -40,7 +40,7 @@
 //! The `kaspa-wasm` module is a pure WASM32 module that includes
 //! the entire wallet framework, but does not support RPC due to an absence
 //! of a native WebSocket in NodeJs environment, while
-//! the `kaspa` module includes `isomorphic-ws` dependency simulating
+//! the `kaspa` module includes `websocket` module dependency simulating
 //! the W3C WebSocket and thus supports RPC.
 //!
 //! JavaScript examples for using this framework can be found at:
@@ -53,7 +53,6 @@
 
 extern crate alloc;
 extern crate self as kaspa_wallet_core;
-use wasm_bindgen::prelude::*;
 
 pub mod account;
 pub mod api;
@@ -80,7 +79,6 @@ pub mod wallet;
 pub mod wasm;
 
 /// Returns the version of the Wallet framework.
-#[wasm_bindgen]
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }

@@ -5,6 +5,7 @@ use kaspa_consensus_wasm::{PrivateKey, PublicKey};
 /// Signs a message with the given private key
 /// @param {object} value - an object containing { message: String, privateKey: String|PrivateKey }
 /// @returns {String} the signature, in hex string format
+/// @category Message Signing
 #[wasm_bindgen(js_name = signMessage, skip_jsdoc)]
 pub fn js_sign_message(value: JsValue) -> Result<String, Error> {
     if let Some(object) = Object::try_from(&value) {
@@ -27,6 +28,7 @@ pub fn js_sign_message(value: JsValue) -> Result<String, Error> {
 /// Verifies with a public key the signature of the given message
 /// @param {object} value - an object containing { message: String, signature: String, publicKey: String|PublicKey }
 /// @returns {bool} true if the signature can be verified with the given public key and message, false otherwise
+/// @category Message Signing
 #[wasm_bindgen(js_name = verifyMessage, skip_jsdoc)]
 pub fn js_verify_message(value: JsValue) -> Result<bool, Error> {
     if let Some(object) = Object::try_from(&value) {

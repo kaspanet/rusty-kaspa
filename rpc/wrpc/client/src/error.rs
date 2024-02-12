@@ -15,7 +15,7 @@ pub enum Error {
     Custom(String),
 
     #[error("wRPC address error -> {0}")]
-    AddressError(String),
+    UrlError(String),
 
     #[error("wRPC -> {0}")]
     RpcError(#[from] RpcError),
@@ -52,6 +52,9 @@ pub enum Error {
 
     #[error(transparent)]
     WasmError(#[from] WasmError),
+
+    #[error(transparent)]
+    AddressError(#[from] kaspa_addresses::AddressError),
 }
 
 impl Error {

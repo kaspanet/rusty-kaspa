@@ -465,6 +465,7 @@ extern "C" {
     pub type PublicKeys;
 }
 
+/// @category Wallet SDK
 #[wasm_bindgen(js_name=createAddress)]
 pub fn create_address_js(
     key: &str,
@@ -476,6 +477,7 @@ pub fn create_address_js(
     create_address(1, vec![key], network_type.into(), ecdsa.unwrap_or(false), account_kind)
 }
 
+/// @category Wallet SDK
 #[wasm_bindgen(js_name=createMultisigAddress)]
 pub fn create_multisig_address_js(
     minimum_signatures: usize,

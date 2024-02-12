@@ -9,6 +9,7 @@ use kaspa_consensus_wasm::*;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
+/// @category Wallet SDK
 #[wasm_bindgen]
 pub struct MassCalculator {
     mc: Arc<mass::MassCalculator>,

@@ -14,10 +14,18 @@ use zeroize::Zeroize;
 #[wasm_bindgen(typescript_custom_section)]
 const ITransactionRecord: &'static str = r#"
 
+/**
+ * 
+ * @category Wallet SDK
+ */
 interface ITransactionData {
     [key: string]: any;
 }
 
+/**
+ * 
+ * @category Wallet SDK
+ */
 interface ITransactionRecord {
     id: string;
     unixtimeMsec?: bigint;

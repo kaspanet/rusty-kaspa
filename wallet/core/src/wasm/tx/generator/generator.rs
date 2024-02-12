@@ -10,6 +10,10 @@ use crate::wasm::UtxoContext;
 // TODO-WASM fix outputs
 #[wasm_bindgen(typescript_custom_section)]
 const IGeneratorSettingsObject: &'static str = r#"
+/**
+ * 
+ * @category Wallet SDK
+ */
 interface IGeneratorSettingsObject {
     outputs: PaymentOutputs | Array<Array<number | string>>;
     changeAddress: Address | string;
@@ -65,6 +69,7 @@ extern "C" {
 ///
 /// ```
 ///
+/// @category Wallet SDK
 #[wasm_bindgen]
 pub struct Generator {
     inner: Arc<native::Generator>,

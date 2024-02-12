@@ -38,7 +38,7 @@ struct Inner {
 }
 
 impl Inner {
-    pub fn new(encoding: Encoding, url: &str) -> Result<Inner> {
+    pub fn new(encoding: Encoding, url: Option<&str>) -> Result<Inner> {
         // log_trace!("Kaspa wRPC::{encoding} connecting to: {url}");
         let rpc_ctl = RpcCtl::with_descriptor(url);
         let wrpc_ctl_multiplexer = Multiplexer::<WrpcCtl>::new();
@@ -172,12 +172,12 @@ pub struct KaspaRpcClient {
 
 impl KaspaRpcClient {
     /// Create a new `KaspaRpcClient` with the given Encoding and URL
-    pub fn new(encoding: Encoding, url: &str) -> Result<KaspaRpcClient> {
+    pub fn new(encoding: Encoding, url: Option<&str>) -> Result<KaspaRpcClient> {
         Self::new_with_args(encoding, NotificationMode::Direct, url)
     }
 
     /// Extended constructor that accepts [`NotificationMode`] argument.
-    pub fn new_with_args(encoding: Encoding, notification_mode: NotificationMode, url: &str) -> Result<KaspaRpcClient> {
+    pub fn new_with_args(encoding: Encoding, notification_mode: NotificationMode, url: Option<&str>) -> Result<KaspaRpcClient> {
         let inner = Arc::new(Inner::new(encoding, url)?);
         let notifier = if matches!(notification_mode, NotificationMode::MultiListeners) {
             let enabled_events = EVENT_TYPE_ARRAY[..].into();
@@ -194,7 +194,7 @@ impl KaspaRpcClient {
         Ok(client)
     }
 
-    pub fn url(&self) -> String {
+    pub fn url(&self) -> Option<String> {
         self.inner.rpc_client.url()
     }
 
@@ -318,7 +318,7 @@ impl KaspaRpcClient {
                 }
                 let location = window().location();
                 let protocol =
-                    location.protocol().map_err(|_| Error::AddressError("Unable to obtain window location protocol".to_string()))?;
+                    location.protocol().map_err(|_| Error::UrlError("Unable to obtain window location protocol".to_string()))?;
                 if protocol == "http:" || protocol == "chrome-extension:" {
                     Ok("ws")
                 } else if protocol == "https:" {

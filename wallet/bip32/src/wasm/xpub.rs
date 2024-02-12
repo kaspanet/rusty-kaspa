@@ -2,8 +2,8 @@ use crate::{wasm::DerivationPath, ChildNumber, ExtendedPublicKey, Result};
 use secp256k1::PublicKey;
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
-//use js_sys::Array;
 
+/// @category Wallet SDK
 #[wasm_bindgen]
 pub struct XPub {
     inner: ExtendedPublicKey<PublicKey>,

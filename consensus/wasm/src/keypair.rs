@@ -31,6 +31,7 @@ use wasm_bindgen::prelude::*;
 use workflow_wasm::abi::*;
 
 /// Data structure that contains a secret and public keys.
+/// @category Wallet SDK
 #[derive(Debug, Clone)]
 #[wasm_bindgen(inspectable)]
 pub struct Keypair {
@@ -113,7 +114,8 @@ impl TryFrom<JsValue> for Keypair {
     }
 }
 
-/// Data structure that envelops a Private Key
+/// Data structure that envelops a Private Key.
+/// @category Wallet SDK
 #[derive(Clone, Debug)]
 #[wasm_bindgen]
 pub struct PrivateKey {
@@ -183,8 +185,9 @@ impl TryFrom<JsValue> for PrivateKey {
     }
 }
 
-// Data structure that envelopes a PublicKey
-// Only supports Schnorr-based addresses
+/// Data structure that envelopes a PublicKey.
+/// Only supports Schnorr-based addresses.
+/// @category Wallet SDK
 #[derive(Clone, Debug)]
 #[wasm_bindgen(js_name = PublicKey)]
 pub struct PublicKey {

@@ -5,6 +5,7 @@ use kaspa_consensus_wasm::PrivateKey;
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 
+/// @category Wallet SDK
 #[wasm_bindgen]
 pub struct XPrivateKey {
     receive: ExtendedPrivateKey<SecretKey>,

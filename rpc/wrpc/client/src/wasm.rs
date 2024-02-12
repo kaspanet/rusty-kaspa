@@ -1,27 +1,79 @@
+#![allow(non_snake_case)]
+
 use crate::error::Error;
 use crate::imports::*;
 use crate::result::Result;
-use js_sys::Array;
-use kaspa_addresses::{Address, AddressList};
+// use js_sys::Array;
+// use kaspa_addresses::{Address, AddressList};
+use kaspa_addresses::{Address, IAddressArray};
 use kaspa_consensus_core::network::{wasm::Network, NetworkType};
-use kaspa_consensus_wasm::{SignableTransaction, Transaction};
+// use kaspa_consensus_wasm::{SignableTransaction, Transaction};
 use kaspa_notify::notification::Notification as NotificationT;
+pub use kaspa_rpc_core::wasm::message::*;
 pub use kaspa_rpc_macros::{
     build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions, declare_typescript_wasm_interface as declare,
 };
 pub use serde_wasm_bindgen::from_value;
 pub use workflow_rpc::client::IConnectOptions;
+use workflow_wasm::extensions::ObjectExtension;
 pub use workflow_wasm::serde::to_value;
 
 declare! {
     IRpcConfig,
     r#"
+    /**
+     * RPC client configuration options
+     * 
+     * @category Node RPC
+     */
     export interface IRpcConfig {
-        url: string;
+        /**
+         * URL for wRPC node endpoint
+         */
+        url?: string;
+        /**
+         * RPC encoding: `borsh` (default) or `json`
+         */
         encoding?: Encoding;
-        network: NetworkId;
+        /**
+         * Network identifier: `mainnet` or `testnet-10`
+         */
+        network?: NetworkId;
     }
     "#,
+}
+
+pub struct RpcConfig {
+    pub url: Option<String>,
+    pub encoding: Encoding,
+    pub network_id: Option<NetworkId>,
+}
+
+impl Default for RpcConfig {
+    fn default() -> Self {
+        RpcConfig { url: None, encoding: Encoding::Borsh, network_id: None }
+    }
+}
+
+impl TryFrom<IRpcConfig> for RpcConfig {
+    type Error = Error;
+    fn try_from(config: IRpcConfig) -> Result<Self> {
+        let url = config.try_get_string("url")?; //.ok_or_else(|| Error::custom("url is required"))?;
+        let encoding = config.try_get::<Encoding>("encoding")?.unwrap_or(Encoding::Borsh); //map_or(Ok(Encoding::Borsh), |encoding| Encoding::try_from(encoding))?;
+        let network_id = config.try_get::<NetworkId>("network")?.ok_or_else(|| Error::custom("network is required"))?;
+        Ok(RpcConfig { url, encoding, network_id: Some(network_id) })
+    }
+}
+
+impl TryFrom<RpcConfig> for IRpcConfig {
+    type Error = Error;
+    fn try_from(config: RpcConfig) -> Result<Self> {
+        let object = IRpcConfig::default();
+        object.set("url", &config.url.into())?;
+        object.set("encoding", &config.encoding.into())?;
+        object.set("network", &config.network_id.into())?;
+        Ok(object)
+    }
 }
 
 struct NotificationSink(Function);
@@ -39,6 +91,11 @@ pub struct Inner {
 }
 
 /// Kaspa RPC client
+///
+/// Kaspa RPC client uses wRPC (Workflow RPC) WebSocket interface to connect
+/// to directly to Kaspa Node.
+///
+/// @category Node RPC
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
 pub struct RpcClient {
@@ -47,15 +104,24 @@ pub struct RpcClient {
     pub(crate) inner: Arc<Inner>,
 }
 
-#[wasm_bindgen]
 impl RpcClient {
-    /// Create a new RPC client with [`Encoding`] and a `url`.
-    #[wasm_bindgen(constructor)]
-    pub fn new(url: &str, encoding: Encoding, network_type: Option<Network>) -> Result<RpcClient> {
-        let url = if let Some(network_type) = network_type { Self::parse_url(url, encoding, network_type)? } else { url.to_string() };
+    pub fn new(config: Option<RpcConfig>) -> Result<RpcClient> {
+        let RpcConfig { url, encoding, network_id } = config.unwrap_or_default();
+
+        let url = url
+            .map(
+                |url| {
+                    if let Some(network_id) = network_id {
+                        Self::parse_url(&url, encoding, network_id)
+                    } else {
+                        Ok(url.to_string())
+                    }
+                },
+            )
+            .transpose()?;
 
         let rpc_client = RpcClient {
-            client: Arc::new(KaspaRpcClient::new(encoding, url.as_str()).unwrap_or_else(|err| panic!("{err}"))),
+            client: Arc::new(KaspaRpcClient::new(encoding, url.as_deref()).unwrap_or_else(|err| panic!("{err}"))),
             inner: Arc::new(Inner {
                 notification_task: AtomicBool::new(false),
                 notification_ctl: DuplexChannel::oneshot(),
@@ -65,9 +131,18 @@ impl RpcClient {
 
         Ok(rpc_client)
     }
+}
+
+#[wasm_bindgen]
+impl RpcClient {
+    /// Create a new RPC client with [`Encoding`] and a `url`.
+    #[wasm_bindgen(constructor)]
+    pub fn ctor(config: Option<IRpcConfig>) -> Result<RpcClient> {
+        Self::new(config.map(RpcConfig::try_from).transpose()?)
+    }
 
     #[wasm_bindgen(getter)]
-    pub fn url(&self) -> String {
+    pub fn url(&self) -> Option<String> {
         self.client.url()
     }
 
@@ -202,8 +277,8 @@ impl RpcClient {
     /// * `network_type` - Network type
     ///
     #[wasm_bindgen(js_name = parseUrl)]
-    pub fn parse_url(url: &str, encoding: Encoding, network: Network) -> Result<String> {
-        let url_ = KaspaRpcClient::parse_url(url.to_string(), encoding, network.try_into()?)?;
+    pub fn parse_url(url: &str, encoding: Encoding, network: NetworkId) -> Result<String> {
+        let url_ = KaspaRpcClient::parse_url(url.to_string(), encoding, network.into())?;
         Ok(url_)
     }
 }
@@ -226,30 +301,21 @@ impl RpcClient {
 
     /// Subscription to UTXOs Changed notifications
     #[wasm_bindgen(js_name = subscribeUtxosChanged)]
-    pub async fn subscribe_utxos_changed(&self, addresses: &JsValue) -> Result<()> {
-        let addresses = Array::from(addresses)
-            .to_vec()
-            .into_iter()
-            .map(|jsv| from_value(jsv).map_err(|err| JsError::new(&err.to_string())))
-            .collect::<std::result::Result<Vec<Address>, JsError>>()?;
+    pub async fn subscribe_utxos_changed(&self, addresses: IAddressArray) -> Result<()> {
+        let addresses: Vec<Address> = addresses.try_into()?;
         self.client.start_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
         Ok(())
     }
 
     /// Unsubscribe from DAA Score (test)
     #[wasm_bindgen(js_name = unsubscribeUtxosChanged)]
-    pub async fn unsubscribe_utxos_changed(&self, addresses: &JsValue) -> Result<()> {
-        let addresses = Array::from(addresses)
-            .to_vec()
-            .into_iter()
-            .map(|jsv| from_value(jsv).map_err(|err| JsError::new(&err.to_string())))
-            .collect::<std::result::Result<Vec<Address>, JsError>>()?;
+    pub async fn unsubscribe_utxos_changed(&self, addresses: IAddressArray) -> Result<()> {
+        let addresses: Vec<Address> = addresses.try_into()?;
         self.client.stop_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
         Ok(())
     }
 
     // scope variant with field functions
-
     #[wasm_bindgen(js_name = subscribeVirtualChainChanged)]
     pub async fn subscribe_virtual_chain_changed(&self, include_accepted_transaction_ids: bool) -> Result<()> {
         self.client
@@ -270,17 +336,6 @@ impl RpcClient {
             .await?;
         Ok(())
     }
-
-    // #[wasm_bindgen(js_name = subscribeUtxosChanged)]
-    // pub async fn subscribe_utxos_changed(&self, addresses: Vec<Address>) -> JsResult<()> {
-    //     self.client.start_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
-    //     Ok(())
-    // }
-    // #[wasm_bindgen(js_name = unsubscribeUtxosChanged)]
-    // pub async fn unsubscribe_utxos_changed(&self, addresses: Vec<Address>) -> JsResult<()> {
-    //     self.client.stop_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
-    //     Ok(())
-    // }
 }
 
 // Build subscribe functions
@@ -299,11 +354,13 @@ build_wrpc_wasm_bindgen_subscriptions!([
 // Build RPC method invocation functions. This macro
 // takes two lists.  First list is for functions that
 // do not have arguments and the second one is for
-// functions that have single arguments (request).
+// functions that have a single argument (request).
 
 build_wrpc_wasm_bindgen_interface!(
     [
-        // functions with no arguments
+        // functions with optional arguments
+        // they are specified as Option<IXxxRequest>
+        // which map as `request? : IXxxRequest` in typescript
         GetBlockCount,
         GetBlockDagInfo,
         GetCoinSupply,
@@ -335,63 +392,12 @@ build_wrpc_wasm_bindgen_interface!(
         GetMempoolEntriesByAddresses,
         GetMempoolEntry,
         GetSubnetwork,
-        // GetUtxosByAddresses,
+        GetUtxosByAddresses,
         GetVirtualChainFromBlock,
         ResolveFinalityConflict,
         SubmitBlock,
-        // SubmitTransaction,
+        SubmitTransaction,
         Unban,
     ]
 );
 
-#[wasm_bindgen]
-impl RpcClient {
-    #[wasm_bindgen(js_name = submitTransaction)]
-    pub async fn js_submit_transaction(&self, js_value: JsValue, allow_orphan: Option<bool>) -> Result<JsValue> {
-        let transaction = if let Ok(signable) = SignableTransaction::try_from(&js_value) {
-            Transaction::from(signable)
-        } else if let Ok(transaction) = Transaction::try_from(js_value) {
-            transaction
-        } else {
-            return Err(Error::custom("invalid transaction data"));
-        };
-
-        let transaction = RpcTransaction::from(transaction);
-
-        let request = SubmitTransactionRequest { transaction, allow_orphan: allow_orphan.unwrap_or(false) };
-
-        // log_info!("submit_transaction req: {:?}", request);
-        let response = self.submit_transaction(request).await.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
-        to_value(&response).map_err(|err| err.into())
-    }
-
-    /// This call accepts an `Array` of `Address` or an Array of address strings.
-    #[wasm_bindgen(js_name = getUtxosByAddresses)]
-    pub async fn get_utxos_by_addresses(&self, request: JsValue) -> Result<JsValue> {
-        let request = if let Ok(addresses) = AddressList::try_from(&request) {
-            GetUtxosByAddressesRequest { addresses: addresses.into() }
-        } else {
-            from_value::<GetUtxosByAddressesRequest>(request)?
-        };
-
-        let result: RpcResult<GetUtxosByAddressesResponse> = self.client.get_utxos_by_addresses_call(request).await;
-        let response: GetUtxosByAddressesResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
-        to_value(&response.entries).map_err(|err| err.into())
-    }
-
-    #[wasm_bindgen(js_name = getUtxosByAddressesCall)]
-    pub async fn get_utxos_by_addresses_call(&self, request: JsValue) -> Result<JsValue> {
-        let request = from_value::<GetUtxosByAddressesRequest>(request)?;
-        let result: RpcResult<GetUtxosByAddressesResponse> = self.client.get_utxos_by_addresses_call(request).await;
-        let response: GetUtxosByAddressesResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
-        to_value(&response).map_err(|err| err.into())
-    }
-}
-
-impl RpcClient {
-    pub async fn submit_transaction(&self, request: SubmitTransactionRequest) -> Result<SubmitTransactionResponse> {
-        let result: RpcResult<SubmitTransactionResponse> = self.client.submit_transaction_call(request).await;
-        let response: SubmitTransactionResponse = result?;
-        Ok(response)
-    }
-}

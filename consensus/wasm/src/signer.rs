@@ -31,6 +31,7 @@ impl TryFrom<PrivateKeyArray> for Vec<PrivateKey> {
 }
 
 /// `signTransaction()` is a helper function to sign a transaction using a private key array or a signer array.
+/// @category Wallet SDK
 #[wasm_bindgen(js_name = "signTransaction")]
 pub fn js_sign_transaction(mtx: SignableTransaction, signer: PrivateKeyArray, verify_sig: bool) -> Result<SignableTransaction> {
     if signer.is_array() {
@@ -74,6 +75,7 @@ pub fn sign(mutable_tx: tx::SignableTransaction, privkeys: Vec<[u8; 32]>) -> Res
     Ok(sign_with_multiple_v2(mutable_tx, privkeys).unwrap())
 }
 
+/// @category Wallet SDK
 #[wasm_bindgen(js_name=signScriptHash)]
 pub fn sign_script_hash(script_hash: JsValue, privkey: &PrivateKey) -> Result<String> {
     let script_hash = from_value(script_hash)?;

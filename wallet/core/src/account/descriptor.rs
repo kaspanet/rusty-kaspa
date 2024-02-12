@@ -212,7 +212,18 @@ impl AccountDescriptor {
 declare! {
     IAccountDescriptor,
     r#"
+    /**
+     * 
+     * 
+     * @category Wallet SDK
+     */
     export interface IAccountDescriptor {
+        kind : AccountKind,
+        accountId : HexString,
+        accountName? : string,
+        receiveAddress? : Address,
+        changeAddress? : Address,
+        prvKeyDataIds : HexString[],
         [key: string]: any
     }
     "#,

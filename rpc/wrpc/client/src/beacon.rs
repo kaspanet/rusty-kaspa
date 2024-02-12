@@ -11,7 +11,11 @@ const DEFAULT_BEACONS: &[(&str, usize)] = &[("https://beacon.kaspa-ng.org", DEFA
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_BEACON: &str = r#"
-
+/**
+ * 
+ * 
+ * @category Node RPC
+ */
 export interface IBeacon {
     url : string;
     version? : number;
@@ -26,7 +30,11 @@ extern "C" {
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_BEACON_AGGREGATOR: &'static str = r#"
-
+/**
+ * 
+ * 
+ * @category Node RPC
+ */
 export interface IBeaconAggregator {
     beacons : IBeacon[];
 }
@@ -38,6 +46,7 @@ extern "C" {
     pub type IBeaconAggregator;
 }
 
+/// @category Node RPC
 #[derive(Debug, Clone)]
 #[wasm_bindgen]
 pub struct Beacon {
@@ -97,6 +106,7 @@ impl TryFrom<JsValue> for Beacon {
     }
 }
 
+/// @category Node RPC
 #[wasm_bindgen]
 pub struct BeaconAggregator {
     // #[wasm_bindgen(skip)]

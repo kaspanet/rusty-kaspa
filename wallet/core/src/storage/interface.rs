@@ -13,6 +13,7 @@ pub struct WalletExportOptions {
     pub include_transactions: bool,
 }
 
+/// @category Wallet SDK
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[wasm_bindgen(inspectable)]
 pub struct WalletDescriptor {

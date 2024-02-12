@@ -4,9 +4,10 @@ use crate::utxo as native;
 use crate::utxo::{UtxoContextBinding, UtxoContextId};
 use crate::wasm::utxo::UtxoProcessor;
 use crate::wasm::Balance;
-use kaspa_addresses::AddressList;
+use kaspa_addresses::IAddressArray;
 use kaspa_hashes::Hash;
 
+/// @category Wallet SDK
 #[derive(Clone)]
 #[wasm_bindgen(inspectable)]
 pub struct UtxoContext {
@@ -34,18 +35,20 @@ impl UtxoContext {
 
     /// Performs a scan of the given addresses and registers them in the context for event notifications.
     #[wasm_bindgen(js_name = "trackAddresses")]
-    pub async fn track_addresses(&self, addresses: JsValue, optional_current_daa_score: JsValue) -> Result<()> {
-        let current_daa_score =
-            if optional_current_daa_score.is_falsy() { None } else { optional_current_daa_score.try_as_u64().ok() };
-
-        let addresses: Vec<Address> = AddressList::try_from(addresses)?.into();
+    pub async fn track_addresses(&self, addresses: IAddressArray, optional_current_daa_score: Option<BigInt>) -> Result<()> {
+        let current_daa_score = if let Some(big_int) = optional_current_daa_score {
+            Some(big_int.try_into().map_err(|v| Error::custom(format!("Unable to convert BigInt value {v:?}")))?)
+        } else {
+            None
+        };
+        let addresses: Vec<Address> = addresses.try_into()?;
         self.inner().scan_and_register_addresses(addresses, current_daa_score).await
     }
 
     /// Unregister a list of addresses from the context. This will stop tracking of these addresses.
     #[wasm_bindgen(js_name = "unregisterAddresses")]
-    pub async fn unregister_addresses(&self, addresses: JsValue) -> Result<()> {
-        let addresses: Vec<Address> = AddressList::try_from(addresses)?.into();
+    pub async fn unregister_addresses(&self, addresses: IAddressArray) -> Result<()> {
+        let addresses: Vec<Address> = addresses.try_into()?;
         self.inner().unregister_addresses(addresses).await
     }
 

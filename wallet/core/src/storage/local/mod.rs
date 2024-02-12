@@ -97,6 +97,7 @@ pub unsafe fn set_default_storage_folder(folder: String) -> Result<()> {
 ///
 /// @param {String} folder - the path to the storage folder
 ///
+/// @category Wallet SDK
 #[wasm_bindgen(js_name = setDefaultStorageFolder, skip_jsdoc)]
 pub fn js_set_default_storage_folder(folder: String) -> Result<()> {
     // SAFETY: This is unsafe because we are setting a static mut variable
@@ -135,6 +136,7 @@ pub unsafe fn set_default_wallet_file(folder: String) -> Result<()> {
 ///
 /// @param {String} folder - the name to the wallet file or key.
 ///
+/// @category Wallet SDK
 #[wasm_bindgen(js_name = setDefaultWalletFile, skip_jsdoc)]
 pub fn js_set_default_wallet_file(folder: String) -> Result<()> {
     // SAFETY: This is unsafe because we are setting a static mut variable

@@ -47,35 +47,16 @@ impl Node {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ServerConfig {
-    server: Vec<Node>,
+pub struct NodeConfig {
+    node: Vec<Node>,
 }
 
-// fn try_parse_servers(toml: &str) -> Result<Arc<HashMap<NetworkId, Vec<Node>>>> {
-//     let servers: Vec<Node> = toml::from_str::<ServerConfig>(toml)?
-//         .server
-//         .into_iter()
-//         .filter(|server| server.enable.unwrap_or(true))
-//         .collect::<Vec<_>>();
+pub fn try_parse_nodes(toml: &str) -> Result<Vec<Arc<Node>>> {
+    let nodes: Vec<Arc<Node>> = toml::from_str::<NodeConfig>(toml)?
+        .node
+        .into_iter()
+        .filter_map(|node| node.enable.unwrap_or(true).then_some(node).map(Arc::new))
+        .collect::<Vec<_>>();
+    Ok(nodes)
+}
 
-//     let servers = HashMap::group_from(servers.into_iter().map(|server| (server.network, server)));
-
-//     Ok(servers.into())
-// }
-
-// fn parse_servers(toml: &str) -> Arc<HashMap<NetworkId, Vec<Node>>> {
-//     match try_parse_servers(toml) {
-//         Ok(servers) => servers,
-//         Err(e) => {
-//             cfg_if! {
-//                 if #[cfg(not(target_arch = "wasm32"))] {
-//                     println!();
-//                     panic!("Error parsing Servers.toml: {}", e);
-//                 } else {
-//                     log_error!("Error parsing Servers.toml: {}", e);
-//                     HashMap::default().into()
-//                 }
-//             }
-//         }
-//     }
-// }

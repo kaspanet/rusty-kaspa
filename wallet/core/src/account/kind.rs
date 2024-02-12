@@ -7,6 +7,7 @@ use fixedstr::*;
 use std::hash::Hash;
 use std::str::FromStr;
 
+/// @category Wallet SDK
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Hash)]
 #[wasm_bindgen]
 pub struct AccountKind(str64);

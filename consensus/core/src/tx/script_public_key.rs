@@ -34,6 +34,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
 
 /// Represents a Kaspad ScriptPublicKey
+/// @category Consensus
 #[derive(Default, PartialEq, Eq, Clone, Hash)]
 #[wasm_bindgen(inspectable)]
 pub struct ScriptPublicKey {

@@ -10,6 +10,7 @@ use kaspa_consensus_wasm::*;
 use workflow_core::runtime::is_web;
 
 /// Create a basic transaction without any mass limit checks.
+/// @category Wallet SDK
 #[wasm_bindgen(js_name=createTransaction)]
 pub fn create_transaction_js(
     utxo_entry_source: JsValue,
@@ -72,6 +73,7 @@ pub fn create_transaction_js(
 }
 
 /// Creates a set of transactions using transaction [`Generator`].
+/// @category Wallet SDK
 #[wasm_bindgen(js_name=createTransactions)]
 pub async fn create_transactions_js(settings: GeneratorSettingsObject) -> Result<Object> {
     let generator = Generator::ctor(settings)?;
@@ -102,6 +104,7 @@ pub async fn create_transactions_js(settings: GeneratorSettingsObject) -> Result
 }
 
 /// Creates a set of transactions using transaction [`Generator`].
+/// @category Wallet SDK
 #[wasm_bindgen(js_name=estimateTransactions)]
 pub async fn estimate_js(settings: GeneratorSettingsObject) -> Result<GeneratorSummary> {
     let generator = Generator::ctor(settings)?;

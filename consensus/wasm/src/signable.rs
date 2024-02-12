@@ -7,6 +7,7 @@ use serde_wasm_bindgen::to_value;
 use std::str::FromStr;
 
 /// Represents a generic mutable transaction
+/// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct SignableTransaction {

@@ -331,6 +331,10 @@ pub struct AccountsGetResponse {
     pub account_descriptor: AccountDescriptor,
 }
 
+/// Specifies the type of an account address to create.
+/// The address can bea receive address or a change address.
+///
+/// @category Wallet API
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen]

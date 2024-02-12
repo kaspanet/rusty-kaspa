@@ -12,6 +12,7 @@ pub mod txscript;
 pub mod types;
 pub mod utils;
 pub mod utxo;
+pub mod version;
 
 pub use input::*;
 pub use keypair::*;
@@ -24,3 +25,4 @@ pub use txscript::*;
 pub use types::*;
 pub use utils::*;
 pub use utxo::*;
+pub use version::*;

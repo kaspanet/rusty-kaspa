@@ -10,7 +10,6 @@ use kaspa_bip32::{
 use ripemd::Ripemd160;
 use sha2::{Digest, Sha256};
 use std::fmt::Debug;
-use wasm_bindgen::prelude::*;
 
 fn get_fingerprint<K>(private_key: &K) -> KeyFingerprint
 where
@@ -39,7 +38,6 @@ impl Inner {
 }
 
 #[derive(Clone)]
-#[wasm_bindgen(inspectable)]
 pub struct PubkeyDerivationManagerV0 {
     inner: Arc<Mutex<Option<Inner>>>,
     index: Arc<Mutex<u32>>,
@@ -215,9 +213,9 @@ impl PubkeyDerivationManagerV0 {
     }
 }
 
-#[wasm_bindgen]
+// #[wasm_bindgen]
 impl PubkeyDerivationManagerV0 {
-    #[wasm_bindgen(getter, js_name = publicKey)]
+    // #[wasm_bindgen(getter, js_name = publicKey)]
     pub fn get_public_key(&self) -> String {
         self.public_key().to_string(None)
     }

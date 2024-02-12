@@ -1,3 +1,2 @@
-wasm-pack build --target nodejs --dev --out-dir docs/kaspa $@
-
-typedoc --out docs/typedoc docs/index.ts
+wasm-pack build --target web --dev --out-dir docs/kaspa $@
+typedoc --name "Kaspa WASM32 SDK" --sourceLinkExternal --readme ./README.md --out docs/typedoc ./docs/index.ts

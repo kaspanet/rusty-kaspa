@@ -5,6 +5,7 @@ use crate::utxo as native;
 use kaspa_wrpc_client::wasm::RpcClient;
 use workflow_wasm::channel::EventDispatcher;
 
+/// @category Wallet SDK
 #[derive(Clone)]
 #[wasm_bindgen(inspectable)]
 pub struct UtxoProcessor {

@@ -6,6 +6,7 @@ use workflow_wasm::abi::ref_from_abi;
 
 pub type UtxoEntryId = TransactionOutpointInner;
 
+/// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]
@@ -34,6 +35,7 @@ impl UtxoEntry {
     }
 }
 
+/// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct UtxoEntryReference {
@@ -161,6 +163,7 @@ impl TryIntoUtxoEntryReferences for JsValue {
 /// by `UtxoEntryReference` struct. This data structure is used
 /// internally by the framework, but is exposed for convenience.
 /// Please consider using `UtxoContect` instead.
+/// @category Wallet SDK
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct UtxoEntries(Arc<Vec<UtxoEntryReference>>);

@@ -28,6 +28,14 @@ macro_rules! try_from {
     };
 }
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_CATEGORY_WALLET: &'static str = r#"
+/**
+ * @categoryDescription Wallet API
+ * Wallet API for interfacing with Rusty Kaspa Wallet implementation.
+ */
+"#;
+
 // fn try_get_secret(object: &Object, key: &str) -> Result<Secret> {
 //     let value = object.get_value(key)?;
 //     let secret = value.as_string().ok_or(Error::InvalidArgument(key.to_string()))?;
@@ -48,6 +56,9 @@ macro_rules! try_from {
 declare! {
     IPingRequest,
     r#"
+    /**
+     * 
+     */
     export interface IPingRequest {
         message?: string;
     }
@@ -62,6 +73,9 @@ try_from! ( args: IPingRequest, PingRequest, {
 declare! {
     IPingResponse,
     r#"
+    /**
+     * 
+     */
     export interface IPingResponse {
         message?: string;
     }
@@ -81,6 +95,11 @@ try_from! ( args: PingResponse, IPingResponse, {
 declare! {
     IBatchRequest,
     r#"
+    /**
+     * Suspend storage operations until invocation of flush().
+     * 
+     * @category Wallet API
+     */
     export interface IBatchRequest { }
     "#,
 }
@@ -92,6 +111,11 @@ try_from! ( _args: IBatchRequest, BatchRequest, {
 declare! {
     IBatchResponse,
     r#"
+    /**
+     * 
+     * 
+     * @category Wallet API
+     */
     export interface IBatchResponse { }
     "#,
 }
@@ -106,6 +130,11 @@ try_from! ( _args: BatchResponse, IBatchResponse, {
 declare! {
     IFlushRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IFlushRequest {
         walletSecret : string;
     }
@@ -120,6 +149,11 @@ try_from! ( args: IFlushRequest, FlushRequest, {
 declare! {
     IFlushResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IFlushResponse { }
     "#,
 }
@@ -134,6 +168,11 @@ try_from! ( _args: FlushResponse, IFlushResponse, {
 declare! {
     IConnectRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IConnectRequest {
         url : string;
         networkId : NetworkId | string;
@@ -150,6 +189,11 @@ try_from! ( args: IConnectRequest, ConnectRequest, {
 declare! {
     IConnectResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IConnectResponse { }
     "#,
 }
@@ -164,6 +208,11 @@ try_from! ( _args: ConnectResponse, IConnectResponse, {
 declare! {
     IDisconnectRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IDisconnectRequest { }
     "#,
 }
@@ -175,6 +224,11 @@ try_from! ( _args: IDisconnectRequest, DisconnectRequest, {
 declare! {
     IDisconnectResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IDisconnectResponse { }
     "#,
 }
@@ -189,6 +243,11 @@ try_from! ( _args: DisconnectResponse, IDisconnectResponse, {
 declare! {
     IGetStatusRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IGetStatusRequest { }
     "#,
 }
@@ -200,6 +259,11 @@ try_from! ( _args: IGetStatusRequest, GetStatusRequest, {
 declare! {
     IGetStatusResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IGetStatusResponse {
         isConnected : boolean;
         isSynced : boolean;
@@ -230,6 +294,11 @@ try_from! ( args: GetStatusResponse, IGetStatusResponse, {
 declare! {
     IWalletEnumerateRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IWalletEnumerateRequest { }
     "#,
 }
@@ -241,6 +310,11 @@ try_from! ( _args: IWalletEnumerateRequest, WalletEnumerateRequest, {
 declare! {
     IWalletEnumerateResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IWalletEnumerateResponse {
         walletDescriptors: WalletDescriptor[];
     }
@@ -259,6 +333,11 @@ try_from! ( args: WalletEnumerateResponse, IWalletEnumerateResponse, {
 declare! {
     IWalletCreateRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IWalletCreateRequest {
         // walletSecret: string,
         // walletFilename: string | undefined,
@@ -277,6 +356,11 @@ try_from! ( _args: IWalletCreateRequest, WalletCreateRequest, {
 declare! {
     IWalletCreateResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IWalletCreateResponse {
         // walletDescriptor: string,
     }
@@ -298,6 +382,11 @@ try_from! ( _args: WalletCreateResponse, IWalletCreateResponse, {
 declare! {
     IWalletOpenRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IWalletOpenRequest {
         walletSecret: string;
         walletFilename?: string;
@@ -317,6 +406,11 @@ try_from! ( args: IWalletOpenRequest, WalletOpenRequest, {
 declare! {
     IWalletOpenResponse,
     r#"
+    /**
+     * 
+     * 
+     * @category Wallet API
+     */
     export interface IWalletOpenResponse {
         accountDescriptors: IAccountDescriptor[];
     }
@@ -337,6 +431,11 @@ try_from!(args: WalletOpenResponse, IWalletOpenResponse, {
 declare! {
     IWalletCloseRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IWalletCloseRequest { }
     "#,
 }
@@ -348,6 +447,11 @@ try_from! ( _args: IWalletCloseRequest, WalletCloseRequest, {
 declare! {
     IWalletCloseResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IWalletCloseResponse { }
     "#,
 }
@@ -362,6 +466,11 @@ try_from! ( _args: WalletCloseResponse, IWalletCloseResponse, {
 declare! {
     IWalletReloadRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IWalletReloadRequest { }
     "#,
 }
@@ -374,6 +483,11 @@ try_from! ( args: IWalletReloadRequest, WalletReloadRequest, {
 declare! {
     IWalletReloadResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IWalletReloadResponse { }
     "#,
 }
@@ -388,6 +502,11 @@ try_from! ( _args: WalletReloadResponse, IWalletReloadResponse, {
 declare! {
     IWalletChangeSecretRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IWalletChangeSecretRequest {
         oldWalletSecret: string;
         newWalletSecret: string;
@@ -404,6 +523,11 @@ try_from! ( args: IWalletChangeSecretRequest, WalletChangeSecretRequest, {
 declare! {
     IWalletChangeSecretResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IWalletChangeSecretResponse { }
     "#,
 }
@@ -418,6 +542,11 @@ try_from! ( _args: WalletChangeSecretResponse, IWalletChangeSecretResponse, {
 declare! {
     IWalletExportRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IWalletExportRequest {
         walletSecret: string;
         includeTransactions: boolean;
@@ -434,6 +563,11 @@ try_from! ( args: IWalletExportRequest, WalletExportRequest, {
 declare! {
     IWalletExportResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IWalletExportResponse {
         walletData: string;
     }
@@ -452,6 +586,11 @@ try_from! ( args: WalletExportResponse, IWalletExportResponse, {
 declare! {
     IWalletImportRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IWalletImportRequest {
         walletSecret: string;
         walletData: string;
@@ -470,6 +609,11 @@ try_from! ( _args: IWalletImportRequest, WalletImportRequest, {
 declare! {
     IWalletImportResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IWalletImportResponse { }
     "#,
 }
@@ -484,6 +628,11 @@ try_from! ( _args: WalletImportResponse, IWalletImportResponse, {
 declare! {
     IPrvKeyDataEnumerateRequest,
     r#"
+    /**
+     * 
+     * 
+     * @category Wallet API
+     */
     export interface IPrvKeyDataEnumerateRequest { }
     "#,
 }
@@ -496,6 +645,11 @@ try_from! ( _args: IPrvKeyDataEnumerateRequest, PrvKeyDataEnumerateRequest, {
 declare! {
     IPrvKeyDataEnumerateResponse,
     r#"
+    /**
+     * 
+     * 
+     * @category Wallet API
+     */
     export interface IPrvKeyDataEnumerateResponse {
         // prvKeyData: PrvKeyData[],
     }
@@ -515,6 +669,11 @@ try_from! ( _args: PrvKeyDataEnumerateResponse, IPrvKeyDataEnumerateResponse, {
 declare! {
     IPrvKeyDataCreateRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IPrvKeyDataCreateRequest {
         walletSecret: string;
         // prvKeyDataArgs: PrvKeyDataArgs;
@@ -534,6 +693,11 @@ try_from! ( _args: IPrvKeyDataCreateRequest, PrvKeyDataCreateRequest, {
 declare! {
     IPrvKeyDataCreateResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IPrvKeyDataCreateResponse {
         // prvKeyDataId: string, ???
     }
@@ -551,6 +715,11 @@ try_from!(_args: PrvKeyDataCreateResponse, IPrvKeyDataCreateResponse, {
 declare! {
     IPrvKeyDataRemoveRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IPrvKeyDataRemoveRequest {
         walletSecret: string;
         prvKeyDataId: string;
@@ -567,6 +736,11 @@ try_from! ( args: IPrvKeyDataRemoveRequest, PrvKeyDataRemoveRequest, {
 declare! {
     IPrvKeyDataRemoveResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IPrvKeyDataRemoveResponse { }
     "#,
 }
@@ -581,6 +755,11 @@ try_from! ( _args: PrvKeyDataRemoveResponse, IPrvKeyDataRemoveResponse, {
 declare! {
     IPrvKeyDataGetRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IPrvKeyDataGetRequest {
         walletSecret: string;
         prvKeyDataId: string;
@@ -597,6 +776,11 @@ try_from! ( args: IPrvKeyDataGetRequest, PrvKeyDataGetRequest, {
 declare! {
     IPrvKeyDataGetResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IPrvKeyDataGetResponse {
         // prvKeyData: PrvKeyData,
     }
@@ -615,6 +799,11 @@ try_from! ( _args: PrvKeyDataGetResponse, IPrvKeyDataGetResponse, {
 declare! {
     IAccountsEnumerateRequest,
     r#"
+    /**
+     * 
+     * 
+     * @category Wallet API
+     */
     export interface IAccountsEnumerateRequest { }
     "#,
 }
@@ -626,6 +815,11 @@ try_from!(_args: IAccountsEnumerateRequest, AccountsEnumerateRequest, {
 declare! {
     IAccountsEnumerateResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsEnumerateResponse {
         accountDescriptors: IAccountDescriptor[];
     }
@@ -645,6 +839,11 @@ try_from! ( args: AccountsEnumerateResponse, IAccountsEnumerateResponse, {
 declare! {
     IAccountsRenameRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsRenameRequest {
         accountId: string;
         name?: string;
@@ -663,6 +862,11 @@ try_from! ( args: IAccountsRenameRequest, AccountsRenameRequest, {
 declare! {
     IAccountsRenameResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsRenameResponse { }
     "#,
 }
@@ -678,6 +882,11 @@ try_from! ( _args: AccountsRenameResponse, IAccountsRenameResponse, {
 declare! {
     IAccountsDiscoveryRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsDiscoveryRequest {
         // TODO
     }
@@ -693,6 +902,11 @@ try_from! ( _args: IAccountsDiscoveryRequest, AccountsDiscoveryRequest, {
 declare! {
     IAccountsDiscoveryResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsDiscoveryResponse {
         // TODO
     }
@@ -711,6 +925,11 @@ try_from! ( _args: AccountsDiscoveryResponse, IAccountsDiscoveryResponse, {
 declare! {
     IAccountsCreateRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsCreateRequest {
         walletSecret: string;
         // accountKind: AccountKind | string,
@@ -729,6 +948,11 @@ try_from! (_args: IAccountsCreateRequest, AccountsCreateRequest, {
 declare! {
     IAccountsCreateResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsCreateResponse {
         accountDescriptor : IAccountDescriptor;
     }
@@ -747,6 +971,11 @@ try_from!(args: AccountsCreateResponse, IAccountsCreateResponse, {
 declare! {
     IAccountsImportRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsImportRequest {
         walletSecret: string;
         // TODO
@@ -762,6 +991,11 @@ try_from! ( _args: IAccountsImportRequest, AccountsImportRequest, {
 declare! {
     IAccountsImportResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsImportResponse {
         // TODO
     }
@@ -780,6 +1014,11 @@ declare! {
     IAccountsActivateRequest,
     "IAccountsActivateRequest",
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsActivateRequest {
         accountIds?: string[],
     }
@@ -795,6 +1034,11 @@ try_from! (_args: IAccountsActivateRequest, AccountsActivateRequest, {
 declare! {
     IAccountsActivateResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsActivateResponse { }
     "#,
 }
@@ -810,6 +1054,11 @@ declare! {
     IAccountsDeactivateRequest,
     "IAccountsDeactivateRequest",
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsDeactivateRequest {
         accountIds?: string[];
     }
@@ -825,6 +1074,11 @@ try_from! ( _args: IAccountsDeactivateRequest, AccountsDeactivateRequest, {
 declare! {
     IAccountsDeactivateResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsDeactivateResponse { }
     "#,
 }
@@ -839,6 +1093,11 @@ try_from! ( _args: AccountsDeactivateResponse, IAccountsDeactivateResponse, {
 declare! {
     IAccountsGetRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsGetRequest {
         accountId: string;
     }
@@ -855,6 +1114,11 @@ try_from! ( args: IAccountsGetRequest, AccountsGetRequest, {
 declare! {
     IAccountsGetResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsGetResponse {
         accountDescriptor: IAccountDescriptor;
     }
@@ -873,6 +1137,11 @@ try_from! ( args: AccountsGetResponse, IAccountsGetResponse, {
 declare! {
     IAccountsCreateNewAddressRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsCreateNewAddressRequest {
         accountId: string;
         addressKind?: NewAddressKind | string,
@@ -896,6 +1165,11 @@ try_from!(args: IAccountsCreateNewAddressRequest, AccountsCreateNewAddressReques
 declare! {
     IAccountsCreateNewAddressResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsCreateNewAddressResponse {
         address: Address;
     }
@@ -913,6 +1187,11 @@ try_from! ( args: AccountsCreateNewAddressResponse, IAccountsCreateNewAddressRes
 declare! {
     IAccountsSendRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsSendRequest {
         accountId : string;
         walletSecret : string;
@@ -942,6 +1221,11 @@ try_from! ( args: IAccountsSendRequest, AccountsSendRequest, {
 declare! {
     IAccountsSendResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsSendResponse {
         // TODO
     }
@@ -959,6 +1243,11 @@ try_from!(_args: AccountsSendResponse, IAccountsSendResponse, {
 declare! {
     IAccountsTransferRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsTransferRequest {
         // TODO
     }
@@ -973,6 +1262,11 @@ try_from! ( _args: IAccountsTransferRequest, AccountsTransferRequest, {
 declare! {
     IAccountsTransferResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsTransferResponse {
         // TODO
     }
@@ -990,6 +1284,11 @@ try_from! ( _args: AccountsTransferResponse, IAccountsTransferResponse, {
 declare! {
     IAccountsEstimateRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsEstimateRequest {
         // TODO
     }
@@ -1004,6 +1303,11 @@ try_from! ( _args: IAccountsEstimateRequest, AccountsEstimateRequest, {
 declare! {
     IAccountsEstimateResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAccountsEstimateResponse {
         // TODO
     }
@@ -1021,6 +1325,11 @@ try_from! ( _args: AccountsEstimateResponse, IAccountsEstimateResponse, {
 declare! {
     ITransactionsDataGetRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface ITransactionsDataGetRequest {
         // TODO
     }
@@ -1035,6 +1344,11 @@ try_from! ( _args: ITransactionsDataGetRequest, TransactionsDataGetRequest, {
 declare! {
     ITransactionsDataGetResponse,
     r#"
+    /**
+     * 
+     * 
+     * @category Wallet API
+     */
     export interface ITransactionsDataGetResponse {
         // TODO
     }
@@ -1052,6 +1366,11 @@ try_from! ( _args: TransactionsDataGetResponse, ITransactionsDataGetResponse, {
 declare! {
     ITransactionsReplaceNoteRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface ITransactionsReplaceNoteRequest {
         // TODO
     }
@@ -1066,6 +1385,11 @@ try_from! ( _args: ITransactionsReplaceNoteRequest, TransactionsReplaceNoteReque
 declare! {
     ITransactionsReplaceNoteResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface ITransactionsReplaceNoteResponse {
         // TODO
     }
@@ -1083,6 +1407,11 @@ try_from! ( _args: TransactionsReplaceNoteResponse, ITransactionsReplaceNoteResp
 declare! {
     ITransactionsReplaceMetadataRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface ITransactionsReplaceMetadataRequest {
         // TODO
     }
@@ -1097,6 +1426,11 @@ try_from! ( _args: ITransactionsReplaceMetadataRequest, TransactionsReplaceMetad
 declare! {
     ITransactionsReplaceMetadataResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface ITransactionsReplaceMetadataResponse {
         // TODO
     }
@@ -1114,6 +1448,11 @@ try_from! ( _args: TransactionsReplaceMetadataResponse, ITransactionsReplaceMeta
 declare! {
     IAddressBookEnumerateRequest,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAddressBookEnumerateRequest { }
     "#,
 }
@@ -1125,6 +1464,11 @@ try_from! ( _args: IAddressBookEnumerateRequest, AddressBookEnumerateRequest, {
 declare! {
     IAddressBookEnumerateResponse,
     r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
     export interface IAddressBookEnumerateResponse {
         // TODO
     }

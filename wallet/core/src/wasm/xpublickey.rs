@@ -8,6 +8,7 @@ use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::serde::to_value;
 
+/// @category Wallet SDK
 #[wasm_bindgen]
 pub struct XPublicKey {
     hd_wallet: WalletDerivationManager,

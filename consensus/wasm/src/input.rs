@@ -11,6 +11,7 @@ pub struct TransactionInputInner {
 }
 
 /// Represents a Kaspa transaction input
+/// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct TransactionInput {

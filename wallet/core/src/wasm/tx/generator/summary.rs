@@ -1,6 +1,7 @@
 use crate::imports::*;
 use crate::tx::generator as core;
 
+/// @category Wallet SDK
 #[wasm_bindgen(inspectable)]
 pub struct GeneratorSummary {
     inner: core::GeneratorSummary,

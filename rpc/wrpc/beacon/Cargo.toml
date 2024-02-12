@@ -22,17 +22,19 @@ cfg-if.workspace = true
 thiserror.workspace = true
 kaspa-utils.workspace = true
 
+
 axum = "0.7.4"
+tower = { version = "0.4.13", features = ["buffer","limit"] }
 tracing-subscriber = "0.3.18"
 # hyper = { version = "1.1.0", features = ["server", "http1"] }
 # bytes = "1.5.0"
 # http-body-util = "0.1.0"
-
+# futures-util = "0.3.30"
 
 # async-std.workspace = true
 # async-trait.workspace = true
 # borsh.workspace = true
-# futures.workspace = true
+futures.workspace = true
 # js-sys.workspace = true
 # kaspa-addresses.workspace = true
 # kaspa-consensus-core.workspace = true
@@ -46,7 +48,7 @@ tracing-subscriber = "0.3.18"
 # thiserror.workspace = true
 # wasm-bindgen-futures.workspace = true
 # wasm-bindgen.workspace = true
-# workflow-core.workspace = true
+workflow-core.workspace = true
 # workflow-dom.workspace = true
 # workflow-log.workspace = true
 # workflow-rpc.workspace = true

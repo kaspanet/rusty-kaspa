@@ -3,6 +3,8 @@ use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::prelude::*;
 
+/// Key derivation path
+/// @category Wallet SDK
 #[derive(Clone)]
 #[wasm_bindgen]
 pub struct DerivationPath {

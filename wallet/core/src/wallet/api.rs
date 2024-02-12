@@ -24,8 +24,7 @@ impl WalletApi for super::Wallet {
         let is_synced = self.is_synced();
         let is_open = self.is_open();
         let network_id = self.network_id().ok();
-        let (url, is_wrpc_client) =
-            if let Some(wrpc_client) = self.wrpc_client() { (Some(wrpc_client.url()), true) } else { (None, false) };
+        let (url, is_wrpc_client) = if let Some(wrpc_client) = self.wrpc_client() { (wrpc_client.url(), true) } else { (None, false) };
 
         Ok(GetStatusResponse { is_connected, is_synced, is_open, network_id, url, is_wrpc_client })
     }
