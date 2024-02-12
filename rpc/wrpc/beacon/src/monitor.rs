@@ -1,5 +1,6 @@
 use crate::node::Node;
 use crate::result::Result;
+use futures::{select, FutureExt};
 use kaspa_rpc_core::api::ctl::RpcState;
 use kaspa_rpc_core::api::rpc::RpcApi;
 use kaspa_wrpc_client::{
@@ -11,7 +12,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use workflow_core::channel::*;
 use workflow_core::task::spawn;
-use futures::{select, FutureExt};
 
 pub fn monitor() -> &'static Monitor {
     static MONITOR: OnceLock<Monitor> = OnceLock::new();
@@ -32,21 +32,11 @@ impl NodeConnection {
         let shutdown_ctl = DuplexChannel::oneshot();
         let connected = Arc::new(AtomicBool::new(false));
         let clients = Arc::new(AtomicU64::new(0));
-        Ok(Self {
-            node,
-            client,
-            shutdown_ctl,
-            connected,
-            clients,
-        })
+        Ok(Self { node, client, shutdown_ctl, connected, clients })
     }
 
     async fn connect(&self) -> Result<()> {
-        let options = ConnectOptions {
-            block_async_connect: false,
-            strategy: ConnectStrategy::Retry,
-            ..Default::default()
-        };
+        let options = ConnectOptions { block_async_connect: false, strategy: ConnectStrategy::Retry, ..Default::default() };
 
         self.client.connect(options).await?;
         Ok(())

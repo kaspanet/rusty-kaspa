@@ -530,7 +530,6 @@ impl TryFrom<IAddressArray> for Vec<Address> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use crate::*;

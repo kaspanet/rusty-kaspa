@@ -22,9 +22,7 @@ pub async fn server(args: &Args) -> Result<(TcpListener, Router)> {
     tracing_subscriber::fmt::init();
 
     // build our application with a route
-    let app = Router::new()
-        .route("/status", get(status))
-        .route("/v1/wrpc/:protocol/:network", get(handler));
+    let app = Router::new().route("/status", get(status)).route("/v1/wrpc/:protocol/:network", get(handler));
 
     let app = if let Some(rate_limit) = args.rate_limit.as_ref() {
         println!("Setting rate limit to: {} requests per {} seconds", rate_limit.requests, rate_limit.period);

@@ -1,11 +1,11 @@
 #![allow(non_snake_case)]
 
-use js_sys::Object;
-use kaspa_addresses::Address;
-use kaspa_addresses::IAddressArray;
 use crate::error::RpcError as Error;
 use crate::error::RpcResult as Result;
 use crate::model::*;
+use js_sys::Object;
+use kaspa_addresses::Address;
+use kaspa_addresses::IAddressArray;
 use kaspa_consensus_wasm::SignableTransaction;
 use kaspa_consensus_wasm::Transaction;
 use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;

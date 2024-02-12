@@ -59,4 +59,3 @@ pub fn try_parse_nodes(toml: &str) -> Result<Vec<Arc<Node>>> {
         .collect::<Vec<_>>();
     Ok(nodes)
 }
-

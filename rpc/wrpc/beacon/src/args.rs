@@ -1,5 +1,5 @@
-use std::str::FromStr;
 pub use clap::Parser;
+use std::str::FromStr;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

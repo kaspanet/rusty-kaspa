@@ -400,4 +400,3 @@ build_wrpc_wasm_bindgen_interface!(
         Unban,
     ]
 );
-
