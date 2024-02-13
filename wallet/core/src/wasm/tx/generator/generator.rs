@@ -56,7 +56,7 @@ interface IGeneratorSettingsObject {
     /**
      * Optional data payload to be included in the transaction.
      */
-    payload?: Uint8Array | string;
+    payload?: Uint8Array | HexString;
 }
 "#;
 
