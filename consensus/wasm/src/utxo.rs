@@ -1,9 +1,30 @@
 use crate::imports::*;
+use crate::outpoint::{TransactionOutpoint, TransactionOutpointInner};
 use crate::result::Result;
-use crate::{TransactionOutpoint, TransactionOutpointInner};
+use cfg_if::cfg_if;
 use kaspa_addresses::Address;
 use workflow_wasm::abi::ref_from_abi;
 
+cfg_if! {
+    if #[cfg(feature = "wasm32-sdk")] {
+        #[wasm_bindgen(typescript_custom_section)]
+        const TS_UTXO_ENTRY: &'static str = r#"
+        /**
+         * Interface defines the structure of a UTXO entry.
+         * 
+         * @category Consensus
+         */
+        export interface IUtxoEntry {
+            address: Address | undefined;
+            outpoint: ITransactionOutpoint;
+            amount : bigint;
+            scriptPublicKey : IScriptPublicKey;
+            blockDaaScore: bigint;
+            isCoinbase: boolean;
+        }
+        "#;
+    }
+}
 pub type UtxoEntryId = TransactionOutpointInner;
 
 /// @category Wallet SDK
@@ -43,34 +64,34 @@ pub struct UtxoEntryReference {
     pub utxo: Arc<UtxoEntry>,
 }
 
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen)]
 impl UtxoEntryReference {
-    #[wasm_bindgen(getter)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(getter))]
     pub fn entry(&self) -> UtxoEntry {
         self.as_ref().clone()
     }
 
-    #[wasm_bindgen(js_name = "getTransactionId")]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(js_name = "getTransactionId"))]
     pub fn transaction_id_as_string(&self) -> String {
         self.utxo.outpoint.get_transaction_id_as_string()
     }
 
-    #[wasm_bindgen(js_name = "getId")]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(js_name = "getId"))]
     pub fn id_string(&self) -> String {
         self.utxo.outpoint.id_string()
     }
 
-    #[wasm_bindgen(getter)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(getter))]
     pub fn amount(&self) -> u64 {
         self.utxo.amount()
     }
 
-    #[wasm_bindgen(getter, js_name = "isCoinbase")]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(getter, js_name = "isCoinbase"))]
     pub fn is_coinbase(&self) -> bool {
         self.utxo.entry.is_coinbase
     }
 
-    #[wasm_bindgen(getter, js_name = "blockDaaScore")]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(getter, js_name = "blockDaaScore"))]
     pub fn block_daa_score(&self) -> u64 {
         self.utxo.entry.block_daa_score
     }
@@ -151,6 +172,7 @@ pub trait TryIntoUtxoEntryReferences {
     fn try_into_utxo_entry_references(&self) -> Result<Vec<UtxoEntryReference>>;
 }
 
+#[cfg(feature = "wasm32-sdk")]
 impl TryIntoUtxoEntryReferences for JsValue {
     fn try_into_utxo_entry_references(&self) -> Result<Vec<UtxoEntryReference>> {
         Array::from(self).iter().map(UtxoEntryReference::try_from).collect()
@@ -165,7 +187,7 @@ impl TryIntoUtxoEntryReferences for JsValue {
 /// Please consider using `UtxoContect` instead.
 /// @category Wallet SDK
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
-#[wasm_bindgen(inspectable)]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(inspectable))]
 pub struct UtxoEntries(Arc<Vec<UtxoEntryReference>>);
 
 impl UtxoEntries {
@@ -178,21 +200,22 @@ impl UtxoEntries {
     }
 }
 
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen)]
 impl UtxoEntries {
     /// Create a new `UtxoEntries` struct with a set of entries.
-    #[wasm_bindgen(constructor)]
+    #[cfg(feature = "wasm32-sdk")]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(constructor))]
     pub fn js_ctor(js_value: JsValue) -> Result<UtxoEntries> {
         js_value.try_into()
     }
 
-    #[wasm_bindgen(getter = items)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(getter = items))]
     pub fn get_items_as_js_array(&self) -> JsValue {
         let items = self.0.as_ref().clone().into_iter().map(<UtxoEntryReference as Into<JsValue>>::into);
         Array::from_iter(items).into()
     }
 
-    #[wasm_bindgen(setter = items)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(setter = items))]
     pub fn set_items_from_js_array(&mut self, js_value: &JsValue) {
         let items = Array::from(js_value)
             .iter()
@@ -259,6 +282,7 @@ impl From<Vec<UtxoEntryReference>> for UtxoEntries {
     }
 }
 
+#[cfg(feature = "wasm32-sdk")]
 impl TryFrom<JsValue> for UtxoEntries {
     type Error = Error;
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
@@ -270,6 +294,7 @@ impl TryFrom<JsValue> for UtxoEntries {
     }
 }
 
+#[cfg(feature = "wasm32-sdk")]
 impl TryFrom<JsValue> for UtxoEntryReference {
     type Error = Error;
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
@@ -277,6 +302,7 @@ impl TryFrom<JsValue> for UtxoEntryReference {
     }
 }
 
+#[cfg(feature = "wasm32-sdk")]
 impl TryFrom<&JsValue> for UtxoEntryReference {
     type Error = Error;
     fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {

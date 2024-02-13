@@ -4,6 +4,41 @@ use crate::output::TransactionOutput;
 use crate::result::Result;
 use kaspa_consensus_core::subnets::{self, SubnetworkId};
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_TRANSACTION: &'static str = r#"
+/**
+ * Interface defining the structure of a transaction.
+ * 
+ * @category Consensus
+ */
+export interface ITransaction {
+    version: number;
+    inputs: ITransactionInput[];
+    outputs: ITransactionOutput[];
+    lockTime: bigint;
+    subnetworkId: HexString;
+    gas: bigint;
+    payload: HexString;
+
+    /** Optional verbose data provided by RPC */
+    verboseData?: ITransactionVerboseData;
+}
+
+/**
+ * Optional transaction verbose data.
+ * 
+ * @category Node RPC
+ */
+export interface ITransactionVerboseData {
+    transactionId : HexString;
+    hash : HexString;
+    mass : bigint;
+    blockHash : HexString;
+    blockTime : bigint;
+}
+
+"#;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionInner {

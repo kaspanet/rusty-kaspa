@@ -33,6 +33,18 @@ use wasm_bindgen::prelude::wasm_bindgen;
 //Represents a Set of [`ScriptPublicKey`]s
 pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_SCRIPT_PUBLIC_KEY: &'static str = r#"
+/**
+ * Interface defines the structure of a Script Public Key.
+ * 
+ * @category Consensus
+ */
+export interface IScriptPublicKey {
+    script: HexString;
+}
+"#;
+
 /// Represents a Kaspad ScriptPublicKey
 /// @category Consensus
 #[derive(Default, PartialEq, Eq, Clone, Hash)]

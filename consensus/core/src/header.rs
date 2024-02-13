@@ -8,6 +8,30 @@ use serde_wasm_bindgen::*;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::prelude::*;
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_HEADER: &'static str = r#"
+/**
+ * Interface defining the structure of a block header.
+ * 
+ * @category Consensus
+ */
+export interface IHeader {
+    hash: HexString;
+    version: number;
+    parentsByLevel: Array<Array<HexString>>;
+    hashMerkleRoot: HexString;
+    acceptedIdMerkleRoot: HexString;
+    utxoCommitment: HexString;
+    timestamp: bigint;
+    bits: number;
+    nonce: bigint;
+    daaScore: bigint;
+    blueWork: bigint;
+    blueScore: bigint;
+    pruningPoint: HexString;
+}
+"#;
+
 /// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]

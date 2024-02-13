@@ -1,6 +1,23 @@
 use crate::imports::*;
 use crate::result::Result;
 
+cfg_if! {
+    if #[cfg(feature = "wasm32-sdk")] {
+        #[wasm_bindgen(typescript_custom_section)]
+        const TS_TRANSACTION_OUTPOINT: &'static str = r#"
+        /**
+         * Interface defines the structure of a transaction outpoint (used by transaction input).
+         * 
+         * @category Consensus
+         */
+        export interface ITransactionOutpoint {
+            transactionId: HexString;
+            index: number;
+        }
+        "#;
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutpointInner {
@@ -88,24 +105,24 @@ impl TransactionOutpoint {
     }
 }
 
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen)]
 impl TransactionOutpoint {
-    #[wasm_bindgen(constructor)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(constructor))]
     pub fn new(transaction_id: TransactionId, index: u32) -> TransactionOutpoint {
         Self { inner: Arc::new(TransactionOutpointInner { transaction_id, index }) }
     }
 
-    #[wasm_bindgen(js_name = "getId")]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(js_name = "getId"))]
     pub fn id_string(&self) -> String {
         format!("{}-{}", self.get_transaction_id_as_string(), self.get_index())
     }
 
-    #[wasm_bindgen(getter, js_name = transactionId)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(getter, js_name = transactionId))]
     pub fn get_transaction_id_as_string(&self) -> String {
         self.inner().transaction_id.to_string()
     }
 
-    #[wasm_bindgen(getter, js_name = index)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(getter, js_name = index))]
     pub fn get_index(&self) -> TransactionIndexType {
         self.inner().index
     }

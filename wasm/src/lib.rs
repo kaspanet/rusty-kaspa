@@ -125,25 +125,31 @@ For more details, please follow the [**integrating with Kaspa**](https://kaspa.a
 
 #![allow(unused_imports)]
 
-pub mod utils;
-pub use crate::utils::*;
+#[cfg(all(feature = "wasm32-sdk", not(target_arch = "wasm32")))]
+compiler_error!("`kaspa-wasm` crate for WASM32 target must be built with `--features wasm32-sdk`");
 
-pub use kaspa_addresses::{Address, Version as AddressVersion};
-pub use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
-pub use kaspa_pow::wasm::*;
+cfg_if::cfg_if! {
 
-pub mod rpc {
-    //! Kaspa RPC interface
-    //!
+    if #[cfg(feature = "wasm32-sdk")] {
 
-    pub mod messages {
-        //! Kaspa RPC messages
-        pub use kaspa_rpc_core::model::message::*;
+        pub use kaspa_addresses::{Address, Version as AddressVersion};
+        pub use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
+        pub use kaspa_pow::wasm::*;
+
+        pub mod rpc {
+            //! Kaspa RPC interface
+            //!
+
+            pub mod messages {
+                //! Kaspa RPC messages
+                pub use kaspa_rpc_core::model::message::*;
+            }
+            pub use kaspa_rpc_core::api::rpc::RpcApi;
+            pub use kaspa_wrpc_client::wasm::RpcClient;
+        }
+
+        pub use kaspa_consensus_wasm::*;
+
+        pub use kaspa_wallet_core::wasm::{tx::*, utils::*, utxo::*, wallet::*, xprivatekey::*, xpublickey::*};
     }
-    pub use kaspa_rpc_core::api::rpc::RpcApi;
-    pub use kaspa_wrpc_client::wasm::RpcClient;
 }
-
-pub use kaspa_consensus_wasm::*;
-
-pub use kaspa_wallet_core::wasm::{tx::*, utils::*, utxo::*, wallet::*, xprivatekey::*, xpublickey::*};

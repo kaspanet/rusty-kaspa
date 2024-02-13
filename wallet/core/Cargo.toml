@@ -10,9 +10,9 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-no-unsafe-eval = ["workflow-core/no-unsafe-eval","workflow-rpc/no-unsafe-eval"]
 multi-user = []
-default = []
+wasm32-sdk = ["kaspa-consensus-wasm/wasm32-sdk","kaspa-consensus-core/wasm32-sdk","kaspa-wrpc-client/wasm32-sdk"]
+# default = ["wasm32-sdk"]
 
 [lib]
 crate-type = ["cdylib", "lib"]

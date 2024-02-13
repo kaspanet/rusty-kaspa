@@ -36,6 +36,36 @@ const TS_CATEGORY_RPC: &'static str = r#"
 
 // ---
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_ACCEPTED_TRANSACTION_IDS: &'static str = r#"
+    /**
+     * Accepted transaction IDs.
+     * 
+     * @category Node RPC
+     */
+    export interface IAcceptedTransactionIds {
+        acceptingBlockHash : HexString;
+        acceptedTransactionIds : HexString[];
+    }
+"#;
+
+#[wasm_bindgen(typescript_custom_section)]
+const TS_UTXO_BY_ADDRESSES_ENTRY: &'static str = r#"
+    /**
+     * Collection of data returned by the GetUtxosByAddresses method.
+     * 
+     * @category Node RPC
+     */
+    export interface IUtxosByAddressesEntry {
+        // TODO
+        address? : string;
+        outpoint: ITransactionOutpoint;
+        utxoEntry : IUtxoEntry;
+    }
+"#;
+
+// ---
+
 declare! {
     IPingRequest,
     r#"
@@ -99,7 +129,8 @@ declare! {
      * @category Node RPC
      */
     export interface IGetBlockCountResponse {
-        [key: string]: any
+        headerCount : bigint;
+        blockCount : bigint;
     }
     "#,
 }
@@ -135,7 +166,16 @@ declare! {
      * @category Node RPC
      */
     export interface IGetBlockDagInfoResponse {
-        [key: string]: any
+        network: string;
+        blockCount: bigint;
+        headerCount: bigint;
+        tipHashes: HexString[];
+        difficulty: number;
+        pastMedianTime: bigint;
+        virtualParentHashes: HexString[];
+        pruningPointHash: HexString;
+        virtualDaaScore: bigint;
+        sink: HexString;
     }
     "#,
 }
@@ -171,7 +211,8 @@ declare! {
      * @category Node RPC
      */
     export interface IGetCoinSupplyResponse {
-        [key: string]: any
+        maxSompi: bigint;
+        circulatingSompi: bigint;
     }
     "#,
 }
@@ -243,7 +284,15 @@ declare! {
      * @category Node RPC
      */
     export interface IGetInfoResponse {
-        [key: string]: any
+        p2pId : string;
+        mempoolSize : bigint;
+        serverVersion : string;
+        isUtxoIndexed : boolean;
+        isSynced : boolean;
+        /** GRPC ONLY */
+        hasNotifyCommand : boolean;
+        /** GRPC ONLY */
+        hasMessageId : boolean;
     }
     "#,
 }
@@ -351,7 +400,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetSinkResponse {
-        [key: string]: any
+        sink : HexString;
     }
     "#,
 }
@@ -387,7 +436,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetSinkBlueScoreResponse {
-        [key: string]: any
+        blueScore : bigint;
     }
     "#,
 }
@@ -422,9 +471,7 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IShutdownResponse {
-        [key: string]: any
-    }
+    export interface IShutdownResponse { }
     "#,
 }
 
@@ -459,7 +506,12 @@ declare! {
      * @category Node RPC
      */
     export interface IGetServerInfoResponse {
-        [key: string]: any
+        rpcApiVersion : number[];
+        serverVersion : string;
+        networkId : string;
+        hasUtxoIndex : boolean;
+        isSynced : boolean;
+        virtualDaaScore : bigint;
     }
     "#,
 }
@@ -495,7 +547,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetSyncStatusResponse {
-        [key: string]: any
+        isSynced : boolean;
     }
     "#,
 }
@@ -518,7 +570,9 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IAddPeerRequest { }
+    export interface IAddPeerRequest {
+        // TODO
+    }
     "#,
 }
 
@@ -534,9 +588,7 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IAddPeerResponse {
-        [key: string]: any
-    }
+    export interface IAddPeerResponse { }
     "#,
 }
 
@@ -545,7 +597,7 @@ try_from! ( args: AddPeerResponse, IAddPeerResponse, {
 });
 
 // ---
-
+// TODO
 declare! {
     IBanRequest,
     r#"
@@ -554,7 +606,9 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IBanRequest { }
+    export interface IBanRequest {
+        // TODO
+    }
     "#,
 }
 
@@ -570,9 +624,7 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IBanResponse {
-        [key: string]: any
-    }
+    export interface IBanResponse { }
     "#,
 }
 
@@ -590,7 +642,10 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IEstimateNetworkHashesPerSecondRequest { }
+    export interface IEstimateNetworkHashesPerSecondRequest {
+        windowSize : number;
+        startHash? : HexString;
+    }
     "#,
 }
 
@@ -607,7 +662,7 @@ declare! {
      * @category Node RPC
      */
     export interface IEstimateNetworkHashesPerSecondResponse {
-        [key: string]: any
+        networkHashesPerSecond : bigint;
     }
     "#,
 }
@@ -626,12 +681,21 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IGetBalanceByAddressRequest { }
+    export interface IGetBalanceByAddressRequest {
+        address : Address | string;
+    }
     "#,
 }
 
 try_from! ( args: IGetBalanceByAddressRequest, GetBalanceByAddressRequest, {
-    Ok(from_value(args.into())?)
+    let js_value = JsValue::from(args);
+    let request = if let Ok(address) = Address::try_from(js_value.clone()) {
+        GetBalanceByAddressRequest { address }
+    } else {
+        // TODO - evaluate Object property
+        from_value::<GetBalanceByAddressRequest>(js_value)?
+    };
+    Ok(request)
 });
 
 declare! {
@@ -643,7 +707,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetBalanceByAddressResponse {
-        [key: string]: any
+        balance : bigint;
     }
     "#,
 }
@@ -662,12 +726,21 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IGetBalancesByAddressesRequest { }
+    export interface IGetBalancesByAddressesRequest {
+        addresses : Address[] | string[];
+    }
     "#,
 }
 
 try_from! ( args: IGetBalancesByAddressesRequest, GetBalancesByAddressesRequest, {
-    Ok(from_value(args.into())?)
+    let js_value = JsValue::from(args);
+    let request = if let Ok(addresses) = Vec::<Address>::try_from(IAddressArray::from(js_value.clone())) {
+        GetBalancesByAddressesRequest { addresses }
+    } else {
+        // TODO - evaluate Object property
+        from_value::<GetBalancesByAddressesRequest>(js_value)?
+    };
+    Ok(request)
 });
 
 declare! {
@@ -678,8 +751,17 @@ declare! {
      * 
      * @category Node RPC
      */
+    export interface IBalancesByAddressesEntry {
+        address : Address;
+        balance : bigint;
+    }
+    /**
+     * 
+     * 
+     * @category Node RPC
+     */
     export interface IGetBalancesByAddressesResponse {
-        [key: string]: any
+        entries : IBalancesByAddressesEntry[];
     }
     "#,
 }
@@ -698,7 +780,10 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IGetBlockRequest { }
+    export interface IGetBlockRequest {
+        hash : HexString;
+        includeTransactions : boolean;
+    }
     "#,
 }
 
@@ -715,7 +800,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetBlockResponse {
-        [key: string]: any
+        block : IBlock;
     }
     "#,
 }
@@ -734,7 +819,11 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IGetBlocksRequest { }
+    export interface IGetBlocksRequest {
+        lowHash? : HexString;
+        includeBlocks : boolean;
+        includeTransactions : boolean;
+    }
     "#,
 }
 
@@ -751,7 +840,8 @@ declare! {
      * @category Node RPC
      */
     export interface IGetBlocksResponse {
-        [key: string]: any
+        blockHashes : HexString[];
+        blocks : IBlock[];
     }
     "#,
 }
@@ -770,7 +860,10 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IGetBlockTemplateRequest { }
+    export interface IGetBlockTemplateRequest {
+        payAddress : Address | string;
+        extraData : HexString;
+    }
     "#,
 }
 
@@ -787,7 +880,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetBlockTemplateResponse {
-        [key: string]: any
+        block : IBlock;
     }
     "#,
 }
@@ -806,7 +899,9 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IGetDaaScoreTimestampEstimateRequest { }
+    export interface IGetDaaScoreTimestampEstimateRequest {
+        daaScores : bigint[];
+    }
     "#,
 }
 
@@ -823,7 +918,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetDaaScoreTimestampEstimateResponse {
-        [key: string]: any
+        timestamps : bigint[];
     }
     "#,
 }
@@ -859,7 +954,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetCurrentNetworkResponse {
-        [key: string]: any
+        network : string;
     }
     "#,
 }
@@ -878,7 +973,11 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IGetHeadersRequest { }
+    export interface IGetHeadersRequest {
+        startHash : HexString;
+        limit : bigint;
+        isAscending : boolean;
+    }
     "#,
 }
 
@@ -895,7 +994,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetHeadersResponse {
-        [key: string]: any
+        headers : IHeader[];
     }
     "#,
 }
@@ -914,7 +1013,10 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IGetMempoolEntriesRequest { }
+    export interface IGetMempoolEntriesRequest {
+        includeOrphanPool? : boolean;
+        filterTransactionPool? : boolean;
+    }
     "#,
 }
 
@@ -931,7 +1033,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetMempoolEntriesResponse {
-        [key: string]: any
+        mempoolEntries : IMempoolEntry[];
     }
     "#,
 }
@@ -950,7 +1052,11 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IGetMempoolEntriesByAddressesRequest { }
+    export interface IGetMempoolEntriesByAddressesRequest {
+        addresses : Address[] | string[];
+        includeOrphanPool? : boolean;
+        filterTransactionPool? : boolean;
+    }
     "#,
 }
 
@@ -967,7 +1073,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetMempoolEntriesByAddressesResponse {
-        [key: string]: any
+        entries : IMempoolEntry[];
     }
     "#,
 }
@@ -986,7 +1092,11 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IGetMempoolEntryRequest { }
+    export interface IGetMempoolEntryRequest {
+        transactionId : HexString;
+        includeOrphanPool? : boolean;
+        filterTransactionPool? : boolean;
+    }
     "#,
 }
 
@@ -1003,7 +1113,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetMempoolEntryResponse {
-        [key: string]: any
+        mempoolEntry : IMempoolEntry;
     }
     "#,
 }
@@ -1022,7 +1132,9 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IGetSubnetworkRequest { }
+    export interface IGetSubnetworkRequest {
+        subnetworkId : HexString;
+    }
     "#,
 }
 
@@ -1039,7 +1151,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetSubnetworkResponse {
-        [key: string]: any
+        gasLimit : bigint;
     }
     "#,
 }
@@ -1067,10 +1179,7 @@ declare! {
 
 try_from! ( args: IGetUtxosByAddressesRequest, GetUtxosByAddressesRequest, {
     let js_value = JsValue::from(args);
-
-
     let request = if let Ok(addresses) = Vec::<Address>::try_from(IAddressArray::from(js_value.clone())) {
-    // let request = if let Ok(addresses) = AddressList::try_from(&js_value) {
         GetUtxosByAddressesRequest { addresses }
     } else {
         from_value::<GetUtxosByAddressesRequest>(js_value)?
@@ -1087,7 +1196,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetUtxosByAddressesResponse {
-        [key: string]: any
+        entries : IUtxosByAddressesEntry[];
     }
     "#,
 }
@@ -1106,7 +1215,10 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IGetVirtualChainFromBlockRequest { }
+    export interface IGetVirtualChainFromBlockRequest {
+        startHash : HexString;
+        includeAcceptedTransactionIds: boolean;
+    }
     "#,
 }
 
@@ -1123,7 +1235,9 @@ declare! {
      * @category Node RPC
      */
     export interface IGetVirtualChainFromBlockResponse {
-        [key: string]: any
+        removedChainBlockHashes : HexString[];
+        addedChainBlockHashes : HexString[];
+        acceptedTransactionIds : IAcceptedTransactionIds[];
     }
     "#,
 }
@@ -1142,7 +1256,9 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IResolveFinalityConflictRequest { }
+    export interface IResolveFinalityConflictRequest {
+        finalityBlockHash: HexString;
+    }
     "#,
 }
 
@@ -1158,9 +1274,7 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IResolveFinalityConflictResponse {
-        [key: string]: any
-    }
+    export interface IResolveFinalityConflictResponse { }
     "#,
 }
 
@@ -1178,7 +1292,10 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface ISubmitBlockRequest { }
+    export interface ISubmitBlockRequest {
+        block : IBlock;
+        allowNonDAABlocks: boolean;
+    }
     "#,
 }
 
@@ -1195,6 +1312,7 @@ declare! {
      * @category Node RPC
      */
     export interface ISubmitBlockResponse {
+        // TODO
         [key: string]: any
     }
     "#,
@@ -1257,7 +1375,7 @@ declare! {
      * @category Node RPC
      */
     export interface ISubmitTransactionResponse {
-        [key: string]: any
+        transactionId : HexString;
     }
     "#,
 }
@@ -1267,7 +1385,7 @@ try_from! ( args: SubmitTransactionResponse, ISubmitTransactionResponse, {
 });
 
 // ---
-
+// TODO
 declare! {
     IUnbanRequest,
     r#"

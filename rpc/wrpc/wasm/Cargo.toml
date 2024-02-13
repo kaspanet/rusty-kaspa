@@ -8,6 +8,9 @@ include.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+wasm32-sdk = ["kaspa-wrpc-client/wasm32-sdk"]
+
 [lib]
 crate-type = ["cdylib", "lib"]
 

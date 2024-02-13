@@ -13,6 +13,7 @@ license = "MIT/Apache-2.0"
 crate-type = ["cdylib"]
 
 [dependencies]
+cfg-if.workspace = true
 js-sys.workspace = true
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
@@ -30,7 +31,8 @@ workflow-log.workspace = true
 
 [features] 
 wallet = [] 
-full = ["wallet"] 
+full = ["wallet"]
+wasm32-sdk = ["kaspa-consensus-wasm/wasm32-sdk","kaspa-wrpc-client/wasm32-sdk","kaspa-wallet-core/wasm32-sdk"]
 default = [] 
 
 [package.metadata.docs.rs]

@@ -1,6 +1,32 @@
 use super::TransactionOutpoint;
 use crate::imports::*;
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_TRANSACTION: &'static str = r#"
+/**
+ * Interface defines the structure of a transaction input.
+ * 
+ * @category Consensus
+ */
+export interface ITransactionInput {
+    previousOutpoint: ITransactionOutpoint;
+    signatureScript: HexString;
+    sequence: bigint;
+    sigOpCount: number;
+
+    /** Optional verbose data provided by RPC */
+    verboseData?: ITransactionInputVerboseData;
+}
+
+/**
+ * Option transaction input verbose data.
+ * 
+ * @category Node RPC
+ */
+export interface ITransactionInputVerboseData { }
+
+"#;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionInputInner {

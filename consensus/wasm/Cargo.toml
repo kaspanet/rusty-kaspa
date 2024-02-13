@@ -8,6 +8,9 @@ include.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+wasm32-sdk = []
+
 [dependencies]
 kaspa-consensus-core.workspace = true
 kaspa-addresses.workspace = true
@@ -15,15 +18,16 @@ kaspa-txscript.workspace = true
 kaspa-hashes.workspace = true
 kaspa-utils.workspace = true
 
-wasm-bindgen.workspace = true
-serde.workspace = true
+cfg-if.workspace = true
+faster-hex.workspace = true
+js-sys.workspace = true
+rand.workspace = true
+secp256k1.workspace = true
 serde_json.workspace = true
 serde-wasm-bindgen.workspace = true
+serde.workspace = true
 thiserror.workspace = true
-js-sys.workspace = true
-secp256k1.workspace = true
-faster-hex.workspace = true
-rand.workspace = true
+wasm-bindgen.workspace = true
 
 workflow-wasm.workspace = true
 workflow-log.workspace = true

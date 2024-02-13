@@ -1,2 +1,7 @@
 pub mod convert;
-pub mod message;
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "wasm32-sdk")] {
+        pub mod message;
+    }
+}

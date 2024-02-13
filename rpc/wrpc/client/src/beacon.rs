@@ -1,8 +1,7 @@
 use crate::error::Error;
 use crate::imports::*;
 use crate::nodes::Node;
-use js_sys::{Array, Object};
-use kaspa_consensus_wasm::StringArrayOrNone;
+use js_sys::Object;
 use workflow_http::get_json;
 use workflow_wasm::extensions::ObjectExtension;
 
@@ -120,21 +119,42 @@ impl Default for BeaconAggregator {
     }
 }
 
-#[wasm_bindgen]
-impl BeaconAggregator {
-    #[wasm_bindgen(constructor)]
-    pub fn ctor(beacons: StringArrayOrNone) -> Result<BeaconAggregator> {
-        if beacons.is_undefined() || beacons.is_null() {
-            Ok(Default::default())
-        } else if beacons.is_array() {
-            let array = Array::unchecked_from_js(beacons.into());
-            let beacons = array.iter().map(Beacon::try_from).collect::<Result<Vec<Beacon>>>()?;
-            Ok(Self { beacons })
-        } else {
-            Err(Error::custom("Supplied argument must be an array"))
+cfg_if! {
+    if #[cfg(feature = "wasm32-sdk")] {
+        use kaspa_consensus_wasm::StringArrayOrNone;
+
+        #[wasm_bindgen]
+        impl BeaconAggregator {
+            #[wasm_bindgen(constructor)]
+            pub fn ctor(beacons: StringArrayOrNone) -> Result<BeaconAggregator> {
+                if beacons.is_undefined() || beacons.is_null() {
+                    Ok(Default::default())
+                } else if beacons.is_array() {
+                    let array = js_sys::Array::unchecked_from_js(beacons.into());
+                    let beacons = array.iter().map(Beacon::try_from).collect::<Result<Vec<Beacon>>>()?;
+                    Ok(Self { beacons })
+                } else {
+                    Err(Error::custom("Supplied argument must be an array"))
+                }
+            }
         }
     }
 }
+// #[cfg_attr(sdk,wasm_bindgen)]
+// impl BeaconAggregator {
+//     #[cfg_attr(sdk,wasm_bindgen(constructor))]
+//     pub fn ctor(beacons: StringArrayOrNone) -> Result<BeaconAggregator> {
+//         if beacons.is_undefined() || beacons.is_null() {
+//             Ok(Default::default())
+//         } else if beacons.is_array() {
+//             let array = Array::unchecked_from_js(beacons.into());
+//             let beacons = array.iter().map(Beacon::try_from).collect::<Result<Vec<Beacon>>>()?;
+//             Ok(Self { beacons })
+//         } else {
+//             Err(Error::custom("Supplied argument must be an array"))
+//         }
+//     }
+// }
 
 impl BeaconAggregator {
     pub fn new(beacons: Vec<Beacon>) -> Self {

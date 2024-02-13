@@ -7,6 +7,11 @@ use crate::imports::*;
 use crate::tx::{PaymentDestination, PaymentOutputs};
 use crate::wasm::tx::fees::IFees;
 use js_sys::Array;
+
+// #[allow(unused_imports)]
+// use kaspa_consensus_core::block::MutableBlock;
+// #[allow(unused_imports)]
+// use kaspa_rpc_core::RpcBlock;
 // use wasm_bindgen::convert::TryFromJsValue;
 // use crate::tx::{Fees, GeneratorSummary, PaymentDestination};
 // use kaspa_addresses::Address;

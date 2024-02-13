@@ -167,8 +167,8 @@ jobs:
       - name: Build WASM32 SDK
         run: |
           cd wasm
-          wasm-pack build --target nodejs --out-dir kaspa-wasm32-sdk-nodejs/kaspa
-          wasm-pack build --target web --out-dir kaspa-wasm32-sdk-web/kaspa
+          wasm-pack build --target nodejs --out-dir kaspa-wasm32-sdk-nodejs/kaspa --features wasm32-sdk
+          wasm-pack build --target web --out-dir kaspa-wasm32-sdk-web/kaspa --features wasm32-sdk
           archive_nodejs="wasm/rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-nodejs.zip"
           archive_web="wasm/rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-web.zip"
           asset_name_nodejs="rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-nodejs.zip"

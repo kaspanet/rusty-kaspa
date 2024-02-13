@@ -1,5 +1,36 @@
 use crate::imports::*;
 
+cfg_if! {
+    if #[cfg(feature = "wasm32-sdk")] {
+
+        #[wasm_bindgen(typescript_custom_section)]
+        const TS_TRANSACTION_OUTPUT: &'static str = r#"
+        /**
+         * Interface defining the structure of a transaction output.
+         * 
+         * @category Consensus
+         */
+        export interface ITransactionOutput {
+            value: bigint;
+            scriptPublicKey: IScriptPublicKey;
+
+            /** Optional verbose data provided by RPC */
+            verboseData?: ITransactionOutputVerboseData;
+        }
+
+        /**
+         * TransactionOutput verbose data.
+         * 
+         * @category Node RPC
+         */
+        export interface ITransactionOutputVerboseData {
+            scriptPublicKeyType : string;
+            scriptPublicKeyAddress : string;
+        }
+        "#;
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutputInner {
@@ -11,7 +42,7 @@ pub struct TransactionOutputInner {
 /// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[wasm_bindgen(inspectable)]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(inspectable))]
 pub struct TransactionOutput {
     inner: Arc<Mutex<TransactionOutputInner>>,
 }
@@ -30,30 +61,30 @@ impl TransactionOutput {
     }
 }
 
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen)]
 impl TransactionOutput {
-    #[wasm_bindgen(constructor)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(constructor))]
     /// TransactionOutput constructor
     pub fn new(value: u64, script_public_key: &ScriptPublicKey) -> TransactionOutput {
         Self { inner: Arc::new(Mutex::new(TransactionOutputInner { value, script_public_key: script_public_key.clone() })) }
     }
 
-    #[wasm_bindgen(getter, js_name = value)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(getter, js_name = value))]
     pub fn get_value(&self) -> u64 {
         self.inner().value
     }
 
-    #[wasm_bindgen(setter, js_name = value)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(setter, js_name = value))]
     pub fn set_value(&self, v: u64) {
         self.inner().value = v;
     }
 
-    #[wasm_bindgen(getter, js_name = scriptPublicKey)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(getter, js_name = scriptPublicKey))]
     pub fn get_script_public_key(&self) -> ScriptPublicKey {
         self.inner().script_public_key.clone()
     }
 
-    #[wasm_bindgen(setter, js_name = scriptPublicKey)]
+    #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(setter, js_name = scriptPublicKey))]
     pub fn set_script_public_key(&self, v: &ScriptPublicKey) {
         self.inner().script_public_key = v.clone();
     }

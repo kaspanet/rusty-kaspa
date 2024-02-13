@@ -1,6 +1,9 @@
+#![allow(unused_imports)]
+
 pub use crate::client::*;
 pub use crate::result::Result;
 pub use async_trait::async_trait;
+pub use cfg_if::cfg_if;
 pub use futures::*;
 pub use js_sys::Function;
 pub use kaspa_consensus_core::network::NetworkId;

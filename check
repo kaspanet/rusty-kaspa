@@ -10,6 +10,22 @@ if [ $status -ne 0 ]; then
 fi
 
 declare -a crates=(
+    "kaspa-wasm"
+)
+
+for crate in "${crates[@]}"
+do
+    cargo clippy -p $crate --target wasm32-unknown-unknown --tests --benches --features wasm32-sdk
+    status=$?
+    if [ $status -ne 0 ]; then
+        echo
+        echo "--> wasm32 check of $crate failed"
+        echo
+        exit $status
+    fi
+done
+
+declare -a crates=(
     "kaspa-wrpc-wasm"
     "kaspa-wallet-cli-wasm"
     "kaspa-wasm"

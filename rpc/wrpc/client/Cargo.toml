@@ -9,7 +9,7 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-no-unsafe-eval = ["workflow-core/no-unsafe-eval","workflow-rpc/no-unsafe-eval"]
+wasm32-sdk = ["kaspa-consensus-wasm/wasm32-sdk","kaspa-rpc-core/wasm32-sdk"]
 default = []
 
 [lib]
@@ -19,6 +19,7 @@ crate-type = ["cdylib", "lib"]
 async-std.workspace = true
 async-trait.workspace = true
 borsh.workspace = true
+cfg-if.workspace = true
 futures.workspace = true
 js-sys.workspace = true
 kaspa-addresses.workspace = true

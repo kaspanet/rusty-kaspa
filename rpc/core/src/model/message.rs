@@ -78,6 +78,7 @@ pub struct SubmitBlockResponse {
 pub struct GetBlockTemplateRequest {
     /// Which kaspa address should the coinbase block reward transaction pay into
     pub pay_address: RpcAddress,
+    // TODO: replace with hex serialization
     pub extra_data: RpcExtraData,
 }
 impl GetBlockTemplateRequest {

@@ -2520,6 +2520,7 @@ dependencies = [
 name = "kaspa-consensus-wasm"
 version = "0.13.4"
 dependencies = [
+ "cfg-if 1.0.0",
  "faster-hex 0.6.1",
  "js-sys",
  "kaspa-addresses",
@@ -3017,6 +3018,7 @@ dependencies = [
  "kaspa-hashes",
  "kaspa-math",
  "kaspa-utils",
+ "num",
  "wasm-bindgen",
  "workflow-wasm",
 ]
@@ -3028,6 +3030,7 @@ dependencies = [
  "async-channel 2.1.1",
  "async-trait",
  "borsh",
+ "cfg-if 1.0.0",
  "derive_more",
  "downcast",
  "faster-hex 0.6.1",
@@ -3363,6 +3366,7 @@ dependencies = [
 name = "kaspa-wasm"
 version = "0.13.4"
 dependencies = [
+ "cfg-if 1.0.0",
  "js-sys",
  "kaspa-addresses",
  "kaspa-consensus-core",
@@ -3386,6 +3390,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "borsh",
+ "cfg-if 1.0.0",
  "futures",
  "js-sys",
  "kaspa-addresses",

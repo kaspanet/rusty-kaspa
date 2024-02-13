@@ -76,6 +76,8 @@ pub mod types;
 pub mod utils;
 pub mod utxo;
 pub mod wallet;
+
+#[cfg(feature = "wasm32-sdk")]
 pub mod wasm;
 
 /// Returns the version of the Wallet framework.
