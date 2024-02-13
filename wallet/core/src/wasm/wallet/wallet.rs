@@ -5,10 +5,8 @@ use crate::storage::{PrvKeyDataId, WalletDescriptor};
 use crate::wallet as native;
 use crate::wasm::wallet::account::Account;
 use crate::wasm::wallet::keydata::PrvKeyDataInfo;
-use kaspa_wrpc_client::wasm::{RpcClient, RpcConfig};
-use kaspa_wrpc_client::WrpcEncoding;
+use kaspa_wrpc_wasm::{IConnectOptions, RpcClient, RpcConfig, WrpcEncoding};
 use workflow_core::sendable::Sendable;
-use workflow_rpc::client::IConnectOptions;
 use workflow_wasm::channel::EventDispatcher;
 
 /// @category Wallet SDK

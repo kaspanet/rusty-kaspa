@@ -2,7 +2,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::tx::generator as native;
 use kaspa_consensus_wasm::{PrivateKey, Transaction};
-use kaspa_wrpc_client::wasm::RpcClient;
+use kaspa_wrpc_wasm::RpcClient;
 
 /// @category Wallet SDK
 #[wasm_bindgen(inspectable)]

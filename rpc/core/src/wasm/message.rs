@@ -109,7 +109,6 @@ declare! {
     r#"
     /**
      * 
-     * 
      * @category Node RPC
      */
     export interface IGetBlockCountRequest { }
@@ -124,8 +123,6 @@ declare! {
     IGetBlockCountResponse,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetBlockCountResponse {

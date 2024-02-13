@@ -21,6 +21,8 @@ pub struct Handler {
     pub is_subscription: bool,
     pub response_message_type: Ident,
     pub fallback_request_type: Ident,
+    // TODO - inject docs
+    // pub docs: Vec<String>,
 }
 
 impl Handler {

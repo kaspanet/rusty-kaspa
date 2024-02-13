@@ -3319,6 +3319,7 @@ dependencies = [
  "kaspa-utils",
  "kaspa-wallet-macros",
  "kaspa-wrpc-client",
+ "kaspa-wrpc-wasm",
  "md-5",
  "pad",
  "pbkdf2",
@@ -3378,6 +3379,7 @@ dependencies = [
  "kaspa-utils",
  "kaspa-wallet-core",
  "kaspa-wrpc-client",
+ "kaspa-wrpc-wasm",
  "num",
  "wasm-bindgen",
  "workflow-log",
@@ -3465,7 +3467,25 @@ dependencies = [
 name = "kaspa-wrpc-wasm"
 version = "0.13.4"
 dependencies = [
+ "cfg-if 1.0.0",
+ "futures",
+ "js-sys",
+ "kaspa-addresses",
+ "kaspa-consensus-core",
+ "kaspa-consensus-wasm",
+ "kaspa-notify",
+ "kaspa-rpc-core",
+ "kaspa-rpc-macros",
  "kaspa-wrpc-client",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "workflow-core",
+ "workflow-log",
+ "workflow-rpc",
+ "workflow-wasm",
 ]
 
 [[package]]

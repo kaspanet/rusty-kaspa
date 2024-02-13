@@ -145,7 +145,7 @@ cfg_if::cfg_if! {
                 pub use kaspa_rpc_core::model::message::*;
             }
             pub use kaspa_rpc_core::api::rpc::RpcApi;
-            pub use kaspa_wrpc_client::wasm::RpcClient;
+            pub use kaspa_wrpc_wasm::RpcClient;
         }
 
         pub use kaspa_consensus_wasm::*;

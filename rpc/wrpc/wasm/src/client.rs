@@ -1,13 +1,8 @@
 #![allow(non_snake_case)]
 
-use crate::error::Error;
 use crate::imports::*;
-use crate::result::Result;
-// use js_sys::Array;
-// use kaspa_addresses::{Address, AddressList};
 use kaspa_addresses::{Address, IAddressArray};
 use kaspa_consensus_core::network::{wasm::Network, NetworkType};
-// use kaspa_consensus_wasm::{SignableTransaction, Transaction};
 use kaspa_notify::notification::Notification as NotificationT;
 pub use kaspa_rpc_core::wasm::message::*;
 pub use kaspa_rpc_macros::{
@@ -15,6 +10,7 @@ pub use kaspa_rpc_macros::{
 };
 pub use serde_wasm_bindgen::from_value;
 pub use workflow_rpc::client::IConnectOptions;
+pub use workflow_rpc::encoding::Encoding as WrpcEncoding;
 use workflow_wasm::extensions::ObjectExtension;
 pub use workflow_wasm::serde::to_value;
 
@@ -285,21 +281,29 @@ impl RpcClient {
 
 #[wasm_bindgen]
 impl RpcClient {
-    /// Subscription to DAA Score
+    /// Manage subscription for a virtual DAA score changed notification event.
+    /// Virtual DAA score changed notification event is produced when the virtual
+    /// Difficulty Adjustment Algorithm (DAA) score changes in the Kaspa BlockDAG.
     #[wasm_bindgen(js_name = subscribeDaaScore)]
     pub async fn subscribe_daa_score(&self) -> Result<()> {
         self.client.start_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())
     }
 
-    /// Unsubscribe from DAA Score
+    /// Manage subscription for a virtual DAA score changed notification event.
+    /// Virtual DAA score changed notification event is produced when the virtual
+    /// Difficulty Adjustment Algorithm (DAA) score changes in the Kaspa BlockDAG.
     #[wasm_bindgen(js_name = unsubscribeDaaScore)]
     pub async fn unsubscribe_daa_score(&self) -> Result<()> {
         self.client.stop_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())
     }
 
-    /// Subscription to UTXOs Changed notifications
+    /// Subscribe for a UTXOs changed notification event.
+    /// UTXOs changed notification event is produced when the set
+    /// of unspent transaction outputs (UTXOs) changes in the
+    /// Kaspa BlockDAG. The event notification will be scoped to the
+    /// provided list of addresses.
     #[wasm_bindgen(js_name = subscribeUtxosChanged)]
     pub async fn subscribe_utxos_changed(&self, addresses: IAddressArray) -> Result<()> {
         let addresses: Vec<Address> = addresses.try_into()?;
@@ -307,7 +311,8 @@ impl RpcClient {
         Ok(())
     }
 
-    /// Unsubscribe from DAA Score (test)
+    /// Unsubscribe from UTXOs changed notification event
+    /// for a specific set of addresses.
     #[wasm_bindgen(js_name = unsubscribeUtxosChanged)]
     pub async fn unsubscribe_utxos_changed(&self, addresses: IAddressArray) -> Result<()> {
         let addresses: Vec<Address> = addresses.try_into()?;
@@ -315,7 +320,11 @@ impl RpcClient {
         Ok(())
     }
 
-    // scope variant with field functions
+    // TODO: scope variant with field functions
+
+    /// Manage subscription for a virtual chain changed notification event.
+    /// Virtual chain changed notification event is produced when the virtual
+    /// chain changes in the Kaspa BlockDAG.
     #[wasm_bindgen(js_name = subscribeVirtualChainChanged)]
     pub async fn subscribe_virtual_chain_changed(&self, include_accepted_transaction_ids: bool) -> Result<()> {
         self.client
@@ -326,6 +335,10 @@ impl RpcClient {
             .await?;
         Ok(())
     }
+
+    /// Manage subscription for a virtual chain changed notification event.
+    /// Virtual chain changed notification event is produced when the virtual
+    /// chain changes in the Kaspa BlockDAG.
     #[wasm_bindgen(js_name = unsubscribeVirtualChainChanged)]
     pub async fn unsubscribe_virtual_chain_changed(&self, include_accepted_transaction_ids: bool) -> Result<()> {
         self.client
@@ -340,14 +353,36 @@ impl RpcClient {
 
 // Build subscribe functions
 build_wrpc_wasm_bindgen_subscriptions!([
+    // Manually implemented subscriptions (above)
+    // VirtualChainChanged, // can't used this here due to non-C-style enum variant
+    // UtxosChanged, // can't used this here due to non-C-style enum variant
+    // VirtualDaaScoreChanged,
+
+    // Manage subscription for a block added notification event.
+    // Block added notification event is produced when a new
+    // block is added to the Kaspa BlockDAG.
     BlockAdded,
-    //VirtualChainChanged, // can't used this here due to non-C-style enum variant
+    // Manage subscription for a finality conflict notification event.
+    // Finality conflict notification event is produced when a finality
+    // conflict occurs in the Kaspa BlockDAG.
     FinalityConflict,
+    // TODO provide better description
+
+    // Manage subscription for a finality conflict resolved notification event.
+    // Finality conflict resolved notification event is produced when a finality
+    // conflict in the Kaspa BlockDAG is resolved.
     FinalityConflictResolved,
-    //UtxosChanged, // can't used this here due to non-C-style enum variant
+    // Manage subscription for a sink blue score changed notification event.
+    // Sink blue score changed notification event is produced when the blue
+    // score of the sink block changes in the Kaspa BlockDAG.
     SinkBlueScoreChanged,
-    VirtualDaaScoreChanged,
+    // Manage subscription for a pruning point UTXO set override notification event.
+    // Pruning point UTXO set override notification event is produced when the
+    // UTXO set override for the pruning point changes in the Kaspa BlockDAG.
     PruningPointUtxoSetOverride,
+    // Manage subscription for a new block template notification event.
+    // New block template notification event is produced when a new block
+    // template is generated for mining in the Kaspa BlockDAG.
     NewBlockTemplate,
 ]);
 
@@ -361,42 +396,131 @@ build_wrpc_wasm_bindgen_interface!(
         // functions with optional arguments
         // they are specified as Option<IXxxRequest>
         // which map as `request? : IXxxRequest` in typescript
+
+        // Retrieves the current number of blocks in the Kaspa BlockDAG.
+        // This is not a block count, not a "block height" and can not be
+        // used for transaction validation.
+        // Returned information: Current block count.
         GetBlockCount,
+        // Provides information about the Directed Acyclic Graph (DAG)
+        // structure of the Kaspa BlockDAG.
+        // Returned information: Number of blocks in the DAG,
+        // number of tips in the DAG, hash of the selected parent block,
+        // difficulty of the selected parent block, selected parent block
+        // blue score, selected parent block time.
         GetBlockDagInfo,
+        // Returns the total current coin supply of Kaspa network.
+        // Returned information: Total coin supply.
         GetCoinSupply,
+        // Retrieves information about the peers connected to the Kaspa node.
+        // Returned information: Peer ID, IP address and port, connection
+        // status, protocol version.
         GetConnectedPeerInfo,
+        // Retrieves general information about the Kaspa node.
+        // Returned information: Version of the Kaspa node, protocol
+        // version, network identifier.
+        // This call is primarily used by gRPC clients.
+        // For wRPC clients, use `getServerInfo`.
         GetInfo,
+        // Provides a list of addresses of known peers in the Kaspa
+        // network that the node can potentially connect to.
+        // Returned information: List of peer addresses.
         GetPeerAddresses,
+        // Retrieves various metrics and statistics related to the
+        // performance and status of the Kaspa node.
+        // Returned information: Memory usage, CPU usage, network activity.
         GetMetrics,
+        // Retrieves the current sink block, which is the block with
+        // the highest cumulative difficulty in the Kaspa BlockDAG.
+        // Returned information: Sink block hash, sink block height.
         GetSink,
+        // Returns the blue score of the current sink block, indicating
+        // the total amount of work that has been done on the main chain
+        // leading up to that block.
+        // Returned information: Blue score of the sink block.
         GetSinkBlueScore,
+        // Tests the connection and responsiveness of a Kaspa node.
+        // Returned information: None.
         Ping,
+        // Gracefully shuts down the Kaspa node.
+        // Returned information: None.
         Shutdown,
+        // Retrieves information about the Kaspa server.
+        // Returned information: Version of the Kaspa server, protocol
+        // version, network identifier.
         GetServerInfo,
+        // Obtains basic information about the synchronization status of the Kaspa node.
+        // Returned information: Syncing status.
         GetSyncStatus,
     ],
     [
         // functions with `request` argument
+
+        // Adds a peer to the Kaspa node's list of known peers.
+        // Returned information: None.
         AddPeer,
+        // Bans a peer from connecting to the Kaspa node for a specified duration.
+        // Returned information: None.
         Ban,
+        // Estimates the network's current hash rate in hashes per second.
+        // Returned information: Estimated network hashes per second.
         EstimateNetworkHashesPerSecond,
+        // Retrieves the balance of a specific address in the Kaspa BlockDAG.
+        // Returned information: Balance of the address.
         GetBalanceByAddress,
+        // Retrieves balances for multiple addresses in the Kaspa BlockDAG.
+        // Returned information: Balances of the addresses.
         GetBalancesByAddresses,
+        // Retrieves a specific block from the Kaspa BlockDAG.
+        // Returned information: Block information.
         GetBlock,
+        // Retrieves multiple blocks from the Kaspa BlockDAG.
+        // Returned information: List of block information.
         GetBlocks,
+        // Generates a new block template for mining.
+        // Returned information: Block template information.
         GetBlockTemplate,
+        // Retrieves the estimated DAA (Difficulty Adjustment Algorithm)
+        // score timestamp estimate.
+        // Returned information: DAA score timestamp estimate.
         GetDaaScoreTimestampEstimate,
+        // Retrieves the current network configuration.
+        // Returned information: Current network configuration.
         GetCurrentNetwork,
+        // Retrieves block headers from the Kaspa BlockDAG.
+        // Returned information: List of block headers.
         GetHeaders,
+        // Retrieves mempool entries from the Kaspa node's mempool.
+        // Returned information: List of mempool entries.
         GetMempoolEntries,
+        // Retrieves mempool entries associated with specific addresses.
+        // Returned information: List of mempool entries.
         GetMempoolEntriesByAddresses,
+        // Retrieves a specific mempool entry by transaction ID.
+        // Returned information: Mempool entry information.
         GetMempoolEntry,
+        // Retrieves information about a subnetwork in the Kaspa BlockDAG.
+        // Returned information: Subnetwork information.
         GetSubnetwork,
+        // Retrieves unspent transaction outputs (UTXOs) associated with
+        // specific addresses.
+        // Returned information: List of UTXOs.
         GetUtxosByAddresses,
+        // Retrieves the virtual chain corresponding to a specified block hash.
+        // Returned information: Virtual chain information.
         GetVirtualChainFromBlock,
+        // Resolves a finality conflict in the Kaspa BlockDAG.
+        // Returned information: None.
         ResolveFinalityConflict,
+        // Submits a block to the Kaspa network.
+        // Returned information: None.
         SubmitBlock,
+        // Submits a transaction to the Kaspa network.
+        // Returned information: None.
         SubmitTransaction,
+        // Unbans a previously banned peer, allowing it to connect
+        // to the Kaspa node again.
+        // Returned information: None.
         Unban,
     ]
 );

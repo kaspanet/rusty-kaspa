@@ -133,6 +133,8 @@ pub struct Monitor {
 }
 
 impl Monitor {
+    // TODO: remove this
+    #[allow(unused)]
     pub fn new() -> Self {
         Self { ..Default::default() }
     }
@@ -171,10 +173,10 @@ impl Monitor {
     }
 
     pub async fn start(&self) -> Result<()> {
-        let toml = include_str!("../Servers.toml");
-        let nodes = crate::node::try_parse_nodes(toml)?;
+        // let toml = include_str!("../Servers.toml");
+        // let nodes = crate::node::try_parse_nodes(toml)?;
 
-        self.update_nodes(nodes).await?;
+        // self.update_nodes(nodes).await?;
 
         Ok(())
     }
