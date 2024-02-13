@@ -1,7 +1,7 @@
 use convert_case::{Case, Casing};
 use proc_macro2::{Ident, Span};
 use quote::ToTokens;
-use syn::{Error, Expr, ExprArray, Result};
+use syn::{Attribute, Error, Expr, ExprArray, Result};
 
 #[derive(Debug)]
 pub struct Handler {
@@ -21,8 +21,7 @@ pub struct Handler {
     pub is_subscription: bool,
     pub response_message_type: Ident,
     pub fallback_request_type: Ident,
-    // TODO - inject docs
-    // pub docs: Vec<String>,
+    pub docs: Vec<Attribute>,
 }
 
 impl Handler {
@@ -31,7 +30,11 @@ impl Handler {
     }
 
     pub fn new_with_args(handler: &Expr, fn_suffix: Option<&str>) -> Handler {
-        let name = handler.to_token_stream().to_string();
+        let (name, docs) = match handler {
+            syn::Expr::Path(expr_path) => (expr_path.path.to_token_stream().to_string(), expr_path.attrs.clone()),
+            _ => (handler.to_token_stream().to_string(), vec![]),
+        };
+        //let name = handler.to_token_stream().to_string();
         let fn_call = Ident::new(&format!("{}_call", name.to_case(Case::Snake)), Span::call_site());
         let fn_with_suffix = fn_suffix.map(|suffix| Ident::new(&format!("{}_{suffix}", name.to_case(Case::Snake)), Span::call_site()));
         let fn_no_suffix = Ident::new(&name.to_case(Case::Snake), Span::call_site());
@@ -63,6 +66,7 @@ impl Handler {
             is_subscription,
             response_message_type,
             fallback_request_type,
+            docs,
         }
     }
 }

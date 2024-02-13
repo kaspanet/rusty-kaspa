@@ -17,6 +17,7 @@ use self::message::*;
 use super::Wallet;
 
 declare_wasm_handlers!([
+    /// Ping backend
     Ping,
     Batch,
     Flush,

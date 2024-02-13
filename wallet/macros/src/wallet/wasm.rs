@@ -117,11 +117,12 @@ impl ToTokens for ApiHandlers {
         let mut targets = Vec::new();
 
         for handler in self.handlers.elems.iter() {
-            let Handler { fn_call, fn_camel, fn_no_suffix, request_type, ts_request_type, ts_response_type, .. } =
+            let Handler { fn_call, fn_camel, fn_no_suffix, request_type, ts_request_type, ts_response_type, docs, .. } =
                 Handler::new(handler);
-
+            let doc = format! {"@see {{@link {ts_request_type}}} {{@link {ts_response_type}}}"};
             targets.push(quote! {
-
+                #(#docs)*
+                #[doc=#doc]
                 #[wasm_bindgen(js_name = #fn_camel)]
                 pub async fn #fn_no_suffix(&self, request : #ts_request_type) -> Result<#ts_response_type> {
                     let request = #request_type::try_from(request)?;
