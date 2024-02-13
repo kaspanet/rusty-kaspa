@@ -378,32 +378,30 @@ build_wrpc_wasm_bindgen_subscriptions!([
     // VirtualChainChanged, // can't used this here due to non-C-style enum variant
     // UtxosChanged, // can't used this here due to non-C-style enum variant
     // VirtualDaaScoreChanged,
-
-    // Manage subscription for a block added notification event.
-    // Block added notification event is produced when a new
-    // block is added to the Kaspa BlockDAG.
+    /// Manage subscription for a block added notification event.
+    /// Block added notification event is produced when a new
+    /// block is added to the Kaspa BlockDAG.
     BlockAdded,
-    // Manage subscription for a finality conflict notification event.
-    // Finality conflict notification event is produced when a finality
-    // conflict occurs in the Kaspa BlockDAG.
+    /// Manage subscription for a finality conflict notification event.
+    /// Finality conflict notification event is produced when a finality
+    /// conflict occurs in the Kaspa BlockDAG.
     FinalityConflict,
     // TODO provide better description
-
-    // Manage subscription for a finality conflict resolved notification event.
-    // Finality conflict resolved notification event is produced when a finality
-    // conflict in the Kaspa BlockDAG is resolved.
+    /// Manage subscription for a finality conflict resolved notification event.
+    /// Finality conflict resolved notification event is produced when a finality
+    /// conflict in the Kaspa BlockDAG is resolved.
     FinalityConflictResolved,
-    // Manage subscription for a sink blue score changed notification event.
-    // Sink blue score changed notification event is produced when the blue
-    // score of the sink block changes in the Kaspa BlockDAG.
+    /// Manage subscription for a sink blue score changed notification event.
+    /// Sink blue score changed notification event is produced when the blue
+    /// score of the sink block changes in the Kaspa BlockDAG.
     SinkBlueScoreChanged,
-    // Manage subscription for a pruning point UTXO set override notification event.
-    // Pruning point UTXO set override notification event is produced when the
-    // UTXO set override for the pruning point changes in the Kaspa BlockDAG.
+    /// Manage subscription for a pruning point UTXO set override notification event.
+    /// Pruning point UTXO set override notification event is produced when the
+    /// UTXO set override for the pruning point changes in the Kaspa BlockDAG.
     PruningPointUtxoSetOverride,
-    // Manage subscription for a new block template notification event.
-    // New block template notification event is produced when a new block
-    // template is generated for mining in the Kaspa BlockDAG.
+    /// Manage subscription for a new block template notification event.
+    /// New block template notification event is produced when a new block
+    /// template is generated for mining in the Kaspa BlockDAG.
     NewBlockTemplate,
 ]);
 
@@ -417,61 +415,60 @@ build_wrpc_wasm_bindgen_interface!(
         // functions with optional arguments
         // they are specified as Option<IXxxRequest>
         // which map as `request? : IXxxRequest` in typescript
-
-        // Retrieves the current number of blocks in the Kaspa BlockDAG.
-        // This is not a block count, not a "block height" and can not be
-        // used for transaction validation.
-        // Returned information: Current block count.
+        /// Retrieves the current number of blocks in the Kaspa BlockDAG.
+        /// This is not a block count, not a "block height" and can not be
+        /// used for transaction validation.
+        /// Returned information: Current block count.
         GetBlockCount,
-        // Provides information about the Directed Acyclic Graph (DAG)
-        // structure of the Kaspa BlockDAG.
-        // Returned information: Number of blocks in the DAG,
-        // number of tips in the DAG, hash of the selected parent block,
-        // difficulty of the selected parent block, selected parent block
-        // blue score, selected parent block time.
+        /// Provides information about the Directed Acyclic Graph (DAG)
+        /// structure of the Kaspa BlockDAG.
+        /// Returned information: Number of blocks in the DAG,
+        /// number of tips in the DAG, hash of the selected parent block,
+        /// difficulty of the selected parent block, selected parent block
+        /// blue score, selected parent block time.
         GetBlockDagInfo,
-        // Returns the total current coin supply of Kaspa network.
-        // Returned information: Total coin supply.
+        /// Returns the total current coin supply of Kaspa network.
+        /// Returned information: Total coin supply.
         GetCoinSupply,
-        // Retrieves information about the peers connected to the Kaspa node.
-        // Returned information: Peer ID, IP address and port, connection
-        // status, protocol version.
+        /// Retrieves information about the peers connected to the Kaspa node.
+        /// Returned information: Peer ID, IP address and port, connection
+        /// status, protocol version.
         GetConnectedPeerInfo,
-        // Retrieves general information about the Kaspa node.
-        // Returned information: Version of the Kaspa node, protocol
-        // version, network identifier.
-        // This call is primarily used by gRPC clients.
-        // For wRPC clients, use `getServerInfo`.
+        /// Retrieves general information about the Kaspa node.
+        /// Returned information: Version of the Kaspa node, protocol
+        /// version, network identifier.
+        /// This call is primarily used by gRPC clients.
+        /// For wRPC clients, use `getServerInfo`.
         GetInfo,
-        // Provides a list of addresses of known peers in the Kaspa
-        // network that the node can potentially connect to.
-        // Returned information: List of peer addresses.
+        /// Provides a list of addresses of known peers in the Kaspa
+        /// network that the node can potentially connect to.
+        /// Returned information: List of peer addresses.
         GetPeerAddresses,
-        // Retrieves various metrics and statistics related to the
-        // performance and status of the Kaspa node.
-        // Returned information: Memory usage, CPU usage, network activity.
+        /// Retrieves various metrics and statistics related to the
+        /// performance and status of the Kaspa node.
+        /// Returned information: Memory usage, CPU usage, network activity.
         GetMetrics,
-        // Retrieves the current sink block, which is the block with
-        // the highest cumulative difficulty in the Kaspa BlockDAG.
-        // Returned information: Sink block hash, sink block height.
+        /// Retrieves the current sink block, which is the block with
+        /// the highest cumulative difficulty in the Kaspa BlockDAG.
+        /// Returned information: Sink block hash, sink block height.
         GetSink,
-        // Returns the blue score of the current sink block, indicating
-        // the total amount of work that has been done on the main chain
-        // leading up to that block.
-        // Returned information: Blue score of the sink block.
+        /// Returns the blue score of the current sink block, indicating
+        /// the total amount of work that has been done on the main chain
+        /// leading up to that block.
+        /// Returned information: Blue score of the sink block.
         GetSinkBlueScore,
-        // Tests the connection and responsiveness of a Kaspa node.
-        // Returned information: None.
+        /// Tests the connection and responsiveness of a Kaspa node.
+        /// Returned information: None.
         Ping,
-        // Gracefully shuts down the Kaspa node.
-        // Returned information: None.
+        /// Gracefully shuts down the Kaspa node.
+        /// Returned information: None.
         Shutdown,
-        // Retrieves information about the Kaspa server.
-        // Returned information: Version of the Kaspa server, protocol
-        // version, network identifier.
+        /// Retrieves information about the Kaspa server.
+        /// Returned information: Version of the Kaspa server, protocol
+        /// version, network identifier.
         GetServerInfo,
-        // Obtains basic information about the synchronization status of the Kaspa node.
-        // Returned information: Syncing status.
+        /// Obtains basic information about the synchronization status of the Kaspa node.
+        /// Returned information: Syncing status.
         GetSyncStatus,
     ],
     [

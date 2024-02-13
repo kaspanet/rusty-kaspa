@@ -42,12 +42,14 @@ impl ToTokens for RpcHandlers {
         let mut targets_with_args = Vec::new();
 
         for handler in self.handlers_no_args.elems.iter() {
-            let Handler { fn_call, fn_camel, fn_no_suffix, ts_request_type, ts_response_type, request_type, response_type, .. } =
-                Handler::new(handler);
+            let Handler {
+                fn_call, fn_camel, fn_no_suffix, ts_request_type, ts_response_type, request_type, response_type, docs, ..
+            } = Handler::new(handler);
 
-            // #[doc="@see {@link #ts_request_type} {@link #ts_response_type}"]
+            let doc = format! {"@see {{@link {ts_request_type}}} {{@link {ts_response_type}}}"};
             targets_no_args.push(quote! {
-
+                #(#docs)*
+                #[doc=#doc]
                 #[wasm_bindgen(js_name = #fn_camel)]
                 pub async fn #fn_no_suffix(&self, request : Option<#ts_request_type>) -> Result<#ts_response_type> {
                     let request: #request_type = request.unwrap_or_default().try_into()?;
@@ -128,7 +130,14 @@ impl ToTokens for RpcSubscriptions {
         let mut targets = Vec::new();
 
         for handler in self.handlers.elems.iter() {
-            let name = format!("Notify{}", handler.to_token_stream().to_string().as_str());
+            let (name, docs) = match handler {
+                syn::Expr::Path(expr_path) => (expr_path.path.to_token_stream().to_string(), &expr_path.attrs),
+                _ => {
+                    continue;
+                }
+            };
+
+            let name = format!("Notify{}", name.as_str());
             let regex = Regex::new(r"^Notify").unwrap();
             let blank = regex.replace(&name, "");
             let subscribe = regex.replace(&name, "Subscribe");
@@ -141,7 +150,7 @@ impl ToTokens for RpcSubscriptions {
             let fn_unsubscribe_camel = Ident::new(&unsubscribe.to_case(Case::Camel), Span::call_site());
 
             targets.push(quote! {
-
+                #(#docs)*
                 #[wasm_bindgen(js_name = #fn_subscribe_camel)]
                 pub async fn #fn_subscribe_snake(&self) -> Result<()> {
                     self.client.start_notify(ListenerId::default(), Scope::#scope(#sub_scope {})).await?;
