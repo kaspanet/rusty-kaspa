@@ -2,6 +2,7 @@ use convert_case::{Case, Casing};
 // use proc_macro::Literal;
 use proc_macro2::{Ident, Literal, Span};
 use quote::ToTokens;
+use syn::Attribute;
 use syn::{Error, Expr, ExprArray, Result};
 use xxhash_rust::xxh3::xxh3_64;
 use xxhash_rust::xxh32::xxh32;
@@ -22,6 +23,7 @@ pub struct Handler {
     pub ts_request_type: Ident,
     pub ts_response_type: Ident,
     pub ts_custom_section_ident: Ident,
+    pub docs: Vec<Attribute>,
 }
 
 impl Handler {
@@ -30,7 +32,10 @@ impl Handler {
     }
 
     pub fn new_with_args(handler: &Expr, fn_suffix: Option<&str>) -> Handler {
-        let name = handler.to_token_stream().to_string();
+        let (name, docs) = match handler {
+            syn::Expr::Path(expr_path) => (expr_path.path.to_token_stream().to_string(), expr_path.attrs.clone()),
+            _ => (handler.to_token_stream().to_string(), vec![]),
+        };
         let hash_32 = Literal::u32_suffixed(xxh32(name.as_bytes(), 0));
         let hash_64 = Literal::u64_suffixed(xxh3_64(name.as_bytes()));
         let ident = Literal::string(name.to_case(Case::Kebab).as_str());
@@ -59,6 +64,7 @@ impl Handler {
             ts_request_type,
             ts_response_type,
             ts_custom_section_ident,
+            docs,
         }
     }
 }
