@@ -2448,6 +2448,7 @@ dependencies = [
  "kaspa-utils",
  "kaspa-utils-tower",
  "log",
+ "parking_lot",
  "paste",
  "prost",
  "rand 0.8.5",
@@ -2919,8 +2920,10 @@ name = "kaspa-testing-integration"
 version = "0.13.4"
 dependencies = [
  "async-channel 2.1.1",
+ "async-trait",
  "bincode",
  "chrono",
+ "clap 4.4.11",
  "criterion",
  "crossbeam-channel",
  "dhat",

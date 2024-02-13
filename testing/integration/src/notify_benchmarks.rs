@@ -1,15 +1,17 @@
-use crate::common::{self, client_notify::ChannelNotify, daemon::Daemon, memory_monitor::MemoryMonitor, utils::CONTRACT_FACTOR};
+use crate::common::{
+    self, client_notify::ChannelNotify, daemon::Daemon, tasks::memory_monitor::MemoryMonitorTask, utils::CONTRACT_FACTOR,
+};
 use futures_util::future::join_all;
 use itertools::Itertools;
 use kaspa_addresses::Address;
 use kaspa_alloc::init_allocator_with_default_settings;
 use kaspa_consensus::params::Params;
 use kaspa_consensus_core::{constants::SOMPI_PER_KASPA, network::NetworkType, tx::Transaction};
-use kaspa_core::{debug, info, task::tick::TickService, trace, warn};
+use kaspa_core::{debug, info, task::tick::TickService, warn};
 use kaspa_math::Uint256;
 use kaspa_notify::{
     listener::ListenerId,
-    scope::{BlockAddedScope, NewBlockTemplateScope, Scope, UtxosChangedScope, VirtualChainChangedScope, VirtualDaaScoreChangedScope},
+    scope::{NewBlockTemplateScope, Scope, UtxosChangedScope, VirtualDaaScoreChangedScope},
 };
 use kaspa_rpc_core::{api::rpc::RpcApi, Notification, RpcBlock, RpcError};
 use kaspa_txscript::pay_to_address_script;
@@ -27,12 +29,10 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use tokio::join;
+use tokio::{join, sync::oneshot, time::sleep};
 use workflow_perf_monitor::mem::{get_process_memory_info, ProcessMemoryInfo};
 
-/// Run this benchmark with the following command line:
-/// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc --profile release -- notify_benchmarks::bench_utxos_changed_subscriptions_footprint --exact --nocapture --ignored`
-/// `cargo test --package kaspa-testing-integration --lib --features heap,devnet-prealloc --profile heap -- notify_benchmarks::bench_utxos_changed_subscriptions_footprint --exact --nocapture --ignored`
+/// ## Initial research
 ///
 /// Some configurations were tested with
 ///
@@ -40,11 +40,19 @@ use workflow_perf_monitor::mem::{get_process_memory_info, ProcessMemoryInfo};
 /// MAX_ADDRESSES = 1_000_000
 /// WALLET_ADDRESSES = 800
 ///
-/// and considering ACTIVE_UTXOS_CHANGED_SUBSCRIPTIONS & kaspa_notify::address::tracker::Indexes as
+/// Address filtering at server level only (gRPC, wRPC server)
 ///
-/// A) No UtxosChanged subscriptions:   false  IndexVec                    
-/// B) Sorted vector subscriptions:     true   IndexVec
-/// C) HashSet subscriptions:           true   IndexSet
+/// Basic subscriptions to:
+///
+/// - BlockAdded
+/// - VirtualDaaScoreChanged
+/// - VirtualChainChangedScope { include_accepted_transaction_ids: i % 2 == 0 }
+///
+/// and considering `cycle_seconds` & `kaspa_notify::address::tracker::Indexes as
+///
+/// A) No UtxosChanged subscriptions:   None        IndexVec                    
+/// B) Sorted vector subscriptions:     Some(30)    IndexVec
+/// C) HashSet subscriptions:           Some(30)    IndexSet
 ///
 /// After 4 hours runs, following approximate memory consumptions were measured:
 ///
@@ -61,13 +69,31 @@ use workflow_perf_monitor::mem::{get_process_memory_info, ProcessMemoryInfo};
 /// and removal and O(log N) for lookups.
 ///
 /// HashSets and HashMaps are consequently favored over sorted vectors, being a good tradeoff between speed and size.
-#[tokio::test]
-#[ignore = "bmk"]
-async fn bench_utxos_changed_subscriptions_footprint() {
+///
+/// ## Further work
+///
+/// Following changes added:
+///
+/// - Single UtxosChangedSubscription with inner mutability, preventing reallocation
+/// - The address vector of a mutation submitted to a UtxosChangedSubscription is retained from the server (gRPC or wRPC) all the way
+///   up to the index processor without ever reallocating
+/// - Unique `UtxosChangedSubscription` with state `UtxosChangedSubscriptionState::All` instance shared to every broadcaster in order
+///   to group subscriptions of this state under the same object
+///
+/// Basic subscriptions are restricted to VirtualDaaScoreChanged only, strongly reducing the server to clients notification traffic.
+///
+/// Address filtering:
+///
+/// - server (gRPC & wRPC servers)
+/// - rpc-core
+/// - index processor
+///
+/// A memory footprint measurement is computed as the average of the samples collected every 5 seconds between minute 65 and the end of the benchmark.
+async fn bench_utxos_changed_subscriptions_footprint(cycle_seconds: Option<u64>, max_cycles: usize) {
     init_allocator_with_default_settings();
     kaspa_core::panic::configure_panic();
     kaspa_core::log::try_init_logger(
-        "info,kaspa_core::time=debug,kaspa_rpc_core=debug,kaspa_grpc_client=debug,kaspa_notify=debug,kaspa_notify::subscription::single=trace,kaspa_mining::monitor=debug,kaspa_testing_integration::notify_benchmarks=trace",
+        "INFO, kaspa_core::time=debug, kaspa_rpc_core=debug, kaspa_grpc_client=debug, kaspa_notify=info, kaspa_notify::address::tracker=debug, kaspa_notify::listener=debug, kaspa_notify::subscription::single=debug, kaspa_mining::monitor=debug, kaspa_testing_integration::notify_benchmarks=trace", 
     );
 
     // Constants
@@ -93,10 +119,15 @@ async fn bench_utxos_changed_subscriptions_footprint() {
     const NOTIFY_CLIENTS: usize = 500;
     const MAX_ADDRESSES: usize = 1_000_000;
     const WALLET_ADDRESSES: usize = 800;
-    const ACTIVE_UTXOS_CHANGED_SUBSCRIPTIONS: bool = true;
+
+    const STAT_FOLDER: &'static str = "../../../analyze/mem-logs";
+
+    let active_utxos_changed_subscriptions = cycle_seconds.is_some();
+    let utxos_changed_cycle_seconds: u64 = cycle_seconds.unwrap_or(1200);
+    assert!(utxos_changed_cycle_seconds > 20);
 
     let tick_service = Arc::new(TickService::new());
-    let memory_monitor = MemoryMonitor::new(tick_service.clone(), Duration::from_secs(1), MAX_MEMORY);
+    let memory_monitor = MemoryMonitorTask::new(tick_service.clone(), "combined", Duration::from_secs(1), MAX_MEMORY);
     let memory_monitor_task = memory_monitor.start();
 
     /*
@@ -134,7 +165,13 @@ async fn bench_utxos_changed_subscriptions_footprint() {
     let params: Params = network.into();
 
     let utxoset = args.generate_prealloc_utxos(args.num_prealloc_utxos.unwrap());
-    let txs = common::utils::generate_tx_dag(utxoset.clone(), schnorr_key, spk, TX_COUNT / TX_LEVEL_WIDTH, TX_LEVEL_WIDTH);
+    let txs = common::utils::generate_tx_dag(
+        utxoset.clone(),
+        schnorr_key,
+        spk,
+        (TX_COUNT + TX_LEVEL_WIDTH - 1) / TX_LEVEL_WIDTH,
+        TX_LEVEL_WIDTH,
+    );
     common::utils::verify_tx_dag(&utxoset, &txs);
     info!("Generated overall {} txs", txs.len());
 
@@ -161,6 +198,8 @@ async fn bench_utxos_changed_subscriptions_footprint() {
     bbt_client.start(Some(Arc::new(ChannelNotify::new(sender)))).await;
     bbt_client.start_notify(ListenerId::default(), Scope::NewBlockTemplate(NewBlockTemplateScope {})).await.unwrap();
     let submitted_block_total_txs = Arc::new(AtomicUsize::new(0));
+    let (subscription_task_shutdown_sender, mut subscription_task_shutdown_receiver) = oneshot::channel();
+    let (stat_task_shutdown_sender, mut stat_task_shutdown_receiver) = oneshot::channel();
 
     let submit_block_pool = daemon
         .new_client_pool(SUBMIT_BLOCK_CLIENTS, 100, |c, block: RpcBlock| async move {
@@ -185,8 +224,8 @@ async fn bench_utxos_changed_subscriptions_footprint() {
             match c.submit_transaction(tx.as_ref().into(), false).await {
                 Ok(_) => {}
                 Err(RpcError::General(msg)) if msg.contains("orphan") => {
-                    kaspa_core::warn!("\n\n\n{msg}\n\n");
-                    kaspa_core::warn!("Submitted {} transactions, exiting tx submit loop", i);
+                    kaspa_core::error!("\n\n\n{msg}\n\n");
+                    kaspa_core::error!("Submitted {} transactions, exiting tx submit loop", i);
                     return true;
                 }
                 Err(e) => panic!("{e}"),
@@ -255,9 +294,12 @@ async fn bench_utxos_changed_subscriptions_footprint() {
                 break;
             }
         }
-        exec.store(false, Ordering::Relaxed);
+        if exec.swap(false, Ordering::Relaxed) {
+            kaspa_core::warn!("Miner loop task triggered the shutdown");
+        }
         bbt_client.stop_notify(ListenerId::default(), Scope::NewBlockTemplate(NewBlockTemplateScope {})).await.unwrap();
         bbt_client.disconnect().await.unwrap();
+        subscription_task_shutdown_sender.send(()).unwrap();
         kaspa_core::warn!("Miner loop task exited");
     });
 
@@ -272,7 +314,7 @@ async fn bench_utxos_changed_subscriptions_footprint() {
             if tps_pressure != u64::MAX {
                 tokio::time::sleep(std::time::Duration::from_secs_f64(1.0 / tps_pressure as f64)).await;
             }
-            if last_log_time.elapsed() > Duration::from_millis(200) {
+            if last_log_time.elapsed() > Duration::from_millis(100) {
                 let mut mempool_size = cc.get_info().await.unwrap().mempool_size;
                 if log_index % 10 == 0 {
                     info!("Mempool size: {:#?}, txs submitted: {}", mempool_size, i);
@@ -286,7 +328,7 @@ async fn bench_utxos_changed_subscriptions_footprint() {
                         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                         mempool_size = cc.get_info().await.unwrap().mempool_size;
                         if log_index % 10 == 0 {
-                            info!("Mempool size: {:#?}, txs submitted: {}", mempool_size, i);
+                            info!("Mempool size: {:#?} (targeting {:#?}), txs submitted: {}", mempool_size, MEMPOOL_TARGET, i);
                         }
                         log_index += 1;
                     }
@@ -294,7 +336,8 @@ async fn bench_utxos_changed_subscriptions_footprint() {
             }
             match tx_sender.send((i, tx)).await {
                 Ok(_) => {}
-                Err(_) => {
+                Err(err) => {
+                    kaspa_core::error!("Tx sender channel returned error {err}");
                     break;
                 }
             }
@@ -310,64 +353,85 @@ async fn bench_utxos_changed_subscriptions_footprint() {
             }
             let mempool_size = cc.get_info().await.unwrap().mempool_size;
             info!("Mempool size: {:#?}", mempool_size);
-            if mempool_size == 0 || (TX_COUNT as u64 > MEMPOOL_TARGET && mempool_size < MEMPOOL_TARGET) {
+            if mempool_size == 0 {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
-        exec.store(false, Ordering::Relaxed);
+        if exec.swap(false, Ordering::Relaxed) {
+            kaspa_core::warn!("Tx sender task triggered the shutdown");
+        }
         kaspa_core::warn!("Tx sender task exited");
     });
 
     let notify_clients = daemon.new_clients(NOTIFY_CLIENTS).await;
     let network_id = daemon.network;
 
-    let notification_receive_tasks = join_all(notify_clients.iter().cloned().enumerate().map(|(i, client)| {
-        let exec = executing.clone();
-        tokio::spawn(async move {
-            let mut counter: u64 = 0;
-            loop {
-                match tokio::time::timeout(std::time::Duration::from_secs(3), client.notification_channel_receiver().recv()).await {
-                    Ok(Ok(_)) => {
-                        counter += 1;
-                        if counter % 1000 == 0 {
-                            trace!("Client #{} received {} notifications", i, counter);
-                        }
-                    }
-                    Ok(Err(_)) => {}
-                    Err(_) => {}
-                }
-                if !exec.load(Ordering::Relaxed) {
-                    kaspa_core::warn!("Test is over, stopping notification receive loop for client #{}", i);
-                    break;
-                }
-            }
-        })
-    }));
-
-    let exec = executing.clone();
-    let notify_task = tokio::spawn(async move {
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        warn!("Starting basic notifications...");
-        join_all(notify_clients.iter().cloned().enumerate().map(|(i, client)| {
+    let notification_receive_tasks = notify_clients
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(_, client)| {
+            let exec = executing.clone();
             tokio::spawn(async move {
-                client.start_notify(0, BlockAddedScope {}.into()).await.unwrap();
+                let mut counter: u64 = 0;
+                loop {
+                    match tokio::time::timeout(std::time::Duration::from_secs(3), client.notification_channel_receiver().recv()).await
+                    {
+                        Ok(Ok(_)) => {
+                            counter += 1;
+                            if counter % 1_000 == 0 {
+                                // trace!("Client #{} received {} notifications", i, counter);
+                            }
+                        }
+                        Ok(Err(_)) => {}
+                        Err(_) => {}
+                    }
+                    if !exec.load(Ordering::Relaxed) {
+                        // kaspa_core::warn!("Test is over, stopping notification receive loop for client #{}", i);
+                        break;
+                    }
+                }
+            })
+        })
+        .collect_vec();
+
+    let subscription_task = tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        warn!("Starting basic subscriptions...");
+        join_all(notify_clients.iter().cloned().enumerate().map(|(_, client)| {
+            tokio::spawn(async move {
+                // client.start_notify(0, BlockAddedScope {}.into()).await.unwrap();
                 client.start_notify(0, VirtualDaaScoreChangedScope {}.into()).await.unwrap();
-                client
-                    .start_notify(0, VirtualChainChangedScope { include_accepted_transaction_ids: i % 2 == 0 }.into())
-                    .await
-                    .unwrap();
+                // client
+                //     .start_notify(0, VirtualChainChangedScope { include_accepted_transaction_ids: i % 2 == 0 }.into())
+                //     .await
+                //     .unwrap();
             })
         }))
         .await;
-        warn!("Basic notifications started");
+        warn!("Basic subscriptions started");
 
+        let mut cycle: usize = 0;
         let mut stopwatch = std::time::Instant::now();
         loop {
-            tokio::time::sleep(stopwatch + std::time::Duration::from_secs(300) - std::time::Instant::now()).await;
-            stopwatch = std::time::Instant::now();
-            warn!("Starting UTXOs notifications...");
-            if ACTIVE_UTXOS_CHANGED_SUBSCRIPTIONS {
+            if cycle == 0 {
+                tokio::select! {
+                    biased;
+                    _ = &mut subscription_task_shutdown_receiver => {
+                        kaspa_core::warn!("Test is over, stopping subscription loop");
+                        break;
+                    }
+                    _ = tokio::time::sleep(
+                        stopwatch + std::time::Duration::from_secs(utxos_changed_cycle_seconds) - std::time::Instant::now(),
+                    ) => {}
+                }
+                stopwatch = std::time::Instant::now();
+            }
+            cycle += 1;
+
+            if active_utxos_changed_subscriptions && cycle <= max_cycles {
+                warn!("Cycle #{cycle} - Starting UTXOs notifications...");
                 join_all(notify_clients.iter().cloned().enumerate().map(|(i, client)| {
                     tokio::spawn(async move {
                         loop {
@@ -402,13 +466,24 @@ async fn bench_utxos_changed_subscriptions_footprint() {
                     })
                 }))
                 .await;
-                warn!("UTXOs notifications started");
+                warn!("Cycle #{cycle} - UTXOs notifications started");
             }
 
-            tokio::time::sleep(stopwatch + std::time::Duration::from_secs(600) - std::time::Instant::now()).await;
+            tokio::select! {
+                biased;
+                _ = &mut subscription_task_shutdown_receiver => {
+                    kaspa_core::warn!("Test is over, stopping subscription loop");
+                    break;
+                }
+                _ = tokio::time::sleep(
+                    stopwatch + std::time::Duration::from_secs(utxos_changed_cycle_seconds - (utxos_changed_cycle_seconds / 3))
+                        - std::time::Instant::now(),
+                ) => {}
+            }
             stopwatch = std::time::Instant::now();
-            warn!("Stopping UTXOs notifications...");
-            if ACTIVE_UTXOS_CHANGED_SUBSCRIPTIONS {
+
+            if active_utxos_changed_subscriptions && cycle <= max_cycles {
+                warn!("Cycle #{cycle} - Stopping UTXOs notifications...");
                 join_all(notify_clients.iter().cloned().map(|client| {
                     tokio::spawn(async move {
                         loop {
@@ -424,62 +499,121 @@ async fn bench_utxos_changed_subscriptions_footprint() {
                     })
                 }))
                 .await;
-                warn!("UTXOs notifications stopped");
+                warn!("Cycle #{cycle} - UTXOs notifications stopped");
             }
-            if !exec.load(Ordering::Relaxed) {
-                kaspa_core::warn!("Test is over, stopping subscription loop");
-                break;
+
+            tokio::select! {
+                biased;
+                _ = &mut subscription_task_shutdown_receiver => {
+                    kaspa_core::warn!("Test is over, stopping subscription loop");
+                    break;
+                }
+                _ = tokio::time::sleep(
+                    stopwatch + std::time::Duration::from_secs(utxos_changed_cycle_seconds / 3) - std::time::Instant::now(),
+                ) => {}
             }
+            stopwatch = std::time::Instant::now();
         }
         for client in notify_clients.iter().cloned() {
             client.disconnect().await.unwrap();
         }
+        kaspa_core::warn!("Subscription loop task exited");
     });
 
     let txs_counter = submitted_block_total_txs.clone();
-    let exec = executing.clone();
     let stat_recorder_task = tokio::spawn(async move {
-        const STAT_FOLDER: &'static str = "../../../analyze/mem-logs";
         std::fs::create_dir_all(STAT_FOLDER).unwrap();
-        let f =
-            std::fs::File::create(format!("{}/ucs-{}.csv", STAT_FOLDER, chrono::Local::now().format("%Y-%m-%d %H:%M:%S"))).unwrap();
-        let mut f = std::io::BufWriter::new(f);
-        let start_time = std::time::Instant::now();
-        let mut stopwatch = start_time;
-        loop {
-            tokio::time::sleep(stopwatch + std::time::Duration::from_secs(5) - std::time::Instant::now()).await;
-            stopwatch = std::time::Instant::now();
-            let ProcessMemoryInfo { resident_set_size, .. } = get_process_memory_info().unwrap();
-            let txs = txs_counter.load(Ordering::SeqCst);
-            writeln!(f, "{}, {}, {}", (stopwatch - start_time).as_millis() as f64 / 1000.0, txs, resident_set_size).unwrap();
-            f.flush().unwrap();
-            if !exec.load(Ordering::Relaxed) {
-                kaspa_core::warn!("Test is over, stopping stat recorder loop");
-                break;
+        {
+            let f = std::fs::File::create(format!("{}/ucs-{}.csv", STAT_FOLDER, chrono::Local::now().format("%Y-%m-%d %H-%M-%S")))
+                .unwrap();
+            let mut f = std::io::BufWriter::new(f);
+            let start_time = std::time::Instant::now();
+            let mut stopwatch = start_time;
+            loop {
+                tokio::select! {
+                    biased;
+                    _ = &mut stat_task_shutdown_receiver => {
+                        kaspa_core::warn!("Test is over, stopping subscription loop");
+                        break;
+                    }
+                    _ = tokio::time::sleep(stopwatch + std::time::Duration::from_secs(5) - std::time::Instant::now()) => {}
+                }
+                stopwatch = std::time::Instant::now();
+                let ProcessMemoryInfo { resident_set_size, .. } = get_process_memory_info().unwrap();
+                let txs = txs_counter.load(Ordering::SeqCst);
+                writeln!(f, "{}, {}, {}", (stopwatch - start_time).as_millis() as f64 / 1000.0 / 60.0, txs, resident_set_size)
+                    .unwrap();
+                f.flush().unwrap();
             }
         }
+        kaspa_core::warn!("Stat recorder task exited");
     });
 
-    let _ = join!(
-        memory_monitor_task,
-        notification_receive_tasks,
-        notify_task,
-        miner_receiver_task,
-        miner_loop_task,
-        tx_sender_task,
-        stat_recorder_task
-    );
+    let _ = join!(miner_receiver_task, miner_loop_task, subscription_task, tx_sender_task);
 
+    kaspa_core::warn!("Waiting for notification receive tasks to exit...");
+    join_all(notification_receive_tasks).await;
+    kaspa_core::warn!("Notification receive tasks exited");
+
+    kaspa_core::warn!("Closing submit block and tx pools");
     submit_block_pool.close();
     submit_tx_pool.close();
 
-    join_all(submit_block_pool.join_handles).await;
-    join_all(submit_tx_pool.join_handles).await;
+    kaspa_core::warn!("Waiting for submit block pool to exit...");
+    submit_block_pool.join().await;
+    kaspa_core::warn!("Submit block pool exited");
+
+    kaspa_core::warn!("Waiting for submit tx pool to exit...");
+    submit_tx_pool.join().await;
+    kaspa_core::warn!("Submit tx pool exited");
+
+    kaspa_core::warn!("Waiting for memory monitor and stat recorder to exit...");
+    tick_service.shutdown();
+    stat_task_shutdown_sender.send(()).unwrap();
+    let _ = join!(memory_monitor_task, stat_recorder_task);
 
     //
     // Fold-up
     //
+    kaspa_core::warn!("Disconnect main client");
     client.disconnect().await.unwrap();
     drop(client);
+
+    sleep(Duration::from_millis(500)).await;
     daemon.shutdown();
+}
+
+/// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc --profile release -- notify_benchmarks::bench_utxos_changed_subscriptions_footprint_a --exact --nocapture --ignored`
+#[tokio::test]
+#[ignore = "bmk"]
+async fn bench_utxos_changed_subscriptions_footprint_a() {
+    bench_utxos_changed_subscriptions_footprint(None, 1).await;
+}
+
+/// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc --profile release -- notify_benchmarks::bench_utxos_changed_subscriptions_footprint_b --exact --nocapture --ignored`
+#[tokio::test]
+#[ignore = "bmk"]
+async fn bench_utxos_changed_subscriptions_footprint_b() {
+    bench_utxos_changed_subscriptions_footprint(Some(1200), 10_000).await;
+}
+
+/// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc --profile release -- notify_benchmarks::bench_utxos_changed_subscriptions_footprint_c --exact --nocapture --ignored`
+#[tokio::test]
+#[ignore = "bmk"]
+async fn bench_utxos_changed_subscriptions_footprint_c() {
+    bench_utxos_changed_subscriptions_footprint(Some(60), 10_000).await;
+}
+
+/// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc --profile release -- notify_benchmarks::bench_utxos_changed_subscriptions_footprint_d --exact --nocapture --ignored`
+#[tokio::test]
+#[ignore = "bmk"]
+async fn bench_utxos_changed_subscriptions_footprint_d() {
+    bench_utxos_changed_subscriptions_footprint(Some(30), 10_000).await;
+}
+
+/// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc --profile release -- notify_benchmarks::bench_utxos_changed_subscriptions_footprint_e --exact --nocapture --ignored`
+#[tokio::test]
+#[ignore = "bmk"]
+async fn bench_utxos_changed_subscriptions_footprint_e() {
+    bench_utxos_changed_subscriptions_footprint(Some(1200), 1).await;
 }

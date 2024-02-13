@@ -36,7 +36,9 @@ kaspa-wrpc-server.workspace = true
 kaspad.workspace = true
 
 async-channel.workspace = true
+async-trait.workspace = true
 bincode.workspace = true
+clap.workspace = true
 chrono.workspace = true
 crossbeam-channel.workspace = true
 dhat = { workspace = true, optional = true }
@@ -63,7 +65,7 @@ workflow-perf-monitor.workspace = true
 [dev-dependencies]
 criterion.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
-tokio = { workspace = true, features = ["rt", "macros"] }
+tokio = { workspace = true, features = ["rt", "macros", "process"] }
 kaspa-txscript-errors.workspace = true
 
 [features]

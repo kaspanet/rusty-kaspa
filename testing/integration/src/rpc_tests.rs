@@ -64,6 +64,7 @@ async fn sanity_test() {
     // is to force any implementor of a new RpcApi method to add a matching arm here and to strongly incentivize
     // the adding of an actual sanity test of said new method.
     for op in KaspadPayloadOps::list() {
+        let network_id = daemon.network;
         let task: JoinHandle<()> = match op {
             KaspadPayloadOps::SubmitBlock => {
                 let rpc_client = client.clone();
@@ -157,7 +158,7 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let response = rpc_client.get_current_network_call(GetCurrentNetworkRequest {}).await.unwrap();
-                    assert_eq!(response.network, daemon.network.network_type);
+                    assert_eq!(response.network, network_id.network_type);
                 })
             }
 
@@ -322,7 +323,7 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let response = rpc_client.get_block_dag_info_call(GetBlockDagInfoRequest {}).await.unwrap();
-                    assert_eq!(response.network, daemon.network);
+                    assert_eq!(response.network, network_id);
                 })
             }
 
@@ -508,7 +509,7 @@ async fn sanity_test() {
                 tst!(op, {
                     let response = rpc_client.get_server_info_call(GetServerInfoRequest {}).await.unwrap();
                     assert!(response.has_utxo_index); // we set utxoindex above
-                    assert_eq!(response.network_id, daemon.network);
+                    assert_eq!(response.network_id, network_id);
                 })
             }
 

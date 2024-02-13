@@ -1,5 +1,4 @@
 use crate::common::{self, client_notify::ChannelNotify, daemon::Daemon, utils::CONTRACT_FACTOR};
-use futures_util::future::join_all;
 use kaspa_addresses::Address;
 use kaspa_consensus::params::Params;
 use kaspa_consensus_core::{constants::SOMPI_PER_KASPA, network::NetworkType, tx::Transaction};
@@ -263,8 +262,8 @@ async fn bench_bbt_latency() {
     submit_block_pool.close();
     submit_tx_pool.close();
 
-    join_all(submit_block_pool.join_handles).await;
-    join_all(submit_tx_pool.join_handles).await;
+    submit_block_pool.join().await;
+    submit_tx_pool.join().await;
 
     //
     // Fold-up

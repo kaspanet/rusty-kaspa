@@ -23,6 +23,7 @@ faster-hex.workspace = true
 futures.workspace = true
 h2.workspace = true
 log.workspace = true
+parking_lot.workspace = true
 paste.workspace = true
 prost.workspace = true
 rand.workspace = true
