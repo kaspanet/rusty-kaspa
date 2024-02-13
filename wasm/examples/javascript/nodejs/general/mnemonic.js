@@ -1,4 +1,4 @@
-const kaspa = require('../../../nodejs/kaspa');
+const kaspa = require('../../../../nodejs/kaspa');
 const {
     Mnemonic,
 } = kaspa;

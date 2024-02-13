@@ -1,34 +1,40 @@
 // Run with: node demo.js
+// @ts-ignore
 globalThis.WebSocket = require("websocket").w3cwebsocket;
 
 const {
     PrivateKey,
     Address,
     RpcClient,
+    Generator,
     UtxoProcessor,
     UtxoContext,
     kaspaToSompi,
     createTransactions,
     initConsolePanicHook
-} = require('../../../nodejs/kaspa');
+} = require('../../../../nodejs/kaspa');
 
 initConsolePanicHook();
 
-const { encoding, networkId, destinationAddress } = require("./utils").parseArgs();
+const { encoding, networkId, address : destinationAddress } = require("../utils").parseArgs();
 
 
 (async () => {
 
     const privateKey = new PrivateKey('b99d75736a0fd0ae2da658959813d680474f5a740a9c970a7da867141596178f');
-    const sourceAddress = privateKey.toKeypair().toAddress(networkType);
+    const sourceAddress = privateKey.toKeypair().toAddress(networkId);
     console.log(`Source address: ${sourceAddress}`);
 
     // if not destination is specified, send back to ourselves
-    destinationAddress = destinationAddress ?? sourceAddress;
+    let address = destinationAddress ?? sourceAddress;
     console.log(`Destination address: ${destinationAddress}`);
 
     // 1) Initialize RPC
-    const rpc = new RpcClient("127.0.0.1", encoding, networkId);
+    const rpc = new RpcClient({
+        url : "127.0.0.1",
+        encoding,
+        networkId
+    });
 
     // 2) Create UtxoProcessor, passing RPC to it
     let processor = await new UtxoProcessor({ rpc, networkId });
@@ -63,12 +69,13 @@ const { encoding, networkId, destinationAddress } = require("./utils").parseArgs
         console.log("Sending transaction");
 
         let generator = new Generator({
-            context,
-            outputs: [[destinationAddress, kaspaToSompi(0.2)]],
-            priorityFee: 0,
+            entries : context,
+            outputs: [{address, amount : kaspaToSompi(0.2)}],
+            priorityFee: kaspaToSompi(0.0001),
             changeAddress: sourceAddress,
         });
 
+        let pending;
         while (pending = await generator.next()) {
             await pending.sign([privateKey]);
             let txid = await pending.submit(rpc);

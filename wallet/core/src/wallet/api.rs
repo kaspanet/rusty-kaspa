@@ -45,7 +45,7 @@ impl WalletApi for super::Wallet {
                 url: Some(url),
                 ..Default::default()
             };
-            wrpc_client.connect(options).await.map_err(|e| e.to_string())?;
+            wrpc_client.connect(Some(options)).await.map_err(|e| e.to_string())?;
             Ok(ConnectResponse {})
         } else {
             Err(Error::NotWrpcClient)

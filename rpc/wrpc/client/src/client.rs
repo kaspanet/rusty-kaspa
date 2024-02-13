@@ -257,10 +257,13 @@ impl KaspaRpcClient {
     /// to the wRPC server.  If the supplied `block` call is `true`
     /// this function will block until the first successful
     /// connection.
-    pub async fn connect(&self, options: ConnectOptions) -> ConnectResult<Error> {
+    pub async fn connect(&self, options: Option<ConnectOptions>) -> ConnectResult<Error> {
+        let options = options.unwrap_or_default();
+
         if let Some(url) = options.url.as_ref() {
             self.inner.rpc_ctl.set_descriptor(Some(url.clone()));
         }
+
         self.start().await?;
         Ok(self.inner.rpc_client.connect(options).await?)
     }

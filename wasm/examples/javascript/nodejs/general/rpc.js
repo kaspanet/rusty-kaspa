@@ -1,7 +1,8 @@
+// @ts-ignore
 globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket module shim
 
-const kaspa = require('../../../nodejs/kaspa');
-const { parseArgs } = require("./utils");
+const kaspa = require('../../../../nodejs/kaspa');
+const { parseArgs } = require("../utils");
 const {
     RpcClient
 } = kaspa;
@@ -15,7 +16,11 @@ const {
 
 (async () => {
 
-    const rpc = new RpcClient("127.0.0.1", encoding, networkId);
+    const rpc = new RpcClient({
+        url : "127.0.0.1",
+        encoding,
+        networkId
+    });
     console.log(`Connecting to ${rpc.url}`)
     await rpc.connect();
 

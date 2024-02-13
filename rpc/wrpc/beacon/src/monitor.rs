@@ -38,7 +38,7 @@ impl NodeConnection {
     async fn connect(&self) -> Result<()> {
         let options = ConnectOptions { block_async_connect: false, strategy: ConnectStrategy::Retry, ..Default::default() };
 
-        self.client.connect(options).await?;
+        self.client.connect(Some(options)).await?;
         Ok(())
     }
 

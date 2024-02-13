@@ -23,7 +23,11 @@ kaspa.init_console_panic_hook();
     // The kaspa address that was passed as an argument or a default one
     const address = args.address ?? "kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd";
 
-    const rpc = new RpcClient("127.0.0.1", encoding, networkType);
+    const rpc = new RpcClient({
+        url : "127.0.0.1",
+        encoding,
+        networkId
+    });
 
     console.log(`# connecting to ${URL}`)
     await rpc.connect();

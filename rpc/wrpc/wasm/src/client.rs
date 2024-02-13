@@ -34,7 +34,7 @@ declare! {
         /**
          * Network identifier: `mainnet` or `testnet-10`
          */
-        network?: NetworkId;
+        networkId?: NetworkId;
     }
     "#,
 }
@@ -56,7 +56,7 @@ impl TryFrom<IRpcConfig> for RpcConfig {
     fn try_from(config: IRpcConfig) -> Result<Self> {
         let url = config.try_get_string("url")?; //.ok_or_else(|| Error::custom("url is required"))?;
         let encoding = config.try_get::<Encoding>("encoding")?.unwrap_or(Encoding::Borsh); //map_or(Ok(Encoding::Borsh), |encoding| Encoding::try_from(encoding))?;
-        let network_id = config.try_get::<NetworkId>("network")?.ok_or_else(|| Error::custom("network is required"))?;
+        let network_id = config.try_get::<NetworkId>("networkId")?.ok_or_else(|| Error::custom("network is required"))?;
         Ok(RpcConfig { url, encoding, network_id: Some(network_id) })
     }
 }
@@ -67,7 +67,7 @@ impl TryFrom<RpcConfig> for IRpcConfig {
         let object = IRpcConfig::default();
         object.set("url", &config.url.into())?;
         object.set("encoding", &config.encoding.into())?;
-        object.set("network", &config.network_id.into())?;
+        object.set("networkId", &config.network_id.into())?;
         Ok(object)
     }
 }
@@ -131,7 +131,8 @@ impl RpcClient {
 
 #[wasm_bindgen]
 impl RpcClient {
-    /// Create a new RPC client with [`Encoding`] and a `url`.
+    /// Create a new RPC client with optional [`Encoding`] and a `url`.
+    /// @see {@link IRpcConfig} interface for more details.
     #[wasm_bindgen(constructor)]
     pub fn ctor(config: Option<IRpcConfig>) -> Result<RpcClient> {
         Self::new(config.map(RpcConfig::try_from).transpose()?)
@@ -151,8 +152,9 @@ impl RpcClient {
     /// task that connects and reconnects to the server if the connection
     /// is terminated.  Use [`disconnect()`](Self::disconnect()) to
     /// terminate the connection.
-    pub async fn connect(&self, args: &IConnectOptions) -> Result<()> {
-        let options: ConnectOptions = args.try_into()?;
+    /// @see {@link IConnectOptions} interface for more details.
+    pub async fn connect(&self, args: Option<IConnectOptions>) -> Result<()> {
+        let options = args.map(ConnectOptions::try_from).transpose()?;
 
         self.start_notification_task()?;
         self.client.connect(options).await?;
@@ -281,6 +283,25 @@ impl RpcClient {
 
 #[wasm_bindgen]
 impl RpcClient {
+    // / This call accepts an `Array` of `Address` or an Array of address strings.
+    // #[wasm_bindgen(js_name = getUtxosByAddresses)]
+    // pub async fn get_utxos_by_addresses(&self, request: IGetUtxosByAddressesRequest) -> Result<GetUtxosByAddressesResponse> {
+    //     let request : GetUtxosByAddressesRequest = request.try_into()?;
+    //     let result: RpcResult<GetUtxosByAddressesResponse> = self.client.get_utxos_by_addresses_call(request).await;
+    //     let response: GetUtxosByAddressesResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
+    //     to_value(&response.entries).map_err(|err| err.into())
+    // }
+
+    // #[wasm_bindgen(js_name = getUtxosByAddressesCall)]
+    // pub async fn get_utxos_by_addresses_call(&self, request: IGetUtxosByAddressesRequest) -> Result<IGetUtxosByAddressesResponse> {
+    //     let request = from_value::<GetUtxosByAddressesRequest>(request)?;
+    //     let result: RpcResult<GetUtxosByAddressesResponse> = self.client.get_utxos_by_addresses_call(request).await;
+    //     let response: GetUtxosByAddressesResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
+    //     to_value(&response).map_err(|err| err.into())
+    // }
+
+    // ---
+
     /// Manage subscription for a virtual DAA score changed notification event.
     /// Virtual DAA score changed notification event is produced when the virtual
     /// Difficulty Adjustment Algorithm (DAA) score changes in the Kaspa BlockDAG.

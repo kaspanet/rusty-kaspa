@@ -1184,6 +1184,13 @@ try_from! ( args: IGetUtxosByAddressesRequest, GetUtxosByAddressesRequest, {
     Ok(request)
 });
 
+// #[wasm_bindgen]
+// extern "C" {
+//     #[wasm_bindgen(extends = Object, typescript_type = "UtxoEntry[]")]
+//     #[derive(Clone, Debug, PartialEq, Eq)]
+//     pub type GetUtxosByAddressesResponse;
+// }
+
 declare! {
     IGetUtxosByAddressesResponse,
     r#"
@@ -1193,7 +1200,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetUtxosByAddressesResponse {
-        entries : IUtxosByAddressesEntry[];
+        entries : IUtxoEntry[];
     }
     "#,
 }

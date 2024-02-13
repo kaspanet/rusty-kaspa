@@ -1,4 +1,5 @@
 // Run with: node demo.js
+// @ts-ignore
 globalThis.WebSocket = require("websocket").w3cwebsocket;
 
 const {
@@ -7,11 +8,11 @@ const {
     Generator,
     kaspaToSompi,
     initConsolePanicHook
-} = require('../../../nodejs/kaspa');
+} = require('../../../../nodejs/kaspa');
 
 initConsolePanicHook();
 
-const { encoding, networkId, destinationAddress: destinationAddressArg } = require("./utils").parseArgs();
+const { encoding, networkId, address : destinationAddress } = require("../utils").parseArgs();
 
 (async () => {
 
@@ -22,10 +23,14 @@ const { encoding, networkId, destinationAddress: destinationAddressArg } = requi
     console.info(`Source address: ${sourceAddress}`);
 
     // if not destination address is supplied, send funds to source address
-    const destinationAddress = destinationAddressArg || sourceAddress;
-    console.info(`Destination address: ${destinationAddress}`);
+    let address = destinationAddress || sourceAddress;
+    console.info(`Destination address: ${address}`);
 
-    const rpc = new RpcClient("127.0.0.1", encoding, networkId);
+    const rpc = new RpcClient({
+        url : "127.0.0.1",
+        encoding,
+        networkId
+    });
     console.log(`Connecting to ${rpc.url}`);
 
     await rpc.connect();
@@ -37,7 +42,7 @@ const { encoding, networkId, destinationAddress: destinationAddressArg } = requi
     }
 
 
-    let entries = await rpc.getUtxosByAddresses([sourceAddress]);
+    let { entries } = await rpc.getUtxosByAddresses([sourceAddress]);
 
     if (!entries.length) {
         console.error(`No UTXOs found for address ${sourceAddress}`);
@@ -45,7 +50,7 @@ const { encoding, networkId, destinationAddress: destinationAddressArg } = requi
         console.info(entries);
 
         // a very basic JS-driven utxo entry sort
-        entries.sort((a, b) => a.utxoEntry.amount > b.utxoEntry.amount || -(a.utxoEntry.amount < b.utxoEntry.amount));
+        entries.sort((a, b) => a.amount > b.amount ? 1 : -1);
 
         // create a transaction generator
         // entries: an array of UtxoEntry
@@ -69,8 +74,9 @@ const { encoding, networkId, destinationAddress: destinationAddressArg } = requi
         // transaction according to the supplied outputs.
         let generator = new Generator({
             entries,
-            outputs: [[destinationAddress, kaspaToSompi(0.2)]],
-            priorityFee: 0,
+            outputs: [{address, amount : kaspaToSompi(0.2)}],
+            // priorityFee: 1000n,
+            priorityFee: kaspaToSompi(0.0001),
             changeAddress: sourceAddress,
         });
 

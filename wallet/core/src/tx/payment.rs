@@ -6,6 +6,24 @@ use crate::imports::*;
 use kaspa_consensus_wasm::{TransactionOutput, TransactionOutputInner};
 use kaspa_txscript::pay_to_address_script;
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_PAYMENT_OUTPUTS: &'static str = r#"
+/**
+ * 
+ * @category Wallet SDK
+ */
+interface IPaymentOutputs {
+    /**
+     * Destination address.
+     */
+    address: Address | string;
+    /**
+     * Output amount in SOMPI.
+     */
+    amount: bigint;
+}
+"#;
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum PaymentDestination {
     Change,

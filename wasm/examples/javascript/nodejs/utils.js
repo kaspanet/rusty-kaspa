@@ -1,6 +1,6 @@
 const path = require('path');
 const nodeUtil = require('node:util');
-const { parseArgs: nodeParseArgs } = nodeUtil;
+const { parseArgs: nodeParseArgs, } = nodeUtil;
 
 const {
     Address,
@@ -11,7 +11,7 @@ const {
 /**
  * Helper function to parse command line arguments for running the scripts
  * @param options Additional options to configure the parsing, such as additional arguments for the script and additional help output to go with it
- * @returns {{address: Address, tokens: NodeUtilParseArgsToken[], networkType: (NetworkType), encoding: (Encoding)}}
+ * @returns {{address: Address, tokens: any, networkId: (NetworkId), encoding: (Encoding)}}
  */
 function parseArgs(options = {
     additionalParseArgs: {},
@@ -32,7 +32,7 @@ function parseArgs(options = {
             json: {
                 type: 'boolean',
             },
-            destination: {
+            address: {
                 type: 'string',
             },
             network: {
@@ -44,13 +44,13 @@ function parseArgs(options = {
         }, tokens: true, allowPositionals: true
     });
     if (values.help) {
-        console.log(`Usage: node ${script} [address] [mainnet|testnet] [--destination <address>] [--network <mainnet|testnet>] [--encoding <borsh|json>] ${options.additionalHelpOutput}`);
+        console.log(`Usage: node ${script} [address] [mainnet|testnet-10|testnet-11] [--address <address>] [--network <mainnet|testnet-10|testnet-11>] [--encoding <borsh|json>] ${options.additionalHelpOutput}`);
         process.exit(0);
     }
 
     const addressRegex = new RegExp(/(kaspa|kaspatest):\S+/i);
     const addressArg = values.address ?? positionals.find((positional) => addressRegex.test(positional)) ?? null;
-    const destinationAddress = addressArg === null ? null : new Address(addressArg);
+    const address = addressArg === null ? null : new Address(addressArg);
 
     const networkArg = values.network ?? positionals.find((positional) => positional.match(/^(testnet|mainnet|simnet|devnet)-\d+$/)) ?? null;
     if (!networkArg) {
@@ -66,7 +66,7 @@ function parseArgs(options = {
     }
 
     return {
-        destinationAddress,
+        address,
         networkId,
         encoding,
         tokens,

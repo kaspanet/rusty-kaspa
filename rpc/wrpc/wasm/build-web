@@ -1,1 +1,1 @@
-wasm-pack build --target web --out-name kaspa-rpc --out-dir web/kaspa-rpc
+wasm-pack build --target web --out-name kaspa-rpc --out-dir web/kaspa-rpc --features wasm32-sdk

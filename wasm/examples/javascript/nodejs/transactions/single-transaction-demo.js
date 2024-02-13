@@ -1,4 +1,5 @@
 // Run with: node demo.js
+// @ts-ignore
 globalThis.WebSocket = require("websocket").w3cwebsocket;
 
 const {
@@ -7,12 +8,12 @@ const {
     createTransaction,
     signTransaction,
     initConsolePanicHook
-} = require('../../../nodejs/kaspa');
+} = require('../../../../nodejs/kaspa');
 
 initConsolePanicHook();
 
 // command line arguments --network=(mainnet|testnet-<number>) --encoding=borsh (default)
-const { networkId, encoding } = require("./utils").parseArgs();
+const { networkId, encoding } = require("../utils").parseArgs();
 
 (async () => {
 
@@ -30,7 +31,11 @@ const { networkId, encoding } = require("./utils").parseArgs();
     console.info(`Full kaspa address: ${address}`);
     console.info(address);
 
-    const rpc = new RpcClient("127.0.0.1", encoding, networkId);
+    const rpc = new RpcClient({
+        url : "127.0.0.1",
+        encoding,
+        networkId
+    });
     console.log(`Connecting to ${rpc.url}`);
     await rpc.connect();
     console.log(`Connected to ${rpc.url}`);
@@ -43,7 +48,7 @@ const { networkId, encoding } = require("./utils").parseArgs();
 
 
     try {
-        const utxos = await rpc.getUtxosByAddresses([address]);
+        const { entries : utxos } = await rpc.getUtxosByAddresses([address]);
 
         console.info(utxos);
 
@@ -54,7 +59,7 @@ const { networkId, encoding } = require("./utils").parseArgs();
 
 
         let total = utxos.reduce((agg, curr) => {
-            return curr.utxoEntry.amount + agg;
+            return curr.amount + agg;
         }, 0n);
 
         console.info('Amount sending', total - BigInt(utxos.length) * 2000n)
@@ -75,7 +80,7 @@ const { networkId, encoding } = require("./utils").parseArgs();
         console.log("Transaction:", transaction);
         // console.info(JSON.stringify(transaction, null, 4));
 
-        let result = await rpc.submitTransaction(transaction);
+        let result = await rpc.submitTransaction({transaction});
 
         console.info(result);
     } finally {

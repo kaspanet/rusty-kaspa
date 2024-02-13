@@ -35,7 +35,11 @@ let { encoding, networkId, destinationAddress } = parseArgs();
     console.info(`Destination address: ${destinationAddress}`);
 
     // 1) Initialize RPC
-    const rpc = new RpcClient("wss://eu-1.kaspa-ng.org/testnet-10", encoding, networkId);
+    const rpc = new RpcClient({
+        url : "wss://eu-1.kaspa-ng.org/testnet-10",
+        encoding,
+        networkId
+    });
 
     // 2) Create UtxoProcessor, passing RPC to it
     let processor = await new UtxoProcessor({ rpc, networkId });

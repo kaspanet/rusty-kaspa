@@ -9,18 +9,53 @@ use crate::wasm::UtxoContext;
 
 // TODO-WASM fix outputs
 #[wasm_bindgen(typescript_custom_section)]
-const IGeneratorSettingsObject: &'static str = r#"
+const TS_GENERATOR_SETTINGS_OBJECT: &'static str = r#"
 /**
+ * Configuration for the transaction {@link Generator}. This interface
+ * allows you to specify UTXO sources, transaction outputs, change address,
+ * priority fee, and other transaction parameters.
+ * 
+ * If the total number of UTXOs needed to satisfy the transaction outputs
+ * exceeds maximum allowed number of UTXOs per transaction (limited by
+ * the maximum transaction mass), the {@link Generator} will produce 
+ * multiple chained transactions to the change address and then used these
+ * transactions as a source for the "final" transaction.
  * 
  * @category Wallet SDK
  */
 interface IGeneratorSettingsObject {
-    outputs: PaymentOutputs | Array<Array<number | string>>;
+    /** 
+     * Final transaction outputs (do not supply change transaction).
+     * 
+     * Typical usage: { address: "kaspa:...", amount: 1000n }
+     */
+    outputs: PaymentOutputs | IPaymentOutputs[] | Array<number | string | Address>[];
+    /** 
+     * Address to be used for change, if any. 
+     */
     changeAddress: Address | string;
+    /** 
+     * Priority fee in SOMPI.
+     * 
+     */
     priorityFee?: bigint;
-    utxoEntries: Array<UtxoEntryReference>;
+    /**
+     * UTXO entries to be used for the transaction. This can be an
+     * array of UtxoEntry instances, objects matching {@link IUtxoEntry}
+     * interface, or a {@link UtxoContext} instance.
+     */
+    entries: IUtxoEntry[] | UtxoEntryReference[] | UtxoContext;
+    /**
+     * Optional number of signature operations in the transaction.
+     */
     sigOpCount?: number;
+    /**
+     * Optional minimum number of signatures required for the transaction.
+     */
     minimumSignatures?: number;
+    /**
+     * Optional data payload to be included in the transaction.
+     */
     payload?: Uint8Array | string;
 }
 "#;
@@ -37,7 +72,7 @@ extern "C" {
     /// - `payload`: [`Uint8Array`] or hex String representation of a payload
     #[wasm_bindgen(extends = Object, typescript_type = "IGeneratorSettingsObject")]
     #[derive(Clone, Debug, PartialEq, Eq)]
-    pub type GeneratorSettingsObject;
+    pub type IGeneratorSettingsObject;
 }
 
 /// [`Generator`] is a type capable of generating transactions based on a supplied
@@ -78,7 +113,7 @@ pub struct Generator {
 #[wasm_bindgen]
 impl Generator {
     #[wasm_bindgen(constructor)]
-    pub fn ctor(args: GeneratorSettingsObject) -> Result<Generator> {
+    pub fn ctor(args: IGeneratorSettingsObject) -> Result<Generator> {
         let settings = GeneratorSettings::try_from(args)?;
 
         let GeneratorSettings {
@@ -177,7 +212,7 @@ enum GeneratorSource {
     Account(Account),
 }
 
-/// Converts [`GeneratorSettingsObject`] to a series of properties intended for use by the [`Generator`].
+/// Converts [`IGeneratorSettingsObject`] to a series of properties intended for use by the [`Generator`].
 struct GeneratorSettings {
     pub network_id: Option<NetworkId>,
     pub source: GeneratorSource,
@@ -190,9 +225,9 @@ struct GeneratorSettings {
     pub payload: Option<Vec<u8>>,
 }
 
-impl TryFrom<GeneratorSettingsObject> for GeneratorSettings {
+impl TryFrom<IGeneratorSettingsObject> for GeneratorSettings {
     type Error = Error;
-    fn try_from(args: GeneratorSettingsObject) -> std::result::Result<Self, Self::Error> {
+    fn try_from(args: IGeneratorSettingsObject) -> std::result::Result<Self, Self::Error> {
         let network_id = args.try_get::<NetworkId>("networkId")?;
 
         // lack of outputs results in a sweep transaction compounding utxos into the change address

@@ -1,5 +1,13 @@
 ## Running TypeScript examples:
 
+### Dependencies
+
+Before running examples, please install project dependencies:
+
+```bash
+npm install
+```
+
 ### Using TS Node
 
 ```bash

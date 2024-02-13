@@ -172,7 +172,7 @@ impl Wallet {
         Ok(())
     }
 
-    pub async fn connect(&self, args: &IConnectOptions) -> Result<()> {
+    pub async fn connect(&self, args: Option<IConnectOptions>) -> Result<()> {
         self.rpc.connect(args).await?;
         Ok(())
     }

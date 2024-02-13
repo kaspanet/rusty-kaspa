@@ -25,7 +25,11 @@ kaspa.init_console_panic_hook();
         networkType,
     } = parseArgs();
 
-    const rpc = new RpcClient("127.0.0.1", encoding, networkType);
+    const rpc = new RpcClient({
+        url : "127.0.0.1",
+        encoding,
+        networkId
+    });
 
     console.log(`Connecting to ${rpc.url}`)
     await rpc.connect();

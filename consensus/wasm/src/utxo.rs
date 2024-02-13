@@ -15,11 +15,17 @@ cfg_if! {
          * @category Consensus
          */
         export interface IUtxoEntry {
+            /** @readonly */
             address: Address | undefined;
+            /** @readonly */
             outpoint: ITransactionOutpoint;
+            /** @readonly */
             amount : bigint;
+            /** @readonly */
             scriptPublicKey : IScriptPublicKey;
+            /** @readonly */
             blockDaaScore: bigint;
+            /** @readonly */
             isCoinbase: boolean;
         }
         "#;

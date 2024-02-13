@@ -1,4 +1,5 @@
 // Run with: node demo.js
+// @ts-ignore
 globalThis.WebSocket = require("websocket").w3cwebsocket;
 
 const {
@@ -7,11 +8,11 @@ const {
     RpcClient,
     kaspaToSompi,
     initConsolePanicHook
-} = require('../../../nodejs/kaspa');
+} = require('../../../../nodejs/kaspa');
 
 initConsolePanicHook();
 
-const { encoding, networkId } = require("./utils").parseArgs();
+const { encoding, networkId } = require("../utils").parseArgs();
 
 (async () => {
 
@@ -23,7 +24,11 @@ const { encoding, networkId } = require("./utils").parseArgs();
     const sourceAddress = privateKey.toKeypair().toAddress(networkId);
     console.info(`Full kaspa address: ${sourceAddress}`);
 
-    const rpc = new RpcClient("127.0.0.1", encoding, networkId);
+    const rpc = new RpcClient({
+        url : "127.0.0.1",
+        encoding,
+        networkId
+    });
     console.log(`Connecting to ${rpc.url}`);
 
     await rpc.connect();
@@ -34,7 +39,7 @@ const { encoding, networkId } = require("./utils").parseArgs();
         return;
     }
 
-    let entries = await rpc.getUtxosByAddresses([sourceAddress]);
+    let { entries } = await rpc.getUtxosByAddresses([sourceAddress]);
 
     if (!entries.length) {
         console.error(`No UTXOs found for address ${sourceAddress}`);
@@ -42,7 +47,7 @@ const { encoding, networkId } = require("./utils").parseArgs();
         console.info(entries);
 
         // a very basic JS-driven utxo entry sort
-        entries.sort((a, b) => a.utxoEntry.amount > b.utxoEntry.amount || -(a.utxoEntry.amount < b.utxoEntry.amount));
+        entries.sort((a, b) => a.amount > b.amount ? 1 : -1);
 
         // create a transaction generator
         // entries: an array of UtxoEntry
@@ -66,8 +71,8 @@ const { encoding, networkId } = require("./utils").parseArgs();
         // transaction according to the supplied outputs.
         let generator = new Generator({
             entries,
-            outputs: [[sourceAddress, kaspaToSompi(0.2)]],
-            priorityFee: 0,
+            outputs: [{ address : sourceAddress, amount : kaspaToSompi(0.2)}],
+            priorityFee: kaspaToSompi(0.0001),
             changeAddress: sourceAddress,
         });
 

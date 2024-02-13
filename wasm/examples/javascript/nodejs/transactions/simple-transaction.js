@@ -1,4 +1,5 @@
 // Run with: node demo.js
+// @ts-ignore
 globalThis.WebSocket = require("websocket").w3cwebsocket;
 
 const {
@@ -8,9 +9,9 @@ const {
     kaspaToSompi,
     createTransactions,
     initConsolePanicHook
-} = require('../../../nodejs/kaspa');
+} = require('../../../../nodejs/kaspa');
 
-const { encoding, networkId, destinationAddress: destinationAddressArg } = require("./utils").parseArgs();
+const { encoding, networkId, address: destinationAddressArg } = require("../utils").parseArgs();
 
 initConsolePanicHook();
 
@@ -27,8 +28,11 @@ initConsolePanicHook();
     const destinationAddress = destinationAddressArg || sourceAddress;
     console.log(`Destination address: ${destinationAddress}`);
 
-    // let rpcUrl = RpcClient.parseUrl("127.0.0.1", encoding, networkType);
-    const rpc = new RpcClient("127.0.0.1", encoding, networkId);
+    const rpc = new RpcClient({
+        url : "127.0.0.1",
+        encoding,
+        networkId
+    });
     console.log(`Connecting to ${rpc.url}`);
 
     await rpc.connect();
@@ -39,7 +43,7 @@ initConsolePanicHook();
         return;
     }
 
-    let entries = await rpc.getUtxosByAddresses([sourceAddress]);
+    let { entries } = (await rpc.getUtxosByAddresses([sourceAddress]));
 
     if (!entries.length) {
         console.error("No UTXOs found for address");
@@ -47,12 +51,12 @@ initConsolePanicHook();
         console.info(entries);
 
         // a very basic JS-driven utxo entry sort
-        entries.sort((a, b) => a.utxoEntry.amount > b.utxoEntry.amount || -(a.utxoEntry.amount < b.utxoEntry.amount));
+        entries.sort((a, b) => a.amount > b.amount ? 1 : -1);
 
         let { transactions, summary } = await createTransactions({
             entries,
-            outputs: [[destinationAddress, kaspaToSompi(0.00012)]],
-            priorityFee: 0,
+            outputs: [{ address : destinationAddress, amount : kaspaToSompi(0.00012)}],
+            priorityFee: 0n,
             changeAddress: sourceAddress,
         });
 
