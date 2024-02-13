@@ -759,9 +759,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         }
         warn!("Shutdown RPC command was called, shutting down in 1 second...");
 
-        // Wait a second before shutting down, to allow time to return the response to the caller
+        // Wait for a second before shutting down,
+        // giving time for the response to be sent to the caller.
         let core = self.core.clone();
         tokio::spawn(async move {
+            core.trigger_shutdown();
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             core.shutdown();
         });
