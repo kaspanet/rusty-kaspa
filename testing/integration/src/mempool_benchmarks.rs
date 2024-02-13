@@ -1,4 +1,5 @@
 use crate::common::{self, client_notify::ChannelNotify, daemon::Daemon, utils::CONTRACT_FACTOR};
+use futures_util::future::join_all;
 use kaspa_addresses::Address;
 use kaspa_consensus::params::Params;
 use kaspa_consensus_core::{constants::SOMPI_PER_KASPA, network::NetworkType, tx::Transaction};
@@ -111,29 +112,27 @@ async fn bench_bbt_latency() {
     bbt_client.start(Some(Arc::new(ChannelNotify::new(sender)))).await;
     bbt_client.start_notify(ListenerId::default(), Scope::NewBlockTemplate(NewBlockTemplateScope {})).await.unwrap();
 
-    let submit_block_pool = daemon
-        .new_client_pool(SUBMIT_BLOCK_CLIENTS, 100, |c, block| async move {
-            let _sw = kaspa_core::time::Stopwatch::<500>::with_threshold("sb");
-            let response = c.submit_block(block, false).await.unwrap();
-            assert_eq!(response.report, kaspa_rpc_core::SubmitBlockReport::Success);
-            false
-        })
-        .await;
+    let submit_block_pool = daemon.new_client_pool(SUBMIT_BLOCK_CLIENTS, 100).await;
+    let submit_block_pool_tasks = submit_block_pool.start(|c, block| async move {
+        let _sw = kaspa_core::time::Stopwatch::<500>::with_threshold("sb");
+        let response = c.submit_block(block, false).await.unwrap();
+        assert_eq!(response.report, kaspa_rpc_core::SubmitBlockReport::Success);
+        false
+    });
 
-    let submit_tx_pool = daemon
-        .new_client_pool::<(usize, Arc<Transaction>), _, _>(SUBMIT_TX_CLIENTS, 100, |c, (i, tx)| async move {
-            match c.submit_transaction(tx.as_ref().into(), false).await {
-                Ok(_) => {}
-                Err(RpcError::General(msg)) if msg.contains("orphan") => {
-                    kaspa_core::warn!("\n\n\n{msg}\n\n");
-                    kaspa_core::warn!("Submitted {} transactions, exiting tx submit loop", i);
-                    return true;
-                }
-                Err(e) => panic!("{e}"),
+    let submit_tx_pool = daemon.new_client_pool::<(usize, Arc<Transaction>)>(SUBMIT_TX_CLIENTS, 100).await;
+    let submit_tx_pool_tasks = submit_tx_pool.start(|c, (i, tx)| async move {
+        match c.submit_transaction(tx.as_ref().into(), false).await {
+            Ok(_) => {}
+            Err(RpcError::General(msg)) if msg.contains("orphan") => {
+                kaspa_core::warn!("\n\n\n{msg}\n\n");
+                kaspa_core::warn!("Submitted {} transactions, exiting tx submit loop", i);
+                return true;
             }
-            false
-        })
-        .await;
+            Err(e) => panic!("{e}"),
+        }
+        false
+    });
 
     let cc = bbt_client.clone();
     let exec = executing.clone();
@@ -262,8 +261,8 @@ async fn bench_bbt_latency() {
     submit_block_pool.close();
     submit_tx_pool.close();
 
-    submit_block_pool.join().await;
-    submit_tx_pool.join().await;
+    join_all(submit_block_pool_tasks).await;
+    join_all(submit_tx_pool_tasks).await;
 
     //
     // Fold-up

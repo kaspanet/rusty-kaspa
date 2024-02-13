@@ -442,23 +442,22 @@ async fn utxos_changed_subscriptions_client(cycle_seconds: Option<u64>, max_cycl
     let submitted_block_total_txs = Arc::new(AtomicUsize::new(0));
     let (subscription_task_shutdown_sender, mut subscription_task_shutdown_receiver) = oneshot::channel();
 
-    let submit_block_pool = client_manager
-        .new_client_pool(SUBMIT_BLOCK_CLIENTS, 100, |c, block: RpcBlock| async move {
-            let _sw = kaspa_core::time::Stopwatch::<500>::with_threshold("sb");
-            loop {
-                match c.submit_block(block.clone(), false).await {
-                    Ok(response) => {
-                        assert_eq!(response.report, kaspa_rpc_core::SubmitBlockReport::Success);
-                        break;
-                    }
-                    Err(_) => {
-                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                    }
+    let submit_block_pool = client_manager.new_client_pool(SUBMIT_BLOCK_CLIENTS, 100).await;
+    let submit_block_pool_tasks = submit_block_pool.start(|c, block: RpcBlock| async move {
+        let _sw = kaspa_core::time::Stopwatch::<500>::with_threshold("sb");
+        loop {
+            match c.submit_block(block.clone(), false).await {
+                Ok(response) => {
+                    assert_eq!(response.report, kaspa_rpc_core::SubmitBlockReport::Success);
+                    break;
+                }
+                Err(_) => {
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 }
             }
-            false
-        })
-        .await;
+        }
+        false
+    });
 
     let cc = bbt_client.clone();
     let exec = executing.clone();
@@ -530,20 +529,19 @@ async fn utxos_changed_subscriptions_client(cycle_seconds: Option<u64>, max_cycl
         kaspa_core::warn!("Miner loop task exited");
     });
 
-    let submit_tx_pool = client_manager
-        .new_client_pool::<(usize, Arc<Transaction>), _, _>(SUBMIT_TX_CLIENTS, 100, |c, (i, tx)| async move {
-            match c.submit_transaction(tx.as_ref().into(), false).await {
-                Ok(_) => {}
-                Err(RpcError::General(msg)) if msg.contains("orphan") => {
-                    kaspa_core::error!("\n\n\n{msg}\n\n");
-                    kaspa_core::error!("Submitted {} transactions, exiting tx submit loop", i);
-                    return true;
-                }
-                Err(e) => panic!("{e}"),
+    let submit_tx_pool = client_manager.new_client_pool::<(usize, Arc<Transaction>)>(SUBMIT_TX_CLIENTS, 100).await;
+    let submit_tx_pool_tasks = submit_tx_pool.start(|c, (i, tx)| async move {
+        match c.submit_transaction(tx.as_ref().into(), false).await {
+            Ok(_) => {}
+            Err(RpcError::General(msg)) if msg.contains("orphan") => {
+                kaspa_core::error!("\n\n\n{msg}\n\n");
+                kaspa_core::error!("Submitted {} transactions, exiting tx submit loop", i);
+                return true;
             }
-            false
-        })
-        .await;
+            Err(e) => panic!("{e}"),
+        }
+        false
+    });
 
     let tx_sender = submit_tx_pool.sender();
     let exec = executing.clone();
@@ -713,11 +711,11 @@ async fn utxos_changed_subscriptions_client(cycle_seconds: Option<u64>, max_cycl
     subscriber_pool.close();
 
     kaspa_core::warn!("Waiting for submit block pool to exit...");
-    submit_block_pool.join().await;
+    join_all(submit_block_pool_tasks).await;
     kaspa_core::warn!("Submit block pool exited");
 
     kaspa_core::warn!("Waiting for submit tx pool to exit...");
-    submit_tx_pool.join().await;
+    join_all(submit_tx_pool_tasks).await;
     kaspa_core::warn!("Submit tx pool exited");
 
     kaspa_core::warn!("Waiting for subscriber pool to exit...");
@@ -833,23 +831,22 @@ async fn _utxos_changed_subscriptions_client(cycle_seconds: Option<u64>, max_cyc
     let submitted_block_total_txs = Arc::new(AtomicUsize::new(0));
     let (subscription_task_shutdown_sender, mut subscription_task_shutdown_receiver) = oneshot::channel();
 
-    let submit_block_pool = client_manager
-        .new_client_pool(SUBMIT_BLOCK_CLIENTS, 100, |c, block: RpcBlock| async move {
-            let _sw = kaspa_core::time::Stopwatch::<500>::with_threshold("sb");
-            loop {
-                match c.submit_block(block.clone(), false).await {
-                    Ok(response) => {
-                        assert_eq!(response.report, kaspa_rpc_core::SubmitBlockReport::Success);
-                        break;
-                    }
-                    Err(_) => {
-                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-                    }
+    let submit_block_pool = client_manager.new_client_pool(SUBMIT_BLOCK_CLIENTS, 100).await;
+    let submit_block_pool_tasks = submit_block_pool.start(|c, block: RpcBlock| async move {
+        let _sw = kaspa_core::time::Stopwatch::<500>::with_threshold("sb");
+        loop {
+            match c.submit_block(block.clone(), false).await {
+                Ok(response) => {
+                    assert_eq!(response.report, kaspa_rpc_core::SubmitBlockReport::Success);
+                    break;
+                }
+                Err(_) => {
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 }
             }
-            false
-        })
-        .await;
+        }
+        false
+    });
 
     let cc = bbt_client.clone();
     let exec = executing.clone();
@@ -921,20 +918,19 @@ async fn _utxos_changed_subscriptions_client(cycle_seconds: Option<u64>, max_cyc
         kaspa_core::warn!("Miner loop task exited");
     });
 
-    let submit_tx_pool = client_manager
-        .new_client_pool::<(usize, Arc<Transaction>), _, _>(SUBMIT_TX_CLIENTS, 100, |c, (i, tx)| async move {
-            match c.submit_transaction(tx.as_ref().into(), false).await {
-                Ok(_) => {}
-                Err(RpcError::General(msg)) if msg.contains("orphan") => {
-                    kaspa_core::error!("\n\n\n{msg}\n\n");
-                    kaspa_core::error!("Submitted {} transactions, exiting tx submit loop", i);
-                    return true;
-                }
-                Err(e) => panic!("{e}"),
+    let submit_tx_pool = client_manager.new_client_pool::<(usize, Arc<Transaction>)>(SUBMIT_TX_CLIENTS, 100).await;
+    let submit_tx_pool_tasks = submit_tx_pool.start(|c, (i, tx)| async move {
+        match c.submit_transaction(tx.as_ref().into(), false).await {
+            Ok(_) => {}
+            Err(RpcError::General(msg)) if msg.contains("orphan") => {
+                kaspa_core::error!("\n\n\n{msg}\n\n");
+                kaspa_core::error!("Submitted {} transactions, exiting tx submit loop", i);
+                return true;
             }
-            false
-        })
-        .await;
+            Err(e) => panic!("{e}"),
+        }
+        false
+    });
 
     let tx_sender = submit_tx_pool.sender();
     let exec = executing.clone();
@@ -1104,11 +1100,11 @@ async fn _utxos_changed_subscriptions_client(cycle_seconds: Option<u64>, max_cyc
     subscriber_pool.close();
 
     kaspa_core::warn!("Waiting for submit block pool to exit...");
-    submit_block_pool.join().await;
+    join_all(submit_block_pool_tasks).await;
     kaspa_core::warn!("Submit block pool exited");
 
     kaspa_core::warn!("Waiting for submit tx pool to exit...");
-    submit_tx_pool.join().await;
+    join_all(submit_tx_pool_tasks).await;
     kaspa_core::warn!("Submit tx pool exited");
 
     kaspa_core::warn!("Waiting for subscriber pool to exit...");

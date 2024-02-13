@@ -180,7 +180,8 @@ async fn main() {
         rpc_clients.push(Arc::new(new_rpc_client(&subscription_context, &args.rpc_server).await));
     }
 
-    let submit_tx_pool = ClientPool::new(rpc_clients, 1000, |c, arg: ClientPoolArg| async move {
+    let submit_tx_pool = ClientPool::new(rpc_clients, 1000);
+    let _ = submit_tx_pool.start(|c, arg: ClientPoolArg| async move {
         let ClientPoolArg { tx, stats, selected_utxos_len, selected_utxos_amount, pending_len, utxos_len } = arg;
         match c.submit_transaction(tx.as_ref().into(), false).await {
             Ok(_) => {

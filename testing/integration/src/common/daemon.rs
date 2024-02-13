@@ -1,4 +1,3 @@
-use futures_util::Future;
 use kaspa_consensus_core::network::NetworkId;
 use kaspa_core::{core::Core, signals::Shutdown};
 use kaspa_database::utils::get_kaspa_tempdir;
@@ -68,21 +67,13 @@ impl ClientManager {
         .unwrap()
     }
 
-    pub async fn new_client_pool<T: Send + 'static, F, R>(
-        &self,
-        pool_size: usize,
-        distribution_channel_capacity: usize,
-        client_op: F,
-    ) -> ClientPool<T>
-    where
-        F: Fn(Arc<GrpcClient>, T) -> R + Sync + Send + Copy + 'static,
-        R: Future<Output = bool> + Send,
-    {
+    pub async fn new_client_pool<T: Send + 'static>(&self, pool_size: usize, distribution_channel_capacity: usize) -> ClientPool<T>
+where {
         let mut clients = Vec::with_capacity(pool_size);
         for _ in 0..pool_size {
             clients.push(Arc::new(self.new_client().await));
         }
-        ClientPool::new(clients, distribution_channel_capacity, client_op)
+        ClientPool::new(clients, distribution_channel_capacity)
     }
 }
 
