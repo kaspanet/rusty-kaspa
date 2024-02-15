@@ -156,6 +156,6 @@ cfg_if::cfg_if! {
 
         pub use kaspa_consensus_wasm::*;
 
-        pub use kaspa_wallet_core::wasm::{tx::*, utils::*, utxo::*, wallet::*, xprivatekey::*, xpublickey::*};
+        pub use kaspa_wallet_core::wasm::{tx::*, utils::*, utxo::*, wallet::*, privatekeygen::*, publickeygen::*};
     }
 }
