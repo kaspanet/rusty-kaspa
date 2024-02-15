@@ -23,13 +23,13 @@ use workflow_rpc::{
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub enum NotifyEncoding {
     Borsh,
-    Json,
+    SerdeJson,
 }
 impl From<Encoding> for NotifyEncoding {
     fn from(value: Encoding) -> Self {
         match value {
             Encoding::Borsh => NotifyEncoding::Borsh,
-            Encoding::Json => NotifyEncoding::Json,
+            Encoding::SerdeJson => NotifyEncoding::SerdeJson,
         }
     }
 }
@@ -37,7 +37,7 @@ impl From<NotifyEncoding> for Encoding {
     fn from(value: NotifyEncoding) -> Self {
         match value {
             NotifyEncoding::Borsh => Encoding::Borsh,
-            NotifyEncoding::Json => Encoding::Json,
+            NotifyEncoding::SerdeJson => Encoding::SerdeJson,
         }
     }
 }
@@ -127,7 +127,7 @@ impl Connection {
     {
         match encoding {
             Encoding::Borsh => workflow_rpc::server::protocol::borsh::create_serialized_notification_message(op, msg),
-            Encoding::Json => workflow_rpc::server::protocol::borsh::create_serialized_notification_message(op, msg),
+            Encoding::SerdeJson => workflow_rpc::server::protocol::borsh::create_serialized_notification_message(op, msg),
         }
     }
 }

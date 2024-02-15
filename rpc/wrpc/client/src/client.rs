@@ -339,7 +339,7 @@ impl KaspaRpcClient {
             .to_lowercase();
         let port = parse_output.port.unwrap_or_else(|| match encoding {
             WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
-            WrpcEncoding::Json => network_type.default_json_rpc_port(),
+            WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
         });
         let path_str = parse_output.path;
 

@@ -261,7 +261,7 @@ impl RpcClient {
         let network_type = NetworkType::try_from(network)?;
         match encoding {
             WrpcEncoding::Borsh => Ok(network_type.default_borsh_rpc_port()),
-            WrpcEncoding::Json => Ok(network_type.default_json_rpc_port()),
+            WrpcEncoding::SerdeJson => Ok(network_type.default_json_rpc_port()),
         }
     }
 

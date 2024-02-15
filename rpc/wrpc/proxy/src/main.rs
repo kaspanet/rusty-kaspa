@@ -68,7 +68,7 @@ async fn main() -> Result<()> {
     let encoding: Encoding = encoding.unwrap_or_else(|| "borsh".to_owned()).parse()?;
     let proxy_port = match encoding {
         Encoding::Borsh => network_type.default_borsh_rpc_port(),
-        Encoding::Json => network_type.default_json_rpc_port(),
+        Encoding::SerdeJson => network_type.default_json_rpc_port(),
     };
 
     let options = Arc::new(Options {
