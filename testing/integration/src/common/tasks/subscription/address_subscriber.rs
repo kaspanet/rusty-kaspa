@@ -86,7 +86,13 @@ impl Task for AddressSubscriberTask {
                             .await
                             .unwrap();
                     }
-                    registration.complete.await.unwrap();
+                    tokio::select! {
+                        biased;
+                        _ = stop_signal.listener.clone() => {
+                            break;
+                        }
+                        _ = registration.complete => {}
+                    }
                     warn!("Cycle {cycle} - UTXOs notifications started");
                 }
 
@@ -107,7 +113,13 @@ impl Task for AddressSubscriberTask {
                     for client in clients.iter().cloned() {
                         sender.send(SubscribeCommand::StopUtxosChanged((registration.id, client))).await.unwrap();
                     }
-                    registration.complete.await.unwrap();
+                    tokio::select! {
+                        biased;
+                        _ = stop_signal.listener.clone() => {
+                            break;
+                        }
+                        _ = registration.complete => {}
+                    }
                     warn!("Cycle {cycle} - UTXOs notifications stopped");
                 }
 

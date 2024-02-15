@@ -65,7 +65,13 @@ impl Task for BasicSubscriberTask {
                     }
                     sender.send(SubscribeCommand::Start((registration.id, client, scope.clone()))).await.unwrap();
                 }
-                registration.complete.await.unwrap();
+                tokio::select! {
+                    biased;
+                    _ = stop_signal.listener.clone() => {
+                        break;
+                    }
+                    _ = registration.complete => {}
+                }
             }
             warn!("Basic subscriber task exited");
         });
