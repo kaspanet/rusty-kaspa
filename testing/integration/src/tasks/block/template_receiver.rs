@@ -1,4 +1,4 @@
-use crate::common::{client_notify::ChannelNotify, tasks::Task};
+use crate::{common::client_notify::ChannelNotify, tasks::Task};
 use async_trait::async_trait;
 use kaspa_addresses::Address;
 use kaspa_core::warn;

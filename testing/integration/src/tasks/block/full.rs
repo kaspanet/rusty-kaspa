@@ -1,5 +1,5 @@
-use crate::common::{
-    daemon::ClientManager,
+use crate::{
+    common::daemon::ClientManager,
     tasks::{
         block::{miner::BlockMinerTask, submitter::BlockSubmitterTask, template_receiver::BlockTemplateReceiverTask},
         Task,

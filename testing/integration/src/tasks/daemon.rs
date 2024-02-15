@@ -1,5 +1,5 @@
-use crate::common::{
-    daemon::{ClientManager, Daemon},
+use crate::{
+    common::daemon::{ClientManager, Daemon},
     tasks::Task,
 };
 use async_trait::async_trait;

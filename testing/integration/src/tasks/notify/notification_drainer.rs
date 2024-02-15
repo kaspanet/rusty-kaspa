@@ -1,4 +1,4 @@
-use crate::common::tasks::Task;
+use crate::tasks::Task;
 use async_trait::async_trait;
 use kaspa_core::warn;
 use kaspa_grpc_client::GrpcClient;

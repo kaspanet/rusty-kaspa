@@ -1,5 +1,5 @@
-use crate::common::{
-    daemon::ClientManager,
+use crate::{
+    common::daemon::ClientManager,
     tasks::{
         tx::{sender::TransactionSenderTask, submitter::TransactionSubmitterTask},
         Task,

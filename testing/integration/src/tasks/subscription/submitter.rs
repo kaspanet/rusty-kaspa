@@ -1,4 +1,4 @@
-use crate::common::tasks::Task;
+use crate::tasks::Task;
 use async_channel::Sender;
 use async_trait::async_trait;
 use itertools::Itertools;

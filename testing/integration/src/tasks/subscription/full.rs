@@ -1,5 +1,5 @@
-use crate::common::{
-    daemon::ClientManager,
+use crate::{
+    common::daemon::ClientManager,
     tasks::{
         notify::notification_drainer::NotificationDrainerTask,
         subscription::{

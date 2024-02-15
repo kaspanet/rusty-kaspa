@@ -1,4 +1,4 @@
-use crate::common::tasks::daemon::DaemonArgs;
+use crate::tasks::daemon::DaemonArgs;
 #[cfg(feature = "devnet-prealloc")]
 use kaspa_addresses::Address;
 use kaspad_lib::args::Args;

@@ -1,5 +1,6 @@
-use crate::common::{
-    self, client_notify::ChannelNotify, daemon::Daemon, tasks::memory_monitor::MemoryMonitorTask, utils::CONTRACT_FACTOR,
+use crate::{
+    common::{self, client_notify::ChannelNotify, daemon::Daemon, utils::CONTRACT_FACTOR},
+    tasks::memory_monitor::MemoryMonitorTask,
 };
 use futures_util::future::join_all;
 use itertools::Itertools;

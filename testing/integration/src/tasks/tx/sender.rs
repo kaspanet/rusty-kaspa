@@ -1,4 +1,4 @@
-use crate::common::tasks::{tx::submitter::IndexedTransaction, Task};
+use crate::tasks::{tx::submitter::IndexedTransaction, Task};
 use async_channel::Sender;
 use async_trait::async_trait;
 use kaspa_consensus_core::tx::Transaction;

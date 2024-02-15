@@ -1,7 +1,10 @@
-use crate::common::{
-    self,
-    args::ArgsBuilder,
-    daemon::{ClientManager, Daemon},
+use crate::{
+    common::{
+        self,
+        args::ArgsBuilder,
+        daemon::{ClientManager, Daemon},
+        utils::CONTRACT_FACTOR,
+    },
     tasks::{
         block::full::FullMinerTask,
         daemon::{DaemonArgs, DaemonTask},
@@ -12,7 +15,6 @@ use crate::common::{
         tx::full::FullTxSenderTask,
         TasksRunner,
     },
-    utils::CONTRACT_FACTOR,
 };
 use clap::Parser;
 use itertools::Itertools;

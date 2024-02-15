@@ -9,7 +9,6 @@ pub mod client;
 pub mod client_notify;
 pub mod daemon;
 pub mod listener;
-pub mod tasks;
 pub mod utils;
 
 pub fn open_file(file_path: &Path) -> File {

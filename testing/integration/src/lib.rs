@@ -4,6 +4,7 @@
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
 pub mod common;
+pub mod tasks;
 
 #[cfg(test)]
 pub mod consensus_integration_tests;

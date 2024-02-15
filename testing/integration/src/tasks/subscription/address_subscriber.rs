@@ -1,4 +1,4 @@
-use crate::common::tasks::{subscription::submitter::SubscribeCommand, Task};
+use crate::tasks::{subscription::submitter::SubscribeCommand, Task};
 use async_channel::Sender;
 use async_trait::async_trait;
 use kaspa_addresses::Address;

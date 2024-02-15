@@ -1,4 +1,4 @@
-use crate::common::tasks::{DynTask, Task};
+use crate::tasks::{DynTask, Task};
 use async_trait::async_trait;
 use kaspa_utils::triggers::SingleTrigger;
 use std::{
