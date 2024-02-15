@@ -64,13 +64,17 @@ if (fs.existsSync("./data/config.json")) {
 function createConfigFile() {
     let wallet = basicWallet(Mnemonic.random());
 
+    if (!network) {
+        console.log("... '--network=' argument is not specified ...defaulting to 'testnet-11'");
+    }
+
     let networkId = network ?? "testnet-11";
     let config = {
         networkId,
-        mnemonic : wallet.mnemonic.phrase,
-        xprv : wallet.xprv,
-        receive : wallet.receive,
-        change : wallet.change,
+        mnemonic: wallet.mnemonic.phrase,
+        xprv: wallet.xprv,
+        receive: wallet.receive,
+        change: wallet.change,
     };
     fs.writeFileSync("./data/config.json", JSON.stringify(config, null, 4));
     console.log("");
@@ -92,7 +96,7 @@ function basicWallet(mnemonic) {
 
     return {
         mnemonic,
-        xprv : xprv.toString(),
+        xprv: xprv.toString(),
         // xprv : xprv.intoString("xprv"),
         // xpub,
         // address,  // receive address
