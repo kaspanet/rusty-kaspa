@@ -36,7 +36,6 @@ impl Task for NotificationDrainerTask {
                 }
                 clients.iter().for_each(|client| while client.notification_channel_receiver().try_recv().is_ok() {});
             }
-            stop_signal.trigger.trigger();
             warn!("Notification drainer task exited");
         });
         vec![task]

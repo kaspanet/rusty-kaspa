@@ -2,7 +2,7 @@ use crate::{
     common::daemon::ClientManager,
     tasks::{
         block::{miner::BlockMinerTask, submitter::BlockSubmitterTask, template_receiver::BlockTemplateReceiverTask},
-        Task,
+        Stopper, Task,
     },
 };
 use async_trait::async_trait;
@@ -32,9 +32,10 @@ impl MinerGroupTask {
         submitter_pool_size: usize,
         bps: u64,
         block_count: usize,
+        stopper: Stopper,
     ) -> Arc<Self> {
         // Block submitter
-        let submitter = BlockSubmitterTask::build(client_manager.clone(), submitter_pool_size).await;
+        let submitter = BlockSubmitterTask::build(client_manager.clone(), submitter_pool_size, stopper).await;
 
         // Mining key and address
         let (sk, pk) = &secp256k1::generate_keypair(&mut thread_rng());
@@ -44,10 +45,11 @@ impl MinerGroupTask {
 
         // Block template receiver
         let client = Arc::new(client_manager.new_client().await);
-        let receiver = BlockTemplateReceiverTask::build(client.clone(), pay_address.clone()).await;
+        let receiver = BlockTemplateReceiverTask::build(client.clone(), pay_address.clone(), stopper).await;
 
         // Miner
-        let miner = BlockMinerTask::build(client, bps, block_count, submitter.sender(), receiver.template(), pay_address).await;
+        let miner =
+            BlockMinerTask::build(client, bps, block_count, submitter.sender(), receiver.template(), pay_address, stopper).await;
 
         Arc::new(Self::new(submitter, receiver, miner))
     }

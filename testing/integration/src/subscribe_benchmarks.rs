@@ -13,7 +13,7 @@ use crate::{
         subscription::group::SubscriberGroupTask,
         tick::TickTask,
         tx::group::TxSenderGroupTask,
-        TasksRunner,
+        Stopper, TasksRunner,
     },
 };
 use clap::Parser;
@@ -327,8 +327,22 @@ async fn utxos_changed_subscriptions_client(address_cycle_seconds: u64, address_
     let mut tasks = TasksRunner::new(None)
         .task(TickTask::build(tick_service.clone()))
         .task(MemoryMonitorTask::build(tick_service.clone(), "client", Duration::from_secs(5), MAX_MEMORY))
-        .task(MinerGroupTask::build(network, client_manager.clone(), SUBMIT_BLOCK_CLIENTS, params.bps(), BLOCK_COUNT).await)
-        .task(TxSenderGroupTask::build(client_manager.clone(), SUBMIT_TX_CLIENTS, true, txs, TPS_PRESSURE, MEMPOOL_TARGET).await)
+        .task(
+            MinerGroupTask::build(network, client_manager.clone(), SUBMIT_BLOCK_CLIENTS, params.bps(), BLOCK_COUNT, Stopper::Signal)
+                .await,
+        )
+        .task(
+            TxSenderGroupTask::build(
+                client_manager.clone(),
+                SUBMIT_TX_CLIENTS,
+                true,
+                txs,
+                TPS_PRESSURE,
+                MEMPOOL_TARGET,
+                Stopper::Signal,
+            )
+            .await,
+        )
         .task(
             SubscriberGroupTask::build(
                 client_manager,

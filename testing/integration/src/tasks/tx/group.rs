@@ -2,7 +2,7 @@ use crate::{
     common::daemon::ClientManager,
     tasks::{
         tx::{sender::TransactionSenderTask, submitter::TransactionSubmitterTask},
-        Task,
+        Stopper, Task,
     },
 };
 use async_trait::async_trait;
@@ -29,13 +29,14 @@ impl TxSenderGroupTask {
         txs: Vec<Arc<Transaction>>,
         tps_pressure: u64,
         mempool_target: u64,
+        stopper: Stopper,
     ) -> Arc<Self> {
         // Tx submitter
-        let submitter = TransactionSubmitterTask::build(client_manager.clone(), submitter_pool_size, allow_orphan).await;
+        let submitter = TransactionSubmitterTask::build(client_manager.clone(), submitter_pool_size, allow_orphan, stopper).await;
 
         // Tx sender
         let client = Arc::new(client_manager.new_client().await);
-        let sender = TransactionSenderTask::build(client, txs, tps_pressure, mempool_target, submitter.sender()).await;
+        let sender = TransactionSenderTask::build(client, txs, tps_pressure, mempool_target, submitter.sender(), stopper).await;
 
         Arc::new(Self::new(submitter, sender))
     }

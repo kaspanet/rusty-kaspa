@@ -1,4 +1,4 @@
-use crate::tasks::Task;
+use crate::tasks::{Stopper, Task};
 use async_channel::Sender;
 use async_trait::async_trait;
 use kaspa_addresses::Address;
@@ -30,6 +30,7 @@ pub struct BlockMinerTask {
     pay_address: Address,
     tx_counter: Arc<AtomicUsize>,
     comm_delay: u64,
+    stopper: Stopper,
 }
 
 impl BlockMinerTask {
@@ -40,6 +41,7 @@ impl BlockMinerTask {
         sender: Sender<RpcBlock>,
         template: Arc<Mutex<GetBlockTemplateResponse>>,
         pay_address: Address,
+        stopper: Stopper,
     ) -> Self {
         Self {
             client,
@@ -50,6 +52,7 @@ impl BlockMinerTask {
             pay_address,
             tx_counter: Default::default(),
             comm_delay: COMMUNICATION_DELAY,
+            stopper,
         }
     }
 
@@ -60,8 +63,9 @@ impl BlockMinerTask {
         sender: Sender<RpcBlock>,
         template: Arc<Mutex<GetBlockTemplateResponse>>,
         pay_address: Address,
+        stopper: Stopper,
     ) -> Arc<Self> {
-        Arc::new(Self::new(client, bps, block_count, sender, template, pay_address))
+        Arc::new(Self::new(client, bps, block_count, sender, template, pay_address, stopper))
     }
 
     pub fn sender(&self) -> Sender<RpcBlock> {
@@ -88,6 +92,7 @@ impl Task for BlockMinerTask {
         let tx_counter = self.tx_counter();
         let dist: Exp<f64> = Exp::new(self.bps as f64).unwrap();
         let comm_delay = self.comm_delay;
+        let stopper = self.stopper;
         let task = tokio::spawn(async move {
             warn!("Block miner task starting...");
             for i in 0..block_count {
@@ -123,7 +128,9 @@ impl Task for BlockMinerTask {
                     let _ = c_sender.send(block).await;
                 });
             }
-            stop_signal.trigger.trigger();
+            if stopper == Stopper::Signal {
+                stop_signal.trigger.trigger();
+            }
             sender.close();
             warn!("Block miner task exited");
         });

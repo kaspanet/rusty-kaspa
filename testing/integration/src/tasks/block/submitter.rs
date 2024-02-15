@@ -1,4 +1,7 @@
-use crate::{common::daemon::ClientManager, tasks::Task};
+use crate::{
+    common::daemon::ClientManager,
+    tasks::{Stopper, Task},
+};
 use async_channel::Sender;
 use async_trait::async_trait;
 use kaspa_core::warn;
@@ -10,16 +13,17 @@ use tokio::{task::JoinHandle, time::sleep};
 
 pub struct BlockSubmitterTask {
     pool: ClientPool<RpcBlock>,
+    stopper: Stopper,
 }
 
 impl BlockSubmitterTask {
-    pub fn new(pool: ClientPool<RpcBlock>) -> Self {
-        Self { pool }
+    pub fn new(pool: ClientPool<RpcBlock>, stopper: Stopper) -> Self {
+        Self { pool, stopper }
     }
 
-    pub async fn build(client_manager: Arc<ClientManager>, pool_size: usize) -> Arc<Self> {
+    pub async fn build(client_manager: Arc<ClientManager>, pool_size: usize, stopper: Stopper) -> Arc<Self> {
         let pool = client_manager.new_client_pool(pool_size, 100).await;
-        Arc::new(Self::new(pool))
+        Arc::new(Self::new(pool, stopper))
     }
 
     pub fn sender(&self) -> Sender<RpcBlock> {
@@ -48,11 +52,14 @@ impl Task for BlockSubmitterTask {
 
         let pool_shutdown_listener = self.pool.shutdown_listener();
         let sender = self.sender();
+        let stopper = self.stopper;
         let shutdown_task = tokio::spawn(async move {
             tokio::select! {
                 _ = stop_signal.listener.clone() => {}
                 _ = pool_shutdown_listener.clone() => {
-                    stop_signal.trigger.trigger();
+                    if stopper == Stopper::Signal {
+                        stop_signal.trigger.trigger();
+                    }
                 }
             }
             let _ = sender.close();

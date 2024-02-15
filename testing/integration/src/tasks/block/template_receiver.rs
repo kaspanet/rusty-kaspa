@@ -1,4 +1,7 @@
-use crate::{common::client_notify::ChannelNotify, tasks::Task};
+use crate::{
+    common::client_notify::ChannelNotify,
+    tasks::{Stopper, Task},
+};
 use async_trait::async_trait;
 use kaspa_addresses::Address;
 use kaspa_core::warn;
@@ -15,6 +18,7 @@ pub struct BlockTemplateReceiverTask {
     channel: Channel<Notification>,
     template: Arc<Mutex<GetBlockTemplateResponse>>,
     pay_address: Address,
+    stopper: Stopper,
 }
 
 impl BlockTemplateReceiverTask {
@@ -23,17 +27,18 @@ impl BlockTemplateReceiverTask {
         channel: Channel<Notification>,
         response: GetBlockTemplateResponse,
         pay_address: Address,
+        stopper: Stopper,
     ) -> Self {
         let template = Arc::new(Mutex::new(response));
-        Self { client, channel, template, pay_address }
+        Self { client, channel, template, pay_address, stopper }
     }
 
-    pub async fn build(client: Arc<GrpcClient>, pay_address: Address) -> Arc<Self> {
+    pub async fn build(client: Arc<GrpcClient>, pay_address: Address, stopper: Stopper) -> Arc<Self> {
         let channel = Channel::default();
         client.start(Some(Arc::new(ChannelNotify::new(channel.sender())))).await;
         client.start_notify(ListenerId::default(), NewBlockTemplateScope {}.into()).await.unwrap();
         let response = client.get_block_template(pay_address.clone(), vec![]).await.unwrap();
-        Arc::new(Self::new(client, channel, response, pay_address))
+        Arc::new(Self::new(client, channel, response, pay_address, stopper))
     }
 
     pub fn template(&self) -> Arc<Mutex<GetBlockTemplateResponse>> {
@@ -48,6 +53,7 @@ impl Task for BlockTemplateReceiverTask {
         let receiver = self.channel.receiver();
         let pay_address = self.pay_address.clone();
         let template = self.template();
+        let stopper = self.stopper;
         let task = tokio::spawn(async move {
             warn!("Block template receiver task starting...");
             loop {
@@ -76,7 +82,9 @@ impl Task for BlockTemplateReceiverTask {
                     }
                 }
             }
-            stop_signal.trigger.trigger();
+            if stopper == Stopper::Signal {
+                stop_signal.trigger.trigger();
+            }
             client.stop_notify(ListenerId::default(), NewBlockTemplateScope {}.into()).await.unwrap();
             client.disconnect().await.unwrap();
             warn!("Block template receiver task exited");

@@ -1,4 +1,7 @@
-use crate::{common::daemon::ClientManager, tasks::Task};
+use crate::{
+    common::daemon::ClientManager,
+    tasks::{Stopper, Task},
+};
 use async_channel::Sender;
 use async_trait::async_trait;
 use kaspa_consensus_core::tx::Transaction;
@@ -20,18 +23,19 @@ pub type IndexedTransaction = (usize, Arc<Transaction>);
 pub struct TransactionSubmitterTask {
     pool: ClientPool<IndexedTransaction>,
     allow_orphan: bool,
+    stopper: Stopper,
 }
 
 impl TransactionSubmitterTask {
     const MAX_ATTEMPTS: usize = 5;
 
-    pub fn new(pool: ClientPool<IndexedTransaction>, allow_orphan: bool) -> Self {
-        Self { pool, allow_orphan }
+    pub fn new(pool: ClientPool<IndexedTransaction>, allow_orphan: bool, stopper: Stopper) -> Self {
+        Self { pool, allow_orphan, stopper }
     }
 
-    pub async fn build(client_manager: Arc<ClientManager>, pool_size: usize, allow_orphan: bool) -> Arc<Self> {
+    pub async fn build(client_manager: Arc<ClientManager>, pool_size: usize, allow_orphan: bool, stopper: Stopper) -> Arc<Self> {
         let pool = client_manager.new_client_pool(pool_size, 100).await;
-        Arc::new(Self::new(pool, allow_orphan))
+        Arc::new(Self::new(pool, allow_orphan, stopper))
     }
 
     pub fn sender(&self) -> Sender<IndexedTransaction> {
@@ -71,11 +75,14 @@ impl Task for TransactionSubmitterTask {
 
         let pool_shutdown_listener = self.pool.shutdown_listener();
         let sender = self.sender();
+        let stopper = self.stopper;
         let shutdown_task = tokio::spawn(async move {
             tokio::select! {
                 _ = stop_signal.listener.clone() => {}
                 _ = pool_shutdown_listener.clone() => {
+                    if stopper == Stopper::Signal {
                     stop_signal.trigger.trigger();
+                    }
                 }
             }
             let _ = sender.close();

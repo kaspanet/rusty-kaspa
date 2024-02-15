@@ -1,4 +1,4 @@
-use crate::tasks::{tx::submitter::IndexedTransaction, Task};
+use crate::tasks::{tx::submitter::IndexedTransaction, Stopper, Task};
 use async_channel::Sender;
 use async_trait::async_trait;
 use kaspa_consensus_core::tx::Transaction;
@@ -18,6 +18,7 @@ pub struct TransactionSenderTask {
     tps_pressure: u64,
     mempool_target: u64,
     sender: Sender<IndexedTransaction>,
+    stopper: Stopper,
 }
 
 impl TransactionSenderTask {
@@ -29,8 +30,9 @@ impl TransactionSenderTask {
         tps_pressure: u64,
         mempool_target: u64,
         sender: Sender<IndexedTransaction>,
+        stopper: Stopper,
     ) -> Self {
-        Self { client, txs, tps_pressure, mempool_target, sender }
+        Self { client, txs, tps_pressure, mempool_target, sender, stopper }
     }
 
     pub async fn build(
@@ -39,8 +41,9 @@ impl TransactionSenderTask {
         tps_pressure: u64,
         mempool_target: u64,
         sender: Sender<IndexedTransaction>,
+        stopper: Stopper,
     ) -> Arc<Self> {
-        Arc::new(Self::new(client, txs, tps_pressure, mempool_target, sender))
+        Arc::new(Self::new(client, txs, tps_pressure, mempool_target, sender, stopper))
     }
 
     pub fn sender(&self) -> Sender<IndexedTransaction> {
@@ -58,6 +61,7 @@ impl Task for TransactionSenderTask {
         let mut tps_pressure = if mempool_target < u64::MAX { Self::UNREGULATED_TPS } else { regulated_tps_pressure };
         // let mut tps_pressure = regulated_tps_pressure;
         let sender = self.sender();
+        let stopper = self.stopper;
         let mut last_log_time = Instant::now() - Duration::from_secs(5);
         let mut log_index = 0;
         let task = tokio::spawn(async move {
@@ -113,7 +117,9 @@ impl Task for TransactionSenderTask {
                     prev_mempool_size = mempool_size;
                     sleep(Duration::from_secs(1)).await;
                 }
-                stop_signal.trigger.trigger();
+                if stopper == Stopper::Signal {
+                    stop_signal.trigger.trigger();
+                }
             }
             sender.close();
             client.disconnect().await.unwrap();

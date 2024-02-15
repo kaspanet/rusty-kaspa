@@ -15,6 +15,16 @@ pub mod stop;
 pub mod subscription;
 pub mod tick;
 pub mod tx;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Stopper {
+    /// Trigger a stop signal on exit
+    Signal,
+
+    /// Do nothing on exit
+    Ignore,
+}
+
 #[async_trait]
 pub trait Task: Sync + Send {
     fn start(&self, stop_signal: SingleTrigger) -> Vec<JoinHandle<()>>;
