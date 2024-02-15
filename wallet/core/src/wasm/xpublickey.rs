@@ -8,15 +8,23 @@ use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::serde::to_value;
 
+///
+/// Helper class to generate public keys from an extended public key (XPub)
+/// that has been derived up to the co-signer index.
+///
+/// Please note that in Kaspa master public keys use `kpub` prefix.
+///
+/// @see {@link PrivateKeyGenerator}, {@link XPub}, {@link XPrv}, {@link Mnemonic}
 /// @category Wallet SDK
+///
 #[wasm_bindgen]
-pub struct XPublicKey {
+pub struct PublicKeyGenerator {
     hd_wallet: WalletDerivationManager,
 }
 #[wasm_bindgen]
-impl XPublicKey {
+impl PublicKeyGenerator {
     #[wasm_bindgen(js_name=fromXPub)]
-    pub async fn from_xpub(kpub: &str, cosigner_index: Option<u32>) -> Result<XPublicKey> {
+    pub async fn from_xpub(kpub: &str, cosigner_index: Option<u32>) -> Result<PublicKeyGenerator> {
         let xpub = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(kpub)?;
         let hd_wallet = WalletDerivationManager::from_extended_public_key(xpub, cosigner_index)?;
         Ok(Self { hd_wallet })
@@ -28,7 +36,7 @@ impl XPublicKey {
         is_multisig: bool,
         account_index: u64,
         cosigner_index: Option<u32>,
-    ) -> Result<XPublicKey> {
+    ) -> Result<PublicKeyGenerator> {
         let xprv = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
         let path = WalletDerivationManager::build_derivate_path(is_multisig, account_index, None, None)?;
         let xprv = xprv.derive_path(path)?;
@@ -64,7 +72,7 @@ impl XPublicKey {
     }
 
     #[wasm_bindgen(js_name=fromString)]
-    pub async fn from_string(kpub: &str, cosigner_index: Option<u32>) -> Result<XPublicKey> {
+    pub async fn from_string(kpub: &str, cosigner_index: Option<u32>) -> Result<PublicKeyGenerator> {
         Self::from_xpub(kpub, cosigner_index).await
     }
 }

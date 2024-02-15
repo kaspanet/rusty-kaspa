@@ -5,16 +5,26 @@ use kaspa_consensus_wasm::PrivateKey;
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 
+///
+/// Helper class to generate private keys from an extended private key (XPrv).
+/// This class accepts the master Kaspa XPrv string (e.g. `xprv1...`) and generates
+/// private keys for the receive and change paths given the pre-set parameters
+/// such as account index, multisig purpose and cosigner index.
+///
+/// Please note that in Kaspa master private keys use `kprv` prefix.
+///
+/// @see {@link PublicKeyGenerator}, {@link XPub}, {@link XPrv}, {@link Mnemonic}
 /// @category Wallet SDK
+///
 #[wasm_bindgen]
-pub struct XPrivateKey {
+pub struct PrivateKeyGenerator {
     receive: ExtendedPrivateKey<SecretKey>,
     change: ExtendedPrivateKey<SecretKey>,
 }
 #[wasm_bindgen]
-impl XPrivateKey {
+impl PrivateKeyGenerator {
     #[wasm_bindgen(constructor)]
-    pub fn new(xprv: &str, is_multisig: bool, account_index: u64, cosigner_index: Option<u32>) -> Result<XPrivateKey> {
+    pub fn new(xprv: &str, is_multisig: bool, account_index: u64, cosigner_index: Option<u32>) -> Result<PrivateKeyGenerator> {
         let xkey = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
         let receive = xkey.clone().derive_path(WalletDerivationManager::build_derivate_path(
             is_multisig,

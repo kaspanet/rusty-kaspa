@@ -2,7 +2,7 @@ let kaspa = require('../../../../nodejs/kaspa');
 let {
     PrivateKey,
     PublicKey,
-    XPublicKey,
+    PublicKeyGenerator,
     createAddress,
     NetworkType,
 } = kaspa;
@@ -16,7 +16,7 @@ kaspa.initConsolePanicHook();
 
     /*** Advanced ***/
     // HD Wallet-style public key generation
-    let xpub = await XPublicKey.fromMasterXPrv(
+    let xpub = await PublicKeyGenerator.fromMasterXPrv(
         "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ",
         false,
         0n

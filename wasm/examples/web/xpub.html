@@ -2,8 +2,8 @@
     <head>
         <script type="module">
             import * as kaspa from './kaspa/kaspa_wasm.js';
-            let {XPublicKey, createAddress, NetworkType, Mnemonic, XPrv} = kaspa;
-            window.XPublicKey = XPublicKey;
+            let {PublicKeyGenerator, createAddress, NetworkType, Mnemonic, XPrv} = kaspa;
+            window.XPublicKey = PublicKeyGenerator;
             (async () => {
                 const wasm = await kaspa.default('./kaspa/kaspa_wasm_bg.wasm');
                 console.log("kaspa", kaspa);
@@ -15,7 +15,7 @@
                 let seed = Mnemonic.random(12).toSeed();
                 const xPrv = new XPrv(seed).intoString("kprv");
                 // HD Wallet-style public key generation
-                let xpub = await XPublicKey.fromMasterXPrv(
+                let xpub = await PublicKeyGenerator.fromMasterXPrv(
                     xPrv,
                     false,
                     0n
@@ -31,7 +31,7 @@
                 let addresses1 = compressedPublicKeys.map(key => createAddress(key, NetworkType.Mainnet).toString());
                 console.log("receive addresses", addresses1);
 
-                xpub = await XPublicKey.fromString(xpub_str);
+                xpub = await PublicKeyGenerator.fromString(xpub_str);
 
                 // Generates the first 10 Receive Public keys and their addresses
                 compressedPublicKeys = await xpub.receivePubkeys(0, 10);

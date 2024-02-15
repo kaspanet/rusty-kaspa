@@ -1,7 +1,7 @@
 import {
     PrivateKey,
     PublicKey,
-    XPublicKey,
+    PublicKeyGenerator,
     createAddress,
     NetworkType,
     initConsolePanicHook
@@ -16,7 +16,7 @@ initConsolePanicHook();
 
     /*** Advanced ***/
     // HD Wallet-style public key generation
-    let xpub: XPublicKey = await XPublicKey.fromMasterXPrv(
+    let xpub: PublicKeyGenerator = await PublicKeyGenerator.fromMasterXPrv(
         "kprv5y2qurMHCsXYrNfU3GCihuwG3vMqFji7PZXajMEqyBkNh9UZUJgoHYBLTKu1eM4MvUtomcXPQ3Sw9HZ5ebbM4byoUciHo1zrPJBQfqpLorQ",
         false,
         0n

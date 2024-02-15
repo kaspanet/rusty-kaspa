@@ -5,7 +5,17 @@ use crate::{
 use kaspa_utils::hex::*;
 use wasm_bindgen::prelude::*;
 
+///
+/// Extended private key (XPrv).
+///
+/// This class allows accepts a master seed and provides
+/// functions for derivation of dependent child private keys.
+///
+/// Please note that Kaspa extended private keys use `kprv` prefix.
+///
+/// @see {@link PrivateKeyGenerator}, {@link PublicKeyGenerator}, {@link XPub}, {@link Mnemonic}
 /// @category Wallet SDK
+///
 #[wasm_bindgen]
 pub struct XPrv {
     inner: ExtendedPrivateKey<SecretKey>,
@@ -46,8 +56,8 @@ impl XPrv {
         Ok(str)
     }
 
-    #[wasm_bindgen(js_name = publicKey)]
-    pub fn public_key(&self) -> Result<XPub> {
+    #[wasm_bindgen(js_name = toXPub)]
+    pub fn to_xpub(&self) -> Result<XPub> {
         let publick_key = self.inner.public_key();
         Ok(publick_key.into())
     }

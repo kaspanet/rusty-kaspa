@@ -3,7 +3,17 @@ use secp256k1::PublicKey;
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 
+///
+/// Extended public key (XPub).
+///
+/// This class allows accepts another XPub and and provides
+/// functions for derivation of dependent child public keys.
+///
+/// Please note that Kaspa extended public keys use `kpub` prefix.
+///
+/// @see {@link PrivateKeyGenerator}, {@link PublicKeyGenerator}, {@link XPrv}, {@link Mnemonic}
 /// @category Wallet SDK
+///
 #[wasm_bindgen]
 pub struct XPub {
     inner: ExtendedPublicKey<PublicKey>,

@@ -74,7 +74,7 @@ function parseArgs(options = {
     const encodingArg = values.encoding ?? positionals.find((positional) => positional.match(/^(borsh|json)$/)) ?? null;
     let encoding = Encoding.Borsh;
     if (encodingArg == "json") {
-        encoding = Encoding.JSON;
+        encoding = Encoding.SerdeJson;
     }
 
     return {
