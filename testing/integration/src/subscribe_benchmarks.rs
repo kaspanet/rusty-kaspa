@@ -33,15 +33,15 @@ use workflow_perf_monitor::mem::get_process_memory_info;
 // Constants
 const BLOCK_COUNT: usize = usize::MAX;
 
-const MEMPOOL_TARGET: u64 = 1_000; // 10_000
-const TX_COUNT: usize = 5_000; //1_500_000;
-const TX_LEVEL_WIDTH: usize = 2_000; //20_000;
-const TPS_PRESSURE: u64 = 200; // 100
+const MEMPOOL_TARGET: u64 = 650;
+const TX_COUNT: usize = 1_500_000;
+const TX_LEVEL_WIDTH: usize = 20_000;
+const TPS_PRESSURE: u64 = 150; // 100
 const PREALLOC_AMOUNT: u64 = 500;
 
 const SUBMIT_BLOCK_CLIENTS: usize = 20;
-const SUBMIT_TX_CLIENTS: usize = 2;
-const SUBSCRIBE_WORKERS: usize = 25;
+const SUBMIT_TX_CLIENTS: usize = 1;
+const SUBSCRIBE_WORKERS: usize = 20;
 
 #[cfg(feature = "heap")]
 const MAX_MEMORY: u64 = 22_000_000_000;
@@ -272,7 +272,17 @@ async fn utxos_changed_subscriptions_client(address_cycle_seconds: u64, address_
         .task(TickTask::build(tick_service.clone()))
         .task(MemoryMonitorTask::build(tick_service.clone(), "client", Duration::from_secs(5), MAX_MEMORY))
         .task(FullMinerTask::build(network, client_manager.clone(), SUBMIT_BLOCK_CLIENTS, params.bps(), BLOCK_COUNT).await)
-        .task(FullTxSenderTask::build(client_manager.clone(), SUBMIT_TX_CLIENTS, true, txs, TPS_PRESSURE, MEMPOOL_TARGET).await)
+        .task(
+            FullTxSenderTask::build(
+                client_manager.clone(),
+                SUBMIT_TX_CLIENTS,
+                true,
+                txs,
+                TPS_PRESSURE,
+                MEMPOOL_TARGET,
+            )
+            .await,
+        )
         .task(
             FullSubscriberTask::build(
                 client_manager,
@@ -327,7 +337,7 @@ async fn bench_utxos_changed_subscriptions_footprint_c() {
     utxos_changed_subscriptions_client(3600, usize::MAX).await;
 }
 
-/// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc -- subscribe_benchmarks::bench_utxos_changed_subscriptions_footprint_c --exact --nocapture --ignored`
+/// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc -- subscribe_benchmarks::bench_utxos_changed_subscriptions_footprint_d --exact --nocapture --ignored`
 #[tokio::test]
 #[ignore = "bmk"]
 async fn bench_utxos_changed_subscriptions_footprint_d() {
@@ -335,7 +345,7 @@ async fn bench_utxos_changed_subscriptions_footprint_d() {
     utxos_changed_subscriptions_client(1200, usize::MAX).await;
 }
 
-/// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc -- subscribe_benchmarks::bench_utxos_changed_subscriptions_footprint_d --exact --nocapture --ignored`
+/// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc -- subscribe_benchmarks::bench_utxos_changed_subscriptions_footprint_e --exact --nocapture --ignored`
 #[tokio::test]
 #[ignore = "bmk"]
 async fn bench_utxos_changed_subscriptions_footprint_e() {
