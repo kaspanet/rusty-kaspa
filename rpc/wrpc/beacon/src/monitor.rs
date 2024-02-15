@@ -92,8 +92,8 @@ impl Monitor {
     }
 
     pub async fn start(self: &Arc<Self>) -> Result<()> {
-        let toml = include_str!("../Servers.toml");
-        let nodes = crate::node::try_parse_nodes(toml)?;
+        let toml = std::fs::read_to_string(Path::new("Servers.toml"))?;
+        let nodes = crate::node::try_parse_nodes(toml.as_str())?;
 
         let this = self.clone();
         spawn(async move {

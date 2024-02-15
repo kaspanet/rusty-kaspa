@@ -11,3 +11,4 @@ analyzer-target
 *.code-workspace
 /setup
 testing/integration/perflogs*
+Servers.toml

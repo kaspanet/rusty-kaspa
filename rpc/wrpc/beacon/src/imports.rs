@@ -19,6 +19,7 @@ pub use kaspa_wrpc_client::{
 pub use serde::{de::DeserializeOwned, Deserialize, Serialize};
 pub use std::collections::HashMap;
 pub use std::fmt;
+pub use std::path::Path;
 pub use std::sync::atomic::AtomicBool;
 pub use std::sync::atomic::{AtomicU64, Ordering};
 pub use std::sync::{Arc, Mutex, OnceLock, RwLock};
