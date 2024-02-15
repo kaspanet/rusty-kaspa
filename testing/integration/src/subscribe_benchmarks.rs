@@ -173,6 +173,61 @@ fn test_keys() {
     assert_eq!(schnorr_key.secret_key(), prealloc_sk);
 }
 
+/// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc -- subscribe_benchmarks::utxos_changed_subscriptions_sanity_check --exact --nocapture --ignored`
+#[tokio::test]
+#[ignore = "bmk"]
+async fn utxos_changed_subscriptions_sanity_check() {
+    init_allocator_with_default_settings();
+    kaspa_core::panic::configure_panic();
+    kaspa_core::log::try_init_logger(
+        "INFO, kaspa_core::time=debug, kaspa_rpc_core=debug, kaspa_grpc_client=debug, kaspa_notify=info, kaspa_notify::address::tracker=debug, kaspa_notify::listener=debug, kaspa_notify::subscription::single=debug, kaspa_mining::monitor=debug, kaspa_testing_integration::subscribe_benchmarks=trace", 
+    );
+
+    //
+    // Setup
+    //
+    let (prealloc_sk, _) = secp256k1::generate_keypair(&mut thread_rng());
+    let args = ArgsBuilder::simnet(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR, PREALLOC_AMOUNT)
+        .apply_args(|args| Daemon::fill_args_with_random_ports(args))
+        .build();
+
+    // Start the daemon
+    info!("Launching the daemon...");
+    let daemon_args = DaemonArgs::new(
+        args.rpclisten.map(|x| x.normalize(0).port).unwrap(),
+        args.listen.map(|x| x.normalize(0).port).unwrap(),
+        prealloc_sk.display_secret().to_string(),
+        Some("ucs-server".to_owned()),
+    );
+    let server_start_time = std::time::Instant::now();
+    let mut daemon_process = tokio::process::Command::new("cargo")
+        .args(daemon_args.to_command_args("subscribe_benchmarks::bench_utxos_changed_subscriptions_daemon"))
+        .spawn()
+        .expect("failed to start daemon process");
+
+    // Make sure that the server was given enough time to start
+    let client_start_time = server_start_time + Duration::from_secs(5);
+    if client_start_time > std::time::Instant::now() {
+        tokio::time::sleep(client_start_time - std::time::Instant::now()).await;
+    }
+
+    // Initial objects
+    let client_manager = Arc::new(ClientManager::new(args));
+    let client = client_manager.new_client().await;
+
+    //
+    // Fold-up
+    //
+    kaspa_core::info!("Signal the daemon to shutdown");
+    client.shutdown().await.unwrap();
+    kaspa_core::warn!("Disconnect the main client");
+    client.disconnect().await.unwrap();
+    drop(client);
+
+    kaspa_core::warn!("Waiting for the daemon to exit...");
+    daemon_process.wait().await.expect("failed to wait for the daemon process");
+}
+
 /// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc -- subscribe_benchmarks::bench_utxos_changed_subscriptions_daemon --exact --nocapture --ignored -- --rpc=16610 --p2p=16611`
 #[tokio::test]
 #[ignore = "bmk"]
@@ -187,9 +242,8 @@ async fn bench_utxos_changed_subscriptions_daemon() {
     let args = ArgsBuilder::simnet(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR, PREALLOC_AMOUNT).apply_daemon_args(&daemon_args).build();
     let tick_service = Arc::new(TickService::new());
 
-    let mut tasks = TasksRunner::new()
+    let mut tasks = TasksRunner::new(Some(DaemonTask::with_args(args.clone())))
         .task(TickTask::build(tick_service.clone()))
-        .task(DaemonTask::build(args.clone()))
         .task(MemoryMonitorTask::build(tick_service, "daemon", Duration::from_secs(5), MAX_MEMORY))
         .optional_task(StatRecorderTask::optional(
             Duration::from_secs(5),
@@ -254,7 +308,7 @@ async fn utxos_changed_subscriptions_client(address_cycle_seconds: u64, address_
     let mut daemon_process = tokio::process::Command::new("cargo")
         .args(daemon_args.to_command_args("subscribe_benchmarks::bench_utxos_changed_subscriptions_daemon"))
         .spawn()
-        .expect("failed to start child process");
+        .expect("failed to start daemon process");
 
     // Make sure that the server was given enough time to start
     let client_start_time = server_start_time + Duration::from_secs(5);
@@ -264,25 +318,15 @@ async fn utxos_changed_subscriptions_client(address_cycle_seconds: u64, address_
 
     // Initial objects
     let subscribing_addresses = (0..NOTIFY_CLIENTS).map(|i| Arc::new(create_client_addresses(i, &params.net))).collect_vec();
-    let client_manager = Arc::new(ClientManager::new(&args));
+    let client_manager = Arc::new(ClientManager::new(args));
     let client = client_manager.new_client().await;
     let tick_service = Arc::new(TickService::new());
 
-    let mut tasks = TasksRunner::new()
+    let mut tasks = TasksRunner::new(None)
         .task(TickTask::build(tick_service.clone()))
         .task(MemoryMonitorTask::build(tick_service.clone(), "client", Duration::from_secs(5), MAX_MEMORY))
         .task(FullMinerTask::build(network, client_manager.clone(), SUBMIT_BLOCK_CLIENTS, params.bps(), BLOCK_COUNT).await)
-        .task(
-            FullTxSenderTask::build(
-                client_manager.clone(),
-                SUBMIT_TX_CLIENTS,
-                true,
-                txs,
-                TPS_PRESSURE,
-                MEMPOOL_TARGET,
-            )
-            .await,
-        )
+        .task(FullTxSenderTask::build(client_manager.clone(), SUBMIT_TX_CLIENTS, true, txs, TPS_PRESSURE, MEMPOOL_TARGET).await)
         .task(
             FullSubscriberTask::build(
                 client_manager,

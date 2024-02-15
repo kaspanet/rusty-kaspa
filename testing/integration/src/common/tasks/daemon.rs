@@ -1,4 +1,7 @@
-use crate::common::{daemon::Daemon, tasks::Task};
+use crate::common::{
+    daemon::{ClientManager, Daemon},
+    tasks::Task,
+};
 use async_trait::async_trait;
 use clap::Parser;
 use kaspa_addresses::Address;
@@ -100,12 +103,17 @@ impl DaemonArgs {
 }
 
 pub struct DaemonTask {
-    args: Args,
+    client_manager: Arc<ClientManager>,
 }
 
 impl DaemonTask {
-    pub fn build(args: Args) -> Arc<Self> {
-        Arc::new(Self { args })
+    pub fn build(client_manager: Arc<ClientManager>) -> Arc<Self> {
+        Arc::new(Self { client_manager })
+    }
+
+    pub fn with_args(args: Args) -> Arc<Self> {
+        let client_manager = Arc::new(ClientManager::new(args));
+        Self::build(client_manager)
     }
 }
 
@@ -113,7 +121,7 @@ impl DaemonTask {
 impl Task for DaemonTask {
     fn start(&self, stop_signal: SingleTrigger) -> Vec<JoinHandle<()>> {
         let fd_total_budget = fd_budget::limit();
-        let mut daemon = Daemon::new_with_args(self.args.clone(), fd_total_budget);
+        let mut daemon = Daemon::with_manager(self.client_manager.clone(), fd_total_budget);
         daemon.run();
         let core = daemon.core.clone();
         let task = tokio::spawn(async move {

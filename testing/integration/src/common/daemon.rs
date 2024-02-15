@@ -5,12 +5,15 @@ use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::{address::tracker::DEFAULT_TRACKER_CAPACITY, subscription::context::SubscriptionContext};
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspad_lib::{args::Args, daemon::create_core_with_runtime};
+use parking_lot::RwLock;
 use std::{ops::Deref, sync::Arc, time::Duration};
 use tempfile::TempDir;
 
 use kaspa_grpc_client::ClientPool;
 
 pub struct ClientManager {
+    pub args: RwLock<Args>,
+
     // Type and suffix of the daemon network
     pub network: NetworkId,
     pub context: SubscriptionContext,
@@ -21,12 +24,13 @@ pub struct ClientManager {
 }
 
 impl ClientManager {
-    pub fn new(args: &Args) -> Self {
+    pub fn new(args: Args) -> Self {
         let network = args.network();
         let context = SubscriptionContext::with_options(Some(DEFAULT_TRACKER_CAPACITY));
         let rpc_port = args.rpclisten.unwrap().normalize(0).port;
         let p2p_port = args.listen.unwrap().normalize(0).port;
-        Self { network, context, rpc_port, p2p_port }
+        let args = RwLock::new(args);
+        Self { args, network, context, rpc_port, p2p_port }
     }
 
     pub async fn new_client(&self) -> GrpcClient {
@@ -67,8 +71,7 @@ impl ClientManager {
         .unwrap()
     }
 
-    pub async fn new_client_pool<T: Send + 'static>(&self, pool_size: usize, distribution_channel_capacity: usize) -> ClientPool<T>
-where {
+    pub async fn new_client_pool<T: Send + 'static>(&self, pool_size: usize, distribution_channel_capacity: usize) -> ClientPool<T> {
         let mut clients = Vec::with_capacity(pool_size);
         for _ in 0..pool_size {
             clients.push(Arc::new(self.new_client().await));
@@ -120,14 +123,14 @@ impl Daemon {
 
     pub fn new_random_with_args(mut args: Args, fd_total_budget: i32) -> Daemon {
         Self::fill_args_with_random_ports(&mut args);
-        Self::new_with_args(args, fd_total_budget)
+        let client_manager = Arc::new(ClientManager::new(args));
+        Self::with_manager(client_manager, fd_total_budget)
     }
 
-    pub fn new_with_args(mut args: Args, fd_total_budget: i32) -> Daemon {
+    pub fn with_manager(client_manager: Arc<ClientManager>, fd_total_budget: i32) -> Daemon {
         let appdir_tempdir = get_kaspa_tempdir();
-        args.appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
-        let client_manager = Arc::new(ClientManager::new(&args));
-        let (core, _) = create_core_with_runtime(&Default::default(), &args, fd_total_budget);
+        client_manager.args.write().appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
+        let (core, _) = create_core_with_runtime(&Default::default(), &client_manager.args.read(), fd_total_budget);
         Daemon { client_manager, core, workers: None, _appdir_tempdir: appdir_tempdir }
     }
 
