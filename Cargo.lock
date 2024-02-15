@@ -2441,6 +2441,7 @@ dependencies = [
  "futures",
  "futures-util",
  "h2",
+ "itertools 0.11.0",
  "kaspa-core",
  "kaspa-grpc-core",
  "kaspa-notify",

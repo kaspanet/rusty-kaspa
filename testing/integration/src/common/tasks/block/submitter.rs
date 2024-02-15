@@ -1,11 +1,12 @@
 use crate::common::{daemon::ClientManager, tasks::Task};
 use async_channel::Sender;
 use async_trait::async_trait;
+use kaspa_core::warn;
 use kaspa_grpc_client::ClientPool;
 use kaspa_rpc_core::{api::rpc::RpcApi, RpcBlock};
 use kaspa_utils::triggers::SingleTrigger;
-use std::sync::Arc;
-use tokio::task::JoinHandle;
+use std::{sync::Arc, time::Duration};
+use tokio::{task::JoinHandle, time::sleep};
 
 pub struct BlockSubmitterTask {
     pool: ClientPool<RpcBlock>,
@@ -28,9 +29,9 @@ impl BlockSubmitterTask {
 
 #[async_trait]
 impl Task for BlockSubmitterTask {
-    fn start(&self, _stop_signal: SingleTrigger) -> Vec<JoinHandle<()>> {
-        self.pool.start(|c, block: RpcBlock| async move {
-            let _sw = kaspa_core::time::Stopwatch::<500>::with_threshold("sb");
+    fn start(&self, stop_signal: SingleTrigger) -> Vec<JoinHandle<()>> {
+        warn!("Block submitter task starting...");
+        let mut tasks = self.pool.start(|c, block: RpcBlock| async move {
             loop {
                 match c.submit_block(block.clone(), false).await {
                     Ok(response) => {
@@ -38,11 +39,28 @@ impl Task for BlockSubmitterTask {
                         break;
                     }
                     Err(_) => {
-                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                        sleep(Duration::from_millis(50)).await;
                     }
                 }
             }
             false
-        })
+        });
+
+        let pool_shutdown_listener = self.pool.shutdown_listener();
+        let sender = self.sender();
+        let shutdown_task = tokio::spawn(async move {
+            tokio::select! {
+                _ = stop_signal.listener.clone() => {}
+                _ = pool_shutdown_listener.clone() => {
+                    stop_signal.trigger.trigger();
+                }
+            }
+            let _ = sender.close();
+            pool_shutdown_listener.await;
+            warn!("Block submitter task exited");
+        });
+        tasks.push(shutdown_task);
+
+        tasks
     }
 }
