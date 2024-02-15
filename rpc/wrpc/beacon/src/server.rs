@@ -1,16 +1,14 @@
-use crate::args::Args;
-use crate::result::Result;
+use crate::imports::*;
+use crate::monitor::monitor;
 use axum::{
     async_trait,
     extract::{path::ErrorKind, rejection::PathRejection, FromRequestParts},
-    http::{request::Parts, StatusCode},
+    http::{header, request::Parts, HeaderValue, StatusCode},
     response::IntoResponse,
     routing::get,
-    Json, Router,
+    // Json,
+    Router,
 };
-use kaspa_consensus_core::network::NetworkId;
-use kaspa_wrpc_client::WrpcEncoding;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tokio::net::TcpListener;
 
 use axum::{error_handling::HandleErrorLayer, BoxError};
@@ -21,11 +19,18 @@ pub async fn server(args: &Args) -> Result<(TcpListener, Router)> {
     // initialize tracing
     tracing_subscriber::fmt::init();
 
-    // build our application with a route
-    let app = Router::new().route("/status", get(status)).route("/v1/wrpc/:protocol/:network", get(handler));
+    let app = Router::new().route("/v1/wrpc/:encoding/:network", get(handler));
+
+    let app = if args.status {
+        log_warn!("Routes", "Enabling `/status` route");
+        app.route("/status", get(status))
+    } else {
+        log_success!("Routes", "Disabling `/status` route");
+        app
+    };
 
     let app = if let Some(rate_limit) = args.rate_limit.as_ref() {
-        println!("Setting rate limit to: {} requests per {} seconds", rate_limit.requests, rate_limit.period);
+        log_success!("Limits", "Setting rate limit to: {} requests per {} seconds", rate_limit.requests, rate_limit.period);
         app.layer(
             ServiceBuilder::new()
                 .layer(HandleErrorLayer::new(|err: BoxError| async move {
@@ -35,28 +40,32 @@ pub async fn server(args: &Args) -> Result<(TcpListener, Router)> {
                 .layer(RateLimitLayer::new(rate_limit.requests, Duration::from_secs(rate_limit.period))),
         )
     } else {
-        println!("Rate limit is disabled");
+        log_warn!("Limits", "Rate limit is disabled");
         app
     };
 
-    println!("Listening on http://{}", args.listen.as_str());
+    log_success!("Server", "Listening on http://{}", args.listen.as_str());
     let listener = tokio::net::TcpListener::bind(args.listen.as_str()).await.unwrap();
     Ok((listener, app))
 }
 
 // basic handler that responds with a static string
-async fn status() -> &'static str {
-    "Hello, World!"
+async fn status() -> impl IntoResponse {
+    let json = monitor().get_all();
+    (StatusCode::OK, [(header::CONTENT_TYPE, HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()))], json).into_response()
 }
 
 async fn handler(Path(params): Path<Params>) -> impl IntoResponse {
-    Json(params)
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct Params {
-    protocol: WrpcEncoding,
-    network: NetworkId,
+    if let Some(json) = monitor().get(&params) {
+        ([(header::CONTENT_TYPE, HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()))], json).into_response()
+    } else {
+        (
+            StatusCode::NOT_FOUND,
+            [(header::CONTENT_TYPE, HeaderValue::from_static(mime::TEXT_PLAIN_UTF_8.as_ref()))],
+            "NOT FOUND".to_string(),
+        )
+            .into_response()
+    }
 }
 
 // We define our own `Path` extractor that customizes the error from `axum::extract::Path`

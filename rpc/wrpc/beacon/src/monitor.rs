@@ -1,82 +1,149 @@
-use crate::node::Node;
-use crate::result::Result;
-use futures::{select, FutureExt};
-use kaspa_rpc_core::api::ctl::RpcState;
-use kaspa_rpc_core::api::rpc::RpcApi;
-use kaspa_wrpc_client::{
-    client::{ConnectOptions, ConnectStrategy},
-    KaspaRpcClient,
-};
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
-use workflow_core::channel::*;
-use workflow_core::task::spawn;
+use crate::connection::Connection;
+use crate::imports::*;
 
-pub fn monitor() -> &'static Monitor {
-    static MONITOR: OnceLock<Monitor> = OnceLock::new();
-    MONITOR.get_or_init(Monitor::default)
+static MONITOR: OnceLock<Arc<Monitor>> = OnceLock::new();
+
+pub fn init(args: &Args) {
+    MONITOR.set(Arc::new(Monitor::new(args))).unwrap();
 }
 
-pub struct NodeConnection {
-    node: Arc<Node>,
-    client: KaspaRpcClient,
+pub fn monitor() -> &'static Arc<Monitor> {
+    MONITOR.get().unwrap()
+}
+
+pub async fn start() -> Result<()> {
+    monitor().start().await
+}
+
+pub async fn stop() -> Result<()> {
+    monitor().stop().await
+}
+
+pub struct Monitor {
+    verbose: bool,
+    connections: RwLock<AHashMap<Params, Vec<Arc<Connection>>>>,
+    descriptors: RwLock<AHashMap<Params, String>>,
+    channel: Channel<Params>,
     shutdown_ctl: DuplexChannel<()>,
-    connected: Arc<AtomicBool>,
-    clients: Arc<AtomicU64>,
 }
 
-impl NodeConnection {
-    pub fn try_new(node: Arc<Node>) -> Result<Self> {
-        let client = KaspaRpcClient::new(node.protocol, Some(&node.address))?;
-        let shutdown_ctl = DuplexChannel::oneshot();
-        let connected = Arc::new(AtomicBool::new(false));
-        let clients = Arc::new(AtomicU64::new(0));
-        Ok(Self { node, client, shutdown_ctl, connected, clients })
+impl Default for Monitor {
+    fn default() -> Self {
+        Self {
+            verbose: false,
+            connections: Default::default(),
+            descriptors: Default::default(),
+            channel: Channel::unbounded(),
+            shutdown_ctl: DuplexChannel::oneshot(),
+        }
+    }
+}
+
+impl fmt::Debug for Monitor {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Monitor")
+            .field("verbose", &self.verbose)
+            .field("connections", &self.connections)
+            .field("descriptors", &self.descriptors)
+            .finish()
+    }
+}
+
+impl Monitor {
+    pub fn new(args: &Args) -> Self {
+        Self { verbose: args.verbose, ..Default::default() }
     }
 
-    async fn connect(&self) -> Result<()> {
-        let options = ConnectOptions { block_async_connect: false, strategy: ConnectStrategy::Retry, ..Default::default() };
+    pub fn connections(&self) -> AHashMap<Params, Vec<Arc<Connection>>> {
+        self.connections.read().unwrap().clone()
+    }
 
-        self.client.connect(Some(options)).await?;
+    pub async fn update_nodes(&self, nodes: Vec<Arc<Node>>) -> Result<()> {
+        let mut connections = self.connections();
+
+        for params in Params::iter() {
+            let nodes = nodes.iter().filter(|node| node.params() == params).collect::<Vec<_>>();
+
+            let list = connections.entry(params).or_default();
+
+            let create: Vec<_> = nodes.iter().filter(|node| !list.iter().any(|connection| connection.node == ***node)).collect();
+
+            let remove: Vec<_> =
+                list.iter().filter(|connection| !nodes.iter().any(|node| connection.node == **node)).cloned().collect();
+
+            for node in create {
+                let created = Arc::new(Connection::try_new((*node).clone(), self.channel.sender.clone(), self.verbose)?);
+                created.start()?;
+                list.push(created);
+            }
+
+            for removed in remove {
+                removed.stop().await?;
+                list.retain(|c| c.node != removed.node);
+            }
+        }
+
+        *self.connections.write().unwrap() = connections;
+
+        // flush all params to the update channel to refresh selected descriptors
+        Params::iter().for_each(|param| self.channel.sender.try_send(param).unwrap());
+
+        Ok(())
+    }
+
+    pub async fn start(self: &Arc<Self>) -> Result<()> {
+        let toml = include_str!("../Servers.toml");
+        let nodes = crate::node::try_parse_nodes(toml)?;
+
+        let this = self.clone();
+        spawn(async move {
+            if let Err(error) = this.task().await {
+                println!("NodeConnection task error: {:?}", error);
+            }
+        });
+
+        self.update_nodes(nodes).await?;
+
+        Ok(())
+    }
+
+    pub async fn stop(&self) -> Result<()> {
+        self.shutdown_ctl.signal(()).await.expect("Monitor shutdown signal error");
         Ok(())
     }
 
     async fn task(self: Arc<Self>) -> Result<()> {
-        self.connect().await?;
-        let rpc_ctl_channel = self.client.rpc_ctl().multiplexer().channel();
+        let receiver = self.channel.receiver.clone();
         let shutdown_ctl_receiver = self.shutdown_ctl.request.receiver.clone();
         let shutdown_ctl_sender = self.shutdown_ctl.response.sender.clone();
 
         loop {
             select! {
 
-                msg = rpc_ctl_channel.receiver.recv().fuse() => {
+                msg = receiver.recv().fuse() => {
                     match msg {
-                        Ok(msg) => {
+                        Ok(params) => {
 
-                            // handle RPC channel connection and disconnection events
 
-                            match msg {
-                                RpcState::Opened => {
-                                    println!("Connected to {}",self.node.address);
-                                    if self.update_metrics().await {
-                                        self.connected.store(true, Ordering::Relaxed);
-                                    }
-                                },
-                                RpcState::Closed => {
-                                    self.connected.store(true, Ordering::Relaxed);
-                                    println!("Disconnected from {}",self.node.address);
+                            let mut connections = self.connections().get(&params).unwrap().clone();
+                            if connections.is_empty() {
+                                self.descriptors.write().unwrap().remove(&params);
+                            } else {
+                                connections.sort_by_key(|connection| connection.score());
+                                let output = connections.first().unwrap().output();
+                                if self.verbose {
+                                    log_success!("Updating","{params} - {output}");
                                 }
+                                self.descriptors.write().unwrap().insert(params,output);
                             }
-                        }
+                                                    }
                         Err(err) => {
-                            println!("Monitor: error while receiving rpc_ctl_channel message: {err}");
-                            break;
+                            println!("Monitor: error while receiving update message: {err}");
+                            // break;
                         }
                     }
-                }
 
+                }
                 _ = shutdown_ctl_receiver.recv().fuse() => {
                     break;
                 },
@@ -89,99 +156,49 @@ impl NodeConnection {
         Ok(())
     }
 
-    fn start(self: &Arc<Self>) -> Result<()> {
-        let this = self.clone();
-        spawn(async move {
-            if let Err(error) = this.task().await {
-                println!("NodeConnection task error: {:?}", error);
-            }
+    pub fn get_all(&self) -> String {
+        let connections = self.connections();
+        let connections = connections.values().fold(Vec::default(), |mut a, b| {
+            a.extend(b);
+            a
         });
-
-        Ok(())
+        // let nodes =
+        //     connections.iter().filter_map(|connection| connection.online().then_some(Status::from(*connection))).collect::<Vec<_>>();
+        let nodes = connections.iter().map(|connection| Status::from(*connection)).collect::<Vec<_>>();
+        serde_json::to_string(&nodes).unwrap()
     }
 
-    async fn stop(self: &Arc<Self>) -> Result<()> {
-        self.shutdown_ctl.signal(()).await.expect("NodeConnection shutdown signal error");
-        Ok(())
-    }
-
-    async fn update_metrics(&self) -> bool {
-        if let Ok(metrics) = self.client.get_metrics(false, true, false, false).await {
-            if let Some(connection_metrics) = metrics.connection_metrics {
-                // update
-
-                let clients = connection_metrics.borsh_live_connections as u64 + connection_metrics.json_live_connections as u64;
-                self.clients.store(clients, Ordering::Relaxed);
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        }
+    pub fn get(&self, params: &Params) -> Option<String> {
+        self.descriptors.read().unwrap().get(params).cloned()
     }
 }
 
-#[derive(Default)]
-pub struct Inner {
-    connections: Vec<Arc<NodeConnection>>,
+#[derive(Serialize)]
+pub struct Status<'a> {
+    pub id: &'a str,
+    pub url: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub link: Option<&'a str>,
+    pub transport: Transport,
+    pub encoding: WrpcEncoding,
+    pub network: NetworkId,
+    pub online: bool,
+    pub status: &'static str,
 }
 
-#[derive(Clone, Default)]
-pub struct Monitor {
-    inner: Arc<Mutex<Inner>>,
-}
-
-impl Monitor {
-    // TODO: remove this
-    #[allow(unused)]
-    pub fn new() -> Self {
-        Self { ..Default::default() }
-    }
-
-    pub fn connections(&self) -> Vec<Arc<NodeConnection>> {
-        self.inner.lock().unwrap().connections.clone()
-    }
-
-    pub async fn update_nodes(&self, nodes: Vec<Arc<Node>>) -> Result<()> {
-        let mut connections = self.connections();
-
-        let create: Vec<_> = nodes
-            .iter()
-            .filter_map(|node| if !connections.iter().any(|connection| connection.node == *node) { Some(node.clone()) } else { None })
-            .collect();
-
-        let remove: Vec<_> = connections
-            .iter()
-            .filter_map(|connection| if !nodes.iter().any(|node| connection.node == *node) { Some(connection.clone()) } else { None })
-            .collect();
-
-        for node in create {
-            let created = Arc::new(NodeConnection::try_new(Arc::clone(&node))?);
-            created.start()?;
-            connections.push(created);
-        }
-
-        for removed in remove {
-            removed.stop().await?;
-            connections.retain(|c| c.node != removed.node);
-        }
-
-        self.inner.lock().unwrap().connections = connections;
-
-        Ok(())
-    }
-
-    pub async fn start(&self) -> Result<()> {
-        // let toml = include_str!("../Servers.toml");
-        // let nodes = crate::node::try_parse_nodes(toml)?;
-
-        // self.update_nodes(nodes).await?;
-
-        Ok(())
-    }
-
-    pub async fn stop(&self) -> Result<()> {
-        Ok(())
+impl<'a> From<&'a Arc<Connection>> for Status<'a> {
+    fn from(connection: &'a Arc<Connection>) -> Self {
+        let url = connection.node.address.as_str();
+        let provider = connection.node.provider.as_deref();
+        let link = connection.node.link.as_deref();
+        let id = connection.node.id.as_str();
+        let transport = connection.node.transport;
+        let encoding = connection.node.encoding;
+        let network = connection.node.network;
+        let status = connection.status();
+        let online = connection.online();
+        Self { id, url, provider, link, transport, encoding, network, status, online }
     }
 }

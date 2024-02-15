@@ -55,6 +55,12 @@ pub enum Error {
 
     #[error(transparent)]
     AddressError(#[from] kaspa_addresses::AddressError),
+
+    #[error(transparent)]
+    TomlError(#[from] toml::de::Error),
+
+    #[error(transparent)]
+    NetworkId(#[from] kaspa_consensus_core::network::NetworkIdError),
 }
 
 impl Error {

@@ -1,0 +1,11 @@
+[[beacon]]
+url = "https://beacon.kaspa-ng.org"
+enable = true
+
+[[beacon]]
+url = "https://beacon.kaspa-ng.io"
+enable = true
+
+[[beacon]]
+url = "http://127.0.0.1:8888"
+enable = false

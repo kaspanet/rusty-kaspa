@@ -483,7 +483,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                                        // Register wRPC servers based on command line arguments
     [
         (args.rpclisten_borsh.clone(), WrpcEncoding::Borsh, wrpc_borsh_counters),
-        (args.rpclisten_json.clone(), WrpcEncoding::SerdeJson, wrpc_json_counters),
+        (args.rpclisten_json.clone(), WrpcEncoding::Json, wrpc_json_counters),
     ]
     .into_iter()
     .filter_map(|(listen_address, encoding, wrpc_server_counters)| {

@@ -11,6 +11,14 @@ pub struct Args {
     /// Optional rate limit in the form `<requests>:<seconds>`, where `requests` is the number of requests allowed per specified number of `seconds`
     #[arg(long = "rate-limit", value_name = "REQUESTS:SECONDS")]
     pub rate_limit: Option<RateLimit>,
+
+    /// Verbose mode
+    #[arg(short, long, default_value = "false")]
+    pub verbose: bool,
+
+    /// Enable beacon status access via `/status`
+    #[arg(long, default_value = "false")]
+    pub status: bool,
 }
 
 #[derive(Clone, Debug)]
