@@ -46,17 +46,21 @@ impl ToTokens for RpcHandlers {
                 fn_call, fn_camel, fn_no_suffix, ts_request_type, ts_response_type, request_type, response_type, docs, ..
             } = Handler::new(handler);
 
-            let doc = format! {"@see {{@link {ts_request_type}}} {{@link {ts_response_type}}}"};
+            // / @param {object} value - an object containing { message: String, privateKey: String|PrivateKey }
+            // / @returns {String} the signature, in hex string format
+
+            let links = format! {"@see {{@link {ts_request_type}}}, {{@link {ts_response_type}}}"};
+            let throws = "@throws `string` on an RPC error or a server-side error.";
             targets_no_args.push(quote! {
                 #(#docs)*
-                #[doc=#doc]
+                #[doc=#links]
+                #[doc=#throws]
                 #[wasm_bindgen(js_name = #fn_camel)]
                 pub async fn #fn_no_suffix(&self, request : Option<#ts_request_type>) -> Result<#ts_response_type> {
                     let request: #request_type = request.unwrap_or_default().try_into()?;
                     // log_info!("request: {:#?}",request);
                     let result: RpcResult<#response_type> = self.client.#fn_call(request).await;
                     // log_info!("result: {:#?}",result);
-
                     let response: #response_type = result.map_err(|err|wasm_bindgen::JsError::new(&err.to_string()))?;
                     //log_info!("response: {:#?}",response);
                     Ok(response.try_into()?)
@@ -66,15 +70,19 @@ impl ToTokens for RpcHandlers {
         }
 
         for handler in self.handlers_with_args.elems.iter() {
-            let Handler { fn_call, fn_camel, fn_no_suffix, ts_request_type, ts_response_type, request_type, response_type, .. } =
-                Handler::new(handler);
+            let Handler {
+                fn_call, fn_camel, fn_no_suffix, ts_request_type, ts_response_type, request_type, response_type, docs, ..
+            } = Handler::new(handler);
 
-            // #[doc="@see {@link #ts_request_type} {@link #ts_response_type}"]
+            let links = format! {"@see {{@link {ts_request_type}}}, {{@link {ts_response_type}}}"};
+            let throws = "@throws `string` on an RPC error, a server-side error or when supplying incorrect arguments.";
             targets_with_args.push(quote! {
-
+                #(#docs)*
+                #[doc=#links]
+                #[doc=#throws]
                 #[wasm_bindgen(js_name = #fn_camel)]
                 pub async fn #fn_no_suffix(&self, request: #ts_request_type) -> Result<#ts_response_type> {
-                    let request: #request_type = request.try_into()?; //from_value(request)?;
+                    let request: #request_type = request.try_into()?;
                     let result: RpcResult<#response_type> = self.client.#fn_call(request).await;
                     let response: #response_type = result.map_err(|err|wasm_bindgen::JsError::new(&err.to_string()))?;
                     Ok(response.try_into()?)
