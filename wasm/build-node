@@ -1,1 +1,3 @@
+#!/bin/bash
+
 wasm-pack build --target nodejs --out-dir nodejs/kaspa --features wasm32-sdk $@

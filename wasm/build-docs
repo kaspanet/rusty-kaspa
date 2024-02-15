@@ -1,2 +1,4 @@
+#!/bin/bash
+
 wasm-pack build --target web --dev --out-dir docs/kaspa --features wasm32-sdk $@
 typedoc --name "Kaspa WASM32 SDK" --sourceLinkExternal --readme ./README.md --out docs/typedoc ./docs/index.ts

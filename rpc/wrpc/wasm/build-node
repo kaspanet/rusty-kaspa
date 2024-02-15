@@ -1,1 +1,3 @@
+#!/bin/bash
+
 wasm-pack build --target nodejs --out-name kaspa-rpc --out-dir nodejs/kaspa-rpc --features wasm32-sdk
