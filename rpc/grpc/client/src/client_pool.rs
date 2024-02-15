@@ -26,6 +26,7 @@ impl<T: Send + 'static> ClientPool<T> {
         let shutdown = SingleTrigger::new();
         Self { clients, distribution_channel, running_tasks, started, shutdown }
     }
+
     pub fn start<F, R>(&self, client_op: F) -> Vec<JoinHandle<()>>
     where
         F: Fn(Arc<GrpcClient>, T) -> R + Sync + Send + Copy + 'static,
