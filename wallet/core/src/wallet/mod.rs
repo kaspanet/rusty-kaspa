@@ -496,7 +496,7 @@ impl Wallet {
         if let Some(wrpc_client) = self.wrpc_client() {
             let port = match wrpc_client.encoding() {
                 WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
-                WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
+                WrpcEncoding::Json => network_type.default_json_rpc_port(),
             };
             Ok(Some(port))
         } else {
