@@ -9,47 +9,28 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-toml.workspace = true
-kaspa-wrpc-client.workspace = true
-kaspa-rpc-core.workspace = true
-kaspa-consensus-core.workspace = true
-tokio.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-workflow-http.workspace = true
-clap.workspace = true
-cfg-if.workspace = true
-thiserror.workspace = true
-kaspa-utils.workspace = true
 
+
+ahash.workspace = true
+cfg-if.workspace = true
+clap.workspace = true
+futures.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-rpc-core.workspace = true
+kaspa-utils.workspace = true
+kaspa-wrpc-client.workspace = true
+serde_json.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+toml.workspace = true
 
 axum = "0.7.4"
+console = "0.15.8"
+mime = "0.3.16"
 tower = { version = "0.4.13", features = ["buffer","limit"] }
 tracing-subscriber = "0.3.18"
-# hyper = { version = "1.1.0", features = ["server", "http1"] }
-# bytes = "1.5.0"
-# http-body-util = "0.1.0"
-# futures-util = "0.3.30"
-
-# async-std.workspace = true
-# async-trait.workspace = true
-# borsh.workspace = true
-futures.workspace = true
-# js-sys.workspace = true
-# kaspa-addresses.workspace = true
-# kaspa-consensus-core.workspace = true
-# kaspa-consensus-wasm.workspace = true
-# kaspa-notify.workspace = true
-# kaspa-rpc-macros.workspace = true
-# paste.workspace = true
-# regex.workspace = true
-# serde-wasm-bindgen.workspace = true
-# serde.workspace = true
-# thiserror.workspace = true
-# wasm-bindgen-futures.workspace = true
-# wasm-bindgen.workspace = true
 workflow-core.workspace = true
-# workflow-dom.workspace = true
-# workflow-log.workspace = true
-# workflow-rpc.workspace = true
-# workflow-wasm.workspace = true
+workflow-http.workspace = true
+workflow-log.workspace = true
+xxhash-rust = { workspace = true }
