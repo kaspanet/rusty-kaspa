@@ -357,6 +357,19 @@ impl NetworkId {
     }
 }
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "NetworkId | string")]
+    pub type INetworkId;
+}
+
+impl TryFrom<INetworkId> for NetworkId {
+    type Error = NetworkIdError;
+    fn try_from(js_value: INetworkId) -> Result<Self, Self::Error> {
+        NetworkId::try_from(&js_value.into())
+    }
+}
+
 impl TryFrom<JsValue> for NetworkId {
     type Error = NetworkIdError;
     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
