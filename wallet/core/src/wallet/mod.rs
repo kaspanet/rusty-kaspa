@@ -1505,19 +1505,21 @@ fn decrypt_mnemonic<T: AsRef<[u8]>>(
 #[cfg(test)]
 mod test {
     use hex_literal::hex;
-    use std::{str::FromStr, thread::sleep, time};
 
     use super::*;
+    use kaspa_addresses::Address;
+
+    /*
+    use workflow_rpc::client::ConnectOptions;
+    use std::{str::FromStr, thread::sleep, time};
     use crate::derivation::gen1;
     use crate::utxo::{UtxoContext, UtxoContextBinding, UtxoIterator};
-    use kaspa_addresses::{Address, Prefix, Version};
+    use kaspa_addresses::{Prefix, Version};
     use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
     use kaspa_consensus_wasm::{sign_transaction, SignableTransaction, Transaction, TransactionInput, TransactionOutput};
     use kaspa_txscript::pay_to_address_script;
-    use workflow_rpc::client::ConnectOptions;
 
-    /*
         async fn create_utxos_context_with_addresses(
             rpc: Arc<DynRpcApi>,
             addresses: Vec<Address>,

@@ -106,7 +106,8 @@ home.workspace = true
 
 [dev-dependencies]
 hex-literal.workspace = true
-serde_repr.worksapce = true
+# serde_repr.worksapce = true
+serde_repr = "0.1.18"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio.workspace = true
