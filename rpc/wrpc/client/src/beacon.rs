@@ -1,12 +1,11 @@
 use crate::error::Error;
 use crate::imports::*;
 use crate::node::Node;
-use workflow_http::get_json;
 pub use futures::future::join_all;
 pub use rand::Rng;
+use workflow_http::get_json;
 
 const DEFAULT_VERSION: usize = 1;
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BeaconRecord {
@@ -82,6 +81,4 @@ impl Beacon {
         let nodes = self.fetch_all(encoding, network_id).await?;
         Ok(nodes[rand::thread_rng().gen::<usize>() % nodes.len()].url.clone())
     }
-
 }
-
