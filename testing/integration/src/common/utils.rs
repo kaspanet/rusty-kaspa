@@ -90,7 +90,7 @@ pub fn generate_tx_dag(
 }
 
 /// Sanity test verifying that the generated TX DAG is valid, topologically ordered and has no double spends
-pub fn verify_tx_dag(initial_utxoset: &UtxoCollection, txs: &Vec<Arc<Transaction>>) {
+pub fn verify_tx_dag(initial_utxoset: &UtxoCollection, txs: &[Arc<Transaction>]) {
     let mut prev_txs: HashMap<TransactionId, Arc<Transaction>> = HashMap::new();
     let mut used_outpoints = HashSet::with_capacity(txs.len() * 2);
     for tx in txs.iter() {
