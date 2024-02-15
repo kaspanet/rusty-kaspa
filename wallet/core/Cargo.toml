@@ -11,7 +11,12 @@ repository.workspace = true
 
 [features]
 multi-user = []
-wasm32-sdk = ["kaspa-consensus-wasm/wasm32-sdk","kaspa-consensus-core/wasm32-sdk","kaspa-wrpc-client/wasm32-sdk"]
+wasm32-sdk = [
+    "kaspa-consensus-wasm/wasm32-sdk",
+    "kaspa-consensus-core/wasm32-sdk",
+    "kaspa-wrpc-client/wasm32-sdk",
+    "kaspa-wrpc-wasm/wasm32-sdk"
+]
 # default = ["wasm32-sdk"]
 
 [lib]
