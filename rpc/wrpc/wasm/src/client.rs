@@ -261,7 +261,7 @@ impl RpcClient {
         let network_type = NetworkType::try_from(network)?;
         match encoding {
             WrpcEncoding::Borsh => Ok(network_type.default_borsh_rpc_port()),
-            WrpcEncoding::SerdeJson => Ok(network_type.default_json_rpc_port()),
+            WrpcEncoding::Json => Ok(network_type.default_json_rpc_port()),
         }
     }
 
@@ -438,7 +438,7 @@ build_wrpc_wasm_bindgen_interface!(
         /// Returned information: Version of the Kaspa node, protocol
         /// version, network identifier.
         /// This call is primarily used by gRPC clients.
-        /// For wRPC clients, use `getServerInfo`.
+        /// For wRPC clients, use {@link RpcClient.getServerInfo}.
         GetInfo,
         /// Provides a list of addresses of known peers in the Kaspa
         /// network that the node can potentially connect to.
@@ -473,72 +473,71 @@ build_wrpc_wasm_bindgen_interface!(
     ],
     [
         // functions with `request` argument
-
-        // Adds a peer to the Kaspa node's list of known peers.
-        // Returned information: None.
+        /// Adds a peer to the Kaspa node's list of known peers.
+        /// Returned information: None.
         AddPeer,
-        // Bans a peer from connecting to the Kaspa node for a specified duration.
-        // Returned information: None.
+        /// Bans a peer from connecting to the Kaspa node for a specified duration.
+        /// Returned information: None.
         Ban,
-        // Estimates the network's current hash rate in hashes per second.
-        // Returned information: Estimated network hashes per second.
+        /// Estimates the network's current hash rate in hashes per second.
+        /// Returned information: Estimated network hashes per second.
         EstimateNetworkHashesPerSecond,
-        // Retrieves the balance of a specific address in the Kaspa BlockDAG.
-        // Returned information: Balance of the address.
+        /// Retrieves the balance of a specific address in the Kaspa BlockDAG.
+        /// Returned information: Balance of the address.
         GetBalanceByAddress,
-        // Retrieves balances for multiple addresses in the Kaspa BlockDAG.
-        // Returned information: Balances of the addresses.
+        /// Retrieves balances for multiple addresses in the Kaspa BlockDAG.
+        /// Returned information: Balances of the addresses.
         GetBalancesByAddresses,
-        // Retrieves a specific block from the Kaspa BlockDAG.
-        // Returned information: Block information.
+        /// Retrieves a specific block from the Kaspa BlockDAG.
+        /// Returned information: Block information.
         GetBlock,
-        // Retrieves multiple blocks from the Kaspa BlockDAG.
-        // Returned information: List of block information.
+        /// Retrieves multiple blocks from the Kaspa BlockDAG.
+        /// Returned information: List of block information.
         GetBlocks,
-        // Generates a new block template for mining.
-        // Returned information: Block template information.
+        /// Generates a new block template for mining.
+        /// Returned information: Block template information.
         GetBlockTemplate,
-        // Retrieves the estimated DAA (Difficulty Adjustment Algorithm)
-        // score timestamp estimate.
-        // Returned information: DAA score timestamp estimate.
+        /// Retrieves the estimated DAA (Difficulty Adjustment Algorithm)
+        /// score timestamp estimate.
+        /// Returned information: DAA score timestamp estimate.
         GetDaaScoreTimestampEstimate,
-        // Retrieves the current network configuration.
-        // Returned information: Current network configuration.
+        /// Retrieves the current network configuration.
+        /// Returned information: Current network configuration.
         GetCurrentNetwork,
-        // Retrieves block headers from the Kaspa BlockDAG.
-        // Returned information: List of block headers.
+        /// Retrieves block headers from the Kaspa BlockDAG.
+        /// Returned information: List of block headers.
         GetHeaders,
-        // Retrieves mempool entries from the Kaspa node's mempool.
-        // Returned information: List of mempool entries.
+        /// Retrieves mempool entries from the Kaspa node's mempool.
+        /// Returned information: List of mempool entries.
         GetMempoolEntries,
-        // Retrieves mempool entries associated with specific addresses.
-        // Returned information: List of mempool entries.
+        /// Retrieves mempool entries associated with specific addresses.
+        /// Returned information: List of mempool entries.
         GetMempoolEntriesByAddresses,
-        // Retrieves a specific mempool entry by transaction ID.
-        // Returned information: Mempool entry information.
+        /// Retrieves a specific mempool entry by transaction ID.
+        /// Returned information: Mempool entry information.
         GetMempoolEntry,
-        // Retrieves information about a subnetwork in the Kaspa BlockDAG.
-        // Returned information: Subnetwork information.
+        /// Retrieves information about a subnetwork in the Kaspa BlockDAG.
+        /// Returned information: Subnetwork information.
         GetSubnetwork,
-        // Retrieves unspent transaction outputs (UTXOs) associated with
-        // specific addresses.
-        // Returned information: List of UTXOs.
+        /// Retrieves unspent transaction outputs (UTXOs) associated with
+        /// specific addresses.
+        /// Returned information: List of UTXOs.
         GetUtxosByAddresses,
-        // Retrieves the virtual chain corresponding to a specified block hash.
-        // Returned information: Virtual chain information.
+        /// Retrieves the virtual chain corresponding to a specified block hash.
+        /// Returned information: Virtual chain information.
         GetVirtualChainFromBlock,
-        // Resolves a finality conflict in the Kaspa BlockDAG.
-        // Returned information: None.
+        /// Resolves a finality conflict in the Kaspa BlockDAG.
+        /// Returned information: None.
         ResolveFinalityConflict,
-        // Submits a block to the Kaspa network.
-        // Returned information: None.
+        /// Submits a block to the Kaspa network.
+        /// Returned information: None.
         SubmitBlock,
-        // Submits a transaction to the Kaspa network.
-        // Returned information: None.
+        /// Submits a transaction to the Kaspa network.
+        /// Returned information: None.
         SubmitTransaction,
-        // Unbans a previously banned peer, allowing it to connect
-        // to the Kaspa node again.
-        // Returned information: None.
+        /// Unbans a previously banned peer, allowing it to connect
+        /// to the Kaspa node again.
+        /// Returned information: None.
         Unban,
     ]
 );

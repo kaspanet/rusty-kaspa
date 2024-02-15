@@ -7,6 +7,8 @@ cfg_if! {
         mod imports;
         pub mod client;
         pub use client::*;
+        pub mod beacon;
+        pub use beacon::*;
     }
 
 }
