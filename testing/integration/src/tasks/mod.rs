@@ -28,6 +28,7 @@ pub enum Stopper {
 #[async_trait]
 pub trait Task: Sync + Send {
     fn start(&self, stop_signal: SingleTrigger) -> Vec<JoinHandle<()>>;
+    async fn ready(&self) {}
 }
 
 pub type DynTask = Arc<dyn Task>;
@@ -66,11 +67,25 @@ impl TasksRunner {
         self
     }
 
-    pub fn run(&mut self) {
+    /// Start the main task
+    ///
+    /// Use this before adding tasks relying on a started main task.
+    pub async fn launch(mut self) -> Self {
+        self.run_main().await;
+        self
+    }
+
+    async fn run_main(&mut self) {
         if let Some(ref main) = self.main {
-            self.main_handles = Some(main.start(self.main_stop_signal.clone()));
-            self.tasks.push(StopTask::build(self.main_stop_signal.clone()));
+            if self.main_handles.is_none() {
+                self.tasks.push(StopTask::build(self.main_stop_signal.clone()));
+                self.main_handles = Some(main.start(self.main_stop_signal.clone()));
+                main.ready().await;
+            }
         }
+    }
+    pub async fn run(&mut self) {
+        self.run_main().await;
         let handles = self.tasks.iter().cloned().flat_map(|x| x.start(self.stop_signal.clone())).collect_vec();
         self.handles = Some(handles);
     }

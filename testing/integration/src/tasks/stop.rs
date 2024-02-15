@@ -25,12 +25,18 @@ impl Task for StopTask {
         let main_stop_signal = self.main_stop_signal.clone();
         let task = tokio::spawn(async move {
             warn!("Stop propagator task starting...");
-            main_stop_signal.listener.await;
-            trace!("The main stop signal has been triggered");
-            if !stop_signal.listener.is_triggered() {
-                warn!("Stop propagator sending a stop signal to the sub-tasks...");
+            tokio::select! {
+                _ = main_stop_signal.listener.clone() => {
+                    trace!("The main stop signal has been triggered");
+                    if !stop_signal.listener.is_triggered() {
+                        warn!("Stop propagator sending a stop signal to the sub-tasks...");
+                    }
+                    stop_signal.trigger.trigger();
+                }
+                _ = stop_signal.listener.clone() => {
+                    trace!("The stop signal has been triggered, no need to propagate from main to sub-tasks");
+                }
             }
-            stop_signal.trigger.trigger();
             warn!("Stop propagator task exited");
         });
         vec![task]

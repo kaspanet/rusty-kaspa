@@ -9,8 +9,8 @@ use kaspa_consensus_core::network::NetworkType;
 use kaspa_core::{trace, warn};
 use kaspa_utils::{fd_budget, triggers::SingleTrigger};
 use kaspad_lib::args::Args;
-use std::{iter::once, sync::Arc};
-use tokio::task::JoinHandle;
+use std::{iter::once, sync::Arc, time::Duration};
+use tokio::{task::JoinHandle, time::sleep};
 
 /// Arguments for configuring a [`DaemonTask`]
 #[derive(Parser, Debug)]
@@ -104,34 +104,56 @@ impl DaemonArgs {
 
 pub struct DaemonTask {
     client_manager: Arc<ClientManager>,
+    ready_signal: SingleTrigger,
 }
 
 impl DaemonTask {
     pub fn build(client_manager: Arc<ClientManager>) -> Arc<Self> {
-        Arc::new(Self { client_manager })
+        Arc::new(Self { client_manager, ready_signal: SingleTrigger::new() })
     }
 
     pub fn with_args(args: Args) -> Arc<Self> {
         let client_manager = Arc::new(ClientManager::new(args));
         Self::build(client_manager)
     }
+
+    async fn ready(&self) {
+        self.ready_signal.listener.clone().await;
+    }
 }
 
 #[async_trait]
 impl Task for DaemonTask {
     fn start(&self, stop_signal: SingleTrigger) -> Vec<JoinHandle<()>> {
+        let ready_signal = self.ready_signal.trigger.clone();
         let fd_total_budget = fd_budget::limit();
         let mut daemon = Daemon::with_manager(self.client_manager.clone(), fd_total_budget);
-        daemon.run();
-        let core = daemon.core.clone();
         let task = tokio::spawn(async move {
             warn!("Daemon task starting...");
-            core.shutdown_listener().await;
-            trace!("Daemon core shutdown was requested");
-            stop_signal.trigger.trigger();
+            daemon.run();
+
+            // Wait for the node to initialize before connecting to RPC
+            sleep(Duration::from_secs(1)).await;
+            ready_signal.trigger();
+
+            tokio::select! {
+                biased;
+                _ = daemon.core.shutdown_listener() => {
+                    trace!("Daemon core shutdown was requested");
+                    warn!("Daemon task signaling to stop");
+                    stop_signal.trigger.trigger();
+                }
+                _ = stop_signal.listener.clone() => {
+                    trace!("Daemon task got a stop signal");
+                }
+            }
             daemon.shutdown();
             warn!("Daemon task exited");
         });
         vec![task]
+    }
+
+    async fn ready(&self) {
+        self.ready().await
     }
 }

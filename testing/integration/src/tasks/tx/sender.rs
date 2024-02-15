@@ -105,21 +105,20 @@ impl Task for TransactionSenderTask {
                 }
             }
 
-            if !stop_signal.listener.is_triggered() {
-                kaspa_core::warn!("Tx sender task, waiting for mempool to drain..");
-                let mut prev_mempool_size = u64::MAX;
-                loop {
-                    let mempool_size = client.get_info().await.unwrap().mempool_size;
-                    info!("Mempool size: {:#?}", mempool_size);
-                    if mempool_size == 0 || mempool_size == prev_mempool_size {
-                        break;
-                    }
-                    prev_mempool_size = mempool_size;
-                    sleep(Duration::from_secs(1)).await;
+            kaspa_core::warn!("Tx sender task, waiting for mempool to drain..");
+            let mut prev_mempool_size = u64::MAX;
+            loop {
+                let mempool_size = client.get_info().await.unwrap().mempool_size;
+                info!("Mempool size: {:#?}", mempool_size);
+                if mempool_size == 0 || mempool_size == prev_mempool_size {
+                    break;
                 }
-                if stopper == Stopper::Signal {
-                    stop_signal.trigger.trigger();
-                }
+                prev_mempool_size = mempool_size;
+                sleep(Duration::from_secs(1)).await;
+            }
+            if stopper == Stopper::Signal {
+                warn!("Tx sender task signaling to stop");
+                stop_signal.trigger.trigger();
             }
             sender.close();
             client.disconnect().await.unwrap();

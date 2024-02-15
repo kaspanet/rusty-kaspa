@@ -81,7 +81,8 @@ impl Task for TransactionSubmitterTask {
                 _ = stop_signal.listener.clone() => {}
                 _ = pool_shutdown_listener.clone() => {
                     if stopper == Stopper::Signal {
-                    stop_signal.trigger.trigger();
+                        warn!("Transaction submitter task signaling to stop");
+                        stop_signal.trigger.trigger();
                     }
                 }
             }
