@@ -64,14 +64,14 @@ mod tests {
         RpcHash::from_u64_word(c)
     }
 
-    fn test_parents_by_level_rxr(r: &Vec<Vec<RpcHash>>, r2: &[Vec<RpcHash>]) {
+    fn test_parents_by_level_rxr(r: &[Vec<RpcHash>], r2: &[Vec<RpcHash>]) {
         for i in 0..r.len() {
             for j in 0..r[i].len() {
                 assert_eq!(r[i][j], r2[i][j]);
             }
         }
     }
-    fn test_parents_by_level_rxp(r: &Vec<Vec<RpcHash>>, p: &[protowire::RpcBlockLevelParents]) {
+    fn test_parents_by_level_rxp(r: &[Vec<RpcHash>], p: &[protowire::RpcBlockLevelParents]) {
         for i in 0..r.len() {
             for j in 0..r[i].len() {
                 assert_eq!(r[i][j].to_string(), p[i].parent_hashes[j]);

@@ -265,7 +265,7 @@ async fn main() {
 
 fn should_maximize_inputs(
     old_value: bool,
-    utxos: &Vec<(TransactionOutpoint, UtxoEntry)>,
+    utxos: &[(TransactionOutpoint, UtxoEntry)],
     pending: &HashMap<TransactionOutpoint, u64>,
 ) -> bool {
     let estimated_utxos = if utxos.len() > pending.len() { utxos.len() - pending.len() } else { 0 };
@@ -353,7 +353,7 @@ async fn maybe_send_tx(
     txs_to_send: u64,
     tx_sender: &async_channel::Sender<ClientPoolArg>,
     kaspa_addr: Address,
-    utxos: &mut Vec<(TransactionOutpoint, UtxoEntry)>,
+    utxos: &mut [(TransactionOutpoint, UtxoEntry)],
     pending: &mut HashMap<TransactionOutpoint, u64>,
     schnorr_key: KeyPair,
     stats: Arc<Mutex<Stats>>,
