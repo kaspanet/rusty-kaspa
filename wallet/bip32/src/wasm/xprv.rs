@@ -35,10 +35,14 @@ impl XPrv {
         Ok(Self { inner })
     }
 
-    //#[wasm_bindgen(js_name = toString)]
     #[wasm_bindgen(js_name = intoString)]
-    pub fn to_str(&self, prefix: &str) -> Result<String> {
+    pub fn into_string(&self, prefix: &str) -> Result<String> {
         let str = self.inner.to_extended_key(prefix.try_into()?).to_string();
+        Ok(str)
+    }
+    #[wasm_bindgen(js_name = toString)]
+    pub fn to_string(&self) -> Result<String> {
+        let str = self.inner.to_extended_key("kprv".try_into()?).to_string();
         Ok(str)
     }
 
