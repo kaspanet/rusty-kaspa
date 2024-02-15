@@ -6,13 +6,13 @@ use crate::{
         utils::CONTRACT_FACTOR,
     },
     tasks::{
-        block::full::FullMinerTask,
+        block::group::MinerGroupTask,
         daemon::{DaemonArgs, DaemonTask},
         memory_monitor::MemoryMonitorTask,
         stat_recorder::StatRecorderTask,
-        subscription::full::FullSubscriberTask,
+        subscription::group::SubscriberGroupTask,
         tick::TickTask,
-        tx::full::FullTxSenderTask,
+        tx::group::TxSenderGroupTask,
         TasksRunner,
     },
 };
@@ -327,10 +327,10 @@ async fn utxos_changed_subscriptions_client(address_cycle_seconds: u64, address_
     let mut tasks = TasksRunner::new(None)
         .task(TickTask::build(tick_service.clone()))
         .task(MemoryMonitorTask::build(tick_service.clone(), "client", Duration::from_secs(5), MAX_MEMORY))
-        .task(FullMinerTask::build(network, client_manager.clone(), SUBMIT_BLOCK_CLIENTS, params.bps(), BLOCK_COUNT).await)
-        .task(FullTxSenderTask::build(client_manager.clone(), SUBMIT_TX_CLIENTS, true, txs, TPS_PRESSURE, MEMPOOL_TARGET).await)
+        .task(MinerGroupTask::build(network, client_manager.clone(), SUBMIT_BLOCK_CLIENTS, params.bps(), BLOCK_COUNT).await)
+        .task(TxSenderGroupTask::build(client_manager.clone(), SUBMIT_TX_CLIENTS, true, txs, TPS_PRESSURE, MEMPOOL_TARGET).await)
         .task(
-            FullSubscriberTask::build(
+            SubscriberGroupTask::build(
                 client_manager,
                 SUBSCRIBE_WORKERS,
                 params.bps(),

@@ -12,12 +12,12 @@ use kaspa_utils::triggers::SingleTrigger;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
-pub struct FullTxSenderTask {
+pub struct TxSenderGroupTask {
     submitter: Arc<TransactionSubmitterTask>,
     sender: Arc<TransactionSenderTask>,
 }
 
-impl FullTxSenderTask {
+impl TxSenderGroupTask {
     pub fn new(submitter: Arc<TransactionSubmitterTask>, sender: Arc<TransactionSenderTask>) -> Self {
         Self { submitter, sender }
     }
@@ -42,7 +42,7 @@ impl FullTxSenderTask {
 }
 
 #[async_trait]
-impl Task for FullTxSenderTask {
+impl Task for TxSenderGroupTask {
     fn start(&self, stop_signal: SingleTrigger) -> Vec<JoinHandle<()>> {
         chain![self.submitter.start(stop_signal.clone()), self.sender.start(stop_signal.clone())].collect()
     }

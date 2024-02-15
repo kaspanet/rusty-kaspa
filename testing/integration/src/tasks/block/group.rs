@@ -15,13 +15,13 @@ use rand::thread_rng;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
-pub struct FullMinerTask {
+pub struct MinerGroupTask {
     submitter: Arc<BlockSubmitterTask>,
     receiver: Arc<BlockTemplateReceiverTask>,
     miner: Arc<BlockMinerTask>,
 }
 
-impl FullMinerTask {
+impl MinerGroupTask {
     pub fn new(submitter: Arc<BlockSubmitterTask>, receiver: Arc<BlockTemplateReceiverTask>, miner: Arc<BlockMinerTask>) -> Self {
         Self { submitter, receiver, miner }
     }
@@ -54,7 +54,7 @@ impl FullMinerTask {
 }
 
 #[async_trait]
-impl Task for FullMinerTask {
+impl Task for MinerGroupTask {
     fn start(&self, stop_signal: SingleTrigger) -> Vec<JoinHandle<()>> {
         chain![
             self.submitter.start(stop_signal.clone()),

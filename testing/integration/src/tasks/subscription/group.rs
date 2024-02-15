@@ -16,14 +16,14 @@ use kaspa_utils::triggers::SingleTrigger;
 use std::sync::Arc;
 use tokio::task::JoinHandle;
 
-pub struct FullSubscriberTask {
+pub struct SubscriberGroupTask {
     submitter: Arc<SubscriptionSubmitterTask>,
     basic_subscriber: Arc<BasicSubscriberTask>,
     address_subscriber: Arc<AddressSubscriberTask>,
     notification_drainer: Arc<NotificationDrainerTask>,
 }
 
-impl FullSubscriberTask {
+impl SubscriberGroupTask {
     pub fn new(
         submitter: Arc<SubscriptionSubmitterTask>,
         basic_subscriber: Arc<BasicSubscriberTask>,
@@ -73,7 +73,7 @@ impl FullSubscriberTask {
 }
 
 #[async_trait]
-impl Task for FullSubscriberTask {
+impl Task for SubscriberGroupTask {
     fn start(&self, stop_signal: SingleTrigger) -> Vec<JoinHandle<()>> {
         chain![
             self.submitter.start(stop_signal.clone()),
