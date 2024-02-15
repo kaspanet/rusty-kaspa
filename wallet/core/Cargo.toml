@@ -17,7 +17,7 @@ wasm32-sdk = [
     "kaspa-wrpc-client/wasm32-sdk",
     "kaspa-wrpc-wasm/wasm32-sdk"
 ]
-# default = ["wasm32-sdk"]
+default = ["wasm32-sdk"]
 
 [lib]
 crate-type = ["cdylib", "lib"]

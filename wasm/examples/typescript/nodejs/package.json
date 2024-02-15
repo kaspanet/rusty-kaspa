@@ -1,5 +1,5 @@
 {
-    "name": "kaspa",
+    "name": "kaspa-typescript-examples",
     "version": "0.0.1",
     "private": true,
     "description": "",
@@ -11,8 +11,5 @@
     "devDependencies": {
         "@types/websocket": "^1.0.10",
         "typedoc": "^0.25.7"
-    },
-    "scripts": {
-        "docs": "npx typedoc src/index.ts --out ../../../docs"
     }
 }

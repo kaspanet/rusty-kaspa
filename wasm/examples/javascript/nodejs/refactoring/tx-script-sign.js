@@ -18,7 +18,7 @@ kaspa.init_console_panic_hook();
 
     // Either NetworkType.Mainnet or NetworkType.Testnet
     const networkType = args.networkType;
-    // Either Encoding.Borsh or Encoding.SerdeJson
+    // Either Encoding.Borsh or Encoding.JSON
     const encoding = args.encoding;
     // The kaspa address that was passed as an argument or a default one
     const address = args.address ?? "kaspatest:qz7ulu4c25dh7fzec9zjyrmlhnkzrg4wmf89q7gzr3gfrsj3uz6xjceef60sd";

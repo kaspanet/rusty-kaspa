@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 const nodeUtil = require('node:util');
 const { parseArgs: nodeParseArgs, } = nodeUtil;
@@ -6,6 +7,7 @@ const {
     Address,
     Encoding,
     NetworkId,
+    Mnemonic,
 } = require('../../../nodejs/kaspa');
 
 /**
@@ -48,11 +50,21 @@ function parseArgs(options = {
         process.exit(0);
     }
 
+    let config = null;
+    // TODO load address from config file if no argument is specified
+    let configFile = path.join(__dirname, '../../data/config.json');
+    if (fs.existsSync(configFile)) {
+        config = JSON.parse(fs.readFileSync(configFile, "utf8"));
+    } else {
+        console.error("Please create a config file by running 'node init' in the 'examples/' folder");
+        process.exit(0);
+    }
+
     const addressRegex = new RegExp(/(kaspa|kaspatest):\S+/i);
     const addressArg = values.address ?? positionals.find((positional) => addressRegex.test(positional)) ?? null;
     const address = addressArg === null ? null : new Address(addressArg);
 
-    const networkArg = values.network ?? positionals.find((positional) => positional.match(/^(testnet|mainnet|simnet|devnet)-\d+$/)) ?? null;
+    const networkArg = values.network ?? positionals.find((positional) => positional.match(/^(testnet|mainnet|simnet|devnet)-\d+$/)) ?? config.networkId ?? null;
     if (!networkArg) {
         console.error('Network id must be specified: --network=(mainnet|testnet-<number>)');
         process.exit(1);
@@ -62,7 +74,7 @@ function parseArgs(options = {
     const encodingArg = values.encoding ?? positionals.find((positional) => positional.match(/^(borsh|json)$/)) ?? null;
     let encoding = Encoding.Borsh;
     if (encodingArg == "json") {
-        encoding = Encoding.SerdeJson;
+        encoding = Encoding.JSON;
     }
 
     return {
