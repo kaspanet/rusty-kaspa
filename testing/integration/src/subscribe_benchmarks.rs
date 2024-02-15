@@ -268,56 +268,6 @@ async fn utxos_changed_subscriptions_client(address_cycle_seconds: u64, address_
     let client = client_manager.new_client().await;
     let tick_service = Arc::new(TickService::new());
 
-    // let _tick_task = TickTask::build(tick_service.clone());
-    // let _memory_monitor_task = MemoryMonitorTask::build(tick_service.clone(), "client", Duration::from_secs(5), MAX_MEMORY);
-
-    // // let block_submitter_task = BlockSubmitterTask::build(client_manager.clone(), SUBMIT_BLOCK_CLIENTS).await;
-    // // let block_template_receiver_task = BlockTemplateReceiverTask::build(bbt_client.clone(), pay_address.clone()).await;
-    // // let block_miner_task = BlockMinerTask::build(
-    // //     bbt_client.clone(),
-    // //     params.bps(),
-    // //     BLOCK_COUNT,
-    // //     block_submitter_task.sender(),
-    // //     block_template_receiver_task.template(),
-    // //     pay_address.clone(),
-    // // )
-    // // .await;
-    // let _miner_task = FullMinerTask::build(network, client_manager.clone(), SUBMIT_BLOCK_CLIENTS, params.bps(), BLOCK_COUNT).await;
-
-    // // let tx_submitter_task = TransactionSubmitterTask::build(client_manager.clone(), SUBMIT_TX_CLIENTS, true).await;
-    // // let tx_sender_task = TransactionSenderTask::build(client.clone(), txs, TPS_PRESSURE, MEMPOOL_TARGET, tx_submitter_task.sender()).await;
-    // let _tx_sender_task =
-    //     FullTxSenderTask::build(client_manager.clone(), SUBMIT_TX_CLIENTS, true, txs.clone(), TPS_PRESSURE, MEMPOOL_TARGET).await;
-
-    // // let subscription_submitter_task = SubscriptionSubmitterTask::build(SUBSCRIBE_WORKERS, NOTIFY_CLIENTS, params.bps());
-    // // let basic_subscriber_task = BasicSubscriberTask::build(
-    // //     subscribing_clients.clone(),
-    // //     vec![VirtualDaaScoreChangedScope {}.into()],
-    // //     subscription_submitter_task.sender(),
-    // //     5,
-    // // );
-    // // let address_subscriber_task = AddressSubscriberTask::build(
-    // //     subscribing_clients.clone(),
-    // //     subscribing_addresses.clone(),
-    // //     subscription_submitter_task.sender(),
-    // //     5,
-    // //     utxos_changed_cycle_seconds,
-    // //     max_cycles,
-    // // );
-    // // let notification_drainer_task = NotificationDrainerTask::build(subscribing_clients.clone());
-    // let _subscriber_task = FullSubscriberTask::build(
-    //     client_manager.clone(),
-    //     SUBSCRIBE_WORKERS,
-    //     params.bps(),
-    //     vec![VirtualDaaScoreChangedScope {}.into()],
-    //     3,
-    //     subscribing_addresses.clone(),
-    //     5,
-    //     address_cycle_seconds,
-    //     max_cycles,
-    // )
-    // .await;
-
     let mut tasks = TasksRunner::new()
         .task(TickTask::build(tick_service.clone()))
         .task(MemoryMonitorTask::build(tick_service.clone(), "client", Duration::from_secs(5), MAX_MEMORY))
