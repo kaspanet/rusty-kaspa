@@ -23,7 +23,7 @@ pub struct TransactionSubmitterTask {
 }
 
 impl TransactionSubmitterTask {
-    const MAX_ATTEMPTS: usize = 3;
+    const MAX_ATTEMPTS: usize = 5;
 
     pub fn new(pool: ClientPool<IndexedTransaction>, allow_orphan: bool) -> Self {
         Self { pool, allow_orphan }
@@ -53,7 +53,7 @@ impl Task for TransactionSubmitterTask {
                         Err(RpcError::General(msg)) if msg.contains("orphan") => {
                             error!("Transaction {i}: submit attempt #{attempt} failed");
                             error!("\n\n\n{msg}\n\n");
-                            sleep(Duration::from_millis(5)).await;
+                            sleep(Duration::from_millis(50)).await;
                         }
                         Err(e) => panic!("{e}"),
                     }

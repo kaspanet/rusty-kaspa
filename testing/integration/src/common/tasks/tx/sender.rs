@@ -55,8 +55,8 @@ impl Task for TransactionSenderTask {
         let txs = self.txs.clone();
         let regulated_tps_pressure = self.tps_pressure;
         let mempool_target = self.mempool_target;
-        // let tps_pressure = if mempool_target < u64::MAX { Self::UNREGULATED_TPS } else { regulated_tps_pressure };
-        let mut tps_pressure = regulated_tps_pressure;
+        let mut tps_pressure = if mempool_target < u64::MAX { Self::UNREGULATED_TPS } else { regulated_tps_pressure };
+        // let mut tps_pressure = regulated_tps_pressure;
         let sender = self.sender();
         let mut last_log_time = Instant::now() - Duration::from_secs(5);
         let mut log_index = 0;
@@ -75,9 +75,12 @@ impl Task for TransactionSenderTask {
                     last_log_time = Instant::now();
 
                     if mempool_size > (mempool_target as f32 * 1.05) as u64 {
+                        if tps_pressure != regulated_tps_pressure {
+                            warn!("Applying TPS pressure");
+                        }
                         tps_pressure = regulated_tps_pressure;
                         while mempool_size > mempool_target {
-                            sleep(Duration::from_millis(200)).await;
+                            sleep(Duration::from_millis(100)).await;
                             mempool_size = client.get_info().await.unwrap().mempool_size;
                             if log_index % 10 == 0 {
                                 info!("Mempool size: {:#?} (targeting {:#?}), txs submitted: {}", mempool_size, mempool_target, i);
