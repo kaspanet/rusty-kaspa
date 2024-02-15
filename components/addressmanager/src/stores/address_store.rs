@@ -82,7 +82,7 @@ impl DbAddressesStore {
     }
 
     pub fn iterator(&self) -> impl Iterator<Item = Result<(AddressKey, Entry), Box<dyn Error>>> + '_ {
-        self.access.iterator().map(|iter_result| match iter_result {
+        self.access.iterator(true).map(|iter_result| match iter_result {
             Ok((key_bytes, connection_failed_count)) => match <[u8; ADDRESS_KEY_SIZE]>::try_from(&key_bytes[..]) {
                 Ok(address_key_slice) => {
                     let addr_key = DbAddressKey(address_key_slice);

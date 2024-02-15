@@ -44,6 +44,7 @@ use kaspa_hashes::Hash;
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
+use kaspa_confindex::{ConfIndex, ConfIndexApi, ConfIndexProxy};
 use kaspa_core::core::Core;
 use kaspa_core::signals::Shutdown;
 use kaspa_core::task::runtime::AsyncRuntime;
@@ -946,9 +947,15 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let (_external_db_lifetime, external_storage) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let external_block_store = DbBlockTransactionsStore::new(external_storage, CachePolicy::Count(config.perf.block_data_cache_size));
     let (_utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+    let (_confindex_db_lifetime, confindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
     let consensus_manager = Arc::new(ConsensusManager::new(Arc::new(TestConsensusFactory::new(tc.clone()))));
     let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
-    let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(UtxoIndexProxy::new(utxoindex.clone()))));
+    let confindex = ConfIndex::new(consensus_manager.clone(), confindex_db).unwrap();
+    let index_service = Arc::new(IndexService::new(
+        &notify_service.notifier(),
+        Some(UtxoIndexProxy::new(utxoindex.clone())),
+        Some(ConfIndexProxy::new(confindex.clone())),
+    ));
 
     let async_runtime = Arc::new(AsyncRuntime::new(2));
     async_runtime.register(tick_service.clone());
@@ -1069,11 +1076,31 @@ async fn json_test(file_path: &str, concurrency: bool) {
     // through the reachability iterator
     assert_selected_chain_store_matches_virtual_chain(&tc);
     let virtual_utxos: HashSet<TransactionOutpoint> =
-        HashSet::from_iter(tc.get_virtual_utxos(None, usize::MAX, false).into_iter().map(|(outpoint, _)| outpoint));
+        HashSet::from_iter(tc.get_virtual_utxos(None, None, usize::MAX, false).into_iter().map(|(outpoint, _)| outpoint));
     let utxoindex_utxos = utxoindex.read().get_all_outpoints().unwrap();
     assert_eq!(virtual_utxos.len(), utxoindex_utxos.len());
     assert!(virtual_utxos.is_subset(&utxoindex_utxos));
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
+
+    assert!(confindex.read().is_synced().unwrap());
+    let confindex_sink = confindex.read().get_sink().unwrap();
+    let confindex_source = confindex.read().get_source().unwrap();
+    let consensus_source = tc.get_source(true);
+    info!(
+        "ConfIndex source blue score: {0}, consensus source blue score: {1}",
+        confindex_source.accepting_blue_score,
+        tc.get_header(consensus_source).unwrap().blue_score
+    );
+    assert_eq!(confindex_sink.hash, tc.get_sink());
+    assert_eq!(confindex_source.hash, tc.get_source(true));
+
+    let vc = tc.reachability_service().forward_chain_iterator(confindex_source.hash, confindex_sink.hash, true).collect_vec();
+    let all_hash_blue_score_pairs = confindex.read().get_all_hash_blue_score_pairs().unwrap();
+    assert_eq!(vc.len(), all_hash_blue_score_pairs.len());
+    all_hash_blue_score_pairs.iter().zip(vc).for_each(|(pair, block)| {
+        assert_eq!(pair.hash, block);
+        assert_eq!(pair.accepting_blue_score, tc.get_header(block).unwrap().blue_score);
+    });
 }
 
 fn submit_header_chunk(

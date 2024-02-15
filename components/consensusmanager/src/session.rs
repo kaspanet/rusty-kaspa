@@ -235,8 +235,8 @@ impl ConsensusSessionOwned {
     }
 
     /// source refers to the earliest block from which the current node has full header & block data  
-    pub async fn async_get_source(&self) -> Hash {
-        self.clone().spawn_blocking(|c| c.get_source()).await
+    pub async fn async_get_source(&self, exact: bool) -> Hash {
+        self.clone().spawn_blocking(move |c| c.get_source(exact)).await
     }
 
     pub async fn async_estimate_block_count(&self) -> BlockCount {
@@ -250,17 +250,23 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.is_nearly_synced()).await
     }
 
-    pub async fn async_get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
-        self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(hash)).await
+    pub async fn async_get_virtual_chain_from_block(
+        &self,
+        low: Hash,
+        high: Option<Hash>,
+        max_blocks: usize,
+    ) -> ConsensusResult<ChainPath> {
+        self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(low, high, max_blocks)).await
     }
 
     pub async fn async_get_virtual_utxos(
         &self,
         from_outpoint: Option<TransactionOutpoint>,
+        to_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
         skip_first: bool,
     ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
-        self.clone().spawn_blocking(move |c| c.get_virtual_utxos(from_outpoint, chunk_size, skip_first)).await
+        self.clone().spawn_blocking(move |c| c.get_virtual_utxos(from_outpoint, to_outpoint, chunk_size, skip_first)).await
     }
 
     pub async fn async_get_tips(&self) -> Vec<Hash> {
@@ -371,15 +377,22 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.is_chain_block(hash)).await
     }
 
+    pub async fn async_find_highest_common_chain_block(&self, low: Hash, high: Hash) -> ConsensusResult<Hash> {
+        self.clone().spawn_blocking(move |c| c.find_highest_common_chain_block(low, high)).await
+    }
+
     pub async fn async_get_pruning_point_utxos(
         &self,
         expected_pruning_point: Hash,
         from_outpoint: Option<TransactionOutpoint>,
+        to_outpoint: Option<TransactionOutpoint>,
         chunk_size: usize,
         skip_first: bool,
     ) -> ConsensusResult<Vec<(TransactionOutpoint, UtxoEntry)>> {
         self.clone()
-            .spawn_blocking(move |c| c.get_pruning_point_utxos(expected_pruning_point, from_outpoint, chunk_size, skip_first))
+            .spawn_blocking(move |c| {
+                c.get_pruning_point_utxos(expected_pruning_point, from_outpoint, to_outpoint, chunk_size, skip_first)
+            })
             .await
     }
 
@@ -421,6 +434,10 @@ impl ConsensusSessionOwned {
 
     pub async fn async_finality_point(&self) -> Hash {
         self.clone().spawn_blocking(move |c| c.finality_point()).await
+    }
+
+    pub async fn async_get_block_transactions(&self, block: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
+        self.clone().spawn_blocking(move |c| c.get_block_transactions(block)).await
     }
 }
 

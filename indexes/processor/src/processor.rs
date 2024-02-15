@@ -3,6 +3,7 @@ use crate::{
     IDENT,
 };
 use async_trait::async_trait;
+use kaspa_confindex::ConfIndexProxy;
 use kaspa_consensus_notify::{notification as consensus_notification, notification::Notification as ConsensusNotification};
 use kaspa_core::{debug, trace};
 use kaspa_index_core::notification::{Notification, PruningPointUtxoSetOverrideNotification, UtxosChangedNotification};
@@ -30,6 +31,9 @@ pub struct Processor {
     /// An optional UTXO indexer
     utxoindex: Option<UtxoIndexProxy>,
 
+    /// An optional Score indexer
+    confindex: Option<ConfIndexProxy>,
+
     recv_channel: CollectorNotificationReceiver<ConsensusNotification>,
 
     /// Has this collector been started?
@@ -39,9 +43,14 @@ pub struct Processor {
 }
 
 impl Processor {
-    pub fn new(utxoindex: Option<UtxoIndexProxy>, recv_channel: CollectorNotificationReceiver<ConsensusNotification>) -> Self {
+    pub fn new(
+        utxoindex: Option<UtxoIndexProxy>,
+        confindex: Option<ConfIndexProxy>,
+        recv_channel: CollectorNotificationReceiver<ConsensusNotification>,
+    ) -> Self {
         Self {
             utxoindex,
+            confindex,
             recv_channel,
             collect_shutdown: Arc::new(SingleTrigger::new()),
             is_started: Arc::new(AtomicBool::new(false)),
@@ -58,12 +67,13 @@ impl Processor {
 
             while let Ok(notification) = self.recv_channel.recv().await {
                 match self.process_notification(notification).await {
-                    Ok(notification) => match notifier.notify(notification) {
+                    Ok(Some(notification)) => match notifier.notify(notification) {
                         Ok(_) => (),
                         Err(err) => {
                             trace!("[Index processor] notification sender error: {err:?}");
                         }
                     },
+                    Ok(None) => (),
                     Err(err) => {
                         trace!("[Index processor] error while processing a consensus notification: {err:?}");
                     }
@@ -76,13 +86,21 @@ impl Processor {
         });
     }
 
-    async fn process_notification(self: &Arc<Self>, notification: ConsensusNotification) -> IndexResult<Notification> {
+    async fn process_notification(self: &Arc<Self>, notification: ConsensusNotification) -> IndexResult<Option<Notification>> {
         match notification {
             ConsensusNotification::UtxosChanged(utxos_changed) => {
-                Ok(Notification::UtxosChanged(self.process_utxos_changed(utxos_changed).await?))
+                Ok(Some(Notification::UtxosChanged(self.process_utxos_changed(utxos_changed).await?)))
             }
             ConsensusNotification::PruningPointUtxoSetOverride(_) => {
-                Ok(Notification::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification {}))
+                Ok(Some(Notification::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification {})))
+            }
+            ConsensusNotification::VirtualChainChanged(virtual_chain_changed_notification) => {
+                self.process_virtual_chain_changed(virtual_chain_changed_notification.clone()).await?;
+                Ok(Some(Notification::VirtualChainChanged(virtual_chain_changed_notification.into())))
+            }
+            ConsensusNotification::ChainAcceptanceDataPruned(chain_acceptance_data_pruned_notification) => {
+                self.process_chain_acceptance_data_pruned(chain_acceptance_data_pruned_notification).await?;
+                Ok(None)
             }
             _ => Err(IndexError::NotSupported(notification.event_type())),
         }
@@ -104,6 +122,29 @@ impl Processor {
             return Ok(converted_notification);
         };
         Err(IndexError::NotSupported(EventType::UtxosChanged))
+    }
+
+    async fn process_chain_acceptance_data_pruned(
+        self: &Arc<Self>,
+        notification: consensus_notification::ChainAcceptanceDataPrunedNotification,
+    ) -> IndexResult<()> {
+        trace!("[{IDENT}]: processing {:?}", notification);
+        if let Some(confindex) = self.confindex.clone() {
+            return Ok(confindex.update_via_chain_acceptance_data_pruned(notification).await?);
+        };
+        Err(IndexError::NotSupported(EventType::ChainAcceptanceDataPruned))
+    }
+
+    async fn process_virtual_chain_changed(
+        self: &Arc<Self>,
+        notification: consensus_notification::VirtualChainChangedNotification,
+    ) -> IndexResult<()> {
+        trace!("[{IDENT}]: processing {:?}", notification);
+        if let Some(confindex) = self.confindex.clone() {
+            confindex.update_via_virtual_chain_changed(notification.clone()).await?;
+            return Ok(());
+        };
+        Err(IndexError::NotSupported(EventType::VirtualChainChanged))
     }
 
     async fn join_collecting_task(&self) -> Result<()> {
@@ -129,15 +170,19 @@ impl Collector<Notification> for Processor {
 mod tests {
     use super::*;
     use async_channel::{unbounded, Receiver, Sender};
+    use kaspa_confindex::ConfIndex;
     use kaspa_consensus::{config::Config, consensus::test_consensus::TestConsensus, params::DEVNET_PARAMS, test_helpers::*};
-    use kaspa_consensus_core::utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff};
+    use kaspa_consensus_core::{
+        acceptance_data::{AcceptanceData, AcceptedTxEntry, MergesetBlockAcceptanceData},
+        utxo::{utxo_collection::UtxoCollection, utxo_diff::UtxoDiff},
+    };
     use kaspa_consensusmanager::ConsensusManager;
     use kaspa_database::create_temp_db;
     use kaspa_database::prelude::ConnBuilder;
     use kaspa_database::utils::DbLifetime;
     use kaspa_notify::notifier::test_helpers::NotifyMock;
     use kaspa_utxoindex::UtxoIndex;
-    use rand::{rngs::SmallRng, SeedableRng};
+    use rand::{rngs::SmallRng, Rng, SeedableRng};
     use std::sync::Arc;
 
     // TODO: rewrite with Simnet, when possible.
@@ -149,22 +194,25 @@ mod tests {
         processor_receiver: Receiver<Notification>,
         test_consensus: TestConsensus,
         utxoindex_db_lifetime: DbLifetime,
+        confindex_db_lifetime: DbLifetime,
     }
 
     impl NotifyPipeline {
         fn new() -> Self {
             let (consensus_sender, consensus_receiver) = unbounded();
             let (utxoindex_db_lifetime, utxoindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
+            let (confindex_db_lifetime, confindex_db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
             let config = Arc::new(Config::new(DEVNET_PARAMS));
             let tc = TestConsensus::new(&config);
             tc.init();
             let consensus_manager = Arc::new(ConsensusManager::from_consensus(tc.consensus_clone()));
-            let utxoindex = Some(UtxoIndexProxy::new(UtxoIndex::new(consensus_manager, utxoindex_db).unwrap()));
-            let processor = Arc::new(Processor::new(utxoindex, consensus_receiver));
+            let utxoindex = Some(UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap()));
+            let confindex = Some(ConfIndexProxy::new(ConfIndex::new(consensus_manager, confindex_db).unwrap()));
+            let processor = Arc::new(Processor::new(utxoindex, confindex, consensus_receiver));
             let (processor_sender, processor_receiver) = unbounded();
             let notifier = Arc::new(NotifyMock::new(processor_sender));
             processor.clone().start(notifier);
-            Self { test_consensus: tc, consensus_sender, processor, processor_receiver, utxoindex_db_lifetime }
+            Self { test_consensus: tc, consensus_sender, processor, processor_receiver, utxoindex_db_lifetime, confindex_db_lifetime }
         }
     }
 
@@ -243,6 +291,151 @@ mod tests {
             Notification::PruningPointUtxoSetOverride(_) => (),
             unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
         }
+        assert!(pipeline.processor_receiver.is_empty(), "the notification receiver should be empty");
+        pipeline.consensus_sender.close();
+        pipeline.processor.clone().join().await.expect("stopping the processor must succeed");
+    }
+
+    #[tokio::test]
+    async fn test_virtual_chain_changed_notification() {
+        let pipeline = NotifyPipeline::new();
+        let rng = &mut SmallRng::seed_from_u64(42);
+        let test_notification = consensus_notification::VirtualChainChangedNotification {
+            removed_chain_block_hashes: generate_random_hashes(rng, 2).into(),
+            added_chain_block_hashes: generate_random_hashes(rng, 2).into(),
+            added_chain_blocks_acceptance_data: Arc::new(vec![
+                Arc::new(AcceptanceData {
+                    mergeset: vec![
+                        MergesetBlockAcceptanceData {
+                            block_hash: generate_random_hash(rng),
+                            accepted_transactions: vec![
+                                AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                                AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                            ],
+                        },
+                        MergesetBlockAcceptanceData {
+                            block_hash: generate_random_hash(rng),
+                            accepted_transactions: vec![
+                                AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                                AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                            ],
+                        },
+                    ],
+                    accepting_blue_score: rng.gen(),
+                }),
+                Arc::new(AcceptanceData {
+                    mergeset: vec![
+                        MergesetBlockAcceptanceData {
+                            block_hash: generate_random_hash(rng),
+                            accepted_transactions: vec![
+                                AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                                AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                            ],
+                        },
+                        MergesetBlockAcceptanceData {
+                            block_hash: generate_random_hash(rng),
+                            accepted_transactions: vec![
+                                AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                                AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                            ],
+                        },
+                    ],
+                    accepting_blue_score: rng.gen(),
+                }),
+            ]),
+            removed_chain_blocks_acceptance_data: Arc::new(vec![
+                Arc::new(AcceptanceData {
+                    mergeset: vec![
+                        MergesetBlockAcceptanceData {
+                            block_hash: generate_random_hash(rng),
+                            accepted_transactions: vec![
+                                AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                                AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                            ],
+                        },
+                        MergesetBlockAcceptanceData {
+                            block_hash: generate_random_hash(rng),
+                            accepted_transactions: vec![
+                                AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                                AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                            ],
+                        },
+                    ],
+                    accepting_blue_score: rng.gen(),
+                }),
+                Arc::new(AcceptanceData {
+                    mergeset: vec![
+                        MergesetBlockAcceptanceData {
+                            block_hash: generate_random_hash(rng),
+                            accepted_transactions: vec![
+                                AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                                AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                            ],
+                        },
+                        MergesetBlockAcceptanceData {
+                            block_hash: generate_random_hash(rng),
+                            accepted_transactions: vec![
+                                AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                                AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                            ],
+                        },
+                    ],
+                    accepting_blue_score: rng.gen(),
+                }),
+            ]),
+        };
+        pipeline
+            .consensus_sender
+            .send(ConsensusNotification::VirtualChainChanged(test_notification.clone()))
+            .await
+            .expect("expected send");
+        match pipeline.processor_receiver.recv().await.expect("expected recv") {
+            Notification::VirtualChainChanged(notification) => {
+                assert_eq!(test_notification.removed_chain_block_hashes, notification.removed_chain_block_hashes);
+                assert_eq!(test_notification.added_chain_block_hashes, notification.added_chain_block_hashes);
+                assert_eq!(test_notification.added_chain_blocks_acceptance_data, notification.added_chain_blocks_acceptance_data);
+                assert_eq!(test_notification.removed_chain_blocks_acceptance_data, notification.removed_chain_blocks_acceptance_data);
+            }
+            unexpected_notification => panic!("Unexpected notification: {unexpected_notification:?}"),
+        }
+        assert!(pipeline.processor_receiver.is_empty(), "the notification receiver should be empty");
+        pipeline.consensus_sender.close();
+        pipeline.processor.clone().join().await.expect("stopping the processor must succeed");
+    }
+
+    #[tokio::test]
+    async fn test_chain_acceptance_data_pruned_notification() {
+        let pipeline = NotifyPipeline::new();
+        let rng = &mut SmallRng::seed_from_u64(42);
+        let test_notification = consensus_notification::ChainAcceptanceDataPrunedNotification {
+            mergeset_block_acceptance_data_pruned: Arc::new(AcceptanceData {
+                mergeset: vec![
+                    MergesetBlockAcceptanceData {
+                        block_hash: generate_random_hash(rng),
+                        accepted_transactions: vec![
+                            AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                            AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                        ],
+                    },
+                    MergesetBlockAcceptanceData {
+                        block_hash: generate_random_hash(rng),
+                        accepted_transactions: vec![
+                            AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                            AcceptedTxEntry { transaction_id: generate_random_hash(rng), index_within_block: rng.gen() },
+                        ],
+                    },
+                ],
+                accepting_blue_score: rng.gen(),
+            }),
+            chain_hash_pruned: generate_random_hash(rng),
+            source: generate_random_hash(rng),
+        };
+        pipeline
+            .consensus_sender
+            .send(ConsensusNotification::ChainAcceptanceDataPruned(test_notification.clone()))
+            .await
+            .expect("expected send");
+        //We do not expect a response so checking that the receiver is empty is enough
         assert!(pipeline.processor_receiver.is_empty(), "the notification receiver should be empty");
         pipeline.consensus_sender.close();
         pipeline.processor.clone().join().await.expect("stopping the processor must succeed");

@@ -179,6 +179,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetInfoResponse>, protowire::GetInfoRespo
         p2p_id: item.p2p_id.clone(),
         mempool_size: item.mempool_size,
         server_version: item.server_version.clone(),
+        is_conf_indexed: item.is_conf_indexed,
         is_utxo_indexed: item.is_utxo_indexed,
         is_synced: item.is_synced,
         has_notify_command: item.has_notify_command,
@@ -436,6 +437,44 @@ from!(item: RpcResult<&kaspa_rpc_core::GetSyncStatusResponse>, protowire::GetSyn
     }
 });
 
+from!(item: &kaspa_rpc_core::GetConfirmedDataByAcceptingBlueScoreRequest, protowire::GetConfirmedDataByAcceptingBlueScoreRequestMessage, {
+    Self {
+        low: item.low,
+        high: item.high,
+        include_chain_block_header: item.include_chain_block_header,
+        include_merged_block_hashes: item.include_merged_block_hashes,
+        include_merged_block_headers: item.include_merged_block_headers,
+        include_accepted_transaction_ids: item.include_accepted_transaction_ids,
+        include_accepted_transactions: item.include_accepted_transactions,
+        include_verbose_data: item.include_verbose_data,
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetConfirmedDataByAcceptingBlueScoreResponse>, protowire::GetConfirmedDataByAcceptingBlueScoreResponseMessage, {
+    Self {
+        confirmed_data: item.confirmed_data.iter().map(|x| x.into()).collect::<Vec<_>>(),
+        error: None,
+    }
+});
+
+from!(item: &kaspa_rpc_core::GetConfirmedDataByConfirmationsRequest, protowire::GetConfirmedDataByConfirmationsRequestMessage, {
+    Self {
+        low: item.low,
+        high: item.high,
+        include_chain_block_header: item.include_chain_block_header,
+        include_merged_block_hashes: item.include_merged_block_hashes,
+        include_merged_block_headers: item.include_merged_block_headers,
+        include_accepted_transaction_ids: item.include_accepted_transaction_ids,
+        include_accepted_transactions: item.include_accepted_transactions,
+        include_verbose_data: item.include_verbose_data,
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetConfirmedDataByConfirmationsResponse>, protowire::GetConfirmedDataByConfirmationsResponseMessage, {
+    Self {
+        confirmed_data: item.confirmed_data.iter().map(|x| x.into()).collect::<Vec<_>>(),
+        error: None,
+    }
+});
+
 from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::NotifyUtxosChangedRequestMessage, {
     Self { addresses: item.addresses.iter().map(|x| x.into()).collect(), command: item.command.into() }
 });
@@ -564,6 +603,7 @@ try_from!(item: &protowire::GetInfoResponseMessage, RpcResult<kaspa_rpc_core::Ge
         p2p_id: item.p2p_id.clone(),
         mempool_size: item.mempool_size,
         server_version: item.server_version.clone(),
+        is_conf_indexed: item.is_conf_indexed,
         is_utxo_indexed: item.is_utxo_indexed,
         is_synced: item.is_synced,
         has_notify_command: item.has_notify_command,
@@ -823,6 +863,49 @@ try_from!(&protowire::GetSyncStatusRequestMessage, kaspa_rpc_core::GetSyncStatus
 try_from!(item: &protowire::GetSyncStatusResponseMessage, RpcResult<kaspa_rpc_core::GetSyncStatusResponse>, {
     Self {
         is_synced: item.is_synced,
+    }
+});
+
+try_from!(
+    item: &protowire::GetConfirmedDataByAcceptingBlueScoreRequestMessage,
+    kaspa_rpc_core::GetConfirmedDataByAcceptingBlueScoreRequest,
+    {
+        Self {
+            low: item.low,
+            high: item.high,
+            include_chain_block_header: item.include_chain_block_header,
+            include_merged_block_hashes: item.include_merged_block_hashes,
+            include_merged_block_headers: item.include_merged_block_headers,
+            include_accepted_transaction_ids: item.include_accepted_transaction_ids,
+            include_accepted_transactions: item.include_accepted_transactions,
+            include_verbose_data: item.include_verbose_data,
+        }
+    }
+);
+
+try_from!(item: &protowire::GetConfirmedDataByAcceptingBlueScoreResponseMessage, RpcResult<kaspa_rpc_core::GetConfirmedDataByAcceptingBlueScoreResponse>, {
+    Self {
+        confirmed_data: item.confirmed_data.iter().map(|x| x.try_into()).collect::<Result<Vec<_>,_>>()?,
+
+    }
+});
+
+try_from!(item: &protowire::GetConfirmedDataByConfirmationsRequestMessage, kaspa_rpc_core::GetConfirmedDataByConfirmationsRequest, {
+    Self {
+        low: item.low,
+        high: item.high,
+        include_chain_block_header: item.include_chain_block_header,
+        include_merged_block_hashes: item.include_merged_block_hashes,
+        include_merged_block_headers: item.include_merged_block_headers,
+        include_accepted_transaction_ids: item.include_accepted_transaction_ids,
+        include_accepted_transactions: item.include_accepted_transactions,
+        include_verbose_data: item.include_verbose_data,
+    }
+});
+
+try_from!(item: &protowire::GetConfirmedDataByConfirmationsResponseMessage, RpcResult<kaspa_rpc_core::GetConfirmedDataByConfirmationsResponse>, {
+    Self {
+        confirmed_data: item.confirmed_data.iter().map(|x| x.try_into()).collect::<Result<Vec<_>,_>>()?,
     }
 });
 

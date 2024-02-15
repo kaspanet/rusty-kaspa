@@ -81,6 +81,8 @@ pub enum KaspadPayloadOps {
     GetServerInfo,
     GetSyncStatus,
     GetDaaScoreTimestampEstimate,
+    GetConfirmedDataByAcceptingBlueScore,
+    GetConfirmedDataByConfirmations,
 
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,

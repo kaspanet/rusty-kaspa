@@ -47,6 +47,7 @@ async fn sanity_test() {
         disable_upnp: true, // UPnP registration might take some time and is not needed for this test
         enable_unsynced_mining: true,
         block_template_cache_lifetime: Some(0),
+        confindex: true,
         utxoindex: true,
         unsafe_rpc: true,
         ..Default::default()
@@ -194,6 +195,7 @@ async fn sanity_test() {
                     let response = rpc_client.get_info_call(GetInfoRequest {}).await.unwrap();
                     assert_eq!(response.server_version, kaspa_core::kaspad_env::version().to_string());
                     assert_eq!(response.mempool_size, 0);
+                    assert!(response.is_conf_indexed);
                     assert!(response.is_utxo_indexed);
                     assert!(response.has_message_id);
                     assert!(response.has_notify_command);
@@ -617,6 +619,46 @@ async fn sanity_test() {
                 let id = listener_id;
                 tst!(op, {
                     rpc_client.stop_notify(id, PruningPointUtxoSetOverrideScope {}.into()).await.unwrap();
+                })
+            }
+            KaspadPayloadOps::GetConfirmedDataByAcceptingBlueScore => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client
+                        .get_confirmed_data_by_accepting_blue_score_call(GetConfirmedDataByAcceptingBlueScoreRequest {
+                            low: 0u64,
+                            high: 1u64,
+                            include_chain_block_header: true,
+                            include_merged_block_hashes: true,
+                            include_merged_block_headers: true,
+                            include_accepted_transaction_ids: true,
+                            include_accepted_transactions: true,
+                            include_verbose_data: true,
+                        })
+                        .await
+                        .unwrap();
+                    // We only have genesis and it shouldn't be confirmed by subsequent blocks, so we expect an empty response
+                    assert!(response.confirmed_data.is_empty());
+                })
+            }
+            KaspadPayloadOps::GetConfirmedDataByConfirmations => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client
+                        .get_confirmed_data_by_confirmations_call(GetConfirmedDataByConfirmationsRequest {
+                            low: 0u64,
+                            high: 1u64,
+                            include_chain_block_header: true,
+                            include_merged_block_hashes: true,
+                            include_merged_block_headers: true,
+                            include_accepted_transaction_ids: true,
+                            include_accepted_transactions: true,
+                            include_verbose_data: true,
+                        })
+                        .await
+                        .unwrap();
+                    // We only have genesis and it shouldn't be confirmed by subsequent blocks, so we expect an empty response
+                    assert!(response.confirmed_data.is_empty());
                 })
             }
         };

@@ -144,7 +144,7 @@ impl UtxoIndexApi for UtxoIndex {
         let mut circulating_supply: CirculatingSupply = 0;
 
         //Initial batch is without specified seek and none-skipping.
-        let mut virtual_utxo_batch = session.get_virtual_utxos(None, RESYNC_CHUNK_SIZE, false);
+        let mut virtual_utxo_batch = session.get_virtual_utxos(None, None, RESYNC_CHUNK_SIZE, false);
         let mut current_chunk_size = virtual_utxo_batch.len();
         trace!("[{0}] resyncing with batch of {1} utxos from consensus db", IDENT, current_chunk_size);
         // While loop stops resync attempts from an empty utxo db, and unneeded processing when the utxo state size happens to be a multiple of [`RESYNC_CHUNK_SIZE`]
@@ -165,7 +165,7 @@ impl UtxoIndexApi for UtxoIndex {
                 break;
             };
 
-            virtual_utxo_batch = session.get_virtual_utxos(next_outpoint_from, RESYNC_CHUNK_SIZE, true);
+            virtual_utxo_batch = session.get_virtual_utxos(next_outpoint_from, None, RESYNC_CHUNK_SIZE, true);
             current_chunk_size = virtual_utxo_batch.len();
             trace!("[{0}] resyncing with batch of {1} utxos from consensus db", IDENT, current_chunk_size);
         }
@@ -276,7 +276,7 @@ mod tests {
         assert!(utxoindex.read().is_synced().expect("expected bool"));
 
         // Test the sync from scratch via consensus db.
-        let consensus_utxos = tc.get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
+        let consensus_utxos = tc.get_virtual_utxos(None, None, usize::MAX, false); // `usize::MAX` to ensure to get all.
         let mut i = 0;
         let mut consensus_supply: CirculatingSupply = 0;
         let consensus_utxo_set_size = consensus_utxos.len();
@@ -357,7 +357,7 @@ mod tests {
         // Since we changed virtual state in the emulator, but not in test-consensus db,
         // we expect the resync to get the utxo-set from the test-consensus,
         // these utxos correspond the the initial sync test.
-        let consensus_utxos = tc.get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
+        let consensus_utxos = tc.get_virtual_utxos(None, None, usize::MAX, false); // `usize::MAX` to ensure to get all.
         let mut i = 0;
         let consensus_utxo_set_size = consensus_utxos.len();
         for (tx_outpoint, utxo_entry) in consensus_utxos.into_iter() {

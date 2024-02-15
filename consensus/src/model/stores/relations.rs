@@ -94,7 +94,7 @@ impl RelationsStoreReader for DbRelationsStore {
     }
 
     fn counts(&self) -> Result<(usize, usize), StoreError> {
-        let count = self.parents_access.iterator().count();
+        let count = self.parents_access.iterator(true).count();
         Ok((count, count))
     }
 }
@@ -305,7 +305,7 @@ impl RelationsStoreReader for StagingRelationsStore<'_> {
         let count = self
             .store
             .parents_access
-            .iterator()
+            .iterator(true)
             .map(|r| r.unwrap().0)
             .map(|k| <[u8; kaspa_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
             .map(Hash::from_bytes)

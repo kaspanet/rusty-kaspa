@@ -1,5 +1,8 @@
 use crate::indexed_utxos::{UtxoChanges, UtxoSetByScriptPublicKey};
 use derive_more::Display;
+use kaspa_consensus_core::acceptance_data::AcceptanceData;
+use kaspa_consensus_notify::notification::VirtualChainChangedNotification as ConsensusVirtualChainChangedNotification;
+use kaspa_hashes::Hash;
 use kaspa_notify::{
     events::EventType,
     full_featured,
@@ -19,6 +22,10 @@ pub enum Notification {
 
     #[display(fmt = "PruningPointUtxoSetOverride notification")]
     PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideNotification),
+
+    // Notifications pertaining to the Score index
+    #[display(fmt = "VirtualChainChanged notification")]
+    VirtualChainChanged(VirtualChainChangedNotification),
 }
 }
 
@@ -103,5 +110,40 @@ impl UtxosChangedNotification {
             );
         }
         result
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct VirtualChainChangedNotification {
+    pub added_chain_block_hashes: Arc<Vec<Hash>>,
+    pub removed_chain_block_hashes: Arc<Vec<Hash>>,
+    pub added_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
+    pub removed_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
+}
+
+impl VirtualChainChangedNotification {
+    pub fn new(
+        added_chain_block_hashes: Arc<Vec<Hash>>,
+        removed_chain_block_hashes: Arc<Vec<Hash>>,
+        added_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
+        removed_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
+    ) -> Self {
+        Self {
+            added_chain_block_hashes,
+            removed_chain_block_hashes,
+            added_chain_blocks_acceptance_data,
+            removed_chain_blocks_acceptance_data,
+        }
+    }
+}
+
+impl From<ConsensusVirtualChainChangedNotification> for VirtualChainChangedNotification {
+    fn from(value: ConsensusVirtualChainChangedNotification) -> Self {
+        Self {
+            added_chain_block_hashes: value.added_chain_block_hashes,
+            removed_chain_block_hashes: value.removed_chain_block_hashes,
+            added_chain_blocks_acceptance_data: value.added_chain_blocks_acceptance_data,
+            removed_chain_blocks_acceptance_data: value.removed_chain_blocks_acceptance_data,
+        }
     }
 }

@@ -18,7 +18,7 @@ pub enum Notification {
     #[display(fmt = "BlockAdded notification: block hash {}", "_0.block.header.hash")]
     BlockAdded(BlockAddedNotification),
 
-    #[display(fmt = "VirtualChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.added_chain_blocks_acceptance_data.len()")]
+    #[display(fmt = "VirtualChainChanged notification: {} removed chain blocks, {} added chain blocks, {} accepted blocks, {} unaccepted blocks", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.added_chain_blocks_acceptance_data.len()", "_0.removed_chain_blocks_acceptance_data.len()")]
     VirtualChainChanged(VirtualChainChangedNotification),
 
     #[display(fmt = "FinalityConflict notification: violating block hash {}", "_0.violating_block_hash")]
@@ -41,6 +41,9 @@ pub enum Notification {
 
     #[display(fmt = "NewBlockTemplate notification")]
     NewBlockTemplate(NewBlockTemplateNotification),
+
+    #[display(fmt = "ChainAcceptanceDataPruned notification notification: chain hash pruned: {}, mergset block acceptance pruned: {} source: {}", "_0.chain_hash_pruned", "_0.mergeset_block_acceptance_data_pruned.mergeset.len()", "_0.source")]
+    ChainAcceptanceDataPruned(ChainAcceptanceDataPrunedNotification),
 }
 }
 
@@ -63,6 +66,7 @@ impl NotificationTrait for Notification {
                             removed_chain_block_hashes: payload.removed_chain_block_hashes.clone(),
                             added_chain_block_hashes: payload.added_chain_block_hashes.clone(),
                             added_chain_blocks_acceptance_data: Arc::new(vec![]),
+                            removed_chain_blocks_acceptance_data: Arc::new(vec![]),
                         }));
                     }
                 }
@@ -99,14 +103,21 @@ pub struct VirtualChainChangedNotification {
     pub added_chain_block_hashes: Arc<Vec<Hash>>,
     pub removed_chain_block_hashes: Arc<Vec<Hash>>,
     pub added_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
+    pub removed_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
 }
 impl VirtualChainChangedNotification {
     pub fn new(
         added_chain_block_hashes: Arc<Vec<Hash>>,
         removed_chain_block_hashes: Arc<Vec<Hash>>,
         added_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
+        removed_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
     ) -> Self {
-        Self { added_chain_block_hashes, removed_chain_block_hashes, added_chain_blocks_acceptance_data }
+        Self {
+            added_chain_block_hashes,
+            removed_chain_block_hashes,
+            added_chain_blocks_acceptance_data,
+            removed_chain_blocks_acceptance_data,
+        }
     }
 }
 
@@ -172,3 +183,16 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 
 #[derive(Debug, Clone)]
 pub struct NewBlockTemplateNotification {}
+
+#[derive(Debug, Clone, Default)]
+pub struct ChainAcceptanceDataPrunedNotification {
+    pub chain_hash_pruned: Hash,
+    pub mergeset_block_acceptance_data_pruned: Arc<AcceptanceData>,
+    pub source: Hash,
+}
+
+impl ChainAcceptanceDataPrunedNotification {
+    pub fn new(chain_hash_pruned: Hash, mergeset_block_acceptance_data_pruned: Arc<AcceptanceData>, source: Hash) -> Self {
+        Self { chain_hash_pruned, mergeset_block_acceptance_data_pruned, source }
+    }
+}

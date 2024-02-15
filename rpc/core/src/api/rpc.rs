@@ -11,6 +11,7 @@ use kaspa_notify::{listener::ListenerId, scope::Scope, subscription::Command};
 use std::sync::Arc;
 
 pub const MAX_SAFE_WINDOW_SIZE: u32 = 10_000;
+pub const MAX_SAFE_CONFINDEX_RANGE: u64 = 60u64; // ~1 min worth of data.
 
 /// Client RPC Api
 ///
@@ -303,6 +304,66 @@ pub trait RpcApi: Sync + Send + AnySync {
         &self,
         request: GetDaaScoreTimestampEstimateRequest,
     ) -> RpcResult<GetDaaScoreTimestampEstimateResponse>;
+
+    async fn get_confirmed_data_by_accepting_blue_score(
+        &self,
+        low: u64,  // exclusive
+        high: u64, // inclusive
+        include_chain_block_header: bool,
+        include_merged_block_hashes: bool,
+        include_merged_block_headers: bool,
+        include_accepted_transaction_ids: bool,
+        include_accepted_transactions: bool,
+        include_verbose_data: bool,
+    ) -> RpcResult<GetConfirmedDataByAcceptingBlueScoreResponse> {
+        Ok(self
+            .get_confirmed_data_by_accepting_blue_score_call(GetConfirmedDataByAcceptingBlueScoreRequest::new(
+                low,
+                high,
+                include_chain_block_header,
+                include_merged_block_hashes,
+                include_merged_block_headers,
+                include_accepted_transaction_ids,
+                include_accepted_transactions,
+                include_verbose_data,
+            ))
+            .await?)
+    }
+
+    async fn get_confirmed_data_by_accepting_blue_score_call(
+        &self,
+        request: GetConfirmedDataByAcceptingBlueScoreRequest,
+    ) -> RpcResult<GetConfirmedDataByAcceptingBlueScoreResponse>;
+
+    async fn get_confirmed_data_by_confirmations(
+        &self,
+        low: u64,  // exclusive
+        high: u64, // inclusive
+        include_chain_block_header: bool,
+        include_merged_block_hashes: bool,
+        include_merged_block_headers: bool,
+        include_accepted_transaction_ids: bool,
+        include_accepted_transactions: bool,
+        include_verbose_data: bool,
+    ) -> RpcResult<GetConfirmedDataByConfirmationsResponse> {
+        Ok(self
+            .get_confirmed_data_by_confirmations_call(GetConfirmedDataByConfirmationsRequest::new(
+                low,
+                high,
+                include_chain_block_header,
+                include_merged_block_hashes,
+                include_merged_block_headers,
+                include_accepted_transaction_ids,
+                include_accepted_transactions,
+                include_verbose_data,
+            ))
+            .await?)
+    }
+
+    async fn get_confirmed_data_by_confirmations_call(
+        &self,
+        request: GetConfirmedDataByConfirmationsRequest,
+    ) -> RpcResult<GetConfirmedDataByConfirmationsResponse>;
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API

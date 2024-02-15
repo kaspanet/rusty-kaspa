@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, process::exit, sync::Arc, time::Duration};
+use std::{fs, path::PathBuf, process::exit, sync::Arc, thread::spawn, time::Duration};
 
 use async_channel::unbounded;
 use kaspa_consensus_core::{
@@ -30,6 +30,7 @@ use kaspa_mining::{
 };
 use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
 
+use kaspa_confindex::{api::ConfIndexProxy, ConfIndex};
 use kaspa_perf_monitor::{builder::Builder as PerfMonitorBuilder, counters::CountersSnapshot};
 use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WebSocketCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
@@ -48,6 +49,7 @@ use crate::args::Args;
 const DEFAULT_DATA_DIR: &str = "datadir";
 const CONSENSUS_DB: &str = "consensus";
 const UTXOINDEX_DB: &str = "utxoindex";
+const CONFINDEX_DB: &str = "confindex";
 const META_DB: &str = "meta";
 const META_DB_FILE_LIMIT: i32 = 5;
 const DEFAULT_LOG_DIR: &str = "logs";
@@ -196,13 +198,16 @@ pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreS
 pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
     let network = args.network();
     let mut fd_remaining = fd_total_budget;
-    let utxo_files_limit = if args.utxoindex {
-        let utxo_files_limit = fd_remaining * 10 / 100;
-        fd_remaining -= utxo_files_limit;
-        utxo_files_limit
+    let num_of_active_indexes = [args.utxoindex, args.confindex].iter().filter(|x| **x).count() as i32;
+    let index_budget = if num_of_active_indexes > 0 {
+        let index_budget = fd_remaining / 20 / 100;
+        fd_remaining -= index_budget;
+        index_budget
     } else {
         0
     };
+    let utxo_files_limit = if args.utxoindex { index_budget / num_of_active_indexes } else { 0 };
+    let conf_files_limit = if args.confindex { index_budget / num_of_active_indexes } else { 0 };
     // Make sure args forms a valid set of properties
     if let Err(err) = validate_args(args) {
         println!("{}", err);
@@ -238,6 +243,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
 
     let consensus_db_dir = db_dir.join(CONSENSUS_DB);
     let utxoindex_db_dir = db_dir.join(UTXOINDEX_DB);
+    let confindex_db_dir = db_dir.join(CONFINDEX_DB);
     let meta_db_dir = db_dir.join(META_DB);
 
     let mut is_db_reset_needed = args.reset_db;
@@ -256,6 +262,10 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     if args.utxoindex {
         info!("Utxoindex Data directory {}", utxoindex_db_dir.display());
         fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
+    }
+    if args.confindex {
+        info!("Confindex Data directory {}", confindex_db_dir.display());
+        fs::create_dir_all(confindex_db_dir.as_path()).unwrap();
     }
 
     // DB used for addresses store and for multi-consensus management
@@ -328,6 +338,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         if args.utxoindex {
             fs::create_dir_all(utxoindex_db_dir.as_path()).unwrap();
         }
+        if args.confindex {
+            fs::create_dir_all(confindex_db_dir.as_path()).unwrap();
+        }
 
         // Reopen the DB
         meta_db = kaspa_database::prelude::ConnBuilder::default()
@@ -396,15 +409,39 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     };
 
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
-    let index_service: Option<Arc<IndexService>> = if args.utxoindex {
-        // Use only a single thread for none-consensus databases
-        let utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
-            .with_db_path(utxoindex_db_dir)
-            .with_files_limit(utxo_files_limit)
-            .build()
-            .unwrap();
-        let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
-        let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex)));
+    let index_service: Option<Arc<IndexService>> = if args.utxoindex || args.confindex {
+        // We spawn, and hence sync indexes, in parallel.
+        let utxoindex_jh = if args.utxoindex {
+            let utxoindex_db = kaspa_database::prelude::ConnBuilder::default() // Use only a single thread for none-consensus databases
+                .with_db_path(utxoindex_db_dir)
+                .with_files_limit(utxo_files_limit)
+                .build()
+                .unwrap();
+            let utxoindex_consensus_manager = consensus_manager.clone();
+
+            Some(spawn(move || UtxoIndexProxy::new(UtxoIndex::new(utxoindex_consensus_manager, utxoindex_db).unwrap())))
+        } else {
+            None
+        };
+
+        let confindex_jh = if args.confindex {
+            let confindex_db = kaspa_database::prelude::ConnBuilder::default() // Use only a single thread for none-consensus databases
+                .with_db_path(confindex_db_dir)
+                .with_files_limit(conf_files_limit)
+                .build()
+                .unwrap();
+            let confindex_consensus_manager = consensus_manager.clone();
+
+            Some(spawn(move || ConfIndexProxy::new(ConfIndex::new(confindex_consensus_manager, confindex_db).unwrap())))
+        } else {
+            None
+        };
+
+        let index_service = Arc::new(IndexService::new(
+            &notify_service.notifier(),
+            utxoindex_jh.map(|jh| jh.join().unwrap()),
+            confindex_jh.map(|jh| jh.join().unwrap()),
+        ));
         Some(index_service)
     } else {
         None
@@ -448,7 +485,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         index_service.as_ref().map(|x| x.notifier()),
         mining_manager,
         flow_context,
-        index_service.as_ref().map(|x| x.utxoindex().unwrap()),
+        if let Some(ref index_service) = index_service { index_service.utxoindex() } else { None },
+        if let Some(ref index_service) = index_service { index_service.confindex() } else { None },
         config.clone(),
         core.clone(),
         processing_counters,

@@ -17,6 +17,31 @@ message RPCError{
   string message = 1;
 }
 
+message RpcMergeSetBlockAcceptanceData {
+  string block_hash = 1;
+  RpcBlock block = 2;
+  repeated string accepted_transaction_ids = 3;
+  repeated RpcTransaction accepted_transactions = 4;
+}
+
+
+message RpcConfirmedData {
+  uint64 confirmations = 1;
+  uint64 blueScore = 2;
+  string chainBlockHash = 3;
+  RpcBlock chainBlock = 4;
+  repeated RpcMergeSetBlockAcceptanceData mergeSetBlockAcceptanceData = 5;
+  RpcConfirmedDataVerboseData verboseData = 6;
+}
+
+message RpcConfirmedDataVerboseData{ 
+  uint64 daaScore = 1;
+  uint64 timestamp = 2;
+  string pruningPoint = 3;
+  string utxoCommitment = 4;
+  string acceptedIdMerkleRoot = 5;
+}
+
 message RpcBlock {
   RpcBlockHeader header = 1;
   repeated RpcTransaction transactions = 2;
@@ -681,6 +706,7 @@ message GetInfoResponseMessage{
   string p2pId = 1;
   uint64 mempoolSize = 2;
   string serverVersion = 3;
+  bool isConfIndexed = 6;
   bool isUtxoIndexed = 4;
   bool isSynced = 5;
   bool hasNotifyCommand = 11;
@@ -850,4 +876,36 @@ message GetDaaScoreTimestampEstimateRequestMessage {
 message GetDaaScoreTimestampEstimateResponseMessage{
         repeated uint64 timestamps = 1;
         RPCError error = 1000;
+}
+
+message GetConfirmedDataByAcceptingBlueScoreRequestMessage{
+  uint64 low = 1;
+  uint64 high = 2;
+  bool includeChainBlockHeader = 3;
+  bool includeMergedBlockHashes = 4;
+  bool includeMergedBlockHeaders = 5;
+  bool includeAcceptedTransactionIds = 6;
+  bool includeAcceptedTransactions = 7;
+  bool includeVerboseData = 8;
+}
+
+message GetConfirmedDataByAcceptingBlueScoreResponseMessage{
+  repeated RpcConfirmedData confirmedData = 1;
+  RPCError error = 1000;
+}
+
+message GetConfirmedDataByConfirmationsRequestMessage{
+  uint64 low = 1;
+  uint64 high = 2;
+  bool includeChainBlockHeader = 3;
+  bool includeMergedBlockHashes = 4;
+  bool includeMergedBlockHeaders = 5;
+  bool includeAcceptedTransactionIds = 6;
+  bool includeAcceptedTransactions = 7;
+  bool includeVerboseData = 8;
+}
+
+message GetConfirmedDataByConfirmationsResponseMessage{
+  repeated RpcConfirmedData confirmedData = 1;
+  RPCError error = 1000;
 }

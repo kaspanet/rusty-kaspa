@@ -4,6 +4,7 @@ use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
+use kaspa_confindex::ConfIndexProxy;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::{
@@ -48,6 +49,7 @@ use kaspa_notify::{
 use kaspa_p2p_flows::flow_context::FlowContext;
 use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
+use kaspa_rpc_core::api::rpc::MAX_SAFE_CONFINDEX_RANGE;
 use kaspa_rpc_core::{
     api::{
         ops::RPC_API_VERSION,
@@ -61,6 +63,7 @@ use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
+use std::cmp::{max, min};
 use std::{
     collections::HashMap,
     iter::once,
@@ -93,6 +96,7 @@ pub struct RpcCoreService {
     mining_manager: MiningManagerProxy,
     flow_context: Arc<FlowContext>,
     utxoindex: Option<UtxoIndexProxy>,
+    confindex: Option<ConfIndexProxy>,
     config: Arc<Config>,
     consensus_converter: Arc<ConsensusConverter>,
     index_converter: Arc<IndexConverter>,
@@ -118,6 +122,7 @@ impl RpcCoreService {
         mining_manager: MiningManagerProxy,
         flow_context: Arc<FlowContext>,
         utxoindex: Option<UtxoIndexProxy>,
+        confindex: Option<ConfIndexProxy>,
         config: Arc<Config>,
         core: Arc<Core>,
         processing_counters: Arc<ProcessingCounters>,
@@ -134,8 +139,10 @@ impl RpcCoreService {
 
         // Prepare the rpc-core notifier objects
         let mut consensus_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
+        consensus_events[EventType::ChainAcceptanceDataPruned] = false; // Not used in rpc
         consensus_events[EventType::UtxosChanged] = false;
         consensus_events[EventType::PruningPointUtxoSetOverride] = index_notifier.is_none();
+        consensus_events[EventType::VirtualChainChanged] = confindex.is_none();
         let consensus_converter = Arc::new(ConsensusConverter::new(consensus_manager.clone(), config.clone()));
         let consensus_collector = Arc::new(CollectorFromConsensus::new(
             "rpc-core <= consensus",
@@ -156,12 +163,25 @@ impl RpcCoreService {
                 .clone()
                 .register_new_listener(IndexChannelConnection::new(index_notify_channel.sender(), ChannelType::Closable));
 
-            let index_events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
+            let mut index_events = Vec::new();
+            if utxoindex.is_some() {
+                index_events.append(&mut vec![EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride])
+            }
+            if confindex.is_some() {
+                index_events.append(&mut vec![
+                    EventType::VirtualChainChanged,
+                    //EventType::ChainAcceptanceDataPruned, this is not used by the rpc, but if it is, it should be over the index service
+                ])
+            }
+
             let index_collector =
                 Arc::new(CollectorFromIndex::new("rpc-core <= index", index_notify_channel.receiver(), index_converter.clone()));
-            let index_subscriber =
-                Arc::new(Subscriber::new("rpc-core => index", index_events, index_notifier.clone(), index_notify_listener_id));
-
+            let index_subscriber = Arc::new(Subscriber::new(
+                "rpc-core => index",
+                index_events.as_slice().as_ref().into(),
+                index_notifier.clone(),
+                index_notify_listener_id,
+            ));
             collectors.push(index_collector);
             subscribers.push(index_subscriber);
         }
@@ -178,6 +198,7 @@ impl RpcCoreService {
             mining_manager,
             flow_context,
             utxoindex,
+            confindex,
             config,
             consensus_converter,
             index_converter,
@@ -405,6 +426,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             p2p_id: self.flow_context.node_id.to_string(),
             mempool_size: self.mining_manager.transaction_count_sample(TransactionQuery::TransactionsOnly),
             server_version: version().to_string(),
+            is_conf_indexed: self.config.confindex,
             is_utxo_indexed: self.config.utxoindex,
             is_synced: self.has_sufficient_peer_connectivity() && is_nearly_synced,
             has_notify_command: true,
@@ -501,7 +523,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         request: GetVirtualChainFromBlockRequest,
     ) -> RpcResult<GetVirtualChainFromBlockResponse> {
         let session = self.consensus_manager.consensus().session().await;
-        let virtual_chain = session.async_get_virtual_chain_from_block(request.start_hash).await?;
+        let virtual_chain = session.async_get_virtual_chain_from_block(request.start_hash, None, usize::MAX).await?;
         let accepted_transaction_ids = if request.include_accepted_transaction_ids {
             self.consensus_converter.get_virtual_chain_accepted_transaction_ids(&session, &virtual_chain).await?
         } else {
@@ -863,6 +885,112 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetSyncStatusResponse { is_synced })
     }
 
+    async fn get_confirmed_data_by_accepting_blue_score_call(
+        &self,
+        request: GetConfirmedDataByAcceptingBlueScoreRequest,
+    ) -> RpcResult<GetConfirmedDataByAcceptingBlueScoreResponse> {
+        // Validate
+        if !self.config.confindex {
+            return Err(RpcError::NoConfIndex);
+        } else if request.low >= request.high {
+            return Err(RpcError::LowLargerThenHighRange(request.low, request.high));
+        } else if !self.config.unsafe_rpc && (request.high - request.low) > MAX_SAFE_CONFINDEX_RANGE {
+            return Err(RpcError::LowHighRangeOutOfBounds(
+                request.low,
+                request.high,
+                request.high - request.low,
+                MAX_SAFE_CONFINDEX_RANGE,
+            ));
+        };
+
+        let session = self.consensus_manager.consensus().session().await;
+        let confindex = self.confindex.clone().unwrap();
+
+        // modify low / high based on known node bounds
+        let low_bound =
+            confindex.clone().get_source().await.map_err(|err| RpcError::ConfIndexError(err.to_string()))?.accepting_blue_score;
+        let high_bound =
+            confindex.clone().get_sink().await.map_err(|err| RpcError::ConfIndexError(err.to_string()))?.accepting_blue_score;
+        let low = max(request.low, low_bound);
+        let high = min(request.high, high_bound);
+        let chain_block_blue_score_pairs = confindex
+            .get_accepting_blue_score_chain_blocks(
+                low + 1, // We plus one to force exclusivity.
+                high,
+            )
+            .await
+            .map_err(|err| RpcError::ConfIndexError(err.to_string()))?;
+        let confirmed_data = self
+            .consensus_converter
+            .get_acceptance_data(
+                &session,
+                chain_block_blue_score_pairs.to_vec(),
+                high_bound,
+                request.include_chain_block_header,
+                request.include_merged_block_hashes,
+                request.include_merged_block_headers,
+                request.include_accepted_transaction_ids,
+                request.include_accepted_transactions,
+                request.include_verbose_data,
+            )
+            .await?;
+        Ok(GetConfirmedDataByAcceptingBlueScoreResponse { confirmed_data })
+    }
+
+    async fn get_confirmed_data_by_confirmations_call(
+        &self,
+        request: GetConfirmedDataByConfirmationsRequest,
+    ) -> RpcResult<GetConfirmedDataByConfirmationsResponse> {
+        // Validate
+        if !self.config.confindex {
+            return Err(RpcError::NoConfIndex);
+        } else if request.low >= request.high {
+            return Err(RpcError::LowLargerThenHighRange(request.low, request.high));
+        } else if !self.config.unsafe_rpc && (request.high - request.low) > MAX_SAFE_CONFINDEX_RANGE {
+            return Err(RpcError::LowHighRangeOutOfBounds(
+                request.low,
+                request.high,
+                request.high - request.low,
+                MAX_SAFE_CONFINDEX_RANGE,
+            ));
+        };
+
+        let session = self.consensus_manager.consensus().session().await;
+        let confindex = self.confindex.clone().unwrap();
+
+        // modify low / high confirmation range based on known node bounds
+        let low_bound =
+            confindex.clone().get_source().await.map_err(|err| RpcError::ConfIndexError(err.to_string()))?.accepting_blue_score;
+        let high_bound =
+            confindex.clone().get_sink().await.map_err(|err| RpcError::ConfIndexError(err.to_string()))?.accepting_blue_score;
+        let bound_range = high_bound - low_bound;
+
+        let low = high_bound - min(request.high, bound_range);
+        let high = high_bound - min(request.low, bound_range);
+
+        let chain_block_blue_score_pairs = confindex
+            .get_accepting_blue_score_chain_blocks(
+                low + 1, // We plus one to force exclusivity.
+                high,
+            )
+            .await
+            .map_err(|err| RpcError::ConfIndexError(err.to_string()))?;
+        let confirmed_data = self
+            .consensus_converter
+            .get_acceptance_data(
+                &session,
+                chain_block_blue_score_pairs.to_vec(),
+                high_bound,
+                request.include_chain_block_header,
+                request.include_merged_block_hashes,
+                request.include_merged_block_headers,
+                request.include_accepted_transaction_ids,
+                request.include_accepted_transactions,
+                request.include_verbose_data,
+            )
+            .await?;
+        Ok(GetConfirmedDataByConfirmationsResponse { confirmed_data })
+    }
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

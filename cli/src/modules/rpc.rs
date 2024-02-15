@@ -229,6 +229,98 @@ impl Rpc {
                     }
                 }
             }
+            RpcApiOps::GetConfirmedDataByAcceptingBlueScore => {
+                let req =
+                    GetConfirmedDataByAcceptingBlueScoreRequest {
+                        low: argv
+                            .first()
+                            .unwrap_or(&u64::default().to_string())
+                            .parse::<u64>()
+                            .map_err(|err| Error::custom(format!("Could not parse `low` to u64: {0}", err)))?,
+                        high: argv
+                            .get(1)
+                            .unwrap_or(&u64::default().to_string())
+                            .parse::<u64>()
+                            .map_err(|err| Error::custom(format!("Could not parse `high` to u64: {0}", err)))?,
+                        include_chain_block_header: argv
+                            .get(3)
+                            .unwrap_or(&bool::default().to_string())
+                            .parse::<bool>()
+                            .map_err(|err| Error::custom(format!("Could not parse `include_chain_block_header` to bool: {0}", err)))?,
+                        include_merged_block_hashes: argv.get(4).unwrap_or(&bool::default().to_string()).parse::<bool>().map_err(
+                            |err| Error::custom(format!("Could not parse `include_merged_block_hashes` to bool: {0}", err)),
+                        )?,
+                        include_merged_block_headers: argv.get(5).unwrap_or(&bool::default().to_string()).parse::<bool>().map_err(
+                            |err| Error::custom(format!("Could not parse `include_merged_block_headers` to bool: {0}", err)),
+                        )?,
+                        include_accepted_transaction_ids: argv
+                            .get(6)
+                            .unwrap_or(&bool::default().to_string())
+                            .parse::<bool>()
+                            .map_err(|err| {
+                                Error::custom(format!("Could not parse `include_accepted_transaction_ids` to bool: {0}", err))
+                            })?,
+                        include_accepted_transactions: argv.get(7).unwrap_or(&bool::default().to_string()).parse::<bool>().map_err(
+                            |err| Error::custom(format!("Could not parse `include_accepted_transactions` to bool: {0}", err)),
+                        )?,
+                        include_verbose_data: argv
+                            .get(8)
+                            .unwrap_or(&bool::default().to_string())
+                            .parse::<bool>()
+                            .map_err(|err| Error::custom(format!("Could not parse `include_verbose_data` to bool: {0}", err)))?,
+                    };
+                let res: GetConfirmedDataByAcceptingBlueScoreResponse = rpc
+                    .get_confirmed_data_by_accepting_blue_score_call(req)
+                    .await
+                    .map_err(|err| Error::custom(format!("Call Returned error: {0}", err)))?;
+                self.println(&ctx, res);
+            }
+            RpcApiOps::GetConfirmedDataByConfirmations => {
+                let req =
+                    GetConfirmedDataByConfirmationsRequest {
+                        low: argv
+                            .first()
+                            .unwrap_or(&u64::default().to_string())
+                            .parse::<u64>()
+                            .map_err(|err| Error::custom(format!("Could not parse `low` to u64: {0}", err)))?,
+                        high: argv
+                            .get(1)
+                            .unwrap_or(&u64::default().to_string())
+                            .parse::<u64>()
+                            .map_err(|err| Error::custom(format!("Could not parse `high` to u64: {0}", err)))?,
+                        include_chain_block_header: argv
+                            .get(3)
+                            .unwrap_or(&bool::default().to_string())
+                            .parse::<bool>()
+                            .map_err(|err| Error::custom(format!("Could not parse `include_chain_block_header` to bool: {0}", err)))?,
+                        include_merged_block_hashes: argv.get(4).unwrap_or(&bool::default().to_string()).parse::<bool>().map_err(
+                            |err| Error::custom(format!("Could not parse `include_merged_block_hashes` to bool: {0}", err)),
+                        )?,
+                        include_merged_block_headers: argv.get(5).unwrap_or(&bool::default().to_string()).parse::<bool>().map_err(
+                            |err| Error::custom(format!("Could not parse `include_merged_block_headers` to bool: {0}", err)),
+                        )?,
+                        include_accepted_transaction_ids: argv
+                            .get(6)
+                            .unwrap_or(&bool::default().to_string())
+                            .parse::<bool>()
+                            .map_err(|err| {
+                                Error::custom(format!("Could not parse `include_accepted_transaction_ids` to bool: {0}", err))
+                            })?,
+                        include_accepted_transactions: argv.get(7).unwrap_or(&bool::default().to_string()).parse::<bool>().map_err(
+                            |err| Error::custom(format!("Could not parse `include_accepted_transactions` to bool: {0}", err)),
+                        )?,
+                        include_verbose_data: argv
+                            .get(8)
+                            .unwrap_or(&bool::default().to_string())
+                            .parse::<bool>()
+                            .map_err(|err| Error::custom(format!("Could not parse `include_verbose_data` to bool: {0}", err)))?,
+                    };
+                let res = rpc
+                    .get_confirmed_data_by_confirmations_call(req)
+                    .await
+                    .map_err(|err| Error::custom(format!("Call Returned error: {0}", err)))?;
+                self.println(&ctx, res);
+            }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");
                 return Ok(());

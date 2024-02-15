@@ -47,8 +47,9 @@ pub struct TestConsensus {
 
 impl TestConsensus {
     /// Creates a test consensus instance based on `config` with the provided `db` and `notification_sender`
-    pub fn with_db(db: Arc<DB>, config: &Config, notification_sender: Sender<Notification>) -> Self {
-        let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
+    pub fn with_db(db: Arc<DB>, config: &Config) -> Self {
+        let dummy_sender = async_channel::unbounded().0;
+        let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_sender));
         let counters = Default::default();
         let tx_script_cache_counters = Default::default();
         let consensus = Arc::new(Consensus::new(

@@ -17,7 +17,13 @@ type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOut
 
 pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
-    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator;
+    fn seek_iterator(
+        &self,
+        from_outpoint: Option<TransactionOutpoint>,
+        to_outpoint: Option<TransactionOutpoint>,
+        limit: usize,
+        skip_first: bool,
+    ) -> UtxoCollectionIterator;
 }
 
 pub trait UtxoSetStore: UtxoSetStoreReader {
@@ -113,7 +119,7 @@ impl DbUtxoSetStore {
     }
 
     pub fn iterator(&self) -> impl Iterator<Item = Result<(TransactionOutpoint, Arc<UtxoEntry>), Box<dyn Error>>> + '_ {
-        self.access.iterator().map(|iter_result| match iter_result {
+        self.access.iterator(true).map(|iter_result| match iter_result {
             Ok((key_bytes, utxo_entry)) => match UtxoKey::try_from(key_bytes.as_ref()) {
                 Ok(utxo_key) => {
                     let outpoint: TransactionOutpoint = utxo_key.into();
@@ -152,9 +158,16 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
         self.access.read((*outpoint).into())
     }
 
-    fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator {
-        let seek_key = from_outpoint.map(UtxoKey::from);
-        Box::new(self.access.seek_iterator(None, seek_key, limit, skip_first).map(|res| {
+    fn seek_iterator(
+        &self,
+        from_outpoint: Option<TransactionOutpoint>,
+        to_outpoint: Option<TransactionOutpoint>,
+        limit: usize,
+        skip_first: bool,
+    ) -> UtxoCollectionIterator {
+        let seek_from = from_outpoint.map(UtxoKey::from);
+        let seek_to = to_outpoint.map(UtxoKey::from);
+        Box::new(self.access.seek_iterator(None, seek_from, seek_to, limit, skip_first).map(|res| {
             let (key, entry) = res?;
             let outpoint: TransactionOutpoint = UtxoKey::try_from(key.as_ref()).unwrap().into();
             Ok((outpoint, UtxoEntry::clone(&entry)))

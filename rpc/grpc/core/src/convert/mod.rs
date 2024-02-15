@@ -1,5 +1,6 @@
 pub mod address;
 pub mod block;
+pub mod confirmed_data;
 pub mod error;
 pub mod header;
 pub mod kaspad;

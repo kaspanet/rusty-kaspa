@@ -315,7 +315,7 @@ impl ReachabilityStoreReader for DbReachabilityStore {
     }
 
     fn count(&self) -> Result<usize, StoreError> {
-        Ok(self.access.iterator().count())
+        Ok(self.access.iterator(true).count())
     }
 }
 
@@ -626,7 +626,7 @@ impl ReachabilityStoreReader for StagingReachabilityStore<'_> {
         Ok(self
             .store_read
             .access
-            .iterator()
+            .iterator(true)
             .map(|r| r.unwrap().0)
             .map(|k| <[u8; kaspa_hashes::HASH_SIZE]>::try_from(&k[..]).unwrap())
             .map(Hash::from_bytes)

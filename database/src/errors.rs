@@ -21,8 +21,17 @@ pub enum StoreError {
     #[error("rocksdb error {0}")]
     DbError(#[from] rocksdb::Error),
 
+    #[error("empty db error: Db is empty or does not exist")]
+    DbEmptyError,
+
     #[error("bincode error {0}")]
     DeserializationError(#[from] Box<bincode::ErrorKind>),
+
+    #[error("invalid value length: expected {0}, got {1}")]
+    InvalidValueLength(usize, usize),
+
+    #[error("undefined error: {0}")]
+    Undefined(String),
 }
 
 pub type StoreResult<T> = std::result::Result<T, StoreError>;

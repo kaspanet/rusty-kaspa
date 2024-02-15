@@ -77,6 +77,7 @@ impl RpcApi for RpcCoreMock {
             p2p_id: "wallet-mock".to_string(),
             mempool_size: 1234,
             server_version: "mock".to_string(),
+            is_conf_indexed: false,
             is_utxo_indexed: false,
             is_synced: false,
             has_notify_command: false,
@@ -231,6 +232,20 @@ impl RpcApi for RpcCoreMock {
         &self,
         _request: GetDaaScoreTimestampEstimateRequest,
     ) -> RpcResult<GetDaaScoreTimestampEstimateResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
+    async fn get_confirmed_data_by_accepting_blue_score_call(
+        &self,
+        _request: GetConfirmedDataByAcceptingBlueScoreRequest,
+    ) -> RpcResult<GetConfirmedDataByAcceptingBlueScoreResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
+    async fn get_confirmed_data_by_confirmations_call(
+        &self,
+        _request: GetConfirmedDataByConfirmationsRequest,
+    ) -> RpcResult<GetConfirmedDataByConfirmationsResponse> {
         Err(RpcError::NotImplemented)
     }
 

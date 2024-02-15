@@ -131,6 +131,7 @@ pub struct GetInfoResponse {
     pub p2p_id: String,
     pub mempool_size: u64,
     pub server_version: String,
+    pub is_conf_indexed: bool,
     pub is_utxo_indexed: bool,
     pub is_synced: bool,
     pub has_notify_command: bool,
@@ -821,6 +822,92 @@ impl GetDaaScoreTimestampEstimateResponse {
     pub fn new(timestamps: Vec<u64>) -> Self {
         Self { timestamps }
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetConfirmedDataByAcceptingBlueScoreRequest {
+    pub low: u64,  // exclusive
+    pub high: u64, // inclusive
+    pub include_chain_block_header: bool,
+    pub include_merged_block_hashes: bool,
+    pub include_merged_block_headers: bool,
+    pub include_accepted_transaction_ids: bool,
+    pub include_accepted_transactions: bool,
+    pub include_verbose_data: bool,
+}
+
+impl GetConfirmedDataByAcceptingBlueScoreRequest {
+    pub fn new(
+        low: u64,  // exclusive
+        high: u64, // inclusive
+        include_chain_block_header: bool,
+        include_merged_block_hashes: bool,
+        include_merged_block_headers: bool,
+        include_accepted_transaction_ids: bool,
+        include_accepted_transactions: bool,
+        include_verbose_data: bool,
+    ) -> Self {
+        Self {
+            low,
+            high,
+            include_chain_block_header,
+            include_merged_block_hashes,
+            include_merged_block_headers,
+            include_accepted_transaction_ids,
+            include_accepted_transactions,
+            include_verbose_data,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetConfirmedDataByAcceptingBlueScoreResponse {
+    pub confirmed_data: Vec<RpcConfirmedData>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetConfirmedDataByConfirmationsRequest {
+    pub low: u64,  // exclusive
+    pub high: u64, // inclusive
+    pub include_chain_block_header: bool,
+    pub include_merged_block_hashes: bool,
+    pub include_merged_block_headers: bool,
+    pub include_accepted_transaction_ids: bool,
+    pub include_accepted_transactions: bool,
+    pub include_verbose_data: bool,
+}
+
+impl GetConfirmedDataByConfirmationsRequest {
+    pub fn new(
+        low: u64,  // exclusive
+        high: u64, // inclusive
+        include_chain_block_header: bool,
+        include_merged_block_hashes: bool,
+        include_merged_block_headers: bool,
+        include_accepted_transaction_ids: bool,
+        include_accepted_transactions: bool,
+        include_verbose_data: bool,
+    ) -> Self {
+        Self {
+            low,
+            high,
+            include_chain_block_header,
+            include_merged_block_hashes,
+            include_merged_block_headers,
+            include_accepted_transaction_ids,
+            include_accepted_transactions,
+            include_verbose_data,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetConfirmedDataByConfirmationsResponse {
+    pub confirmed_data: Vec<RpcConfirmedData>,
 }
 
 // ----------------------------------------------------------------------------
