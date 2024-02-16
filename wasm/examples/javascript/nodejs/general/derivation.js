@@ -25,8 +25,14 @@ kaspa.initConsolePanicHook();
 
     // create receive wallet
     let receiveWalletXPub = xPrv.derivePath("m/44'/111111'/0'/0").toXPub();
-    // derive receive wallet
+    // derive receive wallet for second address
     let pubkey2 = receiveWalletXPub.deriveChild(1, false).publicKey();
+    console.log("address", pubkey2.toAddress(NetworkType.Mainnet));
+
+    // create change wallet
+    let changeWalletXPub = xPrv.derivePath("m/44'/111111'/0'/1").toXPub();
+    // derive change wallet for first address
+    let pubkey3 = changeWalletXPub.deriveChild(0, false).publicKey();
     console.log("address", pubkey2.toAddress(NetworkType.Mainnet));
 
     if (pubkey1.toString() != pubkey2.toString()){
