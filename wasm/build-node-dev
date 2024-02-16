@@ -1,4 +1,7 @@
 #!/bin/bash
 
-echo "Warning - do not use resulting WASM binaries in production!"
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+echo -e "${RED}WARNING: do not use resulting WASM binaries in production!${NC}"
 wasm-pack build --target nodejs --dev --out-dir nodejs/kaspa --features wasm32-sdk $@
