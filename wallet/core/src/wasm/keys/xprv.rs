@@ -2,6 +2,7 @@ use crate::wasm::keys::{DerivationPath, XPub};
 use kaspa_bip32::{ChildNumber, Error, ExtendedPrivateKey, Result, SecretKey};
 use kaspa_utils::hex::*;
 use wasm_bindgen::prelude::*;
+use std::str::FromStr;
 
 ///
 /// Extended private key (XPrv).
@@ -27,6 +28,13 @@ impl XPrv {
 
         let inner = ExtendedPrivateKey::<SecretKey>::new(seed_bytes)?;
         Ok(Self { inner })
+    }
+
+    
+    /// Create {@link XPrv} from `xprvxxxx..` string
+    #[wasm_bindgen(js_name=fromXPrv)]
+    pub fn from_str(xprv: String) -> Result<XPrv> {
+        Ok(Self{inner: ExtendedPrivateKey::<SecretKey>::from_str(&xprv)?})
     }
 
     #[wasm_bindgen(js_name=deriveChild)]
