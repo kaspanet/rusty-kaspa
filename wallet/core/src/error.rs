@@ -296,6 +296,9 @@ pub enum Error {
 
     #[error("Unable to convert BigInt value {0}")]
     BigInt(String),
+
+    #[error("Invalid mnemonic phrase")]
+    InvalidMnemonicPhrase,
 }
 
 impl From<Aborted> for Error {

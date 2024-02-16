@@ -1,13 +1,35 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::storage::local::interface::LocalStore;
-use crate::storage::{PrvKeyDataId, WalletDescriptor};
+use crate::storage::WalletDescriptor;
 use crate::wallet as native;
-use crate::wasm::wallet::account::Account;
-use crate::wasm::wallet::keydata::PrvKeyDataInfo;
 use kaspa_wrpc_wasm::{IConnectOptions, RpcClient, RpcConfig, WrpcEncoding};
-use workflow_core::sendable::Sendable;
 use workflow_wasm::channel::EventDispatcher;
+// use crate::wasm::wallet::account::Account;
+// use crate::wasm::wallet::keydata::PrvKeyDataInfo;
+// use workflow_core::sendable::Sendable;
+
+use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
+
+declare! {
+    IWalletConfig,
+    r#"
+    /**
+     * 
+     * 
+     * @category  Wallet API
+     */
+    export interface IWalletConfig {
+        /**
+         * `resident` is a boolean indicating if the wallet should not be stored on the permanent medium.
+         */
+        resident?: boolean;
+        networkId: NetworkId | string;
+        encoding?: Encoding | string;
+        url?: string;
+    }
+    "#,
+}
 
 /// @category Wallet SDK
 #[wasm_bindgen(inspectable)]
@@ -23,8 +45,8 @@ pub struct Wallet {
 #[wasm_bindgen]
 impl Wallet {
     #[wasm_bindgen(constructor)]
-    pub fn constructor(js_value: JsValue) -> Result<Wallet> {
-        let WalletCtorArgs { resident, network_id, encoding, url } = WalletCtorArgs::try_from(js_value)?;
+    pub fn constructor(config: IWalletConfig) -> Result<Wallet> {
+        let WalletCtorArgs { resident, network_id, encoding, url } = WalletCtorArgs::try_from(JsValue::from(config))?;
 
         let store = Arc::new(LocalStore::try_new(resident)?);
 
@@ -44,79 +66,75 @@ impl Wallet {
         Ok(Self { wallet, events, rpc })
     }
 
-    pub async fn keys(&self) -> JsValue {
-        let wallet = self.wallet.clone();
-        let keys = self.wallet.keys().await.expect("Unable to access Wallet::keys iterator").then(move |item| {
-            let wallet = wallet.clone();
-            async move {
-                match item {
-                    Ok(prv_key_data_info) => Sendable::new(PrvKeyDataInfo::new(wallet, prv_key_data_info).into()),
-                    Err(err) => Sendable::new(JsValue::from(err)),
-                }
-            }
-        });
+    // pub async fn keys(&self) -> JsValue {
+    //     let wallet = self.wallet.clone();
+    //     let keys = self.wallet.keys().await.expect("Unable to access Wallet::keys iterator").then(move |item| {
+    //         let wallet = wallet.clone();
+    //         async move {
+    //             match item {
+    //                 Ok(prv_key_data_info) => Sendable::new(PrvKeyDataInfo::new(wallet, prv_key_data_info).into()),
+    //                 Err(err) => Sendable::new(JsValue::from(err)),
+    //             }
+    //         }
+    //     });
 
-        AsyncStream::new(keys).into()
-    }
+    //     AsyncStream::new(keys).into()
+    // }
 
-    pub async fn accounts(&self) -> Result<JsValue> {
-        self.account_iterator(JsValue::NULL).await
-    }
+    // pub async fn accounts(&self) -> Result<JsValue> {
+    //     self.account_iterator(JsValue::NULL).await
+    // }
 
-    #[wasm_bindgen(js_name = "accountIterator")]
-    pub async fn account_iterator(&self, prv_key_data_id_filter: JsValue) -> Result<JsValue> {
-        let prv_key_data_id_filter = if prv_key_data_id_filter.is_falsy() {
-            None
-        } else {
-            Some(PrvKeyDataId::from_hex(
-                &prv_key_data_id_filter
-                    .as_string()
-                    .ok_or(Error::Custom("private key data id account filter must be a hex string or falsy".to_string()))?,
-            )?)
-        };
+    // #[wasm_bindgen(js_name = "accountIterator")]
+    // pub async fn account_iterator(&self, prv_key_data_id_filter: JsValue) -> Result<JsValue> {
+    //     let prv_key_data_id_filter = if prv_key_data_id_filter.is_falsy() {
+    //         None
+    //     } else {
+    //         Some(PrvKeyDataId::from_hex(
+    //             &prv_key_data_id_filter
+    //                 .as_string()
+    //                 .ok_or(Error::Custom("private key data id account filter must be a hex string or falsy".to_string()))?,
+    //         )?)
+    //     };
 
-        let accounts = self
-            .wallet
-            .accounts(prv_key_data_id_filter)
-            .await
-            .unwrap_or_else(|err| panic!("Unable to access Wallet::account iterator: {err}"))
-            .then(|item| async move {
-                match item {
-                    Ok(account) => Sendable::new(
-                        Account::try_new(account).await.unwrap_or_else(|err| panic!("accountIterator (account): {err}")).into(),
-                    ),
-                    Err(err) => Sendable::new(JsValue::from(err)),
-                }
-            });
+    //     let accounts = self
+    //         .wallet
+    //         .accounts(prv_key_data_id_filter)
+    //         .await
+    //         .unwrap_or_else(|err| panic!("Unable to access Wallet::account iterator: {err}"))
+    //         .then(|item| async move {
+    //             match item {
+    //                 Ok(account) => Sendable::new(
+    //                     Account::try_new(account).await.unwrap_or_else(|err| panic!("accountIterator (account): {err}")).into(),
+    //                 ),
+    //                 Err(err) => Sendable::new(JsValue::from(err)),
+    //             }
+    //         });
 
-        Ok(AsyncStream::new(accounts).into())
-    }
+    //     Ok(AsyncStream::new(accounts).into())
+    // }
 
-    #[wasm_bindgen(js_name = "isOpen")]
+    /// @remarks This is a local property indicating
+    /// if the wallet is currently open.
+    #[wasm_bindgen(getter, js_name = "isOpen")]
     pub fn is_open(&self) -> bool {
         self.wallet.is_open()
     }
 
-    #[wasm_bindgen(js_name = "isSynced")]
+    /// @remarks This is a local property indicating
+    /// if the node is currently synced.
+    #[wasm_bindgen(getter, js_name = "isSynced")]
     pub fn is_synced(&self) -> bool {
         self.wallet.is_synced()
     }
 
-    #[wasm_bindgen(js_name = "descriptor")]
+    #[wasm_bindgen(getter, js_name = "descriptor")]
     pub fn descriptor(&self) -> Option<WalletDescriptor> {
         self.wallet.descriptor()
     }
 
-    pub async fn exists(&self, name: JsValue) -> Result<bool> {
-        let name =
-            if name.is_falsy() {
-                None
-            } else {
-                Some(name.as_string().ok_or(Error::Custom(
-                    "Wallet::exists(): Wallet name must be a string (or falsy for default `kaspa`)".to_string(),
-                ))?)
-            };
-
+    /// Check if a wallet with a given name exists.
+    pub async fn exists(&self, name: Option<String>) -> Result<bool> {
         self.wallet.exists(name.as_deref()).await
     }
 

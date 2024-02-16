@@ -11,6 +11,7 @@ use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// @category Wallet API
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AccountDescriptor {
     pub kind: AccountKind,
@@ -215,7 +216,7 @@ declare! {
     /**
      * 
      * 
-     * @category Wallet SDK
+     * @category Wallet API
      */
     export interface IAccountDescriptor {
         kind : AccountKind,

@@ -1,5 +1,6 @@
 use crate::imports::*;
 use js_sys::Object;
+use kaspa_consensus_core::Hash;
 
 pub trait WalletApiObjectExtension {
     fn get_secret(&self, key: &str) -> Result<Secret>;
@@ -8,6 +9,7 @@ pub trait WalletApiObjectExtension {
     fn get_prv_key_data_id(&self, key: &str) -> Result<PrvKeyDataId>;
     fn get_account_id(&self, key: &str) -> Result<AccountId>;
     fn try_get_account_id_list(&self, key: &str) -> Result<Option<Vec<AccountId>>>;
+    fn get_transaction_id(&self, key: &str) -> Result<Hash>;
 }
 
 impl WalletApiObjectExtension for Object {
@@ -46,10 +48,16 @@ impl WalletApiObjectExtension for Object {
         AccountId::try_from(&self.get_value(key)?)
     }
 
+    fn get_transaction_id(&self, key: &str) -> Result<Hash> {
+        Ok(Hash::try_from(self.get_value(key)?)?)
+    }
+
     fn try_get_account_id_list(&self, key: &str) -> Result<Option<Vec<AccountId>>> {
-        // TODO - check for undefined
-        let array = self.get_vec(key)?;
-        let account_ids = array.into_iter().map(|js_value| AccountId::try_from(&js_value)).collect::<Result<Vec<AccountId>>>()?;
-        Ok(Some(account_ids))
+        if let Ok(array) = self.get_vec(key) {
+            let account_ids = array.into_iter().map(|js_value| AccountId::try_from(&js_value)).collect::<Result<Vec<AccountId>>>()?;
+            Ok(Some(account_ids))
+        } else {
+            Ok(None)
+        }
     }
 }

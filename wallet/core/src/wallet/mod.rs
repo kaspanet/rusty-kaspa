@@ -94,7 +94,13 @@ pub struct Inner {
     estimation_abortables: Mutex<HashMap<AccountId, Abortable>>,
 }
 
-/// `Wallet` data structure
+///
+/// `Wallet` represents a single wallet instance.
+/// It is the main data structure responsible for
+/// managing a runtime wallet.
+///
+/// @category Wallet API
+///
 #[derive(Clone)]
 pub struct Wallet {
     inner: Arc<Inner>,
@@ -1376,12 +1382,14 @@ impl Wallet {
     /// accounts.
     pub async fn scan_bip44_accounts(
         self: &Arc<Self>,
-        mut bip39_mnemonic: String,
+        bip39_mnemonic: Secret,
         bip39_passphrase: Option<Secret>,
         address_scan_extent: u32,
         account_scan_extent: u32,
     ) -> Result<u32> {
-        let mnemonic = Mnemonic::new(bip39_mnemonic.as_str(), Language::English)?;
+        let bip39_mnemonic = std::str::from_utf8(bip39_mnemonic.as_ref()).map_err(|_| Error::InvalidMnemonicPhrase)?;
+        let mnemonic = Mnemonic::new(bip39_mnemonic, Language::English)?;
+
         // TODO @aspect - this is not efficient, we need to scan without encrypting prv_key_data
         let prv_key_data =
             storage::PrvKeyData::try_new_from_mnemonic(mnemonic, bip39_passphrase.as_ref(), EncryptionKind::XChaCha20Poly1305)?;
@@ -1404,8 +1412,6 @@ impl Wallet {
             }
             account_index += 1;
         }
-
-        bip39_mnemonic.zeroize();
 
         Ok(last_account_index)
     }

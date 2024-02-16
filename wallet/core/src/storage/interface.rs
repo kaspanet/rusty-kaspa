@@ -13,7 +13,7 @@ pub struct WalletExportOptions {
     pub include_transactions: bool,
 }
 
-/// @category Wallet SDK
+/// @category Wallet API
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[wasm_bindgen(inspectable)]
 pub struct WalletDescriptor {
@@ -31,7 +31,7 @@ impl WalletDescriptor {
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "kind", content = "meta")]
+#[serde(tag = "kind", content = "data")]
 pub enum StorageDescriptor {
     Resident,
     Internal(String),

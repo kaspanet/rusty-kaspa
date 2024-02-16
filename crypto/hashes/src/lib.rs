@@ -13,7 +13,7 @@ use std::{
     hash::{Hash as StdHash, Hasher as StdHasher},
     str::{self, FromStr},
 };
-use wasm_bindgen::prelude::*;
+use wasm_bindgen::{convert::TryFromJsValue, prelude::*};
 use workflow_wasm::prelude::*;
 
 pub const HASH_SIZE: usize = 32;
@@ -195,7 +195,7 @@ impl TryFrom<JsValue> for Hash {
                     .map_err(|_| TryFromError::WrongSize("Slice must have the length of Hash".into()))?,
             )
         } else if js_value.is_object() {
-            ref_from_abi!(Hash, &js_value).map_err(|_| TryFromError::WrongType("supplied object must be a `Hash`".to_string()))?
+            Hash::try_from_js_value(js_value).map_err(|_| TryFromError::WrongType("supplied object must be a `Hash`".to_string()))?
         } else {
             return Err(TryFromError::WrongType("supplied object must be a `Hash`".to_string()));
         };

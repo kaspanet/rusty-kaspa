@@ -16,8 +16,9 @@ use std::ops::{Deref, DerefMut};
 use zeroize::Zeroize;
 
 /// Encryption algorithms supported by the Wallet framework.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Default, Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum EncryptionKind {
+    #[default]
     XChaCha20Poly1305,
 }
 

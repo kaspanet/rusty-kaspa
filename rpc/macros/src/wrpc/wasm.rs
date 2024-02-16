@@ -234,7 +234,6 @@ impl ToTokens for TsInterface {
         let Self { handler, alias, declaration } = self;
         let Handler { name, typename, ts_custom_section_ident, .. } = handler;
 
-        // let declaration = extract_literal(declaration);
         let declaration = if name.ends_with("Request") {
             let method = (&name.trim_end_matches("Request")[1..]).to_case(Case::Camel);
             insert_typedoc(
