@@ -1,13 +1,13 @@
 use crate::imports::*;
-use crate::keypair::PrivateKey;
 use crate::result::Result;
-use crate::signable::*;
+use crate::wasm::keys::keypair::PrivateKey;
 use js_sys::Array;
 use kaspa_consensus_core::{
     hashing::sighash_type::SIG_HASH_ALL,
     sign::{sign_with_multiple_v2, verify},
     tx,
 };
+use kaspa_consensus_wasm::SignableTransaction;
 use kaspa_hashes::Hash;
 use serde_wasm_bindgen::from_value;
 

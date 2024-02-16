@@ -1,6 +1,6 @@
 use crate::imports::*;
 use crate::message::*;
-use kaspa_consensus_wasm::{PrivateKey, PublicKey};
+use crate::wasm::keys::{PrivateKey, PublicKey};
 
 /// Signs a message with the given private key
 /// @param {object} value - an object containing { message: String, privateKey: String|PrivateKey }

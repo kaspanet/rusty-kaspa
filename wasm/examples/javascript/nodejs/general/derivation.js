@@ -2,32 +2,60 @@ const kaspa = require('../../../../nodejs/kaspa');
 const {
     Mnemonic,
     XPrv,
-    DerivationPath
+    DerivationPath,
+    PublicKey,
+    NetworkType,
 } = kaspa;
 
 kaspa.initConsolePanicHook();
 
 (async () => {
 
-    const mnemonic = Mnemonic.random();
+    //const mnemonic = Mnemonic.random();
+    const mnemonic = new Mnemonic("hunt bitter praise lift buyer topic crane leopard uniform network inquiry over grain pass match crush marine strike doll relax fortune trumpet sunny silk")
     console.log("mnemonic:", mnemonic);
-    const seed = mnemonic.toSeed("my_password");
+    const seed = mnemonic.toSeed();
     console.log("seed:", seed);
 
+    // kaspa
+    let xPrv = new XPrv(seed);
+    // derive full path upto second address of receive wallet
+    let pubkey1 = xPrv.derivePath("m/44'/111111'/0'/0/1").toXPub().publicKey();
+    console.log("address", pubkey1.toAddress(NetworkType.Mainnet));
+
+    // create receive wallet
+    let receiveWalletXPub = xPrv.derivePath("m/44'/111111'/0'/0").toXPub();
+    // derive receive wallet
+    let pubkey2 = receiveWalletXPub.deriveChild(1, false).publicKey();
+    console.log("address", pubkey2.toAddress(NetworkType.Mainnet));
+
+    if (pubkey1.toString() != pubkey2.toString()){
+        throw new Error("pubkeyes dont match")
+    }
     // ---
 
-    const xPrv = new XPrv(seed);
-    console.log("xPrv", xPrv.intoString("xprv"))
+    // xprv with ktrv prefix
+    const ktrv = xPrv.intoString("ktrv");
+    console.log("ktrv", ktrv)
 
-    console.log("xPrv", xPrv.derivePath("m/1'/2'/3").intoString("xprv"))
-
+    //create DerivationPath
     const path = new DerivationPath("m/1'");
     path.push(2, true);
     path.push(3, false);
     console.log(`path: ${path}`);
 
-    console.log("xPrv", xPrv.derivePath(path).intoString("xprv"))
+    // derive by path string
+    console.log("xPrv1", xPrv.derivePath("m/1'/2'/3").intoString("xprv"))
+    // derive by DerivationPath object
+    console.log("xPrv3", xPrv.derivePath(path).intoString("xprv"))
+    // create XPrv from ktrvxxx string and derive it
+    console.log("xPrv2", XPrv.fromXPrv(ktrv).derivePath("m/1'/2'/3").intoString("xprv"))
+    
 
-    const xPub = xPrv.publicKey();
+    // get xpub
+    let xPub = xPrv.toXPub();
+    // derive xPub
     console.log("xPub", xPub.derivePath("m/1").intoString("xpub"));
+    // get publicKey from xPub
+    console.log("publicKey", xPub.publicKey().toString());
 })();

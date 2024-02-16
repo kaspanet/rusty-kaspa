@@ -13,9 +13,7 @@ pub use utxo::*;
 cfg_if! {
     if #[cfg(feature = "wasm32-sdk")] {
         mod input;
-        mod keypair;
         mod signable;
-        mod signer;
         mod transaction;
         mod txscript;
         mod types;
@@ -23,9 +21,7 @@ cfg_if! {
         mod version;
 
         pub use input::*;
-        pub use keypair::*;
         pub use signable::*;
-        pub use signer::*;
         pub use transaction::*;
         pub use txscript::*;
         pub use types::*;
