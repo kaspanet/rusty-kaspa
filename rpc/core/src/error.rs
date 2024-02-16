@@ -53,8 +53,11 @@ pub enum RpcError {
     #[error("If includeTransactions is set, then includeBlockVerboseData must be set as well.")]
     InvalidGetBlocksRequest,
 
-    #[error("If includeVerboseData is set, then inlcudeTransactions must be set as well.")]
-    InvalidGetTransactionDataRequest,
+    #[error("If includeVerboseData is set, then includeTransactions must be set as well.")]
+    TransactionDataRequestVerboseConflict,
+
+    #[error("Too many transactions requested: {0}; Allowed: {1}. Or run node with `--unsaferpc` flag.")]
+    TransactionDataRequestTooManyTxs(u64, u64),
 
     #[error("Transaction {0} not found")]
     TransactionNotFound(TransactionId),

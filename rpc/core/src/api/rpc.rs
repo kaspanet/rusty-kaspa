@@ -11,6 +11,7 @@ use kaspa_notify::{listener::ListenerId, scope::Scope, subscription::Command};
 use std::sync::Arc;
 
 pub const MAX_SAFE_WINDOW_SIZE: u32 = 10_000;
+pub const MAX_SAFE_TX_QUERY: u64 = 256; // ~about 1 block worth of data in best case, 256 in worst.
 
 /// Client RPC Api
 ///
