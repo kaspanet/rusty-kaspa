@@ -87,6 +87,9 @@ pub enum RpcApiOps {
     /// Get DAA Score timestamp estimate
     GetDaaScoreTimestampEstimate,
 
+    /// Get Transactions accepted by the Network.
+    GetTransactionData,
+
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,
     NotifyNewBlockTemplate,
@@ -155,6 +158,7 @@ impl From<EventType> for RpcApiOps {
             EventType::VirtualDaaScoreChanged => RpcApiOps::VirtualDaaScoreChangedNotification,
             EventType::PruningPointUtxoSetOverride => RpcApiOps::PruningPointUtxoSetOverrideNotification,
             EventType::NewBlockTemplate => RpcApiOps::NewBlockTemplateNotification,
+            EventType::ChainAcceptanceDataPruned => unimplemented!("ChainAcceptanceDataPruned is not supported by RPC"),
         }
     }
 }

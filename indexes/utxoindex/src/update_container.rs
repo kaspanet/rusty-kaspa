@@ -6,7 +6,7 @@ use kaspa_consensus_core::{
 use kaspa_hashes::Hash;
 use kaspa_utils::hashmap::NestedHashMapExtensions;
 
-use crate::model::{CirculatingSupplyDiff, CompactUtxoEntry, UtxoChanges, UtxoSetByScriptPublicKey};
+use kaspa_index_core::models::utxoindex::{CirculatingSupplyDiff, CompactUtxoEntry, UtxoChanges, UtxoSetByScriptPublicKey};
 
 /// A struct holding all changes to the utxoindex with on-the-fly conversions and processing.
 pub struct UtxoIndexChanges {

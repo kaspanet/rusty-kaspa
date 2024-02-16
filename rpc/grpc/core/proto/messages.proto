@@ -59,6 +59,7 @@ message KaspadRequest {
     GetServerInfoRequestMessage getServerInfoRequest = 1092;
     GetSyncStatusRequestMessage getSyncStatusRequest = 1094;
     GetDaaScoreTimestampEstimateRequestMessage GetDaaScoreTimestampEstimateRequest = 1096;
+    GetTransactionDataRequestMessage getTransactionDataRequest = 1098; // This requires the the node to be run with -- txindex
   }
 }
 
@@ -118,6 +119,7 @@ message KaspadResponse {
     GetServerInfoResponseMessage getServerInfoResponse = 1093;
     GetSyncStatusResponseMessage getSyncStatusResponse = 1095;
     GetDaaScoreTimestampEstimateResponseMessage GetDaaScoreTimestampEstimateResponse = 1097;
+    GetTransactionDataResponseMessage getTransactionDataResponse = 1099; // This requires the the node to be run with -- txindex
   }
 }
 

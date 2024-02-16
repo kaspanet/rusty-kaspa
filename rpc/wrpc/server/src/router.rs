@@ -61,6 +61,7 @@ impl Router {
                 GetUtxosByAddresses,
                 GetSinkBlueScore,
                 GetVirtualChainFromBlock,
+                GetTransactionData,
                 Ping,
                 ResolveFinalityConflict,
                 Shutdown,

@@ -78,6 +78,7 @@ impl RpcApi for RpcCoreMock {
             mempool_size: 1234,
             server_version: "mock".to_string(),
             is_utxo_indexed: false,
+            is_tx_indexed: false,
             is_synced: false,
             has_notify_command: false,
             has_message_id: false,
@@ -231,6 +232,10 @@ impl RpcApi for RpcCoreMock {
         &self,
         _request: GetDaaScoreTimestampEstimateRequest,
     ) -> RpcResult<GetDaaScoreTimestampEstimateResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
+    async fn get_transaction_data_call(&self, _request: GetTransactionDataRequest) -> RpcResult<GetTransactionDataResponse> {
         Err(RpcError::NotImplemented)
     }
 

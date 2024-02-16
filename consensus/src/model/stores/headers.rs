@@ -1,7 +1,10 @@
 use std::mem::size_of;
 use std::sync::Arc;
 
-use kaspa_consensus_core::{header::Header, BlockHasher, BlockLevel};
+use kaspa_consensus_core::{
+    header::{CompactHeaderData, Header},
+    BlockHasher, BlockLevel,
+};
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess};
 use kaspa_database::prelude::{CachePolicy, DB};
 use kaspa_database::prelude::{StoreError, StoreResult};
@@ -39,22 +42,6 @@ pub trait HeaderStore: HeaderStoreReader {
     // This is append only
     fn insert(&self, hash: Hash, header: Arc<Header>, block_level: BlockLevel) -> Result<(), StoreError>;
     fn delete(&self, hash: Hash) -> Result<(), StoreError>;
-}
-
-#[derive(Clone, Copy, Serialize, Deserialize)]
-pub struct CompactHeaderData {
-    pub daa_score: u64,
-    pub timestamp: u64,
-    pub bits: u32,
-    pub blue_score: u64,
-}
-
-impl MemSizeEstimator for CompactHeaderData {}
-
-impl From<&Header> for CompactHeaderData {
-    fn from(header: &Header) -> Self {
-        Self { daa_score: header.daa_score, timestamp: header.timestamp, bits: header.bits, blue_score: header.blue_score }
-    }
 }
 
 /// A DB + cache implementation of `HeaderStore` trait, with concurrency support.
