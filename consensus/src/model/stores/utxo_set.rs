@@ -12,7 +12,8 @@ use kaspa_database::prelude::{CachedDbItem, StoreResultExtensions};
 use kaspa_database::{prelude::DB, registry::DatabaseStorePrefixes};
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
-use std::{error::Error, fmt::Display, sync::Arc};
+use core::time;
+use std::{error::Error, fmt::Display, sync::{atomic::AtomicU64, Arc}, time::Instant};
 
 type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), Box<dyn Error>>> + 'a>;
 
@@ -20,6 +21,7 @@ pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
     fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator;
     fn size(&self) -> Result<u64, StoreError>;
+    fn is_count_synced(&self) -> Result<bool, StoreError>;
 }
 
 pub trait UtxoSetStore: UtxoSetStoreReader {
@@ -149,7 +151,6 @@ impl DbUtxoSetStore {
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
         self.size
             .update(&mut writer, |count| (count + utxo_diff.added().len() as u64) - utxo_diff.removed().len() as u64)?;
-        assert_eq!(self.access.iterator().count() as u64, self.size.read_from_db().unwrap()); //TODO: remove sanity check after review
         Ok(())
     }
 
@@ -173,7 +174,6 @@ impl DbUtxoSetStore {
         let mut writer = BatchDbWriter::new(&mut batch);
         self.access.delete_all(&mut writer)?;
         self.size.write(&mut writer, &0u64)?;
-        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after review
         Ok(())
     }
 
@@ -194,7 +194,6 @@ impl DbUtxoSetStore {
         )?;
         self.size.update(&mut writer, |c| c + count)?;
         self.db.write(batch)?;
-        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after review
         Ok(())
     }
 }
@@ -222,6 +221,10 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
     fn size(&self) -> Result<u64, StoreError> {
         self.size.read()
     }
+
+    fn is_count_synced(&self) -> Result<bool, StoreError> {
+        Ok(self.size.read_from_db()? == self.access.iterator().count() as u64)
+    }
 }
 
 impl UtxoSetStore for DbUtxoSetStore {
@@ -231,7 +234,6 @@ impl UtxoSetStore for DbUtxoSetStore {
         self.access.delete_many(&mut writer, &mut utxo_diff.removed().iter().map(|(o, _)| ((*o).into())))?;
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
         self.db.write(batch)?;
-        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after review
         Ok(())
     }
 
@@ -241,7 +243,6 @@ impl UtxoSetStore for DbUtxoSetStore {
         self.size.update(&mut writer, |count| count + utxos.len() as u64)?;
         self.access.write_many(&mut writer, &mut utxos.iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
         self.db.write(batch)?;
-        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after review
         Ok(())
     }
 }
