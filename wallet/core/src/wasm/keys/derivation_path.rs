@@ -1,4 +1,4 @@
-use crate::{ChildNumber, Error, Result};
+use kaspa_bip32::{ChildNumber, Error, Result};
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::prelude::*;
@@ -8,14 +8,14 @@ use workflow_wasm::prelude::*;
 #[derive(Clone)]
 #[wasm_bindgen]
 pub struct DerivationPath {
-    inner: crate::DerivationPath,
+    inner: kaspa_bip32::DerivationPath,
 }
 
 #[wasm_bindgen]
 impl DerivationPath {
     #[wasm_bindgen(constructor)]
     pub fn new(path: &str) -> Result<DerivationPath> {
-        let inner = crate::DerivationPath::from_str(path)?;
+        let inner = kaspa_bip32::DerivationPath::from_str(path)?;
         Ok(Self { inner })
     }
 
@@ -62,7 +62,7 @@ impl TryFrom<JsValue> for DerivationPath {
     }
 }
 
-impl From<DerivationPath> for crate::DerivationPath {
+impl From<DerivationPath> for kaspa_bip32::DerivationPath {
     fn from(value: DerivationPath) -> Self {
         value.inner
     }

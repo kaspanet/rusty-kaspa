@@ -1,7 +1,5 @@
-use crate::{
-    wasm::{DerivationPath, XPub},
-    ChildNumber, Error, ExtendedPrivateKey, Result, SecretKey,
-};
+use crate::wasm::keys::{DerivationPath, XPub};
+use kaspa_bip32::{ChildNumber, Error, ExtendedPrivateKey, Result, SecretKey};
 use kaspa_utils::hex::*;
 use wasm_bindgen::prelude::*;
 
