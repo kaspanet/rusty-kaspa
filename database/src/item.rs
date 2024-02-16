@@ -50,6 +50,18 @@ impl<T> CachedDbItem<T> {
         }
     }
 
+    pub fn read_from_db(&self) -> Result<T, StoreError>
+    where
+        T: Clone + DeserializeOwned,
+    {
+        if let Some(slice) = self.db.get_pinned(&self.key)? {
+            let item: T = bincode::deserialize(&slice)?;
+            Ok(item)
+        } else {
+            Err(StoreError::KeyNotFound(DbKey::prefix_only(&self.key)))
+        }
+    }
+
     pub fn write(&mut self, mut writer: impl DbWriter, item: &T) -> Result<(), StoreError>
     where
         T: Clone + Serialize,

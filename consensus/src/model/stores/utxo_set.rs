@@ -114,7 +114,8 @@ impl DbUtxoSetStore {
             prefix: prefix.clone(),
             access: access.clone(),
             size_prefix: size_prefix.clone(),
-            // TODO: remove eventually, this is once-off init code, to establish the size item, simply use the if condition directly after next hf.
+            // TODO: remove eventually, this is once-off init code, to establish the size item, simply use a cached db item on next hf, 
+            // when we are guaranteed to have the db prefix key exstablished 
             size: if db.has_key(size_prefix.as_slice()).unwrap() || access.iterator().next().is_none() {
                 CachedDbItem::new_with_value(db.clone(), size_prefix.clone(), 0u64)
             } else {
@@ -144,27 +145,11 @@ impl DbUtxoSetStore {
     /// See comment at [`UtxoSetStore::write_diff`]
     pub fn write_diff_batch(&mut self, batch: &mut WriteBatch, utxo_diff: &impl ImmutableUtxoDiff) -> Result<(), StoreError> {
         let mut writer = BatchDbWriter::new(batch);
-        let mut dup_count = 0;
-
-        let mut to_delete = utxo_diff
-            .removed()
-            .keys()
-            .filter_map(|o| {
-                if utxo_diff.added().contains_key(o) {
-                    dup_count += 1;
-                    self.access.get((*o).into()).unwrap(); // TODO: remove sanity check after review
-                    None
-                } else {
-                    Some((*o).into())
-                }
-            })
-            .collect::<Vec<UtxoKey>>()
-            .into_iter();
-        self.access.delete_many(&mut writer, &mut to_delete)?;
+        self.access.delete_many(&mut writer, &mut utxo_diff.removed().iter().map(|(o, _)| ((*o).into())))?;
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
         self.size
-            .update(&mut writer, |count| (count + utxo_diff.added().len() as u64) - (utxo_diff.removed().len() - dup_count) as u64)?;
-        assert_eq!(self.access.iterator().count() as u64, self.size.read().unwrap()); //TODO: remove sanity check after review
+            .update(&mut writer, |count| (count + utxo_diff.added().len() as u64) - utxo_diff.removed().len() as u64)?;
+        assert_eq!(self.access.iterator().count() as u64, self.size.read_from_db().unwrap()); //TODO: remove sanity check after review
         Ok(())
     }
 
@@ -208,8 +193,8 @@ impl DbUtxoSetStore {
             }),
         )?;
         self.size.update(&mut writer, |c| c + count)?;
-        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after review
         self.db.write(batch)?;
+        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after review
         Ok(())
     }
 }
@@ -243,27 +228,10 @@ impl UtxoSetStore for DbUtxoSetStore {
     fn write_diff(&mut self, utxo_diff: &UtxoDiff) -> Result<(), StoreError> {
         let mut batch = WriteBatch::default(); //  batch internally to keep consistency
         let mut writer = BatchDbWriter::new(&mut batch);
-        let mut dup_count = 0;
-        // this is one pass of pre-processing to avoid deleting and re-adding the same entry
-        // it is also useful for the size calculation
-        let mut to_delete = utxo_diff
-            .removed()
-            .keys()
-            .filter_map(|o| {
-                if utxo_diff.added().contains_key(o) {
-                    dup_count += 1;
-                    self.access.get((*o).into()).unwrap(); // TODO: remove sanity check after review
-                    None
-                } else {
-                    Some((*o).into())
-                }
-            })
-            .collect::<Vec<UtxoKey>>()
-            .into_iter();
-        self.access.delete_many(&mut writer, &mut to_delete)?;
+        self.access.delete_many(&mut writer, &mut utxo_diff.removed().iter().map(|(o, _)| ((*o).into())))?;
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
-        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after review
         self.db.write(batch)?;
+        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after review
         Ok(())
     }
 
@@ -272,8 +240,8 @@ impl UtxoSetStore for DbUtxoSetStore {
         let mut writer = BatchDbWriter::new(&mut batch);
         self.size.update(&mut writer, |count| count + utxos.len() as u64)?;
         self.access.write_many(&mut writer, &mut utxos.iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
-        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after review
         self.db.write(batch)?;
+        assert!(self.access.iterator().count() as u64 == self.size.read().unwrap(), "size and iterator count mismatch"); //TODO: remove sanity check after review
         Ok(())
     }
 }
