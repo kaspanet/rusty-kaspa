@@ -14,6 +14,7 @@ use tokio::net::TcpListener;
 use axum::{error_handling::HandleErrorLayer, BoxError};
 use std::time::Duration;
 use tower::{buffer::BufferLayer, limit::RateLimitLayer, ServiceBuilder};
+use tower_http::cors::{Any, CorsLayer};
 
 pub async fn server(args: &Args) -> Result<(TcpListener, Router)> {
     // initialize tracing
@@ -43,6 +44,8 @@ pub async fn server(args: &Args) -> Result<(TcpListener, Router)> {
         log_warn!("Limits", "Rate limit is disabled");
         app
     };
+
+    let app = app.layer(CorsLayer::new().allow_origin(Any));
 
     log_success!("Server", "Listening on http://{}", args.listen.as_str());
     let listener = tokio::net::TcpListener::bind(args.listen.as_str()).await.unwrap();
