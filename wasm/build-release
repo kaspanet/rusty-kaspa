@@ -1,0 +1,39 @@
+#!/bin/bash
+# This script builds the Rusty Kaspa WASM32 SDK release.
+
+# make the script fail for any failed command
+set -e
+
+pushd .
+
+cd ../rpc/wrpc/wasm
+wasm-pack build --target web --out-dir web/kaspa-rpc --features wasm32-rpc $@
+
+popd
+
+wasm-pack build --target web --out-dir web/kaspa --features wasm32-sdk $@
+wasm-pack build --target web --dev --out-dir web/kaspa-dev --features wasm32-sdk $@
+wasm-pack build --target nodejs --out-dir nodejs/kaspa --features wasm32-sdk $@
+wasm-pack build --target nodejs --dev --out-dir nodejs/kaspa-dev --features wasm32-sdk $@
+
+wasm-pack build --target web --dev --out-dir docs/kaspa --features wasm32-sdk $@
+typedoc --name "Kaspa WASM32 SDK" --sourceLinkExternal --readme ./README.md --out docs/typedoc ./docs/index.ts
+
+rm -rf release
+mkdir -p release/kaspa-wasm32-sdk/web
+mkdir -p release/kaspa-wasm32-sdk/nodejs
+
+cp -r ../rpc/wrpc/wasm/web/kaspa-rpc release/kaspa-wasm32-sdk/web/kaspa-rpc
+cp -r web/kaspa release/kaspa-wasm32-sdk/web/kaspa
+cp -r nodejs/kaspa release/kaspa-wasm32-sdk/nodejs/kaspa
+cp -r docs/typedoc release/kaspa-wasm32-sdk/docs
+cp -r examples release/kaspa-wasm32-sdk/examples
+
+cp README.md release/kaspa-wasm32-sdk/README.md
+cp CHANGELOG.md release/kaspa-wasm32-sdk/CHANGELOG.md
+cp ../LICENSE release/kaspa-wasm32-sdk/LICENSE
+
+pushd .
+cd release
+zip -r kaspa-wasm32-sdk.zip kaspa-wasm32-sdk
+popd

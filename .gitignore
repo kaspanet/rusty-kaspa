@@ -12,3 +12,4 @@ analyzer-target
 /setup
 testing/integration/perflogs*
 Servers.toml
+release

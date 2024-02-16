@@ -24,7 +24,7 @@ declare! {
          * `resident` is a boolean indicating if the wallet should not be stored on the permanent medium.
          */
         resident?: boolean;
-        networkId: NetworkId | string;
+        networkId?: NetworkId | string;
         encoding?: Encoding | string;
         url?: string;
     }
