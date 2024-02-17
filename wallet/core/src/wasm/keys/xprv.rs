@@ -32,7 +32,7 @@ impl XPrv {
 
     /// Create {@link XPrv} from `xprvxxxx..` string
     #[wasm_bindgen(js_name=fromXPrv)]
-    pub fn from_str(xprv: String) -> Result<XPrv> {
+    pub fn from_xprv_str(xprv: String) -> Result<XPrv> {
         Ok(Self { inner: ExtendedPrivateKey::<SecretKey>::from_str(&xprv)? })
     }
 
