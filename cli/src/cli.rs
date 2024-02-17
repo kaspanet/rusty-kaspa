@@ -717,31 +717,31 @@ impl KaspaCli {
                         .join(" "),
                     )
                 }
-                SyncState::UtxoSync { processed, total } => {
-                    let progress = processed * 100 / total;
+                SyncState::PruningPointUTXOs { processed, total } => {
+                    let progress = (*processed as f64 / *total as f64).round() as u64;
                     Some(
                         [
-                            style("SYNC UTXO 1 / 3").red().to_string(),
+                            style("SYNC IBD Pruning Point UTXOs ").red().to_string(),
                             style(format!("{} ({}%)", processed.separated_string(), progress)).dim().to_string(),
                         ]
                         .join(" "),
                     )
                 }
-                SyncState::UtxoTransfer { processed, total } => {
-                    let progress = processed * 100 / total;
+                SyncState::VirtualUTXOs { processed, total } => {
+                    let progress = (*processed as f64 / *total as f64).round() as u64;
                     Some(
                         [
-                            style("SYNC UTXO 2 / 3").red().to_string(),
+                            style("SYNC Virtual UTXOs").red().to_string(),
                             style(format!("{} ({}%)", processed.separated_string(), progress)).dim().to_string(),
                         ]
                         .join(" "),
                     )
                 }
-                SyncState::UtxoResync { processed, total } => {
-                    let progress = processed * 100 / total;
+                SyncState::UtxoIndexUTXOs { processed, total } => {
+                    let progress = (*processed as f64 / *total as f64).round() as u64;
                     Some(
                         [
-                            style("SYNC UTXO 3 / 3").red().to_string(),
+                            style("SYNC UTXO Index").red().to_string(),
                             style(format!("{} ({}%)", processed.separated_string(), progress)).dim().to_string(),
                         ]
                         .join(" "),

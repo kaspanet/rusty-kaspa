@@ -5,23 +5,21 @@ use kaspa_consensus_core::{
         utxo_view::UtxoView,
     },
 };
-use kaspa_core::info;
-use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess};
+use kaspa_database::prelude::DB;
+use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_database::prelude::{CachePolicy, StoreError};
 use kaspa_database::prelude::{CachedDbItem, StoreResultExtensions};
-use kaspa_database::{prelude::DB, registry::DatabaseStorePrefixes};
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
-use core::time;
-use std::{error::Error, fmt::Display, sync::{atomic::AtomicU64, Arc}, time::Instant};
+
+use std::{error::Error, fmt::Display, sync::Arc};
 
 type UtxoCollectionIterator<'a> = Box<dyn Iterator<Item = Result<(TransactionOutpoint, UtxoEntry), Box<dyn Error>>> + 'a>;
 
 pub trait UtxoSetStoreReader {
     fn get(&self, outpoint: &TransactionOutpoint) -> Result<Arc<UtxoEntry>, StoreError>;
     fn seek_iterator(&self, from_outpoint: Option<TransactionOutpoint>, limit: usize, skip_first: bool) -> UtxoCollectionIterator;
-    fn size(&self) -> Result<u64, StoreError>;
-    fn is_count_synced(&self) -> Result<bool, StoreError>;
+    fn num_of_entries(&self) -> Result<u64, StoreError>;
 }
 
 pub trait UtxoSetStore: UtxoSetStoreReader {
@@ -97,51 +95,42 @@ pub struct DbUtxoSetStore {
     db: Arc<DB>,
     // Prefixes
     prefix: Vec<u8>,
-    size_prefix: Vec<u8>,
+    num_of_entries_prefix: Vec<u8>,
     // Accesses
     access: CachedDbAccess<UtxoKey, Arc<UtxoEntry>>,
     // TODO: implement CachedAtomicDbItem store for such primitives.
     // Should be no need to use a RwLock implicitly here.
-    size: CachedDbItem<u64>,
+    num_of_entries: CachedDbItem<u64>,
+}
+
+// TODO: this should be removable after the next HF.
+pub fn init(store: &mut DbUtxoSetStore) -> Result<bool, StoreError> {
+    // bool indicates if the store was initialized
+    match store.num_of_entries.read() {
+        Ok(_) => Ok(false),
+        Err(StoreError::KeyNotFound(_)) => {
+            store.num_of_entries.write(DirectDbWriter::new(&store.db), &(store.access.iterator().count() as u64))?;
+            Ok(true)
+        }
+        Err(e) => Err(e),
+    }
 }
 
 impl DbUtxoSetStore {
-    const IDENT: &'static str = "DbUtxoSetStore";
-
-    pub fn new(db: Arc<DB>, cache_policy: CachePolicy, prefix: Vec<u8>, size_prefix: Vec<u8>) -> Self {
+    pub fn new(db: Arc<DB>, cache_policy: CachePolicy, prefix: Vec<u8>, num_of_entries_prefix: Vec<u8>) -> Self {
         let access = CachedDbAccess::new(db.clone(), cache_policy, prefix.clone());
 
         Self {
             db: db.clone(),
             prefix: prefix.clone(),
             access: access.clone(),
-            size_prefix: size_prefix.clone(),
-            // TODO: remove eventually, this is once-off init code, to establish the size item, simply use a cached db item on next hf, 
-            // when we are guaranteed to have the db prefix key exstablished 
-            size: if db.has_key(size_prefix.as_slice()).unwrap() || access.iterator().next().is_none() {
-                CachedDbItem::new_with_value(db.clone(), size_prefix.clone(), 0u64)
-            } else {
-                info!(
-                    "[{0}] Intializing new store: `{1:?}` for `{2:?}`...",
-                    Self::IDENT,
-                    DatabaseStorePrefixes::try_from(size_prefix.as_slice()[0]).unwrap(),
-                    DatabaseStorePrefixes::try_from(prefix.as_slice()[0]).unwrap()
-                );
-                let size_item = CachedDbItem::new_with_value(db.clone(), size_prefix.clone(), access.iterator().count() as u64);
-                info!(
-                    "[{0}] Finished initializing new store: {1:?} for {2:?} with {3} entries",
-                    Self::IDENT,
-                    DatabaseStorePrefixes::try_from(size_prefix.as_slice()[0]).unwrap(),
-                    DatabaseStorePrefixes::try_from(prefix.as_slice()[0]).unwrap(),
-                    size_item.read().unwrap()
-                );
-                size_item
-            },
+            num_of_entries_prefix: num_of_entries_prefix.clone(),
+            num_of_entries: CachedDbItem::new(db.clone(), num_of_entries_prefix.clone()),
         }
     }
 
     pub fn clone_with_new_cache(&self, cache_policy: CachePolicy) -> Self {
-        Self::new(Arc::clone(&self.db), cache_policy, self.prefix.clone(), self.size_prefix.clone())
+        Self::new(Arc::clone(&self.db), cache_policy, self.prefix.clone(), self.num_of_entries_prefix.clone())
     }
 
     /// See comment at [`UtxoSetStore::write_diff`]
@@ -149,8 +138,9 @@ impl DbUtxoSetStore {
         let mut writer = BatchDbWriter::new(batch);
         self.access.delete_many(&mut writer, &mut utxo_diff.removed().iter().map(|(o, _)| ((*o).into())))?;
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
-        self.size
-            .update(&mut writer, |count| (count + utxo_diff.added().len() as u64) - utxo_diff.removed().len() as u64)?;
+        self.num_of_entries.update(&mut writer, |num_of_entries| {
+            (num_of_entries + utxo_diff.added().len() as u64) - utxo_diff.removed().len() as u64
+        })?;
         Ok(())
     }
 
@@ -173,7 +163,8 @@ impl DbUtxoSetStore {
         let mut batch = WriteBatch::default(); //  batch internally to keep consistency
         let mut writer = BatchDbWriter::new(&mut batch);
         self.access.delete_all(&mut writer)?;
-        self.size.write(&mut writer, &0u64)?;
+        self.num_of_entries.write(&mut writer, &0u64)?;
+        self.db.write(batch)?;
         Ok(())
     }
 
@@ -192,7 +183,7 @@ impl DbUtxoSetStore {
                 (o.into(), e)
             }),
         )?;
-        self.size.update(&mut writer, |c| c + count)?;
+        self.num_of_entries.update(&mut writer, |c| c + count)?;
         self.db.write(batch)?;
         Ok(())
     }
@@ -218,12 +209,8 @@ impl UtxoSetStoreReader for DbUtxoSetStore {
         }))
     }
 
-    fn size(&self) -> Result<u64, StoreError> {
-        self.size.read()
-    }
-
-    fn is_count_synced(&self) -> Result<bool, StoreError> {
-        Ok(self.size.read_from_db()? == self.access.iterator().count() as u64)
+    fn num_of_entries(&self) -> Result<u64, StoreError> {
+        self.num_of_entries.read()
     }
 }
 
@@ -233,6 +220,9 @@ impl UtxoSetStore for DbUtxoSetStore {
         let mut writer = BatchDbWriter::new(&mut batch);
         self.access.delete_many(&mut writer, &mut utxo_diff.removed().iter().map(|(o, _)| ((*o).into())))?;
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
+        self.num_of_entries.update(&mut writer, |num_of_entries| {
+            (num_of_entries + utxo_diff.added().len() as u64) - utxo_diff.removed().len() as u64
+        })?;
         self.db.write(batch)?;
         Ok(())
     }
@@ -240,8 +230,8 @@ impl UtxoSetStore for DbUtxoSetStore {
     fn write_many(&mut self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError> {
         let mut batch = WriteBatch::default(); //  batch internally to keep consistency
         let mut writer = BatchDbWriter::new(&mut batch);
-        self.size.update(&mut writer, |count| count + utxos.len() as u64)?;
         self.access.write_many(&mut writer, &mut utxos.iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
+        self.num_of_entries.update(&mut writer, |num_of_entries| num_of_entries + utxos.len() as u64)?;
         self.db.write(batch)?;
         Ok(())
     }
@@ -272,7 +262,7 @@ mod tests {
     }
 
     #[test]
-    fn test_size() {
+    fn test_num_of_entries() {
         let (_db_lt, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let mut store = DbUtxoSetStore::new(
             db.clone(),
@@ -280,7 +270,8 @@ mod tests {
             DatabaseStorePrefixes::VirtualUtxoset.into(),
             DatabaseStorePrefixes::VirtualUtxosetCount.into(),
         );
-        assert_eq!(store.size().unwrap(), 0);
+        init(&mut store).unwrap();
+        assert_eq!(store.num_of_entries().unwrap(), 0);
 
         let mut rng: SmallRng = SmallRng::seed_from_u64(42u64);
         // test added only
@@ -292,8 +283,8 @@ mod tests {
         let mut batch = WriteBatch::default();
         store.write_diff_batch(&mut batch, &utxo_diff).unwrap();
         db.write(batch).unwrap();
-        assert_eq!(store.size().unwrap(), store.iterator().count() as u64);
-        assert_eq!(store.size().unwrap(), 2);
+        assert_eq!(store.num_of_entries().unwrap(), store.iterator().count() as u64);
+        assert_eq!(store.num_of_entries().unwrap(), 2);
 
         // Write 2 & Remove 2
         utxo_diff.add.iter().take(2).for_each(|(o, v)| {
@@ -305,8 +296,8 @@ mod tests {
         let mut batch = WriteBatch::default();
         store.write_diff_batch(&mut batch, &utxo_diff).unwrap();
         db.write(batch).unwrap();
-        assert_eq!(store.size().unwrap(), store.iterator().count() as u64);
-        assert_eq!(store.size().unwrap(), 2);
+        assert_eq!(store.num_of_entries().unwrap(), store.iterator().count() as u64);
+        assert_eq!(store.num_of_entries().unwrap(), 2);
         utxo_diff.remove.clear();
         // Remove 2
 
@@ -317,16 +308,16 @@ mod tests {
         utxo_diff.add.clear();
         store.write_diff_batch(&mut batch, &utxo_diff).unwrap();
         db.write(batch).unwrap();
-        assert_eq!(store.size().unwrap(), store.iterator().count() as u64);
-        assert_eq!(store.size().unwrap(), 0);
+        assert_eq!(store.num_of_entries().unwrap(), store.iterator().count() as u64);
+        assert_eq!(store.num_of_entries().unwrap(), 0);
         utxo_diff.remove.clear();
 
         // Test write_many
         // Write 2
         utxo_diff.add = (0..2).map(|_| (generate_random_outpoint(&mut rng), generate_random_utxo(&mut rng))).collect();
         store.write_many(&utxo_diff.add.iter().map(|(o, v)| (*o, v.clone())).collect_vec()).unwrap();
-        assert_eq!(store.size().unwrap(), store.iterator().count() as u64);
-        assert_eq!(store.size().unwrap(), 2);
+        assert_eq!(store.num_of_entries().unwrap(), store.iterator().count() as u64);
+        assert_eq!(store.num_of_entries().unwrap(), 2);
         utxo_diff.add.clear();
 
         // Test Iterator
@@ -336,12 +327,12 @@ mod tests {
                 (0..2).map(|_| (generate_random_outpoint(&mut rng), Arc::new(generate_random_utxo(&mut rng)))),
             )
             .unwrap();
-        assert_eq!(store.size().unwrap(), store.iterator().count() as u64);
-        assert_eq!(store.size().unwrap(), 4);
+        assert_eq!(store.num_of_entries().unwrap(), store.iterator().count() as u64);
+        assert_eq!(store.num_of_entries().unwrap(), 4);
 
         // Test clear
         store.clear().unwrap();
-        assert_eq!(store.size().unwrap(), store.iterator().count() as u64);
-        assert_eq!(store.size().unwrap(), 0);
+        assert_eq!(store.num_of_entries().unwrap(), store.iterator().count() as u64);
+        assert_eq!(store.num_of_entries().unwrap(), 0);
     }
 }

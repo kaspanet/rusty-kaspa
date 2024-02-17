@@ -24,7 +24,8 @@ pub enum SyncState {
         blocks: u64,
         progress: u64,
     },
-    UtxoSync {
+    PruningPointUTXOs {
+        // This refers to the initial download of the PruningPoint UTXO set.
         processed: u64,
         total: u64,
     },
@@ -32,11 +33,13 @@ pub enum SyncState {
         processed: u64,
         total: u64,
     },
-    UtxoResync {
+    UtxoIndexUTXOs {
+        // This refers to the UTXO index sync with the virtual UTXO set.
         processed: u64,
         total: u64,
     },
-    UtxoTransfer {
+    VirtualUTXOs {
+        // This refers to the virtual UTXO store sync with the Initial PruningPoint UTXO set Download.
         processed: u64,
         total: u64,
     },

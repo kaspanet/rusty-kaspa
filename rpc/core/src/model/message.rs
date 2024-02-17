@@ -402,6 +402,8 @@ pub struct GetBlockDagInfoResponse {
     pub pruning_point_hash: RpcHash,
     pub virtual_daa_score: u64,
     pub sink: RpcHash,
+    pub virtual_utxo_set_size: u64,
+    pub pruning_point_utxo_set_size: u64,
 }
 
 impl GetBlockDagInfoResponse {
@@ -416,6 +418,8 @@ impl GetBlockDagInfoResponse {
         pruning_point_hash: RpcHash,
         virtual_daa_score: u64,
         sink: RpcHash,
+        virtual_utxo_set_size: u64,
+        pruning_point_utxo_set_size: u64,
     ) -> Self {
         Self {
             network,
@@ -428,6 +432,8 @@ impl GetBlockDagInfoResponse {
             pruning_point_hash,
             virtual_daa_score,
             sink,
+            virtual_utxo_set_size,
+            pruning_point_utxo_set_size,
         }
     }
 }

@@ -427,6 +427,8 @@ message GetBlockDagInfoResponseMessage{
   string pruningPointHash = 8;
   uint64 virtualDaaScore = 9;
   string sink = 10;
+  uint64 virtualUtxoSetSize = 11;
+  uint64 pruningPointUtxoSetSize = 12;
   RPCError error = 1000;
 }
 

@@ -88,7 +88,11 @@ use rayon::{
 };
 use rocksdb::WriteBatch;
 use std::{
-    cmp::min, collections::{BinaryHeap, HashMap, VecDeque}, ops::Deref, sync::{atomic::{AtomicU64, Ordering}, Arc}, thread, time::Instant
+    cmp::min,
+    collections::{BinaryHeap, HashMap, VecDeque},
+    ops::Deref,
+    sync::{atomic::Ordering, Arc},
+    time::Instant,
 };
 
 use super::errors::{PruningImportError, PruningImportResult};
@@ -224,7 +228,6 @@ impl VirtualStateProcessor {
     }
 
     pub fn worker(self: &Arc<Self>) {
-        let num_of_processed_virtuals = AtomicU64::new(0);
         'outer: while let Ok(msg) = self.receiver.recv() {
             if msg.is_exit_message() {
                 break;
@@ -238,16 +241,6 @@ impl VirtualStateProcessor {
             trace!("virtual processor received {} tasks", messages.len());
 
             self.resolve_virtual();
-
-            if num_of_processed_virtuals.load(Ordering::SeqCst) % 10_000 == 0 {
-                info!("Processed {0} virtuals", num_of_processed_virtuals.load(Ordering::SeqCst));
-                let instant = Instant::now();
-                let virtual_stores = self.virtual_stores.clone();
-                let synced = thread::spawn(move || virtual_stores.upgradable_read().utxo_set.is_count_synced().unwrap()).join().unwrap();
-                info!("utxo size synced: {0}, checking took: {1} secs", synced, instant.elapsed().as_secs());
-            }
-
-            num_of_processed_virtuals.fetch_add(1, Ordering::SeqCst);
 
             let statuses_read = self.statuses_store.read();
             for msg in messages {
@@ -1069,7 +1062,7 @@ impl VirtualStateProcessor {
             let mut virtual_write = self.virtual_stores.write();
 
             virtual_write.utxo_set.clear().unwrap();
-            let to_process = pruning_utxoset_read.utxo_set.size().unwrap();
+            let to_process = pruning_utxoset_read.utxo_set.num_of_entries().unwrap();
             let mut processed = 0;
             let chunk_size = 1000;
             let mut instant = Instant::now();
