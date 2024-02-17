@@ -153,6 +153,14 @@ jobs:
       - name: Add wasm32 target
         run: rustup target add wasm32-unknown-unknown
 
+      - name: Install NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install NodeJS dependencies
+        run: npm install --global typedoc typescript
+
       - name: Cache
         uses: actions/cache@v3
         with:
@@ -167,36 +175,20 @@ jobs:
       - name: Build WASM32 SDK
         run: |
           cd wasm
-          wasm-pack build --target nodejs --out-dir kaspa-wasm32-sdk-nodejs/kaspa --features wasm32-sdk
-          wasm-pack build --target web --out-dir kaspa-wasm32-sdk-web/kaspa --features wasm32-sdk
-          archive_nodejs="wasm/rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-nodejs.zip"
-          archive_web="wasm/rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-web.zip"
-          asset_name_nodejs="rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-nodejs.zip"
-          asset_name_web="rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-web.zip"
-          zip -r "rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-nodejs.zip" ./kaspa-wasm32-sdk-nodejs
-          zip -r "rusty-kaspa-wasm32-sdk-${{ github.event.release.tag_name }}-web.zip" ./kaspa-wasm32-sdk-web
-          cd ..
-          echo "archive_nodejs=${archive_nodejs}" >> $GITHUB_ENV
-          echo "archive_web=${archive_web}" >> $GITHUB_ENV
-          echo "asset_name_nodejs=${asset_name_nodejs}" >> $GITHUB_ENV
-          echo "asset_name_web=${asset_name_web}" >> $GITHUB_ENV
+          bash build-release
+          mv release/kaspa-wasm32-sdk.zip ../kaspa-wasm32-sdk-${{ github.event.release.tag_name }}.zip
 
-      - name: Upload WASM32 NODEJS SDK
+          archive="kaspa-wasm32-sdk-${{ github.event.release.tag_name }}.zip"
+          asset_name="kaspa-wasm32-sdk-${{ github.event.release.tag_name }}.zip"
+          echo "archive=${archive}" >> $GITHUB_ENV
+          echo "asset_name=${asset_name}" >> $GITHUB_ENV
+
+      - name: Upload WASM32 SDK
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: "./${{ env.archive_nodejs }}"
-          asset_name: "${{ env.asset_name_nodejs }}"
-          asset_content_type: application/zip
-
-      - name: Upload WASM WEB SDK
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ github.event.release.upload_url }}
-          asset_path: "./${{ env.archive_web }}"
-          asset_name: "${{ env.asset_name_web }}"
+          asset_path: "./${{ env.archive }}"
+          asset_name: "${{ env.asset_name }}"
           asset_content_type: application/zip

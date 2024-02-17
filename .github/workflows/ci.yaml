@@ -317,6 +317,14 @@ jobs:
       - name: Add wasm32 target
         run: rustup target add wasm32-unknown-unknown
 
+      - name: Install NodeJS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install NodeJS dependencies
+        run: npm install --global typedoc typescript
+
       - name: Cache
         uses: actions/cache@v3
         with:
@@ -328,8 +336,8 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build wasm pack for nodejs
-        run: cd wasm && wasm-pack build --target nodejs --out-dir nodejs/kaspa --features full
+      - name: Build wasm release
+        run: cd wasm && build-release
 
   build-release:
     name: Build Ubuntu Release
