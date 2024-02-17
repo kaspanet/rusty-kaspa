@@ -26,14 +26,6 @@ impl<T> CachedDbItem<T> {
         Self { db, key, cached_item: Arc::new(RwLock::new(None)) }
     }
 
-    pub fn new_with_value(db: Arc<DB>, key: Vec<u8>, item: T) -> Self
-    where
-        T: Clone + Serialize,
-    {
-        db.put(key.clone(), bincode::serialize(&item.clone()).unwrap()).unwrap();
-        Self { db, key, cached_item: Arc::new(RwLock::new(Some(item))) }
-    }
-
     pub fn read(&self) -> Result<T, StoreError>
     where
         T: Clone + DeserializeOwned,
@@ -44,18 +36,6 @@ impl<T> CachedDbItem<T> {
         if let Some(slice) = self.db.get_pinned(&self.key)? {
             let item: T = bincode::deserialize(&slice)?;
             *self.cached_item.write() = Some(item.clone());
-            Ok(item)
-        } else {
-            Err(StoreError::KeyNotFound(DbKey::prefix_only(&self.key)))
-        }
-    }
-
-    pub fn read_from_db(&self) -> Result<T, StoreError>
-    where
-        T: Clone + DeserializeOwned,
-    {
-        if let Some(slice) = self.db.get_pinned(&self.key)? {
-            let item: T = bincode::deserialize(&slice)?;
             Ok(item)
         } else {
             Err(StoreError::KeyNotFound(DbKey::prefix_only(&self.key)))

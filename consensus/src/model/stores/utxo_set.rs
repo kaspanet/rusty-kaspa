@@ -136,7 +136,7 @@ impl DbUtxoSetStore {
     /// See comment at [`UtxoSetStore::write_diff`]
     pub fn write_diff_batch(&mut self, batch: &mut WriteBatch, utxo_diff: &impl ImmutableUtxoDiff) -> Result<(), StoreError> {
         let mut writer = BatchDbWriter::new(batch);
-        self.access.delete_many(&mut writer, &mut utxo_diff.removed().iter().map(|(o, _)| ((*o).into())))?;
+        self.access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
         self.num_of_entries.update(&mut writer, |num_of_entries| {
             (num_of_entries + utxo_diff.added().len() as u64) - utxo_diff.removed().len() as u64
@@ -218,7 +218,7 @@ impl UtxoSetStore for DbUtxoSetStore {
     fn write_diff(&mut self, utxo_diff: &UtxoDiff) -> Result<(), StoreError> {
         let mut batch = WriteBatch::default(); //  batch internally to keep consistency
         let mut writer = BatchDbWriter::new(&mut batch);
-        self.access.delete_many(&mut writer, &mut utxo_diff.removed().iter().map(|(o, _)| ((*o).into())))?;
+        self.access.delete_many(&mut writer, &mut utxo_diff.removed().keys().map(|o| (*o).into()))?;
         self.access.write_many(&mut writer, &mut utxo_diff.added().iter().map(|(o, e)| ((*o).into(), Arc::new(e.clone()))))?;
         self.num_of_entries.update(&mut writer, |num_of_entries| {
             (num_of_entries + utxo_diff.added().len() as u64) - utxo_diff.removed().len() as u64
