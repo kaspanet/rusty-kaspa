@@ -629,7 +629,7 @@ impl ConsensusApi for Consensus {
         iter.map(|item| item.unwrap()).collect()
     }
 
-    fn get_virtual_utxoset_size(&self) -> u64 {
+    fn get_virtual_utxoset_count(&self) -> u64 {
         self.virtual_stores.read().utxo_set.num_of_entries().unwrap()
     }
 
@@ -665,7 +665,7 @@ impl ConsensusApi for Consensus {
         Ok(utxos)
     }
 
-    fn get_pruning_point_utxoset_size(&self) -> u64 {
+    fn get_pruning_point_utxoset_count(&self) -> u64 {
         self.pruning_utxoset_stores.read().utxo_set.num_of_entries().unwrap()
     }
 

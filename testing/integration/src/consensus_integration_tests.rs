@@ -1076,9 +1076,9 @@ async fn json_test(file_path: &str, concurrency: bool) {
     assert!(utxoindex_utxos.is_subset(&virtual_utxos));
 
     // check that [`DbUtxoSet::number_of_entries`] cache is correct:
-    assert_eq!(virtual_utxos.len() as u64, tc.get_virtual_utxoset_size());
+    assert_eq!(virtual_utxos.len() as u64, tc.get_virtual_utxoset_count());
     let pruning_point_utxoset_counted_size = tc.pruning_utxoset_stores.write().utxo_set.iterator().count() as u64;
-    assert_eq!(pruning_point_utxoset_counted_size, tc.get_pruning_point_utxoset_size());
+    assert_eq!(pruning_point_utxoset_counted_size, tc.get_pruning_point_utxoset_count());
 }
 
 fn submit_header_chunk(

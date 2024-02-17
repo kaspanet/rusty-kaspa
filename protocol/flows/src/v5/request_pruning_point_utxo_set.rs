@@ -50,7 +50,7 @@ impl RequestPruningPointUtxoSetFlow {
         let consensus = self.ctx.consensus();
         let mut session = consensus.session().await;
         let mut is_start = true;
-        let to_process = session.async_get_pruning_point_utxoset_size().await;
+        let to_process = session.async_get_pruning_point_utxoset_count().await;
         let mut processed = 0;
         loop {
             // We avoid keeping the consensus session across the limitless dequeue call below

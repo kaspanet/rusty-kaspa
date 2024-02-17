@@ -145,7 +145,7 @@ impl UtxoIndexApi for UtxoIndex {
         let mut circulating_supply: CirculatingSupply = 0;
         let mut from_outpoint = None;
 
-        let to_process = session.get_virtual_utxoset_size();
+        let to_process = session.get_virtual_utxoset_count();
         info!("[{0}] Resyncing {1} Utxos", IDENT, to_process);
 
         if to_process == 0 {
@@ -308,7 +308,7 @@ mod tests {
         let consensus_utxos = tc.get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
         let mut i = 0;
         let mut consensus_supply: CirculatingSupply = 0;
-        let consensus_utxo_set_size = consensus_utxos.len();
+        let consensus_utxoset_count = consensus_utxos.len();
         for (tx_outpoint, utxo_entry) in consensus_utxos.into_iter() {
             consensus_supply += utxo_entry.amount;
             let indexed_utxos = utxoindex
@@ -325,7 +325,7 @@ mod tests {
             }
         }
 
-        assert_eq!(i, consensus_utxo_set_size);
+        assert_eq!(i, consensus_utxoset_count);
         assert_eq!(utxoindex.read().get_circulating_supply().expect("expected circulating supply"), consensus_supply);
         assert_eq!(*utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"), tc.get_virtual_parents());
 
@@ -388,7 +388,7 @@ mod tests {
         // these utxos correspond the the initial sync test.
         let consensus_utxos = tc.get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
         let mut i = 0;
-        let consensus_utxo_set_size = consensus_utxos.len();
+        let consensus_utxoset_count = consensus_utxos.len();
         for (tx_outpoint, utxo_entry) in consensus_utxos.into_iter() {
             let indexed_utxos = utxoindex
                 .read()
@@ -403,7 +403,7 @@ mod tests {
                 i += 1;
             }
         }
-        assert_eq!(i, consensus_utxo_set_size);
+        assert_eq!(i, consensus_utxoset_count);
         assert_eq!(*utxoindex.read().get_utxo_index_tips().expect("expected circulating supply"), tc.get_virtual_parents());
 
         // Deconstruct

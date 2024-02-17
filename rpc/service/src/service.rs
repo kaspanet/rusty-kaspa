@@ -630,13 +630,13 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
     async fn get_block_dag_info_call(&self, _: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
-        let (consensus_stats, tips, pruning_point, sink, virtual_utxo_set_size, pruning_point_utxo_set_size) = join!(
+        let (consensus_stats, tips, pruning_point, sink, virtual_utxo_count, pruning_point_utxo_count) = join!(
             session.async_get_stats(),
             session.async_get_tips(),
             session.async_pruning_point(),
             session.async_get_sink(),
-            session.async_get_virtual_utxoset_size(),
-            session.async_get_pruning_point_utxoset_size()
+            session.async_get_virtual_utxoset_count(),
+            session.async_get_pruning_point_utxoset_count()
         );
         Ok(GetBlockDagInfoResponse::new(
             self.config.net,
@@ -649,8 +649,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             pruning_point,
             consensus_stats.virtual_stats.daa_score,
             sink,
-            virtual_utxo_set_size,
-            pruning_point_utxo_set_size,
+            virtual_utxo_count,
+            pruning_point_utxo_count,
         ))
     }
 

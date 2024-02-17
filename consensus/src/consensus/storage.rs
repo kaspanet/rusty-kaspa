@@ -258,13 +258,14 @@ impl ConsensusStorage {
         }
 
         // Sanity checks:
-        // TODO: remove eventually
-        assert_eq!(
-            pruning_utxoset_stores.read().utxo_set.num_of_entries().unwrap(),
-            pruning_utxoset_stores.read().utxo_set.iterator().count() as u64
-        );
-        assert_eq!(virtual_stores.read().utxo_set.num_of_entries().unwrap(), virtual_stores.read().utxo_set.iterator().count() as u64);
-
+        if config.enable_sanity_checks {
+            info!("Running sanity checks on the consensus storage, this may take a while...");
+            assert_eq!(
+                pruning_utxoset_stores.read().utxo_set.num_of_entries().unwrap(),
+                pruning_utxoset_stores.read().utxo_set.iterator().count() as u64
+            );
+            assert_eq!(virtual_stores.read().utxo_set.num_of_entries().unwrap(), virtual_stores.read().utxo_set.iterator().count() as u64);
+        }
         Arc::new(Self {
             db,
             statuses_store,

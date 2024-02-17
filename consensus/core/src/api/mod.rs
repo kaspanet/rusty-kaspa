@@ -172,7 +172,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_virtual_utxoset_size(&self) -> u64 {
+    fn get_virtual_utxoset_count(&self) -> u64 {
         unimplemented!()
     }
 
@@ -305,7 +305,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_pruning_point_utxoset_size(&self) -> u64 {
+    fn get_pruning_point_utxoset_count(&self) -> u64 {
         unimplemented!()
     }
 
