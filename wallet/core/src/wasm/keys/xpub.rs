@@ -1,5 +1,5 @@
-use crate::{wasm::DerivationPath, ChildNumber, ExtendedPublicKey, Result};
-use secp256k1::PublicKey;
+use crate::wasm::{DerivationPath, PublicKey};
+use kaspa_bip32::{ChildNumber, ExtendedPublicKey, Result};
 use std::str::FromStr;
 use wasm_bindgen::prelude::*;
 
@@ -16,14 +16,14 @@ use wasm_bindgen::prelude::*;
 ///
 #[wasm_bindgen]
 pub struct XPub {
-    inner: ExtendedPublicKey<PublicKey>,
+    inner: ExtendedPublicKey<secp256k1::PublicKey>,
 }
 
 #[wasm_bindgen]
 impl XPub {
     #[wasm_bindgen(constructor)]
     pub fn new(xpub: &str) -> Result<XPub> {
-        let inner = ExtendedPublicKey::<PublicKey>::from_str(xpub)?;
+        let inner = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(xpub)?;
         Ok(Self { inner })
     }
 
@@ -47,15 +47,14 @@ impl XPub {
         Ok(self.inner.to_string(Some(prefix.try_into()?)))
     }
 
-    // #[wasm_bindgen(js_name = toBytes)]
-    // pub fn to_bytes(&self)->Array{
-    //     let array = js_sys::Uint8Array::from(&self.inner.to_bytes());
-    //     Array::from_iter(self.inner.to_bytes().iter().map(JsValue::from))
-    // }
+    #[wasm_bindgen(js_name = publicKey)]
+    pub fn public_key(&self) -> PublicKey {
+        self.inner.public_key().into()
+    }
 }
 
-impl From<ExtendedPublicKey<PublicKey>> for XPub {
-    fn from(inner: ExtendedPublicKey<PublicKey>) -> Self {
+impl From<ExtendedPublicKey<secp256k1::PublicKey>> for XPub {
+    fn from(inner: ExtendedPublicKey<secp256k1::PublicKey>) -> Self {
         Self { inner }
     }
 }

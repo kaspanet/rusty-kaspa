@@ -3,8 +3,8 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::secret::Secret;
 use crate::tx::PaymentOutputs;
+use crate::wasm::keys::Keypair;
 use crate::wasm::utxo::UtxoContext;
-use kaspa_consensus_wasm::Keypair;
 use workflow_core::abortable::Abortable;
 use workflow_wasm::abi::ref_from_abi;
 
