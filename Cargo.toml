@@ -174,7 +174,7 @@ futures-util = { version = "0.3.29", default-features = false, features = [
 getrandom = { version = "0.2.10", features = ["js"] }
 h2 = "0.3.21"
 heapless = "0.7.16"
-hex = "0.4.3"
+hex = { version = "0.4.3", features = ["serde"] }
 hex-literal = "0.4.1"
 hmac = { version = "0.12.1", default-features = false }
 home = "0.5.5"

@@ -26,13 +26,15 @@ kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 kaspa-rpc-macros.workspace = true
 
-cfg-if.workspace = true
 async-channel.workspace = true
 async-trait.workspace = true
 borsh.workspace = true
+cfg-if.workspace = true
 derive_more.workspace = true
 downcast.workspace = true
 faster-hex.workspace = true
+hex.workspace = true
+js-sys.workspace = true
 log.workspace = true
 paste.workspace = true
 serde-wasm-bindgen.workspace = true
@@ -41,7 +43,6 @@ smallvec.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 wasm-bindgen.workspace = true
-js-sys.workspace = true
 workflow-core.workspace = true
 workflow-wasm.workspace = true
 
