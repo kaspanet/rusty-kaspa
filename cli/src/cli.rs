@@ -741,7 +741,7 @@ impl KaspaCli {
                     let progress = (*processed as f64 / *total as f64).round() as u64;
                     Some(
                         [
-                            style("SYNC UTXO Index").red().to_string(),
+                            style("SYNC UtxoIndex UTXOs").red().to_string(),
                             style(format!("{} ({}%)", processed.separated_string(), progress)).dim().to_string(),
                         ]
                         .join(" "),
