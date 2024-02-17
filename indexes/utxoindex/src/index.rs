@@ -184,7 +184,7 @@ impl UtxoIndexApi for UtxoIndex {
                 let processed_diff = processed.1 - processed.0;
 
                 info!(
-                    "[{0}] Resyncing - Utxos: {1} + {2} / {3} ({4:.0}/s); Circulating Supply: {5}; {6:.0}%",
+                    "[{0}] Resyncing - Utxos: {1} + {2} / {3} ({4:.0}/s); Circulating Sompi Supply: {5}; {6:.0}%",
                     IDENT,
                     processed.1,
                     processed_diff,

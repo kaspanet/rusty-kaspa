@@ -213,7 +213,7 @@ impl Default for StateObserver {
             ibd_headers: Regex::new(r"IBD: Processed (\d+) block headers \((\d+)%\)").unwrap(),
             ibd_blocks: Regex::new(r"IBD: Processed (\d+) blocks \((\d+)%\)").unwrap(),
             utxoindex_utxos: Regex::new(
-                r"[UtxoIndex] Resyncing - Utxos: (\d+) + (\d+) / (\d+) \((\d+)/s\); Circulating Supply: (\d+); (\d+)%",
+                r"[UtxoIndex] Resyncing - Utxos: (\d+) + (\d+) / (\d+) \((\d+)/s\); Circulating Sompi Supply: (\d+); (\d+)%",
             )
             .unwrap(),
             // For Review - last two digits may be displayed as `NaN`, might this need an edit?
