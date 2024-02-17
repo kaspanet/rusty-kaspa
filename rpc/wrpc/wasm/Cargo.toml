@@ -9,8 +9,7 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-wasm32-sdk = ["kaspa-wrpc-client/wasm32-sdk","kaspa-rpc-core/wasm32-sdk"]
-wasm32-rpc = ["kaspa-wrpc-client/wasm32-rpc"]
+wasm32-sdk = ["kaspa-wrpc-client/wasm32-sdk"]
 default = []
 
 [lib]

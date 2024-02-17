@@ -10,7 +10,6 @@ repository.workspace = true
 
 [features]
 wasm32-sdk = ["kaspa-consensus-wasm/wasm32-sdk","kaspa-rpc-core/wasm32-sdk","workflow-rpc/wasm32-sdk"]
-wasm32-rpc = []
 default = []
 
 [lib]

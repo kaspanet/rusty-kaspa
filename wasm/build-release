@@ -4,28 +4,28 @@
 # make the script fail for any failed command
 set -e
 
-pushd .
-
-cd ../rpc/wrpc/wasm
-wasm-pack build --target web --out-dir web/kaspa-rpc --features wasm32-rpc $@
-
-popd
-
-wasm-pack build --target web --out-dir web/kaspa --features wasm32-sdk $@
-wasm-pack build --target web --dev --out-dir web/kaspa-dev --features wasm32-sdk $@
-wasm-pack build --target nodejs --out-dir nodejs/kaspa --features wasm32-sdk $@
-wasm-pack build --target nodejs --dev --out-dir nodejs/kaspa-dev --features wasm32-sdk $@
-
-wasm-pack build --target web --dev --out-dir docs/kaspa --features wasm32-sdk $@
-typedoc --name "Kaspa WASM32 SDK" --sourceLinkExternal --readme ./README.md --out docs/typedoc ./docs/index.ts
-
 rm -rf release
 mkdir -p release/kaspa-wasm32-sdk/web
 mkdir -p release/kaspa-wasm32-sdk/nodejs
 
+pushd .
+cd ../rpc/wrpc/wasm
+wasm-pack build --target web --out-name kaspa-rpc --out-dir web/kaspa-rpc --features wasm32-sdk $@
+popd
+
+wasm-pack build --target web --out-name kaspa --out-dir web/kaspa --features wasm32-sdk $@
+wasm-pack build --target web --dev --out-name kaspa --out-dir web/kaspa-dev --features wasm32-sdk $@
+wasm-pack build --target nodejs --out-name kaspa --out-dir nodejs/kaspa --features wasm32-sdk $@
+wasm-pack build --target nodejs --dev --out-name kaspa --out-dir nodejs/kaspa-dev --features wasm32-sdk $@
+
+wasm-pack build --target web --dev --out-name kaspa --out-dir build/docs/kaspa --features wasm32-sdk $@
+typedoc --name "Kaspa WASM32 SDK" --sourceLinkExternal --readme ./README.md --out docs/typedoc ./build/docs/index.ts
+
 cp -r ../rpc/wrpc/wasm/web/kaspa-rpc release/kaspa-wasm32-sdk/web/kaspa-rpc
 cp -r web/kaspa release/kaspa-wasm32-sdk/web/kaspa
+cp -r web/kaspa-dev release/kaspa-wasm32-sdk/web/kaspa-dev
 cp -r nodejs/kaspa release/kaspa-wasm32-sdk/nodejs/kaspa
+cp -r nodejs/kaspa-dev release/kaspa-wasm32-sdk/nodejs/kaspa-dev
 cp -r docs/typedoc release/kaspa-wasm32-sdk/docs
 cp -r examples release/kaspa-wasm32-sdk/examples
 
