@@ -76,6 +76,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Fu
         headers_store: Arc<V>,
         block_window_cache_for_difficulty: Arc<U>,
         block_window_cache_for_past_median_time: Arc<U>,
+        max_difficulty_target: Uint256,
         target_time_per_block: u64,
         difficulty_window_size: usize,
         min_difficulty_window_len: usize,
@@ -84,6 +85,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Fu
         let difficulty_manager = FullDifficultyManager::new(
             headers_store.clone(),
             genesis.bits,
+            max_difficulty_target,
             difficulty_window_size,
             min_difficulty_window_len,
             target_time_per_block,
@@ -554,6 +556,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             headers_store.clone(),
             block_window_cache_for_difficulty.clone(),
             block_window_cache_for_past_median_time.clone(),
+            max_difficulty_target,
             target_time_per_block,
             full_difficulty_window_size,
             min_difficulty_window_len.min(full_difficulty_window_size),

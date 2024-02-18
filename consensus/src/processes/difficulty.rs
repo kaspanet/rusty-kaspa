@@ -80,6 +80,7 @@ trait DifficultyManagerExtension {
 pub struct FullDifficultyManager<T: HeaderStoreReader> {
     headers_store: Arc<T>,
     genesis_bits: u32,
+    max_difficulty_target: Uint320,
     difficulty_window_size: usize,
     min_difficulty_window_len: usize,
     target_time_per_block: u64,
@@ -89,12 +90,20 @@ impl<T: HeaderStoreReader> FullDifficultyManager<T> {
     pub fn new(
         headers_store: Arc<T>,
         genesis_bits: u32,
+        max_difficulty_target: Uint256,
         difficulty_window_size: usize,
         min_difficulty_window_len: usize,
         target_time_per_block: u64,
     ) -> Self {
         Self::check_min_difficulty_window_len(difficulty_window_size, min_difficulty_window_len);
-        Self { headers_store, genesis_bits, difficulty_window_size, min_difficulty_window_len, target_time_per_block }
+        Self {
+            headers_store,
+            genesis_bits,
+            max_difficulty_target: max_difficulty_target.into(),
+            difficulty_window_size,
+            min_difficulty_window_len,
+            target_time_per_block,
+        }
     }
 
     pub fn calc_daa_score_and_mergeset_non_daa_blocks<'a>(
@@ -141,7 +150,7 @@ impl<T: HeaderStoreReader> FullDifficultyManager<T> {
             difficulty_blocks.into_iter().map(|diff_block| Uint320::from(Uint256::from_compact_target_bits(diff_block.bits))).sum();
         let average_target = targets_sum / (difficulty_blocks_len);
         let new_target = average_target * max(max_ts - min_ts, 1) / (self.target_time_per_block * difficulty_blocks_len);
-        Uint256::try_from(new_target).expect("Expected target should be less than 2^256").compact_target_bits()
+        Uint256::try_from(new_target.min(self.max_difficulty_target)).expect("max target < Uint256::MAX").compact_target_bits()
     }
 
     pub fn estimate_network_hashes_per_second(&self, window: &BlockWindowHeap) -> DifficultyResult<u64> {
@@ -247,7 +256,7 @@ impl<T: HeaderStoreReader> SampledDifficultyManager<T> {
         let measured_duration = max(max_ts - min_ts, 1);
         let expected_duration = self.target_time_per_block * self.difficulty_sample_rate * difficulty_blocks_len; // This does differ from FullDifficultyManager version
         let new_target = average_target * measured_duration / expected_duration;
-        Uint256::try_from(new_target.min(self.max_difficulty_target)).unwrap().compact_target_bits()
+        Uint256::try_from(new_target.min(self.max_difficulty_target)).expect("max target < Uint256::MAX").compact_target_bits()
     }
 
     pub fn estimate_network_hashes_per_second(&self, window: &BlockWindowHeap) -> DifficultyResult<u64> {
