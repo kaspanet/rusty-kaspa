@@ -11,6 +11,7 @@ declare! {
     r#"
     /**
      * Private key data information.
+     * @category Wallet API
      */
     export interface IPrvKeyDataInfo {
         /** Deterministic wallet id of the private key */

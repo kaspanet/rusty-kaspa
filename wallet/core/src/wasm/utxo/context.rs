@@ -6,8 +6,67 @@ use crate::wasm::utxo::UtxoProcessor;
 use crate::wasm::Balance;
 use kaspa_addresses::IAddressArray;
 use kaspa_hashes::Hash;
+use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 
+declare! {
+    IUtxoContextArgs,
+    r#"
+    /**
+     * UtxoContext constructor arguments.
+     * 
+     * @see {@link UtxoProcessor}, {@link UtxoContext}, {@link RpcClient}
+     * @category Wallet SDK
+     */
+    export interface IUtxoContextArgs {
+        processor: UtxoProcessor;
+        id?: HexString;
+    }
+    "#,
+}
+
+///
+/// UtxoContext is a class that provides a way to track addresses activity
+/// on the Kaspa network.  When an address is registered with UtxoContext
+/// it aggregates all UTXO entries for that address and emits events when
+/// any activity against these addresses occurs.
+///
+/// When created, UtxoContext accepts {@link IUtxoCreateArgs} interface that
+/// can contain an optional id parameter.  If supplied, this `id` parameter
+/// will be included in all notifications emitted by the UtxoContext as
+/// well as included as a part of {@link ITransactionRecord} emitted when
+/// transactions occur. If not provided, a random id will be generated. This id
+/// typically represents an account id in the context of a wallet application.
+///
+/// UtxoContext maintains a real-time cumulative balance of all addresses
+/// registered against it and provides balance update notification events
+/// when the balance changes.
+///
+/// The UtxoContext balance is comprised of 3 values:
+///     - `mature`: amount of funds available for spending.
+///     - `pending`: amount of funds that are being received.
+///     - `outgoing`: amount of funds that are being sent but are not yet accepted by the network.
+/// Please see {@link IBalance} for more details.
+///
+/// UtxoContext can be supplied as a UTXO source to the transaction {@link Generator}
+/// allowing the {@link Generator} to create transactions using the
+/// UTXO entries it manages.
+///
+/// @see {@link IUtxoContextArgs},
+/// {@link UtxoProcessor},
+/// {@link Generator},
+/// {@link createTransactions},
+/// {@link IBalance},
+/// {@link IBalanceEvent},
+/// {@link IPendingEvent},
+/// {@link IReorgEvent},
+/// {@link IStasisEvent},
+/// {@link IMaturityEvent},
+/// {@link IDiscoveryEvent},
+/// {@link IBalanceEvent},
+/// {@link ITransactionRecord}
+///
 /// @category Wallet SDK
+///
 #[derive(Clone)]
 #[wasm_bindgen(inspectable)]
 pub struct UtxoContext {
@@ -27,7 +86,7 @@ impl UtxoContext {
 #[wasm_bindgen]
 impl UtxoContext {
     #[wasm_bindgen(constructor)]
-    pub async fn ctor(js_value: JsValue) -> Result<UtxoContext> {
+    pub async fn ctor(js_value: IUtxoContextArgs) -> Result<UtxoContext> {
         let UtxoContextCreateArgs { processor, binding } = js_value.try_into()?;
         let inner = native::UtxoContext::new(processor.inner(), binding);
         Ok(UtxoContext { inner })
@@ -57,7 +116,7 @@ impl UtxoContext {
         self.inner().clear().await
     }
 
-    /// Returns the mature UTXO entries that are currently in the context.
+    /// Returns all mature UTXO entries that are currently managed by the UtxoContext and are available for spending.
     pub fn mature(&self) -> Result<Array> {
         let context = self.context();
         let array = Array::new();
@@ -67,7 +126,7 @@ impl UtxoContext {
         Ok(array)
     }
 
-    /// Returns the mature UTXO entries that are currently in the context.
+    /// Returns pending UTXO entries that are currently managed by the UtxoContext.
     pub fn pending(&self) -> Result<Array> {
         let context = self.context();
         let array = Array::new();
@@ -77,15 +136,18 @@ impl UtxoContext {
         Ok(array)
     }
 
+    /// Current {@link Balance} of the UtxoContext.
     #[wasm_bindgen(getter)]
-    pub fn balance(&self) -> JsValue {
-        self.inner().balance().map(Balance::from).map(JsValue::from).unwrap_or(JsValue::UNDEFINED)
+    pub fn balance(&self) -> Option<Balance> {
+        // self.inner().balance().map(Balance::from).map(JsValue::from).unwrap_or(JsValue::UNDEFINED)
+        self.inner().balance().map(Balance::from)
     }
 
-    #[wasm_bindgen(js_name=updateBalance)]
-    pub async fn calculate_balance(&self) -> crate::wasm::Balance {
-        self.inner.calculate_balance().await.into()
-    }
+    // / Re-calculate the balance of the UtxoContext.
+    // #[wasm_bindgen(js_name=updateBalance)]
+    // pub async fn calculate_balance(&self) -> crate::wasm::Balance {
+    //     self.inner.calculate_balance().await.into()
+    // }
 }
 
 impl From<native::UtxoContext> for UtxoContext {
@@ -112,9 +174,9 @@ pub struct UtxoContextCreateArgs {
     binding: UtxoContextBinding,
 }
 
-impl TryFrom<JsValue> for UtxoContextCreateArgs {
+impl TryFrom<IUtxoContextArgs> for UtxoContextCreateArgs {
     type Error = Error;
-    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: IUtxoContextArgs) -> std::result::Result<Self, Self::Error> {
         if let Some(object) = Object::try_from(&value) {
             let processor = object.get::<UtxoProcessor>("processor")?;
 
@@ -126,7 +188,7 @@ impl TryFrom<JsValue> for UtxoContextCreateArgs {
 
             Ok(UtxoContextCreateArgs { binding, processor })
         } else {
-            Err(Error::custom("UtxoProcessor: suppliedd value must be an object"))
+            Err(Error::custom("UtxoProcessor: supplied value must be an object"))
         }
     }
 }

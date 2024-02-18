@@ -1,7 +1,15 @@
 use crate::imports::*;
 use crate::tx::generator as core;
 
+///
+/// A class containing a summary produced by transaction {@link Generator}.
+/// This class contains the number of transactions, the aggregated fees,
+/// the aggregated UTXOs and the final transaction amount that includes
+/// both network and QoS (priority) fees.
+///
+/// @see {@link createTransactions}, {@link IGeneratorSettingsObject}, {@link Generator}
 /// @category Wallet SDK
+///
 #[wasm_bindgen(inspectable)]
 pub struct GeneratorSummary {
     inner: core::GeneratorSummary,

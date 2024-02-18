@@ -57,7 +57,7 @@
                 let el = document.createElement("div");
                 document.body.appendChild(el);
                 el.innerHTML = `
-                    <br/><input id="address" class="address" type="text" value="" placeholder="Enter ${network} address..." />
+                    <br/><input id="address" class="address" type="text" value="" placeholder=" Enter ${network} address..." />
                     <div id="submit" class="button">Click to monitor address</div>
                 `;
 
@@ -79,22 +79,6 @@
                     console.log("click done");
                 });
 
-                begin();
-                // input.addEventListener("change", async (e) => {
-                //     let address = e.target.value;
-                //     log("address changed:", address);
-                //     await context.trackAddresses([address]);
-                // });
-
-                // await context.trackAddresses([address]);
-
-
-                // log("GetBlockDagInfo request...");
-                // const info = await rpc.getBlockDagInfo();
-                // log("GetBlockDagInfo response:", info);
-
-                // log("Disconnected...");
-                // await rpc.disconnect();
             })();
 
         </script>

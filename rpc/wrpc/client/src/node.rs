@@ -1,11 +1,14 @@
 use crate::imports::*;
 
 /// Data structure representing a Node connection endpoint.
+/// @category Node RPC
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct Node {
+    /// The unique identifier of the node.
     #[wasm_bindgen(getter_with_clone)]
     pub id: String,
+    /// The URL of the node WebSocket (wRPC URL).
     #[wasm_bindgen(getter_with_clone)]
     pub url: String,
 }

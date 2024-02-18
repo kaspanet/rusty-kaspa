@@ -2,7 +2,10 @@ use crate::imports::*;
 use crate::tx::fees::Fees;
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 
+///
+/// @see {@link IFees}, {@link IGeneratorSettingsObject}, {@link Generator}, {@link estimateTransactions}, {@link createTransactions}
 /// @category Wallet SDK
+///
 #[wasm_bindgen]
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FeeSource {

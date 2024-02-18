@@ -10,11 +10,15 @@ use kaspa_txscript::pay_to_address_script;
 const TS_PAYMENT_OUTPUTS: &'static str = r#"
 /**
  * 
+ * Defines a single payment output.
+ * 
+ * @see {@link IGeneratorSettingsObject}, {@link Generator}
  * @category Wallet SDK
  */
 interface IPaymentOutputs {
     /**
-     * Destination address.
+     * Destination address. The address prefix must match the network
+     * you are transacting on (e.g. `kaspa:` for mainnet, `kaspatest:` for testnet, etc).
      */
     address: Address | string;
     /**

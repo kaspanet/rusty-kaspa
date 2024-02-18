@@ -21,6 +21,14 @@ const TS_GENERATOR_SETTINGS_OBJECT: &'static str = r#"
  * multiple chained transactions to the change address and then used these
  * transactions as a source for the "final" transaction.
  * 
+ * @see 
+ *      {@link kaspaToSompi},
+ *      {@link Generator}, 
+ *      {@link PendingTransaction}, 
+ *      {@link UtxoContext}, 
+ *      {@link UtxoEntry},
+ *      {@link createTransactions},
+ *      {@link estimateTransactions}
  * @category Wallet SDK
  */
 interface IGeneratorSettingsObject {
@@ -29,7 +37,7 @@ interface IGeneratorSettingsObject {
      * 
      * Typical usage: { address: "kaspa:...", amount: 1000n }
      */
-    outputs: PaymentOutputs | IPaymentOutputs[] | Array<number | string | Address>[];
+    outputs: PaymentOutputs | IPaymentOutputs[];
     /** 
      * Address to be used for change, if any. 
      */
@@ -62,21 +70,13 @@ interface IGeneratorSettingsObject {
 
 #[wasm_bindgen]
 extern "C" {
-    /// Supports the following properties (all values must be supplied in SOMPI):
-    /// - `outputs`: instance of [`PaymentOutputs`] or `[ [address, amount], [address, amount], ... ]`
-    /// - `changeAddress`: [`Address`] or String representation of an address
-    /// - `priorityFee`: BigInt
-    /// - `utxoEntries`: Array of [`UtxoEntryReference`]
-    /// - `sigOpCount`: `u8`
-    /// - `minimumSignatures`: `u16`
-    /// - `payload`: [`Uint8Array`] or hex String representation of a payload
     #[wasm_bindgen(extends = Object, typescript_type = "IGeneratorSettingsObject")]
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub type IGeneratorSettingsObject;
 }
 
-/// [`Generator`] is a type capable of generating transactions based on a supplied
-/// set of UTXO entries or a UTXO entry producer (such as `UtxoContext`). The [`Generator`]
+/// Generator is a type capable of generating transactions based on a supplied
+/// set of UTXO entries or a UTXO entry producer (such as {@link UtxoContext}). The Generator
 /// accumulates UTXO entries until it can generate a transaction that meets the
 /// requested amount or until the total mass of created inputs exceeds the allowed
 /// transaction mass, at which point it will produce a compound transaction by forwarding
@@ -85,25 +85,37 @@ extern "C" {
 /// Each compound transaction results in a new UTXO, which is immediately reused in the
 /// subsequent transaction.
 ///
+/// The Generator constructor accepts a single {@link IGeneratorSettingsObject} object.
+///
 /// ```javascript
 ///
 /// let generator = new Generator({
 ///     utxoEntries : [...],
 ///     changeAddress : "kaspa:...",
-///     outputs : [[1000, "kaspa:..."], [2000, "kaspa:..."], ...],
+///     outputs : [
+///         { amount : kaspaToSompi(10.0), address: "kaspa:..."},
+///         { amount : kaspaToSompi(20.0), address: "kaspa:..."},
+///         ...
+///     ],
 ///     priorityFee : 1000n,
 /// });
 ///
-/// while(transaction = await generator.next()) {
-///     await transaction.sign(privateKeys);
-///     await transaction.submit(rpc);
+/// let pendingTransaction;
+/// while(pendingTransaction = await generator.next()) {
+///     await pendingTransaction.sign(privateKeys);
+///     await pendingTransaction.submit(rpc);
 /// }
 ///
 /// let summary = generator.summary();
 /// console.log(summary);
 ///
 /// ```
-///
+/// @see
+///     {@link IGeneratorSettingsObject},
+///     {@link PendingTransaction},
+///     {@link UtxoContext},
+///     {@link createTransactions},
+///     {@link estimateTransactions},
 /// @category Wallet SDK
 #[wasm_bindgen]
 pub struct Generator {

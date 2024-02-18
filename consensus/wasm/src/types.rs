@@ -4,8 +4,6 @@
 
 use wasm_bindgen::prelude::*;
 
-// export type HexString = string;
-
 #[wasm_bindgen(typescript_custom_section)]
 const TS_HEX_STRING: &'static str = r#"
 /**

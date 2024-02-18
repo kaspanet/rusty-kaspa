@@ -255,6 +255,7 @@ pub struct AccountsRenameRequest {
 #[serde(rename_all = "camelCase")]
 pub struct AccountsRenameResponse {}
 
+// @category Wallet API
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen]

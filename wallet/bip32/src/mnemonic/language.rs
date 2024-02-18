@@ -9,7 +9,7 @@ use super::bits::{Bits, Bits11};
 use std::{collections::BTreeMap, vec::Vec};
 use wasm_bindgen::prelude::*;
 
-/// Supported languages.
+/// BIP39 Supported languages.
 ///
 /// Presently only English is specified by the BIP39 standard
 /// @category Wallet SDK

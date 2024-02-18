@@ -47,6 +47,7 @@ impl From<std::cmp::Ordering> for Delta {
 const TS_BALANCE: &'static str = r#"
 /**
  * UtxoContext (Account) balance.
+ * @category Wallet SDK
  */
 export interface IBalance {
     mature: bigint;

@@ -33,7 +33,7 @@ The SDK is currently separated into the following top-level categories:
 ## Examples
 
 **IMPORTANT:** To view web examples, you need to serve them from a local web server and
-serve them from the root of the SDK folder (`wasm32-sdk` if using a redistributable or
+serve them from the root of the SDK folder (`kaspa-wasm32-sdk` if using a redistributable or
 `rusty-kaspa/wasm` if building from source). This is because examples use relative paths.
 WASM32 currently can not be loaded using the `file://` protocol.
 

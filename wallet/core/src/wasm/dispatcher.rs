@@ -25,9 +25,15 @@ pub struct Inner {
 }
 
 ///
-/// [`EventDispatcher`] is a WASM channel bridge that provides
+/// EventDispatcher is a WASM channel bridge that provides
 /// access to Rust channel events in WASM32 environment.
+///
+/// IMPORTANT: You can register only a single listener at a time.
+///
+/// @see {@link UtxoProcessor}, {@link Wallet}
+///
 /// @category General
+///
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
 pub struct EventDispatcher {

@@ -82,7 +82,13 @@ declare! {
      * @category Wallet SDK
      */
     export interface ICreateTransactions {
+        /**
+         * Array of pending unsigned transactions.
+         */
         transactions : PendingTransaction[];
+        /**
+         * Summary of the transaction generation process.
+         */
         summary : GeneratorSummary;
     }
     "#,
@@ -92,7 +98,8 @@ declare! {
 const TS_CREATE_TRANSACTIONS: &'static str = r#"
 "#;
 
-/// Creates a set of transactions using transaction [`Generator`].
+/// Helper function that creates a set of transactions using the transaction {@link Generator}.
+/// @see {@link IGeneratorSettingsObject}, {@link Generator}, {@link estimateTransactions}
 /// @category Wallet SDK
 #[wasm_bindgen(js_name=createTransactions)]
 pub async fn create_transactions_js(settings: IGeneratorSettingsObject) -> Result<ICreateTransactions> {
@@ -122,10 +129,12 @@ pub async fn create_transactions_js(settings: IGeneratorSettingsObject) -> Resul
     }
 }
 
-/// Creates a set of transactions using transaction [`Generator`].
+/// Helper function that creates an estimate using the transaction {@link Generator}
+/// by producing only the {@link GeneratorSummary} containing the estimate.
+/// @see {@link IGeneratorSettingsObject}, {@link Generator}, {@link createTransactions}
 /// @category Wallet SDK
 #[wasm_bindgen(js_name=estimateTransactions)]
-pub async fn estimate_js(settings: IGeneratorSettingsObject) -> Result<GeneratorSummary> {
+pub async fn estimate_transactions_js(settings: IGeneratorSettingsObject) -> Result<GeneratorSummary> {
     let generator = Generator::ctor(settings)?;
     if is_web() {
         // yield after each generated transaction if operating in the browser

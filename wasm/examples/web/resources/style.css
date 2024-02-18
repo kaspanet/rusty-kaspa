@@ -50,7 +50,6 @@ input.address {
 input::placeholder {
     font-size: 14px;
     font-family: "Consolas", "Andale Mono", monospace;
-    padding-left: 16px;
 }
 
 div.button {

@@ -17,6 +17,8 @@ pub struct WalletExportOptions {
 const TS_WALLET_DESCRIPTOR: &'static str = r#"
 /**
  * Wallet storage information.
+ * 
+ * @category Wallet API
  */
 export interface IWalletDescriptor {
     title?: string;
