@@ -5,6 +5,7 @@
 // use workflow_wasm::abi::ref_from_abi;
 // use crate::error::Error;
 use crate::result::Result;
+use crate::wasm::notify::WalletNotificationCallback;
 use futures::{select, FutureExt};
 use js_sys::Function;
 use serde::Serialize;
@@ -16,7 +17,6 @@ use workflow_core::channel::{DuplexChannel, Multiplexer, MultiplexerChannel};
 use workflow_core::sendable::Sendable;
 use workflow_core::task::*;
 use workflow_log::log_error;
-use crate::wasm::notify::WalletNotificationCallback;
 
 pub struct Inner {
     callback: Mutex<Option<Sendable<Function>>>,
@@ -112,11 +112,7 @@ impl EventDispatcher {
     pub fn listener_setter(&self, callback: JsValue) -> Result<()> {
         if callback.is_function() {
             let fn_callback: Function = callback.into();
-            self.inner
-                .callback
-                .lock()
-                .unwrap()
-                .replace(fn_callback.into());
+            self.inner.callback.lock().unwrap().replace(fn_callback.into());
         } else {
             self.remove_listener()?;
         }
@@ -127,11 +123,7 @@ impl EventDispatcher {
     pub fn register_listener(&self, callback: WalletNotificationCallback) -> Result<()> {
         if callback.is_function() {
             let fn_callback: Function = callback.into();
-            self.inner
-                .callback
-                .lock()
-                .unwrap()
-                .replace(fn_callback.into());
+            self.inner.callback.lock().unwrap().replace(fn_callback.into());
         } else {
             self.remove_listener()?;
         }
@@ -151,11 +143,7 @@ impl EventDispatcher {
         let inner = &self.inner;
         if inner.task_running.load(Ordering::SeqCst) {
             inner.task_running.store(false, Ordering::SeqCst);
-            inner
-                .task_ctl
-                .signal(())
-                .await
-                .map_err(|err| JsValue::from_str(&err.to_string()))?;
+            inner.task_ctl.signal(()).await.map_err(|err| JsValue::from_str(&err.to_string()))?;
         }
         Ok(())
     }

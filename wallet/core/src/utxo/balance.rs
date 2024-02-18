@@ -43,7 +43,6 @@ impl From<std::cmp::Ordering> for Delta {
     }
 }
 
-
 #[wasm_bindgen(typescript_custom_section)]
 const TS_BALANCE: &'static str = r#"
 /**

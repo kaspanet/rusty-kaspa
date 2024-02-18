@@ -2,8 +2,8 @@ use crate::error::Error;
 use crate::imports::*;
 use crate::result::Result;
 use crate::utxo as native;
-use kaspa_wrpc_wasm::RpcClient;
 use crate::wasm::dispatcher::EventDispatcher;
+use kaspa_wrpc_wasm::RpcClient;
 
 /// @category Wallet SDK
 #[derive(Clone)]

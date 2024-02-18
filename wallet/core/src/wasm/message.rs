@@ -45,7 +45,6 @@ pub fn js_sign_message(value: ISignMessage) -> Result<HexString, Error> {
     }
 }
 
-
 #[wasm_bindgen(typescript_custom_section)]
 const TS_MESSAGE_TYPES: &'static str = r#"
 /**
