@@ -385,7 +385,11 @@ checksum = "16e62a023e7c117e27523144c5d2459f4397fcc3cab0085af8e2224f643a0193"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -402,7 +406,11 @@ checksum = "fdf6721fb0140e4f897002dd086c06f6c27775df19cfe1fccb21181a48fd2c98"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -582,7 +590,11 @@ dependencies = [
  "regex",
  "rustc-hash",
  "shlex",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -917,7 +929,11 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -1180,7 +1196,11 @@ dependencies = [
  "macroific",
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -1403,7 +1423,11 @@ dependencies = [
  "macroific",
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -1587,7 +1611,11 @@ checksum = "87750cf4b7a4c0625b1529e4c543c2182106e4dedc60a2a6455e00d212c489ac"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -2103,7 +2131,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-addresses"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "borsh",
  "criterion",
@@ -2119,7 +2147,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-addressmanager"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "borsh",
  "igd-next",
@@ -2142,14 +2170,14 @@ dependencies = [
 
 [[package]]
 name = "kaspa-alloc"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "mimalloc",
 ]
 
 [[package]]
 name = "kaspa-bip32"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "borsh",
  "bs58",
@@ -2175,7 +2203,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-cli"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "borsh",
@@ -2219,7 +2247,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-connectionmanager"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "duration-string",
  "futures-util",
@@ -2236,7 +2264,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-consensus"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "arc-swap",
  "async-channel 2.1.1",
@@ -2279,7 +2307,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-consensus-core"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "bincode",
@@ -2316,7 +2344,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-consensus-notify"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.1.1",
  "cfg-if 1.0.0",
@@ -2335,7 +2363,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-consensus-wasm"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "faster-hex 0.6.1",
  "js-sys",
@@ -2357,7 +2385,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-consensusmanager"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "duration-string",
  "futures",
@@ -2375,7 +2403,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-core"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "cfg-if 1.0.0",
  "ctrlc",
@@ -2393,7 +2421,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-daemon"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "borsh",
@@ -2415,7 +2443,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-database"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "bincode",
  "enum-primitive-derive",
@@ -2437,7 +2465,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-grpc-client"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.1.1",
  "async-stream",
@@ -2466,7 +2494,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-grpc-core"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.1.1",
  "async-stream",
@@ -2495,7 +2523,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-grpc-server"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.1.1",
  "async-stream",
@@ -2530,7 +2558,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-hashes"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "blake2b_simd",
  "borsh",
@@ -2551,7 +2579,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-index-core"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "derive_more",
  "kaspa-consensus-core",
@@ -2565,7 +2593,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-index-processor"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.1.1",
  "async-trait",
@@ -2594,7 +2622,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-math"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "borsh",
  "criterion",
@@ -2615,14 +2643,14 @@ dependencies = [
 
 [[package]]
 name = "kaspa-merkle"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "kaspa-hashes",
 ]
 
 [[package]]
 name = "kaspa-metrics-core"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "borsh",
@@ -2638,7 +2666,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-mining"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "criterion",
  "futures-util",
@@ -2664,7 +2692,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-mining-errors"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "kaspa-consensus-core",
  "thiserror",
@@ -2672,7 +2700,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-muhash"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "criterion",
  "kaspa-hashes",
@@ -2685,7 +2713,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-notify"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.1.1",
  "async-trait",
@@ -2714,7 +2742,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-os"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "borsh",
@@ -2748,7 +2776,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-p2p-flows"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2779,7 +2807,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-p2p-lib"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "borsh",
  "ctrlc",
@@ -2810,7 +2838,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-perf-monitor"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "kaspa-core",
  "log",
@@ -2822,7 +2850,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-pow"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "criterion",
  "js-sys",
@@ -2836,7 +2864,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-rpc-core"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.1.1",
  "async-trait",
@@ -2871,7 +2899,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-rpc-macros"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "convert_case 0.6.0",
  "proc-macro-error",
@@ -2883,7 +2911,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-rpc-service"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "kaspa-addresses",
@@ -2912,7 +2940,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-testing-integration"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.1.1",
  "bincode",
@@ -2989,7 +3017,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-txscript"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "blake2b_simd",
  "borsh",
@@ -3015,7 +3043,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-txscript-errors"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "secp256k1",
  "thiserror",
@@ -3023,7 +3051,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-utils"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.1.1",
  "async-trait",
@@ -3051,7 +3079,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-utils-tower"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "cfg-if 1.0.0",
  "futures",
@@ -3065,7 +3093,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-utxoindex"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "futures",
  "kaspa-consensus",
@@ -3087,7 +3115,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wallet"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-std",
  "async-trait",
@@ -3099,7 +3127,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wallet-cli-wasm"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "js-sys",
@@ -3113,7 +3141,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wallet-core"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "aes",
  "ahash 0.8.6",
@@ -3186,7 +3214,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wallet-macros"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "convert_case 0.5.0",
  "proc-macro-error",
@@ -3199,7 +3227,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wasm"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "js-sys",
  "kaspa-addresses",
@@ -3219,7 +3247,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wrpc-client"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-std",
  "async-trait",
@@ -3249,7 +3277,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wrpc-proxy"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "clap 4.4.11",
@@ -3268,7 +3296,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wrpc-server"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "borsh",
@@ -3295,14 +3323,14 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wrpc-wasm"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "kaspa-wrpc-client",
 ]
 
 [[package]]
 name = "kaspad"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.1.1",
  "clap 4.4.11",
@@ -3584,7 +3612,11 @@ dependencies = [
  "cfg-if 1.0.0",
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -3595,7 +3627,11 @@ checksum = "13198c120864097a565ccb3ff947672d969932b7975ebd4085732c9f09435e55"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -3608,7 +3644,11 @@ dependencies = [
  "macroific_core",
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -4033,7 +4073,11 @@ checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -4134,7 +4178,11 @@ checksum = "70df726c43c645ef1dde24c7ae14692036ebe5457c92c5f0ec4cfceb99634ff6"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -4203,7 +4251,11 @@ checksum = "4359fd9c9171ec6e8c62926d6faaf553a8dc3f64e1507e76da7911b4f6a04405"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -4301,7 +4353,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae005bd773ab59b4725093fd7df83fd7892f7d8eafb48dbd7de6e024e4215f9d"
 dependencies = [
  "proc-macro2",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -4338,9 +4394,15 @@ dependencies = [
 
 [[package]]
 name = "proc-macro2"
+<<<<<<< HEAD
 version = "1.0.71"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75cb1540fadbd5b8fbccc4dddad2734eba435053f725621c070711a14bb5f4b8"
+=======
+version = "1.0.78"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2422ad645d89c99f8f3e6b88a9fdeca7fabeac836b1002371c4367c8f984aae"
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 dependencies = [
  "unicode-ident",
 ]
@@ -4372,7 +4434,11 @@ dependencies = [
  "prost",
  "prost-types",
  "regex",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
  "tempfile",
  "which",
 ]
@@ -4387,7 +4453,11 @@ dependencies = [
  "itertools 0.11.0",
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -4401,9 +4471,9 @@ dependencies = [
 
 [[package]]
 name = "quote"
-version = "1.0.33"
+version = "1.0.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5267fca4496028628a95160fc423a33e8b2e6af8a5302579e322e4b520293cae"
+checksum = "291ec9ab5efd934aaf503a6466c5d5251535d108ee747472c3977cc5acc868ef"
 dependencies = [
  "proc-macro2",
 ]
@@ -4617,7 +4687,7 @@ dependencies = [
 
 [[package]]
 name = "rothschild"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.1.1",
  "clap 4.4.11",
@@ -4871,7 +4941,11 @@ checksum = "43576ca501357b9b071ac53cdc7da8ef0cbd9493d8df094cd821777ea6e894d3"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -4887,13 +4961,17 @@ dependencies = [
 
 [[package]]
 name = "serde_repr"
-version = "0.1.17"
+version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3081f5ffbb02284dda55132aa26daecedd7372a42417bbbab6f14ab7d6bb9145"
+checksum = "0b2e6b945e9d3df726b65d6ee24060aff8e3533d431f677a9695db04eff9dfdb"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -4978,7 +5056,7 @@ dependencies = [
 
 [[package]]
 name = "simpa"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.1.1",
  "clap 4.4.11",
@@ -5132,9 +5210,15 @@ dependencies = [
 
 [[package]]
 name = "syn"
+<<<<<<< HEAD
 version = "2.0.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b7d0a2c048d661a1a59fcd7355baa232f7ed34e0ee4df2eef3c1c1c0d3852d8"
+=======
+version = "2.0.49"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "915aea9e586f80826ee59f8453c1101f9d1c4b3964cd2460185ee8e299ada496"
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5216,7 +5300,11 @@ checksum = "01742297787513b79cf8e29d1056ede1313e2420b7b3b15d0a768b4921f549df"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -5327,7 +5415,11 @@ checksum = "5b8a1e28f2deaa14e508979454cb3a223b10b938b45af148bc0986de36f1923b"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -5439,7 +5531,11 @@ dependencies = [
  "proc-macro2",
  "prost-build",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -5512,7 +5608,11 @@ checksum = "34704c8d6ebcbc939824180af020566b01a7c01f80641264eba0999f6c2b6be7"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
@@ -5775,7 +5875,11 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
  "wasm-bindgen-shared",
 ]
 
@@ -5809,7 +5913,11 @@ checksum = "54681b18a46765f095758388f2d0cf16eb8d4169b639ab575a8f5693af210c7b"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -6567,7 +6675,11 @@ checksum = "9ce1b18ccd8e73a9321186f97e46f9f04b778851177567b1975109d26a08d2a6"
 dependencies = [
  "proc-macro2",
  "quote",
+<<<<<<< HEAD
  "syn 2.0.42",
+=======
+ "syn 2.0.49",
+>>>>>>> e9cf6747 (Fix max difficulty bound (#423))
 ]
 
 [[package]]
