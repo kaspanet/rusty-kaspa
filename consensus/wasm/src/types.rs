@@ -22,6 +22,12 @@ extern "C" {
     pub type HexString;
 }
 
+impl From<String> for HexString {
+    fn from(s: String) -> Self {
+        s.into()
+    }
+}
+
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(typescript_type = "Array<string>")]

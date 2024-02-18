@@ -43,6 +43,22 @@ impl From<std::cmp::Ordering> for Delta {
     }
 }
 
+
+#[wasm_bindgen(typescript_custom_section)]
+const TS_BALANCE: &'static str = r#"
+/**
+ * UtxoContext (Account) balance.
+ */
+export interface IBalance {
+    mature: bigint;
+    pending: bigint;
+    outgoing: bigint;
+    matureUtxoCount: number;
+    pendingUtxoCount: number;
+    stasisUtxoCount: number;
+}
+"#;
+
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Balance {

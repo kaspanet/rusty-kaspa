@@ -1,6 +1,6 @@
 #![allow(non_snake_case)]
 
-use crate::imports::*;
+use crate::{imports::*, RpcNotificationCallback};
 use kaspa_addresses::{Address, IAddressArray};
 use kaspa_consensus_core::network::{wasm::Network, NetworkType};
 use kaspa_notify::notification::Notification as NotificationT;
@@ -138,14 +138,40 @@ impl RpcClient {
         Self::new(config.map(RpcConfig::try_from).transpose()?)
     }
 
+    /// The current URL of the RPC client.
     #[wasm_bindgen(getter)]
     pub fn url(&self) -> Option<String> {
         self.client.url()
     }
 
-    #[wasm_bindgen(getter, js_name = "open")]
-    pub fn is_open(&self) -> bool {
-        self.client.is_open()
+    /// The current connection status of the RPC client.
+    #[wasm_bindgen(getter, js_name = "isConnected")]
+    pub fn is_connected(&self) -> bool {
+        self.client.is_connected()
+    }
+
+    /// The current protocol encoding.
+    #[wasm_bindgen(getter, js_name = "encoding")]
+    pub fn encoding(&self) -> WrpcEncoding {
+        self.client.encoding()
+    }
+
+    /// Optional: public node provider name.
+    #[wasm_bindgen(getter, js_name = "providerName")]
+    pub fn provider_name(&self) -> Option<String> {
+        self.client.provider_name()
+    }
+
+    /// Optional: public node provider URL.
+    #[wasm_bindgen(getter, js_name = "providerUrl")]
+    pub fn provider_url(&self) -> Option<String> {
+        self.client.provider_url()
+    }
+
+    /// Optional: Beacon node id.
+    #[wasm_bindgen(getter, js_name = "nodeId")]
+    pub fn beacon_node_id(&self) -> Option<String> {
+        self.client.beacon_node_id()
     }
 
     /// Connect to the Kaspa RPC server. This function starts a background
@@ -182,7 +208,9 @@ impl RpcClient {
     }
 
     /// Register a notification callback.
-    pub async fn notify(&self, callback: JsValue) -> Result<()> {
+    /// IMPORTANT: You are allowed to register only one callback.
+    #[wasm_bindgen(js_name = "registerEventListener")]
+    pub async fn register_event_listener(&self, callback: RpcNotificationCallback) -> Result<()> {
         if callback.is_function() {
             let fn_callback: Function = callback.into();
             self.inner.notification_callback.lock().unwrap().replace(NotificationSink(fn_callback));
@@ -190,6 +218,14 @@ impl RpcClient {
             self.stop_notification_task().await?;
             self.clear_notification_callback();
         }
+        Ok(())
+    }
+
+    /// Unregister a notification callback.
+    #[wasm_bindgen(js_name = "removeEventListener")]
+    pub async fn remove_event_listener(&self) -> Result<()> {
+        self.stop_notification_task().await?;
+        self.clear_notification_callback();
         Ok(())
     }
 }

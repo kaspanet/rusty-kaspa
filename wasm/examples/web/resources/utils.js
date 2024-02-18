@@ -1,5 +1,6 @@
 document.body.innerHTML =
-`<a href="index.html"><- Back</a> | Network: <span id="menu"></span><span id="actions"></span><br>&nbsp;<br>`;
+`<a href="index.html"><- Back</a> | Network: <span id="menu"></span><span id="actions"></span><br>&nbsp;<br>`
++ document.body.innerHTML;
 
 // @ts-ignore
 String.prototype.color = function(color) {
@@ -61,10 +62,16 @@ window.disconnect = function() {
     document.body.innerHTML += '\nDisconnected...';
 }
 
+// window.begin = function() {
+//     document.
+// }
+
 function log(...args) {
-    document.body.innerHTML += args.map((arg) => {
+    let el = document.createElement('span');
+    el.innerHTML = args.map((arg) => {
         return typeof arg === 'object' ? stringify(arg) : arg;
     }).join(' ') + "<br>";
+    document.body.appendChild(el);
 }
 
 function stringify(json) {

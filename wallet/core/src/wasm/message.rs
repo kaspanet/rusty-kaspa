@@ -1,13 +1,33 @@
+use kaspa_consensus_wasm::HexString;
+
 use crate::imports::*;
 use crate::message::*;
 use crate::wasm::keys::{PrivateKey, PublicKey};
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_MESSAGE_TYPES: &'static str = r#"
+/**
+ * Interface declaration for {@link signMessage} function arguments.
+ * 
+ * @category Message Signing
+ */
+export interface ISignMessage {
+    message: string;
+    signature: string;
+    privateKey: PrivateKey | string;
+}
+"#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(extends = js_sys::Object, typescript_type = "ISignMessage")]
+    pub type ISignMessage;
+}
+
 /// Signs a message with the given private key
-/// @param {object} value - an object containing { message: String, privateKey: String|PrivateKey }
-/// @returns {String} the signature, in hex string format
 /// @category Message Signing
-#[wasm_bindgen(js_name = signMessage, skip_jsdoc)]
-pub fn js_sign_message(value: JsValue) -> Result<String, Error> {
+#[wasm_bindgen(js_name = signMessage)]
+pub fn js_sign_message(value: ISignMessage) -> Result<HexString, Error> {
     if let Some(object) = Object::try_from(&value) {
         let private_key = object.get::<PrivateKey>("privateKey")?;
         let raw_msg = object.get_string("message")?;
@@ -19,18 +39,37 @@ pub fn js_sign_message(value: JsValue) -> Result<String, Error> {
 
         let sig_vec = sign_message(&pm, &privkey_bytes)?;
 
-        Ok(faster_hex::hex_string(sig_vec.as_slice()))
+        Ok(faster_hex::hex_string(sig_vec.as_slice()).into())
     } else {
         Err(Error::custom("Failed to parse input"))
     }
 }
 
+
+#[wasm_bindgen(typescript_custom_section)]
+const TS_MESSAGE_TYPES: &'static str = r#"
+/**
+ * Interface declaration for {@link verifyMessage} function arguments.
+ * 
+ * @category Message Signing
+ */
+export interface IVerifyMessage {
+    message: string;
+    signature: HexString;
+    publicKey: PublicKey | string;
+}
+"#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(extends = js_sys::Object, typescript_type = "IVerifyMessage")]
+    pub type IVerifyMessage;
+}
+
 /// Verifies with a public key the signature of the given message
-/// @param {object} value - an object containing { message: String, signature: String, publicKey: String|PublicKey }
-/// @returns {bool} true if the signature can be verified with the given public key and message, false otherwise
 /// @category Message Signing
 #[wasm_bindgen(js_name = verifyMessage, skip_jsdoc)]
-pub fn js_verify_message(value: JsValue) -> Result<bool, Error> {
+pub fn js_verify_message(value: IVerifyMessage) -> Result<bool, Error> {
     if let Some(object) = Object::try_from(&value) {
         let public_key = object.get::<PublicKey>("publicKey")?;
         let raw_msg = object.get_string("message")?;

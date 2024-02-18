@@ -35,6 +35,10 @@ struct Inner {
     rpc_ctl: RpcCtl,
     background_services_running: Arc<AtomicBool>,
     service_ctl: DuplexChannel<()>,
+    // ---
+    provider_name: Option<String>,
+    provider_url: Option<String>,
+    beacon_node_id: Option<String>,
 }
 
 impl Inner {
@@ -101,6 +105,10 @@ impl Inner {
             rpc_ctl,
             service_ctl: DuplexChannel::unbounded(),
             background_services_running: Arc::new(AtomicBool::new(false)),
+            // ---
+            provider_name: None,
+            provider_url: None,
+            beacon_node_id: None,
         };
         Ok(client)
     }
@@ -172,7 +180,7 @@ pub struct KaspaRpcClient {
 
 impl Debug for KaspaRpcClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("KaspaRpcClient").field("url", &self.url()).field("connected", &self.is_open()).finish()
+        f.debug_struct("KaspaRpcClient").field("url", &self.url()).field("connected", &self.is_connected()).finish()
     }
 }
 
@@ -210,8 +218,24 @@ impl KaspaRpcClient {
         Ok(())
     }
 
-    pub fn is_open(&self) -> bool {
+    pub fn is_connected(&self) -> bool {
         self.inner.rpc_client.is_open()
+    }
+
+    pub fn encoding(&self) -> Encoding {
+        self.inner.encoding
+    }
+
+    pub fn provider_name(&self) -> Option<String> {
+        self.inner.provider_name.clone()
+    }
+
+    pub fn provider_url(&self) -> Option<String> {
+        self.inner.provider_url.clone()
+    }
+
+    pub fn beacon_node_id(&self) -> Option<String> {
+        self.inner.beacon_node_id.clone()
     }
 
     pub fn rpc_client(&self) -> &Arc<RpcClient<RpcApiOps>> {
@@ -298,10 +322,6 @@ impl KaspaRpcClient {
 
     pub fn notification_channel_receiver(&self) -> Receiver<Notification> {
         self.inner.notification_channel.receiver.clone()
-    }
-
-    pub fn encoding(&self) -> Encoding {
-        self.inner.encoding
     }
 
     pub fn notification_mode(&self) -> NotificationMode {

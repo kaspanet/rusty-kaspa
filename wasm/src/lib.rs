@@ -151,11 +151,15 @@ cfg_if::cfg_if! {
                 pub use kaspa_rpc_core::model::message::*;
             }
             pub use kaspa_rpc_core::api::rpc::RpcApi;
-            pub use kaspa_wrpc_wasm::RpcClient;
+            pub use kaspa_rpc_core::wasm::message::*;
+
+            pub use kaspa_wrpc_wasm::client::*;
+            pub use kaspa_wrpc_wasm::beacon::*;
+            pub use kaspa_wrpc_wasm::notify::*;
         }
 
         pub use kaspa_consensus_wasm::*;
 
-        pub use kaspa_wallet_core::wasm::{tx::*, utils::*, utxo::*, wallet::*, privatekeygen::*, publickeygen::*};
+        pub use kaspa_wallet_core::wasm::{notify::*, tx::*, utils::*, utxo::*, wallet::*, privatekeygen::*, publickeygen::*};
     }
 }

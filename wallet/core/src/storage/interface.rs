@@ -13,6 +13,17 @@ pub struct WalletExportOptions {
     pub include_transactions: bool,
 }
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_WALLET_DESCRIPTOR: &'static str = r#"
+/**
+ * Wallet storage information.
+ */
+export interface IWalletDescriptor {
+    title?: string;
+    filename?: string;
+}
+"#;
+
 /// @category Wallet API
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[wasm_bindgen(inspectable)]
@@ -28,6 +39,17 @@ impl WalletDescriptor {
         Self { title, filename }
     }
 }
+
+#[wasm_bindgen(typescript_custom_section)]
+const TS_STORAGE_DESCRIPTOR: &'static str = r#"
+/**
+ * Wallet storage information.
+ */
+export interface IStorageDescriptor {
+    kind: string;
+    data: string;
+}
+"#;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]

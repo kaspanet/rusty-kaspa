@@ -9,6 +9,8 @@ cfg_if! {
         pub use client::*;
         pub mod beacon;
         pub use beacon::*;
+        pub mod notify;
+        pub use notify::*;
     }
 
 }

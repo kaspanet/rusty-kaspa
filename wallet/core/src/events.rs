@@ -11,7 +11,7 @@ use crate::utxo::context::UtxoContextId;
 /// Sync state of the kaspad node
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "kebab-case")]
-#[serde(tag = "sync", content = "state")]
+#[serde(tag = "event", content = "data")]
 pub enum SyncState {
     Proof {
         level: u64,
@@ -76,6 +76,7 @@ pub enum Events {
     /// [`SyncState`] notification posted
     /// when the node sync state changes
     SyncState {
+        #[serde(rename = "syncState")]
         sync_state: SyncState,
     },
     /// Emitted after the wallet has loaded and
@@ -104,6 +105,7 @@ pub enum Events {
     /// Wallet has been closed
     WalletClose,
     PrvKeyDataCreate {
+        #[serde(rename = "prvKeyDataInfo")]
         prv_key_data_info: PrvKeyDataInfo,
     },
     /// Accounts have been activated
@@ -156,7 +158,8 @@ pub enum Events {
         message: String,
     },
     /// DAA score change
-    DAAScoreChange {
+    DaaScoreChange {
+        #[serde(rename = "currentDaaScore")]
         current_daa_score: u64,
     },
     /// New incoming pending UTXO/transaction
@@ -202,10 +205,6 @@ pub enum Events {
     /// UtxoContext (Account) balance update. Emitted for each
     /// balance change within the UtxoContext.
     Balance {
-        // #[serde(rename = "matureUtxoSize")]
-        // mature_utxo_size: usize,
-        // #[serde(rename = "pendingUtxoSize")]
-        // pending_utxo_size: usize,
         balance: Option<Balance>,
         /// If UtxoContext is bound to a Runtime Account, this
         /// field will contain the account id. Otherwise, it will

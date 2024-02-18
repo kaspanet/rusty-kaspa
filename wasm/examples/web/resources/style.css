@@ -34,3 +34,36 @@ a {
     color: rgb(0, 156, 117);
     text-decoration: none;
 }
+
+input.address {
+    font-size: 14px;
+    font-family: "Consolas", "Andale Mono", monospace;
+    clear: both;
+    width : 600px;
+    height: 2.5rem;
+    line-height: 2.5rem;
+    border-radius: 10px;
+    border: 1px solid rgb(0, 156, 117);
+    box-shadow: rgba(0, 0, 0, 0.16) 0px 3px 6px, rgba(0, 0, 0, 0.23) 0px 3px 6px;
+}
+
+input::placeholder {
+    font-size: 14px;
+    font-family: "Consolas", "Andale Mono", monospace;
+    padding-left: 16px;
+}
+
+div.button {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    font-size: 15.2px;
+    height: 2.5rem;
+    line-height: 2.5rem;
+    width:fit-content;
+    padding: 0 1.5rem;
+    text-align: center;
+    border: 1px solid rgb(0, 156, 117);
+    border-radius: 10px;
+    box-shadow: rgba(0, 0, 0, 0.16) 0px 3px 6px, rgba(0, 0, 0, 0.23) 0px 3px 6px;
+}
