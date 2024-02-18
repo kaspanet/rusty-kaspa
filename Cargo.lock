@@ -11,7 +11,7 @@ dependencies = [
  "macroific",
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -126,9 +126,9 @@ dependencies = [
 
 [[package]]
 name = "anstream"
-version = "0.6.11"
+version = "0.6.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e2e1ebcb11de5c03c67de28a7df593d32191b44939c482e97702baaaa6ab6a5"
+checksum = "96b09b5178381e0874812a9b157f7fe84982617e48f71f4e3235482775e5b540"
 dependencies = [
  "anstyle",
  "anstyle-parse",
@@ -245,7 +245,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f28243a43d821d11341ab73c80bed182dc015c514b951616cf79bd4af39af0c3"
 dependencies = [
  "concurrent-queue",
- "event-listener 5.0.0",
+ "event-listener 5.1.0",
  "event-listener-strategy 0.5.0",
  "futures-core",
  "pin-project-lite",
@@ -312,7 +312,7 @@ dependencies = [
  "futures-io",
  "futures-lite 2.2.0",
  "parking",
- "polling 3.4.0",
+ "polling 3.5.0",
  "rustix 0.38.31",
  "slab",
  "tracing",
@@ -385,7 +385,7 @@ checksum = "16e62a023e7c117e27523144c5d2459f4397fcc3cab0085af8e2224f643a0193"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -402,7 +402,7 @@ checksum = "c980ee35e870bd1a4d2c8294d4c04d0499e67bca1e4b5cefcc693c2fa00caea9"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -631,7 +631,7 @@ dependencies = [
  "regex",
  "rustc-hash",
  "shlex",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -748,9 +748,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.14.0"
+version = "3.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f30e7476521f6f8af1a1c4c0b8cc94f0bee37d91763d0ca2665f299b6cd8aec"
+checksum = "d32a994c2b3ca201d9b263612a374263f05e7adde37c4707f693dcd375076d1f"
 
 [[package]]
 name = "byteorder"
@@ -969,9 +969,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.0"
+version = "4.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80c21025abd42669a92efc996ef13cfb2c5c627858421ea58d5c3b331a6c134f"
+checksum = "c918d541ef2913577a0f9566e9ce27cb35b6df072075769e0b26cb5a554520da"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -979,9 +979,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.0"
+version = "4.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "458bf1f341769dfcf849846f65dffdf9146daa56bcd2a47cb4e1de9915567c99"
+checksum = "9f3e7391dad68afb0c2ede1bf619f579a3dc9c2ec67f089baa397123a2f3d1eb"
 dependencies = [
  "anstream",
  "anstyle",
@@ -998,7 +998,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -1115,7 +1115,7 @@ dependencies = [
  "anes",
  "cast",
  "ciborium",
- "clap 4.5.0",
+ "clap 4.5.1",
  "criterion-plot",
  "is-terminal",
  "itertools 0.10.5",
@@ -1260,7 +1260,7 @@ dependencies = [
  "macroific",
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -1304,9 +1304,9 @@ checksum = "3c877555693c14d2f84191cfd3ad8582790fc52b5e2274b40b59cf5f5cea25c7"
 
 [[package]]
 name = "deunicode"
-version = "1.4.2"
+version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ae2a35373c5c74340b79ae6780b498b2b183915ec5dacf263aac5a099bf485a"
+checksum = "b6e854126756c496b8c81dec88f9a706b15b875c5849d4097a3854476b9fdf94"
 
 [[package]]
 name = "dhat"
@@ -1454,9 +1454,9 @@ dependencies = [
 
 [[package]]
 name = "event-listener"
-version = "5.0.0"
+version = "5.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b72557800024fabbaa2449dd4bf24e37b93702d457a4d4f2b0dd1f0f039f20c1"
+checksum = "b7ad6fd685ce13acd6d9541a30f6db6567a7a24c9ffd4ba2955d29e3f22c8b27"
 dependencies = [
  "concurrent-queue",
  "parking",
@@ -1479,7 +1479,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "feedafcaa9b749175d5ac357452a9d41ea2911da598fde46ce1fe02c37751291"
 dependencies = [
- "event-listener 5.0.0",
+ "event-listener 5.1.0",
  "pin-project-lite",
 ]
 
@@ -1501,7 +1501,7 @@ dependencies = [
  "macroific",
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -1685,7 +1685,7 @@ checksum = "87750cf4b7a4c0625b1529e4c543c2182106e4dedc60a2a6455e00d212c489ac"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -2312,7 +2312,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-addresses"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "borsh",
  "criterion",
@@ -2328,7 +2328,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-addressmanager"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "borsh",
  "igd-next",
@@ -2351,19 +2351,19 @@ dependencies = [
 
 [[package]]
 name = "kaspa-alloc"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "mimalloc",
 ]
 
 [[package]]
 name = "kaspa-beacon"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "ahash 0.8.8",
  "axum 0.7.4",
  "cfg-if 1.0.0",
- "clap 4.5.0",
+ "clap 4.5.1",
  "console",
  "futures",
  "kaspa-consensus-core",
@@ -2387,7 +2387,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-bip32"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "borsh",
  "bs58",
@@ -2413,7 +2413,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-cli"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "borsh",
@@ -2440,7 +2440,7 @@ dependencies = [
  "separator",
  "serde",
  "serde_json",
- "textwrap 0.16.0",
+ "textwrap 0.16.1",
  "thiserror",
  "tokio",
  "wasm-bindgen",
@@ -2457,7 +2457,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-connectionmanager"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "duration-string",
  "futures-util",
@@ -2474,7 +2474,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-consensus"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "arc-swap",
  "async-channel 2.2.0",
@@ -2517,7 +2517,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-consensus-core"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "bincode",
@@ -2554,7 +2554,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-consensus-notify"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.2.0",
  "cfg-if 1.0.0",
@@ -2573,7 +2573,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-consensus-wasm"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "cfg-if 1.0.0",
  "faster-hex 0.6.1",
@@ -2596,7 +2596,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-consensusmanager"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "duration-string",
  "futures",
@@ -2614,7 +2614,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-core"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "cfg-if 1.0.0",
  "ctrlc",
@@ -2632,7 +2632,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-daemon"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "borsh",
@@ -2654,7 +2654,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-database"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "bincode",
  "enum-primitive-derive",
@@ -2676,7 +2676,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-grpc-client"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.2.0",
  "async-stream",
@@ -2705,7 +2705,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-grpc-core"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.2.0",
  "async-stream",
@@ -2734,7 +2734,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-grpc-server"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.2.0",
  "async-stream",
@@ -2769,7 +2769,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-hashes"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "blake2b_simd",
  "borsh",
@@ -2790,7 +2790,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-index-core"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.2.0",
  "async-trait",
@@ -2809,7 +2809,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-index-processor"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.2.0",
  "async-trait",
@@ -2837,7 +2837,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-math"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "borsh",
  "criterion",
@@ -2858,14 +2858,14 @@ dependencies = [
 
 [[package]]
 name = "kaspa-merkle"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "kaspa-hashes",
 ]
 
 [[package]]
 name = "kaspa-metrics-core"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "borsh",
@@ -2881,7 +2881,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-mining"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "criterion",
  "futures-util",
@@ -2907,7 +2907,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-mining-errors"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "kaspa-consensus-core",
  "thiserror",
@@ -2915,7 +2915,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-muhash"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "criterion",
  "kaspa-hashes",
@@ -2928,7 +2928,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-notify"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.2.0",
  "async-trait",
@@ -2957,7 +2957,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-os"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "borsh",
@@ -2991,7 +2991,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-p2p-flows"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3022,7 +3022,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-p2p-lib"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "borsh",
  "ctrlc",
@@ -3053,7 +3053,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-perf-monitor"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "kaspa-core",
  "log",
@@ -3065,7 +3065,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-pow"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "criterion",
  "js-sys",
@@ -3080,7 +3080,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-rpc-core"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.2.0",
  "async-trait",
@@ -3119,7 +3119,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-rpc-macros"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "convert_case 0.6.0",
  "proc-macro-error",
@@ -3131,7 +3131,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-rpc-service"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "kaspa-addresses",
@@ -3159,7 +3159,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-testing-integration"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.2.0",
  "bincode",
@@ -3212,7 +3212,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-txscript"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "blake2b_simd",
  "borsh",
@@ -3238,7 +3238,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-txscript-errors"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "secp256k1",
  "thiserror",
@@ -3246,7 +3246,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-utils"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.2.0",
  "async-trait",
@@ -3274,7 +3274,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-utils-tower"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "cfg-if 1.0.0",
  "futures",
@@ -3288,7 +3288,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-utxoindex"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "futures",
  "kaspa-consensus",
@@ -3309,7 +3309,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wallet"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-std",
  "async-trait",
@@ -3321,7 +3321,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wallet-cli-wasm"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "js-sys",
@@ -3335,7 +3335,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wallet-core"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "aes",
  "ahash 0.8.8",
@@ -3410,7 +3410,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wallet-macros"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "convert_case 0.5.0",
  "proc-macro-error",
@@ -3423,7 +3423,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wasm"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "cfg-if 1.0.0",
  "js-sys",
@@ -3445,7 +3445,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wrpc-client"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-std",
  "async-trait",
@@ -3479,10 +3479,10 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wrpc-proxy"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
- "clap 4.5.0",
+ "clap 4.5.1",
  "kaspa-consensus-core",
  "kaspa-grpc-client",
  "kaspa-rpc-core",
@@ -3498,7 +3498,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wrpc-server"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-trait",
  "borsh",
@@ -3525,7 +3525,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wrpc-wasm"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "cfg-if 1.0.0",
  "futures",
@@ -3550,10 +3550,10 @@ dependencies = [
 
 [[package]]
 name = "kaspad"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.2.0",
- "clap 4.5.0",
+ "clap 4.5.1",
  "dhat",
  "dirs",
  "futures-util",
@@ -3827,7 +3827,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -3838,7 +3838,7 @@ checksum = "13198c120864097a565ccb3ff947672d969932b7975ebd4085732c9f09435e55"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -3851,7 +3851,7 @@ dependencies = [
  "macroific_core",
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -4289,7 +4289,7 @@ checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -4396,7 +4396,7 @@ checksum = "70df726c43c645ef1dde24c7ae14692036ebe5457c92c5f0ec4cfceb99634ff6"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -4465,7 +4465,7 @@ checksum = "266c042b60c9c76b8d53061e52b2e0d1116abc57cefc8c5cd671619a56ac3690"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -4515,9 +4515,9 @@ dependencies = [
 
 [[package]]
 name = "polling"
-version = "3.4.0"
+version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30054e72317ab98eddd8561db0f6524df3367636884b7b21b703e4b280a84a14"
+checksum = "24f040dee2588b4963afb4e420540439d126f73fdacf4a9c486a96d840bac3c9"
 dependencies = [
  "cfg-if 1.0.0",
  "concurrent-queue",
@@ -4563,7 +4563,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a41cf62165e97c7f814d2221421dbb9afcbcdb0a88068e5ea206e19951c2cbb5"
 dependencies = [
  "proc-macro2",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -4634,7 +4634,7 @@ dependencies = [
  "prost",
  "prost-types",
  "regex",
- "syn 2.0.48",
+ "syn 2.0.49",
  "tempfile",
  "which",
 ]
@@ -4649,7 +4649,7 @@ dependencies = [
  "itertools 0.11.0",
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -4877,16 +4877,17 @@ dependencies = [
 
 [[package]]
 name = "ring"
-version = "0.17.7"
+version = "0.17.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "688c63d65483050968b2a8937f7995f443e27041a0f7700aa59b0822aedebb74"
+checksum = "c17fa4cb658e3583423e915b9f3acc01cceaee1860e33d59ebae66adc3a2dc0d"
 dependencies = [
  "cc",
+ "cfg-if 1.0.0",
  "getrandom 0.2.12",
  "libc",
  "spin",
  "untrusted",
- "windows-sys 0.48.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4919,10 +4920,10 @@ dependencies = [
 
 [[package]]
 name = "rothschild"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.2.0",
- "clap 4.5.0",
+ "clap 4.5.1",
  "criterion",
  "faster-hex 0.6.1",
  "itertools 0.11.0",
@@ -5176,7 +5177,7 @@ checksum = "33c85360c95e7d137454dc81d9a4ed2b8efd8fbe19cee57357b32b9771fccb67"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -5208,7 +5209,7 @@ checksum = "0b2e6b945e9d3df726b65d6ee24060aff8e3533d431f677a9695db04eff9dfdb"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -5324,10 +5325,10 @@ dependencies = [
 
 [[package]]
 name = "simpa"
-version = "0.13.4"
+version = "0.13.5"
 dependencies = [
  "async-channel 2.2.0",
- "clap 4.5.0",
+ "clap 4.5.1",
  "dhat",
  "futures",
  "futures-util",
@@ -5478,9 +5479,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.48"
+version = "2.0.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f3531638e407dfc0814761abb7c00a5b54992b849452a0646b7f65c9f770f3f"
+checksum = "915aea9e586f80826ee59f8453c1101f9d1c4b3964cd2460185ee8e299ada496"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5546,9 +5547,9 @@ dependencies = [
 
 [[package]]
 name = "textwrap"
-version = "0.16.0"
+version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "222a222a5bfe1bba4a77b45ec488a741b3cb8872e5e499451fd7d0129c9c7c3d"
+checksum = "23d434d3f8967a09480fb04132ebe0a3e088c173e6d0ee7897abbdf4eab0f8b9"
 dependencies = [
  "smawk",
  "unicode-linebreak",
@@ -5572,7 +5573,7 @@ checksum = "a953cb265bef375dae3de6663da4d3804eee9682ea80d8e2542529b73c531c81"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -5695,7 +5696,7 @@ checksum = "5b8a1e28f2deaa14e508979454cb3a223b10b938b45af148bc0986de36f1923b"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -5789,9 +5790,9 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.22.5"
+version = "0.22.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99e68c159e8f5ba8a28c4eb7b0c0c190d77bb479047ca713270048145a9ad28a"
+checksum = "2c1b5fd4128cc8d3e0cb74d4ed9a9cc7c7284becd4df68f5f940e1ad123606f6"
 dependencies = [
  "indexmap 2.2.3",
  "serde",
@@ -5841,7 +5842,7 @@ dependencies = [
  "proc-macro2",
  "prost-build",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -5930,7 +5931,7 @@ checksum = "34704c8d6ebcbc939824180af020566b01a7c01f80641264eba0999f6c2b6be7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
@@ -6234,7 +6235,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
  "wasm-bindgen-shared",
 ]
 
@@ -6268,7 +6269,7 @@ checksum = "bae1abb6806dc1ad9e560ed242107c0f6c84335f1749dd4e8ddb012ebd5e25a7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
@@ -6810,7 +6811,7 @@ dependencies = [
  "nw-sys",
  "pad",
  "regex",
- "textwrap 0.16.0",
+ "textwrap 0.16.1",
  "thiserror",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -6911,9 +6912,9 @@ dependencies = [
 
 [[package]]
 name = "xxhash-rust"
-version = "0.8.8"
+version = "0.8.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53be06678ed9e83edb1745eb72efc0bbcd7b5c3c35711a860906aed827a13d61"
+checksum = "927da81e25be1e1a2901d59b81b37dd2efd1fc9c9345a55007f09bf5a2d3ee03"
 
 [[package]]
 name = "zerocopy"
@@ -6932,7 +6933,7 @@ checksum = "9ce1b18ccd8e73a9321186f97e46f9f04b778851177567b1975109d26a08d2a6"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.48",
+ "syn 2.0.49",
 ]
 
 [[package]]
