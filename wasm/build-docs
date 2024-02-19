@@ -5,11 +5,11 @@ set -e
 # wasm-pack build --target web --out-name kaspa --out-dir build/docs/kaspa --features wasm32-keygen $@
 ./build-web
 
-echo "kaspa-keygen"
+echo "building keygen"
 typedoc --name "Kaspa WASM32 SDK - Key Generation" --sourceLinkExternal --readme ./README.md --out docs/kaspa-keygen ./build/docs/kaspa-keygen.ts
-echo "kaspa-rpc"
+echo "building rpc"
 typedoc --name "Kaspa WASM32 SDK - RPC" --sourceLinkExternal --readme ./README.md --out docs/kaspa-rpc ./build/docs/kaspa-rpc.ts
-echo "wasm32-core"
+echo "building core"
 typedoc --name "Kaspa WASM32 SDK - Core" --sourceLinkExternal --readme ./README.md --out docs/kaspa-core ./build/docs/kaspa-core.ts
-echo "wasm32-wallet"
+echo "building full"
 typedoc --name "Kaspa WASM32 SDK" --sourceLinkExternal --readme ./README.md --out docs/kaspa ./build/docs/kaspa.ts
