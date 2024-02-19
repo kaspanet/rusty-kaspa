@@ -16,7 +16,12 @@
     </head>
     <body>
         Kaspa WASM32 SDK v<span id="version"></span><br>&nbsp;<br>
-        <a href="../../docs/typedoc/index.html" target="_blank">SDK Documentation</a>
+        <ul>
+            <li><a href="../../docs/wasm32-keygen/index.html" target="_blank">WASM32 KeyGen Package () - Documentation</a></li>
+            <li><a href="../../docs/wasm32-rpc/index.html" target="_blank">SDK Documentation</a></li>
+            <li><a href="../../docs/wasm32-core/index.html" target="_blank">SDK Documentation</a></li>
+            <li><a href="../../docs/wasm32-full/index.html" target="_blank">SDK Documentation</a></li>
+        </ul>
         <br>&nbsp;<br>
         SDK Examples:
         <ul>
@@ -28,10 +33,14 @@
             <li><a href="utxo-context.html">UtxoContext</a></li>
         </ul>
     </body>
+    <script src="../../package-sizes.js"></script>
+    <script>
+        console.log(window.packageSizes);
+    </script>
     <script type="module">
-        import * as kaspa from '../../web/kaspa/kaspa.js';
+        import * as kaspa from '../../web/kaspa-keygen/kaspa.js';
         (async () => {
-            await kaspa.default('../../web/kaspa/kaspa_bg.wasm');
+            await kaspa.default('../../web/kaspa-keygen/kaspa_bg.wasm');
             console.log("kaspa", kaspa);
             console.log("version", kaspa.version());
             document.getElementById("version").innerText = kaspa.version();

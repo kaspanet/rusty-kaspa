@@ -30,7 +30,7 @@ declare! {
 /// it aggregates all UTXO entries for that address and emits events when
 /// any activity against these addresses occurs.
 ///
-/// When created, UtxoContext accepts {@link IUtxoCreateArgs} interface that
+/// When created, UtxoContext accepts {@link IUtxoContextArgs} interface that
 /// can contain an optional id parameter.  If supplied, this `id` parameter
 /// will be included in all notifications emitted by the UtxoContext as
 /// well as included as a part of {@link ITransactionRecord} emitted when

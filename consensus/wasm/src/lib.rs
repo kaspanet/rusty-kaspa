@@ -9,12 +9,10 @@ cfg_if! {
         mod signable;
         mod txscript;
         mod utils;
-        mod version;
 
         pub use signable::*;
         pub use txscript::*;
         pub use utils::*;
-        pub use version::*;
     }
 
 }

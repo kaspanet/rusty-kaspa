@@ -5,13 +5,13 @@
         <script type="module">
             import { log, stringify, currentNetwork } from './resources/utils.js';
 
-            import * as kaspa from '../../web/kaspa/kaspa_wasm.js';
+            import * as kaspa from '../../web/kaspa-core/kaspa.js';
             let { Beacon, RpcClient, Encoding, UtxoProcessor, UtxoContext } = kaspa;
 
             window.monitor = {};
 
             (async () => {
-                await kaspa.default('../../web/kaspa/kaspa_wasm_bg.wasm');
+                await kaspa.default('../../web/kaspa-core/kaspa_bg.wasm');
 
                 let network = currentNetwork();
                 log(`Connecting to Kaspa network...`);

@@ -1,3 +1,7 @@
 #!/bin/bash
+set -e
 
-wasm-pack build --target web --out-name kaspa --out-dir web/kaspa --features wasm32-sdk $@
+wasm-pack build --target web --out-name kaspa --out-dir web/kaspa-keygen --features wasm32-keygen $@
+wasm-pack build --target web --out-name kaspa --out-dir web/kaspa-rpc --features wasm32-rpc $@
+wasm-pack build --target web --out-name kaspa --out-dir web/kaspa-core --features wasm32-core $@
+wasm-pack build --target web --out-name kaspa --out-dir web/kaspa-wallet --features wasm32-wallet $@

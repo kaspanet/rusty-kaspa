@@ -54,29 +54,63 @@
 extern crate alloc;
 extern crate self as kaspa_wallet_core;
 
-pub mod account;
-pub mod api;
-pub mod compat;
-pub mod derivation;
-pub mod deterministic;
-pub mod encryption;
-pub mod error;
-pub mod events;
-pub mod factory;
-mod imports;
-pub mod message;
-pub mod prelude;
-pub mod result;
-pub mod rpc;
-pub mod serializer;
-pub mod settings;
-pub mod storage;
-pub mod tx;
-pub mod utils;
-pub mod utxo;
-pub mod wallet;
+use cfg_if::cfg_if;
 
-#[cfg(any(feature = "wasm32-sdk", feature = "wasm32-keygen"))]
+
+cfg_if! {
+    if #[cfg(feature = "wasm32-core")] {
+        // pub mod wasm;
+        // pub use wasm::*;
+        
+        pub mod account;
+        pub mod api;
+        pub mod compat;
+        pub mod derivation;
+        pub mod deterministic;
+        pub mod encryption;
+        pub mod error;
+        pub mod events;
+        pub mod factory;
+        mod imports;
+        pub mod message;
+        pub mod prelude;
+        pub mod result;
+        pub mod rpc;
+        pub mod serializer;
+        pub mod settings;
+        pub mod storage;
+        pub mod tx;
+        pub mod utils;
+        pub mod utxo;
+        pub mod wallet;
+        
+    } else if #[cfg(any(feature = "wasm32-sdk", not(target_arch = "wasm32")))] {
+        pub mod account;
+        pub mod api;
+        pub mod compat;
+        pub mod derivation;
+        pub mod deterministic;
+        pub mod encryption;
+        pub mod error;
+        pub mod events;
+        pub mod factory;
+        mod imports;
+        pub mod message;
+        pub mod prelude;
+        pub mod result;
+        pub mod rpc;
+        pub mod serializer;
+        pub mod settings;
+        pub mod storage;
+        pub mod tx;
+        pub mod utils;
+        pub mod utxo;
+        pub mod wallet;
+    }
+
+}
+
+#[cfg(any(feature = "wasm32-sdk", feature = "wasm32-core"))]
 pub mod wasm;
 
 /// Returns the version of the Wallet framework.
