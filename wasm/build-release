@@ -27,8 +27,8 @@ wasm-pack build --target web --dev --out-name kaspa --out-dir web/kaspa-rpc-dev 
 wasm-pack build --target web --out-name kaspa --out-dir web/kaspa-core --features wasm32-core $@
 wasm-pack build --target web --dev --out-name kaspa --out-dir web/kaspa-core-dev --features wasm32-core $@
 
-wasm-pack build --target web --out-name kaspa --out-dir web/kaspa-wallet --features wasm32-wallet $@
-wasm-pack build --target web --dev --out-name kaspa --out-dir web/kaspa-wallet-dev --features wasm32-wallet $@
+wasm-pack build --target web --out-name kaspa --out-dir web/kaspa --features wasm32-sdk $@
+wasm-pack build --target web --dev --out-name kaspa --out-dir web/kaspa-dev --features wasm32-sdk $@
 
 wasm-pack build --target nodejs --out-name kaspa --out-dir nodejs/kaspa --features wasm32-sdk $@
 wasm-pack build --target nodejs --dev --out-name kaspa --out-dir nodejs/kaspa-dev --features wasm32-sdk $@
@@ -37,7 +37,7 @@ wasm-pack build --target nodejs --dev --out-name kaspa --out-dir nodejs/kaspa-de
 typedoc --name "Kaspa WASM32 SDK - Key Generation" --sourceLinkExternal --readme ./README.md --out docs/kaspa-keygen ./build/docs/kaspa-keygen.ts
 typedoc --name "Kaspa WASM32 SDK - RPC" --sourceLinkExternal --readme ./README.md --out docs/kaspa-rpc ./build/docs/kaspa-rpc.ts
 typedoc --name "Kaspa WASM32 SDK - Core" --sourceLinkExternal --readme ./README.md --out docs/kaspa-core ./build/docs/kaspa-core.ts
-typedoc --name "Kaspa WASM32 SDK" --sourceLinkExternal --readme ./README.md --out docs/kaspa-wallet ./build/docs/kaspa-wallet.ts
+typedoc --name "Kaspa WASM32 SDK" --sourceLinkExternal --readme ./README.md --out docs/kaspa ./build/docs/kaspa.ts
 
 # cp -r ../rpc/wrpc/wasm/web/kaspa-rpc release/kaspa-wasm32-sdk/web/kaspa-rpc
 cp -r web/kaspa-keygen release/kaspa-wasm32-sdk/web/kaspa-keygen
@@ -49,8 +49,8 @@ cp -r web/kaspa-rpc-dev release/kaspa-wasm32-sdk/web/kaspa-rpc-dev
 cp -r web/kaspa-core release/kaspa-wasm32-sdk/web/kaspa-core
 cp -r web/kaspa-core-dev release/kaspa-wasm32-sdk/web/kaspa-core-dev
 
-cp -r web/kaspa-wallet release/kaspa-wasm32-sdk/web/kaspa-wallet
-cp -r web/kaspa-wallet-dev release/kaspa-wasm32-sdk/web/kaspa-wallet-dev
+cp -r web/kaspa release/kaspa-wasm32-sdk/web/kaspa
+cp -r web/kaspa-dev release/kaspa-wasm32-sdk/web/kaspa-dev
 
 cp -r nodejs/kaspa release/kaspa-wasm32-sdk/nodejs/kaspa
 cp -r nodejs/kaspa-dev release/kaspa-wasm32-sdk/nodejs/kaspa-dev
@@ -58,7 +58,7 @@ cp -r nodejs/kaspa-dev release/kaspa-wasm32-sdk/nodejs/kaspa-dev
 cp -r docs/kaspa-keygen release/kaspa-wasm32-sdk/docs/kaspa-keygen
 cp -r docs/kaspa-rpc release/kaspa-wasm32-sdk/docs/kaspa-rpc
 cp -r docs/kaspa-core release/kaspa-wasm32-sdk/docs/kaspa-core
-cp -r docs/kaspa-wallet release/kaspa-wasm32-sdk/docs/kaspa-wallet
+cp -r docs/kaspa release/kaspa-wasm32-sdk/docs/kaspa
 
 mkdir -p release/kaspa-wasm32-sdk/examples/data
 cp -r examples/data/.gitignore release/kaspa-wasm32-sdk/examples/data/.gitignore

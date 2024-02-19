@@ -35,9 +35,9 @@ workflow-core.workspace = true
 workflow-wasm.workspace = true
 
 [features] 
-wasm32-wallet = [
-    "wasm32-sdk"
-]
+# wasm32-wallet = [
+#     "wasm32-sdk"
+# ]
 wasm32-sdk = [
     # "wasm32-core",
     # "kaspa-consensus-wasm/wasm32-sdk",
