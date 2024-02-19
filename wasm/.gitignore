@@ -7,7 +7,4 @@ package-lock.json
 /nodejs/node_modules
 /nodejs/package-lock.json
 /setup
-/docs
 /build
-/web
-/nodejs
