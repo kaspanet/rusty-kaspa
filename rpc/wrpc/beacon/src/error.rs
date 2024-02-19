@@ -35,7 +35,7 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn custom<T: ToString>(msg: T) -> Self {
+    pub fn custom<T: std::fmt::Display>(msg: T) -> Self {
         Error::Custom(msg.to_string())
     }
 }

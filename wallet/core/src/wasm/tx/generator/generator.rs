@@ -174,11 +174,10 @@ impl Generator {
                     payload,
                     multiplexer,
                 )?
-            }
-            // GeneratorSource::Account(account) => {
-            //     let account: Arc<dyn crate::account::Account> = account.into();
-            //     native::GeneratorSettings::try_new_with_account(account, final_transaction_destination, final_priority_fee, None)?
-            // }
+            } // GeneratorSource::Account(account) => {
+              //     let account: Arc<dyn crate::account::Account> = account.into();
+              //     native::GeneratorSettings::try_new_with_account(account, final_transaction_destination, final_priority_fee, None)?
+              // }
         };
 
         let abortable = Abortable::default();

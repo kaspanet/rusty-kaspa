@@ -1,7 +1,7 @@
 pub use clap::Parser;
 use std::str::FromStr;
 
-#[derive(Parser, Debug)]
+#[derive(Default, Parser, Debug)]
 #[command(version, about, long_about = None)]
 pub struct Args {
     /// HTTP server port
@@ -15,6 +15,10 @@ pub struct Args {
     /// Verbose mode
     #[arg(short, long, default_value = "false")]
     pub verbose: bool,
+
+    /// Show node data on each election
+    #[arg(short, long, default_value = "false")]
+    pub election: bool,
 
     /// Enable beacon status access via `/status`
     #[arg(long, default_value = "false")]
@@ -31,16 +35,20 @@ impl FromStr for RateLimit {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let parts: Vec<&str> = s.split(':').collect();
-        if parts.len() != 2 {
-            return Err("invalid rate limit, must be `<requests>:<period>`".to_string());
-        }
-        let requests = parts[0]
+        let parts = s.split_once(':');
+        let (requests, period) = match parts {
+            None | Some(("", _)) | Some((_, "")) => {
+                return Err("invalid rate limit, must be `<requests>:<period>`".to_string());
+            }
+            Some(x) => x,
+        };
+        let requests = requests
             .parse()
-            .map_err(|_| format!("Unable to parse number of requests, the value must be an integer, supplied: {:?}", parts[0]))?;
-        let period = parts[1].parse().map_err(|_| {
-            format!("Unable to parse period, the value must be an integer specifying number of seconds, supplied: {:?}", parts[1])
+            .map_err(|_| format!("Unable to parse number of requests, the value must be an integer, supplied: {:?}", requests))?;
+        let period = period.parse().map_err(|_| {
+            format!("Unable to parse period, the value must be an integer specifying number of seconds, supplied: {:?}", period)
         })?;
+
         Ok(RateLimit { requests, period })
     }
 }

@@ -15,7 +15,7 @@ cfg_if! {
         pub mod utils;
         pub mod utxo;
         pub mod encryption;
-        
+
         pub use self::balance::*;
         pub use self::dispatcher::*;
         pub use self::message::*;

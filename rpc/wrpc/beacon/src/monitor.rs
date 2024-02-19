@@ -1,9 +1,9 @@
-use crate::connection::Connection;
+use crate::connection::{Connection, Descriptor};
 use crate::imports::*;
 
 static MONITOR: OnceLock<Arc<Monitor>> = OnceLock::new();
 
-pub fn init(args: &Args) {
+pub fn init(args: &Arc<Args>) {
     MONITOR.set(Arc::new(Monitor::new(args))).unwrap();
 }
 
@@ -19,10 +19,13 @@ pub async fn stop() -> Result<()> {
     monitor().stop().await
 }
 
+/// Monitor receives updates from [Connection] monitoring tasks
+/// and updates the descriptors for each [Params] based on the
+/// connection store (number of connections * bias).
 pub struct Monitor {
-    verbose: bool,
+    args: Arc<Args>,
     connections: RwLock<AHashMap<Params, Vec<Arc<Connection>>>>,
-    descriptors: RwLock<AHashMap<Params, String>>,
+    descriptors: RwLock<AHashMap<Params, Descriptor>>,
     channel: Channel<Params>,
     shutdown_ctl: DuplexChannel<()>,
 }
@@ -30,7 +33,7 @@ pub struct Monitor {
 impl Default for Monitor {
     fn default() -> Self {
         Self {
-            verbose: false,
+            args: Arc::new(Args::default()),
             connections: Default::default(),
             descriptors: Default::default(),
             channel: Channel::unbounded(),
@@ -42,7 +45,7 @@ impl Default for Monitor {
 impl fmt::Debug for Monitor {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Monitor")
-            .field("verbose", &self.verbose)
+            .field("verbose", &self.verbose())
             .field("connections", &self.connections)
             .field("descriptors", &self.descriptors)
             .finish()
@@ -50,14 +53,19 @@ impl fmt::Debug for Monitor {
 }
 
 impl Monitor {
-    pub fn new(args: &Args) -> Self {
-        Self { verbose: args.verbose, ..Default::default() }
+    pub fn new(args: &Arc<Args>) -> Self {
+        Self { args: args.clone(), ..Default::default() }
+    }
+
+    pub fn verbose(&self) -> bool {
+        self.args.verbose
     }
 
     pub fn connections(&self) -> AHashMap<Params, Vec<Arc<Connection>>> {
         self.connections.read().unwrap().clone()
     }
 
+    /// Process an update to `Server.toml` removing or adding node connections accordingly.
     pub async fn update_nodes(&self, nodes: Vec<Arc<Node>>) -> Result<()> {
         let mut connections = self.connections();
 
@@ -72,7 +80,7 @@ impl Monitor {
                 list.iter().filter(|connection| !nodes.iter().any(|node| connection.node == **node)).cloned().collect();
 
             for node in create {
-                let created = Arc::new(Connection::try_new((*node).clone(), self.channel.sender.clone(), self.verbose)?);
+                let created = Arc::new(Connection::try_new((*node).clone(), self.channel.sender.clone(), &self.args)?);
                 created.start()?;
                 list.push(created);
             }
@@ -124,22 +132,55 @@ impl Monitor {
                     match msg {
                         Ok(params) => {
 
+                            // run node elections
 
-                            let mut connections = self.connections().get(&params).unwrap().clone();
+                            let mut connections = self.connections()
+                                .get(&params)
+                                .expect("Monitor: expecting existing connection params")
+                                .clone()
+                                .into_iter()
+                                .filter(|connection|connection.online())
+                                .collect::<Vec<_>>();
                             if connections.is_empty() {
                                 self.descriptors.write().unwrap().remove(&params);
                             } else {
                                 connections.sort_by_key(|connection| connection.score());
-                                let output = connections.first().unwrap().output();
-                                if self.verbose {
-                                    log_success!("Updating","{params} - {output}");
+
+                                if self.args.election {
+                                    log_success!("","");
+                                    connections.iter().for_each(|connection| {
+                                        log_warn!("Node","{}", connection);
+                                    });
                                 }
-                                self.descriptors.write().unwrap().insert(params,output);
+
+                                if let Some(descriptor) = connections.first().unwrap().descriptor() {
+                                    let mut descriptors = self.descriptors.write().unwrap();
+
+                                    // extra debug output & monitoring
+                                    if self.args.verbose || self.args.election {
+                                        if let Some(current) = descriptors.get(&params) {
+                                            if current.connection.node.id != descriptor.connection.node.id {
+                                                log_success!("Election","{}", descriptor.connection);
+                                                descriptors.insert(params,descriptor);
+                                            } else {
+                                                log_success!("Keep","{}", descriptor.connection);
+                                            }
+                                        } else {
+                                            log_success!("Default","{}", descriptor.connection);
+                                            descriptors.insert(params,descriptor);
+                                        }
+                                    } else {
+                                        descriptors.insert(params,descriptor);
+                                    }
+                                }
+
+                                if self.args.election && self.args.verbose {
+                                    log_success!("","");
+                                }
                             }
-                                                    }
+                        }
                         Err(err) => {
                             println!("Monitor: error while receiving update message: {err}");
-                            // break;
                         }
                     }
 
@@ -156,20 +197,16 @@ impl Monitor {
         Ok(())
     }
 
-    pub fn get_all(&self) -> String {
+    /// Get the status of all nodes as a JSON string (available via `/status` endpoint if enabled).
+    pub fn get_all_json(&self) -> String {
         let connections = self.connections();
-        let connections = connections.values().fold(Vec::default(), |mut a, b| {
-            a.extend(b);
-            a
-        });
-        // let nodes =
-        //     connections.iter().filter_map(|connection| connection.online().then_some(Status::from(*connection))).collect::<Vec<_>>();
-        let nodes = connections.iter().map(|connection| Status::from(*connection)).collect::<Vec<_>>();
+        let nodes = connections.values().flatten().map(Status::from).collect::<Vec<_>>();
         serde_json::to_string(&nodes).unwrap()
     }
 
-    pub fn get(&self, params: &Params) -> Option<String> {
-        self.descriptors.read().unwrap().get(params).cloned()
+    /// Get JSON string representing node information (id, url, provider, link)
+    pub fn get_json(&self, params: &Params) -> Option<String> {
+        self.descriptors.read().unwrap().get(params).cloned().map(|descriptor| descriptor.json)
     }
 }
 
@@ -193,7 +230,7 @@ impl<'a> From<&'a Arc<Connection>> for Status<'a> {
         let url = connection.node.address.as_str();
         let provider = connection.node.provider.as_deref();
         let link = connection.node.link.as_deref();
-        let id = connection.node.id.as_str();
+        let id = connection.node.id_string.as_str();
         let transport = connection.node.transport;
         let encoding = connection.node.encoding;
         let network = connection.node.network;

@@ -13,6 +13,7 @@ mod transport;
 
 use args::*;
 use result::Result;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
@@ -23,7 +24,7 @@ async fn main() {
 }
 
 async fn run() -> Result<()> {
-    let args = Args::parse();
+    let args = Arc::new(Args::parse());
 
     workflow_log::set_log_level(workflow_log::LevelFilter::Info);
     panic::init_ungraceful_panic_handler();

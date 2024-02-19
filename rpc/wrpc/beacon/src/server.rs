@@ -20,11 +20,11 @@ pub async fn server(args: &Args) -> Result<(TcpListener, Router)> {
     // initialize tracing
     tracing_subscriber::fmt::init();
 
-    let app = Router::new().route("/v1/wrpc/:encoding/:network", get(handler));
+    let app = Router::new().route("/v1/wrpc/:encoding/:network", get(get_elected_node));
 
     let app = if args.status {
         log_warn!("Routes", "Enabling `/status` route");
-        app.route("/status", get(status))
+        app.route("/status", get(get_status_all_nodes))
     } else {
         log_success!("Routes", "Disabling `/status` route");
         app
@@ -52,14 +52,15 @@ pub async fn server(args: &Args) -> Result<(TcpListener, Router)> {
     Ok((listener, app))
 }
 
-// basic handler that responds with a static string
-async fn status() -> impl IntoResponse {
-    let json = monitor().get_all();
+// respond with a JSON object containing the status of all nodes
+async fn get_status_all_nodes() -> impl IntoResponse {
+    let json = monitor().get_all_json();
     (StatusCode::OK, [(header::CONTENT_TYPE, HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()))], json).into_response()
 }
 
-async fn handler(Path(params): Path<Params>) -> impl IntoResponse {
-    if let Some(json) = monitor().get(&params) {
+// respond with a JSON object containing the elected node
+async fn get_elected_node(Path(params): Path<Params>) -> impl IntoResponse {
+    if let Some(json) = monitor().get_json(&params) {
         ([(header::CONTENT_TYPE, HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()))], json).into_response()
     } else {
         (

@@ -4,7 +4,10 @@ use xxhash_rust::xxh3::xxh3_64;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Node {
     #[serde(skip)]
-    pub id: String,
+    pub id: u64,
+    #[serde(skip)]
+    pub id_string: String,
+
     pub name: Option<String>,
     pub location: Option<String>,
     pub address: String,
@@ -41,16 +44,19 @@ impl Node {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeConfig {
-    node: Vec<Node>,
+    #[serde(rename = "node")]
+    nodes: Vec<Node>,
 }
 
 pub fn try_parse_nodes(toml: &str) -> Result<Vec<Arc<Node>>> {
     let nodes: Vec<Arc<Node>> = toml::from_str::<NodeConfig>(toml)?
-        .node
+        .nodes
         .into_iter()
         .filter_map(|mut node| {
             let id = xxh3_64(node.address.as_bytes());
-            node.id = format!("{id:x}")[0..8].to_string();
+            let id_string = format!("{id:x}");
+            node.id = id;
+            node.id_string = id_string.chars().take(8).collect();
             node.enable.unwrap_or(true).then_some(node).map(Arc::new)
         })
         .collect::<Vec<_>>();
