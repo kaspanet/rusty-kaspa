@@ -10,7 +10,6 @@ pub use kind::*;
 pub use variants::*;
 
 use crate::derivation::build_derivate_paths;
-use crate::derivation::gen0;
 use crate::derivation::AddressDerivationManagerTrait;
 use crate::imports::*;
 use crate::storage::account::AccountSettings;
@@ -21,7 +20,8 @@ use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, PaymentDes
 use crate::utxo::balance::{AtomicBalance, BalanceStrings};
 use crate::utxo::UtxoContextBinding;
 use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, PrivateKey};
-use kaspa_consensus_wasm::UtxoEntryReference;
+use kaspa_consensus_client::UtxoEntryReference;
+use kaspa_wallet_keys::derivation::gen0::WalletDerivationManagerV0;
 use workflow_core::abortable::Abortable;
 
 /// Notification callback type used by [`Account::sweep`] and [`Account::send`].
@@ -630,16 +630,16 @@ pub(crate) fn create_private_keys<'l>(
     let paths = build_derivate_paths(account_kind, account_index, cosigner_index)?;
     let mut private_keys = vec![];
     if matches!(account_kind.as_ref(), LEGACY_ACCOUNT_KIND) {
-        let (private_key, attrs) = gen0::WalletDerivationManagerV0::derive_key_by_path(xkey, paths.0)?;
+        let (private_key, attrs) = WalletDerivationManagerV0::derive_key_by_path(xkey, paths.0)?;
         for (address, index) in receive.iter() {
             let (private_key, _) =
-                gen0::WalletDerivationManagerV0::derive_private_key(&private_key, &attrs, ChildNumber::new(*index, true)?)?;
+                WalletDerivationManagerV0::derive_private_key(&private_key, &attrs, ChildNumber::new(*index, true)?)?;
             private_keys.push((*address, private_key));
         }
-        let (private_key, attrs) = gen0::WalletDerivationManagerV0::derive_key_by_path(xkey, paths.1)?;
+        let (private_key, attrs) = WalletDerivationManagerV0::derive_key_by_path(xkey, paths.1)?;
         for (address, index) in change.iter() {
             let (private_key, _) =
-                gen0::WalletDerivationManagerV0::derive_private_key(&private_key, &attrs, ChildNumber::new(*index, true)?)?;
+                WalletDerivationManagerV0::derive_private_key(&private_key, &attrs, ChildNumber::new(*index, true)?)?;
             private_keys.push((*address, private_key));
         }
     } else {
@@ -662,13 +662,13 @@ pub(crate) fn create_private_keys<'l>(
 mod tests {
     use super::create_private_keys;
     use super::ExtendedPrivateKey;
-    use crate::derivation::gen0::PubkeyDerivationManagerV0;
     use crate::imports::LEGACY_ACCOUNT_KIND;
     use kaspa_addresses::Address;
     use kaspa_addresses::Prefix;
     use kaspa_bip32::secp256k1::SecretKey;
     use kaspa_bip32::PrivateKey;
     use kaspa_bip32::SecretKeyExt;
+    use kaspa_wallet_keys::derivation::gen0::PubkeyDerivationManagerV0;
     use std::str::FromStr;
 
     fn gen0_receive_addresses() -> Vec<&'static str> {

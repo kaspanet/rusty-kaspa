@@ -8,6 +8,7 @@ use serde_wasm_bindgen::*;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::prelude::*;
 
+#[cfg(feature = "wasm32-sdk")]
 #[wasm_bindgen(typescript_custom_section)]
 const TS_HEADER: &'static str = r#"
 /**

@@ -2,7 +2,6 @@ use super::RpcAddress;
 use super::RpcTransaction;
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::prelude::*;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct RpcMempoolEntry {
@@ -30,16 +29,22 @@ impl RpcMempoolEntryByAddress {
     }
 }
 
-#[wasm_bindgen(typescript_custom_section)]
-const TS_MEMPOOL_ENTRY: &'static str = r#"
-    /**
-     * Mempool entry.
-     * 
-     * @category Node RPC
-     */
-    export interface IMempoolEntry {
-        fee : bigint;
-        transaction : ITransaction;
-        isOrphan : boolean;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "wasm32-sdk")] {
+        use wasm_bindgen::prelude::*;
+
+        #[wasm_bindgen(typescript_custom_section)]
+        const TS_MEMPOOL_ENTRY: &'static str = r#"
+            /**
+             * Mempool entry.
+             * 
+             * @category Node RPC
+             */
+            export interface IMempoolEntry {
+                fee : bigint;
+                transaction : ITransaction;
+                isOrphan : boolean;
+            }
+        "#;
     }
-"#;
+}

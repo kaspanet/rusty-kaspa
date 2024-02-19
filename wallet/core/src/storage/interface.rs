@@ -3,8 +3,6 @@
 //!
 
 use crate::imports::*;
-use crate::result::Result;
-use crate::secret::Secret;
 use async_trait::async_trait;
 use downcast::{downcast_sync, AnySync};
 

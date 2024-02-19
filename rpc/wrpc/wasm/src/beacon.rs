@@ -1,9 +1,10 @@
 use crate::client::{RpcClient, RpcConfig};
 use crate::imports::*;
 pub use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;
-use kaspa_wrpc_client::node::Node;
+use kaspa_wrpc_client::node::NodeDescriptor;
 use kaspa_wrpc_client::Beacon as NativeBeacon;
 use serde::ser;
+use workflow_wasm::extensions::ObjectExtension;
 
 declare! {
     IBeaconConfig,
@@ -68,7 +69,12 @@ extern "C" {
     pub type IBeaconArray;
 }
 
+///
+/// Beacon is a client for obtaining public Kaspa wRPC endpoints.
+///
+/// @see {@link IBeaconConfig}, {@link IBeaconConnect}, {@link RpcClient}
 /// @category Node RPC
+///
 #[derive(Debug, Clone)]
 #[wasm_bindgen]
 pub struct Beacon {
@@ -77,6 +83,8 @@ pub struct Beacon {
 
 #[wasm_bindgen]
 impl Beacon {
+    /// Creates a new Beacon client with the given configuration supplied as {@link IBeaconConfig} interface.
+    /// If not supplied, the default configuration containing a list of community-operated public beacons is used.
     #[wasm_bindgen(constructor)]
     pub fn ctor(args: Option<IBeaconConfig>) -> Result<Beacon> {
         if let Some(args) = args {
@@ -89,16 +97,23 @@ impl Beacon {
 
 #[wasm_bindgen]
 impl Beacon {
+    /// Fetches a public Kaspa wRPC endpoint for the given encoding and network identifier.
+    /// @see {@link Encoding}, {@link NetworkId}, {@link Node}
     #[wasm_bindgen(js_name = getNode)]
-    pub async fn get_node(&self, encoding: Encoding, network_id: INetworkId) -> Result<Node> {
+    pub async fn get_node(&self, encoding: Encoding, network_id: INetworkId) -> Result<NodeDescriptor> {
         self.beacon.get_node(encoding, network_id.try_into()?).await
     }
 
+    /// Fetches a public Kaspa wRPC endpoint URL for the given encoding and network identifier.
+    /// @see {@link Encoding}, {@link NetworkId}
     #[wasm_bindgen(js_name = getUrl)]
     pub async fn get_url(&self, encoding: Encoding, network_id: INetworkId) -> Result<String> {
         self.beacon.get_url(encoding, network_id.try_into()?).await
     }
 
+    /// Connect to a public Kaspa wRPC endpoint for the given encoding and network identifier
+    /// supplied via {@link IBeaconConnect} interface.
+    /// @see {@link IBeaconConnect}, {@link RpcClient}
     pub async fn connect(&self, options: IBeaconConnect) -> Result<RpcClient> {
         let BeaconConnect { encoding, network_id } = options.try_into()?;
         let encoding = encoding.unwrap_or(Encoding::Borsh);
@@ -114,20 +129,12 @@ impl Beacon {
 
 impl TryFrom<IBeaconConfig> for NativeBeacon {
     type Error = Error;
-    fn try_from(_config: IBeaconConfig) -> Result<Self> {
-        // TODO
-        Ok(NativeBeacon::default())
-        // let urls = arrayZ
-        //     .iter()
-        //     .map(|url| {
-        //         if let Some(url) = url.as_string() {
-        //             Ok(url)
-        //         } else {
-        //             Err(Error::Custom("Invalid argument: expecting an array of strings".to_string()))
-        //         }
-        //     })
-        //     .collect::<Result<Vec<String>>>()?;
-
-        // Ok(NativeBeacon::new(urls))
+    fn try_from(config: IBeaconConfig) -> Result<Self> {
+        if let Ok(urls) = config.get_vec("urls") {
+            let urls = urls.into_iter().map(|v| v.as_string()).collect::<Option<Vec<_>>>().ok_or(Error::custom("Invalid URL"))?;
+            Ok(NativeBeacon::new(urls.into_iter().map(Arc::new).collect()))
+        } else {
+            Ok(NativeBeacon::default())
+        }
     }
 }

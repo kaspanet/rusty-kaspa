@@ -24,6 +24,9 @@ pub enum Error {
     #[error("{0}")]
     Custom(String),
 
+    #[error(transparent)]
+    WalletKeys(#[from] kaspa_wallet_keys::error::Error),
+
     #[error("please select an account")]
     AccountSelection,
 
@@ -233,6 +236,9 @@ pub enum Error {
 
     #[error("{0}")]
     DowncastError(String),
+
+    #[error(transparent)]
+    ConsensusClient(#[from] kaspa_consensus_client::error::Error),
 
     #[error(transparent)]
     ConsensusWasm(#[from] kaspa_consensus_wasm::error::Error),

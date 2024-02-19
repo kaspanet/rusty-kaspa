@@ -9,8 +9,10 @@ members = [
     "wallet/native",
     "wallet/wasm",
     "wallet/bip32",
+    "wallet/keys",
     "consensus",
     "consensus/core",
+    "consensus/client",
     "consensus/notify",
     "consensus/pow",
     "consensus/wasm",
@@ -18,6 +20,7 @@ members = [
     "kaspad",
     "simpa",
     "wasm",
+    "wasm/types",
     "math",
     "crypto/hashes",
     "crypto/muhash",
@@ -84,6 +87,7 @@ kaspa-cli = { version = "0.13.5", path = "cli" }
 kaspa-connectionmanager = { version = "0.13.5", path = "components/connectionmanager" }
 kaspa-consensus = { version = "0.13.5", path = "consensus" }
 kaspa-consensus-core = { version = "0.13.5", path = "consensus/core" }
+kaspa-consensus-client = { version = "0.13.5", path = "consensus/client" }
 kaspa-consensus-notify = { version = "0.13.5", path = "consensus/notify" }
 kaspa-consensus-wasm = { version = "0.13.5", path = "consensus/wasm" }
 kaspa-consensusmanager = { version = "0.13.5", path = "components/consensusmanager" }
@@ -118,9 +122,11 @@ kaspa-utils-tower = { version = "0.13.5", path = "utils/tower" }
 kaspa-utxoindex = { version = "0.13.5", path = "indexes/utxoindex" }
 kaspa-wallet = { version = "0.13.5", path = "wallet/native" }
 kaspa-wallet-cli-wasm = { version = "0.13.5", path = "wallet/wasm" }
+kaspa-wallet-keys = { version = "0.13.5", path = "wallet/keys" }
 kaspa-wallet-core = { version = "0.13.5", path = "wallet/core" }
 kaspa-wallet-macros = { version = "0.13.5", path = "wallet/macros" }
 kaspa-wasm = { version = "0.13.5", path = "wasm" }
+kaspa-wasm-types = { version = "0.13.5", path = "wasm/types" }
 kaspa-wrpc-client = { version = "0.13.5", path = "rpc/wrpc/client" }
 kaspa-wrpc-core = { version = "0.13.5", path = "rpc/wrpc/core" }
 kaspa-wrpc-proxy = { version = "0.13.5", path = "rpc/wrpc/proxy" }

@@ -12,8 +12,8 @@ use workflow_wasm::serde::to_value;
 
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 
-pub struct PlaceholderRequest;
-pub struct PlaceholderResponse;
+// pub struct PlaceholderRequest;
+// pub struct PlaceholderResponse;
 
 macro_rules! try_from {
     ($name:ident : $from_type:ty, $to_type:ty, $body:block) => {
@@ -36,42 +36,42 @@ const TS_CATEGORY_WALLET: &'static str = r#"
 
 // ---
 
-declare! {
-    IPingRequest,
-    r#"
-    /**
-     * 
-     */
-    export interface IPingRequest {
-        message?: string;
-    }
-    "#,
-}
+// declare! {
+//     IPingRequest,
+//     r#"
+//     /**
+//      *
+//      */
+//     export interface IPingRequest {
+//         message?: string;
+//     }
+//     "#,
+// }
 
-try_from! ( args: IPingRequest, PingRequest, {
-    let message = args.try_get_string("message")?;
-    Ok(PingRequest { message })
-});
+// try_from! ( args: IPingRequest, PingRequest, {
+//     let message = args.try_get_string("message")?;
+//     Ok(PingRequest { message })
+// });
 
-declare! {
-    IPingResponse,
-    r#"
-    /**
-     * 
-     */
-    export interface IPingResponse {
-        message?: string;
-    }
-    "#,
-}
+// declare! {
+//     IPingResponse,
+//     r#"
+//     /**
+//      *
+//      */
+//     export interface IPingResponse {
+//         message?: string;
+//     }
+//     "#,
+// }
 
-try_from! ( args: PingResponse, IPingResponse, {
-    let response = IPingResponse::default();
-    if let Some(message) = args.message {
-        response.set("message", &JsValue::from_str(&message))?;
-    }
-    Ok(response)
-});
+// try_from! ( args: PingResponse, IPingResponse, {
+//     let response = IPingResponse::default();
+//     if let Some(message) = args.message {
+//         response.set("message", &JsValue::from_str(&message))?;
+//     }
+//     Ok(response)
+// });
 
 // ---
 

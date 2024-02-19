@@ -1,7 +1,6 @@
 use crate::imports::*;
 use crate::utils::script_hashes;
-use crate::utxo::UtxoEntries;
-use crate::{Transaction, TransactionInput, TransactionOutput};
+use kaspa_consensus_client::{Transaction, TransactionInput, TransactionOutput, UtxoEntries};
 use kaspa_consensus_core::tx;
 use serde_wasm_bindgen::to_value;
 use std::str::FromStr;

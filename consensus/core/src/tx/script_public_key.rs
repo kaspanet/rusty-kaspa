@@ -433,8 +433,10 @@ mod tests {
         assert_eq!(spk, spk2);
     }
 
+    use wasm_bindgen::convert::IntoWasmAbi;
     use wasm_bindgen_test::wasm_bindgen_test;
     use workflow_wasm::serde::{from_value, to_value};
+
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_constructor() {
         let version = 0xc0de;
@@ -451,6 +453,7 @@ mod tests {
         assert_eq!(spk, from_value(spk_js.clone()).map_err(|_| ()).unwrap());
         assert_eq!(JsValue::from_str("string"), spk_js.js_typeof());
     }
+
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_js_spk_object() {
         let version = 0xc0de;
@@ -472,8 +475,6 @@ mod tests {
 
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_spk_object() {
-        use wasm_bindgen::convert::IntoWasmAbi;
-
         let version = 0xc0de;
         let vec: Vec<u8> = (0..SCRIPT_VECTOR_SIZE as u8).collect();
         let spk = ScriptPublicKey::from_vec(version, vec.clone());

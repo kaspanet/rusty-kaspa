@@ -4,7 +4,7 @@ use crate::imports::*;
 /// @category Node RPC
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen(inspectable)]
-pub struct Node {
+pub struct NodeDescriptor {
     /// The unique identifier of the node.
     #[wasm_bindgen(getter_with_clone)]
     pub id: String,
@@ -13,21 +13,21 @@ pub struct Node {
     pub url: String,
 }
 
-impl Eq for Node {}
+impl Eq for NodeDescriptor {}
 
-impl PartialEq for Node {
+impl PartialEq for NodeDescriptor {
     fn eq(&self, other: &Self) -> bool {
         self.url == other.url
     }
 }
 
-impl std::fmt::Display for Node {
+impl std::fmt::Display for NodeDescriptor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.url)
     }
 }
 
-impl Node {
+impl NodeDescriptor {
     pub fn url(&self) -> String {
         self.url.clone()
     }

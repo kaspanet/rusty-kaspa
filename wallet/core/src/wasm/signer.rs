@@ -1,6 +1,5 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::wasm::keys::keypair::PrivateKey;
 use js_sys::Array;
 use kaspa_consensus_core::{
     hashing::sighash_type::SIG_HASH_ALL,
@@ -9,6 +8,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_consensus_wasm::SignableTransaction;
 use kaspa_hashes::Hash;
+use kaspa_wallet_keys::privatekey::PrivateKey;
 use serde_wasm_bindgen::from_value;
 
 #[wasm_bindgen]

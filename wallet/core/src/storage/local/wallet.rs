@@ -3,8 +3,6 @@
 //!
 
 use crate::imports::*;
-use crate::result::Result;
-use crate::secret::Secret;
 use crate::storage::local::Payload;
 use crate::storage::local::Storage;
 use crate::storage::Encryptable;

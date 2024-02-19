@@ -56,6 +56,7 @@ extern crate self as kaspa_wallet_core;
 
 pub mod account;
 pub mod api;
+pub mod compat;
 pub mod derivation;
 pub mod deterministic;
 pub mod encryption;
@@ -67,17 +68,15 @@ pub mod message;
 pub mod prelude;
 pub mod result;
 pub mod rpc;
-pub mod secret;
 pub mod serializer;
 pub mod settings;
 pub mod storage;
 pub mod tx;
-pub mod types;
 pub mod utils;
 pub mod utxo;
 pub mod wallet;
 
-#[cfg(feature = "wasm32-sdk")]
+#[cfg(any(feature = "wasm32-sdk", feature = "wasm32-keygen"))]
 pub mod wasm;
 
 /// Returns the version of the Wallet framework.

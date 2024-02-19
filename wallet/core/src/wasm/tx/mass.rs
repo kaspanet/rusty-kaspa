@@ -1,11 +1,10 @@
 use crate::imports::NetworkParams;
 use crate::result::Result;
 use crate::tx::mass;
-// use crate::utxo::NetworkParams;
 use crate::wasm::tx::*;
+use kaspa_consensus_client::*;
 use kaspa_consensus_core::config::params::Params;
 use kaspa_consensus_core::tx as cctx;
-use kaspa_consensus_wasm::*;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
 
@@ -13,7 +12,6 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub struct MassCalculator {
     mc: Arc<mass::MassCalculator>,
-    // params: Arc<Params>,
 }
 
 #[wasm_bindgen]
@@ -99,7 +97,7 @@ impl MassCalculator {
             .dyn_into::<js_sys::Array>()?
             .iter()
             .map(TransactionOutput::try_from)
-            .collect::<std::result::Result<Vec<_>, kaspa_consensus_wasm::error::Error>>()?;
+            .collect::<std::result::Result<Vec<_>, kaspa_consensus_client::error::Error>>()?;
         let outputs = outputs.iter().map(|output| self.calc_mass_for_output(output)).collect::<Result<Vec<_>>>()?;
         Ok(outputs.iter().sum())
     }
@@ -110,7 +108,7 @@ impl MassCalculator {
             .dyn_into::<js_sys::Array>()?
             .iter()
             .map(TransactionInput::try_from)
-            .collect::<std::result::Result<Vec<_>, kaspa_consensus_wasm::error::Error>>()?;
+            .collect::<std::result::Result<Vec<_>, kaspa_consensus_client::error::Error>>()?;
         let inputs = inputs.iter().map(|input| self.calc_mass_for_input(input)).collect::<Result<Vec<_>>>()?;
         Ok(inputs.iter().sum())
     }

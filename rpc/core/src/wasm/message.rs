@@ -6,8 +6,8 @@ use crate::model::*;
 use js_sys::Object;
 use kaspa_addresses::Address;
 use kaspa_addresses::IAddressArray;
+use kaspa_consensus_client::Transaction;
 use kaspa_consensus_wasm::SignableTransaction;
-use kaspa_consensus_wasm::Transaction;
 use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;
 pub use serde_wasm_bindgen::from_value;
 use wasm_bindgen::prelude::*;
@@ -24,15 +24,6 @@ macro_rules! try_from {
         }
     };
 }
-
-#[wasm_bindgen(typescript_custom_section)]
-const TS_CATEGORY_RPC: &'static str = r#"
-/**
- * @categoryDescription Node RPC
- * RPC for direct node communication.
- * @module
- */
-"#;
 
 // ---
 
@@ -74,7 +65,7 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IRpcPingRequest {
+    export interface IPingRequest {
         message?: string;
     }
     "#,
@@ -92,7 +83,7 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IRpcPingResponse {
+    export interface IPingResponse {
         message?: string;
     }
     "#,

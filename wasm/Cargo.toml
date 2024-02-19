@@ -23,18 +23,52 @@ kaspa-math.workspace = true
 kaspa-pow.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-utils.workspace = true
+kaspa-wasm-types.workspace = true
 kaspa-wallet-core.workspace = true
+kaspa-wallet-keys.workspace = true
 kaspa-wrpc-client.workspace = true
 kaspa-wrpc-wasm.workspace = true
 num.workspace = true
 wasm-bindgen.workspace = true
 workflow-log.workspace = true
+workflow-core.workspace = true
+workflow-wasm.workspace = true
 
 [features] 
-wallet = [] 
-full = ["wallet"]
-wasm32-sdk = ["kaspa-consensus-wasm/wasm32-sdk","kaspa-wrpc-client/wasm32-sdk","kaspa-wrpc-wasm/wasm32-sdk","kaspa-wallet-core/wasm32-sdk"]
-default = [] 
+wasm32-sdk = [
+    # "wasm32-core",
+    # "kaspa-consensus-wasm/wasm32-sdk",
+    # "kaspa-wrpc-client/wasm32-sdk",
+    # "kaspa-wrpc-wasm/wasm32-sdk",
+    # "wasm32-core",
+    "kaspa-wallet-core/wasm32-sdk",
+    "kaspa-pow/wasm32-sdk",
+    # "workflow-core/wasm32-sdk",
+    # "workflow-wasm/wasm32-sdk",
+    # ""
+]
+wasm32-core = [
+    # "kaspa-consensus-wasm/wasm32-sdk",
+    # "kaspa-wrpc-client/wasm32-sdk",
+    # "kaspa-wrpc-wasm/wasm32-sdk",
+    "kaspa-wallet-core/wasm32-core",
+    "kaspa-pow/wasm32-sdk",
+    # "workflow-core/wasm32-sdk",
+    # "workflow-wasm/wasm32-sdk",
+]
+wasm32-rpc = [
+    "kaspa-consensus-wasm/wasm32-sdk",
+    "kaspa-wrpc-client/wasm32-sdk",
+    "kaspa-wrpc-wasm/wasm32-sdk",
+    # "kaspa-wallet-core/wasm32-sdk"
+]
+wasm32-keygen = [
+    # "kaspa-wallet-keys",
+    # "kaspa-consensus-wasm/wasm32-keygen",
+# "kaspa-wrpc-client/wasm32-sdk",
+# "kaspa-wrpc-wasm/wasm32-sdk",
+]
+default = []
 
 [package.metadata.docs.rs]
 targets = ["wasm32-unknown-unknown"]

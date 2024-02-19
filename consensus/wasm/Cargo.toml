@@ -10,9 +10,11 @@ repository.workspace = true
 
 [features]
 wasm32-sdk = []
+wasm32-types = []
 
 [dependencies]
 kaspa-consensus-core.workspace = true
+kaspa-consensus-client.workspace = true
 kaspa-addresses.workspace = true
 kaspa-txscript.workspace = true
 kaspa-hashes.workspace = true

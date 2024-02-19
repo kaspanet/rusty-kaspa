@@ -14,11 +14,9 @@ pub use crate::factory::{factories, Factory};
 pub use crate::result::Result;
 pub use crate::rpc::Rpc;
 pub use crate::rpc::{DynRpcApi, RpcCtl};
-pub use crate::secret::Secret;
 pub use crate::serializer::*;
 pub use crate::storage::*;
 pub use crate::tx::MassCombinationStrategy;
-pub use crate::types::*;
 pub use crate::utxo::balance::Balance;
 pub use crate::utxo::scan::{Scan, ScanExtent};
 pub use crate::utxo::{Maturity, NetworkParams, OutgoingTransaction, UtxoContext, UtxoEntryReference, UtxoProcessor};
@@ -39,6 +37,8 @@ pub use kaspa_consensus_core::network::{NetworkId, NetworkType};
 pub use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionId, TransactionIndexType};
 pub use kaspa_utils::hashmap::*;
 pub use kaspa_utils::hex::{FromHex, ToHex};
+pub use kaspa_wallet_keys::secret::Secret;
+pub use kaspa_wallet_keys::types::*;
 pub use pad::PadStr;
 pub use separator::Separatable;
 pub use serde::{Deserialize, Deserializer, Serialize};
@@ -58,6 +58,5 @@ pub use zeroize::*;
 cfg_if! {
     if #[cfg(feature = "wasm32-sdk")] {
         pub use wasm_bindgen::convert::TryFromJsValue;
-        // pub use workflow_wasm::stream::AsyncStream;
     }
 }

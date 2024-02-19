@@ -9,8 +9,6 @@
 
 use crate::api::message::*;
 use crate::imports::*;
-use crate::result::Result;
-use crate::secret::Secret;
 use crate::storage::{PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, WalletDescriptor};
 use crate::tx::GeneratorSummary;
 use workflow_core::channel::Receiver;

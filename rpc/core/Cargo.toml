@@ -9,11 +9,15 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-wasm32-sdk = ["kaspa-consensus-wasm/wasm32-sdk"]
+wasm32-sdk = [
+    "kaspa-consensus-client/wasm32-sdk",
+    "kaspa-consensus-wasm/wasm32-sdk"
+]
 
 [dependencies]
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
+kaspa-consensus-client.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-consensus-wasm.workspace = true
 kaspa-core.workspace = true

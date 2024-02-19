@@ -1,8 +1,8 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::tx::generator as native;
-use crate::wasm::keys::PrivateKey;
-use kaspa_consensus_wasm::Transaction;
+use kaspa_consensus_client::Transaction;
+use kaspa_wallet_keys::privatekey::PrivateKey;
 use kaspa_wrpc_wasm::RpcClient;
 
 /// @category Wallet SDK
@@ -71,7 +71,7 @@ impl PendingTransaction {
     pub fn sign(&self, js_value: JsValue) -> Result<()> {
         if let Ok(keys) = js_value.dyn_into::<Array>() {
             let keys: Vec<PrivateKey> =
-                keys.iter().map(PrivateKey::try_from).collect::<std::result::Result<Vec<_>, kaspa_wallet_core::error::Error>>()?;
+                keys.iter().map(PrivateKey::try_from).collect::<std::result::Result<Vec<_>, kaspa_wallet_keys::error::Error>>()?;
             self.inner.try_sign_with_keys(keys.iter().map(|key| key.into()).collect())
         } else {
             Err(Error::custom("Please supply an array of keys"))

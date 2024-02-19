@@ -1261,7 +1261,7 @@ impl Wallet {
         payment_secret: Option<&Secret>,
         notifier: Option<ScanNotifier>,
     ) -> Result<Arc<dyn Account>> {
-        use crate::derivation::gen0::import::load_v0_keydata;
+        use crate::compat::gen0::load_v0_keydata;
 
         let notifier = notifier.as_ref();
         let keydata = load_v0_keydata(import_secret).await?;
@@ -1308,12 +1308,12 @@ impl Wallet {
         Ok(account)
     }
 
-    pub async fn import_gen1_keydata(self: &Arc<Wallet>, secret: Secret) -> Result<()> {
-        use crate::derivation::gen1::import::load_v1_keydata;
+    pub async fn import_gen1_keydata(self: &Arc<Wallet>, _secret: Secret) -> Result<()> {
+        // use crate::derivation::gen1::import::load_v1_keydata;
 
-        let _keydata = load_v1_keydata(&secret).await?;
-
-        Ok(())
+        // let _keydata = load_v1_keydata(&secret).await?;
+        todo!();
+        // Ok(())
     }
 
     pub async fn import_with_mnemonic(

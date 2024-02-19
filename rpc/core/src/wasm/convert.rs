@@ -1,5 +1,5 @@
 use crate::model::*;
-use kaspa_consensus_wasm::*;
+use kaspa_consensus_client::*;
 use std::sync::Arc;
 
 impl From<RpcUtxosByAddressesEntry> for UtxoEntry {
@@ -17,6 +17,7 @@ impl From<RpcUtxosByAddressesEntry> for UtxoEntryReference {
 cfg_if::cfg_if! {
     if #[cfg(feature = "wasm32-sdk")] {
         use kaspa_consensus_core::tx;
+        use kaspa_consensus_wasm::*;
 
         impl From<TransactionInput> for RpcTransactionInput {
             fn from(tx_input: TransactionInput) -> Self {
