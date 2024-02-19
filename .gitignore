@@ -13,4 +13,4 @@ analyzer-target
 testing/integration/perflogs*
 Servers.toml
 release
-# package-sizes.js
+package-sizes.js
