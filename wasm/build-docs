@@ -12,4 +12,4 @@ typedoc --name "Kaspa WASM32 SDK - RPC" --sourceLinkExternal --readme ./README.m
 echo "wasm32-core"
 typedoc --name "Kaspa WASM32 SDK - Core" --sourceLinkExternal --readme ./README.md --out docs/kaspa-core ./build/docs/kaspa-core.ts
 echo "wasm32-wallet"
-typedoc --name "Kaspa WASM32 SDK" --sourceLinkExternal --readme ./README.md --out docs/kaspa-wallet ./build/docs/kaspa-wallet.ts
+typedoc --name "Kaspa WASM32 SDK" --sourceLinkExternal --readme ./README.md --out docs/kaspa ./build/docs/kaspa.ts
