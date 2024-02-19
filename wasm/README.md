@@ -13,7 +13,7 @@ codebase within JavaScript and TypeScript environments such as Node.js and Web B
 
 - [**integrating with Kaspa** guide](https://kaspa.aspectron.org/)
 - [**Rust** documentation](https://docs.rs/kaspa-wasm/latest/kaspa_wasm/index.html)
-- [**TypeScript** documentation](https://kaspa.aspectron.org/typedoc/)
+- [**TypeScript** documentation](https://kaspa.aspectron.org/docs/)
 
 Please note that while WASM directly binds JavaScript and Rust resources, their names on JavaScript side
 are different from their name in Rust as they conform to the 'camelCase' convention in JavaScript and 
@@ -39,12 +39,35 @@ WASM32 currently can not be loaded using the `file://` protocol.
 
 You can use any web server of your choice. If you don't have one, you can run one as follows:
 ```bash
-cargo install simple-http-server
-simple-http-server
+cargo install http-server
+http-server
 ```
-Access the examples at  [http://localhost:8000/examples/web/index.html](http://localhost:8000/examples/web/index.html).
-(Make sure to change the port if you are using a different server.)
+Access the examples at  [http://localhost:7878/examples/web/index.html](http://localhost:7878/examples/web/index.html).
+(Make sure to change the port if you are using a different server. Many servers will serve on 
+[http://localhost:8000/examples/web/index.html](http://localhost:8000/examples/web/index.html) by default)
 
+If building from source, you must run `build-release` or `build-web` scripts before running the examples.
+
+## Building from Source
+
+To build the WASM32 SDK from source, you need to have the Rust environment installed. To do that,
+follow instructions in the [Rusty-Kaspa README](https://github.com/kaspanet/rusty-kaspa).
+
+Once you have Rust installed, you can build the WASM32 SDK as follows:
+
+- `./build-release` - build the release version of the WASM32 SDK + Docs. The release version also contains `debug` builds of the libraries.
+- `./build-web` - build the web packages
+- `./build-docs` - runs `build-web` and then generates typedoc documentation
+- `./build-node` - build the NodeJS packages
+
+## WASM32 SDK release packages
+
+The SDK is built as 4 packages for Web Browsers as follows:
+- KeyGen - Key & Address Generation only
+- RPC - RPC only
+- Core - RPC + Key & Address Generation + Wallet SDK
+- Full - Full SDK + Integrated Wallet
+For NodeJS, the SDK is built as a single package containing all features.
 
 ## SDK folder structure
 
@@ -67,7 +90,7 @@ If you are using JavaScript and Visual Studio Code, it is highly recommended you
 the `jsconfig.json` configuration file as is done in the SDK examples. This file allows 
 Visual Studio to provide TypeScript-like code completion, type checking and documentation.
 
-Included documentation in the release can be accessed by loading the `docs/index.html` 
+Included documentation in the release can be accessed by loading the `docs/kaspa/index.html` 
 file in a web browser.
 
 ## Using RPC

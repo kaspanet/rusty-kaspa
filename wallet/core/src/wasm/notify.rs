@@ -2,42 +2,72 @@
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 use wasm_bindgen::prelude::*;
 
+cfg_if::cfg_if! {
+    if #[cfg(feature = "wasm32-core")] {
+        #[wasm_bindgen(typescript_custom_section)]
+        const TS_NOTIFY: &'static str = r#"
+        /**
+         * Wallet notification data payload.
+         */
+
+        export type WalletEventData = IConnectEvent
+            | IDisconnectEvent
+            | IUtxoIndexNotEnabledEvent
+            | ISyncStateEvent
+            | IServerStatusEvent
+            | IUtxoProcErrorEvent
+            | IDaaScoreChangeEvent
+            | IPendingEvent
+            | IReorgEvent
+            | IStasisEvent
+            | IMaturityEvent
+            | IDiscoveryEvent
+            | IBalanceEvent
+            | IErrorEvent
+            ;
+        "#;
+    } else {
+        #[wasm_bindgen(typescript_custom_section)]
+        const TS_NOTIFY: &'static str = r#"
+        /**
+         * Wallet notification data payload.
+         */
+
+        export type WalletEventData = IConnectEvent
+            | IDisconnectEvent
+            | IUtxoIndexNotEnabledEvent
+            | ISyncStateEvent
+            | IWalletHintEvent
+            | IWalletOpenEvent
+            | IWalletCreateEvent
+            | IWalletReloadEvent
+            | IWalletErrorEvent
+            // | IWalletCloseEvent
+            | IPrvDataCreateEvent
+            | IAccountActivationEvent
+            | IAccountDeactivationEvent
+            | IAccountSelectionEvent
+            | IAccountCreateEvent
+            | IAccountUpdateEvent
+            | IServerStatusEvent
+            // | IUtxoProcStartEvent
+            // | IUtxoProcStopEvent
+            | IUtxoProcErrorEvent
+            | IDaaScoreChangeEvent
+            | IPendingEvent
+            | IReorgEvent
+            | IStasisEvent
+            | IMaturityEvent
+            | IDiscoveryEvent
+            | IBalanceEvent
+            | IErrorEvent
+            ;
+        "#;
+    }
+}
+
 #[wasm_bindgen(typescript_custom_section)]
-const TS_HEADER: &'static str = r#"
-/**
- * Wallet notification data payload.
- */
-
-export type WalletEventData = IConnectEvent
-    | IDisconnectEvent
-    | IUtxoIndexNotEnabledEvent
-    | ISyncStateEvent
-    | IWalletHintEvent
-    | IWalletOpenEvent
-    | IWalletCreateEvent
-    | IWalletReloadEvent
-    | IWalletErrorEvent
-    // | IWalletCloseEvent
-    | IPrvDataCreateEvent
-    | IAccountActivationEvent
-    | IAccountDeactivationEvent
-    | IAccountSelectionEvent
-    | IAccountCreateEvent
-    | IAccountUpdateEvent
-    | IServerStatusEvent
-    // | IUtxoProcStartEvent
-    // | IUtxoProcStopEvent
-    | IUtxoProcErrorEvent
-    | IDaaScoreChangeEvent
-    | IPendingEvent
-    | IReorgEvent
-    | IStasisEvent
-    | IMaturityEvent
-    | IDiscoveryEvent
-    | IBalanceEvent
-    | IErrorEvent
-    ;
-
+const TS_NOTIFY: &'static str = r#"
 /**
  * Wallet notification event interface.
  */
@@ -132,6 +162,7 @@ declare! {
     "#,
 }
 
+#[cfg(feature = "wasm32-sdk")]
 declare! {
     IWalletHintEvent,
     r#"
@@ -146,6 +177,7 @@ declare! {
     "#,
 }
 
+#[cfg(feature = "wasm32-sdk")]
 declare! {
     IWalletOpenEvent,
     r#"
@@ -161,6 +193,7 @@ declare! {
     "#,
 }
 
+#[cfg(feature = "wasm32-sdk")]
 declare! {
     IWalletCreateEvent,
     r#"
@@ -176,6 +209,7 @@ declare! {
     "#,
 }
 
+#[cfg(feature = "wasm32-sdk")]
 declare! {
     IWalletReloadEvent,
     r#"
@@ -191,6 +225,7 @@ declare! {
     "#,
 }
 
+#[cfg(feature = "wasm32-sdk")]
 declare! {
     IWalletErrorEvent,
     r#"
@@ -205,6 +240,7 @@ declare! {
     "#,
 }
 
+#[cfg(feature = "wasm32-sdk")]
 declare! {
     IPrvDataCreateEvent,
     r#"
@@ -219,6 +255,7 @@ declare! {
     "#,
 }
 
+#[cfg(feature = "wasm32-sdk")]
 declare! {
     IAccountActivationEvent,
     r#"
@@ -233,6 +270,7 @@ declare! {
     "#,
 }
 
+#[cfg(feature = "wasm32-sdk")]
 declare! {
     IAccountDeactivationEvent,
     r#"
@@ -247,6 +285,7 @@ declare! {
     "#,
 }
 
+#[cfg(feature = "wasm32-sdk")]
 declare! {
     IAccountSelectionEvent,
     r#"
@@ -263,6 +302,7 @@ declare! {
     "#,
 }
 
+#[cfg(feature = "wasm32-sdk")]
 declare! {
     IAccountCreateEvent,
     r#"
@@ -277,6 +317,7 @@ declare! {
     "#,
 }
 
+#[cfg(feature = "wasm32-sdk")]
 declare! {
     IAccountUpdateEvent,
     r#"
