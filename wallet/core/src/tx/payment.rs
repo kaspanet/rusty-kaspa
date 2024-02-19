@@ -6,32 +6,27 @@ use crate::imports::*;
 use kaspa_consensus_client::{TransactionOutput, TransactionOutputInner};
 use kaspa_txscript::pay_to_address_script;
 
-cfg_if! {
-    if #[cfg(feature = "wasm32-sdk")] {
-        #[wasm_bindgen(typescript_custom_section)]
-        const TS_PAYMENT_OUTPUTS: &'static str = r#"
-        /**
-         * 
-         * Defines a single payment output.
-         * 
-         * @see {@link IGeneratorSettingsObject}, {@link Generator}
-         * @category Wallet SDK
-         */
-        interface IPaymentOutputs {
-            /**
-             * Destination address. The address prefix must match the network
-             * you are transacting on (e.g. `kaspa:` for mainnet, `kaspatest:` for testnet, etc).
-             */
-            address: Address | string;
-            /**
-             * Output amount in SOMPI.
-             */
-            amount: bigint;
-        }
-        "#;
-    }
-
+#[wasm_bindgen(typescript_custom_section)]
+const TS_PAYMENT_OUTPUTS: &'static str = r#"
+/**
+ * 
+ * Defines a single payment output.
+ * 
+ * @see {@link IGeneratorSettingsObject}, {@link Generator}
+ * @category Wallet SDK
+ */
+interface IPaymentOutputs {
+    /**
+     * Destination address. The address prefix must match the network
+     * you are transacting on (e.g. `kaspa:` for mainnet, `kaspatest:` for testnet, etc).
+     */
+    address: Address | string;
+    /**
+     * Output amount in SOMPI.
+     */
+    amount: bigint;
 }
+"#;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum PaymentDestination {

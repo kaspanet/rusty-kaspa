@@ -12,18 +12,35 @@
                 color: rgb(0, 156, 117);
                 text-decoration: none;
             }
+            a:hover {
+                color: rgb(8, 115, 88);
+            }
+            code {
+                color: rgb(30, 94, 184);
+                font-size: inherit;
+                font-family: inherit;
+            }
+            li {
+                white-space: pre;
+            }
+            .banner {
+                opacity: 0.75;
+                position:fixed;
+                right: 32px;
+                top: 32px;
+            }
         </style>
     </head>
     <body>
-        Kaspa WASM32 SDK v<span id="version"></span><br>&nbsp;<br>
-        <ul>
-            <li><a href="../../docs/wasm32-keygen/index.html" target="_blank">WASM32 KeyGen Package () - Documentation</a></li>
-            <li><a href="../../docs/wasm32-rpc/index.html" target="_blank">SDK Documentation</a></li>
-            <li><a href="../../docs/wasm32-core/index.html" target="_blank">SDK Documentation</a></li>
-            <li><a href="../../docs/wasm32-full/index.html" target="_blank">SDK Documentation</a></li>
-        </ul>
-        <br>&nbsp;<br>
-        SDK Examples:
+        <div class="banner">
+            <img src="resources/ferris.svg" height="44px" />
+            <img src="resources/wasm.svg" height="44px" />
+            <img src="resources/kaspa.svg" height="44px" />
+        </div>
+        Rusty Kaspa WASM32 SDK v<span id="version"></span><br>&nbsp;<br>
+        Packages:<br>
+        <ul id="packages"></ul>
+        Examples:
         <ul>
             <li><a href="get-block-dag-info.html">getBlockDagInfo</a></li>
             <li><a href="get-server-info.html">getServerInfo</a></li>
@@ -35,12 +52,30 @@
     </body>
     <script src="../../package-sizes.js"></script>
     <script>
-        console.log(window.packageSizes);
+        if (location.protocol === 'file:') {
+            document.body.innerHTML = `
+                These examples must be served over HTTP or HTTPS. 
+                <p>Try running <code>python3 -m http.server</code> and navigating to <a href="http://localhost:8000/index.html">http://localhost:8000/</a></p>
+                <p>If using Rust, install http server by running: <code>cargo install http-server</code>,<br>
+                then run <code>http-server</code> and navigate to <a href="http://localhost:7878/index.html">http://localhost:7878/</a></p>
+                <p>Make sure to run HTTP server from the root of the <code>kaspa-wasm32-sdk</code> folder.</p>
+            `;
+        } else {
+            let el = document.getElementById("packages");
+            Object.entries({
+                "kaspa-keygen": ["KeyGen","Key & Address Generation only"],
+                "kaspa-rpc": ["RPC","RPC only"],
+                "kaspa-core": ["Core","RPC + Key & Address Generation + Wallet SDK"],
+                "kaspa-wallet": ["Wallet","Full SDK + Integrated Wallet"],
+            }).forEach(([ident,[name,descr]]) => {
+                el.innerHTML += `<li>WASM32 ${name} Package ${" ".repeat(6-name.length)}(${packageSizes[ident]}) - ${descr} - <a href="../../docs/${ident}/index.html" target="_blank">Docs</a></li>`;
+            });
+        }
     </script>
     <script type="module">
-        import * as kaspa from '../../web/kaspa-keygen/kaspa.js';
+        import * as kaspa from '../../web/kaspa-core/kaspa.js';
         (async () => {
-            await kaspa.default('../../web/kaspa-keygen/kaspa_bg.wasm');
+            await kaspa.default('../../web/kaspa-core/kaspa_bg.wasm');
             console.log("kaspa", kaspa);
             console.log("version", kaspa.version());
             document.getElementById("version").innerText = kaspa.version();

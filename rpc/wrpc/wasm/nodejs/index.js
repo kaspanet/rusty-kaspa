@@ -22,7 +22,7 @@ let rpc = new RpcClient({
     let finish = defer();
     let seq = 0;
     // register notification handler
-    await rpc.notify(async (op, payload) => {
+    await rpc.registerListener(async (op, payload) => {
         console.log(`#${seq} - `,"op:",op,"payload:",payload);
         seq++;
         if (seq == MAX_NOTIFICATION) {
@@ -39,7 +39,7 @@ let rpc = new RpcClient({
     // wait until notifier signals completion
     await finish;
     // clear notification handler
-    await rpc.notify(null);
+    await rpc.removeListener();
     // disconnect RPC interface
     await rpc.disconnect();
 

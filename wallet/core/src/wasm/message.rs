@@ -13,7 +13,6 @@ const TS_MESSAGE_TYPES: &'static str = r#"
  */
 export interface ISignMessage {
     message: string;
-    signature: string;
     privateKey: PrivateKey | string;
 }
 "#;

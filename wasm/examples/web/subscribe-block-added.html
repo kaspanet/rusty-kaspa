@@ -27,7 +27,7 @@
 
                 let el = document.createElement("div");
                 
-                await rpc.notify(async (op, payload) => {
+                await rpc.registerListener(async (op, payload) => {
                     delete payload.block.header.parentsByLevel;
                     el.innerHTML = `${op} ${stringify(payload)}`;
                 });

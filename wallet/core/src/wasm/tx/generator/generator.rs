@@ -4,7 +4,7 @@ use crate::tx::{generator as native, Fees, PaymentDestination, PaymentOutputs};
 use crate::utxo::{TryIntoUtxoEntryReferences, UtxoEntryReference};
 use crate::wasm::tx::generator::*;
 use crate::wasm::tx::IFees;
-use crate::wasm::wallet::Account;
+// use crate::wasm::wallet::Account;
 use crate::wasm::UtxoContext;
 
 // TODO-WASM fix outputs
@@ -175,10 +175,10 @@ impl Generator {
                     multiplexer,
                 )?
             }
-            GeneratorSource::Account(account) => {
-                let account: Arc<dyn crate::account::Account> = account.into();
-                native::GeneratorSettings::try_new_with_account(account, final_transaction_destination, final_priority_fee, None)?
-            }
+            // GeneratorSource::Account(account) => {
+            //     let account: Arc<dyn crate::account::Account> = account.into();
+            //     native::GeneratorSettings::try_new_with_account(account, final_transaction_destination, final_priority_fee, None)?
+            // }
         };
 
         let abortable = Abortable::default();
@@ -221,7 +221,8 @@ impl Generator {
 enum GeneratorSource {
     UtxoEntries(Vec<UtxoEntryReference>),
     UtxoContext(UtxoContext),
-    Account(Account),
+    // #[cfg(any(feature = "wasm32-sdk"), not(target_arch = "wasm32"))]
+    // Account(Account),
 }
 
 /// Converts [`IGeneratorSettingsObject`] to a series of properties intended for use by the [`Generator`].
@@ -255,8 +256,8 @@ impl TryFrom<IGeneratorSettingsObject> for GeneratorSettings {
             GeneratorSource::UtxoEntries(utxo_entries.try_into_utxo_entry_references()?)
         } else if let Some(context) = args.try_get::<UtxoContext>("entries")? {
             GeneratorSource::UtxoContext(context)
-        } else if let Some(account) = args.try_get::<Account>("account")? {
-            GeneratorSource::Account(account)
+        // } else if let Some(account) = args.try_get::<Account>("account")? {
+        //     GeneratorSource::Account(account)
         } else {
             return Err(Error::custom("'entries', 'context' or 'account' property is required for Generator"));
         };

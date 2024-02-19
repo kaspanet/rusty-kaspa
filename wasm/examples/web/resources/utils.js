@@ -1,5 +1,11 @@
 document.body.innerHTML =
-`<a href="index.html"><- Back</a> | Network: <span id="menu"></span><span id="actions"></span><br>&nbsp;<br>`
+`<a href="index.html"><- Back</a> | Network: <span id="menu"></span><span id="actions"></span><br>&nbsp;<br>
+`
+//<div class="banner">
+//    <img src="resources/ferris.svg" height="44px" />
+//    <img src="resources/wasm.svg" height="44px" />
+//    <img src="resources/kaspa.svg" height="44px" />
+//</div>
 + document.body.innerHTML;
 
 // @ts-ignore
@@ -25,7 +31,6 @@ window.changeNetwork = (network) => {
 }
 
 function createMenu() {
-    console.log("adding menu...");
     let menu = document.getElementById('menu');
     [ 'mainnet', 'testnet-10', 'testnet-11' ].forEach((network) => {
         if (network === currentNetwork()) {
@@ -67,7 +72,7 @@ window.disconnect = function() {
 // }
 
 function log(...args) {
-    let el = document.createElement('span');
+    let el = document.createElement('code');
     el.innerHTML = args.map((arg) => {
         return typeof arg === 'object' ? stringify(arg) : arg;
     }).join(' ') + "<br>";

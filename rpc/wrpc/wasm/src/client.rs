@@ -209,7 +209,7 @@ impl RpcClient {
 
     /// Register a notification callback.
     /// IMPORTANT: You are allowed to register only one callback.
-    #[wasm_bindgen(js_name = "registerEventListener")]
+    #[wasm_bindgen(js_name = "registerListener")]
     pub async fn register_event_listener(&self, callback: RpcNotificationCallback) -> Result<()> {
         if callback.is_function() {
             let fn_callback: Function = callback.into();
@@ -222,7 +222,7 @@ impl RpcClient {
     }
 
     /// Unregister a notification callback.
-    #[wasm_bindgen(js_name = "removeEventListener")]
+    #[wasm_bindgen(js_name = "removeListener")]
     pub async fn remove_event_listener(&self) -> Result<()> {
         self.stop_notification_task().await?;
         self.clear_notification_callback();

@@ -4,7 +4,7 @@
 # make the script fail for any failed command
 set -e
 
-rm -rf release
+rm -rf release/*
 rm -rf web/*
 rm -rf nodejs/*
 rm -rf docs/*
@@ -60,7 +60,13 @@ cp -r docs/kaspa-rpc release/kaspa-wasm32-sdk/docs/kaspa-rpc
 cp -r docs/kaspa-core release/kaspa-wasm32-sdk/docs/kaspa-core
 cp -r docs/kaspa-wallet release/kaspa-wasm32-sdk/docs/kaspa-wallet
 
-cp -r examples release/kaspa-wasm32-sdk/examples
+mkdir -p release/kaspa-wasm32-sdk/examples/data
+cp -r examples/data/.gitignore release/kaspa-wasm32-sdk/examples/data/.gitignore
+cp -r examples/nodejs release/kaspa-wasm32-sdk/examples/
+cp -r examples/web release/kaspa-wasm32-sdk/examples/
+cp -r examples/init.js release/kaspa-wasm32-sdk/examples/
+cp -r examples/jsconfig.json release/kaspa-wasm32-sdk/examples/
+cp -r examples/package.json release/kaspa-wasm32-sdk/examples/
 
 cp index.html release/kaspa-wasm32-sdk/index.html
 cp README.md release/kaspa-wasm32-sdk/README.md

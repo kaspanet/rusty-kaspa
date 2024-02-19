@@ -3,7 +3,21 @@ body {
     padding: 32px;
     font-size: 16px;
     font-family: "Consolas", "Andale Mono", monospace;
+    /* white-space: pre-wrap; */
+}
+
+code {
+    display: block;
+    font-size: inherit;
+    font-family: inherit;
     white-space: pre-wrap;
+}
+
+.banner {
+    opacity: 0.75;
+    position:fixed;
+    right: 32px;
+    top: 32px;
 }
 
 span.number {
