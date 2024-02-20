@@ -187,28 +187,32 @@ impl Connection {
                 self.is_synced.store(is_synced, Ordering::Relaxed);
 
                 if is_synced {
-                    if let Ok(metrics) = self.client.get_metrics(false, true, false, false).await {
-                        if let Some(connection_metrics) = metrics.connection_metrics {
-                            // update
-                            let previous = self.clients.load(Ordering::Relaxed);
-                            let clients =
-                                connection_metrics.borsh_live_connections as u64 + connection_metrics.json_live_connections as u64;
-                            self.clients.store(clients, Ordering::Relaxed);
-                            if clients != previous {
-                                if self.verbose() {
-                                    log_success!("Clients", "{self}");
+                    match self.client.get_metrics(false, true, false, false).await {
+                        Ok(metrics) => {
+                            if let Some(connection_metrics) = metrics.connection_metrics {
+                                // update
+                                let previous = self.clients.load(Ordering::Relaxed);
+                                let clients =
+                                    connection_metrics.borsh_live_connections as u64 + connection_metrics.json_live_connections as u64;
+                                self.clients.store(clients, Ordering::Relaxed);
+                                if clients != previous {
+                                    if self.verbose() {
+                                        log_success!("Clients", "{self}");
+                                    }
+                                    Ok(true)
+                                } else {
+                                    Ok(false)
                                 }
-                                Ok(true)
                             } else {
-                                Ok(false)
+                                log_error!("Metrics", "{self} - failure");
+                                Err(Error::ConnectionMetrics)
                             }
-                        } else {
-                            log_error!("Metrics", "{self} - failure");
-                            Err(Error::ConnectionMetrics)
                         }
-                    } else {
-                        log_error!("Metrics", "{self} - failure");
-                        Err(Error::Metrics)
+                        Err(err) => {
+                            log_error!("Metrics", "{self}");
+                            log_error!("RPC", "{err}");
+                            Err(Error::Metrics)
+                        }
                     }
                 } else {
                     if is_synced != previous_sync {
