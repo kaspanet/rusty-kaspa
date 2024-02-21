@@ -114,7 +114,7 @@ where
         Ok(sorted)
     }
 
-    fn check_topological_order(&'a self, sorted: &Vec<TKey>) -> TopologicalIndexResult<()> {
+    fn check_topological_order(&'a self, sorted: &[TKey]) -> TopologicalIndexResult<()> {
         let nodes = self.topology_nodes().collect::<HashSet<_>>();
         if sorted.len() != nodes.len() {
             return Err(TopologicalIndexError::IndexHasWrongKeySet);
