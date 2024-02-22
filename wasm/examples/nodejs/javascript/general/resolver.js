@@ -4,7 +4,7 @@ globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket modul
 const kaspa = require('../../../../nodejs/kaspa');
 const { parseArgs } = require("../utils");
 const {
-    Beacon,
+    Resolver,
     Encoding,
     RpcClient,
 } = kaspa;
@@ -18,21 +18,24 @@ const {
 
 (async () => {
 
-    const beacon = new Beacon();
-
+    const resolver = new Resolver();
+    // console.log(beacon);
+    // process.exit(0);
     // let url = await beacon.getUrl(Encoding.Borsh, networkId);
     // console.log(url);
-    // const rpc = new RpcClient({
-    //     url,
-    //     encoding,
-    //     networkId
-    // });
+    const rpc = new RpcClient({
+        // url,
+        // encoding,
+        resolver,
+        networkId
+    });
 
-    const rpc = await beacon.connect(networkId);
+    // const rpc = await beacon.connect(networkId);
+    await rpc.connect();
     console.log("Connected to", rpc.url);
+    console.log("RPC", rpc);
 
     // console.log(`Connecting to ${rpc.url}`)
-    // await rpc.connect();
 
     const info = await rpc.getBlockDagInfo();
     console.log("GetBlockDagInfo response:", info);

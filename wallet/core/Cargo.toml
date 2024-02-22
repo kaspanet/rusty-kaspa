@@ -24,8 +24,8 @@ wasm32-core = [
 wasm32-sdk = [
     "wasm32-core"
 ]
-# default = ["wasm32-sdk"]
-default = []
+default = ["wasm32-sdk"]
+# default = []
 
 [lib]
 crate-type = ["cdylib", "lib"]

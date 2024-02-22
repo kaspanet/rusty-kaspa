@@ -102,7 +102,7 @@ impl KaspaCli {
     }
 
     pub async fn try_new_arc(options: Options) -> Result<Arc<Self>> {
-        let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, None)?);
+        let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, None, None)?);
 
         let kaspa_cli = Arc::new(KaspaCli {
             term: Arc::new(Mutex::new(None)),

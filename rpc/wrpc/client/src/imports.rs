@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
-pub use crate::beacon::Beacon;
 pub use crate::client::*;
+pub use crate::resolver::Resolver;
 pub use crate::result::Result;
 pub use async_trait::async_trait;
 pub use cfg_if::cfg_if;

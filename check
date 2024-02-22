@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 cargo fmt --all
 cargo clippy --workspace --tests --benches
@@ -44,6 +43,24 @@ do
     if [ $status -ne 0 ]; then
         echo
         echo "--> wasm32 check of $crate failed"
+        echo
+        exit $status
+    fi
+done
+
+declare -a features=(
+    "wasm32-rpc"
+    "wasm32-core"
+    "wasm32-sdk"
+)
+
+for feature in "${features[@]}"
+do
+    cargo clippy -p kaspa-wasm --target wasm32-unknown-unknown --features $feature
+    status=$?
+    if [ $status -ne 0 ]; then
+        echo
+        echo "--> wasm32 check of kaspa-wasm --features $feature has failed"
         echo
         exit $status
     fi

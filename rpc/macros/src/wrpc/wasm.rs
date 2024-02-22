@@ -59,7 +59,7 @@ impl ToTokens for RpcHandlers {
                 pub async fn #fn_no_suffix(&self, request : Option<#ts_request_type>) -> Result<#ts_response_type> {
                     let request: #request_type = request.unwrap_or_default().try_into()?;
                     // log_info!("request: {:#?}",request);
-                    let result: RpcResult<#response_type> = self.client.#fn_call(request).await;
+                    let result: RpcResult<#response_type> = self.inner.client.#fn_call(request).await;
                     // log_info!("result: {:#?}",result);
                     let response: #response_type = result.map_err(|err|wasm_bindgen::JsError::new(&err.to_string()))?;
                     //log_info!("response: {:#?}",response);
@@ -83,7 +83,7 @@ impl ToTokens for RpcHandlers {
                 #[wasm_bindgen(js_name = #fn_camel)]
                 pub async fn #fn_no_suffix(&self, request: #ts_request_type) -> Result<#ts_response_type> {
                     let request: #request_type = request.try_into()?;
-                    let result: RpcResult<#response_type> = self.client.#fn_call(request).await;
+                    let result: RpcResult<#response_type> = self.inner.client.#fn_call(request).await;
                     let response: #response_type = result.map_err(|err|wasm_bindgen::JsError::new(&err.to_string()))?;
                     Ok(response.try_into()?)
                 }
@@ -161,13 +161,13 @@ impl ToTokens for RpcSubscriptions {
                 #(#docs)*
                 #[wasm_bindgen(js_name = #fn_subscribe_camel)]
                 pub async fn #fn_subscribe_snake(&self) -> Result<()> {
-                    self.client.start_notify(ListenerId::default(), Scope::#scope(#sub_scope {})).await?;
+                    self.inner.client.start_notify(ListenerId::default(), Scope::#scope(#sub_scope {})).await?;
                     Ok(())
                 }
 
                 #[wasm_bindgen(js_name = #fn_unsubscribe_camel)]
                 pub async fn #fn_unsubscribe_snake(&self) -> Result<()> {
-                    self.client.stop_notify(ListenerId::default(), Scope::#scope(#sub_scope {})).await?;
+                    self.inner.client.stop_notify(ListenerId::default(), Scope::#scope(#sub_scope {})).await?;
                     Ok(())
                 }
 

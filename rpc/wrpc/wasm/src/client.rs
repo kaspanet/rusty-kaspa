@@ -1,6 +1,8 @@
 #![allow(non_snake_case)]
 
-use crate::{imports::*, RpcNotificationCallback};
+use crate::imports::*;
+use crate::Resolver;
+use crate::RpcNotificationCallback;
 use kaspa_addresses::{Address, IAddressArray};
 use kaspa_consensus_core::network::{wasm::Network, NetworkType};
 use kaspa_notify::notification::Notification as NotificationT;
@@ -9,10 +11,58 @@ pub use kaspa_rpc_macros::{
     build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions, declare_typescript_wasm_interface as declare,
 };
 pub use serde_wasm_bindgen::from_value;
-pub use workflow_rpc::client::IConnectOptions;
 pub use workflow_rpc::encoding::Encoding as WrpcEncoding;
 use workflow_wasm::extensions::ObjectExtension;
 pub use workflow_wasm::serde::to_value;
+
+#[wasm_bindgen(typescript_custom_section)]
+const TS_CONNECT_OPTIONS: &'static str = r#"
+
+/**
+ * `ConnectOptions` is used to configure the `WebSocket` connectivity behavior.
+ * 
+ * @category WebSocket
+ */
+export interface IConnectOptions {
+    /**
+     * Indicates if the `async fn connect()` method should return immediately
+     * or wait for connection to occur or fail before returning.
+     * (default is `true`)
+     */
+    blockAsyncConnect? : boolean,
+    /**
+     * ConnectStrategy used to configure the retry or fallback behavior.
+     * In retry mode, the WebSocket will continuously attempt to connect to the server.
+     * (default is {link ConnectStrategy.Retry}).
+     */
+    strategy?: ConnectStrategy | string,
+    /** 
+     * A custom URL that will change the current URL of the WebSocket.
+     * If supplied, the URL will override the resolver.
+     */
+    url?: string,
+    /**
+     * A custom connection timeout in milliseconds.
+     */
+    timeoutDuration?: number,
+    /** 
+     * A custom retry interval in milliseconds.
+     */
+    retryInterval?: number,
+}
+"#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "IConnectOptions | undefined")]
+    pub type IConnectOptions;
+}
+
+impl From<IConnectOptions> for workflow_rpc::client::IConnectOptions {
+    fn from(options: IConnectOptions) -> Self {
+        options.into()
+    }
+}
 
 declare! {
     IRpcConfig,
@@ -24,11 +74,16 @@ declare! {
      */
     export interface IRpcConfig {
         /**
+         * An instance of the {@link Resolver} class to use for an automatic public node lookup.
+         * If supplying a resolver, the `url` property is ignored.
+         */
+        resolver? : Resolver,
+        /**
          * URL for wRPC node endpoint
          */
         url?: string;
         /**
-         * RPC encoding: `borsh` (default) or `json`
+         * RPC encoding: `borsh` or `json` (default is `borsh`)
          */
         encoding?: Encoding;
         /**
@@ -40,24 +95,26 @@ declare! {
 }
 
 pub struct RpcConfig {
+    pub resolver: Option<Resolver>,
     pub url: Option<String>,
-    pub encoding: Encoding,
+    pub encoding: Option<Encoding>,
     pub network_id: Option<NetworkId>,
 }
 
 impl Default for RpcConfig {
     fn default() -> Self {
-        RpcConfig { url: None, encoding: Encoding::Borsh, network_id: None }
+        RpcConfig { url: None, encoding: Some(Encoding::Borsh), network_id: None, resolver: None }
     }
 }
 
 impl TryFrom<IRpcConfig> for RpcConfig {
     type Error = Error;
     fn try_from(config: IRpcConfig) -> Result<Self> {
-        let url = config.try_get_string("url")?; //.ok_or_else(|| Error::custom("url is required"))?;
-        let encoding = config.try_get::<Encoding>("encoding")?.unwrap_or(Encoding::Borsh); //map_or(Ok(Encoding::Borsh), |encoding| Encoding::try_from(encoding))?;
+        let resolver = config.try_get::<Resolver>("resolver")?;
+        let url = config.try_get_string("url")?;
+        let encoding = config.try_get::<Encoding>("encoding")?; //.unwrap_or(Encoding::Borsh); //map_or(Ok(Encoding::Borsh), |encoding| Encoding::try_from(encoding))?;
         let network_id = config.try_get::<NetworkId>("networkId")?.ok_or_else(|| Error::custom("network is required"))?;
-        Ok(RpcConfig { url, encoding, network_id: Some(network_id) })
+        Ok(RpcConfig { resolver, url, encoding, network_id: Some(network_id) })
     }
 }
 
@@ -65,6 +122,7 @@ impl TryFrom<RpcConfig> for IRpcConfig {
     type Error = Error;
     fn try_from(config: RpcConfig) -> Result<Self> {
         let object = IRpcConfig::default();
+        object.set("resolver", &config.resolver.into())?;
         object.set("url", &config.url.into())?;
         object.set("encoding", &config.encoding.into())?;
         object.set("networkId", &config.network_id.into())?;
@@ -81,6 +139,7 @@ impl From<NotificationSink> for Function {
 }
 
 pub struct Inner {
+    client: Arc<KaspaRpcClient>,
     notification_task: AtomicBool,
     notification_ctl: DuplexChannel,
     notification_callback: Arc<Mutex<Option<NotificationSink>>>,
@@ -95,14 +154,16 @@ pub struct Inner {
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
 pub struct RpcClient {
-    #[wasm_bindgen(skip)]
-    pub client: Arc<KaspaRpcClient>,
+    // #[wasm_bindgen(skip)]
     pub(crate) inner: Arc<Inner>,
+    resolver: Option<Resolver>,
 }
 
 impl RpcClient {
     pub fn new(config: Option<RpcConfig>) -> Result<RpcClient> {
-        let RpcConfig { url, encoding, network_id } = config.unwrap_or_default();
+        let RpcConfig { resolver, url, encoding, network_id } = config.unwrap_or_default();
+
+        let encoding = encoding.unwrap_or(Encoding::Borsh);
 
         let url = url
             .map(
@@ -116,13 +177,19 @@ impl RpcClient {
             )
             .transpose()?;
 
+        let client = Arc::new(
+            KaspaRpcClient::new(encoding, url.as_deref(), resolver.clone().map(Into::into), network_id)
+                .unwrap_or_else(|err| panic!("{err}")),
+        );
+
         let rpc_client = RpcClient {
-            client: Arc::new(KaspaRpcClient::new(encoding, url.as_deref()).unwrap_or_else(|err| panic!("{err}"))),
             inner: Arc::new(Inner {
+                client,
                 notification_task: AtomicBool::new(false),
                 notification_ctl: DuplexChannel::oneshot(),
                 notification_callback: Arc::new(Mutex::new(None)),
             }),
+            resolver,
         };
 
         Ok(rpc_client)
@@ -141,37 +208,43 @@ impl RpcClient {
     /// The current URL of the RPC client.
     #[wasm_bindgen(getter)]
     pub fn url(&self) -> Option<String> {
-        self.client.url()
+        self.inner.client.url()
+    }
+
+    /// Current rpc resolver
+    #[wasm_bindgen(getter)]
+    pub fn resolver(&self) -> Option<Resolver> {
+        self.resolver.clone()
     }
 
     /// The current connection status of the RPC client.
     #[wasm_bindgen(getter, js_name = "isConnected")]
     pub fn is_connected(&self) -> bool {
-        self.client.is_connected()
+        self.inner.client.is_connected()
     }
 
     /// The current protocol encoding.
     #[wasm_bindgen(getter, js_name = "encoding")]
-    pub fn encoding(&self) -> WrpcEncoding {
-        self.client.encoding()
+    pub fn encoding(&self) -> String {
+        self.inner.client.encoding().to_string()
+    }
+
+    /// Optional: Resolver node id.
+    #[wasm_bindgen(getter, js_name = "nodeId")]
+    pub fn resolver_node_id(&self) -> Option<String> {
+        self.inner.client.node_descriptor().map(|node| node.id.clone())
     }
 
     /// Optional: public node provider name.
     #[wasm_bindgen(getter, js_name = "providerName")]
-    pub fn provider_name(&self) -> Option<String> {
-        self.client.provider_name()
+    pub fn resolver_node_provider_name(&self) -> Option<String> {
+        self.inner.client.node_descriptor().and_then(|node| node.provider_name.clone())
     }
 
     /// Optional: public node provider URL.
     #[wasm_bindgen(getter, js_name = "providerUrl")]
-    pub fn provider_url(&self) -> Option<String> {
-        self.client.provider_url()
-    }
-
-    /// Optional: Beacon node id.
-    #[wasm_bindgen(getter, js_name = "nodeId")]
-    pub fn beacon_node_id(&self) -> Option<String> {
-        self.client.beacon_node_id()
+    pub fn resolver_node_provider_url(&self) -> Option<String> {
+        self.inner.client.node_descriptor().and_then(|node| node.provider_url.clone())
     }
 
     /// Connect to the Kaspa RPC server. This function starts a background
@@ -180,10 +253,11 @@ impl RpcClient {
     /// terminate the connection.
     /// @see {@link IConnectOptions} interface for more details.
     pub async fn connect(&self, args: Option<IConnectOptions>) -> Result<()> {
+        let args = args.map(workflow_rpc::client::IConnectOptions::from);
         let options = args.map(ConnectOptions::try_from).transpose()?;
 
         self.start_notification_task()?;
-        self.client.connect(options).await?;
+        self.inner.client.connect(options).await?;
         Ok(())
     }
 
@@ -191,7 +265,7 @@ impl RpcClient {
     pub async fn disconnect(&self) -> Result<()> {
         self.clear_notification_callback();
         self.stop_notification_task().await?;
-        self.client.shutdown().await?;
+        self.inner.client.shutdown().await?;
         Ok(())
     }
 
@@ -232,18 +306,20 @@ impl RpcClient {
 
 impl RpcClient {
     pub fn new_with_rpc_client(client: Arc<KaspaRpcClient>) -> RpcClient {
+        let resolver = client.resolver().map(Into::into);
         RpcClient {
-            client,
             inner: Arc::new(Inner {
+                client,
                 notification_task: AtomicBool::new(false),
                 notification_ctl: DuplexChannel::oneshot(),
                 notification_callback: Arc::new(Mutex::new(None)),
             }),
+            resolver,
         }
     }
 
     pub fn client(&self) -> &Arc<KaspaRpcClient> {
-        &self.client
+        &self.inner.client
     }
 
     /// Notification task receives notifications and executes them on the
@@ -251,7 +327,7 @@ impl RpcClient {
     fn start_notification_task(&self) -> Result<()> {
         let ctl_receiver = self.inner.notification_ctl.request.receiver.clone();
         let ctl_sender = self.inner.notification_ctl.response.sender.clone();
-        let notification_receiver = self.client.notification_channel_receiver();
+        let notification_receiver = self.inner.client.notification_channel_receiver();
         let notification_callback = self.inner.notification_callback.clone();
 
         spawn(async move {
@@ -323,7 +399,7 @@ impl RpcClient {
     // #[wasm_bindgen(js_name = getUtxosByAddresses)]
     // pub async fn get_utxos_by_addresses(&self, request: IGetUtxosByAddressesRequest) -> Result<GetUtxosByAddressesResponse> {
     //     let request : GetUtxosByAddressesRequest = request.try_into()?;
-    //     let result: RpcResult<GetUtxosByAddressesResponse> = self.client.get_utxos_by_addresses_call(request).await;
+    //     let result: RpcResult<GetUtxosByAddressesResponse> = self.inner.client.get_utxos_by_addresses_call(request).await;
     //     let response: GetUtxosByAddressesResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
     //     to_value(&response.entries).map_err(|err| err.into())
     // }
@@ -331,7 +407,7 @@ impl RpcClient {
     // #[wasm_bindgen(js_name = getUtxosByAddressesCall)]
     // pub async fn get_utxos_by_addresses_call(&self, request: IGetUtxosByAddressesRequest) -> Result<IGetUtxosByAddressesResponse> {
     //     let request = from_value::<GetUtxosByAddressesRequest>(request)?;
-    //     let result: RpcResult<GetUtxosByAddressesResponse> = self.client.get_utxos_by_addresses_call(request).await;
+    //     let result: RpcResult<GetUtxosByAddressesResponse> = self.inner.client.get_utxos_by_addresses_call(request).await;
     //     let response: GetUtxosByAddressesResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
     //     to_value(&response).map_err(|err| err.into())
     // }
@@ -343,7 +419,7 @@ impl RpcClient {
     /// Difficulty Adjustment Algorithm (DAA) score changes in the Kaspa BlockDAG.
     #[wasm_bindgen(js_name = subscribeDaaScore)]
     pub async fn subscribe_daa_score(&self) -> Result<()> {
-        self.client.start_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        self.inner.client.start_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())
     }
 
@@ -352,7 +428,7 @@ impl RpcClient {
     /// Difficulty Adjustment Algorithm (DAA) score changes in the Kaspa BlockDAG.
     #[wasm_bindgen(js_name = unsubscribeDaaScore)]
     pub async fn unsubscribe_daa_score(&self) -> Result<()> {
-        self.client.stop_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        self.inner.client.stop_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())
     }
 
@@ -364,7 +440,7 @@ impl RpcClient {
     #[wasm_bindgen(js_name = subscribeUtxosChanged)]
     pub async fn subscribe_utxos_changed(&self, addresses: IAddressArray) -> Result<()> {
         let addresses: Vec<Address> = addresses.try_into()?;
-        self.client.start_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
+        self.inner.client.start_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
         Ok(())
     }
 
@@ -373,7 +449,7 @@ impl RpcClient {
     #[wasm_bindgen(js_name = unsubscribeUtxosChanged)]
     pub async fn unsubscribe_utxos_changed(&self, addresses: IAddressArray) -> Result<()> {
         let addresses: Vec<Address> = addresses.try_into()?;
-        self.client.stop_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
+        self.inner.client.stop_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
         Ok(())
     }
 
@@ -384,7 +460,8 @@ impl RpcClient {
     /// chain changes in the Kaspa BlockDAG.
     #[wasm_bindgen(js_name = subscribeVirtualChainChanged)]
     pub async fn subscribe_virtual_chain_changed(&self, include_accepted_transaction_ids: bool) -> Result<()> {
-        self.client
+        self.inner
+            .client
             .start_notify(
                 ListenerId::default(),
                 Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids }),
@@ -398,7 +475,8 @@ impl RpcClient {
     /// chain changes in the Kaspa BlockDAG.
     #[wasm_bindgen(js_name = unsubscribeVirtualChainChanged)]
     pub async fn unsubscribe_virtual_chain_changed(&self, include_accepted_transaction_ids: bool) -> Result<()> {
-        self.client
+        self.inner
+            .client
             .stop_notify(
                 ListenerId::default(),
                 Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids }),

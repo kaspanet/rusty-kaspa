@@ -7,8 +7,8 @@ cfg_if! {
         mod imports;
         pub mod client;
         pub use client::*;
-        pub mod beacon;
-        pub use beacon::*;
+        pub mod resolver;
+        pub use resolver::*;
         pub mod notify;
         pub use notify::*;
     }

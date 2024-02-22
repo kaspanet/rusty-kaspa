@@ -9,43 +9,58 @@ use workflow_http::get_json;
 const DEFAULT_VERSION: usize = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BeaconRecord {
+pub struct ResolverRecord {
     pub url: String,
     pub enable: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct BeaconConfig {
-    beacon: Vec<BeaconRecord>,
+pub struct ResolverConfig {
+    resolver: Vec<ResolverRecord>,
 }
 
-fn try_parse_beacons(toml: &str) -> Result<Vec<Arc<String>>> {
-    Ok(toml::from_str::<BeaconConfig>(toml)?
-        .beacon
+fn try_parse_resolvers(toml: &str) -> Result<Vec<Arc<String>>> {
+    Ok(toml::from_str::<ResolverConfig>(toml)?
+        .resolver
         .into_iter()
-        .filter_map(|beacon| beacon.enable.unwrap_or(true).then_some(Arc::new(beacon.url)))
+        .filter_map(|resolver| resolver.enable.unwrap_or(true).then_some(Arc::new(resolver.url)))
         .collect::<Vec<_>>())
 }
 
-///
-/// Beacon is a client for obtaining public Kaspa wRPC endpoints.
-///
-#[derive(Debug, Clone)]
-pub struct Beacon {
+#[derive(Debug)]
+struct Inner {
     pub urls: Vec<Arc<String>>,
 }
 
-impl Default for Beacon {
-    fn default() -> Self {
-        let toml = include_str!("../Beacons.toml");
-        let urls = try_parse_beacons(toml).expect("TOML: Unable to parse RPC Beacon list");
+impl Inner {
+    pub fn new(urls: Vec<Arc<String>>) -> Self {
         Self { urls }
     }
 }
 
-impl Beacon {
+///
+/// Resolver is a client for obtaining public Kaspa wRPC endpoints.
+///
+#[derive(Debug, Clone)]
+pub struct Resolver {
+    inner: Arc<Inner>,
+}
+
+impl Default for Resolver {
+    fn default() -> Self {
+        let toml = include_str!("../Resolvers.toml");
+        let urls = try_parse_resolvers(toml).expect("TOML: Unable to parse RPC Resolver list");
+        Self { inner: Arc::new(Inner::new(urls)) }
+    }
+}
+
+impl Resolver {
     pub fn new(urls: Vec<Arc<String>>) -> Self {
-        Self { urls }
+        Self { inner: Arc::new(Inner::new(urls)) }
+    }
+
+    pub fn urls(&self) -> Vec<Arc<String>> {
+        self.inner.urls.clone()
     }
 
     async fn fetch_node_info(&self, url: &str, encoding: Encoding, network_id: NetworkId) -> Result<NodeDescriptor> {
@@ -56,7 +71,7 @@ impl Beacon {
     }
 
     pub async fn fetch(&self, encoding: Encoding, network_id: NetworkId) -> Result<NodeDescriptor> {
-        let mut urls = self.urls.clone();
+        let mut urls = self.inner.urls.clone();
         urls.shuffle(&mut thread_rng());
 
         let mut errors = Vec::default();
@@ -70,7 +85,7 @@ impl Beacon {
     }
 
     pub async fn fetch_all(&self, encoding: Encoding, network_id: NetworkId) -> Result<Vec<NodeDescriptor>> {
-        let futures = self.urls.iter().map(|url| self.fetch_node_info(url, encoding, network_id)).collect::<Vec<_>>();
+        let futures = self.inner.urls.iter().map(|url| self.fetch_node_info(url, encoding, network_id)).collect::<Vec<_>>();
         let mut errors = Vec::default();
         let result = join_all(futures)
             .await

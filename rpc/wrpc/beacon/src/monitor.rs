@@ -215,9 +215,9 @@ pub struct Status<'a> {
     pub id: &'a str,
     pub url: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider: Option<&'a str>,
+    pub provider_name: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub link: Option<&'a str>,
+    pub provider_url: Option<&'a str>,
     pub transport: Transport,
     pub encoding: WrpcEncoding,
     pub network: NetworkId,
@@ -228,14 +228,14 @@ pub struct Status<'a> {
 impl<'a> From<&'a Arc<Connection>> for Status<'a> {
     fn from(connection: &'a Arc<Connection>) -> Self {
         let url = connection.node.address.as_str();
-        let provider = connection.node.provider.as_deref();
-        let link = connection.node.link.as_deref();
+        let provider_name = connection.node.provider.as_ref().map(|provider| provider.name.as_str());
+        let provider_url = connection.node.provider.as_ref().map(|provider| provider.url.as_str());
         let id = connection.node.id_string.as_str();
         let transport = connection.node.transport;
         let encoding = connection.node.encoding;
         let network = connection.node.network;
         let status = connection.status();
         let online = connection.online();
-        Self { id, url, provider, link, transport, encoding, network, status, online }
+        Self { id, url, provider_name, provider_url, transport, encoding, network, status, online }
     }
 }

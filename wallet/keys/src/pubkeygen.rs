@@ -65,9 +65,4 @@ impl PublicKeyGenerator {
     pub fn to_string(&self) -> Result<String> {
         Ok(self.hd_wallet.to_string(None).to_string())
     }
-
-    #[wasm_bindgen(js_name=fromString)]
-    pub async fn from_string(kpub: &str, cosigner_index: Option<u32>) -> Result<PublicKeyGenerator> {
-        Self::from_xpub(kpub, cosigner_index).await
-    }
 }

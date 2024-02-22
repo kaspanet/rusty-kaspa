@@ -131,8 +131,8 @@ For more details, please follow the [**integrating with Kaspa**](https://kaspa.a
 
 #![allow(unused_imports)]
 
-#[cfg(all(any(feature = "wasm32-sdk", feature = "wasm32-rpc", feature = "wasm32-es"), not(target_arch = "wasm32")))]
-compile_error!("`kaspa-wasm` crate for WASM32 target must be built with `--features wasm32-sdk|wasm32-rpc|wasm32-es`");
+#[cfg(all(any(feature = "wasm32-sdk", feature = "wasm32-rpc", feature = "wasm32-core", feature = "wasm32-keygen"), not(target_arch = "wasm32")))]
+compile_error!("`kaspa-wasm` crate for WASM32 target must be built with `--features wasm32-sdk|wasm32-rpc|wasm32-core|wasm32-keygen`");
 
 mod version;
 pub use version::*;
@@ -157,7 +157,7 @@ cfg_if::cfg_if! {
             pub use kaspa_rpc_core::wasm::message::*;
 
             pub use kaspa_wrpc_wasm::client::*;
-            pub use kaspa_wrpc_wasm::beacon::*;
+            pub use kaspa_wrpc_wasm::resolver::*;
             pub use kaspa_wrpc_wasm::notify::*;
         }
 
@@ -183,7 +183,7 @@ cfg_if::cfg_if! {
             pub use kaspa_rpc_core::wasm::message::*;
 
             pub use kaspa_wrpc_wasm::client::*;
-            pub use kaspa_wrpc_wasm::beacon::*;
+            pub use kaspa_wrpc_wasm::resolver::*;
             pub use kaspa_wrpc_wasm::notify::*;
         }
 
@@ -197,7 +197,7 @@ cfg_if::cfg_if! {
         pub use kaspa_rpc_core::wasm::message::*;
         pub use kaspa_rpc_core::wasm::message::IPingRequest;
         pub use kaspa_wrpc_wasm::client::*;
-        pub use kaspa_wrpc_wasm::beacon::*;
+        pub use kaspa_wrpc_wasm::resolver::*;
         pub use kaspa_wrpc_wasm::notify::*;
         pub use kaspa_wasm_types::*;
 

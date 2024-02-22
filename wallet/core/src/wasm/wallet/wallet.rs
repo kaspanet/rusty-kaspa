@@ -4,10 +4,7 @@ use crate::storage::local::interface::LocalStore;
 use crate::storage::WalletDescriptor;
 use crate::wallet as native;
 use crate::wasm::dispatcher::EventDispatcher;
-use kaspa_wrpc_wasm::{IConnectOptions, RpcClient, RpcConfig, WrpcEncoding};
-// use crate::wasm::wallet::account::Account;
-// use crate::wasm::wallet::keydata::PrvKeyDataInfo;
-// use workflow_core::sendable::Sendable;
+use kaspa_wrpc_wasm::{IConnectOptions, Resolver, RpcClient, RpcConfig, WrpcEncoding};
 
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 
@@ -27,6 +24,7 @@ declare! {
         networkId?: NetworkId | string;
         encoding?: Encoding | string;
         url?: string;
+        resolver?: Resolver;
     }
     "#,
 }
@@ -46,13 +44,14 @@ pub struct Wallet {
 impl Wallet {
     #[wasm_bindgen(constructor)]
     pub fn constructor(config: IWalletConfig) -> Result<Wallet> {
-        let WalletCtorArgs { resident, network_id, encoding, url } = WalletCtorArgs::try_from(JsValue::from(config))?;
+        let WalletCtorArgs { resident, network_id, encoding, url, resolver } = WalletCtorArgs::try_from(JsValue::from(config))?;
 
         let store = Arc::new(LocalStore::try_new(resident)?);
 
         let rpc_config = RpcConfig {
-            url: url.or(Some("wrpc://127.0.0.1:17110".to_string())),
-            encoding: encoding.unwrap_or(WrpcEncoding::Borsh),
+            url,
+            resolver,
+            encoding,
             network_id,
         };
 
@@ -196,7 +195,7 @@ impl Wallet {
     }
 
     pub async fn disconnect(&self) -> Result<()> {
-        self.rpc.client.disconnect().await?;
+        self.rpc.client().disconnect().await?;
         Ok(())
     }
 }
@@ -207,6 +206,7 @@ struct WalletCtorArgs {
     network_id: Option<NetworkId>,
     encoding: Option<WrpcEncoding>,
     url: Option<String>,
+    resolver: Option<Resolver>,
 }
 
 impl TryFrom<JsValue> for WalletCtorArgs {
@@ -219,8 +219,9 @@ impl TryFrom<JsValue> for WalletCtorArgs {
             let encoding = object.try_get::<WrpcEncoding>("encoding")?;
 
             let url = object.get_value("url")?.as_string();
+            let resolver = object.try_get("resolver")?;
 
-            Ok(Self { resident, network_id, encoding, url })
+            Ok(Self { resident, network_id, encoding, url, resolver })
         } else {
             Ok(WalletCtorArgs::default())
         }

@@ -2,6 +2,12 @@ use crate::imports::*;
 use xxhash_rust::xxh3::xxh3_64;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Provider {
+    pub name: String,
+    pub url: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Node {
     #[serde(skip)]
     pub id: u64,
@@ -17,8 +23,7 @@ pub struct Node {
     pub enable: Option<bool>,
     pub bias: Option<f64>,
     pub version: Option<String>,
-    pub provider: Option<String>,
-    pub link: Option<String>,
+    pub provider: Option<Provider>,
 }
 
 impl Eq for Node {}

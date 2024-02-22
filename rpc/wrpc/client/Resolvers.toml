@@ -1,11 +1,11 @@
-[[beacon]]
+[[resolver]]
 url = "https://beacon.kaspa-ng.org"
 enable = true
 
-[[beacon]]
+[[resolver]]
 url = "https://beacon.kaspa-ng.io"
 enable = true
 
-[[beacon]]
+[[resolver]]
 url = "http://127.0.0.1:8888"
 enable = false

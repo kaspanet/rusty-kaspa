@@ -7,7 +7,7 @@
 
             // import WASM32 SDK
             import * as kaspa from '../../web/kaspa-rpc/kaspa.js';
-            let { Beacon, RpcClient, Encoding } = kaspa;
+            let { Resolver, RpcClient, Encoding } = kaspa;
 
             (async () => {
                 // load WASM32 SDK binaries 
@@ -22,8 +22,8 @@
                     log(`Connecting to Kaspa network...`);
                     log(`Selected network is ${network.class("network")}...`);
                     
-                    const beacon = new Beacon();
-                    const rpc = await beacon.connect(network);
+                    const resolver = new Resolver();
+                    const rpc = await resolver.connect(network);
                     // const rpc = new RpcClient({ url, networkId: "mainnet" });
                     
                     log("Connected to", rpc.url.class("network"));

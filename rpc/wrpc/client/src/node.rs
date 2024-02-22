@@ -11,6 +11,12 @@ pub struct NodeDescriptor {
     /// The URL of the node WebSocket (wRPC URL).
     #[wasm_bindgen(getter_with_clone)]
     pub url: String,
+    /// Optional name of the node provider.
+    #[wasm_bindgen(getter_with_clone)]
+    pub provider_name: Option<String>,
+    /// Optional site URL of the node provider.
+    #[wasm_bindgen(getter_with_clone)]
+    pub provider_url: Option<String>,
 }
 
 impl Eq for NodeDescriptor {}

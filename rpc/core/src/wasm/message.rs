@@ -61,8 +61,6 @@ declare! {
     IPingRequest,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IPingRequest {
@@ -79,8 +77,6 @@ declare! {
     IPingResponse,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IPingResponse {
@@ -93,13 +89,10 @@ try_from! ( args: PingResponse, IPingResponse, {
     Ok(to_value(&args)?.into())
 });
 
-// --- #########################################
-
 declare! {
     IGetBlockCountRequest,
     r#"
     /**
-     * 
      * @category Node RPC
      */
     export interface IGetBlockCountRequest { }
@@ -133,8 +126,6 @@ declare! {
     IGetBlockDagInfoRequest,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetBlockDagInfoRequest { }
@@ -149,8 +140,6 @@ declare! {
     IGetBlockDagInfoResponse,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetBlockDagInfoResponse {
@@ -178,8 +167,6 @@ declare! {
     IGetCoinSupplyRequest,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetCoinSupplyRequest { }
@@ -194,8 +181,6 @@ declare! {
     IGetCoinSupplyResponse,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetCoinSupplyResponse {
@@ -215,8 +200,6 @@ declare! {
     IGetConnectedPeerInfoRequest,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetConnectedPeerInfoRequest { }
@@ -231,8 +214,6 @@ declare! {
     IGetConnectedPeerInfoResponse,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetConnectedPeerInfoResponse {
@@ -251,8 +232,6 @@ declare! {
     IGetInfoRequest,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetInfoRequest { }
@@ -267,8 +246,6 @@ declare! {
     IGetInfoResponse,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetInfoResponse {
@@ -295,8 +272,6 @@ declare! {
     IGetPeerAddressesRequest,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetPeerAddressesRequest { }
@@ -311,8 +286,6 @@ declare! {
     IGetPeerAddressesResponse,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetPeerAddressesResponse {
@@ -331,8 +304,6 @@ declare! {
     IGetMetricsRequest,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetMetricsRequest { }
@@ -347,8 +318,6 @@ declare! {
     IGetMetricsResponse,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetMetricsResponse {
@@ -367,8 +336,6 @@ declare! {
     IGetSinkRequest,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetSinkRequest { }
@@ -383,8 +350,6 @@ declare! {
     IGetSinkResponse,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetSinkResponse {
@@ -403,8 +368,6 @@ declare! {
     IGetSinkBlueScoreRequest,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetSinkBlueScoreRequest { }
@@ -419,8 +382,6 @@ declare! {
     IGetSinkBlueScoreResponse,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetSinkBlueScoreResponse {
@@ -439,8 +400,6 @@ declare! {
     IShutdownRequest,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IShutdownRequest { }
@@ -455,8 +414,6 @@ declare! {
     IShutdownResponse,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IShutdownResponse { }
@@ -473,8 +430,6 @@ declare! {
     IGetServerInfoRequest,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetServerInfoRequest { }
@@ -489,8 +444,6 @@ declare! {
     IGetServerInfoResponse,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetServerInfoResponse {
@@ -514,8 +467,6 @@ declare! {
     IGetSyncStatusRequest,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetSyncStatusRequest { }
@@ -530,8 +481,6 @@ declare! {
     IGetSyncStatusResponse,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetSyncStatusResponse {
@@ -544,11 +493,9 @@ try_from! ( args: GetSyncStatusResponse, IGetSyncStatusResponse, {
     Ok(to_value(&args)?.into())
 });
 
-// ---
-// ---
-// --- WITH ARGS
-// ---
-// ---
+/*
+    Interfaces for methods with arguments
+*/
 
 declare! {
     IAddPeerRequest,
@@ -626,8 +573,6 @@ declare! {
     IEstimateNetworkHashesPerSecondRequest,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IEstimateNetworkHashesPerSecondRequest {
@@ -645,8 +590,6 @@ declare! {
     IEstimateNetworkHashesPerSecondResponse,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IEstimateNetworkHashesPerSecondResponse {
@@ -665,8 +608,6 @@ declare! {
     IGetBalanceByAddressRequest,
     r#"
     /**
-     * 
-     * 
      * @category Node RPC
      */
     export interface IGetBalanceByAddressRequest {

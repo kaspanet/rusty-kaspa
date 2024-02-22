@@ -37,7 +37,7 @@ pub struct Connection {
 
 impl Connection {
     pub fn try_new(node: Arc<Node>, sender: Sender<Params>, args: &Arc<Args>) -> Result<Self> {
-        let client = KaspaRpcClient::new(node.encoding, Some(&node.address))?;
+        let client = KaspaRpcClient::new(node.encoding, Some(&node.address), None, None)?;
         let descriptor = RwLock::default();
         let shutdown_ctl = DuplexChannel::oneshot();
         let is_connected = Arc::new(AtomicBool::new(false));
@@ -245,15 +245,18 @@ pub struct Output<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_name: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider_link: Option<&'a str>,
+    pub provider_url: Option<&'a str>,
 }
 
 impl<'a> From<&'a Arc<Connection>> for Output<'a> {
     fn from(connection: &'a Arc<Connection>) -> Self {
         let id = connection.node.id_string.as_str();
         let url = connection.node.address.as_str();
-        let provider_name = connection.node.provider.as_deref();
-        let provider_link = connection.node.link.as_deref();
-        Self { id, url, provider_name, provider_link }
+        let provider_name = connection.node.provider.as_ref().map(|provider| provider.name.as_str());
+        let provider_url = connection.node.provider.as_ref().map(|provider| provider.url.as_str());
+
+        // let provider_name = connection.node.provider.as_deref();
+        // let provider_url = connection.node.link.as_deref();
+        Self { id, url, provider_name, provider_url }
     }
 }
