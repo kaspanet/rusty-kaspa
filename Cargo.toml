@@ -226,7 +226,7 @@ sha2 = "0.10.8"
 sha3 = "0.10.8"
 slugify-rs = "0.0.3"
 smallvec = { version = "1.11.1", features = ["serde"] }
-sorted-insert = "0.2.3"# TODO "0.16.0"
+sorted-insert = "0.2.3"
 subtle = { version = "2.5.0", default-features = false }
 tempfile = "3.8.1"
 textwrap = "0.16.0"
