@@ -26,5 +26,4 @@ thiserror.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
-statrs.workspace = true
-statest.workspace = true
+kolmogorov_smirnov.workspace = true

@@ -519,9 +519,8 @@ mod address_store_with_cache {
         use kaspa_core::task::tick::TickService;
         use kaspa_database::create_temp_db;
         use kaspa_database::prelude::ConnBuilder;
-        use kaspa_utils::networking::IpAddress;
-        use statest::ks::KSTest;
-        use statrs::distribution::Uniform;
+        use kaspa_utils::{as_slice::AsSlice, networking::IpAddress};
+        use kolmogorov_smirnov::test::test as two_way_ks_test;
         use std::net::{IpAddr, Ipv6Addr};
 
         #[test]
@@ -594,22 +593,25 @@ mod address_store_with_cache {
             let num_of_trials = 512;
             let mut cul_p = 0.;
             // The target uniform distribution
-            let target_u_dist = Uniform::new(0.0, (num_of_buckets) as f64).unwrap();
+            let target_u_dist = Vec::from_iter((0..num_of_buckets));
             for _ in 0..num_of_trials {
                 // The weight sampled expected uniform distibution
                 let prioritized_address_distribution = am
                     .lock()
                     .iterate_prioritized_random_addresses(HashSet::new())
                     .take(num_of_buckets)
-                    .map(|addr| addr.prefix_bucket().as_u64() as f64)
+                    .map(|addr| addr.prefix_bucket().as_u64() as usize)
                     .collect_vec();
-
-                let ks_test = KSTest::new(prioritized_address_distribution.as_slice());
-                cul_p += ks_test.ks1(&target_u_dist).0;
+                cul_p += (two_way_ks_test(
+                    prioritized_address_distribution.as_slice(), 
+                    target_u_dist.as_slice(),
+                    0.5 // confidence is unimportant here, as we are just culminating reject_probabilities for now.  
+                ).reject_probability 
+                / 2.0); // Divide by 2 as we want to test one way. 
             }
 
             // Normalize and adjust p to test for uniformity, over average of all trials.
-            let adjusted_p = (0.5 - cul_p / num_of_trials as f64).abs();
+            let adjusted_p = cul_p / num_of_trials as f64; 
             // Define the significance threshold.
             let significance = 0.10;
 
