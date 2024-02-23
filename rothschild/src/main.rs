@@ -101,7 +101,7 @@ struct ClientPoolArg {
 
 #[tokio::main]
 async fn main() {
-    kaspa_core::log::init_logger(None, "");
+    kaspa_core::log::init_logger(None, "", false);
     let args = Args::parse();
     let stats = Arc::new(Mutex::new(Stats { num_txs: 0, since: unix_now(), num_utxos: 0, utxos_amount: 0, num_outs: 0 }));
     let rpc_client = GrpcClient::connect(

@@ -50,6 +50,8 @@ impl ConnectionRequest {
 }
 
 impl ConnectionManager {
+    pub const IDENT: &'static str = "ConnectionManager";
+
     pub fn new(
         p2p_adaptor: Arc<kaspa_p2p_lib::Adaptor>,
         outbound_target: usize,
@@ -171,7 +173,20 @@ impl ConnectionManager {
 
         let mut progressing = true;
         let mut connecting = true;
+        /*
+        let pb = maybe_init_progress_bar(
+            Cow::Borrowed("Connections"),
+            Cow::Borrowed("Finding Peers"),
+            self.outbound_target as u64,
+            true,
+            true,
+            false,
+            false,
+            true,
+        );
+        */
         while connecting && missing_connections > 0 {
+            //pb.is_some_perform(|pb| pb.set_position((self.outbound_target - missing_connections) as u64));
             if self.shutdown_signal.trigger.is_triggered() {
                 return;
             }
@@ -234,6 +249,8 @@ impl ConnectionManager {
             })
             .await;
         }
+
+        //pb.is_some_perform(|pb| pb.set_position((self.outbound_target - missing_connections) as u64))
     }
 
     async fn handle_inbound_connections(self: &Arc<Self>, peer_by_address: &HashMap<SocketAddr, Peer>) {

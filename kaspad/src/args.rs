@@ -52,6 +52,7 @@ pub struct Args {
     pub simnet: bool,
     pub archival: bool,
     pub sanity: bool,
+    pub progressions: bool,
     pub yes: bool,
     pub externalip: Option<ContextualNetAddress>,
     pub perf_metrics: bool,
@@ -93,6 +94,7 @@ impl Default for Args {
             simnet: false,
             archival: false,
             sanity: false,
+            progressions: false,
             logdir: Some("".into()),
             rpclisten: None,
             wrpc_verbose: false,
@@ -301,6 +303,7 @@ pub fn cli() -> Command {
         .arg(arg!(--simnet "Use the simulation test network"))
         .arg(arg!(--archival "Run as an archival node: avoids deleting old block data when moving the pruning point (Warning: heavy disk usage)"))
         .arg(arg!(--sanity "Enable various sanity checks which might be compute-intensive (mostly performed during pruning)"))
+        .arg(arg!(--progressions "Enable progression logging"))
         .arg(arg!(--yes "Answer yes to all interactive console questions"))
         .arg(
             Arg::new("user_agent_comments")
@@ -394,6 +397,7 @@ impl Args {
             simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
             archival: m.get_one::<bool>("archival").cloned().unwrap_or(defaults.archival),
             sanity: m.get_one::<bool>("sanity").cloned().unwrap_or(defaults.sanity),
+            progressions: m.get_one::<bool>("progressions").cloned().unwrap_or(defaults.progressions),
             yes: m.get_one::<bool>("yes").cloned().unwrap_or(defaults.yes),
             user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
             externalip: m.get_one::<ContextualNetAddress>("externalip").cloned(),
@@ -493,6 +497,8 @@ impl Args {
       --utxoindex                           Enable the UTXO index
       --archival                            Run as an archival node: don't delete old block data when moving the
                                             pruning point (Warning: heavy disk usage)'
+      --progressions                        Enable progression logging, i.e. progress bars and spinners. (default:
+                                            false)
       --protocol-version=                   Use non default p2p protocol version (default: 5)
       --enable-unsynced-mining              Allow the node to accept blocks from RPC while not synced
                                             (required when initiating a new network from genesis)

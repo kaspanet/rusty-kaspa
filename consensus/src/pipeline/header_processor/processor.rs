@@ -157,6 +157,8 @@ pub struct HeaderProcessor {
 }
 
 impl HeaderProcessor {
+    pub const IDENT: &'static str = "HeaderProcessor";
+
     pub fn new(
         receiver: Receiver<BlockProcessingMessage>,
         body_sender: Sender<BlockProcessingMessage>,

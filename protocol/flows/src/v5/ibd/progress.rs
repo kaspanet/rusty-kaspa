@@ -1,7 +1,15 @@
-use std::time::{Duration, Instant};
+use std::{
+    borrow::Cow,
+    time::{Duration, Instant},
+};
 
 use chrono::{Local, LocalResult, TimeZone};
-use kaspa_core::info;
+use indicatif::ProgressBar;
+use kaspa_core::{
+    info,
+    log::progressions::{maybe_init_progress_bar_spinner_pair, ProgressBarSpinnerPair},
+};
+use kaspa_utils::option::OptionExtensions;
 
 /// Minimum number of items to report
 const REPORT_BATCH_GRANULARITY: usize = 500;
@@ -16,6 +24,7 @@ pub struct ProgressReporter {
     last_log_time: Instant,
     current_batch: usize,
     processed: usize,
+    progress_bar: Option<(ProgressBar, ProgressBar)>,
 }
 
 impl ProgressReporter {
@@ -24,6 +33,7 @@ impl ProgressReporter {
             // Avoid a zero or negative diff
             high_daa_score = low_daa_score + 1;
         }
+
         Self {
             low_daa_score,
             high_daa_score,
@@ -32,6 +42,16 @@ impl ProgressReporter {
             last_log_time: Instant::now(),
             current_batch: 0,
             processed: 0,
+            progress_bar: maybe_init_progress_bar_spinner_pair(
+                Cow::Borrowed("IBD"),
+                Cow::Owned(format!("Loading {0}", object_name)),
+                high_daa_score - low_daa_score,
+                true,
+                true,
+                true,
+                true,
+                true,
+            ),
         }
     }
 
@@ -45,8 +65,10 @@ impl ProgressReporter {
         self.current_batch = 0;
         if current_daa_score > self.high_daa_score {
             self.high_daa_score = current_daa_score + 1; // + 1 for keeping it at 99%
+            self.progress_bar.is_some_perform(|pb| pb.set_length(self.high_daa_score));
         }
         let relative_daa_score = if current_daa_score > self.low_daa_score { current_daa_score - self.low_daa_score } else { 0 };
+        self.progress_bar.is_some_perform(|pb| pb.set_position(relative_daa_score));
         let percent = ((relative_daa_score as f64 / (self.high_daa_score - self.low_daa_score) as f64) * 100.0) as i32;
         if percent > self.last_reported_percent {
             let date = match Local.timestamp_opt(current_timestamp as i64 / 1000, 1000 * (current_timestamp as u32 % 1000)) {

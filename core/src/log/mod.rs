@@ -13,6 +13,7 @@ use consts::*;
 mod appender;
 mod consts;
 mod logger;
+pub mod progressions;
     }
 }
 
@@ -38,7 +39,7 @@ cfg_if::cfg_if! {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn init_logger(log_dir: Option<&str>, filters: &str) {
+pub fn init_logger(log_dir: Option<&str>, filters: &str, init_progressions: bool) {
     use crate::log::appender::AppenderSpec;
     use log4rs::{config::Root, Config};
     use std::iter::once;
@@ -66,9 +67,15 @@ pub fn init_logger(log_dir: Option<&str>, filters: &str) {
         )
         .unwrap();
 
-    let _handle = log4rs::init_config(config).unwrap();
+    let _ = log4rs::init_config(config).unwrap();
 
-    set_log_level(level);
+    if init_progressions {
+        progressions::init_multi_progress_bar(true);
+    } else {
+        progressions::init_multi_progress_bar(false);
+    }
+
+    //set_log_level(level);
 }
 
 /// Tries to init the global logger, but does not panic if it was already setup.
@@ -103,9 +110,19 @@ macro_rules! trace {
 #[cfg(not(target_arch = "wasm32"))]
 #[macro_export]
 macro_rules! trace {
-    ($($t:tt)*) => {
-        log::trace!($($t)*);
-    };
+    ($($t:tt)*) => (
+        // Suspend progress bar while logging
+        if log::log_enabled!(log::Level::Trace) {
+            kaspa_core::log::progressions::maybe_suspend(|| log::trace!($($t)*));
+        };
+        /*
+        if *kaspa_core::log::progressions::MULTI_PROGRESS_BAR_ACTIVE {
+            let tr = kaspa_core::log::progressions::TRACE_REPORTER.clone().unwrap();
+            tr.set_message(format_args!($($t)*).to_string());
+            tr.tick();
+        };
+        */
+    )
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -122,7 +139,17 @@ macro_rules! debug {
 #[macro_export]
 macro_rules! debug {
     ($($t:tt)*) => (
+        if log::log_enabled!(log::Level::Debug) {
+            kaspa_core::log::progressions::maybe_suspend(|| log::debug!($($t)*));
+        };
         log::debug!($($t)*);
+        /*
+        if *kaspa_core::log::progressions::MULTI_PROGRESS_BAR_ACTIVE {
+            let dr = kaspa_core::log::progressions::DEBUG_REPORTER.clone().unwrap();
+            dr.set_message(format_args!($($t)*).to_string());
+            dr.tick();
+        };
+        */
     )
 }
 
@@ -140,7 +167,14 @@ macro_rules! info {
 #[macro_export]
 macro_rules! info {
     ($($t:tt)*) => (
-        log::info!($($t)*);
+        if log::log_enabled!(log::Level::Info) {
+            kaspa_core::log::progressions::maybe_suspend(|| log::info!($($t)*));
+        };
+        if *kaspa_core::log::progressions::MULTI_PROGRESS_BAR_ACTIVE {
+            let ir = kaspa_core::log::progressions::INFO_REPORTER.clone().unwrap();
+            ir.set_message(format_args!($($t)*).to_string());
+            ir.tick();
+        };
     )
 }
 
@@ -158,7 +192,15 @@ macro_rules! warn {
 #[macro_export]
 macro_rules! warn {
     ($($t:tt)*) => (
-        log::warn!($($t)*);
+        // Suspend progress bar while logging
+        if log::log_enabled!(log::Level::Warn) {
+            kaspa_core::log::progressions::maybe_suspend(|| log::warn!($($t)*));
+        };
+        if *kaspa_core::log::progressions::MULTI_PROGRESS_BAR_ACTIVE {
+            let wr = kaspa_core::log::progressions::WARN_REPORTER.clone().unwrap();
+            wr.set_message(format_args!($($t)*).to_string());
+            wr.tick();
+        };
     )
 }
 
@@ -176,6 +218,14 @@ macro_rules! error {
 #[macro_export]
 macro_rules! error {
     ($($t:tt)*) => (
-        log::error!($($t)*);
+        // Suspend progress bar while logging
+        if log::log_enabled!(log::Level::Error) {
+            kaspa_core::log::progressions::maybe_suspend(|| log::error!($($t)*));
+        };
+        if *kaspa_core::log::progressions::MULTI_PROGRESS_BAR_ACTIVE {
+            let er = kaspa_core::log::progressions::ERROR_REPORTER.clone().unwrap();
+            er.set_message(format_args!($($t)*).to_string());
+            er.tick();
+        };
     )
 }

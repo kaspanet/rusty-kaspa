@@ -5,7 +5,7 @@ extern crate kaspa_hashes;
 use std::sync::Arc;
 
 use kaspa_alloc::init_allocator_with_default_settings;
-use kaspa_core::{info, signals::Signals};
+use kaspa_core::signals::Signals;
 use kaspa_utils::fd_budget;
 use kaspad_lib::{
     args::parse_args,
@@ -46,5 +46,5 @@ pub fn main() {
     Arc::new(Signals::new(&core)).init();
 
     core.run();
-    info!("Kaspad has stopped...");
+    println!("Kaspad has stopped...");
 }
