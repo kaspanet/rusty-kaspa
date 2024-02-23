@@ -1,6 +1,6 @@
 # Kaspa WASM SDK
 
-An integration wrapper around [`kaspa-wasm`](https://www.npmjs.com/package/kaspa-wasm) module that uses [`ws`](https://www.npmjs.com/package/ws) together with the  [`isomorphic-ws`](https://www.npmjs.com/package/isomorphic-ws) w3c adaptor for WebSocket communication.
+An integration wrapper around [`kaspa-wasm`](https://www.npmjs.com/package/kaspa-wasm) module that uses [`websocket`](https://www.npmjs.com/package/websocket) W3C adaptor for WebSocket communication.
 
 ## Usage
 

@@ -60,16 +60,36 @@ function disconnectAction(rpc) {
 }
 
 // @ts-ignore
-window.disconnect = function() {
+window.disconnect = async function() {
     // @ts-ignore
-    $rpc.disconnect();
-    document.getElementById('actions').innerHTML = ' | Disconnected';
-    document.body.innerHTML += '\nDisconnected...';
+    await $rpc.disconnect();
+    document.getElementById('actions').innerHTML = ` | <a href="javascript: reconnect()">Reconnect</a>`;
 }
 
-// window.begin = function() {
-//     document.
-// }
+// @ts-ignore
+window.reconnect = async function() {
+    document.getElementById('actions').innerHTML = ` | Connecting...`;
+    // @ts-ignore
+    await $rpc.connect();
+    document.getElementById('actions').innerHTML = ` | <a href="javascript: disconnect()">Disconnect</a>`;
+}
+
+function randomId() {
+    return (Math.round(Math.random()*1e8)).toString(16);
+}
+
+function logToId(id, ...args) {
+    let el = document.getElementById(id);
+    if (!el) {
+        el = document.createElement('code');
+        el.id = id;
+        document.body.appendChild(el);
+    }
+
+    el.innerHTML = args.map((arg) => {
+        return typeof arg === 'object' ? stringify(arg) : arg;
+    }).join(' ') + "<br>";
+}
 
 function log(...args) {
     let el = document.createElement('code');
@@ -101,4 +121,4 @@ function stringify(json) {
     });
 }
 
-export { log, stringify, currentNetwork, disconnectAction };
+export { log, logToId, randomId, stringify, currentNetwork, disconnectAction };

@@ -2,67 +2,24 @@
 
 use crate::imports::*;
 use crate::Resolver;
-use crate::RpcNotificationCallback;
+use crate::{RpcEventCallback, RpcEventType, RpcEventTypeOrCallback};
+use js_sys::Object;
 use kaspa_addresses::{Address, IAddressArray};
 use kaspa_consensus_core::network::{wasm::Network, NetworkType};
+use kaspa_notify::events::EventType;
 use kaspa_notify::notification::Notification as NotificationT;
+use kaspa_rpc_core::api::ctl;
 pub use kaspa_rpc_core::wasm::message::*;
 pub use kaspa_rpc_macros::{
     build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions, declare_typescript_wasm_interface as declare,
 };
 pub use serde_wasm_bindgen::from_value;
+use workflow_rpc::client::Ctl;
+pub use workflow_rpc::client::IConnectOptions;
 pub use workflow_rpc::encoding::Encoding as WrpcEncoding;
+use workflow_wasm::callback;
 use workflow_wasm::extensions::ObjectExtension;
 pub use workflow_wasm::serde::to_value;
-
-#[wasm_bindgen(typescript_custom_section)]
-const TS_CONNECT_OPTIONS: &'static str = r#"
-
-/**
- * `ConnectOptions` is used to configure the `WebSocket` connectivity behavior.
- * 
- * @category WebSocket
- */
-export interface IConnectOptions {
-    /**
-     * Indicates if the `async fn connect()` method should return immediately
-     * or wait for connection to occur or fail before returning.
-     * (default is `true`)
-     */
-    blockAsyncConnect? : boolean,
-    /**
-     * ConnectStrategy used to configure the retry or fallback behavior.
-     * In retry mode, the WebSocket will continuously attempt to connect to the server.
-     * (default is {link ConnectStrategy.Retry}).
-     */
-    strategy?: ConnectStrategy | string,
-    /** 
-     * A custom URL that will change the current URL of the WebSocket.
-     * If supplied, the URL will override the resolver.
-     */
-    url?: string,
-    /**
-     * A custom connection timeout in milliseconds.
-     */
-    timeoutDuration?: number,
-    /** 
-     * A custom retry interval in milliseconds.
-     */
-    retryInterval?: number,
-}
-"#;
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(typescript_type = "IConnectOptions | undefined")]
-    pub type IConnectOptions;
-}
-
-impl From<IConnectOptions> for workflow_rpc::client::IConnectOptions {
-    fn from(options: IConnectOptions) -> Self {
-        options.into()
-    }
-}
 
 declare! {
     IRpcConfig,
@@ -87,7 +44,8 @@ declare! {
          */
         encoding?: Encoding;
         /**
-         * Network identifier: `mainnet` or `testnet-10`
+         * Network identifier: `mainnet`, `testnet-10` etc.
+         * `networkId` is required when using a resolver.
          */
         networkId?: NetworkId;
     }
@@ -112,7 +70,7 @@ impl TryFrom<IRpcConfig> for RpcConfig {
     fn try_from(config: IRpcConfig) -> Result<Self> {
         let resolver = config.try_get::<Resolver>("resolver")?;
         let url = config.try_get_string("url")?;
-        let encoding = config.try_get::<Encoding>("encoding")?; //.unwrap_or(Encoding::Borsh); //map_or(Ok(Encoding::Borsh), |encoding| Encoding::try_from(encoding))?;
+        let encoding = config.try_get::<Encoding>("encoding")?;
         let network_id = config.try_get::<NetworkId>("networkId")?.ok_or_else(|| Error::custom("network is required"))?;
         Ok(RpcConfig { resolver, url, encoding, network_id: Some(network_id) })
     }
@@ -130,6 +88,7 @@ impl TryFrom<RpcConfig> for IRpcConfig {
     }
 }
 
+#[derive(Clone, Eq, PartialEq)]
 struct NotificationSink(Function);
 unsafe impl Send for NotificationSink {}
 impl From<NotificationSink> for Function {
@@ -138,25 +97,129 @@ impl From<NotificationSink> for Function {
     }
 }
 
-pub struct Inner {
-    client: Arc<KaspaRpcClient>,
-    notification_task: AtomicBool,
-    notification_ctl: DuplexChannel,
-    notification_callback: Arc<Mutex<Option<NotificationSink>>>,
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+enum NotificationEvent {
+    All,
+    Notification(EventType),
+    RpcCtl(Ctl),
 }
 
-/// Kaspa RPC client
+impl FromStr for NotificationEvent {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self> {
+        if s == "all" || s == "*" {
+            Ok(NotificationEvent::All)
+        } else if let Ok(ctl) = Ctl::from_str(s) {
+            Ok(NotificationEvent::RpcCtl(ctl))
+        } else if let Ok(event) = EventType::from_str(s) {
+            Ok(NotificationEvent::Notification(event))
+        } else {
+            Err(Error::custom(format!("Invalid notification event type: `{}`", s)))
+        }
+    }
+}
+
+impl TryFrom<JsValue> for NotificationEvent {
+    type Error = Error;
+    fn try_from(event: JsValue) -> Result<Self> {
+        if let Some(event) = event.as_string() {
+            event.parse()
+        } else {
+            Err(Error::custom(format!("Invalid notification event: `{:?}`", event)))
+        }
+    }
+}
+
+pub struct Inner {
+    client: Arc<KaspaRpcClient>,
+    resolver: Option<Resolver>,
+    notification_task: AtomicBool,
+    notification_ctl: DuplexChannel,
+    notification_callbacks: Arc<Mutex<AHashMap<NotificationEvent, Vec<NotificationSink>>>>,
+    // notification_callback: Arc<Mutex<Option<NotificationSink>>>,
+}
+
+impl Inner {
+    fn notification_callbacks(&self, event: NotificationEvent) -> Option<Vec<NotificationSink>> {
+        let notification_callbacks = self.notification_callbacks.lock().unwrap();
+        let all = notification_callbacks.get(&NotificationEvent::All).cloned();
+        let target = notification_callbacks.get(&event).cloned();
+        match (all, target) {
+            (Some(mut vec_all), Some(vec_target)) => {
+                vec_all.extend(vec_target);
+                Some(vec_all)
+            }
+            (Some(vec_all), None) => Some(vec_all),
+            (None, Some(vec_target)) => Some(vec_target),
+            (None, None) => None,
+        }
+    }
+}
+
+/// Kaspa RPC client uses ([wRPC](https://github.com/workflow-rs/workflow-rs/tree/master/rpc))
+/// interface to connect directly with Kaspa Node. wRPC supports
+/// two types of encodings: `borsh` (binary, default) and `json`.
 ///
-/// Kaspa RPC client uses wRPC (Workflow RPC) WebSocket interface to connect
-/// to directly to Kaspa Node.
+/// ```javascript
+/// // Example usage:
+///
+/// // Create a new RPC client with a URL
+/// let rpc = new RpcClient({ url : "wss://<node-wrpc-address>" });
+///
+/// // Create a new RPC client with a resolver
+/// // (networkId is required when using a resolver)
+/// let rpc = new RpcClient({
+///     resolver : new Resolver(),
+///     networkId : "mainnet",
+/// });
+///
+/// rpc.addEventListener("open", async (event) => {
+///     console.log("Connected to", rpc.url);
+///     await rpc.subscribeDaaScore();
+/// });
+///
+/// rpc.addEventListener("close", (event) => {
+///     console.log("Disconnected from", rpc.url);
+/// });
+///
+/// try {
+///     await rpc.connect();
+/// } catch(err) {
+///     console.log("Error connecting:", err);
+/// }
+///
+/// ```
+///
+/// You can register event listeners to receive notifications from the RPC client
+/// using {@link RpcClient.addEventListener} and {@link RpcClient.removeEventListener} functions.
+///
+/// **IMPORTANT:** If RPC is disconnected, upon reconnection you do not need
+/// to re-register event listeners, but your have to re-subscribe for Kaspa
+/// notifications.
+///
+/// ```typescript
+/// rpc.addEventListener("open", async (event) => {
+///     console.log("Connected to", rpc.url);
+///     await rpc.subscribeDaaScore();
+///     // ... perform wallet address subscriptions
+/// });
+///
+/// ```
+///
+/// Connection to the community-maintained public server infrastructure can be established
+/// using the {@link Resolver} class.
+///
+/// If using NodeJS, it is important that {@link RpcClient.disconnect} is called before
+/// the process exits to ensure that the WebSocket connection is properly closed.
+/// Failure to do this will prevent the process from exiting.
 ///
 /// @category Node RPC
+///
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
 pub struct RpcClient {
     // #[wasm_bindgen(skip)]
     pub(crate) inner: Arc<Inner>,
-    resolver: Option<Resolver>,
 }
 
 impl RpcClient {
@@ -185,11 +248,11 @@ impl RpcClient {
         let rpc_client = RpcClient {
             inner: Arc::new(Inner {
                 client,
+                resolver,
                 notification_task: AtomicBool::new(false),
                 notification_ctl: DuplexChannel::oneshot(),
-                notification_callback: Arc::new(Mutex::new(None)),
+                notification_callbacks: Arc::new(Default::default()),
             }),
-            resolver,
         };
 
         Ok(rpc_client)
@@ -214,7 +277,22 @@ impl RpcClient {
     /// Current rpc resolver
     #[wasm_bindgen(getter)]
     pub fn resolver(&self) -> Option<Resolver> {
-        self.resolver.clone()
+        self.inner.resolver.clone()
+    }
+
+    /// Set the resolver for the RPC client.
+    /// This setting will take effect on the next connection.
+    #[wasm_bindgen(js_name = setResolver)]
+    pub fn set_resolver(&self, resolver: Resolver) -> Result<()> {
+        self.inner.client.set_resolver(resolver.into())?;
+        Ok(())
+    }
+
+    /// Set the network id for the RPC client.
+    /// This setting will take effect on the next connection.
+    pub fn set_network_id(&self, network_id: NetworkId) -> Result<()> {
+        self.inner.client.set_network_id(network_id)?;
+        Ok(())
     }
 
     /// The current connection status of the RPC client.
@@ -253,7 +331,6 @@ impl RpcClient {
     /// terminate the connection.
     /// @see {@link IConnectOptions} interface for more details.
     pub async fn connect(&self, args: Option<IConnectOptions>) -> Result<()> {
-        let args = args.map(workflow_rpc::client::IConnectOptions::from);
         let options = args.map(ConnectOptions::try_from).transpose()?;
 
         self.start_notification_task()?;
@@ -263,43 +340,130 @@ impl RpcClient {
 
     /// Disconnect from the Kaspa RPC server.
     pub async fn disconnect(&self) -> Result<()> {
-        self.clear_notification_callback();
-        self.stop_notification_task().await?;
+        // shutdown the client first to receive the 'close' event
         self.inner.client.shutdown().await?;
-        Ok(())
-    }
-
-    async fn stop_notification_task(&self) -> Result<()> {
-        if self.inner.notification_task.load(Ordering::SeqCst) {
-            self.inner.notification_task.store(false, Ordering::SeqCst);
-            self.inner.notification_ctl.signal(()).await.map_err(|err| JsError::new(&err.to_string()))?;
-        }
-        Ok(())
-    }
-
-    fn clear_notification_callback(&self) {
-        *self.inner.notification_callback.lock().unwrap() = None;
-    }
-
-    /// Register a notification callback.
-    /// IMPORTANT: You are allowed to register only one callback.
-    #[wasm_bindgen(js_name = "registerListener")]
-    pub async fn register_event_listener(&self, callback: RpcNotificationCallback) -> Result<()> {
-        if callback.is_function() {
-            let fn_callback: Function = callback.into();
-            self.inner.notification_callback.lock().unwrap().replace(NotificationSink(fn_callback));
-        } else {
-            self.stop_notification_task().await?;
-            self.clear_notification_callback();
-        }
-        Ok(())
-    }
-
-    /// Unregister a notification callback.
-    #[wasm_bindgen(js_name = "removeListener")]
-    pub async fn remove_event_listener(&self) -> Result<()> {
         self.stop_notification_task().await?;
-        self.clear_notification_callback();
+        Ok(())
+    }
+
+    /// Triggers a disconnection on the underlying WebSocket.
+    /// This is intended for debug purposes only.
+    /// Can be used to test application reconnection logic.
+    #[wasm_bindgen(js_name = "triggerAbort")]
+    pub fn trigger_abort(&self) {
+        self.inner.client.trigger_abort().ok();
+    }
+
+    ///
+    /// Register an event listener callback.
+    ///
+    /// Registers a callback function to be executed when a specific event occurs.
+    /// The callback function will receive an {@link RpcEvent} object with the event type and data.
+    ///
+    /// ```typescript
+    /// // Example usage (TypeScript):
+    ///
+    /// rpc.addEventListener(RpcEventType.Open, (event) => {
+    ///     console.log("Connected to", rpc.url);
+    /// });
+    ///
+    /// rpc.addEventListener(RpcEventType.VirtualDaaScoreChanged, (event) => {
+    ///     console.log(event.type,event.data);
+    /// });
+    /// await rpc.subscribeDaaScore();
+    ///
+    /// rpc.addEventListener(RpcEventType.BlockAdded, (event) => {
+    ///     console.log(event.type,event.data);
+    /// });
+    /// await rpc.subscribeBlockAdded();
+    ///
+    ///
+    /// // Example usage (JavaScript):
+    ///
+    /// rpc.addEventListener("virtual-daa-score-changed", (event) => {
+    ///     console.log(event.type,event.data);
+    /// });
+    ///
+    /// await rpc.subscribeDaaScore();
+    /// rpc.addEventListener("block-added", (event) => {
+    ///     console.log(event.type,event.data);
+    /// });
+    /// await rpc.subscribeBlockAdded();
+    /// ```
+    ///
+    /// @see {@link RpcEventType} for a list of supported events.
+    /// @see {@link RpcEventData} for the event data interface specification.
+    /// @see {@link RpcClient.removeEventListener}, {@link RpcClient.removeAllEventListeners}
+    ///
+    #[wasm_bindgen(js_name = "addEventListener")]
+    pub fn add_event_listener(&self, event: RpcEventTypeOrCallback, callback: Option<RpcEventCallback>) -> Result<()> {
+        if event.is_function() {
+            let callback = Function::from(event);
+            let event = NotificationEvent::All;
+            self.inner.notification_callbacks.lock().unwrap().entry(event).or_default().push(NotificationSink(callback));
+        } else if let Some(callback) = callback {
+            let event = NotificationEvent::try_from(JsValue::from(event))?;
+            self.inner.notification_callbacks.lock().unwrap().entry(event).or_default().push(NotificationSink(callback.into()));
+        } else {
+            return Err(Error::custom("Invalid event listener callback"));
+        }
+        Ok(())
+    }
+
+    ///
+    /// Unregister an event listener.
+    /// This function will remove the callback for the specified event.
+    /// If the `callback` is not supplied, all callbacks will be
+    /// removed for the specified event.
+    ///
+    /// @see {@link RpcClient.addEventListener}
+    #[wasm_bindgen(js_name = "removeEventListener")]
+    pub fn remove_event_listener(&self, event: RpcEventType, callback: Option<RpcEventCallback>) -> Result<()> {
+        let event = NotificationEvent::try_from(JsValue::from(event))?;
+
+        if let Some(callback) = callback {
+            let sink = NotificationSink(callback.into());
+
+            let mut notification_callbacks = self.inner.notification_callbacks.lock().unwrap();
+            match event {
+                NotificationEvent::All => {
+                    if let Some(handlers) = notification_callbacks.get_mut(&NotificationEvent::All) {
+                        handlers.retain(|handler| handler != &sink);
+                    }
+                }
+                _ => {
+                    if let Some(handlers) = notification_callbacks.get_mut(&event) {
+                        handlers.retain(|handler| handler != &sink);
+                    }
+                }
+            }
+        } else {
+            self.inner.notification_callbacks.lock().unwrap().remove(&event);
+        }
+        Ok(())
+    }
+
+    ///
+    /// Unregister a single event listener callback from all events.
+    ///
+    ///
+    ///
+    #[wasm_bindgen(js_name = "clearEventListener")]
+    pub fn clear_event_listener(&self, callback: RpcEventCallback) -> Result<()> {
+        let sink = NotificationSink(callback.into());
+        let mut notification_callbacks = self.inner.notification_callbacks.lock().unwrap();
+        for (_, handlers) in notification_callbacks.iter_mut() {
+            handlers.retain(|handler| handler != &sink);
+        }
+        Ok(())
+    }
+
+    ///
+    /// Unregister all notification callbacks for all events.
+    ///
+    #[wasm_bindgen(js_name = "removeAllEventListeners")]
+    pub fn remove_all_event_listeners(&self) -> Result<()> {
+        *self.inner.notification_callbacks.lock().unwrap() = Default::default();
         Ok(())
     }
 }
@@ -310,11 +474,11 @@ impl RpcClient {
         RpcClient {
             inner: Arc::new(Inner {
                 client,
+                resolver,
                 notification_task: AtomicBool::new(false),
                 notification_ctl: DuplexChannel::oneshot(),
-                notification_callback: Arc::new(Mutex::new(None)),
+                notification_callbacks: Arc::new(Mutex::new(Default::default())),
             }),
-            resolver,
         }
     }
 
@@ -322,40 +486,65 @@ impl RpcClient {
         &self.inner.client
     }
 
+    async fn stop_notification_task(&self) -> Result<()> {
+        if self.inner.notification_task.load(Ordering::SeqCst) {
+            self.inner.notification_task.store(false, Ordering::SeqCst);
+            self.inner.notification_ctl.signal(()).await.map_err(|err| JsError::new(&err.to_string()))?;
+        }
+        Ok(())
+    }
+
     /// Notification task receives notifications and executes them on the
     /// user-supplied callback function.
     fn start_notification_task(&self) -> Result<()> {
+        self.inner.notification_task.store(true, Ordering::SeqCst);
+
         let ctl_receiver = self.inner.notification_ctl.request.receiver.clone();
         let ctl_sender = self.inner.notification_ctl.response.sender.clone();
         let notification_receiver = self.inner.client.notification_channel_receiver();
-        let notification_callback = self.inner.notification_callback.clone();
+        let ctl_multiplexer_channel =
+            self.inner.client.rpc_client().ctl_multiplexer().as_ref().expect("WASM32 RpcClient ctl_multiplexer is None").channel();
+        let self_ = self.clone();
 
         spawn(async move {
             loop {
-                select! {
-                    _ = ctl_receiver.recv().fuse() => {
-                        break;
+                select_biased! {
+                    msg = ctl_multiplexer_channel.recv().fuse() => {
+                        if let Ok(ctl) = msg {
+                            let event = NotificationEvent::RpcCtl(ctl);
+                            if let Some(handlers) = self_.inner.notification_callbacks(event) {
+                                for handler in handlers.into_iter() {
+                                    let event = Object::new();
+                                    event.set("type", &ctl.to_string().into()).ok();
+                                    event.set("rpc", &self_.clone().into()).ok();
+                                    if let Err(err) = handler.0.call1(&JsValue::undefined(), &event.into()) {
+                                        log_error!("Error while executing RPC notification callback: {:?}",err);
+                                    }
+                                }
+                            }
+                        }
                     },
                     msg = notification_receiver.recv().fuse() => {
-                        // log_info!("notification: {:?}",msg);
                         if let Ok(notification) = &msg {
-                            if let Some(callback) = notification_callback.lock().unwrap().as_ref() {
-                                let op: RpcApiOps = notification.event_type().into();
-                                let op_value = to_value(&op).map_err(|err|{
-                                    log_error!("Notification handler - unable to convert notification op: {}",err.to_string());
-                                }).ok();
-                                let op_payload = notification.to_value().map_err(|err| {
-                                    log_error!("Notification handler - unable to convert notification payload: {}",err.to_string());
-                                }).ok();
-                                if op_value.is_none() || op_payload.is_none() {
-                                    continue;
-                                }
-                                if let Err(err) = callback.0.call2(&JsValue::undefined(), &op_value.unwrap(), &op_payload.unwrap()) {
-                                    log_error!("Error while executing notification callback: {:?}",err);
+                            let event_type = notification.event_type();
+                            let notification_event = NotificationEvent::Notification(event_type);
+                            if let Some(handlers) = self_.inner.notification_callbacks(notification_event) {
+                                for handler in handlers.into_iter() {
+                                    let event = Object::new();
+                                    let event_type_value = to_value(&event_type).unwrap();
+                                    event.set("type", &event_type_value).expect("setting event type");
+                                    event.set("data", &notification.to_value().unwrap()).expect("setting event data");
+                                    if let Err(err) = handler.0.call1(&JsValue::undefined(), &event.into()) {
+                                        log_error!("Error while executing RPC notification callback: {:?}",err);
+                                    }
                                 }
                             }
                         }
                     }
+                    _ = ctl_receiver.recv().fuse() => {
+                        break;
+                    },
+
                 }
             }
 
@@ -417,7 +606,7 @@ impl RpcClient {
     /// Manage subscription for a virtual DAA score changed notification event.
     /// Virtual DAA score changed notification event is produced when the virtual
     /// Difficulty Adjustment Algorithm (DAA) score changes in the Kaspa BlockDAG.
-    #[wasm_bindgen(js_name = subscribeDaaScore)]
+    #[wasm_bindgen(js_name = subscribeVirtualDaaScoreChanged)]
     pub async fn subscribe_daa_score(&self) -> Result<()> {
         self.inner.client.start_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())
@@ -426,7 +615,7 @@ impl RpcClient {
     /// Manage subscription for a virtual DAA score changed notification event.
     /// Virtual DAA score changed notification event is produced when the virtual
     /// Difficulty Adjustment Algorithm (DAA) score changes in the Kaspa BlockDAG.
-    #[wasm_bindgen(js_name = unsubscribeDaaScore)]
+    #[wasm_bindgen(js_name = unsubscribeVirtualDaaScoreChanged)]
     pub async fn unsubscribe_daa_score(&self) -> Result<()> {
         self.inner.client.stop_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())

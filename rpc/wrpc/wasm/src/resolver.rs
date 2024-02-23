@@ -108,7 +108,6 @@ impl Resolver {
 #[wasm_bindgen]
 impl Resolver {
     /// List of public Kaspa Beacon URLs.
-    /// @see {@link IBeaconArray}
     #[wasm_bindgen(getter)]
     pub fn urls(&self) -> IResolverArray {
         Array::from_iter(self.resolver.urls().iter().map(|v| JsValue::from(v.as_str()))).unchecked_into()

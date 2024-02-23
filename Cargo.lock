@@ -3599,6 +3599,7 @@ dependencies = [
 name = "kaspa-wrpc-wasm"
 version = "0.13.5"
 dependencies = [
+ "ahash 0.8.8",
  "cfg-if 1.0.0",
  "futures",
  "js-sys",

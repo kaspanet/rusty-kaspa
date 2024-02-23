@@ -1,5 +1,14 @@
-Updates since 0.3.14
---------------------
+Latest
+------------------
+- replace RpcClient.notify() with RpcClient.registerListener() / RpcClient.removeListener()
+- You can now register multiple listeners for the same event type and unregister them individually
+- RpcClient events now support `open`, `close` events to signal the RPC connection state
+- RPC events now contain `type` and `data` fields
+- Rename client-side `Beacon` class to `Resolver`
+
+
+Release 2024-02-19
+------------------
 
 - Fix large RPC response deserialization errors in NodeJS caused by the default WebSocket frame size limit.
 - Fix event processing in UtxoContext

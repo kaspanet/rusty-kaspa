@@ -3,7 +3,7 @@
     <head>
         <link rel="stylesheet" href="./resources/style.css">
         <script type="module">
-            import { log, stringify, currentNetwork, disconnectAction } from './resources/utils.js';
+            import { log, logToId, randomId, stringify, currentNetwork, disconnectAction } from './resources/utils.js';
 
             // import WASM32 SDK
             import * as kaspa from '../../web/kaspa-rpc/kaspa.js';
@@ -13,39 +13,44 @@
                 // load WASM32 SDK binaries 
                 await kaspa.default('../../web/kaspa-rpc/kaspa_bg.wasm');
 
-                // let url = beacon.getUrl(Encoding.Borsh, "mainnet")
-                // get network from URL hash
-                
-                try {
+                // try {
                     
-                    let network = currentNetwork();
+                    let networkId = currentNetwork();
                     log(`Connecting to Kaspa network...`);
-                    log(`Selected network is ${network.class("network")}...`);
+                    log(`Selected network is ${networkId.class("network")}...`);
                     
-                    const resolver = new Resolver();
-                    const rpc = await resolver.connect(network);
-                    // const rpc = new RpcClient({ url, networkId: "mainnet" });
-                    
-                    log("Connected to", rpc.url.class("network"));
-                    log("Registering for DAA notifications...");
-                    
-                    let el = document.createElement("code");
-                    
-                    await rpc.registerListener(async (op, payload) => {
-                        el.innerHTML = `${op} ${stringify(payload)}`;
+                    const rpc = new RpcClient({
+                        resolver : new Resolver(),
+                        networkId,
                     });
                     
-                    log("Subscribing to DAA score...");
-                    rpc.subscribeDaaScore();
-                    log("Receiving notifications...\n");
+                    let id;
+                    log("Registering for DAA notifications...");
+                    rpc.addEventListener("virtual-daa-score-changed", async (event) => {
+                        logToId(id, event);
+                    });
                     
-                    document.body.appendChild(el);
+                    log("Registering for RPC online event...");
+                    rpc.addEventListener("open", async (event) => {
+                        log("Connected to", rpc.url.class("network"));
+                        log("Subscribing to DAA score...");
+                        rpc.subscribeVirtualDaaScoreChanged();
+                        id = randomId();
+                    });
+
+                    rpc.addEventListener("close", async (event) => {
+                        log("Disconnected from", rpc.url.class("network"));
+                        console.log("Close",event);
+                    });
+
+                    log("Connecting to public node...");
+                    await rpc.connect();
 
                     disconnectAction(rpc);
 
-                } catch (e) {
-                    log("Error:", e);
-                }
+                // } catch (e) {
+                //     log("Error:", e);
+                // }
                 
             })();
         </script>

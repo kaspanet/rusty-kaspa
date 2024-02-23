@@ -4,7 +4,8 @@ globalThis.WebSocket = require('websocket').w3cwebsocket; // W3C WebSocket modul
 const kaspa = require('../../../../nodejs/kaspa');
 const { parseArgs } = require("../utils");
 const {
-    RpcClient
+    RpcClient,
+    Resolver,
 } = kaspa;
 
 kaspa.initConsolePanicHook();
@@ -17,15 +18,18 @@ const {
 (async () => {
 
     const rpc = new RpcClient({
-        url : "127.0.0.1",
-        encoding,
+        // url : "127.0.0.1",
+        // encoding,
+        resolver: new Resolver(),
         networkId
     });
-    console.log(`Connecting to ${rpc.url}`)
+    console.log(`Resolving RPC endpoint...`);
     await rpc.connect();
+    console.log(`Connecting to ${rpc.url}`)
 
     const info = await rpc.getBlockDagInfo();
     console.log("GetBlockDagInfo response:", info);
 
     await rpc.disconnect();
+    console.log("bye!");
 })();

@@ -39,8 +39,8 @@ struct Inner {
     // ---
     default_url: Mutex<Option<String>>,
     current_url: Mutex<Option<String>>,
-    resolver: Option<Resolver>,
-    network_id: Option<NetworkId>,
+    resolver: Mutex<Option<Resolver>>,
+    network_id: Mutex<Option<NetworkId>>,
     node_descriptor: Mutex<Option<Arc<NodeDescriptor>>>,
 }
 
@@ -104,8 +104,8 @@ impl Inner {
             // ---
             default_url: Mutex::new(url.map(|s| s.to_string())),
             current_url: Mutex::new(None),
-            resolver,
-            network_id,
+            resolver: Mutex::new(resolver),
+            network_id: Mutex::new(network_id),
             node_descriptor: Mutex::new(None),
         };
         Ok(client)
@@ -147,6 +147,14 @@ impl Inner {
     fn set_current_url(&self, url: Option<&str>) {
         *self.current_url.lock().unwrap() = url.map(String::from);
     }
+
+    fn resolver(&self) -> Option<Resolver> {
+        self.resolver.lock().unwrap().clone()
+    }
+
+    fn network_id(&self) -> Option<NetworkId> {
+        *self.network_id.lock().unwrap()
+    }
 }
 
 impl Debug for Inner {
@@ -179,8 +187,8 @@ impl RpcResolver for Inner {
     async fn resolve_url(&self) -> ResolverResult {
         let url = if let Some(url) = self.default_url() {
             url
-        } else if let Some(resolver) = self.resolver.as_ref() {
-            let network_id = self.network_id.expect("Beacon requires network id in RPC client configuration");
+        } else if let Some(resolver) = self.resolver().as_ref() {
+            let network_id = self.network_id().expect("Beacon requires network id in RPC client configuration");
             let node = resolver.get_node(self.encoding, network_id).await.map_err(WebSocketError::custom)?;
             let url = node.url.clone();
             self.node_descriptor.lock().unwrap().replace(Arc::new(node));
@@ -272,7 +280,17 @@ impl KaspaRpcClient {
     }
 
     pub fn resolver(&self) -> Option<Resolver> {
-        self.inner.resolver.clone()
+        self.inner.resolver()
+    }
+
+    pub fn set_resolver(&self, resolver: Resolver) -> Result<()> {
+        self.inner.resolver.lock().unwrap().replace(resolver);
+        Ok(())
+    }
+
+    pub fn set_network_id(&self, network_id: NetworkId) -> Result<()> {
+        self.inner.network_id.lock().unwrap().replace(network_id);
+        Ok(())
     }
 
     pub fn node_descriptor(&self) -> Option<Arc<NodeDescriptor>> {
@@ -441,6 +459,7 @@ impl KaspaRpcClient {
                     },
                     msg = wrpc_ctl_channel.receiver.recv().fuse() => {
                         if let Ok(msg) = msg {
+                            log_info!("%%% CORE RPC CTL: {:?}", msg);
                             match msg {
                                 WrpcCtl::Open => {
                                     inner.rpc_ctl.signal_open().await.expect("(KaspaRpcClient) rpc_ctl.signal_open() error");
@@ -464,6 +483,13 @@ impl KaspaRpcClient {
     async fn stop_rpc_ctl_service(&self) -> Result<()> {
         self.inner.service_ctl.signal(()).await?;
         Ok(())
+    }
+
+    /// Triggers a disconnection on the underlying WebSocket.
+    /// This is intended for debug purposes only.
+    /// Can be used to test application reconnection logic.
+    pub fn trigger_abort(&self) -> Result<()> {
+        Ok(self.inner.rpc_client.trigger_abort()?)
     }
 }
 

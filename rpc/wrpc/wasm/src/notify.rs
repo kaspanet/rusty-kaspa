@@ -5,10 +5,29 @@ use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;
 const TS_HEADER: &'static str = r#"
 
 /**
+ * RPC notification events.
+ * 
+ * @see {RpcClient.addEventListener}, {RpcClient.removeEventListener}
+ */
+export enum RpcEventType {
+    All = "*",
+    Open = "open",
+    Close = "close",
+    BlockAdded = "block-added",
+    VirtualChainChanged = "virtual-chain-changed",
+    FinalityConflict = "finality-conflict",
+    FinalityConflictResolved = "finality-conflict-resolved",
+    UtxosChanged = "utxos-changed",
+    SinkBlueScoreChanged = "sink-blue-score-changed",
+    VirtualDaaScoreChanged = "virtual-daa-score-changed",
+    PruningPointUtxoSetOverride = "pruning-point-utxo-set-override",
+    NewBlockTemplate = "new-block-template",
+}
+
+/**
  * RPC notification data payload.
  */
-
-export type RpcNotification = IBlockAdded 
+export type RpcEventData = IBlockAdded 
     | IVirtualChainChanged 
     | IFinalityConflict 
     | IFinalityConflictResolved 
@@ -19,11 +38,19 @@ export type RpcNotification = IBlockAdded
     | INewBlockTemplate;
 
 /**
+ * RPC notification event.
+ */
+export interface RpcEvent {
+    type: RpcEventType;
+    data?: RpcEventData;
+}
+
+/**
  * RPC notification callback type.
  * 
  * This type is used to define the callback function that is called when an RPC notification is received.
  * 
- * @see {@link RpcClient.subscribeDaaScore},
+ * @see {@link RpcClient.subscribeDaaVirtualScoreChanged},
  * {@link RpcClient.subscribeUtxosChanged}, 
  * {@link RpcClient.subscribeVirtualChainChanged},
  * {@link RpcClient.subscribeBlockAdded},
@@ -35,13 +62,22 @@ export type RpcNotification = IBlockAdded
  * 
  * @category Node RPC
  */
-export type RpcNotificationCallback = (event : string, data: RpcNotification) => void;
+export type RpcEventCallback = (event: RpcEvent) => void;
+
 "#;
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(extends = js_sys::Function, typescript_type = "RpcNotificationCallback")]
-    pub type RpcNotificationCallback;
+    #[wasm_bindgen(extends = js_sys::Function, typescript_type = "RpcEventCallback")]
+    pub type RpcEventCallback;
+
+    #[wasm_bindgen(extends = js_sys::Function, typescript_type = "RpcEventType | string")]
+    #[derive(Debug)]
+    pub type RpcEventType;
+
+    #[wasm_bindgen(extends = js_sys::Function, typescript_type = "RpcEventType | string | RpcEventCallback")]
+    #[derive(Debug)]
+    pub type RpcEventTypeOrCallback;
 }
 
 declare! {

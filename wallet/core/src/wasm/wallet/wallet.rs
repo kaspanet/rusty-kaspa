@@ -48,12 +48,7 @@ impl Wallet {
 
         let store = Arc::new(LocalStore::try_new(resident)?);
 
-        let rpc_config = RpcConfig {
-            url,
-            resolver,
-            encoding,
-            network_id,
-        };
+        let rpc_config = RpcConfig { url, resolver, encoding, network_id };
 
         let rpc = RpcClient::new(Some(rpc_config))?;
         let rpc_api: Arc<DynRpcApi> = rpc.client().rpc_api().clone();

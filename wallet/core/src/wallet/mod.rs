@@ -3,6 +3,8 @@
 //!
 
 use crate::account::ScanNotifier;
+use crate::compat::gen1::decrypt_mnemonic;
+use crate::error::Error::Custom;
 use crate::factory::try_load_account;
 use crate::imports::*;
 use crate::settings::{SettingsStore, WalletSettings};
@@ -10,8 +12,6 @@ use crate::storage::interface::{OpenArgs, StorageDescriptor};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
 use crate::wallet::maps::ActiveAccountMap;
-use crate::compat::gen1::decrypt_mnemonic;
-use crate::error::Error::Custom;
 use kaspa_bip32::{ExtendedKey, Language, Mnemonic, Prefix as KeyPrefix, WordCount};
 use kaspa_notify::{
     listener::ListenerId,
