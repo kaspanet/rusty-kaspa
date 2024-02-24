@@ -71,7 +71,14 @@ extern "C" {
 }
 
 ///
-/// Resolver is a client for obtaining public Kaspa wRPC endpoints.
+/// Resolver is a client for obtaining public Kaspa wRPC URL.
+///
+/// Resolver queries a list of public Kaspa Beacon URLs using HTTP to fetch
+/// wRPC endpoints for the given encoding, network identifier and other
+/// parameters. It then provides this information to {@link RpcClient}.
+///
+/// Each time {@link RpcClient} disconnects, it will query the resolver
+/// to fetch a new wRPC URL.
 ///
 /// @see {@link IResolverConfig}, {@link IResolverConnect}, {@link RpcClient}
 /// @category Node RPC

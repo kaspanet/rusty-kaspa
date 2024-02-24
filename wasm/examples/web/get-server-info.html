@@ -11,16 +11,18 @@
             (async () => {
                 await kaspa.default('../../web/kaspa-rpc/kaspa_bg.wasm');
 
-                let network = currentNetwork();
+                let networkId = currentNetwork();
                 log(`Connecting to Kaspa network...`);
-                log(`Selected network is ${network}...`);
+                log(`Selected network is ${networkId}...`);
                 
-                const resolver = new Resolver();
-                // let url = beacon.getUrl(Encoding.Borsh, "mainnet")
-                const rpc = await resolver.connect(network);
-                // const rpc = new RpcClient({ url, networkId: "mainnet" });
-                
+                const rpc = new RpcClient({
+                    resolver : new Resolver(),
+                    networkId,
+                });
+
+                await rpc.connect();
                 log("Connected to", rpc.url);
+                
                 log("GetServerInfo request...");
                 const info = await rpc.getServerInfo();
                 log("GetServerInfo response:", info);

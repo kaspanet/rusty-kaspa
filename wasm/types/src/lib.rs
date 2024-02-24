@@ -31,3 +31,9 @@ extern "C" {
     #[wasm_bindgen(typescript_type = "Array<string>")]
     pub type StringArray;
 }
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "HexString | Uint8Array")]
+    pub type BinaryLike;
+}

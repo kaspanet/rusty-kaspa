@@ -1,15 +1,15 @@
 #!/bin/bash
 set -e
 
-# wasm-pack build --target web --dev --out-name kaspa --out-dir build/docs/kaspa --features wasm32-sdk $@
-# wasm-pack build --target web --out-name kaspa --out-dir build/docs/kaspa --features wasm32-keygen $@
-./build-web
+if [ "$1" != "--skip" ]; then
+    ./build-web
+fi
 
 echo "building keygen"
-typedoc --name "Kaspa WASM32 SDK - Key Generation" --sourceLinkExternal --readme ./README.md --out docs/kaspa-keygen ./build/docs/kaspa-keygen.ts
+typedoc --name "Kaspa WASM32 SDK - Key Generation" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out ./docs/kaspa-keygen ./build/docs/kaspa-keygen.ts
 echo "building rpc"
-typedoc --name "Kaspa WASM32 SDK - RPC" --sourceLinkExternal --readme ./README.md --out docs/kaspa-rpc ./build/docs/kaspa-rpc.ts
+typedoc --name "Kaspa WASM32 SDK - RPC" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out ./docs/kaspa-rpc ./build/docs/kaspa-rpc.ts
 echo "building core"
-typedoc --name "Kaspa WASM32 SDK - Core" --sourceLinkExternal --readme ./README.md --out docs/kaspa-core ./build/docs/kaspa-core.ts
+typedoc --name "Kaspa WASM32 SDK - Core" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out ./docs/kaspa-core ./build/docs/kaspa-core.ts
 echo "building full"
-typedoc --name "Kaspa WASM32 SDK" --sourceLinkExternal --readme ./README.md --out docs/kaspa ./build/docs/kaspa.ts
+typedoc --name "Kaspa WASM32 SDK" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out ./docs/kaspa ./build/docs/kaspa.ts

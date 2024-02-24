@@ -52,7 +52,7 @@ document.addEventListener('DOMContentLoaded', () => {
     createMenu();
 });
 
-function disconnectAction(rpc) {
+function disconnectHandler(rpc) {
     // @ts-ignore
     window.$rpc = rpc;
     let actions = document.getElementById('actions');
@@ -74,10 +74,12 @@ window.reconnect = async function() {
     document.getElementById('actions').innerHTML = ` | <a href="javascript: disconnect()">Disconnect</a>`;
 }
 
+// Generate a random id
 function randomId() {
     return (Math.round(Math.random()*1e8)).toString(16);
 }
 
+// Log to an element by its id
 function logToId(id, ...args) {
     let el = document.getElementById(id);
     if (!el) {
@@ -89,6 +91,16 @@ function logToId(id, ...args) {
     el.innerHTML = args.map((arg) => {
         return typeof arg === 'object' ? stringify(arg) : arg;
     }).join(' ') + "<br>";
+}
+
+// Clear the content of an element by its id
+function clearId(id) {
+    if (id) {
+        let el = document.getElementById(id);
+        if (el) {
+            el.innerHTML = '';
+        }
+    }
 }
 
 function log(...args) {
@@ -121,4 +133,4 @@ function stringify(json) {
     });
 }
 
-export { log, logToId, randomId, stringify, currentNetwork, disconnectAction };
+export { log, logToId, clearId, randomId, stringify, currentNetwork, disconnectHandler };

@@ -459,7 +459,6 @@ impl KaspaRpcClient {
                     },
                     msg = wrpc_ctl_channel.receiver.recv().fuse() => {
                         if let Ok(msg) = msg {
-                            log_info!("%%% CORE RPC CTL: {:?}", msg);
                             match msg {
                                 WrpcCtl::Open => {
                                     inner.rpc_ctl.signal_open().await.expect("(KaspaRpcClient) rpc_ctl.signal_open() error");

@@ -18,7 +18,18 @@ declare! {
      * @category Wallet SDK
      */
     export interface IUtxoContextArgs {
+        /**
+         * Associated UtxoProcessor.
+         */
         processor: UtxoProcessor;
+        /**
+         * Optional id for the UtxoContext.
+         * **The id must be a valid 32-byte hex string.**
+         * You can use {@link sha256} to generate a valid id.
+         * 
+         * If not provided, a random id will be generated.
+         * The IDs are deterministic, based on the order UtxoContexts are created.
+         */
         id?: HexString;
     }
     "#,

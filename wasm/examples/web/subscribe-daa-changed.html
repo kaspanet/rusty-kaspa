@@ -3,7 +3,7 @@
     <head>
         <link rel="stylesheet" href="./resources/style.css">
         <script type="module">
-            import { log, logToId, randomId, stringify, currentNetwork, disconnectAction } from './resources/utils.js';
+            import { log, logToId, randomId, stringify, currentNetwork, disconnectHandler } from './resources/utils.js';
 
             // import WASM32 SDK
             import * as kaspa from '../../web/kaspa-rpc/kaspa.js';
@@ -30,14 +30,13 @@
                         logToId(id, event);
                     });
                     
-                    log("Registering for RPC online event...");
                     rpc.addEventListener("open", async (event) => {
+                        id = randomId();
                         log("Connected to", rpc.url.class("network"));
                         log("Subscribing to DAA score...");
-                        rpc.subscribeVirtualDaaScoreChanged();
-                        id = randomId();
+                        await rpc.subscribeVirtualDaaScoreChanged();
                     });
-
+                    
                     rpc.addEventListener("close", async (event) => {
                         log("Disconnected from", rpc.url.class("network"));
                         console.log("Close",event);
@@ -46,7 +45,7 @@
                     log("Connecting to public node...");
                     await rpc.connect();
 
-                    disconnectAction(rpc);
+                    disconnectHandler(rpc);
 
                 // } catch (e) {
                 //     log("Error:", e);

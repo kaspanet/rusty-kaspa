@@ -31,7 +31,7 @@
                 // ---
                 let { monitor } = window;
                 monitor.processor = await new UtxoProcessor({ rpc, networkId : network });
-                let context = await new UtxoContext({ processor : monitor.processor });
+                let context = await new UtxoContext({ processor : monitor.processor, id : "hello" });
                 let events = 0;
                 monitor.processor.events.registerListener((event) => {
                     document.getElementById("actions").innerHTML = `| Received ${events} event(s)`;
@@ -50,33 +50,29 @@
                 log("");
                 log("This demo is meant for manual testing to demonstrate events emitted by the");
                 log("UtxoProcessor, your browser may have difficulty rendering large sets of UTXOs.");
-                // log("");
-
-                // log(monitor);
 
                 let el = document.createElement("div");
                 document.body.appendChild(el);
                 el.innerHTML = `
                     <br/><input id="address" class="address" type="text" value="" placeholder=" Enter ${network} address..." />
-                    <div id="submit" class="button">Click to monitor address</div>
+                    <br>&nbsp;<br>
+                    <div id="submit" class="link">Click to monitor address</div>
+                    <br>&nbsp;<br>
                 `;
 
                 // let input = document.getElementById("address");
                 let submit = document.getElementById("submit");
                 submit.addEventListener("click", async (e) => {
                     e.preventDefault();
-                    console.log("click running")
                     let input = document.getElementById("address");
                     let address = input.value;
                     log("Tracking address:", address);
                     try {
                         await context.trackAddresses([address]);
-                        console.log("tracking address done...");
                     } catch (e) {
                         log("Error:", e);
                     }
                     input.value = "";
-                    console.log("click done");
                 });
 
             })();

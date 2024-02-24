@@ -124,23 +124,29 @@ before loading the WASM32 library. The compatible WebSocket library is [WebSocke
 ## Loading in a Node.js App
 
 ```javascript
+//
 // W3C WebSocket module shim
 // this is provided by NPM `kaspa` module and is only needed
 // if you are building WASM libraries for NodeJS from source
+//
+// @ts-ignore
 // globalThis.WebSocket = require('websocket').w3cwebsocket;
+//
 
 let {
     RpcClient,
     Encoding,
     initConsolePanicHook
-} = require('./kaspa-rpc');
+} = require('./kaspa');
 
 // enabling console panic hooks allows WASM to print panic details to console
 // initConsolePanicHook();
 // enabling browser panic hooks will create a full-page DIV with panic details
 // this is useful for mobile devices where console is not available
 // initBrowserPanicHook();
+```
 
+```javascript
 // if port is not specified, it will use the default port for the specified network
 const rpc = new RpcClient({
     url: "127.0.0.1", 

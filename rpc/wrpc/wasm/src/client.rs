@@ -71,8 +71,13 @@ impl TryFrom<IRpcConfig> for RpcConfig {
         let resolver = config.try_get::<Resolver>("resolver")?;
         let url = config.try_get_string("url")?;
         let encoding = config.try_get::<Encoding>("encoding")?;
-        let network_id = config.try_get::<NetworkId>("networkId")?.ok_or_else(|| Error::custom("network is required"))?;
-        Ok(RpcConfig { resolver, url, encoding, network_id: Some(network_id) })
+        let network_id = config.try_get::<NetworkId>("networkId")?;
+
+        if resolver.is_some() && network_id.is_none() {
+            return Err(Error::custom("networkId is required when using a resolver"));
+        }
+
+        Ok(RpcConfig { resolver, url, encoding, network_id })
     }
 }
 
@@ -160,6 +165,27 @@ impl Inner {
 /// interface to connect directly with Kaspa Node. wRPC supports
 /// two types of encodings: `borsh` (binary, default) and `json`.
 ///
+/// There are two ways to connect: Directly to any Kaspa Node or to a
+/// community-maintained public node infrastructure using the {@link Resolver} class.
+///
+/// ```javascript
+/// // Connecting to a public node using a resolver
+///
+/// let rpc = new RpcClient({
+///    resolver : new Resolver(),
+///    networkId : "mainnet",
+/// });
+///
+/// // Connecting to a Kaspa Node directly
+///
+/// let rpc = new RpcClient({
+///    // if port is not provided it will default
+///    // to the default port for the networkId
+///    url : "127.0.0.1",
+///    networkId : "mainnet",
+/// });
+/// ```
+///
 /// ```javascript
 /// // Example usage:
 ///
@@ -205,9 +231,6 @@ impl Inner {
 /// });
 ///
 /// ```
-///
-/// Connection to the community-maintained public server infrastructure can be established
-/// using the {@link Resolver} class.
 ///
 /// If using NodeJS, it is important that {@link RpcClient.disconnect} is called before
 /// the process exits to ensure that the WebSocket connection is properly closed.

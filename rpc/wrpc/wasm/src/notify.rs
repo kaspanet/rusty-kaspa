@@ -50,7 +50,7 @@ export interface RpcEvent {
  * 
  * This type is used to define the callback function that is called when an RPC notification is received.
  * 
- * @see {@link RpcClient.subscribeDaaVirtualScoreChanged},
+ * @see {@link RpcClient.subscribeVirtualDaaScoreChanged},
  * {@link RpcClient.subscribeUtxosChanged}, 
  * {@link RpcClient.subscribeVirtualChainChanged},
  * {@link RpcClient.subscribeBlockAdded},

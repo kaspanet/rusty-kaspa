@@ -1,6 +1,6 @@
 Latest
 ------------------
-- replace RpcClient.notify() with RpcClient.registerListener() / RpcClient.removeListener()
+- replace RpcClient.notify() with RpcClient.addListener() / RpcClient.removeListener()
 - You can now register multiple listeners for the same event type and unregister them individually
 - RpcClient events now support `open`, `close` events to signal the RPC connection state
 - RPC events now contain `type` and `data` fields

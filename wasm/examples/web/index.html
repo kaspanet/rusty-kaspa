@@ -61,6 +61,9 @@
                 <p>Make sure to run HTTP server from the root of the <code>kaspa-wasm32-sdk</code> folder.</p>
             `;
         } else {
+            if (!window.packageSizes) {
+                window.packageSizes = {};
+            }
             let el = document.getElementById("packages");
             Object.entries({
                 "kaspa-keygen": ["KeyGen","Key & Address Generation only"],
@@ -68,7 +71,9 @@
                 "kaspa-core": ["Core","RPC + Key & Address Generation + Wallet SDK"],
                 "kaspa": ["SDK","Full SDK + Integrated Wallet"],
             }).forEach(([ident,[name,descr]]) => {
-                el.innerHTML += `<li>WASM32 ${name} Package ${" ".repeat(6-name.length)}(${packageSizes[ident]}) - ${descr} - <a href="../../docs/${ident}/index.html" target="_blank">Docs</a></li>`;
+                let size = packageSizes[ident] ? `${packageSizes[ident]}` : "";
+                el.innerHTML += `<li>WASM32 ${name} Package ${" ".repeat(6-name.length)}${size} - ${descr} - <a href="../../docs/${ident}/index.html" target="_blank">Docs</a></li>`;
+                // el.innerHTML += `<li>WASM32 ${name} Package ${" ".repeat(6-name.length)}(${packageSizes[ident]}) - ${descr} - <a href="../../docs/${ident}/index.html" target="_blank">Docs</a></li>`;
             });
         }
     </script>
