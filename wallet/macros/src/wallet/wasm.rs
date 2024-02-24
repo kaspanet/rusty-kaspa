@@ -152,7 +152,7 @@ impl ToTokens for ApiHandlers {
                 #[wasm_bindgen(js_name = #fn_camel)]
                 pub async fn #fn_no_suffix(&self, request : #ts_request_type) -> Result<#ts_response_type> {
                     let request = #request_type::try_from(request)?;
-                    let response = self.wallet.clone().#fn_call(request).await?;
+                    let response = self.wallet().clone().#fn_call(request).await?;
                     #ts_response_type::try_from(response)
                 }
 

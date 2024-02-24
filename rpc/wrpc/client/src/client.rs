@@ -84,7 +84,7 @@ impl Inner {
                             // log_info!("notification: posting to channel: {notification:?}");
                             notification_sender.send(notification).await?;
                         } else {
-                            log_warning!("WARNING: Kaspa RPC notification is not consumed by user: {:?}", notification);
+                            log_warn!("WARNING: Kaspa RPC notification is not consumed by user: {:?}", notification);
                         }
                         Ok(())
                     })

@@ -19,7 +19,7 @@ wasm32-core = [
     "kaspa-consensus-core/wasm32-sdk",
     "kaspa-wrpc-client/wasm32-sdk",
     "kaspa-wrpc-wasm/wasm32-sdk",
-    "kaspa-wasm-types/wasm32-sdk",
+    "kaspa-wasm-core/wasm32-sdk",
 ]
 wasm32-sdk = [
     "wasm32-core"
@@ -70,7 +70,7 @@ kaspa-wallet-macros.workspace = true
 kaspa-wallet-keys.workspace = true
 kaspa-wrpc-client.workspace = true
 kaspa-wrpc-wasm.workspace = true
-kaspa-wasm-types.workspace = true
+kaspa-wasm-core.workspace = true
 md-5.workspace = true
 pad.workspace = true
 pbkdf2.workspace = true

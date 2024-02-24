@@ -99,7 +99,7 @@ impl UtxoContext {
     #[wasm_bindgen(constructor)]
     pub async fn ctor(js_value: IUtxoContextArgs) -> Result<UtxoContext> {
         let UtxoContextCreateArgs { processor, binding } = js_value.try_into()?;
-        let inner = native::UtxoContext::new(processor.inner(), binding);
+        let inner = native::UtxoContext::new(processor.processor(), binding);
         Ok(UtxoContext { inner })
     }
 

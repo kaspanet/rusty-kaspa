@@ -3402,7 +3402,7 @@ dependencies = [
  "kaspa-utils",
  "kaspa-wallet-keys",
  "kaspa-wallet-macros",
- "kaspa-wasm-types",
+ "kaspa-wasm-core",
  "kaspa-wrpc-client",
  "kaspa-wrpc-wasm",
  "md-5",
@@ -3452,7 +3452,7 @@ dependencies = [
  "kaspa-txscript",
  "kaspa-txscript-errors",
  "kaspa-utils",
- "kaspa-wasm-types",
+ "kaspa-wasm-core",
  "rand 0.8.5",
  "ripemd",
  "secp256k1",
@@ -3498,7 +3498,7 @@ dependencies = [
  "kaspa-utils",
  "kaspa-wallet-core",
  "kaspa-wallet-keys",
- "kaspa-wasm-types",
+ "kaspa-wasm-core",
  "kaspa-wrpc-client",
  "kaspa-wrpc-wasm",
  "num",
@@ -3509,9 +3509,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wasm-types"
+name = "kaspa-wasm-core"
 version = "0.13.5"
 dependencies = [
+ "js-sys",
  "wasm-bindgen",
 ]
 

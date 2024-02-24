@@ -518,7 +518,7 @@ impl UtxoProcessor {
             }
 
             _ => {
-                log_warning!("unknown notification: {:?}", notification);
+                log_warn!("unknown notification: {:?}", notification);
             }
         }
 

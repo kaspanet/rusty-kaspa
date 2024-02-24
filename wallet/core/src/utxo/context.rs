@@ -319,7 +319,7 @@ impl UtxoContext {
             }
             Ok(())
         } else {
-            log_warning!("ignoring duplicate utxo entry");
+            log_warn!("ignoring duplicate utxo entry");
             Ok(())
         }
     }
@@ -448,7 +448,7 @@ impl UtxoContext {
                         }
                     }
                 } else {
-                    log_warning!("ignoring duplicate utxo entry");
+                    log_warn!("ignoring duplicate utxo entry");
                 }
             }
 
@@ -676,7 +676,7 @@ impl UtxoContext {
                 local.remove(address);
             });
         } else {
-            log_warning!("utxo processor: unregister for an empty address set")
+            log_warn!("utxo processor: unregister for an empty address set")
         }
 
         Ok(())

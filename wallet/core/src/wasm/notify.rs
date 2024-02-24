@@ -1,16 +1,40 @@
 #![allow(non_snake_case)]
+use cfg_if::cfg_if;
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 use wasm_bindgen::prelude::*;
 
-cfg_if::cfg_if! {
-    if #[cfg(feature = "wasm32-core")] {
+cfg_if! {
+    if #[cfg(any(feature = "wasm32-core", feature = "wasm32-sdk"))] {
         #[wasm_bindgen(typescript_custom_section)]
         const TS_NOTIFY: &'static str = r#"
+
         /**
-         * Wallet notification data payload.
+         * Events emitted by the {@link UtxoProcessor}.
+         * @category Wallet SDK
+         */
+        export enum UtxoProcessorEventType {
+            Connect = "connect",
+            Disconnect = "disconnect",
+            UtxoIndexNotEnabled = "utxoIndexNotEnabled",
+            SyncState = "syncState",
+            ServerStatus = "serverStatus",
+            UtxoProcError = "utxoProcError",
+            DaaScoreChange = "daaScoreChange",
+            Pending = "pending",
+            Reorg = "reorg",
+            Stasis = "stasis",
+            Maturity = "maturity",
+            Discovery = "discovery",
+            Balance = "balance",
+            Error = "error",
+        }
+
+        /**
+         * {@link UtxoProcessor} notification event data.
+         * @category Wallet SDK
          */
 
-        export type WalletEventData = IConnectEvent
+        export type UtxoProcessorEventData = IConnectEvent
             | IDisconnectEvent
             | IUtxoIndexNotEnabledEvent
             | ISyncStateEvent
@@ -25,12 +49,86 @@ cfg_if::cfg_if! {
             | IBalanceEvent
             | IErrorEvent
             ;
+
+        /**
+         * {@link UtxoProcessor} notification event interface.
+         * @category Wallet SDK
+         */
+        export interface IUtxoProcessorEvent {
+            event : string;
+            data? : UtxoProcessorEventData;
+        }
+        
+        /**
+         * {@link UtxoProcessor} notification callback type.
+         * 
+         * This type declares the callback function that is called when notification is emitted
+         * from the UtxoProcessor or UtxoContext subsystems.
+         * 
+         * @see {@link UtxoProcessor}, {@link UtxoContext},
+         * 
+         * @category Wallet SDK
+         */
+        export type UtxoProcessorNotificationCallback = (event: IUtxoProcessorEvent) => void;
         "#;
-    } else {
+
+        #[wasm_bindgen]
+        extern "C" {
+            #[wasm_bindgen(typescript_type = "UtxoProcessorEventType | UtxoProcessorEventType[] | string | string[]")]
+            pub type UtxoProcessorEventTarget;
+            #[wasm_bindgen(extends = js_sys::Function, typescript_type = "UtxoProcessorNotificationCallback")]
+            pub type UtxoProcessorNotificationCallback;
+            #[wasm_bindgen(extends = js_sys::Function, typescript_type = "string | UtxoProcessorNotificationCallback")]
+            pub type UtxoProcessorNotificationTypeOrCallback;
+        }
+    }
+}
+
+cfg_if! {
+    if #[cfg(feature = "wasm32-sdk")] {
         #[wasm_bindgen(typescript_custom_section)]
         const TS_NOTIFY: &'static str = r#"
+
         /**
-         * Wallet notification data payload.
+         * Events emitted by the {@link Wallet}.
+         * @category Wallet API
+         */
+        export enum WalletEventType {
+            All = "*",
+            Connect = "connect",
+            Disconnect = "disconnect",
+            UtxoIndexNotEnabled = "utxo-index-not-enabled",
+            SyncState = "sync-state",
+            WalletHint = "wallet-hint",
+            WalletOpen = "wallet-open",
+            WalletCreate = "wallet-create",
+            WalletReload = "wallet-reload",
+            WalletError = "wallet-error",
+            WalletClose = "wallet-close",
+            PrvKeyDataCreate = "prv-key-data-create",
+            AccountActivation = "account-activation",
+            AccountDeactivation = "account-deactivation",
+            AccountSelection = "account-selection",
+            AccountCreate = "account-create",
+            AccountUpdate = "account-update",
+            ServerStatus = "server-status",
+            UtxoProcStart = "utxo-proc-start",
+            UtxoProcStop = "utxo-proc-stop",
+            UtxoProcError = "utxo-proc-error",
+            DaaScoreChange = "daa-score-change",
+            Pending = "pending",
+            Reorg = "reorg",
+            Stasis = "stasis",
+            Maturity = "maturity",
+            Discovery = "discovery",
+            Balance = "balance",
+            Error = "error",
+        }
+
+
+        /**
+         * {@link Wallet} notification event data payload.
+         * @category Wallet API
          */
 
         export type WalletEventData = IConnectEvent
@@ -62,37 +160,39 @@ cfg_if::cfg_if! {
             | IBalanceEvent
             | IErrorEvent
             ;
+
+        /**
+         * {@link Wallet} notification event interface.
+         * @category Wallet API
+         */
+        export interface IWalletEvent {
+            event : string;
+            data? : WalletEventData;
+        }
+        
+        /**
+         * Wallet notification callback type.
+         * 
+         * This type declares the callback function that is called when notification is emitted
+         * from the Wallet (and the underlying UtxoProcessor or UtxoContext subsystems).
+         * 
+         * @see {@link Wallet}
+         * 
+         * @category Wallet API
+         */
+        export type WalletNotificationCallback = (event: IWalletEvent) => void;
         "#;
+
+        #[wasm_bindgen]
+        extern "C" {
+            #[wasm_bindgen(typescript_type = "WalletEventType | WalletEventType[] | string | string[]")]
+            pub type WalletEventTarget;
+            #[wasm_bindgen(extends = js_sys::Function, typescript_type = "WalletNotificationCallback")]
+            pub type WalletNotificationCallback;
+            #[wasm_bindgen(extends = js_sys::Function, typescript_type = "string | WalletNotificationCallback")]
+            pub type WalletNotificationTypeOrCallback;
+        }
     }
-}
-
-#[wasm_bindgen(typescript_custom_section)]
-const TS_NOTIFY: &'static str = r#"
-/**
- * Wallet notification event interface.
- */
-export interface IWalletEvent {
-    event : string;
-    data? : WalletEventData;
-}
-
-/**
- * Wallet notification callback type.
- * 
- * This type declares the callback function that is called when notification is emitted
- * from the Wallet, UtxoProcessor or UtxoContext subsystems.
- * 
- * @see {@link Wallet}, {@link UtxoProcessor}, {@link UtxoContext},
- * 
- * @category Wallet SDK
- */
-export type WalletNotificationCallback = (event: IWalletEvent) => void;
-"#;
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(extends = js_sys::Function, typescript_type = "WalletNotificationCallback")]
-    pub type WalletNotificationCallback;
 }
 
 declare! {

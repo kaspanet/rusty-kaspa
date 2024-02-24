@@ -15,7 +15,7 @@ pub use kaspa_addresses::{Address, Version as AddressVersion};
 pub use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, ExtendedPublicKey, SecretKey};
 pub use kaspa_consensus_core::network::wasm::Network;
 pub use kaspa_utils::hex::*;
-pub use kaspa_wasm_types::*;
+pub use kaspa_wasm_core::types::*;
 pub use serde::{Deserialize, Serialize};
 pub use std::collections::HashMap;
 pub use std::str::FromStr;

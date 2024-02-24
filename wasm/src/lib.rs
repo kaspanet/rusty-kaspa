@@ -200,13 +200,13 @@ cfg_if::cfg_if! {
         pub use kaspa_wrpc_wasm::client::*;
         pub use kaspa_wrpc_wasm::resolver::*;
         pub use kaspa_wrpc_wasm::notify::*;
-        pub use kaspa_wasm_types::*;
+        pub use kaspa_wasm_core::types::*;
 
     } else if #[cfg(feature = "wasm32-keygen")] {
 
         pub use kaspa_addresses::{Address, Version as AddressVersion};
         pub use kaspa_wallet_keys::prelude::*;
-        pub use kaspa_wasm_types::*;
+        pub use kaspa_wasm_core::types::*;
 
     }
 }

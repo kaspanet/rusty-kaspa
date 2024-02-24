@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-wasm-types"
+name = "kaspa-wasm-core"
 description = "Kaspa core WASM32 types"
 version.workspace = true
 edition.workspace = true
@@ -13,3 +13,4 @@ wasm32-sdk = []
 
 [dependencies]
 wasm-bindgen.workspace = true
+js-sys.workspace = true
