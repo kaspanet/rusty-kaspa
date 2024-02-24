@@ -43,7 +43,7 @@ const { encoding, networkId, address : destinationAddress } = require("../utils"
     let context = await new UtxoContext({ processor });
 
     // 4) Register a listener with the UtxoProcessor::events
-    processor.events.registerListener((event) => {
+    processor.addEventListener("all", (event) => {
         console.log("event:", event);
     });
 

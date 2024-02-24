@@ -412,15 +412,14 @@ impl RpcClient {
     ///
     #[wasm_bindgen(js_name = "addEventListener")]
     pub fn add_event_listener(&self, event: RpcEventTypeOrCallback, callback: Option<RpcEventCallback>) -> Result<()> {
-        if let Some(callback) = event.dyn_ref::<Function>() {
+        if let Ok(sink) = Sink::try_from(&event) {
             let event = NotificationEvent::All;
-            self.inner.callbacks.lock().unwrap().entry(event).or_default().push(callback.into());
+            self.inner.callbacks.lock().unwrap().entry(event).or_default().push(sink);
             Ok(())
-        } else if let Some(Ok(callback)) = callback.map(JsCast::dyn_into::<Function>) {
+        } else if let Some(Ok(sink)) = callback.map(Sink::try_from) {
             let targets: Vec<NotificationEvent> = get_event_targets(event)?;
-            let callback = Sink::from(callback);
             for event in targets {
-                self.inner.callbacks.lock().unwrap().entry(event).or_default().push(callback.clone());
+                self.inner.callbacks.lock().unwrap().entry(event).or_default().push(sink.clone());
             }
             Ok(())
         } else {
@@ -438,19 +437,17 @@ impl RpcClient {
     #[wasm_bindgen(js_name = "removeEventListener")]
     pub fn remove_event_listener(&self, event: RpcEventType, callback: Option<RpcEventCallback>) -> Result<()> {
         let mut callbacks = self.inner.callbacks.lock().unwrap();
-        if let Some(callback) = event.dyn_ref::<Function>() {
+        if let Ok(sink) = Sink::try_from(&event) {
             // remove callback from all events
-            let callback = Sink::from(callback);
             for (_, handlers) in callbacks.iter_mut() {
-                handlers.retain(|handler| handler != &callback);
+                handlers.retain(|handler| handler != &sink);
             }
-        } else if let Some(callback) = callback {
+        } else if let Some(Ok(sink)) = callback.map(Sink::try_from) {
             // remove callback from specific events
             let targets: Vec<NotificationEvent> = get_event_targets(event)?;
-            let callback = Sink::from(callback);
             for target in targets.into_iter() {
                 callbacks.entry(target).and_modify(|handlers| {
-                    handlers.retain(|handler| handler != &callback);
+                    handlers.retain(|handler| handler != &sink);
                 });
             }
         } else {
@@ -470,7 +467,7 @@ impl RpcClient {
     ///
     #[wasm_bindgen(js_name = "clearEventListener")]
     pub fn clear_event_listener(&self, callback: RpcEventCallback) -> Result<()> {
-        let sink = Sink(callback.into());
+        let sink = Sink::new(callback);
         let mut notification_callbacks = self.inner.callbacks.lock().unwrap();
         for (_, handlers) in notification_callbacks.iter_mut() {
             handlers.retain(|handler| handler != &sink);
@@ -537,7 +534,7 @@ impl RpcClient {
                                     let event = Object::new();
                                     event.set("type", &ctl.to_string().into()).ok();
                                     event.set("rpc", &self_.clone().into()).ok();
-                                    if let Err(err) = handler.0.call1(&JsValue::undefined(), &event.into()) {
+                                    if let Err(err) = handler.call(&event.into()) {
                                         log_error!("Error while executing RPC notification callback: {:?}",err);
                                     }
                                 }
@@ -554,7 +551,7 @@ impl RpcClient {
                                     let event_type_value = to_value(&event_type).unwrap();
                                     event.set("type", &event_type_value).expect("setting event type");
                                     event.set("data", &notification.to_value().unwrap()).expect("setting event data");
-                                    if let Err(err) = handler.0.call1(&JsValue::undefined(), &event.into()) {
+                                    if let Err(err) = handler.call(&event.into()) {
                                         log_error!("Error while executing RPC notification callback: {:?}",err);
                                     }
                                 }

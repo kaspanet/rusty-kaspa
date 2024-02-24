@@ -173,7 +173,7 @@ impl UtxoProcessor {
                             if let Some(handlers) = callbacks {
                                 for handler in handlers.into_iter() {
                                     let value = to_value(&notification).unwrap();
-                                    if let Err(err) = handler.0.call1(&JsValue::undefined(), &value) {
+                                    if let Err(err) = handler.call(&value) {
                                         log_error!("Error while executing RPC notification callback: {:?}", err);
                                     }
                                 }
@@ -208,15 +208,14 @@ impl UtxoProcessor {
         event: UtxoProcessorNotificationTypeOrCallback,
         callback: Option<UtxoProcessorNotificationCallback>,
     ) -> Result<()> {
-        if let Some(callback) = event.dyn_ref::<Function>() {
+        if let Ok(sink) = Sink::try_from(&event) {
             let event = EventKind::All;
-            self.inner.callbacks.lock().unwrap().entry(event).or_default().push(callback.into());
+            self.inner.callbacks.lock().unwrap().entry(event).or_default().push(sink);
             Ok(())
-        } else if let Some(Ok(callback)) = callback.map(JsCast::dyn_into::<Function>) {
+        } else if let Some(Ok(sink)) = callback.map(Sink::try_from) {
             let targets: Vec<EventKind> = get_event_targets(event)?;
-            let callback = Sink::from(callback);
             for event in targets {
-                self.inner.callbacks.lock().unwrap().entry(event).or_default().push(callback.clone());
+                self.inner.callbacks.lock().unwrap().entry(event).or_default().push(sink.clone());
             }
             Ok(())
         } else {
@@ -231,19 +230,17 @@ impl UtxoProcessor {
         callback: Option<UtxoProcessorNotificationCallback>,
     ) -> Result<()> {
         let mut callbacks = self.inner.callbacks.lock().unwrap();
-        if let Some(callback) = event.dyn_ref::<Function>() {
+        if let Ok(sink) = Sink::try_from(&event) {
             // remove callback from all events
-            let callback = Sink::from(callback);
             for (_, handlers) in callbacks.iter_mut() {
-                handlers.retain(|handler| handler != &callback);
+                handlers.retain(|handler| handler != &sink);
             }
-        } else if let Some(callback) = callback {
+        } else if let Some(Ok(sink)) = callback.map(Sink::try_from) {
             // remove callback from specific events
             let targets: Vec<EventKind> = get_event_targets(event)?;
-            let callback = Sink::from(callback);
             for target in targets.into_iter() {
                 callbacks.entry(target).and_modify(|handlers| {
-                    handlers.retain(|handler| handler != &callback);
+                    handlers.retain(|handler| handler != &sink);
                 });
             }
         } else {

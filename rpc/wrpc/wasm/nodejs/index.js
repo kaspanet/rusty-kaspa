@@ -22,8 +22,8 @@ let rpc = new RpcClient({
     let finish = defer();
     let seq = 0;
     // register notification handler
-    await rpc.registerListener(async (op, payload) => {
-        console.log(`#${seq} - `,"op:",op,"payload:",payload);
+    rpc.addEventListener(async (event) => {
+        console.log(`#${seq} - `,"type:",event.type,"data:",event.data);
         seq++;
         if (seq == MAX_NOTIFICATION) {
             // await rpc.disconnect();
@@ -34,12 +34,12 @@ let rpc = new RpcClient({
 
     // test subscription
     console.log("subscribing...");
-    await rpc.subscribeDaaScore();
+    await rpc.subscribeVirtualDaaScoreChanged();
 
     // wait until notifier signals completion
     await finish;
     // clear notification handler
-    await rpc.removeListener();
+    await rpc.removeAllEventListeners();
     // disconnect RPC interface
     await rpc.disconnect();
 

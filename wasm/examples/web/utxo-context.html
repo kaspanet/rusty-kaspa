@@ -33,7 +33,7 @@
                 monitor.processor = await new UtxoProcessor({ rpc, networkId : network });
                 let context = await new UtxoContext({ processor : monitor.processor });
                 let events = 0;
-                monitor.processor.events.registerListener((event) => {
+                monitor.processor.addEventListener((event) => {
                     document.getElementById("actions").innerHTML = `| Received ${events} event(s)`;
                     // log("event:", JSON.stringify(event,null,2));
                     log("event:", event);

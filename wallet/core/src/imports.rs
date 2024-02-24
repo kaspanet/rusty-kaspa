@@ -31,7 +31,7 @@ pub use dashmap::{DashMap, DashSet};
 pub use downcast::{downcast_sync, AnySync};
 pub use futures::future::join_all;
 pub use futures::{select, select_biased, FutureExt, Stream, StreamExt, TryStreamExt};
-pub use js_sys::{Array, BigInt, Function, Object};
+pub use js_sys::{Array, BigInt, Object};
 pub use kaspa_addresses::{Address, Prefix};
 pub use kaspa_consensus_core::network::{NetworkId, NetworkType};
 pub use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionId, TransactionIndexType};
