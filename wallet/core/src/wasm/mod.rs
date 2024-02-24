@@ -14,7 +14,7 @@ cfg_if! {
         pub mod utils;
         pub mod utxo;
         pub mod encryption;
-        pub mod events;
+        // pub mod events;
 
         pub use self::balance::*;
         pub use self::message::*;
@@ -24,7 +24,7 @@ cfg_if! {
         pub use self::utils::*;
         pub use self::utxo::*;
         pub use self::encryption::*;
-        pub use self::events::*;
+        // pub use self::events::*;
     }
 }
 

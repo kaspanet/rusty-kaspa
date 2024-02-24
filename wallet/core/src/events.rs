@@ -218,12 +218,6 @@ pub enum Events {
     },
 }
 
-// impl AsRef<Events> for Events {
-//     fn as_ref(&self) -> &Events {
-//         self
-//     }
-// }
-
 #[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq, Hash)]
 #[serde(rename_all = "kebab-case")]
 pub enum EventKind {
@@ -297,7 +291,7 @@ impl FromStr for EventKind {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self> {
         match s {
-            "*" | "all" => Ok(EventKind::All),
+            "all" => Ok(EventKind::All),
             "connect" => Ok(EventKind::Connect),
             "disconnect" => Ok(EventKind::Disconnect),
             "utxo-index-not-enabled" => Ok(EventKind::UtxoIndexNotEnabled),

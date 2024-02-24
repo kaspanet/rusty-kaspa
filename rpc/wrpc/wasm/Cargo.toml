@@ -25,6 +25,7 @@ kaspa-notify.workspace = true
 kaspa-wrpc-client.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-rpc-macros.workspace = true
+kaspa-wasm-core.workspace = true
 serde_json.workspace = true
 serde-wasm-bindgen.workspace = true
 serde.workspace = true

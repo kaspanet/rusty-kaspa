@@ -13,6 +13,7 @@ cfg_if! {
          * @category Wallet SDK
          */
         export enum UtxoProcessorEventType {
+            All = "all",
             Connect = "connect",
             Disconnect = "disconnect",
             UtxoIndexNotEnabled = "utxoIndexNotEnabled",
@@ -94,7 +95,7 @@ cfg_if! {
          * @category Wallet API
          */
         export enum WalletEventType {
-            All = "*",
+            All = "all",
             Connect = "connect",
             Disconnect = "disconnect",
             UtxoIndexNotEnabled = "utxo-index-not-enabled",
@@ -194,6 +195,12 @@ cfg_if! {
         }
     }
 }
+
+// #[wasm_bindgen]
+// extern "C" {
+//     #[wasm_bindgen(extends = js_sys::Function, typescript_type = "WalletNotificationCallback")]
+//     pub type WalletNotificationCallbackX;
+// }
 
 declare! {
     IConnectEvent,

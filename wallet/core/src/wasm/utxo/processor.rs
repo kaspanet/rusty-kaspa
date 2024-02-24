@@ -3,9 +3,9 @@ use crate::events::{EventKind, Events};
 use crate::imports::*;
 use crate::result::Result;
 use crate::utxo as native;
-use crate::wasm::events::Sink;
 use crate::wasm::notify::{UtxoProcessorEventTarget, UtxoProcessorNotificationCallback, UtxoProcessorNotificationTypeOrCallback};
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
+use kaspa_wasm_core::events::{get_event_targets, Sink};
 use kaspa_wrpc_wasm::RpcClient;
 use serde_wasm_bindgen::to_value;
 use workflow_log::log_error;
@@ -208,17 +208,20 @@ impl UtxoProcessor {
         event: UtxoProcessorNotificationTypeOrCallback,
         callback: Option<UtxoProcessorNotificationCallback>,
     ) -> Result<()> {
-        if event.is_function() {
-            let callback = Function::from(event);
+        if let Some(callback) = event.dyn_ref::<Function>() {
             let event = EventKind::All;
-            self.inner.callbacks.lock().unwrap().entry(event).or_default().push(Sink(callback));
-        } else if let Some(callback) = callback {
-            let event = EventKind::try_from(JsValue::from(event))?;
-            self.inner.callbacks.lock().unwrap().entry(event).or_default().push(Sink(callback.into()));
+            self.inner.callbacks.lock().unwrap().entry(event).or_default().push(callback.into());
+            Ok(())
+        } else if let Some(Ok(callback)) = callback.map(JsCast::dyn_into::<Function>) {
+            let targets: Vec<EventKind> = get_event_targets(event)?;
+            let callback = Sink::from(callback);
+            for event in targets {
+                self.inner.callbacks.lock().unwrap().entry(event).or_default().push(callback.clone());
+            }
+            Ok(())
         } else {
-            return Err(Error::custom("Invalid event listener callback"));
+            Err(Error::custom("Invalid event listener callback"))
         }
-        Ok(())
     }
 
     #[wasm_bindgen(js_name = "removeEventListener")]
@@ -227,26 +230,28 @@ impl UtxoProcessor {
         event: UtxoProcessorEventTarget,
         callback: Option<UtxoProcessorNotificationCallback>,
     ) -> Result<()> {
-        let event = EventKind::try_from(JsValue::from(event))?;
-
-        if let Some(callback) = callback {
-            let sink = Sink(callback.into());
-
-            let mut notification_callbacks = self.inner.callbacks.lock().unwrap();
-            match event {
-                EventKind::All => {
-                    if let Some(handlers) = notification_callbacks.get_mut(&EventKind::All) {
-                        handlers.retain(|handler| handler != &sink);
-                    }
-                }
-                _ => {
-                    if let Some(handlers) = notification_callbacks.get_mut(&event) {
-                        handlers.retain(|handler| handler != &sink);
-                    }
-                }
+        let mut callbacks = self.inner.callbacks.lock().unwrap();
+        if let Some(callback) = event.dyn_ref::<Function>() {
+            // remove callback from all events
+            let callback = Sink::from(callback);
+            for (_, handlers) in callbacks.iter_mut() {
+                handlers.retain(|handler| handler != &callback);
+            }
+        } else if let Some(callback) = callback {
+            // remove callback from specific events
+            let targets: Vec<EventKind> = get_event_targets(event)?;
+            let callback = Sink::from(callback);
+            for target in targets.into_iter() {
+                callbacks.entry(target).and_modify(|handlers| {
+                    handlers.retain(|handler| handler != &callback);
+                });
             }
         } else {
-            self.inner.callbacks.lock().unwrap().remove(&event);
+            // remove all callbacks for the event
+            let targets: Vec<EventKind> = get_event_targets(event)?;
+            for event in targets {
+                callbacks.remove(&event);
+            }
         }
         Ok(())
     }

@@ -3610,6 +3610,7 @@ dependencies = [
  "kaspa-notify",
  "kaspa-rpc-core",
  "kaspa-rpc-macros",
+ "kaspa-wasm-core",
  "kaspa-wrpc-client",
  "serde",
  "serde-wasm-bindgen",

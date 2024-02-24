@@ -3,7 +3,7 @@
 use crate::imports::*;
 use crate::Resolver;
 use crate::{RpcEventCallback, RpcEventType, RpcEventTypeOrCallback};
-use js_sys::Object;
+use js_sys::{Function, Object};
 use kaspa_addresses::{Address, IAddressArray};
 use kaspa_consensus_core::network::{wasm::Network, NetworkType};
 use kaspa_notify::events::EventType;
@@ -13,6 +13,7 @@ pub use kaspa_rpc_core::wasm::message::*;
 pub use kaspa_rpc_macros::{
     build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions, declare_typescript_wasm_interface as declare,
 };
+use kaspa_wasm_core::events::{get_event_targets, Sink};
 pub use serde_wasm_bindgen::from_value;
 use workflow_rpc::client::Ctl;
 pub use workflow_rpc::client::IConnectOptions;
@@ -93,15 +94,6 @@ impl TryFrom<RpcConfig> for IRpcConfig {
     }
 }
 
-#[derive(Clone, Eq, PartialEq)]
-struct NotificationSink(Function);
-unsafe impl Send for NotificationSink {}
-impl From<NotificationSink> for Function {
-    fn from(f: NotificationSink) -> Self {
-        f.0
-    }
-}
-
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 enum NotificationEvent {
     All,
@@ -140,13 +132,13 @@ pub struct Inner {
     resolver: Option<Resolver>,
     notification_task: AtomicBool,
     notification_ctl: DuplexChannel,
-    notification_callbacks: Arc<Mutex<AHashMap<NotificationEvent, Vec<NotificationSink>>>>,
-    // notification_callback: Arc<Mutex<Option<NotificationSink>>>,
+    callbacks: Arc<Mutex<AHashMap<NotificationEvent, Vec<Sink>>>>,
+    // notification_callback: Arc<Mutex<Option<Sink>>>,
 }
 
 impl Inner {
-    fn notification_callbacks(&self, event: NotificationEvent) -> Option<Vec<NotificationSink>> {
-        let notification_callbacks = self.notification_callbacks.lock().unwrap();
+    fn notification_callbacks(&self, event: NotificationEvent) -> Option<Vec<Sink>> {
+        let notification_callbacks = self.callbacks.lock().unwrap();
         let all = notification_callbacks.get(&NotificationEvent::All).cloned();
         let target = notification_callbacks.get(&event).cloned();
         match (all, target) {
@@ -274,7 +266,7 @@ impl RpcClient {
                 resolver,
                 notification_task: AtomicBool::new(false),
                 notification_ctl: DuplexChannel::oneshot(),
-                notification_callbacks: Arc::new(Default::default()),
+                callbacks: Arc::new(Default::default()),
             }),
         };
 
@@ -420,17 +412,20 @@ impl RpcClient {
     ///
     #[wasm_bindgen(js_name = "addEventListener")]
     pub fn add_event_listener(&self, event: RpcEventTypeOrCallback, callback: Option<RpcEventCallback>) -> Result<()> {
-        if event.is_function() {
-            let callback = Function::from(event);
+        if let Some(callback) = event.dyn_ref::<Function>() {
             let event = NotificationEvent::All;
-            self.inner.notification_callbacks.lock().unwrap().entry(event).or_default().push(NotificationSink(callback));
-        } else if let Some(callback) = callback {
-            let event = NotificationEvent::try_from(JsValue::from(event))?;
-            self.inner.notification_callbacks.lock().unwrap().entry(event).or_default().push(NotificationSink(callback.into()));
+            self.inner.callbacks.lock().unwrap().entry(event).or_default().push(callback.into());
+            Ok(())
+        } else if let Some(Ok(callback)) = callback.map(JsCast::dyn_into::<Function>) {
+            let targets: Vec<NotificationEvent> = get_event_targets(event)?;
+            let callback = Sink::from(callback);
+            for event in targets {
+                self.inner.callbacks.lock().unwrap().entry(event).or_default().push(callback.clone());
+            }
+            Ok(())
         } else {
-            return Err(Error::custom("Invalid event listener callback"));
+            Err(Error::custom("Invalid event listener callback"))
         }
-        Ok(())
     }
 
     ///
@@ -442,26 +437,28 @@ impl RpcClient {
     /// @see {@link RpcClient.addEventListener}
     #[wasm_bindgen(js_name = "removeEventListener")]
     pub fn remove_event_listener(&self, event: RpcEventType, callback: Option<RpcEventCallback>) -> Result<()> {
-        let event = NotificationEvent::try_from(JsValue::from(event))?;
-
-        if let Some(callback) = callback {
-            let sink = NotificationSink(callback.into());
-
-            let mut notification_callbacks = self.inner.notification_callbacks.lock().unwrap();
-            match event {
-                NotificationEvent::All => {
-                    if let Some(handlers) = notification_callbacks.get_mut(&NotificationEvent::All) {
-                        handlers.retain(|handler| handler != &sink);
-                    }
-                }
-                _ => {
-                    if let Some(handlers) = notification_callbacks.get_mut(&event) {
-                        handlers.retain(|handler| handler != &sink);
-                    }
-                }
+        let mut callbacks = self.inner.callbacks.lock().unwrap();
+        if let Some(callback) = event.dyn_ref::<Function>() {
+            // remove callback from all events
+            let callback = Sink::from(callback);
+            for (_, handlers) in callbacks.iter_mut() {
+                handlers.retain(|handler| handler != &callback);
+            }
+        } else if let Some(callback) = callback {
+            // remove callback from specific events
+            let targets: Vec<NotificationEvent> = get_event_targets(event)?;
+            let callback = Sink::from(callback);
+            for target in targets.into_iter() {
+                callbacks.entry(target).and_modify(|handlers| {
+                    handlers.retain(|handler| handler != &callback);
+                });
             }
         } else {
-            self.inner.notification_callbacks.lock().unwrap().remove(&event);
+            // remove all callbacks for the event
+            let targets: Vec<NotificationEvent> = get_event_targets(event)?;
+            for event in targets {
+                callbacks.remove(&event);
+            }
         }
         Ok(())
     }
@@ -473,8 +470,8 @@ impl RpcClient {
     ///
     #[wasm_bindgen(js_name = "clearEventListener")]
     pub fn clear_event_listener(&self, callback: RpcEventCallback) -> Result<()> {
-        let sink = NotificationSink(callback.into());
-        let mut notification_callbacks = self.inner.notification_callbacks.lock().unwrap();
+        let sink = Sink(callback.into());
+        let mut notification_callbacks = self.inner.callbacks.lock().unwrap();
         for (_, handlers) in notification_callbacks.iter_mut() {
             handlers.retain(|handler| handler != &sink);
         }
@@ -486,7 +483,7 @@ impl RpcClient {
     ///
     #[wasm_bindgen(js_name = "removeAllEventListeners")]
     pub fn remove_all_event_listeners(&self) -> Result<()> {
-        *self.inner.notification_callbacks.lock().unwrap() = Default::default();
+        *self.inner.callbacks.lock().unwrap() = Default::default();
         Ok(())
     }
 }
@@ -500,7 +497,7 @@ impl RpcClient {
                 resolver,
                 notification_task: AtomicBool::new(false),
                 notification_ctl: DuplexChannel::oneshot(),
-                notification_callbacks: Arc::new(Mutex::new(Default::default())),
+                callbacks: Arc::new(Mutex::new(Default::default())),
             }),
         }
     }

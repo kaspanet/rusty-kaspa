@@ -1,6 +1,6 @@
 {
   "name": "kaspa",
-  "version": "0.13.0",
+  "version": "0.13.5",
   "description": "Kaspa SDK",
   "main": "index.js",
   "scripts": {
@@ -16,13 +16,13 @@
     "sdk"
   ],
   "author": "Kaspa developers",
-  "license": "Apache-2.0",
+  "license": "ISC",
   "bugs": {
     "url": "https://github.com/kaspanet/rusty-kaspa/issues"
   },
   "homepage": "https://github.com/kaspanet/rusty-kaspa#readme",
   "dependencies": {
     "websocket": "1.0.34",
-    "kaspa-wasm": "0.13.0"
+    "kaspa-wasm": "0.13.5"
   }
 }
