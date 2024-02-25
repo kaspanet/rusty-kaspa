@@ -2,7 +2,7 @@ use crate::imports::*;
 use crate::monitor::monitor;
 use axum::{
     async_trait,
-    extract::{path::ErrorKind, rejection::PathRejection, FromRequestParts},
+    extract::{path::ErrorKind, rejection::PathRejection, FromRequestParts, Query},
     http::{header, request::Parts, HeaderValue, StatusCode},
     response::IntoResponse,
     routing::get,
@@ -59,7 +59,10 @@ async fn get_status_all_nodes() -> impl IntoResponse {
 }
 
 // respond with a JSON object containing the elected node
-async fn get_elected_node(Path(params): Path<Params>) -> impl IntoResponse {
+async fn get_elected_node(Query(query): Query<QueryParams>, Path(params): Path<PathParams>) -> impl IntoResponse {
+    // println!("params: {:?}", params);
+    // println!("query: {:?}", query);
+
     if let Some(json) = monitor().get_json(&params) {
         ([(header::CONTENT_TYPE, HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()))], json).into_response()
     } else {

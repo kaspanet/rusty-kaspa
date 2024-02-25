@@ -24,9 +24,9 @@ pub async fn stop() -> Result<()> {
 /// connection store (number of connections * bias).
 pub struct Monitor {
     args: Arc<Args>,
-    connections: RwLock<AHashMap<Params, Vec<Arc<Connection>>>>,
-    descriptors: RwLock<AHashMap<Params, Descriptor>>,
-    channel: Channel<Params>,
+    connections: RwLock<AHashMap<PathParams, Vec<Arc<Connection>>>>,
+    descriptors: RwLock<AHashMap<PathParams, Descriptor>>,
+    channel: Channel<PathParams>,
     shutdown_ctl: DuplexChannel<()>,
 }
 
@@ -61,7 +61,7 @@ impl Monitor {
         self.args.verbose
     }
 
-    pub fn connections(&self) -> AHashMap<Params, Vec<Arc<Connection>>> {
+    pub fn connections(&self) -> AHashMap<PathParams, Vec<Arc<Connection>>> {
         self.connections.read().unwrap().clone()
     }
 
@@ -69,7 +69,7 @@ impl Monitor {
     pub async fn update_nodes(&self, nodes: Vec<Arc<Node>>) -> Result<()> {
         let mut connections = self.connections();
 
-        for params in Params::iter() {
+        for params in PathParams::iter() {
             let nodes = nodes.iter().filter(|node| node.params() == params).collect::<Vec<_>>();
 
             let list = connections.entry(params).or_default();
@@ -94,7 +94,7 @@ impl Monitor {
         *self.connections.write().unwrap() = connections;
 
         // flush all params to the update channel to refresh selected descriptors
-        Params::iter().for_each(|param| self.channel.sender.try_send(param).unwrap());
+        PathParams::iter().for_each(|param| self.channel.sender.try_send(param).unwrap());
 
         Ok(())
     }
@@ -205,7 +205,7 @@ impl Monitor {
     }
 
     /// Get JSON string representing node information (id, url, provider, link)
-    pub fn get_json(&self, params: &Params) -> Option<String> {
+    pub fn get_json(&self, params: &PathParams) -> Option<String> {
         self.descriptors.read().unwrap().get(params).cloned().map(|descriptor| descriptor.json)
     }
 }

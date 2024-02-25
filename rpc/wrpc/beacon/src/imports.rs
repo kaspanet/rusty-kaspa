@@ -2,7 +2,7 @@ pub use crate::args::Args;
 pub use crate::error::Error;
 pub use crate::log::*;
 pub use crate::node::Node;
-pub use crate::params::Params;
+pub use crate::params::{PathParams, QueryParams};
 pub use crate::result::Result;
 pub use crate::transport::Transport;
 pub use ahash::AHashMap;

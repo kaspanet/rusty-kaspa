@@ -25,7 +25,7 @@ pub struct Connection {
     pub node: Arc<Node>,
     bias: u64,
     descriptor: RwLock<Option<Descriptor>>,
-    sender: Sender<Params>,
+    sender: Sender<PathParams>,
     client: KaspaRpcClient,
     shutdown_ctl: DuplexChannel<()>,
     is_connected: Arc<AtomicBool>,
@@ -36,7 +36,7 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn try_new(node: Arc<Node>, sender: Sender<Params>, args: &Arc<Args>) -> Result<Self> {
+    pub fn try_new(node: Arc<Node>, sender: Sender<PathParams>, args: &Arc<Args>) -> Result<Self> {
         let client = KaspaRpcClient::new(node.encoding, Some(&node.address), None, None)?;
         let descriptor = RwLock::default();
         let shutdown_ctl = DuplexChannel::oneshot();

@@ -42,8 +42,8 @@ impl std::fmt::Display for Node {
 }
 
 impl Node {
-    pub fn params(&self) -> Params {
-        Params::new(self.encoding, self.network)
+    pub fn params(&self) -> PathParams {
+        PathParams::new(self.encoding, self.network)
     }
 }
 
