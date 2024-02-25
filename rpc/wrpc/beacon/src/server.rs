@@ -59,7 +59,7 @@ async fn get_status_all_nodes() -> impl IntoResponse {
 }
 
 // respond with a JSON object containing the elected node
-async fn get_elected_node(Query(query): Query<QueryParams>, Path(params): Path<PathParams>) -> impl IntoResponse {
+async fn get_elected_node(Query(_query): Query<QueryParams>, Path(params): Path<PathParams>) -> impl IntoResponse {
     // println!("params: {:?}", params);
     // println!("query: {:?}", query);
 

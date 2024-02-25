@@ -37,8 +37,9 @@ pub struct QueryParams {
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(rename_all = "kebab-case")]
 pub enum AccessType {
-    Transact,   // UTXO and TX index, submit transaction, single mempool entry
-    BlockDag,   // Access to Blocks, Full Mempool
+    Transact, // UTXO and TX index, submit transaction, single mempool entry
+    Mempool,
+    BlockDag,   // Access to Blocks
     Network,    // Network data access (peers, ban, etc.)
     Metrics,    // Access to Metrics
     Visualizer, // Access to Visualization data feeds
@@ -49,6 +50,7 @@ impl AccessType {
     pub fn iter() -> impl Iterator<Item = AccessType> {
         [
             AccessType::Transact,
+            AccessType::Mempool,
             AccessType::BlockDag,
             AccessType::Network,
             AccessType::Metrics,
@@ -63,6 +65,7 @@ impl fmt::Display for AccessType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             AccessType::Transact => "transact",
+            AccessType::Mempool => "mempool",
             AccessType::BlockDag => "block-dag",
             AccessType::Network => "network",
             AccessType::Metrics => "metrics",
@@ -78,6 +81,7 @@ impl FromStr for AccessType {
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s {
             "transact" => Ok(AccessType::Transact),
+            "mempool" => Ok(AccessType::Mempool),
             "block-dag" => Ok(AccessType::BlockDag),
             "network" => Ok(AccessType::Network),
             "metrics" => Ok(AccessType::Metrics),
