@@ -506,7 +506,8 @@ declare! {
      * @category Node RPC
      */
     export interface IAddPeerRequest {
-        // TODO
+        peerAddress : INetworkAddress;
+        isPermanent : boolean;
     }
     "#,
 }
@@ -532,7 +533,6 @@ try_from! ( args: AddPeerResponse, IAddPeerResponse, {
 });
 
 // ---
-// TODO
 declare! {
     IBanRequest,
     r#"
@@ -542,7 +542,10 @@ declare! {
      * @category Node RPC
      */
     export interface IBanRequest {
-        // TODO
+        /**
+         * IPv4 or IPv6 address to ban.
+         */
+        ip : string;
     }
     "#,
 }
@@ -1239,6 +1242,37 @@ try_from! ( args: ISubmitBlockRequest, SubmitBlockRequest, {
     Ok(from_value(args.into())?)
 });
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_SUBMIT_BLOCK_REPORT: &'static str = r#"
+    /**
+     * 
+     * @category Node RPC
+     */
+    export enum SubmitBlockRejectReason {
+        /**
+         * The block is invalid.
+         */
+        BlockInvalid = "BlockInvalid",
+        /**
+         * The node is not synced.
+         */
+        IsInIBD = "IsInIBD",
+        /**
+         * Route is full.
+         */
+        RouteIsFull = "RouteIsFull",
+    }
+
+    /**
+     * 
+     * @category Node RPC
+     */
+    export interface ISubmitBlockReport {
+        type : "success" | "reject";
+        reason? : SubmitBlockRejectReason;
+    }
+"#;
+
 declare! {
     ISubmitBlockResponse,
     r#"
@@ -1248,8 +1282,7 @@ declare! {
      * @category Node RPC
      */
     export interface ISubmitBlockResponse {
-        // TODO
-        [key: string]: any
+        report : ISubmitBlockReport;
     }
     "#,
 }
@@ -1321,7 +1354,7 @@ try_from! ( args: SubmitTransactionResponse, ISubmitTransactionResponse, {
 });
 
 // ---
-// TODO
+
 declare! {
     IUnbanRequest,
     r#"
@@ -1330,7 +1363,12 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IUnbanRequest { }
+    export interface IUnbanRequest {
+        /**
+         * IPv4 or IPv6 address to unban.
+         */
+        ip : string;
+    }
     "#,
 }
 
@@ -1346,39 +1384,10 @@ declare! {
      * 
      * @category Node RPC
      */
-    export interface IUnbanResponse {
-        [key: string]: any
-    }
+    export interface IUnbanResponse { }
     "#,
 }
 
 try_from! ( args: UnbanResponse, IUnbanResponse, {
     Ok(to_value(&args)?.into())
 });
-
-// // ---
-
-// declare! {
-//     IRequest,
-//     r#"
-//     export interface IRequest { }
-//     "#,
-// }
-
-// try_from! ( args: IRequest, Request, {
-//     Ok(Request {  })
-// });
-
-// declare! {
-//     IResponse,
-//     r#"
-//     export interface IResponse {
-//         [key: string]: any
-//     }
-//     "#,
-// }
-
-// try_from! ( args: Response, IResponse, {
-//     let response = IResponse::default();
-//     Ok(response)
-// });

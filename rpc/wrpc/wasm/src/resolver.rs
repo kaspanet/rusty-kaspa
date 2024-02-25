@@ -75,10 +75,24 @@ extern "C" {
 ///
 /// Resolver queries a list of public Kaspa Beacon URLs using HTTP to fetch
 /// wRPC endpoints for the given encoding, network identifier and other
-/// parameters. It then provides this information to {@link RpcClient}.
+/// parameters. It then provides this information to the {@link RpcClient}.
 ///
 /// Each time {@link RpcClient} disconnects, it will query the resolver
 /// to fetch a new wRPC URL.
+///
+/// ```javascript
+/// // using integrated public URLs
+/// let rpc = RpcClient({
+///     resolver: new Resolver(),
+///     networkId : "mainnet"
+/// });
+///
+/// // specifying custom resolver URLs
+/// let rpc = RpcClient({
+///     resolver: new Resolver(["<resolver-url>",...]),
+///     networkId : "mainnet"
+/// });
+/// ```
 ///
 /// @see {@link IResolverConfig}, {@link IResolverConnect}, {@link RpcClient}
 /// @category Node RPC

@@ -41,26 +41,34 @@ declare! {
 /// it aggregates all UTXO entries for that address and emits events when
 /// any activity against these addresses occurs.
 ///
-/// When created, UtxoContext accepts {@link IUtxoContextArgs} interface that
+/// UtxoContext constructor accepts {@link IUtxoContextArgs} interface that
 /// can contain an optional id parameter.  If supplied, this `id` parameter
 /// will be included in all notifications emitted by the UtxoContext as
 /// well as included as a part of {@link ITransactionRecord} emitted when
 /// transactions occur. If not provided, a random id will be generated. This id
 /// typically represents an account id in the context of a wallet application.
+/// The integrated Wallet API uses UtxoContext to represent wallet accounts.
 ///
 /// UtxoContext maintains a real-time cumulative balance of all addresses
 /// registered against it and provides balance update notification events
 /// when the balance changes.
 ///
 /// The UtxoContext balance is comprised of 3 values:
-///     - `mature`: amount of funds available for spending.
-///     - `pending`: amount of funds that are being received.
-///     - `outgoing`: amount of funds that are being sent but are not yet accepted by the network.
-/// Please see {@link IBalance} for more details.
+/// - `mature`: amount of funds available for spending.
+/// - `pending`: amount of funds that are being received.
+/// - `outgoing`: amount of funds that are being sent but are not yet accepted by the network.
+///
+/// Please see {@link IBalance} interface for more details.
 ///
 /// UtxoContext can be supplied as a UTXO source to the transaction {@link Generator}
 /// allowing the {@link Generator} to create transactions using the
 /// UTXO entries it manages.
+///
+/// **IMPORTANT:** UtxoContext is meant to represent a single account.  It is not
+/// designed to be used as a global UTXO manager for all addresses in a very large
+/// wallet (such as an exchange wallet). For such use cases, it is recommended to
+/// perform manual UTXO management by subscribing to UTXO notifications using
+/// {@link RpcClient.subscribeUtxosChanged} and {@link RpcClient.getUtxosByAddresses}.
 ///
 /// @see {@link IUtxoContextArgs},
 /// {@link UtxoProcessor},

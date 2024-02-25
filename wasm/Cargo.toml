@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 include.workspace = true
+repository.workspace = true
 # wasm-pack requires this value to be a string
 # (it can not be derived from the workspace)
 license = "ISC"

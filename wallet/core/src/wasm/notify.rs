@@ -13,7 +13,7 @@ cfg_if! {
          * @category Wallet SDK
          */
         export enum UtxoProcessorEventType {
-            All = "all",
+            All = "*",
             Connect = "connect",
             Disconnect = "disconnect",
             UtxoIndexNotEnabled = "utxoIndexNotEnabled",
@@ -95,7 +95,7 @@ cfg_if! {
          * @category Wallet API
          */
         export enum WalletEventType {
-            All = "all",
+            All = "*",
             Connect = "connect",
             Disconnect = "disconnect",
             UtxoIndexNotEnabled = "utxo-index-not-enabled",

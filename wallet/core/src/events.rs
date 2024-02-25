@@ -291,7 +291,7 @@ impl FromStr for EventKind {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self> {
         match s {
-            "all" => Ok(EventKind::All),
+            "*" => Ok(EventKind::All),
             "connect" => Ok(EventKind::Connect),
             "disconnect" => Ok(EventKind::Disconnect),
             "utxo-index-not-enabled" => Ok(EventKind::UtxoIndexNotEnabled),

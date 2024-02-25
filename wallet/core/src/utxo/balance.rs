@@ -46,15 +46,47 @@ impl From<std::cmp::Ordering> for Delta {
 #[wasm_bindgen(typescript_custom_section)]
 const TS_BALANCE: &'static str = r#"
 /**
- * UtxoContext (Account) balance.
+ * {@link UtxoContext} (wallet account) balance.
  * @category Wallet SDK
  */
 export interface IBalance {
+    /**
+     * Total amount of Kaspa (in SOMPI) available for 
+     * spending.
+     */
     mature: bigint;
+    /**
+     * Total amount of Kaspa (in SOMPI) that has been 
+     * received and is pending confirmation.
+     */
     pending: bigint;
+    /**
+     * Total amount of Kaspa (in SOMPI) currently 
+     * being sent as a part of the outgoing transaction
+     * but has not yet been accepted by the network.
+     */
     outgoing: bigint;
+    /**
+     * Number of UTXOs available for spending.
+     */
     matureUtxoCount: number;
+    /**
+     * Number of UTXOs that have been received and 
+     * are pending confirmation.
+     */
     pendingUtxoCount: number;
+    /**
+     * Number of UTXOs currently in stasis (coinbase 
+     * transactions received as a result of mining).
+     * Unlike regular user transactions, coinbase 
+     * transactions go through `stasis->pending->mature`
+     * stages. Client applications should ignore `stasis`
+     * stages and should process transactions only when
+     * they have reached the `pending` stage. However, 
+     * `stasis` information can be used for informative 
+     * purposes to indicate that coinbase transactions
+     * have arrived.
+     */
     stasisUtxoCount: number;
 }
 "#;

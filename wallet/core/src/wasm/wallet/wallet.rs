@@ -80,7 +80,40 @@ impl Inner {
     }
 }
 
+///
+/// Wallet class is the main coordinator that manages integrated wallet operations.
+///
+/// The Wallet class encapsulates {@link UtxoProcessor} and provides internal
+/// account management using {@link UtxoContext} instances. It acts as a bridge
+/// between the integrated Wallet subsystem providing a high-level interface
+/// for wallet key and account management.
+///
+/// The Rusty Kaspa is developed in Rust, and the Wallet class is a Rust implementation
+/// exposed to the JavaScript/TypeScript environment using the WebAssembly (WASM32) interface.
+/// As such, the Wallet implementation can be powered up using native Rust or built
+/// as a WebAssembly module and used in the browser or Node.js environment.
+///
+/// When using Rust native or NodeJS environment, all wallet data is stored on the local
+/// filesystem.  When using WASM32 build in the web browser, the wallet data is stored
+/// in the browser's `localStorage` and transaction records are stored in the `IndexedDB`.
+///
+/// The Wallet API can create multiple wallet instances, however, only one wallet instance
+/// can be active at a time.
+///
+/// The wallet implementation is designed to be efficient and support a large number
+/// of accounts. Accounts reside in storage and can be loaded and activated as needed.
+/// A `loaded` account contains all account information loaded from the permanent storage
+/// whereas an `active` account monitors the UTXO set and provides notifications for
+/// incoming and outgoing transactions as well as balance updates.
+///
+/// The Wallet API communicates with the client using resource identifiers. These include
+/// account IDs, private key IDs, transaction IDs, etc. It is the responsibility of the
+/// client to track these resource identifiers at runtime.
+///
+/// @see {@link IWalletConfig},
+///
 /// @category Wallet API
+///
 #[wasm_bindgen(inspectable)]
 #[derive(Clone)]
 pub struct Wallet {

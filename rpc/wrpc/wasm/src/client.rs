@@ -104,7 +104,7 @@ enum NotificationEvent {
 impl FromStr for NotificationEvent {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self> {
-        if s == "all" || s == "*" {
+        if s == "*" {
             Ok(NotificationEvent::All)
         } else if let Ok(ctl) = Ctl::from_str(s) {
             Ok(NotificationEvent::RpcCtl(ctl))
@@ -160,16 +160,34 @@ impl Inner {
 /// There are two ways to connect: Directly to any Kaspa Node or to a
 /// community-maintained public node infrastructure using the {@link Resolver} class.
 ///
-/// ```javascript
-/// // Connecting to a public node using a resolver
+/// ### Connecting to a public node using a resolver
 ///
+/// ```javascript
 /// let rpc = new RpcClient({
 ///    resolver : new Resolver(),
 ///    networkId : "mainnet",
 /// });
 ///
-/// // Connecting to a Kaspa Node directly
+/// await rpc.connect();
+/// ```
 ///
+/// ### Connecting to a Kaspa Node directly
+///
+/// Please note that when connecting to a local node, the node
+/// must be configured to accept wRPC connections. This can be
+/// done by using the following argument:
+///
+/// ```bash
+/// # for Borsh encoding
+/// ---rpclisten-borsh=default # or 127.0.0.1
+/// ---rpclisten-borsh=public # or 0.0.0.0
+/// # for Serde JSON encoding
+/// ---rpclisten-json=default # or 127.0.0.1
+/// ---rpclisten-json=public # or 0.0.0.0
+/// ````
+/// If not specified, the port will default to the default port for the networkId.
+///
+/// ```javascript
 /// let rpc = new RpcClient({
 ///    // if port is not provided it will default
 ///    // to the default port for the networkId
@@ -178,8 +196,9 @@ impl Inner {
 /// });
 /// ```
 ///
+/// ### Example usage
+///
 /// ```javascript
-/// // Example usage:
 ///
 /// // Create a new RPC client with a URL
 /// let rpc = new RpcClient({ url : "wss://<node-wrpc-address>" });
@@ -212,12 +231,13 @@ impl Inner {
 /// using {@link RpcClient.addEventListener} and {@link RpcClient.removeEventListener} functions.
 ///
 /// **IMPORTANT:** If RPC is disconnected, upon reconnection you do not need
-/// to re-register event listeners, but your have to re-subscribe for Kaspa
-/// notifications.
+/// to re-register event listeners, but your have to re-subscribe for Kaspa node
+/// notifications:
 ///
 /// ```typescript
 /// rpc.addEventListener("open", async (event) => {
 ///     console.log("Connected to", rpc.url);
+///     // re-subscribe each time we connect
 ///     await rpc.subscribeDaaScore();
 ///     // ... perform wallet address subscriptions
 /// });
@@ -276,8 +296,11 @@ impl RpcClient {
 
 #[wasm_bindgen]
 impl RpcClient {
-    /// Create a new RPC client with optional [`Encoding`] and a `url`.
+    ///
+    /// Create a new RPC client with optional {@link Encoding} and a `url`.
+    ///
     /// @see {@link IRpcConfig} interface for more details.
+    ///
     #[wasm_bindgen(constructor)]
     pub fn ctor(config: Option<IRpcConfig>) -> Result<RpcClient> {
         Self::new(config.map(RpcConfig::try_from).transpose()?)
@@ -373,7 +396,80 @@ impl RpcClient {
     /// Register an event listener callback.
     ///
     /// Registers a callback function to be executed when a specific event occurs.
-    /// The callback function will receive an {@link RpcEvent} object with the event type and data.
+    /// The callback function will receive an {@link RpcEvent} object with the event `type` and `data`.
+    ///
+    /// ### RPC Subscriptions vs Event Listeners
+    ///
+    /// Subscriptions are used to receive notifications from the RPC client.
+    /// Event listeners are client-side application registrations that are
+    /// triggered when notifications are received.
+    ///
+    /// If node is disconnected, upon reconnection you do not need to re-register event listeners,
+    /// however, you have to re-subscribe for Kaspa node notifications. As such, it is recommended
+    /// to register event listeners when the RPC `open` event is received.
+    ///
+    /// ```javascript
+    /// rpc.addEventListener("open", async (event) => {
+    ///     console.log("Connected to", rpc.url);
+    ///     await rpc.subscribeDaaScore();
+    ///     // ... perform wallet address subscriptions
+    /// });
+    /// ```
+    ///
+    /// #### Multiple events and listeners
+    ///
+    /// `addEventListener` can be used to register multiple event listeners for the same event
+    /// as well as the same event listener for multiple events.
+    ///
+    /// ```javascript
+    /// // Registering a single event listener for multiple events:
+    /// rpc.addEventListener(["open", "close"], (event) => {
+    ///     console.log(event);
+    /// });
+    ///
+    /// // Registering event listener for all events:
+    /// rpc.addEventListener("*", (event) => {
+    ///     console.log(event);
+    /// });
+    /// // or without supplying the event type
+    /// rpc.addEventListener((event) => {
+    ///     console.log(event);
+    /// });
+    ///
+    /// // Registering multiple event listeners for the same event:
+    /// rpc.addEventListener("open", (event) => { // first listener
+    ///     console.log(event);
+    /// });
+    /// rpc.addEventListener("open", (event) => { // second listener
+    ///     console.log(event);
+    /// });
+    /// ```
+    ///
+    /// #### Use of context objects
+    ///
+    /// You can also register an event with a `context` object. When the event is triggered,
+    /// the `handleEvent` method of the `context` object will be called while `this` value
+    /// will be set to the `context` object.
+    /// ```javascript
+    /// // Registering events with a context object:
+    ///
+    /// const context = {
+    ///     someProperty: "someValue",
+    ///     handleEvent: (event) => {
+    ///         // the following will log "someValue"
+    ///         console.log(this.someProperty);
+    ///         console.log(event);
+    ///     }
+    /// };
+    /// rpc.addEventListener(["open","close"], context);
+    ///
+    /// ```
+    ///
+    /// #### General use examples
+    ///
+    /// In TypeScript you can use {@link RpcEventType} enum (such as `RpcEventType.Open`)
+    /// or `string` (such as "open") to register event listeners.
+    /// In JavaScript you can only use `string`.
     ///
     /// ```typescript
     /// // Example usage (TypeScript):
@@ -391,7 +487,6 @@ impl RpcClient {
     ///     console.log(event.type,event.data);
     /// });
     /// await rpc.subscribeBlockAdded();
-    ///
     ///
     /// // Example usage (JavaScript):
     ///

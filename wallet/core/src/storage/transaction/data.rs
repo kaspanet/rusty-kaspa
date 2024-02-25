@@ -8,7 +8,7 @@ use kaspa_consensus_core::tx::Transaction;
 pub use kaspa_consensus_core::tx::TransactionId;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", content = "transaction")]
+#[serde(tag = "type", content = "data")]
 // the reason the struct is renamed kebab-case and then
 // each field is renamed to camelCase is to force the
 // enum tags to be lower-kebab-case.

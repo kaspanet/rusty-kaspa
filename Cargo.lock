@@ -3295,6 +3295,7 @@ dependencies = [
  "tokio",
  "triggered",
  "uuid 1.6.1",
+ "wasm-bindgen",
 ]
 
 [[package]]

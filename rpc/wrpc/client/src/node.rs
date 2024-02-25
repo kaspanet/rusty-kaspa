@@ -1,7 +1,11 @@
 use crate::imports::*;
 
-/// Data structure representing a Node connection endpoint.
+///
+/// Data structure representing a Node connection endpoint
+/// as provided by the {@link Resolver}.
+///
 /// @category Node RPC
+///
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct NodeDescriptor {

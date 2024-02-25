@@ -5,6 +5,8 @@ Latest
 - RpcClient events now support `open`, `close` events to signal the RPC connection state
 - RPC events now contain `type` and `data` fields
 - Rename client-side `Beacon` class to `Resolver`
+- ITransactionRecord properties now have appropriate interfaces
+- ITransactionData serialization fields have changed from (`transaction = {}` to `data = {}`)
 
 
 Release 2024-02-19

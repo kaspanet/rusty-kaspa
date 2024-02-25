@@ -75,7 +75,7 @@ extern "C" {
     #[derive(Debug)]
     pub type RpcEventType;
 
-    #[wasm_bindgen(extends = js_sys::Function, typescript_type = "RpcEventType | string | RpcEventCallback")]
+    #[wasm_bindgen(typescript_type = "RpcEventType | string | RpcEventCallback")]
     #[derive(Debug)]
     pub type RpcEventTypeOrCallback;
 }
