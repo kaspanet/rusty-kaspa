@@ -37,8 +37,8 @@ pub struct QueryParams {
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash)]
 #[serde(rename_all = "kebab-case")]
 pub enum AccessType {
-    Transact, // UTXO and TX index, submit transaction, single mempool entry
-    Mempool,
+    Transact,   // UTXO and TX index, submit transaction, single mempool entry
+    Mempool,    // Full mempool data access
     BlockDag,   // Access to Blocks
     Network,    // Network data access (peers, ban, etc.)
     Metrics,    // Access to Metrics
