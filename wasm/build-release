@@ -8,6 +8,7 @@ rm -rf release/*
 rm -rf web/*
 rm -rf nodejs/*
 rm -rf docs/*
+rm -rf examples/nodejs/typescript/lib
 
 mkdir -p release/kaspa-wasm32-sdk/web
 mkdir -p release/kaspa-wasm32-sdk/nodejs
@@ -68,6 +69,13 @@ cp -r examples/init.js release/kaspa-wasm32-sdk/examples/
 cp -r examples/jsconfig.json release/kaspa-wasm32-sdk/examples/
 cp -r examples/package.json release/kaspa-wasm32-sdk/examples/
 
+pushd .
+cd release/kaspa-wasm32-sdk/examples
+npm install
+popd
+
+# tsc release/kaspa-wasm32-sdk/examples/nodejs/typescript/
+
 cp index.html release/kaspa-wasm32-sdk/index.html
 cp README.md release/kaspa-wasm32-sdk/README.md
 cp CHANGELOG.md release/kaspa-wasm32-sdk/CHANGELOG.md
@@ -78,5 +86,5 @@ cp package-sizes.js release/kaspa-wasm32-sdk/package-sizes.js
 
 pushd .
 cd release
-zip -r kaspa-wasm32-sdk.zip kaspa-wasm32-sdk
+zip -q -r kaspa-wasm32-sdk.zip kaspa-wasm32-sdk
 popd

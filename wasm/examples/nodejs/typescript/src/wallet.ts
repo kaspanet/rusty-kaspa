@@ -8,7 +8,7 @@ import {w3cwebsocket} from "websocket";
     console.log("wallet", wallet)
     let response = await wallet.walletCreate({
         walletSecret: "abc",
-        walletFilename: "aaaaaa__xxx3",
+        filename: "aaaaaa__xxx3",
         title: "XX2"
     });
 

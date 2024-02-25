@@ -1,8 +1,11 @@
 {
-    "name" : "kaspa-wasm-examples",
-    "private" : true,
-    "version" : "1.0.0",
+    "name": "kaspa-wasm-examples",
+    "private": true,
+    "version": "1.0.0",
     "dependencies": {
-        "websocket" : "1.0.34"
+        "websocket": "1.0.34"
+    },
+    "devDependencies": {
+        "@types/websocket": "^1.0.10"
     }
 }

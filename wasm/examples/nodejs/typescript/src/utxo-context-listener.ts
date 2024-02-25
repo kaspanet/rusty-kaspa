@@ -13,7 +13,7 @@ import {
     createTransactions,
     initConsolePanicHook,
     IUtxoProcessorEvent,
-} from "../../../../nodejs/kaspa/kaspa_wasm";
+} from "../../../../nodejs/kaspa";
 
 import {parseArgs} from "./utils";
 
