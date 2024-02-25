@@ -153,6 +153,8 @@ impl Inner {
     }
 }
 
+///
+///
 /// Kaspa RPC client uses ([wRPC](https://github.com/workflow-rs/workflow-rs/tree/master/rpc))
 /// interface to connect directly with Kaspa Node. wRPC supports
 /// two types of encodings: `borsh` (binary, default) and `json`.
@@ -172,20 +174,6 @@ impl Inner {
 /// ```
 ///
 /// ### Connecting to a Kaspa Node directly
-///
-/// Please note that when connecting to a local node, the node
-/// must be configured to accept wRPC connections. This can be
-/// done by using the following argument:
-///
-/// ```bash
-/// # for Borsh encoding
-/// ---rpclisten-borsh=default # or 127.0.0.1
-/// ---rpclisten-borsh=public # or 0.0.0.0
-/// # for Serde JSON encoding
-/// ---rpclisten-json=default # or 127.0.0.1
-/// ---rpclisten-json=public # or 0.0.0.0
-/// ````
-/// If not specified, the port will default to the default port for the networkId.
 ///
 /// ```javascript
 /// let rpc = new RpcClient({
