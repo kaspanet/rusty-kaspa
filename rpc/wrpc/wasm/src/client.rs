@@ -162,7 +162,7 @@ impl Inner {
 /// There are two ways to connect: Directly to any Kaspa Node or to a
 /// community-maintained public node infrastructure using the {@link Resolver} class.
 ///
-/// ### Connecting to a public node using a resolver
+/// **Connecting to a public node using a resolver**
 ///
 /// ```javascript
 /// let rpc = new RpcClient({
@@ -173,7 +173,7 @@ impl Inner {
 /// await rpc.connect();
 /// ```
 ///
-/// ### Connecting to a Kaspa Node directly
+/// **Connecting to a Kaspa Node directly**
 ///
 /// ```javascript
 /// let rpc = new RpcClient({
@@ -184,7 +184,7 @@ impl Inner {
 /// });
 /// ```
 ///
-/// ### Example usage
+/// **Example usage**
 ///
 /// ```javascript
 ///
@@ -386,7 +386,7 @@ impl RpcClient {
     /// Registers a callback function to be executed when a specific event occurs.
     /// The callback function will receive an {@link RpcEvent} object with the event `type` and `data`.
     ///
-    /// ### RPC Subscriptions vs Event Listeners
+    /// **RPC Subscriptions vs Event Listeners**
     ///
     /// Subscriptions are used to receive notifications from the RPC client.
     /// Event listeners are client-side application registrations that are
@@ -404,7 +404,7 @@ impl RpcClient {
     /// });
     /// ```
     ///
-    /// #### Multiple events and listeners
+    /// **Multiple events and listeners**
     ///
     /// `addEventListener` can be used to register multiple event listeners for the same event
     /// as well as the same event listener for multiple events.
@@ -433,7 +433,7 @@ impl RpcClient {
     /// });
     /// ```
     ///
-    /// #### Use of context objects
+    /// **Use of context objects**
     ///
     /// You can also register an event with a `context` object. When the event is triggered,
     /// the `handleEvent` method of the `context` object will be called while `this` value
@@ -453,7 +453,7 @@ impl RpcClient {
     ///
     /// ```
     ///
-    /// #### General use examples
+    /// **General use examples**
     ///
     /// In TypeScript you can use {@link RpcEventType} enum (such as `RpcEventType.Open`)
     /// or `string` (such as "open") to register event listeners.
