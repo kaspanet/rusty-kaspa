@@ -147,7 +147,7 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
 
         tpara!(
             ctx,
-            "Your mnemonic phrase allows your to re-create your private key. \
+            "Your mnemonic phrase allows you to re-create your private key. \
             The person who has access to this mnemonic will have full control of \
             the Kaspa stored in it. Keep your mnemonic safe. Write it down and \
             store it in a safe, preferably in a fire-resistant location. Do not \
