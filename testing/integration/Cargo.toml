@@ -21,6 +21,7 @@ kaspa-core.workspace = true
 kaspa-database.workspace = true
 kaspa-grpc-client.workspace = true
 kaspa-grpc-core.workspace = true
+kaspa-grpc-server.workspace = true
 kaspa-hashes.workspace = true
 kaspa-index-processor.workspace = true
 kaspa-math.workspace = true

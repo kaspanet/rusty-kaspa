@@ -2,6 +2,7 @@ use kaspa_consensus_core::network::NetworkId;
 use kaspa_core::{core::Core, signals::Shutdown, task::runtime::AsyncRuntime};
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_grpc_client::GrpcClient;
+use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::{address::tracker::DEFAULT_TRACKER_CAPACITY, subscription::context::SubscriptionContext};
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_rpc_service::service::RpcCoreService;
@@ -86,6 +87,7 @@ pub struct Daemon {
     client_manager: Arc<ClientManager>,
 
     pub core: Arc<Core>,
+    grpc_server_started: Listener,
     shutdown_requested: Listener,
     workers: Option<Vec<std::thread::JoinHandle<()>>>,
 
@@ -137,11 +139,17 @@ impl Daemon {
         let async_service = &Arc::downcast::<AsyncRuntime>(core.find(AsyncRuntime::IDENT).unwrap().arc_any()).unwrap();
         let rpc_core_service = &Arc::downcast::<RpcCoreService>(async_service.find(RpcCoreService::IDENT).unwrap().arc_any()).unwrap();
         let shutdown_requested = rpc_core_service.core_shutdown_request_listener();
-        Daemon { client_manager, core, shutdown_requested, workers: None, _appdir_tempdir: appdir_tempdir }
+        let grpc_server = &Arc::downcast::<GrpcService>(async_service.find(GrpcService::IDENT).unwrap().arc_any()).unwrap();
+        let grpc_server_started = grpc_server.started();
+        Daemon { client_manager, core, grpc_server_started, shutdown_requested, workers: None, _appdir_tempdir: appdir_tempdir }
     }
 
     pub fn client_manager(&self) -> Arc<ClientManager> {
         self.client_manager.clone()
+    }
+
+    pub fn grpc_server_started(&self) -> Listener {
+        self.grpc_server_started.clone()
     }
 
     pub fn shutdown_requested(&self) -> Listener {

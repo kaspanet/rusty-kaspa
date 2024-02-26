@@ -9,8 +9,8 @@ use kaspa_consensus_core::network::NetworkType;
 use kaspa_core::{trace, warn};
 use kaspa_utils::{fd_budget, triggers::SingleTrigger};
 use kaspad_lib::args::Args;
-use std::{iter::once, sync::Arc, time::Duration};
-use tokio::{task::JoinHandle, time::sleep};
+use std::{iter::once, sync::Arc};
+use tokio::task::JoinHandle;
 
 /// Arguments for configuring a [`DaemonTask`]
 #[derive(Parser, Debug)]
@@ -133,7 +133,7 @@ impl Task for DaemonTask {
             daemon.run();
 
             // Wait for the node to initialize before connecting to RPC
-            sleep(Duration::from_secs(1)).await;
+            daemon.grpc_server_started().await;
             ready_signal.trigger();
 
             tokio::select! {
