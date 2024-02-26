@@ -149,17 +149,15 @@ impl Daemon {
     }
 
     pub async fn start(&mut self) -> GrpcClient {
-        self.workers = Some(self.core.start());
+        self.run();
         // Wait for the node to initialize before connecting to RPC
         tokio::time::sleep(Duration::from_secs(1)).await;
         self.new_client().await
     }
 
     pub fn shutdown(&mut self) {
-        if let Some(workers) = self.workers.take() {
-            self.core.shutdown();
-            self.core.join(workers);
-        }
+        self.core.shutdown();
+        self.join();
     }
 }
 
