@@ -395,36 +395,32 @@ impl TryFrom<&JsValue> for NetworkId {
     }
 }
 
-pub mod wasm {
-    use super::*;
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_name = "Network", typescript_type = "NetworkType | NetworkId | string")]
+    pub type INetworkType;
+}
 
-    #[wasm_bindgen]
-    extern "C" {
-        #[wasm_bindgen(js_name = "Network", typescript_type = "NetworkType | NetworkId | string")]
-        pub type Network;
-    }
-
-    impl TryFrom<Network> for NetworkType {
-        type Error = String;
-        fn try_from(network: Network) -> std::result::Result<Self, Self::Error> {
-            let js_value = JsValue::from(network);
-            if let Ok(network_id) = ref_from_abi!(NetworkId, &js_value) {
-                Ok(network_id.network_type())
-            } else if let Ok(network_id) = NetworkId::try_from(&js_value) {
-                Ok(network_id.network_type())
-            } else if let Ok(network_type) = NetworkType::try_from(&js_value) {
-                Ok(network_type)
-            } else {
-                Err(format!("Invalid network value: {:?}", js_value))
-            }
+impl TryFrom<INetworkType> for NetworkType {
+    type Error = String;
+    fn try_from(network: INetworkType) -> std::result::Result<Self, Self::Error> {
+        let js_value = JsValue::from(network);
+        if let Ok(network_id) = ref_from_abi!(NetworkId, &js_value) {
+            Ok(network_id.network_type())
+        } else if let Ok(network_id) = NetworkId::try_from(&js_value) {
+            Ok(network_id.network_type())
+        } else if let Ok(network_type) = NetworkType::try_from(&js_value) {
+            Ok(network_type)
+        } else {
+            Err(format!("Invalid network value: {:?}", js_value))
         }
     }
+}
 
-    impl TryFrom<Network> for Prefix {
-        type Error = String;
-        fn try_from(value: Network) -> Result<Self, Self::Error> {
-            NetworkType::try_from(value).map(Into::into)
-        }
+impl TryFrom<INetworkType> for Prefix {
+    type Error = String;
+    fn try_from(value: INetworkType) -> Result<Self, Self::Error> {
+        NetworkType::try_from(value).map(Into::into)
     }
 }
 

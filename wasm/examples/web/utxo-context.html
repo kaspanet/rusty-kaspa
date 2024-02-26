@@ -30,8 +30,9 @@
 
                 // ---
                 let { monitor } = window;
-                monitor.processor = await new UtxoProcessor({ rpc, networkId : network });
-                let context = await new UtxoContext({ processor : monitor.processor });
+                monitor.processor = new UtxoProcessor({ rpc, networkId : network });
+                await monitor.processor.start();
+                let context = new UtxoContext({ processor : monitor.processor });
                 let events = 0;
                 monitor.processor.addEventListener((event) => {
                     document.getElementById("actions").innerHTML = `| Received ${events} event(s)`;

@@ -1,6 +1,7 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::utxo::balance as native;
+use kaspa_consensus_core::network::INetworkType;
 
 ///
 /// Represents a {@link UtxoContext} (account) balance.
@@ -34,7 +35,8 @@ impl Balance {
         self.inner.outgoing.into()
     }
 
-    pub fn as_strings(&self, network_type: JsValue) -> Result<BalanceStrings> {
+    #[wasm_bindgen(js_name = "toBalanceStrings")]
+    pub fn to_balance_strings(&self, network_type: INetworkType) -> Result<BalanceStrings> {
         let network_type = NetworkType::try_from(network_type)?;
         Ok(native::BalanceStrings::from((&Some(self.inner.clone()), &network_type, None)).into())
     }

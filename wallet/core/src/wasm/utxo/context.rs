@@ -5,6 +5,7 @@ use crate::utxo::{UtxoContextBinding, UtxoContextId};
 use crate::wasm::utxo::UtxoProcessor;
 use crate::wasm::Balance;
 use kaspa_addresses::IAddressArray;
+use kaspa_consensus_client::IUtxoEntryReferenceArray;
 use kaspa_hashes::Hash;
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 
@@ -105,7 +106,7 @@ impl UtxoContext {
 #[wasm_bindgen]
 impl UtxoContext {
     #[wasm_bindgen(constructor)]
-    pub async fn ctor(js_value: IUtxoContextArgs) -> Result<UtxoContext> {
+    pub fn ctor(js_value: IUtxoContextArgs) -> Result<UtxoContext> {
         let UtxoContextCreateArgs { processor, binding } = js_value.try_into()?;
         let inner = native::UtxoContext::new(processor.processor(), binding);
         Ok(UtxoContext { inner })
@@ -135,24 +136,69 @@ impl UtxoContext {
         self.inner().clear().await
     }
 
-    /// Returns all mature UTXO entries that are currently managed by the UtxoContext and are available for spending.
-    pub fn mature(&self) -> Result<Array> {
+    // Returns all mature UTXO entries that are currently managed by the UtxoContext and are available for spending.
+    // This function is for informational purposes only.
+    // pub fn mature(&self) -> Result<IUtxoEntryReferenceArray> {
+    //     let context = self.context();
+    //     let array = Array::new();
+    //     for entry in context.mature.iter() {
+    //         array.push(&JsValue::from(entry.clone()));
+    //     }
+    //     Ok(array.unchecked_into())
+    // }
+
+    ///
+    /// Returns a range of mature UTXO entries that are currently
+    /// managed by the UtxoContext and are available for spending.
+    ///
+    /// NOTE: This function is provided for informational purposes only.
+    /// **You should not manage UTXO entries manually if they are owned by UtxoContext.**
+    ///
+    /// The resulting range may be less than requested if UTXO entries
+    /// have been spent asynchronously by UtxoContext or by other means
+    /// (i.e. UtxoContext has received notification from the network that
+    /// UtxoEntries have been spent externally).
+    ///
+    /// UtxoEntries are kept in in the ascending sorted order by their amount.
+    ///
+    #[wasm_bindgen(js_name = "matureRange")]
+    pub fn mature_range(&self, mut from: usize, mut to: usize) -> Result<IUtxoEntryReferenceArray> {
         let context = self.context();
+        if from > to {
+            return Err(Error::custom("'from' must be less than or equal to 'to'"));
+        }
+        if from > context.mature.len() {
+            from = context.mature.len();
+        }
+        if to > context.mature.len() {
+            to = context.mature.len();
+        }
+        if from == to {
+            return Ok(Array::new().unchecked_into());
+        }
+        let slice = context.mature.get(from..to).unwrap();
         let array = Array::new();
-        for entry in context.mature.iter() {
+        for entry in slice.iter() {
             array.push(&JsValue::from(entry.clone()));
         }
-        Ok(array)
+        Ok(array.unchecked_into())
+    }
+
+    /// Obtain the length of the mature UTXO entries that are currently
+    /// managed by the UtxoContext.
+    #[wasm_bindgen(getter, js_name = "matureLength")]
+    pub fn mature_length(&self) -> usize {
+        self.context().mature.len()
     }
 
     /// Returns pending UTXO entries that are currently managed by the UtxoContext.
-    pub fn pending(&self) -> Result<Array> {
+    pub fn pending(&self) -> Result<IUtxoEntryReferenceArray> {
         let context = self.context();
         let array = Array::new();
         for (_, entry) in context.pending.iter() {
             array.push(&JsValue::from(entry.clone()));
         }
-        Ok(array)
+        Ok(array.unchecked_into())
     }
 
     /// Current {@link Balance} of the UtxoContext.
@@ -162,7 +208,7 @@ impl UtxoContext {
         self.inner().balance().map(Balance::from)
     }
 
-    // / Re-calculate the balance of the UtxoContext.
+    // /// Re-calculate the balance of the UtxoContext.
     // #[wasm_bindgen(js_name=updateBalance)]
     // pub async fn calculate_balance(&self) -> crate::wasm::Balance {
     //     self.inner.calculate_balance().await.into()

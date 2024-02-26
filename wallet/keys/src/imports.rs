@@ -13,7 +13,7 @@ pub use async_trait::async_trait;
 pub use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 pub use kaspa_addresses::{Address, Version as AddressVersion};
 pub use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, ExtendedPublicKey, SecretKey};
-pub use kaspa_consensus_core::network::wasm::Network;
+pub use kaspa_consensus_core::network::INetworkType;
 pub use kaspa_utils::hex::*;
 pub use kaspa_wasm_core::types::*;
 pub use serde::{Deserialize, Serialize};

@@ -53,7 +53,7 @@ impl PublicKey {
     /// Receives a [`NetworkType`] to determine the prefix of the address.
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
-    pub fn to_address(&self, network: Network) -> Result<Address> {
+    pub fn to_address(&self, network: INetworkType) -> Result<Address> {
         let payload = &self.xonly_public_key.serialize();
         let address = Address::new(network.try_into()?, AddressVersion::PubKey, payload);
         Ok(address)
@@ -63,7 +63,7 @@ impl PublicKey {
     /// Receives a [`NetworkType`] to determine the prefix of the address.
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddressECDSA)]
-    pub fn to_address_ecdsa(&self, network: Network) -> Result<Address> {
+    pub fn to_address_ecdsa(&self, network: INetworkType) -> Result<Address> {
         let payload = &self.xonly_public_key.serialize();
         let address = Address::new(network.try_into()?, AddressVersion::PubKeyECDSA, payload);
         Ok(address)

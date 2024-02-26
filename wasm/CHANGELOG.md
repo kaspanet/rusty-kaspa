@@ -1,5 +1,14 @@
 ### Latest
 
+- Add UtxoProcessor.start()/stop() methods for explicit start/stop of the UtxoProcessor event processing.
+- Remove `async` markers from UtxoProcessor and UtxoContext constructors.
+- Add UtxoProcessor.setNetworkId() method to change the network ID for existing UtxoProcessor (UtxoProcessor must be stopped before changing the network id).
+- Add UtxoProcessor.networkId property to get the current network ID.
+- Add UtxoContext.matureLength() and matureRange(from,to) for access to mature UTXO entries.
+
+
+### Release 2024-02-25
+
 #### Event Listener API updates
 - Event Listener API has been refactored to mimic DOM standard (similar to `addEventListener` / `removeEventListener` available in the browser, but with additional features)
 - replace RpcClient.notify() with RpcClient.addEventListener() / RpcClient.removeEventListener()

@@ -5,7 +5,7 @@ use crate::Resolver;
 use crate::{RpcEventCallback, RpcEventType, RpcEventTypeOrCallback};
 use js_sys::{Function, Object};
 use kaspa_addresses::{Address, IAddressArray};
-use kaspa_consensus_core::network::{wasm::Network, NetworkType};
+use kaspa_consensus_core::network::{INetworkType, NetworkType};
 use kaspa_notify::events::EventType;
 use kaspa_notify::notification::Notification as NotificationT;
 use kaspa_rpc_core::api::ctl;
@@ -658,7 +658,7 @@ impl RpcClient {
 #[wasm_bindgen]
 impl RpcClient {
     #[wasm_bindgen(js_name = "defaultPort")]
-    pub fn default_port(encoding: WrpcEncoding, network: Network) -> Result<u16> {
+    pub fn default_port(encoding: WrpcEncoding, network: INetworkType) -> Result<u16> {
         let network_type = NetworkType::try_from(network)?;
         match encoding {
             WrpcEncoding::Borsh => Ok(network_type.default_borsh_rpc_port()),

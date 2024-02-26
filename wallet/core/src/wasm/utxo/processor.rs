@@ -4,6 +4,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::utxo as native;
 use crate::wasm::notify::{UtxoProcessorEventTarget, UtxoProcessorNotificationCallback, UtxoProcessorNotificationTypeOrCallback};
+use kaspa_consensus_core::network::INetworkId;
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 use kaspa_wasm_core::events::{get_event_targets, Sink};
 use kaspa_wrpc_wasm::RpcClient;
@@ -76,8 +77,13 @@ pub struct UtxoProcessor {
 
 #[wasm_bindgen]
 impl UtxoProcessor {
+    /// UtxoProcessor constructor.
+    ///
+    ///
+    ///
+    /// @see {@link IUtxoProcessorArgs}
     #[wasm_bindgen(constructor)]
-    pub async fn ctor(js_value: IUtxoProcessorArgs) -> Result<UtxoProcessor> {
+    pub fn ctor(js_value: IUtxoProcessorArgs) -> Result<UtxoProcessor> {
         let UtxoProcessorCreateArgs { rpc, network_id } = js_value.try_into()?;
         let rpc_api: Arc<DynRpcApi> = rpc.client().clone();
         let rpc_ctl = rpc.client().rpc_ctl().clone();
@@ -94,12 +100,17 @@ impl UtxoProcessor {
             }),
         };
 
-        this.start_notification_task(processor.multiplexer()).await?;
-        processor.start().await?;
-
         Ok(this)
     }
 
+    /// Starts the UtxoProcessor and begins processing UTXO and other notifications.
+    pub async fn start(&self) -> Result<()> {
+        self.start_notification_task(self.inner.processor.multiplexer()).await?;
+        self.inner.processor.start().await?;
+        Ok(())
+    }
+
+    /// Stops the UtxoProcessor and ends processing UTXO and other notifications.
     pub async fn shutdown(&self) -> Result<()> {
         self.inner.processor.stop().await?;
         self.stop_notification_task().await?;
@@ -109,6 +120,17 @@ impl UtxoProcessor {
     #[wasm_bindgen(getter)]
     pub fn rpc(&self) -> RpcClient {
         self.inner.rpc.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = "networkId")]
+    pub fn network_id(&self) -> Option<String> {
+        self.inner.processor.network_id().ok().map(|network_id| network_id.to_string())
+    }
+
+    #[wasm_bindgen(js_name = "setNetworkId")]
+    pub fn set_network_id(&self, network_id: INetworkId) -> Result<()> {
+        self.inner.processor.set_network_id(network_id.try_into()?);
+        Ok(())
     }
 }
 

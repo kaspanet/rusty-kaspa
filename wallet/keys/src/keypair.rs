@@ -61,7 +61,7 @@ impl Keypair {
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
     // pub fn to_address(&self, network_type: NetworkType) -> Result<Address> {
-    pub fn to_address(&self, network: Network) -> Result<Address> {
+    pub fn to_address(&self, network: INetworkType) -> Result<Address> {
         let pk = PublicKey { xonly_public_key: self.xonly_public_key, source: self.public_key.to_string() };
         let address = pk.to_address(network)?;
         Ok(address)
@@ -71,7 +71,7 @@ impl Keypair {
     /// Receives a [`NetworkType`] to determine the prefix of the address.
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddressECDSA)]
-    pub fn to_address_ecdsa(&self, network: Network) -> Result<Address> {
+    pub fn to_address_ecdsa(&self, network: INetworkType) -> Result<Address> {
         let pk = PublicKey { xonly_public_key: self.xonly_public_key, source: self.public_key.to_string() };
         let address = pk.to_address_ecdsa(network)?;
         Ok(address)
