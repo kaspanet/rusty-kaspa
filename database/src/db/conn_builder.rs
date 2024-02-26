@@ -1,5 +1,6 @@
 use crate::db::DB;
-use rocksdb::{DBWithThreadMode, MultiThreaded};
+use rocksdb::{BlockBasedOptions, DBCompressionType, DBWithThreadMode, MultiThreaded};
+use std::thread::available_parallelism;
 use std::{path::PathBuf, sync::Arc};
 
 #[derive(Debug)]
@@ -15,7 +16,7 @@ pub struct ConnBuilder<Path, const STATS_ENABLED: bool, StatsPeriod, FDLimit> {
     stats_period: StatsPeriod,
 }
 
-impl Default for ConnBuilder<Unspecified, false, Unspecified, Unspecified> {
+impl Default for ConnBuilder<Unspecified, true, Unspecified, Unspecified> {
     fn default() -> Self {
         ConnBuilder {
             db_path: Unspecified,
@@ -103,7 +104,50 @@ macro_rules! default_opts {
             opts.increase_parallelism($self.parallelism as i32);
         }
 
-        opts.optimize_level_style_compaction($self.mem_budget);
+        {
+            // based on optimized by default
+            opts.set_max_background_jobs((available_parallelism().unwrap().get() / 2) as i32);
+            opts.set_compaction_readahead_size(2097152);
+            opts.set_level_zero_stop_writes_trigger(36);
+            opts.set_level_zero_slowdown_writes_trigger(20);
+            opts.set_max_compaction_bytes(209715200);
+        }
+        {
+            let buffer_size = 32usize * 1024 * 1024;
+            let min_to_merge = 4i32;
+            let max_buffers = 16;
+            let trigger = 12i32;
+            let max_level_base = min_to_merge as u64 * trigger as u64 * buffer_size as u64;
+
+            opts.set_target_file_size_base(32 * 1024 * 1024);
+            opts.set_max_bytes_for_level_multiplier(4.0);
+
+            opts.set_write_buffer_size(buffer_size);
+            opts.set_max_write_buffer_number(max_buffers);
+            opts.set_min_write_buffer_number_to_merge(min_to_merge);
+            opts.set_level_zero_file_num_compaction_trigger(trigger);
+            opts.set_max_bytes_for_level_base(max_level_base);
+
+            opts.set_wal_bytes_per_sync(1024000); // suggested by advisor
+            opts.set_use_direct_io_for_flush_and_compaction(true); // should decrease write amp
+            opts.set_keep_log_file_num(1); // good for analytics
+            opts.set_bytes_per_sync(1024 * 1024);
+            opts.set_max_total_wal_size(1024 * 1024 * 1024);
+            opts.set_compression_per_level(&[
+                DBCompressionType::None,
+                DBCompressionType::Lz4,
+                DBCompressionType::Lz4,
+                DBCompressionType::Lz4,
+                DBCompressionType::Lz4,
+                DBCompressionType::Lz4,
+                DBCompressionType::Lz4,
+            ]);
+            opts.set_level_compaction_dynamic_level_bytes(true); // default option since 8.4 https://github.com/facebook/rocksdb/wiki/Leveled-Compaction#level_compaction_dynamic_level_bytes-is-true-recommended-default-since-version-84
+
+            let mut b_opts = BlockBasedOptions::default();
+            b_opts.set_bloom_filter(2.0, true); // advisor
+            opts.set_block_based_table_factory(&b_opts);
+        }
         let guard = kaspa_utils::fd_budget::acquire_guard($self.files_limit)?;
         opts.set_max_open_files($self.files_limit);
         opts.create_if_missing($self.create_if_missing);
@@ -113,7 +157,9 @@ macro_rules! default_opts {
 
 impl ConnBuilder<PathBuf, false, Unspecified, i32> {
     pub fn build(self) -> Result<Arc<DB>, kaspa_utils::fd_budget::Error> {
-        let (opts, guard) = default_opts!(self)?;
+        let (mut opts, guard) = default_opts!(self)?;
+        opts.set_report_bg_io_stats(true);
+        opts.enable_statistics();
         let db = Arc::new(DB::new(<DBWithThreadMode<MultiThreaded>>::open(&opts, self.db_path.to_str().unwrap()).unwrap(), guard));
         Ok(db)
     }
@@ -123,6 +169,7 @@ impl ConnBuilder<PathBuf, true, Unspecified, i32> {
     pub fn build(self) -> Result<Arc<DB>, kaspa_utils::fd_budget::Error> {
         let (mut opts, guard) = default_opts!(self)?;
         opts.enable_statistics();
+        opts.set_report_bg_io_stats(true);
         let db = Arc::new(DB::new(<DBWithThreadMode<MultiThreaded>>::open(&opts, self.db_path.to_str().unwrap()).unwrap(), guard));
         Ok(db)
     }
@@ -131,6 +178,7 @@ impl ConnBuilder<PathBuf, true, Unspecified, i32> {
 impl ConnBuilder<PathBuf, true, u32, i32> {
     pub fn build(self) -> Result<Arc<DB>, kaspa_utils::fd_budget::Error> {
         let (mut opts, guard) = default_opts!(self)?;
+
         opts.enable_statistics();
         opts.set_report_bg_io_stats(true);
         opts.set_stats_dump_period_sec(self.stats_period);
