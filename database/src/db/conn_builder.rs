@@ -59,9 +59,19 @@ impl<Path, const STATS_ENABLED: bool, StatsPeriod, FDLimit> ConnBuilder<Path, ST
             stats_period: self.stats_period,
         }
     }
+    pub fn disable_stats(self) -> ConnBuilder<Path, false, Unspecified, FDLimit> {
+        ConnBuilder {
+            db_path: self.db_path,
+            create_if_missing: self.create_if_missing,
+            parallelism: self.parallelism,
+            files_limit: self.files_limit,
+            mem_budget: self.mem_budget,
+            stats_period: Unspecified,
+        }
+    }
 }
 
-impl<Path, FDLimit> ConnBuilder<Path, false, Unspecified, FDLimit> {
+impl<Path, const STATS_ENABLED: bool, FDLimit> ConnBuilder<Path, STATS_ENABLED, Unspecified, FDLimit> {
     pub fn enable_stats(self) -> ConnBuilder<Path, true, Unspecified, FDLimit> {
         ConnBuilder {
             db_path: self.db_path,
@@ -75,16 +85,6 @@ impl<Path, FDLimit> ConnBuilder<Path, false, Unspecified, FDLimit> {
 }
 
 impl<Path, StatsPeriod, FDLimit> ConnBuilder<Path, true, StatsPeriod, FDLimit> {
-    pub fn disable_stats(self) -> ConnBuilder<Path, false, Unspecified, FDLimit> {
-        ConnBuilder {
-            db_path: self.db_path,
-            create_if_missing: self.create_if_missing,
-            parallelism: self.parallelism,
-            files_limit: self.files_limit,
-            mem_budget: self.mem_budget,
-            stats_period: Unspecified,
-        }
-    }
     pub fn with_stats_period(self, stats_period: impl Into<u32>) -> ConnBuilder<Path, true, u32, FDLimit> {
         ConnBuilder {
             db_path: self.db_path,
