@@ -38,7 +38,7 @@ impl Balance {
     #[wasm_bindgen(js_name = "toBalanceStrings")]
     pub fn to_balance_strings(&self, network_type: INetworkType) -> Result<BalanceStrings> {
         let network_type = NetworkType::try_from(network_type)?;
-        Ok(native::BalanceStrings::from((&Some(self.inner.clone()), &network_type, None)).into())
+        Ok(native::BalanceStrings::from((Some(&self.inner), &network_type, None)).into())
     }
 }
 

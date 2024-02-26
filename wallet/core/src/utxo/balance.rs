@@ -140,6 +140,10 @@ impl Balance {
             self.pending_delta = Delta::NoChange;
         }
     }
+
+    pub fn to_balance_strings(&self, network_type: &NetworkType, padding: Option<usize>) -> BalanceStrings {
+        (Some(self), network_type, padding).into()
+    }
 }
 
 #[derive(Default, Debug)]
@@ -181,8 +185,8 @@ pub struct BalanceStrings {
     pub pending: Option<String>,
 }
 
-impl From<(&Option<Balance>, &NetworkType, Option<usize>)> for BalanceStrings {
-    fn from((balance, network_type, padding): (&Option<Balance>, &NetworkType, Option<usize>)) -> Self {
+impl From<(Option<&Balance>, &NetworkType, Option<usize>)> for BalanceStrings {
+    fn from((balance, network_type, padding): (Option<&Balance>, &NetworkType, Option<usize>)) -> Self {
         let suffix = utils::kaspa_suffix(network_type);
         if let Some(balance) = balance {
             let mut mature = utils::sompi_to_kaspa_string(balance.mature);

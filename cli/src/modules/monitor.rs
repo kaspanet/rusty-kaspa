@@ -112,7 +112,7 @@ impl Monitor {
             Events::Balance { balance, id } => {
                 let network_id = wallet.network_id().expect("missing network type");
                 let network_type = NetworkType::from(network_id);
-                let balance_strings = BalanceStrings::from((balance, &network_type, None));
+                let balance_strings = BalanceStrings::from((balance.as_ref(), &network_type, None));
                 let id = id.short();
 
                 let mature_utxo_count =

@@ -109,7 +109,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
     }
 
     fn balance_as_strings(&self, padding: Option<usize>) -> Result<BalanceStrings> {
-        Ok(BalanceStrings::from((&self.balance(), &self.wallet().network_id()?.into(), padding)))
+        Ok(BalanceStrings::from((self.balance().as_ref(), &self.wallet().network_id()?.into(), padding)))
     }
 
     fn name(&self) -> Option<String> {

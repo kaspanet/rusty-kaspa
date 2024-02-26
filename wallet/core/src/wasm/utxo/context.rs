@@ -3,7 +3,7 @@ use crate::result::Result;
 use crate::utxo as native;
 use crate::utxo::{UtxoContextBinding, UtxoContextId};
 use crate::wasm::utxo::UtxoProcessor;
-use crate::wasm::Balance;
+use crate::wasm::{Balance, BalanceStrings};
 use kaspa_addresses::IAddressArray;
 use kaspa_consensus_client::IUtxoEntryReferenceArray;
 use kaspa_hashes::Hash;
@@ -131,7 +131,7 @@ impl UtxoContext {
         self.inner().unregister_addresses(addresses).await
     }
 
-    /// Clear the UtxoContext.  Unregisters all addresses and clears all UTXO entries.
+    /// Clear the UtxoContext.  Unregister all addresses and clear all UTXO entries.
     pub async fn clear(&self) -> Result<()> {
         self.inner().clear().await
     }
@@ -161,7 +161,7 @@ impl UtxoContext {
     ///
     /// UtxoEntries are kept in in the ascending sorted order by their amount.
     ///
-    #[wasm_bindgen(js_name = "matureRange")]
+    #[wasm_bindgen(js_name = "getMatureRange")]
     pub fn mature_range(&self, mut from: usize, mut to: usize) -> Result<IUtxoEntryReferenceArray> {
         let context = self.context();
         if from > to {
@@ -186,12 +186,13 @@ impl UtxoContext {
 
     /// Obtain the length of the mature UTXO entries that are currently
     /// managed by the UtxoContext.
-    #[wasm_bindgen(getter, js_name = "matureLength")]
+    #[wasm_bindgen(getter, js_name = "getMatureLength")]
     pub fn mature_length(&self) -> usize {
         self.context().mature.len()
     }
 
     /// Returns pending UTXO entries that are currently managed by the UtxoContext.
+    #[wasm_bindgen(js_name = "getPending")]
     pub fn pending(&self) -> Result<IUtxoEntryReferenceArray> {
         let context = self.context();
         let array = Array::new();
@@ -202,17 +203,22 @@ impl UtxoContext {
     }
 
     /// Current {@link Balance} of the UtxoContext.
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = "balance")]
     pub fn balance(&self) -> Option<Balance> {
-        // self.inner().balance().map(Balance::from).map(JsValue::from).unwrap_or(JsValue::UNDEFINED)
         self.inner().balance().map(Balance::from)
     }
 
-    // /// Re-calculate the balance of the UtxoContext.
-    // #[wasm_bindgen(js_name=updateBalance)]
-    // pub async fn calculate_balance(&self) -> crate::wasm::Balance {
-    //     self.inner.calculate_balance().await.into()
-    // }
+    /// Current {@link BalanceStrings} of the UtxoContext.
+    #[wasm_bindgen(getter, js_name = "balanceStrings")]
+    pub fn balance_strings(&self) -> Result<Option<BalanceStrings>> {
+        let network_id = self.inner.processor().network_id().ok();
+        if let (Some(network_id), Some(balance)) = (network_id, self.inner().balance()) {
+            let balance_strings = balance.to_balance_strings(&network_id.into(), None);
+            Ok(Some(BalanceStrings::from(balance_strings)))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 impl From<native::UtxoContext> for UtxoContext {
