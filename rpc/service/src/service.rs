@@ -105,6 +105,7 @@ pub struct RpcCoreService {
     wrpc_borsh_counters: Arc<WrpcServerCounters>,
     wrpc_json_counters: Arc<WrpcServerCounters>,
     shutdown: SingleTrigger,
+    core_shutdown_request: SingleTrigger,
     perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
     p2p_tower_counters: Arc<TowerConnectionCounters>,
     grpc_tower_counters: Arc<TowerConnectionCounters>,
@@ -113,6 +114,8 @@ pub struct RpcCoreService {
 const RPC_CORE: &str = "rpc-core";
 
 impl RpcCoreService {
+    pub const IDENT: &'static str = "rpc-core-service";
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         consensus_manager: Arc<ConsensusManager>,
@@ -201,6 +204,7 @@ impl RpcCoreService {
             wrpc_borsh_counters,
             wrpc_json_counters,
             shutdown: SingleTrigger::default(),
+            core_shutdown_request: SingleTrigger::default(),
             perf_monitor,
             p2p_tower_counters,
             grpc_tower_counters,
@@ -212,7 +216,7 @@ impl RpcCoreService {
     }
 
     pub async fn join(&self) -> RpcResult<()> {
-        trace!("{} joining notifier", RPC_CORE_SERVICE);
+        trace!("{} joining notifier", Self::IDENT);
         self.notifier().join().await?;
         Ok(())
     }
@@ -225,6 +229,10 @@ impl RpcCoreService {
     #[inline(always)]
     pub fn subscription_context(&self) -> SubscriptionContext {
         self.notifier.subscription_context().clone()
+    }
+
+    pub fn core_shutdown_request_listener(&self) -> triggered::Listener {
+        self.core_shutdown_request.listener.clone()
     }
 
     async fn get_utxo_set_by_script_public_key<'a>(
@@ -759,11 +767,13 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         }
         warn!("Shutdown RPC command was called, shutting down in 1 second...");
 
+        // Signal the shutdown request
+        self.core_shutdown_request.trigger.trigger();
+
         // Wait for a second before shutting down,
         // giving time for the response to be sent to the caller.
         let core = self.core.clone();
         tokio::spawn(async move {
-            core.trigger_shutdown();
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             core.shutdown();
         });
@@ -927,17 +937,15 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     }
 }
 
-const RPC_CORE_SERVICE: &str = "rpc-core-service";
-
 // It might be necessary to opt this out in the context of wasm32
 
 impl AsyncService for RpcCoreService {
     fn ident(self: Arc<Self>) -> &'static str {
-        RPC_CORE_SERVICE
+        Self::IDENT
     }
 
     fn start(self: Arc<Self>) -> AsyncServiceFuture {
-        trace!("{} starting", RPC_CORE_SERVICE);
+        trace!("{} starting", Self::IDENT);
         let service = self.clone();
 
         // Prepare a shutdown signal receiver
@@ -950,7 +958,7 @@ impl AsyncService for RpcCoreService {
             match service.join().await {
                 Ok(_) => Ok(()),
                 Err(err) => {
-                    warn!("Error while stopping {}: {}", RPC_CORE_SERVICE, err);
+                    warn!("Error while stopping {}: {}", Self::IDENT, err);
                     Err(AsyncServiceError::Service(err.to_string()))
                 }
             }
@@ -958,13 +966,13 @@ impl AsyncService for RpcCoreService {
     }
 
     fn signal_exit(self: Arc<Self>) {
-        trace!("sending an exit signal to {}", RPC_CORE_SERVICE);
+        trace!("sending an exit signal to {}", Self::IDENT);
         self.shutdown.trigger.trigger();
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
         Box::pin(async move {
-            trace!("{} stopped", RPC_CORE_SERVICE);
+            trace!("{} stopped", Self::IDENT);
             Ok(())
         })
     }

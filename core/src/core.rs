@@ -7,8 +7,6 @@ use std::sync::{Arc, Mutex};
 pub struct Core {
     pub keep_running: AtomicBool,
     services: Mutex<Vec<Arc<dyn Service>>>,
-    shutdown_trigger: triggered::Trigger,
-    shutdown_listener: triggered::Listener,
 }
 
 impl Default for Core {
@@ -19,8 +17,7 @@ impl Default for Core {
 
 impl Core {
     pub fn new() -> Core {
-        let (shutdown_trigger, shutdown_listener) = triggered::trigger();
-        Core { keep_running: AtomicBool::new(true), services: Mutex::new(Vec::new()), shutdown_trigger, shutdown_listener }
+        Core { keep_running: AtomicBool::new(true), services: Mutex::new(Vec::new()) }
     }
 
     pub fn bind<T>(&self, service: Arc<T>)
@@ -48,14 +45,6 @@ impl Core {
         }
         trace!("core is starting {} workers", workers.len());
         workers
-    }
-
-    pub fn trigger_shutdown(self: &Arc<Core>) {
-        self.shutdown_trigger.trigger();
-    }
-
-    pub fn shutdown_listener(self: &Arc<Core>) -> triggered::Listener {
-        self.shutdown_listener.clone()
     }
 
     /// Join workers previously returned from `start`

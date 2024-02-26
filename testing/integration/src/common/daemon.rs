@@ -1,9 +1,11 @@
 use kaspa_consensus_core::network::NetworkId;
-use kaspa_core::{core::Core, signals::Shutdown};
+use kaspa_core::{core::Core, signals::Shutdown, task::runtime::AsyncRuntime};
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::{address::tracker::DEFAULT_TRACKER_CAPACITY, subscription::context::SubscriptionContext};
 use kaspa_rpc_core::notify::mode::NotificationMode;
+use kaspa_rpc_service::service::RpcCoreService;
+use kaspa_utils::triggers::Listener;
 use kaspad_lib::{args::Args, daemon::create_core_with_runtime};
 use parking_lot::RwLock;
 use std::{ops::Deref, sync::Arc, time::Duration};
@@ -84,6 +86,7 @@ pub struct Daemon {
     client_manager: Arc<ClientManager>,
 
     pub core: Arc<Core>,
+    shutdown_requested: Listener,
     workers: Option<Vec<std::thread::JoinHandle<()>>>,
 
     _appdir_tempdir: TempDir,
@@ -131,11 +134,18 @@ impl Daemon {
         let appdir_tempdir = get_kaspa_tempdir();
         client_manager.args.write().appdir = Some(appdir_tempdir.path().to_str().unwrap().to_owned());
         let (core, _) = create_core_with_runtime(&Default::default(), &client_manager.args.read(), fd_total_budget);
-        Daemon { client_manager, core, workers: None, _appdir_tempdir: appdir_tempdir }
+        let async_service = &Arc::downcast::<AsyncRuntime>(core.find(AsyncRuntime::IDENT).unwrap().arc_any()).unwrap();
+        let rpc_core_service = &Arc::downcast::<RpcCoreService>(async_service.find(RpcCoreService::IDENT).unwrap().arc_any()).unwrap();
+        let shutdown_requested = rpc_core_service.core_shutdown_request_listener();
+        Daemon { client_manager, core, shutdown_requested, workers: None, _appdir_tempdir: appdir_tempdir }
     }
 
     pub fn client_manager(&self) -> Arc<ClientManager> {
         self.client_manager.clone()
+    }
+
+    pub fn shutdown_requested(&self) -> Listener {
+        self.shutdown_requested.clone()
     }
 
     pub fn run(&mut self) {

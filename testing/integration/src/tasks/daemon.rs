@@ -138,7 +138,7 @@ impl Task for DaemonTask {
 
             tokio::select! {
                 biased;
-                _ = daemon.core.shutdown_listener() => {
+                _ = daemon.shutdown_requested() => {
                     trace!("Daemon core shutdown was requested");
                     warn!("Daemon task signaling to stop");
                     stop_signal.trigger.trigger();

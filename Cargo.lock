@@ -2919,6 +2919,7 @@ dependencies = [
  "kaspa-utxoindex",
  "log",
  "tokio",
+ "triggered",
  "workflow-rpc",
 ]
 
@@ -2958,6 +2959,7 @@ dependencies = [
  "kaspa-notify",
  "kaspa-pow",
  "kaspa-rpc-core",
+ "kaspa-rpc-service",
  "kaspa-txscript",
  "kaspa-txscript-errors",
  "kaspa-utils",
