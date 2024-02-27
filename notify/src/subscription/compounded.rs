@@ -168,7 +168,7 @@ impl UtxosChangedSubscription {
         self.indexes
             .iter()
             .filter_map(|(&index, &count)| {
-                (count > 0).then_some(()).and_then(|_| context.address_tracker.get_index_address(index, prefix))
+                (count > 0).then_some(()).and_then(|_| context.address_tracker.get_address_at_index(index, prefix))
             })
             .collect_vec()
     }

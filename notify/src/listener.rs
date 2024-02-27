@@ -48,9 +48,9 @@ where
                 debug!(
                     "Creating a static listener {} with UtxosChanged capacity of {}",
                     connection,
-                    context.address_tracker.max_capacity().unwrap_or_default()
+                    context.address_tracker.max_addresses().unwrap_or_default()
                 );
-                context.address_tracker.max_capacity()
+                context.address_tracker.max_addresses()
             }
             UtxosChangedMutationPolicy::AllOrNothing => None,
         };

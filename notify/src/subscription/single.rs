@@ -274,7 +274,7 @@ impl UtxosChangedSubscriptionData {
     }
 
     pub fn to_addresses(&self, prefix: Prefix, context: &SubscriptionContext) -> Vec<Address> {
-        self.indexes.iter().filter_map(|index| context.address_tracker.get_index_address(*index, prefix)).collect_vec()
+        self.indexes.iter().filter_map(|index| context.address_tracker.get_address_at_index(*index, prefix)).collect_vec()
     }
 
     pub fn register(&mut self, addresses: Vec<Address>, context: &SubscriptionContext) -> Result<Vec<Address>> {

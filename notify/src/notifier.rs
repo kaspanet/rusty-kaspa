@@ -267,7 +267,7 @@ where
             subscribers.iter().filter(|&x| x.enabled_events()[event]).cloned().collect_vec()
         });
         let utxos_changed_capacity = match policies.utxo_changed {
-            UtxosChangedMutationPolicy::AddressSet => subscription_context.address_tracker.max_capacity(),
+            UtxosChangedMutationPolicy::AddressSet => subscription_context.address_tracker.max_addresses(),
             UtxosChangedMutationPolicy::AllOrNothing => None,
         };
         Self {
