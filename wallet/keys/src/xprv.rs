@@ -19,8 +19,8 @@ pub struct XPrv {
 #[wasm_bindgen]
 impl XPrv {
     #[wasm_bindgen(constructor)]
-    pub fn new(seed: String) -> Result<XPrv> {
-        let seed_bytes = Vec::<u8>::from_hex(&seed).map_err(|_| Error::custom("Invalid seed"))?;
+    pub fn try_new(seed: HexString) -> Result<XPrv> {
+        let seed_bytes = Vec::<u8>::from_hex(String::try_from(seed)?.as_str()).map_err(|_| Error::custom("Invalid seed"))?;
 
         let inner = ExtendedPrivateKey::<SecretKey>::new(seed_bytes)?;
         Ok(Self { inner })
@@ -59,7 +59,39 @@ impl XPrv {
 
     #[wasm_bindgen(js_name = toXPub)]
     pub fn to_xpub(&self) -> Result<XPub> {
-        let publick_key = self.inner.public_key();
-        Ok(publick_key.into())
+        let public_key = self.inner.public_key();
+        Ok(public_key.into())
+    }
+}
+
+impl From<XPrv> for ExtendedPrivateKey<SecretKey> {
+    fn from(xprv: XPrv) -> Self {
+        xprv.inner
+    }
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "XPrv | string")]
+    pub type XPrvT;
+}
+
+impl TryFrom<XPrvT> for XPrv {
+    type Error = Error;
+    fn try_from(value: XPrvT) -> std::result::Result<Self, Self::Error> {
+        if let Some(xprv) = value.as_string() {
+            Ok(XPrv::from_xprv_str(xprv)?)
+        } else if let Ok(xprv) = XPrv::try_from_js_value(value.into()) {
+            Ok(xprv)
+        } else {
+            Err(Error::InvalidXPrv)
+        }
+    }
+}
+
+impl TryFrom<XPrvT> for ExtendedPrivateKey<SecretKey> {
+    type Error = Error;
+    fn try_from(value: XPrvT) -> std::result::Result<Self, Self::Error> {
+        XPrv::try_from(value).map(Into::into)
     }
 }

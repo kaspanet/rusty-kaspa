@@ -2,10 +2,9 @@ use crate::account as native;
 use crate::imports::*;
 use crate::tx::PaymentOutputs;
 use crate::wasm::utxo::UtxoContext;
-use kaspa_consensus_core::network::INetworkType;
+use kaspa_consensus_core::network::NetworkTypeT;
 use kaspa_wallet_keys::keypair::Keypair;
 use workflow_core::abortable::Abortable;
-use workflow_wasm::abi::ref_from_abi;
 
 /// @category Wallet API
 #[wasm_bindgen(inspectable)]
@@ -47,7 +46,7 @@ impl Account {
     }
 
     #[wasm_bindgen(js_name = balanceStrings)]
-    pub fn balance_strings(&self, network_type: INetworkType) -> Result<JsValue> {
+    pub fn balance_strings(&self, network_type: NetworkTypeT) -> Result<JsValue> {
         match self.inner.balance() {
             Some(balance) => Ok(crate::wasm::Balance::from(balance).to_balance_strings(network_type)?.into()),
             None => Ok(JsValue::UNDEFINED),
@@ -98,7 +97,7 @@ impl From<Account> for Arc<dyn native::Account> {
 impl TryFrom<JsValue> for Account {
     type Error = Error;
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
-        Ok(ref_from_abi!(Account, &js_value)?)
+        Ok(Account::try_from_js_value(js_value)?)
     }
 }
 

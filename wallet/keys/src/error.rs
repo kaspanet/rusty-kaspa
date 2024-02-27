@@ -39,6 +39,12 @@ pub enum Error {
 
     #[error("Invalid account type (must be one of: bip32|multisig|legacy")]
     InvalidAccountKind,
+
+    #[error("Invalid XPrv (must be a string or an instance of XPrv)")]
+    InvalidXPrv,
+
+    #[error("Invalid XPub (must be a string or an instance of XPub)")]
+    InvalidXPub,
 }
 
 impl Error {

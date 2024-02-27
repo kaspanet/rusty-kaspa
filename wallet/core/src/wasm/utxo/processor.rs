@@ -4,7 +4,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::utxo as native;
 use crate::wasm::notify::{UtxoProcessorEventTarget, UtxoProcessorNotificationCallback, UtxoProcessorNotificationTypeOrCallback};
-use kaspa_consensus_core::network::INetworkId;
+use kaspa_consensus_core::network::NetworkIdT;
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 use kaspa_wasm_core::events::{get_event_targets, Sink};
 use kaspa_wrpc_wasm::RpcClient;
@@ -128,7 +128,7 @@ impl UtxoProcessor {
     }
 
     #[wasm_bindgen(js_name = "setNetworkId")]
-    pub fn set_network_id(&self, network_id: INetworkId) -> Result<()> {
+    pub fn set_network_id(&self, network_id: NetworkIdT) -> Result<()> {
         self.inner.processor.set_network_id(network_id.try_into()?);
         Ok(())
     }

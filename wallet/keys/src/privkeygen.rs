@@ -20,8 +20,8 @@ pub struct PrivateKeyGenerator {
 #[wasm_bindgen]
 impl PrivateKeyGenerator {
     #[wasm_bindgen(constructor)]
-    pub fn new(xprv: &str, is_multisig: bool, account_index: u64, cosigner_index: Option<u32>) -> Result<PrivateKeyGenerator> {
-        let xkey = ExtendedPrivateKey::<SecretKey>::from_str(xprv)?;
+    pub fn new(xprv: XPrvT, is_multisig: bool, account_index: u64, cosigner_index: Option<u32>) -> Result<PrivateKeyGenerator> {
+        let xkey = ExtendedPrivateKey::<SecretKey>::try_from(xprv)?;
         let receive = xkey.clone().derive_path(WalletDerivationManager::build_derivate_path(
             is_multisig,
             account_index,

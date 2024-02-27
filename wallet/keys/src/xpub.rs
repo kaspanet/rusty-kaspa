@@ -19,7 +19,7 @@ pub struct XPub {
 #[wasm_bindgen]
 impl XPub {
     #[wasm_bindgen(constructor)]
-    pub fn new(xpub: &str) -> Result<XPub> {
+    pub fn try_new(xpub: &str) -> Result<XPub> {
         let inner = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(xpub)?;
         Ok(Self { inner })
     }
@@ -53,5 +53,37 @@ impl XPub {
 impl From<ExtendedPublicKey<secp256k1::PublicKey>> for XPub {
     fn from(inner: ExtendedPublicKey<secp256k1::PublicKey>) -> Self {
         Self { inner }
+    }
+}
+
+impl From<XPub> for ExtendedPublicKey<secp256k1::PublicKey> {
+    fn from(xpub: XPub) -> Self {
+        xpub.inner
+    }
+}
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "XPub | string")]
+    pub type XPubT;
+}
+
+impl TryFrom<XPubT> for XPub {
+    type Error = Error;
+    fn try_from(value: XPubT) -> std::result::Result<Self, Self::Error> {
+        if let Some(xpub) = value.as_string() {
+            Ok(XPub::try_new(xpub.as_str())?)
+        } else if let Ok(xpub) = XPub::try_from_js_value(value.into()) {
+            Ok(xpub)
+        } else {
+            Err(Error::InvalidXPub)
+        }
+    }
+}
+
+impl TryFrom<XPubT> for ExtendedPublicKey<secp256k1::PublicKey> {
+    type Error = Error;
+    fn try_from(value: XPubT) -> std::result::Result<Self, Self::Error> {
+        XPub::try_from(value).map(Into::into)
     }
 }

@@ -20,7 +20,6 @@
 use crate::imports::*;
 use secp256k1::{Secp256k1, XOnlyPublicKey};
 use serde_wasm_bindgen::to_value;
-use workflow_wasm::abi::*;
 
 /// Data structure that contains a secret and public keys.
 /// @category Wallet SDK
@@ -61,8 +60,8 @@ impl Keypair {
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
     // pub fn to_address(&self, network_type: NetworkType) -> Result<Address> {
-    pub fn to_address(&self, network: INetworkType) -> Result<Address> {
-        let pk = PublicKey { xonly_public_key: self.xonly_public_key, source: self.public_key.to_string() };
+    pub fn to_address(&self, network: NetworkTypeT) -> Result<Address> {
+        let pk = PublicKey { xonly_public_key: self.xonly_public_key };
         let address = pk.to_address(network)?;
         Ok(address)
     }
@@ -71,8 +70,8 @@ impl Keypair {
     /// Receives a [`NetworkType`] to determine the prefix of the address.
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddressECDSA)]
-    pub fn to_address_ecdsa(&self, network: INetworkType) -> Result<Address> {
-        let pk = PublicKey { xonly_public_key: self.xonly_public_key, source: self.public_key.to_string() };
+    pub fn to_address_ecdsa(&self, network: NetworkTypeT) -> Result<Address> {
+        let pk = PublicKey { xonly_public_key: self.xonly_public_key };
         let address = pk.to_address_ecdsa(network)?;
         Ok(address)
     }
@@ -102,6 +101,6 @@ impl Keypair {
 impl TryFrom<JsValue> for Keypair {
     type Error = Error;
     fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
-        Ok(ref_from_abi!(Keypair, &value)?)
+        Ok(Keypair::try_from_js_value(value)?)
     }
 }

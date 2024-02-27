@@ -1,5 +1,5 @@
 use crate::result::Result;
-use kaspa_consensus_core::network::{INetworkType, NetworkType};
+use kaspa_consensus_core::network::{NetworkType, NetworkTypeT};
 use wasm_bindgen::prelude::*;
 use workflow_wasm::prelude::*;
 
@@ -50,7 +50,7 @@ pub fn sompi_to_kaspa_string(sompi: ISompiToKaspa) -> Result<String> {
 /// @category Wallet SDK
 ///
 #[wasm_bindgen(js_name = "sompiToKaspaStringWithSuffix")]
-pub fn sompi_to_kaspa_string_with_suffix(sompi: ISompiToKaspa, network: INetworkType) -> Result<String> {
+pub fn sompi_to_kaspa_string_with_suffix(sompi: ISompiToKaspa, network: NetworkTypeT) -> Result<String> {
     let sompi = sompi.try_as_u64()?;
     let network_type = NetworkType::try_from(network)?;
     Ok(crate::utils::sompi_to_kaspa_string_with_suffix(sompi, &network_type))

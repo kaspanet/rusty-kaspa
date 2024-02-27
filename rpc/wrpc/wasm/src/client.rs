@@ -4,8 +4,8 @@ use crate::imports::*;
 use crate::Resolver;
 use crate::{RpcEventCallback, RpcEventType, RpcEventTypeOrCallback};
 use js_sys::{Function, Object};
-use kaspa_addresses::{Address, IAddressArray};
-use kaspa_consensus_core::network::{INetworkType, NetworkType};
+use kaspa_addresses::{Address, AddressArrayT};
+use kaspa_consensus_core::network::{NetworkType, NetworkTypeT};
 use kaspa_notify::events::EventType;
 use kaspa_notify::notification::Notification as NotificationT;
 use kaspa_rpc_core::api::ctl;
@@ -48,7 +48,7 @@ declare! {
          * Network identifier: `mainnet`, `testnet-10` etc.
          * `networkId` is required when using a resolver.
          */
-        networkId?: NetworkId;
+        networkId?: NetworkId | string;
     }
     "#,
 }
@@ -658,7 +658,7 @@ impl RpcClient {
 #[wasm_bindgen]
 impl RpcClient {
     #[wasm_bindgen(js_name = "defaultPort")]
-    pub fn default_port(encoding: WrpcEncoding, network: INetworkType) -> Result<u16> {
+    pub fn default_port(encoding: WrpcEncoding, network: NetworkTypeT) -> Result<u16> {
         let network_type = NetworkType::try_from(network)?;
         match encoding {
             WrpcEncoding::Borsh => Ok(network_type.default_borsh_rpc_port()),
@@ -727,7 +727,7 @@ impl RpcClient {
     /// Kaspa BlockDAG. The event notification will be scoped to the
     /// provided list of addresses.
     #[wasm_bindgen(js_name = subscribeUtxosChanged)]
-    pub async fn subscribe_utxos_changed(&self, addresses: IAddressArray) -> Result<()> {
+    pub async fn subscribe_utxos_changed(&self, addresses: AddressArrayT) -> Result<()> {
         let addresses: Vec<Address> = addresses.try_into()?;
         self.inner.client.start_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
         Ok(())
@@ -736,7 +736,7 @@ impl RpcClient {
     /// Unsubscribe from UTXOs changed notification event
     /// for a specific set of addresses.
     #[wasm_bindgen(js_name = unsubscribeUtxosChanged)]
-    pub async fn unsubscribe_utxos_changed(&self, addresses: IAddressArray) -> Result<()> {
+    pub async fn unsubscribe_utxos_changed(&self, addresses: AddressArrayT) -> Result<()> {
         let addresses: Vec<Address> = addresses.try_into()?;
         self.inner.client.stop_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
         Ok(())

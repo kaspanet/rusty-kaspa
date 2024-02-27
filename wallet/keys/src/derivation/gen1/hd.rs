@@ -50,18 +50,12 @@ impl PubkeyDerivationManager {
 
     pub fn derive_pubkey_range(&self, indexes: std::ops::Range<u32>) -> Result<Vec<secp256k1::PublicKey>> {
         let list = indexes.map(|index| self.derive_pubkey(index)).collect::<Vec<_>>();
-        // let keys = join_all(list).into_iter().collect::<Result<Vec<_>>>()?;
         let keys = list.into_iter().collect::<Result<Vec<_>>>()?;
         Ok(keys)
     }
 
     pub fn derive_pubkey(&self, index: u32) -> Result<secp256k1::PublicKey> {
         let (key, _chain_code) = WalletDerivationManager::derive_public_key_child(&self.public_key, index, self.hmac.clone())?;
-
-        // let pubkey = &key.to_bytes()[1..];
-        // // - TODO - where should the address prefix come from?
-        // let address = Address::new(self.address_prefix, self.address_version, pubkey);
-
         Ok(key)
     }
 

@@ -7,7 +7,7 @@ pub use async_trait::async_trait;
 pub use cfg_if::cfg_if;
 pub use futures::*;
 pub use js_sys::Function;
-pub use kaspa_consensus_core::network::{INetworkId, NetworkId};
+pub use kaspa_consensus_core::network::{NetworkId, NetworkIdT};
 pub use kaspa_notify::{
     error::{Error as NotifyError, Result as NotifyResult},
     events::EVENT_TYPE_ARRAY,

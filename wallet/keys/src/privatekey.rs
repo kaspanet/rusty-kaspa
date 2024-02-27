@@ -5,7 +5,6 @@
 use crate::imports::*;
 use crate::keypair::Keypair;
 use js_sys::{Array, Uint8Array};
-use workflow_wasm::abi::*;
 
 /// Data structure that envelops a Private Key.
 /// @category Wallet SDK
@@ -73,7 +72,7 @@ impl TryFrom<JsValue> for PrivateKey {
             let array = Uint8Array::new(&js_value);
             Self::try_from_slice(array.to_vec().as_slice())
         } else {
-            Ok(ref_from_abi!(PrivateKey, &js_value)?)
+            Ok(PrivateKey::try_from_js_value(js_value)?)
         }
     }
 }

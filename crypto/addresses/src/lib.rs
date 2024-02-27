@@ -31,6 +31,9 @@ pub enum AddressError {
     #[error("The address is invalid")]
     InvalidAddress,
 
+    #[error("The address array is invalid")]
+    InvalidAddressArray,
+
     #[error("{0}")]
     WASM(String),
 }
@@ -520,13 +523,17 @@ impl TryFrom<JsValue> for Address {
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(extends = js_sys::Array, typescript_type = "Address[] | string[]")]
-    pub type IAddressArray;
+    pub type AddressArrayT;
 }
 
-impl TryFrom<IAddressArray> for Vec<Address> {
+impl TryFrom<AddressArrayT> for Vec<Address> {
     type Error = AddressError;
-    fn try_from(js_value: IAddressArray) -> Result<Self, Self::Error> {
-        js_value.iter().map(Address::try_from).collect::<Result<Vec<Address>, AddressError>>()
+    fn try_from(js_value: AddressArrayT) -> Result<Self, Self::Error> {
+        if js_value.is_array() {
+            js_value.iter().map(Address::try_from).collect::<Result<Vec<Address>, AddressError>>()
+        } else {
+            Err(AddressError::InvalidAddressArray)
+        }
     }
 }
 

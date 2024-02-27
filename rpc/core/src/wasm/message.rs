@@ -5,7 +5,7 @@ use crate::error::RpcResult as Result;
 use crate::model::*;
 use js_sys::Object;
 use kaspa_addresses::Address;
-use kaspa_addresses::IAddressArray;
+use kaspa_addresses::AddressArrayT;
 use kaspa_consensus_client::Transaction;
 use kaspa_consensus_wasm::SignableTransaction;
 use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;
@@ -652,6 +652,7 @@ try_from! ( args: GetBalanceByAddressResponse, IGetBalanceByAddressResponse, {
 
 declare! {
     IGetBalancesByAddressesRequest,
+    "IGetBalancesByAddressesRequest | Address[] | string[]",
     r#"
     /**
      * 
@@ -666,10 +667,9 @@ declare! {
 
 try_from! ( args: IGetBalancesByAddressesRequest, GetBalancesByAddressesRequest, {
     let js_value = JsValue::from(args);
-    let request = if let Ok(addresses) = Vec::<Address>::try_from(IAddressArray::from(js_value.clone())) {
+    let request = if let Ok(addresses) = Vec::<Address>::try_from(AddressArrayT::from(js_value.clone())) {
         GetBalancesByAddressesRequest { addresses }
     } else {
-        // TODO - evaluate Object property
         from_value::<GetBalancesByAddressesRequest>(js_value)?
     };
     Ok(request)
@@ -1111,7 +1111,7 @@ declare! {
 
 try_from! ( args: IGetUtxosByAddressesRequest, GetUtxosByAddressesRequest, {
     let js_value = JsValue::from(args);
-    let request = if let Ok(addresses) = Vec::<Address>::try_from(IAddressArray::from(js_value.clone())) {
+    let request = if let Ok(addresses) = Vec::<Address>::try_from(AddressArrayT::from(js_value.clone())) {
         GetUtxosByAddressesRequest { addresses }
     } else {
         from_value::<GetUtxosByAddressesRequest>(js_value)?

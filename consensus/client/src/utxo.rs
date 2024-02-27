@@ -33,7 +33,7 @@ export interface IUtxoEntry {
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(extends = Array, typescript_type = "UtxoEntryReference[]")]
-    pub type IUtxoEntryReferenceArray;
+    pub type UtxoEntryReferenceArrayT;
 }
 
 pub type UtxoEntryId = TransactionOutpointInner;
