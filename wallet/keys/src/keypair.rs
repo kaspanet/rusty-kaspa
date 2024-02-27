@@ -39,14 +39,14 @@ impl Keypair {
 
     /// Get the [`PublicKey`] of this [`Keypair`].
     #[wasm_bindgen(getter = publicKey)]
-    pub fn get_public_key(&self) -> JsValue {
-        to_value(&self.public_key).unwrap()
+    pub fn get_public_key(&self) -> String {
+        PublicKey::from(&self.public_key).to_string()
     }
 
     /// Get the [`PrivateKey`] of this [`Keypair`].
     #[wasm_bindgen(getter = privateKey)]
-    pub fn get_private_key(&self) -> PrivateKey {
-        (&self.secret_key).into()
+    pub fn get_private_key(&self) -> String {
+        PrivateKey::from(&self.secret_key).to_hex()
     }
 
     /// Get the `XOnlyPublicKey` of this [`Keypair`].
@@ -61,8 +61,8 @@ impl Keypair {
     #[wasm_bindgen(js_name = toAddress)]
     // pub fn to_address(&self, network_type: NetworkType) -> Result<Address> {
     pub fn to_address(&self, network: NetworkTypeT) -> Result<Address> {
-        let pk = PublicKey { xonly_public_key: self.xonly_public_key };
-        let address = pk.to_address(network)?;
+        let payload = &self.xonly_public_key.serialize();
+        let address = Address::new(network.try_into()?, AddressVersion::PubKey, payload);
         Ok(address)
     }
 
@@ -71,8 +71,8 @@ impl Keypair {
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddressECDSA)]
     pub fn to_address_ecdsa(&self, network: NetworkTypeT) -> Result<Address> {
-        let pk = PublicKey { xonly_public_key: self.xonly_public_key };
-        let address = pk.to_address_ecdsa(network)?;
+        let payload = &self.xonly_public_key.serialize();
+        let address = Address::new(network.try_into()?, AddressVersion::PubKeyECDSA, payload);
         Ok(address)
     }
 

@@ -44,7 +44,7 @@ impl XPub {
         Ok(self.inner.to_string(Some(prefix.try_into()?)))
     }
 
-    #[wasm_bindgen(js_name = publicKey)]
+    #[wasm_bindgen(js_name = toPublicKey)]
     pub fn public_key(&self) -> PublicKey {
         self.inner.public_key().into()
     }

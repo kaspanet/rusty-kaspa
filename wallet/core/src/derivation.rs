@@ -6,6 +6,7 @@ use kaspa_wallet_keys::derivation::gen0::{PubkeyDerivationManagerV0, WalletDeriv
 use kaspa_wallet_keys::derivation::gen1::{PubkeyDerivationManager, WalletDerivationManager};
 
 pub use kaspa_wallet_keys::derivation::traits::*;
+use kaspa_wallet_keys::publickey::{PublicKey, PublicKeyArrayT, PublicKeyT};
 pub use kaspa_wallet_keys::types::*;
 
 use crate::account::create_private_keys;
@@ -455,16 +456,10 @@ pub fn create_multisig_address(
     Ok(address)
 }
 
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(extends = js_sys::Array, typescript_type="Array<string>")]
-    pub type PublicKeys;
-}
-
 /// @category Wallet SDK
 #[wasm_bindgen(js_name=createAddress)]
 pub fn create_address_js(
-    key: &str,
+    key: PublicKeyT,
     network_type: NetworkType,
     ecdsa: Option<bool>,
     account_kind: Option<AccountKind>,
@@ -477,12 +472,13 @@ pub fn create_address_js(
 #[wasm_bindgen(js_name=createMultisigAddress)]
 pub fn create_multisig_address_js(
     minimum_signatures: usize,
-    keys: PublicKeys,
+    keys: PublicKeyArrayT,
     network_type: NetworkType,
     ecdsa: Option<bool>,
     account_kind: Option<AccountKind>,
 ) -> Result<Address> {
-    let keys: Vec<secp256k1::PublicKey> = from_value(keys.into())?;
+    let keys = Vec::<PublicKey>::try_from(keys)?;
+    let keys = keys.into_iter().map(|pk| pk.try_into().map_err(Into::into)).collect::<Result<Vec<secp256k1::PublicKey>>>()?;
     create_address(minimum_signatures, keys, network_type.into(), ecdsa.unwrap_or(false), account_kind)
 }
 

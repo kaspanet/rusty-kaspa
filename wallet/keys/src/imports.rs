@@ -6,7 +6,7 @@
 pub use crate::derivation_path::DerivationPath;
 pub use crate::error::Error;
 pub use crate::privatekey::PrivateKey;
-pub use crate::publickey::PublicKey;
+pub use crate::publickey::{PublicKey, PublicKeyArrayT};
 pub use crate::result::Result;
 pub use crate::xprv::XPrvT;
 pub use crate::xpub::XPub;

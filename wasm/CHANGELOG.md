@@ -1,18 +1,27 @@
+Latest online documentation available at: https://kaspa.aspectron.org/docs/
+
 ### Latest
 
-- Add UtxoProcessor.start()/stop() methods for explicit start/stop of the UtxoProcessor event processing.
+- Changed `XPub.publicKey()` to `XPub.toPublicKey()`
+- Most functions returning key strings now return `PrivateKey` or `PublicKey`; this allows function chaining `xpub.deriveChild(0).toPublicKey().toAddress(networkId).toString()`
+- `PrivateKey` now has `toPublicKey()`, `toAddress()`, `toAddressECDSA()` methods
+- Introduce `XOnlyPublicKey` which can be obtained from `PublicKey`: `xpub.toXOnlyPublicKey()` and `xpub.toXOnlyPublicKey().toAddress(networkId)`. 
+
+### Release 2024-02-26
+
+- Add `UtxoProcessor.start()/stop()` methods for explicit start/stop of the `UtxoProcessor` event processing.
 - Remove `async` markers from UtxoProcessor and UtxoContext constructors.
-- Add UtxoProcessor.setNetworkId() method to change the network ID for existing UtxoProcessor (UtxoProcessor must be stopped before changing the network id).
-- Add UtxoProcessor.networkId property to get the current network ID.
-- Add UtxoContext.matureLength() and matureRange(from,to) for access to mature UTXO entries.
+- Add `UtxoProcessor.setNetworkId()` method to change the network ID for existing `UtxoProcessor` (`UtxoProcessor` must be stopped before changing the network id).
+- Add `UtxoProcessor.networkId` property to get the current network ID.
+- Add `UtxoContext.matureLength()` and `matureRange(from,to)` for access to mature UTXO entries.
 
 
 ### Release 2024-02-25
 
 #### Event Listener API updates
 - Event Listener API has been refactored to mimic DOM standard (similar to `addEventListener` / `removeEventListener` available in the browser, but with additional features)
-- replace RpcClient.notify() with RpcClient.addEventListener() / RpcClient.removeEventListener()
-- addEventListener() calls have been standardized between RPC, UtxoProcessor, Wallet
+- replace `RpcClient.notify()` with `RpcClient.addEventListener()` / `RpcClient.removeEventListener()`
+- `addEventListener()` calls have been standardized between RPC, UtxoProcessor, Wallet
 - You can now register multiple listeners for the same event type and unregister them individually
 - A single registration can accept an array of events to listen to e.g. `["open", "close"]`
 
@@ -27,9 +36,8 @@
 
 - Fix large RPC response deserialization errors in NodeJS caused by the default WebSocket frame size limit.
 - Fix event processing in UtxoContext
-- Renamed XPrivateKey to PrivateKeyGenerator and XPublicKey to PublicKeyGenerator
-- Renamed RpcClient.notify() to RpcClient.registerListener() / RpcClient.removeListener()
-- Simplify conversion between different key types (XPrv->Keypair, XPrv->XPub->Pubkey, etc)
+- Renamed `XPrivateKey` to `PrivateKeyGenerator` and `XPublicKey` to `PublicKeyGenerator`
+- Simplify conversion between different key types (`XPrv->Keypair`, `XPrv->XPub->Pubkey`, etc)
 - Introduced `Beacon` class that provides connectivity to the community-operated public node infrastructure (backed by `kaspa-beacon` load balancer & node status monitor)
 - Created TypeScript type definitions across the entire SDK and refactored `RpcClient` class (as well as many other components) to use TypeScript interfaces
 - Changed documentation structure to use `typedoc` available as a part of redistributables or online at https://kaspa.aspectron.org/docs/

@@ -61,6 +61,35 @@ impl PrivateKey {
     pub fn to_keypair(&self) -> Result<Keypair, JsError> {
         Keypair::from_private_key(self)
     }
+
+    #[wasm_bindgen(js_name = toPublicKey)]
+    pub fn to_public_key(&self) -> Result<PublicKey, JsError> {
+        Ok(PublicKey::from(secp256k1::PublicKey::from_secret_key_global(&self.inner)))
+    }
+
+    /// Get the [`Address`] of the PublicKey generated from this PrivateKey.
+    /// Receives a [`NetworkType`] to determine the prefix of the address.
+    /// JavaScript: `let address = privateKey.toAddress(NetworkType.MAINNET);`.
+    #[wasm_bindgen(js_name = toAddress)]
+    pub fn to_address(&self, network: NetworkTypeT) -> Result<Address> {
+        let public_key = secp256k1::PublicKey::from_secret_key_global(&self.inner);
+        let (x_only_public_key, _) = public_key.x_only_public_key();
+        let payload = x_only_public_key.serialize();
+        let address = Address::new(network.try_into()?, AddressVersion::PubKey, &payload);
+        Ok(address)
+    }
+
+    /// Get `ECDSA` [`Address`] of the PublicKey generated from this PrivateKey.
+    /// Receives a [`NetworkType`] to determine the prefix of the address.
+    /// JavaScript: `let address = privateKey.toAddress(NetworkType.MAINNET);`.
+    #[wasm_bindgen(js_name = toAddressECDSA)]
+    pub fn to_address_ecdsa(&self, network: NetworkTypeT) -> Result<Address> {
+        let public_key = secp256k1::PublicKey::from_secret_key_global(&self.inner);
+        let (x_only_public_key, _) = public_key.x_only_public_key();
+        let payload = x_only_public_key.serialize();
+        let address = Address::new(network.try_into()?, AddressVersion::PubKeyECDSA, &payload);
+        Ok(address)
+    }
 }
 
 impl TryFrom<JsValue> for PrivateKey {

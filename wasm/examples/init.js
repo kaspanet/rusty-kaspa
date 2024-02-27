@@ -70,16 +70,11 @@ function createConfigFile() {
     }
     let networkId = network ?? "testnet-11";
 
-    // console.log("Creating Mnemonic:", Mnemonic.random());
-    // console.log("Mnemonic:", Mnemonic);
     let wallet = basicWallet(networkId, Mnemonic.random());
 
     let config = {
         networkId,
         mnemonic: wallet.mnemonic.phrase,
-        // xprv: wallet.xprv,
-        // receive: wallet.receive,
-        // change: wallet.change,
     };
     fs.writeFileSync(configFileName, JSON.stringify(config, null, 4));
     console.log("");
@@ -94,29 +89,15 @@ function createConfigFile() {
 }
 
 function basicWallet(networkId, mnemonic) {
-    console.log("mnemonic:", Mnemonic);
     console.log("mnemonic:", mnemonic.phrase);
     let xprv = new XPrv(mnemonic.toSeed());
-    let account_0 = xprv.derivePath("m/44'/111111'/0'/0").toXPub();
-    let receive_xpub = account_0.deriveChild(0);
-    // console.log("receive_xpub:", receive_xpub.toString());
-    let change_xpub = account_0.deriveChild(1);
-    // console.log("change_xpub:", change_xpub.toString());
-
-    let receive_pubkey = receive_xpub.deriveChild(0).publicKey();
-    let change_pubkey = change_xpub.deriveChild(0).publicKey();
-    // console.log("receive_pubkey:", receive_pubkey.toString());
-    // console.log("change_pubkey:", change_pubkey.toString());
-
-    let receive = receive_pubkey.toAddress(networkId).toString();
-    let change = change_pubkey.toAddress(networkId).toString();
-    // console.log("receive_address:", receive_address);
-    // console.log("change_address:", change_address);
-    // account_0.deriveChild(0).toAddress(networkId);
-    // account_0.deriveChild(0).toAddress(networkId);
-    // account_0.toXPub().publicKey().toAddress(networkId);
-    // let xpub = account_0.publicKey();
-    // let address = xpub.deriveChild(0).toAddress();
+    let account_0_root = xprv.derivePath("m/44'/111111'/0'/0").toXPub();
+    let account_0 = {
+        receive_xpub : account_0_root.deriveChild(0),
+        change_xpub : account_0_root.deriveChild(1),
+    };
+    let receive = account_0.receive_xpub.deriveChild(0).publicKey().toAddress(networkId).toString();
+    let change = account_0.change_xpub.deriveChild(0).publicKey().toAddress(networkId).toString();
 
     let keygen = PublicKeyGenerator.fromMasterXPrv(
         xprv.toString(),
@@ -124,21 +105,15 @@ function basicWallet(networkId, mnemonic) {
         0n,0
     );
 
-    // let receive_pubkeys = keygen.receivePubkeys(0,1).map((key) => key.toString());
-    // let change_pubkeys = keygen.changePubkeys(0,1).map((key) => key.toString());
-    let receive_pubkeys = keygen.receivePubkeys(0,1).map((key) => key.toAddress(networkId).toString());
-    let change_pubkeys = keygen.changePubkeys(0,1).map((key) => key.toAddress(networkId).toString());
-    console.log("receive_pubkeys:", receive_pubkeys);
-    console.log("change_pubkeys:", change_pubkeys);
-
+    // let receive_pubkeys = keygen.receivePubkeys(0,1).map((key) => key.toAddress(networkId).toString());
+    // let change_pubkeys = keygen.changePubkeys(0,1).map((key) => key.toAddress(networkId).toString());
+    // console.log("receive_pubkeys:", receive_pubkeys);
+    // console.log("change_pubkeys:", change_pubkeys);
 
     return {
         mnemonic,
         xprv: xprv.toString(),
         receive,
         change,
-        // xprv : xprv.intoString("xprv"),
-        // xpub,
-        // address,  // receive address
     };
 }

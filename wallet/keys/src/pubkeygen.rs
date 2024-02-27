@@ -72,9 +72,3 @@ impl PublicKeyGenerator {
         Ok(self.hd_wallet.to_string(None).to_string())
     }
 }
-
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(extends = Array, typescript_type = "PublicKey[]")]
-    pub type PublicKeyArrayT;
-}

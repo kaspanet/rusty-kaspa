@@ -45,6 +45,15 @@ pub enum Error {
 
     #[error("Invalid XPub (must be a string or an instance of XPub)")]
     InvalidXPub,
+
+    #[error("Invalid PrivateKey (must be a string or an instance of PrivateKey)")]
+    InvalidPrivateKey,
+
+    #[error("Invalid PublicKey (must be a string or an instance of PrivateKey)")]
+    InvalidPublicKey,
+
+    #[error("Invalid PublicKey Array (must be string[] or PrivateKey[])")]
+    InvalidPublicKeyArray,
 }
 
 impl Error {
