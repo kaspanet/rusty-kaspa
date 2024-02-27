@@ -3,7 +3,7 @@ use kaspa_core::{core::Core, signals::Shutdown, task::runtime::AsyncRuntime};
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_grpc_server::service::GrpcService;
-use kaspa_notify::{address::tracker::DEFAULT_TRACKER_CAPACITY, subscription::context::SubscriptionContext};
+use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::triggers::Listener;
@@ -17,8 +17,10 @@ use kaspa_grpc_client::ClientPool;
 pub struct ClientManager {
     pub args: RwLock<Args>,
 
-    // Type and suffix of the daemon network
+    /// Type and suffix of the daemon network
     pub network: NetworkId,
+
+    /// Clients subscription context
     pub context: SubscriptionContext,
 
     // Daemon ports
@@ -29,7 +31,7 @@ pub struct ClientManager {
 impl ClientManager {
     pub fn new(args: Args) -> Self {
         let network = args.network();
-        let context = SubscriptionContext::with_options(Some(DEFAULT_TRACKER_CAPACITY));
+        let context = SubscriptionContext::with_options(None);
         let rpc_port = args.rpclisten.unwrap().normalize(0).port;
         let p2p_port = args.listen.unwrap().normalize(0).port;
         let args = RwLock::new(args);

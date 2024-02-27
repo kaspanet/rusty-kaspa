@@ -1,6 +1,13 @@
-use clap::ArgAction;
-#[allow(unused)]
-use clap::{arg, command, Arg, Command};
+use clap::{arg, Arg, ArgAction, Command};
+use kaspa_consensus_core::{
+    config::Config,
+    network::{NetworkId, NetworkType},
+};
+use kaspa_core::kaspad_env::version;
+use kaspa_notify::address::tracker::Tracker;
+use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_wrpc_server::address::WrpcNetAddress;
+use std::ffi::OsString;
 
 #[cfg(feature = "devnet-prealloc")]
 use kaspa_addresses::Address;
@@ -8,19 +15,8 @@ use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 #[cfg(feature = "devnet-prealloc")]
 use kaspa_txscript::pay_to_address_script;
-use std::ffi::OsString;
 #[cfg(feature = "devnet-prealloc")]
 use std::sync::Arc;
-
-use kaspa_consensus_core::{
-    config::Config,
-    network::{NetworkId, NetworkType},
-};
-
-use kaspa_core::kaspad_env::version;
-
-use kaspa_utils::networking::ContextualNetAddress;
-use kaspa_wrpc_server::address::WrpcNetAddress;
 
 #[derive(Debug, Clone)]
 pub struct Args {
@@ -44,6 +40,7 @@ pub struct Args {
     pub outbound_target: usize,
     pub inbound_limit: usize,
     pub rpc_max_clients: usize,
+    pub max_tracked_addresses: Option<usize>,
     pub enable_unsynced_mining: bool,
     pub enable_mainnet_mining: bool,
     pub testnet: bool,
@@ -85,6 +82,7 @@ impl Default for Args {
             outbound_target: 8,
             inbound_limit: 128,
             rpc_max_clients: 128,
+            max_tracked_addresses: Some(Tracker::DEFAULT_MAX_ADDRESSES),
             enable_unsynced_mining: false,
             enable_mainnet_mining: false,
             testnet: false,
@@ -288,6 +286,14 @@ pub fn cli() -> Command {
                 .help("Allow mainnet mining (do not use unless you know what you are doing)"),
         )
         .arg(arg!(--utxoindex "Enable the UTXO index"))
+        .arg(
+            Arg::new("max-tracked-addresses")
+                .long("max-tracked-addresses")
+                // .value_name("max-tracked-addresses")
+                .require_equals(true)
+                .value_parser(clap::value_parser!(usize))
+                .help("Max number of addresses tracking UTXO changed events (default: 1835007)."),
+        )
         .arg(arg!(--testnet "Use the test network"))
         .arg(
             Arg::new("netsuffix")
@@ -384,6 +390,7 @@ impl Args {
             outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
             inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
             rpc_max_clients: m.get_one::<usize>("rpcmaxclients").cloned().unwrap_or(defaults.rpc_max_clients),
+            max_tracked_addresses: m.get_one::<usize>("max-tracked-addresses").cloned().or(defaults.max_tracked_addresses),
             reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
             enable_unsynced_mining: m.get_one::<bool>("enable-unsynced-mining").cloned().unwrap_or(defaults.enable_unsynced_mining),
             enable_mainnet_mining: m.get_one::<bool>("enable-mainnet-mining").cloned().unwrap_or(defaults.enable_mainnet_mining),

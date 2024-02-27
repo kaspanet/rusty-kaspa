@@ -3,15 +3,13 @@ use indexmap::{map::Entry, IndexMap};
 use itertools::Itertools;
 use kaspa_addresses::{Address, Prefix};
 use kaspa_consensus_core::tx::ScriptPublicKey;
-use kaspa_core::{debug, trace};
+use kaspa_core::{debug, info, trace};
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
     collections::{hash_map, hash_set, HashMap, HashSet},
     fmt::Display,
 };
-
-pub const DEFAULT_TRACKER_CAPACITY: usize = 1_835_000;
 
 pub trait Indexer {
     fn contains(&self, index: Index) -> bool;
@@ -387,14 +385,21 @@ struct Inner {
 }
 
 impl Inner {
+    const fn expand_max_addresses(max_addresses: usize) -> usize {
+        ((max_addresses + 1) * 8 / 7).next_power_of_two() * 7 / 8 - 1
+    }
+
     fn new(max_addresses: Option<usize>) -> Self {
         // Expand the maximum address count to the IndexMap actual usable allocated size minus 1.
         // Saving one entry for the insert/swap_remove scheme during entry recycling prevents a reallocation
         // when reaching the maximum.
-        let max_addresses = max_addresses.map(|x| ((x + 1) * 8 / 7).next_power_of_two() * 7 / 8 - 1);
+        let max_addresses = max_addresses.map(Self::expand_max_addresses);
         let capacity = max_addresses.map(|x| x + 1).unwrap_or_default();
         let script_pub_keys = IndexMap::with_capacity(capacity);
         debug!("Creating an address tracker with a capacity of {}", script_pub_keys.capacity());
+        if let Some(max_addresses) = max_addresses {
+            info!("Tracking UTXO changed events for {} addresses at most", max_addresses);
+        }
         let empty_entries = HashSet::with_capacity(capacity);
         Self { script_pub_keys, max_addresses, empty_entries }
     }
@@ -509,10 +514,17 @@ impl Display for Tracker {
 }
 
 impl Tracker {
+    /// Expanded count for a maximum of 1M addresses
+    pub const DEFAULT_MAX_ADDRESSES: usize = Self::expand_max_addresses(1_000_000);
+
     const ADDRESS_CHUNK_SIZE: usize = 1024;
 
-    pub fn new(max_capacity: Option<usize>) -> Self {
-        Self { inner: RwLock::new(Inner::new(max_capacity)) }
+    pub const fn expand_max_addresses(max_addresses: usize) -> usize {
+        Inner::expand_max_addresses(max_addresses)
+    }
+
+    pub fn new(max_addresses: Option<usize>) -> Self {
+        Self { inner: RwLock::new(Inner::new(max_addresses)) }
     }
 
     #[cfg(test)]

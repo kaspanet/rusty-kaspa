@@ -24,8 +24,8 @@ impl SubscriptionContextInner {
         Self::with_options(None)
     }
 
-    pub fn with_options(addresses_max_capacity: Option<usize>) -> Self {
-        let address_tracker = Tracker::new(addresses_max_capacity);
+    pub fn with_options(max_addresses: Option<usize>) -> Self {
+        let address_tracker = Tracker::new(max_addresses);
         let utxos_changed_subscription_all =
             Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID));
         Self { address_tracker, utxos_changed_subscription_to_all: utxos_changed_subscription_all }
@@ -56,8 +56,8 @@ impl SubscriptionContext {
         Self::with_options(None)
     }
 
-    pub fn with_options(addresses_max_capacity: Option<usize>) -> Self {
-        let inner = Arc::new(SubscriptionContextInner::with_options(addresses_max_capacity));
+    pub fn with_options(max_addresses: Option<usize>) -> Self {
+        let inner = Arc::new(SubscriptionContextInner::with_options(max_addresses));
         Self { inner }
     }
 
