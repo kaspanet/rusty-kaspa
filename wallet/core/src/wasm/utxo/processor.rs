@@ -111,7 +111,7 @@ impl UtxoProcessor {
     }
 
     /// Stops the UtxoProcessor and ends processing UTXO and other notifications.
-    pub async fn shutdown(&self) -> Result<()> {
+    pub async fn stop(&self) -> Result<()> {
         self.inner.processor.stop().await?;
         self.stop_notification_task().await?;
         Ok(())
@@ -173,7 +173,8 @@ impl UtxoProcessor {
         let inner = self.inner.clone();
 
         if inner.task_running.load(Ordering::SeqCst) {
-            panic!("ReflectorClient task is already running");
+            log_error!("You are calling `UtxoProcessor.start()` twice without calling `UtxoProcessor.stop()`!");
+            panic!("UtxoProcessor background task is already running");
         } else {
             inner.task_running.store(true, Ordering::SeqCst);
         }
@@ -206,6 +207,7 @@ impl UtxoProcessor {
             }
 
             channel.close();
+            inner.task_running.store(false, Ordering::SeqCst);
             ctl_sender.send(()).await.ok();
         });
 
@@ -215,7 +217,6 @@ impl UtxoProcessor {
     pub async fn stop_notification_task(&self) -> Result<()> {
         let inner = &self.inner;
         if inner.task_running.load(Ordering::SeqCst) {
-            inner.task_running.store(false, Ordering::SeqCst);
             inner.task_ctl.signal(()).await.map_err(|err| JsValue::from_str(&err.to_string()))?;
         }
         Ok(())

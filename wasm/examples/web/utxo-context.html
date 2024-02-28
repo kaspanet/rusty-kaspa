@@ -59,6 +59,8 @@
                     <br>&nbsp;<br>
                     <div id="submit" class="link">Click to monitor address</div>
                     <br>&nbsp;<br>
+                    <div id="restart" class="link">Restart</div>
+                    <br>&nbsp;<br>
                 `;
 
                 // let input = document.getElementById("address");
@@ -74,6 +76,17 @@
                         log("Error:", e);
                     }
                     input.value = "";
+                });
+
+                let restart = document.getElementById("restart");
+                restart.addEventListener("click", async (e) => {
+                    log("Restarting...");
+                    log("Stopping processor...");
+                    await context.clear();
+                    await monitor.processor.stop();
+                    log("Starting processor...");
+                    await monitor.processor.start();
+                    log("Processor started...");
                 });
 
             })();
