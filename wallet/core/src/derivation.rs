@@ -19,7 +19,6 @@ use kaspa_consensus_core::network::NetworkType;
 use kaspa_txscript::{
     extract_script_pub_key_address, multisig_redeem_script, multisig_redeem_script_ecdsa, pay_to_script_hash_script,
 };
-use workflow_wasm::serde::from_value;
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AddressDerivationMeta([u32; 2]);
@@ -464,8 +463,8 @@ pub fn create_address_js(
     ecdsa: Option<bool>,
     account_kind: Option<AccountKind>,
 ) -> Result<Address> {
-    let key: secp256k1::PublicKey = from_value(key.into())?;
-    create_address(1, vec![key], network_type.into(), ecdsa.unwrap_or(false), account_kind)
+    let public_key = PublicKey::try_from(key)?;
+    create_address(1, vec![public_key.try_into()?], network_type.into(), ecdsa.unwrap_or(false), account_kind)
 }
 
 /// @category Wallet SDK
