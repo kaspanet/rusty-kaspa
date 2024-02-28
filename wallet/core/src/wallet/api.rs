@@ -93,9 +93,9 @@ impl WalletApi for super::Wallet {
     }
 
     async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse> {
-        let WalletOpenRequest { wallet_secret, wallet_filename, account_descriptors, legacy_accounts } = request;
+        let WalletOpenRequest { wallet_secret, filename, account_descriptors, legacy_accounts } = request;
         let args = WalletOpenArgs { account_descriptors, legacy_accounts: legacy_accounts.unwrap_or_default() };
-        let account_descriptors = self.open(&wallet_secret, wallet_filename, args).await?;
+        let account_descriptors = self.open(&wallet_secret, filename, args).await?;
         Ok(WalletOpenResponse { account_descriptors })
     }
 

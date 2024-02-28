@@ -15,7 +15,7 @@ const TS_PAYMENT_OUTPUTS: &'static str = r#"
  * @see {@link IGeneratorSettingsObject}, {@link Generator}
  * @category Wallet SDK
  */
-interface IPaymentOutputs {
+export interface IPaymentOutput {
     /**
      * Destination address. The address prefix must match the network
      * you are transacting on (e.g. `kaspa:` for mainnet, `kaspatest:` for testnet, etc).
@@ -26,6 +26,7 @@ interface IPaymentOutputs {
      */
     amount: bigint;
 }
+
 "#;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

@@ -103,7 +103,7 @@ pub struct WalletCreateResponse {
 #[serde(rename_all = "camelCase")]
 pub struct WalletOpenRequest {
     pub wallet_secret: Secret,
-    pub wallet_filename: Option<String>,
+    pub filename: Option<String>,
     pub account_descriptors: bool,
     pub legacy_accounts: Option<bool>,
 }
@@ -407,6 +407,7 @@ pub struct AccountsTransferRequest {
     pub payment_secret: Option<Secret>,
     pub transfer_amount_sompi: u64,
     pub priority_fee_sompi: Option<Fees>,
+    // pub priority_fee_sompi: Fees,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

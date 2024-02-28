@@ -305,6 +305,9 @@ pub enum Error {
 
     #[error("Invalid mnemonic phrase")]
     InvalidMnemonicPhrase,
+
+    #[error("Invalid transaction kind {0}")]
+    InvalidTransactionKind(String),
 }
 
 impl From<Aborted> for Error {

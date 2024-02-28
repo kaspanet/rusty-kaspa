@@ -37,7 +37,7 @@ interface IGeneratorSettingsObject {
      * 
      * Typical usage: { address: "kaspa:...", amount: 1000n }
      */
-    outputs: PaymentOutputs | IPaymentOutputs[];
+    outputs: PaymentOutput | IPaymentOutput[];
     /** 
      * Address to be used for change, if any. 
      */

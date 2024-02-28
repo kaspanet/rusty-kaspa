@@ -4,16 +4,14 @@ use super::extensions::*;
 use crate::account::descriptor::IAccountDescriptor;
 use crate::api::message::*;
 use crate::imports::*;
-use crate::tx::{PaymentDestination, PaymentOutputs};
+use crate::tx::{Fees, PaymentDestination, PaymentOutputs};
 use crate::wasm::tx::fees::IFees;
+use crate::wasm::tx::GeneratorSummary;
 use js_sys::Array;
 use serde_wasm_bindgen::from_value;
 use workflow_wasm::serde::to_value;
 
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
-
-// pub struct PlaceholderRequest;
-// pub struct PlaceholderResponse;
 
 macro_rules! try_from {
     ($name:ident : $from_type:ty, $to_type:ty, $body:block) => {
@@ -368,13 +366,12 @@ declare! {
      * @category Wallet API
      */
     export interface IWalletCreateResponse {
-        walletDescriptor: WalletDescriptor;
-        storageDescriptor: string;
+        walletDescriptor: IWalletDescriptor;
+        storageDescriptor: IStorageDescriptor;
     }
     "#,
 }
 
-// TODO
 try_from! ( args: WalletCreateResponse, IWalletCreateResponse, {
     Ok(to_value(&args)?.into())
 });
@@ -388,12 +385,11 @@ declare! {
     r#"
     /**
      * 
-     *  
      * @category Wallet API
      */
     export interface IWalletOpenRequest {
         walletSecret: string;
-        walletFilename?: string;
+        filename?: string;
         accountDescriptors: boolean;
     }
     "#,
@@ -401,10 +397,10 @@ declare! {
 
 try_from! ( args: IWalletOpenRequest, WalletOpenRequest, {
     let wallet_secret = args.get_secret("walletSecret")?;
-    let wallet_filename = args.try_get_string("walletFilename")?;
+    let filename = args.try_get_string("filename")?;
     let account_descriptors = args.get_value("accountDescriptors")?.as_bool().unwrap_or(false);
 
-    Ok(WalletOpenRequest { wallet_secret, wallet_filename, account_descriptors, legacy_accounts: None })
+    Ok(WalletOpenRequest { wallet_secret, filename, account_descriptors, legacy_accounts: None })
 });
 
 declare! {
@@ -474,7 +470,12 @@ declare! {
      *  
      * @category Wallet API
      */
-    export interface IWalletReloadRequest { }
+    export interface IWalletReloadRequest {
+        /**
+         * Reactivate accounts that are active before the reload.
+         */
+        reactivate: boolean;
+    }
     "#,
 }
 
@@ -688,7 +689,6 @@ declare! {
     "#,
 }
 
-// TODO
 try_from! ( args: IPrvKeyDataCreateRequest, PrvKeyDataCreateRequest, {
     let wallet_secret = args.get_secret("walletSecret")?;
     let name = args.try_get_string("name")?;
@@ -735,7 +735,7 @@ declare! {
      */
     export interface IPrvKeyDataRemoveRequest {
         walletSecret: string;
-        prvKeyDataId: string;
+        prvKeyDataId: HexString;
     }
     "#,
 }
@@ -775,7 +775,7 @@ declare! {
      */
     export interface IPrvKeyDataGetRequest {
         walletSecret: string;
-        prvKeyDataId: string;
+        prvKeyDataId: HexString;
     }
     "#,
 }
@@ -962,36 +962,37 @@ declare! {
      */
     export interface IAccountsCreateRequest {
         walletSecret: string;
+        accountCreateArgs : IAccountCreateArgs;
         // accountKind: AccountKind | string,
     }
     "#,
 }
-/*
 
-pub enum AccountCreateArgs {
-    Bip32 {
-        prv_key_data_args: PrvKeyDataArgs,
-        account_args: AccountCreateArgsBip32,
-    },
-    Legacy {
-        prv_key_data_id: PrvKeyDataId,
-        account_name: Option<String>,
-    },
-    Multisig {
-        prv_key_data_args: Vec<PrvKeyDataArgs>,
-        additional_xpub_keys: Vec<String>,
-        name: Option<String>,
-        minimum_signatures: u16,
-    },
-}
+try_from! (args: IAccountsCreateRequest, AccountsCreateRequest, {
+    let wallet_secret = args.get_secret("walletSecret")?;
 
-*/
-// TODO
-try_from! (_args: IAccountsCreateRequest, AccountsCreateRequest, {
-    todo!();
-    // let wallet_secret = args.get_secret("walletSecret")?;
-    // let account_kind = args.get_value("accountKind")?;
-    // Ok(AccountsCreateRequest { wallet_secret, account_kind })
+    let account_create_args = args.try_get_object("accountCreateArgs")?.ok_or(Error::custom("accountCreateArgs is required"))?;
+
+    let kind = AccountKind::try_from(account_create_args.get_value("type")?)?;
+    let prv_key_data_args = account_create_args.try_get_object("prvKeyDataArgs")?;
+
+    if kind != crate::account::BIP32_ACCOUNT_KIND {
+        return Err(Error::custom("only BIP32 accounts are currently supported"));
+    }
+    let prv_key_data_args = prv_key_data_args.ok_or(Error::custom("prvKeyDataArgs is required for BIP32 account"))?;
+    let prv_key_data_args = PrvKeyDataArgs {
+        prv_key_data_id: prv_key_data_args.get_prv_key_data_id("prvKeyDataId")?,
+        payment_secret: prv_key_data_args.try_get_secret("paymentSecret")?,
+    };
+
+    let account_args = AccountCreateArgsBip32 {
+        account_name: account_create_args.try_get_string("accountName")?,
+        account_index: account_create_args.get_u64("accountIndex").ok(),
+    };
+
+    let account_create_args = AccountCreateArgs::Bip32 { prv_key_data_args, account_args };
+
+    Ok(AccountsCreateRequest { wallet_secret, account_create_args })
 });
 
 declare! {
@@ -1006,7 +1007,6 @@ declare! {
         accountDescriptor : IAccountDescriptor;
     }
     "#,
-
 }
 
 try_from!(args: AccountsCreateResponse, IAccountsCreateResponse, {
@@ -1033,7 +1033,7 @@ declare! {
 }
 
 try_from! ( _args: IAccountsImportRequest, AccountsImportRequest, {
-    todo!();
+    unimplemented!();
     // Ok(AccountsImportRequest { })
 });
 
@@ -1052,7 +1052,7 @@ declare! {
 }
 
 try_from! ( _args: AccountsImportResponse, IAccountsImportResponse, {
-    todo!();
+    unimplemented!();
     // let response = IAccountsImportResponse::default();
     // Ok(response)
 });
@@ -1165,12 +1165,8 @@ declare! {
     "#,
 }
 
-// TODO
 try_from! ( args: AccountsGetResponse, IAccountsGetResponse, {
     Ok(to_value(&args)?.into())
-    // let response = IAccountsGetResponse::default();
-    // response.set("accountDescriptor", &IAccountDescriptor::try_from(args.account_descriptor)?.into())?;
-    // Ok(response)
 });
 
 // ---
@@ -1232,13 +1228,30 @@ declare! {
      * @category Wallet API
      */
     export interface IAccountsSendRequest {
-        accountId : string;
+        /**
+         * Hex identifier of the account.
+         */
+        accountId : HexString;
+        /**
+         * Wallet encryption secret.
+         */
         walletSecret : string;
+        /**
+         * Optional key encryption secret or BIP39 passphrase.
+         */
         paymentSecret? : string;
-        priorityFeeSompi? : bigint;
-        payload? : Uint8Array | string;
-        // TODO destination interface
-        destination? : [[Address, bigint]];
+        /**
+         * Priority fee.
+         */
+        priorityFeeSompi? : IFees | bigint;
+        /**
+         * 
+         */
+        payload? : Uint8Array | HexString;
+        /**
+         * If not supplied, the destination will be the change address resulting in a UTXO compound transaction.
+         */
+        destination? : IPaymentOutput[];
     }
     "#,
 }
@@ -1266,14 +1279,19 @@ declare! {
      * @category Wallet API
      */
     export interface IAccountsSendResponse {
+        /**
+         * Summary produced by the transaction generator.
+         */
         generatorSummary : GeneratorSummary;
+        /**
+         * Hex identifiers of successfully submitted transactions.
+         */
         transactionIds : HexString[];
     }
     "#,
 }
 
 try_from!(args: AccountsSendResponse, IAccountsSendResponse, {
-    use crate::wasm::tx::GeneratorSummary;
 
     let response = IAccountsSendResponse::default();
     response.set("generatorSummary", &GeneratorSummary::from(args.generator_summary).into())?;
@@ -1292,14 +1310,32 @@ declare! {
      * @category Wallet API
      */
     export interface IAccountsTransferRequest {
-        // TODO
+        sourceAccountId : HexString;
+        destinationAccountId : HexString;
+        walletSecret : string;
+        paymentSecret? : string;
+        priorityFeeSompi? : IFees | bigint;
+        transferAmountSompi : bigint;
     }
     "#,
 }
 
-try_from! ( _args: IAccountsTransferRequest, AccountsTransferRequest, {
-    todo!();
-    // Ok(AccountsTransferRequest { })
+try_from! ( args: IAccountsTransferRequest, AccountsTransferRequest, {
+    let source_account_id = args.get_account_id("sourceAccountId")?;
+    let destination_account_id = args.get_account_id("destinationAccountId")?;
+    let wallet_secret = args.get_secret("walletSecret")?;
+    let payment_secret = args.try_get_secret("paymentSecret")?;
+    let priority_fee_sompi = args.try_get::<IFees>("priorityFeeSompi")?.map(Fees::try_from).transpose()?;
+    let transfer_amount_sompi = args.get_u64("transferAmountSompi")?;
+
+    Ok(AccountsTransferRequest {
+        source_account_id,
+        destination_account_id,
+        wallet_secret,
+        payment_secret,
+        priority_fee_sompi,
+        transfer_amount_sompi,
+    })
 });
 
 declare! {
@@ -1311,15 +1347,17 @@ declare! {
      * @category Wallet API
      */
     export interface IAccountsTransferResponse {
-        // TODO
+        generatorSummary : GeneratorSummary;
+        transactionIds : HexString[];
     }
     "#,
 }
 
-try_from! ( _args: AccountsTransferResponse, IAccountsTransferResponse, {
-    todo!();
-    // let response = IAccountsTransferResponse::default();
-    // Ok(response)
+try_from! ( args: AccountsTransferResponse, IAccountsTransferResponse, {
+    let response = IAccountsTransferResponse::default();
+    response.set("generatorSummary", &GeneratorSummary::from(args.generator_summary).into())?;
+    response.set("transactionIds", &to_value(&args.transaction_ids)?)?;
+    Ok(response)
 });
 
 // ---
@@ -1333,14 +1371,24 @@ declare! {
      * @category Wallet API
      */
     export interface IAccountsEstimateRequest {
-        // TODO
+        accountId : HexString;
+        destination : IPaymentOutput[];
+        priorityFeeSompi : IFees | bigint;
+        payload? : Uint8Array | string;
     }
     "#,
 }
 
-try_from! ( _args: IAccountsEstimateRequest, AccountsEstimateRequest, {
-    todo!();
-    // Ok(AccountsEstimateRequest { })
+try_from! ( args: IAccountsEstimateRequest, AccountsEstimateRequest, {
+    let account_id = args.get_account_id("accountId")?;
+    let priority_fee_sompi = args.get::<IFees>("priorityFeeSompi")?.try_into()?;
+    let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
+
+    let outputs = args.get_value("destination")?;
+    let destination: PaymentDestination =
+        if outputs.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_from(outputs)?.into() };
+
+    Ok(AccountsEstimateRequest { account_id, priority_fee_sompi, destination, payload })
 });
 
 declare! {
@@ -1352,15 +1400,15 @@ declare! {
      * @category Wallet API
      */
     export interface IAccountsEstimateResponse {
-        // TODO
+        generatorSummary : GeneratorSummary;
     }
     "#,
 }
 
-try_from! ( _args: AccountsEstimateResponse, IAccountsEstimateResponse, {
-    todo!();
-    // let response = IAccountsEstimateResponse::default();
-    // Ok(response)
+try_from! ( args: AccountsEstimateResponse, IAccountsEstimateResponse, {
+    let response = IAccountsEstimateResponse::default();
+    response.set("generatorSummary", &GeneratorSummary::from(args.generator_summary).into())?;
+    Ok(response)
 });
 
 // ---
@@ -1374,14 +1422,32 @@ declare! {
      * @category Wallet API
      */
     export interface ITransactionsDataGetRequest {
-        // TODO
+        accountId : HexString;
+        networkId : NetworkId | string;
+        filter? : TransactionKind[];
+        start : bigint;
+        end : bigint;
     }
     "#,
 }
 
-try_from! ( _args: ITransactionsDataGetRequest, TransactionsDataGetRequest, {
-    todo!();
-    // Ok(TransactionsDataGetRequest { })
+try_from! ( args: ITransactionsDataGetRequest, TransactionsDataGetRequest, {
+    let account_id = args.get_account_id("accountId")?;
+    let network_id = args.get_network_id("networkId")?;
+    let filter = args.get_vec("filter").ok().map(|filter| {
+        filter.into_iter().map(TransactionKind::try_from).collect::<Result<Vec<TransactionKind>>>()
+    }).transpose()?;
+    let start = args.get_u64("start")?;
+    let end = args.get_u64("end")?;
+
+    let request = TransactionsDataGetRequest {
+        account_id,
+        network_id,
+        filter,
+        start,
+        end,
+    };
+    Ok(request)
 });
 
 declare! {
@@ -1393,15 +1459,16 @@ declare! {
      * @category Wallet API
      */
     export interface ITransactionsDataGetResponse {
-        // TODO
+        accountId : HexString;
+        transactions : ITransactionRecord[];
+        start : bigint;
+        total : bigint;
     }
     "#,
 }
 
-try_from! ( _args: TransactionsDataGetResponse, ITransactionsDataGetResponse, {
-    todo!();
-    // let response = ITransactionsDataGetResponse::default();
-    // Ok(response)
+try_from! ( args: TransactionsDataGetResponse, ITransactionsDataGetResponse, {
+    Ok(to_value(&args)?.into())
 });
 
 // ---

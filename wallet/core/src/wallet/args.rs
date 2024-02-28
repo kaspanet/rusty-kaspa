@@ -78,6 +78,29 @@ impl Zeroize for PrvKeyDataCreateArgs {
     }
 }
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_ACCOUNT_CREATE_ARGS: &'static str = r#"
+
+export interface IPrvKeyDataArgs {
+    prvKeyDataId: HexString;
+    paymentSecret?: string;
+}
+
+export interface IAccountCreateArgsBip32 {
+    accountName?: string;
+    accountIndex?: number;
+}
+
+/**
+ * @category Wallet API
+ */
+export interface IAccountCreateArgs {
+    type : "bip32";
+    args : AccountCreateArgsBip32;
+    prvKeyDataArgs? : IPrvKeyDataArgs;
+}
+"#;
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AccountCreateArgsBip32 {
     pub account_name: Option<String>,
@@ -103,6 +126,7 @@ impl PrvKeyDataArgs {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(tag = "type", content = "args")]
 pub enum AccountCreateArgs {
     Bip32 {
         prv_key_data_args: PrvKeyDataArgs,

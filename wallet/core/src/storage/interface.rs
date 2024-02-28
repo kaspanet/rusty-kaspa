@@ -20,7 +20,7 @@ const TS_WALLET_DESCRIPTOR: &'static str = r#"
  */
 export interface IWalletDescriptor {
     title?: string;
-    filename?: string;
+    filename: string;
 }
 "#;
 

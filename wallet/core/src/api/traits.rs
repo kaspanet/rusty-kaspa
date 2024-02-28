@@ -98,14 +98,14 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn wallet_open(
         self: Arc<Self>,
         wallet_secret: Secret,
-        wallet_filename: Option<String>,
+        filename: Option<String>,
         account_descriptors: bool,
         legacy_accounts: bool,
     ) -> Result<Option<Vec<AccountDescriptor>>> {
         Ok(self
             .wallet_open_call(WalletOpenRequest {
                 wallet_secret,
-                wallet_filename,
+                filename,
                 account_descriptors,
                 legacy_accounts: legacy_accounts.then_some(true),
             })
