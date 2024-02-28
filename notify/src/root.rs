@@ -110,7 +110,7 @@ where
 
     fn new(sender: Sender<N>, subscription_context: SubscriptionContext) -> Self {
         let subscriptions = RwLock::new(ArrayBuilder::single(Self::ROOT_LISTENER_ID, None));
-        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::Wildcard);
         Self { sender, subscriptions, subscription_context, policies }
     }
 

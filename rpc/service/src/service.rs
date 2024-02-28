@@ -137,7 +137,7 @@ impl RpcCoreService {
         // This notifier UTXOs subscription granularity to index-processor or consensus notifier
         let policies = match index_notifier {
             Some(_) => MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet),
-            None => MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing),
+            None => MutationPolicies::new(UtxosChangedMutationPolicy::Wildcard),
         };
 
         // Prepare consensus-notify objects

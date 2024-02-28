@@ -430,7 +430,7 @@ impl Single for UtxosChangedSubscription {
                         UtxosChangedMutationPolicy::AddressSet => {
                             vec![Mutation::new(mutation.command, UtxosChangedScope::new(addresses).into())]
                         }
-                        UtxosChangedMutationPolicy::AllOrNothing => {
+                        UtxosChangedMutationPolicy::Wildcard => {
                             vec![Mutation::new(mutation.command, UtxosChangedScope::default().into())]
                         }
                     };
@@ -451,7 +451,7 @@ impl Single for UtxosChangedSubscription {
                         UtxosChangedMutationPolicy::AddressSet => {
                             vec![Mutation::new(Command::Stop, UtxosChangedScope::new(removed).into())]
                         }
-                        UtxosChangedMutationPolicy::AllOrNothing => {
+                        UtxosChangedMutationPolicy::Wildcard => {
                             vec![Mutation::new(Command::Stop, UtxosChangedScope::default().into())]
                         }
                     };
@@ -466,7 +466,7 @@ impl Single for UtxosChangedSubscription {
                                 UtxosChangedMutationPolicy::AddressSet => {
                                     vec![Mutation::new(Command::Stop, UtxosChangedScope::new(removed).into())]
                                 }
-                                UtxosChangedMutationPolicy::AllOrNothing => vec![],
+                                UtxosChangedMutationPolicy::Wildcard => vec![],
                             };
                             MutationOutcome::with_mutations(mutations)
                         }
@@ -476,7 +476,7 @@ impl Single for UtxosChangedSubscription {
                                 UtxosChangedMutationPolicy::AddressSet => {
                                     vec![Mutation::new(Command::Stop, UtxosChangedScope::new(removed).into())]
                                 }
-                                UtxosChangedMutationPolicy::AllOrNothing => {
+                                UtxosChangedMutationPolicy::Wildcard => {
                                     vec![Mutation::new(Command::Stop, UtxosChangedScope::default().into())]
                                 }
                             };
@@ -494,7 +494,7 @@ impl Single for UtxosChangedSubscription {
                                 UtxosChangedMutationPolicy::AddressSet => {
                                     vec![Mutation::new(Command::Start, UtxosChangedScope::new(added).into())]
                                 }
-                                UtxosChangedMutationPolicy::AllOrNothing => vec![],
+                                UtxosChangedMutationPolicy::Wildcard => vec![],
                             };
                             MutationOutcome::with_mutations(mutations)
                         }
@@ -511,7 +511,7 @@ impl Single for UtxosChangedSubscription {
                             Mutation::new(Command::Stop, UtxosChangedScope::new(removed).into()),
                             Mutation::new(Command::Start, UtxosChangedScope::default().into()),
                         ],
-                        UtxosChangedMutationPolicy::AllOrNothing => vec![],
+                        UtxosChangedMutationPolicy::Wildcard => vec![],
                     };
                     MutationOutcome::with_mutated(current.clone(), mutations)
                 }
@@ -534,7 +534,7 @@ impl Single for UtxosChangedSubscription {
                             Mutation::new(Command::Start, UtxosChangedScope::new(added).into()),
                             Mutation::new(Command::Stop, UtxosChangedScope::default().into()),
                         ],
-                        UtxosChangedMutationPolicy::AllOrNothing => vec![],
+                        UtxosChangedMutationPolicy::Wildcard => vec![],
                     };
                     MutationOutcome::with_mutated(current.clone(), mutations)
                 }

@@ -52,7 +52,7 @@ where
                 );
                 context.address_tracker.max_addresses()
             }
-            UtxosChangedMutationPolicy::AllOrNothing => None,
+            UtxosChangedMutationPolicy::Wildcard => None,
         };
         let subscriptions = ArrayBuilder::single(id, capacity);
         Self { connection, subscriptions, _lifespan: ListenerLifespan::Static(policies) }

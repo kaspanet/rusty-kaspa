@@ -33,7 +33,7 @@ impl IndexService {
         utxoindex: Option<UtxoIndexProxy>,
     ) -> Self {
         // This notifier UTXOs subscription granularity to consensus notifier
-        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AllOrNothing);
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::Wildcard);
 
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();

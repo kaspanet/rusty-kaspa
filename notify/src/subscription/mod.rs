@@ -55,7 +55,7 @@ pub enum UtxosChangedMutationPolicy {
     AddressSet,
 
     /// Mutation granularity reduced to all or nothing
-    AllOrNothing,
+    Wildcard,
 }
 
 #[derive(Clone, Copy, Default, Debug)]
