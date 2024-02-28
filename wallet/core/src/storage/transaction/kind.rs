@@ -13,7 +13,7 @@ const TS_TRANSACTION_KIND: &'static str = r#"
  * @category Wallet SDK
  * 
  */
-export enum TransactionKind = {
+export enum TransactionKind {
     Reorg = "reorg",
     Stasis = "stasis",
     Batch = "batch",
@@ -23,7 +23,7 @@ export enum TransactionKind = {
     External = "external",
     TransferIncoming = "transfer-incoming",
     TransferOutgoing = "transfer-outgoing",
-    ;
+}
 "#;
 
 // Do not change the order of the variants in this enum.

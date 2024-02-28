@@ -523,12 +523,14 @@ impl TryFrom<JsValue> for Address {
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(extends = js_sys::Array, typescript_type = "Address[] | string[]")]
+    pub type AddressOrStringArrayT;
+    #[wasm_bindgen(extends = js_sys::Array, typescript_type = "Address[]")]
     pub type AddressArrayT;
 }
 
-impl TryFrom<AddressArrayT> for Vec<Address> {
+impl TryFrom<AddressOrStringArrayT> for Vec<Address> {
     type Error = AddressError;
-    fn try_from(js_value: AddressArrayT) -> Result<Self, Self::Error> {
+    fn try_from(js_value: AddressOrStringArrayT) -> Result<Self, Self::Error> {
         if js_value.is_array() {
             js_value.iter().map(Address::try_from).collect::<Result<Vec<Address>, AddressError>>()
         } else {

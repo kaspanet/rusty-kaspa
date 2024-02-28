@@ -125,7 +125,12 @@ impl TryFrom<&JsValue> for NetworkType {
     type Error = NetworkTypeError;
     fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
         if let Some(network_type) = js_value.as_string() {
-            Self::from_str(&network_type)
+            // In WASM passed value might be a NetworkId
+            if let Ok(network_id) = NetworkId::from_str(&network_type) {
+                Ok(network_id.into())
+            } else {
+                Self::from_str(&network_type)
+            }
         } else if let Some(v) = js_value.as_f64() {
             Self::try_from(v as u8).map_err(|_| NetworkTypeError::InvalidNetworkType(format!("{js_value:?}")))
         } else {

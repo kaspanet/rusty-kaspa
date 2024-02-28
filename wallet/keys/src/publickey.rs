@@ -17,6 +17,8 @@
 //! ```
 //!
 
+use kaspa_consensus_core::network::NetworkType;
+
 use crate::imports::*;
 
 /// Data structure that envelopes a PublicKey.
@@ -51,25 +53,37 @@ impl PublicKey {
     /// Receives a [`NetworkType`] to determine the prefix of the address.
     /// JavaScript: `let address = publicKey.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
-    pub fn to_address(&self, network: NetworkTypeT) -> Result<Address> {
-        let payload = &self.xonly_public_key.serialize();
-        let address = Address::new(network.try_into()?, AddressVersion::PubKey, payload);
-        Ok(address)
+    pub fn to_address_js(&self, network: NetworkTypeT) -> Result<Address> {
+        self.to_address(network.try_into()?)
     }
 
     /// Get `ECDSA` [`Address`] of this PublicKey.
     /// Receives a [`NetworkType`] to determine the prefix of the address.
     /// JavaScript: `let address = publicKey.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddressECDSA)]
-    pub fn to_address_ecdsa(&self, network: NetworkTypeT) -> Result<Address> {
-        let payload = &self.xonly_public_key.serialize();
-        let address = Address::new(network.try_into()?, AddressVersion::PubKeyECDSA, payload);
-        Ok(address)
+    pub fn to_address_ecdsa_js(&self, network: NetworkTypeT) -> Result<Address> {
+        self.to_address_ecdsa(network.try_into()?)
     }
 
     #[wasm_bindgen(js_name = toXOnlyPublicKey)]
     pub fn to_x_only_public_key(&self) -> XOnlyPublicKey {
         self.xonly_public_key.into()
+    }
+}
+
+impl PublicKey {
+    #[inline]
+    pub fn to_address(&self, network_type: NetworkType) -> Result<Address> {
+        let payload = &self.xonly_public_key.serialize();
+        let address = Address::new(network_type.into(), AddressVersion::PubKey, payload);
+        Ok(address)
+    }
+
+    #[inline]
+    pub fn to_address_ecdsa(&self, network_type: NetworkType) -> Result<Address> {
+        let payload = &self.xonly_public_key.serialize();
+        let address = Address::new(network_type.into(), AddressVersion::PubKeyECDSA, payload);
+        Ok(address)
     }
 }
 

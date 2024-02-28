@@ -54,6 +54,9 @@ pub enum Error {
 
     #[error("Invalid PublicKey Array (must be string[] or PrivateKey[])")]
     InvalidPublicKeyArray,
+
+    #[error("Invalid network id")]
+    NetworkId(#[from] kaspa_consensus_core::network::NetworkIdError),
 }
 
 impl Error {

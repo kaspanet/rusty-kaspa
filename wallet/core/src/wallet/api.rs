@@ -54,7 +54,7 @@ impl WalletApi for super::Wallet {
 
     async fn disconnect_call(self: Arc<Self>, _request: DisconnectRequest) -> Result<DisconnectResponse> {
         if let Some(wrpc_client) = self.wrpc_client().as_ref() {
-            wrpc_client.shutdown().await?;
+            wrpc_client.disconnect().await?;
             Ok(DisconnectResponse {})
         } else {
             Err(Error::NotWrpcClient)

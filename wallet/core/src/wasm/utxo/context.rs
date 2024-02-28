@@ -4,7 +4,7 @@ use crate::utxo as native;
 use crate::utxo::{UtxoContextBinding, UtxoContextId};
 use crate::wasm::utxo::UtxoProcessor;
 use crate::wasm::{Balance, BalanceStrings};
-use kaspa_addresses::AddressArrayT;
+use kaspa_addresses::AddressOrStringArrayT;
 use kaspa_consensus_client::UtxoEntryReferenceArrayT;
 use kaspa_hashes::Hash;
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
@@ -114,7 +114,7 @@ impl UtxoContext {
 
     /// Performs a scan of the given addresses and registers them in the context for event notifications.
     #[wasm_bindgen(js_name = "trackAddresses")]
-    pub async fn track_addresses(&self, addresses: AddressArrayT, optional_current_daa_score: Option<BigInt>) -> Result<()> {
+    pub async fn track_addresses(&self, addresses: AddressOrStringArrayT, optional_current_daa_score: Option<BigInt>) -> Result<()> {
         let current_daa_score = if let Some(big_int) = optional_current_daa_score {
             Some(big_int.try_into().map_err(|v| Error::custom(format!("Unable to convert BigInt value {v:?}")))?)
         } else {
@@ -126,7 +126,7 @@ impl UtxoContext {
 
     /// Unregister a list of addresses from the context. This will stop tracking of these addresses.
     #[wasm_bindgen(js_name = "unregisterAddresses")]
-    pub async fn unregister_addresses(&self, addresses: AddressArrayT) -> Result<()> {
+    pub async fn unregister_addresses(&self, addresses: AddressOrStringArrayT) -> Result<()> {
         let addresses: Vec<Address> = addresses.try_into()?;
         self.inner().unregister_addresses(addresses).await
     }

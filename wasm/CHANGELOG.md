@@ -2,6 +2,8 @@ Latest online documentation available at: https://kaspa.aspectron.org/docs/
 
 ### Latest
 
+- Introduce `CryptoBox` class for encryption/decryption of data using public/private keys.
+- sha256x and other hash functions now have two variants sha256FromBinary and sha256FromText
 - Changed `XPub.publicKey()` to `XPub.toPublicKey()`
 - Most functions returning key strings now return `PrivateKey` or `PublicKey`; this allows function chaining `xpub.deriveChild(0).toPublicKey().toAddress(networkId).toString()`
 - `PrivateKey` now has `toPublicKey()`, `toAddress()`, `toAddressECDSA()` methods

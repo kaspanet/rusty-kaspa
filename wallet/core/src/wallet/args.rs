@@ -96,7 +96,7 @@ export interface IAccountCreateArgsBip32 {
  */
 export interface IAccountCreateArgs {
     type : "bip32";
-    args : AccountCreateArgsBip32;
+    args : IAccountCreateArgsBip32;
     prvKeyDataArgs? : IPrvKeyDataArgs;
 }
 "#;
