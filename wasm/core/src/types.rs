@@ -43,5 +43,5 @@ extern "C" {
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(typescript_type = "HexString | Uint8Array")]
-    pub type BinaryLike;
+    pub type BinaryT;
 }

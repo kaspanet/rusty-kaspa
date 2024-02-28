@@ -157,7 +157,8 @@ clap = { version = "4.4.7", features = ["derive", "string", "cargo"] }
 convert_case = "0.6.0"
 criterion = { version = "0.5.1", default-features = false }
 crossbeam-channel = "0.5.8"
-ctrlc = "3.4.1" # 3.2
+ctrlc = "3.4.1"
+crypto_box = { version = "0.9.1", features = ["chacha20"] }
 dashmap = "5.5.3"
 derivative = "2.2.0"
 derive_more = "0.99.17"

@@ -308,6 +308,15 @@ pub enum Error {
 
     #[error("Invalid transaction kind {0}")]
     InvalidTransactionKind(String),
+
+    #[error("Cipher message is too short")]
+    CipherMessageTooShort,
+
+    #[error("Invalid secret key length")]
+    InvalidPrivateKeyLength,
+
+    #[error("Invalid public key length")]
+    InvalidPublicKeyLength,
 }
 
 impl From<Aborted> for Error {

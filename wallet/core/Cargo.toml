@@ -43,6 +43,7 @@ cfb-mode.workspace = true
 cfg-if.workspace = true
 chacha20poly1305.workspace = true
 convert_case.workspace = true
+crypto_box.workspace = true
 dashmap.workspace = true
 derivative.workspace = true
 downcast.workspace = true
