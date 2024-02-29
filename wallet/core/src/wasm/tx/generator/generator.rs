@@ -44,9 +44,12 @@ interface IGeneratorSettingsObject {
     changeAddress: Address | string;
     /** 
      * Priority fee in SOMPI.
-     * 
+     * If supplying `bigint` value, it will be interpreted as a sender-pays fee.
+     * Alternatively you can supply an object with `amount` and `source` properties
+     * where `source` contains the {@link FeeSource} enum.
+     * @see {@link IFees}, {@link FeeSource}
      */
-    priorityFee?: bigint;
+    priorityFee?: IFees | bigint;
     /**
      * UTXO entries to be used for the transaction. This can be an
      * array of UtxoEntry instances, objects matching {@link IUtxoEntry}
