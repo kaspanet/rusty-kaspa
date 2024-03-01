@@ -11,7 +11,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::info;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
-use secp256k1::KeyPair;
+use secp256k1::Keypair;
 use std::{
     collections::{hash_map::Entry::Occupied, HashMap, HashSet},
     sync::Arc,
@@ -32,7 +32,7 @@ fn required_fee(num_inputs: usize, num_outputs: u64) -> u64 {
 /// Builds a TX DAG based on the initial UTXO set and on constant params
 pub fn generate_tx_dag(
     mut utxoset: UtxoCollection,
-    schnorr_key: KeyPair,
+    schnorr_key: Keypair,
     spk: ScriptPublicKey,
     target_levels: usize,
     target_width: usize,

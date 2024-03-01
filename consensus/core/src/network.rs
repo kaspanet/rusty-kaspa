@@ -4,9 +4,8 @@ use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::str::FromStr;
-use wasm_bindgen::convert::TryFromJsValue;
 use wasm_bindgen::prelude::*;
-use workflow_core::enums::u8_try_from;
+use workflow_wasm::prelude::*;
 
 #[derive(thiserror::Error, PartialEq, Eq, Debug, Clone)]
 pub enum NetworkTypeError {
@@ -14,17 +13,17 @@ pub enum NetworkTypeError {
     InvalidNetworkType(String),
 }
 
-u8_try_from! {
-    /// @category Consensus
-    #[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq, Hash, Ord, PartialOrd)]
-    #[serde(rename_all = "lowercase")]
-    #[wasm_bindgen]
-    pub enum NetworkType {
-        Mainnet,
-        Testnet,
-        Devnet,
-        Simnet,
-    }
+/// @category Consensus
+#[derive(
+    Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq, Hash, Ord, PartialOrd,
+)]
+#[serde(rename_all = "lowercase")]
+#[wasm_bindgen]
+pub enum NetworkType {
+    Mainnet,
+    Testnet,
+    Devnet,
+    Simnet,
 }
 
 impl NetworkType {
@@ -114,32 +113,34 @@ impl Display for NetworkType {
     }
 }
 
-impl TryFrom<JsValue> for NetworkType {
+impl TryFrom<&NetworkTypeT> for NetworkType {
     type Error = NetworkTypeError;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        NetworkType::try_from(&js_value)
-    }
-}
-
-impl TryFrom<&JsValue> for NetworkType {
-    type Error = NetworkTypeError;
-    fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
-        if let Some(network_type) = js_value.as_string() {
-            // In WASM passed value might be a NetworkId
-            if let Ok(network_id) = NetworkId::from_str(&network_type) {
-                Ok(network_id.into())
-            } else {
-                Self::from_str(&network_type)
-            }
-        } else if let Some(v) = js_value.as_f64() {
-            Self::try_from(v as u8).map_err(|_| NetworkTypeError::InvalidNetworkType(format!("{js_value:?}")))
+    fn try_from(js_value: &NetworkTypeT) -> Result<Self, Self::Error> {
+        if let Ok(network_id) = NetworkId::try_cast_from(js_value) {
+            Ok(network_id.network_type())
+        } else if let Some(network_type) = js_value.as_string() {
+            Self::from_str(&network_type)
         } else {
             Err(NetworkTypeError::InvalidNetworkType(format!("{js_value:?}")))
         }
     }
 }
 
-#[derive(thiserror::Error, PartialEq, Eq, Debug, Clone)]
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_name = "Network", typescript_type = "NetworkType | NetworkId | string")]
+    #[derive(Debug)]
+    pub type NetworkTypeT;
+}
+
+impl TryFrom<&NetworkTypeT> for Prefix {
+    type Error = NetworkIdError;
+    fn try_from(value: &NetworkTypeT) -> Result<Self, Self::Error> {
+        Ok(NetworkType::try_from(value)?.into())
+    }
+}
+
+#[derive(thiserror::Error, Debug, Clone)]
 pub enum NetworkIdError {
     #[error("Invalid network name prefix: {0}. The expected prefix is 'kaspa'.")]
     InvalidPrefix(String),
@@ -161,6 +162,15 @@ pub enum NetworkIdError {
 
     #[error("Invalid network id: '{0}'")]
     InvalidNetworkId(String),
+
+    #[error(transparent)]
+    Wasm(#[from] workflow_wasm::error::Error),
+}
+
+impl From<NetworkIdError> for JsValue {
+    fn from(err: NetworkIdError) -> Self {
+        JsValue::from_str(&err.to_string())
+    }
 }
 
 ///
@@ -169,7 +179,7 @@ pub enum NetworkIdError {
 ///
 /// @category Consensus
 ///
-#[derive(Clone, Copy, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[derive(Clone, Copy, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq, Hash, Ord, PartialOrd, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct NetworkId {
     #[wasm_bindgen(js_name = "type")]
@@ -347,8 +357,8 @@ impl<'de> Deserialize<'de> for NetworkId {
 #[wasm_bindgen]
 impl NetworkId {
     #[wasm_bindgen(constructor)]
-    pub fn ctor(value: JsValue) -> Result<NetworkId, String> {
-        value.try_into().map_err(|err: NetworkIdError| err.to_string())
+    pub fn ctor(value: &JsValue) -> Result<NetworkId, NetworkIdError> {
+        Ok(NetworkId::try_cast_from(value)?.into_owned())
     }
 
     #[wasm_bindgen(getter, js_name = "id")]
@@ -362,8 +372,8 @@ impl NetworkId {
     }
 
     #[wasm_bindgen(js_name = "addressPrefix")]
-    pub fn js_address_prefix(&self) -> Result<String, String> {
-        Ok(Prefix::from(self.network_type).to_string())
+    pub fn js_address_prefix(&self) -> String {
+        Prefix::from(self.network_type).to_string()
     }
 }
 
@@ -373,59 +383,33 @@ extern "C" {
     pub type NetworkIdT;
 }
 
-impl TryFrom<NetworkIdT> for NetworkId {
+impl TryFrom<&JsValue> for NetworkId {
     type Error = NetworkIdError;
-    fn try_from(js_value: NetworkIdT) -> Result<Self, Self::Error> {
-        NetworkId::try_from(&js_value.into())
+    fn try_from(value: &JsValue) -> Result<Self, Self::Error> {
+        Self::try_value_from(value)
     }
 }
 
 impl TryFrom<JsValue> for NetworkId {
     type Error = NetworkIdError;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        NetworkId::try_from(&js_value)
+    fn try_from(value: JsValue) -> Result<Self, Self::Error> {
+        Self::try_value_from(value)
     }
 }
 
-impl TryFrom<&JsValue> for NetworkId {
+impl TryCastFromJs for NetworkId {
     type Error = NetworkIdError;
-    fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
-        if let Some(network_id) = js_value.as_string() {
-            NetworkId::from_str(&network_id)
-        } else if let Ok(network_id) = NetworkId::try_from_js_value(js_value.clone()) {
-            Ok(network_id)
-        } else {
-            Err(NetworkIdError::InvalidNetworkId(format!("{:?}", js_value)))
-        }
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Self::resolve(&value, || {
+            if let Some(network_id) = value.as_ref().as_string() {
+                Ok(NetworkId::from_str(&network_id)?)
+            } else {
+                Err(NetworkIdError::InvalidNetworkId(format!("{:?}", value.as_ref())))
+            }
+        })
     }
 }
 
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_name = "Network", typescript_type = "NetworkType | NetworkId | string")]
-    pub type NetworkTypeT;
-}
-
-impl TryFrom<NetworkTypeT> for NetworkType {
-    type Error = String;
-    fn try_from(network: NetworkTypeT) -> std::result::Result<Self, Self::Error> {
-        let js_value = JsValue::from(network);
-        if let Ok(network_id) = NetworkId::try_from(&js_value) {
-            Ok(network_id.network_type())
-        } else if let Ok(network_type) = NetworkType::try_from(&js_value) {
-            Ok(network_type)
-        } else {
-            Err(format!("Invalid network value: {:?}", js_value))
-        }
-    }
-}
-
-impl TryFrom<NetworkTypeT> for Prefix {
-    type Error = String;
-    fn try_from(value: NetworkTypeT) -> Result<Self, Self::Error> {
-        NetworkType::try_from(value).map(Into::into)
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -473,7 +457,11 @@ mod tests {
         ];
 
         for test in tests {
-            assert_eq!(NetworkId::from_str(test.expr), test.expected, "{}: unexpected result", test.name);
+            let Test { name, expr, expected } = test;
+            match NetworkId::from_str(expr) {
+                Ok(nid) => assert_eq!(nid, expected.unwrap(), "{}: unexpected result", name),
+                Err(err) => assert_eq!(err.to_string(), expected.unwrap_err().to_string(), "{}: unexpected error", name),
+            }
         }
     }
 }

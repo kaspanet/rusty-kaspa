@@ -58,7 +58,7 @@ pub struct TransactionInner {
 
 /// Represents a Kaspa transaction
 /// @category Consensus
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct Transaction {
     inner: Arc<Mutex<TransactionInner>>,
@@ -141,9 +141,7 @@ impl Transaction {
     pub fn set_inputs_from_js_array(&mut self, js_value: &JsValue) {
         let inputs = Array::from(js_value)
             .iter()
-            .map(|js_value| {
-                ref_from_abi!(TransactionInput, &js_value).unwrap_or_else(|err| panic!("invalid transaction input: {err}"))
-            })
+            .map(|js_value| TransactionInput::try_from(&js_value).unwrap_or_else(|err| panic!("invalid transaction input: {err}")))
             .collect::<Vec<_>>();
         self.inner().inputs = inputs;
     }
@@ -158,9 +156,7 @@ impl Transaction {
     pub fn set_outputs_from_js_array(&mut self, js_value: &JsValue) {
         let outputs = Array::from(js_value)
             .iter()
-            .map(|js_value| {
-                ref_from_abi!(TransactionOutput, &js_value).unwrap_or_else(|err| panic!("invalid transaction output: {err}"))
-            })
+            .map(|js_value| TransactionOutput::try_from(&js_value).unwrap_or_else(|err| panic!("invalid transaction output: {err}")))
             .collect::<Vec<_>>();
         self.inner().outputs = outputs;
     }
@@ -224,42 +220,50 @@ impl TryFrom<JsValue> for Transaction {
     }
 }
 
+impl TryCastFromJs for Transaction {
+    type Error = Error;
+    fn try_cast_from(value: impl AsRef<JsValue>) -> std::result::Result<Cast<Self>, Self::Error> {
+        Self::resolve(&value, || {
+            if let Some(object) = Object::try_from(value.as_ref()) {
+                if let Some(tx) = object.try_get_value("tx")? {
+                    Transaction::try_from(&tx)
+                } else {
+                    let version = object.get_u16("version")?;
+                    let lock_time = object.get_u64("lockTime")?;
+                    let gas = object.get_u64("gas")?;
+                    let payload = object.get_vec_u8("payload")?;
+                    let subnetwork_id = object.get_vec_u8("subnetworkId")?;
+                    if subnetwork_id.len() != subnets::SUBNETWORK_ID_SIZE {
+                        return Err(Error::Custom("subnetworkId must be 20 bytes long".into()));
+                    }
+                    let subnetwork_id: SubnetworkId = subnetwork_id
+                        .as_slice()
+                        .try_into()
+                        .map_err(|err| Error::Custom(format!("`subnetworkId` property error: `{err}`")))?;
+                    let inputs = object
+                        .get_vec("inputs")?
+                        .iter()
+                        .map(|jsv| jsv.try_into())
+                        .collect::<std::result::Result<Vec<TransactionInput>, Error>>()?;
+                    let outputs: Vec<TransactionOutput> = object
+                        .get_vec("outputs")?
+                        .iter()
+                        .map(|jsv| jsv.try_into())
+                        .collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?;
+                    Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload)
+                }
+            } else {
+                Err("Transaction must be an object".into())
+            }
+        })
+        // Transaction::try_from(value)
+    }
+}
+
 impl TryFrom<&JsValue> for Transaction {
     type Error = Error;
-    fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Ok(tx) = ref_from_abi!(Transaction, js_value) {
-            Ok(tx)
-        } else if let Some(object) = Object::try_from(js_value) {
-            if let Some(tx) = object.try_get_value("tx")? {
-                Transaction::try_from(&tx)
-            } else {
-                let version = object.get_u16("version")?;
-                let lock_time = object.get_u64("lockTime")?;
-                let gas = object.get_u64("gas")?;
-                let payload = object.get_vec_u8("payload")?;
-                let subnetwork_id = object.get_vec_u8("subnetworkId")?;
-                if subnetwork_id.len() != subnets::SUBNETWORK_ID_SIZE {
-                    return Err(Error::Custom("subnetworkId must be 20 bytes long".into()));
-                }
-                let subnetwork_id: SubnetworkId = subnetwork_id
-                    .as_slice()
-                    .try_into()
-                    .map_err(|err| Error::Custom(format!("`subnetworkId` property error: `{err}`")))?;
-                let inputs = object
-                    .get_vec("inputs")?
-                    .into_iter()
-                    .map(|jsv| jsv.try_into())
-                    .collect::<std::result::Result<Vec<TransactionInput>, Error>>()?;
-                let outputs: Vec<TransactionOutput> = object
-                    .get_vec("outputs")?
-                    .into_iter()
-                    .map(|jsv| jsv.try_into())
-                    .collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?;
-                Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload)
-            }
-        } else {
-            Err("Transaction must be an object".into())
-        }
+    fn try_from(value: &JsValue) -> std::result::Result<Self, Self::Error> {
+        Self::try_value_from(value)
     }
 }
 

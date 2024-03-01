@@ -24,6 +24,6 @@ pub use std::collections::HashMap;
 pub use std::str::FromStr;
 pub use std::sync::atomic::{AtomicBool, Ordering};
 pub use std::sync::{Arc, Mutex, MutexGuard};
-pub use wasm_bindgen::convert::TryFromJsValue;
 pub use wasm_bindgen::prelude::*;
+pub use workflow_wasm::convert::*;
 pub use zeroize::*;

@@ -16,7 +16,7 @@ members = [
     "consensus/notify",
     "consensus/pow",
     "consensus/wasm",
-    "kos",
+    # "kos",
     "kaspad",
     "simpa",
     "wasm",
@@ -107,7 +107,7 @@ kaspa-mining = { version = "0.13.5", path = "mining" }
 kaspa-mining-errors = { version = "0.13.5", path = "mining/errors" }
 kaspa-muhash = { version = "0.13.5", path = "crypto/muhash" }
 kaspa-notify = { version = "0.13.5", path = "notify" }
-kaspa-os = { version = "0.13.5", path = "kaspa-os" }
+# kaspa-os = { version = "0.13.5", path = "kaspa-os" }
 kaspa-p2p-flows = { version = "0.13.5", path = "protocol/flows" }
 kaspa-p2p-lib = { version = "0.13.5", path = "protocol/p2p" }
 kaspa-perf-monitor = { version = "0.13.5", path = "metrics/perf_monitor" }
@@ -216,7 +216,7 @@ regex = "1.10.2"
 ripemd = { version = "0.1.3", default-features = false }
 rlimit = "0.10.1"
 rocksdb = "0.21.0"
-secp256k1 = { version = "0.24.3", features = [
+secp256k1 = { version = "0.28.2", features = [
     "global-context",
     "rand-std",
     "serde",

@@ -35,7 +35,7 @@ pub struct TransactionOutputInner {
 
 /// Represents a Kaspad transaction output
 /// @category Consensus
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]
 pub struct TransactionOutput {
@@ -110,11 +110,11 @@ impl From<&TransactionOutput> for cctx::TransactionOutput {
     }
 }
 
-impl TryFrom<JsValue> for TransactionOutput {
+impl TryFrom<&JsValue> for TransactionOutput {
     type Error = Error;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
+    fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
         // workflow_log::log_trace!("js_value->TransactionOutput: {js_value:?}");
-        if let Some(object) = Object::try_from(&js_value) {
+        if let Some(object) = Object::try_from(js_value) {
             let has_address = Object::has_own(object, &JsValue::from("address"));
             workflow_log::log_trace!("js_value->TransactionOutput: has_address:{has_address:?}");
             let value = object.get_u64("value")?;
@@ -123,5 +123,12 @@ impl TryFrom<JsValue> for TransactionOutput {
         } else {
             Err("TransactionInput must be an object".into())
         }
+    }
+}
+
+impl TryFrom<JsValue> for TransactionOutput {
+    type Error = Error;
+    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
+        Self::try_from(&js_value)
     }
 }

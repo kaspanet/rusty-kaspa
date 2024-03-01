@@ -8,7 +8,7 @@ use js_sys::{Array, Uint8Array};
 
 /// Data structure that envelops a Private Key.
 /// @category Wallet SDK
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, CastFromJs)]
 #[wasm_bindgen]
 pub struct PrivateKey {
     inner: secp256k1::SecretKey,
@@ -71,7 +71,7 @@ impl PrivateKey {
     /// Receives a [`NetworkType`] to determine the prefix of the address.
     /// JavaScript: `let address = privateKey.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
-    pub fn to_address(&self, network: NetworkTypeT) -> Result<Address> {
+    pub fn to_address(&self, network: &NetworkTypeT) -> Result<Address> {
         let public_key = secp256k1::PublicKey::from_secret_key_global(&self.inner);
         let (x_only_public_key, _) = public_key.x_only_public_key();
         let payload = x_only_public_key.serialize();
@@ -83,7 +83,7 @@ impl PrivateKey {
     /// Receives a [`NetworkType`] to determine the prefix of the address.
     /// JavaScript: `let address = privateKey.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddressECDSA)]
-    pub fn to_address_ecdsa(&self, network: NetworkTypeT) -> Result<Address> {
+    pub fn to_address_ecdsa(&self, network: &NetworkTypeT) -> Result<Address> {
         let public_key = secp256k1::PublicKey::from_secret_key_global(&self.inner);
         let (x_only_public_key, _) = public_key.x_only_public_key();
         let payload = x_only_public_key.serialize();
@@ -92,16 +92,23 @@ impl PrivateKey {
     }
 }
 
+impl TryFrom<&JsValue> for PrivateKey {
+    type Error = Error;
+    fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
+        if let Some(hex_str) = js_value.as_string() {
+            Self::try_new(hex_str.as_str())
+        } else if Array::is_array(js_value) {
+            let array = Uint8Array::new(js_value);
+            Self::try_from_slice(array.to_vec().as_slice())
+        } else {
+            Ok(PrivateKey::try_ref_from_js_value(js_value)?.clone())
+        }
+    }
+}
+
 impl TryFrom<JsValue> for PrivateKey {
     type Error = Error;
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Some(hex_str) = js_value.as_string() {
-            Self::try_new(hex_str.as_str())
-        } else if Array::is_array(&js_value) {
-            let array = Uint8Array::new(&js_value);
-            Self::try_from_slice(array.to_vec().as_slice())
-        } else {
-            Ok(PrivateKey::try_from_js_value(js_value)?)
-        }
+        Self::try_from(&js_value)
     }
 }

@@ -24,7 +24,7 @@ use crate::imports::*;
 /// Data structure that envelopes a PublicKey.
 /// Only supports Schnorr-based addresses.
 /// @category Wallet SDK
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, CastFromJs)]
 #[wasm_bindgen(js_name = PublicKey)]
 pub struct PublicKey {
     #[wasm_bindgen(skip)]
@@ -53,7 +53,7 @@ impl PublicKey {
     /// Receives a [`NetworkType`] to determine the prefix of the address.
     /// JavaScript: `let address = publicKey.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
-    pub fn to_address_js(&self, network: NetworkTypeT) -> Result<Address> {
+    pub fn to_address_js(&self, network: &NetworkTypeT) -> Result<Address> {
         self.to_address(network.try_into()?)
     }
 
@@ -61,7 +61,7 @@ impl PublicKey {
     /// Receives a [`NetworkType`] to determine the prefix of the address.
     /// JavaScript: `let address = publicKey.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddressECDSA)]
-    pub fn to_address_ecdsa_js(&self, network: NetworkTypeT) -> Result<Address> {
+    pub fn to_address_ecdsa_js(&self, network: &NetworkTypeT) -> Result<Address> {
         self.to_address_ecdsa(network.try_into()?)
     }
 
@@ -99,7 +99,7 @@ impl TryFrom<JsValue> for PublicKey {
         if let Some(hex_str) = js_value.as_string() {
             Self::try_new(hex_str.as_str())
         } else {
-            Ok(PublicKey::try_from_js_value(js_value)?)
+            Ok(PublicKey::try_ref_from_js_value(&js_value)?.clone())
         }
     }
 }
@@ -145,8 +145,8 @@ impl TryFrom<PublicKeyT> for PublicKey {
     fn try_from(value: PublicKeyT) -> std::result::Result<Self, Self::Error> {
         if let Some(pubkey) = value.as_string() {
             Ok(PublicKey::try_new(pubkey.as_str())?)
-        } else if let Ok(xpub) = PublicKey::try_from_js_value(value.into()) {
-            Ok(xpub)
+        } else if let Ok(xpub) = PublicKey::try_ref_from_js_value(&value) {
+            Ok(xpub.clone())
         } else {
             Err(Error::InvalidPublicKey)
         }
@@ -173,7 +173,7 @@ impl TryFrom<PublicKeyArrayT> for Vec<PublicKey> {
 /// @see {@link PublicKey}
 /// @category Wallet SDK
 #[wasm_bindgen]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, CastFromJs)]
 pub struct XOnlyPublicKey {
     #[wasm_bindgen(skip)]
     pub inner: secp256k1::XOnlyPublicKey,
@@ -201,7 +201,7 @@ impl XOnlyPublicKey {
     /// Receives a [`NetworkType`] to determine the prefix of the address.
     /// JavaScript: `let address = xOnlyPublicKey.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
-    pub fn to_address(&self, network: NetworkTypeT) -> Result<Address> {
+    pub fn to_address(&self, network: &NetworkTypeT) -> Result<Address> {
         let payload = &self.inner.serialize();
         let address = Address::new(network.try_into()?, AddressVersion::PubKey, payload);
         Ok(address)
@@ -211,7 +211,7 @@ impl XOnlyPublicKey {
     /// Receives a [`NetworkType`] to determine the prefix of the address.
     /// JavaScript: `let address = xOnlyPublicKey.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddressECDSA)]
-    pub fn to_address_ecdsa(&self, network: NetworkTypeT) -> Result<Address> {
+    pub fn to_address_ecdsa(&self, network: &NetworkTypeT) -> Result<Address> {
         let payload = &self.inner.serialize();
         let address = Address::new(network.try_into()?, AddressVersion::PubKeyECDSA, payload);
         Ok(address)
@@ -247,7 +247,7 @@ impl TryFrom<JsValue> for XOnlyPublicKey {
         if let Some(hex_str) = js_value.as_string() {
             Ok(secp256k1::XOnlyPublicKey::from_str(hex_str.as_str())?.into())
         } else {
-            Ok(XOnlyPublicKey::try_from_js_value(js_value)?)
+            Ok(XOnlyPublicKey::try_ref_from_js_value(js_value.as_ref())?.clone())
         }
     }
 }

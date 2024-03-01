@@ -916,7 +916,7 @@ try_from! (args: IAccountsDiscoveryRequest, AccountsDiscoveryRequest, {
     let discovery_kind = if let Some(discovery_kind) = discovery_kind.as_string() {
         discovery_kind.parse()?
     } else {
-        AccountsDiscoveryKind::try_from_js_value(discovery_kind)?
+        AccountsDiscoveryKind::try_cast_from(&discovery_kind)?
     };
     let account_scan_extent = args.get_u32("accountScanExtent")?;
     let address_scan_extent = args.get_u32("addressScanExtent")?;
@@ -1191,7 +1191,7 @@ try_from!(args: IAccountsCreateNewAddressRequest, AccountsCreateNewAddressReques
     let value = args.get_value("addressKind")?;
     let kind: NewAddressKind = if let Some(string) = value.as_string() {
         string.parse()?
-    } else if let Ok(kind) = NewAddressKind::try_from_js_value(value) {
+    } else if let Ok(kind) = NewAddressKind::try_cast_from(&value) {
         kind
     } else {
         NewAddressKind::Receive

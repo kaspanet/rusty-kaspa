@@ -11,6 +11,8 @@ use crate::imports::*;
 /// @see {@link PrivateKeyGenerator}, {@link PublicKeyGenerator}, {@link XPub}, {@link Mnemonic}
 /// @category Wallet SDK
 ///
+
+#[derive(Clone, CastFromJs)]
 #[wasm_bindgen]
 pub struct XPrv {
     inner: ExtendedPrivateKey<SecretKey>,
@@ -40,7 +42,7 @@ impl XPrv {
     }
 
     #[wasm_bindgen(js_name=derivePath)]
-    pub fn derive_path(&self, path: JsValue) -> Result<XPrv> {
+    pub fn derive_path(&self, path: &JsValue) -> Result<XPrv> {
         let path = DerivationPath::try_from(path)?;
         let inner = self.inner.clone().derive_path(path.into())?;
         Ok(Self { inner })
@@ -81,8 +83,8 @@ impl TryFrom<XPrvT> for XPrv {
     fn try_from(value: XPrvT) -> std::result::Result<Self, Self::Error> {
         if let Some(xprv) = value.as_string() {
             Ok(XPrv::from_xprv_str(xprv)?)
-        } else if let Ok(xprv) = XPrv::try_from_js_value(value.into()) {
-            Ok(xprv)
+        } else if let Ok(xprv) = XPrv::try_ref_from_js_value(&value) {
+            Ok(xprv.clone())
         } else {
             Err(Error::InvalidXPrv)
         }

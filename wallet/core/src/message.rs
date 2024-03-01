@@ -19,7 +19,7 @@ pub fn sign_message(msg: &PersonalMessage, privkey: &[u8; 32]) -> Result<Vec<u8>
     let hash = calc_personal_message_hash(msg);
 
     let msg = secp256k1::Message::from_slice(hash.as_bytes().as_slice())?;
-    let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, privkey)?;
+    let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, privkey)?;
     let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
 
     Ok(sig.to_vec())
@@ -53,7 +53,7 @@ mod tests {
         let hash = calc_personal_message_hash(msg);
 
         let msg = secp256k1::Message::from_slice(hash.as_bytes().as_slice())?;
-        let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, privkey)?;
+        let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, privkey)?;
         let curve = secp256k1::Secp256k1::new();
         let sig: [u8; 64] = *curve.sign_schnorr_with_aux_rand(&msg, &schnorr_key, aux_rand).as_ref();
 

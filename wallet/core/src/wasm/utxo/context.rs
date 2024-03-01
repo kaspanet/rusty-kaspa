@@ -87,7 +87,7 @@ declare! {
 ///
 /// @category Wallet SDK
 ///
-#[derive(Clone)]
+#[derive(Clone, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct UtxoContext {
     inner: native::UtxoContext,
@@ -236,7 +236,7 @@ impl From<UtxoContext> for native::UtxoContext {
 impl TryFrom<JsValue> for UtxoContext {
     type Error = Error;
     fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
-        Ok(ref_from_abi!(UtxoContext, &value)?)
+        Ok(UtxoContext::try_ref_from_js_value(&value)?.clone())
     }
 }
 

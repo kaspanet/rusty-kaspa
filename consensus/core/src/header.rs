@@ -209,11 +209,7 @@ impl Header {
         self.parents_by_level = array
             .iter()
             .map(|jsv| {
-                Array::from(&jsv)
-                    .to_vec()
-                    .into_iter()
-                    .map(|hash| Ok(hash.try_into()?))
-                    .collect::<std::result::Result<Vec<Hash>, Error>>()
+                Array::from(&jsv).to_vec().iter().map(|hash| Ok(hash.try_into()?)).collect::<std::result::Result<Vec<Hash>, Error>>()
             })
             .collect::<std::result::Result<Vec<Vec<Hash>>, Error>>()
             .unwrap_or_else(|err| {

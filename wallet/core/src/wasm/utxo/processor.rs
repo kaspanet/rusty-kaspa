@@ -69,7 +69,7 @@ impl Inner {
 /// {@link IDisconnectEvent}
 /// @category Wallet SDK
 ///
-#[derive(Clone)]
+#[derive(Clone, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct UtxoProcessor {
     inner: Arc<Inner>,
@@ -128,8 +128,9 @@ impl UtxoProcessor {
     }
 
     #[wasm_bindgen(js_name = "setNetworkId")]
-    pub fn set_network_id(&self, network_id: NetworkIdT) -> Result<()> {
-        self.inner.processor.set_network_id(network_id.try_into()?);
+    pub fn set_network_id(&self, network_id: &NetworkIdT) -> Result<()> {
+        let network_id = NetworkId::try_cast_from(network_id)?;
+        self.inner.processor.set_network_id(network_id.as_ref());
         Ok(())
     }
 }
@@ -137,7 +138,7 @@ impl UtxoProcessor {
 impl TryFrom<JsValue> for UtxoProcessor {
     type Error = Error;
     fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
-        Ok(ref_from_abi!(UtxoProcessor, &value)?)
+        Ok(UtxoProcessor::try_ref_from_js_value(&value)?.clone())
     }
 }
 
@@ -151,7 +152,7 @@ impl TryFrom<IUtxoProcessorArgs> for UtxoProcessorCreateArgs {
     fn try_from(value: IUtxoProcessorArgs) -> std::result::Result<Self, Self::Error> {
         if let Some(object) = Object::try_from(&value) {
             let rpc = object.get_value("rpc")?;
-            let rpc = ref_from_abi!(RpcClient, &rpc)?;
+            let rpc = RpcClient::try_ref_from_js_value(&rpc)?.clone();
             let network_id = object.get::<NetworkId>("networkId")?;
             Ok(UtxoProcessorCreateArgs { rpc, network_id })
         } else {

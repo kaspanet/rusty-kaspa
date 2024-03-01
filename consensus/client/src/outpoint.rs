@@ -72,7 +72,7 @@ impl TryFrom<&JsValue> for TransactionOutpointInner {
 /// use the `TransactionOutpoint::new` constructor. (in JavaScript
 /// use `new TransactionOutpoint(transactionId, index)`).
 /// @category Consensus
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]
 pub struct TransactionOutpoint {
@@ -131,9 +131,9 @@ impl std::fmt::Display for TransactionOutpoint {
     }
 }
 
-impl TryFrom<JsValue> for TransactionOutpoint {
+impl TryFrom<&JsValue> for TransactionOutpoint {
     type Error = Error;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
+    fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
         let inner: TransactionOutpointInner = js_value.as_ref().try_into()?;
         Ok(TransactionOutpoint { inner: Arc::new(inner) })
     }

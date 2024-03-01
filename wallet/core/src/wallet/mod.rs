@@ -474,8 +474,8 @@ impl Wallet {
 
         let settings = self.settings();
 
-        if let Some(network_type) = settings.get(WalletSettings::Network) {
-            self.set_network_id(network_type).unwrap_or_else(|_| log_error!("Unable to select network type: `{}`", network_type));
+        if let Some(network_id) = settings.get(WalletSettings::Network) {
+            self.set_network_id(&network_id).unwrap_or_else(|_| log_error!("Unable to select network type: `{}`", network_id));
         }
 
         if let Some(url) = settings.get::<String>(WalletSettings::Server) {
@@ -532,7 +532,7 @@ impl Wallet {
         Ok(())
     }
 
-    pub fn set_network_id(&self, network_id: NetworkId) -> Result<()> {
+    pub fn set_network_id(&self, network_id: &NetworkId) -> Result<()> {
         if self.is_connected() {
             return Err(Error::NetworkTypeConnected);
         }

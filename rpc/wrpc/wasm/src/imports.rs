@@ -29,7 +29,6 @@ pub use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
 };
-pub use wasm_bindgen::convert::TryFromJsValue;
 pub use wasm_bindgen::prelude::*;
 pub use workflow_core::{
     channel::{Channel, DuplexChannel, Receiver},
@@ -37,3 +36,4 @@ pub use workflow_core::{
 };
 pub use workflow_log::*;
 pub use workflow_rpc::client::prelude::{Encoding as WrpcEncoding, *};
+pub use workflow_wasm::prelude::*;

@@ -78,7 +78,7 @@ impl PublicKeyGenerator {
     /// Generate Receive Address derivations for a given range.
     #[wasm_bindgen(js_name=receiveAddresses)]
     #[allow(non_snake_case)]
-    pub fn receive_addresses(&self, networkType: NetworkTypeT, mut start: u32, mut end: u32) -> Result<AddressArrayT> {
+    pub fn receive_addresses(&self, networkType: &NetworkTypeT, mut start: u32, mut end: u32) -> Result<AddressArrayT> {
         if start > end {
             (start, end) = (end, start);
         }
@@ -92,14 +92,14 @@ impl PublicKeyGenerator {
     /// Generate a single Receive Address derivation at a given index.
     #[wasm_bindgen(js_name=receiveAddress)]
     #[allow(non_snake_case)]
-    pub fn receive_address(&self, networkType: NetworkTypeT, index: u32) -> Result<Address> {
+    pub fn receive_address(&self, networkType: &NetworkTypeT, index: u32) -> Result<Address> {
         PublicKey::from(self.hd_wallet.receive_pubkey_manager().derive_pubkey(index)?).to_address(networkType.try_into()?)
     }
 
     /// Generate a range of Receive Address derivations and return them as strings.
     #[wasm_bindgen(js_name=receiveAddressAsStrings)]
     #[allow(non_snake_case)]
-    pub fn receive_addresses_as_strings(&self, networkType: NetworkTypeT, mut start: u32, mut end: u32) -> Result<StringArray> {
+    pub fn receive_addresses_as_strings(&self, networkType: &NetworkTypeT, mut start: u32, mut end: u32) -> Result<StringArray> {
         if start > end {
             (start, end) = (end, start);
         }
@@ -113,7 +113,7 @@ impl PublicKeyGenerator {
     /// Generate a single Receive Address derivation at a given index and return it as a string.
     #[wasm_bindgen(js_name=receiveAddressAsString)]
     #[allow(non_snake_case)]
-    pub fn receive_address_as_string(&self, networkType: NetworkTypeT, index: u32) -> Result<String> {
+    pub fn receive_address_as_string(&self, networkType: &NetworkTypeT, index: u32) -> Result<String> {
         Ok(PublicKey::from(self.hd_wallet.receive_pubkey_manager().derive_pubkey(index)?)
             .to_address(networkType.try_into()?)?
             .to_string())
@@ -156,7 +156,7 @@ impl PublicKeyGenerator {
     /// Generate Change Address derivations for a given range.
     #[wasm_bindgen(js_name=changeAddresses)]
     #[allow(non_snake_case)]
-    pub fn change_addresses(&self, networkType: NetworkTypeT, mut start: u32, mut end: u32) -> Result<AddressArrayT> {
+    pub fn change_addresses(&self, networkType: &NetworkTypeT, mut start: u32, mut end: u32) -> Result<AddressArrayT> {
         if start > end {
             (start, end) = (end, start);
         }
@@ -170,14 +170,14 @@ impl PublicKeyGenerator {
     /// Generate a single Change Address derivation at a given index.
     #[wasm_bindgen(js_name=changeAddress)]
     #[allow(non_snake_case)]
-    pub fn change_address(&self, networkType: NetworkTypeT, index: u32) -> Result<Address> {
+    pub fn change_address(&self, networkType: &NetworkTypeT, index: u32) -> Result<Address> {
         PublicKey::from(self.hd_wallet.change_pubkey_manager().derive_pubkey(index)?).to_address(networkType.try_into()?)
     }
 
     /// Generate a range of Change Address derivations and return them as strings.
     #[wasm_bindgen(js_name=changeAddressAsStrings)]
     #[allow(non_snake_case)]
-    pub fn change_addresses_as_strings(&self, networkType: NetworkTypeT, mut start: u32, mut end: u32) -> Result<StringArray> {
+    pub fn change_addresses_as_strings(&self, networkType: &NetworkTypeT, mut start: u32, mut end: u32) -> Result<StringArray> {
         if start > end {
             (start, end) = (end, start);
         }
@@ -191,7 +191,7 @@ impl PublicKeyGenerator {
     /// Generate a single Change Address derivation at a given index and return it as a string.
     #[wasm_bindgen(js_name=changeAddressAsString)]
     #[allow(non_snake_case)]
-    pub fn change_address_as_string(&self, networkType: NetworkTypeT, index: u32) -> Result<String> {
+    pub fn change_address_as_string(&self, networkType: &NetworkTypeT, index: u32) -> Result<String> {
         Ok(PublicKey::from(self.hd_wallet.receive_pubkey_manager().derive_pubkey(index)?)
             .to_address(networkType.try_into()?)?
             .to_string())

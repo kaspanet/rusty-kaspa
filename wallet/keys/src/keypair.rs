@@ -23,7 +23,7 @@ use serde_wasm_bindgen::to_value;
 
 /// Data structure that contains a secret and public keys.
 /// @category Wallet SDK
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct Keypair {
     secret_key: secp256k1::SecretKey,
@@ -60,7 +60,7 @@ impl Keypair {
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
     // pub fn to_address(&self, network_type: NetworkType) -> Result<Address> {
-    pub fn to_address(&self, network: NetworkTypeT) -> Result<Address> {
+    pub fn to_address(&self, network: &NetworkTypeT) -> Result<Address> {
         let payload = &self.xonly_public_key.serialize();
         let address = Address::new(network.try_into()?, AddressVersion::PubKey, payload);
         Ok(address)
@@ -70,7 +70,7 @@ impl Keypair {
     /// Receives a [`NetworkType`] to determine the prefix of the address.
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddressECDSA)]
-    pub fn to_address_ecdsa(&self, network: NetworkTypeT) -> Result<Address> {
+    pub fn to_address_ecdsa(&self, network: &NetworkTypeT) -> Result<Address> {
         let payload = &self.xonly_public_key.serialize();
         let address = Address::new(network.try_into()?, AddressVersion::PubKeyECDSA, payload);
         Ok(address)
@@ -98,9 +98,16 @@ impl Keypair {
     }
 }
 
+impl TryFrom<&JsValue> for Keypair {
+    type Error = Error;
+    fn try_from(value: &JsValue) -> std::result::Result<Self, Self::Error> {
+        Ok(Keypair::try_ref_from_js_value(value)?.clone())
+    }
+}
+
 impl TryFrom<JsValue> for Keypair {
     type Error = Error;
     fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
-        Ok(Keypair::try_from_js_value(value)?)
+        Keypair::try_from(value.as_ref())
     }
 }

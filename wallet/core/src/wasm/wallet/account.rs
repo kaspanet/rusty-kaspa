@@ -8,7 +8,7 @@ use workflow_core::abortable::Abortable;
 
 /// @category Wallet API
 #[wasm_bindgen(inspectable)]
-#[derive(Clone)]
+#[derive(Clone, CastFromJs)]
 pub struct Account {
     inner: Arc<dyn native::Account>,
     #[wasm_bindgen(getter_with_clone)]
@@ -46,7 +46,7 @@ impl Account {
     }
 
     #[wasm_bindgen(js_name = balanceStrings)]
-    pub fn balance_strings(&self, network_type: NetworkTypeT) -> Result<JsValue> {
+    pub fn balance_strings(&self, network_type: &NetworkTypeT) -> Result<JsValue> {
         match self.inner.balance() {
             Some(balance) => Ok(crate::wasm::Balance::from(balance).to_balance_strings(network_type)?.into()),
             None => Ok(JsValue::UNDEFINED),
@@ -94,10 +94,10 @@ impl From<Account> for Arc<dyn native::Account> {
     }
 }
 
-impl TryFrom<JsValue> for Account {
+impl TryFrom<&JsValue> for Account {
     type Error = Error;
-    fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
-        Ok(Account::try_from_js_value(js_value)?)
+    fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
+        Ok(Account::try_ref_from_js_value(js_value)?.clone())
     }
 }
 
@@ -119,7 +119,7 @@ impl TryFrom<JsValue> for AccountSendArgs {
 
             let priority_fee_sompi = object.get_u64("priorityFee").ok();
             let include_fees_in_amount = object.get_bool("includeFeesInAmount").unwrap_or(false);
-            let abortable = object.get("abortable").ok().and_then(|v| ref_from_abi!(Abortable, &v).ok()).unwrap_or_default();
+            let abortable = object.get("abortable").ok().and_then(|v| Abortable::try_from(&v).ok()).unwrap_or_default();
 
             let wallet_secret = object.get_string("walletSecret")?.into();
             let payment_secret = object.get_value("paymentSecret")?.as_string().map(|s| s.into());
@@ -145,7 +145,7 @@ impl TryFrom<JsValue> for AccountCreateArgs {
 
             Ok(AccountCreateArgs {})
         } else {
-            Err(Error::custom("Account: suppliedd value must be an object"))
+            Err(Error::custom("Account: supplied value must be an object"))
         }
     }
 }

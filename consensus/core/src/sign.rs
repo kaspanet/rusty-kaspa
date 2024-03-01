@@ -79,7 +79,7 @@ impl Signed {
 }
 
 /// Sign a transaction using schnorr
-pub fn sign(mut signable_tx: SignableTransaction, schnorr_key: secp256k1::KeyPair) -> SignableTransaction {
+pub fn sign(mut signable_tx: SignableTransaction, schnorr_key: secp256k1::Keypair) -> SignableTransaction {
     for i in 0..signable_tx.tx.inputs.len() {
         signable_tx.tx.inputs[i].sig_op_count = 1;
     }
@@ -99,7 +99,7 @@ pub fn sign(mut signable_tx: SignableTransaction, schnorr_key: secp256k1::KeyPai
 pub fn sign_with_multiple(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8; 32]>) -> SignableTransaction {
     let mut map = BTreeMap::new();
     for privkey in privkeys {
-        let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &privkey).unwrap();
+        let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &privkey).unwrap();
         map.insert(schnorr_key.public_key().serialize(), schnorr_key);
     }
     for i in 0..mutable_tx.tx.inputs.len() {
@@ -126,7 +126,7 @@ pub fn sign_with_multiple(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8
 pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: Vec<[u8; 32]>) -> Signed {
     let mut map = BTreeMap::new();
     for privkey in privkeys {
-        let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &privkey).unwrap();
+        let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &privkey).unwrap();
         let schnorr_public_key = schnorr_key.public_key().x_only_public_key().0;
         let script_pub_key_script = once(0x20).chain(schnorr_public_key.serialize().into_iter()).chain(once(0xac)).collect_vec();
         map.insert(script_pub_key_script, schnorr_key);

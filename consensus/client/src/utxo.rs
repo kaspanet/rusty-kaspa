@@ -1,10 +1,7 @@
 use crate::imports::*;
 use crate::outpoint::{TransactionOutpoint, TransactionOutpointInner};
 use crate::result::Result;
-// use cfg_if::cfg_if;
 use kaspa_addresses::Address;
-use workflow_wasm::abi::ref_from_abi;
-// use js_sys::{Array, Object};
 
 #[wasm_bindgen(typescript_custom_section)]
 const TS_UTXO_ENTRY: &'static str = r#"
@@ -39,7 +36,7 @@ extern "C" {
 pub type UtxoEntryId = TransactionOutpointInner;
 
 /// @category Wallet SDK
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]
 pub struct UtxoEntry {
@@ -68,7 +65,7 @@ impl UtxoEntry {
 }
 
 /// @category Wallet SDK
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct UtxoEntryReference {
     #[wasm_bindgen(skip)]
@@ -228,9 +225,7 @@ impl UtxoEntries {
     pub fn set_items_from_js_array(&mut self, js_value: &JsValue) {
         let items = Array::from(js_value)
             .iter()
-            .map(|js_value| {
-                ref_from_abi!(UtxoEntryReference, &js_value).unwrap_or_else(|err| panic!("invalid UtxoEntryReference: {err}"))
-            })
+            .map(|js_value| UtxoEntryReference::try_from(&js_value).unwrap_or_else(|err| panic!("invalid UtxoEntryReference: {err}")))
             .collect::<Vec<_>>();
         self.0 = Arc::new(items);
     }
@@ -312,13 +307,13 @@ impl TryFrom<JsValue> for UtxoEntryReference {
 impl TryFrom<&JsValue> for UtxoEntryReference {
     type Error = Error;
     fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Ok(utxo_entry) = ref_from_abi!(UtxoEntry, js_value) {
-            Ok(Self::from(utxo_entry))
-        } else if let Ok(utxo_entry_reference) = ref_from_abi!(UtxoEntryReference, js_value) {
-            Ok(utxo_entry_reference)
+        if let Ok(utxo_entry) = UtxoEntry::try_ref_from_js_value(js_value) {
+            Ok(Self::from(utxo_entry.clone()))
+        } else if let Ok(utxo_entry_reference) = UtxoEntryReference::try_ref_from_js_value(js_value) {
+            Ok(utxo_entry_reference.clone())
         } else if let Some(object) = Object::try_from(js_value) {
             let address = Address::try_from(object.get_value("address")?)?;
-            let outpoint = TransactionOutpoint::try_from(object.get_value("outpoint")?)?;
+            let outpoint = TransactionOutpoint::try_from(object.get_value("outpoint")?.as_ref())?;
             let utxo_entry = Object::from(object.get_value("utxoEntry")?);
             let amount = utxo_entry.get_u64("amount")?;
             let script_public_key = ScriptPublicKey::try_from(utxo_entry.get_value("scriptPublicKey")?)?;

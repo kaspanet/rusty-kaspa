@@ -11,6 +11,7 @@ use crate::imports::*;
 /// @see {@link PrivateKeyGenerator}, {@link PublicKeyGenerator}, {@link XPrv}, {@link Mnemonic}
 /// @category Wallet SDK
 ///
+#[derive(Clone, CastFromJs)]
 #[wasm_bindgen]
 pub struct XPub {
     inner: ExtendedPublicKey<secp256k1::PublicKey>,
@@ -32,9 +33,9 @@ impl XPub {
     }
 
     #[wasm_bindgen(js_name=derivePath)]
-    pub fn derive_path(&self, path: JsValue) -> Result<XPub> {
-        let path = DerivationPath::try_from(path)?;
-        let inner = self.inner.clone().derive_path(path.into())?;
+    pub fn derive_path(&self, path: &JsValue) -> Result<XPub> {
+        let path = DerivationPath::try_ref_from_js_value(path)?.clone();
+        let inner = self.inner.clone().derive_path(&path.into())?;
         Ok(Self { inner })
     }
 
@@ -73,8 +74,8 @@ impl TryFrom<XPubT> for XPub {
     fn try_from(value: XPubT) -> std::result::Result<Self, Self::Error> {
         if let Some(xpub) = value.as_string() {
             Ok(XPub::try_new(xpub.as_str())?)
-        } else if let Ok(xpub) = XPub::try_from_js_value(value.into()) {
-            Ok(xpub)
+        } else if let Ok(xpub) = XPub::try_ref_from_js_value(&value) {
+            Ok(xpub.clone())
         } else {
             Err(Error::InvalidXPub)
         }

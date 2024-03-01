@@ -56,7 +56,7 @@ pub struct ResolverConnect {
 impl TryFrom<IResolverConnect> for ResolverConnect {
     type Error = Error;
     fn try_from(config: IResolverConnect) -> Result<Self> {
-        if let Ok(network_id) = NetworkId::try_from(&config.clone().into()) {
+        if let Ok(network_id) = NetworkId::try_value_from(&config) {
             Ok(Self { encoding: None, network_id })
         } else {
             Ok(serde_wasm_bindgen::from_value(config.into())?) //.map_err(Into::into)
@@ -97,7 +97,7 @@ extern "C" {
 /// @see {@link IResolverConfig}, {@link IResolverConnect}, {@link RpcClient}
 /// @category Node RPC
 ///
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct Resolver {
     resolver: NativeResolver,
@@ -138,14 +138,14 @@ impl Resolver {
     /// @see {@link Encoding}, {@link NetworkId}, {@link Node}
     #[wasm_bindgen(js_name = getNode)]
     pub async fn get_node(&self, encoding: Encoding, network_id: NetworkIdT) -> Result<NodeDescriptor> {
-        self.resolver.get_node(encoding, network_id.try_into()?).await
+        self.resolver.get_node(encoding, *network_id.try_cast_into()?).await
     }
 
     /// Fetches a public Kaspa wRPC endpoint URL for the given encoding and network identifier.
     /// @see {@link Encoding}, {@link NetworkId}
     #[wasm_bindgen(js_name = getUrl)]
     pub async fn get_url(&self, encoding: Encoding, network_id: NetworkIdT) -> Result<String> {
-        self.resolver.get_url(encoding, network_id.try_into()?).await
+        self.resolver.get_url(encoding, *network_id.try_cast_into()?).await
     }
 
     /// Connect to a public Kaspa wRPC endpoint for the given encoding and network identifier
@@ -172,10 +172,24 @@ impl TryFrom<IResolverConfig> for NativeResolver {
     }
 }
 
+impl TryCastFromJs for Resolver {
+    type Error = Error;
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>> {
+        Self::try_ref_from(value)
+    }
+}
+
+impl TryFrom<&JsValue> for Resolver {
+    type Error = Error;
+    fn try_from(js_value: &JsValue) -> Result<Self> {
+        Ok(Resolver::try_ref_from_js_value(js_value)?.clone())
+    }
+}
+
 impl TryFrom<JsValue> for Resolver {
     type Error = Error;
     fn try_from(js_value: JsValue) -> Result<Self> {
-        Ok(Resolver::try_from_js_value(js_value)?)
+        Resolver::try_from(js_value.as_ref())
     }
 }
 

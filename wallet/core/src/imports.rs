@@ -57,6 +57,6 @@ pub use zeroize::*;
 
 cfg_if! {
     if #[cfg(feature = "wasm32-sdk")] {
-        pub use wasm_bindgen::convert::TryFromJsValue;
+        pub use workflow_wasm::convert::CastFromJs;
     }
 }

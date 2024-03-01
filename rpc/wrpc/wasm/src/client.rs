@@ -239,7 +239,7 @@ impl Inner {
 /// @category Node RPC
 ///
 #[wasm_bindgen(inspectable)]
-#[derive(Clone)]
+#[derive(Clone, CastFromJs)]
 pub struct RpcClient {
     // #[wasm_bindgen(skip)]
     pub(crate) inner: Arc<Inner>,
@@ -660,7 +660,7 @@ impl RpcClient {
 #[wasm_bindgen]
 impl RpcClient {
     #[wasm_bindgen(js_name = "defaultPort")]
-    pub fn default_port(encoding: WrpcEncoding, network: NetworkTypeT) -> Result<u16> {
+    pub fn default_port(encoding: WrpcEncoding, network: &NetworkTypeT) -> Result<u16> {
         let network_type = NetworkType::try_from(network)?;
         match encoding {
             WrpcEncoding::Borsh => Ok(network_type.default_borsh_rpc_port()),

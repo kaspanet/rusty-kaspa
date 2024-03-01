@@ -7,7 +7,7 @@ use std::str::FromStr;
 
 /// Represents a generic mutable transaction
 /// @category Consensus
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct SignableTransaction {
     tx: Arc<Mutex<Transaction>>,
@@ -149,6 +149,6 @@ impl TryFrom<JsValue> for SignableTransaction {
 impl TryFrom<&JsValue> for SignableTransaction {
     type Error = Error;
     fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
-        Ok(ref_from_abi!(SignableTransaction, js_value)?)
+        Ok(SignableTransaction::try_ref_from_js_value(js_value)?.clone())
     }
 }

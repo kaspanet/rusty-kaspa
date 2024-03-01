@@ -1,14 +1,14 @@
 use crate::imports::*;
 use crate::tx::fees::Fees;
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
-use wasm_bindgen::convert::TryFromJsValue;
+use workflow_wasm::convert::CastFromJs;
 
 ///
 /// @see {@link IFees}, {@link IGeneratorSettingsObject}, {@link Generator}, {@link estimateTransactions}, {@link createTransactions}
 /// @category Wallet SDK
 ///
 #[wasm_bindgen]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, CastFromJs)]
 pub enum FeeSource {
     SenderPays,
     ReceiverPays,
@@ -39,7 +39,7 @@ impl TryFrom<IFees> for Fees {
         } else if let Ok(object) = args.dyn_into::<Object>() {
             let amount = object.get_u64("amount")?;
             if let Some(source) = object.try_get_value("source")? {
-                let source = FeeSource::try_from_js_value(source)?;
+                let source = FeeSource::try_cast_from(&source)?;
                 match source {
                     FeeSource::SenderPays => Ok(Fees::SenderPays(amount)),
                     FeeSource::ReceiverPays => Ok(Fees::ReceiverPays(amount)),

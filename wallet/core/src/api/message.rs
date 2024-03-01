@@ -256,7 +256,7 @@ pub struct AccountsRenameRequest {
 pub struct AccountsRenameResponse {}
 
 // @category Wallet API
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen]
 pub enum AccountsDiscoveryKind {
@@ -347,7 +347,7 @@ pub struct AccountsGetResponse {
 /// The address can bea receive address or a change address.
 ///
 /// @category Wallet API
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen)]
 pub enum NewAddressKind {

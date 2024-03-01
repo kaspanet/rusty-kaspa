@@ -38,7 +38,7 @@ impl MassCalculator {
     ///
     /// It is exposed by `MiningManager` for use by transaction generators and wallets.
     #[wasm_bindgen(js_name=isTransactionOutputDust)]
-    pub fn is_transaction_output_dust(transaction_output: JsValue) -> Result<bool> {
+    pub fn is_transaction_output_dust(transaction_output: &JsValue) -> Result<bool> {
         let transaction_output = TransactionOutput::try_from(transaction_output)?;
         let transaction_output = cctx::TransactionOutput::from(&transaction_output);
         Ok(mass::is_transaction_output_dust(&transaction_output))

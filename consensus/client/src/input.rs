@@ -39,7 +39,7 @@ pub struct TransactionInputInner {
 
 /// Represents a Kaspa transaction input
 /// @category Consensus
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct TransactionInput {
     inner: Arc<Mutex<TransactionInputInner>>,
@@ -66,7 +66,7 @@ impl TransactionInput {
 #[wasm_bindgen]
 impl TransactionInput {
     #[wasm_bindgen(constructor)]
-    pub fn constructor(js_value: JsValue) -> Result<TransactionInput, JsError> {
+    pub fn constructor(js_value: &JsValue) -> Result<TransactionInput, JsError> {
         Ok(js_value.try_into()?)
     }
 
@@ -76,7 +76,7 @@ impl TransactionInput {
     }
 
     #[wasm_bindgen(setter = previousOutpoint)]
-    pub fn set_previous_outpoint(&mut self, js_value: JsValue) {
+    pub fn set_previous_outpoint(&mut self, js_value: &JsValue) {
         self.inner().previous_outpoint = js_value.try_into().expect("invalid signature script");
     }
 
@@ -117,11 +117,11 @@ impl AsRef<TransactionInput> for TransactionInput {
     }
 }
 
-impl TryFrom<JsValue> for TransactionInput {
+impl TryFrom<&JsValue> for TransactionInput {
     type Error = Error;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        if let Some(object) = Object::try_from(&js_value) {
-            let previous_outpoint: TransactionOutpoint = object.get_value("previousOutpoint")?.try_into()?;
+    fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
+        if let Some(object) = Object::try_from(js_value) {
+            let previous_outpoint: TransactionOutpoint = object.get_value("previousOutpoint")?.as_ref().try_into()?;
             let signature_script = object.get_vec_u8("signatureScript")?;
             let sequence = object.get_u64("sequence")?;
             let sig_op_count = object.get_u8("sigOpCount")?;
@@ -130,6 +130,13 @@ impl TryFrom<JsValue> for TransactionInput {
         } else {
             Err("TransactionInput must be an object".into())
         }
+    }
+}
+
+impl TryFrom<JsValue> for TransactionInput {
+    type Error = Error;
+    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
+        Self::try_from(&js_value)
     }
 }
 

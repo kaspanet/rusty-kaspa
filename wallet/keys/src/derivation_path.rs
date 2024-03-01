@@ -3,7 +3,7 @@ use workflow_wasm::prelude::*;
 
 /// Key derivation path
 /// @category Wallet SDK
-#[derive(Clone)]
+#[derive(Clone, CastFromJs)]
 #[wasm_bindgen]
 pub struct DerivationPath {
     inner: kaspa_bip32::DerivationPath,
@@ -49,14 +49,14 @@ impl DerivationPath {
     }
 }
 
-impl TryFrom<JsValue> for DerivationPath {
+impl TryFrom<&JsValue> for DerivationPath {
     type Error = Error;
-    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
+    fn try_from(value: &JsValue) -> std::result::Result<Self, Self::Error> {
         if let Some(path) = value.as_string() {
             return Self::new(&path);
         }
 
-        Ok(ref_from_abi!(DerivationPath, &value)?)
+        Ok(DerivationPath::try_ref_from_js_value(value)?.clone())
     }
 }
 
