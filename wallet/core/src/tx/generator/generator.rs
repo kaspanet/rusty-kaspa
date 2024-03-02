@@ -298,6 +298,31 @@ struct Inner {
     context: Mutex<Context>,
 }
 
+impl std::fmt::Debug for Inner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Inner")
+            .field("network_id", &self.network_id)
+            .field("network_params", &self.network_params)
+            // .field("source_utxo_context", &self.source_utxo_context)
+            // .field("destination_utxo_context", &self.destination_utxo_context)
+            // .field("multiplexer", &self.multiplexer)
+            .field("sig_op_count", &self.sig_op_count)
+            .field("minimum_signatures", &self.minimum_signatures)
+            .field("change_address", &self.change_address)
+            .field("standard_change_output_compute_mass", &self.standard_change_output_compute_mass)
+            .field("signature_mass_per_input", &self.signature_mass_per_input)
+            // .field("final_transaction", &self.final_transaction)
+            .field("final_transaction_priority_fee", &self.final_transaction_priority_fee)
+            .field("final_transaction_outputs", &self.final_transaction_outputs)
+            .field("final_transaction_outputs_harmonic", &self.final_transaction_outputs_harmonic)
+            .field("final_transaction_outputs_compute_mass", &self.final_transaction_outputs_compute_mass)
+            .field("final_transaction_payload", &self.final_transaction_payload)
+            .field("final_transaction_payload_mass", &self.final_transaction_payload_mass)
+            // .field("context", &self.context)
+            .finish()
+    }
+}
+
 ///
 /// Transaction generator
 ///
@@ -309,6 +334,8 @@ pub struct Generator {
 impl Generator {
     /// Create a new [`Generator`] instance using [`GeneratorSettings`].
     pub fn try_new(settings: GeneratorSettings, signer: Option<Arc<dyn SignerT>>, abortable: Option<&Abortable>) -> Result<Self> {
+        log_info!("Creating new generator with settings: {:?}", settings);
+
         let GeneratorSettings {
             network_id,
             multiplexer,
@@ -322,6 +349,11 @@ impl Generator {
             final_transaction_payload,
             destination_utxo_context,
         } = settings;
+
+        if let Some(utxo_context) = &utxo_context {
+            let mature_utxo_size = utxo_context.mature_utxo_size();
+            log_info!("Incoming UtxoContext Mature UTXO size: {}", mature_utxo_size);
+        }
 
         let network_type = NetworkType::from(network_id);
         let network_params = NetworkParams::from(network_id);
@@ -359,6 +391,9 @@ impl Generator {
         if final_transaction_outputs.is_empty() && matches!(final_transaction_priority_fee, Fees::ReceiverPays(_)) {
             return Err(Error::GeneratorIncludeFeesRequiresOneOutput);
         }
+
+        log_info!("Generator final transaction outputs: {:?}", final_transaction_outputs);
+        log_info!("Generator final transaction amount: {:?}", final_transaction_amount);
 
         // sanity check
         if NetworkType::try_from(change_address.prefix)? != network_type {
@@ -419,6 +454,9 @@ impl Generator {
             final_transaction_payload_mass,
             destination_utxo_context,
         };
+
+        log_info!("Generator Inner: {:?}", inner);
+
         Ok(Self { inner: Arc::new(inner) })
     }
 
@@ -648,6 +686,9 @@ impl Generator {
             data.change_output_value = Some(data.aggregate_input_value - data.transaction_fees);
             Ok((DataKind::Edge, data))
         } else if data.aggregate_input_value < data.transaction_fees {
+            log_info!("Insufficient funds for relay transaction");
+            log_info!("Transaction Data: {:?}", data);
+
             Err(Error::InsufficientFunds { additional_needed: data.transaction_fees - data.aggregate_input_value, origin: "relay" })
         } else {
             let change_output_value = data.aggregate_input_value - data.transaction_fees;
@@ -894,9 +935,17 @@ impl Generator {
         }
 
         let mut stage = context.stage.take().unwrap();
+        log_info!("-------------");
+        log_info!("Generator::generate_transaction starting stage execution...");
+        log_info!("Generator::generate_transaction stage: {:?}", stage);
+        log_info!("-------------");
         let (kind, data) = self.generate_transaction_data(&mut context, &mut stage)?;
         context.stage.replace(stage);
-
+        log_info!("-------------");
+        log_info!("Generator::generate_transaction finished stage execution...");
+        log_info!("Generator::generate_transaction kind: {:?}", kind);
+        log_info!("Generator::generate_transaction data: {:?}", data);
+        log_info!("-------------");
         match (kind, data) {
             (DataKind::NoOp, _) => {
                 context.is_done = true;
@@ -941,6 +990,9 @@ impl Generator {
                 // TODO - validate that this is still correct
                 // `Fees::ReceiverPays` processing can result in outputs being larger than inputs
                 if aggregate_output_value > aggregate_input_value {
+                    log_info!("Error processing final transaction: aggregate_output_value > aggregate_input_value");
+                    log_info!("Aggregate Output Value: {}", aggregate_output_value);
+                    log_info!("Aggregate Input Value: {}", aggregate_input_value);
                     return Err(Error::InsufficientFunds {
                         additional_needed: aggregate_output_value - aggregate_input_value,
                         origin: "final",

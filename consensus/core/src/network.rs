@@ -4,6 +4,7 @@ use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::str::FromStr;
+use wasm_bindgen::convert::TryFromJsValue;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::prelude::*;
 
@@ -115,13 +116,15 @@ impl Display for NetworkType {
 
 impl TryFrom<&NetworkTypeT> for NetworkType {
     type Error = NetworkTypeError;
-    fn try_from(js_value: &NetworkTypeT) -> Result<Self, Self::Error> {
-        if let Ok(network_id) = NetworkId::try_cast_from(js_value) {
+    fn try_from(value: &NetworkTypeT) -> Result<Self, Self::Error> {
+        if let Ok(network_type) = NetworkType::try_from_js_value(JsValue::from(value)) {
+            Ok(network_type)
+        } else if let Ok(network_id) = NetworkId::try_cast_from(value) {
             Ok(network_id.network_type())
-        } else if let Some(network_type) = js_value.as_string() {
+        } else if let Some(network_type) = value.as_string() {
             Self::from_str(&network_type)
         } else {
-            Err(NetworkTypeError::InvalidNetworkType(format!("{js_value:?}")))
+            Err(NetworkTypeError::InvalidNetworkType(format!("{value:?}")))
         }
     }
 }

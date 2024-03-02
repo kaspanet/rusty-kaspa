@@ -201,7 +201,7 @@ pub enum Error {
     #[error("Invalid account type (must be one of: bip32|multisig|legacy")]
     InvalidAccountKind,
 
-    #[error("Insufficient funds")]
+    #[error("Insufficient funds - needed: {additional_needed} origin: {origin}")]
     InsufficientFunds { additional_needed: u64, origin: &'static str },
 
     #[error(transparent)]
