@@ -13,17 +13,18 @@ use serde_wasm_bindgen::from_value;
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(extends = js_sys::Array, is_type_of = Array::is_array, typescript_type = "PrivateKey[]")]
+    #[wasm_bindgen(extends = js_sys::Array, is_type_of = Array::is_array, typescript_type = "PrivateKey[] | HexString[] | Uint8Array[]")]
     #[derive(Clone, Debug, PartialEq, Eq)]
-    pub type PrivateKeyArray;
+    pub type PrivateKeyArrayT;
 }
 
-impl TryFrom<PrivateKeyArray> for Vec<PrivateKey> {
+impl TryFrom<PrivateKeyArrayT> for Vec<PrivateKey> {
     type Error = crate::error::Error;
-    fn try_from(keys: PrivateKeyArray) -> std::result::Result<Self, Self::Error> {
+    fn try_from(keys: PrivateKeyArrayT) -> std::result::Result<Self, Self::Error> {
         let mut private_keys: Vec<PrivateKey> = vec![];
         for key in keys.iter() {
-            private_keys.push(PrivateKey::try_from(key).map_err(|_| Self::Error::Custom("Unable to cast PrivateKey".to_string()))?);
+            private_keys
+                .push(PrivateKey::try_owned_from(key).map_err(|_| Self::Error::Custom("Unable to cast PrivateKey".to_string()))?);
         }
 
         Ok(private_keys)
@@ -33,22 +34,23 @@ impl TryFrom<PrivateKeyArray> for Vec<PrivateKey> {
 /// `signTransaction()` is a helper function to sign a transaction using a private key array or a signer array.
 /// @category Wallet SDK
 #[wasm_bindgen(js_name = "signTransaction")]
-pub fn js_sign_transaction(mtx: SignableTransaction, signer: PrivateKeyArray, verify_sig: bool) -> Result<SignableTransaction> {
+pub fn js_sign_transaction(mtx: SignableTransaction, signer: PrivateKeyArrayT, verify_sig: bool) -> Result<SignableTransaction> {
     if signer.is_array() {
         let mut private_keys: Vec<[u8; 32]> = vec![];
         for key in Array::from(&signer).iter() {
-            let key = PrivateKey::try_from(key).map_err(|_| Error::Custom("Unable to cast PrivateKey".to_string()))?;
-            private_keys.push(key.secret_bytes());
+            let key = PrivateKey::try_cast_from(key).map_err(|_| Error::Custom("Unable to cast PrivateKey".to_string()))?;
+            private_keys.push(key.as_ref().secret_bytes());
         }
 
-        let mtx = sign_transaction(mtx, private_keys, verify_sig).map_err(|err| Error::Custom(format!("Unable to sign: {err:?}")))?;
+        let mtx = sign_transaction(mtx, &private_keys, verify_sig).map_err(|err| Error::Custom(format!("Unable to sign: {err:?}")))?;
+        private_keys.zeroize();
         Ok(mtx)
     } else {
         Err(Error::custom("signTransaction() requires an array of signatures"))
     }
 }
 
-pub fn sign_transaction(mtx: SignableTransaction, private_keys: Vec<[u8; 32]>, verify_sig: bool) -> Result<SignableTransaction> {
+pub fn sign_transaction(mtx: SignableTransaction, private_keys: &[[u8; 32]], verify_sig: bool) -> Result<SignableTransaction> {
     let entries = mtx.entries.clone();
     let mtx = sign_transaction_impl(mtx.into(), private_keys, verify_sig)?;
     let mtx = SignableTransaction::try_from((mtx, entries))?;
@@ -57,7 +59,7 @@ pub fn sign_transaction(mtx: SignableTransaction, private_keys: Vec<[u8; 32]>, v
 
 fn sign_transaction_impl(
     mtx: tx::SignableTransaction,
-    private_keys: Vec<[u8; 32]>,
+    private_keys: &[[u8; 32]],
     verify_sig: bool,
 ) -> Result<tx::SignableTransaction> {
     let mtx = sign(mtx, private_keys)?;
@@ -71,7 +73,7 @@ fn sign_transaction_impl(
 /// Sign a transaction using schnorr, returns a new transaction with the signatures added.
 /// The resulting transaction may be partially signed if the supplied keys are not sufficient
 /// to sign all of its inputs.
-pub fn sign(mutable_tx: tx::SignableTransaction, privkeys: Vec<[u8; 32]>) -> Result<tx::SignableTransaction> {
+pub fn sign(mutable_tx: tx::SignableTransaction, privkeys: &[[u8; 32]]) -> Result<tx::SignableTransaction> {
     Ok(sign_with_multiple_v2(mutable_tx, privkeys).unwrap())
 }
 

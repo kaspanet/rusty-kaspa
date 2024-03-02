@@ -92,23 +92,18 @@ impl PrivateKey {
     }
 }
 
-impl TryFrom<&JsValue> for PrivateKey {
+impl TryCastFromJs for PrivateKey {
     type Error = Error;
-    fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Some(hex_str) = js_value.as_string() {
-            Self::try_new(hex_str.as_str())
-        } else if Array::is_array(js_value) {
-            let array = Uint8Array::new(js_value);
-            Self::try_from_slice(array.to_vec().as_slice())
-        } else {
-            Ok(PrivateKey::try_ref_from_js_value(js_value)?.clone())
-        }
-    }
-}
-
-impl TryFrom<JsValue> for PrivateKey {
-    type Error = Error;
-    fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
-        Self::try_from(&js_value)
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Self::resolve(&value, || {
+            if let Some(hex_str) = value.as_ref().as_string() {
+                Self::try_new(hex_str.as_str())
+            } else if Array::is_array(value.as_ref()) {
+                let array = Uint8Array::new(value.as_ref());
+                Self::try_from_slice(array.to_vec().as_slice())
+            } else {
+                Err(Error::InvalidPrivateKey)
+            }
+        })
     }
 }

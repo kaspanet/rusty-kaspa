@@ -11,10 +11,9 @@ extern "C" {
     pub type ISompiToKaspa;
 }
 
-
 /// Convert a Kaspa string to Sompi represented by bigint.
 /// This function provides correct precision handling and
-/// can be used to parse user input. 
+/// can be used to parse user input.
 /// @category Wallet SDK
 #[wasm_bindgen(js_name = "kaspaToSompi")]
 pub fn kaspa_to_sompi(kaspa: String) -> Option<BigInt> {

@@ -18,6 +18,12 @@ pub struct XPrv {
     inner: ExtendedPrivateKey<SecretKey>,
 }
 
+impl XPrv {
+    pub fn inner(&self) -> &ExtendedPrivateKey<SecretKey> {
+        &self.inner
+    }
+}
+
 #[wasm_bindgen]
 impl XPrv {
     #[wasm_bindgen(constructor)]
@@ -43,8 +49,8 @@ impl XPrv {
 
     #[wasm_bindgen(js_name=derivePath)]
     pub fn derive_path(&self, path: &JsValue) -> Result<XPrv> {
-        let path = DerivationPath::try_from(path)?;
-        let inner = self.inner.clone().derive_path(path.into())?;
+        let path = DerivationPath::try_cast_from(path)?;
+        let inner = self.inner.clone().derive_path(path.as_ref().into())?;
         Ok(Self { inner })
     }
 
@@ -66,9 +72,9 @@ impl XPrv {
     }
 }
 
-impl From<XPrv> for ExtendedPrivateKey<SecretKey> {
-    fn from(xprv: XPrv) -> Self {
-        xprv.inner
+impl<'a> From<&'a XPrv> for &'a ExtendedPrivateKey<SecretKey> {
+    fn from(xprv: &'a XPrv) -> Self {
+        &xprv.inner
     }
 }
 
@@ -78,22 +84,15 @@ extern "C" {
     pub type XPrvT;
 }
 
-impl TryFrom<XPrvT> for XPrv {
+impl TryCastFromJs for XPrv {
     type Error = Error;
-    fn try_from(value: XPrvT) -> std::result::Result<Self, Self::Error> {
-        if let Some(xprv) = value.as_string() {
-            Ok(XPrv::from_xprv_str(xprv)?)
-        } else if let Ok(xprv) = XPrv::try_ref_from_js_value(&value) {
-            Ok(xprv.clone())
-        } else {
-            Err(Error::InvalidXPrv)
-        }
-    }
-}
-
-impl TryFrom<XPrvT> for ExtendedPrivateKey<SecretKey> {
-    type Error = Error;
-    fn try_from(value: XPrvT) -> std::result::Result<Self, Self::Error> {
-        XPrv::try_from(value).map(Into::into)
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Self::resolve(&value, || {
+            if let Some(xprv) = value.as_ref().as_string() {
+                Ok(XPrv::from_xprv_str(xprv)?)
+            } else {
+                Err(Error::InvalidXPrv)
+            }
+        })
     }
 }

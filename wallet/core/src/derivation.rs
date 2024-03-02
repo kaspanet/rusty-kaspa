@@ -463,8 +463,8 @@ pub fn create_address_js(
     ecdsa: Option<bool>,
     account_kind: Option<AccountKind>,
 ) -> Result<Address> {
-    let public_key = PublicKey::try_from(key)?;
-    create_address(1, vec![public_key.try_into()?], network_type.into(), ecdsa.unwrap_or(false), account_kind)
+    let public_key = PublicKey::try_cast_from(key)?;
+    create_address(1, vec![public_key.as_ref().try_into()?], network_type.into(), ecdsa.unwrap_or(false), account_kind)
 }
 
 /// @category Wallet SDK
@@ -476,9 +476,7 @@ pub fn create_multisig_address_js(
     ecdsa: Option<bool>,
     account_kind: Option<AccountKind>,
 ) -> Result<Address> {
-    let keys = Vec::<PublicKey>::try_from(keys)?;
-    let keys = keys.into_iter().map(|pk| pk.try_into().map_err(Into::into)).collect::<Result<Vec<secp256k1::PublicKey>>>()?;
-    create_address(minimum_signatures, keys, network_type.into(), ecdsa.unwrap_or(false), account_kind)
+    create_address(minimum_signatures, keys.try_into()?, network_type.into(), ecdsa.unwrap_or(false), account_kind)
 }
 
 pub fn create_address(

@@ -93,17 +93,6 @@ impl std::fmt::Display for PublicKey {
     }
 }
 
-impl TryFrom<JsValue> for PublicKey {
-    type Error = Error;
-    fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Some(hex_str) = js_value.as_string() {
-            Self::try_new(hex_str.as_str())
-        } else {
-            Ok(PublicKey::try_ref_from_js_value(&js_value)?.clone())
-        }
-    }
-}
-
 impl From<PublicKey> for secp256k1::XOnlyPublicKey {
     fn from(value: PublicKey) -> Self {
         value.xonly_public_key
@@ -113,6 +102,13 @@ impl From<PublicKey> for secp256k1::XOnlyPublicKey {
 impl TryFrom<PublicKey> for secp256k1::PublicKey {
     type Error = Error;
     fn try_from(value: PublicKey) -> std::result::Result<Self, Self::Error> {
+        value.public_key.ok_or(Error::InvalidPublicKey)
+    }
+}
+
+impl TryFrom<&PublicKey> for secp256k1::PublicKey {
+    type Error = Error;
+    fn try_from(value: &PublicKey) -> std::result::Result<Self, Self::Error> {
         value.public_key.ok_or(Error::InvalidPublicKey)
     }
 }
@@ -140,25 +136,27 @@ extern "C" {
     pub type PublicKeyArrayT;
 }
 
-impl TryFrom<PublicKeyT> for PublicKey {
+impl TryCastFromJs for PublicKey {
     type Error = Error;
-    fn try_from(value: PublicKeyT) -> std::result::Result<Self, Self::Error> {
-        if let Some(pubkey) = value.as_string() {
-            Ok(PublicKey::try_new(pubkey.as_str())?)
-        } else if let Ok(xpub) = PublicKey::try_ref_from_js_value(&value) {
-            Ok(xpub.clone())
-        } else {
-            Err(Error::InvalidPublicKey)
-        }
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Self::resolve(&value, || {
+            let value = value.as_ref();
+            if let Some(hex_str) = value.as_string() {
+                Ok(PublicKey::try_new(hex_str.as_str())?)
+            } else {
+                Err(Error::custom("Invalid PublicKey"))
+            }
+        })
     }
 }
 
-impl TryFrom<PublicKeyArrayT> for Vec<PublicKey> {
+impl TryFrom<PublicKeyArrayT> for Vec<secp256k1::PublicKey> {
     type Error = Error;
     fn try_from(value: PublicKeyArrayT) -> Result<Self> {
         if value.is_array() {
             let array = Array::from(&value);
-            Ok(array.iter().map(PublicKey::try_from).collect::<Result<Vec<PublicKey>>>()?)
+            let pubkeys = array.iter().map(PublicKey::try_cast_from).collect::<Result<Vec<_>>>()?;
+            Ok(pubkeys.iter().map(|pk| pk.as_ref().try_into()).collect::<Result<Vec<_>>>()?)
         } else {
             Err(Error::InvalidPublicKeyArray)
         }

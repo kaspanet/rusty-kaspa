@@ -3,6 +3,7 @@ use crate::derivation::traits::WalletDerivationManagerTrait;
 use crate::imports::*;
 use kaspa_addresses::AddressArrayT;
 use kaspa_consensus_core::network::NetworkType;
+// use crate::xprv::XPrv;
 
 ///
 /// Helper class to generate public keys from an extended public key (XPub)
@@ -21,21 +22,21 @@ pub struct PublicKeyGenerator {
 impl PublicKeyGenerator {
     #[wasm_bindgen(js_name=fromXPub)]
     pub fn from_xpub(kpub: XPubT, cosigner_index: Option<u32>) -> Result<PublicKeyGenerator> {
-        let xpub = ExtendedPublicKey::<secp256k1::PublicKey>::try_from(kpub)?;
-        let hd_wallet = WalletDerivationManager::from_extended_public_key(xpub, cosigner_index)?;
+        let kpub = XPub::try_cast_from(kpub)?;
+        let xpub = kpub.as_ref().inner();
+        let hd_wallet = WalletDerivationManager::from_extended_public_key(xpub.clone(), cosigner_index)?;
         Ok(Self { hd_wallet })
     }
 
     #[wasm_bindgen(js_name=fromMasterXPrv)]
     pub fn from_master_xprv(
-        xprv: XPrvT,
+        xprv: &XPrvT,
         is_multisig: bool,
         account_index: u64,
         cosigner_index: Option<u32>,
     ) -> Result<PublicKeyGenerator> {
-        let xprv = ExtendedPrivateKey::<SecretKey>::try_from(xprv)?;
         let path = WalletDerivationManager::build_derivate_path(is_multisig, account_index, None, None)?;
-        let xprv = xprv.derive_path(path)?;
+        let xprv = XPrv::try_owned_from(xprv)?.inner().clone().derive_path(&path)?;
         let xpub = xprv.public_key();
         let hd_wallet = WalletDerivationManager::from_extended_public_key(xpub, cosigner_index)?;
         Ok(Self { hd_wallet })

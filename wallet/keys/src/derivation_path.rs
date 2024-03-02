@@ -49,19 +49,22 @@ impl DerivationPath {
     }
 }
 
-impl TryFrom<&JsValue> for DerivationPath {
+impl TryCastFromJs for DerivationPath {
     type Error = Error;
-    fn try_from(value: &JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Some(path) = value.as_string() {
-            return Self::new(&path);
-        }
-
-        Ok(DerivationPath::try_ref_from_js_value(value)?.clone())
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Self::resolve(&value, || {
+            let value = value.as_ref();
+            if let Some(path) = value.as_string() {
+                Ok(DerivationPath::new(&path)?)
+            } else {
+                Err(Error::custom("Invalid derivation path"))
+            }
+        })
     }
 }
 
-impl From<DerivationPath> for kaspa_bip32::DerivationPath {
-    fn from(value: DerivationPath) -> Self {
-        value.inner
+impl<'a> From<&'a DerivationPath> for &'a kaspa_bip32::DerivationPath {
+    fn from(value: &'a DerivationPath) -> Self {
+        &value.inner
     }
 }

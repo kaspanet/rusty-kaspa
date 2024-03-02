@@ -98,16 +98,9 @@ impl Keypair {
     }
 }
 
-impl TryFrom<&JsValue> for Keypair {
+impl TryCastFromJs for Keypair {
     type Error = Error;
-    fn try_from(value: &JsValue) -> std::result::Result<Self, Self::Error> {
-        Ok(Keypair::try_ref_from_js_value(value)?.clone())
-    }
-}
-
-impl TryFrom<JsValue> for Keypair {
-    type Error = Error;
-    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
-        Keypair::try_from(value.as_ref())
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Ok(Self::try_ref_from_js_value_as_cast(value)?)
     }
 }

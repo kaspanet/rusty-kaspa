@@ -1,6 +1,7 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::tx::generator as native;
+use crate::wasm::PrivateKeyArrayT;
 use kaspa_consensus_client::Transaction;
 use kaspa_wallet_keys::privatekey::PrivateKey;
 use kaspa_wrpc_wasm::RpcClient;
@@ -68,11 +69,16 @@ impl PendingTransaction {
 
     /// Sign transaction with supplied [`Array`] or [`PrivateKey`] or an array of
     /// raw private key bytes (encoded as `Uint8Array` or as hex strings)
-    pub fn sign(&self, js_value: JsValue) -> Result<()> {
+    pub fn sign(&self, js_value: PrivateKeyArrayT) -> Result<()> {
         if let Ok(keys) = js_value.dyn_into::<Array>() {
-            let keys: Vec<PrivateKey> =
-                keys.iter().map(PrivateKey::try_from).collect::<std::result::Result<Vec<_>, kaspa_wallet_keys::error::Error>>()?;
-            self.inner.try_sign_with_keys(keys.iter().map(|key| key.into()).collect())
+            let keys = keys
+                .iter()
+                .map(PrivateKey::try_cast_from)
+                .collect::<std::result::Result<Vec<_>, kaspa_wallet_keys::error::Error>>()?;
+            let mut keys = keys.iter().map(|key| key.as_ref().secret_bytes()).collect::<Vec<_>>();
+            self.inner.try_sign_with_keys(&keys)?;
+            keys.zeroize();
+            Ok(())
         } else {
             Err(Error::custom("Please supply an array of keys"))
         }

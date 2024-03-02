@@ -185,40 +185,16 @@ impl Hash {
 }
 
 type TryFromError = workflow_wasm::error::Error;
-impl TryFrom<&JsValue> for Hash {
-    type Error = workflow_wasm::error::Error;
-    fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
-        let hash = if js_value.is_string() || js_value.is_array() {
-            let bytes = js_value.try_as_vec_u8()?;
-            Hash(
+impl TryCastFromJs for Hash {
+    type Error = TryFromError;
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Self::resolve(&value, || {
+            let bytes = value.as_ref().try_as_vec_u8()?;
+            Ok(Hash(
                 <[u8; HASH_SIZE]>::try_from(bytes)
                     .map_err(|_| TryFromError::WrongSize("Slice must have the length of Hash".into()))?,
-            )
-        } else if js_value.is_object() {
-            *Hash::try_ref_from_js_value(js_value)
-                .map_err(|_| TryFromError::WrongType("supplied object must be a `Hash`".to_string()))?
-        } else {
-            return Err(TryFromError::WrongType("supplied object must be a `Hash`".to_string()));
-        };
-        Ok(hash)
-    }
-}
-
-impl TryFrom<JsValue> for Hash {
-    type Error = workflow_wasm::error::Error;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        Hash::try_from(&js_value)
-    }
-}
-
-impl Hash {
-    pub fn try_vec_from_array(array: js_sys::Array) -> Result<Vec<Hash>, workflow_wasm::error::Error> {
-        let mut list = vec![];
-        for item in array.iter() {
-            list.push(item.as_ref().try_into()?);
-        }
-
-        Ok(list)
+            ))
+        })
     }
 }
 

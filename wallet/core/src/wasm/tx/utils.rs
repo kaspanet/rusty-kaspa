@@ -28,7 +28,7 @@ pub fn create_transaction_js(
     let mc = MassCalculator::new(params);
 
     let utxo_entries = if let Some(utxo_entries) = utxo_entry_source.dyn_ref::<js_sys::Array>() {
-        utxo_entries.to_vec().iter().map(UtxoEntryReference::try_from).collect::<Result<Vec<_>, _>>()?
+        utxo_entries.to_vec().iter().map(UtxoEntryReference::try_cast_from).collect::<Result<Vec<_>, _>>()?
     } else {
         return Err(Error::custom("utxo_entries must be an array"));
     };
@@ -53,9 +53,9 @@ pub fn create_transaction_js(
         .iter()
         .enumerate()
         .map(|(sequence, reference)| {
-            let UtxoEntryReference { utxo } = reference;
+            let UtxoEntryReference { utxo } = reference.as_ref();
             total_input_amount += utxo.amount();
-            entries.push(reference.clone());
+            entries.push(reference.as_ref().clone());
             TransactionInput::new(utxo.outpoint.clone(), vec![], sequence as u64, sig_op_count)
         })
         .collect::<Vec<TransactionInput>>();

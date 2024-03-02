@@ -37,8 +37,13 @@ export interface ITransactionVerboseData {
     blockHash : HexString;
     blockTime : bigint;
 }
-
 "#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "ITransaction")]
+    pub type ITransaction;
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -127,8 +132,8 @@ impl Transaction {
     }
 
     #[wasm_bindgen(constructor)]
-    pub fn constructor(js_value: JsValue) -> std::result::Result<Transaction, JsError> {
-        Ok(js_value.try_into()?)
+    pub fn constructor(js_value: &ITransaction) -> std::result::Result<Transaction, JsError> {
+        Ok(js_value.try_into_owned()?)
     }
 
     #[wasm_bindgen(getter = inputs)]
@@ -213,20 +218,13 @@ impl Transaction {
     }
 }
 
-impl TryFrom<JsValue> for Transaction {
-    type Error = Error;
-    fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
-        Transaction::try_from(&js_value)
-    }
-}
-
 impl TryCastFromJs for Transaction {
     type Error = Error;
     fn try_cast_from(value: impl AsRef<JsValue>) -> std::result::Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+        Self::resolve_cast(&value, || {
             if let Some(object) = Object::try_from(value.as_ref()) {
                 if let Some(tx) = object.try_get_value("tx")? {
-                    Transaction::try_from(&tx)
+                    Transaction::try_cast_from(&tx)
                 } else {
                     let version = object.get_u16("version")?;
                     let lock_time = object.get_u64("lockTime")?;
@@ -250,20 +248,13 @@ impl TryCastFromJs for Transaction {
                         .iter()
                         .map(|jsv| jsv.try_into())
                         .collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?;
-                    Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload)
+                    Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload).map(Into::into)
                 }
             } else {
                 Err("Transaction must be an object".into())
             }
         })
         // Transaction::try_from(value)
-    }
-}
-
-impl TryFrom<&JsValue> for Transaction {
-    type Error = Error;
-    fn try_from(value: &JsValue) -> std::result::Result<Self, Self::Error> {
-        Self::try_value_from(value)
     }
 }
 

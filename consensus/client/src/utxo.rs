@@ -182,7 +182,14 @@ pub trait TryIntoUtxoEntryReferences {
 
 impl TryIntoUtxoEntryReferences for JsValue {
     fn try_into_utxo_entry_references(&self) -> Result<Vec<UtxoEntryReference>> {
-        Array::from(self).iter().map(UtxoEntryReference::try_from).collect()
+        Array::from(self).iter().map(UtxoEntryReference::try_owned_from).collect()
+    }
+}
+
+impl TryCastFromJs for UtxoEntry {
+    type Error = Error;
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Ok(Self::try_ref_from_js_value_as_cast(value)?)
     }
 }
 
@@ -225,7 +232,9 @@ impl UtxoEntries {
     pub fn set_items_from_js_array(&mut self, js_value: &JsValue) {
         let items = Array::from(js_value)
             .iter()
-            .map(|js_value| UtxoEntryReference::try_from(&js_value).unwrap_or_else(|err| panic!("invalid UtxoEntryReference: {err}")))
+            .map(|js_value| {
+                UtxoEntryReference::try_owned_from(&js_value).unwrap_or_else(|err| panic!("invalid UtxoEntryReference: {err}"))
+            })
             .collect::<Vec<_>>();
         self.0 = Arc::new(items);
     }
@@ -297,39 +306,32 @@ impl TryFrom<JsValue> for UtxoEntries {
     }
 }
 
-impl TryFrom<JsValue> for UtxoEntryReference {
+impl TryCastFromJs for UtxoEntryReference {
     type Error = Error;
-    fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
-        Self::try_from(&js_value)
-    }
-}
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Self::resolve(&value, || {
+            if let Ok(utxo_entry) = UtxoEntry::try_ref_from_js_value(&value) {
+                Ok(Self::from(utxo_entry.clone()))
+            } else if let Some(object) = Object::try_from(value.as_ref()) {
+                let address = Address::try_from(object.get_value("address")?)?;
+                let outpoint = TransactionOutpoint::try_from(object.get_value("outpoint")?.as_ref())?;
+                let utxo_entry = Object::from(object.get_value("utxoEntry")?);
+                let amount = utxo_entry.get_u64("amount")?;
+                let script_public_key = ScriptPublicKey::try_owned_from(utxo_entry.get_value("scriptPublicKey")?)?;
+                let block_daa_score = utxo_entry.get_u64("blockDaaScore")?;
+                let is_coinbase = utxo_entry.get_bool("isCoinbase")?;
 
-impl TryFrom<&JsValue> for UtxoEntryReference {
-    type Error = Error;
-    fn try_from(js_value: &JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Ok(utxo_entry) = UtxoEntry::try_ref_from_js_value(js_value) {
-            Ok(Self::from(utxo_entry.clone()))
-        } else if let Ok(utxo_entry_reference) = UtxoEntryReference::try_ref_from_js_value(js_value) {
-            Ok(utxo_entry_reference.clone())
-        } else if let Some(object) = Object::try_from(js_value) {
-            let address = Address::try_from(object.get_value("address")?)?;
-            let outpoint = TransactionOutpoint::try_from(object.get_value("outpoint")?.as_ref())?;
-            let utxo_entry = Object::from(object.get_value("utxoEntry")?);
-            let amount = utxo_entry.get_u64("amount")?;
-            let script_public_key = ScriptPublicKey::try_from(utxo_entry.get_value("scriptPublicKey")?)?;
-            let block_daa_score = utxo_entry.get_u64("blockDaaScore")?;
-            let is_coinbase = utxo_entry.get_bool("isCoinbase")?;
+                let utxo_entry = UtxoEntry {
+                    address: Some(address),
+                    outpoint,
+                    entry: cctx::UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase },
+                };
 
-            let utxo_entry = UtxoEntry {
-                address: Some(address),
-                outpoint,
-                entry: cctx::UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase },
-            };
-
-            Ok(UtxoEntryReference::from(utxo_entry))
-        } else {
-            Err("Data type supplied to UtxoEntryReference must be an object".into())
-        }
+                Ok(UtxoEntryReference::from(utxo_entry))
+            } else {
+                Err("Data type supplied to UtxoEntryReference must be an object".into())
+            }
+        })
     }
 }
 

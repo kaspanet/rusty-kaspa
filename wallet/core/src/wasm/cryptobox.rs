@@ -25,7 +25,7 @@ impl CryptoBoxPrivateKey {
     #[wasm_bindgen(constructor)]
     #[allow(non_snake_case)]
     pub fn ctor(secretKey: BinaryT) -> Result<CryptoBoxPrivateKey> {
-        CryptoBoxPrivateKey::try_value_from(secretKey)
+        CryptoBoxPrivateKey::try_owned_from(secretKey)
     }
 
     pub fn to_public_key(&self) -> CryptoBoxPublicKey {
@@ -80,7 +80,7 @@ impl CryptoBoxPublicKey {
     #[wasm_bindgen(constructor)]
     #[allow(non_snake_case)]
     pub fn ctor(publicKey: BinaryT) -> Result<CryptoBoxPublicKey> {
-        Self::try_value_from(publicKey)
+        Self::try_owned_from(publicKey)
     }
 
     #[wasm_bindgen(js_name = "toString")]

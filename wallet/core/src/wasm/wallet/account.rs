@@ -140,8 +140,8 @@ impl TryFrom<JsValue> for AccountCreateArgs {
     type Error = Error;
     fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
         if let Some(object) = Object::try_from(&value) {
-            let _keypair = object.try_get::<Keypair>("keypair")?;
-            let _public_key = object.try_get::<Keypair>("keypair")?;
+            let _keypair = object.try_get_cast::<Keypair>("keypair")?;
+            let _public_key = object.try_get_cast::<Keypair>("keypair")?;
 
             Ok(AccountCreateArgs {})
         } else {

@@ -490,7 +490,7 @@ pub trait DerivationCapableAccount: Account {
             let last = (index + window) as u32;
             index = last as usize;
 
-            let (keys, addresses) = if sweep {
+            let (mut keys, addresses) = if sweep {
                 let mut keypairs = derivation.get_range_with_keys(false, first..last, false, &xkey).await?;
                 let change_keypairs = derivation.get_range_with_keys(true, first..last, false, &xkey).await?;
                 keypairs.extend(change_keypairs);
@@ -537,7 +537,7 @@ pub trait DerivationCapableAccount: Account {
 
                     let mut stream = generator.stream();
                     while let Some(transaction) = stream.try_next().await? {
-                        transaction.try_sign_with_keys(keys.clone())?;
+                        transaction.try_sign_with_keys(&keys)?;
                         let id = transaction.try_submit(&rpc).await?;
                         if let Some(notifier) = notifier {
                             notifier(index, aggregate_utxo_count, balance, Some(id));
@@ -559,6 +559,8 @@ pub trait DerivationCapableAccount: Account {
                 }
                 yield_executor().await;
             }
+
+            keys.zeroize();
         }
 
         if index > last_notification {
@@ -643,8 +645,8 @@ pub(crate) fn create_private_keys<'l>(
             private_keys.push((*address, private_key));
         }
     } else {
-        let receive_xkey = xkey.clone().derive_path(paths.0)?;
-        let change_xkey = xkey.clone().derive_path(paths.1)?;
+        let receive_xkey = xkey.clone().derive_path(&paths.0)?;
+        let change_xkey = xkey.clone().derive_path(&paths.1)?;
 
         for (address, index) in receive.iter() {
             private_keys.push((*address, *receive_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));

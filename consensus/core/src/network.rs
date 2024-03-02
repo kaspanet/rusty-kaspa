@@ -386,14 +386,14 @@ extern "C" {
 impl TryFrom<&JsValue> for NetworkId {
     type Error = NetworkIdError;
     fn try_from(value: &JsValue) -> Result<Self, Self::Error> {
-        Self::try_value_from(value)
+        Self::try_owned_from(value)
     }
 }
 
 impl TryFrom<JsValue> for NetworkId {
     type Error = NetworkIdError;
     fn try_from(value: JsValue) -> Result<Self, Self::Error> {
-        Self::try_value_from(value)
+        Self::try_owned_from(value)
     }
 }
 
@@ -409,7 +409,6 @@ impl TryCastFromJs for NetworkId {
         })
     }
 }
-
 
 #[cfg(test)]
 mod tests {

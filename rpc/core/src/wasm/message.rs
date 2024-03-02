@@ -11,6 +11,7 @@ use kaspa_consensus_wasm::SignableTransaction;
 use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;
 pub use serde_wasm_bindgen::from_value;
 use wasm_bindgen::prelude::*;
+use workflow_wasm::convert::*;
 use workflow_wasm::extensions::*;
 use workflow_wasm::serde::to_value;
 
@@ -1319,12 +1320,12 @@ try_from! ( args: ISubmitTransactionRequest, SubmitTransactionRequest, {
         (object.into(), false)
     };
 
-    let request = if let Ok(signable) = SignableTransaction::try_from(&transaction) {
+    let request = if let Ok(signable) = SignableTransaction::try_owned_from(&transaction) {
         SubmitTransactionRequest {
             transaction : Transaction::from(signable).into(),
             allow_orphan,
         }
-    } else if let Ok(transaction) = Transaction::try_from(&transaction) {
+    } else if let Ok(transaction) = Transaction::try_owned_from(&transaction) {
         SubmitTransactionRequest {
             transaction : transaction.into(),
             allow_orphan,

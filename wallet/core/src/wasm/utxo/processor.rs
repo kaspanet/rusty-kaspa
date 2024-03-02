@@ -135,10 +135,10 @@ impl UtxoProcessor {
     }
 }
 
-impl TryFrom<JsValue> for UtxoProcessor {
-    type Error = Error;
-    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
-        Ok(UtxoProcessor::try_ref_from_js_value(&value)?.clone())
+impl TryCastFromJs for UtxoProcessor {
+    type Error = workflow_wasm::error::Error;
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Self::try_ref_from_js_value_as_cast(value)
     }
 }
 

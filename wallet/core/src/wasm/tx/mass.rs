@@ -7,6 +7,7 @@ use kaspa_consensus_core::config::params::Params;
 use kaspa_consensus_core::tx as cctx;
 use std::sync::Arc;
 use wasm_bindgen::prelude::*;
+use workflow_wasm::convert::*;
 
 /// @category Wallet SDK
 #[wasm_bindgen]
@@ -70,9 +71,9 @@ impl MassCalculator {
     }
 
     #[wasm_bindgen(js_name=calcMassForTransaction)]
-    pub fn calc_mass_for_transaction(&self, tx: JsValue) -> Result<u32> {
-        let tx = Transaction::try_from(tx)?;
-        let tx = cctx::Transaction::from(&tx);
+    pub fn calc_mass_for_transaction(&self, tx: &JsValue) -> Result<u32> {
+        let tx = Transaction::try_cast_from(tx)?;
+        let tx = cctx::Transaction::from(tx.as_ref());
         Ok(self.mc.calc_mass_for_transaction(&tx) as u32)
     }
 

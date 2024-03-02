@@ -139,16 +139,9 @@ impl From<SignableTransaction> for Transaction {
     }
 }
 
-impl TryFrom<JsValue> for SignableTransaction {
+impl TryCastFromJs for SignableTransaction {
     type Error = Error;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        SignableTransaction::try_from(&js_value)
-    }
-}
-
-impl TryFrom<&JsValue> for SignableTransaction {
-    type Error = Error;
-    fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
-        Ok(SignableTransaction::try_ref_from_js_value(js_value)?.clone())
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Ok(Self::try_ref_from_js_value_as_cast(value)?)
     }
 }

@@ -56,10 +56,10 @@ pub struct ResolverConnect {
 impl TryFrom<IResolverConnect> for ResolverConnect {
     type Error = Error;
     fn try_from(config: IResolverConnect) -> Result<Self> {
-        if let Ok(network_id) = NetworkId::try_value_from(&config) {
+        if let Ok(network_id) = NetworkId::try_owned_from(&config) {
             Ok(Self { encoding: None, network_id })
         } else {
-            Ok(serde_wasm_bindgen::from_value(config.into())?) //.map_err(Into::into)
+            Ok(serde_wasm_bindgen::from_value(config.into())?)
         }
     }
 }
@@ -138,14 +138,14 @@ impl Resolver {
     /// @see {@link Encoding}, {@link NetworkId}, {@link Node}
     #[wasm_bindgen(js_name = getNode)]
     pub async fn get_node(&self, encoding: Encoding, network_id: NetworkIdT) -> Result<NodeDescriptor> {
-        self.resolver.get_node(encoding, *network_id.try_cast_into()?).await
+        self.resolver.get_node(encoding, *network_id.try_into_cast()?).await
     }
 
     /// Fetches a public Kaspa wRPC endpoint URL for the given encoding and network identifier.
     /// @see {@link Encoding}, {@link NetworkId}
     #[wasm_bindgen(js_name = getUrl)]
     pub async fn get_url(&self, encoding: Encoding, network_id: NetworkIdT) -> Result<String> {
-        self.resolver.get_url(encoding, *network_id.try_cast_into()?).await
+        self.resolver.get_url(encoding, *network_id.try_into_cast()?).await
     }
 
     /// Connect to a public Kaspa wRPC endpoint for the given encoding and network identifier
@@ -175,7 +175,7 @@ impl TryFrom<IResolverConfig> for NativeResolver {
 impl TryCastFromJs for Resolver {
     type Error = Error;
     fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>> {
-        Self::try_ref_from(value)
+        Ok(Self::try_ref_from_js_value_as_cast(value)?)
     }
 }
 

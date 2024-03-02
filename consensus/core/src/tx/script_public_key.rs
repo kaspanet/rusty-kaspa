@@ -383,25 +383,17 @@ impl BorshSchema for ScriptPublicKey {
     }
 }
 
-impl TryFrom<&JsValue> for ScriptPublicKey {
-    type Error = JsValue;
-
-    fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
-        if let Ok(script_public_key) = ScriptPublicKey::try_ref_from_js_value(js_value) {
-            Ok(script_public_key.clone())
-        } else if let Some(hex_str) = js_value.as_string() {
-            Self::from_str(&hex_str).map_err(|e| JsValue::from_str(&format!("{}", e)))
-        } else {
-            Err(JsValue::from_str(&format!("Unable to convert ScriptPublicKey from: {js_value:?}")))
-        }
-    }
-}
-
-impl TryFrom<JsValue> for ScriptPublicKey {
-    type Error = JsValue;
-
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        Self::try_from(&js_value)
+type CastError = workflow_wasm::error::Error;
+impl TryCastFromJs for ScriptPublicKey {
+    type Error = workflow_wasm::error::Error;
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Self::resolve(&value, || {
+            if let Some(hex_str) = value.as_ref().as_string() {
+                Ok(Self::from_str(&hex_str).map_err(CastError::custom)?)
+            } else {
+                Err(CastError::custom(format!("Unable to convert ScriptPublicKey from: {:?}", value.as_ref())))
+            }
+        })
     }
 }
 

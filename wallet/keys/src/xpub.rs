@@ -17,6 +17,12 @@ pub struct XPub {
     inner: ExtendedPublicKey<secp256k1::PublicKey>,
 }
 
+impl XPub {
+    pub fn inner(&self) -> &ExtendedPublicKey<secp256k1::PublicKey> {
+        &self.inner
+    }
+}
+
 #[wasm_bindgen]
 impl XPub {
     #[wasm_bindgen(constructor)]
@@ -34,8 +40,8 @@ impl XPub {
 
     #[wasm_bindgen(js_name=derivePath)]
     pub fn derive_path(&self, path: &JsValue) -> Result<XPub> {
-        let path = DerivationPath::try_ref_from_js_value(path)?.clone();
-        let inner = self.inner.clone().derive_path(&path.into())?;
+        let path = DerivationPath::try_cast_from(path)?;
+        let inner = self.inner.clone().derive_path(path.as_ref().into())?;
         Ok(Self { inner })
     }
 
@@ -57,34 +63,21 @@ impl From<ExtendedPublicKey<secp256k1::PublicKey>> for XPub {
     }
 }
 
-impl From<XPub> for ExtendedPublicKey<secp256k1::PublicKey> {
-    fn from(xpub: XPub) -> Self {
-        xpub.inner
-    }
-}
-
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(typescript_type = "XPub | string")]
     pub type XPubT;
 }
 
-impl TryFrom<XPubT> for XPub {
+impl TryCastFromJs for XPub {
     type Error = Error;
-    fn try_from(value: XPubT) -> std::result::Result<Self, Self::Error> {
-        if let Some(xpub) = value.as_string() {
-            Ok(XPub::try_new(xpub.as_str())?)
-        } else if let Ok(xpub) = XPub::try_ref_from_js_value(&value) {
-            Ok(xpub.clone())
-        } else {
-            Err(Error::InvalidXPub)
-        }
-    }
-}
-
-impl TryFrom<XPubT> for ExtendedPublicKey<secp256k1::PublicKey> {
-    type Error = Error;
-    fn try_from(value: XPubT) -> std::result::Result<Self, Self::Error> {
-        XPub::try_from(value).map(Into::into)
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Self::resolve(&value, || {
+            if let Some(xpub) = value.as_ref().as_string() {
+                Ok(XPub::try_new(xpub.as_str())?)
+            } else {
+                Err(Error::InvalidXPub)
+            }
+        })
     }
 }

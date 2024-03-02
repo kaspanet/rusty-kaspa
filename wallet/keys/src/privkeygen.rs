@@ -20,15 +20,16 @@ pub struct PrivateKeyGenerator {
 #[wasm_bindgen]
 impl PrivateKeyGenerator {
     #[wasm_bindgen(constructor)]
-    pub fn new(xprv: XPrvT, is_multisig: bool, account_index: u64, cosigner_index: Option<u32>) -> Result<PrivateKeyGenerator> {
-        let xkey = ExtendedPrivateKey::<SecretKey>::try_from(xprv)?;
-        let receive = xkey.clone().derive_path(WalletDerivationManager::build_derivate_path(
+    pub fn new(xprv: &XPrvT, is_multisig: bool, account_index: u64, cosigner_index: Option<u32>) -> Result<PrivateKeyGenerator> {
+        let xprv = XPrv::try_cast_from(xprv)?;
+        let xprv = xprv.as_ref().inner();
+        let receive = xprv.clone().derive_path(&WalletDerivationManager::build_derivate_path(
             is_multisig,
             account_index,
             cosigner_index,
             Some(kaspa_bip32::AddressType::Receive),
         )?)?;
-        let change = xkey.derive_path(WalletDerivationManager::build_derivate_path(
+        let change = xprv.clone().derive_path(&WalletDerivationManager::build_derivate_path(
             is_multisig,
             account_index,
             cosigner_index,

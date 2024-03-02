@@ -233,10 +233,10 @@ impl From<UtxoContext> for native::UtxoContext {
     }
 }
 
-impl TryFrom<JsValue> for UtxoContext {
+impl TryCastFromJs for UtxoContext {
     type Error = Error;
-    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
-        Ok(UtxoContext::try_ref_from_js_value(&value)?.clone())
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Ok(Self::try_ref_from_js_value_as_cast(value)?)
     }
 }
 
@@ -249,15 +249,15 @@ impl TryFrom<IUtxoContextArgs> for UtxoContextCreateArgs {
     type Error = Error;
     fn try_from(value: IUtxoContextArgs) -> std::result::Result<Self, Self::Error> {
         if let Some(object) = Object::try_from(&value) {
-            let processor = object.get::<UtxoProcessor>("processor")?;
+            let processor = object.get_cast::<UtxoProcessor>("processor")?;
 
-            let binding = if let Some(id) = object.try_get::<Hash>("id")? {
-                UtxoContextBinding::Id(UtxoContextId::new(id))
+            let binding = if let Some(id) = object.try_get_cast::<Hash>("id")? {
+                UtxoContextBinding::Id(UtxoContextId::new(id.into_owned()))
             } else {
                 UtxoContextBinding::default()
             };
 
-            Ok(UtxoContextCreateArgs { binding, processor })
+            Ok(UtxoContextCreateArgs { binding, processor: processor.into_owned() })
         } else {
             Err(Error::custom("UtxoProcessor: supplied value must be an object"))
         }

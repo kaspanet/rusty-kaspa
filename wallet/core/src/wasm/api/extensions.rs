@@ -49,7 +49,7 @@ impl WalletApiObjectExtension for Object {
     }
 
     fn get_transaction_id(&self, key: &str) -> Result<Hash> {
-        Ok(Hash::try_from(self.get_value(key)?)?)
+        Ok(Hash::try_owned_from(self.get_value(key)?)?)
     }
 
     fn try_get_account_id_list(&self, key: &str) -> Result<Option<Vec<AccountId>>> {
