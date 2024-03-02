@@ -60,6 +60,9 @@ pub enum Error {
 
     #[error(transparent)]
     NetworkType(#[from] kaspa_consensus_core::network::NetworkTypeError),
+
+    #[error("Invalid UTF-8 sequence")]
+    Utf8(#[from] std::str::Utf8Error),
 }
 
 impl Error {

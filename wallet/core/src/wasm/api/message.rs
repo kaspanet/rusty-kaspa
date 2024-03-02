@@ -693,7 +693,7 @@ try_from! ( args: IPrvKeyDataCreateRequest, PrvKeyDataCreateRequest, {
     let wallet_secret = args.get_secret("walletSecret")?;
     let name = args.try_get_string("name")?;
     let payment_secret = args.try_get_secret("paymentSecret")?;
-    let mnemonic = args.get_string("mnemonic")?;
+    let mnemonic = args.get_secret("mnemonic")?;
 
     let prv_key_data_args = PrvKeyDataCreateArgs {
         name,

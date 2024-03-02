@@ -110,12 +110,12 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
 
     let prv_key_data_args = if import_with_mnemonic {
         let words = crate::wizards::import::prompt_for_mnemonic(&term).await?;
-        PrvKeyDataCreateArgs::new(None, payment_secret.clone(), words.join(" "))
+        PrvKeyDataCreateArgs::new(None, payment_secret.clone(), Secret::from(words.join(" ")))
     } else {
         PrvKeyDataCreateArgs::new(
             None,
             payment_secret.clone(),
-            Mnemonic::random(word_count, Language::default())?.phrase().to_string(),
+            Secret::from(Mnemonic::random(word_count, Language::default())?.phrase()),
         )
     };
 
@@ -159,7 +159,7 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
 
         // descriptor
 
-        ["", "Never share your mnemonic with anyone!", "---", "", "Your default wallet account mnemonic:", mnemonic_phrase.as_str()]
+        ["", "Never share your mnemonic with anyone!", "---", "", "Your default wallet account mnemonic:", mnemonic_phrase.as_str()?]
             .into_iter()
             .for_each(|line| term.writeln(line));
     }

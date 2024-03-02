@@ -63,11 +63,11 @@ impl WalletOpenArgs {
 pub struct PrvKeyDataCreateArgs {
     pub name: Option<String>,
     pub payment_secret: Option<Secret>,
-    pub mnemonic: String,
+    pub mnemonic: Secret,
 }
 
 impl PrvKeyDataCreateArgs {
-    pub fn new(name: Option<String>, payment_secret: Option<Secret>, mnemonic: String) -> Self {
+    pub fn new(name: Option<String>, payment_secret: Option<Secret>, mnemonic: Secret) -> Self {
         Self { name, payment_secret, mnemonic }
     }
 }

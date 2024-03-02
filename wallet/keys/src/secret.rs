@@ -12,6 +12,10 @@ impl Secret {
     pub fn new(data: Vec<u8>) -> Self {
         Self(data)
     }
+
+    pub fn as_str(&self) -> Result<&str> {
+        Ok(std::str::from_utf8(&self.0)?)
+    }
 }
 
 impl AsRef<[u8]> for Secret {

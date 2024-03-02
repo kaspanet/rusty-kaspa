@@ -2493,6 +2493,7 @@ dependencies = [
  "kaspa-rpc-core",
  "kaspa-utils",
  "kaspa-wallet-core",
+ "kaspa-wallet-keys",
  "kaspa-wrpc-client",
  "nw-sys",
  "pad",

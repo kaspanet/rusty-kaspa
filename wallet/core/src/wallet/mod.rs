@@ -758,7 +758,7 @@ impl Wallet {
         wallet_secret: &Secret,
         prv_key_data_create_args: PrvKeyDataCreateArgs,
     ) -> Result<PrvKeyDataId> {
-        let mnemonic = Mnemonic::new(prv_key_data_create_args.mnemonic, Language::default())?;
+        let mnemonic = Mnemonic::new(prv_key_data_create_args.mnemonic.as_str()?, Language::default())?;
         let prv_key_data = PrvKeyData::try_from_mnemonic(
             mnemonic.clone(),
             prv_key_data_create_args.payment_secret.as_ref(),
