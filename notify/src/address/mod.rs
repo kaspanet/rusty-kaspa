@@ -1,5 +1,4 @@
 pub mod error;
-pub mod hashing;
 pub mod tracker;
 
 pub mod test_helpers {

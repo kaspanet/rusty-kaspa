@@ -21,10 +21,6 @@ pub mod mempool_benchmarks;
 
 #[cfg(test)]
 #[cfg(feature = "devnet-prealloc")]
-pub mod notify_benchmarks;
-
-#[cfg(test)]
-#[cfg(feature = "devnet-prealloc")]
 pub mod subscribe_benchmarks;
 
 #[cfg(test)]

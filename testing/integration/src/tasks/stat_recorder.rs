@@ -7,7 +7,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tokio::{sync::oneshot::Receiver, task::JoinHandle, time::sleep};
+use tokio::{task::JoinHandle, time::sleep};
 use workflow_perf_monitor::mem::{get_process_memory_info, ProcessMemoryInfo};
 
 pub struct StatRecorderTask {
@@ -69,44 +69,4 @@ impl Task for StatRecorderTask {
         });
         vec![task]
     }
-}
-
-pub fn stat_recorder_task(
-    folder: String,
-    stat_file_prefix: Option<String>,
-    mut stat_task_shutdown_receiver: Receiver<()>,
-) -> JoinHandle<()> {
-    tokio::spawn(async move {
-        if let Some(prefix) = stat_file_prefix {
-            std::fs::create_dir_all(PathBuf::from(&folder)).unwrap();
-            {
-                let file_path = PathBuf::from(folder)
-                    .join(format!("{}-{}.csv", prefix, chrono::Local::now().format("%Y-%m-%d %H-%M-%S")))
-                    .into_os_string();
-                kaspa_core::warn!("Starting to record memory stats into file {}", file_path.to_str().unwrap());
-                let f = std::fs::File::create(file_path).unwrap();
-                let mut f = BufWriter::new(f);
-                let start_time = Instant::now();
-                let mut stopwatch = start_time;
-                loop {
-                    tokio::select! {
-                        biased;
-                        _ = &mut stat_task_shutdown_receiver => {
-                            kaspa_core::warn!("Test is over, stopping subscription loop");
-                            break;
-                        }
-                        _ = sleep(stopwatch + Duration::from_secs(5) - Instant::now()) => {}
-                    }
-                    stopwatch = Instant::now();
-                    let ProcessMemoryInfo { resident_set_size, .. } = get_process_memory_info().unwrap();
-                    writeln!(f, "{}, {}", (stopwatch - start_time).as_millis() as f64 / 1000.0 / 60.0, resident_set_size).unwrap();
-                    f.flush().unwrap();
-                }
-            }
-        } else {
-            kaspa_core::warn!("No stat recording");
-            stat_task_shutdown_receiver.await.unwrap();
-        }
-        kaspa_core::warn!("Stat recorder task exited");
-    })
 }

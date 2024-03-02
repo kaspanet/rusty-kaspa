@@ -372,47 +372,6 @@ mod tests {
             |x| (x.len(), x.capacity()),
         );
     }
-
-    // #[test]
-    // #[ignore = "measuring consumed memory"]
-    // // ITEM = IndexVec
-    // // (measuring Vec<u32>)
-    // //
-    // //   ITEM_LEN    NUM_ITEMS     MEMORY/ITEM    MEM/IDX
-    // // --------------------------------------------------
-    // // 10_000_000           10      47_033_139        4.7
-    // //  1_000_000          100       4_084_244        4.1
-    // //    100_000        1_000         405_450        4.1
-    // //     10_000       10_000          41_308        4.1
-    // //      1_000      100_000           4_146        4.1
-    // //        100    1_000_000             542        5.4
-    // //         10   10_000_000              88        8.8
-    // //          1   10_000_000              40       40.0
-    // fn test_index_vec_size() {
-    //     const ITEM_LEN: usize = 10_000_000;
-    //     const NUM_ITEMS: usize = 10;
-
-    //     init_allocator_with_default_settings();
-    //     kaspa_core::log::try_init_logger("INFO,kaspa_notify::subscription::context=trace");
-
-    //     let before = get_process_memory_info().unwrap();
-    //     trace!("Creating vectors...");
-    //     let sets = (0..NUM_ITEMS)
-    //         .map(|_| {
-    //             // Rely on organic growth rather than pre-defined capacity
-    //             let mut item = IndexVec::new(vec![]);
-    //             (0..ITEM_LEN as Index).for_each(|x| {
-    //                 item.insert(x);
-    //             });
-    //             item
-    //         })
-    //         .collect_vec();
-
-    //     let after = get_process_memory_info().unwrap();
-    //     trace!("Vector length: {}", sets[0].len());
-    //     trace!("Memory consumed: {}", (after.resident_set_size - before.resident_set_size) / NUM_ITEMS as u64);
-    // }
-
     // #[test]
     // #[ignore = "measuring consumed memory"]
     // // ITEM = DashSet
