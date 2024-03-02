@@ -90,8 +90,8 @@ where
         TData: Serialize,
     {
         let bin_data = bincode::serialize(&data)?;
-        self.cache.insert(key.clone(), data);
         writer.put(DbKey::new(&self.prefix, key), bin_data)?;
+        self.cache.insert(key.clone(), data);
         Ok(())
     }
 
@@ -105,11 +105,11 @@ where
         TData: Serialize,
     {
         let iter_clone = iter.clone();
-        self.cache.insert_many(iter);
         for (key, data) in iter_clone {
             let bin_data = bincode::serialize(&data)?;
             writer.put(DbKey::new(&self.prefix, key.clone()), bin_data)?;
         }
+        self.cache.insert_many(iter);
         Ok(())
     }
 
