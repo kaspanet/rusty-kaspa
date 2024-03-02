@@ -225,6 +225,7 @@ impl Data {
 }
 
 /// Helper struct for passing around transaction value
+#[derive(Debug)]
 struct FinalTransaction {
     /// Total output value required for the final transaction
     value_no_fees: u64,
@@ -334,7 +335,7 @@ pub struct Generator {
 impl Generator {
     /// Create a new [`Generator`] instance using [`GeneratorSettings`].
     pub fn try_new(settings: GeneratorSettings, signer: Option<Arc<dyn SignerT>>, abortable: Option<&Abortable>) -> Result<Self> {
-        log_info!("Creating new generator with settings: {:?}", settings);
+        log_info!("Creating new generator with settings: {:#?}", settings);
 
         let GeneratorSettings {
             network_id,
@@ -392,8 +393,8 @@ impl Generator {
             return Err(Error::GeneratorIncludeFeesRequiresOneOutput);
         }
 
-        log_info!("Generator final transaction outputs: {:?}", final_transaction_outputs);
-        log_info!("Generator final transaction amount: {:?}", final_transaction_amount);
+        log_info!("Generator final transaction outputs: {:#?}", final_transaction_outputs);
+        log_info!("Generator final transaction amount: {:#?}", final_transaction_amount);
 
         // sanity check
         if NetworkType::try_from(change_address.prefix)? != network_type {
@@ -414,6 +415,8 @@ impl Generator {
             value_no_fees: amount,
             value_with_priority_fee: amount + final_transaction_priority_fee.additional(),
         });
+
+        log_info!("Final Transaction: {:#?}", final_transaction);
 
         let mass_sanity_check = standard_change_output_mass + final_transaction_outputs_compute_mass + final_transaction_payload_mass;
         if mass_sanity_check > MAXIMUM_STANDARD_TRANSACTION_MASS / 5 * 4 {
@@ -455,7 +458,7 @@ impl Generator {
             destination_utxo_context,
         };
 
-        log_info!("Generator Inner: {:?}", inner);
+        log_info!("Generator Inner: {:#?}", inner);
 
         Ok(Self { inner: Arc::new(inner) })
     }
@@ -576,15 +579,22 @@ impl Generator {
         let mut data = Data::new(calc);
 
         loop {
+            log_info!("UtxoEntry Iteration LOOP ....");
             if let Some(abortable) = self.inner.abortable.as_ref() {
                 abortable.check()?;
             }
 
             let utxo_entry_reference = if let Some(utxo_entry_reference) = self.get_utxo_entry(context, stage) {
+                log_info!("Got UTXO Entry Reference: {:#?}", utxo_entry_reference);
                 utxo_entry_reference
             } else {
+                log_info!("Unable to get UTXO Entry Reference");
+                log_info!("Current Data State: {:#?}", data);
+
                 // UTXO sources are depleted
                 if let Some(final_transaction) = &self.inner.final_transaction {
+                    log_info!("Rejecting with final transaction: {:#?}", final_transaction);
+
                     // reject transaction
                     return Err(Error::InsufficientFunds {
                         additional_needed: final_transaction.value_with_priority_fee.saturating_sub(stage.aggregate_input_value),
@@ -687,7 +697,7 @@ impl Generator {
             Ok((DataKind::Edge, data))
         } else if data.aggregate_input_value < data.transaction_fees {
             log_info!("Insufficient funds for relay transaction");
-            log_info!("Transaction Data: {:?}", data);
+            log_info!("Transaction Data: {:#?}", data);
 
             Err(Error::InsufficientFunds { additional_needed: data.transaction_fees - data.aggregate_input_value, origin: "relay" })
         } else {
@@ -937,14 +947,14 @@ impl Generator {
         let mut stage = context.stage.take().unwrap();
         log_info!("-------------");
         log_info!("Generator::generate_transaction starting stage execution...");
-        log_info!("Generator::generate_transaction stage: {:?}", stage);
+        log_info!("Generator::generate_transaction stage: {:#?}", stage);
         log_info!("-------------");
         let (kind, data) = self.generate_transaction_data(&mut context, &mut stage)?;
         context.stage.replace(stage);
         log_info!("-------------");
         log_info!("Generator::generate_transaction finished stage execution...");
-        log_info!("Generator::generate_transaction kind: {:?}", kind);
-        log_info!("Generator::generate_transaction data: {:?}", data);
+        log_info!("Generator::generate_transaction kind: {:#?}", kind);
+        log_info!("Generator::generate_transaction data: {:#?}", data);
         log_info!("-------------");
         match (kind, data) {
             (DataKind::NoOp, _) => {

@@ -97,8 +97,12 @@ impl GeneratorSettings {
         final_transaction_payload: Option<Vec<u8>>,
         multiplexer: Option<Multiplexer<Box<Events>>>,
     ) -> Result<Self> {
+        log_info!("Creating new GeneratorSettings with UtxoContext");
+
         let network_id = utxo_context.processor().network_id()?;
         let utxo_iterator = UtxoIterator::new(&utxo_context);
+
+        log_info!("!!! Creating UtxoIterator : {:#?}", utxo_iterator);
 
         let settings = GeneratorSettings {
             network_id,
@@ -129,6 +133,8 @@ impl GeneratorSettings {
         final_transaction_payload: Option<Vec<u8>>,
         multiplexer: Option<Multiplexer<Box<Events>>>,
     ) -> Result<Self> {
+        log_info!("!!! Creating new GeneratorSettings with UtxoIterator");
+
         let settings = GeneratorSettings {
             network_id,
             multiplexer,
