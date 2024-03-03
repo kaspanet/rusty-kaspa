@@ -14,7 +14,7 @@ use wasm_bindgen::prelude::*;
 #[cfg(feature = "wasm32-sdk")]
 use wasm_bindgen::prelude::{JsError, JsValue};
 #[cfg(not(feature = "wasm32-sdk"))]
-use wasm_bindgen_skipper::clean_attributes;
+use wasm_bindgen_attribute_cleaner::clean_attributes;
 #[cfg(feature = "wasm32-sdk")]
 use workflow_wasm::prelude::*;
 

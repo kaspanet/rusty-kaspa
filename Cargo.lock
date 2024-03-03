@@ -2309,7 +2309,7 @@ dependencies = [
  "thiserror",
  "wasm-bindgen",
  "wasm-bindgen-test",
- "wasm_bindgen_skipper",
+ "wasm_bindgen_attribute_cleaner",
  "web-sys",
  "workflow-core",
  "workflow-log",
@@ -5833,7 +5833,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "wasm_bindgen_skipper"
+name = "wasm_bindgen_attribute_cleaner"
 version = "0.13.5"
 dependencies = [
  "quote",
