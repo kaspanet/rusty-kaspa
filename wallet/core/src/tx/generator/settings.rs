@@ -36,23 +36,23 @@ pub struct GeneratorSettings {
     pub destination_utxo_context: Option<UtxoContext>,
 }
 
-impl std::fmt::Debug for GeneratorSettings {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GeneratorSettings")
-            .field("network_id", &self.network_id)
-            // .field("multiplexer", &self.multiplexer)
-            .field("utxo_iterator", &"Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>")
-            // .field("source_utxo_context", &self.source_utxo_context)
-            .field("sig_op_count", &self.sig_op_count)
-            .field("minimum_signatures", &self.minimum_signatures)
-            .field("change_address", &self.change_address)
-            .field("final_transaction_priority_fee", &self.final_transaction_priority_fee)
-            .field("final_transaction_destination", &self.final_transaction_destination)
-            .field("final_transaction_payload", &self.final_transaction_payload)
-            // .field("destination_utxo_context", &self.destination_utxo_context)
-            .finish()
-    }
-}
+// impl std::fmt::Debug for GeneratorSettings {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         f.debug_struct("GeneratorSettings")
+//             .field("network_id", &self.network_id)
+//             // .field("multiplexer", &self.multiplexer)
+//             .field("utxo_iterator", &"Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>")
+//             // .field("source_utxo_context", &self.source_utxo_context)
+//             .field("sig_op_count", &self.sig_op_count)
+//             .field("minimum_signatures", &self.minimum_signatures)
+//             .field("change_address", &self.change_address)
+//             .field("final_transaction_priority_fee", &self.final_transaction_priority_fee)
+//             .field("final_transaction_destination", &self.final_transaction_destination)
+//             .field("final_transaction_payload", &self.final_transaction_payload)
+//             // .field("destination_utxo_context", &self.destination_utxo_context)
+//             .finish()
+//     }
+// }
 
 impl GeneratorSettings {
     pub fn try_new_with_account(
@@ -97,12 +97,8 @@ impl GeneratorSettings {
         final_transaction_payload: Option<Vec<u8>>,
         multiplexer: Option<Multiplexer<Box<Events>>>,
     ) -> Result<Self> {
-        log_info!("Creating new GeneratorSettings with UtxoContext");
-
         let network_id = utxo_context.processor().network_id()?;
         let utxo_iterator = UtxoIterator::new(&utxo_context);
-
-        log_info!("!!! Creating UtxoIterator : {:#?}", utxo_iterator);
 
         let settings = GeneratorSettings {
             network_id,
@@ -133,8 +129,6 @@ impl GeneratorSettings {
         final_transaction_payload: Option<Vec<u8>>,
         multiplexer: Option<Multiplexer<Box<Events>>>,
     ) -> Result<Self> {
-        log_info!("!!! Creating new GeneratorSettings with UtxoIterator");
-
         let settings = GeneratorSettings {
             network_id,
             multiplexer,

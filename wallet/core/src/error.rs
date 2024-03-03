@@ -201,7 +201,7 @@ pub enum Error {
     #[error("Invalid account type (must be one of: bip32|multisig|legacy")]
     InvalidAccountKind,
 
-    #[error("Insufficient funds - needed: {additional_needed} origin: {origin}")]
+    #[error("Insufficient funds")]
     InsufficientFunds { additional_needed: u64, origin: &'static str },
 
     #[error(transparent)]
@@ -243,8 +243,11 @@ pub enum Error {
     #[error(transparent)]
     ConsensusWasm(#[from] kaspa_consensus_wasm::error::Error),
 
-    #[error("Fees::Include or Fees::Exclude are not allowed in sweep transactions")]
+    #[error("Fees::SenderPays or Fees::ReceiverPays are not allowed in sweep transactions")]
     GeneratorFeesInSweepTransaction,
+
+    #[error("Transactions with output must have Fees::SenderPays or Fees::ReceiverPays")]
+    GeneratorNoFeesForFinalTransaction,
 
     #[error("Change address does not match supplied network type")]
     GeneratorChangeAddressNetworkTypeMismatch,
