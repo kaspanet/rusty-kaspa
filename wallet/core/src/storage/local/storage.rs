@@ -93,13 +93,15 @@ impl Storage {
     }
 
     pub fn ensure_dir_sync(&self) -> Result<()> {
-        if self.exists_sync()? {
-            return Ok(());
-        }
+        if !runtime::is_web() && !runtime::is_chrome_extension() {
+            if self.exists_sync()? {
+                return Ok(());
+            }
 
-        let file = self.filename();
-        if let Some(dir) = file.parent() {
-            fs::create_dir_all_sync(dir)?;
+            let file = self.filename();
+            if let Some(dir) = file.parent() {
+                fs::create_dir_all_sync(dir)?;
+            }
         }
         Ok(())
     }
