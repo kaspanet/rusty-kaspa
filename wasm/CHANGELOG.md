@@ -2,6 +2,8 @@ Latest online documentation available at: https://kaspa.aspectron.org/docs/
 
 ### Latest
 
+- Fix `requestAnimationFrame` use in chrome extension environment.
+- Add rejection in `Generator` when `priorityFee` is `undefined` while outputs are present.
 - Introduce `CryptoBox` class for encryption/decryption of data using public/private keys.
 - sha256x and other hash functions now have two variants sha256FromBinary and sha256FromText
 - Changed `XPub.publicKey()` to `XPub.toPublicKey()`
