@@ -54,6 +54,7 @@ members = [
     "metrics/perf_monitor",
     "metrics/core",
     "utils/alloc",
+    "utils/wasm_bindgen_skipper"
 ]
 
 [workspace.package]
@@ -126,6 +127,7 @@ kaspa-wrpc-server = { version = "0.13.5", path = "rpc/wrpc/server" }
 kaspa-wrpc-wasm = { version = "0.13.5", path = "rpc/wrpc/wasm" }
 kaspad = { version = "0.13.5", path = "kaspad" }
 kaspa-alloc = { version = "0.13.5", path = "utils/alloc" }
+wasm_bindgen_skipper = { path = "utils/wasm_bindgen_skipper" }
 
 
 # external

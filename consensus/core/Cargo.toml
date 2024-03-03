@@ -36,6 +36,7 @@ wasm-bindgen.workspace = true
 workflow-core.workspace = true
 workflow-log.workspace = true
 workflow-wasm.workspace = true
+wasm_bindgen_skipper = { path = "../../utils/wasm_bindgen_skipper" }
 
 [dev-dependencies]
 criterion.workspace = true
@@ -49,3 +50,4 @@ harness = false
 
 [features]
 devnet-prealloc = []
+wasm32-sdk = []
