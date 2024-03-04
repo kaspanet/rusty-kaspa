@@ -1,16 +1,17 @@
 use clap::ArgAction;
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
-
 #[cfg(feature = "devnet-prealloc")]
 use kaspa_addresses::Address;
 #[cfg(feature = "devnet-prealloc")]
 use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 #[cfg(feature = "devnet-prealloc")]
 use kaspa_txscript::pay_to_address_script;
-use std::ffi::OsString;
+use serde::Deserialize;
 #[cfg(feature = "devnet-prealloc")]
 use std::sync::Arc;
+use std::{ffi::OsString, fs};
+use toml::from_str;
 
 use kaspa_consensus_core::{
     config::Config,
@@ -22,7 +23,8 @@ use kaspa_core::kaspad_env::version;
 use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_wrpc_server::address::WrpcNetAddress;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct Args {
     // NOTE: it is best if property names match config file fields
     pub appdir: Option<String>,
@@ -74,7 +76,7 @@ pub struct Args {
 impl Default for Args {
     fn default() -> Self {
         Self {
-            appdir: Some("datadir".into()),
+            appdir: None,
             no_log_files: false,
             rpclisten_borsh: None,
             rpclisten_json: None,
@@ -176,6 +178,7 @@ pub fn cli() -> Command {
     let cmd = Command::new("kaspad")
         .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
+        .arg(arg!(-C --configfile <CONFIG_FILE> "Path of config file."))
         .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data."))
         .arg(arg!(--logdir <LOG_DIR> "Directory to log output."))
         .arg(arg!(--nologfiles "Disable logging to files."))
@@ -365,22 +368,27 @@ impl Args {
         T: Into<OsString> + Clone,
     {
         let m: clap::ArgMatches = cli().try_get_matches_from(itr)?;
-        let defaults: Args = Default::default();
+        let mut defaults: Args = Default::default();
+
+        if let Some(config_file) = m.get_one::<String>("configfile") {
+            let config_str = fs::read_to_string(&config_file)?;
+            defaults = from_str(&config_str).map_err(|_| clap::Error::new(clap::error::ErrorKind::ValueValidation))?;
+        }
 
         let args = Args {
-            appdir: m.get_one::<String>("appdir").cloned(),
-            logdir: m.get_one::<String>("logdir").cloned(),
+            appdir: m.get_one::<String>("appdir").cloned().or(defaults.appdir),
+            logdir: m.get_one::<String>("logdir").cloned().or(defaults.logdir),
             no_log_files: m.get_one::<bool>("nologfiles").cloned().unwrap_or(defaults.no_log_files),
-            rpclisten: m.get_one::<ContextualNetAddress>("rpclisten").cloned(),
-            rpclisten_borsh: m.get_one::<WrpcNetAddress>("rpclisten-borsh").cloned(),
-            rpclisten_json: m.get_one::<WrpcNetAddress>("rpclisten-json").cloned(),
+            rpclisten: m.get_one::<ContextualNetAddress>("rpclisten").cloned().or(defaults.rpclisten),
+            rpclisten_borsh: m.get_one::<WrpcNetAddress>("rpclisten-borsh").cloned().or(defaults.rpclisten_borsh),
+            rpclisten_json: m.get_one::<WrpcNetAddress>("rpclisten-json").cloned().or(defaults.rpclisten_json),
             unsafe_rpc: m.get_one::<bool>("unsaferpc").cloned().unwrap_or(defaults.unsafe_rpc),
             wrpc_verbose: false,
             log_level: m.get_one::<String>("log_level").cloned().unwrap(),
             async_threads: m.get_one::<usize>("async_threads").cloned().unwrap_or(defaults.async_threads),
             connect_peers: m.get_many::<ContextualNetAddress>("connect-peers").unwrap_or_default().copied().collect(),
             add_peers: m.get_many::<ContextualNetAddress>("add-peers").unwrap_or_default().copied().collect(),
-            listen: m.get_one::<ContextualNetAddress>("listen").cloned(),
+            listen: m.get_one::<ContextualNetAddress>("listen").cloned().or(defaults.listen),
             outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
             inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
             rpc_max_clients: m.get_one::<usize>("rpcmaxclients").cloned().unwrap_or(defaults.rpc_max_clients),
