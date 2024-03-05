@@ -901,6 +901,15 @@ impl Wallet {
         let events = self.multiplexer().channel();
         let wallet_bus_receiver = self.wallet_bus().receiver.clone();
 
+        let this_clone = self.clone();
+        spawn(async move {
+            loop {
+                log_info!("Wallet broadcasting ping...");
+                this_clone.notify(Events::WalletPing).await.expect("Wallet::start_task() `notify` error");
+                sleep(Duration::from_secs(5)).await;
+            }
+        });
+
         spawn(async move {
             loop {
                 select! {

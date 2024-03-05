@@ -9,7 +9,7 @@ use crate::storage::{Hint, PrvKeyDataInfo, StorageDescriptor, TransactionRecord,
 use crate::utxo::context::UtxoContextId;
 
 /// Sync state of the kaspad node
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type", content = "data")]
 pub enum SyncState {
@@ -48,10 +48,11 @@ impl SyncState {
 }
 
 /// Events emitted by the wallet framework
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type", content = "data")]
 pub enum Events {
+    WalletPing,
     /// Successful RPC connection
     Connect {
         #[serde(rename = "networkId")]
@@ -226,6 +227,7 @@ pub enum EventKind {
     Disconnect,
     UtxoIndexNotEnabled,
     SyncState,
+    WalletStart,
     WalletHint,
     WalletOpen,
     WalletCreate,
@@ -255,6 +257,8 @@ pub enum EventKind {
 impl From<&Events> for EventKind {
     fn from(event: &Events) -> Self {
         match event {
+            Events::WalletPing { .. } => EventKind::WalletStart,
+
             Events::Connect { .. } => EventKind::Connect,
             Events::Disconnect { .. } => EventKind::Disconnect,
             Events::UtxoIndexNotEnabled { .. } => EventKind::UtxoIndexNotEnabled,
@@ -296,6 +300,7 @@ impl FromStr for EventKind {
             "disconnect" => Ok(EventKind::Disconnect),
             "utxo-index-not-enabled" => Ok(EventKind::UtxoIndexNotEnabled),
             "sync-state" => Ok(EventKind::SyncState),
+            "wallet-start" => Ok(EventKind::WalletStart),
             "wallet-hint" => Ok(EventKind::WalletHint),
             "wallet-open" => Ok(EventKind::WalletOpen),
             "wallet-create" => Ok(EventKind::WalletCreate),

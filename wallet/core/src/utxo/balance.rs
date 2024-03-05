@@ -9,7 +9,7 @@ pub enum DeltaStyle {
     Pending,
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum Delta {
     #[default]
     NoChange = 0,
@@ -91,7 +91,7 @@ export interface IBalance {
 }
 "#;
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Balance {
     pub mature: u64,

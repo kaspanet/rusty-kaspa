@@ -44,9 +44,17 @@ interface IGeneratorSettingsObject {
     changeAddress: Address | string;
     /** 
      * Priority fee in SOMPI.
+     * 
      * If supplying `bigint` value, it will be interpreted as a sender-pays fee.
      * Alternatively you can supply an object with `amount` and `source` properties
      * where `source` contains the {@link FeeSource} enum.
+     * 
+     * **IMPORTANT:* When sending an outbound transaction (transaction that
+     * contains outputs), the `priorityFee` must be set, even if it is zero.
+     * However, if the transaction is missing outputs (and thus you are
+     * creating a compound transaction against your change address),
+     * `priorityFee` should not be set (i.e. it should be `undefined`).
+     * 
      * @see {@link IFees}, {@link FeeSource}
      */
     priorityFee?: IFees | bigint;

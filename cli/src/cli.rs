@@ -280,6 +280,7 @@ impl KaspaCli {
 
                         if let Ok(msg) = msg {
                             match *msg {
+                                Events::WalletPing => {},
                                 Events::Error { message } => { terrorln!(this,"{message}"); },
                                 Events::UtxoProcStart => {},
                                 Events::UtxoProcStop => {},

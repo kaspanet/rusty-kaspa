@@ -349,10 +349,6 @@ impl Generator {
             destination_utxo_context,
         } = settings;
 
-        if let Some(utxo_context) = &utxo_context {
-            let mature_utxo_size = utxo_context.mature_utxo_size();
-        }
-
         let network_type = NetworkType::from(network_id);
         let network_params = NetworkParams::from(network_id);
         let mass_calculator = MassCalculator::new(&network_id.into(), &network_params);
