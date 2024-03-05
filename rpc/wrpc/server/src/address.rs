@@ -5,6 +5,7 @@ use serde::Deserialize;
 use std::{net::AddrParseError, str::FromStr};
 
 #[derive(Clone, Debug, Deserialize)]
+#[serde(rename = "lowercase")]
 pub enum WrpcNetAddress {
     Default,
     Public,

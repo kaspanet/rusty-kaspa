@@ -371,7 +371,7 @@ impl Args {
         let mut defaults: Args = Default::default();
 
         if let Some(config_file) = m.get_one::<String>("configfile") {
-            let config_str = fs::read_to_string(&config_file)?;
+            let config_str = fs::read_to_string(config_file)?;
             defaults = from_str(&config_str).map_err(|_| clap::Error::new(clap::error::ErrorKind::ValueValidation))?;
         }
 
