@@ -10,9 +10,11 @@ pub use utxo::*;
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "wasm32-sdk")] {
+        mod header;
         mod input;
         mod transaction;
 
+        pub use header::*;
         pub use input::*;
         pub use transaction::*;
     }

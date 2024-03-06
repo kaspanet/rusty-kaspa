@@ -39,11 +39,18 @@ pub enum Error {
 
     #[error(transparent)]
     NetworkType(#[from] kaspa_consensus_core::network::NetworkTypeError),
+
+    #[error("Error converting property `{0}`: {1}")]
+    Convert(&'static str, String),
 }
 
 impl Error {
     pub fn custom<T: Into<String>>(msg: T) -> Self {
         Error::Custom(msg.into())
+    }
+
+    pub fn convert<S: std::fmt::Display>(prop: &'static str, msg: S) -> Self {
+        Self::Convert(prop, msg.to_string())
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::matrix::Matrix;
 use js_sys::BigInt;
-use kaspa_consensus_core::{hashing, header::Header};
+use kaspa_consensus_client::Header;
+use kaspa_consensus_core::hashing;
 use kaspa_hashes::Hash;
 use kaspa_hashes::PowHash;
 use kaspa_math::Uint256;
@@ -25,6 +26,9 @@ impl State {
         // this function replicates crate::State::new() but caches
         // the pre_pow_hash value internally, making it available
         // via the `pre_pow_hash` property getter.
+
+        // obtain locked inner
+        let header = header.inner();
 
         let target = Uint256::from_compact_target_bits(header.bits);
         // Zero out the time and nonce.

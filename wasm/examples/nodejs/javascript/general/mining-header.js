@@ -21,7 +21,7 @@ kaspa.initConsolePanicHook();
         nonce: 567n,
         daaScore: 0n,
         blueScore: 0n,
-        blueWork: "baadf00d",
+        blueWork: "baadf00d", // or 12345n
     });
 
     console.log("initial header:", header);
@@ -29,7 +29,7 @@ kaspa.initConsolePanicHook();
     console.log("header (after finalize):", header);
     console.log("resulting hash:", hash);
 
-    header.hash = "73fec18005560d4e3654b1c563c6629d48f3a45f42e5ea772e3ad984339f1e19";
+    // header.hash = "73fec18005560d4e3654b1c563c6629d48f3a45f42e5ea772e3ad984339f1e19";
 
     // note that asJSON() returns a JSON string where each BigInt is represented by an integer value,
     // whereas toJSON() returns a JavaScript object containing BigInt objects.
