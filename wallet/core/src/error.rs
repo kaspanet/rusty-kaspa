@@ -138,8 +138,11 @@ pub enum Error {
     #[error(transparent)]
     ParseFloatError(#[from] std::num::ParseFloatError),
 
-    #[error("Unable to decrypt this wallet")]
+    #[error("Unable to decrypt")]
     Chacha20poly1305(chacha20poly1305::Error),
+
+    #[error("Unable to decrypt this wallet")]
+    WalletDecrypt(chacha20poly1305::Error),
 
     #[error(transparent)]
     FromUtf8Error(#[from] std::string::FromUtf8Error),
