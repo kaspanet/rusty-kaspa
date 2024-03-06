@@ -41,7 +41,6 @@ wasm-bindgen.workspace = true
 workflow-core.workspace = true
 workflow-log.workspace = true
 workflow-wasm.workspace = true
-wasm_bindgen_attribute_cleaner = { path = "../../utils/wasm_bindgen_attribute_cleaner" }
 
 [dev-dependencies]
 criterion.workspace = true

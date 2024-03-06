@@ -2631,7 +2631,6 @@ dependencies = [
  "thiserror",
  "wasm-bindgen",
  "wasm-bindgen-test",
- "wasm_bindgen_attribute_cleaner",
  "web-sys",
  "workflow-core",
  "workflow-log",
@@ -6424,14 +6423,6 @@ checksum = "ecb993dd8c836930ed130e020e77d9b2e65dd0fbab1b67c790b0f5d80b11a575"
 dependencies = [
  "proc-macro2",
  "quote",
-]
-
-[[package]]
-name = "wasm_bindgen_attribute_cleaner"
-version = "0.13.5"
-dependencies = [
- "quote",
- "syn 2.0.52",
 ]
 
 [[package]]

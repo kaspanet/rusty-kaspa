@@ -108,7 +108,8 @@ impl WalletApi for WalletClient {
 #[async_trait]
 pub trait EventHandler: Send + Sync {
     // pub trait EventHandler {
-    async fn handle_event(&self, event: &Box<Events>);
+    // async fn handle_event(&self, event: &Box<Events>);
+    async fn handle_event(&self, event: &Events);
 }
 
 /// [`WalletServer`] is a server-side transport interface that declares
