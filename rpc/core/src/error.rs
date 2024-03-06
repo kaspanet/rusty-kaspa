@@ -115,6 +115,12 @@ pub enum RpcError {
 
     #[error("transaction query must either not filter transactions or include orphans")]
     InconsistentMempoolTxQuery,
+
+    #[error(transparent)]
+    WasmError(#[from] workflow_wasm::error::Error),
+
+    #[error("{0}")]
+    SerdeWasmBindgen(String),
 }
 
 impl From<String> for RpcError {
@@ -132,6 +138,12 @@ impl From<&str> for RpcError {
 impl From<ChannelError<RpcState>> for RpcError {
     fn from(_: ChannelError<RpcState>) -> Self {
         RpcError::RpcCtlDispatchError
+    }
+}
+
+impl From<serde_wasm_bindgen::Error> for RpcError {
+    fn from(value: serde_wasm_bindgen::Error) -> Self {
+        RpcError::SerdeWasmBindgen(value.to_string())
     }
 }
 

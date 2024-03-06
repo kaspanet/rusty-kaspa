@@ -10,9 +10,22 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-no-unsafe-eval = ["workflow-core/no-unsafe-eval","workflow-rpc/no-unsafe-eval"]
 multi-user = []
-default = []
+wasm32-keygen = [
+    # "kaspa-consensus-wasm/wasm32-types",
+]
+wasm32-core = [
+    "kaspa-consensus-wasm/wasm32-sdk",
+    "kaspa-consensus-core/wasm32-sdk",
+    "kaspa-wrpc-client/wasm32-sdk",
+    "kaspa-wrpc-wasm/wasm32-sdk",
+    "kaspa-wasm-core/wasm32-sdk",
+]
+wasm32-sdk = [
+    "wasm32-core"
+]
+default = ["wasm32-sdk"]
+# default = []
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -29,6 +42,8 @@ borsh.workspace = true
 cfb-mode.workspace = true
 cfg-if.workspace = true
 chacha20poly1305.workspace = true
+convert_case.workspace = true
+crypto_box.workspace = true
 dashmap.workspace = true
 derivative.workspace = true
 downcast.workspace = true
@@ -43,6 +58,7 @@ js-sys.workspace = true
 kaspa-addresses.workspace = true
 kaspa-bip32.workspace = true
 kaspa-consensus-core.workspace = true
+kaspa-consensus-client.workspace = true
 kaspa-consensus-wasm.workspace = true
 kaspa-core.workspace = true
 kaspa-hashes.workspace = true
@@ -52,7 +68,10 @@ kaspa-txscript-errors.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 kaspa-wallet-macros.workspace = true
+kaspa-wallet-keys.workspace = true
 kaspa-wrpc-client.workspace = true
+kaspa-wrpc-wasm.workspace = true
+kaspa-wasm-core.workspace = true
 md-5.workspace = true
 pad.workspace = true
 pbkdf2.workspace = true

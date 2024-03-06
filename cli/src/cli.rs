@@ -102,7 +102,7 @@ impl KaspaCli {
     }
 
     pub async fn try_new_arc(options: Options) -> Result<Arc<Self>> {
-        let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, None)?);
+        let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, None, None)?);
 
         let kaspa_cli = Arc::new(KaspaCli {
             term: Arc::new(Mutex::new(None)),
@@ -280,6 +280,7 @@ impl KaspaCli {
 
                         if let Ok(msg) = msg {
                             match *msg {
+                                Events::WalletPing => {},
                                 Events::Error { message } => { terrorln!(this,"{message}"); },
                                 Events::UtxoProcStart => {},
                                 Events::UtxoProcStop => {},
@@ -363,7 +364,7 @@ impl KaspaCli {
                                 },
                                 Events::AccountCreate { .. } => { },
                                 Events::AccountUpdate { .. } => { },
-                                Events::DAAScoreChange { current_daa_score } => {
+                                Events::DaaScoreChange { current_daa_score } => {
                                     if this.is_mutted() && this.flags.get(Track::Daa) {
                                         tprintln!(this, "{NOTIFY} DAA: {current_daa_score}");
                                     }
@@ -441,7 +442,7 @@ impl KaspaCli {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Balance)) {
                                         let network_id = this.wallet.network_id().expect("missing network type");
                                         let network_type = NetworkType::from(network_id);
-                                        let balance_strings = BalanceStrings::from((&balance,&network_type, None));
+                                        let balance_strings = BalanceStrings::from((balance.as_ref(),&network_type, None));
                                         let id = id.short();
 
                                         let mature_utxo_count = balance.as_ref().map(|balance|balance.mature_utxo_count.separated_string()).unwrap_or("N/A".to_string());

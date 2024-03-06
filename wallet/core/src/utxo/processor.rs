@@ -149,8 +149,8 @@ impl UtxoProcessor {
         self.inner.listener_id.lock().unwrap().ok_or(Error::ListenerId)
     }
 
-    pub fn set_network_id(&self, network_id: NetworkId) {
-        self.inner.network_id.lock().unwrap().replace(network_id);
+    pub fn set_network_id(&self, network_id: &NetworkId) {
+        self.inner.network_id.lock().unwrap().replace(*network_id);
     }
 
     pub fn network_id(&self) -> Result<NetworkId> {
@@ -236,7 +236,7 @@ impl UtxoProcessor {
 
     pub async fn handle_daa_score_change(&self, current_daa_score: u64) -> Result<()> {
         self.inner.current_daa_score.store(current_daa_score, Ordering::SeqCst);
-        self.notify(Events::DAAScoreChange { current_daa_score }).await?;
+        self.notify(Events::DaaScoreChange { current_daa_score }).await?;
         self.handle_pending(current_daa_score).await?;
         self.handle_outgoing(current_daa_score).await?;
         Ok(())
@@ -518,7 +518,7 @@ impl UtxoProcessor {
             }
 
             _ => {
-                log_warning!("unknown notification: {:?}", notification);
+                log_warn!("unknown notification: {:?}", notification);
             }
         }
 

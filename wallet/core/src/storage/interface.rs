@@ -3,8 +3,6 @@
 //!
 
 use crate::imports::*;
-use crate::result::Result;
-use crate::secret::Secret;
 use async_trait::async_trait;
 use downcast::{downcast_sync, AnySync};
 
@@ -13,6 +11,20 @@ pub struct WalletExportOptions {
     pub include_transactions: bool,
 }
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_WALLET_DESCRIPTOR: &'static str = r#"
+/**
+ * Wallet storage information.
+ * 
+ * @category Wallet API
+ */
+export interface IWalletDescriptor {
+    title?: string;
+    filename: string;
+}
+"#;
+
+/// @category Wallet API
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[wasm_bindgen(inspectable)]
 pub struct WalletDescriptor {
@@ -28,9 +40,20 @@ impl WalletDescriptor {
     }
 }
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_STORAGE_DESCRIPTOR: &'static str = r#"
+/**
+ * Wallet storage information.
+ */
+export interface IStorageDescriptor {
+    kind: string;
+    data: string;
+}
+"#;
+
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "kind", content = "meta")]
+#[serde(tag = "kind", content = "data")]
 pub enum StorageDescriptor {
     Resident,
     Internal(String),

@@ -1,6 +1,6 @@
-use crate::error::Error;
 use crate::imports::*;
 use crate::parse::parse_host;
+use crate::{error::Error, node::NodeDescriptor};
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_rpc_core::{
     api::ctl::RpcCtl,
@@ -11,7 +11,9 @@ use std::fmt::Debug;
 use workflow_core::{channel::Multiplexer, runtime as application_runtime};
 use workflow_dom::utils::window;
 use workflow_rpc::client::Ctl as WrpcCtl;
-pub use workflow_rpc::client::{ConnectOptions, ConnectResult, ConnectStrategy, WebSocketConfig};
+pub use workflow_rpc::client::{
+    ConnectOptions, ConnectResult, ConnectStrategy, Resolver as RpcResolver, ResolverResult, WebSocketConfig, WebSocketError,
+};
 
 // /// [`NotificationMode`] controls notification delivery process
 // #[wasm_bindgen]
@@ -26,7 +28,6 @@ pub use workflow_rpc::client::{ConnectOptions, ConnectResult, ConnectStrategy, W
 //     Direct,
 // }
 
-#[derive(Clone)]
 struct Inner {
     rpc_client: Arc<RpcClient<RpcApiOps>>,
     notification_channel: Channel<Notification>,
@@ -35,15 +36,21 @@ struct Inner {
     rpc_ctl: RpcCtl,
     background_services_running: Arc<AtomicBool>,
     service_ctl: DuplexChannel<()>,
+    // ---
+    default_url: Mutex<Option<String>>,
+    current_url: Mutex<Option<String>>,
+    resolver: Mutex<Option<Resolver>>,
+    network_id: Mutex<Option<NetworkId>>,
+    node_descriptor: Mutex<Option<Arc<NodeDescriptor>>>,
 }
 
 impl Inner {
-    pub fn new(encoding: Encoding, url: &str) -> Result<Inner> {
+    pub fn new(encoding: Encoding, url: Option<&str>, resolver: Option<Resolver>, network_id: Option<NetworkId>) -> Result<Inner> {
         // log_trace!("Kaspa wRPC::{encoding} connecting to: {url}");
         let rpc_ctl = RpcCtl::with_descriptor(url);
         let wrpc_ctl_multiplexer = Multiplexer::<WrpcCtl>::new();
 
-        let options = RpcClientOptions { url, ctl_multiplexer: Some(wrpc_ctl_multiplexer.clone()), ..RpcClientOptions::default() };
+        let options = RpcClientOptions::new().with_ctl_multiplexer(wrpc_ctl_multiplexer.clone());
 
         let notification_channel = Channel::unbounded();
 
@@ -77,7 +84,7 @@ impl Inner {
                             // log_info!("notification: posting to channel: {notification:?}");
                             notification_sender.send(notification).await?;
                         } else {
-                            log_warning!("WARNING: Kaspa RPC notification is not consumed by user: {:?}", notification);
+                            log_warn!("WARNING: Kaspa RPC notification is not consumed by user: {:?}", notification);
                         }
                         Ok(())
                     })
@@ -85,14 +92,7 @@ impl Inner {
             );
         });
 
-        let ws_config = WebSocketConfig {
-            max_message_size: Some(1024 * 1024 * 1024), // 1Gb message size limit on native platforms
-            max_frame_size: None,
-            accept_unmasked_frames: false,
-            ..Default::default()
-        };
-
-        let rpc = Arc::new(RpcClient::new_with_encoding(encoding, interface.into(), options, Some(ws_config))?);
+        let rpc = Arc::new(RpcClient::new_with_encoding(encoding, interface.into(), options, None)?);
         let client = Self {
             rpc_client: rpc,
             notification_channel,
@@ -101,6 +101,12 @@ impl Inner {
             rpc_ctl,
             service_ctl: DuplexChannel::unbounded(),
             background_services_running: Arc::new(AtomicBool::new(false)),
+            // ---
+            default_url: Mutex::new(url.map(|s| s.to_string())),
+            current_url: Mutex::new(None),
+            resolver: Mutex::new(resolver),
+            network_id: Mutex::new(network_id),
+            node_descriptor: Mutex::new(None),
         };
         Ok(client)
     }
@@ -124,6 +130,30 @@ impl Inner {
         let _response: UnsubscribeResponse =
             self.rpc_client.call(RpcApiOps::Unsubscribe, scope).await.map_err(|err| err.to_string())?;
         Ok(())
+    }
+
+    fn default_url(&self) -> Option<String> {
+        self.default_url.lock().unwrap().clone()
+    }
+
+    fn set_default_url(&self, url: Option<&str>) {
+        *self.default_url.lock().unwrap() = url.map(String::from);
+    }
+
+    fn current_url(&self) -> Option<String> {
+        self.current_url.lock().unwrap().clone()
+    }
+
+    fn set_current_url(&self, url: Option<&str>) {
+        *self.current_url.lock().unwrap() = url.map(String::from);
+    }
+
+    fn resolver(&self) -> Option<Resolver> {
+        self.resolver.lock().unwrap().clone()
+    }
+
+    fn network_id(&self) -> Option<NetworkId> {
+        *self.network_id.lock().unwrap()
     }
 }
 
@@ -152,6 +182,27 @@ impl SubscriptionManager for Inner {
     }
 }
 
+#[async_trait]
+impl RpcResolver for Inner {
+    async fn resolve_url(&self) -> ResolverResult {
+        let url = if let Some(url) = self.default_url() {
+            url
+        } else if let Some(resolver) = self.resolver().as_ref() {
+            let network_id = self.network_id().expect("Beacon requires network id in RPC client configuration");
+            let node = resolver.get_node(self.encoding, network_id).await.map_err(WebSocketError::custom)?;
+            let url = node.url.clone();
+            self.node_descriptor.lock().unwrap().replace(Arc::new(node));
+            url
+        } else {
+            panic!("RpcClient resolver configuration error (expecting Some(Beacon))")
+        };
+
+        self.rpc_ctl.set_descriptor(Some(url.clone()));
+        self.set_current_url(Some(&url));
+        Ok(url)
+    }
+}
+
 const WRPC_CLIENT: &str = "wrpc-client";
 
 /// [`KaspaRpcClient`] allows connection to the Kaspa wRPC Server via
@@ -170,15 +221,32 @@ pub struct KaspaRpcClient {
     notification_mode: NotificationMode,
 }
 
+impl Debug for KaspaRpcClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("KaspaRpcClient").field("url", &self.url()).field("connected", &self.is_connected()).finish()
+    }
+}
+
 impl KaspaRpcClient {
     /// Create a new `KaspaRpcClient` with the given Encoding and URL
-    pub fn new(encoding: Encoding, url: &str) -> Result<KaspaRpcClient> {
-        Self::new_with_args(encoding, NotificationMode::Direct, url)
+    pub fn new(
+        encoding: Encoding,
+        url: Option<&str>,
+        resolver: Option<Resolver>,
+        network_id: Option<NetworkId>,
+    ) -> Result<KaspaRpcClient> {
+        Self::new_with_args(encoding, NotificationMode::Direct, url, resolver, network_id)
     }
 
     /// Extended constructor that accepts [`NotificationMode`] argument.
-    pub fn new_with_args(encoding: Encoding, notification_mode: NotificationMode, url: &str) -> Result<KaspaRpcClient> {
-        let inner = Arc::new(Inner::new(encoding, url)?);
+    pub fn new_with_args(
+        encoding: Encoding,
+        notification_mode: NotificationMode,
+        url: Option<&str>,
+        resolver: Option<Resolver>,
+        network_id: Option<NetworkId>,
+    ) -> Result<KaspaRpcClient> {
+        let inner = Arc::new(Inner::new(encoding, url, resolver, network_id)?);
         let notifier = if matches!(notification_mode, NotificationMode::MultiListeners) {
             let enabled_events = EVENT_TYPE_ARRAY[..].into();
             let converter = Arc::new(RpcCoreConverter::new());
@@ -194,18 +262,39 @@ impl KaspaRpcClient {
         Ok(client)
     }
 
-    pub fn url(&self) -> String {
-        self.inner.rpc_client.url()
+    pub fn url(&self) -> Option<String> {
+        self.inner.current_url()
     }
 
-    pub fn set_url(&self, url: &str) -> Result<()> {
-        self.inner.rpc_ctl.set_descriptor(Some(url.to_string()));
-        self.inner.rpc_client.set_url(url)?;
+    pub fn set_url(&self, url: Option<&str>) -> Result<()> {
+        self.inner.set_default_url(url);
         Ok(())
     }
 
-    pub fn is_open(&self) -> bool {
+    pub fn is_connected(&self) -> bool {
         self.inner.rpc_client.is_open()
+    }
+
+    pub fn encoding(&self) -> Encoding {
+        self.inner.encoding
+    }
+
+    pub fn resolver(&self) -> Option<Resolver> {
+        self.inner.resolver()
+    }
+
+    pub fn set_resolver(&self, resolver: Resolver) -> Result<()> {
+        self.inner.resolver.lock().unwrap().replace(resolver);
+        Ok(())
+    }
+
+    pub fn set_network_id(&self, network_id: NetworkId) -> Result<()> {
+        self.inner.network_id.lock().unwrap().replace(network_id);
+        Ok(())
+    }
+
+    pub fn node_descriptor(&self) -> Option<Arc<NodeDescriptor>> {
+        self.inner.node_descriptor.lock().unwrap().clone()
     }
 
     pub fn rpc_client(&self) -> &Arc<RpcClient<RpcApiOps>> {
@@ -220,7 +309,7 @@ impl KaspaRpcClient {
         &self.inner.rpc_ctl
     }
 
-    /// Starts RPC services.
+    /// Start background RPC services.
     pub async fn start(&self) -> Result<()> {
         if !self.inner.background_services_running.load(Ordering::SeqCst) {
             match &self.notification_mode {
@@ -235,7 +324,7 @@ impl KaspaRpcClient {
         Ok(())
     }
 
-    /// Stops background services.
+    /// Stop background RPC services.
     pub async fn stop(&self) -> Result<()> {
         if self.inner.background_services_running.load(Ordering::SeqCst) {
             match &self.notification_mode {
@@ -257,25 +346,43 @@ impl KaspaRpcClient {
     /// to the wRPC server.  If the supplied `block` call is `true`
     /// this function will block until the first successful
     /// connection.
-    pub async fn connect(&self, options: ConnectOptions) -> ConnectResult<Error> {
-        if let Some(url) = options.url.as_ref() {
-            self.inner.rpc_ctl.set_descriptor(Some(url.clone()));
+    ///
+    /// This method starts background RPC services if they are not running and
+    /// attempts to connect to the RPC endpoint.
+    pub async fn connect(&self, options: Option<ConnectOptions>) -> ConnectResult<Error> {
+        let mut options = options.unwrap_or_default();
+
+        if let Some(url) = options.url.take() {
+            self.set_url(Some(&url))?;
         }
+
+        // 1Gb message and frame size limits (on native and NodeJs platforms)
+        let ws_config = WebSocketConfig {
+            max_message_size: Some(1024 * 1024 * 1024),
+            max_frame_size: Some(1024 * 1024 * 1024),
+            accept_unmasked_frames: false,
+            resolver: Some(self.inner.clone()),
+            ..Default::default()
+        };
+
         self.start().await?;
+        self.inner.rpc_client.configure(ws_config);
         Ok(self.inner.rpc_client.connect(options).await?)
     }
 
+    /// This method stops background RPC services and disconnects
+    /// from the RPC endpoint.
     pub async fn disconnect(&self) -> Result<()> {
         self.inner.rpc_client.shutdown().await?;
         self.stop().await?;
         Ok(())
     }
 
-    /// Stop and shutdown RPC disconnecting existing connections
-    /// and stopping reconnection process.
-    pub async fn shutdown(&self) -> Result<()> {
-        Ok(self.inner.rpc_client.shutdown().await?)
-    }
+    // Stop and shutdown RPC disconnecting existing connections
+    // and stopping reconnection process.
+    // pub async fn shutdown(&self) -> Result<()> {
+    //     Ok(self.inner.rpc_client.shutdown().await?)
+    // }
 
     /// A helper function that is not `async`, allowing connection
     /// process to be initiated from non-async contexts.
@@ -289,10 +396,6 @@ impl KaspaRpcClient {
 
     pub fn notification_channel_receiver(&self) -> Receiver<Notification> {
         self.inner.notification_channel.receiver.clone()
-    }
-
-    pub fn encoding(&self) -> Encoding {
-        self.inner.encoding
     }
 
     pub fn notification_mode(&self) -> NotificationMode {
@@ -318,7 +421,7 @@ impl KaspaRpcClient {
                 }
                 let location = window().location();
                 let protocol =
-                    location.protocol().map_err(|_| Error::AddressError("Unable to obtain window location protocol".to_string()))?;
+                    location.protocol().map_err(|_| Error::UrlError("Unable to obtain window location protocol".to_string()))?;
                 if protocol == "http:" || protocol == "chrome-extension:" {
                     Ok("ws")
                 } else if protocol == "https:" {
@@ -384,6 +487,13 @@ impl KaspaRpcClient {
     async fn stop_rpc_ctl_service(&self) -> Result<()> {
         self.inner.service_ctl.signal(()).await?;
         Ok(())
+    }
+
+    /// Triggers a disconnection on the underlying WebSocket.
+    /// This is intended for debug purposes only.
+    /// Can be used to test application reconnection logic.
+    pub fn trigger_abort(&self) -> Result<()> {
+        Ok(self.inner.rpc_client.trigger_abort()?)
     }
 }
 

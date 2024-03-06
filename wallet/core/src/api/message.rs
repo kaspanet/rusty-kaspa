@@ -12,13 +12,13 @@ use kaspa_addresses::Address;
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PingRequest {
-    pub payload: Option<u64>,
+    pub message: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PingResponse {
-    pub payload: Option<u64>,
+    pub message: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -82,7 +82,7 @@ pub struct WalletEnumerateRequest {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletEnumerateResponse {
-    pub wallet_list: Vec<WalletDescriptor>,
+    pub wallet_descriptors: Vec<WalletDescriptor>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -103,7 +103,7 @@ pub struct WalletCreateResponse {
 #[serde(rename_all = "camelCase")]
 pub struct WalletOpenRequest {
     pub wallet_secret: Secret,
-    pub wallet_filename: Option<String>,
+    pub filename: Option<String>,
     pub account_descriptors: bool,
     pub legacy_accounts: Option<bool>,
 }
@@ -208,9 +208,13 @@ pub struct PrvKeyDataCreateResponse {
     pub prv_key_data_id: PrvKeyDataId,
 }
 
+// TODO
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PrvKeyDataRemoveRequest {}
+pub struct PrvKeyDataRemoveRequest {
+    pub wallet_secret: Secret,
+    pub prv_key_data_id: PrvKeyDataId,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -236,7 +240,7 @@ pub struct AccountsEnumerateRequest {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsEnumerateResponse {
-    pub descriptor_list: Vec<AccountDescriptor>,
+    pub account_descriptors: Vec<AccountDescriptor>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -251,10 +255,22 @@ pub struct AccountsRenameRequest {
 #[serde(rename_all = "camelCase")]
 pub struct AccountsRenameResponse {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+// @category Wallet API
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]
+#[wasm_bindgen]
 pub enum AccountsDiscoveryKind {
     Bip44,
+}
+
+impl FromStr for AccountsDiscoveryKind {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "bip44" => Ok(Self::Bip44),
+            _ => Err(Error::custom(format!("Invalid discovery kind: {s}"))),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -264,7 +280,7 @@ pub struct AccountsDiscoveryRequest {
     pub address_scan_extent: u32,
     pub account_scan_extent: u32,
     pub bip39_passphrase: Option<Secret>,
-    pub bip39_mnemonic: String,
+    pub bip39_mnemonic: Secret,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -286,6 +302,7 @@ pub struct AccountsCreateResponse {
     pub account_descriptor: AccountDescriptor,
 }
 
+// TODO
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsImportRequest {}
@@ -323,14 +340,30 @@ pub struct AccountsGetRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsGetResponse {
-    pub descriptor: AccountDescriptor,
+    pub account_descriptor: AccountDescriptor,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+/// Specifies the type of an account address to create.
+/// The address can bea receive address or a change address.
+///
+/// @category Wallet API
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen)]
 pub enum NewAddressKind {
     Receive,
     Change,
+}
+
+impl FromStr for NewAddressKind {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "receive" => Ok(Self::Receive),
+            "change" => Ok(Self::Change),
+            _ => Err(Error::custom(format!("Invalid address kind: {s}"))),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -374,6 +407,7 @@ pub struct AccountsTransferRequest {
     pub payment_secret: Option<Secret>,
     pub transfer_amount_sompi: u64,
     pub priority_fee_sompi: Option<Fees>,
+    // pub priority_fee_sompi: Fees,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -382,6 +416,8 @@ pub struct AccountsTransferResponse {
     pub generator_summary: GeneratorSummary,
     pub transaction_ids: Vec<TransactionId>,
 }
+
+// TODO: Use Generator Summary from WASM module...
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]

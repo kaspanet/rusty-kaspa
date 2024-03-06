@@ -22,6 +22,9 @@ pub enum Error {
 
     #[error("event type disabled")]
     EventTypeDisabled,
+
+    #[error("Invalid event type: {0}")]
+    InvalidEventType(String),
 }
 
 impl From<BoxedStdError> for Error {

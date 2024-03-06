@@ -8,6 +8,11 @@ include.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+devnet-prealloc = []
+wasm32-sdk = []
+default = []
+
 [dependencies]
 async-trait.workspace = true
 borsh.workspace = true
@@ -47,7 +52,3 @@ web-sys.workspace = true
 [[bench]]
 name = "serde_benchmark"
 harness = false
-
-[features]
-devnet-prealloc = []
-wasm32-sdk = []

@@ -9,8 +9,6 @@
 
 use crate::api::message::*;
 use crate::imports::*;
-use crate::result::Result;
-use crate::secret::Secret;
 use crate::storage::{PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, WalletDescriptor};
 use crate::tx::GeneratorSummary;
 use workflow_core::channel::Receiver;
@@ -47,8 +45,8 @@ pub trait WalletApi: Send + Sync + AnySync {
     // ---
 
     /// Wrapper around `ping_call()`.
-    async fn ping(self: Arc<Self>, payload: Option<u64>) -> Result<Option<u64>> {
-        Ok(self.ping_call(PingRequest { payload }).await?.payload)
+    async fn ping(self: Arc<Self>, message: Option<String>) -> Result<Option<String>> {
+        Ok(self.ping_call(PingRequest { message }).await?.message)
     }
     /// Ping the wallet service. Accepts an optional `u64` value that is returned in the response.
     async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse>;
@@ -77,7 +75,7 @@ pub trait WalletApi: Send + Sync + AnySync {
 
     /// Wrapper around [`wallet_enumerate_call()`](Self::wallet_enumerate_call).
     async fn wallet_enumerate(self: Arc<Self>) -> Result<Vec<WalletDescriptor>> {
-        Ok(self.wallet_enumerate_call(WalletEnumerateRequest {}).await?.wallet_list)
+        Ok(self.wallet_enumerate_call(WalletEnumerateRequest {}).await?.wallet_descriptors)
     }
 
     /// Enumerates all wallets available in the storage. Returns `Vec<WalletDescriptor>`
@@ -100,14 +98,14 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn wallet_open(
         self: Arc<Self>,
         wallet_secret: Secret,
-        wallet_filename: Option<String>,
+        filename: Option<String>,
         account_descriptors: bool,
         legacy_accounts: bool,
     ) -> Result<Option<Vec<AccountDescriptor>>> {
         Ok(self
             .wallet_open_call(WalletOpenRequest {
                 wallet_secret,
-                wallet_filename,
+                filename,
                 account_descriptors,
                 legacy_accounts: legacy_accounts.then_some(true),
             })
@@ -267,7 +265,7 @@ pub trait WalletApi: Send + Sync + AnySync {
 
     /// Wrapper around [`accounts_enumerate_call()`](Self::accounts_enumerate_call)
     async fn accounts_enumerate(self: Arc<Self>) -> Result<Vec<AccountDescriptor>> {
-        Ok(self.accounts_enumerate_call(AccountsEnumerateRequest {}).await?.descriptor_list)
+        Ok(self.accounts_enumerate_call(AccountsEnumerateRequest {}).await?.account_descriptors)
     }
     /// Returns a list of [`AccountDescriptor`] structs for all accounts stored in the wallet.
     async fn accounts_enumerate_call(self: Arc<Self>, request: AccountsEnumerateRequest) -> Result<AccountsEnumerateResponse>;

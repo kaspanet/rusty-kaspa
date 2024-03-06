@@ -3,8 +3,31 @@
 //!
 
 use crate::imports::*;
-use kaspa_consensus_wasm::{TransactionOutput, TransactionOutputInner};
+use kaspa_consensus_client::{TransactionOutput, TransactionOutputInner};
 use kaspa_txscript::pay_to_address_script;
+
+#[wasm_bindgen(typescript_custom_section)]
+const TS_PAYMENT_OUTPUTS: &'static str = r#"
+/**
+ * 
+ * Defines a single payment output.
+ * 
+ * @see {@link IGeneratorSettingsObject}, {@link Generator}
+ * @category Wallet SDK
+ */
+export interface IPaymentOutput {
+    /**
+     * Destination address. The address prefix must match the network
+     * you are transacting on (e.g. `kaspa:` for mainnet, `kaspatest:` for testnet, etc).
+     */
+    address: Address | string;
+    /**
+     * Output amount in SOMPI.
+     */
+    amount: bigint;
+}
+
+"#;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum PaymentDestination {
@@ -21,6 +44,7 @@ impl PaymentDestination {
     }
 }
 
+/// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct PaymentOutput {
@@ -71,6 +95,7 @@ impl From<PaymentOutput> for PaymentDestination {
     }
 }
 
+/// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[wasm_bindgen]
 pub struct PaymentOutputs {

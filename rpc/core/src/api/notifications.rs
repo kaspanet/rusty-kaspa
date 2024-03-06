@@ -10,9 +10,9 @@ use kaspa_notify::{
     },
 };
 use serde::{Deserialize, Serialize};
-use serde_wasm_bindgen::to_value;
 use std::sync::Arc;
 use wasm_bindgen::JsValue;
+use workflow_wasm::serde::to_value;
 
 full_featured! {
 #[derive(Clone, Debug, Display, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

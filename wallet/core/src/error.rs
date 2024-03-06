@@ -24,6 +24,9 @@ pub enum Error {
     #[error("{0}")]
     Custom(String),
 
+    #[error(transparent)]
+    WalletKeys(#[from] kaspa_wallet_keys::error::Error),
+
     #[error("please select an account")]
     AccountSelection,
 
@@ -171,6 +174,9 @@ pub enum Error {
     #[error("wallet secret is required")]
     WalletSecretRequired,
 
+    #[error("Supplied secret in key '{0}' is empty")]
+    SecretIsEmpty(String),
+
     #[error("task aborted")]
     Aborted,
 
@@ -185,6 +191,12 @@ pub enum Error {
 
     #[error("Account not active: {0}")]
     AccountNotActive(AccountId),
+
+    #[error("Invalid account id: {0}")]
+    InvalidAccountId(String),
+
+    #[error("Invalid id: {0}")]
+    InvalidKeyDataId(String),
 
     #[error("Invalid account type (must be one of: bip32|multisig|legacy")]
     InvalidAccountKind,
@@ -226,10 +238,16 @@ pub enum Error {
     DowncastError(String),
 
     #[error(transparent)]
+    ConsensusClient(#[from] kaspa_consensus_client::error::Error),
+
+    #[error(transparent)]
     ConsensusWasm(#[from] kaspa_consensus_wasm::error::Error),
 
-    #[error("Fees::Include or Fees::Exclude are not allowed in sweep transactions")]
+    #[error("Fees::SenderPays or Fees::ReceiverPays are not allowed in sweep transactions")]
     GeneratorFeesInSweepTransaction,
+
+    #[error("Transactions with output must have Fees::SenderPays or Fees::ReceiverPays")]
+    GeneratorNoFeesForFinalTransaction,
 
     #[error("Change address does not match supplied network type")]
     GeneratorChangeAddressNetworkTypeMismatch,
@@ -281,6 +299,27 @@ pub enum Error {
 
     #[error("Mass calculation error")]
     MassCalculationError,
+
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
+
+    #[error("Unable to convert BigInt value {0}")]
+    BigInt(String),
+
+    #[error("Invalid mnemonic phrase")]
+    InvalidMnemonicPhrase,
+
+    #[error("Invalid transaction kind {0}")]
+    InvalidTransactionKind(String),
+
+    #[error("Cipher message is too short")]
+    CipherMessageTooShort,
+
+    #[error("Invalid secret key length")]
+    InvalidPrivateKeyLength,
+
+    #[error("Invalid public key length")]
+    InvalidPublicKeyLength,
 }
 
 impl From<Aborted> for Error {

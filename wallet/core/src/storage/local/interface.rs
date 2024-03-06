@@ -5,8 +5,6 @@
 //!
 
 use crate::imports::*;
-use crate::result::Result;
-use crate::secret::Secret;
 use crate::storage::interface::{
     AddressBookStore, CreateArgs, OpenArgs, StorageDescriptor, StorageStream, WalletDescriptor, WalletExportOptions,
 };

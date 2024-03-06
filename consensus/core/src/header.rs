@@ -18,7 +18,39 @@ use wasm_bindgen_attribute_cleaner::clean_attributes;
 #[cfg(feature = "wasm32-sdk")]
 use workflow_wasm::prelude::*;
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[cfg(feature = "wasm32-sdk")]
+#[wasm_bindgen(typescript_custom_section)]
+const TS_HEADER: &'static str = r#"
+/**
+ * Interface defining the structure of a block header.
+ * 
+ * @category Consensus
+ */
+export interface IHeader {
+    hash: HexString;
+    version: number;
+    parentsByLevel: Array<Array<HexString>>;
+    hashMerkleRoot: HexString;
+    acceptedIdMerkleRoot: HexString;
+    utxoCommitment: HexString;
+    timestamp: bigint;
+    bits: number;
+    nonce: bigint;
+    daaScore: bigint;
+    blueWork: bigint;
+    blueScore: bigint;
+    pruningPoint: HexString;
+}
+"#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "IHeader | Header")]
+    pub type IHeader;
+}
+
+/// @category Consensus
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, CastFromJs)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(inspectable))]
 #[cfg_attr(not(feature = "wasm32-sdk"), clean_attributes)]
@@ -127,8 +159,8 @@ impl Header {
     }
 
     #[wasm_bindgen(constructor)]
-    pub fn constructor(js_value: JsValue) -> std::result::Result<Header, JsError> {
-        Ok(js_value.try_into()?)
+    pub fn constructor(js_value: IHeader) -> std::result::Result<Header, JsError> {
+        Ok(js_value.try_into_owned()?)
     }
 
     /// Obtain `JSON` representation of the header. JSON representation
@@ -197,8 +229,8 @@ impl Header {
             .map(|jsv| {
                 Array::from(&jsv)
                     .to_vec()
-                    .into_iter()
-                    .map(|hash| Ok(hash.try_into()?))
+                    .iter()
+                    .map(|hash| Ok(hash.try_into_owned()?))
                     .collect::<std::result::Result<Vec<Hash>, Error>>()
             })
             .collect::<std::result::Result<Vec<Vec<Hash>>, Error>>()
@@ -245,52 +277,56 @@ impl Error {
     }
 }
 
-#[cfg(feature = "wasm32-sdk")]
-impl TryFrom<JsValue> for Header {
+impl TryCastFromJs for Header {
     type Error = Error;
-    fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Some(object) = Object::try_from(&js_value) {
-            let parents_by_level = object
-                .get_vec("parentsByLevel")?
-                .iter()
-                .map(|jsv| {
-                    Array::from(jsv)
-                        .to_vec()
-                        .into_iter()
-                        .map(|hash| Ok(hash.try_into()?))
-                        .collect::<std::result::Result<Vec<Hash>, Error>>()
-                })
-                .collect::<std::result::Result<Vec<Vec<Hash>>, Error>>()?;
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Self::resolve(&value, || {
+            if let Some(object) = Object::try_from(value.as_ref()) {
+                let parents_by_level = object
+                    .get_vec("parentsByLevel")?
+                    .iter()
+                    .map(|jsv| {
+                        Array::from(jsv)
+                            .to_vec()
+                            .into_iter()
+                            .map(|hash| Ok(hash.try_into_owned()?))
+                            .collect::<std::result::Result<Vec<Hash>, Error>>()
+                    })
+                    .collect::<std::result::Result<Vec<Vec<Hash>>, Error>>()?;
 
-            let header = Self {
-                hash: object.get_value("hash")?.try_into().unwrap_or_default(),
-                version: object.get_u16("version")?,
-                parents_by_level,
-                hash_merkle_root: object
-                    .get_value("hashMerkleRoot")?
-                    .try_into()
-                    .map_err(|err| Error::convert("hashMerkleRoot", err))?,
-                accepted_id_merkle_root: object
-                    .get_value("acceptedIdMerkleRoot")?
-                    .try_into()
-                    .map_err(|err| Error::convert("acceptedIdMerkleRoot", err))?,
-                utxo_commitment: object
-                    .get_value("utxoCommitment")?
-                    .try_into()
-                    .map_err(|err| Error::convert("utxoCommitment", err))?,
-                nonce: object.get_u64("nonce")?,
-                timestamp: object.get_u64("timestamp")?,
-                daa_score: object.get_u64("daaScore")?,
-                bits: object.get_u32("bits")?,
-                blue_work: object.get_value("blueWork")?.try_into().map_err(|err| Error::convert("blueWork", err))?,
-                blue_score: object.get_u64("blueScore")?,
-                pruning_point: object.get_value("pruningPoint")?.try_into().map_err(|err| Error::convert("pruningPoint", err))?,
-            };
+                let header = Self {
+                    hash: object.get_value("hash")?.try_into_owned().unwrap_or_default(),
+                    version: object.get_u16("version")?,
+                    parents_by_level,
+                    hash_merkle_root: object
+                        .get_value("hashMerkleRoot")?
+                        .try_into_owned()
+                        .map_err(|err| Error::convert("hashMerkleRoot", err))?,
+                    accepted_id_merkle_root: object
+                        .get_value("acceptedIdMerkleRoot")?
+                        .try_into_owned()
+                        .map_err(|err| Error::convert("acceptedIdMerkleRoot", err))?,
+                    utxo_commitment: object
+                        .get_value("utxoCommitment")?
+                        .try_into_owned()
+                        .map_err(|err| Error::convert("utxoCommitment", err))?,
+                    nonce: object.get_u64("nonce")?,
+                    timestamp: object.get_u64("timestamp")?,
+                    daa_score: object.get_u64("daaScore")?,
+                    bits: object.get_u32("bits")?,
+                    blue_work: object.get_value("blueWork")?.try_into().map_err(|err| Error::convert("blueWork", err))?,
+                    blue_score: object.get_u64("blueScore")?,
+                    pruning_point: object
+                        .get_value("pruningPoint")?
+                        .try_into_owned()
+                        .map_err(|err| Error::convert("pruningPoint", err))?,
+                };
 
-            Ok(header)
-        } else {
-            Err(Error::Custom("supplied argument must be an object".to_string()))
-        }
+                Ok(header)
+            } else {
+                Err(Error::Custom("supplied argument must be an object".to_string()))
+            }
+        })
     }
 }
 

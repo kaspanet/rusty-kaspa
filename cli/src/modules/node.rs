@@ -129,7 +129,7 @@ impl Node {
                             };
                             for _ in 0..5 {
                                 sleep(Duration::from_millis(1000)).await;
-                                if wrpc_client.connect(options.clone()).await.is_ok() {
+                                if wrpc_client.connect(Some(options.clone())).await.is_ok() {
                                     break;
                                 }
                             }

@@ -10,6 +10,7 @@ use kaspa_txscript::script_builder::ScriptBuilder as Inner;
 /// are therefore guaranteed not to execute will not be pushed and will result in
 /// the Script function returning an error.
 ///
+/// @category Consensus
 #[derive(Clone)]
 #[wasm_bindgen]
 pub struct ScriptBuilder {

@@ -1,8 +1,13 @@
+#![allow(unused_imports)]
+
 pub use crate::client::*;
+pub use crate::resolver::Resolver;
 pub use crate::result::Result;
 pub use async_trait::async_trait;
+pub use cfg_if::cfg_if;
 pub use futures::*;
 pub use js_sys::Function;
+pub use kaspa_consensus_core::network::{NetworkId, NetworkIdT};
 pub use kaspa_notify::{
     error::{Error as NotifyError, Result as NotifyResult},
     events::EVENT_TYPE_ARRAY,
@@ -18,6 +23,7 @@ pub use kaspa_rpc_core::{
     notify::{connection::ChannelConnection, mode::NotificationMode},
     prelude::*,
 };
+pub use serde::{Deserialize, Serialize};
 pub use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,

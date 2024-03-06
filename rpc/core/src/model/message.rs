@@ -29,7 +29,6 @@ impl SubmitBlockRequest {
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-#[serde(rename_all = "camelCase")]
 pub enum SubmitBlockRejectReason {
     BlockInvalid = 1,
     IsInIBD = 2,
@@ -52,7 +51,8 @@ impl Display for SubmitBlockRejectReason {
 }
 
 #[derive(Eq, PartialEq, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "lowercase")]
+#[serde(tag = "type", content = "reason")]
 pub enum SubmitBlockReport {
     Success,
     Reject(SubmitBlockRejectReason),
@@ -78,6 +78,7 @@ pub struct SubmitBlockResponse {
 pub struct GetBlockTemplateRequest {
     /// Which kaspa address should the coinbase block reward transaction pay into
     pub pay_address: RpcAddress,
+    // TODO: replace with hex serialization
     pub extra_data: RpcExtraData,
 }
 impl GetBlockTemplateRequest {

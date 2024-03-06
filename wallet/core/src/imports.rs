@@ -9,16 +9,14 @@ pub use crate::account::{Account, AccountKind, DerivationCapableAccount};
 pub use crate::deterministic::*;
 pub use crate::encryption::{Encryptable, EncryptionKind};
 pub use crate::error::Error;
-pub use crate::events::{Events, SyncState};
+pub use crate::events::{EventKind, Events, SyncState};
 pub use crate::factory::{factories, Factory};
 pub use crate::result::Result;
 pub use crate::rpc::Rpc;
 pub use crate::rpc::{DynRpcApi, RpcCtl};
-pub use crate::secret::Secret;
 pub use crate::serializer::*;
 pub use crate::storage::*;
 pub use crate::tx::MassCombinationStrategy;
-pub use crate::types::*;
 pub use crate::utxo::balance::Balance;
 pub use crate::utxo::scan::{Scan, ScanExtent};
 pub use crate::utxo::{Maturity, NetworkParams, OutgoingTransaction, UtxoContext, UtxoEntryReference, UtxoProcessor};
@@ -39,6 +37,8 @@ pub use kaspa_consensus_core::network::{NetworkId, NetworkType};
 pub use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionId, TransactionIndexType};
 pub use kaspa_utils::hashmap::*;
 pub use kaspa_utils::hex::{FromHex, ToHex};
+pub use kaspa_wallet_keys::secret::Secret;
+pub use kaspa_wallet_keys::types::*;
 pub use pad::PadStr;
 pub use separator::Separatable;
 pub use serde::{Deserialize, Deserializer, Serialize};
@@ -53,5 +53,10 @@ pub use workflow_core::prelude::*;
 pub use workflow_core::seal;
 pub use workflow_log::prelude::*;
 pub use workflow_wasm::prelude::*;
-pub use workflow_wasm::stream::AsyncStream;
 pub use zeroize::*;
+
+cfg_if! {
+    if #[cfg(feature = "wasm32-sdk")] {
+        pub use workflow_wasm::convert::CastFromJs;
+    }
+}

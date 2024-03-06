@@ -24,8 +24,7 @@ impl WalletApi for super::Wallet {
         let is_synced = self.is_synced();
         let is_open = self.is_open();
         let network_id = self.network_id().ok();
-        let (url, is_wrpc_client) =
-            if let Some(wrpc_client) = self.wrpc_client() { (Some(wrpc_client.url()), true) } else { (None, false) };
+        let (url, is_wrpc_client) = if let Some(wrpc_client) = self.wrpc_client() { (wrpc_client.url(), true) } else { (None, false) };
 
         Ok(GetStatusResponse { is_connected, is_synced, is_open, network_id, url, is_wrpc_client })
     }
@@ -46,7 +45,7 @@ impl WalletApi for super::Wallet {
                 url: Some(url),
                 ..Default::default()
             };
-            wrpc_client.connect(options).await.map_err(|e| e.to_string())?;
+            wrpc_client.connect(Some(options)).await.map_err(|e| e.to_string())?;
             Ok(ConnectResponse {})
         } else {
             Err(Error::NotWrpcClient)
@@ -55,7 +54,7 @@ impl WalletApi for super::Wallet {
 
     async fn disconnect_call(self: Arc<Self>, _request: DisconnectRequest) -> Result<DisconnectResponse> {
         if let Some(wrpc_client) = self.wrpc_client().as_ref() {
-            wrpc_client.shutdown().await?;
+            wrpc_client.disconnect().await?;
             Ok(DisconnectResponse {})
         } else {
             Err(Error::NotWrpcClient)
@@ -65,8 +64,8 @@ impl WalletApi for super::Wallet {
     // -------------------------------------------------------------------------------------
 
     async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse> {
-        log_info!("Wallet received ping request '{:?}' ...", request.payload);
-        Ok(PingResponse { payload: request.payload })
+        log_info!("Wallet received ping request '{:?}' ...", request.message);
+        Ok(PingResponse { message: request.message })
     }
 
     async fn batch_call(self: Arc<Self>, _request: BatchRequest) -> Result<BatchResponse> {
@@ -81,8 +80,8 @@ impl WalletApi for super::Wallet {
     }
 
     async fn wallet_enumerate_call(self: Arc<Self>, _request: WalletEnumerateRequest) -> Result<WalletEnumerateResponse> {
-        let wallet_list = self.store().wallet_list().await?;
-        Ok(WalletEnumerateResponse { wallet_list })
+        let wallet_descriptors = self.store().wallet_list().await?;
+        Ok(WalletEnumerateResponse { wallet_descriptors })
     }
 
     async fn wallet_create_call(self: Arc<Self>, request: WalletCreateRequest) -> Result<WalletCreateResponse> {
@@ -94,9 +93,9 @@ impl WalletApi for super::Wallet {
     }
 
     async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse> {
-        let WalletOpenRequest { wallet_secret, wallet_filename, account_descriptors, legacy_accounts } = request;
+        let WalletOpenRequest { wallet_secret, filename, account_descriptors, legacy_accounts } = request;
         let args = WalletOpenArgs { account_descriptors, legacy_accounts: legacy_accounts.unwrap_or_default() };
-        let account_descriptors = self.open(&wallet_secret, wallet_filename, args).await?;
+        let account_descriptors = self.open(&wallet_secret, filename, args).await?;
         Ok(WalletOpenResponse { account_descriptors })
     }
 
@@ -181,9 +180,9 @@ impl WalletApi for super::Wallet {
 
     async fn accounts_enumerate_call(self: Arc<Self>, _request: AccountsEnumerateRequest) -> Result<AccountsEnumerateResponse> {
         let account_list = self.accounts(None).await?.try_collect::<Vec<_>>().await?;
-        let descriptor_list = account_list.iter().map(|account| account.descriptor().unwrap()).collect::<Vec<_>>();
+        let account_descriptors = account_list.iter().map(|account| account.descriptor().unwrap()).collect::<Vec<_>>();
 
-        Ok(AccountsEnumerateResponse { descriptor_list })
+        Ok(AccountsEnumerateResponse { account_descriptors })
     }
 
     async fn accounts_activate_call(self: Arc<Self>, request: AccountsActivateRequest) -> Result<AccountsActivateResponse> {
@@ -229,8 +228,8 @@ impl WalletApi for super::Wallet {
     async fn accounts_get_call(self: Arc<Self>, request: AccountsGetRequest) -> Result<AccountsGetResponse> {
         let AccountsGetRequest { account_id } = request;
         let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
-        let descriptor = account.descriptor().unwrap();
-        Ok(AccountsGetResponse { descriptor })
+        let account_descriptor = account.descriptor().unwrap();
+        Ok(AccountsGetResponse { account_descriptor })
     }
 
     async fn accounts_create_new_address_call(

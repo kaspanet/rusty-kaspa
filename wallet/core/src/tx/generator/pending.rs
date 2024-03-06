@@ -219,7 +219,7 @@ impl PendingTransaction {
         Ok(())
     }
 
-    pub fn try_sign_with_keys(&self, privkeys: Vec<[u8; 32]>) -> Result<()> {
+    pub fn try_sign_with_keys(&self, privkeys: &[[u8; 32]]) -> Result<()> {
         let mutable_tx = self.inner.signable_tx.lock()?.clone();
         let signed_tx = sign_with_multiple_v2(mutable_tx, privkeys).fully_signed()?;
         *self.inner.signable_tx.lock().unwrap() = signed_tx;

@@ -17,9 +17,9 @@ use crate::utxo::{
 use kaspa_hashes::Hash;
 use sorted_insert::SortedInsertBinaryByKey;
 
-static PROCESSOR_ID_SEQUENCER: AtomicU64 = AtomicU64::new(0);
-fn next_processor_id() -> Hash {
-    let id = PROCESSOR_ID_SEQUENCER.fetch_add(1, Ordering::SeqCst);
+static UTXO_CONTEXT_ID_SEQUENCER: AtomicU64 = AtomicU64::new(0);
+fn next_utxo_context_id() -> Hash {
+    let id = UTXO_CONTEXT_ID_SEQUENCER.fetch_add(1, Ordering::SeqCst);
     Hash::from_slice(sha256_hash(id.to_le_bytes().as_slice()).as_ref())
 }
 
@@ -28,7 +28,7 @@ pub struct UtxoContextId(pub(crate) Hash);
 
 impl Default for UtxoContextId {
     fn default() -> Self {
-        UtxoContextId(next_processor_id())
+        UtxoContextId(next_utxo_context_id())
     }
 }
 
@@ -319,7 +319,7 @@ impl UtxoContext {
             }
             Ok(())
         } else {
-            log_warning!("ignoring duplicate utxo entry");
+            log_warn!("ignoring duplicate utxo entry");
             Ok(())
         }
     }
@@ -448,7 +448,7 @@ impl UtxoContext {
                         }
                     }
                 } else {
-                    log_warning!("ignoring duplicate utxo entry");
+                    log_warn!("ignoring duplicate utxo entry");
                 }
             }
 
@@ -676,7 +676,7 @@ impl UtxoContext {
                 local.remove(address);
             });
         } else {
-            log_warning!("utxo processor: unregister for an empty address set")
+            log_warn!("utxo processor: unregister for an empty address set")
         }
 
         Ok(())

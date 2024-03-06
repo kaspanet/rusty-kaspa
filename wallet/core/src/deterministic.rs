@@ -50,6 +50,27 @@ impl ToHex for AccountId {
     }
 }
 
+impl FromHex for AccountId {
+    type Error = Error;
+    fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
+        Ok(Self(Hash::from_hex(hex_str)?))
+    }
+}
+
+impl TryFrom<&JsValue> for AccountId {
+    type Error = Error;
+    fn try_from(value: &JsValue) -> Result<Self> {
+        let string = value.as_string().ok_or(Error::InvalidAccountId(format!("{value:?}")))?;
+        Self::from_hex(&string)
+    }
+}
+
+impl From<AccountId> for JsValue {
+    fn from(value: AccountId) -> Self {
+        JsValue::from(value.to_hex())
+    }
+}
+
 impl std::fmt::Display for AccountId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)

@@ -9,9 +9,9 @@ use crate::storage::{Hint, PrvKeyDataInfo, StorageDescriptor, TransactionRecord,
 use crate::utxo::context::UtxoContextId;
 
 /// Sync state of the kaspad node
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "kebab-case")]
-#[serde(tag = "sync", content = "state")]
+#[serde(tag = "type", content = "data")]
 pub enum SyncState {
     Proof {
         level: u64,
@@ -48,15 +48,16 @@ impl SyncState {
 }
 
 /// Events emitted by the wallet framework
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "kebab-case")]
-#[serde(tag = "event", content = "data")]
+#[serde(tag = "type", content = "data")]
 pub enum Events {
+    WalletPing,
     /// Successful RPC connection
     Connect {
         #[serde(rename = "networkId")]
         network_id: NetworkId,
-        /// Kaspa node RPC url on which connection
+        /// Node RPC url on which connection
         /// has been established
         url: Option<String>,
     },
@@ -69,13 +70,14 @@ pub enum Events {
     /// A special event emitted if the connected node
     /// does not have UTXO index enabled
     UtxoIndexNotEnabled {
-        /// Kaspa node RPC url on which connection
+        /// Node RPC url on which connection
         /// has been established
         url: Option<String>,
     },
     /// [`SyncState`] notification posted
     /// when the node sync state changes
     SyncState {
+        #[serde(rename = "syncState")]
         sync_state: SyncState,
     },
     /// Emitted after the wallet has loaded and
@@ -104,6 +106,7 @@ pub enum Events {
     /// Wallet has been closed
     WalletClose,
     PrvKeyDataCreate {
+        #[serde(rename = "prvKeyDataInfo")]
         prv_key_data_info: PrvKeyDataInfo,
     },
     /// Accounts have been activated
@@ -136,7 +139,7 @@ pub enum Events {
         server_version: String,
         #[serde(rename = "isSynced")]
         is_synced: bool,
-        /// Kaspa node RPC url on which connection
+        /// Node RPC url on which connection
         /// has been established
         url: Option<String>,
     },
@@ -156,7 +159,8 @@ pub enum Events {
         message: String,
     },
     /// DAA score change
-    DAAScoreChange {
+    DaaScoreChange {
+        #[serde(rename = "currentDaaScore")]
         current_daa_score: u64,
     },
     /// New incoming pending UTXO/transaction
@@ -202,10 +206,6 @@ pub enum Events {
     /// UtxoContext (Account) balance update. Emitted for each
     /// balance change within the UtxoContext.
     Balance {
-        // #[serde(rename = "matureUtxoSize")]
-        // mature_utxo_size: usize,
-        // #[serde(rename = "pendingUtxoSize")]
-        // pending_utxo_size: usize,
         balance: Option<Balance>,
         /// If UtxoContext is bound to a Runtime Account, this
         /// field will contain the account id. Otherwise, it will
@@ -217,4 +217,123 @@ pub enum Events {
     Error {
         message: String,
     },
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq, Hash)]
+#[serde(rename_all = "kebab-case")]
+pub enum EventKind {
+    All,
+    Connect,
+    Disconnect,
+    UtxoIndexNotEnabled,
+    SyncState,
+    WalletStart,
+    WalletHint,
+    WalletOpen,
+    WalletCreate,
+    WalletReload,
+    WalletError,
+    WalletClose,
+    PrvKeyDataCreate,
+    AccountActivation,
+    AccountDeactivation,
+    AccountSelection,
+    AccountCreate,
+    AccountUpdate,
+    ServerStatus,
+    UtxoProcStart,
+    UtxoProcStop,
+    UtxoProcError,
+    DaaScoreChange,
+    Pending,
+    Reorg,
+    Stasis,
+    Maturity,
+    Discovery,
+    Balance,
+    Error,
+}
+
+impl From<&Events> for EventKind {
+    fn from(event: &Events) -> Self {
+        match event {
+            Events::WalletPing { .. } => EventKind::WalletStart,
+
+            Events::Connect { .. } => EventKind::Connect,
+            Events::Disconnect { .. } => EventKind::Disconnect,
+            Events::UtxoIndexNotEnabled { .. } => EventKind::UtxoIndexNotEnabled,
+            Events::SyncState { .. } => EventKind::SyncState,
+            Events::WalletHint { .. } => EventKind::WalletHint,
+            Events::WalletOpen { .. } => EventKind::WalletOpen,
+            Events::WalletCreate { .. } => EventKind::WalletCreate,
+            Events::WalletReload { .. } => EventKind::WalletReload,
+            Events::WalletError { .. } => EventKind::WalletError,
+            Events::WalletClose => EventKind::WalletClose,
+            Events::PrvKeyDataCreate { .. } => EventKind::PrvKeyDataCreate,
+            Events::AccountActivation { .. } => EventKind::AccountActivation,
+            Events::AccountDeactivation { .. } => EventKind::AccountDeactivation,
+            Events::AccountSelection { .. } => EventKind::AccountSelection,
+            Events::AccountCreate { .. } => EventKind::AccountCreate,
+            Events::AccountUpdate { .. } => EventKind::AccountUpdate,
+            Events::ServerStatus { .. } => EventKind::ServerStatus,
+            Events::UtxoProcStart => EventKind::UtxoProcStart,
+            Events::UtxoProcStop => EventKind::UtxoProcStop,
+            Events::UtxoProcError { .. } => EventKind::UtxoProcError,
+            Events::DaaScoreChange { .. } => EventKind::DaaScoreChange,
+            Events::Pending { .. } => EventKind::Pending,
+            Events::Reorg { .. } => EventKind::Reorg,
+            Events::Stasis { .. } => EventKind::Stasis,
+            Events::Maturity { .. } => EventKind::Maturity,
+            Events::Discovery { .. } => EventKind::Discovery,
+            Events::Balance { .. } => EventKind::Balance,
+            Events::Error { .. } => EventKind::Error,
+        }
+    }
+}
+
+impl FromStr for EventKind {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "*" => Ok(EventKind::All),
+            "connect" => Ok(EventKind::Connect),
+            "disconnect" => Ok(EventKind::Disconnect),
+            "utxo-index-not-enabled" => Ok(EventKind::UtxoIndexNotEnabled),
+            "sync-state" => Ok(EventKind::SyncState),
+            "wallet-start" => Ok(EventKind::WalletStart),
+            "wallet-hint" => Ok(EventKind::WalletHint),
+            "wallet-open" => Ok(EventKind::WalletOpen),
+            "wallet-create" => Ok(EventKind::WalletCreate),
+            "wallet-reload" => Ok(EventKind::WalletReload),
+            "wallet-error" => Ok(EventKind::WalletError),
+            "wallet-close" => Ok(EventKind::WalletClose),
+            "prv-key-data-create" => Ok(EventKind::PrvKeyDataCreate),
+            "account-activation" => Ok(EventKind::AccountActivation),
+            "account-deactivation" => Ok(EventKind::AccountDeactivation),
+            "account-selection" => Ok(EventKind::AccountSelection),
+            "account-create" => Ok(EventKind::AccountCreate),
+            "account-update" => Ok(EventKind::AccountUpdate),
+            "server-status" => Ok(EventKind::ServerStatus),
+            "utxo-proc-start" => Ok(EventKind::UtxoProcStart),
+            "utxo-proc-stop" => Ok(EventKind::UtxoProcStop),
+            "utxo-proc-error" => Ok(EventKind::UtxoProcError),
+            "daa-score-change" => Ok(EventKind::DaaScoreChange),
+            "pending" => Ok(EventKind::Pending),
+            "reorg" => Ok(EventKind::Reorg),
+            "stasis" => Ok(EventKind::Stasis),
+            "maturity" => Ok(EventKind::Maturity),
+            "discovery" => Ok(EventKind::Discovery),
+            "balance" => Ok(EventKind::Balance),
+            "error" => Ok(EventKind::Error),
+            _ => Err(Error::custom("Invalid event kind")),
+        }
+    }
+}
+
+impl TryFrom<JsValue> for EventKind {
+    type Error = Error;
+    fn try_from(js_value: JsValue) -> Result<Self> {
+        let s = js_value.as_string().ok_or_else(|| Error::custom("Invalid event kind"))?;
+        EventKind::from_str(&s)
+    }
 }

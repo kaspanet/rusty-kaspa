@@ -3,7 +3,7 @@
 //!
 
 use crate::imports::*;
-use crate::secret::Secret;
+// use crate::secret::Secret;
 use crate::storage::interface::CreateArgs;
 use crate::storage::{Hint, PrvKeyDataId};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
@@ -63,11 +63,11 @@ impl WalletOpenArgs {
 pub struct PrvKeyDataCreateArgs {
     pub name: Option<String>,
     pub payment_secret: Option<Secret>,
-    pub mnemonic: String,
+    pub mnemonic: Secret,
 }
 
 impl PrvKeyDataCreateArgs {
-    pub fn new(name: Option<String>, payment_secret: Option<Secret>, mnemonic: String) -> Self {
+    pub fn new(name: Option<String>, payment_secret: Option<Secret>, mnemonic: Secret) -> Self {
         Self { name, payment_secret, mnemonic }
     }
 }
@@ -77,6 +77,29 @@ impl Zeroize for PrvKeyDataCreateArgs {
         self.mnemonic.zeroize();
     }
 }
+
+#[wasm_bindgen(typescript_custom_section)]
+const TS_ACCOUNT_CREATE_ARGS: &'static str = r#"
+
+export interface IPrvKeyDataArgs {
+    prvKeyDataId: HexString;
+    paymentSecret?: string;
+}
+
+export interface IAccountCreateArgsBip32 {
+    accountName?: string;
+    accountIndex?: number;
+}
+
+/**
+ * @category Wallet API
+ */
+export interface IAccountCreateArgs {
+    type : "bip32";
+    args : IAccountCreateArgsBip32;
+    prvKeyDataArgs? : IPrvKeyDataArgs;
+}
+"#;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AccountCreateArgsBip32 {
@@ -103,6 +126,7 @@ impl PrvKeyDataArgs {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(tag = "type", content = "args")]
 pub enum AccountCreateArgs {
     Bip32 {
         prv_key_data_args: PrvKeyDataArgs,

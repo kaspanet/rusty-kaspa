@@ -1,13 +1,13 @@
 use crate::imports::*;
 use crate::utils::script_hashes;
-use crate::utxo::UtxoEntries;
-use crate::{Transaction, TransactionInput, TransactionOutput};
+use kaspa_consensus_client::{Transaction, TransactionInput, TransactionOutput, UtxoEntries};
 use kaspa_consensus_core::tx;
 use serde_wasm_bindgen::to_value;
 use std::str::FromStr;
 
 /// Represents a generic mutable transaction
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// @category Consensus
+#[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct SignableTransaction {
     tx: Arc<Mutex<Transaction>>,
@@ -139,16 +139,9 @@ impl From<SignableTransaction> for Transaction {
     }
 }
 
-impl TryFrom<JsValue> for SignableTransaction {
+impl TryCastFromJs for SignableTransaction {
     type Error = Error;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        SignableTransaction::try_from(&js_value)
-    }
-}
-
-impl TryFrom<&JsValue> for SignableTransaction {
-    type Error = Error;
-    fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
-        Ok(ref_from_abi!(SignableTransaction, js_value)?)
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Ok(Self::try_ref_from_js_value_as_cast(value)?)
     }
 }

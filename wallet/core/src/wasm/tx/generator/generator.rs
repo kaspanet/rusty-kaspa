@@ -3,39 +3,91 @@ use crate::result::Result;
 use crate::tx::{generator as native, Fees, PaymentDestination, PaymentOutputs};
 use crate::utxo::{TryIntoUtxoEntryReferences, UtxoEntryReference};
 use crate::wasm::tx::generator::*;
-use crate::wasm::wallet::Account;
+use crate::wasm::tx::IFees;
+// use crate::wasm::wallet::Account;
 use crate::wasm::UtxoContext;
 
+// TODO-WASM fix outputs
 #[wasm_bindgen(typescript_custom_section)]
-const IGeneratorSettingsObject: &'static str = r#"
+const TS_GENERATOR_SETTINGS_OBJECT: &'static str = r#"
+/**
+ * Configuration for the transaction {@link Generator}. This interface
+ * allows you to specify UTXO sources, transaction outputs, change address,
+ * priority fee, and other transaction parameters.
+ * 
+ * If the total number of UTXOs needed to satisfy the transaction outputs
+ * exceeds maximum allowed number of UTXOs per transaction (limited by
+ * the maximum transaction mass), the {@link Generator} will produce 
+ * multiple chained transactions to the change address and then used these
+ * transactions as a source for the "final" transaction.
+ * 
+ * @see 
+ *      {@link kaspaToSompi},
+ *      {@link Generator}, 
+ *      {@link PendingTransaction}, 
+ *      {@link UtxoContext}, 
+ *      {@link UtxoEntry},
+ *      {@link createTransactions},
+ *      {@link estimateTransactions}
+ * @category Wallet SDK
+ */
 interface IGeneratorSettingsObject {
-    outputs: PaymentOutputs | Array<Array<number | string>>;
+    /** 
+     * Final transaction outputs (do not supply change transaction).
+     * 
+     * Typical usage: { address: "kaspa:...", amount: 1000n }
+     */
+    outputs: PaymentOutput | IPaymentOutput[];
+    /** 
+     * Address to be used for change, if any. 
+     */
     changeAddress: Address | string;
-    priorityFee: bigint;
-    utxoEntries: Array<UtxoEntryReference>;
-    sigOpCount: Uint8Array;
-    minimumSignatures: Uint16Array;
-    payload: Uint8Array | string;
+    /** 
+     * Priority fee in SOMPI.
+     * 
+     * If supplying `bigint` value, it will be interpreted as a sender-pays fee.
+     * Alternatively you can supply an object with `amount` and `source` properties
+     * where `source` contains the {@link FeeSource} enum.
+     * 
+     * **IMPORTANT:* When sending an outbound transaction (transaction that
+     * contains outputs), the `priorityFee` must be set, even if it is zero.
+     * However, if the transaction is missing outputs (and thus you are
+     * creating a compound transaction against your change address),
+     * `priorityFee` should not be set (i.e. it should be `undefined`).
+     * 
+     * @see {@link IFees}, {@link FeeSource}
+     */
+    priorityFee?: IFees | bigint;
+    /**
+     * UTXO entries to be used for the transaction. This can be an
+     * array of UtxoEntry instances, objects matching {@link IUtxoEntry}
+     * interface, or a {@link UtxoContext} instance.
+     */
+    entries: IUtxoEntry[] | UtxoEntryReference[] | UtxoContext;
+    /**
+     * Optional number of signature operations in the transaction.
+     */
+    sigOpCount?: number;
+    /**
+     * Optional minimum number of signatures required for the transaction.
+     */
+    minimumSignatures?: number;
+    /**
+     * Optional data payload to be included in the transaction.
+     */
+    payload?: Uint8Array | HexString;
 }
 "#;
 
 #[wasm_bindgen]
 extern "C" {
-    /// Supports the following properties (all values must be supplied in SOMPI):
-    /// - `outputs`: instance of [`PaymentOutputs`] or `[ [address, amount], [address, amount], ... ]`
-    /// - `changeAddress`: [`Address`] or String representation of an address
-    /// - `priorityFee`: BigInt
-    /// - `utxoEntries`: Array of [`UtxoEntryReference`]
-    /// - `sigOpCount`: `u8`
-    /// - `minimumSignatures`: `u16`
-    /// - `payload`: [`Uint8Array`] or hex String representation of a payload
     #[wasm_bindgen(extends = Object, typescript_type = "IGeneratorSettingsObject")]
     #[derive(Clone, Debug, PartialEq, Eq)]
-    pub type GeneratorSettingsObject;
+    pub type IGeneratorSettingsObject;
 }
 
-/// [`Generator`] is a type capable of generating transactions based on a supplied
-/// set of UTXO entries or a UTXO entry producer (such as `UtxoContext`). The [`Generator`]
+/// Generator is a type capable of generating transactions based on a supplied
+/// set of UTXO entries or a UTXO entry producer (such as {@link UtxoContext}). The Generator
 /// accumulates UTXO entries until it can generate a transaction that meets the
 /// requested amount or until the total mass of created inputs exceeds the allowed
 /// transaction mass, at which point it will produce a compound transaction by forwarding
@@ -44,25 +96,38 @@ extern "C" {
 /// Each compound transaction results in a new UTXO, which is immediately reused in the
 /// subsequent transaction.
 ///
+/// The Generator constructor accepts a single {@link IGeneratorSettingsObject} object.
+///
 /// ```javascript
 ///
 /// let generator = new Generator({
 ///     utxoEntries : [...],
 ///     changeAddress : "kaspa:...",
-///     outputs : [[1000, "kaspa:..."], [2000, "kaspa:..."], ...],
+///     outputs : [
+///         { amount : kaspaToSompi(10.0), address: "kaspa:..."},
+///         { amount : kaspaToSompi(20.0), address: "kaspa:..."},
+///         ...
+///     ],
 ///     priorityFee : 1000n,
 /// });
 ///
-/// while(transaction = await generator.next()) {
-///     await transaction.sign(privateKeys);
-///     await transaction.submit(rpc);
+/// let pendingTransaction;
+/// while(pendingTransaction = await generator.next()) {
+///     await pendingTransaction.sign(privateKeys);
+///     await pendingTransaction.submit(rpc);
 /// }
 ///
 /// let summary = generator.summary();
 /// console.log(summary);
 ///
 /// ```
-///
+/// @see
+///     {@link IGeneratorSettingsObject},
+///     {@link PendingTransaction},
+///     {@link UtxoContext},
+///     {@link createTransactions},
+///     {@link estimateTransactions},
+/// @category Wallet SDK
 #[wasm_bindgen]
 pub struct Generator {
     inner: Arc<native::Generator>,
@@ -71,7 +136,7 @@ pub struct Generator {
 #[wasm_bindgen]
 impl Generator {
     #[wasm_bindgen(constructor)]
-    pub fn ctor(args: GeneratorSettingsObject) -> Result<Generator> {
+    pub fn ctor(args: IGeneratorSettingsObject) -> Result<Generator> {
         let settings = GeneratorSettings::try_from(args)?;
 
         let GeneratorSettings {
@@ -120,11 +185,10 @@ impl Generator {
                     payload,
                     multiplexer,
                 )?
-            }
-            GeneratorSource::Account(account) => {
-                let account: Arc<dyn crate::account::Account> = account.into();
-                native::GeneratorSettings::try_new_with_account(account, final_transaction_destination, final_priority_fee, None)?
-            }
+            } // GeneratorSource::Account(account) => {
+              //     let account: Arc<dyn crate::account::Account> = account.into();
+              //     native::GeneratorSettings::try_new_with_account(account, final_transaction_destination, final_priority_fee, None)?
+              // }
         };
 
         let abortable = Abortable::default();
@@ -167,10 +231,11 @@ impl Generator {
 enum GeneratorSource {
     UtxoEntries(Vec<UtxoEntryReference>),
     UtxoContext(UtxoContext),
-    Account(Account),
+    // #[cfg(any(feature = "wasm32-sdk"), not(target_arch = "wasm32"))]
+    // Account(Account),
 }
 
-/// Converts [`GeneratorSettingsObject`] to a series of properties intended for use by the [`Generator`].
+/// Converts [`IGeneratorSettingsObject`] to a series of properties intended for use by the [`Generator`].
 struct GeneratorSettings {
     pub network_id: Option<NetworkId>,
     pub source: GeneratorSource,
@@ -183,9 +248,9 @@ struct GeneratorSettings {
     pub payload: Option<Vec<u8>>,
 }
 
-impl TryFrom<GeneratorSettingsObject> for GeneratorSettings {
+impl TryFrom<IGeneratorSettingsObject> for GeneratorSettings {
     type Error = Error;
-    fn try_from(args: GeneratorSettingsObject) -> std::result::Result<Self, Self::Error> {
+    fn try_from(args: IGeneratorSettingsObject) -> std::result::Result<Self, Self::Error> {
         let network_id = args.try_get::<NetworkId>("networkId")?;
 
         // lack of outputs results in a sweep transaction compounding utxos into the change address
@@ -195,14 +260,12 @@ impl TryFrom<GeneratorSettingsObject> for GeneratorSettings {
 
         let change_address = args.try_get::<Address>("changeAddress")?; //.ok_or(Error::custom("changeAddress is required"))?;
 
-        let final_priority_fee = args.get::<Fees>("priorityFee")?;
+        let final_priority_fee = args.get::<IFees>("priorityFee")?.try_into()?;
 
-        let generator_source = if let Some(utxo_entries) = args.try_get_value("entries")? {
+        let generator_source = if let Some(context) = args.try_get_cast::<UtxoContext>("entries")? {
+            GeneratorSource::UtxoContext(context.into_owned())
+        } else if let Some(utxo_entries) = args.try_get_value("entries")? {
             GeneratorSource::UtxoEntries(utxo_entries.try_into_utxo_entry_references()?)
-        } else if let Some(context) = args.try_get::<UtxoContext>("entries")? {
-            GeneratorSource::UtxoContext(context)
-        } else if let Some(account) = args.try_get::<Account>("account")? {
-            GeneratorSource::Account(account)
         } else {
             return Err(Error::custom("'entries', 'context' or 'account' property is required for Generator"));
         };

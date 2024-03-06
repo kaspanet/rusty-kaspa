@@ -43,6 +43,7 @@ impl TryFrom<usize> for WordCount {
 }
 
 /// BIP39 mnemonic phrases: sequences of words representing cryptographic keys.
+/// @category Wallet SDK
 #[derive(Clone)]
 #[wasm_bindgen(inspectable)]
 pub struct Mnemonic {
@@ -61,6 +62,11 @@ impl Mnemonic {
     #[wasm_bindgen(constructor)]
     pub fn constructor(phrase: String, language: Option<Language>) -> Result<Mnemonic> {
         Mnemonic::new(phrase, language.unwrap_or(Language::English))
+    }
+
+    /// Validate mnemonic phrase. Returns `true` if the phrase is valid, `false` otherwise.
+    pub fn validate(phrase: &str, language: Option<Language>) -> bool {
+        Mnemonic::new(phrase, language.unwrap_or(Language::English)).is_ok()
     }
 
     #[wasm_bindgen(getter, js_name = entropy)]
