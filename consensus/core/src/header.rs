@@ -1,11 +1,21 @@
 use crate::{hashing, BlueWorkType};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use js_sys::{Array, Object};
 use kaspa_hashes::Hash;
-use kaspa_utils::hex::ToHex;
 use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "wasm32-sdk")]
+use js_sys::{Array, Object};
+#[cfg(feature = "wasm32-sdk")]
+use kaspa_utils::hex::ToHex;
+#[cfg(feature = "wasm32-sdk")]
 use serde_wasm_bindgen::*;
+#[cfg(feature = "wasm32-sdk")]
 use wasm_bindgen::prelude::*;
+#[cfg(feature = "wasm32-sdk")]
+use wasm_bindgen::prelude::{JsError, JsValue};
+#[cfg(not(feature = "wasm32-sdk"))]
+use wasm_bindgen_attribute_cleaner::clean_attributes;
+#[cfg(feature = "wasm32-sdk")]
 use workflow_wasm::prelude::*;
 
 #[cfg(feature = "wasm32-sdk")]
@@ -42,7 +52,8 @@ extern "C" {
 /// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, CastFromJs)]
 #[serde(rename_all = "camelCase")]
-#[wasm_bindgen(inspectable)]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(inspectable))]
+#[cfg_attr(not(feature = "wasm32-sdk"), clean_attributes)]
 pub struct Header {
     #[wasm_bindgen(skip)]
     pub hash: Hash, // Cached hash
@@ -136,6 +147,7 @@ impl Header {
     }
 }
 
+#[cfg(feature = "wasm32-sdk")]
 #[wasm_bindgen]
 impl Header {
     /// Finalizes the header and recomputes (updates) the header hash

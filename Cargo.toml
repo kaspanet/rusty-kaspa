@@ -58,6 +58,7 @@ members = [
     "metrics/perf_monitor",
     "metrics/core",
     "utils/alloc",
+    "utils/wasm_bindgen_attribute_cleaner"
 ]
 
 [workspace.package]
@@ -134,6 +135,7 @@ kaspa-wrpc-server = { version = "0.13.5", path = "rpc/wrpc/server" }
 kaspa-wrpc-wasm = { version = "0.13.5", path = "rpc/wrpc/wasm" }
 kaspad = { version = "0.13.5", path = "kaspad" }
 kaspa-alloc = { version = "0.13.5", path = "utils/alloc" }
+wasm_bindgen_attribute_cleaner = { path = "utils/wasm_bindgen_attribute_cleaner" }
 
 # external
 aes = "0.8.3"
