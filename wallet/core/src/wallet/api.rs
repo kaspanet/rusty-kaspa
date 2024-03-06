@@ -3,6 +3,7 @@
 //!
 
 use crate::api::{message::*, traits::WalletApi};
+use crate::factory::try_load_account;
 use crate::imports::*;
 use crate::result::Result;
 use crate::storage::interface::TransactionRangeResult;
@@ -179,9 +180,25 @@ impl WalletApi for super::Wallet {
     }
 
     async fn accounts_enumerate_call(self: Arc<Self>, _request: AccountsEnumerateRequest) -> Result<AccountsEnumerateResponse> {
-        let account_list = self.accounts(None).await?.try_collect::<Vec<_>>().await?;
-        let account_descriptors = account_list.iter().map(|account| account.descriptor().unwrap()).collect::<Vec<_>>();
+        let iter = self.inner.store.as_account_store().unwrap().iter(None).await.unwrap();
+        let wallet = self.clone();
 
+        let stream = iter.then(move |stored| {
+            let wallet = wallet.clone();
+
+            async move {
+                let (stored_account, stored_metadata) = stored.unwrap();
+                if let Some(account) = wallet.legacy_accounts().get(&stored_account.id) {
+                    account.descriptor()
+                } else if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
+                    account.descriptor()
+                } else {
+                    try_load_account(&wallet, stored_account, stored_metadata).await?.descriptor()
+                }
+            }
+        });
+
+        let account_descriptors = stream.try_collect::<Vec<_>>().await?;
         Ok(AccountsEnumerateResponse { account_descriptors })
     }
 
@@ -218,6 +235,18 @@ impl WalletApi for super::Wallet {
         let account_descriptor = account.descriptor()?;
 
         Ok(AccountsCreateResponse { account_descriptor })
+    }
+
+    async fn accounts_ensure_default_call(
+        self: Arc<Self>,
+        request: AccountsEnsureDefaultRequest,
+    ) -> Result<AccountsEnsureDefaultResponse> {
+        let AccountsEnsureDefaultRequest { wallet_secret, payment_secret, account_kind, mnemonic_phrase } = request;
+
+        let account_descriptor =
+            self.ensure_default_account_impl(&wallet_secret, payment_secret.as_ref(), account_kind, mnemonic_phrase.as_ref()).await?;
+
+        Ok(AccountsEnsureDefaultResponse { account_descriptor })
     }
 
     async fn accounts_import_call(self: Arc<Self>, _request: AccountsImportRequest) -> Result<AccountsImportResponse> {

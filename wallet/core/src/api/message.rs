@@ -302,6 +302,22 @@ pub struct AccountsCreateResponse {
     pub account_descriptor: AccountDescriptor,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsEnsureDefaultRequest {
+    pub wallet_secret: Secret,
+    pub payment_secret: Option<Secret>,
+    pub account_kind: AccountKind,
+    pub mnemonic_phrase: Option<Secret>,
+    // pub account_create_args: AccountCreateArgs,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsEnsureDefaultResponse {
+    pub account_descriptor: AccountDescriptor,
+}
+
 // TODO
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]

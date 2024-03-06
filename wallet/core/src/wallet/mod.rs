@@ -1,6 +1,10 @@
 //!
 //! Kaspa wallet runtime implementation.
 //!
+pub mod api;
+pub mod args;
+pub mod maps;
+pub use args::*;
 
 use crate::account::ScanNotifier;
 use crate::compat::gen1::decrypt_mnemonic;
@@ -20,11 +24,6 @@ use kaspa_notify::{
 use kaspa_rpc_core::notify::mode::NotificationMode;
 use kaspa_wrpc_client::{KaspaRpcClient, Resolver, WrpcEncoding};
 use workflow_core::task::spawn;
-
-pub mod api;
-pub mod args;
-pub mod maps;
-pub use args::*;
 
 #[derive(Debug)]
 pub struct EncryptedMnemonic<T: AsRef<[u8]>> {
@@ -1497,6 +1496,44 @@ impl Wallet {
         let store = self.store();
         store.rename(wallet_secret, title.as_deref(), filename.as_deref()).await?;
         Ok(())
+    }
+
+    async fn ensure_default_account_impl(
+        self: Arc<Self>,
+        wallet_secret: &Secret,
+        payment_secret: Option<&Secret>,
+        kind: AccountKind,
+        mnemonic_phrase: Option<&Secret>,
+    ) -> Result<AccountDescriptor> {
+        if kind != BIP32_ACCOUNT_KIND {
+            return Err(Error::custom("Account kind is not supported"));
+        }
+
+        let account = self.store().as_account_store()?.iter(None).await?.next().await;
+
+        if let Some(Ok((stored_account, stored_metadata))) = account {
+            let account_descriptor = try_load_account(&self, stored_account, stored_metadata).await?.descriptor()?;
+            Ok(account_descriptor)
+        } else {
+            let mnemonic_phrase_string = if let Some(phrase) = mnemonic_phrase.cloned() {
+                phrase
+            } else {
+                let mnemonic = Mnemonic::random(WordCount::Words24, Language::English)?;
+                Secret::from(mnemonic.phrase_string())
+            };
+
+            let prv_key_data_args = PrvKeyDataCreateArgs::new(None, payment_secret.cloned(), mnemonic_phrase_string);
+
+            let prv_key_data_id = self.clone().create_prv_key_data(wallet_secret, prv_key_data_args).await?;
+
+            let account_create_args = AccountCreateArgs::new_bip32(prv_key_data_id, payment_secret.cloned(), None, None);
+
+            let account = self.clone().create_account(wallet_secret, account_create_args, false).await?;
+
+            self.store().flush(wallet_secret).await?;
+
+            Ok(account.descriptor()?)
+        }
     }
 }
 

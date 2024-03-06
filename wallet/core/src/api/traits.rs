@@ -293,6 +293,29 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// around this call.
     async fn accounts_create_call(self: Arc<Self>, request: AccountsCreateRequest) -> Result<AccountsCreateResponse>;
 
+    /// Wrapper around [`accounts_ensure_default_call()`](Self::accounts_ensure_default_call)
+    async fn accounts_ensure_default(
+        self: Arc<Self>,
+        wallet_secret: Secret,
+        payment_secret: Option<Secret>,
+        account_kind: AccountKind,
+        mnemonic_phrase: Option<Secret>,
+    ) -> Result<AccountDescriptor> {
+        let request = AccountsEnsureDefaultRequest { wallet_secret, payment_secret, account_kind, mnemonic_phrase };
+        Ok(self.accounts_ensure_default_call(request).await?.account_descriptor)
+    }
+
+    /// Ensure that a default account exists. If the default account does not exist,
+    /// this call will create a new private key and an associated account and return
+    /// an [`AccountDescriptor`] for it. A custom mnemonic phrase can be supplied
+    /// for the private key. This function currently supports only BIP32 accounts.
+    /// If a `payment_secret` is supplied, the mnemonic phrase will be created
+    /// with a BIP39 passphrase.
+    async fn accounts_ensure_default_call(
+        self: Arc<Self>,
+        request: AccountsEnsureDefaultRequest,
+    ) -> Result<AccountsEnsureDefaultResponse>;
+
     // TODO
     async fn accounts_import_call(self: Arc<Self>, request: AccountsImportRequest) -> Result<AccountsImportResponse>;
 

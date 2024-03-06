@@ -74,6 +74,7 @@ pub type StorageStream<T> = Pin<Box<dyn Stream<Item = Result<T>> + Send>>;
 
 #[async_trait]
 pub trait PrvKeyDataStore: Send + Sync {
+    async fn is_empty(&self) -> Result<bool>;
     async fn iter(&self) -> Result<StorageStream<Arc<PrvKeyDataInfo>>>;
     async fn load_key_info(&self, id: &PrvKeyDataId) -> Result<Option<Arc<PrvKeyDataInfo>>>;
     async fn load_key_data(&self, wallet_secret: &Secret, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>>;
@@ -83,6 +84,7 @@ pub trait PrvKeyDataStore: Send + Sync {
 
 #[async_trait]
 pub trait AccountStore: Send + Sync {
+    async fn is_empty(&self) -> Result<bool>;
     async fn iter(
         &self,
         prv_key_data_id_filter: Option<PrvKeyDataId>,
@@ -98,6 +100,9 @@ pub trait AccountStore: Send + Sync {
 
 #[async_trait]
 pub trait AddressBookStore: Send + Sync {
+    async fn is_empty(&self) -> Result<bool> {
+        Err(Error::NotImplemented)
+    }
     async fn iter(&self) -> Result<StorageStream<Arc<AddressBookEntry>>> {
         Err(Error::NotImplemented)
     }

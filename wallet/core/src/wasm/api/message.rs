@@ -1018,6 +1018,54 @@ try_from!(args: AccountsCreateResponse, IAccountsCreateResponse, {
 // ---
 
 declare! {
+    IAccountsEnsureDefaultRequest,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsEnsureDefaultRequest {
+        walletSecret: string;
+        paymentSecret?: string;
+        type : AccountKind | string;
+        mnemonic? : string;
+    }
+    "#,
+}
+
+try_from! (args: IAccountsEnsureDefaultRequest, AccountsEnsureDefaultRequest, {
+    let wallet_secret = args.get_secret("walletSecret")?;
+    let payment_secret = args.try_get_secret("paymentSecret")?;
+    let account_kind = AccountKind::try_from(args.get_value("type")?)?;
+    let mnemonic_phrase = args.try_get_secret("mnemonic")?;
+
+    Ok(AccountsEnsureDefaultRequest { wallet_secret, payment_secret, account_kind, mnemonic_phrase })
+});
+
+declare! {
+    IAccountsEnsureDefaultResponse,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsEnsureDefaultResponse {
+        accountDescriptor : IAccountDescriptor;
+    }
+    "#,
+}
+
+try_from!(args: AccountsEnsureDefaultResponse, IAccountsEnsureDefaultResponse, {
+    let response = IAccountsEnsureDefaultResponse::default();
+    response.set("accountDescriptor", &IAccountDescriptor::try_from(args.account_descriptor)?.into())?;
+    Ok(response)
+});
+
+// ---
+
+declare! {
     IAccountsImportRequest,
     r#"
     /**

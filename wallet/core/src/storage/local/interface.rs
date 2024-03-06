@@ -487,6 +487,10 @@ impl Interface for LocalStore {
 
 #[async_trait]
 impl PrvKeyDataStore for LocalStoreInner {
+    async fn is_empty(&self) -> Result<bool> {
+        Ok(self.cache.read().unwrap().prv_key_data_info.is_empty())
+    }
+
     async fn iter(&self) -> Result<StorageStream<Arc<PrvKeyDataInfo>>> {
         Ok(Box::pin(PrvKeyDataInfoStream::new(self.cache.clone())))
     }
@@ -525,6 +529,10 @@ impl PrvKeyDataStore for LocalStoreInner {
 
 #[async_trait]
 impl AccountStore for LocalStoreInner {
+    async fn is_empty(&self) -> Result<bool> {
+        Ok(self.cache.read().unwrap().accounts.is_empty())
+    }
+
     async fn iter(
         &self,
         prv_key_data_id_filter: Option<PrvKeyDataId>,
