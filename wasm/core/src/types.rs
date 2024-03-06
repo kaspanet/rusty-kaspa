@@ -22,7 +22,7 @@ extern "C" {
 
 impl From<String> for HexString {
     fn from(s: String) -> Self {
-        s.into()
+        JsValue::from(s).into()
     }
 }
 
