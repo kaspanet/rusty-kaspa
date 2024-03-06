@@ -40,12 +40,9 @@ impl WalletStorage {
     }
 
     pub fn payload(&self, secret: &Secret) -> Result<Decrypted<Payload>> {
-        self.payload.decrypt::<Payload>(secret).map_err(|err| {
-            match err {
-                Error::Chacha20poly1305(e) => Error::WalletDecrypt(e),
-                _ => err
-            }
-
+        self.payload.decrypt::<Payload>(secret).map_err(|err| match err {
+            Error::Chacha20poly1305(e) => Error::WalletDecrypt(e),
+            _ => err,
         })
     }
 
