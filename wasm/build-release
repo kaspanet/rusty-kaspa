@@ -19,20 +19,20 @@ mkdir -p release/kaspa-wasm32-sdk/docs
 # wasm-pack build --target web --out-name kaspa-rpc --out-dir web/kaspa-rpc --features wasm32-sdk $@
 # popd
 
-wasm-pack build --target web --out-name kaspa --out-dir web/kaspa-keygen --features wasm32-keygen $@
-wasm-pack build --target web --dev --out-name kaspa --out-dir web/kaspa-keygen-dev --features wasm32-keygen $@
+wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-keygen --features wasm32-keygen $@
+wasm-pack build --weak-refs --dev --target web --out-name kaspa --out-dir web/kaspa-keygen-dev --features wasm32-keygen $@
 
-wasm-pack build --target web --out-name kaspa --out-dir web/kaspa-rpc --features wasm32-rpc $@
-wasm-pack build --target web --dev --out-name kaspa --out-dir web/kaspa-rpc-dev --features wasm32-rpc $@
+wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-rpc --features wasm32-rpc $@
+wasm-pack build --weak-refs --dev --target web --out-name kaspa --out-dir web/kaspa-rpc-dev --features wasm32-rpc $@
 
-wasm-pack build --target web --out-name kaspa --out-dir web/kaspa-core --features wasm32-core $@
-wasm-pack build --target web --dev --out-name kaspa --out-dir web/kaspa-core-dev --features wasm32-core $@
+wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-core --features wasm32-core $@
+wasm-pack build --weak-refs --dev --target web --out-name kaspa --out-dir web/kaspa-core-dev --features wasm32-core $@
 
-wasm-pack build --target web --out-name kaspa --out-dir web/kaspa --features wasm32-sdk $@
-wasm-pack build --target web --dev --out-name kaspa --out-dir web/kaspa-dev --features wasm32-sdk $@
+wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa --features wasm32-sdk $@
+wasm-pack build --weak-refs --dev --target web --out-name kaspa --out-dir web/kaspa-dev --features wasm32-sdk $@
 
-wasm-pack build --target nodejs --out-name kaspa --out-dir nodejs/kaspa --features wasm32-sdk $@
-wasm-pack build --target nodejs --dev --out-name kaspa --out-dir nodejs/kaspa-dev --features wasm32-sdk $@
+wasm-pack build --weak-refs --target nodejs --out-name kaspa --out-dir nodejs/kaspa --features wasm32-sdk $@
+wasm-pack build --weak-refs --dev --target nodejs --out-name kaspa --out-dir nodejs/kaspa-dev --features wasm32-sdk $@
 
 # wasm-pack build --target web --dev --out-name kaspa --out-dir build/docs/kaspa --features wasm32-sdk $@
 typedoc --name "Kaspa WASM32 SDK - Key Generation" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa-keygen ./build/docs/kaspa-keygen.ts

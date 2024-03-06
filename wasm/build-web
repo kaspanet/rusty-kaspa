@@ -3,26 +3,26 @@ set -e
 
 if [ "$1" == "--keygen" ]; then
     echo "building wasm32-keygen"
-    wasm-pack build --target web --out-name kaspa --out-dir web/kaspa-keygen --features wasm32-keygen
+    wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-keygen --features wasm32-keygen
 elif [ "$1" == "--rpc" ]; then
     echo "building wasm32-rpc"
-    wasm-pack build --target web --out-name kaspa --out-dir web/kaspa-rpc --features wasm32-rpc
+    wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-rpc --features wasm32-rpc
 elif [ "$1" == "--core" ]; then
     echo "building wasm32-core"
-    wasm-pack build --target web --out-name kaspa --out-dir web/kaspa-core --features wasm32-core
+    wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-core --features wasm32-core
 elif [ "$1" == "--sdk" ]; then
     echo "building wasm32-sdk"
-    wasm-pack build --target web --out-name kaspa --out-dir web/kaspa --features wasm32-sdk
+    wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa --features wasm32-sdk
 
 else
 
     echo "building wasm32-keygen"
-    wasm-pack build --target web --out-name kaspa --out-dir web/kaspa-keygen --features wasm32-keygen
+    wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-keygen --features wasm32-keygen
     echo "building wasm32-rpc"
-    wasm-pack build --target web --out-name kaspa --out-dir web/kaspa-rpc --features wasm32-rpc
+    wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-rpc --features wasm32-rpc
     echo "building wasm32-core"
-    wasm-pack build --target web --out-name kaspa --out-dir web/kaspa-core --features wasm32-core
+    wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-core --features wasm32-core
     echo "building wasm32-sdk"
-    wasm-pack build --target web --out-name kaspa --out-dir web/kaspa --features wasm32-sdk
+    wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa --features wasm32-sdk
 
 fi

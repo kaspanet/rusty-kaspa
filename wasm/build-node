@@ -1,4 +1,4 @@
 #!/bin/bash
 set -e
 
-wasm-pack build --target nodejs --out-name kaspa --out-dir nodejs/kaspa --features wasm32-sdk $@
+wasm-pack build --weak-refs --target nodejs --out-name kaspa --out-dir nodejs/kaspa --features wasm32-sdk
