@@ -96,8 +96,8 @@ function basicWallet(networkId, mnemonic) {
         receive_xpub : account_0_root.deriveChild(0),
         change_xpub : account_0_root.deriveChild(1),
     };
-    let receive = account_0.receive_xpub.deriveChild(0).publicKey().toAddress(networkId).toString();
-    let change = account_0.change_xpub.deriveChild(0).publicKey().toAddress(networkId).toString();
+    let receive = account_0.receive_xpub.deriveChild(0).toPublicKey().toAddress(networkId).toString();
+    let change = account_0.change_xpub.deriveChild(0).toPublicKey().toAddress(networkId).toString();
 
     let keygen = PublicKeyGenerator.fromMasterXPrv(
         xprv.toString(),
