@@ -2,14 +2,14 @@ extern crate proc_macro;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, ItemStruct, visit_mut::VisitMut, Field};
+use syn::{parse_macro_input, visit_mut::VisitMut, Field, ItemStruct};
 
 struct AttrCleaner;
 
 impl VisitMut for AttrCleaner {
     fn visit_field_mut(&mut self, field: &mut Field) {
         // Retain only those attributes that do NOT match the `wasm_bindgen` path
-        field.attrs.retain(|attr| !attr.path.is_ident("wasm_bindgen"));
+        field.attrs.retain(|attr| !attr.path().is_ident("wasm_bindgen"));
     }
 }
 
