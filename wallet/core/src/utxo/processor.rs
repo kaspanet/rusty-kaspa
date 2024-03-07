@@ -503,15 +503,14 @@ impl UtxoProcessor {
     }
 
     async fn handle_notification(&self, notification: Notification) -> Result<()> {
-
         log_info!("!!! ### !!! UtxoProcessor: received notification: {:?}", notification);
         let _lock = self.notification_lock().await;
-        
+
         match notification {
             Notification::VirtualDaaScoreChanged(virtual_daa_score_changed_notification) => {
                 self.handle_daa_score_change(virtual_daa_score_changed_notification.virtual_daa_score).await?;
             }
-            
+
             Notification::UtxosChanged(utxos_changed_notification) => {
                 log_info!("### UtxoProcessor: received notification: {:?}", utxos_changed_notification);
                 if !self.is_synced() {
@@ -619,7 +618,6 @@ impl UtxoProcessor {
             }
 
             log_info!("UtxoProcessor:: LOOP EXITING...");
-
 
             // handle power down on rpc channel that remains connected
             if this.is_connected() {

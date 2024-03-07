@@ -161,13 +161,21 @@ impl ToTokens for RpcSubscriptions {
                 #(#docs)*
                 #[wasm_bindgen(js_name = #fn_subscribe_camel)]
                 pub async fn #fn_subscribe_snake(&self) -> Result<()> {
-                    self.inner.client.start_notify(ListenerId::default(), Scope::#scope(#sub_scope {})).await?;
+                    if let Some(listener_id) = self.listener_id() {
+                        self.inner.client.start_notify(listener_id, Scope::#scope(#sub_scope {})).await?;
+                    } else {
+                        workflow_log::log_error!("subscribe on a closed connection");
+                    }
                     Ok(())
                 }
 
                 #[wasm_bindgen(js_name = #fn_unsubscribe_camel)]
                 pub async fn #fn_unsubscribe_snake(&self) -> Result<()> {
-                    self.inner.client.stop_notify(ListenerId::default(), Scope::#scope(#sub_scope {})).await?;
+                    if let Some(listener_id) = self.listener_id() {
+                        self.inner.client.stop_notify(listener_id, Scope::#scope(#sub_scope {})).await?;
+                    } else {
+                        workflow_log::log_error!("unsubscribe on a closed connection");
+                    }
                     Ok(())
                 }
 

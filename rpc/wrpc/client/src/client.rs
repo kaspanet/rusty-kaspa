@@ -235,7 +235,7 @@ impl KaspaRpcClient {
         resolver: Option<Resolver>,
         network_id: Option<NetworkId>,
     ) -> Result<KaspaRpcClient> {
-        Self::new_with_args(encoding, NotificationMode::Direct, url, resolver, network_id)
+        Self::new_with_args(encoding, NotificationMode::MultiListeners, url, resolver, network_id)
     }
 
     /// Extended constructor that accepts [`NotificationMode`] argument.

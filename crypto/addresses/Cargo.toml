@@ -16,6 +16,7 @@ smallvec.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
+workflow-log.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

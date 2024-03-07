@@ -6,6 +6,7 @@ const {
     PrivateKey,
     Address,
     RpcClient,
+    Resolver,
     UtxoProcessor,
     UtxoContext,
     kaspaToSompi,
@@ -20,7 +21,7 @@ const { encoding, networkId, address : destinationAddress } = require("../utils"
 (async () => {
 
     const privateKey = new PrivateKey('b99d75736a0fd0ae2da658959813d680474f5a740a9c970a7da867141596178f');
-    const sourceAddress = privateKey.toKeypair().toAddress(networkId);
+    const sourceAddress = privateKey.toKeypair().toAddress(networkId).toString();
     console.info(`Source address: ${sourceAddress}`);
 
     // if not destination is specified, send back to ourselves
@@ -29,7 +30,8 @@ const { encoding, networkId, address : destinationAddress } = require("../utils"
 
     // 1) Initialize RPC
     const rpc = new RpcClient({
-        url : "127.0.0.1",
+        // url : "127.0.0.1",
+        resolver : new Resolver(),
         encoding,
         networkId
     });
@@ -51,8 +53,9 @@ const { encoding, networkId, address : destinationAddress } = require("../utils"
     console.log(processor);
 
     // 5) Once the environment is setup, connect to RPC
-    console.log(`Connecting to ${rpc.url}`);
+    console.log(`Connecting RPC...`);
     await rpc.connect();
+    console.log(`Connected RPC to ${rpc.url}`);
     let { isSynced } = await rpc.getServerInfo();
     if (!isSynced) {
         console.error("Please wait for the node to sync");
@@ -60,7 +63,20 @@ const { encoding, networkId, address : destinationAddress } = require("../utils"
         return;
     }
 
+    // rpc.addEventListener("virtual-daa-score-changed", async (event) => {
+    //     console.log(event);
+    // });
+
+    // default address (if not supplied) - TODO - change to built-in wallet-stub address
+    // kaspatest:qpa8gs8w0quc3ghpx2l2dv30ny0mjuwyaj30xduw92v6mmta7df6uuz3ryfhy
+
+    processor.addEventListener("utxo-proc-start", async (event) => {
+        // console.log("event:", event);
+        await context.trackAddresses([address]);
+    });
+
+
     // 6) Register the address list with the UtxoContext
-    await context.trackAddresses([address]);
+    // await context.trackAddresses([address]);
 
 })();

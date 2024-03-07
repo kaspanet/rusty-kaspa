@@ -6,7 +6,9 @@ use crate::{RpcEventCallback, RpcEventType, RpcEventTypeOrCallback};
 use js_sys::{Function, Object};
 use kaspa_addresses::{Address, AddressOrStringArrayT};
 use kaspa_consensus_core::network::{NetworkType, NetworkTypeT};
+use kaspa_notify::connection::ChannelType;
 use kaspa_notify::events::EventType;
+use kaspa_notify::listener;
 use kaspa_notify::notification::Notification as NotificationT;
 use kaspa_rpc_core::api::ctl;
 pub use kaspa_rpc_core::wasm::message::*;
@@ -133,7 +135,8 @@ pub struct Inner {
     notification_task: AtomicBool,
     notification_ctl: DuplexChannel,
     callbacks: Arc<Mutex<AHashMap<NotificationEvent, Vec<Sink>>>>,
-    // notification_callback: Arc<Mutex<Option<Sink>>>,
+    listener_id: Arc<Mutex<Option<ListenerId>>>,
+    notification_channel: Channel<kaspa_rpc_core::Notification>,
 }
 
 impl Inner {
@@ -275,6 +278,8 @@ impl RpcClient {
                 notification_task: AtomicBool::new(false),
                 notification_ctl: DuplexChannel::oneshot(),
                 callbacks: Arc::new(Default::default()),
+                listener_id: Arc::new(Mutex::new(None)),
+                notification_channel: Channel::unbounded(),
             }),
         };
 
@@ -580,8 +585,14 @@ impl RpcClient {
                 notification_task: AtomicBool::new(false),
                 notification_ctl: DuplexChannel::oneshot(),
                 callbacks: Arc::new(Mutex::new(Default::default())),
+                listener_id: Arc::new(Mutex::new(None)),
+                notification_channel: Channel::unbounded(),
             }),
         }
+    }
+
+    pub fn listener_id(&self) -> Option<ListenerId> {
+        *self.inner.listener_id.lock().unwrap()
     }
 
     pub fn client(&self) -> &Arc<KaspaRpcClient> {
@@ -603,22 +614,41 @@ impl RpcClient {
 
         let ctl_receiver = self.inner.notification_ctl.request.receiver.clone();
         let ctl_sender = self.inner.notification_ctl.response.sender.clone();
-        let notification_receiver = self.inner.client.notification_channel_receiver();
+        let notification_receiver = self.inner.notification_channel.receiver.clone();
         let ctl_multiplexer_channel =
             self.inner.client.rpc_client().ctl_multiplexer().as_ref().expect("WASM32 RpcClient ctl_multiplexer is None").channel();
-        let self_ = self.clone();
+        let this = self.clone();
 
         spawn(async move {
             loop {
                 select_biased! {
                     msg = ctl_multiplexer_channel.recv().fuse() => {
                         if let Ok(ctl) = msg {
+
+                            match ctl {
+                                Ctl::Open => {
+                                    let listener_id = this.inner.client.register_new_listener(ChannelConnection::new(
+                                        this.inner.notification_channel.sender.clone(),
+                                        ChannelType::Persistent,
+                                    ));
+                                    *this.inner.listener_id.lock().unwrap() = Some(listener_id);
+                                }
+                                Ctl::Close => {
+                                    let listener_id = this.inner.listener_id.lock().unwrap().take();
+                                    if let Some(listener_id) = listener_id {
+                                        if let Err(err) = this.inner.client.unregister_listener(listener_id).await {
+                                            log_error!("Error in unregister_listener: {:?}",err);
+                                        }
+                                    }
+                                }
+                            }
+
                             let event = NotificationEvent::RpcCtl(ctl);
-                            if let Some(handlers) = self_.inner.notification_callbacks(event) {
+                            if let Some(handlers) = this.inner.notification_callbacks(event) {
                                 for handler in handlers.into_iter() {
                                     let event = Object::new();
                                     event.set("type", &ctl.to_string().into()).ok();
-                                    event.set("rpc", &self_.clone().into()).ok();
+                                    event.set("rpc", &this.clone().into()).ok();
                                     if let Err(err) = handler.call(&event.into()) {
                                         log_error!("Error while executing RPC notification callback: {:?}",err);
                                     }
@@ -630,7 +660,7 @@ impl RpcClient {
                         if let Ok(notification) = &msg {
                             let event_type = notification.event_type();
                             let notification_event = NotificationEvent::Notification(event_type);
-                            if let Some(handlers) = self_.inner.notification_callbacks(notification_event) {
+                            if let Some(handlers) = this.inner.notification_callbacks(notification_event) {
                                 for handler in handlers.into_iter() {
                                     let event = Object::new();
                                     let event_type_value = to_value(&event_type).unwrap();
@@ -647,6 +677,13 @@ impl RpcClient {
                         break;
                     },
 
+                }
+            }
+
+            if let Some(listener_id) = this.listener_id() {
+                this.inner.listener_id.lock().unwrap().take();
+                if let Err(err) = this.inner.client.unregister_listener(listener_id).await {
+                    log_error!("Error in unregister_listener: {:?}", err);
                 }
             }
 
@@ -710,7 +747,11 @@ impl RpcClient {
     /// Difficulty Adjustment Algorithm (DAA) score changes in the Kaspa BlockDAG.
     #[wasm_bindgen(js_name = subscribeVirtualDaaScoreChanged)]
     pub async fn subscribe_daa_score(&self) -> Result<()> {
-        self.inner.client.start_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        if let Some(listener_id) = self.listener_id() {
+            self.inner.client.stop_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        } else {
+            log_error!("RPC unsubscribe on a closed connection");
+        }
         Ok(())
     }
 
@@ -719,7 +760,11 @@ impl RpcClient {
     /// Difficulty Adjustment Algorithm (DAA) score changes in the Kaspa BlockDAG.
     #[wasm_bindgen(js_name = unsubscribeVirtualDaaScoreChanged)]
     pub async fn unsubscribe_daa_score(&self) -> Result<()> {
-        self.inner.client.stop_notify(ListenerId::default(), Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        if let Some(listener_id) = self.listener_id() {
+            self.inner.client.stop_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+        } else {
+            log_error!("RPC unsubscribe on a closed connection");
+        }
         Ok(())
     }
 
@@ -730,8 +775,13 @@ impl RpcClient {
     /// provided list of addresses.
     #[wasm_bindgen(js_name = subscribeUtxosChanged)]
     pub async fn subscribe_utxos_changed(&self, addresses: AddressOrStringArrayT) -> Result<()> {
-        let addresses: Vec<Address> = addresses.try_into()?;
-        self.inner.client.start_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
+        if let Some(listener_id) = self.listener_id() {
+            let addresses: Vec<Address> = addresses.try_into()?;
+            self.inner.client.start_notify(listener_id, Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
+        } else {
+            log_error!("RPC subscribe on a closed connection");
+        }
+
         Ok(())
     }
 
@@ -739,8 +789,12 @@ impl RpcClient {
     /// for a specific set of addresses.
     #[wasm_bindgen(js_name = unsubscribeUtxosChanged)]
     pub async fn unsubscribe_utxos_changed(&self, addresses: AddressOrStringArrayT) -> Result<()> {
-        let addresses: Vec<Address> = addresses.try_into()?;
-        self.inner.client.stop_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
+        if let Some(listener_id) = self.listener_id() {
+            let addresses: Vec<Address> = addresses.try_into()?;
+            self.inner.client.stop_notify(listener_id, Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
+        } else {
+            log_error!("RPC unsubscribe on a closed connection");
+        }
         Ok(())
     }
 
@@ -751,13 +805,14 @@ impl RpcClient {
     /// chain changes in the Kaspa BlockDAG.
     #[wasm_bindgen(js_name = subscribeVirtualChainChanged)]
     pub async fn subscribe_virtual_chain_changed(&self, include_accepted_transaction_ids: bool) -> Result<()> {
-        self.inner
-            .client
-            .start_notify(
-                ListenerId::default(),
-                Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids }),
-            )
-            .await?;
+        if let Some(listener_id) = self.listener_id() {
+            self.inner
+                .client
+                .start_notify(listener_id, Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids }))
+                .await?;
+        } else {
+            log_error!("RPC subscribe on a closed connection");
+        }
         Ok(())
     }
 
@@ -766,13 +821,14 @@ impl RpcClient {
     /// chain changes in the Kaspa BlockDAG.
     #[wasm_bindgen(js_name = unsubscribeVirtualChainChanged)]
     pub async fn unsubscribe_virtual_chain_changed(&self, include_accepted_transaction_ids: bool) -> Result<()> {
-        self.inner
-            .client
-            .stop_notify(
-                ListenerId::default(),
-                Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids }),
-            )
-            .await?;
+        if let Some(listener_id) = self.listener_id() {
+            self.inner
+                .client
+                .stop_notify(listener_id, Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids }))
+                .await?;
+        } else {
+            log_error!("RPC unsubscribe on a closed connection");
+        }
         Ok(())
     }
 }
