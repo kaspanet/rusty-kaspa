@@ -117,12 +117,12 @@ impl Display for NetworkType {
 impl TryFrom<&NetworkTypeT> for NetworkType {
     type Error = NetworkTypeError;
     fn try_from(value: &NetworkTypeT) -> Result<Self, Self::Error> {
-        if let Ok(network_type) = NetworkType::try_from_js_value(JsValue::from(value)) {
-            Ok(network_type)
-        } else if let Ok(network_id) = NetworkId::try_cast_from(value) {
+        if let Ok(network_id) = NetworkId::try_cast_from(value) {
             Ok(network_id.network_type())
         } else if let Some(network_type) = value.as_string() {
             Self::from_str(&network_type)
+        } else if let Ok(network_type) = NetworkType::try_from_js_value(JsValue::from(value)) {
+            Ok(network_type)
         } else {
             Err(NetworkTypeError::InvalidNetworkType(format!("{value:?}")))
         }
