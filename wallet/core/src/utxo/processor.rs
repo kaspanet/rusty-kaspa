@@ -197,7 +197,7 @@ impl UtxoProcessor {
                 let utxos_changed_scope = UtxosChangedScope { addresses };
                 self.rpc_api().start_notify(self.listener_id()?, Scope::UtxosChanged(utxos_changed_scope)).await?;
             } else {
-                log_error!("registering empty address list!");
+                log_error!("registering an empty address list!");
             }
         }
         Ok(())
@@ -487,6 +487,7 @@ impl UtxoProcessor {
             .register_new_listener(ChannelConnection::new(self.inner.notification_channel.sender.clone(), ChannelType::Persistent));
         *self.inner.listener_id.lock().unwrap() = Some(listener_id);
 
+        log_debug!("!!! ### !!! UtxoProcessor: registering listener: {listener_id} FOR DAA SCORE EVENTS...");
         self.rpc_api().start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
 
         Ok(())
@@ -502,18 +503,23 @@ impl UtxoProcessor {
     }
 
     async fn handle_notification(&self, notification: Notification) -> Result<()> {
-        let _lock = self.notification_lock().await;
 
+        log_info!("!!! ### !!! UtxoProcessor: received notification: {:?}", notification);
+        let _lock = self.notification_lock().await;
+        
         match notification {
             Notification::VirtualDaaScoreChanged(virtual_daa_score_changed_notification) => {
                 self.handle_daa_score_change(virtual_daa_score_changed_notification.virtual_daa_score).await?;
             }
-
+            
             Notification::UtxosChanged(utxos_changed_notification) => {
+                log_info!("### UtxoProcessor: received notification: {:?}", utxos_changed_notification);
                 if !self.is_synced() {
+                    log_info!("NOT SYNCED!!!");
                     self.sync_proc().track(true).await?;
                 }
 
+                log_info!("HANDLING CHANGED NOTIFICATION!");
                 self.handle_utxo_changed(utxos_changed_notification).await?;
             }
 
@@ -554,12 +560,17 @@ impl UtxoProcessor {
 
                                 match msg {
                                     RpcState::Opened => {
+
+                                        log_info!("%%% RPC STATE OPENED");
                                         if !this.is_connected() {
+                                            log_info!("%%% RPC STATE OPENED - NOT CONNECTED - STARTING");
+
+                                            this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
+
                                             this.inner.multiplexer.try_broadcast(Box::new(Events::Connect {
                                                 network_id : this.network_id().expect("network id expected during connection"),
                                                 url : this.rpc_url()
                                             })).unwrap_or_else(|err| log_error!("{err}"));
-                                            this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
                                         }
                                     },
                                     RpcState::Closed => {
@@ -583,6 +594,7 @@ impl UtxoProcessor {
                     notification = notification_receiver.recv().fuse() => {
                         match notification {
                             Ok(notification) => {
+                                log_info!("UtxoProcessor: received notification: {notification:?}");
                                 if let Err(err) = this.handle_notification(notification).await {
                                     this.notify(Events::UtxoProcError { message: err.to_string() }).await.ok();
                                     log_error!("error while handling notification: {err}");
@@ -606,6 +618,9 @@ impl UtxoProcessor {
                 }
             }
 
+            log_info!("UtxoProcessor:: LOOP EXITING...");
+
+
             // handle power down on rpc channel that remains connected
             if this.is_connected() {
                 this.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
@@ -618,6 +633,7 @@ impl UtxoProcessor {
     }
 
     pub async fn stop(&self) -> Result<()> {
+        log_info!("UtxoProcessor::stop() called");
         if self.inner.task_is_running.load(Ordering::SeqCst) {
             self.inner.sync_proc.stop().await?;
             self.inner.task_ctl.signal(()).await.expect("UtxoProcessor::stop_task() `signal` error");
