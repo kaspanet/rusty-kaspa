@@ -522,7 +522,7 @@ impl TryFrom<JsValue> for Address {
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(extends = js_sys::Array, typescript_type = "Address[] | string[]")]
+    #[wasm_bindgen(extends = js_sys::Array, typescript_type = "(Address | string)[]")]
     pub type AddressOrStringArrayT;
     #[wasm_bindgen(extends = js_sys::Array, typescript_type = "Address[]")]
     pub type AddressArrayT;
