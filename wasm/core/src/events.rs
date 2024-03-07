@@ -1,7 +1,7 @@
 use js_sys::{Array, Function, Object, Reflect};
 use wasm_bindgen::prelude::*;
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Sink {
     context: Option<Object>,
     callback: Function,
