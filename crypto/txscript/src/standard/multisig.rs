@@ -160,7 +160,7 @@ mod tests {
         } else {
             calc_ecdsa_signature_hash(&tx.as_verifiable(), 0, SIG_HASH_ALL, &mut reused_values)
         };
-        let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
+        let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
         let signatures: Vec<_> = inputs
             .iter()
             .filter(|input| input.sign)
