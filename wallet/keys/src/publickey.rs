@@ -132,7 +132,7 @@ extern "C" {
     #[wasm_bindgen(typescript_type = "PublicKey | string")]
     pub type PublicKeyT;
 
-    #[wasm_bindgen(extends = Array, typescript_type = "PublicKey[] | string[]")]
+    #[wasm_bindgen(extends = Array, typescript_type = "(PublicKey | string)[]")]
     pub type PublicKeyArrayT;
 }
 

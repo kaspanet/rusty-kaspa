@@ -13,7 +13,7 @@ use serde_wasm_bindgen::from_value;
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(extends = js_sys::Array, is_type_of = Array::is_array, typescript_type = "PrivateKey[] | HexString[] | Uint8Array[]")]
+    #[wasm_bindgen(extends = js_sys::Array, is_type_of = Array::is_array, typescript_type = "(PrivateKey | HexString | Uint8Array)[]")]
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub type PrivateKeyArrayT;
 }
