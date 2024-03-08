@@ -76,7 +76,7 @@ pub struct Args {
 impl Default for Args {
     fn default() -> Self {
         Self {
-            appdir: None,
+            appdir: Some("datadir".into()),
             no_log_files: false,
             rpclisten_borsh: None,
             rpclisten_json: None,
