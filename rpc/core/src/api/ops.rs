@@ -97,6 +97,7 @@ pub enum RpcApiOps {
     NotifyVirtualDaaScoreChanged,
     NotifyVirtualChainChanged,
     NotifySinkBlueScoreChanged,
+    NotifyBlockAddedHeader,
 
     // ~
     Subscribe,
@@ -114,6 +115,7 @@ pub enum RpcApiOps {
     VirtualDaaScoreChangedNotification,
     PruningPointUtxoSetOverrideNotification,
     NewBlockTemplateNotification,
+    BlockAddedHeaderNotification,
 }
 
 impl RpcApiOps {
@@ -129,6 +131,7 @@ impl RpcApiOps {
                 | RpcApiOps::NotifyFinalityConflictResolved
                 | RpcApiOps::NotifySinkBlueScoreChanged
                 | RpcApiOps::NotifyVirtualDaaScoreChanged
+                | RpcApiOps::NotifyBlockAddedHeader
                 | RpcApiOps::Subscribe
                 | RpcApiOps::Unsubscribe
         )
@@ -155,6 +158,7 @@ impl From<EventType> for RpcApiOps {
             EventType::VirtualDaaScoreChanged => RpcApiOps::VirtualDaaScoreChangedNotification,
             EventType::PruningPointUtxoSetOverride => RpcApiOps::PruningPointUtxoSetOverrideNotification,
             EventType::NewBlockTemplate => RpcApiOps::NewBlockTemplateNotification,
+            EventType::BlockAddedHeader => RpcApiOps::BlockAddedHeaderNotification,
         }
     }
 }

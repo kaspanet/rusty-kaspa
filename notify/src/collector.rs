@@ -168,6 +168,10 @@ mod tests {
         fn event_type(&self) -> EventType {
             unimplemented!()
         }
+
+        fn apply_block_added_header_subscription(&self, _: &OverallSubscription) -> Option<Self> {
+            unimplemented!()
+        }
     }
 
     #[tokio::test]

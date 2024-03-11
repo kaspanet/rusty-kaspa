@@ -33,7 +33,8 @@ from!(item: &kaspa_rpc_core::Notification, Payload, {
         Notification::VirtualDaaScoreChanged(ref notification) => Payload::VirtualDaaScoreChangedNotification(notification.into()),
         Notification::PruningPointUtxoSetOverride(ref notification) => {
             Payload::PruningPointUtxoSetOverrideNotification(notification.into())
-        }
+        },
+        Notification::BlockAddedHeader(ref notification) => Payload::BlockAddedHeaderNotification(notification.into()),
     }
 });
 

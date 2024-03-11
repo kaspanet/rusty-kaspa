@@ -1143,3 +1143,34 @@ impl SubscribeResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UnsubscribeResponse {}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// BlockAddedHeaderNotification
+
+/// NotifyBlockAddedHeaderRequest registers this connection for blockAddedHeader notifications.
+///
+/// See: BlockAddedHeaderNotification
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NotifyBlockAddedHeaderRequest {
+    pub command: Command,
+}
+impl NotifyBlockAddedHeaderRequest {
+    pub fn new(command: Command) -> Self {
+        Self { command }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct NotifyBlockAddedHeaderResponse {}
+
+/// BlockAddedHeaderNotification is sent whenever a blocks has been added (NOT accepted)
+/// into the DAG.
+///
+/// See: NotifyBlockAddedHeaderRequest
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlockAddedHeaderNotification {
+    pub block: Arc<RpcBlock>,
+}

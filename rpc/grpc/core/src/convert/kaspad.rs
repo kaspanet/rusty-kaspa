@@ -59,6 +59,7 @@ pub mod kaspad_request_convert {
     impl_into_kaspad_request!(GetDaaScoreTimestampEstimate);
 
     impl_into_kaspad_request!(NotifyBlockAdded);
+    impl_into_kaspad_request!(NotifyBlockAddedHeader);
     impl_into_kaspad_request!(NotifyNewBlockTemplate);
     impl_into_kaspad_request!(NotifyUtxosChanged);
     impl_into_kaspad_request!(NotifyPruningPointUtxoSetOverride);
@@ -190,6 +191,7 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_response!(GetDaaScoreTimestampEstimate);
 
     impl_into_kaspad_notify_response!(NotifyBlockAdded);
+    impl_into_kaspad_notify_response!(NotifyBlockAddedHeader);
     impl_into_kaspad_notify_response!(NotifyNewBlockTemplate);
     impl_into_kaspad_notify_response!(NotifyUtxosChanged);
     impl_into_kaspad_notify_response!(NotifyPruningPointUtxoSetOverride);

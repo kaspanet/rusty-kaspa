@@ -4,7 +4,7 @@ use crate::protowire::{
     kaspad_request, kaspad_response, KaspadRequest, KaspadResponse, NotifyBlockAddedRequestMessage,
     NotifyFinalityConflictRequestMessage, NotifyNewBlockTemplateRequestMessage, NotifyPruningPointUtxoSetOverrideRequestMessage,
     NotifySinkBlueScoreChangedRequestMessage, NotifyUtxosChangedRequestMessage, NotifyVirtualChainChangedRequestMessage,
-    NotifyVirtualDaaScoreChangedRequestMessage,
+    NotifyVirtualDaaScoreChangedRequestMessage, NotifyBlockAddedHeaderRequestMessage,
 };
 
 impl KaspadRequest {
@@ -25,6 +25,11 @@ impl kaspad_request::Payload {
             }
             Scope::NewBlockTemplate(_) => {
                 kaspad_request::Payload::NotifyNewBlockTemplateRequest(NotifyNewBlockTemplateRequestMessage {
+                    command: command.into(),
+                })
+            }
+            Scope::BlockAddedHeader(_) => {
+                kaspad_request::Payload::NotifyBlockAddedHeaderRequest(NotifyBlockAddedHeaderRequestMessage {
                     command: command.into(),
                 })
             }
@@ -81,6 +86,7 @@ impl kaspad_request::Payload {
                 | Payload::NotifyNewBlockTemplateRequest(_)
                 | Payload::StopNotifyingUtxosChangedRequest(_)
                 | Payload::StopNotifyingPruningPointUtxoSetOverrideRequest(_)
+                | Payload::NotifyBlockAddedHeaderRequest(_)
         )
     }
 }
@@ -108,6 +114,7 @@ impl kaspad_response::Payload {
             Payload::VirtualDaaScoreChangedNotification(_) => true,
             Payload::PruningPointUtxoSetOverrideNotification(_) => true,
             Payload::NewBlockTemplateNotification(_) => true,
+            Payload::BlockAddedHeaderNotification(_) => true,
             _ => false,
         }
     }

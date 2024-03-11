@@ -44,6 +44,13 @@ impl NotificationTrait for Notification {
         }
     }
 
+    fn apply_block_added_header_subscription(&self, subscription: &OverallSubscription) -> Option<Self> {
+        match subscription.active() {
+            true => Some(self.clone()),
+            false => None,
+        }
+    }
+
     fn event_type(&self) -> EventType {
         self.into()
     }

@@ -190,6 +190,25 @@ message BlockAddedNotificationMessage{
   RpcBlock block = 3;
 }
 
+// NotifyBlockAddedHeaderRequestMessage registers this connection for blockAdded notifications.
+//
+// See: BlockAddedHeaderNotificationMessage
+message NotifyBlockAddedHeaderRequestMessage{
+  RpcNotifyCommand command = 101;
+}
+
+message NotifyBlockAddedHeaderResponseMessage{
+  RPCError error = 1000;
+}
+
+// BlockAddedHeaderNotificationMessage is sent whenever a blocks has been added (NOT accepted)
+// into the DAG.
+//
+// See: NotifyBlockAddedHeaderRequestMessage
+message BlockAddedHeaderNotificationMessage{
+  RpcBlock block = 3;
+}
+
 // GetPeerAddressesRequestMessage requests the list of known kaspad addresses in the
 // current network. (mainnet, testnet, etc.)
 message GetPeerAddressesRequestMessage{
@@ -537,7 +556,7 @@ message GetUtxosByAddressesResponseMessage {
 }
 
 // GetBalanceByAddressRequest returns the total balance in unspent transactions towards a given address
-// 
+//
 // This call is only available when this kaspad was started with `--utxoindex`
 message GetBalanceByAddressRequestMessage {
   string address = 1;
@@ -772,7 +791,7 @@ message ConnectionMetrics {
   uint32 jsonLiveConnections = 41;
   uint64 jsonConnectionAttempts = 42;
   uint64 jsonHandshakeFailures = 43;
-  
+
   uint32 activePeers = 51;
 }
 
@@ -795,7 +814,7 @@ message ConsensusMetrics{
   uint64 txsCounts = 5;
   uint64 chainBlockCounts = 6;
   uint64 massCounts = 7;
-  
+
   uint64 blockCount = 11;
   uint64 headerCount = 12;
   uint64 mempoolSize = 13;

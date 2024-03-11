@@ -26,6 +26,8 @@ pub trait Notification: Clone + Debug + Display + Send + Sync + 'static {
         }
     }
 
+    fn apply_block_added_header_subscription(&self, subscription: &OverallSubscription) -> Option<Self>;
+
     fn event_type(&self) -> EventType;
 }
 
@@ -93,6 +95,11 @@ pub mod test_helpers {
         pub addresses: Arc<Vec<Address>>,
     }
 
+    #[derive(Clone, Debug, Default, PartialEq, Eq)]
+    pub struct BlockAddedHeaderNotification {
+        pub data: u64,
+    }
+
     full_featured! {
     #[derive(Clone, Debug, Display, PartialEq, Eq)]
     pub enum TestNotification {
@@ -102,6 +109,8 @@ pub mod test_helpers {
         VirtualChainChanged(VirtualChainChangedNotification),
         #[display(fmt = "UtxosChanged #{}", "_0.data")]
         UtxosChanged(UtxosChangedNotification),
+        #[display(fmt = "BlockAddedHeader #{}", "_0.data")]
+        BlockAddedHeader(BlockAddedHeaderNotification),
     }
     }
 
@@ -154,6 +163,13 @@ pub mod test_helpers {
             }
         }
 
+        fn apply_block_added_header_subscription(&self, subscription: &OverallSubscription) -> Option<Self> {
+            match subscription.active() {
+                true => Some(self.clone()),
+                false => None,
+            }
+        }
+
         fn event_type(&self) -> EventType {
             self.into()
         }
@@ -191,12 +207,22 @@ pub mod test_helpers {
             &mut self.data
         }
     }
+    impl Data for BlockAddedHeaderNotification {
+        fn data(&self) -> u64 {
+            self.data
+        }
+
+        fn data_mut(&mut self) -> &mut u64 {
+            &mut self.data
+        }
+    }
     impl Data for TestNotification {
         fn data(&self) -> u64 {
             match self {
                 TestNotification::BlockAdded(n) => n.data(),
                 TestNotification::VirtualChainChanged(n) => n.data(),
                 TestNotification::UtxosChanged(n) => n.data(),
+                TestNotification::BlockAddedHeader(n) => n.data(),
             }
         }
 
@@ -205,6 +231,7 @@ pub mod test_helpers {
                 TestNotification::BlockAdded(n) => n.data_mut(),
                 TestNotification::VirtualChainChanged(n) => n.data_mut(),
                 TestNotification::UtxosChanged(n) => n.data_mut(),
+                TestNotification::BlockAddedHeader(n) => n.data_mut(),
             }
         }
     }

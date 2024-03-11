@@ -41,6 +41,9 @@ pub enum Notification {
 
     #[display(fmt = "NewBlockTemplate notification")]
     NewBlockTemplate(NewBlockTemplateNotification),
+
+    #[display(fmt = "BlockAddedHeader notification: block hash {}", "_0.block.header.hash")]
+    BlockAddedHeader(BlockAddedHeaderNotification),
 }
 }
 
@@ -76,6 +79,13 @@ impl NotificationTrait for Notification {
         // No effort is made here to apply the subscription addresses.
         // This will be achieved farther along the notification backbone.
         Some(self.clone())
+    }
+
+    fn apply_block_added_header_subscription(&self, subscription: &OverallSubscription) -> Option<Self> {
+        match subscription.active() {
+            true => Some(self.clone()),
+            false => None,
+        }
     }
 
     fn event_type(&self) -> EventType {
@@ -172,3 +182,14 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 
 #[derive(Debug, Clone)]
 pub struct NewBlockTemplateNotification {}
+
+#[derive(Debug, Clone)]
+pub struct BlockAddedHeaderNotification {
+    pub block: Block,
+}
+
+impl BlockAddedHeaderNotification {
+    pub fn new(block: Block) -> Self {
+        Self { block: Block::from_header_arc(block.header) }
+    }
+}

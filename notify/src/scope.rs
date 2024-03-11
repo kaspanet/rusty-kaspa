@@ -43,6 +43,7 @@ pub enum Scope {
     VirtualDaaScoreChanged,
     PruningPointUtxoSetOverride,
     NewBlockTemplate,
+    BlockAddedHeader,
 }
 }
 
@@ -113,3 +114,6 @@ pub struct PruningPointUtxoSetOverrideScope {}
 
 #[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
 pub struct NewBlockTemplateScope {}
+
+#[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+pub struct BlockAddedHeaderScope {}

@@ -10,6 +10,7 @@ message KaspadRequest {
     SubmitBlockRequestMessage submitBlockRequest = 1003;
     GetBlockTemplateRequestMessage getBlockTemplateRequest = 1005;
     NotifyBlockAddedRequestMessage notifyBlockAddedRequest = 1007;
+    NotifyBlockAddedHeaderRequestMessage notifyBlockAddedHeaderRequest = 1099;
     // BlockAddedNotificationMessage blockAddedNotification = 1009;
     GetPeerAddressesRequestMessage getPeerAddressesRequest = 1010;
     GetSinkRequestMessage GetSinkRequest = 1012;
@@ -69,7 +70,9 @@ message KaspadResponse {
     SubmitBlockResponseMessage submitBlockResponse = 1004;
     GetBlockTemplateResponseMessage getBlockTemplateResponse = 1006;
     NotifyBlockAddedResponseMessage notifyBlockAddedResponse = 1008;
+    NotifyBlockAddedHeaderResponseMessage notifyBlockAddedHeaderResponse = 1100;
     BlockAddedNotificationMessage blockAddedNotification = 1009;
+    BlockAddedHeaderNotificationMessage blockAddedHeaderNotification = 1098;
     GetPeerAddressesResponseMessage getPeerAddressesResponse = 1011;
     GetSinkResponseMessage GetSinkResponse = 1013;
     GetMempoolEntryResponseMessage getMempoolEntryResponse = 1015;

@@ -410,9 +410,9 @@ pub mod test_helpers {
         address::test_helpers::get_3_addresses,
         connection::ChannelConnection,
         notification::test_helpers::{
-            BlockAddedNotification, Data, TestNotification, UtxosChangedNotification, VirtualChainChangedNotification,
+            BlockAddedNotification, Data, TestNotification, UtxosChangedNotification, VirtualChainChangedNotification, BlockAddedHeaderNotification,
         },
-        scope::{BlockAddedScope, UtxosChangedScope, VirtualChainChangedScope},
+        scope::{BlockAddedScope, UtxosChangedScope, VirtualChainChangedScope, BlockAddedHeaderScope},
         subscriber::test_helpers::SubscriptionMessage,
     };
     use async_channel::Sender;
@@ -681,6 +681,59 @@ pub mod test_helpers {
         ])
     }
 
+    pub fn block_added_header_test_steps(listener_id: ListenerId) -> Vec<Step> {
+        fn m(command: Command) -> Option<Mutation> {
+            Some(Mutation { command, scope: Scope::BlockAddedHeader(BlockAddedHeaderScope {}) })
+        }
+        let s = |command: Command| -> Option<SubscriptionMessage> {
+            Some(SubscriptionMessage { listener_id, mutation: Mutation { command, scope: Scope::BlockAddedHeader(BlockAddedHeaderScope {}) } })
+        };
+        fn n() -> TestNotification {
+            TestNotification::BlockAddedHeader(BlockAddedHeaderNotification::default())
+        }
+        fn e() -> Option<TestNotification> {
+            Some(TestNotification::BlockAddedHeader(BlockAddedHeaderNotification::default()))
+        }
+
+        set_steps_data(vec![
+            Step {
+                name: "do nothing",
+                mutations: vec![],
+                expected_subscriptions: vec![],
+                notification: n(),
+                expected_notifications: vec![None, None],
+            },
+            Step {
+                name: "L0 on",
+                mutations: vec![m(Command::Start), None],
+                expected_subscriptions: vec![s(Command::Start), None],
+                notification: n(),
+                expected_notifications: vec![e(), None],
+            },
+            Step {
+                name: "L0 & L1 on",
+                mutations: vec![None, m(Command::Start)],
+                expected_subscriptions: vec![None, None],
+                notification: n(),
+                expected_notifications: vec![e(), e()],
+            },
+            Step {
+                name: "L1 on",
+                mutations: vec![m(Command::Stop), None],
+                expected_subscriptions: vec![None, None],
+                notification: n(),
+                expected_notifications: vec![None, e()],
+            },
+            Step {
+                name: "all off",
+                mutations: vec![None, m(Command::Stop)],
+                expected_subscriptions: vec![None, s(Command::Stop)],
+                notification: n(),
+                expected_notifications: vec![None, None],
+            },
+        ])
+    }
+
     fn set_steps_data(mut steps: Vec<Step>) -> Vec<Step> {
         // Prepare the notification data markers for the test
         for (idx, step) in steps.iter_mut().enumerate() {
@@ -856,6 +909,13 @@ mod tests {
     async fn test_utxos_changed() {
         kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
         let test = Test::new("UtxosChanged broadcast", 3, utxos_changed_test_steps(SUBSCRIPTION_MANAGER_ID));
+        test.run().await;
+    }
+
+    #[tokio::test]
+    async fn test_block_added_header() {
+        kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
+        let test = Test::new("BlockAddedHeader broadcast", 3, block_added_header_test_steps(SUBSCRIPTION_MANAGER_ID));
         test.run().await;
     }
 }

@@ -43,6 +43,9 @@ pub enum Notification {
 
     #[display(fmt = "NewBlockTemplate notification")]
     NewBlockTemplate(NewBlockTemplateNotification),
+
+    #[display(fmt = "BlockAddedHeader notification: block hash {}", "_0.block.header.hash")]
+    BlockAddedHeader(BlockAddedHeaderNotification),
 }
 }
 
@@ -59,6 +62,7 @@ impl Notification {
             Notification::VirtualDaaScoreChanged(v) => to_value(&v),
             Notification::SinkBlueScoreChanged(v) => to_value(&v),
             Notification::VirtualChainChanged(v) => to_value(&v),
+            Notification::BlockAddedHeader(v) => to_value(&v),
         }
     }
 }
@@ -95,6 +99,13 @@ impl NotificationTrait for Notification {
                 let Self::UtxosChanged(notification) = self else { return None };
                 notification.apply_utxos_changed_subscription(subscription).map(Self::UtxosChanged)
             }
+            false => None,
+        }
+    }
+
+    fn apply_block_added_header_subscription(&self, subscription: &OverallSubscription) -> Option<Self> {
+        match subscription.active() {
+            true => Some(self.clone()),
             false => None,
         }
     }
