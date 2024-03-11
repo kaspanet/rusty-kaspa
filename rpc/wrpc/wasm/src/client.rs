@@ -372,8 +372,8 @@ impl RpcClient {
 
     /// Disconnect from the Kaspa RPC server.
     pub async fn disconnect(&self) -> Result<()> {
-        // shutdown the client first to receive the 'close' event
-        self.inner.client.shutdown().await?;
+        // disconnect the client first to receive the 'close' event
+        self.inner.client.disconnect().await?;
         self.stop_notification_task().await?;
         Ok(())
     }
