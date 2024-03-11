@@ -7,11 +7,9 @@ cfg_if! {
         pub mod result;
         mod imports;
         mod signable;
-        mod txscript;
         mod utils;
 
         pub use signable::*;
-        pub use txscript::*;
         pub use utils::*;
     }
 
