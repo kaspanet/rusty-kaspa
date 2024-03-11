@@ -2,7 +2,7 @@ use thiserror::Error;
 use wasm_bindgen::{JsError, JsValue};
 use workflow_wasm::jserror::JsErrorData;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum Error {
     #[error("{0}")]
     Custom(String),
@@ -42,6 +42,9 @@ pub enum Error {
 
     #[error("Error converting property `{0}`: {1}")]
     Convert(&'static str, String),
+
+    #[error("Error processing JSON: {0}")]
+    SerdeJson(String),
 }
 
 impl Error {
@@ -84,6 +87,12 @@ impl From<JsValue> for Error {
 impl From<JsError> for Error {
     fn from(err: JsError) -> Self {
         Self::JsValue(err.into())
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(err: serde_json::Error) -> Self {
+        Self::SerdeJson(err.to_string())
     }
 }
 

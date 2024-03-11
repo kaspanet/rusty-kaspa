@@ -31,6 +31,8 @@ export interface IUtxoEntry {
 extern "C" {
     #[wasm_bindgen(extends = Array, typescript_type = "UtxoEntryReference[]")]
     pub type UtxoEntryReferenceArrayT;
+    #[wasm_bindgen(typescript_type = "IUtxoEntry")]
+    pub type IUtxoEntry;
 }
 
 pub type UtxoEntryId = TransactionOutpointInner;
@@ -61,6 +63,12 @@ impl UtxoEntry {
     #[inline(always)]
     pub fn is_coinbase(&self) -> bool {
         self.entry.is_coinbase
+    }
+}
+
+impl From<&UtxoEntry> for cctx::UtxoEntry {
+    fn from(value: &UtxoEntry) -> Self {
+        value.entry.clone()
     }
 }
 
@@ -147,6 +155,13 @@ impl AsRef<UtxoEntry> for UtxoEntryReference {
 impl From<UtxoEntryReference> for UtxoEntry {
     fn from(value: UtxoEntryReference) -> Self {
         (*value.utxo).clone()
+    }
+}
+
+impl From<&UtxoEntryReference> for cctx::UtxoEntry {
+    fn from(value: &UtxoEntryReference) -> Self {
+        value.utxo.as_ref().into()
+        // (*value.utxo).clone()
     }
 }
 

@@ -1,4 +1,5 @@
 use crate::imports::*;
+use crate::result::Result;
 use crate::TransactionOutpoint;
 use kaspa_utils::hex::*;
 
@@ -27,6 +28,12 @@ export interface ITransactionInput {
 export interface ITransactionInputVerboseData { }
 
 "#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "ITransactionInput")]
+    pub type ITransactionInput;
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -66,8 +73,8 @@ impl TransactionInput {
 #[wasm_bindgen]
 impl TransactionInput {
     #[wasm_bindgen(constructor)]
-    pub fn constructor(js_value: &JsValue) -> Result<TransactionInput, JsError> {
-        Ok(js_value.try_into()?)
+    pub fn constructor(value: &ITransactionInput) -> Result<TransactionInput> {
+        Self::try_owned_from(value)
     }
 
     #[wasm_bindgen(getter = previousOutpoint)]
@@ -117,28 +124,46 @@ impl AsRef<TransactionInput> for TransactionInput {
     }
 }
 
-impl TryFrom<&JsValue> for TransactionInput {
+impl TryCastFromJs for TransactionInput {
     type Error = Error;
-    fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
-        if let Some(object) = Object::try_from(js_value) {
-            let previous_outpoint: TransactionOutpoint = object.get_value("previousOutpoint")?.as_ref().try_into()?;
-            let signature_script = object.get_vec_u8("signatureScript")?;
-            let sequence = object.get_u64("sequence")?;
-            let sig_op_count = object.get_u8("sigOpCount")?;
+    fn try_cast_from(value: impl AsRef<JsValue>) -> std::result::Result<Cast<Self>, Self::Error> {
+        Self::resolve_cast(&value, || {
+            if let Some(object) = Object::try_from(value.as_ref()) {
+                let previous_outpoint: TransactionOutpoint = object.get_value("previousOutpoint")?.as_ref().try_into()?;
+                let signature_script = object.get_vec_u8("signatureScript")?;
+                let sequence = object.get_u64("sequence")?;
+                let sig_op_count = object.get_u8("sigOpCount")?;
 
-            Ok(TransactionInput::new(previous_outpoint, signature_script, sequence, sig_op_count))
-        } else {
-            Err("TransactionInput must be an object".into())
-        }
+                Ok(TransactionInput::new(previous_outpoint, signature_script, sequence, sig_op_count).into())
+            } else {
+                Err("TransactionInput must be an object".into())
+            }
+        })
     }
 }
 
-impl TryFrom<JsValue> for TransactionInput {
-    type Error = Error;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        Self::try_from(&js_value)
-    }
-}
+// impl TryFrom<&JsValue> for TransactionInput {
+//     type Error = Error;
+//     fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
+//         if let Some(object) = Object::try_from(js_value) {
+//             let previous_outpoint: TransactionOutpoint = object.get_value("previousOutpoint")?.as_ref().try_into()?;
+//             let signature_script = object.get_vec_u8("signatureScript")?;
+//             let sequence = object.get_u64("sequence")?;
+//             let sig_op_count = object.get_u8("sigOpCount")?;
+
+//             Ok(TransactionInput::new(previous_outpoint, signature_script, sequence, sig_op_count))
+//         } else {
+//             Err("TransactionInput must be an object".into())
+//         }
+//     }
+// }
+
+// impl TryFrom<JsValue> for TransactionInput {
+//     type Error = Error;
+//     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
+//         Self::try_from(&js_value)
+//     }
+// }
 
 impl From<cctx::TransactionInput> for TransactionInput {
     fn from(tx_input: cctx::TransactionInput) -> Self {

@@ -108,7 +108,7 @@ impl MassCalculator {
         let inputs = inputs
             .dyn_into::<js_sys::Array>()?
             .iter()
-            .map(TransactionInput::try_from)
+            .map(TransactionInput::try_owned_from)
             .collect::<std::result::Result<Vec<_>, kaspa_consensus_client::error::Error>>()?;
         let inputs = inputs.iter().map(|input| self.calc_mass_for_input(input)).collect::<Result<Vec<_>>>()?;
         Ok(inputs.iter().sum())

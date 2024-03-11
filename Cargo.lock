@@ -2583,6 +2583,7 @@ version = "0.13.5"
 dependencies = [
  "cfg-if 1.0.0",
  "faster-hex 0.6.1",
+ "hex",
  "js-sys",
  "kaspa-addresses",
  "kaspa-consensus-core",
@@ -2590,6 +2591,7 @@ dependencies = [
  "kaspa-math",
  "kaspa-txscript",
  "kaspa-utils",
+ "kaspa-wasm-core",
  "rand 0.8.5",
  "secp256k1",
  "serde",
@@ -3544,6 +3546,7 @@ dependencies = [
 name = "kaspa-wasm-core"
 version = "0.13.5"
 dependencies = [
+ "faster-hex 0.6.1",
  "js-sys",
  "wasm-bindgen",
 ]

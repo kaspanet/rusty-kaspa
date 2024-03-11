@@ -121,6 +121,9 @@ pub enum RpcError {
 
     #[error("{0}")]
     SerdeWasmBindgen(String),
+
+    #[error(transparent)]
+    ConsensusClient(#[from] kaspa_consensus_client::error::Error),
 }
 
 impl From<String> for RpcError {

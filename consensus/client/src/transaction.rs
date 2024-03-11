@@ -146,7 +146,9 @@ impl Transaction {
     pub fn set_inputs_from_js_array(&mut self, js_value: &JsValue) {
         let inputs = Array::from(js_value)
             .iter()
-            .map(|js_value| TransactionInput::try_from(&js_value).unwrap_or_else(|err| panic!("invalid transaction input: {err}")))
+            .map(|js_value| {
+                TransactionInput::try_owned_from(&js_value).unwrap_or_else(|err| panic!("invalid transaction input: {err}"))
+            })
             .collect::<Vec<_>>();
         self.inner().inputs = inputs;
     }
@@ -241,7 +243,7 @@ impl TryCastFromJs for Transaction {
                     let inputs = object
                         .get_vec("inputs")?
                         .iter()
-                        .map(|jsv| jsv.try_into())
+                        .map(TryCastFromJs::try_owned_from)
                         .collect::<std::result::Result<Vec<TransactionInput>, Error>>()?;
                     let outputs: Vec<TransactionOutput> = object
                         .get_vec("outputs")?

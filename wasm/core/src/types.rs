@@ -2,6 +2,7 @@
 //! General-purpose types for WASM bindings
 //!
 
+use std::str;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(typescript_custom_section)]
@@ -31,6 +32,15 @@ impl TryFrom<HexString> for String {
 
     fn try_from(value: HexString) -> Result<String, Self::Error> {
         value.as_string().ok_or("Supplied value is not a string")
+    }
+}
+
+impl From<&[u8]> for HexString {
+    fn from(bytes: &[u8]) -> Self {
+        let mut hex = vec![0u8; bytes.len() * 2];
+        faster_hex::hex_encode(bytes, hex.as_mut_slice()).expect("The output is exactly twice the size of the input");
+        let result = unsafe { str::from_utf8_unchecked(&hex) };
+        JsValue::from(result).into()
     }
 }
 

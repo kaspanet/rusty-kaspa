@@ -19,9 +19,11 @@ kaspa-hashes.workspace = true
 kaspa-math.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
+kaspa-wasm-core.workspace = true
 
 cfg-if.workspace = true
 faster-hex.workspace = true
+hex.workspace = true
 js-sys.workspace = true
 rand.workspace = true
 secp256k1.workspace = true
