@@ -322,7 +322,7 @@ export enum Opcode {
     OpUnknown248 = 0xf8,
     OpUnknown249 = 0xf9,
     OpSmallInteger = 0xfa,
-    OpPubKey = 0xfb,
+    OpPubKeys = 0xfb,
     OpUnknown252 = 0xfc,
     OpPubKeyHash = 0xfd,
     OpPubKey = 0xfe,
