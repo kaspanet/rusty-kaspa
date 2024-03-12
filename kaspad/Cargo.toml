@@ -41,6 +41,7 @@ kaspa-wrpc-server.workspace = true
 async-channel.workspace = true
 clap.workspace = true
 dhat = { workspace = true, optional = true }
+serde.workspace = true
 dirs.workspace = true
 futures-util.workspace = true
 log.workspace = true
@@ -51,6 +52,7 @@ tempfile.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 workflow-log.workspace = true
+toml = "0.8.10"
 
 [features]
 heap = ["dhat", "kaspa-alloc/heap"]
