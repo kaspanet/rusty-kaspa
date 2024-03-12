@@ -248,6 +248,33 @@ The framework is compatible with all major desktop and mobile browsers.
 cargo run --release --bin kaspad -- --testnet
   ```
 
+<details>
+
+  <summary>
+Use a configuration file
+  </summary>
+
+  ```bash
+cargo run --release --bin kaspad -- --configfile /path/to/configfile.toml
+# or
+cargo run --release --bin kaspad -- -C /path/to/configfile.toml
+  ```
+  The config file should be a list of \<CLI argument\> = \<value\> separated by newlines.
+  For example:
+  ```
+testnet=true
+utxoindex=false
+disable-upnp=true
+perf-metrics=true
+appdir="some-dir"
+testnet-suffix=11
+  ```
+note that some arguments have no space between words and some use kebab-case, pass the --help flag to view all possible arguments
+
+  ```bash
+cargo run --release --bin kaspad -- --help
+  ```
+</details>
 
 <details>
 
