@@ -14,7 +14,7 @@ use kaspa_p2p_lib::{
     IncomingRoute, Router, SharedIncomingRoute,
 };
 use kaspa_utils::channel::{JobSender, JobTrySendError as TrySendError};
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, sync::Arc, time::Instant};
 
 pub struct RelayInvMessage {
     hash: Hash,
@@ -91,6 +91,7 @@ impl HandleRelayInvsFlow {
         loop {
             // Loop over incoming block inv messages
             let inv = self.invs_route.dequeue().await?;
+            let last_block_transfer = Instant::now();
             let session = self.ctx.consensus().unguarded_session();
 
             match session.async_get_block_status(inv.hash).await {
@@ -188,6 +189,7 @@ impl HandleRelayInvsFlow {
                 Err(rule_error) => return Err(rule_error.into()),
             };
 
+            self.router.set_last_block_transfer(last_block_transfer);
             // As a policy, we only relay blocks who stand a chance to enter past(virtual).
             // The only mining rule which permanently excludes a block is the merge depth bound
             // (as opposed to "max parents" and "mergeset size limit" rules)

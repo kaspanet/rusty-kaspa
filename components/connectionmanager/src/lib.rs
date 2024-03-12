@@ -1,3 +1,6 @@
+mod eviction;
+use eviction::{cmp_strats, constants::RETAIN_RATIO, weight_strats, EvictionIter, EvictionIterExt};
+
 use std::{
     cmp::min,
     collections::{HashMap, HashSet},
@@ -243,8 +246,30 @@ impl ConnectionManager {
             return;
         }
 
-        let mut futures = Vec::with_capacity(active_inbound_len - self.inbound_limit);
-        for peer in active_inbound.choose_multiple(&mut thread_rng(), active_inbound_len - self.inbound_limit) {
+        let peer_overflow_amount = active_inbound_len - self.inbound_limit;
+
+        let mut futures = Vec::with_capacity(peer_overflow_amount);
+
+        // the following peer selection strategy is designed to ensure that an eclipse attacker most outperform
+        // the best performing peers in any independent metric in order to perform a total eclipse.
+        // while keeping a bias to disconnect from newer peers, and those with concentrated prefix buckets.
+        for peer in EvictionIter::from_peers(&active_inbound)
+            .filter_peers(
+                // We retain a number of peers proportional to the inbound limit.
+                (self.inbound_limit as f64 / RETAIN_RATIO.floor()) as usize,
+                // Based on their lowest (i.e. best performing) independent rank.
+                cmp_strats::by_lowest_rank,
+            )
+            .select_peers_weighted(
+                // then we select the overflowing amount from the remaining peers,
+                peer_overflow_amount,
+                // weighted by their highest (i.e. worst performing) none-latency rank.
+                // we only select by none latency as to ensure that we do not overly penalize disadvantaged (in terms of latency) peers.
+                // this strategy also slows down flooding (via time connected weighting), and multiple inbounds from a localized origin (via prefix bucket weighting).
+                weight_strats::by_highest_none_latency_rank,
+            )
+            .iterate_peers()
+        {
             debug!("Disconnecting from {} because we're above the inbound limit", peer.net_address());
             futures.push(self.p2p_adaptor.terminate(peer.key()));
         }
