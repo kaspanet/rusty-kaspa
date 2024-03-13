@@ -250,13 +250,13 @@ impl ConnectionManager {
 
         let mut futures = Vec::with_capacity(peer_overflow_amount);
 
-        // the following peer selection strategy is designed to ensure that an eclipse attacker most outperform
+        // the following peer selection strategy is designed to ensure that an eclipse attacker must outperform
         // the best performing peers in any independent metric in order to perform a total eclipse.
         // while keeping a bias to disconnect from newer peers, and those with concentrated prefix buckets.
         for peer in EvictionIter::from_peers(&active_inbound)
             .filter_peers(
                 // We retain a number of peers proportional to the inbound limit.
-                (self.inbound_limit as f64 / RETAIN_RATIO.floor()) as usize,
+                (self.inbound_limit as f64 / RETAIN_RATIO).floor() as usize,
                 // Based on their lowest (i.e. best performing) independent rank.
                 cmp_strats::by_lowest_rank,
             )
