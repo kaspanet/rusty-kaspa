@@ -259,7 +259,7 @@ cargo run --release --bin kaspad -- --configfile /path/to/configfile.toml
 # or
 cargo run --release --bin kaspad -- -C /path/to/configfile.toml
   ```
-  The config file should be a list of \<CLI argument\> = \<value\> separated by newlines.
+  The config file should be a list of \<CLI argument\> = \<value\> separated by newlines, values with special characters like '.' or '=' will require quoting the value i.e \<CLI argument\> = "\<value\>".
   For example:
   ```
 testnet=true

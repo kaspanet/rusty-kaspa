@@ -22,7 +22,9 @@ use kaspa_core::kaspad_env::version;
 
 use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_wrpc_server::address::WrpcNetAddress;
+use serde_with::{serde_as, DisplayFromStr};
 
+#[serde_as]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Args {
@@ -30,6 +32,7 @@ pub struct Args {
     pub appdir: Option<String>,
     pub logdir: Option<String>,
     pub no_log_files: bool,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub rpclisten: Option<ContextualNetAddress>,
     pub rpclisten_borsh: Option<WrpcNetAddress>,
     pub rpclisten_json: Option<WrpcNetAddress>,
