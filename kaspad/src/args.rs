@@ -98,7 +98,7 @@ impl Default for Args {
             simnet: false,
             archival: false,
             sanity: false,
-            logdir: Some("".into()),
+            logdir: None,
             rpclisten: None,
             wrpc_verbose: false,
             log_level: "INFO".into(),
