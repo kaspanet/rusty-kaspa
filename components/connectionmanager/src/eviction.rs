@@ -190,26 +190,30 @@ impl EvictionRanks {
     }
 }
 
-pub trait EvictionIterExt<'a, T: Iterator<Item = (&'a Peer, EvictionRanks)> + 'a>: IntoIterator<Item = (&'a Peer, EvictionRanks), IntoIter = T>{
+pub trait EvictionIterExt<'a, Iter>: IntoIterator<Item = (&'a Peer, EvictionRanks), IntoIter = Iter>
+where
+    Iter: Iterator<Item = (&'a Peer, EvictionRanks)> + 'a,
+{
     fn filter_peers<F>(self, amount: usize, compare_fn: F) -> impl Iterator<Item = (&'a Peer, EvictionRanks)> + 'a
     where
         F: Fn(&EvictionRanks, &EvictionRanks) -> Ordering,
         Self: Sized,
     {
         let rng = &mut thread_rng();
-        self.into_iter().sorted_unstable_by(move |(_, r1), (_, r2)| match compare_fn(r1, r2) {
-            Ordering::Greater => Ordering::Greater,
-            Ordering::Less => Ordering::Less,
-            // we tie break randomly, as to not expose preference due to pre-existing ordering.
-            Ordering::Equal => {
-                if rng.gen_bool(0.5) {
-                    Ordering::Greater
-                } else {
-                    Ordering::Less
+        self.into_iter()
+            .sorted_unstable_by(move |(_, r1), (_, r2)| match compare_fn(r1, r2) {
+                Ordering::Greater => Ordering::Greater,
+                Ordering::Less => Ordering::Less,
+                // we tie break randomly, as to not expose preference due to pre-existing ordering.
+                Ordering::Equal => {
+                    if rng.gen_bool(0.5) {
+                        Ordering::Greater
+                    } else {
+                        Ordering::Less
+                    }
                 }
-            }
-        })
-        .skip(amount)
+            })
+            .skip(amount)
     }
 
     fn select_peers_weighted<F>(self, amount: usize, weight_fn: F) -> impl Iterator<Item = (&'a Peer, EvictionRanks)> + 'a
@@ -218,7 +222,13 @@ pub trait EvictionIterExt<'a, T: Iterator<Item = (&'a Peer, EvictionRanks)> + 'a
         Self: Sized,
     {
         let rng = &mut thread_rng();
-        self.into_iter().collect_vec().choose_multiple_weighted(rng, amount, |(_, r)| weight_fn(r)).unwrap().copied().collect_vec().into_iter()
+        self.into_iter()
+            .collect_vec()
+            .choose_multiple_weighted(rng, amount, |(_, r)| weight_fn(r))
+            .unwrap()
+            .copied()
+            .collect_vec()
+            .into_iter()
     }
 
     fn iterate_peers(self) -> impl Iterator<Item = &'a Peer> + 'a
@@ -229,12 +239,17 @@ pub trait EvictionIterExt<'a, T: Iterator<Item = (&'a Peer, EvictionRanks)> + 'a
     }
 }
 
-impl<'a, T: Iterator<Item = (&'a Peer, EvictionRanks)> + 'a, IntoIter: IntoIterator<Item = (&'a Peer, EvictionRanks), IntoIter = T>> EvictionIterExt<'a, T> for IntoIter {}
+impl<'a, Iter, IntoIter> EvictionIterExt<'a, Iter> for IntoIter
+where
+    Iter: Iterator<Item = (&'a Peer, EvictionRanks)> + 'a,
+    IntoIter: IntoIterator<Item = (&'a Peer, EvictionRanks), IntoIter = Iter>,
+{
+}
 
 pub fn from_peers<'a>(peers: &'a [&'a Peer]) -> impl Iterator<Item = (&'a Peer, EvictionRanks)> + 'a {
     let ip_prefix_map = build_ip_prefix_map(peers);
     let mut ranks = vec![EvictionRanks::default(); peers.len()];
-    Box::new(peers.iter().enumerate().map(move |(i1, p1)| {
+    peers.iter().enumerate().map(move |(i1, p1)| {
         for (i2, p2) in peers[i1..].iter().enumerate().skip(1) {
             match ip_prefix_map[&p1.prefix_bucket()].cmp(&ip_prefix_map[&p2.prefix_bucket()]) {
                 // low is good, so we add rank to the peer with the greater ordering.
@@ -309,7 +324,7 @@ pub fn from_peers<'a>(peers: &'a [&'a Peer]) -> impl Iterator<Item = (&'a Peer, 
             };
         }
         (peers[i1], ranks[i1])
-    }))
+    })
 }
 // Abstracted helper functions:
 
