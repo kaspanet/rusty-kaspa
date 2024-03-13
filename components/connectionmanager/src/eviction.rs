@@ -190,146 +190,127 @@ impl EvictionRanks {
     }
 }
 
-pub type EvictionIter<'a> = Box<dyn Iterator<Item = (&'a Peer, EvictionRanks)> + 'a>;
-pub type PeerIter<'a> = Box<dyn Iterator<Item = &'a Peer> + 'a>;
-pub trait EvictionIterExt<'a> {
-    fn from_peers(peers: &'a [&'a Peer]) -> EvictionIter<'a>;
-
-    fn filter_peers<F>(self, amount: usize, compare_fn: F) -> EvictionIter<'a>
-    where
-        F: Fn(&EvictionRanks, &EvictionRanks) -> Ordering;
-
-    fn select_peers_weighted<F>(self, amount: usize, weight_fn: F) -> EvictionIter<'a>
-    where
-        F: Fn(&EvictionRanks) -> f64;
-
-    fn iterate_peers(self) -> PeerIter<'a>;
-}
-
-impl<'a> EvictionIterExt<'a> for EvictionIter<'a> {
-    fn from_peers(peers: &'a [&'a Peer]) -> EvictionIter<'a> {
-        let ip_prefix_map = build_ip_prefix_map(peers);
-        let mut ranks = vec![EvictionRanks::default(); peers.len()];
-        Box::new(peers.iter().enumerate().map(move |(i1, p1)| {
-            for (i2, p2) in peers[i1..].iter().enumerate().skip(1) {
-                match ip_prefix_map[&p1.prefix_bucket()].cmp(&ip_prefix_map[&p2.prefix_bucket()]) {
-                    // low is good, so we add rank to the peer with the greater ordering.
-                    Ordering::Greater => ranks[i1].ip_prefix_bucket += 1.0,
-                    Ordering::Less => ranks[i1 + i2].ip_prefix_bucket += 1.0,
-                    Ordering::Equal => {
-                        ranks[i1].ip_prefix_bucket += 0.5;
-                        ranks[i1 + i2].ip_prefix_bucket += 0.5;
-                    }
-                };
-
-                match p1.time_connected().cmp(&p2.time_connected()) {
-                    // high is good, so we add to the peer with the lesser ordering.
-                    Ordering::Greater => ranks[i1 + i2].time_connected += 1.0,
-                    Ordering::Less => ranks[i1].time_connected += 1.0,
-                    Ordering::Equal => {
-                        ranks[i1].time_connected += 0.5;
-                        ranks[i1 + i2].time_connected += 0.5;
-                    }
-                };
-
-                match p1.last_ping_duration().cmp(&p2.last_ping_duration()) {
-                    // low is good, so we add to the peer with the greater ordering.
-                    Ordering::Greater => ranks[i1].last_ping_duration += 1.0,
-                    Ordering::Less => ranks[i1 + i2].last_ping_duration += 1.0,
-                    Ordering::Equal => {
-                        ranks[i1].last_ping_duration += 0.5;
-                        ranks[i1 + i2].last_ping_duration += 0.5;
-                    }
-                };
-
-                match (p1.last_block_transfer(), p2.last_block_transfer()) {
-                    // Some is good, so we add to the peer with None
-                    (Some(_), None) => ranks[i1 + i2].last_block_transfer += 1.0,
-                    (None, Some(_)) => ranks[i1].last_block_transfer += 1.0,
-                    (None, None) => {
-                        ranks[i1].last_block_transfer += 0.5;
-                        ranks[i1 + i2].last_block_transfer += 0.5;
-                    }
-                    (Some(peer1_last_block_transfer), Some(peer2_last_block_transfer)) => {
-                        match peer1_last_block_transfer.cmp(&peer2_last_block_transfer) {
-                            // low is good, so we add to the peer with the greater ordering.
-                            Ordering::Greater => ranks[i1].last_block_transfer += 1.0,
-                            Ordering::Less => ranks[i1 + i2].last_block_transfer += 1.0,
-                            Ordering::Equal => {
-                                ranks[i1].last_block_transfer += 0.5;
-                                ranks[i1 + i2].last_block_transfer += 0.5;
-                            }
-                        }
-                    }
-                };
-
-                match (p1.last_tx_transfer(), p2.last_tx_transfer()) {
-                    // Some is good, so we add to the peer with None
-                    (Some(_), None) => ranks[i1 + i2].last_tx_transfer += 1.0,
-                    (None, Some(_)) => ranks[i1].last_tx_transfer += 1.0,
-                    (None, None) => {
-                        ranks[i1].last_tx_transfer += 0.5;
-                        ranks[i1 + i2].last_tx_transfer += 0.5;
-                    }
-                    (Some(peer1_last_tx_transfer), Some(peer2_last_tx_transfer)) => {
-                        match peer1_last_tx_transfer.cmp(&peer2_last_tx_transfer) {
-                            // low is good, so we add to the peer with the greater ordering.
-                            Ordering::Greater => ranks[i1].last_tx_transfer += 1.0,
-                            Ordering::Less => ranks[i1 + i2].last_tx_transfer += 1.0,
-                            Ordering::Equal => {
-                                ranks[i1].last_tx_transfer += 0.5;
-                                ranks[i1 + i2].last_tx_transfer += 0.5;
-                            }
-                        }
-                    }
-                };
-            }
-            (peers[i1], ranks[i1])
-        }))
-    }
-
-    fn filter_peers<F>(self, amount: usize, compare_fn: F) -> Self
+pub trait EvictionIterExt<'a, T: Iterator<Item = (&'a Peer, EvictionRanks)> + 'a>: IntoIterator<Item = (&'a Peer, EvictionRanks), IntoIter = T>{
+    fn filter_peers<F>(self, amount: usize, compare_fn: F) -> impl Iterator<Item = (&'a Peer, EvictionRanks)> + 'a
     where
         F: Fn(&EvictionRanks, &EvictionRanks) -> Ordering,
+        Self: Sized,
     {
         let rng = &mut thread_rng();
-        Box::new(
-            self.sorted_unstable_by(move |(_, r1), (_, r2)| match compare_fn(r1, r2) {
-                Ordering::Greater => Ordering::Greater,
-                Ordering::Less => Ordering::Less,
-                // we tie break randomly, as to not expose preference due to pre-existing ordering.
-                Ordering::Equal => {
-                    if rng.gen_bool(0.5) {
-                        Ordering::Greater
-                    } else {
-                        Ordering::Less
-                    }
+        self.into_iter().sorted_unstable_by(move |(_, r1), (_, r2)| match compare_fn(r1, r2) {
+            Ordering::Greater => Ordering::Greater,
+            Ordering::Less => Ordering::Less,
+            // we tie break randomly, as to not expose preference due to pre-existing ordering.
+            Ordering::Equal => {
+                if rng.gen_bool(0.5) {
+                    Ordering::Greater
+                } else {
+                    Ordering::Less
                 }
-            })
-            .skip(amount),
-        )
+            }
+        })
+        .skip(amount)
     }
 
-    fn select_peers_weighted<F>(self, amount: usize, weight_fn: F) -> Self
+    fn select_peers_weighted<F>(self, amount: usize, weight_fn: F) -> impl Iterator<Item = (&'a Peer, EvictionRanks)> + 'a
     where
         F: Fn(&EvictionRanks) -> f64,
+        Self: Sized,
     {
         let rng = &mut thread_rng();
-        Box::new(
-            self.collect_vec()
-                .choose_multiple_weighted(rng, amount, |(_, r)| weight_fn(r))
-                .unwrap()
-                .copied()
-                .collect_vec()
-                .into_iter(),
-        )
+        self.into_iter().collect_vec().choose_multiple_weighted(rng, amount, |(_, r)| weight_fn(r)).unwrap().copied().collect_vec().into_iter()
     }
 
-    fn iterate_peers(self) -> PeerIter<'a> {
-        Box::new(self.map(|(p, _)| p))
+    fn iterate_peers(self) -> impl Iterator<Item = &'a Peer> + 'a
+    where
+        Self: Sized,
+    {
+        self.into_iter().map(|(p, _)| p)
     }
 }
 
+impl<'a, T: Iterator<Item = (&'a Peer, EvictionRanks)> + 'a, IntoIter: IntoIterator<Item = (&'a Peer, EvictionRanks), IntoIter = T>> EvictionIterExt<'a, T> for IntoIter {}
+
+pub fn from_peers<'a>(peers: &'a [&'a Peer]) -> impl Iterator<Item = (&'a Peer, EvictionRanks)> + 'a {
+    let ip_prefix_map = build_ip_prefix_map(peers);
+    let mut ranks = vec![EvictionRanks::default(); peers.len()];
+    Box::new(peers.iter().enumerate().map(move |(i1, p1)| {
+        for (i2, p2) in peers[i1..].iter().enumerate().skip(1) {
+            match ip_prefix_map[&p1.prefix_bucket()].cmp(&ip_prefix_map[&p2.prefix_bucket()]) {
+                // low is good, so we add rank to the peer with the greater ordering.
+                Ordering::Greater => ranks[i1].ip_prefix_bucket += 1.0,
+                Ordering::Less => ranks[i1 + i2].ip_prefix_bucket += 1.0,
+                Ordering::Equal => {
+                    ranks[i1].ip_prefix_bucket += 0.5;
+                    ranks[i1 + i2].ip_prefix_bucket += 0.5;
+                }
+            };
+
+            match p1.time_connected().cmp(&p2.time_connected()) {
+                // high is good, so we add to the peer with the lesser ordering.
+                Ordering::Greater => ranks[i1 + i2].time_connected += 1.0,
+                Ordering::Less => ranks[i1].time_connected += 1.0,
+                Ordering::Equal => {
+                    ranks[i1].time_connected += 0.5;
+                    ranks[i1 + i2].time_connected += 0.5;
+                }
+            };
+
+            match p1.last_ping_duration().cmp(&p2.last_ping_duration()) {
+                // low is good, so we add to the peer with the greater ordering.
+                Ordering::Greater => ranks[i1].last_ping_duration += 1.0,
+                Ordering::Less => ranks[i1 + i2].last_ping_duration += 1.0,
+                Ordering::Equal => {
+                    ranks[i1].last_ping_duration += 0.5;
+                    ranks[i1 + i2].last_ping_duration += 0.5;
+                }
+            };
+
+            match (p1.last_block_transfer(), p2.last_block_transfer()) {
+                // Some is good, so we add to the peer with None
+                (Some(_), None) => ranks[i1 + i2].last_block_transfer += 1.0,
+                (None, Some(_)) => ranks[i1].last_block_transfer += 1.0,
+                (None, None) => {
+                    ranks[i1].last_block_transfer += 0.5;
+                    ranks[i1 + i2].last_block_transfer += 0.5;
+                }
+                (Some(peer1_last_block_transfer), Some(peer2_last_block_transfer)) => {
+                    match peer1_last_block_transfer.cmp(&peer2_last_block_transfer) {
+                        // low is good, so we add to the peer with the greater ordering.
+                        Ordering::Greater => ranks[i1].last_block_transfer += 1.0,
+                        Ordering::Less => ranks[i1 + i2].last_block_transfer += 1.0,
+                        Ordering::Equal => {
+                            ranks[i1].last_block_transfer += 0.5;
+                            ranks[i1 + i2].last_block_transfer += 0.5;
+                        }
+                    }
+                }
+            };
+
+            match (p1.last_tx_transfer(), p2.last_tx_transfer()) {
+                // Some is good, so we add to the peer with None
+                (Some(_), None) => ranks[i1 + i2].last_tx_transfer += 1.0,
+                (None, Some(_)) => ranks[i1].last_tx_transfer += 1.0,
+                (None, None) => {
+                    ranks[i1].last_tx_transfer += 0.5;
+                    ranks[i1 + i2].last_tx_transfer += 0.5;
+                }
+                (Some(peer1_last_tx_transfer), Some(peer2_last_tx_transfer)) => {
+                    match peer1_last_tx_transfer.cmp(&peer2_last_tx_transfer) {
+                        // low is good, so we add to the peer with the greater ordering.
+                        Ordering::Greater => ranks[i1].last_tx_transfer += 1.0,
+                        Ordering::Less => ranks[i1 + i2].last_tx_transfer += 1.0,
+                        Ordering::Equal => {
+                            ranks[i1].last_tx_transfer += 0.5;
+                            ranks[i1 + i2].last_tx_transfer += 0.5;
+                        }
+                    }
+                }
+            };
+        }
+        (peers[i1], ranks[i1])
+    }))
+}
 // Abstracted helper functions:
 
 fn build_ip_prefix_map(peers: &[&Peer]) -> HashMap<PrefixBucket, usize> {
@@ -530,7 +511,7 @@ mod test {
     fn test_eviction_iter_from_peers() {
         let test_peers = build_test_peers();
         let test_peers = test_peers.iter().collect::<Vec<_>>();
-        let eviction_iter_vec = EvictionIter::from_peers(&test_peers).collect::<Vec<(&Peer, EvictionRanks)>>();
+        let eviction_iter_vec = from_peers(&test_peers).collect::<Vec<(&Peer, EvictionRanks)>>();
 
         let expected_ranks = vec![
             EvictionRanks {
@@ -616,12 +597,12 @@ mod test {
         let test_peers = build_test_peers();
         let test_peers = test_peers.iter().collect::<Vec<_>>();
         let iterations = test_peers.len();
-        let eviction_iter_vec = EvictionIter::from_peers(&test_peers).collect::<Vec<(&Peer, EvictionRanks)>>();
+        let eviction_iter_vec = from_peers(&test_peers).collect::<Vec<(&Peer, EvictionRanks)>>();
 
         for i in 0..iterations + 1 {
             let mut removed_counter = HashMap::<u64, usize>::new();
             let mut filtered_counter = HashMap::<u64, usize>::new();
-            let eviction_candidates_iter = Box::new(eviction_iter_vec.clone().into_iter()) as EvictionIter;
+            let eviction_candidates_iter = eviction_iter_vec.clone().into_iter();
             let filtered_eviction_set = eviction_candidates_iter.filter_peers(i, cmp_strats::by_lowest_rank).collect_vec();
             let removed_eviction_set =
                 eviction_iter_vec.clone().into_iter().filter(|item| !filtered_eviction_set.contains(item)).collect_vec();
@@ -749,7 +730,7 @@ mod test {
         try_init_logger("info");
         let test_peers = build_test_peers();
         let test_peers = test_peers.iter().collect::<Vec<_>>();
-        let eviction_iter_vec = EvictionIter::from_peers(&test_peers).collect::<Vec<(&Peer, EvictionRanks)>>();
+        let eviction_iter_vec = from_peers(&test_peers).collect::<Vec<(&Peer, EvictionRanks)>>();
         let total_weight = 59.5;
         let expected_probabilities = vec![
             // we add one to avoid 0, and nan numbers.. `weight_strats::by_highest_none_latency_rank` adds 1 to the rank for these hypothetical situation.
@@ -769,7 +750,7 @@ mod test {
         let num_of_trials = 2054;
         for _ in 0..num_of_trials {
             //println!("sample_size: {}", sample_size);
-            let eviction_iter = Box::new(eviction_iter_vec.clone().into_iter()) as EvictionIter;
+            let eviction_iter = eviction_iter_vec.clone().into_iter();
             let selected_eviction_set =
                 eviction_iter.select_peers_weighted(1, weight_strats::by_highest_none_latency_rank).collect_vec();
             assert_eq!(selected_eviction_set.len(), 1);
