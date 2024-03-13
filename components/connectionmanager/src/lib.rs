@@ -9,6 +9,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use crate::eviction::from_peers;
 use duration_string::DurationString;
 use futures_util::future::join_all;
 use itertools::Itertools;
@@ -26,7 +27,6 @@ use tokio::{
     },
     time::{interval, MissedTickBehavior},
 };
-use crate::eviction::from_peers;
 
 pub struct ConnectionManager {
     p2p_adaptor: Arc<kaspa_p2p_lib::Adaptor>,
