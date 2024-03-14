@@ -1,5 +1,5 @@
 mod eviction;
-use eviction::{cmp_strats, constants::RETAIN_RATIO, weight_strats, EvictionIterExt};
+use crate::eviction::{cmp_strats, constants::RETAIN_RATIO, eviction_iter_from_peers, weight_strats, EvictionIterExt};
 
 use std::{
     cmp::min,
@@ -9,7 +9,6 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use crate::eviction::from_peers;
 use duration_string::DurationString;
 use futures_util::future::join_all;
 use itertools::Itertools;
@@ -254,7 +253,7 @@ impl ConnectionManager {
         // the following peer selection strategy is designed to ensure that an eclipse attacker must outperform
         // the best performing peers in any independent metric in order to perform a total eclipse.
         // while keeping a bias to disconnect from newer peers, and those with concentrated prefix buckets.
-        for peer in from_peers(&active_inbound)
+        for peer in eviction_iter_from_peers(&active_inbound)
             .filter_peers(
                 // We retain a number of peers proportional to the inbound limit.
                 (self.inbound_limit as f64 / RETAIN_RATIO).floor() as usize,

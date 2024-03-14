@@ -246,7 +246,7 @@ where
 {
 }
 
-pub fn from_peers<'a>(peers: &'a [&'a Peer]) -> impl Iterator<Item = (&'a Peer, EvictionRanks)> + 'a {
+pub fn eviction_iter_from_peers<'a>(peers: &'a [&'a Peer]) -> impl Iterator<Item = (&'a Peer, EvictionRanks)> + 'a {
     let ip_prefix_map = build_ip_prefix_map(peers);
     let mut ranks = vec![EvictionRanks::default(); peers.len()];
     peers.iter().enumerate().map(move |(i1, p1)| {
@@ -526,7 +526,7 @@ mod test {
     fn test_eviction_iter_from_peers() {
         let test_peers = build_test_peers();
         let test_peers = test_peers.iter().collect::<Vec<_>>();
-        let eviction_iter_vec = from_peers(&test_peers).collect::<Vec<(&Peer, EvictionRanks)>>();
+        let eviction_iter_vec = eviction_iter_from_peers(&test_peers).collect::<Vec<(&Peer, EvictionRanks)>>();
 
         let expected_ranks = vec![
             EvictionRanks {
@@ -612,7 +612,7 @@ mod test {
         let test_peers = build_test_peers();
         let test_peers = test_peers.iter().collect::<Vec<_>>();
         let iterations = test_peers.len();
-        let eviction_iter_vec = from_peers(&test_peers).collect::<Vec<(&Peer, EvictionRanks)>>();
+        let eviction_iter_vec = eviction_iter_from_peers(&test_peers).collect::<Vec<(&Peer, EvictionRanks)>>();
 
         for i in 0..iterations + 1 {
             let mut removed_counter = HashMap::<u64, usize>::new();
@@ -745,7 +745,7 @@ mod test {
         try_init_logger("info");
         let test_peers = build_test_peers();
         let test_peers = test_peers.iter().collect::<Vec<_>>();
-        let eviction_iter_vec = from_peers(&test_peers).collect::<Vec<(&Peer, EvictionRanks)>>();
+        let eviction_iter_vec = eviction_iter_from_peers(&test_peers).collect::<Vec<(&Peer, EvictionRanks)>>();
         let total_weight = 59.5;
         let expected_probabilities = vec![
             // we add one to avoid 0, and nan numbers.. `weight_strats::by_highest_none_latency_rank` adds 1 to the rank for these hypothetical situation.
