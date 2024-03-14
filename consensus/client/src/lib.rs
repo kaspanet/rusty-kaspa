@@ -13,11 +13,11 @@ cfg_if::cfg_if! {
         mod header;
         mod input;
         mod transaction;
-        mod serializable;
         mod vtx;
         mod hash;
         // mod signing;
         mod script;
+        mod serializable;
 
 
         pub use header::*;

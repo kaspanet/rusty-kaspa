@@ -3,8 +3,10 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::{
-    Transaction, TransactionInput, TransactionInputInner, TransactionOutpoint, TransactionOutput, UtxoEntry, UtxoEntryReference,
+    Transaction, TransactionInput, TransactionInputInner, TransactionOutpoint, TransactionOutpointInner, TransactionOutput, UtxoEntry,
+    UtxoEntryId, UtxoEntryReference,
 };
+use ahash::AHashMap;
 use cctx::VerifiableTransaction;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::subnets::SubnetworkId;
@@ -177,6 +179,12 @@ impl From<cctx::TransactionOutput> for SerializableTransactionOutput {
     }
 }
 
+impl From<&cctx::TransactionOutput> for SerializableTransactionOutput {
+    fn from(output: &cctx::TransactionOutput) -> Self {
+        Self { value: output.value.to_string(), script_public_key: output.script_public_key.clone() }
+    }
+}
+
 impl TryFrom<SerializableTransactionOutput> for cctx::TransactionOutput {
     type Error = Error;
     fn try_from(output: SerializableTransactionOutput) -> Result<Self> {
@@ -269,6 +277,33 @@ impl SerializableTransaction {
             gas: inner.gas.to_string(),
             payload: inner.payload.clone(),
             id: inner.id,
+        })
+    }
+
+    pub fn from_cctx_transaction(transaction: &cctx::Transaction, utxos: &AHashMap<UtxoEntryId, UtxoEntryReference>) -> Result<Self> {
+        let inputs = transaction
+            .inputs
+            .iter()
+            .map(|input| {
+                let id = TransactionOutpointInner::new(input.previous_outpoint.transaction_id, input.previous_outpoint.index);
+                let utxo = utxos.get(&id).ok_or(Error::MissingUtxoEntry)?;
+                let utxo = cctx::UtxoEntry::from(utxo);
+                let input = SerializableTransactionInput::new(input, &utxo);
+                Ok(input)
+            })
+            .collect::<Result<Vec<SerializableTransactionInput>>>()?;
+
+        let outputs = transaction.outputs.iter().map(Into::into).collect::<Vec<SerializableTransactionOutput>>();
+
+        Ok(Self {
+            id: transaction.id(),
+            version: transaction.version,
+            inputs,
+            outputs,
+            lock_time: transaction.lock_time.to_string(),
+            subnetwork_id: transaction.subnetwork_id.clone(),
+            gas: transaction.gas.to_string(),
+            payload: transaction.payload.clone(),
         })
     }
 }

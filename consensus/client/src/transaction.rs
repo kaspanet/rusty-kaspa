@@ -336,7 +336,7 @@ impl Transaction {
 
 #[wasm_bindgen]
 impl Transaction {
-    /// Serializes the transaction to a JavaScript Object.
+    /// Serializes the transaction to a pure JavaScript Object.
     /// The schema of the JavaScript object is defined by {@link ISerializableTransaction}.
     /// @see {@link ISerializableTransaction}
     #[wasm_bindgen(js_name = "serializeToObject")]

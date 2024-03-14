@@ -13,10 +13,10 @@ const TS_TYPES: &'static str = r#"
  */
 export interface ISerializableUtxoEntry {
     address?: Address;
-    amount: u64;
+    amount: bigint;
     scriptPublicKey: ScriptPublicKey;
-    blockDaaScore: u64;
-    isCoinbase: bool;
+    blockDaaScore: bigint;
+    isCoinbase: boolean;
 }
 
 /**
@@ -32,7 +32,7 @@ export interface ISerializableTransactionInput {
     sequence: bigint;
     sigOpCount: number;
     signatureScript: HexString;
-    utxo?: SerializableUtxoEntry;
+    utxo?: ISerializableUtxoEntry;
 }
 
 /**

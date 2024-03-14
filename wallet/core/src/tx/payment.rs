@@ -32,7 +32,7 @@ export interface IPaymentOutput {
 extern "C" {
     #[wasm_bindgen(typescript_type = "IPaymentOutput")]
     pub type IPaymentOutput;
-    #[wasm_bindgen(typescript_type = "IPaymentOutputArray[]")]
+    #[wasm_bindgen(typescript_type = "IPaymentOutput[]")]
     pub type IPaymentOutputArray;
 }
 

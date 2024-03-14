@@ -752,7 +752,6 @@ impl RpcClient {
 
 #[wasm_bindgen]
 impl RpcClient {
-
     /// Manage subscription for a virtual DAA score changed notification event.
     /// Virtual DAA score changed notification event is produced when the virtual
     /// Difficulty Adjustment Algorithm (DAA) score changes in the Kaspa BlockDAG.
@@ -850,7 +849,6 @@ build_wrpc_wasm_bindgen_subscriptions!([
     // - VirtualChainChanged, // can't used this here due to non-C-style enum variant
     // - UtxosChanged, // can't used this here due to non-C-style enum variant
     // - VirtualDaaScoreChanged,
-
     /// Manage subscription for a block added notification event.
     /// Block added notification event is produced when a new
     /// block is added to the Kaspa BlockDAG.
