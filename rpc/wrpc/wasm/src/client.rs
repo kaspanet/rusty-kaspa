@@ -5,6 +5,7 @@ use crate::Resolver;
 use crate::{RpcEventCallback, RpcEventType, RpcEventTypeOrCallback};
 use js_sys::{Function, Object};
 use kaspa_addresses::{Address, AddressOrStringArrayT};
+use kaspa_consensus_client::UtxoEntryReference;
 use kaspa_consensus_core::network::{NetworkType, NetworkTypeT};
 use kaspa_notify::connection::ChannelType;
 use kaspa_notify::events::EventType;
@@ -658,16 +659,44 @@ impl RpcClient {
                     },
                     msg = notification_receiver.recv().fuse() => {
                         if let Ok(notification) = &msg {
-                            let event_type = notification.event_type();
-                            let notification_event = NotificationEvent::Notification(event_type);
-                            if let Some(handlers) = this.inner.notification_callbacks(notification_event) {
-                                for handler in handlers.into_iter() {
-                                    let event = Object::new();
-                                    let event_type_value = to_value(&event_type).unwrap();
-                                    event.set("type", &event_type_value).expect("setting event type");
-                                    event.set("data", &notification.to_value().unwrap()).expect("setting event data");
-                                    if let Err(err) = handler.call(&event.into()) {
-                                        log_error!("Error while executing RPC notification callback: {:?}",err);
+                            match &notification {
+                                kaspa_rpc_core::Notification::UtxosChanged(utxos_changed_notification) => {
+
+                                    let event_type = EventType::UtxosChanged;
+                                    let notification_event = NotificationEvent::Notification(event_type);
+                                    if let Some(handlers) = this.inner.notification_callbacks(notification_event) {
+
+                                        let UtxosChangedNotification { added, removed } = utxos_changed_notification;
+                                        let added = js_sys::Array::from_iter(added.iter().map(UtxoEntryReference::from).map(JsValue::from));
+                                        let removed = js_sys::Array::from_iter(removed.iter().map(UtxoEntryReference::from).map(JsValue::from));
+                                        let notification = Object::new();
+                                        notification.set("added", &added).unwrap();
+                                        notification.set("removed", &removed).unwrap();
+
+                                        for handler in handlers.into_iter() {
+                                            let event = Object::new();
+                                            let event_type_value = to_value(&event_type).unwrap();
+                                            event.set("type", &event_type_value).expect("setting event type");
+                                            event.set("data", &notification).expect("setting event data");
+                                            if let Err(err) = handler.call(&event.into()) {
+                                                log_error!("Error while executing RPC notification callback: {:?}",err);
+                                            }
+                                        }
+                                    }
+                                },
+                                _ => {
+                                    let event_type = notification.event_type();
+                                    let notification_event = NotificationEvent::Notification(event_type);
+                                    if let Some(handlers) = this.inner.notification_callbacks(notification_event) {
+                                        for handler in handlers.into_iter() {
+                                            let event = Object::new();
+                                            let event_type_value = to_value(&event_type).unwrap();
+                                            event.set("type", &event_type_value).expect("setting event type");
+                                            event.set("data", &notification.to_value().unwrap()).expect("setting event data");
+                                            if let Err(err) = handler.call(&event.into()) {
+                                                log_error!("Error while executing RPC notification callback: {:?}",err);
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -723,24 +752,6 @@ impl RpcClient {
 
 #[wasm_bindgen]
 impl RpcClient {
-    // / This call accepts an `Array` of `Address` or an Array of address strings.
-    // #[wasm_bindgen(js_name = getUtxosByAddresses)]
-    // pub async fn get_utxos_by_addresses(&self, request: IGetUtxosByAddressesRequest) -> Result<GetUtxosByAddressesResponse> {
-    //     let request : GetUtxosByAddressesRequest = request.try_into()?;
-    //     let result: RpcResult<GetUtxosByAddressesResponse> = self.inner.client.get_utxos_by_addresses_call(request).await;
-    //     let response: GetUtxosByAddressesResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
-    //     to_value(&response.entries).map_err(|err| err.into())
-    // }
-
-    // #[wasm_bindgen(js_name = getUtxosByAddressesCall)]
-    // pub async fn get_utxos_by_addresses_call(&self, request: IGetUtxosByAddressesRequest) -> Result<IGetUtxosByAddressesResponse> {
-    //     let request = from_value::<GetUtxosByAddressesRequest>(request)?;
-    //     let result: RpcResult<GetUtxosByAddressesResponse> = self.inner.client.get_utxos_by_addresses_call(request).await;
-    //     let response: GetUtxosByAddressesResponse = result.map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
-    //     to_value(&response).map_err(|err| err.into())
-    // }
-
-    // ---
 
     /// Manage subscription for a virtual DAA score changed notification event.
     /// Virtual DAA score changed notification event is produced when the virtual
@@ -836,9 +847,10 @@ impl RpcClient {
 // Build subscribe functions
 build_wrpc_wasm_bindgen_subscriptions!([
     // Manually implemented subscriptions (above)
-    // VirtualChainChanged, // can't used this here due to non-C-style enum variant
-    // UtxosChanged, // can't used this here due to non-C-style enum variant
-    // VirtualDaaScoreChanged,
+    // - VirtualChainChanged, // can't used this here due to non-C-style enum variant
+    // - UtxosChanged, // can't used this here due to non-C-style enum variant
+    // - VirtualDaaScoreChanged,
+
     /// Manage subscription for a block added notification event.
     /// Block added notification event is produced when a new
     /// block is added to the Kaspa BlockDAG.

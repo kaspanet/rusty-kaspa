@@ -20,6 +20,7 @@ ahash.workspace = true
 cfg-if.workspace = true
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
+kaspa-consensus-client.workspace = true
 kaspa-consensus-wasm.workspace = true
 kaspa-notify.workspace = true
 kaspa-wrpc-client.workspace = true

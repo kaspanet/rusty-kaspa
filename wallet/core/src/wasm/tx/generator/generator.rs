@@ -256,9 +256,9 @@ impl TryFrom<IGeneratorSettingsObject> for GeneratorSettings {
         // lack of outputs results in a sweep transaction compounding utxos into the change address
         let outputs = args.get_value("outputs")?;
         let final_transaction_destination: PaymentDestination =
-            if outputs.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_from(outputs)?.into() };
+            if outputs.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_owned_from(outputs)?.into() };
 
-        let change_address = args.try_get::<Address>("changeAddress")?; //.ok_or(Error::custom("changeAddress is required"))?;
+        let change_address = args.try_get_cast::<Address>("changeAddress")?.map(Cast::into_owned);
 
         let final_priority_fee = args.get::<IFees>("priorityFee")?.try_into()?;
 

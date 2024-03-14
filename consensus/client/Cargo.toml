@@ -21,6 +21,7 @@ kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 kaspa-wasm-core.workspace = true
 
+ahash.workspace = true
 cfg-if.workspace = true
 faster-hex.workspace = true
 hex.workspace = true

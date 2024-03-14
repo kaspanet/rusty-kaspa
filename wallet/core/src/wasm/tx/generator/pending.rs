@@ -64,7 +64,7 @@ impl PendingTransaction {
 
     #[wasm_bindgen(js_name = getUtxoEntries)]
     pub fn get_utxo_entries(&self) -> Array {
-        self.inner.utxo_entries().iter().map(|utxo_entry| JsValue::from(utxo_entry.clone())).collect()
+        self.inner.utxo_entries().values().map(|utxo_entry| JsValue::from(utxo_entry.clone())).collect()
     }
 
     /// Sign transaction with supplied [`Array`] or [`PrivateKey`] or an array of
@@ -94,7 +94,7 @@ impl PendingTransaction {
     /// Returns encapsulated network [`Transaction`]
     #[wasm_bindgen(getter)]
     pub fn transaction(&self) -> Result<Transaction> {
-        Ok(Transaction::from(self.inner.transaction()))
+        Ok(Transaction::from_cctx_transaction(&self.inner.transaction(), self.inner.utxo_entries()))
     }
 }
 

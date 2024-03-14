@@ -1,6 +1,7 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::TransactionOutpoint;
+use crate::UtxoEntryReference;
 use kaspa_utils::hex::*;
 
 #[wasm_bindgen(typescript_custom_section)]
@@ -15,6 +16,7 @@ export interface ITransactionInput {
     signatureScript: HexString;
     sequence: bigint;
     sigOpCount: number;
+    utxo?: UtxoEntryReference;
 
     /** Optional verbose data provided by RPC */
     verboseData?: ITransactionInputVerboseData;
@@ -42,6 +44,19 @@ pub struct TransactionInputInner {
     pub signature_script: Vec<u8>,
     pub sequence: u64,
     pub sig_op_count: u8,
+    pub utxo: Option<UtxoEntryReference>,
+}
+
+impl TransactionInputInner {
+    pub fn new(
+        previous_outpoint: TransactionOutpoint,
+        signature_script: Vec<u8>,
+        sequence: u64,
+        sig_op_count: u8,
+        utxo: Option<UtxoEntryReference>,
+    ) -> Self {
+        Self { previous_outpoint, signature_script, sequence, sig_op_count, utxo }
+    }
 }
 
 /// Represents a Kaspa transaction input
@@ -53,8 +68,15 @@ pub struct TransactionInput {
 }
 
 impl TransactionInput {
-    pub fn new(previous_outpoint: TransactionOutpoint, signature_script: Vec<u8>, sequence: u64, sig_op_count: u8) -> Self {
-        Self { inner: Arc::new(Mutex::new(TransactionInputInner { previous_outpoint, signature_script, sequence, sig_op_count })) }
+    pub fn new(
+        previous_outpoint: TransactionOutpoint,
+        signature_script: Vec<u8>,
+        sequence: u64,
+        sig_op_count: u8,
+        utxo: Option<UtxoEntryReference>,
+    ) -> Self {
+        let inner = TransactionInputInner::new(previous_outpoint, signature_script, sequence, sig_op_count, utxo);
+        Self { inner: Arc::new(Mutex::new(inner)) }
     }
 
     pub fn new_with_inner(inner: TransactionInputInner) -> Self {
@@ -116,6 +138,11 @@ impl TransactionInput {
     pub fn set_sig_op_count(&mut self, sig_op_count: u8) {
         self.inner().sig_op_count = sig_op_count;
     }
+
+    #[wasm_bindgen(getter = utxo)]
+    pub fn get_utxo(&self) -> Option<UtxoEntryReference> {
+        self.inner().utxo.clone()
+    }
 }
 
 impl AsRef<TransactionInput> for TransactionInput {
@@ -133,8 +160,8 @@ impl TryCastFromJs for TransactionInput {
                 let signature_script = object.get_vec_u8("signatureScript")?;
                 let sequence = object.get_u64("sequence")?;
                 let sig_op_count = object.get_u8("sigOpCount")?;
-
-                Ok(TransactionInput::new(previous_outpoint, signature_script, sequence, sig_op_count).into())
+                let utxo = object.try_get_cast::<UtxoEntryReference>("utxo")?.map(Cast::into_owned);
+                Ok(TransactionInput::new(previous_outpoint, signature_script, sequence, sig_op_count, utxo).into())
             } else {
                 Err("TransactionInput must be an object".into())
             }
@@ -142,37 +169,15 @@ impl TryCastFromJs for TransactionInput {
     }
 }
 
-// impl TryFrom<&JsValue> for TransactionInput {
-//     type Error = Error;
-//     fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
-//         if let Some(object) = Object::try_from(js_value) {
-//             let previous_outpoint: TransactionOutpoint = object.get_value("previousOutpoint")?.as_ref().try_into()?;
-//             let signature_script = object.get_vec_u8("signatureScript")?;
-//             let sequence = object.get_u64("sequence")?;
-//             let sig_op_count = object.get_u8("sigOpCount")?;
-
-//             Ok(TransactionInput::new(previous_outpoint, signature_script, sequence, sig_op_count))
-//         } else {
-//             Err("TransactionInput must be an object".into())
-//         }
-//     }
-// }
-
-// impl TryFrom<JsValue> for TransactionInput {
-//     type Error = Error;
-//     fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-//         Self::try_from(&js_value)
-//     }
-// }
-
 impl From<cctx::TransactionInput> for TransactionInput {
     fn from(tx_input: cctx::TransactionInput) -> Self {
-        TransactionInput::new_with_inner(TransactionInputInner {
-            previous_outpoint: tx_input.previous_outpoint.into(),
-            signature_script: tx_input.signature_script,
-            sequence: tx_input.sequence,
-            sig_op_count: tx_input.sig_op_count,
-        })
+        TransactionInput::new(
+            tx_input.previous_outpoint.into(),
+            tx_input.signature_script,
+            tx_input.sequence,
+            tx_input.sig_op_count,
+            None,
+        )
     }
 }
 

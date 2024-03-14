@@ -1313,7 +1313,7 @@ try_from! ( args: IAccountsSendRequest, AccountsSendRequest, {
 
     let outputs = args.get_value("destination")?;
     let destination: PaymentDestination =
-        if outputs.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_from(outputs)?.into() };
+        if outputs.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_owned_from(outputs)?.into() };
 
     Ok(AccountsSendRequest { account_id, wallet_secret, payment_secret, priority_fee_sompi, destination, payload })
 });
@@ -1434,7 +1434,7 @@ try_from! ( args: IAccountsEstimateRequest, AccountsEstimateRequest, {
 
     let outputs = args.get_value("destination")?;
     let destination: PaymentDestination =
-        if outputs.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_from(outputs)?.into() };
+        if outputs.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_owned_from(outputs)?.into() };
 
     Ok(AccountsEstimateRequest { account_id, priority_fee_sompi, destination, payload })
 });

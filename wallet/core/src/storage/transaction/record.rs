@@ -451,7 +451,7 @@ impl TransactionRecord {
         utxos: &[UtxoEntryReference],
     ) -> Self {
         let binding = Binding::from(utxo_context.binding());
-        let block_daa_score = utxos[0].utxo.entry.block_daa_score;
+        let block_daa_score = utxos[0].utxo.block_daa_score;
         let utxo_entries = utxos.iter().map(UtxoRecord::from).collect::<Vec<_>>();
         let aggregate_input_value = utxo_entries.iter().map(|utxo| utxo.amount).sum::<u64>();
 
@@ -482,7 +482,7 @@ impl TransactionRecord {
     /// that occurs during the lifetime of this wallet.
     pub fn new_external(utxo_context: &UtxoContext, id: TransactionId, utxos: &[UtxoEntryReference]) -> Self {
         let binding = Binding::from(utxo_context.binding());
-        let block_daa_score = utxos[0].utxo.entry.block_daa_score;
+        let block_daa_score = utxos[0].utxo.block_daa_score;
         let utxo_entries = utxos.iter().map(UtxoRecord::from).collect::<Vec<_>>();
         let aggregate_input_value = utxo_entries.iter().map(|utxo| utxo.amount).sum::<u64>();
 
@@ -511,7 +511,7 @@ impl TransactionRecord {
         let block_daa_score =
             utxo_context.processor().current_daa_score().ok_or(Error::MissingDaaScore("TransactionRecord::new_outgoing()"))?;
 
-        let utxo_entries = outgoing_tx.utxo_entries().into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
+        let utxo_entries = outgoing_tx.utxo_entries().values().map(UtxoRecord::from).collect::<Vec<_>>();
 
         let unixtime = unixtime_as_millis_u64();
 
@@ -557,7 +557,7 @@ impl TransactionRecord {
         let block_daa_score =
             utxo_context.processor().current_daa_score().ok_or(Error::MissingDaaScore("TransactionRecord::new_batch()"))?;
 
-        let utxo_entries = outgoing_tx.utxo_entries().into_iter().map(UtxoRecord::from).collect::<Vec<_>>();
+        let utxo_entries = outgoing_tx.utxo_entries().values().map(UtxoRecord::from).collect::<Vec<_>>();
 
         let unixtime = unixtime_as_millis_u64();
 

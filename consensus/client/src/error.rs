@@ -45,6 +45,9 @@ pub enum Error {
 
     #[error("Error processing JSON: {0}")]
     SerdeJson(String),
+
+    #[error("Transaction input is missing UTXO entry")]
+    MissingUtxoEntry,
 }
 
 impl Error {

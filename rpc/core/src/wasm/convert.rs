@@ -1,16 +1,25 @@
 use crate::model::*;
 use kaspa_consensus_client::*;
+use kaspa_consensus_core::tx as cctx;
 use std::sync::Arc;
 
 impl From<RpcUtxosByAddressesEntry> for UtxoEntry {
     fn from(entry: RpcUtxosByAddressesEntry) -> UtxoEntry {
-        UtxoEntry { address: entry.address, outpoint: entry.outpoint.into(), entry: entry.utxo_entry }
+        let RpcUtxosByAddressesEntry { address, outpoint, utxo_entry } = entry;
+        let cctx::UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase } = utxo_entry;
+        UtxoEntry { address, outpoint: outpoint.into(), amount, script_public_key, block_daa_score, is_coinbase }
     }
 }
 
 impl From<RpcUtxosByAddressesEntry> for UtxoEntryReference {
     fn from(entry: RpcUtxosByAddressesEntry) -> Self {
         Self { utxo: Arc::new(entry.into()) }
+    }
+}
+
+impl From<&RpcUtxosByAddressesEntry> for UtxoEntryReference {
+    fn from(entry: &RpcUtxosByAddressesEntry) -> Self {
+        Self { utxo: Arc::new(entry.clone().into()) }
     }
 }
 

@@ -2581,6 +2581,7 @@ dependencies = [
 name = "kaspa-consensus-client"
 version = "0.13.5"
 dependencies = [
+ "ahash 0.8.8",
  "cfg-if 1.0.0",
  "faster-hex 0.6.1",
  "hex",
@@ -3640,6 +3641,7 @@ dependencies = [
  "futures",
  "js-sys",
  "kaspa-addresses",
+ "kaspa-consensus-client",
  "kaspa-consensus-core",
  "kaspa-consensus-wasm",
  "kaspa-notify",

@@ -160,7 +160,7 @@ fn validate(pt: &PendingTransaction) {
     let network_params = pt.generator().network_params();
     let tx = pt.transaction();
 
-    let aggregate_input_value = pt.utxo_entries().iter().map(|o| o.amount()).sum::<u64>();
+    let aggregate_input_value = pt.utxo_entries().values().map(|o| o.amount()).sum::<u64>();
     let aggregate_output_value = tx.outputs.iter().map(|o| o.value).sum::<u64>();
     assert_ne!(
         aggregate_input_value, aggregate_output_value,
@@ -171,7 +171,7 @@ fn validate(pt: &PendingTransaction) {
     let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass };
     let compute_mass = calc.calc_mass_for_signed_transaction(&tx, 1);
 
-    let utxo_entries = pt.utxo_entries().iter().cloned().collect::<Vec<_>>();
+    let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
     let storage_mass = calc.calc_storage_mass_for_transaction(false, &utxo_entries, &tx.outputs).unwrap_or_default();
 
     let calculated_mass = calc.combine_mass(compute_mass, storage_mass) + additional_mass;
@@ -186,7 +186,7 @@ where
     let network_params = pt.generator().network_params();
     let tx = pt.transaction();
 
-    let aggregate_input_value = pt.utxo_entries().iter().map(|o| o.amount()).sum::<u64>();
+    let aggregate_input_value = pt.utxo_entries().values().map(|o| o.amount()).sum::<u64>();
     let aggregate_output_value = tx.outputs.iter().map(|o| o.value).sum::<u64>();
     assert_ne!(aggregate_input_value, aggregate_output_value, "aggregate input and output values can not be the same due to fees");
     assert_eq!(pt.is_final(), expected.is_final, "expected final transaction");
@@ -202,7 +202,7 @@ where
 
     let compute_mass = calc.calc_mass_for_signed_transaction(&tx, 1);
 
-    let utxo_entries = pt.utxo_entries().iter().cloned().collect::<Vec<_>>();
+    let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
     let storage_mass = calc.calc_storage_mass_for_transaction(false, &utxo_entries, &tx.outputs).unwrap_or_default();
     if DISPLAY_LOGS && storage_mass != 0 {
         println!(

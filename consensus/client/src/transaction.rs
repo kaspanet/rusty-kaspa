@@ -1,7 +1,13 @@
+#![allow(non_snake_case)]
+
 use crate::imports::*;
 use crate::input::TransactionInput;
+use crate::outpoint::TransactionOutpoint;
 use crate::output::TransactionOutput;
 use crate::result::Result;
+use crate::serializable::{numeric, string};
+use crate::utxo::{UtxoEntryId, UtxoEntryReference};
+use ahash::AHashMap;
 use kaspa_consensus_core::subnets::{self, SubnetworkId};
 use kaspa_utils::hex::*;
 
@@ -71,6 +77,7 @@ pub struct Transaction {
 
 impl Transaction {
     pub fn new(
+        id: Option<TransactionId>,
         version: u16,
         inputs: Vec<TransactionInput>,
         outputs: Vec<TransactionOutput>,
@@ -79,8 +86,10 @@ impl Transaction {
         gas: u64,
         payload: Vec<u8>,
     ) -> Result<Self> {
+        let finalize = id.is_none();
         let tx = Self {
             inner: Arc::new(Mutex::new(TransactionInner {
+                id: id.unwrap_or_default(),
                 version,
                 inputs,
                 outputs,
@@ -88,10 +97,11 @@ impl Transaction {
                 subnetwork_id,
                 gas,
                 payload,
-                id: Default::default(), // Temp init before the finalize below
             })),
         };
-        tx.finalize()?;
+        if finalize {
+            tx.finalize()?;
+        }
         Ok(tx)
     }
 
@@ -228,6 +238,7 @@ impl TryCastFromJs for Transaction {
                 if let Some(tx) = object.try_get_value("tx")? {
                     Transaction::try_cast_from(&tx)
                 } else {
+                    let id = object.try_get_cast::<TransactionId>("id")?.map(|id| id.into_owned());
                     let version = object.get_u16("version")?;
                     let lock_time = object.get_u64("lockTime")?;
                     let gas = object.get_u64("gas")?;
@@ -250,7 +261,7 @@ impl TryCastFromJs for Transaction {
                         .iter()
                         .map(|jsv| jsv.try_into())
                         .collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?;
-                    Transaction::new(version, inputs, outputs, lock_time, subnetwork_id, gas, payload).map(Into::into)
+                    Transaction::new(id, version, inputs, outputs, lock_time, subnetwork_id, gas, payload).map(Into::into)
                 }
             } else {
                 Err("Transaction must be an object".into())
@@ -278,7 +289,6 @@ impl From<cctx::Transaction> for Transaction {
     }
 }
 
-// impl TryFrom<&Transaction> for cctx::Transaction {
 impl From<&Transaction> for cctx::Transaction {
     fn from(tx: &Transaction) -> Self {
         let inner = tx.inner();
@@ -295,5 +305,73 @@ impl From<&Transaction> for cctx::Transaction {
             inner.gas,
             inner.payload.clone(),
         )
+    }
+}
+
+impl Transaction {
+    pub fn from_cctx_transaction(tx: &cctx::Transaction, utxos: &AHashMap<UtxoEntryId, UtxoEntryReference>) -> Self {
+        let inputs: Vec<TransactionInput> = tx
+            .inputs
+            .iter()
+            .map(|input| {
+                let previous_outpoint: TransactionOutpoint = input.previous_outpoint.into();
+                let utxo = utxos.get(previous_outpoint.id()).cloned();
+                TransactionInput::new(previous_outpoint, input.signature_script.clone(), input.sequence, input.sig_op_count, utxo)
+            })
+            .collect::<Vec<TransactionInput>>();
+        let outputs: Vec<TransactionOutput> = tx.outputs.iter().map(|output| output.into()).collect::<Vec<TransactionOutput>>();
+
+        Self::new_with_inner(TransactionInner {
+            id: tx.id(),
+            version: tx.version,
+            inputs,
+            outputs,
+            lock_time: tx.lock_time,
+            gas: tx.gas,
+            payload: tx.payload.clone(),
+            subnetwork_id: tx.subnetwork_id.clone(),
+        })
+    }
+}
+
+#[wasm_bindgen]
+impl Transaction {
+    /// Serializes the transaction to a JavaScript Object.
+    /// The schema of the JavaScript object is defined by {@link ISerializableTransaction}.
+    /// @see {@link ISerializableTransaction}
+    #[wasm_bindgen(js_name = "serializeToObject")]
+    pub fn serialize_to_object(&self) -> Result<ITransaction> {
+        Ok(numeric::SerializableTransaction::from_client_transaction(self)?.serialize_to_object()?.into())
+    }
+
+    /// Serializes the transaction to a JSON string.
+    /// The schema of the JSON is defined by {@link ISerializableTransaction}.
+    #[wasm_bindgen(js_name = "serializeToJSON")]
+    pub fn serialize_to_json(&self) -> Result<String> {
+        numeric::SerializableTransaction::from_client_transaction(self)?.serialize_to_json()
+    }
+
+    /// Serializes the transaction to a "Safe" JSON schema where it converts all `bigint` values to `string` to avoid potential client-side precision loss.
+    #[wasm_bindgen(js_name = "serializeToSafeJSON")]
+    pub fn serialize_to_json_safe(&self) -> Result<String> {
+        string::SerializableTransaction::from_client_transaction(self)?.serialize_to_json()
+    }
+
+    /// Deserialize the {@link Transaction} Object from a pure JavaScript Object.
+    #[wasm_bindgen(js_name = "deserializeFromObject")]
+    pub fn deserialize_from_object(js_value: &JsValue) -> Result<Transaction> {
+        numeric::SerializableTransaction::deserialize_from_object(js_value.clone())?.try_into()
+    }
+
+    /// Deserialize the {@link Transaction} Object from a JSON string.
+    #[wasm_bindgen(js_name = "deserializeFromJSON")]
+    pub fn deserialize_from_json(json: &str) -> Result<Transaction> {
+        numeric::SerializableTransaction::deserialize_from_json(json)?.try_into()
+    }
+
+    /// Deserialize the {@link Transaction} Object from a "Safe" JSON schema where all `bigint` values are represented as `string`.
+    #[wasm_bindgen(js_name = "deserializeFromSafeJSON")]
+    pub fn deserialize_from_safe_json(json: &str) -> Result<Transaction> {
+        string::SerializableTransaction::deserialize_from_json(json)?.try_into()
     }
 }

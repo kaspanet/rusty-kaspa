@@ -80,6 +80,10 @@ pub struct TransactionOutpoint {
 }
 
 impl TransactionOutpoint {
+    pub fn new(transaction_id: TransactionId, index: u32) -> TransactionOutpoint {
+        Self { inner: Arc::new(TransactionOutpointInner { transaction_id, index }) }
+    }
+
     #[inline(always)]
     pub fn inner(&self) -> &TransactionOutpointInner {
         &self.inner
@@ -88,6 +92,11 @@ impl TransactionOutpoint {
     #[inline(always)]
     pub fn transaction_id(&self) -> TransactionId {
         self.inner().transaction_id
+    }
+
+    #[inline(always)]
+    pub fn index(&self) -> TransactionIndexType {
+        self.inner().index
     }
 
     #[inline(always)]
@@ -104,7 +113,7 @@ impl TransactionOutpoint {
 #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen)]
 impl TransactionOutpoint {
     #[cfg_attr(feature = "wasm32-sdk", wasm_bindgen(constructor))]
-    pub fn new(transaction_id: TransactionId, index: u32) -> TransactionOutpoint {
+    pub fn ctor(transaction_id: TransactionId, index: u32) -> TransactionOutpoint {
         Self { inner: Arc::new(TransactionOutpointInner { transaction_id, index }) }
     }
 

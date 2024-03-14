@@ -66,7 +66,6 @@ use crate::utxo::{NetworkParams, UtxoContext, UtxoEntryReference};
 use kaspa_consensus_client::UtxoEntry;
 use kaspa_consensus_core::constants::UNACCEPTED_DAA_SCORE;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-use kaspa_consensus_core::tx as cctx;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use kaspa_txscript::pay_to_address_script;
 use std::collections::VecDeque;
@@ -1068,9 +1067,15 @@ impl Generator {
         script_public_key: ScriptPublicKey,
         address: &Address,
     ) -> UtxoEntryReference {
-        let entry = cctx::UtxoEntry { amount, script_public_key, block_daa_score: UNACCEPTED_DAA_SCORE, is_coinbase: false };
         let outpoint = TransactionOutpoint::new(txid, 0);
-        let utxo = UtxoEntry { address: Some(address.clone()), outpoint: outpoint.into(), entry };
+        let utxo = UtxoEntry {
+            address: Some(address.clone()),
+            outpoint: outpoint.into(),
+            amount,
+            script_public_key,
+            block_daa_score: UNACCEPTED_DAA_SCORE,
+            is_coinbase: false, // entry
+        };
         UtxoEntryReference { utxo: Arc::new(utxo) }
     }
 

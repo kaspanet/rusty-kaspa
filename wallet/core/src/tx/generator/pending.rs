@@ -7,7 +7,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::rpc::DynRpcApi;
 use crate::tx::{DataKind, Generator};
-use crate::utxo::{UtxoContext, UtxoEntryReference};
+use crate::utxo::{UtxoContext, UtxoEntryId, UtxoEntryReference};
 use kaspa_consensus_core::sign::sign_with_multiple_v2;
 use kaspa_consensus_core::tx::{SignableTransaction, Transaction, TransactionId};
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionId};
@@ -16,7 +16,7 @@ pub(crate) struct PendingTransactionInner {
     /// Generator that produced the transaction
     pub(crate) generator: Generator,
     /// UtxoEntryReferences of the pending transaction
-    pub(crate) utxo_entries: AHashSet<UtxoEntryReference>,
+    pub(crate) utxo_entries: AHashMap<UtxoEntryId, UtxoEntryReference>,
     /// Transaction Id (cached in pending to avoid mutex lock)
     pub(crate) id: TransactionId,
     /// Signable transaction (actual transaction that will be signed and sent)
@@ -82,9 +82,9 @@ impl PendingTransaction {
         kind: DataKind,
     ) -> Result<Self> {
         let id = transaction.id();
-        let entries = utxo_entries.iter().map(|e| e.utxo.entry.clone()).collect::<Vec<_>>();
+        let entries = utxo_entries.iter().map(|e| e.utxo.as_ref().into()).collect::<Vec<_>>();
         let signable_tx = Mutex::new(SignableTransaction::with_entries(transaction, entries));
-        let utxo_entries = utxo_entries.into_iter().collect::<AHashSet<_>>();
+        let utxo_entries = utxo_entries.into_iter().map(|entry| (entry.id(), entry)).collect::<AHashMap<_, _>>();
         Ok(Self {
             inner: Arc::new(PendingTransactionInner {
                 generator: generator.clone(),
@@ -126,7 +126,7 @@ impl PendingTransaction {
     }
 
     /// Get UTXO entries [`AHashSet<UtxoEntryReference>`] of the pending transaction
-    pub fn utxo_entries(&self) -> &AHashSet<UtxoEntryReference> {
+    pub fn utxo_entries(&self) -> &AHashMap<UtxoEntryId, UtxoEntryReference> {
         &self.inner.utxo_entries
     }
 
@@ -164,6 +164,10 @@ impl PendingTransaction {
 
     pub fn transaction(&self) -> Transaction {
         self.inner.signable_tx.lock().unwrap().tx.clone()
+    }
+
+    pub fn signable_transaction(&self) -> SignableTransaction {
+        self.inner.signable_tx.lock().unwrap().clone()
     }
 
     pub fn rpc_transaction(&self) -> RpcTransaction {

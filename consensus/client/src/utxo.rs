@@ -12,7 +12,7 @@ const TS_UTXO_ENTRY: &'static str = r#"
  */
 export interface IUtxoEntry {
     /** @readonly */
-    address: Address | undefined;
+    address?: Address;
     /** @readonly */
     outpoint: ITransactionOutpoint;
     /** @readonly */
@@ -33,6 +33,8 @@ extern "C" {
     pub type UtxoEntryReferenceArrayT;
     #[wasm_bindgen(typescript_type = "IUtxoEntry")]
     pub type IUtxoEntry;
+    #[wasm_bindgen(typescript_type = "IUtxoEntry[]")]
+    pub type IUtxoEntryArray;
 }
 
 pub type UtxoEntryId = TransactionOutpointInner;
@@ -46,29 +48,40 @@ pub struct UtxoEntry {
     pub address: Option<Address>,
     #[wasm_bindgen(getter_with_clone)]
     pub outpoint: TransactionOutpoint,
-    #[wasm_bindgen(js_name=entry, getter_with_clone)]
-    pub entry: cctx::UtxoEntry,
+    pub amount: u64,
+    #[wasm_bindgen(js_name = scriptPublicKey, getter_with_clone)]
+    pub script_public_key: ScriptPublicKey,
+    #[wasm_bindgen(js_name = blockDaaScore)]
+    pub block_daa_score: u64,
+    #[wasm_bindgen(js_name = isCoinbase)]
+    pub is_coinbase: bool,
 }
 
 impl UtxoEntry {
     #[inline(always)]
     pub fn amount(&self) -> u64 {
-        self.entry.amount
+        self.amount
     }
     #[inline(always)]
     pub fn block_daa_score(&self) -> u64 {
-        self.entry.block_daa_score
+        self.block_daa_score
     }
 
     #[inline(always)]
     pub fn is_coinbase(&self) -> bool {
-        self.entry.is_coinbase
+        self.is_coinbase
     }
 }
 
 impl From<&UtxoEntry> for cctx::UtxoEntry {
-    fn from(value: &UtxoEntry) -> Self {
-        value.entry.clone()
+    fn from(utxo: &UtxoEntry) -> Self {
+        cctx::UtxoEntry {
+            amount: utxo.amount,
+            script_public_key: utxo.script_public_key.clone(),
+            block_daa_score: utxo.block_daa_score,
+            is_coinbase: utxo.is_coinbase,
+        }
+        // value.entry.clone()
     }
 }
 
@@ -104,12 +117,12 @@ impl UtxoEntryReference {
 
     #[wasm_bindgen(getter, js_name = "isCoinbase")]
     pub fn is_coinbase(&self) -> bool {
-        self.utxo.entry.is_coinbase
+        self.utxo.is_coinbase
     }
 
     #[wasm_bindgen(getter, js_name = "blockDaaScore")]
     pub fn block_daa_score(&self) -> u64 {
-        self.utxo.entry.block_daa_score
+        self.utxo.block_daa_score
     }
 }
 
@@ -126,7 +139,7 @@ impl UtxoEntryReference {
 
     #[inline(always)]
     pub fn amount_as_ref(&self) -> &u64 {
-        &self.utxo.entry.amount
+        &self.utxo.amount
     }
 
     #[inline(always)]
@@ -288,7 +301,7 @@ impl From<Vec<UtxoEntry>> for UtxoEntries {
 
 impl From<UtxoEntries> for Vec<Option<cctx::UtxoEntry>> {
     fn from(value: UtxoEntries) -> Self {
-        value.0.as_ref().iter().map(|entry| Some(entry.utxo.entry.clone())).collect::<Vec<_>>()
+        value.0.as_ref().iter().map(|entry| Some(entry.utxo.as_ref().into())).collect::<Vec<_>>()
     }
 }
 
@@ -328,7 +341,7 @@ impl TryCastFromJs for UtxoEntryReference {
             if let Ok(utxo_entry) = UtxoEntry::try_ref_from_js_value(&value) {
                 Ok(Self::from(utxo_entry.clone()))
             } else if let Some(object) = Object::try_from(value.as_ref()) {
-                let address = Address::try_from(object.get_value("address")?)?;
+                let address = object.get_cast::<Address>("address")?.into_owned();
                 let outpoint = TransactionOutpoint::try_from(object.get_value("outpoint")?.as_ref())?;
                 let utxo_entry = Object::from(object.get_value("utxoEntry")?);
                 let amount = utxo_entry.get_u64("amount")?;
@@ -336,11 +349,8 @@ impl TryCastFromJs for UtxoEntryReference {
                 let block_daa_score = utxo_entry.get_u64("blockDaaScore")?;
                 let is_coinbase = utxo_entry.get_bool("isCoinbase")?;
 
-                let utxo_entry = UtxoEntry {
-                    address: Some(address),
-                    outpoint,
-                    entry: cctx::UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase },
-                };
+                let utxo_entry =
+                    UtxoEntry { address: Some(address), outpoint, amount, script_public_key, block_daa_score, is_coinbase };
 
                 Ok(UtxoEntryReference::from(utxo_entry))
             } else {
@@ -363,11 +373,8 @@ impl UtxoEntryReference {
         let block_daa_score = 0;
         let is_coinbase = true;
 
-        let utxo_entry = UtxoEntry {
-            address: Some(address.clone()),
-            outpoint,
-            entry: cctx::UtxoEntry { amount, script_public_key, block_daa_score, is_coinbase },
-        };
+        let utxo_entry =
+            UtxoEntry { address: Some(address.clone()), outpoint, amount, script_public_key, block_daa_score, is_coinbase };
 
         UtxoEntryReference::from(utxo_entry)
     }

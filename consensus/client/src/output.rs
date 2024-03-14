@@ -43,6 +43,10 @@ pub struct TransactionOutput {
 }
 
 impl TransactionOutput {
+    pub fn new(value: u64, script_public_key: ScriptPublicKey) -> TransactionOutput {
+        Self { inner: Arc::new(Mutex::new(TransactionOutputInner { value, script_public_key })) }
+    }
+
     pub fn new_with_inner(inner: TransactionOutputInner) -> Self {
         Self { inner: Arc::new(Mutex::new(inner)) }
     }
@@ -60,7 +64,7 @@ impl TransactionOutput {
 impl TransactionOutput {
     #[wasm_bindgen(constructor)]
     /// TransactionOutput constructor
-    pub fn new(value: u64, script_public_key: &ScriptPublicKey) -> TransactionOutput {
+    pub fn ctor(value: u64, script_public_key: &ScriptPublicKey) -> TransactionOutput {
         Self { inner: Arc::new(Mutex::new(TransactionOutputInner { value, script_public_key: script_public_key.clone() })) }
     }
 
@@ -83,12 +87,6 @@ impl TransactionOutput {
     pub fn set_script_public_key(&self, v: &ScriptPublicKey) {
         self.inner().script_public_key = v.clone();
     }
-
-    // TODO-WASM
-    // #[wasm_bindgen(js_name=isDust)]
-    // pub fn is_dust(&self) -> bool {
-    //     is_transaction_output_dust(self)
-    // }
 }
 
 impl AsRef<TransactionOutput> for TransactionOutput {
@@ -99,7 +97,13 @@ impl AsRef<TransactionOutput> for TransactionOutput {
 
 impl From<cctx::TransactionOutput> for TransactionOutput {
     fn from(output: cctx::TransactionOutput) -> Self {
-        TransactionOutput::new(output.value, &output.script_public_key)
+        TransactionOutput::new(output.value, output.script_public_key)
+    }
+}
+
+impl From<&cctx::TransactionOutput> for TransactionOutput {
+    fn from(output: &cctx::TransactionOutput) -> Self {
+        TransactionOutput::new(output.value, output.script_public_key.clone())
     }
 }
 
@@ -119,7 +123,7 @@ impl TryFrom<&JsValue> for TransactionOutput {
             workflow_log::log_trace!("js_value->TransactionOutput: has_address:{has_address:?}");
             let value = object.get_u64("value")?;
             let script_public_key = ScriptPublicKey::try_cast_from(object.get_value("scriptPublicKey")?)?;
-            Ok(TransactionOutput::new(value, script_public_key.as_ref()))
+            Ok(TransactionOutput::new(value, script_public_key.into_owned()))
         } else {
             Err("TransactionInput must be an object".into())
         }

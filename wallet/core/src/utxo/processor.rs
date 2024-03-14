@@ -551,14 +551,10 @@ impl UtxoProcessor {
                             Ok(msg) => {
 
                                 // handle RPC channel connection and disconnection events
-
                                 match msg {
                                     RpcState::Opened => {
-
                                         if !this.is_connected() {
-
                                             this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
-
                                             this.inner.multiplexer.try_broadcast(Box::new(Events::Connect {
                                                 network_id : this.network_id().expect("network id expected during connection"),
                                                 url : this.rpc_url()

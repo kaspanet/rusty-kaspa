@@ -1,11 +1,13 @@
-//! Primitives for external transaction signing
+//! This module implements the primitives for external transaction signing.
 
 use crate::imports::*;
 use crate::result::Result;
+use crate::{
+    Transaction, TransactionInput, TransactionInputInner, TransactionOutpoint, TransactionOutput, UtxoEntry, UtxoEntryReference,
+};
 use cctx::VerifiableTransaction;
+use kaspa_addresses::Address;
 use kaspa_consensus_core::subnets::SubnetworkId;
-use kaspa_consensus_core::tx as cctx;
-use kaspa_consensus_core::tx::TransactionInput;
 use workflow_wasm::serde::{from_value, to_value};
 
 pub type SignedTransactionIndexType = u32;
@@ -17,6 +19,7 @@ pub struct Options {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SerializableUtxoEntry {
+    pub address: Option<Address>,
     pub amount: String,
     pub script_public_key: ScriptPublicKey,
     pub block_daa_score: String,
@@ -29,9 +32,23 @@ impl AsRef<SerializableUtxoEntry> for SerializableUtxoEntry {
     }
 }
 
+impl From<&UtxoEntryReference> for SerializableUtxoEntry {
+    fn from(utxo: &UtxoEntryReference) -> Self {
+        let utxo = utxo.utxo.as_ref();
+        Self {
+            address: utxo.address.clone(),
+            amount: utxo.amount.to_string(),
+            script_public_key: utxo.script_public_key.clone(),
+            block_daa_score: utxo.block_daa_score.to_string(),
+            is_coinbase: utxo.is_coinbase,
+        }
+    }
+}
+
 impl From<&cctx::UtxoEntry> for SerializableUtxoEntry {
     fn from(utxo: &cctx::UtxoEntry) -> Self {
         Self {
+            address: None,
             amount: utxo.amount.to_string(),
             script_public_key: utxo.script_public_key.clone(),
             block_daa_score: utxo.block_daa_score.to_string(),
@@ -65,7 +82,7 @@ pub struct SerializableTransactionInput {
 }
 
 impl SerializableTransactionInput {
-    pub fn new(input: &TransactionInput, utxo: &cctx::UtxoEntry) -> Self {
+    pub fn new(input: &cctx::TransactionInput, utxo: &cctx::UtxoEntry) -> Self {
         let utxo = SerializableUtxoEntry::from(utxo);
 
         Self {
@@ -79,7 +96,25 @@ impl SerializableTransactionInput {
     }
 }
 
-impl TryFrom<SerializableTransactionInput> for kaspa_consensus_core::tx::TransactionInput {
+impl TryFrom<&SerializableTransactionInput> for UtxoEntryReference {
+    type Error = Error;
+    fn try_from(input: &SerializableTransactionInput) -> Result<Self> {
+        let outpoint = TransactionOutpoint::new(input.transaction_id, input.index);
+
+        let utxo = UtxoEntry {
+            outpoint,
+            address: input.utxo.address.clone(),
+            amount: input.utxo.amount.parse()?,
+            script_public_key: input.utxo.script_public_key.clone(),
+            block_daa_score: input.utxo.block_daa_score.parse()?,
+            is_coinbase: input.utxo.is_coinbase,
+        };
+
+        Ok(Self { utxo: Arc::new(utxo) })
+    }
+}
+
+impl TryFrom<SerializableTransactionInput> for cctx::TransactionInput {
     type Error = Error;
     fn try_from(signable_input: SerializableTransactionInput) -> Result<Self> {
         Ok(Self {
@@ -90,6 +125,41 @@ impl TryFrom<SerializableTransactionInput> for kaspa_consensus_core::tx::Transac
             signature_script: signable_input.signature_script,
             sequence: signable_input.sequence.parse()?,
             sig_op_count: signable_input.sig_op_count,
+        })
+    }
+}
+
+impl TryFrom<&SerializableTransactionInput> for TransactionInput {
+    type Error = Error;
+    fn try_from(serializable_input: &SerializableTransactionInput) -> Result<Self> {
+        let utxo = UtxoEntryReference::try_from(serializable_input)?;
+
+        let previous_outpoint = TransactionOutpoint::new(serializable_input.transaction_id, serializable_input.index);
+        let inner = TransactionInputInner {
+            previous_outpoint,
+            signature_script: serializable_input.signature_script.clone(),
+            sequence: serializable_input.sequence.parse()?,
+            sig_op_count: serializable_input.sig_op_count,
+            utxo: Some(utxo),
+        };
+
+        Ok(TransactionInput::new_with_inner(inner))
+    }
+}
+
+impl TryFrom<&TransactionInput> for SerializableTransactionInput {
+    type Error = Error;
+    fn try_from(input: &TransactionInput) -> Result<Self> {
+        let inner = input.inner();
+        let utxo = inner.utxo.as_ref().ok_or(Error::MissingUtxoEntry)?;
+        let utxo = SerializableUtxoEntry::from(utxo);
+        Ok(Self {
+            transaction_id: inner.previous_outpoint.transaction_id(),
+            index: inner.previous_outpoint.index(),
+            signature_script: inner.signature_script.clone(),
+            sequence: inner.sequence.to_string(),
+            sig_op_count: inner.sig_op_count,
+            utxo,
         })
     }
 }
@@ -114,14 +184,28 @@ impl TryFrom<SerializableTransactionOutput> for cctx::TransactionOutput {
     }
 }
 
+impl TryFrom<&SerializableTransactionOutput> for TransactionOutput {
+    type Error = Error;
+    fn try_from(output: &SerializableTransactionOutput) -> Result<Self> {
+        Ok(TransactionOutput::new(output.value.parse()?, output.script_public_key.clone()))
+    }
+}
+
+impl TryFrom<&TransactionOutput> for SerializableTransactionOutput {
+    type Error = Error;
+    fn try_from(output: &TransactionOutput) -> Result<Self> {
+        let inner = output.inner();
+        Ok(Self { value: inner.value.to_string(), script_public_key: inner.script_public_key.clone() })
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SerializableTransaction {
-    pub version: u32,
+    pub id: TransactionId,
+    pub version: u16,
     pub inputs: Vec<SerializableTransactionInput>,
     pub outputs: Vec<SerializableTransactionOutput>,
-    pub tx_id: TransactionId,
-    pub tx_version: u16,
     pub subnetwork_id: SubnetworkId,
     pub lock_time: String,
     pub gas: String,
@@ -130,16 +214,16 @@ pub struct SerializableTransaction {
 }
 
 impl SerializableTransaction {
-    pub fn serialize_to_object(&self) -> JsValue {
-        to_value(self).unwrap()
+    pub fn serialize_to_object(&self) -> Result<JsValue> {
+        Ok(to_value(self)?)
     }
 
     pub fn deserialize_from_object(object: JsValue) -> Result<Self> {
         Ok(from_value(object)?)
     }
 
-    pub fn serialize_to_json(&self) -> String {
-        serde_json::to_string(self).unwrap()
+    pub fn serialize_to_json(&self) -> Result<String> {
+        Ok(serde_json::to_string(self)?)
     }
 
     pub fn deserialize_from_json(json: &str) -> Result<Self> {
@@ -159,15 +243,32 @@ impl SerializableTransaction {
         let outputs = transaction.outputs.clone();
 
         Ok(Self {
-            version: 2,
+            id: transaction.id(),
             inputs,
+            version: transaction.version,
             outputs: outputs.into_iter().map(Into::into).collect(),
-            tx_version: transaction.version,
             lock_time: transaction.lock_time.to_string(),
             subnetwork_id: transaction.subnetwork_id.clone(),
             gas: transaction.gas.to_string(),
             payload: transaction.payload.clone(),
-            tx_id: transaction.id(),
+        })
+    }
+
+    pub fn from_client_transaction(transaction: &Transaction) -> Result<Self> {
+        let inner = transaction.inner();
+
+        let inputs = inner.inputs.iter().map(TryFrom::try_from).collect::<Result<Vec<SerializableTransactionInput>>>()?;
+        let outputs = inner.outputs.iter().map(TryFrom::try_from).collect::<Result<Vec<SerializableTransactionOutput>>>()?;
+
+        Ok(Self {
+            inputs,
+            outputs,
+            version: inner.version,
+            lock_time: inner.lock_time.to_string(),
+            subnetwork_id: inner.subnetwork_id.clone(),
+            gas: inner.gas.to_string(),
+            payload: inner.payload.clone(),
+            id: inner.id,
         })
     }
 }
@@ -185,7 +286,7 @@ impl TryFrom<SerializableTransaction> for cctx::SignableTransaction {
         let outputs = signable.outputs.into_iter().map(TryInto::try_into).collect::<Result<Vec<_>>>()?;
 
         let tx = cctx::Transaction::new(
-            signable.tx_version,
+            signable.version,
             inputs,
             outputs,
             signable.lock_time.parse()?,
@@ -195,5 +296,16 @@ impl TryFrom<SerializableTransaction> for cctx::SignableTransaction {
         );
 
         Ok(Self::with_entries(tx, entries))
+    }
+}
+
+impl TryFrom<SerializableTransaction> for crate::Transaction {
+    type Error = Error;
+    fn try_from(tx: SerializableTransaction) -> Result<Self> {
+        let id = tx.id;
+        let inputs: Vec<TransactionInput> = tx.inputs.iter().map(TryInto::try_into).collect::<Result<Vec<_>>>()?;
+        let outputs: Vec<TransactionOutput> = tx.outputs.iter().map(TryInto::try_into).collect::<Result<Vec<_>>>()?;
+
+        Transaction::new(Some(id), tx.version, inputs, outputs, tx.lock_time.parse()?, tx.subnetwork_id, tx.gas.parse()?, tx.payload)
     }
 }

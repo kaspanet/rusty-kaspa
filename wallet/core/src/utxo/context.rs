@@ -250,7 +250,7 @@ impl UtxoContext {
 
             let mut context = self.context();
             let pending_utxo_entries = pending_tx.utxo_entries();
-            context.mature.retain(|entry| !pending_utxo_entries.contains(entry));
+            context.mature.retain(|entry| !pending_utxo_entries.contains_key(&entry.id()));
 
             let outgoing_transaction = OutgoingTransaction::new(current_daa_score, self.clone(), pending_tx.clone());
             self.processor().register_outgoing_transaction(outgoing_transaction.clone());
@@ -282,7 +282,7 @@ impl UtxoContext {
         let mut context = self.context();
 
         let outgoing_transaction = context.outgoing.remove(&pending_tx.id()).expect("outgoing transaction");
-        outgoing_transaction.utxo_entries().iter().for_each(|entry| {
+        outgoing_transaction.utxo_entries().iter().for_each(|(_, entry)| {
             context.mature.push(entry.clone());
         });
 
@@ -475,8 +475,8 @@ impl UtxoContext {
 
     pub async fn calculate_balance(&self) -> Balance {
         let context = self.context();
-        let mature: u64 = context.mature.iter().map(|e| e.as_ref().entry.amount).sum();
-        let pending: u64 = context.pending.values().map(|e| e.as_ref().entry.amount).sum();
+        let mature: u64 = context.mature.iter().map(|e| e.as_ref().amount).sum();
+        let pending: u64 = context.pending.values().map(|e| e.as_ref().amount).sum();
 
         // this will aggregate only transactions containing
         // the final payments (not compound transactions)
@@ -570,9 +570,9 @@ impl UtxoContext {
         let outgoing_transactions = self.processor().outgoing();
         let mut accepted_outgoing_transactions = HashSet::<OutgoingTransaction>::new();
 
-        utxos.retain(|id| {
+        utxos.retain(|utxo| {
             for outgoing_transaction in outgoing_transactions.iter() {
-                if outgoing_transaction.utxo_entries().contains(id) {
+                if outgoing_transaction.utxo_entries().contains_key(&utxo.id()) {
                     accepted_outgoing_transactions.insert((*outgoing_transaction).clone());
                     return false;
                 }

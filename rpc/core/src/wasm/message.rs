@@ -7,6 +7,7 @@ use js_sys::Object;
 use kaspa_addresses::Address;
 use kaspa_addresses::AddressOrStringArrayT;
 use kaspa_consensus_client::Transaction;
+use kaspa_consensus_client::UtxoEntryReference;
 use kaspa_consensus_wasm::SignableTransaction;
 use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;
 pub use serde_wasm_bindgen::from_value;
@@ -622,7 +623,7 @@ declare! {
 
 try_from! ( args: IGetBalanceByAddressRequest, GetBalanceByAddressRequest, {
     let js_value = JsValue::from(args);
-    let request = if let Ok(address) = Address::try_from(js_value.clone()) {
+    let request = if let Ok(address) = Address::try_owned_from(js_value.clone()) {
         GetBalanceByAddressRequest { address }
     } else {
         // TODO - evaluate Object property
@@ -1120,13 +1121,6 @@ try_from! ( args: IGetUtxosByAddressesRequest, GetUtxosByAddressesRequest, {
     Ok(request)
 });
 
-// #[wasm_bindgen]
-// extern "C" {
-//     #[wasm_bindgen(extends = Object, typescript_type = "UtxoEntry[]")]
-//     #[derive(Clone, Debug, PartialEq, Eq)]
-//     pub type GetUtxosByAddressesResponse;
-// }
-
 declare! {
     IGetUtxosByAddressesResponse,
     r#"
@@ -1142,7 +1136,12 @@ declare! {
 }
 
 try_from! ( args: GetUtxosByAddressesResponse, IGetUtxosByAddressesResponse, {
-    Ok(to_value(&args)?.into())
+    let GetUtxosByAddressesResponse { entries } = args;
+    let entries = entries.into_iter().map(UtxoEntryReference::from).collect::<Vec<UtxoEntryReference>>();
+    let entries = js_sys::Array::from_iter(entries.into_iter().map(JsValue::from));
+    let response = IGetUtxosByAddressesResponse::default();
+    response.set("entries", entries.as_ref())?;
+    Ok(response)
 });
 
 // ---

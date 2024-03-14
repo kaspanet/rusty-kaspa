@@ -1,10 +1,10 @@
 use crate::imports::*;
 use crate::result::Result;
-use crate::tx::PaymentOutputs;
+use crate::tx::{IPaymentOutputArray, PaymentOutputs};
 use crate::wasm::tx::consensus::get_consensus_params_by_address;
 use crate::wasm::tx::generator::*;
 use crate::wasm::tx::mass::MassCalculator;
-use kaspa_addresses::Address;
+use kaspa_addresses::{Address, AddressT};
 use kaspa_consensus_client::*;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_wasm::*;
@@ -15,16 +15,16 @@ use workflow_core::runtime::is_web;
 /// @category Wallet SDK
 #[wasm_bindgen(js_name=createTransaction)]
 pub fn create_transaction_js(
-    utxo_entry_source: JsValue,
-    outputs: JsValue,
-    change_address: JsValue,
+    utxo_entry_source: IUtxoEntryArray,
+    outputs: IPaymentOutputArray,
+    change_address: AddressT,
     priority_fee: BigInt,
     payload: JsValue,
     sig_op_count: JsValue,
     minimum_signatures: JsValue,
 ) -> crate::result::Result<SignableTransaction> {
-    let change_address = Address::try_from(change_address)?;
-    let params = get_consensus_params_by_address(&change_address);
+    let change_address = Address::try_cast_from(change_address)?;
+    let params = get_consensus_params_by_address(change_address.as_ref());
     let mc = MassCalculator::new(params);
 
     let utxo_entries = if let Some(utxo_entries) = utxo_entry_source.dyn_ref::<js_sys::Array>() {
@@ -34,7 +34,7 @@ pub fn create_transaction_js(
     };
     let priority_fee: u64 = priority_fee.try_into().map_err(|err| Error::custom(format!("invalid fee value: {err}")))?;
     let payload = payload.try_as_vec_u8().ok().unwrap_or_default();
-    let outputs: PaymentOutputs = outputs.try_into()?;
+    let outputs = PaymentOutputs::try_owned_from(outputs)?;
     let sig_op_count =
         if !sig_op_count.is_undefined() { sig_op_count.as_f64().expect("sigOpCount should be a number") as u8 } else { 1 };
 
@@ -50,13 +50,13 @@ pub fn create_transaction_js(
     let mut entries = vec![];
 
     let inputs = utxo_entries
-        .iter()
+        .into_iter()
         .enumerate()
         .map(|(sequence, reference)| {
             let UtxoEntryReference { utxo } = reference.as_ref();
             total_input_amount += utxo.amount();
             entries.push(reference.as_ref().clone());
-            TransactionInput::new(utxo.outpoint.clone(), vec![], sequence as u64, sig_op_count)
+            TransactionInput::new(utxo.outpoint.clone(), vec![], sequence as u64, sig_op_count, Some(reference.into_owned()))
         })
         .collect::<Vec<TransactionInput>>();
 
@@ -67,7 +67,7 @@ pub fn create_transaction_js(
     // TODO - Calculate mass and fees
 
     let outputs: Vec<TransactionOutput> = outputs.into();
-    let transaction = Transaction::new(0, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload)?;
+    let transaction = Transaction::new(None, 0, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload)?;
     let _fee = mc.calc_minimum_transaction_relay_fee(&transaction, minimum_signatures);
     let mtx = SignableTransaction::new(transaction, entries.into());
 

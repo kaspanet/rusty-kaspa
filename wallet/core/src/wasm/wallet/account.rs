@@ -115,7 +115,7 @@ impl TryFrom<JsValue> for AccountSendArgs {
     type Error = Error;
     fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
         if let Some(object) = Object::try_from(&js_value) {
-            let outputs = object.get::<PaymentOutputs>("outputs")?;
+            let outputs = object.get_cast::<PaymentOutputs>("outputs")?.into_owned();
 
             let priority_fee_sompi = object.get_u64("priorityFee").ok();
             let include_fees_in_amount = object.get_bool("includeFeesInAmount").unwrap_or(false);
