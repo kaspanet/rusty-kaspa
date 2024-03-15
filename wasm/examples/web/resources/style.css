@@ -5,6 +5,12 @@ body {
     font-family: "Consolas", "Andale Mono", monospace;
     /* white-space: pre-wrap; */
 }
+@media (prefers-color-scheme: dark) {
+    body {
+        background: rgb(41, 41, 40);
+        color: rgb(188, 189, 229);
+    }
+}
 
 code {
     display: block;
@@ -54,6 +60,10 @@ a:hover, .link:hover {
     text-decoration: none;
     cursor: pointer;
 }
+.link:disabled{
+    opacity:0.5;
+    cursor:not-allowed
+}
 
 input.address {
     font-size: 14px;
@@ -85,4 +95,22 @@ div.button {
     border: 1px solid rgb(0, 156, 117);
     border-radius: 10px;
     box-shadow: rgba(0, 0, 0, 0.16) 0px 3px 6px, rgba(0, 0, 0, 0.23) 0px 3px 6px;
+}
+
+.wallet{
+    padding:10px;
+    border:1px solid #DDD;
+    border-radius: 5px;
+    margin:2px;
+    display: inline-flex;
+    align-items: center;
+    cursor:pointer;
+}
+.wallet .title{
+    font-size:16px;
+    margin-left:10px;
+}
+.wallet .icon{
+    width:50px;
+    height:50px;
 }

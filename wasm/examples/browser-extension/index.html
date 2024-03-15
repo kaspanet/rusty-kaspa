@@ -3,17 +3,17 @@
     <head>
         <link rel="stylesheet" href="./resources/style.css">
         <script type="module">
-            import { log, stringify, currentNetwork } from './resources/utils.js';
+            // import { log, stringify, currentNetwork } from './resources/utils.js';
 
-            import * as kaspa from '../../web/kaspa/kaspa.js';
-            let { Resolver, RpcClient, Encoding, kaspaToSompi } = kaspa;
+            // import * as kaspa from '../../web/kaspa/kaspa.js';
+            // let { Resolver, RpcClient, Encoding, kaspaToSompi } = kaspa;
 
             (async () => {
-                await kaspa.default('../../web/kaspa/kaspa_bg.wasm');
+                //await kaspa.default('../../web/kaspa/kaspa_bg.wasm');
 
-                let networkId = currentNetwork();
-                log(`Connecting to Kaspa network...`);
-                log(`Selected network is ${networkId}...`);
+                // let networkId = currentNetwork();
+                // log(`Connecting to Kaspa network...`);
+                // log(`Selected network is ${networkId}...`);
                 
                 // const rpc = new RpcClient({
                 //     resolver : new Resolver(),
@@ -30,37 +30,73 @@
                 // log("Disconnected...");
                 // await rpc.disconnect();
 
-
+                const $ = q=>document.querySelector(q);
                 let el = document.createElement("div");
                 document.body.appendChild(el);
                 el.innerHTML = `
-                    <div id="connect" class="link">Connect wallet</div>
+                    <button id="connect" class="link">Connect wallet</button>
+                    <div id="wallets"></div>
                     <br>&nbsp;<br>
                     <br/><input id="amount" class="amount" type="text" value="" placeholder=" Enter amount to request payment..." />
                     <br>&nbsp;<br>
-                    <div id="request" class="link">Request payment</div>
+                    <button id="request" class="link">Request payment</button>
                     <br>&nbsp;<br>
                 `;
 
-                let connect = document.getElementById("connect");
-                submit.addEventListener("click", async (e) => {
+                let connect = $("#connect");
+                connect.addEventListener("click", async (e) => {
                     e.preventDefault();
-                    // TODO ... connect wallet
+                    
+                    let list = $("#wallets");
+                    let temp = $("#wallet-tpl");
+                    
+                    let wallets = discover_kaspa_wallet();
+                    wallets.forEach(w=>{
+                        console.log("wallet", w)
+                        let wallet = temp.content.cloneNode(true);
+                        wallet.querySelector(".title").innerHTML = w.name;
+                        wallet.querySelector(".icon").src = w.icon;
+                        wallet.querySelector(".wallet").dataset.uuid = w.uuid;
+                        list.appendChild(wallet);
+                    })
+
+                    if (wallets.length){
+                        connect.disabled = true
+                    }
+                    
                 });
 
-                let request = document.getElementById("request");
-                submit.addEventListener("click", async (e) => {
+                let wallets = $("#wallets");
+                wallets.addEventListener("click", async (e) => {
                     e.preventDefault();
-                    let input = document.getElementById("amount");
-                    let amount = input.value;
-                    let sompi = kaspaToSompi(amount);
-                    // TODO ... request payment
-                    input.value = "";
+                    let uuid = e.target.closest(".wallet").dataset.uuid;
+                    let wallets = discover_kaspa_wallet();
+                    let wallet = wallets.find(w=>w.uuid == uuid)
+                    console.log("wallet", uuid, wallet)
+                    if (!wallet?.api)
+                        return
+
+                    let result = await wallet.api.connect();
+                    console.log("wallet.api.connect result", result)
+
+                    // let input = document.getElementById("amount");
+                    // let amount = input.value;
+                    // //let sompi = kaspaToSompi(amount);
+                    // // TODO ... request payment
+                    // input.value = "";
+                    // Kaspa.send({address: "xxxx", amount:13.4});
                 });
 
             })();
 
         </script>
     </head>
-    <body></body>
+    <body>
+        <template id="wallet-tpl">
+            <div class="wallet">
+                <img class="icon" width="50" height="50">
+                <h2 class="title"></h2>
+            </div>
+          </template>
+    </body>
 </html>
