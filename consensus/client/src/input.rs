@@ -90,6 +90,11 @@ impl TransactionInput {
     pub fn sig_op_count(&self) -> u8 {
         self.inner().sig_op_count
     }
+
+    pub fn utxo(&self) -> Option<UtxoEntryReference> {
+        self.inner().utxo.clone()
+    }
+    
 }
 
 #[wasm_bindgen]

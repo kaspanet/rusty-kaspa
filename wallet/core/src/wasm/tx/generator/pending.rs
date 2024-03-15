@@ -101,7 +101,7 @@ impl PendingTransaction {
     /// Serializes the transaction to a pure JavaScript Object.
     /// The schema of the JavaScript object is defined by {@link ISerializableTransaction}.
     /// @see {@link ISerializableTransaction}
-    /// @see {@link Transaction}
+    /// @see {@link Transaction}, {@link ISerializableTransaction}
     #[wasm_bindgen(js_name = "serializeToObject")]
     pub fn serialize_to_object(&self) -> Result<ITransaction> {
         Ok(numeric::SerializableTransaction::from_cctx_transaction(&self.inner.transaction(), self.inner.utxo_entries())?
@@ -112,7 +112,7 @@ impl PendingTransaction {
     /// Serializes the transaction to a JSON string.
     /// The schema of the JSON is defined by {@link ISerializableTransaction}.
     /// Once serialized, the transaction can be deserialized using {@link Transaction.deserializeFromJSON}.
-    /// @see {@link Transaction}
+    /// @see {@link Transaction}, {@link ISerializableTransaction}
     #[wasm_bindgen(js_name = "serializeToJSON")]
     pub fn serialize_to_json(&self) -> Result<String> {
         Ok(numeric::SerializableTransaction::from_cctx_transaction(&self.inner.transaction(), self.inner.utxo_entries())?
@@ -121,7 +121,7 @@ impl PendingTransaction {
 
     /// Serializes the transaction to a "Safe" JSON schema where it converts all `bigint` values to `string` to avoid potential client-side precision loss.
     /// Once serialized, the transaction can be deserialized using {@link Transaction.deserializeFromSafeJSON}.
-    /// @see {@link Transaction}
+    /// @see {@link Transaction}, {@link ISerializableTransaction}
     #[wasm_bindgen(js_name = "serializeToSafeJSON")]
     pub fn serialize_to_json_safe(&self) -> Result<String> {
         Ok(string::SerializableTransaction::from_cctx_transaction(&self.inner.transaction(), self.inner.utxo_entries())?
