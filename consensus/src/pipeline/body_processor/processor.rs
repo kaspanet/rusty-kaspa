@@ -55,7 +55,7 @@ pub struct BlockBodyProcessor {
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
-    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
+    pub(super) ghostdag_primary_store: Arc<DbGhostdagStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
@@ -92,7 +92,7 @@ impl BlockBodyProcessor {
 
         db: Arc<DB>,
         statuses_store: Arc<RwLock<DbStatusesStore>>,
-        ghostdag_store: Arc<DbGhostdagStore>,
+        ghostdag_primary_store: Arc<DbGhostdagStore>,
         headers_store: Arc<DbHeadersStore>,
         block_transactions_store: Arc<DbBlockTransactionsStore>,
         body_tips_store: Arc<RwLock<DbTipsStore>>,
@@ -116,7 +116,7 @@ impl BlockBodyProcessor {
             db,
             statuses_store,
             reachability_service,
-            ghostdag_store,
+            ghostdag_primary_store,
             headers_store,
             block_transactions_store,
             body_tips_store,

@@ -25,7 +25,7 @@ impl BlockBodyProcessor {
     }
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        let (pmt, _) = self.window_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap())?;
+        let (pmt, _) = self.window_manager.calc_past_median_time(&self.ghostdag_primary_store.get_data(block.hash()).unwrap())?;
         for tx in block.transactions.iter() {
             if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, pmt) {
                 return Err(RuleError::TxInContextFailed(tx.id(), e));

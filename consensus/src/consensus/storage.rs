@@ -192,7 +192,6 @@ impl ConsensusStorage {
             parents_builder.build(),
             children_builder.build(),
         )));
-
         let ghostdag_stores = Arc::new(
             (0..=params.max_block_level)
                 .map(|level| {

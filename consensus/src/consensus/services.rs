@@ -126,6 +126,7 @@ impl ConsensusServices {
                         relations_services[level].clone(),
                         storage.headers_store.clone(),
                         reachability_service.clone(),
+                        level != 0,
                     )
                 })
                 .collect_vec(),
@@ -185,6 +186,7 @@ impl ConsensusServices {
             parents_manager.clone(),
             reachability_service.clone(),
             ghostdag_managers.clone(),
+            ghostdag_primary_manager.clone(),
             dag_traversal_manager.clone(),
             window_manager.clone(),
             params.max_block_level,
