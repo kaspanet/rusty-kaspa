@@ -229,6 +229,20 @@ impl Rpc {
                     }
                 }
             }
+            RpcApiOps::GetUtxoReturnAddress => {
+                if argv.is_empty() || argv.len() != 2 {
+                    return Err(Error::custom("Please specify a txid and a accepting_block_daa_score"));
+                }
+
+                let txid = argv.remove(0);
+                let txid = RpcHash::from_hex(txid.as_str())?;
+
+                let accepting_block_daa_score = argv.remove(0).parse::<u64>()?;
+
+                let result = rpc.get_utxo_return_address_call(GetUtxoReturnAddressRequest { txid, accepting_block_daa_score }).await?;
+
+                self.println(&ctx, result);
+            }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");
                 return Ok(());

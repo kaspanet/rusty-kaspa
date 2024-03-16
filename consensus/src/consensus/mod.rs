@@ -49,15 +49,16 @@ use kaspa_consensus_core::{
     errors::{
         coinbase::CoinbaseResult,
         consensus::{ConsensusError, ConsensusResult},
+        difficulty::DifficultyError,
+        pruning::PruningImportError,
         tx::TxResult,
     },
-    errors::{difficulty::DifficultyError, pruning::PruningImportError},
     header::Header,
     muhash::MuHashExtensions,
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
-    tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
+    tx::{MutableTransaction, ScriptPublicKey, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
@@ -608,6 +609,69 @@ impl ConsensusApi for Consensus {
         }
 
         sample_headers
+    }
+
+    fn get_utxo_return_address(&self, txid: Hash, daa_score: u64) -> Option<ScriptPublicKey> {
+        // We need consistency between the past pruning points, selected chain and header store reads
+        let _guard = self.pruning_lock.blocking_read();
+
+        let sc_read = self.selected_chain_store.read();
+
+        let low = self.pruning_point_store.read().get().unwrap().pruning_point;
+        let high = sc_read.get_tip().unwrap().1;
+
+        let mut low_index = sc_read.get_by_hash(low).unwrap();
+        let mut high_index = sc_read.get_by_hash(high).unwrap();
+
+        // let mut locator = Vec::with_capacity((high_index - low_index).ceiling_log_base_2() as usize);
+        // let mut current_index = high_index;
+        let mut matching_chain_block_hash: Option<Hash> = None;
+        while low_index < high_index {
+            let mid = low_index + (high_index - low_index) / 2;
+
+            if let Ok(hash) = sc_read.get_by_index(mid) {
+                if let Ok(compact_header) = self.headers_store.get_compact_header_data(hash) {
+                    if compact_header.daa_score == daa_score {
+                        // We found the chain block we need
+                        matching_chain_block_hash = Some(hash);
+                        break;
+                    } else if compact_header.daa_score < daa_score {
+                        low_index = mid + 1;
+                    } else {
+                        high_index = mid - 1;
+                    }
+                } else {
+                    println!("Did not find a compact header with hash {}", hash);
+                    break;
+                }
+            } else {
+                println!("Did not find a hash at index {}", mid);
+                break;
+            }
+        }
+
+        if matching_chain_block_hash.is_none() {
+            println!("No matching chain block hash found");
+            return None;
+        }
+
+        if let Ok(acceptance_data) = self.acceptance_data_store.get(matching_chain_block_hash.unwrap()) {
+            let containing_acceptance = acceptance_data
+                .iter()
+                .find(|&mbad| mbad.accepted_transactions.iter().find(|&tx| tx.transaction_id == txid).is_some())
+                .cloned();
+
+            if let Some(containing_acceptance) = containing_acceptance {
+                // I found the merged block containing the TXID
+                // let txs = self.block_transactions_store.get(containing_acceptance.block_hash).unwrap().iter().find(|tx| => )
+            } else {
+                return None;
+            }
+
+            return None;
+        } else {
+            return None;
+        };
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
