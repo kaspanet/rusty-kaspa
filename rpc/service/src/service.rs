@@ -781,6 +781,17 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         }
     }
 
+    async fn get_utxo_return_address_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetUtxoReturnAddressRequest,
+    ) -> RpcResult<GetUtxoReturnAddressResponse> {
+        // let session = self.consensus_manager.consensus().session().await;
+        println!("{} {}", request.txid, request.accepting_block_daa_score);
+        // let mut maybe_spk = session.async_get_utxo_return_address(request.txid, request.accepting_block_daa_score).await;
+        Ok(GetUtxoReturnAddressResponse { return_address: None })
+    }
+
     async fn ping_call(&self, _connection: Option<&DynRpcConnection>, _: PingRequest) -> RpcResult<PingResponse> {
         Ok(PingResponse {})
     }
