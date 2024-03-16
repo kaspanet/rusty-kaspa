@@ -41,6 +41,7 @@ use crate::{
         window::{WindowManager, WindowType},
     },
 };
+use kaspa_addresses::Address;
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::{
@@ -65,6 +66,7 @@ use kaspa_consensus_core::{
     muhash::MuHashExtensions,
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
+    return_address::ReturnAddressError,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
@@ -685,6 +687,10 @@ impl ConsensusApi for Consensus {
         }
 
         sample_headers
+    }
+
+    fn get_utxo_return_address(&self, txid: Hash, target_daa_score: u64) -> Result<Address, ReturnAddressError> {
+        self.virtual_processor.get_utxo_return_address(txid, target_daa_score, self.get_source(), &self.config)
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {

@@ -1,4 +1,5 @@
 use futures_util::future::BoxFuture;
+use kaspa_addresses::Address;
 use kaspa_muhash::MuHash;
 use std::sync::Arc;
 
@@ -18,6 +19,7 @@ use crate::{
     },
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
+    return_address::ReturnAddressError,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath,
@@ -167,6 +169,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
+        unimplemented!()
+    }
+
+    fn get_utxo_return_address(&self, txid: Hash, daa_score: u64) -> Result<Address, ReturnAddressError> {
         unimplemented!()
     }
 

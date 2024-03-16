@@ -47,6 +47,8 @@ impl Router {
                 GetCurrentBlockColor,
                 GetCoinSupply,
                 GetConnectedPeerInfo,
+                GetDaaScoreTimestampEstimate,
+                GetUtxoReturnAddress,
                 GetCurrentNetwork,
                 GetDaaScoreTimestampEstimate,
                 GetFeeEstimate,
