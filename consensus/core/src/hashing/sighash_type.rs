@@ -51,4 +51,3 @@ impl SigHashType {
         Ok(Self(val))
     }
 }
-

@@ -94,7 +94,6 @@ impl TransactionInput {
     pub fn utxo(&self) -> Option<UtxoEntryReference> {
         self.inner().utxo.clone()
     }
-    
 }
 
 #[wasm_bindgen]
