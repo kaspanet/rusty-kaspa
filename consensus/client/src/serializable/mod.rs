@@ -49,7 +49,21 @@ export interface ISerializableTransactionOutput {
 /**
  * Interface defines the structure of a serializable transaction.
  * 
- * @see {@link Transaction}
+ * Serializable transactions can be produced using 
+ * {@link Transaction.serializeToJSON},
+ * {@link Transaction.serializeToSafeJSON} and 
+ * {@link Transaction.serializeToObject} 
+ * functions for processing (signing) in external systems.
+ * 
+ * Once the transaction is signed, it can be deserialized
+ * into {@link Transaction} using {@link Transaction.deserializeFromJSON}
+ * and {@link Transaction.deserializeFromSafeJSON} functions. 
+ * 
+ * @see {@link Transaction},
+ * {@link ISerializableTransactionInput},
+ * {@link ISerializableTransactionOutput},
+ * {@link ISerializableUtxoEntry}
+ * 
  * @category Wallet SDK
  */
 export interface ISerializableTransaction {
