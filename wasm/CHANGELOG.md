@@ -2,6 +2,16 @@ Latest online documentation available at: https://kaspa.aspectron.org/docs/
 
 ### Latest
 
+- Fix type checks when passing arrays to transaction `Generator` entries.
+
+### Release 2024-03-14
+
+- Introcue IWASM32BindingsConfig for configuration of class naming when using WASM32 bindings.
+- Introduce serializeToJSON for `PendingTransaction` class (deserializable with `Transaction` class).
+- Introduce serializeToJSON and deserializeFromJSON methods for `Transaction` class.
+
+### Release 2024-03-11
+
 - Fix `requestAnimationFrame` use in chrome extension environment.
 - Add rejection in `Generator` when `priorityFee` is `undefined` while outputs are present.
 - Introduce `CryptoBox` class for encryption/decryption of data using public/private keys.

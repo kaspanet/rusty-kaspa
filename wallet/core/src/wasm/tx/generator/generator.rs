@@ -262,7 +262,7 @@ impl TryFrom<IGeneratorSettingsObject> for GeneratorSettings {
 
         let final_priority_fee = args.get::<IFees>("priorityFee")?.try_into()?;
 
-        let generator_source = if let Some(context) = args.try_get_cast::<UtxoContext>("entries")? {
+        let generator_source = if let Ok(Some(context)) = args.try_get_cast::<UtxoContext>("entries") {
             GeneratorSource::UtxoContext(context.into_owned())
         } else if let Some(utxo_entries) = args.try_get_value("entries")? {
             GeneratorSource::UtxoEntries(utxo_entries.try_into_utxo_entry_references()?)
