@@ -398,7 +398,7 @@ impl Args {
             rpclisten_json: m.get_one::<WrpcNetAddress>("rpclisten-json").cloned().or(defaults.rpclisten_json),
             unsafe_rpc: arg_match_unwrap_or::<bool>(&m, "unsaferpc", defaults.unsafe_rpc),
             wrpc_verbose: false,
-            log_level: m.get_one::<String>("log_level").cloned().unwrap(),
+            log_level: arg_match_unwrap_or::<String>(&m, "log_level", defaults.log_level),
             async_threads: arg_match_unwrap_or::<usize>(&m, "async_threads", defaults.async_threads),
             connect_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "connect-peers", defaults.connect_peers),
             add_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "add-peers", defaults.add_peers),
