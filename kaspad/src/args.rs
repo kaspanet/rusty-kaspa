@@ -31,6 +31,7 @@ pub struct Args {
     // NOTE: it is best if property names match config file fields
     pub appdir: Option<String>,
     pub logdir: Option<String>,
+    #[serde(rename = "nologfiles")]
     pub no_log_files: bool,
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub rpclisten: Option<ContextualNetAddress>,
@@ -38,16 +39,21 @@ pub struct Args {
     pub rpclisten_borsh: Option<WrpcNetAddress>,
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub rpclisten_json: Option<WrpcNetAddress>,
+    #[serde(rename = "unsaferpc")]
     pub unsafe_rpc: bool,
     pub wrpc_verbose: bool,
+    #[serde(rename = "loglevel")]
     pub log_level: String,
     pub async_threads: usize,
+    #[serde(rename = "connect")]
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub connect_peers: Vec<ContextualNetAddress>,
+    #[serde(rename = "addpeer")]
     #[serde_as(as = "Vec<DisplayFromStr>")]
     pub add_peers: Vec<ContextualNetAddress>,
     #[serde_as(as = "Option<DisplayFromStr>")]
     pub listen: Option<ContextualNetAddress>,
+    #[serde(rename = "uacomment")]
     pub user_agent_comments: Vec<String>,
     pub utxoindex: bool,
     pub reset_db: bool,
@@ -77,7 +83,9 @@ pub struct Args {
     pub prealloc_amount: u64,
 
     pub disable_upnp: bool,
+    #[serde(rename = "nodnsseed")]
     pub disable_dns_seeding: bool,
+    #[serde(rename = "nogrpc")]
     pub disable_grpc: bool,
     pub ram_scale: f64,
 }
