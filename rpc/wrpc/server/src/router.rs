@@ -53,7 +53,6 @@ impl Router {
                 GetFeeEstimateExperimental,
                 GetHeaders,
                 GetInfo,
-                GetInfo,
                 GetMempoolEntries,
                 GetMempoolEntriesByAddresses,
                 GetMempoolEntry,
