@@ -621,10 +621,31 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     }
 
     async fn get_utxo_return_address_call(&self, request: GetUtxoReturnAddressRequest) -> RpcResult<GetUtxoReturnAddressResponse> {
-        // let session = self.consensus_manager.consensus().session().await;
-        println!("{} {}", request.txid, request.accepting_block_daa_score);
-        // let mut maybe_spk = session.async_get_utxo_return_address(request.txid, request.accepting_block_daa_score).await;
-        Ok(GetUtxoReturnAddressResponse { return_address: None })
+        let session = self.consensus_manager.consensus().session().await;
+
+        let maybe_spk = session.async_get_utxo_return_address(request.txid, request.accepting_block_daa_score).await;
+
+        let mut return_address = None;
+
+        // Convert a SPK to an Address
+        if let Some(spk) = maybe_spk {
+            let script = spk.script();
+
+            // Address scripts are only either 34 or 35 in length:
+            if script.len() == 34 && script[0] == 0x20 && script[33] == 0xac {
+                return_address = Some(RpcAddress::new(self.config.prefix(), kaspa_addresses::Version::PubKey, &script[1..33]));
+            } else if script.len() == 35 {
+                // Could be ECDSA address OR P2SH
+                if script[0] == 0x21 && script[34] == 0xab {
+                    return_address =
+                        Some(RpcAddress::new(self.config.prefix(), kaspa_addresses::Version::PubKeyECDSA, &script[1..34]));
+                } else if script[0] == 0xaa && script[1] == 0x20 && script[34] == 0x87 {
+                    return_address = Some(RpcAddress::new(self.config.prefix(), kaspa_addresses::Version::ScriptHash, &script[2..34]));
+                }
+            }
+        };
+
+        Ok(GetUtxoReturnAddressResponse { return_address })
     }
 
     async fn ping_call(&self, _: PingRequest) -> RpcResult<PingResponse> {

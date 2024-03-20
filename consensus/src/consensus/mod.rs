@@ -92,6 +92,9 @@ use crate::model::stores::selected_chain::SelectedChainStoreReader;
 
 use std::cmp;
 
+use crate::model::stores::utxo_diffs::UtxoDiffsStoreReader;
+use kaspa_consensus_core::utxo::utxo_diff::ImmutableUtxoDiff;
+
 pub struct Consensus {
     // DB
     db: Arc<DB>,
@@ -626,7 +629,7 @@ impl ConsensusApi for Consensus {
         // let mut locator = Vec::with_capacity((high_index - low_index).ceiling_log_base_2() as usize);
         // let mut current_index = high_index;
         let mut matching_chain_block_hash: Option<Hash> = None;
-        while low_index < high_index {
+        while low_index <= high_index {
             let mid = low_index + (high_index - low_index) / 2;
 
             if let Ok(hash) = sc_read.get_by_index(mid) {
@@ -655,7 +658,9 @@ impl ConsensusApi for Consensus {
             return None;
         }
 
-        if let Ok(acceptance_data) = self.acceptance_data_store.get(matching_chain_block_hash.unwrap()) {
+        let matching_chain_block_hash = matching_chain_block_hash?;
+
+        if let Ok(acceptance_data) = self.acceptance_data_store.get(matching_chain_block_hash) {
             let containing_acceptance = acceptance_data
                 .iter()
                 .find(|&mbad| mbad.accepted_transactions.iter().find(|&tx| tx.transaction_id == txid).is_some())
@@ -663,15 +668,33 @@ impl ConsensusApi for Consensus {
 
             if let Some(containing_acceptance) = containing_acceptance {
                 // I found the merged block containing the TXID
-                // let txs = self.block_transactions_store.get(containing_acceptance.block_hash).unwrap().iter().find(|tx| => )
-            } else {
-                return None;
-            }
+                // Now I need to find the txid
+                let tx = self
+                    .block_transactions_store
+                    .get(containing_acceptance.block_hash)
+                    .unwrap()
+                    .iter()
+                    .find(|&tx| tx.id() == txid)
+                    .cloned()
+                    .unwrap();
 
-            return None;
-        } else {
-            return None;
+                if tx.inputs.is_empty() {
+                    return None;
+                }
+
+                let first_input = &tx.inputs[0];
+
+                let prev_outpoint = &first_input.previous_outpoint;
+
+                let utxo_diff = self.utxo_diffs_store.get(matching_chain_block_hash).unwrap();
+
+                let removed_diffs = utxo_diff.removed();
+
+                return Some(removed_diffs.get(prev_outpoint)?.script_public_key.clone());
+            }
         };
+
+        return None;
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
