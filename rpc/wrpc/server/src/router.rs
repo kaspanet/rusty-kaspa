@@ -49,7 +49,6 @@ impl Router {
                 GetCurrentNetwork,
                 GetHeaders,
                 GetInfo,
-                GetInfo,
                 GetMempoolEntries,
                 GetMempoolEntriesByAddresses,
                 GetMempoolEntry,
