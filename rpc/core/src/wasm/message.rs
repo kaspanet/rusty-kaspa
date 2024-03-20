@@ -795,14 +795,25 @@ declare! {
      */
     export interface IGetBlockTemplateRequest {
         payAddress : Address | string;
-        extraData? : HexString;
+        /**
+         * `extraData` can contain a user-supplied plain text or a byte array represented by `Uint8array`.
+         */
+        extraData? : string | Uint8Array;
     }
     "#,
 }
 
 try_from! ( args: IGetBlockTemplateRequest, GetBlockTemplateRequest, {
     let pay_address = args.get_cast::<Address>("payAddress")?.into_owned();
-    let extra_data = args.get_vec_u8("extraData").unwrap_or_default();
+    let extra_data = if let Some(extra_data) = args.try_get_value("extraData")? {
+        if let Some(text) = extra_data.as_string() {
+            text.into_bytes()
+        } else {
+            extra_data.try_as_vec_u8()?
+        }
+    } else {
+        Default::default()
+    };
     Ok(GetBlockTemplateRequest {
         pay_address,
         extra_data,
