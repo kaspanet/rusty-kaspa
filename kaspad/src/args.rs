@@ -57,12 +57,16 @@ pub struct Args {
     pub user_agent_comments: Vec<String>,
     pub utxoindex: bool,
     pub reset_db: bool,
+    #[serde(rename = "outpeers")]
     pub outbound_target: usize,
+    #[serde(rename = "maxinpeers")]
     pub inbound_limit: usize,
+    #[serde(rename = "rpcmaxclients")]
     pub rpc_max_clients: usize,
     pub enable_unsynced_mining: bool,
     pub enable_mainnet_mining: bool,
     pub testnet: bool,
+    #[serde(rename = "netsuffix")]
     pub testnet_suffix: u32,
     pub devnet: bool,
     pub simnet: bool,
