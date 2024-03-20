@@ -165,7 +165,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_utxo_return_address(&self, txid: Hash, daa_score: u64) -> Option<ScriptPublicKey> {
+    fn get_utxo_return_script_public_key(&self, txid: Hash, daa_score: u64) -> Option<ScriptPublicKey> {
         unimplemented!()
     }
 

@@ -63,6 +63,7 @@ use kaspa_rpc_core::{
     notify::connection::ChannelConnection,
     Notification, RpcError, RpcResult,
 };
+use kaspa_txscript::opcodes::codes;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::expiring_cache::ExpiringCache;
 use kaspa_utils::sysinfo::SystemInfo;
@@ -786,10 +787,32 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _connection: Option<&DynRpcConnection>,
         request: GetUtxoReturnAddressRequest,
     ) -> RpcResult<GetUtxoReturnAddressResponse> {
-        // let session = self.consensus_manager.consensus().session().await;
-        println!("{} {}", request.txid, request.accepting_block_daa_score);
-        // let mut maybe_spk = session.async_get_utxo_return_address(request.txid, request.accepting_block_daa_score).await;
-        Ok(GetUtxoReturnAddressResponse { return_address: None })
+        let session = self.consensus_manager.consensus().session().await;
+
+        let mut return_address = None;
+
+        // Convert a SPK to an Address
+        if let Some(spk) = session.async_get_utxo_return_script_public_key(request.txid, request.accepting_block_daa_score).await {
+            let script = spk.script();
+
+            // Standard Address scripts are only either 34 or 35 in length:
+            if script.len() == 34 && script[0] == codes::OpData32 && script[33] == codes::OpCheckSig {
+                // This is a standard Schnorr Address
+                return_address = Some(RpcAddress::new(self.config.prefix(), kaspa_addresses::Version::PubKey, &script[1..33]));
+            } else if script.len() == 35 {
+                // Could be ECDSA address OR P2SH
+                if script[0] == codes::OpData33 && script[34] == codes::OpCheckSigECDSA {
+                    // This is an standard ECDSA Address
+                    return_address =
+                        Some(RpcAddress::new(self.config.prefix(), kaspa_addresses::Version::PubKeyECDSA, &script[1..34]));
+                } else if script[0] == codes::OpBlake2b && script[1] == codes::OpData32 && script[34] == codes::OpEqual {
+                    // This is a standard P2SH Address
+                    return_address = Some(RpcAddress::new(self.config.prefix(), kaspa_addresses::Version::ScriptHash, &script[2..34]));
+                }
+            }
+        };
+
+        Ok(GetUtxoReturnAddressResponse { return_address })
     }
 
     async fn ping_call(&self, _connection: Option<&DynRpcConnection>, _: PingRequest) -> RpcResult<PingResponse> {
