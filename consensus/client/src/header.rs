@@ -18,7 +18,7 @@ const TS_HEADER: &'static str = r#"
  * @category Consensus
  */
 export interface IHeader {
-    hash?: HexString;
+    hash: HexString;
     version: number;
     parentsByLevel: Array<Array<HexString>>;
     hashMerkleRoot: HexString;
