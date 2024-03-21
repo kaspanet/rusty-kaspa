@@ -10,6 +10,7 @@ use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCt
 use kaspa_core::{core::Core, service::Service};
 use kaspa_database::utils::DbLifetime;
 use kaspa_hashes::Hash;
+use kaspa_notify::subscription::context::SubscriptionContext;
 use parking_lot::RwLock;
 
 use kaspa_database::create_temp_db;
@@ -66,9 +67,9 @@ impl TestConsensus {
     }
 
     /// Creates a test consensus instance based on `config` with a temp DB and the provided `notification_sender`
-    pub fn with_notifier(config: &Config, notification_sender: Sender<Notification>) -> Self {
+    pub fn with_notifier(config: &Config, notification_sender: Sender<Notification>, context: SubscriptionContext) -> Self {
         let (db_lifetime, db) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
-        let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
+        let notification_root = Arc::new(ConsensusNotificationRoot::with_context(notification_sender, context));
         let counters = Default::default();
         let tx_script_cache_counters = Default::default();
         let consensus = Arc::new(Consensus::new(

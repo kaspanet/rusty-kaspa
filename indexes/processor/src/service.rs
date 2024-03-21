@@ -10,7 +10,9 @@ use kaspa_index_core::notifier::IndexNotifier;
 use kaspa_notify::{
     connection::ChannelType,
     events::{EventSwitches, EventType},
-    scope::{PruningPointUtxoSetOverrideScope, Scope, UtxosChangedScope},
+    listener::ListenerLifespan,
+    scope::{PruningPointUtxoSetOverrideScope, UtxosChangedScope},
+    subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
 };
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utxoindex::api::UtxoIndexProxy;
@@ -25,24 +27,33 @@ pub struct IndexService {
 }
 
 impl IndexService {
-    pub fn new(consensus_notifier: &Arc<ConsensusNotifier>, utxoindex: Option<UtxoIndexProxy>) -> Self {
+    pub fn new(
+        consensus_notifier: &Arc<ConsensusNotifier>,
+        subscription_context: SubscriptionContext,
+        utxoindex: Option<UtxoIndexProxy>,
+    ) -> Self {
+        // This notifier UTXOs subscription granularity to consensus notifier
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::Wildcard);
+
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
-        let consensus_notify_listener_id = consensus_notifier
-            .register_new_listener(ConsensusChannelConnection::new(consensus_notify_channel.sender(), ChannelType::Closable));
+        let consensus_notify_listener_id = consensus_notifier.register_new_listener(
+            ConsensusChannelConnection::new(INDEX_SERVICE, consensus_notify_channel.sender(), ChannelType::Closable),
+            ListenerLifespan::Static(policies),
+        );
 
         // Prepare the index-processor notifier
         // No subscriber is defined here because the subscription are manually created during the construction and never changed after that.
         let events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
         let collector = Arc::new(Processor::new(utxoindex.clone(), consensus_notify_channel.receiver()));
-        let notifier = Arc::new(IndexNotifier::new(INDEX_SERVICE, events, vec![collector], vec![], 1));
+        let notifier = Arc::new(IndexNotifier::new(INDEX_SERVICE, events, vec![collector], vec![], subscription_context, 1, policies));
 
         // Manually subscribe to index-processor related event types
         consensus_notifier
-            .try_start_notify(consensus_notify_listener_id, Scope::UtxosChanged(UtxosChangedScope::default()))
+            .try_start_notify(consensus_notify_listener_id, UtxosChangedScope::default().into())
             .expect("the subscription always succeeds");
         consensus_notifier
-            .try_start_notify(consensus_notify_listener_id, Scope::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideScope {}))
+            .try_start_notify(consensus_notify_listener_id, PruningPointUtxoSetOverrideScope::default().into())
             .expect("the subscription always succeeds");
 
         Self { utxoindex, notifier, shutdown: SingleTrigger::default() }

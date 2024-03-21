@@ -1,7 +1,8 @@
-use super::{events::EventType, notification::Notification, scope::Scope};
+use crate::{error::Result, events::EventType, notification::Notification, scope::Scope, subscription::context::SubscriptionContext};
 use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::ops::Deref;
 use std::{
     any::Any,
     fmt::Debug,
@@ -11,6 +12,7 @@ use std::{
 
 pub mod array;
 pub mod compounded;
+pub mod context;
 pub mod single;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
@@ -46,6 +48,27 @@ impl From<i32> for Command {
     }
 }
 
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub enum UtxosChangedMutationPolicy {
+    /// Mutation granularity defined at address level
+    #[default]
+    AddressSet,
+
+    /// Mutation granularity reduced to all or nothing
+    Wildcard,
+}
+
+#[derive(Clone, Copy, Default, Debug)]
+pub struct MutationPolicies {
+    pub utxo_changed: UtxosChangedMutationPolicy,
+}
+
+impl MutationPolicies {
+    pub fn new(utxo_changed: UtxosChangedMutationPolicy) -> Self {
+        Self { utxo_changed }
+    }
+}
+
 /// A subscription mutation including a start/stop command and
 /// a notification scope.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -73,11 +96,11 @@ impl Mutation {
 pub trait Subscription {
     fn event_type(&self) -> EventType;
     fn active(&self) -> bool;
-    fn scope(&self) -> Scope;
+    fn scope(&self, context: &SubscriptionContext) -> Scope;
 }
 
 pub trait Compounded: Subscription + AsAny + DynEq + CompoundedClone + Debug + Send + Sync {
-    fn compound(&mut self, mutation: Mutation) -> Option<Mutation>;
+    fn compound(&mut self, mutation: Mutation, context: &SubscriptionContext) -> Option<Mutation>;
 }
 
 impl PartialEq for dyn Compounded {
@@ -89,8 +112,76 @@ impl Eq for dyn Compounded {}
 
 pub type CompoundedSubscription = Box<dyn Compounded>;
 
-pub trait Single: Subscription + AsAny + DynHash + DynEq + SingleClone + Debug + Send + Sync {
-    fn mutate(&mut self, mutation: Mutation) -> Option<Vec<Mutation>>;
+pub struct MutationOutcome {
+    pub mutated: Option<DynSubscription>,
+    pub mutations: Vec<Mutation>,
+}
+
+impl MutationOutcome {
+    pub fn new() -> Self {
+        Self { mutated: None, mutations: vec![] }
+    }
+
+    pub fn with_mutations(mutations: Vec<Mutation>) -> Self {
+        Self { mutated: None, mutations }
+    }
+
+    pub fn with_mutated(mutated: DynSubscription, mutations: Vec<Mutation>) -> Self {
+        Self { mutated: Some(mutated), mutations }
+    }
+
+    pub fn apply_to(self, target: &mut DynSubscription) -> Self {
+        if let Some(ref mutated) = self.mutated {
+            *target = mutated.clone();
+        }
+        self
+    }
+
+    #[inline(always)]
+    pub fn has_new_state(&self) -> bool {
+        self.mutated.is_some()
+    }
+
+    #[inline(always)]
+    pub fn has_changes(&self) -> bool {
+        self.has_new_state() || !self.mutations.is_empty()
+    }
+}
+
+impl Default for MutationOutcome {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub trait Single: Subscription + AsAny + DynHash + DynEq + Debug + Send + Sync {
+    fn apply_mutation(
+        &self,
+        arc_self: &Arc<dyn Single>,
+        mutation: Mutation,
+        policies: MutationPolicies,
+        context: &SubscriptionContext,
+    ) -> Result<MutationOutcome>;
+}
+
+pub trait MutateSingle: Deref<Target = dyn Single> {
+    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies, context: &SubscriptionContext) -> Result<MutationOutcome>;
+}
+
+impl MutateSingle for Arc<dyn Single> {
+    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies, context: &SubscriptionContext) -> Result<MutationOutcome> {
+        let outcome = self.apply_mutation(self, mutation, policies, context)?.apply_to(self);
+        Ok(outcome)
+    }
+}
+
+pub trait BroadcastingSingle: Deref<Target = dyn Single> {
+    /// Returns the broadcasting instance of the subscription.
+    ///
+    /// This allows the grouping of all the wildcard utxos changed subscriptions under
+    /// the same unique instance in the broadcaster plans, allowing message optimizations
+    /// during broadcasting of the notifications.
+    fn broadcasting(self, context: &SubscriptionContext) -> DynSubscription;
 }
 
 impl Hash for dyn Single {
@@ -105,7 +196,6 @@ impl PartialEq for dyn Single {
 }
 impl Eq for dyn Single {}
 
-pub type SingleSubscription = Box<dyn Single>;
 pub type DynSubscription = Arc<dyn Single>;
 
 pub trait AsAny {
@@ -140,7 +230,6 @@ impl<T: Eq + Any> DynEq for T {
 }
 
 pub trait CompoundedClone {
-    fn clone_arc(&self) -> Arc<dyn Compounded>;
     fn clone_box(&self) -> Box<dyn Compounded>;
 }
 
@@ -148,29 +237,7 @@ impl<T> CompoundedClone for T
 where
     T: 'static + Compounded + Clone,
 {
-    fn clone_arc(&self) -> Arc<dyn Compounded> {
-        Arc::new(self.clone())
-    }
-
     fn clone_box(&self) -> Box<dyn Compounded> {
-        Box::new(self.clone())
-    }
-}
-
-pub trait SingleClone {
-    fn clone_arc(&self) -> Arc<dyn Single>;
-    fn clone_box(&self) -> Box<dyn Single>;
-}
-
-impl<T> SingleClone for T
-where
-    T: 'static + Single + Clone,
-{
-    fn clone_arc(&self) -> Arc<dyn Single> {
-        Arc::new(self.clone())
-    }
-
-    fn clone_box(&self) -> Box<dyn Single> {
         Box::new(self.clone())
     }
 }

@@ -16,7 +16,10 @@ use kaspa_grpc_core::{
     protowire::{KaspadRequest, KaspadResponse},
 };
 use kaspa_notify::{
-    connection::Connection as ConnectionT, error::Error as NotificationError, listener::ListenerId, notifier::Notifier,
+    connection::Connection as ConnectionT,
+    error::Error as NotificationError,
+    listener::{ListenerId, ListenerLifespan},
+    notifier::Notifier,
 };
 use kaspa_rpc_core::Notification;
 use parking_lot::Mutex;
@@ -318,7 +321,8 @@ impl Connection {
     pub fn get_or_register_listener_id(&self) -> GrpcServerResult<ListenerId> {
         match self.is_closed() {
             false => Ok(*self.inner.mutable_state.lock().listener_id.get_or_insert_with(|| {
-                let listener_id = self.inner.server_context.notifier.as_ref().register_new_listener(self.clone());
+                let listener_id =
+                    self.inner.server_context.notifier.as_ref().register_new_listener(self.clone(), ListenerLifespan::Dynamic);
                 debug!("GRPC, Connection {} registered as notification listener {}", self, listener_id);
                 listener_id
             })),

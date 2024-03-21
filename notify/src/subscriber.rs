@@ -71,6 +71,10 @@ impl Subscriber {
         }
     }
 
+    pub fn enabled_events(&self) -> &EventSwitches {
+        &self.enabled_events
+    }
+
     pub fn start(self: &Arc<Self>) {
         self.clone().spawn_subscription_receiver_task();
     }

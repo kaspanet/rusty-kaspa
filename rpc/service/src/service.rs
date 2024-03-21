@@ -36,6 +36,9 @@ use kaspa_index_core::{
 };
 use kaspa_mining::model::tx_query::TransactionQuery;
 use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::Orphan};
+use kaspa_notify::listener::ListenerLifespan;
+use kaspa_notify::subscription::context::SubscriptionContext;
+use kaspa_notify::subscription::{MutationPolicies, UtxosChangedMutationPolicy};
 use kaspa_notify::{
     collector::DynCollector,
     connection::ChannelType,
@@ -102,6 +105,7 @@ pub struct RpcCoreService {
     wrpc_borsh_counters: Arc<WrpcServerCounters>,
     wrpc_json_counters: Arc<WrpcServerCounters>,
     shutdown: SingleTrigger,
+    core_shutdown_request: SingleTrigger,
     perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
     p2p_tower_counters: Arc<TowerConnectionCounters>,
     grpc_tower_counters: Arc<TowerConnectionCounters>,
@@ -110,6 +114,8 @@ pub struct RpcCoreService {
 const RPC_CORE: &str = "rpc-core";
 
 impl RpcCoreService {
+    pub const IDENT: &'static str = "rpc-core-service";
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         consensus_manager: Arc<ConsensusManager>,
@@ -117,6 +123,7 @@ impl RpcCoreService {
         index_notifier: Option<Arc<IndexNotifier>>,
         mining_manager: MiningManagerProxy,
         flow_context: Arc<FlowContext>,
+        subscription_context: SubscriptionContext,
         utxoindex: Option<UtxoIndexProxy>,
         config: Arc<Config>,
         core: Arc<Core>,
@@ -127,10 +134,18 @@ impl RpcCoreService {
         p2p_tower_counters: Arc<TowerConnectionCounters>,
         grpc_tower_counters: Arc<TowerConnectionCounters>,
     ) -> Self {
+        // This notifier UTXOs subscription granularity to index-processor or consensus notifier
+        let policies = match index_notifier {
+            Some(_) => MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet),
+            None => MutationPolicies::new(UtxosChangedMutationPolicy::Wildcard),
+        };
+
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
-        let consensus_notify_listener_id = consensus_notifier
-            .register_new_listener(ConsensusChannelConnection::new(consensus_notify_channel.sender(), ChannelType::Closable));
+        let consensus_notify_listener_id = consensus_notifier.register_new_listener(
+            ConsensusChannelConnection::new(RPC_CORE, consensus_notify_channel.sender(), ChannelType::Closable),
+            ListenerLifespan::Static(Default::default()),
+        );
 
         // Prepare the rpc-core notifier objects
         let mut consensus_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
@@ -152,9 +167,10 @@ impl RpcCoreService {
         let index_converter = Arc::new(IndexConverter::new(config.clone()));
         if let Some(ref index_notifier) = index_notifier {
             let index_notify_channel = Channel::<IndexNotification>::default();
-            let index_notify_listener_id = index_notifier
-                .clone()
-                .register_new_listener(IndexChannelConnection::new(index_notify_channel.sender(), ChannelType::Closable));
+            let index_notify_listener_id = index_notifier.clone().register_new_listener(
+                IndexChannelConnection::new(RPC_CORE, index_notify_channel.sender(), ChannelType::Closable),
+                ListenerLifespan::Static(policies),
+            );
 
             let index_events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
             let index_collector =
@@ -170,7 +186,8 @@ impl RpcCoreService {
         let protocol_converter = Arc::new(ProtocolConverter::new(flow_context.clone()));
 
         // Create the rcp-core notifier
-        let notifier = Arc::new(Notifier::new(RPC_CORE, EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1));
+        let notifier =
+            Arc::new(Notifier::new(RPC_CORE, EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, subscription_context, 1, policies));
 
         Self {
             consensus_manager,
@@ -187,6 +204,7 @@ impl RpcCoreService {
             wrpc_borsh_counters,
             wrpc_json_counters,
             shutdown: SingleTrigger::default(),
+            core_shutdown_request: SingleTrigger::default(),
             perf_monitor,
             p2p_tower_counters,
             grpc_tower_counters,
@@ -198,7 +216,7 @@ impl RpcCoreService {
     }
 
     pub async fn join(&self) -> RpcResult<()> {
-        trace!("{} joining notifier", RPC_CORE_SERVICE);
+        trace!("{} joining notifier", Self::IDENT);
         self.notifier().join().await?;
         Ok(())
     }
@@ -206,6 +224,15 @@ impl RpcCoreService {
     #[inline(always)]
     pub fn notifier(&self) -> Arc<Notifier<Notification, ChannelConnection>> {
         self.notifier.clone()
+    }
+
+    #[inline(always)]
+    pub fn subscription_context(&self) -> SubscriptionContext {
+        self.notifier.subscription_context().clone()
+    }
+
+    pub fn core_shutdown_request_listener(&self) -> triggered::Listener {
+        self.core_shutdown_request.listener.clone()
     }
 
     async fn get_utxo_set_by_script_public_key<'a>(
@@ -740,7 +767,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         }
         warn!("Shutdown RPC command was called, shutting down in 1 second...");
 
-        // Wait a second before shutting down, to allow time to return the response to the caller
+        // Signal the shutdown request
+        self.core_shutdown_request.trigger.trigger();
+
+        // Wait for a second before shutting down,
+        // giving time for the response to be sent to the caller.
         let core = self.core.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -868,7 +899,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
     /// Register a new listener and returns an id identifying it.
     fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
-        self.notifier.register_new_listener(connection)
+        self.notifier.register_new_listener(connection, ListenerLifespan::Dynamic)
     }
 
     /// Unregister an existing listener.
@@ -906,17 +937,15 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     }
 }
 
-const RPC_CORE_SERVICE: &str = "rpc-core-service";
-
 // It might be necessary to opt this out in the context of wasm32
 
 impl AsyncService for RpcCoreService {
     fn ident(self: Arc<Self>) -> &'static str {
-        RPC_CORE_SERVICE
+        Self::IDENT
     }
 
     fn start(self: Arc<Self>) -> AsyncServiceFuture {
-        trace!("{} starting", RPC_CORE_SERVICE);
+        trace!("{} starting", Self::IDENT);
         let service = self.clone();
 
         // Prepare a shutdown signal receiver
@@ -929,7 +958,7 @@ impl AsyncService for RpcCoreService {
             match service.join().await {
                 Ok(_) => Ok(()),
                 Err(err) => {
-                    warn!("Error while stopping {}: {}", RPC_CORE_SERVICE, err);
+                    warn!("Error while stopping {}: {}", Self::IDENT, err);
                     Err(AsyncServiceError::Service(err.to_string()))
                 }
             }
@@ -937,13 +966,13 @@ impl AsyncService for RpcCoreService {
     }
 
     fn signal_exit(self: Arc<Self>) {
-        trace!("sending an exit signal to {}", RPC_CORE_SERVICE);
+        trace!("sending an exit signal to {}", Self::IDENT);
         self.shutdown.trigger.trigger();
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
         Box::pin(async move {
-            trace!("{} stopped", RPC_CORE_SERVICE);
+            trace!("{} stopped", Self::IDENT);
             Ok(())
         })
     }

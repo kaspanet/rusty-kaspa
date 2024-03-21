@@ -67,13 +67,11 @@ impl Core {
 
 impl Shutdown for Core {
     fn shutdown(self: &Arc<Core>) {
-        let keep_running = self.keep_running.load(Ordering::SeqCst);
-        if !keep_running {
+        if self.keep_running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
             return;
         }
 
         trace!("signaling core shutdown...");
-        self.keep_running.store(false, Ordering::SeqCst);
 
         {
             for service in self.services.lock().unwrap().iter() {

@@ -1,4 +1,8 @@
-use crate::events::EVENT_TYPE_ARRAY;
+use crate::{
+    events::EVENT_TYPE_ARRAY,
+    listener::ListenerLifespan,
+    subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
+};
 
 use super::{
     broadcaster::Broadcaster,
@@ -16,7 +20,7 @@ use async_channel::Sender;
 use async_trait::async_trait;
 use core::fmt::Debug;
 use futures::future::join_all;
-use itertools::Itertools;
+use itertools::{repeat_n, Itertools};
 use kaspa_core::{debug, trace};
 use parking_lot::Mutex;
 use std::{
@@ -80,9 +84,11 @@ where
         enabled_events: EventSwitches,
         collectors: Vec<DynCollector<N>>,
         subscribers: Vec<Arc<Subscriber>>,
+        subscription_context: SubscriptionContext,
         broadcasters: usize,
+        policies: MutationPolicies,
     ) -> Self {
-        Self::with_sync(name, enabled_events, collectors, subscribers, broadcasters, None)
+        Self::with_sync(name, enabled_events, collectors, subscribers, subscription_context, broadcasters, policies, None)
     }
 
     pub fn with_sync(
@@ -90,18 +96,39 @@ where
         enabled_events: EventSwitches,
         collectors: Vec<DynCollector<N>>,
         subscribers: Vec<Arc<Subscriber>>,
+        subscription_context: SubscriptionContext,
         broadcasters: usize,
+        policies: MutationPolicies,
         _sync: Option<Sender<()>>,
     ) -> Self {
-        Self { inner: Arc::new(Inner::new(name, enabled_events, collectors, subscribers, broadcasters, _sync)) }
+        Self {
+            inner: Arc::new(Inner::new(
+                name,
+                enabled_events,
+                collectors,
+                subscribers,
+                subscription_context,
+                broadcasters,
+                policies,
+                _sync,
+            )),
+        }
+    }
+
+    pub fn subscription_context(&self) -> &SubscriptionContext {
+        &self.inner.subscription_context
+    }
+
+    pub fn enabled_events(&self) -> &EventSwitches {
+        &self.inner.enabled_events
     }
 
     pub fn start(self: Arc<Self>) {
         self.inner.clone().start(self.clone());
     }
 
-    pub fn register_new_listener(&self, connection: C) -> ListenerId {
-        self.inner.clone().register_new_listener(connection)
+    pub fn register_new_listener(&self, connection: C, lifespan: ListenerLifespan) -> ListenerId {
+        self.inner.register_new_listener(connection, lifespan)
     }
 
     /// Resend the compounded subscription state of the notifier to its subscribers (its parents).
@@ -191,6 +218,15 @@ where
     /// Subscribers
     subscribers: Vec<Arc<Subscriber>>,
 
+    /// Enabled Subscribers by event type
+    enabled_subscribers: EventArray<Vec<Arc<Subscriber>>>,
+
+    /// Subscription context
+    subscription_context: SubscriptionContext,
+
+    /// Mutation policies
+    policies: MutationPolicies,
+
     /// Name of the notifier, used in logs
     pub name: &'static str,
 
@@ -208,23 +244,44 @@ where
         enabled_events: EventSwitches,
         collectors: Vec<DynCollector<N>>,
         subscribers: Vec<Arc<Subscriber>>,
+        subscription_context: SubscriptionContext,
         broadcasters: usize,
+        policies: MutationPolicies,
         _sync: Option<Sender<()>>,
     ) -> Self {
         assert!(broadcasters > 0, "a notifier requires a minimum of one broadcaster");
         let notification_channel = Channel::unbounded();
         let broadcasters = (0..broadcasters)
-            .map(|_| Arc::new(Broadcaster::new(name, notification_channel.receiver.clone(), _sync.clone())))
+            .map(|idx| {
+                Arc::new(Broadcaster::new(
+                    name,
+                    idx,
+                    subscription_context.clone(),
+                    notification_channel.receiver.clone(),
+                    _sync.clone(),
+                ))
+            })
             .collect::<Vec<_>>();
+        let enabled_subscribers = EventArray::from_fn(|index| {
+            let event: EventType = index.try_into().unwrap();
+            subscribers.iter().filter(|&x| x.enabled_events()[event]).cloned().collect_vec()
+        });
+        let utxos_changed_capacity = match policies.utxo_changed {
+            UtxosChangedMutationPolicy::AddressSet => subscription_context.address_tracker.max_addresses(),
+            UtxosChangedMutationPolicy::Wildcard => None,
+        };
         Self {
             enabled_events,
             listeners: Mutex::new(HashMap::new()),
-            subscriptions: Mutex::new(ArrayBuilder::compounded()),
+            subscriptions: Mutex::new(ArrayBuilder::compounded(utxos_changed_capacity)),
             started: Arc::new(AtomicBool::new(false)),
             notification_channel,
             broadcasters,
             collectors,
             subscribers,
+            enabled_subscribers,
+            subscription_context,
+            policies,
             name,
             _sync,
         }
@@ -242,7 +299,7 @@ where
         }
     }
 
-    fn register_new_listener(self: &Arc<Self>, connection: C) -> ListenerId {
+    fn register_new_listener(self: &Arc<Self>, connection: C, lifespan: ListenerLifespan) -> ListenerId {
         let mut listeners = self.listeners.lock();
         loop {
             let id = u64::from_le_bytes(rand::random::<[u8; 8]>());
@@ -250,7 +307,10 @@ where
             // This is very unlikely to happen but still, check for duplicates
             if let Entry::Vacant(e) = listeners.entry(id) {
                 trace!("[Notifier {}] registering listener {id}", self.name);
-                let listener = Listener::new(connection);
+                let listener = match lifespan {
+                    ListenerLifespan::Static(policies) => Listener::new_static(id, connection, &self.subscription_context, policies),
+                    ListenerLifespan::Dynamic => Listener::new(id, connection),
+                };
                 e.insert(listener);
                 return id;
             }
@@ -264,13 +324,13 @@ where
             trace!("[Notifier {}] unregistering listener {id}", self.name);
 
             // Cancel all remaining active subscriptions
-            let mut subscriptions = listener
+            let mut events = listener
                 .subscriptions
                 .iter()
-                .filter_map(|subscription| if subscription.active() { Some(subscription.scope()) } else { None })
+                .filter_map(|subscription| if subscription.active() { Some(subscription.event_type()) } else { None })
                 .collect_vec();
-            subscriptions.drain(..).for_each(|scope| {
-                let _ = self.execute_subscribe_command_impl(id, &mut listener, scope, Command::Stop);
+            events.drain(..).for_each(|event| {
+                let _ = self.execute_subscribe_command_impl(id, &mut listener, event.into(), Command::Stop);
             });
 
             // Close the listener
@@ -283,7 +343,7 @@ where
     }
 
     pub fn execute_subscribe_command(&self, id: ListenerId, scope: Scope, command: Command) -> Result<()> {
-        let event: EventType = (&scope).into();
+        let event = scope.event_type();
         if self.enabled_events[event] {
             let mut listeners = self.listeners.lock();
             if let Some(listener) = listeners.get_mut(&id) {
@@ -292,10 +352,7 @@ where
                 trace!("[Notifier {}] {command} notifying listener {id} about {scope} error: listener id not found", self.name);
             }
         } else {
-            trace!(
-                "[Notifier {}] {command} notifying listener {id} about {scope:?} error: event type {event:?} is disabled",
-                self.name
-            );
+            trace!("[Notifier {}] {command} notifying listener {id} about {scope} error: event type {event:?} is disabled", self.name);
             return Err(Error::EventTypeDisabled);
         }
         Ok(())
@@ -308,32 +365,58 @@ where
         scope: Scope,
         command: Command,
     ) -> Result<()> {
-        let event: EventType = (&scope).into();
-        let mut subscriptions = self.subscriptions.lock();
-        debug!("[Notifier {}] {command} notifying about {scope} to listener {id}", self.name);
-        if let Some(mutations) = listener.mutate(Mutation::new(command, scope.clone())) {
-            trace!("[Notifier {}] {command} notifying listener {id} about {scope:?} involves mutations {mutations:?}", self.name);
+        let mut sync_feedback: bool = false;
+        let event = scope.event_type();
+        let scope_trace = format!("{scope}");
+        debug!("[Notifier {}] {command} notifying about {scope_trace} to listener {id} - {}", self.name, listener.connection());
+        let outcome = listener.mutate(Mutation::new(command, scope), self.policies, &self.subscription_context)?;
+        if outcome.has_changes() {
+            trace!(
+                "[Notifier {}] {command} notifying listener {id} about {scope_trace} involves {} mutations",
+                self.name,
+                outcome.mutations.len(),
+            );
             // Update broadcasters
-            let subscription = listener.subscriptions[event].clone_arc();
-            self.broadcasters
-                .iter()
-                .try_for_each(|broadcaster| broadcaster.register(subscription.clone(), id, listener.connection()))?;
-            // Compound mutations
-            let mut compound_result = None;
-            for mutation in mutations {
-                compound_result = subscriptions[event].compound(mutation);
+            match (listener.subscriptions[event].active(), outcome.mutated) {
+                (true, Some(subscription)) => {
+                    self.broadcasters
+                        .iter()
+                        .try_for_each(|broadcaster| broadcaster.register(subscription.clone(), id, listener.connection()))?;
+                }
+                (true, None) => {
+                    sync_feedback = true;
+                }
+                (false, _) => {
+                    self.broadcasters.iter().try_for_each(|broadcaster| broadcaster.unregister(event, id))?;
+                }
             }
-            // Report to the parents
-            if let Some(mutation) = compound_result {
-                self.subscribers.iter().try_for_each(|x| x.mutate(mutation.clone()))?;
-            }
+            self.apply_mutations(event, outcome.mutations, &self.subscription_context)?;
         } else {
-            trace!("[Notifier {}] {command} notifying listener {id} about {scope:?} is ignored (no mutation)", self.name);
+            trace!("[Notifier {}] {command} notifying listener {id} about {scope_trace} is ignored (no mutation)", self.name);
+            sync_feedback = true;
+        }
+        if sync_feedback {
             // In case we have a sync channel, report that the command was processed.
             // This is for test only.
             if let Some(ref sync) = self._sync {
                 let _ = sync.try_send(());
             }
+        }
+        Ok(())
+    }
+
+    fn apply_mutations(&self, event: EventType, mutations: Vec<Mutation>, context: &SubscriptionContext) -> Result<()> {
+        let mut subscriptions = self.subscriptions.lock();
+        // Compound mutations
+        let mut compound_result = None;
+        for mutation in mutations {
+            compound_result = subscriptions[event].compound(mutation, context);
+        }
+        // Report to the parents
+        if let Some(mutation) = compound_result {
+            repeat_n(mutation, self.enabled_subscribers[event].len())
+                .zip(self.enabled_subscribers[event].iter())
+                .try_for_each(|(mutation, subscriber)| subscriber.mutate(mutation.clone()))?;
         }
         Ok(())
     }
@@ -356,7 +439,7 @@ where
     fn renew_subscriptions(&self) -> Result<()> {
         let subscriptions = self.subscriptions.lock();
         EVENT_TYPE_ARRAY.iter().copied().filter(|x| self.enabled_events[*x] && subscriptions[*x].active()).try_for_each(|x| {
-            let mutation = Mutation::new(Command::Start, subscriptions[x].scope());
+            let mutation = Mutation::new(Command::Start, subscriptions[x].scope(&self.subscription_context));
             self.subscribers.iter().try_for_each(|subscriber| subscriber.mutate(mutation.clone()))?;
             Ok(())
         })
@@ -416,6 +499,9 @@ pub mod test_helpers {
         subscriber::test_helpers::SubscriptionMessage,
     };
     use async_channel::Sender;
+    use std::time::Duration;
+
+    pub const SYNC_MAX_DELAY: Duration = Duration::from_secs(2);
 
     pub type TestConnection = ChannelConnection<TestNotification>;
     pub type TestNotifier = Notifier<TestNotification, ChannelConnection<TestNotification>>;
@@ -702,6 +788,7 @@ mod tests {
         subscriber::test_helpers::{SubscriptionManagerMock, SubscriptionMessage},
     };
     use async_channel::{unbounded, Receiver, Sender};
+    use tokio::time::timeout;
 
     const SUBSCRIPTION_MANAGER_ID: u64 = 0;
 
@@ -718,14 +805,16 @@ mod tests {
 
     impl Test {
         fn new(name: &'static str, listener_count: usize, steps: Vec<Step>) -> Self {
+            const IDENT: &str = "test";
             type TestConverter = ConverterFrom<TestNotification, TestNotification>;
             type TestCollector = CollectorFrom<TestConverter>;
             // Build the full-featured notifier
             let (sync_sender, sync_receiver) = unbounded();
             let (notification_sender, notification_receiver) = unbounded();
             let (subscription_sender, subscription_receiver) = unbounded();
-            let collector = Arc::new(TestCollector::new("test", notification_receiver, Arc::new(TestConverter::new())));
+            let collector = Arc::new(TestCollector::new(IDENT, notification_receiver, Arc::new(TestConverter::new())));
             let subscription_manager = Arc::new(SubscriptionManagerMock::new(subscription_sender));
+            let subscription_context = SubscriptionContext::new();
             let subscriber =
                 Arc::new(Subscriber::new("test", EVENT_TYPE_ARRAY[..].into(), subscription_manager, SUBSCRIPTION_MANAGER_ID));
             let notifier = Arc::new(TestNotifier::with_sync(
@@ -733,7 +822,9 @@ mod tests {
                 EVENT_TYPE_ARRAY[..].into(),
                 vec![collector],
                 vec![subscriber],
+                subscription_context,
                 1,
+                Default::default(),
                 Some(sync_sender),
             ));
             // Create the listeners
@@ -741,8 +832,8 @@ mod tests {
             let mut notification_receivers = Vec::with_capacity(listener_count);
             for _ in 0..listener_count {
                 let (sender, receiver) = unbounded();
-                let connection = TestConnection::new(sender, ChannelType::Closable);
-                listeners.push(notifier.register_new_listener(connection));
+                let connection = TestConnection::new(IDENT, sender, ChannelType::Closable);
+                listeners.push(notifier.register_new_listener(connection, ListenerLifespan::Dynamic));
                 notification_receivers.push(receiver);
             }
             // Return the built test object
@@ -778,7 +869,7 @@ mod tests {
                         );
                         trace!("Receiving sync message #{step_idx} after subscribing");
                         assert!(
-                            self.sync_receiver.recv().await.is_ok(),
+                            timeout(SYNC_MAX_DELAY, self.sync_receiver.recv()).await.unwrap().is_ok(),
                             "{} - {}: receiving a sync message failed",
                             self.name,
                             step.name
@@ -789,6 +880,13 @@ mod tests {
                                 *expected_subscription, subscription,
                                 "{} - {}: the listener[{}] mutation {mutation:?} yielded the wrong subscription",
                                 self.name, step.name, idx
+                            );
+                            assert!(
+                                self.subscription_receiver.is_empty(),
+                                "{} - {}: listener[{}] mutation {mutation:?} yielded an extra subscription but should not",
+                                self.name,
+                                step.name,
+                                idx
                             );
                         } else {
                             assert!(
@@ -811,7 +909,12 @@ mod tests {
                     step.name
                 );
                 trace!("Receiving sync message #{step_idx} after notifying");
-                assert!(self.sync_receiver.recv().await.is_ok(), "{} - {}: receiving a sync message failed", self.name, step.name);
+                assert!(
+                    timeout(SYNC_MAX_DELAY, self.sync_receiver.recv()).await.unwrap().is_ok(),
+                    "{} - {}: receiving a sync message failed",
+                    self.name,
+                    step.name
+                );
 
                 // Check what the listeners do receive
                 for (idx, expected_notifications) in step.expected_notifications.iter().enumerate() {
