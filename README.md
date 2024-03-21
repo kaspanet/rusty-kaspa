@@ -251,7 +251,7 @@ cargo run --release --bin kaspad -- --testnet
 <details>
 
   <summary>
-Use a configuration file
+Using a configuration file
   </summary>
 
   ```bash
@@ -259,17 +259,22 @@ cargo run --release --bin kaspad -- --configfile /path/to/configfile.toml
 # or
 cargo run --release --bin kaspad -- -C /path/to/configfile.toml
   ```
-  The config file should be a list of \<CLI argument\> = \<value\> separated by newlines.
+  - The config file should be a list of \<CLI argument\> = \<value\> separated by newlines. 
+  - Whitespace around the `=` is fine, `arg=value` and `arg = value` are both parsed correctly.
+  - Values with special characters like `.` or `=` will require quoting the value i.e \<CLI argument\> = "\<value\>".
+  - Arguments with multiple values should be surrounded with brackets like `addpeer = ["10.0.0.1", "1.2.3.4"]`.
+
   For example:
   ```
-testnet=true
-utxoindex=false
-disable-upnp=true
-perf-metrics=true
-appdir="some-dir"
-testnet-suffix=11
+testnet = true
+utxoindex = false
+disable-upnp = true
+perf-metrics = true
+appdir = "some-dir"
+netsuffix = 11
+addpeer = ["10.0.0.1", "1.2.3.4"]
   ```
-note that some arguments have no space between words and some use kebab-case, pass the --help flag to view all possible arguments
+ Pass the `--help` flag to view all possible arguments
 
   ```bash
 cargo run --release --bin kaspad -- --help
