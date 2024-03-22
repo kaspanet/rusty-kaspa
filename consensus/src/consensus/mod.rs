@@ -636,14 +636,18 @@ impl ConsensusApi for Consensus {
 
             if let Ok(hash) = sc_read.get_by_index(mid) {
                 if let Ok(compact_header) = self.headers_store.get_compact_header_data(hash) {
-                    if compact_header.daa_score == target_daa_score {
-                        // We found the chain block we need
-                        matching_chain_block_hash = Some(hash);
-                        break;
-                    } else if compact_header.daa_score < target_daa_score {
-                        low_index = mid + 1;
-                    } else {
-                        high_index = mid - 1;
+                    match compact_header.daa_score.cmp(&target_daa_score) {
+                        cmp::Ordering::Equal => {
+                            // We found the chain block we need
+                            matching_chain_block_hash = Some(hash);
+                            break;
+                        }
+                        cmp::Ordering::Greater => {
+                            high_index = mid - 1;
+                        }
+                        cmp::Ordering::Less => {
+                            low_index = mid + 1;
+                        }
                     }
                 } else {
                     trace!("Did not find a compact header with hash {}", hash);
@@ -655,16 +659,12 @@ impl ConsensusApi for Consensus {
             }
         }
 
-        if matching_chain_block_hash.is_none() {
-            return None;
-        }
-
         let matching_chain_block_hash = matching_chain_block_hash?;
 
         if let Ok(acceptance_data) = self.acceptance_data_store.get(matching_chain_block_hash) {
             let maybe_index_and_containing_acceptance =
                 acceptance_data.iter().find_map(|mbad| {
-                    let tx_arr_index = mbad.accepted_transactions.iter().enumerate().find_map(|(index, &ref tx)| {
+                    let tx_arr_index = mbad.accepted_transactions.iter().enumerate().find_map(|(index, tx)| {
                         if tx.transaction_id == txid {
                             Some(index)
                         } else {
@@ -672,11 +672,7 @@ impl ConsensusApi for Consensus {
                         }
                     });
 
-                    if let Some(index) = tx_arr_index {
-                        Some((index, mbad.clone()))
-                    } else {
-                        None
-                    }
+                    tx_arr_index.map(|index| (index, mbad.clone()))
                 });
 
             if let Some((index, containing_acceptance)) = maybe_index_and_containing_acceptance {
@@ -708,7 +704,7 @@ impl ConsensusApi for Consensus {
             }
         };
 
-        return None;
+        None
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
