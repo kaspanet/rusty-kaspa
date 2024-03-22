@@ -27,8 +27,8 @@ struct Inner {
     rpc_ctl: RpcCtl,
     background_services_running: Arc<AtomicBool>,
     service_ctl: DuplexChannel<()>,
-    connect_disconnect_guard: AsyncMutex<()>,
-    start_stop_guard: AsyncMutex<()>,
+    connect_guard: AsyncMutex<()>,
+    disconnect_guard: AsyncMutex<()>,
     // ---
     default_url: Mutex<Option<String>>,
     current_url: Mutex<Option<String>>,
@@ -97,8 +97,8 @@ impl Inner {
             rpc_ctl,
             service_ctl: DuplexChannel::unbounded(),
             background_services_running: Arc::new(AtomicBool::new(false)),
-            connect_disconnect_guard: async_std::sync::Mutex::new(()),
-            start_stop_guard: async_std::sync::Mutex::new(()),
+            connect_guard: async_std::sync::Mutex::new(()),
+            disconnect_guard: async_std::sync::Mutex::new(()),
             // ---
             default_url: Mutex::new(url.map(|s| s.to_string())),
             current_url: Mutex::new(None),
@@ -322,8 +322,6 @@ impl KaspaRpcClient {
 
     /// Start background RPC services.
     pub async fn start(&self) -> Result<()> {
-        let _guard = self.inner.start_stop_guard.lock().await;
-
         if !self.inner.background_services_running.load(Ordering::SeqCst) {
             self.inner.background_services_running.store(true, Ordering::SeqCst);
             self.start_notifier().await?;
@@ -336,8 +334,6 @@ impl KaspaRpcClient {
 
     /// Stop background RPC services.
     pub async fn stop(&self) -> Result<()> {
-        let _guard = self.inner.start_stop_guard.lock().await;
-
         if self.inner.background_services_running.load(Ordering::SeqCst) {
             self.stop_rpc_ctl_service().await?;
             self.stop_notifier().await?;
@@ -356,7 +352,7 @@ impl KaspaRpcClient {
     /// This method starts background RPC services if they are not running and
     /// attempts to connect to the RPC endpoint.
     pub async fn connect(&self, options: Option<ConnectOptions>) -> ConnectResult<Error> {
-        let _guard = self.inner.connect_disconnect_guard.lock().await;
+        let _guard = self.inner.connect_guard.lock().await;
 
         let mut options = options.unwrap_or_default();
 
@@ -381,7 +377,7 @@ impl KaspaRpcClient {
     /// This method stops background RPC services and disconnects
     /// from the RPC endpoint.
     pub async fn disconnect(&self) -> Result<()> {
-        let _guard = self.inner.connect_disconnect_guard.lock().await;
+        let _guard = self.inner.disconnect_guard.lock().await;
 
         self.inner.rpc_client.shutdown().await?;
         self.stop().await?;

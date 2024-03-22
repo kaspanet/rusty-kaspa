@@ -686,11 +686,10 @@ impl UtxoContext {
         self.register_addresses(&addresses).await?;
         let resp = self.processor().rpc_api().get_utxos_by_addresses(addresses).await?;
         let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
-        let current_daa_score = current_daa_score.unwrap_or_else(|| {
-            self.processor()
-                .current_daa_score()
-                .expect("Expecting DAA score or initialized UtxoProcessor when invoking scan_and_register_addresses() - You might be accessing UtxoProcessor APIs before it is initialized (see `utxo-proc-start` event).")
-        });
+        let current_daa_score = current_daa_score.or_else(|| {
+                self.processor()
+                    .current_daa_score()
+            }).ok_or(Error::MissingDaaScore("Expecting DAA score or initialized UtxoProcessor when invoking scan_and_register_addresses() - You might be accessing UtxoProcessor APIs before it is initialized (see `utxo-proc-start` event)"))?;
         self.extend_from_scan(refs, current_daa_score).await?;
         self.update_balance().await?;
         Ok(())
