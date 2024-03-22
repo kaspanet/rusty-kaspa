@@ -632,12 +632,10 @@ impl RpcClient {
                                         this.inner.notification_channel.sender.clone(),
                                         ChannelType::Persistent,
                                     ));
-                                    log_info!("+WASM RPC TASK [Open]: registering listener {listener_id:?}");
                                     *this.inner.listener_id.lock().unwrap() = Some(listener_id);
                                 }
                                 Ctl::Close => {
                                     let listener_id = this.inner.listener_id.lock().unwrap().take();
-                                    log_info!("-WASM RPC TASK [Close]: unregistering listener {listener_id:?}");
                                     if let Some(listener_id) = listener_id {
                                         if let Err(err) = this.inner.client.unregister_listener(listener_id).await {
                                             log_error!("Error in unregister_listener: {:?}",err);
