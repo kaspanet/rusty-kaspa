@@ -326,9 +326,8 @@ impl KaspaRpcClient {
             self.inner.background_services_running.store(true, Ordering::SeqCst);
             self.start_notifier().await?;
             self.start_rpc_ctl_service().await?;
-        } else {
-            log_error!("KaspaRpcClient background services already running: you might be invoking KaspaRpcClient::start() twice");
         }
+
         Ok(())
     }
 
@@ -338,9 +337,8 @@ impl KaspaRpcClient {
             self.stop_rpc_ctl_service().await?;
             self.stop_notifier().await?;
             self.inner.background_services_running.store(false, Ordering::SeqCst);
-        } else {
-            log_trace!("KaspaRpcClient is already stopped or stop() is invoked without start()");
         }
+
         Ok(())
     }
 
@@ -355,6 +353,7 @@ impl KaspaRpcClient {
         let _guard = self.inner.connect_guard.lock().await;
 
         let mut options = options.unwrap_or_default();
+        let strategy = options.strategy;
 
         if let Some(url) = options.url.take() {
             self.set_url(Some(&url))?;
@@ -371,7 +370,17 @@ impl KaspaRpcClient {
 
         self.start().await?;
         self.inner.rpc_client.configure(ws_config);
-        Ok(self.inner.rpc_client.connect(options).await?)
+        match self.inner.rpc_client.connect(options).await {
+            Ok(v) => Ok(v),
+            Err(err) => {
+                if strategy == ConnectStrategy::Fallback {
+                    let _guard = self.inner.disconnect_guard.lock().await;
+                    self.inner.rpc_client.shutdown().await?;
+                    self.stop().await?;
+                }
+                Err(err.into())
+            }
+        }
     }
 
     /// This method stops background RPC services and disconnects

@@ -368,6 +368,7 @@ impl RpcClient {
 
         self.start_notification_task()?;
         self.inner.client.connect(options).await?;
+
         Ok(())
     }
 
@@ -375,6 +376,20 @@ impl RpcClient {
     pub async fn disconnect(&self) -> Result<()> {
         // disconnect the client first to receive the 'close' event
         self.inner.client.disconnect().await?;
+        self.stop_notification_task().await?;
+        Ok(())
+    }
+
+    /// Start background RPC services (automatically started when invoking {@link RpcClient.connect}).
+    pub async fn start(&self) -> Result<()> {
+        self.start_notification_task()?;
+        self.inner.client.start().await?;
+        Ok(())
+    }
+
+    /// Stop background RPC services (automatically stopped when invoking {@link RpcClient.disconnect}).
+    pub async fn stop(&self) -> Result<()> {
+        self.inner.client.stop().await?;
         self.stop_notification_task().await?;
         Ok(())
     }
@@ -602,8 +617,8 @@ impl RpcClient {
 
     async fn stop_notification_task(&self) -> Result<()> {
         if self.inner.notification_task.load(Ordering::SeqCst) {
-            self.inner.notification_task.store(false, Ordering::SeqCst);
             self.inner.notification_ctl.signal(()).await.map_err(|err| JsError::new(&err.to_string()))?;
+            self.inner.notification_task.store(false, Ordering::SeqCst);
         }
         Ok(())
     }
@@ -611,6 +626,10 @@ impl RpcClient {
     /// Notification task receives notifications and executes them on the
     /// user-supplied callback function.
     fn start_notification_task(&self) -> Result<()> {
+        if self.inner.notification_task.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+
         self.inner.notification_task.store(true, Ordering::SeqCst);
 
         let ctl_receiver = self.inner.notification_ctl.request.receiver.clone();
