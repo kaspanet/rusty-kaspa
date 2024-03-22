@@ -5,36 +5,20 @@
 
 #[allow(unused_imports)]
 pub use log::{Level, LevelFilter};
+pub use workflow_log;
 
 cfg_if::cfg_if! {
     if #[cfg(not(target_arch = "wasm32"))] {
-use consts::*;
+        use consts::*;
 
-mod appender;
-mod consts;
-mod logger;
+        mod appender;
+        mod consts;
+        mod logger;
     }
 }
 
-cfg_if::cfg_if! {
-    if #[cfg(target_arch = "wasm32")] {
-        static mut LEVEL_FILTER : LevelFilter = LevelFilter::Trace;
-        #[inline(always)]
-        pub fn log_level_enabled(level: Level) -> bool {
-            unsafe { LEVEL_FILTER >= level }
-        }
-        pub fn set_log_level(level: LevelFilter) {
-            unsafe { LEVEL_FILTER = level };
-            workflow_log::set_log_level(level);
-        }
-    } else {
-
-        /// WARNING: This function is internal and
-        /// only has effect on the workflow_log logger.
-        pub fn set_log_level(level: LevelFilter) {
-            workflow_log::set_log_level(level);
-        }
-    }
+pub fn set_log_level(level: LevelFilter) {
+    workflow_log::set_log_level(level);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -94,8 +78,8 @@ pub fn try_init_logger(filters: &str) {
 #[macro_export]
 macro_rules! trace {
     ($($t:tt)*) => {
-        if kaspa_core::log::log_level_enabled(log::Level::Trace) {
-            kaspa_core::console::log(&format_args!($($t)*).to_string());
+        if kaspa_core::log::workflow_log::log_level_enabled(log::Level::Trace) {
+            kaspa_core::log::workflow_log::impls::trace_impl(None, &format_args!($($t)*));
         }
     };
 }
@@ -112,8 +96,8 @@ macro_rules! trace {
 #[macro_export]
 macro_rules! debug {
     ($($t:tt)*) => (
-        if kaspa_core::log::log_level_enabled(log::Level::Debug) {
-            kaspa_core::console::log(&format_args!($($t)*).to_string());
+        if kaspa_core::log::workflow_log::log_level_enabled(log::Level::Debug) {
+            kaspa_core::log::workflow_log::impls::debug_impl(None, &format_args!($($t)*));
         }
     )
 }
@@ -130,8 +114,8 @@ macro_rules! debug {
 #[macro_export]
 macro_rules! info {
     ($($t:tt)*) => (
-        if kaspa_core::log::log_level_enabled(log::Level::Info) {
-            kaspa_core::console::log(&format_args!($($t)*).to_string());
+        if kaspa_core::log::workflow_log::log_level_enabled(log::Level::Info) {
+            kaspa_core::log::workflow_log::impls::info_impl(None, &format_args!($($t)*).to_string());
         }
     )
 }
@@ -148,8 +132,8 @@ macro_rules! info {
 #[macro_export]
 macro_rules! warn {
     ($($t:tt)*) => (
-        if kaspa_core::log::log_level_enabled(log::Level::Warn) {
-            kaspa_core::console::warn(&format_args!($($t)*).to_string());
+        if kaspa_core::log::workflow_log::log_level_enabled(log::Level::Warn) {
+            kaspa_core::log::workflow_log::impls::warn_impl(None, &format_args!($($t)*));
         }
     )
 }
@@ -166,8 +150,8 @@ macro_rules! warn {
 #[macro_export]
 macro_rules! error {
     ($($t:tt)*) => (
-        if kaspa_core::log::log_level_enabled(log::Level::Error) {
-            kaspa_core::console::error(&format_args!($($t)*).to_string());
+        if kaspa_core::log::workflow_log::log_level_enabled(log::Level::Error) {
+            kaspa_core::log::workflow_log::impls::error_impl(None, &format_args!($($t)*));
         }
     )
 }
