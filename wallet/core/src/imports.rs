@@ -24,6 +24,7 @@ pub use crate::wallet::*;
 pub use crate::{storage, utils};
 
 pub use ahash::{AHashMap, AHashSet};
+pub use async_std::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 pub use async_trait::async_trait;
 pub use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 pub use cfg_if::cfg_if;

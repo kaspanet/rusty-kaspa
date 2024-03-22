@@ -3,6 +3,7 @@
 pub use crate::client::*;
 pub use crate::resolver::Resolver;
 pub use crate::result::Result;
+pub use async_std::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 pub use async_trait::async_trait;
 pub use cfg_if::cfg_if;
 pub use futures::*;

@@ -17,6 +17,7 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 ahash.workspace = true
+async-std.workspace = true
 cfg-if.workspace = true
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true

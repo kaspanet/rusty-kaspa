@@ -689,7 +689,7 @@ impl UtxoContext {
         let current_daa_score = current_daa_score.unwrap_or_else(|| {
             self.processor()
                 .current_daa_score()
-                .expect("daa score or initialized UtxoProcessor are when invoking scan_and_register_addresses()")
+                .expect("Expecting DAA score or initialized UtxoProcessor when invoking scan_and_register_addresses() - You might be accessing UtxoProcessor APIs before it is initialized (see `utxo-proc-start` event).")
         });
         self.extend_from_scan(refs, current_daa_score).await?;
         self.update_balance().await?;

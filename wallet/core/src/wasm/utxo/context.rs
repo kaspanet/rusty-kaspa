@@ -121,7 +121,8 @@ impl UtxoContext {
             None
         };
         let addresses: Vec<Address> = addresses.try_into()?;
-        self.inner().scan_and_register_addresses(addresses, current_daa_score).await
+        self.inner().scan_and_register_addresses(addresses, current_daa_score).await?;
+        Ok(())
     }
 
     /// Unregister a list of addresses from the context. This will stop tracking of these addresses.

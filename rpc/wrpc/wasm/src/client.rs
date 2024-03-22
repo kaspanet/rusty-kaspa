@@ -138,6 +138,7 @@ pub struct Inner {
     callbacks: Arc<Mutex<AHashMap<NotificationEvent, Vec<Sink>>>>,
     listener_id: Arc<Mutex<Option<ListenerId>>>,
     notification_channel: Channel<kaspa_rpc_core::Notification>,
+    connect_disconnect_guard: AsyncMutex<()>,
 }
 
 impl Inner {
@@ -281,6 +282,7 @@ impl RpcClient {
                 callbacks: Arc::new(Default::default()),
                 listener_id: Arc::new(Mutex::new(None)),
                 notification_channel: Channel::unbounded(),
+                connect_disconnect_guard: AsyncMutex::new(()),
             }),
         };
 
@@ -364,6 +366,8 @@ impl RpcClient {
     /// terminate the connection.
     /// @see {@link IConnectOptions} interface for more details.
     pub async fn connect(&self, args: Option<IConnectOptions>) -> Result<()> {
+        let _guard = self.inner.connect_disconnect_guard.lock().await;
+
         let options = args.map(ConnectOptions::try_from).transpose()?;
 
         self.start_notification_task()?;
@@ -373,6 +377,8 @@ impl RpcClient {
 
     /// Disconnect from the Kaspa RPC server.
     pub async fn disconnect(&self) -> Result<()> {
+        let _guard = self.inner.connect_disconnect_guard.lock().await;
+
         // disconnect the client first to receive the 'close' event
         self.inner.client.disconnect().await?;
         self.stop_notification_task().await?;
@@ -588,6 +594,7 @@ impl RpcClient {
                 callbacks: Arc::new(Mutex::new(Default::default())),
                 listener_id: Arc::new(Mutex::new(None)),
                 notification_channel: Channel::unbounded(),
+                connect_disconnect_guard: AsyncMutex::new(()),
             }),
         }
     }
@@ -632,10 +639,12 @@ impl RpcClient {
                                         this.inner.notification_channel.sender.clone(),
                                         ChannelType::Persistent,
                                     ));
+                                    log_info!("+WASM RPC TASK [Open]: registering listener {listener_id:?}");
                                     *this.inner.listener_id.lock().unwrap() = Some(listener_id);
                                 }
                                 Ctl::Close => {
                                     let listener_id = this.inner.listener_id.lock().unwrap().take();
+                                    log_info!("-WASM RPC TASK [Close]: unregistering listener {listener_id:?}");
                                     if let Some(listener_id) = listener_id {
                                         if let Err(err) = this.inner.client.unregister_listener(listener_id).await {
                                             log_error!("Error in unregister_listener: {:?}",err);

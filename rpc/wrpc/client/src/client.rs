@@ -15,27 +15,20 @@ pub use workflow_rpc::client::{
     ConnectOptions, ConnectResult, ConnectStrategy, Resolver as RpcResolver, ResolverResult, WebSocketConfig, WebSocketError,
 };
 
-// /// [`NotificationMode`] controls notification delivery process
-// #[wasm_bindgen]
-// #[derive(Clone, Copy, Debug)]
-// pub enum NotificationMode {
-//     /// Local notifier is used for notification processing.
-//     ///
-//     /// Multiple listeners can register and subscribe independently.
-//     MultiListeners,
-//     /// No notifier is present, notifications are relayed
-//     /// directly through the internal channel to a single listener.
-//     Direct,
-// }
+type RpcClientNotifier = Arc<Notifier<Notification, ChannelConnection>>;
 
 struct Inner {
     rpc_client: Arc<RpcClient<RpcApiOps>>,
-    notification_channel: Channel<Notification>,
+    notification_relay_channel: Channel<Notification>,
+    notification_intake_channel: Mutex<Channel<Notification>>,
+    notifier: Arc<Mutex<Option<RpcClientNotifier>>>,
     encoding: Encoding,
     wrpc_ctl_multiplexer: Multiplexer<WrpcCtl>,
     rpc_ctl: RpcCtl,
     background_services_running: Arc<AtomicBool>,
     service_ctl: DuplexChannel<()>,
+    connect_disconnect_guard: AsyncMutex<()>,
+    start_stop_guard: AsyncMutex<()>,
     // ---
     default_url: Mutex<Option<String>>,
     current_url: Mutex<Option<String>>,
@@ -52,7 +45,8 @@ impl Inner {
 
         let options = RpcClientOptions::new().with_ctl_multiplexer(wrpc_ctl_multiplexer.clone());
 
-        let notification_channel = Channel::unbounded();
+        let notification_relay_channel = Channel::unbounded();
+        let notification_intake_channel = Mutex::new(Channel::unbounded());
 
         // The `Interface` struct can be used to register for server-side
         // notifications. All notification methods have to be created at
@@ -72,7 +66,7 @@ impl Inner {
         ]
         .into_iter()
         .for_each(|notification_op| {
-            let notification_sender_ = notification_channel.sender.clone();
+            let notification_sender_ = notification_relay_channel.sender.clone();
             interface.notification(
                 notification_op,
                 workflow_rpc::client::Notification::new(move |notification: kaspa_rpc_core::Notification| {
@@ -95,12 +89,16 @@ impl Inner {
         let rpc = Arc::new(RpcClient::new_with_encoding(encoding, interface.into(), options, None)?);
         let client = Self {
             rpc_client: rpc,
-            notification_channel,
+            notification_relay_channel,
+            notification_intake_channel,
+            notifier: Default::default(),
             encoding,
             wrpc_ctl_multiplexer,
             rpc_ctl,
             service_ctl: DuplexChannel::unbounded(),
             background_services_running: Arc::new(AtomicBool::new(false)),
+            connect_disconnect_guard: async_std::sync::Mutex::new(()),
+            start_stop_guard: async_std::sync::Mutex::new(()),
             // ---
             default_url: Mutex::new(url.map(|s| s.to_string())),
             current_url: Mutex::new(None),
@@ -111,12 +109,10 @@ impl Inner {
         Ok(client)
     }
 
-    pub fn notification_channel_receiver(&self) -> Receiver<Notification> {
-        self.notification_channel.receiver.clone()
-    }
-
-    pub fn shutdown_notification_channel(&self) -> bool {
-        self.notification_channel.receiver.close()
+    pub fn reset_notification_intake_channel(&self) {
+        let mut intake = self.notification_intake_channel.lock().unwrap();
+        intake.sender.close();
+        *intake = Channel::unbounded();
     }
 
     /// Start sending notifications of some type to the client.
@@ -155,13 +151,24 @@ impl Inner {
     fn network_id(&self) -> Option<NetworkId> {
         *self.network_id.lock().unwrap()
     }
+
+    fn build_notifier(self: &Arc<Self>) -> Result<RpcClientNotifier> {
+        let receiver = self.notification_intake_channel.lock().unwrap().receiver.clone();
+        let enabled_events = EVENT_TYPE_ARRAY[..].into();
+        let converter = Arc::new(RpcCoreConverter::new());
+        let collector = Arc::new(RpcCoreCollector::new(WRPC_CLIENT, receiver, converter));
+        let subscriber = Arc::new(Subscriber::new(WRPC_CLIENT, enabled_events, self.clone(), 0));
+        let notifier = Arc::new(Notifier::new(WRPC_CLIENT, enabled_events, vec![collector], vec![subscriber], 3));
+        *self.notifier.lock().unwrap() = Some(notifier.clone());
+        Ok(notifier)
+    }
 }
 
 impl Debug for Inner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KaspaRpcClient")
             .field("rpc", &"rpc")
-            .field("notification_channel", &self.notification_channel)
+            // .field("notification_channel", &self.notification_channel)
             .field("encoding", &self.encoding)
             .finish()
     }
@@ -217,8 +224,6 @@ const WRPC_CLIENT: &str = "wrpc-client";
 #[derive(Clone)]
 pub struct KaspaRpcClient {
     inner: Arc<Inner>,
-    notifier: Option<Arc<Notifier<Notification, ChannelConnection>>>,
-    notification_mode: NotificationMode,
 }
 
 impl Debug for KaspaRpcClient {
@@ -235,31 +240,37 @@ impl KaspaRpcClient {
         resolver: Option<Resolver>,
         network_id: Option<NetworkId>,
     ) -> Result<KaspaRpcClient> {
-        Self::new_with_args(encoding, NotificationMode::MultiListeners, url, resolver, network_id)
+        Self::new_with_args(encoding, url, resolver, network_id)
     }
 
     /// Extended constructor that accepts [`NotificationMode`] argument.
     pub fn new_with_args(
         encoding: Encoding,
-        notification_mode: NotificationMode,
         url: Option<&str>,
         resolver: Option<Resolver>,
         network_id: Option<NetworkId>,
     ) -> Result<KaspaRpcClient> {
         let inner = Arc::new(Inner::new(encoding, url, resolver, network_id)?);
-        let notifier = if matches!(notification_mode, NotificationMode::MultiListeners) {
-            let enabled_events = EVENT_TYPE_ARRAY[..].into();
-            let converter = Arc::new(RpcCoreConverter::new());
-            let collector = Arc::new(RpcCoreCollector::new(WRPC_CLIENT, inner.notification_channel_receiver(), converter));
-            let subscriber = Arc::new(Subscriber::new(WRPC_CLIENT, enabled_events, inner.clone(), 0));
-            Some(Arc::new(Notifier::new(WRPC_CLIENT, enabled_events, vec![collector], vec![subscriber], 3)))
-        } else {
-            None
-        };
-
-        let client = KaspaRpcClient { inner, notifier, notification_mode };
+        inner.build_notifier()?;
+        let client = KaspaRpcClient { inner };
 
         Ok(client)
+    }
+
+    async fn start_notifier(&self) -> Result<()> {
+        let notifier = self.inner.build_notifier()?;
+        notifier.start();
+        Ok(())
+    }
+
+    async fn stop_notifier(&self) -> Result<()> {
+        self.inner.reset_notification_intake_channel();
+        self.notifier().join().await?;
+        Ok(())
+    }
+
+    fn notifier(&self) -> RpcClientNotifier {
+        self.inner.notifier.lock().unwrap().clone().expect("Rpc client is not correctly initialized")
     }
 
     pub fn url(&self) -> Option<String> {
@@ -311,33 +322,28 @@ impl KaspaRpcClient {
 
     /// Start background RPC services.
     pub async fn start(&self) -> Result<()> {
-        if !self.inner.background_services_running.load(Ordering::SeqCst) {
-            match &self.notification_mode {
-                NotificationMode::MultiListeners => {
-                    self.notifier.clone().unwrap().start();
-                }
-                NotificationMode::Direct => {}
-            }
+        let _guard = self.inner.start_stop_guard.lock().await;
 
+        if !self.inner.background_services_running.load(Ordering::SeqCst) {
+            self.inner.background_services_running.store(true, Ordering::SeqCst);
+            self.start_notifier().await?;
             self.start_rpc_ctl_service().await?;
+        } else {
+            log_error!("KaspaRpcClient background services already running: you might be invoking KaspaRpcClient::start() twice");
         }
         Ok(())
     }
 
     /// Stop background RPC services.
     pub async fn stop(&self) -> Result<()> {
-        if self.inner.background_services_running.load(Ordering::SeqCst) {
-            match &self.notification_mode {
-                NotificationMode::MultiListeners => {
-                    self.inner.shutdown_notification_channel();
-                    self.notifier.as_ref().unwrap().join().await?;
-                }
-                NotificationMode::Direct => {
-                    // self.notification_ctl.signal(()).await?;
-                }
-            }
+        let _guard = self.inner.start_stop_guard.lock().await;
 
+        if self.inner.background_services_running.load(Ordering::SeqCst) {
             self.stop_rpc_ctl_service().await?;
+            self.stop_notifier().await?;
+            self.inner.background_services_running.store(false, Ordering::SeqCst);
+        } else {
+            log_trace!("KaspaRpcClient is already stopped or stop() is invoked without start()");
         }
         Ok(())
     }
@@ -350,6 +356,8 @@ impl KaspaRpcClient {
     /// This method starts background RPC services if they are not running and
     /// attempts to connect to the RPC endpoint.
     pub async fn connect(&self, options: Option<ConnectOptions>) -> ConnectResult<Error> {
+        let _guard = self.inner.connect_disconnect_guard.lock().await;
+
         let mut options = options.unwrap_or_default();
 
         if let Some(url) = options.url.take() {
@@ -373,6 +381,8 @@ impl KaspaRpcClient {
     /// This method stops background RPC services and disconnects
     /// from the RPC endpoint.
     pub async fn disconnect(&self) -> Result<()> {
+        let _guard = self.inner.connect_disconnect_guard.lock().await;
+
         self.inner.rpc_client.shutdown().await?;
         self.stop().await?;
         Ok(())
@@ -395,11 +405,7 @@ impl KaspaRpcClient {
     }
 
     pub fn notification_channel_receiver(&self) -> Receiver<Notification> {
-        self.inner.notification_channel.receiver.clone()
-    }
-
-    pub fn notification_mode(&self) -> NotificationMode {
-        self.notification_mode
+        self.inner.notification_intake_channel.lock().unwrap().receiver.clone()
     }
 
     pub fn ctl(&self) -> &RpcCtl {
@@ -456,12 +462,23 @@ impl KaspaRpcClient {
     async fn start_rpc_ctl_service(&self) -> Result<()> {
         let inner = self.inner.clone();
         let wrpc_ctl_channel = inner.wrpc_ctl_multiplexer.channel();
+        let notification_relay_channel = inner.notification_relay_channel.clone();
         spawn(async move {
             loop {
                 select! {
                     _ = inner.service_ctl.request.receiver.recv().fuse() => {
                         break;
                     },
+                    msg = notification_relay_channel.receiver.recv().fuse() => {
+                        if let Ok(msg) = msg {
+                            // inner.rpc_ctl.notify(msg).await.expect("(KaspaRpcClient) rpc_ctl.notify() error");
+                            if let Err(err) = inner.notification_intake_channel.lock().unwrap().sender.try_send(msg) {
+                                log_error!("notification_intake_channel.sender.try_send() error: {err}");
+                            }
+                        } else {
+                            log_error!("notification_relay_channel receiver error");
+                        }
+                    }
                     msg = wrpc_ctl_channel.receiver.recv().fuse() => {
                         if let Ok(msg) = msg {
                             match msg {
@@ -553,48 +570,26 @@ impl RpcApi for KaspaRpcClient {
 
     /// Register a new listener and returns an id and a channel receiver.
     fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
-        match self.notification_mode {
-            NotificationMode::MultiListeners => self.notifier.as_ref().unwrap().register_new_listener(connection),
-            NotificationMode::Direct => ListenerId::default(),
-        }
+        self.notifier().register_new_listener(connection)
     }
 
     /// Unregister an existing listener.
     ///
     /// Stop all notifications for this listener and drop its channel.
     async fn unregister_listener(&self, id: ListenerId) -> RpcResult<()> {
-        match self.notification_mode {
-            NotificationMode::MultiListeners => {
-                self.notifier.as_ref().unwrap().unregister_listener(id)?;
-            }
-            NotificationMode::Direct => {}
-        }
+        self.notifier().unregister_listener(id)?;
         Ok(())
     }
 
     /// Start sending notifications of some type to a listener.
     async fn start_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
-        match self.notification_mode {
-            NotificationMode::MultiListeners => {
-                self.notifier.clone().unwrap().try_start_notify(id, scope)?;
-            }
-            NotificationMode::Direct => {
-                self.inner.start_notify_to_client(scope).await?;
-            }
-        }
+        self.notifier().try_start_notify(id, scope)?;
         Ok(())
     }
 
     /// Stop sending notifications of some type to a listener.
     async fn stop_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
-        match self.notification_mode {
-            NotificationMode::MultiListeners => {
-                self.notifier.clone().unwrap().try_stop_notify(id, scope)?;
-            }
-            NotificationMode::Direct => {
-                self.inner.stop_notify_to_client(scope).await?;
-            }
-        }
+        self.notifier().try_stop_notify(id, scope)?;
         Ok(())
     }
 }

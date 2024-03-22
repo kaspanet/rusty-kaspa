@@ -28,7 +28,6 @@ use crate::utxo::{
     Maturity, OutgoingTransaction, PendingUtxoEntryReference, SyncMonitor, UtxoContext, UtxoEntryId, UtxoEntryReference,
 };
 use crate::wallet::WalletBusMessage;
-use async_std::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 use kaspa_rpc_core::{
     notify::connection::{ChannelConnection, ChannelType},
     Notification,
@@ -56,7 +55,8 @@ pub struct Inner {
     sync_proc: SyncMonitor,
     multiplexer: Multiplexer<Box<Events>>,
     wallet_bus: Option<Channel<WalletBusMessage>>,
-    notification_lock: AsyncMutex<()>,
+    notification_guard: AsyncMutex<()>,
+    connect_disconnect_guard: AsyncMutex<()>,
 }
 
 impl Inner {
@@ -82,7 +82,8 @@ impl Inner {
             sync_proc: SyncMonitor::new(rpc.clone(), &multiplexer),
             multiplexer,
             wallet_bus,
-            notification_lock: AsyncMutex::new(()),
+            notification_guard: Default::default(),
+            connect_disconnect_guard: Default::default(),
         }
     }
 }
@@ -138,7 +139,7 @@ impl UtxoProcessor {
     }
 
     pub async fn notification_lock(&self) -> AsyncMutexGuard<()> {
-        self.inner.notification_lock.lock().await
+        self.inner.notification_guard.lock().await
     }
 
     pub fn sync_proc(&self) -> &SyncMonitor {
@@ -454,17 +455,26 @@ impl UtxoProcessor {
     }
 
     pub async fn handle_connect(&self) -> Result<()> {
-        if let Err(err) = self.handle_connect_impl().await {
-            log_error!("UtxoProcessor: error while connecting to node: {err}");
-            self.notify(Events::UtxoProcError { message: err.to_string() }).await?;
-            if let Some(client) = self.rpc_client() {
-                client.disconnect().await?;
+        let _ = self.inner.connect_disconnect_guard.lock().await;
+
+        match self.handle_connect_impl().await {
+            Err(err) => {
+                log_error!("UtxoProcessor: error while connecting to node: {err}");
+                self.notify(Events::UtxoProcError { message: err.to_string() }).await?;
+                if let Some(client) = self.rpc_client() {
+                    // try force disconnect the client if we have failed
+                    // to negotiate the connection to the node.
+                    client.disconnect().await?;
+                }
+                Err(err)
             }
+            Ok(_) => Ok(()),
         }
-        Ok(())
     }
 
     pub async fn handle_disconnect(&self) -> Result<()> {
+        let _ = self.inner.connect_disconnect_guard.lock().await;
+
         self.inner.is_connected.store(false, Ordering::SeqCst);
         self.unregister_notification_listener().await?;
         self.notify(Events::UtxoProcStop).await?;
@@ -486,9 +496,7 @@ impl UtxoProcessor {
             .rpc_api()
             .register_new_listener(ChannelConnection::new(self.inner.notification_channel.sender.clone(), ChannelType::Persistent));
         *self.inner.listener_id.lock().unwrap() = Some(listener_id);
-
         self.rpc_api().start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
-
         Ok(())
     }
 
@@ -554,11 +562,14 @@ impl UtxoProcessor {
                                 match msg {
                                     RpcState::Opened => {
                                         if !this.is_connected() {
-                                            this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
-                                            this.inner.multiplexer.try_broadcast(Box::new(Events::Connect {
-                                                network_id : this.network_id().expect("network id expected during connection"),
-                                                url : this.rpc_url()
-                                            })).unwrap_or_else(|err| log_error!("{err}"));
+                                            if let Err(err) = this.handle_connect().await {
+                                                log_error!("UtxoProcessor error: {err}");
+                                            } else {
+                                                this.inner.multiplexer.try_broadcast(Box::new(Events::Connect {
+                                                    network_id : this.network_id().expect("network id expected during connection"),
+                                                    url : this.rpc_url()
+                                                })).unwrap_or_else(|err| log_error!("{err}"));
+                                            }
                                         }
                                     },
                                     RpcState::Closed => {
@@ -604,6 +615,8 @@ impl UtxoProcessor {
 
                 }
             }
+
+            log_info!("utxo processing task existing");
 
             // handle power down on rpc channel that remains connected
             if this.is_connected() {

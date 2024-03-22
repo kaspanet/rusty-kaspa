@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 
 pub use ahash::AHashMap;
+pub use async_std::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 pub use cfg_if::cfg_if;
 pub use futures::*;
 pub use js_sys::Function;
