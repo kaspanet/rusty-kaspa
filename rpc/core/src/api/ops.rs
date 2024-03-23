@@ -86,8 +86,6 @@ pub enum RpcApiOps {
     GetCoinSupply,
     /// Get DAA Score timestamp estimate
     GetDaaScoreTimestampEstimate,
-    /// Get UTXO Return Addresses
-    GetUtxoReturnAddress,
 
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,
@@ -116,6 +114,9 @@ pub enum RpcApiOps {
     VirtualDaaScoreChangedNotification,
     PruningPointUtxoSetOverrideNotification,
     NewBlockTemplateNotification,
+
+    /// Get UTXO Return Addresses
+    GetUtxoReturnAddress,
 }
 
 impl RpcApiOps {
