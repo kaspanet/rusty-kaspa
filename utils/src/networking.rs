@@ -266,7 +266,7 @@ pub struct ContextualNetAddress {
 }
 
 impl ContextualNetAddress {
-    fn new(ip: IpAddress, port: Option<u16>) -> Self {
+    pub fn new(ip: IpAddress, port: Option<u16>) -> Self {
         Self { ip, port }
     }
 
