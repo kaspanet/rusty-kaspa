@@ -630,81 +630,77 @@ impl ConsensusApi for Consensus {
         let mut low_index = tip_index.saturating_sub(tip_daa_score.saturating_sub(target_daa_score)).max(pp_index);
         let mut high_index = tip_index;
 
-        let mut matching_chain_block_hash: Option<Hash> = None;
-        while low_index <= high_index {
+        let matching_chain_block_hash = loop {
+            // Binary search for the chain block that matches the target_daa_score
+            // 0. Get the mid point index
             let mid = low_index + (high_index - low_index) / 2;
 
-            if let Ok(hash) = sc_read.get_by_index(mid) {
-                if let Ok(compact_header) = self.headers_store.get_compact_header_data(hash) {
-                    match compact_header.daa_score.cmp(&target_daa_score) {
-                        cmp::Ordering::Equal => {
-                            // We found the chain block we need
-                            matching_chain_block_hash = Some(hash);
-                            break;
-                        }
-                        cmp::Ordering::Greater => {
-                            high_index = mid - 1;
-                        }
-                        cmp::Ordering::Less => {
-                            low_index = mid + 1;
-                        }
-                    }
-                } else {
+            // 1. Get the chain block hash at that index. Error if we don't find a hash at an index
+            let hash = sc_read
+                .get_by_index(mid)
+                .map_err(|err| {
+                    trace!("Did not find a hash at index {}", mid);
+                    err
+                })
+                .ok()?;
+
+            // 2. Get the compact header so we have access to the daa_score. Error if we
+            let compact_header = self
+                .headers_store
+                .get_compact_header_data(hash)
+                .map_err(|err| {
                     trace!("Did not find a compact header with hash {}", hash);
-                    return None;
+                    err
+                })
+                .ok()?;
+
+            // 3. Compare block daa score to our target
+            match compact_header.daa_score.cmp(&target_daa_score) {
+                cmp::Ordering::Equal => {
+                    // We found the chain block we need
+                    break Some(hash);
                 }
-            } else {
-                trace!("Did not find a hash at index {}", mid);
-                return None;
+                cmp::Ordering::Greater => {
+                    high_index = mid - 1;
+                }
+                cmp::Ordering::Less => {
+                    low_index = mid + 1;
+                }
             }
+
+            if low_index > high_index {
+                break None;
+            }
+        }?;
+
+        let acceptance_data = self.acceptance_data_store.get(matching_chain_block_hash).ok()?;
+        let (index, containing_acceptance) = acceptance_data.iter().find_map(|mbad| {
+            let tx_arr_index =
+                mbad.accepted_transactions.iter().enumerate().find_map(|(index, tx)| (tx.transaction_id == txid).then_some(index));
+            tx_arr_index.map(|index| (index, mbad.clone()))
+        })?;
+
+        // Found Merged block containing the TXID
+        let tx = &self.block_transactions_store.get(containing_acceptance.block_hash).unwrap()[index];
+
+        if tx.id() != txid {
+            // Should never happen, but do a sanity check. This would mean something went wrong with storing block transactions
+            // Sanity check is necessary to guarantee that this function will never give back a wrong address (err on the side of None)
+            warn!("Expected {} to match {} when checking block_transaction_store using array index of transaction", tx.id(), txid);
+            return None;
         }
 
-        let matching_chain_block_hash = matching_chain_block_hash?;
+        if tx.inputs.is_empty() {
+            // A transaction may have no inputs (like a coinbase transaction)
+            return None;
+        }
 
-        if let Ok(acceptance_data) = self.acceptance_data_store.get(matching_chain_block_hash) {
-            let maybe_index_and_containing_acceptance =
-                acceptance_data.iter().find_map(|mbad| {
-                    let tx_arr_index = mbad.accepted_transactions.iter().enumerate().find_map(|(index, tx)| {
-                        if tx.transaction_id == txid {
-                            Some(index)
-                        } else {
-                            None
-                        }
-                    });
+        let first_input_prev_outpoint = &tx.inputs[0].previous_outpoint;
+        // Expected to never fail, since we found the acceptance data and therefore there must be matching diff
+        let utxo_diff = self.utxo_diffs_store.get(matching_chain_block_hash).unwrap();
+        let removed_diffs = utxo_diff.removed();
 
-                    tx_arr_index.map(|index| (index, mbad.clone()))
-                });
-
-            if let Some((index, containing_acceptance)) = maybe_index_and_containing_acceptance {
-                // Found Merged block containing the TXID
-                let tx = &self.block_transactions_store.get(containing_acceptance.block_hash).unwrap()[index];
-
-                if tx.id() != txid {
-                    // Should never happen, but do a sanity check. This would mean something went wrong with storing block transactions
-                    // Sanity check is necessary to guarantee that this function will never give back a wrong address (err on the side of None)
-                    warn!(
-                        "Expected {} to match {} when checking block_transaction_store using array index of transaction",
-                        tx.id(),
-                        txid
-                    );
-                    return None;
-                }
-
-                if tx.inputs.is_empty() {
-                    // A transaction may have no inputs (like a coinbase transaction)
-                    return None;
-                }
-
-                let first_input_prev_outpoint = &tx.inputs[0].previous_outpoint;
-                // Expected to never fail, since
-                let utxo_diff = self.utxo_diffs_store.get(matching_chain_block_hash).unwrap();
-                let removed_diffs = utxo_diff.removed();
-
-                return Some(removed_diffs.get(first_input_prev_outpoint)?.script_public_key.clone());
-            }
-        };
-
-        None
+        Some(removed_diffs.get(first_input_prev_outpoint)?.script_public_key.clone())
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {
