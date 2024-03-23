@@ -29,7 +29,17 @@ impl WrpcNetAddress {
                 };
                 format!("0.0.0.0:{port}").parse().unwrap()
             }
-            WrpcNetAddress::Custom(address) => *address,
+            WrpcNetAddress::Custom(address) => {
+                if address.port_not_specified() {
+                    let port = match encoding {
+                        WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
+                        WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
+                    };
+                    address.with_port(port)
+                } else {
+                    *address
+                }
+            }
         }
     }
 }
