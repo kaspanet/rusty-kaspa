@@ -1,6 +1,7 @@
 [package]
 name = "rothschild"
 description = "Kaspa Transaction Generator"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

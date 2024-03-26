@@ -2,6 +2,7 @@
 name = "kaspa-cli"
 description = "Kaspa CLI"
 keywords = ["kaspa", "wallet", "cli", "rpc"]
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

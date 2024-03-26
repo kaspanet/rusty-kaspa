@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-testing-integration"
 publish = false
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

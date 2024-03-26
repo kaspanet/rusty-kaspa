@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-utxoindex"
 description = "Kaspa UTXO index"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

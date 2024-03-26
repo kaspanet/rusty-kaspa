@@ -5,10 +5,10 @@
 //!
 
 use crate::imports::*;
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use std::fmt::{Display, Formatter};
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct Hint {
     pub text: String,
 }

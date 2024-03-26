@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-core"
 description = "Kaspa core"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

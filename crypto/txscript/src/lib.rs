@@ -941,6 +941,7 @@ mod bitcoind_tests {
         result: Result<(), UnifiedError>,
     }
 
+    #[allow(dead_code)]
     #[derive(Deserialize, Debug, Clone)]
     #[serde(untagged)]
     enum JsonTestRow {

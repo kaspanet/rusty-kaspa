@@ -1,9 +1,9 @@
 use super::RpcAddress;
 use super::RpcTransaction;
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct RpcMempoolEntry {
     pub fee: u64,
     pub transaction: RpcTransaction,
@@ -16,7 +16,7 @@ impl RpcMempoolEntry {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct RpcMempoolEntryByAddress {
     pub address: RpcAddress,
     pub sending: Vec<RpcMempoolEntry>,

@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-merkle"
 description = "Kaspa merkle tree library"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

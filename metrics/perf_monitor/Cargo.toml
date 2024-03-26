@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-perf-monitor"
 description = "Kaspa process performance monitoring tools"
+rust-version.workspace = true
 version.workspace = true
 authors.workspace = true
 license.workspace = true

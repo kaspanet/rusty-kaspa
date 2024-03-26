@@ -547,7 +547,7 @@ mod tests {
             }
         }
 
-        let tests = vec![
+        let tests = [
             TestStep {
                 name: "low-priority transaction into an empty orphan pool",
                 priority: Priority::Low,

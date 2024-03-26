@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-bip32"
 description = "BIP32 for Kaspa"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

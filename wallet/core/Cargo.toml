@@ -2,6 +2,7 @@
 name = "kaspa-wallet-core"
 description = "Kaspa wallet library"
 keywords = ["kaspa", "wallet"]
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

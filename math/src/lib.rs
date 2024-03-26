@@ -1,4 +1,4 @@
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use wasm_bindgen::JsValue;
 use workflow_core::sendable::Sendable;
 
@@ -6,7 +6,7 @@ pub mod int;
 pub mod uint;
 pub mod wasm;
 
-construct_uint!(Uint192, 3, BorshSerialize, BorshDeserialize, BorshSchema);
+construct_uint!(Uint192, 3, BorshSerialize, BorshDeserialize);
 construct_uint!(Uint256, 4);
 construct_uint!(Uint320, 5);
 construct_uint!(Uint3072, 48);

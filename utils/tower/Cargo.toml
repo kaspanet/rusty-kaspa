@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-utils-tower"
 description = "Kaspa utilities and middleware for Tower HTTP"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
