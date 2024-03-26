@@ -1,4 +1,4 @@
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_utils::networking::{ContextualNetAddress, IpAddress, NetAddress, PeerId};
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +7,7 @@ pub type RpcIpAddress = IpAddress;
 pub type RpcPeerAddress = NetAddress;
 pub type RpcContextualPeerAddress = ContextualNetAddress;
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct RpcPeerInfo {
     pub id: RpcNodeId,
     pub address: RpcPeerAddress,

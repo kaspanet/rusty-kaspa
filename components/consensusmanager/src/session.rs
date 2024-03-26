@@ -23,9 +23,9 @@ pub use tokio::task::spawn_blocking;
 use crate::BlockProcessingBatch;
 
 #[derive(Clone)]
-pub struct SessionOwnedReadGuard(Arc<RfRwLockOwnedReadGuard>);
+pub struct SessionOwnedReadGuard(pub Arc<RfRwLockOwnedReadGuard>);
 
-pub struct SessionReadGuard<'a>(RfRwLockReadGuard<'a>);
+pub struct SessionReadGuard<'a>(pub RfRwLockReadGuard<'a>);
 
 pub struct SessionWriteGuard<'a>(RfRwLockWriteGuard<'a>);
 
