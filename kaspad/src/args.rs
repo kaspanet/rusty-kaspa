@@ -8,6 +8,7 @@ use kaspa_notify::address::tracker::Tracker;
 use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_wrpc_server::address::WrpcNetAddress;
 use serde::Deserialize;
+use serde_with::{serde_as, DisplayFromStr};
 use std::{ffi::OsString, fs};
 use toml::from_str;
 
@@ -20,39 +21,57 @@ use kaspa_txscript::pay_to_address_script;
 #[cfg(feature = "devnet-prealloc")]
 use std::sync::Arc;
 
+#[serde_as]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Args {
     // NOTE: it is best if property names match config file fields
     pub appdir: Option<String>,
     pub logdir: Option<String>,
+    #[serde(rename = "nologfiles")]
     pub no_log_files: bool,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub rpclisten: Option<ContextualNetAddress>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub rpclisten_borsh: Option<WrpcNetAddress>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub rpclisten_json: Option<WrpcNetAddress>,
+    #[serde(rename = "unsaferpc")]
     pub unsafe_rpc: bool,
     pub wrpc_verbose: bool,
+    #[serde(rename = "loglevel")]
     pub log_level: String,
     pub async_threads: usize,
+    #[serde(rename = "connect")]
+    #[serde_as(as = "Vec<DisplayFromStr>")]
     pub connect_peers: Vec<ContextualNetAddress>,
+    #[serde(rename = "addpeer")]
+    #[serde_as(as = "Vec<DisplayFromStr>")]
     pub add_peers: Vec<ContextualNetAddress>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub listen: Option<ContextualNetAddress>,
+    #[serde(rename = "uacomment")]
     pub user_agent_comments: Vec<String>,
     pub utxoindex: bool,
     pub reset_db: bool,
+    #[serde(rename = "outpeers")]
     pub outbound_target: usize,
+    #[serde(rename = "maxinpeers")]
     pub inbound_limit: usize,
+    #[serde(rename = "rpcmaxclients")]
     pub rpc_max_clients: usize,
     pub max_tracked_addresses: Option<usize>,
     pub enable_unsynced_mining: bool,
     pub enable_mainnet_mining: bool,
     pub testnet: bool,
+    #[serde(rename = "netsuffix")]
     pub testnet_suffix: u32,
     pub devnet: bool,
     pub simnet: bool,
     pub archival: bool,
     pub sanity: bool,
     pub yes: bool,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub externalip: Option<ContextualNetAddress>,
     pub perf_metrics: bool,
     pub perf_metrics_interval_sec: u64,
@@ -66,7 +85,9 @@ pub struct Args {
     pub prealloc_amount: u64,
 
     pub disable_upnp: bool,
+    #[serde(rename = "nodnsseed")]
     pub disable_dns_seeding: bool,
+    #[serde(rename = "nogrpc")]
     pub disable_grpc: bool,
     pub ram_scale: f64,
 }
@@ -94,7 +115,7 @@ impl Default for Args {
             simnet: false,
             archival: false,
             sanity: false,
-            logdir: Some("".into()),
+            logdir: None,
             rpclisten: None,
             wrpc_verbose: false,
             log_level: "INFO".into(),
@@ -396,10 +417,10 @@ impl Args {
             rpclisten_json: m.get_one::<WrpcNetAddress>("rpclisten-json").cloned().or(defaults.rpclisten_json),
             unsafe_rpc: arg_match_unwrap_or::<bool>(&m, "unsaferpc", defaults.unsafe_rpc),
             wrpc_verbose: false,
-            log_level: m.get_one::<String>("log_level").cloned().unwrap(),
+            log_level: arg_match_unwrap_or::<String>(&m, "log_level", defaults.log_level),
             async_threads: arg_match_unwrap_or::<usize>(&m, "async_threads", defaults.async_threads),
-            connect_peers: m.get_many::<ContextualNetAddress>("connect-peers").unwrap_or_default().copied().collect(),
-            add_peers: m.get_many::<ContextualNetAddress>("add-peers").unwrap_or_default().copied().collect(),
+            connect_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "connect-peers", defaults.connect_peers),
+            add_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "add-peers", defaults.add_peers),
             listen: m.get_one::<ContextualNetAddress>("listen").cloned().or(defaults.listen),
             outbound_target: arg_match_unwrap_or::<usize>(&m, "outpeers", defaults.outbound_target),
             inbound_limit: arg_match_unwrap_or::<usize>(&m, "maxinpeers", defaults.inbound_limit),
@@ -416,7 +437,7 @@ impl Args {
             archival: arg_match_unwrap_or::<bool>(&m, "archival", defaults.archival),
             sanity: arg_match_unwrap_or::<bool>(&m, "sanity", defaults.sanity),
             yes: arg_match_unwrap_or::<bool>(&m, "yes", defaults.yes),
-            user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
+            user_agent_comments: arg_match_many_unwrap_or::<String>(&m, "user_agent_comments", defaults.user_agent_comments),
             externalip: m.get_one::<ContextualNetAddress>("externalip").cloned(),
             perf_metrics: arg_match_unwrap_or::<bool>(&m, "perf-metrics", defaults.perf_metrics),
             perf_metrics_interval_sec: arg_match_unwrap_or::<u64>(&m, "perf-metrics-interval-sec", defaults.perf_metrics_interval_sec),
@@ -442,6 +463,13 @@ use clap::parser::ValueSource::DefaultValue;
 use std::marker::{Send, Sync};
 fn arg_match_unwrap_or<T: Clone + Send + Sync + 'static>(m: &clap::ArgMatches, arg_id: &str, default: T) -> T {
     m.get_one::<T>(arg_id).cloned().filter(|_| m.value_source(arg_id) != Some(DefaultValue)).unwrap_or(default)
+}
+
+fn arg_match_many_unwrap_or<T: Clone + Send + Sync + 'static>(m: &clap::ArgMatches, arg_id: &str, default: Vec<T>) -> Vec<T> {
+    match m.get_many::<T>(arg_id) {
+        Some(val_ref) => val_ref.cloned().collect(),
+        None => default,
+    }
 }
 
 /*
