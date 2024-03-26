@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-muhash"
 description = "Kaspa Muhash library"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
