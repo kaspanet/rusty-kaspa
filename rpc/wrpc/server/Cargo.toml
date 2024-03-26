@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-wrpc-server"
 description = "Kaspa wRPC server"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-daemon"
 description = "Utilities for running Kaspa node and tools as a child processes"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
