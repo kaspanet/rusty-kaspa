@@ -2,6 +2,7 @@
 name = "kaspa-os"
 description = "Kaspa Node & Wallet Manager"
 # please keep this version detached from the workspace
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
