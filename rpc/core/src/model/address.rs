@@ -1,11 +1,11 @@
 use crate::{RpcTransactionOutpoint, RpcUtxoEntry};
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
 pub type RpcAddress = kaspa_addresses::Address;
 
 ///
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcUtxosByAddressesEntry {
     pub address: Option<RpcAddress>,
@@ -14,7 +14,7 @@ pub struct RpcUtxosByAddressesEntry {
 }
 
 ///
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcBalancesByAddressesEntry {
     pub address: RpcAddress,

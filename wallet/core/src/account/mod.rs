@@ -210,7 +210,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
                     None => ScanExtent::EmptyWindow,
                 };
 
-                let scans = vec![
+                let scans = [
                     Scan::new_with_address_manager(
                         derivation.receive_address_manager(),
                         &balance,
