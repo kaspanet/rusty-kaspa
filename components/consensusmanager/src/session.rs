@@ -22,9 +22,11 @@ pub use tokio::task::spawn_blocking;
 
 use crate::BlockProcessingBatch;
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct SessionOwnedReadGuard(Arc<RfRwLockOwnedReadGuard>);
 
+#[allow(dead_code)]
 pub struct SessionReadGuard<'a>(RfRwLockReadGuard<'a>);
 
 pub struct SessionWriteGuard<'a>(RfRwLockWriteGuard<'a>);

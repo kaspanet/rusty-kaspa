@@ -2,6 +2,7 @@
 name = "simpa"
 description = "Kaspa Network Simulator"
 publish = false
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

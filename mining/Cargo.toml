@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-mining"
 description = "Kaspa mining"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-index-processor"
 description = "Kaspa index processor"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
