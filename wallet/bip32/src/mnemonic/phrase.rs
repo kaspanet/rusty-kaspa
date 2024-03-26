@@ -6,7 +6,7 @@ use super::{
 };
 use crate::Result;
 use crate::{Error, KEY_SIZE};
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_utils::hex::*;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
@@ -23,7 +23,7 @@ pub type Entropy32 = [u8; KEY_SIZE];
 pub type Entropy16 = [u8; 16];
 
 /// Word count for a BIP39 mnemonic phrase. Identifies mnemonic as 12 or 24 word variants.
-#[derive(Default, Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Default, Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WordCount {
     #[default]

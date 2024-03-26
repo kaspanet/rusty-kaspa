@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-database"
 description = "Kaspa database"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
