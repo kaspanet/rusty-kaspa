@@ -29,7 +29,17 @@ impl WrpcNetAddress {
                 };
                 format!("0.0.0.0:{port}").parse().unwrap()
             }
-            WrpcNetAddress::Custom(address) => *address,
+            WrpcNetAddress::Custom(address) => {
+                if address.port_not_specified() {
+                    let port = match encoding {
+                        WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
+                        WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
+                    };
+                    address.with_port(port)
+                } else {
+                    *address
+                }
+            }
         }
     }
 }
@@ -61,5 +71,106 @@ impl TryFrom<String> for WrpcNetAddress {
 
     fn try_from(s: String) -> Result<Self, Self::Error> {
         WrpcNetAddress::from_str(&s)
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kaspa_utils::networking::IpAddress;
+
+    #[test]
+    fn test_wrpc_net_address_from_str_custom() {
+        // Addresses
+        let addr = "1.2.3.4:8080".parse::<WrpcNetAddress>().unwrap();
+        let addr_without_port = "1.2.3.4".parse::<WrpcNetAddress>().unwrap();
+        // Network types
+        let mainnet = NetworkType::Mainnet;
+        let testnet = NetworkType::Testnet;
+        let simnet = NetworkType::Simnet;
+        let devnet = NetworkType::Devnet;
+        // Encodings
+        let borsh_encoding = WrpcEncoding::Borsh;
+        let json_encoding = WrpcEncoding::SerdeJson;
+
+        // Custom address with port, borsh, mainnet
+        assert_eq!(
+            addr.to_address(&mainnet, &borsh_encoding),
+            ContextualNetAddress::new("1.2.3.4".parse::<IpAddress>().unwrap(), Some(8080 as u16))
+        );
+
+        // Custom address without port, borsh, mainnet
+        assert_eq!(
+            addr_without_port.to_address(&mainnet, &borsh_encoding),
+            ContextualNetAddress::new(
+                "1.2.3.4".parse::<IpAddress>().unwrap(),
+                Some(mainnet.default_borsh_rpc_port())
+            )
+        );
+
+        // Custom address without port, borsh, testnet
+        assert_eq!(
+            addr_without_port.to_address(&testnet, &borsh_encoding),
+            ContextualNetAddress::new(
+                "1.2.3.4".parse::<IpAddress>().unwrap(),
+                Some(testnet.default_borsh_rpc_port())
+            )
+        );
+
+        // Custom address without port, borsh, simnet
+        assert_eq!(
+            addr_without_port.to_address(&simnet, &borsh_encoding),
+            ContextualNetAddress::new(
+                "1.2.3.4".parse::<IpAddress>().unwrap(),
+                Some(simnet.default_borsh_rpc_port())
+            )
+        );
+
+        // Custom address without port, borsh, devnet
+        assert_eq!(
+            addr_without_port.to_address(&devnet, &borsh_encoding),
+            ContextualNetAddress::new(
+                "1.2.3.4".parse::<IpAddress>().unwrap(),
+                Some(devnet.default_borsh_rpc_port())
+            )
+        );
+
+        // Custom address without port, json, mainnet
+        assert_eq!(
+            addr_without_port.to_address(&mainnet, &json_encoding),
+            ContextualNetAddress::new(
+                "1.2.3.4".parse::<IpAddress>().unwrap(),
+                Some(mainnet.default_json_rpc_port())
+            )
+        );
+
+        // Custom address without port, json, testnet
+        assert_eq!(
+            addr_without_port.to_address(&testnet, &json_encoding),
+            ContextualNetAddress::new(
+                "1.2.3.4".parse::<IpAddress>().unwrap(),
+                Some(testnet.default_json_rpc_port())
+            )
+        );
+
+        // Custom address without port, json, simnet
+        assert_eq!(
+            addr_without_port.to_address(&simnet, &json_encoding),
+            ContextualNetAddress::new(
+                "1.2.3.4".parse::<IpAddress>().unwrap(),
+                Some(simnet.default_json_rpc_port())
+            )
+        );
+
+        // Custom address without port, json, devnet
+        assert_eq!(
+            addr_without_port.to_address(&devnet, &json_encoding),
+            ContextualNetAddress::new(
+                "1.2.3.4".parse::<IpAddress>().unwrap(),
+                Some(devnet.default_json_rpc_port())
+            )
+        );
+
     }
 }
