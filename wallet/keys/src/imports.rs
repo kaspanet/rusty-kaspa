@@ -11,7 +11,7 @@ pub use crate::result::Result;
 pub use crate::xprv::{XPrv, XPrvT};
 pub use crate::xpub::{XPub, XPubT};
 pub use async_trait::async_trait;
-pub use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+pub use borsh::{BorshDeserialize, BorshSerialize};
 pub use js_sys::Array;
 pub use kaspa_addresses::{Address, Version as AddressVersion};
 pub use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, ExtendedPublicKey, SecretKey};

@@ -1,5 +1,4 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use js_sys::Array;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
 use std::fmt::{Display, Formatter};
@@ -116,9 +115,7 @@ impl TryFrom<&str> for Prefix {
 ///  Kaspa `Address` version (`PubKey`, `PubKey ECDSA`, `ScriptHash`)
 ///
 /// @category Address
-#[derive(
-    PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
-)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[repr(u8)]
 #[wasm_bindgen(js_name = "AddressVersion")]
 pub enum Version {

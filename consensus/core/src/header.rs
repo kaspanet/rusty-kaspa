@@ -1,6 +1,5 @@
 use crate::{hashing, BlueWorkType};
 use borsh::{BorshDeserialize, BorshSerialize};
-use js_sys::{Array, Object};
 use kaspa_hashes::Hash;
 use serde::{Deserialize, Serialize};
 

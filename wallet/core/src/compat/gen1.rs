@@ -130,6 +130,7 @@ mod test {
 
     #[test]
     fn deser_golang_wallet_test() {
+        #[allow(dead_code)]
         #[derive(Debug)]
         enum WalletType<'a> {
             SingleV0(SingleWalletFileV0<'a, Vec<u8>>),
