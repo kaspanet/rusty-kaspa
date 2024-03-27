@@ -1,4 +1,5 @@
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+// #![allow(dead_code)]
+use borsh::{BorshDeserialize, BorshSerialize};
 use ipnet::IpNet;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -217,25 +218,8 @@ impl BorshDeserialize for IpAddress {
     }
 }
 
-impl BorshSchema for IpAddress {
-    fn declaration() -> borsh::schema::Declaration {
-        "IpAddress".to_string()
-    }
-    fn add_definitions_recursively(
-        definitions: &mut borsh::maybestd::collections::HashMap<borsh::schema::Declaration, borsh::schema::Definition>,
-    ) {
-        #[allow(dead_code)]
-        #[derive(BorshSchema)]
-        enum IpAddress {
-            V4([u8; 4]),
-            V6([u8; 16]),
-        }
-        <IpAddress>::add_definitions_recursively(definitions);
-    }
-}
-
 /// A network address, equivalent of a [SocketAddr].
-#[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug, BorshSerialize, BorshDeserialize)]
 pub struct NetAddress {
     pub ip: IpAddress,
     pub port: u16,
@@ -280,7 +264,7 @@ impl Display for NetAddress {
 /// A network address possibly without explicit port.
 ///
 /// Use `normalize` to get a fully determined address.
-#[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Serialize, Deserialize, Debug, BorshSerialize, BorshDeserialize)]
 pub struct ContextualNetAddress {
     ip: IpAddress,
     port: Option<u16>,
@@ -407,20 +391,6 @@ impl BorshDeserialize for PeerId {
     fn deserialize(buf: &mut &[u8]) -> ::core::result::Result<Self, borsh::maybestd::io::Error> {
         let bytes: uuid::Bytes = BorshDeserialize::deserialize(buf)?;
         Ok(Self::new(Uuid::from_bytes(bytes)))
-    }
-}
-
-impl BorshSchema for PeerId {
-    fn declaration() -> borsh::schema::Declaration {
-        "PeerId".to_string()
-    }
-    fn add_definitions_recursively(
-        definitions: &mut borsh::maybestd::collections::HashMap<borsh::schema::Declaration, borsh::schema::Definition>,
-    ) {
-        let fields = borsh::schema::Fields::UnnamedFields(borsh::maybestd::vec![<uuid::Bytes>::declaration()]);
-        let definition = borsh::schema::Definition::Struct { fields };
-        Self::add_definition(Self::declaration(), definition, definitions);
-        <uuid::Bytes>::add_definitions_recursively(definitions);
     }
 }
 

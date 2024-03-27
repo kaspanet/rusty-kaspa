@@ -25,7 +25,7 @@ export interface IWalletDescriptor {
 "#;
 
 /// @category Wallet API
-#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct WalletDescriptor {
     #[wasm_bindgen(getter_with_clone)]
@@ -51,7 +51,7 @@ export interface IStorageDescriptor {
 }
 "#;
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "kind", content = "data")]
 pub enum StorageDescriptor {

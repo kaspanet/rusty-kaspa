@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-pow"
 description = "Kaspa proof-of-work"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

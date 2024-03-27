@@ -1,4 +1,4 @@
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Prefix;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Debug, Display, Formatter};
@@ -16,7 +16,7 @@ pub enum NetworkTypeError {
 
 /// @category Consensus
 #[derive(
-    Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq, Hash, Ord, PartialOrd,
+    Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, PartialEq, Eq, Hash, Ord, PartialOrd,
 )]
 #[serde(rename_all = "lowercase")]
 #[wasm_bindgen]
@@ -182,7 +182,7 @@ impl From<NetworkIdError> for JsValue {
 ///
 /// @category Consensus
 ///
-#[derive(Clone, Copy, Debug, BorshSerialize, BorshDeserialize, BorshSchema, PartialEq, Eq, Hash, Ord, PartialOrd, CastFromJs)]
+#[derive(Clone, Copy, Debug, BorshSerialize, BorshDeserialize, PartialEq, Eq, Hash, Ord, PartialOrd, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct NetworkId {
     #[wasm_bindgen(js_name = "type")]

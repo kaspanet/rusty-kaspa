@@ -1,7 +1,7 @@
 mod hashers;
 mod pow_hashers;
 
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_utils::{
     hex::{FromHex, ToHex},
     mem_size::MemSizeEstimator,
@@ -22,7 +22,7 @@ pub use hashers::*;
 
 // TODO: Check if we use hash more as an array of u64 or of bytes and change the default accordingly
 /// @category General
-#[derive(Eq, Clone, Copy, Default, PartialOrd, Ord, BorshSerialize, BorshDeserialize, BorshSchema, CastFromJs)]
+#[derive(Eq, Clone, Copy, Default, PartialOrd, Ord, BorshSerialize, BorshDeserialize, CastFromJs)]
 #[wasm_bindgen]
 pub struct Hash([u8; HASH_SIZE]);
 

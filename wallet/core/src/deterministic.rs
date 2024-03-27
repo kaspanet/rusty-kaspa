@@ -77,7 +77,7 @@ impl std::fmt::Display for AccountId {
     }
 }
 
-seal! { 0xa7a4, {
+seal! { 0x544d, {
     // IMPORTANT: This data structure is meant to be deterministic
     // so it can not contain any new fields or be changed.
     #[derive(BorshSerialize)]

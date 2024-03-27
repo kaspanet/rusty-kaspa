@@ -1,5 +1,5 @@
 use alloc::borrow::Cow;
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt::Formatter;
 use kaspa_utils::{
     hex::{FromHex, ToHex},
@@ -360,26 +360,6 @@ impl BorshDeserialize for ScriptPublicKey {
     fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
         // Deserialize into vec first since we have no custom smallvec support
         Ok(Self::from_vec(borsh::BorshDeserialize::deserialize(buf)?, borsh::BorshDeserialize::deserialize(buf)?))
-    }
-}
-
-impl BorshSchema for ScriptPublicKey {
-    fn add_definitions_recursively(
-        definitions: &mut std::collections::HashMap<borsh::schema::Declaration, borsh::schema::Definition>,
-    ) {
-        let fields = borsh::schema::Fields::NamedFields(std::vec![
-            ("version".to_string(), <u16>::declaration()),
-            ("script".to_string(), <Vec<u8>>::declaration())
-        ]);
-        let definition = borsh::schema::Definition::Struct { fields };
-        Self::add_definition(Self::declaration(), definition, definitions);
-        <u16>::add_definitions_recursively(definitions);
-        // `<Vec<u8>>` can be safely used as scheme definition for smallvec. See comments above.
-        <Vec<u8>>::add_definitions_recursively(definitions);
-    }
-
-    fn declaration() -> borsh::schema::Declaration {
-        "ScriptPublicKey".to_string()
     }
 }
 

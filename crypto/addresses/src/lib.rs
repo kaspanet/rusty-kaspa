@@ -1,4 +1,5 @@
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
+use js_sys::Array;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
 use std::fmt::{Display, Formatter};
@@ -48,9 +49,7 @@ impl From<workflow_wasm::error::Error> for AddressError {
 }
 
 /// Address prefix identifying the network type this address belongs to (such as `kaspa`, `kaspatest`, `kaspasim`, `kaspadev`).
-#[derive(
-    PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
-)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum Prefix {
     #[serde(rename = "kaspa")]
     Mainnet,
@@ -118,7 +117,7 @@ impl TryFrom<&str> for Prefix {
 ///
 /// @category Address
 #[derive(
-    PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
+    PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize,
 )]
 #[repr(u8)]
 #[wasm_bindgen(js_name = "AddressVersion")]
@@ -286,28 +285,6 @@ impl BorshDeserialize for Address {
         let version: Version = borsh::BorshDeserialize::deserialize(buf)?;
         let payload: Vec<u8> = borsh::BorshDeserialize::deserialize(buf)?;
         Ok(Self::new(prefix, version, &payload))
-    }
-}
-
-impl BorshSchema for Address {
-    fn add_definitions_recursively(
-        definitions: &mut std::collections::HashMap<borsh::schema::Declaration, borsh::schema::Definition>,
-    ) {
-        let fields = borsh::schema::Fields::NamedFields(std::vec![
-            ("prefix".to_string(), <Prefix>::declaration()),
-            ("version".to_string(), <Version>::declaration()),
-            ("payload".to_string(), <Vec<u8>>::declaration())
-        ]);
-        let definition = borsh::schema::Definition::Struct { fields };
-        Self::add_definition(Self::declaration(), definition, definitions);
-        <Prefix>::add_definitions_recursively(definitions);
-        <Version>::add_definitions_recursively(definitions);
-        // `<Vec<u8>>` can be safely used as scheme definition for smallvec. See comments above.
-        <Vec<u8>>::add_definitions_recursively(definitions);
-    }
-
-    fn declaration() -> borsh::schema::Declaration {
-        "Address".to_string()
     }
 }
 

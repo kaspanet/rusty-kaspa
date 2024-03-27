@@ -5,7 +5,7 @@
 use crate::imports::*;
 
 /// Secret container for sensitive data. Performs memory zeroization on drop.
-#[derive(Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct Secret(Vec<u8>);
 
 impl Secret {

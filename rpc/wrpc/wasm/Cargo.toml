@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-wrpc-wasm"
 description = "Kaspa wRPC WASM client"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
