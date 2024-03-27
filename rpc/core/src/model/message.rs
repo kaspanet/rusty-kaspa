@@ -823,6 +823,31 @@ impl GetDaaScoreTimestampEstimateResponse {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetUtxoReturnAddressRequest {
+    pub txid: RpcHash,
+    pub accepting_block_daa_score: u64,
+}
+
+impl GetUtxoReturnAddressRequest {
+    pub fn new(txid: RpcHash, accepting_block_daa_score: u64) -> Self {
+        Self { txid, accepting_block_daa_score }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetUtxoReturnAddressResponse {
+    pub return_address: Option<RpcAddress>,
+}
+
+impl GetUtxoReturnAddressResponse {
+    pub fn new(return_address: Option<RpcAddress>) -> Self {
+        Self { return_address }
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Subscriptions & notifications
 // ----------------------------------------------------------------------------

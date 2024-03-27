@@ -1,4 +1,4 @@
-use kaspa_consensus_core::tx::TransactionId;
+use kaspa_consensus_core::{api::ReturnAddress, tx::TransactionId};
 use kaspa_utils::networking::IpAddress;
 use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
@@ -115,6 +115,9 @@ pub enum RpcError {
 
     #[error("transaction query must either not filter transactions or include orphans")]
     InconsistentMempoolTxQuery,
+
+    #[error("utxo return address could not be found -> {0}")]
+    UtxoReturnAddressNotFound(ReturnAddress),
 }
 
 impl From<String> for RpcError {
