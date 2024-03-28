@@ -41,6 +41,7 @@ members = [
     "rpc/wrpc/client",
     "rpc/wrpc/proxy",
     "rpc/wrpc/wasm",
+    "rpc/wrpc/examples/subscriber",
     "mining",
     "mining/errors",
     "protocol/p2p",
@@ -133,6 +134,7 @@ kaspa-wrpc-core = { version = "0.13.5", path = "rpc/wrpc/core" }
 kaspa-wrpc-proxy = { version = "0.13.5", path = "rpc/wrpc/proxy" }
 kaspa-wrpc-server = { version = "0.13.5", path = "rpc/wrpc/server" }
 kaspa-wrpc-wasm = { version = "0.13.5", path = "rpc/wrpc/wasm" }
+kaspa-wrpc-example-subscriber = { version = "0.13.5", path = "rpc/wrpc/examples/subscriber" }
 kaspad = { version = "0.13.5", path = "kaspad" }
 kaspa-alloc = { version = "0.13.5", path = "utils/alloc" }
 

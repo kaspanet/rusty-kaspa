@@ -3625,6 +3625,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-wrpc-example-subscriber"
+version = "0.13.5"
+dependencies = [
+ "ctrlc",
+ "futures",
+ "kaspa-consensus-core",
+ "kaspa-notify",
+ "kaspa-rpc-core",
+ "kaspa-wrpc-client",
+ "tokio",
+ "workflow-core",
+ "workflow-log",
+]
+
+[[package]]
 name = "kaspa-wrpc-proxy"
 version = "0.13.5"
 dependencies = [
