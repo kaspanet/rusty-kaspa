@@ -13,7 +13,7 @@ pub struct WalletExportOptions {
     pub include_transactions: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct WalletDescriptor {
     #[wasm_bindgen(getter_with_clone)]
@@ -28,7 +28,7 @@ impl WalletDescriptor {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(tag = "kind", content = "meta")]
 pub enum StorageDescriptor {

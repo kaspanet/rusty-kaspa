@@ -1,16 +1,17 @@
 use clap::ArgAction;
 #[allow(unused)]
 use clap::{arg, command, Arg, Command};
-
 #[cfg(feature = "devnet-prealloc")]
 use kaspa_addresses::Address;
 #[cfg(feature = "devnet-prealloc")]
 use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 #[cfg(feature = "devnet-prealloc")]
 use kaspa_txscript::pay_to_address_script;
-use std::ffi::OsString;
+use serde::Deserialize;
 #[cfg(feature = "devnet-prealloc")]
 use std::sync::Arc;
+use std::{ffi::OsString, fs};
+use toml::from_str;
 
 use kaspa_consensus_core::{
     config::Config,
@@ -21,38 +22,58 @@ use kaspa_core::kaspad_env::version;
 
 use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_wrpc_server::address::WrpcNetAddress;
+use serde_with::{serde_as, DisplayFromStr};
 
-#[derive(Debug, Clone)]
+#[serde_as]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Args {
     // NOTE: it is best if property names match config file fields
     pub appdir: Option<String>,
     pub logdir: Option<String>,
+    #[serde(rename = "nologfiles")]
     pub no_log_files: bool,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub rpclisten: Option<ContextualNetAddress>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub rpclisten_borsh: Option<WrpcNetAddress>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub rpclisten_json: Option<WrpcNetAddress>,
+    #[serde(rename = "unsaferpc")]
     pub unsafe_rpc: bool,
     pub wrpc_verbose: bool,
+    #[serde(rename = "loglevel")]
     pub log_level: String,
     pub async_threads: usize,
+    #[serde(rename = "connect")]
+    #[serde_as(as = "Vec<DisplayFromStr>")]
     pub connect_peers: Vec<ContextualNetAddress>,
+    #[serde(rename = "addpeer")]
+    #[serde_as(as = "Vec<DisplayFromStr>")]
     pub add_peers: Vec<ContextualNetAddress>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub listen: Option<ContextualNetAddress>,
+    #[serde(rename = "uacomment")]
     pub user_agent_comments: Vec<String>,
     pub utxoindex: bool,
     pub reset_db: bool,
+    #[serde(rename = "outpeers")]
     pub outbound_target: usize,
+    #[serde(rename = "maxinpeers")]
     pub inbound_limit: usize,
+    #[serde(rename = "rpcmaxclients")]
     pub rpc_max_clients: usize,
     pub enable_unsynced_mining: bool,
     pub enable_mainnet_mining: bool,
     pub testnet: bool,
+    #[serde(rename = "netsuffix")]
     pub testnet_suffix: u32,
     pub devnet: bool,
     pub simnet: bool,
     pub archival: bool,
     pub sanity: bool,
     pub yes: bool,
+    #[serde_as(as = "Option<DisplayFromStr>")]
     pub externalip: Option<ContextualNetAddress>,
     pub perf_metrics: bool,
     pub perf_metrics_interval_sec: u64,
@@ -66,7 +87,9 @@ pub struct Args {
     pub prealloc_amount: u64,
 
     pub disable_upnp: bool,
+    #[serde(rename = "nodnsseed")]
     pub disable_dns_seeding: bool,
+    #[serde(rename = "nogrpc")]
     pub disable_grpc: bool,
     pub ram_scale: f64,
 }
@@ -74,7 +97,7 @@ pub struct Args {
 impl Default for Args {
     fn default() -> Self {
         Self {
-            appdir: Some("datadir".into()),
+            appdir: None,
             no_log_files: false,
             rpclisten_borsh: None,
             rpclisten_json: None,
@@ -93,7 +116,7 @@ impl Default for Args {
             simnet: false,
             archival: false,
             sanity: false,
-            logdir: Some("".into()),
+            logdir: None,
             rpclisten: None,
             wrpc_verbose: false,
             log_level: "INFO".into(),
@@ -176,6 +199,7 @@ pub fn cli() -> Command {
     let cmd = Command::new("kaspad")
         .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
+        .arg(arg!(-C --configfile <CONFIG_FILE> "Path of config file."))
         .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data."))
         .arg(arg!(--logdir <LOG_DIR> "Directory to log output."))
         .arg(arg!(--nologfiles "Disable logging to files."))
@@ -365,58 +389,78 @@ impl Args {
         T: Into<OsString> + Clone,
     {
         let m: clap::ArgMatches = cli().try_get_matches_from(itr)?;
-        let defaults: Args = Default::default();
+        let mut defaults: Args = Default::default();
+
+        if let Some(config_file) = m.get_one::<String>("configfile") {
+            let config_str = fs::read_to_string(config_file)?;
+            defaults = from_str(&config_str).map_err(|toml_error| {
+                clap::Error::raw(
+                    clap::error::ErrorKind::ValueValidation,
+                    format!("failed parsing config file, reason: {}", toml_error.message()),
+                )
+            })?;
+        }
 
         let args = Args {
-            appdir: m.get_one::<String>("appdir").cloned(),
-            logdir: m.get_one::<String>("logdir").cloned(),
-            no_log_files: m.get_one::<bool>("nologfiles").cloned().unwrap_or(defaults.no_log_files),
-            rpclisten: m.get_one::<ContextualNetAddress>("rpclisten").cloned(),
-            rpclisten_borsh: m.get_one::<WrpcNetAddress>("rpclisten-borsh").cloned(),
-            rpclisten_json: m.get_one::<WrpcNetAddress>("rpclisten-json").cloned(),
-            unsafe_rpc: m.get_one::<bool>("unsaferpc").cloned().unwrap_or(defaults.unsafe_rpc),
+            appdir: m.get_one::<String>("appdir").cloned().or(defaults.appdir),
+            logdir: m.get_one::<String>("logdir").cloned().or(defaults.logdir),
+            no_log_files: arg_match_unwrap_or::<bool>(&m, "nologfiles", defaults.no_log_files),
+            rpclisten: m.get_one::<ContextualNetAddress>("rpclisten").cloned().or(defaults.rpclisten),
+            rpclisten_borsh: m.get_one::<WrpcNetAddress>("rpclisten-borsh").cloned().or(defaults.rpclisten_borsh),
+            rpclisten_json: m.get_one::<WrpcNetAddress>("rpclisten-json").cloned().or(defaults.rpclisten_json),
+            unsafe_rpc: arg_match_unwrap_or::<bool>(&m, "unsaferpc", defaults.unsafe_rpc),
             wrpc_verbose: false,
-            log_level: m.get_one::<String>("log_level").cloned().unwrap(),
-            async_threads: m.get_one::<usize>("async_threads").cloned().unwrap_or(defaults.async_threads),
-            connect_peers: m.get_many::<ContextualNetAddress>("connect-peers").unwrap_or_default().copied().collect(),
-            add_peers: m.get_many::<ContextualNetAddress>("add-peers").unwrap_or_default().copied().collect(),
-            listen: m.get_one::<ContextualNetAddress>("listen").cloned(),
-            outbound_target: m.get_one::<usize>("outpeers").cloned().unwrap_or(defaults.outbound_target),
-            inbound_limit: m.get_one::<usize>("maxinpeers").cloned().unwrap_or(defaults.inbound_limit),
-            rpc_max_clients: m.get_one::<usize>("rpcmaxclients").cloned().unwrap_or(defaults.rpc_max_clients),
-            reset_db: m.get_one::<bool>("reset-db").cloned().unwrap_or(defaults.reset_db),
-            enable_unsynced_mining: m.get_one::<bool>("enable-unsynced-mining").cloned().unwrap_or(defaults.enable_unsynced_mining),
-            enable_mainnet_mining: m.get_one::<bool>("enable-mainnet-mining").cloned().unwrap_or(defaults.enable_mainnet_mining),
-            utxoindex: m.get_one::<bool>("utxoindex").cloned().unwrap_or(defaults.utxoindex),
-            testnet: m.get_one::<bool>("testnet").cloned().unwrap_or(defaults.testnet),
-            testnet_suffix: m.get_one::<u32>("netsuffix").cloned().unwrap_or(defaults.testnet_suffix),
-            devnet: m.get_one::<bool>("devnet").cloned().unwrap_or(defaults.devnet),
-            simnet: m.get_one::<bool>("simnet").cloned().unwrap_or(defaults.simnet),
-            archival: m.get_one::<bool>("archival").cloned().unwrap_or(defaults.archival),
-            sanity: m.get_one::<bool>("sanity").cloned().unwrap_or(defaults.sanity),
-            yes: m.get_one::<bool>("yes").cloned().unwrap_or(defaults.yes),
-            user_agent_comments: m.get_many::<String>("user_agent_comments").unwrap_or_default().cloned().collect(),
+            log_level: arg_match_unwrap_or::<String>(&m, "log_level", defaults.log_level),
+            async_threads: arg_match_unwrap_or::<usize>(&m, "async_threads", defaults.async_threads),
+            connect_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "connect-peers", defaults.connect_peers),
+            add_peers: arg_match_many_unwrap_or::<ContextualNetAddress>(&m, "add-peers", defaults.add_peers),
+            listen: m.get_one::<ContextualNetAddress>("listen").cloned().or(defaults.listen),
+            outbound_target: arg_match_unwrap_or::<usize>(&m, "outpeers", defaults.outbound_target),
+            inbound_limit: arg_match_unwrap_or::<usize>(&m, "maxinpeers", defaults.inbound_limit),
+            rpc_max_clients: arg_match_unwrap_or::<usize>(&m, "rpcmaxclients", defaults.rpc_max_clients),
+            reset_db: arg_match_unwrap_or::<bool>(&m, "reset-db", defaults.reset_db),
+            enable_unsynced_mining: arg_match_unwrap_or::<bool>(&m, "enable-unsynced-mining", defaults.enable_unsynced_mining),
+            enable_mainnet_mining: arg_match_unwrap_or::<bool>(&m, "enable-mainnet-mining", defaults.enable_mainnet_mining),
+            utxoindex: arg_match_unwrap_or::<bool>(&m, "utxoindex", defaults.utxoindex),
+            testnet: arg_match_unwrap_or::<bool>(&m, "testnet", defaults.testnet),
+            testnet_suffix: arg_match_unwrap_or::<u32>(&m, "netsuffix", defaults.testnet_suffix),
+            devnet: arg_match_unwrap_or::<bool>(&m, "devnet", defaults.devnet),
+            simnet: arg_match_unwrap_or::<bool>(&m, "simnet", defaults.simnet),
+            archival: arg_match_unwrap_or::<bool>(&m, "archival", defaults.archival),
+            sanity: arg_match_unwrap_or::<bool>(&m, "sanity", defaults.sanity),
+            yes: arg_match_unwrap_or::<bool>(&m, "yes", defaults.yes),
+            user_agent_comments: arg_match_many_unwrap_or::<String>(&m, "user_agent_comments", defaults.user_agent_comments),
             externalip: m.get_one::<ContextualNetAddress>("externalip").cloned(),
-            perf_metrics: m.get_one::<bool>("perf-metrics").cloned().unwrap_or(defaults.perf_metrics),
-            perf_metrics_interval_sec: m
-                .get_one::<u64>("perf-metrics-interval-sec")
-                .cloned()
-                .unwrap_or(defaults.perf_metrics_interval_sec),
+            perf_metrics: arg_match_unwrap_or::<bool>(&m, "perf-metrics", defaults.perf_metrics),
+            perf_metrics_interval_sec: arg_match_unwrap_or::<u64>(&m, "perf-metrics-interval-sec", defaults.perf_metrics_interval_sec),
             // Note: currently used programmatically by benchmarks and not exposed to CLI users
             block_template_cache_lifetime: defaults.block_template_cache_lifetime,
-            disable_upnp: m.get_one::<bool>("disable-upnp").cloned().unwrap_or(defaults.disable_upnp),
-            disable_dns_seeding: m.get_one::<bool>("nodnsseed").cloned().unwrap_or(defaults.disable_dns_seeding),
-            disable_grpc: m.get_one::<bool>("nogrpc").cloned().unwrap_or(defaults.disable_grpc),
-            ram_scale: m.get_one::<f64>("ram-scale").cloned().unwrap_or(defaults.ram_scale),
+            disable_upnp: arg_match_unwrap_or::<bool>(&m, "disable-upnp", defaults.disable_upnp),
+            disable_dns_seeding: arg_match_unwrap_or::<bool>(&m, "nodnsseed", defaults.disable_dns_seeding),
+            disable_grpc: arg_match_unwrap_or::<bool>(&m, "nogrpc", defaults.disable_grpc),
+            ram_scale: arg_match_unwrap_or::<f64>(&m, "ram-scale", defaults.ram_scale),
 
             #[cfg(feature = "devnet-prealloc")]
             num_prealloc_utxos: m.get_one::<u64>("num-prealloc-utxos").cloned(),
             #[cfg(feature = "devnet-prealloc")]
             prealloc_address: m.get_one::<String>("prealloc-address").cloned(),
             #[cfg(feature = "devnet-prealloc")]
-            prealloc_amount: m.get_one::<u64>("prealloc-amount").cloned().unwrap_or(defaults.prealloc_amount),
+            prealloc_amount: arg_match_unwrap_or::<u64>(&m, "prealloc-amount", defaults.prealloc_amount),
         };
         Ok(args)
+    }
+}
+
+use clap::parser::ValueSource::DefaultValue;
+use std::marker::{Send, Sync};
+fn arg_match_unwrap_or<T: Clone + Send + Sync + 'static>(m: &clap::ArgMatches, arg_id: &str, default: T) -> T {
+    m.get_one::<T>(arg_id).cloned().filter(|_| m.value_source(arg_id) != Some(DefaultValue)).unwrap_or(default)
+}
+
+fn arg_match_many_unwrap_or<T: Clone + Send + Sync + 'static>(m: &clap::ArgMatches, arg_id: &str, default: Vec<T>) -> Vec<T> {
+    match m.get_many::<T>(arg_id) {
+        Some(val_ref) => val_ref.cloned().collect(),
+        None => default,
     }
 }
 
