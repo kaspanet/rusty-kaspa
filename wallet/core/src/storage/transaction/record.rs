@@ -749,6 +749,10 @@ impl TransactionRecord {
             note: None,
         })
     }
+
+    pub fn has_address(&self, address: &Address) -> bool {
+        self.transaction_data.has_address(address)
+    }
 }
 
 impl Zeroize for TransactionRecord {

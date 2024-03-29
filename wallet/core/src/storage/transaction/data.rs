@@ -138,6 +138,24 @@ impl TransactionData {
             TransactionData::Change { .. } => TransactionKind::Change,
         }
     }
+
+    pub fn has_address(&self, address: &Address) -> bool {
+        match self {
+            TransactionData::Reorg { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::Stasis { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::Incoming { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::External { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::Outgoing { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::Batch { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::TransferIncoming { utxo_entries, .. } => {
+                utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address))
+            }
+            TransactionData::TransferOutgoing { utxo_entries, .. } => {
+                utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address))
+            }
+            TransactionData::Change { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+        }
+    }
 }
 
 impl BorshSerialize for TransactionData {
