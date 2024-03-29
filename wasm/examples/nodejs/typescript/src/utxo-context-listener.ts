@@ -1,5 +1,5 @@
 // Run with: node demo.js
-import {w3cwebsocket} from "websocket";
+import { w3cwebsocket } from "websocket";
 (globalThis.WebSocket as any) = w3cwebsocket;
 
 import {
@@ -13,9 +13,14 @@ import {
     createTransactions,
     initConsolePanicHook,
     IUtxoProcessorEvent,
+    IPendingEvent,
+    IDiscoveryEvent,
+    IMaturityEvent,
+    ITransactionRecord,
+    UtxoProcessorEventType,
 } from "../../../../nodejs/kaspa";
 
-import {parseArgs} from "./utils";
+import { parseArgs } from "./utils";
 
 
 initConsolePanicHook();
@@ -38,7 +43,7 @@ let { encoding, networkId, destinationAddress } = parseArgs();
 
     // 1) Initialize RPC
     const rpc = new RpcClient({
-        resolver : new Resolver(),
+        resolver: new Resolver(),
         encoding,
         networkId
     });
@@ -53,8 +58,27 @@ let { encoding, networkId, destinationAddress } = parseArgs();
     let context = new UtxoContext({ processor });
 
     // 4) Register a listener with the UtxoProcessor::events
-    processor.addEventListener((event:IUtxoProcessorEvent) => {
-        console.log("event:", event);
+    processor.addEventListener(({ event, data }: IUtxoProcessorEvent) => {
+        // handle the event
+        // since the event is a union type, you can switch on the 
+        // event type and cast the data to the appropriate type
+        switch (event) {
+            case UtxoProcessorEventType.Discovery: {
+                let record = (data as IDiscoveryEvent).record;
+                console.log("Discovery event record:", record);
+            } break;
+            case UtxoProcessorEventType.Pending: {
+                let record = (data as IPendingEvent).record;
+                console.log("Pending event record:", record);
+            } break;
+            case UtxoProcessorEventType.Maturity: {
+                let record = (data as IMaturityEvent).record;
+                console.log("Maturity event record:", record);
+            } break;
+            default: {
+                console.log("Other event:", event, "data:", data);
+            }
+        }
     });
 
     console.log(processor);
