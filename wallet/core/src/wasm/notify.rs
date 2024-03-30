@@ -5,6 +5,28 @@ use wasm_bindgen::prelude::*;
 
 cfg_if! {
     if #[cfg(any(feature = "wasm32-core", feature = "wasm32-sdk"))] {
+
+        // #[wasm_bindgen]
+        // #[derive(Copy, Clone, Debug)]
+        // pub enum UtxoProcessorEventType{
+        //     All="all",
+        //     Connect="connect",
+        //     Disconnect="disconnect",
+        //     // UtxoIndexNotEnabled,
+        //     // SyncState,
+        //     // ServerStatus,
+        //     // UtxoProcError,
+        //     // DaaScoreChange,
+        //     // Pending,
+        //     // Reorg,
+        //     // Stasis,
+        //     // Maturity,
+        //     Discovery="discovery",
+        //     // Balance,
+        //     // Error,
+        // }
+
+
         #[wasm_bindgen(typescript_custom_section)]
         const TS_NOTIFY: &'static str = r#"
 
@@ -51,14 +73,27 @@ cfg_if! {
             | IErrorEvent
             ;
 
-        /**
-         * {@link UtxoProcessor} notification event interface.
-         * @category Wallet SDK
-         */
-        export interface IUtxoProcessorEvent {
-            event : string;
-            data? : UtxoProcessorEventData;
+        export type UtxoProcessorEventMap = {
+            "connect":IConnectEvent,
+            "disconnect": IDisconnectEvent,
+            "utxo-index-not-enabled": IUtxoIndexNotEnabledEvent,
+            "sync-state": ISyncStateEvent,
+            "server-status": IServerStatusEvent,
+            "utxo-proc-error": IUtxoProcErrorEvent,
+            "daa-score-change": IDaaScoreChangeEvent,
+            "pending": IPendingEvent,
+            "reorg": IReorgEvent,
+            "stasis": IStasisEvent,
+            "maturity": IMaturityEvent,
+            "discovery": IDiscoveryEvent,
+            "balance": IBalanceEvent,
+            "error": IErrorEvent
         }
+
+        type IUtxoProcessorEvent = {
+            [K in keyof UtxoProcessorEventMap]: { event: K, data: UtxoProcessorEventMap[K] }
+        }[keyof UtxoProcessorEventMap];
+
         
         /**
          * {@link UtxoProcessor} notification callback type.
