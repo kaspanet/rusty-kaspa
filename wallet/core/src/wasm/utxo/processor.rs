@@ -56,6 +56,27 @@ impl Inner {
     }
 }
 
+cfg_if! {
+    if #[cfg(any(feature = "wasm32-core", feature = "wasm32-sdk"))] {
+        #[wasm_bindgen(typescript_custom_section)]
+        const TS_NOTIFY: &'static str = r#"
+        interface UtxoProcessor {
+            /**
+            * @param {UtxoProcessorNotificationCallback} callback
+            */
+            addEventListener(callback:UtxoProcessorNotificationCallback): void;
+            /**
+            * @param {UtxoProcessorEventType} event
+            * @param {UtxoProcessorNotificationCallback} [callback]
+            */
+            addEventListener<M extends keyof UtxoProcessorEventMap>(
+                event: M,
+                callback: (eventData: UtxoProcessorEventMap[M]) => void
+            )
+        }"#;
+    }
+}
+
 ///
 /// UtxoProcessor class is the main coordinator that manages UTXO processing
 /// between multiple UtxoContext instances. It acts as a bridge between the
@@ -224,9 +245,10 @@ impl UtxoProcessor {
     }
 }
 
+
 #[wasm_bindgen]
 impl UtxoProcessor {
-    #[wasm_bindgen(js_name = "addEventListener")]
+    #[wasm_bindgen(js_name = "addEventListener", skip_typescript)]
     pub fn add_event_listener(
         &self,
         event: UtxoProcessorNotificationTypeOrCallback,

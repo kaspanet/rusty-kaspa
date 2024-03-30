@@ -58,27 +58,35 @@ let { encoding, networkId, destinationAddress } = parseArgs();
     let context = new UtxoContext({ processor });
 
     // 4) Register a listener with the UtxoProcessor::events
-    processor.addEventListener(({ event, data }: IUtxoProcessorEvent) => {
+    processor.addEventListener(({event, data}) => {
         // handle the event
         // since the event is a union type, you can switch on the 
         // event type and cast the data to the appropriate type
         switch (event) {
-            case UtxoProcessorEventType.Discovery: {
-                let record = (data as IDiscoveryEvent).record;
+            //string enums are not working for @Matoo
+            //case UtxoProcessorEventType.Discovery: {
+            case "discovery": {
+                let record = data.record;
                 console.log("Discovery event record:", record);
             } break;
-            case UtxoProcessorEventType.Pending: {
-                let record = (data as IPendingEvent).record;
+            //case UtxoProcessorEventType.Pending: {
+            case "pending":{
+                let record = data.record;
                 console.log("Pending event record:", record);
             } break;
-            case UtxoProcessorEventType.Maturity: {
-                let record = (data as IMaturityEvent).record;
+            //case UtxoProcessorEventType.Maturity: {
+            case "maturity": {
+                let record = data.record;
                 console.log("Maturity event record:", record);
             } break;
             default: {
                 console.log("Other event:", event, "data:", data);
             }
         }
+    });
+
+    processor.addEventListener("discovery", (data) => {
+        console.log("Discovery event record:", data.record);
     });
 
     console.log(processor);
