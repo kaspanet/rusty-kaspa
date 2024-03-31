@@ -286,24 +286,33 @@ extern "C" {
     pub type ITransactionRecord;
 }
 
+/// @category Wallet SDK
+#[wasm_bindgen(inspectable)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionRecord {
     pub id: TransactionId,
     /// Unix time in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "unixtimeMsec")]
+    #[wasm_bindgen(js_name = unixtimeMsec)]
     pub unixtime_msec: Option<u64>,
     pub value: u64,
+    #[wasm_bindgen(skip)]
     pub binding: Binding,
     #[serde(rename = "blockDaaScore")]
+    #[wasm_bindgen(js_name = blockDaaScore)]
     pub block_daa_score: u64,
     #[serde(rename = "network")]
+    #[wasm_bindgen(js_name = network)]
     pub network_id: NetworkId,
     #[serde(rename = "data")]
+    #[wasm_bindgen(skip)]
     pub transaction_data: TransactionData,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[wasm_bindgen(getter_with_clone)]
     pub note: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[wasm_bindgen(getter_with_clone)]
     pub metadata: Option<String>,
 }
 
@@ -749,9 +758,29 @@ impl TransactionRecord {
             note: None,
         })
     }
+}
 
+#[wasm_bindgen]
+impl TransactionRecord {
+    #[wasm_bindgen(getter, js_name = "binding")]
+    pub fn binding_as_js_value(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.binding).unwrap()
+    }
+
+    #[wasm_bindgen(getter, js_name = "data")]
+    pub fn data_as_js_value(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.binding).unwrap()
+    }
+
+    /// Check if the transaction record has the given address within the associated UTXO set.
+    #[wasm_bindgen(js_name = hasAddress)]
     pub fn has_address(&self, address: &Address) -> bool {
         self.transaction_data.has_address(address)
+    }
+
+    /// Serialize the transaction record to a JavaScript object.
+    pub fn serialize(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self).unwrap()
     }
 }
 
@@ -799,11 +828,11 @@ impl BorshDeserialize for TransactionRecord {
     }
 }
 
-impl From<TransactionRecord> for JsValue {
-    fn from(record: TransactionRecord) -> Self {
-        serde_wasm_bindgen::to_value(&record).unwrap()
-    }
-}
+// impl From<TransactionRecord> for JsValue {
+//     fn from(record: TransactionRecord) -> Self {
+//         serde_wasm_bindgen::to_value(&record).unwrap()
+//     }
+// }
 
 impl From<TransactionRecord> for ITransactionRecord {
     fn from(record: TransactionRecord) -> Self {

@@ -217,9 +217,23 @@ impl UtxoProcessor {
                             let callbacks = inner.callbacks(event_type);
                             if let Some(handlers) = callbacks {
                                 for handler in handlers.into_iter() {
-                                    let value = to_value(&notification).unwrap();
-                                    if let Err(err) = handler.call(&value) {
-                                        log_error!("Error while executing RPC notification callback: {:?}", err);
+                                    match notification.as_ref() {
+                                        Events::Pending { record } |
+                                        Events::Reorg { record } |
+                                        Events::Stasis { record } |
+                                        Events::Maturity { record } |
+                                        Events::Discovery { record } => {
+                                            let value = JsValue::from(record.clone());
+                                            if let Err(err) = handler.call(&value) {
+                                                log_error!("Error while executing notification callback: {:?}", err);
+                                            }
+                                        }
+                                        _ => {
+                                            let value = to_value(&notification).unwrap();
+                                            if let Err(err) = handler.call(&value) {
+                                                log_error!("Error while executing notification callback: {:?}", err);
+                                            }
+                                        }
                                     }
                                 }
                             }
