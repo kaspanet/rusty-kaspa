@@ -73,7 +73,7 @@ extern "C" {
 ///
 /// Resolver is a client for obtaining public Kaspa wRPC URL.
 ///
-/// Resolver queries a list of public Kaspa Beacon URLs using HTTP to fetch
+/// Resolver queries a list of public Kaspa Resolver URLs using HTTP to fetch
 /// wRPC endpoints for the given encoding, network identifier and other
 /// parameters. It then provides this information to the {@link RpcClient}.
 ///
@@ -128,7 +128,7 @@ impl Resolver {
 
 #[wasm_bindgen]
 impl Resolver {
-    /// List of public Kaspa Beacon URLs.
+    /// List of public Kaspa Resolver URLs.
     #[wasm_bindgen(getter)]
     pub fn urls(&self) -> ResolverArrayT {
         Array::from_iter(self.resolver.urls().iter().map(|v| JsValue::from(v.as_str()))).unchecked_into()

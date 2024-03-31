@@ -19,9 +19,9 @@ const {
 (async () => {
 
     const resolver = new Resolver();
-    // console.log(beacon);
+    // console.log(resolver);
     // process.exit(0);
-    // let url = await beacon.getUrl(Encoding.Borsh, networkId);
+    // let url = await resolver.getUrl(Encoding.Borsh, networkId);
     // console.log(url);
     const rpc = new RpcClient({
         // url,
@@ -30,7 +30,7 @@ const {
         networkId
     });
 
-    // const rpc = await beacon.connect(networkId);
+    // const rpc = await resolver.connect(networkId);
     await rpc.connect();
     console.log("Connected to", rpc.url);
     console.log("RPC", rpc);

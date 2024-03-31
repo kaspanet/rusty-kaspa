@@ -1,6 +1,6 @@
 [package]
-name = "kaspa-beacon"
-description = "Kaspa wRPC Endpoint Monitor"
+name = "kaspa-resolver"
+description = "Kaspa wRPC endpoint resolver and monitor"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

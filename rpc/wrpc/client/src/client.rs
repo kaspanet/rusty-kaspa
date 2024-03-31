@@ -195,13 +195,13 @@ impl RpcResolver for Inner {
         let url = if let Some(url) = self.default_url() {
             url
         } else if let Some(resolver) = self.resolver().as_ref() {
-            let network_id = self.network_id().expect("Beacon requires network id in RPC client configuration");
+            let network_id = self.network_id().expect("Resolver requires network id in RPC client configuration");
             let node = resolver.get_node(self.encoding, network_id).await.map_err(WebSocketError::custom)?;
             let url = node.url.clone();
             self.node_descriptor.lock().unwrap().replace(Arc::new(node));
             url
         } else {
-            panic!("RpcClient resolver configuration error (expecting Some(Beacon))")
+            panic!("RpcClient resolver configuration error (expecting Some(Resolver))")
         };
 
         self.rpc_ctl.set_descriptor(Some(url.clone()));

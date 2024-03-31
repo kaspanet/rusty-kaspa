@@ -2455,36 +2455,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-beacon"
-version = "0.13.5"
-dependencies = [
- "ahash 0.8.11",
- "axum 0.7.5",
- "cfg-if 1.0.0",
- "clap 4.5.4",
- "console",
- "convert_case 0.6.0",
- "futures",
- "kaspa-consensus-core",
- "kaspa-rpc-core",
- "kaspa-utils",
- "kaspa-wrpc-client",
- "mime",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "toml 0.8.12",
- "tower",
- "tower-http 0.5.2",
- "tracing-subscriber",
- "workflow-core",
- "workflow-http",
- "workflow-log",
- "xxhash-rust",
-]
-
-[[package]]
 name = "kaspa-bip32"
 version = "0.13.5"
 dependencies = [
@@ -3171,6 +3141,36 @@ dependencies = [
  "num",
  "wasm-bindgen",
  "workflow-wasm",
+]
+
+[[package]]
+name = "kaspa-resolver"
+version = "0.13.5"
+dependencies = [
+ "ahash 0.8.11",
+ "axum 0.7.5",
+ "cfg-if 1.0.0",
+ "clap 4.5.4",
+ "console",
+ "convert_case 0.6.0",
+ "futures",
+ "kaspa-consensus-core",
+ "kaspa-rpc-core",
+ "kaspa-utils",
+ "kaspa-wrpc-client",
+ "mime",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "toml 0.8.12",
+ "tower",
+ "tower-http 0.5.2",
+ "tracing-subscriber",
+ "workflow-core",
+ "workflow-http",
+ "workflow-log",
+ "xxhash-rust",
 ]
 
 [[package]]

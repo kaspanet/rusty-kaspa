@@ -18,7 +18,7 @@
                 log(`Selected network is ${network.class("network")}...`);
                 
                 const resolver = new Resolver();
-                // let url = beacon.getUrl(Encoding.Borsh, "mainnet")
+                // let url = resolver.getUrl(Encoding.Borsh, "mainnet")
                 const rpc = await resolver.connect(network);
                 // const rpc = new RpcClient({ url, networkId: "mainnet" });
                 

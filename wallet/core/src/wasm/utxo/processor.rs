@@ -245,7 +245,6 @@ impl UtxoProcessor {
     }
 }
 
-
 #[wasm_bindgen]
 impl UtxoProcessor {
     #[wasm_bindgen(js_name = "addEventListener", skip_typescript)]

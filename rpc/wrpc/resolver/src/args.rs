@@ -20,7 +20,7 @@ pub struct Args {
     #[arg(short, long, default_value = "false")]
     pub election: bool,
 
-    /// Enable beacon status access via `/status`
+    /// Enable resolver status access via `/status`
     #[arg(long, default_value = "false")]
     pub status: bool,
 }

@@ -2,6 +2,11 @@ Latest online documentation available at: https://kaspa.aspectron.org/docs/
 
 ### Latest
 
+- Rename `kaspa-beacon` app to `kaspa-resolver`
+- Change UtxoProcessor event handlers in typescript to receive typed event data
+
+### Release 2024-03-19
+
 - Fix type checks when passing arrays to transaction `Generator` entries.
 
 ### Release 2024-03-14

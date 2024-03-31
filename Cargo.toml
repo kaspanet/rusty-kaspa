@@ -36,7 +36,7 @@ members = [
     "rpc/grpc/core",
     "rpc/grpc/client",
     "rpc/grpc/server",
-    "rpc/wrpc/beacon",
+    "rpc/wrpc/resolver",
     "rpc/wrpc/server",
     "rpc/wrpc/client",
     "rpc/wrpc/proxy",
@@ -84,7 +84,7 @@ include = [
 kaspa-addresses = { version = "0.13.5", path = "crypto/addresses" }
 kaspa-addressmanager = { version = "0.13.5", path = "components/addressmanager" }
 kaspa-bip32 = { version = "0.13.5", path = "wallet/bip32" }
-kaspa-beacon = { version = "0.13.5", path = "rpr/wrpc/beacon" }
+kaspa-resolver = { version = "0.13.5", path = "rpr/wrpc/resolver" }
 kaspa-cli = { version = "0.13.5", path = "cli" }
 kaspa-connectionmanager = { version = "0.13.5", path = "components/connectionmanager" }
 kaspa-consensus = { version = "0.13.5", path = "consensus" }

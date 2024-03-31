@@ -30,7 +30,7 @@ async fn run() -> Result<()> {
     panic::init_ungraceful_panic_handler();
 
     println!();
-    println!("Kaspa wRPC Beacon v{} starting...", env!("CARGO_PKG_VERSION"));
+    println!("Kaspa wRPC Resolver v{} starting...", env!("CARGO_PKG_VERSION"));
 
     monitor::init(&args);
     let (listener, app) = server::server(&args).await?;
