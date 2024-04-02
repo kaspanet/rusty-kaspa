@@ -317,7 +317,7 @@ pub fn cli() -> Command {
                 // .value_name("max-tracked-addresses")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
-                .help("Max number of addresses tracking UTXO changed events (default: 1835007)."),
+                .help("Max preallocated number of addresses tracking UTXO changed events (default: 1835007)."),
         )
         .arg(arg!(--testnet "Use the test network"))
         .arg(
