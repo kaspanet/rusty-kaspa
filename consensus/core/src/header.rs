@@ -1,5 +1,5 @@
 use crate::{hashing, BlueWorkType};
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use js_sys::{Array, Object};
 use kaspa_hashes::Hash;
 use kaspa_utils::hex::ToHex;
@@ -8,7 +8,7 @@ use serde_wasm_bindgen::*;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::prelude::*;
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable)]
 pub struct Header {

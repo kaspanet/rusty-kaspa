@@ -1,7 +1,7 @@
 use crate::listener::ListenerId;
 
 use super::{events::EventType, notification::Notification, scope::Scope};
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::ops::Deref;
@@ -16,7 +16,7 @@ pub mod array;
 pub mod compounded;
 pub mod single;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum Command {
     Start = 0,
     Stop = 1,

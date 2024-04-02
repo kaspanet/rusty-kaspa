@@ -2,6 +2,7 @@
 name = "kaspa-wallet-core"
 description = "Kaspa wallet library"
 keywords = ["kaspa", "wallet"]
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -96,6 +97,10 @@ features = [
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 home.workspace = true
+
+[dev-dependencies]
+hex-literal.workspace = true
+serde_repr.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio.workspace = true

@@ -1,9 +1,11 @@
 use crate::service::WrpcEncoding;
 use kaspa_consensus_core::network::NetworkType;
 use kaspa_utils::networking::ContextualNetAddress;
+use serde::Deserialize;
 use std::{net::AddrParseError, str::FromStr};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename = "lowercase")]
 pub enum WrpcNetAddress {
     Default,
     Public,
