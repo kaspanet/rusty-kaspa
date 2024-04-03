@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-consensus-notify"
 description = "Kaspa consensus notifier"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-txscript"
 description = "Kaspa txscript engine library"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

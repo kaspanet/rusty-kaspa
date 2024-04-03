@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-wallet"
 description = "Kaspa wallet"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true

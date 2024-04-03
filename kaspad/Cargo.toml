@@ -2,6 +2,7 @@
 name = "kaspad"
 description = "Kaspa full node daemon"
 keywords = ["kaspa", "blockdag"]
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -53,6 +54,7 @@ thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 workflow-log.workspace = true
 toml = "0.8.10"
+serde_with = "3.7.0"
 
 [features]
 heap = ["dhat", "kaspa-alloc/heap"]
