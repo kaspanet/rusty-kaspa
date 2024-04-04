@@ -89,6 +89,7 @@ pub struct Inner {
     multiplexer: Multiplexer<Box<Events>>,
     wallet_bus: Channel<WalletBusMessage>,
     estimation_abortables: Mutex<HashMap<AccountId, Abortable>>,
+    retained_contexts: Mutex<HashMap<String, Arc<Vec<u8>>>>,
 }
 
 ///
@@ -144,6 +145,7 @@ impl Wallet {
                 utxo_processor: utxo_processor.clone(),
                 wallet_bus,
                 estimation_abortables: Mutex::new(HashMap::new()),
+                retained_contexts: Mutex::new(HashMap::new()),
             }),
         };
 
@@ -411,6 +413,28 @@ impl Wallet {
         self.notify(Events::AccountDeactivation { ids }).await?;
 
         Ok(())
+    }
+
+    pub async fn account_descriptors(self: Arc<Self>) -> Result<Vec<AccountDescriptor>> {
+        let iter = self.inner.store.as_account_store().unwrap().iter(None).await.unwrap();
+        let wallet = self.clone();
+
+        let stream = iter.then(move |stored| {
+            let wallet = wallet.clone();
+
+            async move {
+                let (stored_account, stored_metadata) = stored.unwrap();
+                if let Some(account) = wallet.legacy_accounts().get(&stored_account.id) {
+                    account.descriptor()
+                } else if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
+                    account.descriptor()
+                } else {
+                    try_load_account(&wallet, stored_account, stored_metadata).await?.descriptor()
+                }
+            }
+        });
+
+        Ok(stream.try_collect::<Vec<_>>().await?)
     }
 
     pub async fn get_prv_key_data(&self, wallet_secret: &Secret, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>> {
@@ -894,14 +918,14 @@ impl Wallet {
         let events = self.multiplexer().channel();
         let wallet_bus_receiver = self.wallet_bus().receiver.clone();
 
-        let this_clone = self.clone();
-        spawn(async move {
-            loop {
-                log_info!("Wallet broadcasting ping...");
-                this_clone.notify(Events::WalletPing).await.expect("Wallet::start_task() `notify` error");
-                sleep(Duration::from_secs(5)).await;
-            }
-        });
+        // let this_clone = self.clone();
+        // spawn(async move {
+        //     loop {
+        //         log_info!("Wallet broadcasting ping...");
+        //         this_clone.notify(Events::WalletPing).await.expect("Wallet::start_task() `notify` error");
+        //         sleep(Duration::from_secs(5)).await;
+        //     }
+        // });
 
         spawn(async move {
             loop {
@@ -947,6 +971,20 @@ impl Wallet {
 
     async fn stop_task(&self) -> Result<()> {
         self.inner.task_ctl.signal(()).await.expect("Wallet::stop_task() `signal` error");
+        Ok(())
+    }
+
+    pub fn enable_metrics_kinds(&self, kinds: &[MetricsUpdateKind]) {
+        self.utxo_processor().enable_metrics_kinds(kinds);
+    }
+
+    pub async fn start_metrics(&self) -> Result<()> {
+        self.utxo_processor().start_metrics().await?;
+        Ok(())
+    }
+
+    pub async fn stop_metrics(&self) -> Result<()> {
+        self.utxo_processor().stop_metrics().await?;
         Ok(())
     }
 

@@ -6,6 +6,7 @@
 //!
 
 use crate::imports::*;
+// use futures::pin_mut;
 use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, UtxosChangedScope, VirtualDaaScoreChangedScope},
@@ -32,6 +33,8 @@ use kaspa_rpc_core::{
     notify::connection::{ChannelConnection, ChannelType},
     Notification,
 };
+// use workflow_core::task;
+// use kaspa_metrics_core::{Metrics,Metric};
 
 pub struct Inner {
     /// Coinbase UTXOs in stasis
@@ -57,6 +60,8 @@ pub struct Inner {
     wallet_bus: Option<Channel<WalletBusMessage>>,
     notification_guard: AsyncMutex<()>,
     connect_disconnect_guard: AsyncMutex<()>,
+    metrics: Arc<Metrics>,
+    metrics_kinds: Mutex<Vec<MetricsUpdateKind>>,
 }
 
 impl Inner {
@@ -84,6 +89,8 @@ impl Inner {
             wallet_bus,
             notification_guard: Default::default(),
             connect_disconnect_guard: Default::default(),
+            metrics: Arc::new(Metrics::default()),
+            metrics_kinds: Mutex::new(vec![]),
         }
     }
 }
@@ -122,8 +129,14 @@ impl UtxoProcessor {
 
     pub async fn bind_rpc(&self, rpc: Option<Rpc>) -> Result<()> {
         *self.inner.rpc.lock().unwrap() = rpc.clone();
+        let rpc_api = rpc.as_ref().map(|rpc| rpc.rpc_api().clone());
+        self.metrics().bind_rpc(rpc_api);
         self.sync_proc().bind_rpc(rpc).await?;
         Ok(())
+    }
+
+    pub fn metrics(&self) -> &Arc<Metrics> {
+        &self.inner.metrics
     }
 
     pub fn wallet_bus(&self) -> &Option<Channel<WalletBusMessage>> {
@@ -451,6 +464,14 @@ impl UtxoProcessor {
         self.notify(Events::UtxoProcStart).await?;
         self.sync_proc().track(is_synced).await?;
 
+        let this = self.clone();
+        self.inner.metrics.register_sink(Arc::new(Box::new(move |snapshot: MetricsSnapshot| {
+            if let Err(err) = this.deliver_metrics_snapshot(Box::new(snapshot)) {
+                println!("Error ingesting metrics snapshot: {}", err);
+            }
+            None
+        })));
+
         Ok(())
     }
 
@@ -476,6 +497,10 @@ impl UtxoProcessor {
         let _ = self.inner.connect_disconnect_guard.lock().await;
 
         self.inner.is_connected.store(false, Ordering::SeqCst);
+        // self.stop_metrics();
+
+        self.inner.metrics.unregister_sink();
+
         self.unregister_notification_listener().await?;
         self.notify(Events::UtxoProcStop).await?;
         self.cleanup().await?;
@@ -533,6 +558,50 @@ impl UtxoProcessor {
         Ok(())
     }
 
+    fn deliver_metrics_snapshot(&self, snapshot: Box<MetricsSnapshot>) -> Result<()> {
+        let metrics_kinds = self.inner.metrics_kinds.lock().unwrap().clone();
+        for kind in metrics_kinds.into_iter() {
+            match kind {
+                MetricsUpdateKind::WalletMetrics => {
+                    let mempool_size = snapshot.get(&Metric::NetworkMempoolSize) as u64;
+                    let node_peers = snapshot.get(&Metric::NodeActivePeers) as u32;
+                    let network_tps = snapshot.get(&Metric::NetworkTransactionsPerSecond);
+                    let metrics = MetricsUpdate::WalletMetrics { mempool_size, node_peers, network_tps };
+                    self.try_notify(Events::Metrics { network_id: self.network_id()?, metrics })?;
+                } // MetricsUpdateKind::NodeMetrics => {
+                  //     let metrics = MetricsUpdate::NodeMetrics { snapshot };
+                  //     self.try_notify(Events::Metrics { network_id: self.network_id()?, metrics })?;
+                  // }
+            }
+        }
+        // let network_id = self.network_id()?;
+        // self.try_notify(Events::Metrics { network_id, metrics : MetricsUpdate::NodeMetrics{ snapshot } })?;
+        // let mempool_size = snapshot.get(&Metric::NetworkMempoolSize) as u64;
+        // let peers = snapshot.get(&Metric::NodeActivePeers) as usize;
+        // self.try_notify(Events::Metrics { network_id, metrics : MetricsUpdate::WalletMetrics { mempool_size, peers } })?;
+        Ok(())
+        // self.inner.metrics.ingest_snapshot(snapshot)
+    }
+
+    pub async fn start_metrics(&self) -> Result<()> {
+        log_info!("### METRICS START A - STARTING");
+        self.inner.metrics.start_task().await?;
+        self.inner.metrics.bind_rpc(Some(self.rpc_api().clone()));
+        log_info!("### METRICS START A - STARTING -> FINISHED");
+
+        Ok(())
+    }
+
+    pub async fn stop_metrics(&self) -> Result<()> {
+        log_info!("### METRICS START B - STOPPING");
+        // self.inner.metrics.unregister_sink();
+        self.inner.metrics.stop_task().await?;
+        self.inner.metrics.bind_rpc(None);
+        log_info!("### METRICS START A - STOPPING -> FINISHED");
+
+        Ok(())
+    }
+
     pub async fn start(&self) -> Result<()> {
         let this = self.clone();
         if this.inner.task_is_running.load(Ordering::SeqCst) {
@@ -550,6 +619,9 @@ impl UtxoProcessor {
         if this.rpc_ctl().is_connected() {
             this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
         }
+
+        // let interval = task::interval(Duration::from_millis(1000));
+        // pin_mut!(interval);
 
         spawn(async move {
             loop {
@@ -635,6 +707,10 @@ impl UtxoProcessor {
             self.inner.task_ctl.signal(()).await.expect("UtxoProcessor::stop_task() `signal` error");
         }
         Ok(())
+    }
+
+    pub fn enable_metrics_kinds(&self, metrics_kinds: &[MetricsUpdateKind]) {
+        *self.inner.metrics_kinds.lock().unwrap() = metrics_kinds.to_vec();
     }
 }
 

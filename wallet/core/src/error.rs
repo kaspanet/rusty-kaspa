@@ -323,6 +323,9 @@ pub enum Error {
 
     #[error("Invalid public key length")]
     InvalidPublicKeyLength,
+
+    #[error(transparent)]
+    Metrics(#[from] kaspa_metrics_core::error::Error),
 }
 
 impl From<Aborted> for Error {

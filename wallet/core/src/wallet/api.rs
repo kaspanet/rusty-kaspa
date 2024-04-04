@@ -20,14 +20,54 @@ impl WalletApi for super::Wallet {
         todo!()
     }
 
-    async fn get_status_call(self: Arc<Self>, _request: GetStatusRequest) -> Result<GetStatusResponse> {
+    async fn get_status_call(self: Arc<Self>, request: GetStatusRequest) -> Result<GetStatusResponse> {
+        let GetStatusRequest { name } = request;
+        let context = name.and_then(|name| self.inner.retained_contexts.lock().unwrap().get(&name).cloned());
+
         let is_connected = self.is_connected();
         let is_synced = self.is_synced();
         let is_open = self.is_open();
         let network_id = self.network_id().ok();
         let (url, is_wrpc_client) = if let Some(wrpc_client) = self.wrpc_client() { (wrpc_client.url(), true) } else { (None, false) };
 
-        Ok(GetStatusResponse { is_connected, is_synced, is_open, network_id, url, is_wrpc_client })
+        let selected_account_id = self.inner.selected_account.lock().unwrap().as_ref().map(|account| *account.id());
+
+        let (wallet_descriptor, account_descriptors) = if self.is_open() {
+            let wallet_descriptor = self.descriptor();
+            let account_descriptors = self.account_descriptors().await.ok();
+            (wallet_descriptor, account_descriptors)
+        } else {
+            (None, None)
+        };
+
+        Ok(GetStatusResponse {
+            is_connected,
+            is_synced,
+            is_open,
+            network_id,
+            url,
+            is_wrpc_client,
+            context,
+            selected_account_id,
+            wallet_descriptor,
+            account_descriptors,
+        })
+    }
+
+    async fn retain_context_call(self: Arc<Self>, request: RetainContextRequest) -> Result<RetainContextResponse> {
+        let RetainContextRequest { name, data } = request;
+
+        if let Some(data) = data {
+            self.inner.retained_contexts.lock().unwrap().insert(name, Arc::new(data));
+
+            Ok(RetainContextResponse {})
+        } else {
+            self.inner.retained_contexts.lock().unwrap().remove(&name);
+            // let data = self.inner.retained_contexts.lock().unwrap().get(&name).cloned();
+            Ok(RetainContextResponse {})
+        }
+
+        // self.retain_context(retain);
     }
 
     // -------------------------------------------------------------------------------------
@@ -38,14 +78,17 @@ impl WalletApi for super::Wallet {
         let ConnectRequest { url, network_id } = request;
 
         if let Some(wrpc_client) = self.wrpc_client().as_ref() {
+            // self.set_network_id(network_id)?;
+
             // let network_type = NetworkType::from(network_id);
-            let url = wrpc_client.parse_url_with_network_type(url, network_id.into()).map_err(|e| e.to_string())?;
-            let options = ConnectOptions {
-                block_async_connect: true,
-                strategy: ConnectStrategy::Fallback,
-                url: Some(url),
-                ..Default::default()
-            };
+            let url = url
+                .map(|url| wrpc_client.parse_url_with_network_type(url, network_id.into()).map_err(|e| e.to_string()))
+                .transpose()?;
+            let options = ConnectOptions { block_async_connect: false, strategy: ConnectStrategy::Retry, url, ..Default::default() };
+            wrpc_client.disconnect().await?;
+
+            self.set_network_id(&network_id)?;
+
             wrpc_client.connect(Some(options)).await.map_err(|e| e.to_string())?;
             Ok(ConnectResponse {})
         } else {
@@ -60,6 +103,12 @@ impl WalletApi for super::Wallet {
         } else {
             Err(Error::NotWrpcClient)
         }
+    }
+
+    async fn change_network_id_call(self: Arc<Self>, request: ChangeNetworkIdRequest) -> Result<ChangeNetworkIdResponse> {
+        let ChangeNetworkIdRequest { network_id } = &request;
+        self.set_network_id(network_id)?;
+        Ok(ChangeNetworkIdResponse {})
     }
 
     // -------------------------------------------------------------------------------------
@@ -179,26 +228,42 @@ impl WalletApi for super::Wallet {
         Ok(AccountsRenameResponse {})
     }
 
+    async fn accounts_select_call(self: Arc<Self>, request: AccountsSelectRequest) -> Result<AccountsSelectResponse> {
+        let AccountsSelectRequest { account_id } = request;
+
+        if let Some(account_id) = account_id {
+            let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
+            self.select(Some(&account)).await?;
+        } else {
+            self.select(None).await?;
+        }
+        // self.inner.selected_account.lock().unwrap().replace(account);
+
+        Ok(AccountsSelectResponse {})
+    }
+
     async fn accounts_enumerate_call(self: Arc<Self>, _request: AccountsEnumerateRequest) -> Result<AccountsEnumerateResponse> {
-        let iter = self.inner.store.as_account_store().unwrap().iter(None).await.unwrap();
-        let wallet = self.clone();
+        // let iter = self.inner.store.as_account_store().unwrap().iter(None).await.unwrap();
+        // let wallet = self.clone();
 
-        let stream = iter.then(move |stored| {
-            let wallet = wallet.clone();
+        // let stream = iter.then(move |stored| {
+        //     let wallet = wallet.clone();
 
-            async move {
-                let (stored_account, stored_metadata) = stored.unwrap();
-                if let Some(account) = wallet.legacy_accounts().get(&stored_account.id) {
-                    account.descriptor()
-                } else if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
-                    account.descriptor()
-                } else {
-                    try_load_account(&wallet, stored_account, stored_metadata).await?.descriptor()
-                }
-            }
-        });
+        //     async move {
+        //         let (stored_account, stored_metadata) = stored.unwrap();
+        //         if let Some(account) = wallet.legacy_accounts().get(&stored_account.id) {
+        //             account.descriptor()
+        //         } else if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
+        //             account.descriptor()
+        //         } else {
+        //             try_load_account(&wallet, stored_account, stored_metadata).await?.descriptor()
+        //         }
+        //     }
+        // });
 
-        let account_descriptors = stream.try_collect::<Vec<_>>().await?;
+        // let account_descriptors = stream.try_collect::<Vec<_>>().await?;
+
+        let account_descriptors = self.account_descriptors().await?;
         Ok(AccountsEnumerateResponse { account_descriptors })
     }
 

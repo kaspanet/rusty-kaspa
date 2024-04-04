@@ -21,9 +21,16 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn register_notifications(self: Arc<Self>, channel: Receiver<WalletNotification>) -> Result<u64>;
     async fn unregister_notifications(self: Arc<Self>, channel_id: u64) -> Result<()>;
 
+    async fn retain_context(self: Arc<Self>, name: &str, data: Option<Vec<u8>>) -> Result<()> {
+        self.retain_context_call(RetainContextRequest { name: name.to_string(), data }).await?;
+        Ok(())
+    }
+
+    async fn retain_context_call(self: Arc<Self>, request: RetainContextRequest) -> Result<RetainContextResponse>;
+
     /// Wrapper around [`get_status_call()`](Self::get_status_call).
-    async fn get_status(self: Arc<Self>) -> Result<GetStatusResponse> {
-        Ok(self.get_status_call(GetStatusRequest {}).await?)
+    async fn get_status(self: Arc<Self>, name: Option<&str>) -> Result<GetStatusResponse> {
+        Ok(self.get_status_call(GetStatusRequest { name: name.map(String::from) }).await?)
     }
 
     /// Returns the current wallet state comprised of the following:
@@ -35,12 +42,30 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// - `is_wrpc_client` - whether the wallet is connected to a node via wRPC
     async fn get_status_call(self: Arc<Self>, request: GetStatusRequest) -> Result<GetStatusResponse>;
 
+    async fn connect(self: Arc<Self>, url: Option<String>, network_id: NetworkId) -> Result<()> {
+        self.connect_call(ConnectRequest { url, network_id }).await?;
+        Ok(())
+    }
+
     /// Request the wallet RPC subsystem to connect to a node with a given configuration
     /// comprised of the `url` and a `network_id`.
     async fn connect_call(self: Arc<Self>, request: ConnectRequest) -> Result<ConnectResponse>;
 
+    async fn disconnect(self: Arc<Self>) -> Result<()> {
+        self.disconnect_call(DisconnectRequest {}).await?;
+        Ok(())
+    }
     /// Disconnect the wallet RPC subsystem from the node.
     async fn disconnect_call(self: Arc<Self>, request: DisconnectRequest) -> Result<DisconnectResponse>;
+
+    /// Wrapper around [`change_network_id_call()`](Self::change_network_id_call).
+    async fn change_network_id(self: Arc<Self>, network_id: NetworkId) -> Result<()> {
+        self.change_network_id_call(ChangeNetworkIdRequest { network_id }).await?;
+        Ok(())
+    }
+
+    /// Change the current network id of the wallet.
+    async fn change_network_id_call(self: Arc<Self>, request: ChangeNetworkIdRequest) -> Result<ChangeNetworkIdResponse>;
 
     // ---
 
@@ -238,6 +263,16 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// See [`accounts_rename`](Self::accounts_rename) for a convenience wrapper
     /// around this call.
     async fn accounts_rename_call(self: Arc<Self>, request: AccountsRenameRequest) -> Result<AccountsRenameResponse>;
+
+    async fn accounts_select(self: Arc<Self>, account_id: Option<AccountId>) -> Result<()> {
+        self.accounts_select_call(AccountsSelectRequest { account_id }).await?;
+        Ok(())
+    }
+
+    /// Select an account. This call will set the currently *selected* account to the
+    /// account specified by the `account_id`. The selected account is tracked within
+    /// the wallet and can be obtained via get_status() API call.
+    async fn accounts_select_call(self: Arc<Self>, request: AccountsSelectRequest) -> Result<AccountsSelectResponse>;
 
     /// Wrapper around [`accounts_activate_call()`](Self::accounts_activate_call)
     async fn accounts_activate(self: Arc<Self>, account_ids: Option<Vec<AccountId>>) -> Result<AccountsActivateResponse> {

@@ -280,7 +280,12 @@ impl KaspaCli {
 
                         if let Ok(msg) = msg {
                             match *msg {
-                                Events::WalletPing => {},
+                                Events::WalletPing => {
+                                    // log_info!("Kaspa NG - received wallet ping");
+                                },
+                                Events::Metrics { network_id : _, metrics : _ } => {
+                                    // log_info!("Kaspa NG - received metrics event {metrics:?}")
+                                }
                                 Events::Error { message } => { terrorln!(this,"{message}"); },
                                 Events::UtxoProcStart => {},
                                 Events::UtxoProcStop => {},

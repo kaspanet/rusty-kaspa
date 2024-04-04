@@ -96,6 +96,7 @@ pub mod events;
 pub mod factory;
 mod imports;
 pub mod message;
+pub mod metrics;
 pub mod prelude;
 pub mod result;
 pub mod rpc;

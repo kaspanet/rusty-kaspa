@@ -212,6 +212,14 @@ pub enum Events {
         /// contain a developer-assigned internal id.
         id: UtxoContextId,
     },
+    /// Periodic metrics updates (on-request)
+    Metrics {
+        #[serde(rename = "networkId")]
+        network_id: NetworkId,
+        // #[serde(rename = "metricsData")]
+        // metrics_data: MetricsData,
+        metrics: MetricsUpdate,
+    },
     /// A general wallet framework error, emitted when an unexpected
     /// error occurs within the wallet framework.
     Error {
@@ -251,6 +259,7 @@ pub enum EventKind {
     Maturity,
     Discovery,
     Balance,
+    Metrics,
     Error,
 }
 
@@ -286,6 +295,7 @@ impl From<&Events> for EventKind {
             Events::Maturity { .. } => EventKind::Maturity,
             Events::Discovery { .. } => EventKind::Discovery,
             Events::Balance { .. } => EventKind::Balance,
+            Events::Metrics { .. } => EventKind::Metrics,
             Events::Error { .. } => EventKind::Error,
         }
     }
@@ -324,6 +334,7 @@ impl FromStr for EventKind {
             "maturity" => Ok(EventKind::Maturity),
             "discovery" => Ok(EventKind::Discovery),
             "balance" => Ok(EventKind::Balance),
+            "metrics" => Ok(EventKind::Metrics),
             "error" => Ok(EventKind::Error),
             _ => Err(Error::custom("Invalid event kind")),
         }
