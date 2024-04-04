@@ -120,6 +120,27 @@ pub struct Wallet {
     inner: Arc<Inner>,
 }
 
+cfg_if! {
+    if #[cfg(feature = "wasm32-sdk")] {
+        #[wasm_bindgen(typescript_custom_section)]
+        const TS_NOTIFY: &'static str = r#"
+        interface Wallet {
+            /**
+            * @param {WalletNotificationCallback} callback
+            */
+            addEventListener(callback:WalletNotificationCallback): void;
+            /**
+            * @param {WalletEventType} event
+            * @param {WalletNotificationCallback} [callback]
+            */
+            addEventListener<M extends keyof WalletEventMap>(
+                event: M,
+                callback: (eventData: WalletEventMap[M]) => void
+            )
+        }"#;
+    }
+}
+
 #[wasm_bindgen]
 impl Wallet {
     #[wasm_bindgen(constructor)]
@@ -198,7 +219,7 @@ impl Wallet {
         Ok(())
     }
 
-    #[wasm_bindgen(js_name = "addEventListener")]
+    #[wasm_bindgen(js_name = "addEventListener", skip_typescript)]
     pub fn add_event_listener(
         &self,
         event: WalletNotificationTypeOrCallback,

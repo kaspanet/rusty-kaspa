@@ -249,6 +249,28 @@ pub struct RpcClient {
     pub(crate) inner: Arc<Inner>,
 }
 
+
+cfg_if! {
+    if #[cfg(feature = "wasm32-sdk")] {
+        #[wasm_bindgen(typescript_custom_section)]
+        const TS_NOTIFY: &'static str = r#"
+        interface RpcClient {
+            /**
+            * @param {RpcEventCallback} callback
+            */
+            addEventListener(callback:RpcEventCallback): void;
+            /**
+            * @param {RpcEventType} event
+            * @param {RpcEventCallback} [callback]
+            */
+            addEventListener<M extends keyof RpcEventMap>(
+                event: M,
+                callback: (eventData: RpcEventMap[M]) => void
+            )
+        }"#;
+    }
+}
+
 impl RpcClient {
     pub fn new(config: Option<RpcConfig>) -> Result<RpcClient> {
         let RpcConfig { resolver, url, encoding, network_id } = config.unwrap_or_default();
@@ -516,7 +538,7 @@ impl RpcClient {
     /// @see {@link RpcEventData} for the event data interface specification.
     /// @see {@link RpcClient.removeEventListener}, {@link RpcClient.removeAllEventListeners}
     ///
-    #[wasm_bindgen(js_name = "addEventListener")]
+    #[wasm_bindgen(js_name = "addEventListener", skip_typescript)]
     pub fn add_event_listener(&self, event: RpcEventTypeOrCallback, callback: Option<RpcEventCallback>) -> Result<()> {
         if let Ok(sink) = Sink::try_from(&event) {
             let event = NotificationEvent::All;

@@ -38,11 +38,10 @@ cfg_if! {
             All = "*",
             Connect = "connect",
             Disconnect = "disconnect",
-            UtxoIndexNotEnabled = "utxoIndexNotEnabled",
-            SyncState = "syncState",
-            ServerStatus = "serverStatus",
-            UtxoProcError = "utxoProcError",
-            DaaScoreChange = "daaScoreChange",
+            UtxoIndexNotEnabled = "utxo-index-not-enabled",
+            SyncState = "sync-state",
+            UtxoProcError = "utxo-proc-error",
+            DaaScoreChange = "daa-score-change",
             Pending = "pending",
             Reorg = "reorg",
             Stasis = "stasis",
@@ -56,7 +55,6 @@ cfg_if! {
          * {@link UtxoProcessor} notification event data.
          * @category Wallet SDK
          */
-
         export type UtxoProcessorEventData = IConnectEvent
             | IDisconnectEvent
             | IUtxoIndexNotEnabledEvent
@@ -73,6 +71,11 @@ cfg_if! {
             | IErrorEvent
             ;
 
+        /**
+         * UtxoProcessor notification event data map.
+         * 
+         * @category Wallet API
+         */
         export type UtxoProcessorEventMap = {
             "connect":IConnectEvent,
             "disconnect": IDisconnectEvent,
@@ -90,7 +93,11 @@ cfg_if! {
             "error": IErrorEvent
         }
 
-        type IUtxoProcessorEvent = {
+        /**
+         * 
+         * @category Wallet API
+         */
+        export type IUtxoProcessorEvent = {
             [K in keyof UtxoProcessorEventMap]: { event: K, data: UtxoProcessorEventMap[K] }
         }[keyof UtxoProcessorEventMap];
 
@@ -166,7 +173,6 @@ cfg_if! {
          * {@link Wallet} notification event data payload.
          * @category Wallet API
          */
-
         export type WalletEventData = IConnectEvent
             | IDisconnectEvent
             | IUtxoIndexNotEnabledEvent
@@ -177,12 +183,12 @@ cfg_if! {
             | IWalletReloadEvent
             | IWalletErrorEvent
             // | IWalletCloseEvent
-            | IPrvDataCreateEvent
+            | IPrvKeyDataCreateEvent
             | IAccountActivationEvent
             | IAccountDeactivationEvent
             | IAccountSelectionEvent
             | IAccountCreateEvent
-            | IAccountUpdateEvent
+        | IAccountUpdateEvent
             | IServerStatusEvent
             // | IUtxoProcStartEvent
             // | IUtxoProcStopEvent
@@ -198,14 +204,49 @@ cfg_if! {
             ;
 
         /**
+         * Wallet notification event data map.
+         * @see {@link Wallet.addEventListener}
+         * @category Wallet API
+         */
+        export type WalletEventMap = {
+             "connect": IConnectEvent,
+             "disconnect": IDisconnectEvent,
+             "utxo-index-not-enabled": IUtxoIndexNotEnabledEvent,
+             "sync-state": ISyncStateEvent,
+             "wallet-hint": IWalletHintEvent,
+             "wallet-open": IWalletOpenEvent,
+             "wallet-create": IWalletCreateEvent,
+             "wallet-reload": IWalletReloadEvent,
+             "wallet-error": IWalletErrorEvent,
+            //  "wallet-close": IWalletCloseEvent,
+             "prv-key-data-create": IPrvKeyDataCreateEvent,
+             "account-activation": IAccountActivationEvent,
+             "account-deactivation": IAccountDeactivationEvent,
+             "account-selection": IAccountSelectionEvent,
+             "account-create": IAccountCreateEvent,
+             "account-update": IAccountUpdateEvent,
+             "server-status": IServerStatusEvent,
+            //  "utxo-proc-start": IUtxoProcStartEvent,
+            //  "utxo-proc-stop": IUtxoProcStopEvent,
+             "utxo-proc-error": IUtxoProcErrorEvent,
+             "daa-score-change": IDaaScoreChangeEvent,
+             "pending": IPendingEvent,
+             "reorg": IReorgEvent,
+             "stasis": IStasisEvent,
+             "maturity": IMaturityEvent,
+             "discovery": IDiscoveryEvent,
+             "balance": IBalanceEvent,
+             "error": IErrorEvent,
+        }
+        
+        /**
          * {@link Wallet} notification event interface.
          * @category Wallet API
          */
-        export interface IWalletEvent {
-            event : string;
-            data? : WalletEventData;
-        }
-        
+        export type IWalletEvent = {
+            [K in keyof WalletEventMap]: { event: K, data: WalletEventMap[K] }
+        }[keyof WalletEventMap];
+
         /**
          * Wallet notification callback type.
          * 
@@ -230,12 +271,6 @@ cfg_if! {
         }
     }
 }
-
-// #[wasm_bindgen]
-// extern "C" {
-//     #[wasm_bindgen(extends = js_sys::Function, typescript_type = "WalletNotificationCallback")]
-//     pub type WalletNotificationCallbackX;
-// }
 
 declare! {
     IConnectEvent,
@@ -384,14 +419,14 @@ declare! {
 
 #[cfg(feature = "wasm32-sdk")]
 declare! {
-    IPrvDataCreateEvent,
+    IPrvKeyDataCreateEvent,
     r#"
     /**
      * Emitted by {@link Wallet} when the wallet has created a private key.
      * 
      * @category Wallet Events
      */
-    export interface IPrvDataCreateEvent {
+    export interface IPrvKeyDataCreateEvent {
         prvKeyDataInfo : IPrvKeyDataInfo;
     }
     "#,
