@@ -112,8 +112,12 @@ impl Eq for dyn Compounded {}
 
 pub type CompoundedSubscription = Box<dyn Compounded>;
 
+/// Result of applying a [`Mutation`] to a [`DynSubscription`]
 pub struct MutationOutcome {
+    /// Optional new mutated subscription state
     pub mutated: Option<DynSubscription>,
+
+    /// Mutations applied to the [`DynSubscription`]
     pub mutations: Vec<Mutation>,
 }
 
@@ -130,6 +134,7 @@ impl MutationOutcome {
         Self { mutated: Some(mutated), mutations }
     }
 
+    /// Updates `target` to the mutated state if any, otherwise leave `target` as is.
     pub fn apply_to(self, target: &mut DynSubscription) -> Self {
         if let Some(ref mutated) = self.mutated {
             *target = mutated.clone();
@@ -155,6 +160,9 @@ impl Default for MutationOutcome {
 }
 
 pub trait Single: Subscription + AsAny + DynHash + DynEq + Debug + Send + Sync {
+    /// Applies a [`Mutation`] to a single subscription.
+    ///
+    /// On success, returns both an optional new state and the mutations resulting of the process.
     fn apply_mutation(
         &self,
         arc_self: &Arc<dyn Single>,
@@ -165,6 +173,10 @@ pub trait Single: Subscription + AsAny + DynHash + DynEq + Debug + Send + Sync {
 }
 
 pub trait MutateSingle: Deref<Target = dyn Single> {
+    /// Applies a [`Mutation`] to a single subscription.
+    ///
+    /// On success, updates `self` to the new state if any and returns both the optional new state and the mutations
+    /// resulting of the process as a [`MutationOutcome`].
     fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies, context: &SubscriptionContext) -> Result<MutationOutcome>;
 }
 
@@ -178,7 +190,7 @@ impl MutateSingle for Arc<dyn Single> {
 pub trait BroadcastingSingle: Deref<Target = dyn Single> {
     /// Returns the broadcasting instance of the subscription.
     ///
-    /// This allows the grouping of all the wildcard utxos changed subscriptions under
+    /// This is used for grouping all the wildcard utxos changed subscriptions under
     /// the same unique instance in the broadcaster plans, allowing message optimizations
     /// during broadcasting of the notifications.
     fn broadcasting(self, context: &SubscriptionContext) -> DynSubscription;

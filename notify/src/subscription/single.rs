@@ -312,6 +312,8 @@ pub struct UtxosChangedSubscription {
     data: RwLock<UtxosChangedSubscriptionData>,
 
     /// ID of the listener owning this subscription
+    ///
+    /// This fully determines both equality and hash.
     listener_id: ListenerId,
 }
 

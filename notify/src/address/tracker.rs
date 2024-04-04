@@ -13,8 +13,17 @@ use std::{
 
 pub trait Indexer {
     fn contains(&self, index: Index) -> bool;
+
+    /// Inserts an [`Index`].
+    ///
+    /// Returns true if the index was not present and was successfully inserted, false otherwise.
     fn insert(&mut self, index: Index) -> bool;
+
+    /// Removes an [`Index`].
+    ///
+    /// Returns true if the index was present and successfully removed, false otherwise.
     fn remove(&mut self, index: Index) -> bool;
+
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool;
 }
@@ -28,6 +37,7 @@ pub type Counters = CounterMap;
 /// Tracks indexes
 pub type Indexes = IndexSet;
 
+/// Tracks reference count of indexes
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct CounterMap(HashMap<Index, RefCount>);
 
@@ -199,8 +209,19 @@ impl Indexer for IndexSet {
 
 #[derive(Debug)]
 struct Inner {
+    /// Index-based map of [`ScriptPublicKey`] to its reference count
+    ///
+    /// ### Implementation note
+    ///
+    /// The whole purpose of the tracker is to reduce a [`ScriptPublicKey`] to an [`Index`] in all
+    /// [`Indexer`] instances. Therefore, every mutable access to the struct must be careful not to
+    /// use `IndexMap` APIs which alter the index order of existing entries.
     script_pub_keys: IndexMap<ScriptPublicKey, RefCount>,
+
+    /// Maximum address count that can be registered
     max_addresses: Option<usize>,
+
+    /// Set of entries [`Index`] in `script_pub_keys` having their [`RefCount`] at 0
     empty_entries: HashSet<Index>,
 }
 
@@ -258,16 +279,20 @@ impl Inner {
                     );
                     let _ = *entry.insert(0);
 
-                    // Recycle empty entries
+                    // Try to recycle an empty entry if there is some
                     let mut recycled = false;
                     if (index + 1) as usize == self.script_pub_keys.len() && !self.empty_entries.is_empty() {
+                        // Takes the first empty entry index
                         let empty_index = self.empty_entries.iter().cloned().next();
                         if let Some(empty_index) = empty_index {
+                            // Stores the newly created entry at the empty entry index while keeping it registered as an
+                            // empty entry (because it is so at this stage, the ref count being 0).
                             self.script_pub_keys.swap_remove_index(empty_index as usize);
                             index = empty_index;
                             recycled = true;
                         }
                     }
+                    // If no recycling occurred, registers the newly created entry as empty (since ref count is 0).
                     if !recycled {
                         self.empty_entries.insert(index);
                     }
@@ -281,6 +306,10 @@ impl Inner {
         }
     }
 
+    /// Increases by one the [`RefCount`] of the [`ScriptPublicKey`] at `index`.
+    ///
+    /// If the entry had a reference count of 0 before the increase, its index is removed from
+    /// the empty entries set.
     fn inc_count(&mut self, index: Index) {
         if let Some((_, count)) = self.script_pub_keys.get_index_mut(index as usize) {
             *count += 1;
@@ -291,6 +320,11 @@ impl Inner {
         }
     }
 
+    /// Decreases by one the [`RefCount`] of the [`ScriptPublicKey`] at `index`.
+    ///
+    /// Panics if the ref count is already 0.
+    ///
+    /// When the reference count reaches zero, the index is inserted into the empty entries set.
     fn dec_count(&mut self, index: Index) {
         if let Some((_, count)) = self.script_pub_keys.get_index_mut(index as usize) {
             if *count == 0 {
@@ -384,6 +418,7 @@ impl Tracker {
         self.contains(indexes, &pay_to_address_script(address))
     }
 
+    /// Returns an index set containing the indexes of all the addresses both registered in the tracker and in `indexes`.
     pub fn unregistering_indexes(&self, indexes: &Indexes, addresses: &[Address]) -> Indexes {
         Indexes::new(
             addresses
@@ -395,6 +430,12 @@ impl Tracker {
         )
     }
 
+    /// Tries to register an `Address` vector into an `Indexer`. The addresses are first registered in the tracker if unknown
+    /// yet and their reference count is increased when successfully inserted in the `Indexer`.
+    ///
+    /// On success, returns the addresses that were actually inserted in the `Indexer`.
+    ///
+    /// Fails if the maximum capacity gets reached, leaving the tracker unchanged.
     pub fn register<T: Indexer>(&self, indexes: &mut T, mut addresses: Vec<Address>) -> Result<Vec<Address>> {
         let mut rollback: bool = false;
         {
@@ -432,6 +473,11 @@ impl Tracker {
         }
     }
 
+    /// Unregisters an `Address` vector from an `Indexer`. The addresses, when existing both in the tracker
+    /// and the `Indexer`, are first removed from the `Indexer` and on success get their reference count
+    /// decreased.
+    ///
+    /// Returns the addresses that where successfully unregistered from the `Indexer`.
     pub fn unregister<T: Indexer>(&self, indexes: &mut T, mut addresses: Vec<Address>) -> Vec<Address> {
         if indexes.is_empty() {
             vec![]
@@ -459,6 +505,7 @@ impl Tracker {
         }
     }
 
+    /// Unregisters all indexes contained in `indexes`, draining it in the process.
     pub fn unregister_indexes(&self, indexes: &mut Indexes) {
         for chunk in &indexes.drain().chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
