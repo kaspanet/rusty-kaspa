@@ -123,7 +123,7 @@ macro_rules! default_opts {
             let trigger = 12i32;
             let max_level_base = min_to_merge as u64 * trigger as u64 * buffer_size as u64;
 
-            opts.set_target_file_size_base(32 * MB);
+            opts.set_target_file_size_base(32 * MB as u64);
             opts.set_max_bytes_for_level_multiplier(4.0);
 
             opts.set_write_buffer_size(buffer_size);
@@ -132,11 +132,11 @@ macro_rules! default_opts {
             opts.set_level_zero_file_num_compaction_trigger(trigger);
             opts.set_max_bytes_for_level_base(max_level_base);
 
-            opts.set_wal_bytes_per_sync(1000 * KB); // suggested by advisor
+            opts.set_wal_bytes_per_sync(1000 * KB as u64); // suggested by advisor
             opts.set_use_direct_io_for_flush_and_compaction(true); // should decrease write amp
             opts.set_keep_log_file_num(1); // good for analytics
-            opts.set_bytes_per_sync(MB);
-            opts.set_max_total_wal_size(GB);
+            opts.set_bytes_per_sync(MB as u64);
+            opts.set_max_total_wal_size(GB as u64);
             opts.set_compression_per_level(&[
                 DBCompressionType::None,
                 DBCompressionType::Lz4,
@@ -150,7 +150,7 @@ macro_rules! default_opts {
 
             let mut b_opts = BlockBasedOptions::default();
             b_opts.set_bloom_filter(4.9, true); // increases ram, trade-off, needs to be tested
-            b_opts.set_block_size(128 * KB) // Callidon tests shows that this size increases block processing during the sync significantly
+            b_opts.set_block_size(128 * KB); // Callidon tests shows that this size increases block processing during the sync significantly
             opts.set_block_based_table_factory(&b_opts);
         }
         let guard = kaspa_utils::fd_budget::acquire_guard($self.files_limit)?;
