@@ -3,7 +3,6 @@
 //!
 
 use crate::api::{message::*, traits::WalletApi};
-use crate::factory::try_load_account;
 use crate::imports::*;
 use crate::result::Result;
 use crate::storage::interface::TransactionRangeResult;

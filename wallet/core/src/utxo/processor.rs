@@ -568,36 +568,23 @@ impl UtxoProcessor {
                     let network_tps = snapshot.get(&Metric::NetworkTransactionsPerSecond);
                     let metrics = MetricsUpdate::WalletMetrics { mempool_size, node_peers, network_tps };
                     self.try_notify(Events::Metrics { network_id: self.network_id()?, metrics })?;
-                } // MetricsUpdateKind::NodeMetrics => {
-                  //     let metrics = MetricsUpdate::NodeMetrics { snapshot };
-                  //     self.try_notify(Events::Metrics { network_id: self.network_id()?, metrics })?;
-                  // }
+                }
             }
         }
-        // let network_id = self.network_id()?;
-        // self.try_notify(Events::Metrics { network_id, metrics : MetricsUpdate::NodeMetrics{ snapshot } })?;
-        // let mempool_size = snapshot.get(&Metric::NetworkMempoolSize) as u64;
-        // let peers = snapshot.get(&Metric::NodeActivePeers) as usize;
-        // self.try_notify(Events::Metrics { network_id, metrics : MetricsUpdate::WalletMetrics { mempool_size, peers } })?;
+
         Ok(())
-        // self.inner.metrics.ingest_snapshot(snapshot)
     }
 
     pub async fn start_metrics(&self) -> Result<()> {
-        log_info!("### METRICS START A - STARTING");
         self.inner.metrics.start_task().await?;
         self.inner.metrics.bind_rpc(Some(self.rpc_api().clone()));
-        log_info!("### METRICS START A - STARTING -> FINISHED");
 
         Ok(())
     }
 
     pub async fn stop_metrics(&self) -> Result<()> {
-        log_info!("### METRICS START B - STOPPING");
-        // self.inner.metrics.unregister_sink();
         self.inner.metrics.stop_task().await?;
         self.inner.metrics.bind_rpc(None);
-        log_info!("### METRICS START A - STOPPING -> FINISHED");
 
         Ok(())
     }
@@ -619,9 +606,6 @@ impl UtxoProcessor {
         if this.rpc_ctl().is_connected() {
             this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
         }
-
-        // let interval = task::interval(Duration::from_millis(1000));
-        // pin_mut!(interval);
 
         spawn(async move {
             loop {
