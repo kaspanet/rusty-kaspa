@@ -3,6 +3,10 @@ use rocksdb::{BlockBasedOptions, DBCompressionType, DBWithThreadMode, MultiThrea
 use std::thread::available_parallelism;
 use std::{path::PathBuf, sync::Arc};
 
+const KB: usize = 1024;
+const MB: usize = 1024 * KB;
+const GB: usize = 1024 * MB;
+
 #[derive(Debug)]
 pub struct Unspecified;
 
@@ -113,13 +117,13 @@ macro_rules! default_opts {
             opts.set_max_compaction_bytes(209715200);
         }
         {
-            let buffer_size = 32usize * 1024 * 1024;
+            let buffer_size = 32usize * MB;
             let min_to_merge = 4i32;
             let max_buffers = 16;
             let trigger = 12i32;
             let max_level_base = min_to_merge as u64 * trigger as u64 * buffer_size as u64;
 
-            opts.set_target_file_size_base(32 * 1024 * 1024);
+            opts.set_target_file_size_base(32 * MB);
             opts.set_max_bytes_for_level_multiplier(4.0);
 
             opts.set_write_buffer_size(buffer_size);
@@ -128,11 +132,11 @@ macro_rules! default_opts {
             opts.set_level_zero_file_num_compaction_trigger(trigger);
             opts.set_max_bytes_for_level_base(max_level_base);
 
-            opts.set_wal_bytes_per_sync(1024000); // suggested by advisor
+            opts.set_wal_bytes_per_sync(1000 * KB); // suggested by advisor
             opts.set_use_direct_io_for_flush_and_compaction(true); // should decrease write amp
             opts.set_keep_log_file_num(1); // good for analytics
-            opts.set_bytes_per_sync(1024 * 1024);
-            opts.set_max_total_wal_size(1024 * 1024 * 1024);
+            opts.set_bytes_per_sync(MB);
+            opts.set_max_total_wal_size(GB);
             opts.set_compression_per_level(&[
                 DBCompressionType::None,
                 DBCompressionType::Lz4,
@@ -145,7 +149,8 @@ macro_rules! default_opts {
             opts.set_level_compaction_dynamic_level_bytes(true); // default option since 8.4 https://github.com/facebook/rocksdb/wiki/Leveled-Compaction#level_compaction_dynamic_level_bytes-is-true-recommended-default-since-version-84
 
             let mut b_opts = BlockBasedOptions::default();
-            b_opts.set_bloom_filter(2.0, true); // advisor
+            b_opts.set_bloom_filter(4.9, true); // increases ram, trade-off, needs to be tested
+            b_opts.set_block_size(128 * KB) // Callidon tests shows that this size increases block processing during the sync significantly
             opts.set_block_based_table_factory(&b_opts);
         }
         let guard = kaspa_utils::fd_budget::acquire_guard($self.files_limit)?;
