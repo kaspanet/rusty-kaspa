@@ -434,7 +434,7 @@ impl Wallet {
             }
         });
 
-        Ok(stream.try_collect::<Vec<_>>().await?)
+        stream.try_collect::<Vec<_>>().await
     }
 
     pub async fn get_prv_key_data(&self, wallet_secret: &Secret, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>> {
@@ -554,6 +554,10 @@ impl Wallet {
             return Err(Error::NetworkTypeConnected);
         }
         self.utxo_processor().set_network_id(network_id);
+
+        if let Some(wrpc_client) = self.wrpc_client() {
+            wrpc_client.set_network_id(network_id)?;
+        }
         Ok(())
     }
 

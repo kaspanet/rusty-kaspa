@@ -249,7 +249,6 @@ pub struct RpcClient {
     pub(crate) inner: Arc<Inner>,
 }
 
-
 cfg_if! {
     if #[cfg(feature = "wasm32-sdk")] {
         #[wasm_bindgen(typescript_custom_section)]
@@ -345,7 +344,7 @@ impl RpcClient {
     /// Set the network id for the RPC client.
     /// This setting will take effect on the next connection.
     #[wasm_bindgen(js_name = setNetworkId)]
-    pub fn set_network_id(&self, network_id: NetworkId) -> Result<()> {
+    pub fn set_network_id(&self, network_id: &NetworkId) -> Result<()> {
         self.inner.client.set_network_id(network_id)?;
         Ok(())
     }
@@ -461,10 +460,7 @@ impl RpcClient {
     /// });
     ///
     /// // Registering event listener for all events:
-    /// rpc.addEventListener("*", (event) => {
-    ///     console.log(event);
-    /// });
-    /// // or without supplying the event type
+    /// // (by omitting the event type)
     /// rpc.addEventListener((event) => {
     ///     console.log(event);
     /// });

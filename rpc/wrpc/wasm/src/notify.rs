@@ -10,7 +10,6 @@ const TS_HEADER: &'static str = r#"
  * @see {RpcClient.addEventListener}, {RpcClient.removeEventListener}
  */
 export enum RpcEventType {
-    All = "*",
     Open = "open",
     Close = "close",
     BlockAdded = "block-added",
