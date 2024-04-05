@@ -78,12 +78,13 @@ pub struct GrpcClient {
     subscription_context: SubscriptionContext,
     policies: MutationPolicies,
     notification_mode: NotificationMode,
-    client_id: ListenerId,
 }
 
 const GRPC_CLIENT: &str = "grpc-client";
 
 impl GrpcClient {
+    pub const DIRECT_MODE_LISTENER_ID: ListenerId = 0;
+
     pub async fn connect(
         notification_mode: NotificationMode,
         url: String,
@@ -106,7 +107,6 @@ impl GrpcClient {
             counters,
         )
         .await?;
-        let client_id = u64::from_le_bytes(rand::random::<[u8; 8]>());
         let converter = Arc::new(RpcCoreConverter::new());
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
         let subscription_context = subscription_context.unwrap_or_default();
@@ -128,7 +128,7 @@ impl GrpcClient {
             }
             NotificationMode::Direct => {
                 let collector = GrpcClientCollector::new(GRPC_CLIENT, inner.notification_channel_receiver(), converter);
-                let subscriptions = ArrayBuilder::single(client_id, None);
+                let subscriptions = ArrayBuilder::single(Self::DIRECT_MODE_LISTENER_ID, None);
                 (None, Some(Arc::new(collector)), Some(Arc::new(Mutex::new(subscriptions))))
             }
         };
@@ -138,7 +138,7 @@ impl GrpcClient {
             inner.clone().spawn_connection_monitor(notifier.clone(), subscriptions.clone(), subscription_context.clone());
         }
 
-        Ok(Self { inner, notifier, collector, subscriptions, subscription_context, policies, notification_mode, client_id })
+        Ok(Self { inner, notifier, collector, subscriptions, subscription_context, policies, notification_mode })
     }
 
     #[inline(always)]
@@ -253,7 +253,8 @@ impl RpcApi for GrpcClient {
             NotificationMode::MultiListeners => {
                 self.notifier.as_ref().unwrap().register_new_listener(connection, ListenerLifespan::Dynamic)
             }
-            NotificationMode::Direct => self.client_id,
+            // In direct mode, listener registration/unregistration is ignored
+            NotificationMode::Direct => Self::DIRECT_MODE_LISTENER_ID,
         }
     }
 
@@ -265,6 +266,7 @@ impl RpcApi for GrpcClient {
             NotificationMode::MultiListeners => {
                 self.notifier.as_ref().unwrap().unregister_listener(id)?;
             }
+            // In direct mode, listener registration/unregistration is ignored
             NotificationMode::Direct => {}
         }
         Ok(())
