@@ -6,27 +6,6 @@ use wasm_bindgen::prelude::*;
 cfg_if! {
     if #[cfg(any(feature = "wasm32-core", feature = "wasm32-sdk"))] {
 
-        // #[wasm_bindgen]
-        // #[derive(Copy, Clone, Debug)]
-        // pub enum UtxoProcessorEventType{
-        //     All="all",
-        //     Connect="connect",
-        //     Disconnect="disconnect",
-        //     // UtxoIndexNotEnabled,
-        //     // SyncState,
-        //     // ServerStatus,
-        //     // UtxoProcError,
-        //     // DaaScoreChange,
-        //     // Pending,
-        //     // Reorg,
-        //     // Stasis,
-        //     // Maturity,
-        //     Discovery="discovery",
-        //     // Balance,
-        //     // Error,
-        // }
-
-
         #[wasm_bindgen(typescript_custom_section)]
         const TS_NOTIFY: &'static str = r#"
 
