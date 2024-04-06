@@ -39,7 +39,7 @@ impl ClientManager {
     }
 
     pub async fn new_client(&self) -> GrpcClient {
-        GrpcClient::connect(
+        GrpcClient::connect_with_args(
             NotificationMode::Direct,
             format!("grpc://localhost:{}", self.rpc_port),
             Some(self.context.clone()),
@@ -62,7 +62,7 @@ impl ClientManager {
     }
 
     pub async fn new_multi_listener_client(&self) -> GrpcClient {
-        GrpcClient::connect(
+        GrpcClient::connect_with_args(
             NotificationMode::MultiListeners,
             format!("grpc://localhost:{}", self.rpc_port),
             Some(self.context.clone()),

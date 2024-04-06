@@ -117,7 +117,7 @@ impl Server {
             // Provider::GrpcClient
 
             log_info!("Routing wrpc://{peer} -> {grpc_proxy_address}");
-            let grpc_client = GrpcClient::connect(
+            let grpc_client = GrpcClient::connect_with_args(
                 NotificationMode::Direct,
                 grpc_proxy_address.to_owned(),
                 None,

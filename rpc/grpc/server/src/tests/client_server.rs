@@ -3,7 +3,7 @@ use crate::{adaptor::Adaptor, manager::Manager};
 use kaspa_core::info;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::scope::{NewBlockTemplateScope, Scope};
-use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode};
+use kaspa_rpc_core::api::rpc::RpcApi;
 use kaspa_utils::networking::{ContextualNetAddress, NetAddress};
 use std::sync::Arc;
 
@@ -204,7 +204,7 @@ fn create_server(core_service: Arc<RpcCoreMock>) -> Arc<Adaptor> {
 
 async fn create_client(server_address: NetAddress) -> GrpcClient {
     let server_url = format!("grpc://localhost:{}", server_address.port);
-    GrpcClient::connect(NotificationMode::Direct, server_url, None, false, None, false, None, Default::default()).await.unwrap()
+    GrpcClient::connect(server_url).await.unwrap()
 }
 
 fn get_free_net_address() -> NetAddress {

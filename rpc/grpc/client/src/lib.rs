@@ -72,7 +72,7 @@ pub struct GrpcClient {
     inner: Arc<Inner>,
     /// In multi listener mode, a full-featured Notifier
     notifier: Option<Arc<GrpcClientNotifier>>,
-    /// In direct mode, a Collector relaying incoming notifications to any provided DynNotify
+    /// In direct mode, a Collector relaying incoming notifications via a channel (see `self.notification_channel_receiver()`)
     collector: Option<Arc<GrpcClientCollector>>,
     subscriptions: Option<Arc<DirectSubscriptions>>,
     subscription_context: SubscriptionContext,
@@ -85,7 +85,35 @@ const GRPC_CLIENT: &str = "grpc-client";
 impl GrpcClient {
     pub const DIRECT_MODE_LISTENER_ID: ListenerId = 0;
 
-    pub async fn connect(
+    pub async fn connect(url: String) -> Result<GrpcClient> {
+        Self::connect_with_args(NotificationMode::Direct, url, None, false, None, false, None, Default::default()).await
+    }
+
+    /// Connects to a gRPC server.
+    ///
+    /// `notification_mode` determines how notifications are handled:
+    ///
+    /// - `MultiListeners` => Multiple listeners are supported via the [`RpcApi`] implementation.
+    ///                       Registering listeners is needed before subscribing to notifications.
+    /// - `Direct` => A single listener receives the notification via a channel (see  `self.notification_channel_receiver()`).
+    ///               Registering a listener is pointless and ignored.
+    ///               Subscribing to notifications ignores the listener ID.
+    ///
+    /// `url`: the server to connect to
+    ///
+    /// `subscription_context`: it is advised to provide a clone of the same instance if multiple clients dealing with
+    /// [`UtxosChangedNotifications`] are connected concurrently in order to optimize the memory footprint.
+    ///
+    /// `reconnect`: features an automatic reconnection to the server, reactivating all subscriptions on success.
+    ///
+    /// `connection_event_sender`: when provided will notify of connection and disconnection events via the channel.
+    ///
+    /// `override_handle_stop_notify`: legacy, should be removed in near future, always set to `false`.
+    ///
+    /// `timeout_duration`: request timeout duration
+    ///
+    /// `counters`: collects some bandwidth metrics
+    pub async fn connect_with_args(
         notification_mode: NotificationMode,
         url: String,
         subscription_context: Option<SubscriptionContext>,

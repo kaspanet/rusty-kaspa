@@ -88,7 +88,7 @@ pub fn cli() -> Command {
 }
 
 async fn new_rpc_client(subscription_context: &SubscriptionContext, address: &str) -> GrpcClient {
-    GrpcClient::connect(
+    GrpcClient::connect_with_args(
         NotificationMode::Direct,
         format!("grpc://{}", address),
         Some(subscription_context.clone()),
@@ -117,7 +117,7 @@ async fn main() {
     let args = Args::parse();
     let stats = Arc::new(Mutex::new(Stats { num_txs: 0, since: unix_now(), num_utxos: 0, utxos_amount: 0, num_outs: 0 }));
     let subscription_context = SubscriptionContext::new();
-    let rpc_client = GrpcClient::connect(
+    let rpc_client = GrpcClient::connect_with_args(
         NotificationMode::Direct,
         format!("grpc://{}", args.rpc_server),
         Some(subscription_context.clone()),
