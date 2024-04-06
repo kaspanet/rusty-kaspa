@@ -18,6 +18,7 @@ declare_wasm_handlers!([
     Flush,
     // Connect,
     // Disconnect,
+    RetainContext,
     GetStatus,
     WalletEnumerate,
     WalletCreate,
