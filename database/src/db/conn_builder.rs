@@ -1,10 +1,6 @@
 use crate::db::DB;
 use rocksdb::{BlockBasedOptions, Cache, DBCompressionType, DBWithThreadMode, MultiThreaded};
-use std::{
-    thread::available_parallelism,
-    path::PathBuf,
-    sync::Arc
-};
+use std::{path::PathBuf, sync::Arc, thread::available_parallelism};
 
 const KB: usize = 1024;
 const MB: usize = 1024 * KB;
