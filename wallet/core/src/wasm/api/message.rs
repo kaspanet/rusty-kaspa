@@ -318,24 +318,7 @@ declare! {
 }
 
 try_from! ( _args: RetainContextResponse, IRetainContextResponse, {
-    // let RetainContextResponse { data, .. } = args;
-
-    let response = IRetainContextResponse::default();
-
-    // if let Some(data) = data {
-    //     response.set("data", &data.to_hex().into())?;
-    // }
-
-    // response.set("isConnected", &is_connected.into())?;
-    // response.set("isSynced", &is_synced.into())?;
-    // response.set("isOpen", &is_open.into())?;
-    // if let Some(url) = url {
-    //     response.set("url", &url.into())?;
-    // }
-    // if let Some(network_id) = network_id {
-    //     response.set("networkId", &network_id.into())?;
-    // }
-    Ok(response)
+    Ok(IRetainContextResponse::default())
 });
 
 // ---
