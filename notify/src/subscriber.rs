@@ -6,7 +6,7 @@ use std::sync::{
     Arc,
 };
 extern crate derive_more;
-use crate::events::EventSwitches;
+use crate::events::{EventSwitches, EventType};
 
 use super::{
     error::Result,
@@ -71,8 +71,8 @@ impl Subscriber {
         }
     }
 
-    pub fn enabled_events(&self) -> &EventSwitches {
-        &self.enabled_events
+    pub fn handles_event_type(&self, event_type: EventType) -> bool {
+        self.enabled_events[event_type]
     }
 
     pub fn start(self: &Arc<Self>) {
@@ -88,7 +88,7 @@ impl Subscriber {
         trace!("[Subscriber {}] starting subscription receiving task", self.name);
         workflow_core::task::spawn(async move {
             while let Ok(mutation) = self.incoming.recv().await {
-                if self.enabled_events[mutation.event_type()] {
+                if self.handles_event_type(mutation.event_type()) {
                     if let Err(err) = self
                         .subscription_manager
                         .clone()

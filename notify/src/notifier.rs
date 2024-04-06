@@ -20,7 +20,7 @@ use async_channel::Sender;
 use async_trait::async_trait;
 use core::fmt::Debug;
 use futures::future::join_all;
-use itertools::{repeat_n, Itertools};
+use itertools::Itertools;
 use kaspa_core::{debug, trace};
 use parking_lot::Mutex;
 use std::{
@@ -218,8 +218,8 @@ where
     /// Subscribers
     subscribers: Vec<Arc<Subscriber>>,
 
-    /// Enabled Subscribers by event type
-    enabled_subscribers: EventArray<Vec<Arc<Subscriber>>>,
+    /// Enabled Subscriber by event type
+    enabled_subscriber: EventArray<Option<Arc<Subscriber>>>,
 
     /// Subscription context
     subscription_context: SubscriptionContext,
@@ -262,9 +262,12 @@ where
                 ))
             })
             .collect::<Vec<_>>();
-        let enabled_subscribers = EventArray::from_fn(|index| {
+        let enabled_subscriber = EventArray::from_fn(|index| {
             let event: EventType = index.try_into().unwrap();
-            subscribers.iter().filter(|&x| x.enabled_events()[event]).cloned().collect_vec()
+            let mut iter = subscribers.iter().filter(|&x| x.handles_event_type(event)).cloned();
+            let subscriber = iter.next();
+            assert!(iter.next().is_none(), "A notifier is not allowed to have more than one subscriber per event type");
+            subscriber
         });
         let utxos_changed_capacity = match policies.utxo_changed {
             UtxosChangedMutationPolicy::AddressSet => subscription_context.address_tracker.max_addresses(),
@@ -279,7 +282,7 @@ where
             broadcasters,
             collectors,
             subscribers,
-            enabled_subscribers,
+            enabled_subscriber,
             subscription_context,
             policies,
             name,
@@ -412,11 +415,11 @@ where
         for mutation in mutations {
             compound_result = subscriptions[event].compound(mutation, context);
         }
-        // Report to the parents
+        // Report to the parent if any
         if let Some(mutation) = compound_result {
-            repeat_n(mutation, self.enabled_subscribers[event].len())
-                .zip(self.enabled_subscribers[event].iter())
-                .try_for_each(|(mutation, subscriber)| subscriber.mutate(mutation.clone()))?;
+            if let Some(ref subscriber) = self.enabled_subscriber[event] {
+                subscriber.mutate(mutation)?;
+            }
         }
         Ok(())
     }
