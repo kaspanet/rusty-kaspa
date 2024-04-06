@@ -1,7 +1,10 @@
 use crate::db::DB;
-use rocksdb::{BlockBasedOptions, DBCompressionType, DBWithThreadMode, MultiThreaded};
-use std::thread::available_parallelism;
-use std::{path::PathBuf, sync::Arc};
+use rocksdb::{BlockBasedOptions, Cache, DBCompressionType, DBWithThreadMode, MultiThreaded};
+use std::{
+    thread::available_parallelism,
+    path::PathBuf,
+    sync::Arc
+};
 
 const KB: usize = 1024;
 const MB: usize = 1024 * KB;
@@ -151,6 +154,14 @@ macro_rules! default_opts {
             let mut b_opts = BlockBasedOptions::default();
             b_opts.set_bloom_filter(4.9, true); // increases ram, trade-off, needs to be tested
             b_opts.set_block_size(128 * KB); // Callidon tests shows that this size increases block processing during the sync significantly
+
+            // todo remove me, should be properly passed via cli
+            if let Some(cache_size) = std::env::var("ROCKSDB_CACHE_SIZE").ok().and_then(|str| str.parse().ok()) {
+                println!("`ROCKSDB_CACHE_SIZE` is settled to {cache_size}");
+                let cache = Cache::new_lru_cache(cache_size);
+                b_opts.set_block_cache(&cache);
+            }
+
             opts.set_block_based_table_factory(&b_opts);
         }
         let guard = kaspa_utils::fd_budget::acquire_guard($self.files_limit)?;
