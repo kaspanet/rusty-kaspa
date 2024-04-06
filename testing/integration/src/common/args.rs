@@ -51,6 +51,16 @@ impl ArgsBuilder {
         self
     }
 
+    pub fn max_tracked_addresses(mut self, max_tracked_addresses: usize) -> Self {
+        self.args.max_tracked_addresses = max_tracked_addresses;
+        self
+    }
+
+    pub fn utxoindex(mut self, utxoindex: bool) -> Self {
+        self.args.utxoindex = utxoindex;
+        self
+    }
+
     pub fn apply_args<F>(mut self, edit_func: F) -> Self
     where
         F: Fn(&mut Args),

@@ -221,21 +221,48 @@ struct Inner {
     /// Maximum address count that can be registered
     max_addresses: Option<usize>,
 
-    /// Set of entries [`Index`] in `script_pub_keys` having their [`RefCount`] at 0
+    /// Set of entries [`Index`] in `script_pub_keys` having their [`RefCount`] at 0 hence considered
+    /// empty.
+    ///
+    /// An empty entry can be recycled and hold a new `script_pub_key`.
     empty_entries: HashSet<Index>,
 }
 
 impl Inner {
+    /// The upper bound of the maximum address count
+    const MAX_ADDRESS_UPPER_BOUND: usize = Self::expand_max_addresses(10_000_000);
+
+    /// The lower bound of the maximum address count
+    const MAX_ADDRESS_LOWER_BOUND: usize = 6;
+
+    /// Computes the optimal expanded max address count fitting in the actual allocated size of
+    /// the internal storage structure
     const fn expand_max_addresses(max_addresses: usize) -> usize {
-        ((max_addresses + 1) * 8 / 7).next_power_of_two() * 7 / 8 - 1
+        if max_addresses >= Self::MAX_ADDRESS_LOWER_BOUND {
+            // The following formula matches the internal allocation of an IndexMap or a HashMap
+            // as found in fns hashbrown::raw::inner::{capacity_to_buckets, bucket_mask_to_capacity}.
+            //
+            // The last allocated entry is reserved for recycling entries, hence the plus and minus 1
+            // which differ from the hashbrown formula.
+            ((max_addresses + 1) * 8 / 7).next_power_of_two() * 7 / 8 - 1
+        } else {
+            Self::MAX_ADDRESS_LOWER_BOUND
+        }
     }
 
     fn new(max_addresses: Option<usize>) -> Self {
-        // Expand the maximum address count to the IndexMap actual usable allocated size minus 1.
+        // Expands the maximum address count to the IndexMap actual usable allocated size minus 1.
         // Saving one entry for the insert/swap_remove scheme during entry recycling prevents a reallocation
         // when reaching the maximum.
         let max_addresses = max_addresses.map(Self::expand_max_addresses);
         let capacity = max_addresses.map(|x| x + 1).unwrap_or_default();
+
+        assert!(
+            capacity <= Self::MAX_ADDRESS_UPPER_BOUND + 1,
+            "Tracker maximum address count cannot exceed {}",
+            Self::MAX_ADDRESS_UPPER_BOUND
+        );
+
         let script_pub_keys = IndexMap::with_capacity(capacity);
         debug!("Creating an address tracker with a capacity of {}", script_pub_keys.capacity());
         if let Some(max_addresses) = max_addresses {
@@ -246,10 +273,7 @@ impl Inner {
     }
 
     fn is_full(&self) -> bool {
-        match self.max_addresses {
-            Some(max_addresses) => self.script_pub_keys.len() >= max_addresses && self.empty_entries.is_empty(),
-            None => false,
-        }
+        self.script_pub_keys.len() >= self.max_addresses.unwrap_or(Self::MAX_ADDRESS_UPPER_BOUND) && self.empty_entries.is_empty()
     }
 
     fn get(&self, spk: &ScriptPublicKey) -> Option<(Index, RefCount)> {
@@ -368,11 +392,16 @@ impl Display for Tracker {
 }
 
 impl Tracker {
+    /// The upper bound of the maximum address count
+    pub const MAX_ADDRESS_UPPER_BOUND: usize = Inner::MAX_ADDRESS_UPPER_BOUND;
+
     /// Expanded count for a maximum of 1M addresses
-    pub const DEFAULT_MAX_ADDRESSES: usize = Self::expand_max_addresses(1_000_000);
+    pub const DEFAULT_MAX_ADDRESSES: usize = Self::expand_max_addresses(800);
 
     const ADDRESS_CHUNK_SIZE: usize = 1024;
 
+    /// Computes the optimal expanded max address count fitting in the actual allocated size of
+    /// the internal storage structure
     pub const fn expand_max_addresses(max_addresses: usize) -> usize {
         Inner::expand_max_addresses(max_addresses)
     }

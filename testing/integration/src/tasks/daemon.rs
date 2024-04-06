@@ -29,11 +29,24 @@ pub struct DaemonArgs {
 
     #[arg(long, name = "stat-file-prefix")]
     pub stat_file_prefix: Option<String>,
+
+    #[arg(long, name = "max-tracked-addresses")]
+    pub max_tracked_addresses: usize,
+
+    #[arg(long)]
+    pub utxoindex: bool,
 }
 
 impl DaemonArgs {
-    pub fn new(rpc: u16, p2p: u16, private_key: String, stat_file_prefix: Option<String>) -> Self {
-        Self { rpc, p2p, private_key, stat_file_prefix }
+    pub fn new(
+        rpc: u16,
+        p2p: u16,
+        private_key: String,
+        stat_file_prefix: Option<String>,
+        max_tracked_addresses: usize,
+        utxoindex: bool,
+    ) -> Self {
+        Self { rpc, p2p, private_key, stat_file_prefix, max_tracked_addresses, utxoindex }
     }
 
     pub fn from_env_args() -> Self {
@@ -69,10 +82,15 @@ impl DaemonArgs {
             format!("{}", self.p2p),
             "--private-key".to_owned(),
             format!("{}", self.private_key),
+            "--max-tracked-addresses".to_owned(),
+            format!("{}", self.max_tracked_addresses),
         ];
         if let Some(ref stat_file_prefix) = self.stat_file_prefix {
             args.push("--stat-file-prefix".to_owned());
             args.push(stat_file_prefix.clone());
+        }
+        if self.utxoindex {
+            args.push("--utxoindex".to_owned());
         }
         args
     }
@@ -93,12 +111,16 @@ impl DaemonArgs {
         args.rpclisten = Some(format!("0.0.0.0:{}", self.rpc).try_into().unwrap());
         args.listen = Some(format!("0.0.0.0:{}", self.p2p).try_into().unwrap());
         args.prealloc_address = Some(self.prealloc_address().to_string());
+        args.max_tracked_addresses = self.max_tracked_addresses;
+        args.utxoindex = self.utxoindex;
     }
 
     #[cfg(not(feature = "devnet-prealloc"))]
     pub fn apply_to(&self, args: &mut Args) {
         args.rpclisten = Some(format!("0.0.0.0:{}", self.rpc).try_into().unwrap());
         args.listen = Some(format!("0.0.0.0:{}", self.p2p).try_into().unwrap());
+        args.max_tracked_addresses = self.max_tracked_addresses;
+        args.utxoindex = self.utxoindex;
     }
 }
 

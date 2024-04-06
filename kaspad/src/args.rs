@@ -60,7 +60,7 @@ pub struct Args {
     pub inbound_limit: usize,
     #[serde(rename = "rpcmaxclients")]
     pub rpc_max_clients: usize,
-    pub max_tracked_addresses: Option<usize>,
+    pub max_tracked_addresses: usize,
     pub enable_unsynced_mining: bool,
     pub enable_mainnet_mining: bool,
     pub testnet: bool,
@@ -106,7 +106,7 @@ impl Default for Args {
             outbound_target: 8,
             inbound_limit: 128,
             rpc_max_clients: 128,
-            max_tracked_addresses: Some(Tracker::DEFAULT_MAX_ADDRESSES),
+            max_tracked_addresses: Tracker::DEFAULT_MAX_ADDRESSES,
             enable_unsynced_mining: false,
             enable_mainnet_mining: false,
             testnet: false,
@@ -314,10 +314,10 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("max-tracked-addresses")
                 .long("max-tracked-addresses")
-                // .value_name("max-tracked-addresses")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
-                .help("Max preallocated number of addresses tracking UTXO changed events (default: 1835007)."),
+                .help(format!("Max preallocated number of addresses tracking UTXO changed events (default: {}, maximum: {}). 
+Value 0 prevents the preallocation, leading to a 0 memory footprint as long as unused but then to a sub-optimal footprint when used.", Tracker::DEFAULT_MAX_ADDRESSES, Tracker::MAX_ADDRESS_UPPER_BOUND)),
         )
         .arg(arg!(--testnet "Use the test network"))
         .arg(
@@ -425,7 +425,7 @@ impl Args {
             outbound_target: arg_match_unwrap_or::<usize>(&m, "outpeers", defaults.outbound_target),
             inbound_limit: arg_match_unwrap_or::<usize>(&m, "maxinpeers", defaults.inbound_limit),
             rpc_max_clients: arg_match_unwrap_or::<usize>(&m, "rpcmaxclients", defaults.rpc_max_clients),
-            max_tracked_addresses: m.get_one::<usize>("max-tracked-addresses").cloned().or(defaults.max_tracked_addresses),
+            max_tracked_addresses: arg_match_unwrap_or::<usize>(&m, "max-tracked-addresses", defaults.max_tracked_addresses),
             reset_db: arg_match_unwrap_or::<bool>(&m, "reset-db", defaults.reset_db),
             enable_unsynced_mining: arg_match_unwrap_or::<bool>(&m, "enable-unsynced-mining", defaults.enable_unsynced_mining),
             enable_mainnet_mining: arg_match_unwrap_or::<bool>(&m, "enable-mainnet-mining", defaults.enable_mainnet_mining),

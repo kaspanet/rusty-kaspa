@@ -92,6 +92,8 @@ async fn utxos_changed_subscriptions_sanity_check() {
         args.listen.map(|x| x.normalize(0).port).unwrap(),
         prealloc_sk.display_secret().to_string(),
         Some("ucs-server".to_owned()),
+        100,
+        true,
     );
     let server_start_time = std::time::Instant::now();
     let mut daemon_process = tokio::process::Command::new("cargo")
@@ -121,7 +123,10 @@ async fn utxos_changed_subscriptions_sanity_check() {
     daemon_process.wait().await.expect("failed to wait for the daemon process");
 }
 
-/// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc -- subscribe_benchmarks::bench_utxos_changed_subscriptions_daemon --exact --nocapture --ignored -- --rpc=16610 --p2p=16611`
+/// `cargo test --package kaspa-testing-integration --lib --features devnet-prealloc -- subscribe_benchmarks::bench_utxos_changed_subscriptions_daemon --exact --nocapture --ignored -- --rpc=16610 --p2p=16611 --private-key=a2760251adb5b6e8d4514d23397f1631893e168c33f92ff8a7a24f397d355d62 --max-tracked-addresses=1000000 --utxoindex`
+///
+/// This test is designed to be run as a child process, with the parent process eventually shutting it down.
+/// Do not run it directly.
 #[tokio::test]
 #[ignore = "bmk"]
 async fn bench_utxos_changed_subscriptions_daemon() {
@@ -173,6 +178,8 @@ async fn utxos_changed_subscriptions_client(address_cycle_seconds: u64, address_
 
     let args = ArgsBuilder::simnet(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR, PREALLOC_AMOUNT)
         .prealloc_address(prealloc_address)
+        .max_tracked_addresses(MAX_ADDRESSES)
+        .utxoindex(true)
         .apply_args(|args| Daemon::fill_args_with_random_ports(args))
         .build();
     let network = args.network();
@@ -196,6 +203,8 @@ async fn utxos_changed_subscriptions_client(address_cycle_seconds: u64, address_
         args.listen.map(|x| x.normalize(0).port).unwrap(),
         prealloc_sk.display_secret().to_string(),
         Some("ucs-server".to_owned()),
+        MAX_ADDRESSES,
+        true,
     );
     let server_start_time = std::time::Instant::now();
     let mut daemon_process = tokio::process::Command::new("cargo")
