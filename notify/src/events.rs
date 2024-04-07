@@ -32,6 +32,10 @@ macro_rules! event_type_enum {
 }
 
 event_type_enum! {
+/// Event type classifying subscriptions (see [`Scope`]) and notifications (see [`Notification`])
+///
+/// Note: This enum is central to the notification system. For supporting a new notification type, it is advised to
+/// start by adding a new variant here.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum EventType {
     BlockAdded = 0,

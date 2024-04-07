@@ -48,6 +48,7 @@ impl From<i32> for Command {
     }
 }
 
+/// Defines how an incoming UtxosChanged
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 pub enum UtxosChangedMutationPolicy {
     /// Mutation granularity defined at address level
@@ -69,7 +70,7 @@ impl MutationPolicies {
     }
 }
 
-/// A subscription mutation including a start/stop command and
+/// A subscription mutation formed by a start/stop command and
 /// a notification scope.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Mutation {
@@ -112,7 +113,7 @@ impl Eq for dyn Compounded {}
 
 pub type CompoundedSubscription = Box<dyn Compounded>;
 
-/// Result of applying a [`Mutation`] to a [`DynSubscription`]
+/// The result of applying a [`Mutation`] to a [`DynSubscription`]
 pub struct MutationOutcome {
     /// Optional new mutated subscription state
     pub mutated: Option<DynSubscription>,
@@ -159,10 +160,18 @@ impl Default for MutationOutcome {
     }
 }
 
+/// A single subscription (as opposed to a compounded one)
 pub trait Single: Subscription + AsAny + DynHash + DynEq + Debug + Send + Sync {
     /// Applies a [`Mutation`] to a single subscription.
     ///
-    /// On success, returns both an optional new state and the mutations resulting of the process.
+    /// On success, returns both an optional new state and the mutations, if any, resulting of the process.
+    ///
+    /// Implementation guidelines:
+    ///
+    /// - If the processing of the mutation yields no change, the returned outcome must have no new state and no mutations
+    ///   otherwise the outcome should contain both a new state (see next point for exception) and some mutations.
+    /// - If the subscription has inner mutability and its current state and incoming mutation do allow an inner mutation,
+    ///   the outcome new state must be empty.
     fn apply_mutation(
         &self,
         arc_self: &Arc<dyn Single>,
@@ -190,7 +199,7 @@ impl MutateSingle for Arc<dyn Single> {
 pub trait BroadcastingSingle: Deref<Target = dyn Single> {
     /// Returns the broadcasting instance of the subscription.
     ///
-    /// This is used for grouping all the wildcard utxos changed subscriptions under
+    /// This is used for grouping all the wildcard UtxosChanged subscriptions under
     /// the same unique instance in the broadcaster plans, allowing message optimizations
     /// during broadcasting of the notifications.
     fn broadcasting(self, context: &SubscriptionContext) -> DynSubscription;

@@ -25,7 +25,7 @@ use workflow_core::channel::Channel;
 
 type ConnectionSet<T> = HashMap<ListenerId, T>;
 
-/// Broadcast plan
+/// Broadcasting plan structured by subscription, encoding and connection
 #[derive(Deref)]
 struct Plan<C: Connection>(IndexMap<DynSubscription, HashMap<C::Encoding, ConnectionSet<C>>>);
 

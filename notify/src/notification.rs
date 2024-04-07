@@ -9,6 +9,7 @@ use super::{
 };
 use std::fmt::{Debug, Display};
 
+/// A notification, usable throughout the full notification system via types implementing this trait
 pub trait Notification: Clone + Debug + Display + Send + Sync + 'static {
     fn apply_overall_subscription(&self, subscription: &OverallSubscription, context: &SubscriptionContext) -> Option<Self>;
 

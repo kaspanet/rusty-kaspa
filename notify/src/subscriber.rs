@@ -16,7 +16,7 @@ use super::{
 };
 use workflow_core::channel::Channel;
 
-/// A manager of subscriptions to notifications for registered listeners
+/// A manager of subscriptions (see [`Scope`]) for registered listeners
 #[async_trait]
 pub trait SubscriptionManager: Send + Sync + Debug {
     async fn start_notify(&self, id: ListenerId, scope: Scope) -> Result<()>;
@@ -32,7 +32,13 @@ pub trait SubscriptionManager: Send + Sync + Debug {
 
 pub type DynSubscriptionManager = Arc<dyn SubscriptionManager>;
 
-/// A subscriber handling subscription messages executing them into a [SubscriptionManager].
+/// A subscriber handling subscription messages as [`Mutation`] and executing them into a [SubscriptionManager]
+///
+/// A subscriber has a set of enabled event type (see [`EventType`]). It only handles subscriptions
+/// whose event type is enabled and drops all others.
+///
+/// A subscriber has a listener ID identifying its owner (usually a [`Notifier`](crate::notifier::Notifier)) as a listener of its manager
+/// (usually also a [`Notifier`](crate::notifier::Notifier)).
 #[derive(Debug)]
 pub struct Subscriber {
     name: &'static str,

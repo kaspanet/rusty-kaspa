@@ -49,21 +49,61 @@ pub type DynNotify<N> = Arc<dyn Notify<N>>;
 
 // pub type DynRegistrar<N> = Arc<dyn Registrar<N>>;
 
-/// A Notifier is a notification broadcaster that manages a collection of [`Listener`]s and, for each one,
-/// a set of subscriptions to notifications by event type.
+/// A notifier is a notification broadcaster. It receives notifications from upstream _parents_ and
+/// broadcasts those downstream to its _children_ listeners. Symmetrically, it receives subscriptions
+/// from its downward listeners, compounds those internally and pushes upward the subscriptions resulting
+/// of the compounding, if any, to the _parents_.
 ///
-/// A Notifier may own some [`DynCollector`]s which collect incoming notifications and relay them
-/// to their owner. The notification sources of the collectors should be considered as the "parents" in
-/// the notification DAG.
+/// ### Enabled event types
 ///
-/// A Notifier may own some [`Subscriber`]s which report the subscription needs of their owner's listeners
-/// to the "parents" in the notification DAG.
+/// A notifier has a set of enabled event type (see [`EventType`]). It only broadcasts notifications whose
+/// event type is enabled and drops the others. The same goes for subscriptions.
 ///
-/// A notifier broadcasts its incoming notifications to its listeners.
+/// Each subscriber has a set of enabled event type. No two subscribers may have the same event type enabled.
+/// The union of the sets of all subscribers should match the set of the notifier, though this is not mandatory.
 ///
-/// A notifier is build with a specific set of enabled event types (see `enabled_events`). All disabled
-/// event types are ignored by it. It is however possible to manually subscribe to a disabled scope and
-/// thus have a custom made collector of the notifier receive notifications of the disabled scope,
+/// ### Mutation policies
+///
+/// The notifier is built with some mutation policies defining how an processed listener mutation must be propagated
+/// to the _parent_.
+///
+/// ### Architecture
+///
+/// #### Internal structure
+///
+/// The notifier notably owns:
+///
+/// - a vector of [`DynCollector`]
+/// - a vector of [`Subscriber`]
+/// - a pool of [`Broadcaster`]
+/// - a map of [`Listener`]
+///
+/// Collectors and subscribers form the scaffold. They are provided to the ctor, are immutable and share its
+/// lifespan. Both do materialize a connection to the notifier _parents_, collectors for incoming notifications
+/// and subscribers for outgoing subscriptions. They may usually be paired by index in their respective
+/// vector but this by no means is mandatory, opening a field for special edge cases.
+///
+/// The broadcasters are built in the ctor according to a provided count. They act as a pool of workers competing
+/// for the processing of an incoming notification.
+///
+/// The listeners are managed dynamically through registration/unregistration calls.
+///
+/// #### External conformation
+///
+/// The notifier is designed so that many instances can be interconnected and form a DAG of notifiers.
+///
+/// However, the notifications path from the root all the way downstream to the final clients is forming a tree,
+/// not a DAG. This is because, for a given type of notification (see [`EventType`]), a notifier has at most a single
+/// _parent_ provider.
+///
+/// The same is symmetrically true about subscriptions which travel upstream from clients to the root along a tree,
+/// meaning that, for a given type of subscription (see [`EventType`]), a notifier has at most a single subscriber,
+/// targeting a single _parent_.
+///
+/// ### Special considerations
+///
+/// A notifier is built with a specific set of enabled event types. It is however possible to manually subscribe
+/// to a disabled scope and thus have a custom-made collector of the notifier receive notifications of this disabled scope,
 /// allowing some handling of the notification into the collector before it gets dropped by the notifier.
 #[derive(Debug)]
 pub struct Notifier<N, C>
