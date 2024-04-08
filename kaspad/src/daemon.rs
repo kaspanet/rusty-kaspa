@@ -10,7 +10,7 @@ use kaspa_core::{core::Core, info, trace};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
 use kaspa_database::prelude::CachePolicy;
 use kaspa_grpc_server::service::GrpcService;
-use kaspa_notify::subscription::context::SubscriptionContext;
+use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::networking::ContextualNetAddress;
@@ -91,6 +91,9 @@ pub fn validate_args(args: &Args) -> ConfigResult<()> {
     }
     if args.ram_scale > 10.0 {
         return Err(ConfigError::RamScaleTooHigh);
+    }
+    if args.max_tracked_addresses > Tracker::MAX_ADDRESS_UPPER_BOUND {
+        return Err(ConfigError::MaxTrackedAddressesTooHigh(Tracker::MAX_ADDRESS_UPPER_BOUND));
     }
     Ok(())
 }
