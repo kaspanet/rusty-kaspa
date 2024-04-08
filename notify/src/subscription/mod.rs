@@ -48,7 +48,7 @@ impl From<i32> for Command {
     }
 }
 
-/// Defines how an incoming UtxosChanged
+/// Defines how an incoming UtxosChanged mutation must be propagated upwards
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 pub enum UtxosChangedMutationPolicy {
     /// Mutation granularity defined at address level
