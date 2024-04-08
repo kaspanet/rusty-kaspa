@@ -3,6 +3,17 @@ use kaspa_consensus_core::{
     tx::{Transaction, VerifiableTransaction},
 };
 
+/// Temp enum for the transition phases of KIP9
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum Kip9Version {
+    /// Initial KIP9 mass calculation, w/o the relaxed formula and summing storage mass and compute mass
+    Alpha,
+
+    /// Currently proposed KIP9 mass calculation, with the relaxed formula (for the cases `|O| = 1 OR |O| <= |I| <= 2`),
+    /// and using a maximum operator over storage and compute mass
+    Beta,
+}
+
 // TODO (aspect) - review and potentially merge this with the new MassCalculator currently located in the wallet core
 // (i.e. migrate mass calculator from wallet core here or to consensus core)
 #[derive(Clone)]
@@ -46,7 +57,7 @@ impl MassCalculator {
     ///     2. At least one input (unless coinbase)
     ///
     /// Otherwise this function should never fail.
-    pub fn calc_tx_storage_mass(&self, tx: &impl VerifiableTransaction) -> Option<u64> {
+    pub fn calc_tx_storage_mass(&self, tx: &impl VerifiableTransaction, version: Kip9Version) -> Option<u64> {
         if tx.is_coinbase() {
             return Some(0);
         }
@@ -58,7 +69,7 @@ impl MassCalculator {
         input values, H(S) := |S|/sum_{s in S} 1 / s is the harmonic mean over the set S and
         A(S) := sum_{s in S} / |S| is the arithmetic mean.
 
-        See the (to date unpublished) KIP-0009 for more details
+        See KIP-0009 for more details
         */
 
         // Since we are doing integer division, we perform the multiplication with C over the inner
@@ -66,6 +77,9 @@ impl MassCalculator {
         //
         // If sum of fractions overflowed (nearly impossible, requires 10^7 outputs for C = 10^12),
         // we return `None` indicating mass is incomputable
+        //
+        // Note: in theory this can be tighten by subtracting input mass in the process (possibly avoiding the overflow),
+        // however the overflow case is so unpractical with current mass limits so we avoid the hassle
         let harmonic_outs = tx
             .tx()
             .outputs
@@ -73,9 +87,23 @@ impl MassCalculator {
             .map(|out| self.storage_mass_parameter / out.value)
             .try_fold(0u64, |total, current| total.checked_add(current))?; // C·|O|/H(O)
 
+        let outs_len = tx.tx().outputs.len() as u64;
+        let ins_len = tx.tx().inputs.len() as u64;
+
+        /*
+           KIP-0009 relaxed formula for the cases |O| = 1 OR |O| <= |I| <= 2:
+               max( 0 , C·( |O|/H(O) - |I|/H(I) ) )
+        */
+        if version == Kip9Version::Beta && (outs_len == 1 || (outs_len <= ins_len && ins_len <= 2)) {
+            let harmonic_ins = tx
+                .populated_inputs()
+                .map(|(_, entry)| self.storage_mass_parameter / entry.amount)
+                .fold(0u64, |total, current| total.saturating_add(current)); // C·|I|/H(I)
+            return Some(harmonic_outs.saturating_sub(harmonic_ins)); // max( 0 , C·( |O|/H(O) - |I|/H(I) ) );
+        }
+
         // Total supply is bounded, so a sum of existing UTXO entries cannot overflow (nor can it be zero)
         let sum_ins = tx.populated_inputs().map(|(_, entry)| entry.amount).sum::<u64>(); // |I|·A(I)
-        let ins_len = tx.tx().inputs.len() as u64;
         let mean_ins = sum_ins / ins_len;
 
         // Inner fraction must be with C and over the mean value, in order to maximize precision.
@@ -83,6 +111,24 @@ impl MassCalculator {
         let arithmetic_ins = ins_len.saturating_mul(self.storage_mass_parameter / mean_ins); // C·|I|/A(I)
 
         Some(harmonic_outs.saturating_sub(arithmetic_ins)) // max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
+    }
+
+    /// Calculates the overall mass of this transaction, combining both compute and storage masses.
+    /// The combination strategy depends on the version passed.
+    pub fn calc_tx_overall_mass(
+        &self,
+        tx: &impl VerifiableTransaction,
+        cached_compute_mass: Option<u64>,
+        version: Kip9Version,
+    ) -> Option<u64> {
+        match version {
+            Kip9Version::Alpha => self
+                .calc_tx_storage_mass(tx, version)
+                .and_then(|mass| mass.checked_add(cached_compute_mass.unwrap_or_else(|| self.calc_tx_compute_mass(tx.tx())))),
+            Kip9Version::Beta => self
+                .calc_tx_storage_mass(tx, version)
+                .map(|mass| mass.max(cached_compute_mass.unwrap_or_else(|| self.calc_tx_compute_mass(tx.tx())))),
+        }
     }
 }
 
@@ -155,17 +201,20 @@ mod tests {
             },
         ];
         let mut tx = MutableTransaction::with_entries(tx, entries);
+        let test_version = Kip9Version::Alpha;
 
         // Assert the formula: max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
 
-        let storage_mass = MassCalculator::new(0, 0, 0, 10u64.pow(12)).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
+        let storage_mass =
+            MassCalculator::new(0, 0, 0, 10u64.pow(12)).calc_tx_storage_mass(&tx.as_verifiable(), test_version).unwrap();
         assert_eq!(storage_mass, 0); // Compounds from 3 to 2, with symmetric outputs and no fee, should be zero
 
         // Create asymmetry
         tx.tx.outputs[0].value = 50;
         tx.tx.outputs[1].value = 550;
         let storage_mass_parameter = 10u64.pow(12);
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
+        let storage_mass =
+            MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable(), test_version).unwrap();
         assert_eq!(storage_mass, storage_mass_parameter / 50 + storage_mass_parameter / 550 - 3 * (storage_mass_parameter / 200));
 
         // Create a tx with more outs than ins
@@ -238,12 +287,14 @@ mod tests {
         let mut tx = MutableTransaction::with_entries(tx, entries);
 
         let storage_mass_parameter = STORAGE_MASS_PARAMETER;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
+        let storage_mass =
+            MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable(), test_version).unwrap();
         assert_eq!(storage_mass, 4); // Inputs are above C so they don't contribute negative mass, 4 outputs exactly equal C each charge 1
 
         let mut tx2 = tx.clone();
         tx2.tx.outputs[0].value = 10 * SOMPI_PER_KASPA;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx2.as_verifiable()).unwrap();
+        let storage_mass =
+            MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx2.as_verifiable(), test_version).unwrap();
         assert_eq!(storage_mass, 1003);
 
         // Increase values over the lim
@@ -251,7 +302,8 @@ mod tests {
             out.value += 1
         }
         tx.entries[0].as_mut().unwrap().amount += tx.tx.outputs.len() as u64;
-        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
+        let storage_mass =
+            MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable(), test_version).unwrap();
         assert_eq!(storage_mass, 0);
 
         drop(script_pub_key);

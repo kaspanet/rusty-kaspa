@@ -153,8 +153,7 @@ impl Miner {
                 let signed_tx = sign(mutable_tx, schnorr_key);
                 let mass = self
                     .mass_calculator
-                    .calc_tx_storage_mass(&signed_tx.as_verifiable())
-                    .and_then(|v| v.checked_add(self.mass_calculator.calc_tx_compute_mass(&signed_tx.tx)))
+                    .calc_tx_overall_mass(&signed_tx.as_verifiable(), None, kaspa_consensus::processes::mass::Kip9Version::Alpha)
                     .unwrap();
                 signed_tx.tx.set_mass(mass);
                 let mut signed_tx = signed_tx.tx;
