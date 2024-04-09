@@ -41,7 +41,7 @@ impl RpcClient {
         let url = if let Some(network_type) = network_type { Self::parse_url(url, encoding, network_type)? } else { url.to_string() };
 
         let rpc_client = RpcClient {
-            client: Arc::new(KaspaRpcClient::new(encoding, url.as_str()).unwrap_or_else(|err| panic!("{err}"))),
+            client: Arc::new(KaspaRpcClient::new(encoding, url.as_str(), None).unwrap_or_else(|err| panic!("{err}"))),
             inner: Arc::new(Inner {
                 notification_task: AtomicBool::new(false),
                 notification_ctl: DuplexChannel::oneshot(),
@@ -218,7 +218,7 @@ impl RpcClient {
             .into_iter()
             .map(|jsv| from_value(jsv).map_err(|err| JsError::new(&err.to_string())))
             .collect::<std::result::Result<Vec<Address>, JsError>>()?;
-        self.client.start_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
+        self.client.start_notify(ListenerId::default(), UtxosChangedScope::new(addresses).into()).await?;
         Ok(())
     }
 
@@ -230,7 +230,7 @@ impl RpcClient {
             .into_iter()
             .map(|jsv| from_value(jsv).map_err(|err| JsError::new(&err.to_string())))
             .collect::<std::result::Result<Vec<Address>, JsError>>()?;
-        self.client.stop_notify(ListenerId::default(), Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
+        self.client.stop_notify(ListenerId::default(), UtxosChangedScope::new(addresses).into()).await?;
         Ok(())
     }
 

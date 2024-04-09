@@ -110,7 +110,7 @@ impl Default for Args {
             outbound_target: 8,
             inbound_limit: 128,
             rpc_max_clients: 128,
-            max_tracked_addresses: 0,
+            max_tracked_addresses: Tracker::DEFAULT_MAX_ADDRESSES,
             enable_unsynced_mining: false,
             enable_mainnet_mining: true,
             testnet: false,
