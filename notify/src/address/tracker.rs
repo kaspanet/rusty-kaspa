@@ -380,9 +380,9 @@ impl Inner {
 /// This prevents inter-network duplication and optimizes UTXOs filtering efficiency.
 ///
 /// But consequently the address network prefix gets lost and must be globally provided when querying for addresses by indexes.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Tracker {
-    inner: RwLock<Inner>,
+    inner: Arc<RwLock<Inner>>,
 }
 
 impl Display for Tracker {
@@ -407,12 +407,12 @@ impl Tracker {
     }
 
     pub fn new(max_addresses: Option<usize>) -> Self {
-        Self { inner: RwLock::new(Inner::new(max_addresses)) }
+        Self { inner: Arc::new(RwLock::new(Inner::new(max_addresses))) }
     }
 
     #[cfg(test)]
     pub fn with_addresses(addresses: &[Address]) -> Self {
-        let tracker = Self { inner: RwLock::new(Inner::new(None)) };
+        let tracker = Self { inner: Arc::new(RwLock::new(Inner::new(None))) };
         for chunk in addresses.chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = tracker.inner.write();
             for address in chunk {
