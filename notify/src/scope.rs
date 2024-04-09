@@ -32,6 +32,7 @@ macro_rules! scope_enum {
 }
 
 scope_enum! {
+/// Subscription scope for every event type
 #[derive(Clone, Display, Debug, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum Scope {
     BlockAdded,
@@ -44,6 +45,12 @@ pub enum Scope {
     PruningPointUtxoSetOverride,
     NewBlockTemplate,
 }
+}
+
+impl Scope {
+    pub fn event_type(&self) -> EventType {
+        self.into()
+    }
 }
 
 #[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
