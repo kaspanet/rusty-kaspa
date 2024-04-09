@@ -27,7 +27,7 @@ impl SubscriptionContextInner {
     pub fn with_options(max_addresses: Option<usize>) -> Self {
         let address_tracker = Tracker::new(max_addresses);
         let utxos_changed_subscription_all =
-            Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID));
+            Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID, address_tracker.clone()));
         Self { address_tracker, utxos_changed_subscription_to_all: utxos_changed_subscription_all }
     }
 
@@ -35,7 +35,7 @@ impl SubscriptionContextInner {
     pub fn with_addresses(addresses: &[Address]) -> Self {
         let address_tracker = Tracker::with_addresses(addresses);
         let utxos_changed_subscription_all =
-            Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID));
+            Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID, address_tracker.clone()));
         Self { address_tracker, utxos_changed_subscription_to_all: utxos_changed_subscription_all }
     }
 }
@@ -79,7 +79,7 @@ impl Deref for SubscriptionContext {
 #[cfg(test)]
 mod tests {
     use crate::{
-        address::tracker::{CounterMap, Index, IndexSet, Indexer, RefCount},
+        address::tracker::{CounterMap, Index, IndexSet, Indexer, RefCount, Tracker},
         subscription::SubscriptionContext,
     };
     use itertools::Itertools;
@@ -223,6 +223,7 @@ mod tests {
         const ITEM_LEN: usize = 10;
         const NUM_ITEMS: usize = 10_000_000;
 
+        let tracker = Tracker::new(None);
         let _ = init_and_measure_consumed_memory(
             ITEM_LEN,
             NUM_ITEMS,
@@ -231,7 +232,7 @@ mod tests {
                     .map(|_| {
                         // Reserve the required capacity
                         // Note: the resulting allocated HashMap bucket count is (capacity * 8 / 7).next_power_of_two()
-                        let mut item = CounterMap::with_capacity(ITEM_LEN);
+                        let mut item = CounterMap::with_capacity(tracker.clone(), ITEM_LEN);
 
                         (0..ITEM_LEN as Index).for_each(|x| {
                             item.insert(x);
@@ -326,6 +327,7 @@ mod tests {
         const ITEM_LEN: usize = 10_000_000;
         const NUM_ITEMS: usize = 10;
 
+        let tracker = Tracker::new(None);
         let _ = init_and_measure_consumed_memory(
             ITEM_LEN,
             NUM_ITEMS,
@@ -334,7 +336,7 @@ mod tests {
                     .map(|_| {
                         // Reserve the required capacity
                         // Note: the resulting allocated HashSet bucket count is (capacity * 8 / 7).next_power_of_two()
-                        let mut item = IndexSet::with_capacity(ITEM_LEN);
+                        let mut item = IndexSet::with_capacity(tracker.clone(), ITEM_LEN);
 
                         (0..ITEM_LEN as Index).for_each(|x| {
                             item.insert(x);

@@ -297,7 +297,7 @@ mod tests {
             for i in 0..listener_count {
                 let (sender, receiver) = unbounded();
                 let connection = TestConnection::new(IDENT, sender, ChannelType::Closable);
-                let listener = Listener::new(i as ListenerId, connection);
+                let listener = Listener::new(i as ListenerId, connection, &subscription_context);
                 listeners.push(listener);
                 notification_receivers.push(receiver);
             }

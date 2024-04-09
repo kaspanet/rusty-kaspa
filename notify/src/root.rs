@@ -109,7 +109,7 @@ where
     const ROOT_LISTENER_ID: ListenerId = 1;
 
     fn new(sender: Sender<N>, subscription_context: SubscriptionContext) -> Self {
-        let subscriptions = RwLock::new(ArrayBuilder::single(Self::ROOT_LISTENER_ID, None));
+        let subscriptions = RwLock::new(ArrayBuilder::single(Self::ROOT_LISTENER_ID, &subscription_context.address_tracker, None));
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::Wildcard);
         Self { sender, subscriptions, subscription_context, policies }
     }

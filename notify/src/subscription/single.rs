@@ -1,5 +1,5 @@
 use crate::{
-    address::tracker::{Index, Indexes},
+    address::tracker::{Index, Indexes, Tracker},
     error::Result,
     events::EventType,
     listener::ListenerId,
@@ -239,8 +239,8 @@ pub struct UtxosChangedSubscriptionData {
 }
 
 impl UtxosChangedSubscriptionData {
-    fn with_capacity(state: UtxosChangedState, capacity: usize) -> Self {
-        let indexes = Indexes::with_capacity(capacity);
+    fn with_capacity(state: UtxosChangedState, tracker: Tracker, capacity: usize) -> Self {
+        let indexes = Indexes::with_capacity(tracker, capacity);
         Self { state, indexes }
     }
 
@@ -318,12 +318,12 @@ pub struct UtxosChangedSubscription {
 }
 
 impl UtxosChangedSubscription {
-    pub fn new(state: UtxosChangedState, listener_id: ListenerId) -> Self {
-        Self::with_capacity(state, listener_id, 0)
+    pub fn new(state: UtxosChangedState, listener_id: ListenerId, tracker: Tracker) -> Self {
+        Self::with_capacity(state, listener_id, tracker, 0)
     }
 
-    pub fn with_capacity(state: UtxosChangedState, listener_id: ListenerId, capacity: usize) -> Self {
-        let data = RwLock::new(UtxosChangedSubscriptionData::with_capacity(state, capacity));
+    pub fn with_capacity(state: UtxosChangedState, listener_id: ListenerId, tracker: Tracker, capacity: usize) -> Self {
+        let data = RwLock::new(UtxosChangedSubscriptionData::with_capacity(state, tracker, capacity));
         let subscription = Self { data, listener_id };
         trace!(
             "UtxosChangedSubscription: {} in total (new {})",
@@ -340,7 +340,7 @@ impl UtxosChangedSubscription {
             (true, false) => UtxosChangedState::Selected,
             (true, true) => UtxosChangedState::All,
         };
-        let subscription = Self::with_capacity(state, listener_id, addresses.len());
+        let subscription = Self::with_capacity(state, listener_id, context.address_tracker.clone(), addresses.len());
         let _ = subscription.data_mut().register(addresses, context);
         subscription
     }

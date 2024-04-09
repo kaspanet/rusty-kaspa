@@ -1,5 +1,8 @@
 use crate::{
-    address::{error::Result, tracker::Counters},
+    address::{
+        error::Result,
+        tracker::{Counters, Tracker},
+    },
     events::EventType,
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::{context::SubscriptionContext, Command, Compounded, Mutation, Subscription},
@@ -156,12 +159,12 @@ pub struct UtxosChangedSubscription {
 }
 
 impl UtxosChangedSubscription {
-    pub fn new() -> Self {
-        Self { all: 0, indexes: Counters::new() }
+    pub fn new(tracker: Tracker) -> Self {
+        Self { all: 0, indexes: Counters::new(tracker) }
     }
 
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self { all: 0, indexes: Counters::with_capacity(capacity) }
+    pub fn with_capacity(tracker: Tracker, capacity: usize) -> Self {
+        Self { all: 0, indexes: Counters::with_capacity(tracker, capacity) }
     }
 
     pub fn to_addresses(&self, prefix: Prefix, context: &SubscriptionContext) -> Vec<Address> {
@@ -357,6 +360,7 @@ mod tests {
     #[allow(clippy::redundant_clone)]
     fn test_utxos_changed_compounding() {
         kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
+        let tracker = Tracker::new(None);
         let a_stock = get_3_addresses(true);
 
         let a = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<Vec<_>>();
@@ -399,10 +403,10 @@ mod tests {
             ],
             final_state: Box::new(UtxosChangedSubscription {
                 all: 0,
-                indexes: Counters::with_counters(vec![
-                    Counter { index: 0, count: 0, locked: true },
-                    Counter { index: 1, count: 0, locked: false },
-                ]),
+                indexes: Counters::with_counters(
+                    tracker,
+                    vec![Counter { index: 0, count: 0, locked: true }, Counter { index: 1, count: 0, locked: false }],
+                ),
             }),
         };
         let mut state = test.run();

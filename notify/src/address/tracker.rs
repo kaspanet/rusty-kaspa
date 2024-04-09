@@ -9,19 +9,27 @@ use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
     collections::{hash_map, hash_set, HashMap, HashSet},
     fmt::Display,
+    sync::Arc,
 };
 
 pub trait Indexer {
+    /// The tracker used internally to register/unregister/lookup addresses
+    fn tracker(&self) -> &Tracker;
+
     fn contains(&self, index: Index) -> bool;
 
     /// Inserts an [`Index`].
     ///
     /// Returns true if the index was not present and was successfully inserted, false otherwise.
+    ///
+    /// Do not call from outside of this module.
     fn insert(&mut self, index: Index) -> bool;
 
     /// Removes an [`Index`].
     ///
     /// Returns true if the index was present and successfully removed, false otherwise.
+    ///
+    /// Do not call from outside of this module.
     fn remove(&mut self, index: Index) -> bool;
 
     fn len(&self) -> usize;
@@ -38,48 +46,58 @@ pub type Counters = CounterMap;
 pub type Indexes = IndexSet;
 
 /// Tracks reference count of indexes
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct CounterMap(HashMap<Index, RefCount>);
+#[derive(Debug, Default)]
+pub struct CounterMap {
+    /// Tracker storing the addresses
+    tracker: Tracker,
+
+    /// Map of address index to reference count
+    indexes: HashMap<Index, RefCount>,
+}
 
 impl CounterMap {
-    pub fn new() -> Self {
-        Self(HashMap::new())
+    pub fn new(tracker: Tracker) -> Self {
+        Self { tracker, indexes: HashMap::new() }
     }
 
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self(HashMap::with_capacity(capacity))
+    pub fn with_capacity(tracker: Tracker, capacity: usize) -> Self {
+        Self { tracker, indexes: HashMap::with_capacity(capacity) }
     }
 
     #[cfg(test)]
-    pub fn with_counters(counters: Vec<Counter>) -> Self {
-        Self(counters.into_iter().map(|x| (x.index, x.count)).collect())
+    pub fn with_counters(tracker: Tracker, counters: Vec<Counter>) -> Self {
+        Self { tracker, indexes: counters.into_iter().map(|x| (x.index, x.count)).collect() }
     }
 
     pub fn iter(&self) -> hash_map::Iter<'_, Index, RefCount> {
-        self.0.iter()
+        self.indexes.iter()
     }
 
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.indexes.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.indexes.is_empty()
     }
 
     pub fn capacity(&self) -> usize {
-        self.0.capacity()
+        self.indexes.capacity()
     }
 }
 
 impl Indexer for CounterMap {
+    fn tracker(&self) -> &Tracker {
+        &self.tracker
+    }
+
     fn contains(&self, index: Index) -> bool {
-        self.0.contains_key(&index)
+        self.indexes.contains_key(&index)
     }
 
     fn insert(&mut self, index: Index) -> bool {
         let mut result = true;
-        self.0
+        self.indexes
             .entry(index)
             .and_modify(|x| {
                 *x += 1;
@@ -91,7 +109,7 @@ impl Indexer for CounterMap {
 
     fn remove(&mut self, index: Index) -> bool {
         let mut result = false;
-        self.0.entry(index).and_modify(|x| {
+        self.indexes.entry(index).and_modify(|x| {
             if *x > 0 {
                 *x -= 1;
                 result = *x == 0
@@ -108,6 +126,21 @@ impl Indexer for CounterMap {
         self.is_empty()
     }
 }
+
+impl Clone for CounterMap {
+    fn clone(&self) -> Self {
+        //panic!("Unexpected CounterMap cloning");
+        let indexes = self.indexes.clone();
+        Self { tracker: self.tracker.clone(), indexes }
+    }
+}
+
+impl PartialEq for CounterMap {
+    fn eq(&self, other: &Self) -> bool {
+        self.indexes == other.indexes
+    }
+}
+impl Eq for CounterMap {}
 
 #[cfg(test)]
 #[derive(Debug, Clone)]
@@ -152,50 +185,60 @@ impl Ord for Counter {
 }
 
 /// Set of `Index`
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct IndexSet(HashSet<Index>);
+#[derive(Debug)]
+pub struct IndexSet {
+    /// Tracker storing the addresses
+    tracker: Tracker,
+
+    /// Set of address index
+    indexes: HashSet<Index>,
+}
 
 impl IndexSet {
-    pub fn new(indexes: Vec<Index>) -> Self {
-        Self(indexes.into_iter().collect())
+    pub fn new(tracker: Tracker, indexes: Vec<Index>) -> Self {
+        Self { tracker, indexes: indexes.into_iter().collect() }
     }
 
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self(HashSet::with_capacity(capacity))
+    pub fn with_capacity(tracker: Tracker, capacity: usize) -> Self {
+        Self { tracker, indexes: HashSet::with_capacity(capacity) }
     }
 
     pub fn iter(&self) -> hash_set::Iter<'_, Index> {
-        self.0.iter()
+        self.indexes.iter()
     }
 
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.indexes.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.indexes.is_empty()
     }
 
     pub fn capacity(&self) -> usize {
-        self.0.capacity()
+        self.indexes.capacity()
     }
 
     pub fn drain(&mut self) -> hash_set::Drain<'_, Index> {
-        self.0.drain()
+        self.indexes.drain()
     }
 }
 
 impl Indexer for IndexSet {
+    fn tracker(&self) -> &Tracker {
+        &self.tracker
+    }
+
     fn contains(&self, index: Index) -> bool {
-        self.0.contains(&index)
+        self.indexes.contains(&index)
     }
 
     fn insert(&mut self, index: Index) -> bool {
-        self.0.insert(index)
+        self.indexes.insert(index)
     }
 
     fn remove(&mut self, index: Index) -> bool {
-        self.0.remove(&index)
+        self.indexes.remove(&index)
     }
 
     fn len(&self) -> usize {
@@ -206,6 +249,19 @@ impl Indexer for IndexSet {
         self.is_empty()
     }
 }
+
+impl Clone for IndexSet {
+    fn clone(&self) -> Self {
+        panic!("Unexpected IndexSet cloning");
+    }
+}
+
+impl PartialEq for IndexSet {
+    fn eq(&self, other: &Self) -> bool {
+        self.indexes == other.indexes
+    }
+}
+impl Eq for IndexSet {}
 
 #[derive(Debug)]
 struct Inner {
@@ -450,6 +506,7 @@ impl Tracker {
     /// Returns an index set containing the indexes of all the addresses both registered in the tracker and in `indexes`.
     pub fn unregistering_indexes(&self, indexes: &Indexes, addresses: &[Address]) -> Indexes {
         Indexes::new(
+            self.clone(),
             addresses
                 .iter()
                 .filter_map(|address| {
@@ -588,7 +645,7 @@ impl<'a> TrackerReadGuard<'a> {
     }
 
     pub fn iter_keys(&'a self, indexes: &'a Indexes) -> impl Iterator<Item = Option<&'a ScriptPublicKey>> {
-        indexes.0.iter().cloned().map(|index| self.get_index(index))
+        indexes.indexes.iter().cloned().map(|index| self.get_index(index))
     }
 }
 
@@ -624,7 +681,7 @@ mod tests {
         assert_eq!(aa.len(), MAX_ADDRESSES);
 
         // Register addresses 0..MAX_ADDRESSES
-        let mut idx_a = Indexes::new(vec![]);
+        let mut idx_a = Indexes::new(tracker.clone(), vec![]);
         let aa = tracker.register(&mut idx_a, aa).unwrap();
         let aai = aa.iter().map(|x| tracker.get_address(x).unwrap().0).collect_vec();
         assert_eq!(aa.len(), MAX_ADDRESSES, "all addresses should be registered");
@@ -648,7 +705,7 @@ mod tests {
 
         // Register address set 1..MAX_ADDRESSES, already fully covered by the tracker address set
         const AB_COUNT: usize = MAX_ADDRESSES - 1;
-        let mut idx_b = Indexes::new(vec![]);
+        let mut idx_b = Indexes::new(tracker.clone(), vec![]);
         let ab = tracker.register(&mut idx_b, create_addresses(1, AB_COUNT)).unwrap();
         assert_eq!(ab.len(), AB_COUNT, "all addresses should be registered");
         assert_eq!(idx_b.len(), AB_COUNT, "all addresses should be registered");
@@ -676,10 +733,11 @@ mod tests {
 
     #[test]
     fn test_indexes_eq() {
-        let i1 = IndexSet::new(vec![0, 1, 2, 3, 5, 7, 11]);
-        let i2 = IndexSet::new(vec![5, 7, 11, 0, 1, 2, 3]);
-        let i3 = IndexSet::new(vec![0, 1, 2, 4, 8, 16, 32]);
-        let i4 = IndexSet::new(vec![0, 1]);
+        let tracker = Tracker::new(None);
+        let i1 = IndexSet::new(tracker.clone(), vec![0, 1, 2, 3, 5, 7, 11]);
+        let i2 = IndexSet::new(tracker.clone(), vec![5, 7, 11, 0, 1, 2, 3]);
+        let i3 = IndexSet::new(tracker.clone(), vec![0, 1, 2, 4, 8, 16, 32]);
+        let i4 = IndexSet::new(tracker.clone(), vec![0, 1]);
         assert_eq!(i1, i1);
         assert_eq!(i1, i2);
         assert_ne!(i1, i3);

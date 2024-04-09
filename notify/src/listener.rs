@@ -38,8 +38,12 @@ impl<C> Listener<C>
 where
     C: Connection,
 {
-    pub fn new(id: ListenerId, connection: C) -> Self {
-        Self { connection, subscriptions: ArrayBuilder::single(id, None), _lifespan: ListenerLifespan::Dynamic }
+    pub fn new(id: ListenerId, connection: C, context: &SubscriptionContext) -> Self {
+        Self {
+            connection,
+            subscriptions: ArrayBuilder::single(id, &context.address_tracker, None),
+            _lifespan: ListenerLifespan::Dynamic,
+        }
     }
 
     pub fn new_static(id: ListenerId, connection: C, context: &SubscriptionContext, policies: MutationPolicies) -> Self {
@@ -54,7 +58,7 @@ where
             }
             UtxosChangedMutationPolicy::Wildcard => None,
         };
-        let subscriptions = ArrayBuilder::single(id, capacity);
+        let subscriptions = ArrayBuilder::single(id, &context.address_tracker, capacity);
         Self { connection, subscriptions, _lifespan: ListenerLifespan::Static(policies) }
     }
 

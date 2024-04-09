@@ -156,7 +156,7 @@ impl GrpcClient {
             }
             NotificationMode::Direct => {
                 let collector = GrpcClientCollector::new(GRPC_CLIENT, inner.notification_channel_receiver(), converter);
-                let subscriptions = ArrayBuilder::single(Self::DIRECT_MODE_LISTENER_ID, None);
+                let subscriptions = ArrayBuilder::single(Self::DIRECT_MODE_LISTENER_ID, &subscription_context.address_tracker, None);
                 (None, Some(Arc::new(collector)), Some(Arc::new(Mutex::new(subscriptions))))
             }
         };

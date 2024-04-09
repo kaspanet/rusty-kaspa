@@ -316,7 +316,7 @@ where
         Self {
             enabled_events,
             listeners: Mutex::new(HashMap::new()),
-            subscriptions: Mutex::new(ArrayBuilder::compounded(utxos_changed_capacity)),
+            subscriptions: Mutex::new(ArrayBuilder::compounded(&subscription_context.address_tracker, utxos_changed_capacity)),
             started: Arc::new(AtomicBool::new(false)),
             notification_channel,
             broadcasters,
@@ -352,7 +352,7 @@ where
                 trace!("[Notifier {}] registering listener {id}", self.name);
                 let listener = match lifespan {
                     ListenerLifespan::Static(policies) => Listener::new_static(id, connection, &self.subscription_context, policies),
-                    ListenerLifespan::Dynamic => Listener::new(id, connection),
+                    ListenerLifespan::Dynamic => Listener::new(id, connection, &self.subscription_context),
                 };
                 e.insert(listener);
                 return id;
