@@ -54,6 +54,7 @@ use kaspa_database::prelude::{CachePolicy, ConnBuilder};
 use kaspa_index_processor::service::IndexService;
 use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
+use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_txindex::api::{TxIndexApi, TxIndexProxy};
 use kaspa_txindex::config::Config as TxIndexConfig;
 use kaspa_txindex::TxIndex;
@@ -946,8 +947,9 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
     let tick_service = Arc::new(TickService::default());
     let (notification_send, notification_recv) = unbounded();
-    let tc = Arc::new(TestConsensus::with_notifier(&consensus_config, notification_send));
-    let notify_service = Arc::new(NotifyService::new(tc.notification_root().clone(), notification_recv));
+    let subscription_context = SubscriptionContext::new();
+    let tc = Arc::new(TestConsensus::with_notifier(&consensus_config, notification_send, subscription_context.clone()));
+    let notify_service = Arc::new(NotifyService::new(tc.notification_root().clone(), notification_recv, subscription_context.clone()));
 
     // External storage for storing block bodies. This allows separating header and body processing phases
     let (_external_db_lifetime, external_storage) = create_temp_db!(ConnBuilder::default().with_files_limit(10));
@@ -959,7 +961,9 @@ async fn json_test(file_path: &str, concurrency: bool) {
     let txindex = TxIndex::new(consensus_manager.clone(), txindex_db, txindex_config).unwrap();
     let utxoindex = UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap();
     let index_service = Arc::new(IndexService::new(
+        
         &notify_service.notifier(),
+        subscription_context.clone(),
         Some(UtxoIndexProxy::new(utxoindex.clone())),
         Some(TxIndexProxy::new(txindex.clone())),
     ));

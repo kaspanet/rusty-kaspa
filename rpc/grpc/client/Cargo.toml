@@ -23,7 +23,9 @@ async-trait.workspace = true
 faster-hex.workspace = true
 futures.workspace = true
 h2.workspace = true
+itertools.workspace = true
 log.workspace = true
+parking_lot.workspace = true
 paste.workspace = true
 prost.workspace = true
 rand.workspace = true
@@ -39,3 +41,6 @@ tokio-stream.workspace = true
 tonic = { workspace = true, features = ["gzip"] }
 triggered.workspace = true
 futures-util.workspace = true
+
+[features]
+heap = []

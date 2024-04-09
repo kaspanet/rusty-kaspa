@@ -10,7 +10,9 @@ use kaspa_index_core::notify::notifier::IndexNotifier;
 use kaspa_notify::{
     connection::ChannelType,
     events::{EventSwitches, EventType},
-    scope::{ChainAcceptanceDataPrunedScope, PruningPointUtxoSetOverrideScope, Scope, UtxosChangedScope, VirtualChainChangedScope},
+    listener::ListenerLifespan,
+    scope::{ChainAcceptanceDataPrunedScope, PruningPointUtxoSetOverrideScope, UtxosChangedScope, VirtualChainChangedScope, PruningPointAdvancementScope},
+    subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
 };
 use kaspa_txindex::api::TxIndexProxy;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
@@ -27,21 +29,29 @@ pub struct IndexService {
 }
 
 impl IndexService {
-    pub fn new(consensus_notifier: &Arc<ConsensusNotifier>, utxoindex: Option<UtxoIndexProxy>, txindex: Option<TxIndexProxy>) -> Self {
+    pub fn new(
+        consensus_notifier: &Arc<ConsensusNotifier>,
+        subscription_context: SubscriptionContext,
+        utxoindex: Option<UtxoIndexProxy>,
+        txindex: Option<TxIndexProxy>) -> Self {
+        // This notifier UTXOs subscription granularity to consensus notifier
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::Wildcard);
+
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
-        let consensus_notify_listener_id = consensus_notifier
-            .register_new_listener(ConsensusChannelConnection::new(consensus_notify_channel.sender(), ChannelType::Closable));
+        let consensus_notify_listener_id = consensus_notifier.register_new_listener(
+            ConsensusChannelConnection::new(INDEX_SERVICE, consensus_notify_channel.sender(), ChannelType::Closable),
+            ListenerLifespan::Static(policies),
+        );
 
         // Prepare the index-processor notifier
         // No subscriber is defined here because the subscription are manually created during the construction and never changed after that.
         let events: EventSwitches = match (utxoindex.is_some(), txindex.is_some()) {
             (true, true) => [
                 EventType::UtxosChanged,
-                // TODO: Below should be removable form the processor, it does nothing here..
                 EventType::PruningPointUtxoSetOverride,
                 EventType::VirtualChainChanged,
-                EventType::ChainAcceptanceDataPruned,
+                EventType::PruningPointAdvancement
             ]
             .as_ref()
             .into(),
@@ -52,26 +62,26 @@ impl IndexService {
             ]
             .as_ref()
             .into(),
-            (false, true) => [EventType::VirtualChainChanged, EventType::ChainAcceptanceDataPruned].as_ref().into(),
+            (false, true) => [EventType::VirtualChainChanged, EventType::PruningPointAdvancement].as_ref().into(),
             (false, false) => {
                 warn!("At least one of utxoindex or txindex should be enabled to run the index processor");
                 [].as_ref().into()
             }
         };
         let collector = Arc::new(Processor::new(utxoindex.clone(), txindex.clone(), consensus_notify_channel.receiver()));
-        let notifier = Arc::new(IndexNotifier::new(INDEX_SERVICE, events, vec![collector], vec![], 1));
+        let notifier = Arc::new(IndexNotifier::new(INDEX_SERVICE, events, vec![collector], vec![], subscription_context, 1, policies));
 
         // Set-up utxoindex related subscriptions, if applicable.
         if utxoindex.is_some() {
             // Manually subscribe to index-processor related event types
             consensus_notifier
-                .try_start_notify(consensus_notify_listener_id, Scope::UtxosChanged(UtxosChangedScope::default()))
+                .try_start_notify(consensus_notify_listener_id, UtxosChangedScope::default().into())
                 .expect("the subscription always succeeds");
             // TODO: Below should be removable form the processor, it does nothing here..
             consensus_notifier
                 .try_start_notify(
                     consensus_notify_listener_id,
-                    Scope::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideScope {}),
+                    Scope::PruningPointUtxoSetOverride(PruningPointUtxoSetOverrideScope::default().into()),
                 )
                 .expect("the subscription always succeeds");
         }
@@ -80,12 +90,14 @@ impl IndexService {
         if txindex.is_some() {
             // Manually subscribe to index-processor related event types
             consensus_notifier
-                .try_start_notify(consensus_notify_listener_id, Scope::VirtualChainChanged(VirtualChainChangedScope::new(true)))
-                .expect("the subscription always succeeds");
-            consensus_notifier
-                .try_start_notify(consensus_notify_listener_id, Scope::ChainAcceptanceDataPruned(ChainAcceptanceDataPrunedScope {}))
+                .try_start_notify(consensus_notify_listener_id, VirtualChainChangedScope::new(true),into())
                 .expect("the subscription always succeeds");
         }
+            consensus_notifier
+                .try_start_notify(consensus_notify_listener_id, PruningPointAdvancementScope::default().into())
+                .expect("the subscription always succeeds");
+
+
 
         Self { utxoindex, txindex, notifier, shutdown: SingleTrigger::default() }
     }

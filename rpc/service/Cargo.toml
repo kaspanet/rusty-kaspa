@@ -33,4 +33,5 @@ kaspa-txindex.workspace = true
 async-trait.workspace = true
 log.workspace = true
 tokio.workspace = true
+triggered.workspace = true
 workflow-rpc.workspace = true
