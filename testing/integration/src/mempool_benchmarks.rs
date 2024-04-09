@@ -1,4 +1,13 @@
-use crate::common::{self, client_notify::ChannelNotify, daemon::Daemon, utils::CONTRACT_FACTOR};
+use crate::{
+    common::{
+        self,
+        args::ArgsBuilder,
+        client_notify::ChannelNotify,
+        daemon::{ClientManager, Daemon},
+        utils::CONTRACT_FACTOR,
+    },
+    tasks::{block::group::MinerGroupTask, daemon::DaemonTask, tx::group::TxSenderGroupTask, Stopper, TasksRunner},
+};
 use futures_util::future::join_all;
 use kaspa_addresses::Address;
 use kaspa_consensus::params::Params;
@@ -112,29 +121,27 @@ async fn bench_bbt_latency() {
     bbt_client.start(Some(Arc::new(ChannelNotify::new(sender)))).await;
     bbt_client.start_notify(ListenerId::default(), Scope::NewBlockTemplate(NewBlockTemplateScope {})).await.unwrap();
 
-    let submit_block_pool = daemon
-        .new_client_pool(SUBMIT_BLOCK_CLIENTS, 100, |c, block| async move {
-            let _sw = kaspa_core::time::Stopwatch::<500>::with_threshold("sb");
-            let response = c.submit_block(block, false).await.unwrap();
-            assert_eq!(response.report, kaspa_rpc_core::SubmitBlockReport::Success);
-            false
-        })
-        .await;
+    let submit_block_pool = daemon.new_client_pool(SUBMIT_BLOCK_CLIENTS, 100).await;
+    let submit_block_pool_tasks = submit_block_pool.start(|c, block| async move {
+        let _sw = kaspa_core::time::Stopwatch::<500>::with_threshold("sb");
+        let response = c.submit_block(block, false).await.unwrap();
+        assert_eq!(response.report, kaspa_rpc_core::SubmitBlockReport::Success);
+        false
+    });
 
-    let submit_tx_pool = daemon
-        .new_client_pool::<(usize, Arc<Transaction>), _, _>(SUBMIT_TX_CLIENTS, 100, |c, (i, tx)| async move {
-            match c.submit_transaction(tx.as_ref().into(), false).await {
-                Ok(_) => {}
-                Err(RpcError::General(msg)) if msg.contains("orphan") => {
-                    kaspa_core::warn!("\n\n\n{msg}\n\n");
-                    kaspa_core::warn!("Submitted {} transactions, exiting tx submit loop", i);
-                    return true;
-                }
-                Err(e) => panic!("{e}"),
+    let submit_tx_pool = daemon.new_client_pool::<(usize, Arc<Transaction>)>(SUBMIT_TX_CLIENTS, 100).await;
+    let submit_tx_pool_tasks = submit_tx_pool.start(|c, (i, tx)| async move {
+        match c.submit_transaction(tx.as_ref().into(), false).await {
+            Ok(_) => {}
+            Err(RpcError::General(msg)) if msg.contains("orphan") => {
+                kaspa_core::warn!("\n\n\n{msg}\n\n");
+                kaspa_core::warn!("Submitted {} transactions, exiting tx submit loop", i);
+                return true;
             }
-            false
-        })
-        .await;
+            Err(e) => panic!("{e}"),
+        }
+        false
+    });
 
     let cc = bbt_client.clone();
     let exec = executing.clone();
@@ -263,8 +270,8 @@ async fn bench_bbt_latency() {
     submit_block_pool.close();
     submit_tx_pool.close();
 
-    join_all(submit_block_pool.join_handles).await;
-    join_all(submit_tx_pool.join_handles).await;
+    join_all(submit_block_pool_tasks).await;
+    join_all(submit_tx_pool_tasks).await;
 
     //
     // Fold-up
@@ -272,4 +279,87 @@ async fn bench_bbt_latency() {
     client.disconnect().await.unwrap();
     drop(client);
     daemon.shutdown();
+}
+
+/// Run this benchmark with the following command line:
+/// `cargo test --release --package kaspa-testing-integration --lib --features devnet-prealloc -- mempool_benchmarks::bench_bbt_latency_2 --exact --nocapture --ignored`
+#[tokio::test]
+#[ignore = "bmk"]
+async fn bench_bbt_latency_2() {
+    kaspa_core::panic::configure_panic();
+    kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_mining::monitor=debug");
+
+    // Constants
+    const BLOCK_COUNT: usize = usize::MAX;
+
+    const MEMPOOL_TARGET: u64 = 600_000;
+    const TX_COUNT: usize = 1_400_000;
+    const TX_LEVEL_WIDTH: usize = 20_000;
+    const TPS_PRESSURE: u64 = u64::MAX;
+
+    const SUBMIT_BLOCK_CLIENTS: usize = 20;
+    const SUBMIT_TX_CLIENTS: usize = 2;
+
+    if TX_COUNT < TX_LEVEL_WIDTH {
+        panic!()
+    }
+
+    /*
+    Logic:
+       1. Use the new feature for preallocating utxos
+       2. Set up a dataset with a DAG of signed txs over the preallocated utxoset
+       3. Create constant mempool pressure by submitting txs (via rpc for now)
+       4. Mine to the node (simulated)
+       5. Measure bbt latency, real-time bps, real-time throughput, mempool draining rate (tbd)
+
+    TODO:
+        1. More measurements with statistical aggregation
+        2. Save TX DAG dataset in a file for benchmark replication and stability
+        3. Add P2P TX traffic by implementing a custom P2P peer which only broadcasts txs
+    */
+
+    //
+    // Setup
+    //
+    let (prealloc_sk, prealloc_pk) = secp256k1::generate_keypair(&mut thread_rng());
+    let prealloc_address =
+        Address::new(NetworkType::Simnet.into(), kaspa_addresses::Version::PubKey, &prealloc_pk.x_only_public_key().0.serialize());
+    let schnorr_key = secp256k1::KeyPair::from_secret_key(secp256k1::SECP256K1, &prealloc_sk);
+    let spk = pay_to_address_script(&prealloc_address);
+
+    let args = ArgsBuilder::simnet(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR, 500)
+        .prealloc_address(prealloc_address)
+        .apply_args(Daemon::fill_args_with_random_ports)
+        .build();
+
+    let network = args.network();
+    let params: Params = network.into();
+
+    let utxoset = args.generate_prealloc_utxos(args.num_prealloc_utxos.unwrap());
+    let txs = common::utils::generate_tx_dag(utxoset.clone(), schnorr_key, spk, TX_COUNT / TX_LEVEL_WIDTH, TX_LEVEL_WIDTH);
+    common::utils::verify_tx_dag(&utxoset, &txs);
+    info!("Generated overall {} txs", txs.len());
+
+    let client_manager = Arc::new(ClientManager::new(args));
+    let mut tasks = TasksRunner::new(Some(DaemonTask::build(client_manager.clone())))
+        .launch()
+        .await
+        .task(
+            MinerGroupTask::build(network, client_manager.clone(), SUBMIT_BLOCK_CLIENTS, params.bps(), BLOCK_COUNT, Stopper::Signal)
+                .await,
+        )
+        .task(
+            TxSenderGroupTask::build(
+                client_manager.clone(),
+                SUBMIT_TX_CLIENTS,
+                false,
+                txs,
+                TPS_PRESSURE,
+                MEMPOOL_TARGET,
+                Stopper::Signal,
+            )
+            .await,
+        );
+    tasks.run().await;
+    tasks.join().await;
 }

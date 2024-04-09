@@ -68,7 +68,7 @@ pub enum RpcError {
     #[error("Requested window size {0} is larger than pruning point depth {1}.")]
     WindowSizeExceedingPruningDepth(u32, u64),
 
-    #[error("Method unavailable in safe mode. Run the node with --unsafe argument.")]
+    #[error("Method unavailable in safe mode. Run the node with --unsaferpc argument.")]
     UnavailableInSafeMode,
 
     #[error("Cannot ban IP {0} because it has some permanent connection.")]

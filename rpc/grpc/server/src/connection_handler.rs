@@ -13,7 +13,14 @@ use kaspa_grpc_core::{
     },
     RPC_MAX_MESSAGE_SIZE,
 };
-use kaspa_notify::{connection::ChannelType, events::EVENT_TYPE_ARRAY, notifier::Notifier, subscriber::Subscriber};
+use kaspa_notify::{
+    connection::ChannelType,
+    events::EVENT_TYPE_ARRAY,
+    listener::ListenerLifespan,
+    notifier::Notifier,
+    subscriber::Subscriber,
+    subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
+};
 use kaspa_rpc_core::{
     api::rpc::DynRpcService,
     notify::{channel::NotificationChannel, connection::ChannelConnection},
@@ -79,20 +86,34 @@ impl ConnectionHandler {
         manager_sender: MpscSender<ManagerEvent>,
         core_service: DynRpcService,
         core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
+        subscription_context: SubscriptionContext,
+        broadcasters: usize,
         counters: Arc<TowerConnectionCounters>,
     ) -> Self {
+        // This notifier UTXOs subscription granularity to rpc-core notifier
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
+
         // Prepare core objects
         let core_channel = NotificationChannel::default();
-        let core_listener_id =
-            core_notifier.register_new_listener(ChannelConnection::new(core_channel.sender(), ChannelType::Closable));
+        let core_listener_id = core_notifier.register_new_listener(
+            ChannelConnection::new(GRPC_SERVER, core_channel.sender(), ChannelType::Closable),
+            ListenerLifespan::Static(policies),
+        );
 
         // Prepare internals
         let core_events = EVENT_TYPE_ARRAY[..].into();
         let converter = Arc::new(GrpcServiceConverter::new());
         let collector = Arc::new(GrpcServiceCollector::new(GRPC_SERVER, core_channel.receiver(), converter));
         let subscriber = Arc::new(Subscriber::new(GRPC_SERVER, core_events, core_notifier, core_listener_id));
-        let notifier: Arc<Notifier<Notification, Connection>> =
-            Arc::new(Notifier::new(GRPC_SERVER, core_events, vec![collector], vec![subscriber], 10));
+        let notifier: Arc<Notifier<Notification, Connection>> = Arc::new(Notifier::new(
+            GRPC_SERVER,
+            core_events,
+            vec![collector],
+            vec![subscriber],
+            subscription_context,
+            broadcasters,
+            policies,
+        ));
         let server_context = ServerContext::new(core_service, notifier);
         let interface = Arc::new(Factory::new_interface(server_context.clone(), network_bps));
         let running = Default::default();
@@ -118,11 +139,11 @@ impl ConnectionHandler {
                 .max_decoding_message_size(RPC_MAX_MESSAGE_SIZE);
 
             // TODO: check whether we should set tcp_keepalive
-            const GRPC_KEEP_ALIVE_PING_INTERVAL: Duration = Duration::from_secs(3);
-            const GRPC_KEEP_ALIVE_PING_TIMEOUT: Duration = Duration::from_secs(10);
+            // const GRPC_KEEP_ALIVE_PING_INTERVAL: Duration = Duration::from_secs(5);
+            // const GRPC_KEEP_ALIVE_PING_TIMEOUT: Duration = Duration::from_secs(120);
             let serve_result = TonicServer::builder()
-                .http2_keepalive_interval(Some(GRPC_KEEP_ALIVE_PING_INTERVAL))
-                .http2_keepalive_timeout(Some(GRPC_KEEP_ALIVE_PING_TIMEOUT))
+                // .http2_keepalive_interval(Some(GRPC_KEEP_ALIVE_PING_INTERVAL))
+                // .http2_keepalive_timeout(Some(GRPC_KEEP_ALIVE_PING_TIMEOUT))
                 .layer(measure_request_body_size_layer(bytes_rx, |b| b))
                 .layer(MapResponseBodyLayer::new(move |body| CountBytesBody::new(body, bytes_tx.clone())))
                 .add_service(protowire_server)

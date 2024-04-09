@@ -14,6 +14,9 @@ pub enum ConfigError {
     #[error("Configuration: --ram-scale cannot be set above 10.0")]
     RamScaleTooHigh,
 
+    #[error("Configuration: --max-tracked-addresses cannot be set above {0}")]
+    MaxTrackedAddressesTooHigh(usize),
+
     #[cfg(feature = "devnet-prealloc")]
     #[error("Cannot preallocate UTXOs on any network except devnet")]
     PreallocUtxosOnNonDevnet,

@@ -2492,6 +2492,7 @@ dependencies = [
  "futures",
  "futures-util",
  "h2",
+ "itertools 0.11.0",
  "kaspa-core",
  "kaspa-grpc-core",
  "kaspa-notify",
@@ -2499,6 +2500,7 @@ dependencies = [
  "kaspa-utils",
  "kaspa-utils-tower",
  "log",
+ "parking_lot",
  "paste",
  "prost",
  "rand 0.8.5",
@@ -2740,13 +2742,18 @@ dependencies = [
  "async-channel 2.1.1",
  "async-trait",
  "borsh",
+ "criterion",
  "derive_more",
  "futures",
  "futures-util",
+ "indexmap 2.1.0",
  "itertools 0.11.0",
  "kaspa-addresses",
+ "kaspa-alloc",
  "kaspa-consensus-core",
  "kaspa-core",
+ "kaspa-hashes",
+ "kaspa-math",
  "kaspa-txscript",
  "kaspa-txscript-errors",
  "kaspa-utils",
@@ -2760,6 +2767,7 @@ dependencies = [
  "triggered",
  "workflow-core",
  "workflow-log",
+ "workflow-perf-monitor",
 ]
 
 [[package]]
@@ -2956,6 +2964,7 @@ dependencies = [
  "kaspa-utxoindex",
  "log",
  "tokio",
+ "triggered",
  "workflow-rpc",
 ]
 
@@ -2964,9 +2973,13 @@ name = "kaspa-testing-integration"
 version = "0.13.6"
 dependencies = [
  "async-channel 2.1.1",
+ "async-trait",
  "bincode",
+ "chrono",
+ "clap 4.4.11",
  "criterion",
  "crossbeam-channel",
+ "dhat",
  "faster-hex 0.6.1",
  "flate2",
  "futures-util",
@@ -2983,6 +2996,7 @@ dependencies = [
  "kaspa-database",
  "kaspa-grpc-client",
  "kaspa-grpc-core",
+ "kaspa-grpc-server",
  "kaspa-hashes",
  "kaspa-index-processor",
  "kaspa-math",
@@ -2991,6 +3005,7 @@ dependencies = [
  "kaspa-notify",
  "kaspa-pow",
  "kaspa-rpc-core",
+ "kaspa-rpc-service",
  "kaspa-txscript",
  "kaspa-txscript-errors",
  "kaspa-utils",
@@ -3010,6 +3025,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "workflow-perf-monitor",
 ]
 
 [[package]]
@@ -3346,6 +3362,7 @@ dependencies = [
  "kaspa-hashes",
  "kaspa-index-processor",
  "kaspa-mining",
+ "kaspa-notify",
  "kaspa-p2p-flows",
  "kaspa-perf-monitor",
  "kaspa-rpc-core",
@@ -4663,6 +4680,7 @@ dependencies = [
  "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-grpc-client",
+ "kaspa-notify",
  "kaspa-rpc-core",
  "kaspa-txscript",
  "kaspa-utils",

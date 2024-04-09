@@ -33,7 +33,7 @@ impl<B> CountBytesBody<B> {
 
 impl<B> HttpBody for CountBytesBody<B>
 where
-    B: HttpBody<Data = Bytes>,
+    B: HttpBody<Data = Bytes> + Default,
 {
     type Data = B::Data;
     type Error = B::Error;
@@ -63,6 +63,15 @@ where
 
     fn size_hint(&self) -> SizeHint {
         self.inner.size_hint()
+    }
+}
+
+impl<B> Default for CountBytesBody<B>
+where
+    B: HttpBody<Data = Bytes> + Default,
+{
+    fn default() -> Self {
+        Self { inner: Default::default(), counter: Default::default() }
     }
 }
 

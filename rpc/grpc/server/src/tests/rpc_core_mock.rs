@@ -1,9 +1,11 @@
 use async_channel::{unbounded, Receiver};
 use async_trait::async_trait;
 use kaspa_notify::events::EVENT_TYPE_ARRAY;
-use kaspa_notify::listener::ListenerId;
+use kaspa_notify::listener::{ListenerId, ListenerLifespan};
 use kaspa_notify::notifier::{Notifier, Notify};
 use kaspa_notify::scope::Scope;
+use kaspa_notify::subscription::context::SubscriptionContext;
+use kaspa_notify::subscription::{MutationPolicies, UtxosChangedMutationPolicy};
 use kaspa_rpc_core::{api::rpc::RpcApi, *};
 use kaspa_rpc_core::{notify::connection::ChannelConnection, RpcResult};
 use std::sync::Arc;
@@ -17,11 +19,28 @@ pub(super) struct RpcCoreMock {
 
 impl RpcCoreMock {
     pub(super) fn new() -> Self {
-        Self::default()
+        let (sync_sender, sync_receiver) = unbounded();
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
+        let subscription_context = SubscriptionContext::new();
+        let core_notifier: Arc<RpcCoreNotifier> = Arc::new(Notifier::with_sync(
+            "rpc-core",
+            EVENT_TYPE_ARRAY[..].into(),
+            vec![],
+            vec![],
+            subscription_context,
+            10,
+            policies,
+            Some(sync_sender),
+        ));
+        Self { core_notifier, _sync_receiver: sync_receiver }
     }
 
     pub(super) fn core_notifier(&self) -> Arc<RpcCoreNotifier> {
         self.core_notifier.clone()
+    }
+
+    pub(super) fn subscription_context(&self) -> SubscriptionContext {
+        self.core_notifier.subscription_context().clone()
     }
 
     #[allow(dead_code)]
@@ -44,15 +63,6 @@ impl RpcCoreMock {
     }
 }
 
-impl Default for RpcCoreMock {
-    fn default() -> Self {
-        let (sync_sender, sync_receiver) = unbounded();
-        let core_notifier: Arc<RpcCoreNotifier> =
-            Arc::new(Notifier::with_sync("rpc-core", EVENT_TYPE_ARRAY[..].into(), vec![], vec![], 10, Some(sync_sender)));
-        Self { core_notifier, _sync_receiver: sync_receiver }
-    }
-}
-
 #[async_trait]
 impl RpcApi for RpcCoreMock {
     // This fn needs to succeed while the client connects
@@ -63,8 +73,8 @@ impl RpcApi for RpcCoreMock {
             server_version: "mock".to_string(),
             is_utxo_indexed: false,
             is_synced: false,
-            has_notify_command: false,
-            has_message_id: false,
+            has_notify_command: true,
+            has_message_id: true,
         })
     }
 
@@ -222,7 +232,7 @@ impl RpcApi for RpcCoreMock {
     // Notification API
 
     fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
-        self.core_notifier.register_new_listener(connection)
+        self.core_notifier.register_new_listener(connection, ListenerLifespan::Dynamic)
     }
 
     async fn unregister_listener(&self, id: ListenerId) -> RpcResult<()> {

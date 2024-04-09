@@ -5,7 +5,15 @@ use crate::{
     service::Options,
 };
 use kaspa_grpc_client::GrpcClient;
-use kaspa_notify::{connection::ChannelType, events::EVENT_TYPE_ARRAY, notifier::Notifier, scope::Scope, subscriber::Subscriber};
+use kaspa_notify::{
+    connection::ChannelType,
+    events::EVENT_TYPE_ARRAY,
+    listener::ListenerLifespan,
+    notifier::Notifier,
+    scope::Scope,
+    subscriber::Subscriber,
+    subscription::{MutationPolicies, UtxosChangedMutationPolicy},
+};
 use kaspa_rpc_core::{
     api::rpc::{DynRpcService, RpcApi},
     notify::{channel::NotificationChannel, connection::ChannelConnection, mode::NotificationMode},
@@ -46,6 +54,9 @@ const WRPC_SERVER: &str = "wrpc-server";
 
 impl Server {
     pub fn new(tasks: usize, encoding: Encoding, core_service: Option<Arc<RpcCoreService>>, options: Arc<Options>) -> Self {
+        // This notifier UTXOs subscription granularity to rpc-core notifier
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
+
         // Either get a core service or be called from the proxy and rely each connection having its own gRPC client
         assert_eq!(
             core_service.is_none(),
@@ -56,15 +67,25 @@ impl Server {
         let rpc_core = if let Some(service) = core_service {
             // Prepare rpc service objects
             let notification_channel = NotificationChannel::default();
-            let listener_id =
-                service.notifier().register_new_listener(ChannelConnection::new(notification_channel.sender(), ChannelType::Closable));
+            let listener_id = service.notifier().register_new_listener(
+                ChannelConnection::new(WRPC_SERVER, notification_channel.sender(), ChannelType::Closable),
+                ListenerLifespan::Static(policies),
+            );
 
             // Prepare notification internals
             let enabled_events = EVENT_TYPE_ARRAY[..].into();
             let converter = Arc::new(WrpcServiceConverter::new());
             let collector = Arc::new(WrpcServiceCollector::new(WRPC_SERVER, notification_channel.receiver(), converter));
             let subscriber = Arc::new(Subscriber::new(WRPC_SERVER, enabled_events, service.notifier(), listener_id));
-            let wrpc_notifier = Arc::new(Notifier::new(WRPC_SERVER, enabled_events, vec![collector], vec![subscriber], tasks));
+            let wrpc_notifier = Arc::new(Notifier::new(
+                WRPC_SERVER,
+                enabled_events,
+                vec![collector],
+                vec![subscriber],
+                service.subscription_context(),
+                tasks,
+                policies,
+            ));
             Some(RpcCore { service, wrpc_notifier })
         } else {
             None
@@ -96,9 +117,10 @@ impl Server {
             // Provider::GrpcClient
 
             log_info!("Routing wrpc://{peer} -> {grpc_proxy_address}");
-            let grpc_client = GrpcClient::connect(
+            let grpc_client = GrpcClient::connect_with_args(
                 NotificationMode::Direct,
                 grpc_proxy_address.to_owned(),
+                None,
                 false,
                 None,
                 true,
@@ -163,7 +185,7 @@ impl Server {
             // is always set to Some(ListenerId::default()) by the connection ctor.
             let notifier =
                 self.notifier().unwrap_or_else(|| panic!("Incorrect use: `server::Server` does not carry an internal notifier"));
-            let listener_id = notifier.register_new_listener(connection.clone());
+            let listener_id = notifier.register_new_listener(connection.clone(), ListenerLifespan::Dynamic);
             connection.register_notification_listener(listener_id);
             listener_id
         };

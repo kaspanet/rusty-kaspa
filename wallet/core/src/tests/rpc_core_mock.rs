@@ -3,9 +3,11 @@ use crate::imports::*;
 use async_channel::{unbounded, Receiver};
 use async_trait::async_trait;
 use kaspa_notify::events::EVENT_TYPE_ARRAY;
-use kaspa_notify::listener::ListenerId;
+use kaspa_notify::listener::{ListenerId, ListenerLifespan};
 use kaspa_notify::notifier::{Notifier, Notify};
 use kaspa_notify::scope::Scope;
+use kaspa_notify::subscription::context::SubscriptionContext;
+use kaspa_notify::subscription::{MutationPolicies, UtxosChangedMutationPolicy};
 use kaspa_rpc_core::api::ctl::RpcCtl;
 use kaspa_rpc_core::{api::rpc::RpcApi, *};
 use kaspa_rpc_core::{notify::connection::ChannelConnection, RpcResult};
@@ -27,7 +29,19 @@ pub struct RpcCoreMock {
 
 impl RpcCoreMock {
     pub fn new() -> Self {
-        Self::default()
+        let (sync_sender, sync_receiver) = unbounded();
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
+        let core_notifier: Arc<RpcCoreNotifier> = Arc::new(Notifier::with_sync(
+            "rpc-core",
+            EVENT_TYPE_ARRAY[..].into(),
+            vec![],
+            vec![],
+            SubscriptionContext::new(),
+            10,
+            policies,
+            Some(sync_sender),
+        ));
+        Self { core_notifier, _sync_receiver: sync_receiver, ctl: RpcCtl::new() }
     }
 
     pub fn core_notifier(&self) -> Arc<RpcCoreNotifier> {
@@ -62,10 +76,7 @@ impl RpcCoreMock {
 
 impl Default for RpcCoreMock {
     fn default() -> Self {
-        let (sync_sender, sync_receiver) = unbounded();
-        let core_notifier: Arc<RpcCoreNotifier> =
-            Arc::new(Notifier::with_sync("rpc-core", EVENT_TYPE_ARRAY[..].into(), vec![], vec![], 10, Some(sync_sender)));
-        Self { core_notifier, _sync_receiver: sync_receiver, ctl: RpcCtl::new() }
+        Self::new()
     }
 }
 
@@ -238,7 +249,7 @@ impl RpcApi for RpcCoreMock {
     // Notification API
 
     fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
-        self.core_notifier.register_new_listener(connection)
+        self.core_notifier.register_new_listener(connection, ListenerLifespan::Dynamic)
     }
 
     async fn unregister_listener(&self, id: ListenerId) -> RpcResult<()> {
