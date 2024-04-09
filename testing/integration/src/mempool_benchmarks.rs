@@ -329,7 +329,7 @@ async fn bench_bbt_latency_2() {
 
     let args = ArgsBuilder::simnet(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR, 500)
         .prealloc_address(prealloc_address)
-        .apply_args(|args| Daemon::fill_args_with_random_ports(args))
+        .apply_args(Daemon::fill_args_with_random_ports)
         .build();
 
     let network = args.network();

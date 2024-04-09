@@ -52,7 +52,7 @@ const NOTIFY_CLIENTS: usize = 500;
 const MAX_ADDRESSES: usize = 1_000_000;
 const WALLET_ADDRESSES: usize = 800;
 
-const STAT_FOLDER: &'static str = "../../../analyze/mem-logs";
+const STAT_FOLDER: &str = "../../../analyze/mem-logs";
 
 fn create_client_addresses(index: usize, network_id: &NetworkId) -> Vec<Address> {
     // Process in heaviest to lightest requests order, maximizing messages memory footprint
@@ -82,7 +82,7 @@ async fn utxos_changed_subscriptions_sanity_check() {
 
     let (prealloc_sk, _) = secp256k1::generate_keypair(&mut thread_rng());
     let args = ArgsBuilder::simnet(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR, PREALLOC_AMOUNT)
-        .apply_args(|args| Daemon::fill_args_with_random_ports(args))
+        .apply_args(Daemon::fill_args_with_random_ports)
         .build();
 
     // Start the daemon
@@ -180,7 +180,7 @@ async fn utxos_changed_subscriptions_client(address_cycle_seconds: u64, address_
         .prealloc_address(prealloc_address)
         .max_tracked_addresses(MAX_ADDRESSES)
         .utxoindex(true)
-        .apply_args(|args| Daemon::fill_args_with_random_ports(args))
+        .apply_args(Daemon::fill_args_with_random_ports)
         .build();
     let network = args.network();
     let params: Params = network.into();
