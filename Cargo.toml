@@ -51,8 +51,8 @@ members = [
     "utils",
     "utils/tower",
     "rothschild",
-    "metrics/perf_monitor",
     "metrics/core",
+    "metrics/perf_monitor",
     "utils/alloc",
 ]
 
