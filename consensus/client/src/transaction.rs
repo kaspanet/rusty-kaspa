@@ -9,6 +9,7 @@ use crate::serializable::{numeric, string};
 use crate::utxo::{UtxoEntryId, UtxoEntryReference};
 use ahash::AHashMap;
 use kaspa_consensus_core::subnets::{self, SubnetworkId};
+use kaspa_consensus_core::tx::UtxoEntry;
 use kaspa_utils::hex::*;
 
 #[wasm_bindgen(typescript_custom_section)]
@@ -331,6 +332,41 @@ impl Transaction {
             payload: tx.payload.clone(),
             subnetwork_id: tx.subnetwork_id.clone(),
         })
+    }
+
+    pub fn tx_and_utxos(&self) -> (cctx::Transaction, Vec<UtxoEntry>) {
+        let mut utxos = vec![];
+        let inner = self.inner();
+        let inputs: Vec<cctx::TransactionInput> = inner
+            .inputs
+            .clone()
+            .into_iter()
+            .map(|input| {
+                utxos.push((&input.get_utxo().unwrap().entry()).into());
+                input.as_ref().into()
+            })
+            .collect::<Vec<cctx::TransactionInput>>();
+        let outputs: Vec<cctx::TransactionOutput> =
+            inner.outputs.clone().into_iter().map(|output| output.as_ref().into()).collect::<Vec<cctx::TransactionOutput>>();
+        let tx = cctx::Transaction::new(
+            inner.version,
+            inputs,
+            outputs,
+            inner.lock_time,
+            inner.subnetwork_id.clone(),
+            inner.gas,
+            inner.payload.clone(),
+        );
+
+        (tx, utxos)
+    }
+
+    pub fn set_signature_script(&self, input_index: usize, signature_script: Vec<u8>) -> Result<()> {
+        if self.inner().inputs.len() <= input_index {
+            return Err(Error::Custom("Input index is invalid".to_string()));
+        }
+        self.inner().inputs[input_index].set_signature_script(signature_script);
+        Ok(())
     }
 }
 

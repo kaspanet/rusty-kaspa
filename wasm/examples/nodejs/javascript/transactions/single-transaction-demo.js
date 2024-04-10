@@ -7,7 +7,8 @@ const {
     RpcClient,
     createTransaction,
     signTransaction,
-    initConsolePanicHook
+    initConsolePanicHook,
+    Resolver,
 } = require('../../../../nodejs/kaspa');
 
 initConsolePanicHook();
@@ -32,7 +33,8 @@ const { networkId, encoding } = require("../utils").parseArgs();
     console.info(address);
 
     const rpc = new RpcClient({
-        url : "127.0.0.1",
+        //url : "127.0.0.1",
+        resolver: new Resolver(),
         encoding,
         networkId
     });
@@ -70,10 +72,11 @@ const { networkId, encoding } = require("../utils").parseArgs();
         }];
 
         const changeAddress = address;
-        console.info(changeAddress);
+        console.log("changeAddress:", changeAddress)
         const tx = createTransaction(utxos, outputs, changeAddress, 0n, 0, 1, 1);
 
-        console.info(tx);
+
+        console.info("Transaction before signing:", tx);
 
         const transaction = signTransaction(tx, [privateKey], true);
 
@@ -82,7 +85,7 @@ const { networkId, encoding } = require("../utils").parseArgs();
 
         let result = await rpc.submitTransaction({transaction});
 
-        console.info(result);
+        console.info("submitTransaction result:", result);
     } finally {
         await rpc.disconnect();
     }

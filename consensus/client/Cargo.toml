@@ -33,6 +33,7 @@ serde-wasm-bindgen.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 wasm-bindgen.workspace = true
+itertools.workspace = true
 
 workflow-wasm.workspace = true
 workflow-log.workspace = true

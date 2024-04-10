@@ -15,7 +15,7 @@ cfg_if::cfg_if! {
         mod transaction;
         mod vtx;
         mod hash;
-        // mod signing;
+        mod sign;
         mod script;
         mod serializable;
 
@@ -28,5 +28,6 @@ cfg_if::cfg_if! {
         pub use hash::*;
         // pub use signing::*;
         pub use script::*;
+        pub use sign::sign_with_multiple_v3;
     }
 }
