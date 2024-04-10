@@ -218,8 +218,11 @@ struct Inner {
     /// use `IndexMap` APIs which alter the index order of existing entries.
     script_pub_keys: IndexMap<ScriptPublicKey, RefCount>,
 
-    /// Maximum address count that can be registered
+    /// Maximum address count that can be registered. Note this must be `<= Index::MAX` since we cast the returned indexes to `Index`
     max_addresses: usize,
+
+    /// The preallocation used for the address index (`script_pub_keys`)
+    addresses_preallocation: Option<usize>,
 
     /// Set of entries [`Index`] in `script_pub_keys` having their [`RefCount`] at 0 hence considered
     /// empty.
@@ -228,8 +231,14 @@ struct Inner {
     empty_entries: HashSet<Index>,
 }
 
+/// Fails at compile time if `MAX_ADDRESS_UPPER_BOUND > Index::MAX`.
+/// This is mandatory since we cast the returned indexes to `Index`
+const _: usize = Index::MAX as usize - Inner::MAX_ADDRESS_UPPER_BOUND;
+
 impl Inner {
-    /// The upper bound of the maximum address count
+    /// The upper bound of the maximum address count. Note that the upper bound must
+    /// never exceed `Index::MAX` since we cast the returned indexes to `Index`. See
+    /// compile-time assertion above
     const MAX_ADDRESS_UPPER_BOUND: usize = Self::expand_max_addresses(10_000_000);
 
     /// The lower bound of the maximum address count
@@ -258,6 +267,7 @@ impl Inner {
         // Saving one entry for the insert/swap_remove scheme during entry recycling prevents a reallocation
         // when reaching the maximum.
         let max_addresses = max_addresses.map(Self::expand_max_addresses);
+        let addresses_preallocation = max_addresses;
         let capacity = max_addresses.map(|x| x + 1).unwrap_or_default();
 
         assert!(
@@ -266,13 +276,13 @@ impl Inner {
             Self::MAX_ADDRESS_UPPER_BOUND
         );
         let max_addresses = max_addresses.unwrap_or(Self::DEFAULT_MAX_ADDRESSES);
-        info!("Memory configuration: UTXO changed events wil be tracked for no more than {} addresses", max_addresses);
+        info!("Memory configuration: UTXO changed events wil be tracked for at most {} addresses", max_addresses);
 
         let script_pub_keys = IndexMap::with_capacity(capacity);
         debug!("Creating an address tracker with a capacity of {}", script_pub_keys.capacity());
 
         let empty_entries = HashSet::with_capacity(capacity);
-        Self { script_pub_keys, max_addresses, empty_entries }
+        Self { script_pub_keys, max_addresses, addresses_preallocation, empty_entries }
     }
 
     fn is_full(&self) -> bool {
@@ -409,6 +419,9 @@ impl Tracker {
         Inner::expand_max_addresses(max_addresses)
     }
 
+    /// Creates a new `Tracker` instance. If `max_addresses` is `Some`, uses it to prealloc
+    /// the internal index as well as for bounding the index size. Otherwise, performs no
+    /// prealloc while bounding the index size by `Tracker::DEFAULT_MAX_ADDRESSES`
     pub fn new(max_addresses: Option<usize>) -> Self {
         Self { inner: RwLock::new(Inner::new(max_addresses)) }
     }
@@ -570,8 +583,8 @@ impl Tracker {
         self.inner.read().script_pub_keys.capacity()
     }
 
-    pub fn max_addresses(&self) -> Option<usize> {
-        Some(self.inner.read().max_addresses)
+    pub fn addresses_preallocation(&self) -> Option<usize> {
+        self.inner.read().addresses_preallocation
     }
 }
 
@@ -614,7 +627,7 @@ mod tests {
 
         let tracker = Tracker::new(Some(MAX_ADDRESSES));
         assert_eq!(
-            tracker.max_addresses().unwrap(),
+            tracker.addresses_preallocation().unwrap(),
             MAX_ADDRESSES,
             "tracker maximum address count should be expanded to the available allocated entries, minus 1 for a transient insert/swap_remove"
         );
