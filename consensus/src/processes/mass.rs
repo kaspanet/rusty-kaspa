@@ -91,10 +91,13 @@ impl MassCalculator {
         let ins_len = tx.tx().inputs.len() as u64;
 
         /*
-           KIP-0009 relaxed formula for the cases |O| = 1 OR |O| <= |I| <= 2:
-               max( 0 , C·( |O|/H(O) - |I|/H(I) ) )
+          KIP-0009 relaxed formula for the cases |O| = 1 OR |O| <= |I| <= 2:
+              max( 0 , C·( |O|/H(O) - |I|/H(I) ) )
+
+           Note: in the case |I| = 1 both formulas are equal, yet the following code (harmonic_ins) is a bit more efficient.
+                 Hence, we transform the condition to |O| = 1 OR |I| = 1 OR |O| = |I| = 2 which is equivalent (and faster).
         */
-        if version == Kip9Version::Beta && (outs_len == 1 || (outs_len <= ins_len && ins_len <= 2)) {
+        if version == Kip9Version::Beta && (outs_len == 1 || ins_len == 1 || (outs_len == 2 && ins_len == 2)) {
             let harmonic_ins = tx
                 .populated_inputs()
                 .map(|(_, entry)| self.storage_mass_parameter / entry.amount)
@@ -144,63 +147,8 @@ mod tests {
 
     #[test]
     fn test_mass_storage() {
-        let script_pub_key = ScriptVec::from_slice(&[]);
-        let prev_tx_id = TransactionId::from_str("880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3").unwrap();
-
         // Tx with less outs than ins
-        let tx = Transaction::new(
-            0,
-            vec![
-                TransactionInput {
-                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
-                    signature_script: vec![],
-                    sequence: 0,
-                    sig_op_count: 0,
-                },
-                TransactionInput {
-                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
-                    signature_script: vec![],
-                    sequence: 1,
-                    sig_op_count: 0,
-                },
-                TransactionInput {
-                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
-                    signature_script: vec![],
-                    sequence: 2,
-                    sig_op_count: 0,
-                },
-            ],
-            vec![
-                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
-                TransactionOutput { value: 300, script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()) },
-            ],
-            1615462089000,
-            SubnetworkId::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-            0,
-            vec![],
-        );
-
-        let entries = vec![
-            UtxoEntry {
-                amount: 100,
-                script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
-                block_daa_score: 0,
-                is_coinbase: false,
-            },
-            UtxoEntry {
-                amount: 200,
-                script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
-                block_daa_score: 0,
-                is_coinbase: false,
-            },
-            UtxoEntry {
-                amount: 300,
-                script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
-                block_daa_score: 0,
-                is_coinbase: false,
-            },
-        ];
-        let mut tx = MutableTransaction::with_entries(tx, entries);
+        let mut tx = generate_tx_from_amounts(&[100, 200, 300], &[300, 300]);
         let test_version = Kip9Version::Alpha;
 
         // Assert the formula: max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
@@ -218,74 +166,8 @@ mod tests {
         assert_eq!(storage_mass, storage_mass_parameter / 50 + storage_mass_parameter / 550 - 3 * (storage_mass_parameter / 200));
 
         // Create a tx with more outs than ins
-        let tx = Transaction::new(
-            0,
-            vec![
-                TransactionInput {
-                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
-                    signature_script: vec![],
-                    sequence: 0,
-                    sig_op_count: 0,
-                },
-                TransactionInput {
-                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 1 },
-                    signature_script: vec![],
-                    sequence: 1,
-                    sig_op_count: 0,
-                },
-                TransactionInput {
-                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 2 },
-                    signature_script: vec![],
-                    sequence: 2,
-                    sig_op_count: 0,
-                },
-            ],
-            vec![
-                TransactionOutput {
-                    value: 10_000 * SOMPI_PER_KASPA,
-                    script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
-                },
-                TransactionOutput {
-                    value: 10_000 * SOMPI_PER_KASPA,
-                    script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
-                },
-                TransactionOutput {
-                    value: 10_000 * SOMPI_PER_KASPA,
-                    script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
-                },
-                TransactionOutput {
-                    value: 10_000 * SOMPI_PER_KASPA,
-                    script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
-                },
-            ],
-            1615462089000,
-            SubnetworkId::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-            0,
-            vec![],
-        );
-
-        let entries = vec![
-            UtxoEntry {
-                amount: 10_000 * SOMPI_PER_KASPA,
-                script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
-                block_daa_score: 0,
-                is_coinbase: false,
-            },
-            UtxoEntry {
-                amount: 10_000 * SOMPI_PER_KASPA,
-                script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
-                block_daa_score: 0,
-                is_coinbase: false,
-            },
-            UtxoEntry {
-                amount: 20_000 * SOMPI_PER_KASPA,
-                script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
-                block_daa_score: 0,
-                is_coinbase: false,
-            },
-        ];
-        let mut tx = MutableTransaction::with_entries(tx, entries);
-
+        let base_value = 10_000 * SOMPI_PER_KASPA;
+        let mut tx = generate_tx_from_amounts(&[base_value, base_value, base_value * 2], &[base_value; 4]);
         let storage_mass_parameter = STORAGE_MASS_PARAMETER;
         let storage_mass =
             MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable(), test_version).unwrap();
@@ -305,7 +187,70 @@ mod tests {
         let storage_mass =
             MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable(), test_version).unwrap();
         assert_eq!(storage_mass, 0);
+    }
 
-        drop(script_pub_key);
+    #[test]
+    fn test_mass_storage_beta() {
+        // 2:2 transaction
+        let mut tx = generate_tx_from_amounts(&[100, 200], &[50, 250]);
+        let storage_mass_parameter = 10u64.pow(12);
+        let test_version = Kip9Version::Beta;
+        // Assert the formula: max( 0 , C·( |O|/H(O) - |I|/O(I) ) )
+
+        let storage_mass =
+            MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable(), test_version).unwrap();
+        assert_eq!(storage_mass, 9000000000);
+
+        // Set outputs to be equal to inputs
+        tx.tx.outputs[0].value = 100;
+        tx.tx.outputs[1].value = 200;
+        let storage_mass =
+            MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable(), test_version).unwrap();
+        assert_eq!(storage_mass, 0);
+
+        // Remove an output and make sure the other is small enough to make storage mass greater than zero
+        tx.tx.outputs.pop();
+        tx.tx.outputs[0].value = 50;
+        let storage_mass =
+            MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable(), test_version).unwrap();
+        assert_eq!(storage_mass, 5000000000);
+    }
+
+    fn generate_tx_from_amounts(ins: &[u64], outs: &[u64]) -> MutableTransaction<Transaction> {
+        let script_pub_key = ScriptVec::from_slice(&[]);
+        let prev_tx_id = TransactionId::from_str("880eb9819a31821d9d2399e2f35e2433b72637e393d71ecc9b8d0250f49153c3").unwrap();
+        let tx = Transaction::new(
+            0,
+            (0..ins.len())
+                .map(|i| TransactionInput {
+                    previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: i as u32 },
+                    signature_script: vec![],
+                    sequence: 0,
+                    sig_op_count: 0,
+                })
+                .collect(),
+            outs.iter()
+                .copied()
+                .map(|out_amount| TransactionOutput {
+                    value: out_amount,
+                    script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
+                })
+                .collect(),
+            1615462089000,
+            SubnetworkId::from_bytes([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            0,
+            vec![],
+        );
+        let entries = ins
+            .iter()
+            .copied()
+            .map(|in_amount| UtxoEntry {
+                amount: in_amount,
+                script_public_key: ScriptPublicKey::new(0, script_pub_key.clone()),
+                block_daa_score: 0,
+                is_coinbase: false,
+            })
+            .collect();
+        MutableTransaction::with_entries(tx, entries)
     }
 }

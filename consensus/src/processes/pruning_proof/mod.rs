@@ -691,9 +691,65 @@ impl PruningProofManager {
                     }
                 }
 
+                // Temp assertion for verifying a bug fix: assert that the full 2M chain is actually contained in the composed level proof
+                let set = BlockHashSet::from_iter(headers.iter().map(|h| h.hash));
+                let chain_2m = self
+                    .chain_up_to_depth(&*self.ghostdag_stores[level], selected_tip, 2 * self.pruning_proof_m)
+                    .map_err(|err| {
+                        dbg!(level, selected_tip, block_at_depth_2m, root);
+                        format!("Assert 2M chain -- level: {}, err: {}", level, err)
+                    })
+                    .unwrap();
+                let chain_2m_len = chain_2m.len();
+                for (i, chain_hash) in chain_2m.into_iter().enumerate() {
+                    if !set.contains(&chain_hash) {
+                        let next_level_tip = selected_tip_by_level[level + 1];
+                        let next_level_chain_m =
+                            self.chain_up_to_depth(&*self.ghostdag_stores[level + 1], next_level_tip, self.pruning_proof_m).unwrap();
+                        let next_level_block_m = next_level_chain_m.last().copied().unwrap();
+                        dbg!(next_level_chain_m.len());
+                        dbg!(self.ghostdag_stores[level + 1].get_compact_data(next_level_tip).unwrap().blue_score);
+                        dbg!(self.ghostdag_stores[level + 1].get_compact_data(next_level_block_m).unwrap().blue_score);
+                        dbg!(self.ghostdag_stores[level].get_compact_data(selected_tip).unwrap().blue_score);
+                        dbg!(self.ghostdag_stores[level].get_compact_data(block_at_depth_2m).unwrap().blue_score);
+                        dbg!(level, selected_tip, block_at_depth_2m, root);
+                        panic!("Assert 2M chain -- missing block {} at index {} out of {} chain blocks", chain_hash, i, chain_2m_len);
+                    }
+                }
+
                 headers
             })
             .collect_vec()
+    }
+
+    /// Copy of `block_at_depth` which returns the full chain up to depth. Temporarily used for assertion purposes.
+    fn chain_up_to_depth(
+        &self,
+        ghostdag_store: &impl GhostdagStoreReader,
+        high: Hash,
+        depth: u64,
+    ) -> Result<Vec<Hash>, PruningProofManagerInternalError> {
+        let high_gd = ghostdag_store
+            .get_compact_data(high)
+            .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
+        let mut current_gd = high_gd;
+        let mut current = high;
+        let mut res = vec![current];
+        while current_gd.blue_score + depth >= high_gd.blue_score {
+            if current_gd.selected_parent.is_origin() {
+                break;
+            }
+            let prev = current;
+            current = current_gd.selected_parent;
+            res.push(current);
+            current_gd = ghostdag_store.get_compact_data(current).map_err(|err| {
+                PruningProofManagerInternalError::BlockAtDepth(format!(
+                    "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
+                    high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
+                ))
+            })?;
+        }
+        Ok(res)
     }
 
     fn block_at_depth(

@@ -310,7 +310,7 @@ where
             subscriber
         });
         let utxos_changed_capacity = match policies.utxo_changed {
-            UtxosChangedMutationPolicy::AddressSet => subscription_context.address_tracker.max_addresses(),
+            UtxosChangedMutationPolicy::AddressSet => subscription_context.address_tracker.addresses_preallocation(),
             UtxosChangedMutationPolicy::Wildcard => None,
         };
         Self {

@@ -452,9 +452,15 @@ impl HeaderProcessor {
         let mut batch = WriteBatch::default();
 
         for (level, datum) in ghostdag_data.iter().enumerate() {
-            // The data might have been already written when applying the pruning proof.
+            // This data might have been already written when applying the pruning proof.
             self.ghostdag_stores[level].insert_batch(&mut batch, ctx.hash, datum).unwrap_or_exists();
         }
+
+        let mut relations_write = self.relations_stores.write();
+        ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
+            // This data might have been already written when applying the pruning proof.
+            relations_write[level].insert_batch(&mut batch, ctx.hash, parents_by_level).unwrap_or_exists();
+        });
 
         let statuses_write = self.statuses_store.set_batch(&mut batch, ctx.hash, StatusHeaderOnly).unwrap();
 
@@ -463,6 +469,7 @@ impl HeaderProcessor {
 
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
         drop(statuses_write);
+        drop(relations_write);
     }
 
     pub fn process_genesis(&self) {

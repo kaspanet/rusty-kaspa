@@ -294,7 +294,7 @@ impl VirtualStateProcessor {
         self.populate_mempool_transaction_in_utxo_context(mutable_tx, utxo_view)?;
 
         // For non-activated nets (mainnet, TN10) we can update mempool rules to KIP9 beta asap. For
-        // TN11 we need to hard-fork consensus first (since the new beta rules are more relaxed)
+        // TN11 we need to hard-fork consensus first (since the new beta rules are more permissive)
         let kip9_version = if self.storage_mass_activation_daa_score == u64::MAX { Kip9Version::Beta } else { Kip9Version::Alpha };
 
         // Calc the full contextual mass including storage mass
