@@ -219,7 +219,7 @@ struct Inner {
     script_pub_keys: IndexMap<ScriptPublicKey, RefCount>,
 
     /// Maximum address count that can be registered
-    max_addresses: Option<usize>,
+    max_addresses: usize,
 
     /// Set of entries [`Index`] in `script_pub_keys` having their [`RefCount`] at 0 hence considered
     /// empty.
@@ -234,6 +234,9 @@ impl Inner {
 
     /// The lower bound of the maximum address count
     const MAX_ADDRESS_LOWER_BOUND: usize = 6;
+
+    /// Expanded count for a maximum of 1M addresses
+    const DEFAULT_MAX_ADDRESSES: usize = Self::expand_max_addresses(1_000_000);
 
     /// Computes the optimal expanded max address count fitting in the actual allocated size of
     /// the internal storage structure
@@ -262,18 +265,18 @@ impl Inner {
             "Tracker maximum address count cannot exceed {}",
             Self::MAX_ADDRESS_UPPER_BOUND
         );
+        let max_addresses = max_addresses.unwrap_or(Self::DEFAULT_MAX_ADDRESSES);
+        info!("Memory configuration: UTXO changed events wil be tracked for no more than {} addresses", max_addresses);
 
         let script_pub_keys = IndexMap::with_capacity(capacity);
         debug!("Creating an address tracker with a capacity of {}", script_pub_keys.capacity());
-        if let Some(max_addresses) = max_addresses {
-            info!("Tracking UTXO changed events for {} addresses at most", max_addresses);
-        }
+
         let empty_entries = HashSet::with_capacity(capacity);
         Self { script_pub_keys, max_addresses, empty_entries }
     }
 
     fn is_full(&self) -> bool {
-        self.script_pub_keys.len() >= self.max_addresses.unwrap_or(Self::MAX_ADDRESS_UPPER_BOUND) && self.empty_entries.is_empty()
+        self.script_pub_keys.len() >= self.max_addresses && self.empty_entries.is_empty()
     }
 
     fn get(&self, spk: &ScriptPublicKey) -> Option<(Index, RefCount)> {
@@ -396,7 +399,7 @@ impl Tracker {
     pub const MAX_ADDRESS_UPPER_BOUND: usize = Inner::MAX_ADDRESS_UPPER_BOUND;
 
     /// Expanded count for a maximum of 1M addresses
-    pub const DEFAULT_MAX_ADDRESSES: usize = Self::expand_max_addresses(800);
+    pub const DEFAULT_MAX_ADDRESSES: usize = Inner::DEFAULT_MAX_ADDRESSES;
 
     const ADDRESS_CHUNK_SIZE: usize = 1024;
 
@@ -568,7 +571,7 @@ impl Tracker {
     }
 
     pub fn max_addresses(&self) -> Option<usize> {
-        self.inner.read().max_addresses
+        Some(self.inner.read().max_addresses)
     }
 }
 
