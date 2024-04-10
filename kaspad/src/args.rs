@@ -108,7 +108,7 @@ impl Default for Args {
             rpc_max_clients: 128,
             max_tracked_addresses: Tracker::DEFAULT_MAX_ADDRESSES,
             enable_unsynced_mining: false,
-            enable_mainnet_mining: false,
+            enable_mainnet_mining: true,
             testnet: false,
             testnet_suffix: 10,
             devnet: false,
@@ -308,7 +308,7 @@ pub fn cli() -> Command {
                 .long("enable-mainnet-mining")
                 .action(ArgAction::SetTrue)
                 .hide(true)
-                .help("Allow mainnet mining (do not use unless you know what you are doing)"),
+                .help("Allow mainnet mining (currently enabled by default while the flag is kept for backwards compatibility)"),
         )
         .arg(arg!(--utxoindex "Enable the UTXO index"))
         .arg(
@@ -455,6 +455,11 @@ impl Args {
             #[cfg(feature = "devnet-prealloc")]
             prealloc_amount: arg_match_unwrap_or::<u64>(&m, "prealloc-amount", defaults.prealloc_amount),
         };
+
+        if arg_match_unwrap_or::<bool>(&m, "enable-mainnet-mining", false) {
+            println!("\nNOTE: The flag --enable-mainnet-mining is deprecated and defaults to true also w/o explicit setting\n")
+        }
+
         Ok(args)
     }
 }
