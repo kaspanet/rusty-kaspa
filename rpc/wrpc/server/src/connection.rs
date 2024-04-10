@@ -8,7 +8,7 @@ use kaspa_notify::{
 };
 use kaspa_rpc_core::{api::ops::RpcApiOps, notify::mode::NotificationMode, Notification};
 use std::{
-    fmt::Debug,
+    fmt::{Debug, Display},
     sync::{Arc, Mutex},
 };
 use workflow_log::log_trace;
@@ -62,6 +62,12 @@ impl Notify<Notification> for ConnectionInner {
     fn notify(&self, notification: Notification) -> NotifyResult<()> {
         self.send(Connection::into_message(&notification, &self.messenger.encoding().into()))
             .map_err(|err| NotifyError::General(err.to_string()))
+    }
+}
+
+impl Display for ConnectionInner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}@{}", self.id, self.peer)
     }
 }
 
@@ -129,6 +135,12 @@ impl Connection {
             Encoding::Borsh => workflow_rpc::server::protocol::borsh::create_serialized_notification_message(op, msg),
             Encoding::SerdeJson => workflow_rpc::server::protocol::borsh::create_serialized_notification_message(op, msg),
         }
+    }
+}
+
+impl Display for Connection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.inner)
     }
 }
 
