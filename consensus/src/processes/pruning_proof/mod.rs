@@ -691,9 +691,56 @@ impl PruningProofManager {
                     }
                 }
 
+                // Assert that the full 2M chain is actually contained in the composed level proof
+                let set = BlockHashSet::from_iter(headers.iter().map(|h| h.hash));
+                let chain = self
+                    .chain_until_depth(&*self.ghostdag_stores[level], selected_tip, 2 * self.pruning_proof_m)
+                    .map_err(|err| {
+                        dbg!(level, selected_tip, block_at_depth_2m, root);
+                        format!("Assert 2M chain -- level: {}, err: {}", level, err)
+                    })
+                    .unwrap();
+                let chain_len = chain.len();
+                for (i, c) in chain.into_iter().enumerate() {
+                    if !set.contains(&c) {
+                        dbg!(level, selected_tip, block_at_depth_2m, root);
+                        panic!("Assert 2M chain -- missing block {} at index {} out of {} chain blocks", c, i, chain_len);
+                    }
+                }
+
                 headers
             })
             .collect_vec()
+    }
+
+    /// Copy of `block_at_depth` which returns the full chain up to depth. Temporarily used for assertion purposes.
+    fn chain_until_depth(
+        &self,
+        ghostdag_store: &impl GhostdagStoreReader,
+        high: Hash,
+        depth: u64,
+    ) -> Result<Vec<Hash>, PruningProofManagerInternalError> {
+        let high_gd = ghostdag_store
+            .get_compact_data(high)
+            .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
+        let mut current_gd = high_gd;
+        let mut current = high;
+        let mut res = vec![current];
+        while current_gd.blue_score + depth >= high_gd.blue_score {
+            if current_gd.selected_parent.is_origin() {
+                break;
+            }
+            let prev = current;
+            current = current_gd.selected_parent;
+            res.push(current);
+            current_gd = ghostdag_store.get_compact_data(current).map_err(|err| {
+                PruningProofManagerInternalError::BlockAtDepth(format!(
+                    "high: {}, depth: {}, current: {}, high blue score: {}, current blue score: {}, {}",
+                    high, depth, prev, high_gd.blue_score, current_gd.blue_score, err
+                ))
+            })?;
+        }
+        Ok(res)
     }
 
     fn block_at_depth(
