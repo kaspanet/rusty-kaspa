@@ -675,6 +675,17 @@ impl PruningProofManager {
                 let mut queue = BinaryHeap::<Reverse<SortableBlock>>::new();
                 let mut visited = BlockHashSet::new();
                 queue.push(Reverse(SortableBlock::new(root, self.ghostdag_stores[level].get_blue_work(root).unwrap())));
+                if root != block_at_depth_2m {
+                    // In rare cases DAG reachability data might be more extensive than current level relations (since
+                    // it can include information from other levels as well). This might lead to a situation where if
+                    // root is in the past or anticone of block_at_depth_2m, traversing up via level parents might miss
+                    // some blocks in the chain of block_at_depth_2m. Hence, in order to insure that the full 2M chain
+                    // is included, we explicitly add block_at_depth_2m as a traversal root as well
+                    queue.push(Reverse(SortableBlock::new(
+                        block_at_depth_2m,
+                        self.ghostdag_stores[level].get_blue_work(block_at_depth_2m).unwrap(),
+                    )));
+                }
                 while let Some(current) = queue.pop() {
                     let current = current.0.hash;
                     if !visited.insert(current) {
