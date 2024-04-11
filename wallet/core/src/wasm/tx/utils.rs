@@ -7,7 +7,7 @@ use crate::wasm::tx::mass::MassCalculator;
 use kaspa_addresses::{Address, AddressT};
 use kaspa_consensus_client::*;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-use kaspa_consensus_wasm::*;
+//use kaspa_consensus_wasm::*;
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 use workflow_core::runtime::is_web;
 
@@ -22,7 +22,7 @@ pub fn create_transaction_js(
     payload: JsValue,
     sig_op_count: JsValue,
     minimum_signatures: JsValue,
-) -> crate::result::Result<SignableTransaction> {
+) -> crate::result::Result<Transaction> {
     let change_address = Address::try_cast_from(change_address)?;
     let params = get_consensus_params_by_address(change_address.as_ref());
     let mc = MassCalculator::new(params);
@@ -69,9 +69,9 @@ pub fn create_transaction_js(
     let outputs: Vec<TransactionOutput> = outputs.into();
     let transaction = Transaction::new(None, 0, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload)?;
     let _fee = mc.calc_minimum_transaction_relay_fee(&transaction, minimum_signatures);
-    let mtx = SignableTransaction::new(transaction, entries.into());
+    //let mtx = SignableTransaction::new(transaction, entries.into());
 
-    Ok(mtx)
+    Ok(transaction)
 }
 
 declare! {

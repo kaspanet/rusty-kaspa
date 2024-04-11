@@ -109,8 +109,14 @@ impl TransactionInput {
     }
 
     #[wasm_bindgen(setter = previousOutpoint)]
-    pub fn set_previous_outpoint(&mut self, js_value: &JsValue) {
-        self.inner().previous_outpoint = js_value.try_into().expect("invalid signature script");
+    pub fn set_previous_outpoint(&mut self, js_value: &JsValue) -> Result<()> {
+        match js_value.try_into() {
+            Ok(outpoint) => {
+                self.inner().previous_outpoint = outpoint;
+                Ok(())
+            }
+            Err(_) => Err(Error::custom("invalid outpoint script".to_string())),
+        }
     }
 
     #[wasm_bindgen(getter = signatureScript)]
@@ -119,8 +125,14 @@ impl TransactionInput {
     }
 
     #[wasm_bindgen(setter = signatureScript)]
-    pub fn set_signature_script_from_js_value(&mut self, js_value: JsValue) {
-        self.inner().signature_script = js_value.try_as_vec_u8().expect("invalid signature script");
+    pub fn set_signature_script_from_js_value(&mut self, js_value: JsValue) -> Result<()> {
+        match js_value.try_as_vec_u8() {
+            Ok(signature) => {
+                self.set_signature_script(signature);
+                Ok(())
+            }
+            Err(_) => Err(Error::custom("invalid signature script".to_string())),
+        }
     }
 
     #[wasm_bindgen(getter = sequence)]
@@ -146,6 +158,16 @@ impl TransactionInput {
     #[wasm_bindgen(getter = utxo)]
     pub fn get_utxo(&self) -> Option<UtxoEntryReference> {
         self.inner().utxo.clone()
+    }
+}
+
+impl TransactionInput {
+    pub fn set_signature_script(&self, signature_script: Vec<u8>) {
+        self.inner().signature_script = signature_script;
+    }
+
+    pub fn script_public_key(&self) -> Option<ScriptPublicKey> {
+        self.utxo().map(|utxo_ref| utxo_ref.utxo.script_public_key.clone())
     }
 }
 

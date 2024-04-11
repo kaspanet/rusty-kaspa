@@ -1,12 +1,9 @@
 use crate::imports::*;
 use crate::result::Result;
 use js_sys::Array;
-use kaspa_consensus_core::{
-    hashing::sighash_type::SIG_HASH_ALL,
-    sign::{sign_with_multiple_v2, verify},
-    tx,
-};
-use kaspa_consensus_wasm::SignableTransaction;
+use kaspa_consensus_client::{sign_with_multiple_v3, Transaction};
+use kaspa_consensus_core::tx::PopulatedTransaction;
+use kaspa_consensus_core::{hashing::sighash_type::SIG_HASH_ALL, sign::verify};
 use kaspa_hashes::Hash;
 use kaspa_wallet_keys::privatekey::PrivateKey;
 use serde_wasm_bindgen::from_value;
@@ -34,7 +31,7 @@ impl TryFrom<PrivateKeyArrayT> for Vec<PrivateKey> {
 /// `signTransaction()` is a helper function to sign a transaction using a private key array or a signer array.
 /// @category Wallet SDK
 #[wasm_bindgen(js_name = "signTransaction")]
-pub fn js_sign_transaction(mtx: SignableTransaction, signer: PrivateKeyArrayT, verify_sig: bool) -> Result<SignableTransaction> {
+pub fn js_sign_transaction(tx: Transaction, signer: PrivateKeyArrayT, verify_sig: bool) -> Result<Transaction> {
     if signer.is_array() {
         let mut private_keys: Vec<[u8; 32]> = vec![];
         for key in Array::from(&signer).iter() {
@@ -42,39 +39,29 @@ pub fn js_sign_transaction(mtx: SignableTransaction, signer: PrivateKeyArrayT, v
             private_keys.push(key.as_ref().secret_bytes());
         }
 
-        let mtx = sign_transaction(mtx, &private_keys, verify_sig).map_err(|err| Error::Custom(format!("Unable to sign: {err:?}")))?;
+        let tx = sign_transaction(tx, &private_keys, verify_sig).map_err(|err| Error::Custom(format!("Unable to sign: {err:?}")))?;
         private_keys.zeroize();
-        Ok(mtx)
+        Ok(tx)
     } else {
         Err(Error::custom("signTransaction() requires an array of signatures"))
     }
 }
 
-pub fn sign_transaction(mtx: SignableTransaction, private_keys: &[[u8; 32]], verify_sig: bool) -> Result<SignableTransaction> {
-    let entries = mtx.entries.clone();
-    let mtx = sign_transaction_impl(mtx.into(), private_keys, verify_sig)?;
-    let mtx = SignableTransaction::try_from((mtx, entries))?;
-    Ok(mtx)
-}
-
-fn sign_transaction_impl(
-    mtx: tx::SignableTransaction,
-    private_keys: &[[u8; 32]],
-    verify_sig: bool,
-) -> Result<tx::SignableTransaction> {
-    let mtx = sign(mtx, private_keys)?;
+pub fn sign_transaction(tx: Transaction, private_keys: &[[u8; 32]], verify_sig: bool) -> Result<Transaction> {
+    let tx = sign(tx, private_keys)?;
     if verify_sig {
-        let tx_verifiable = mtx.as_verifiable();
-        verify(&tx_verifiable)?;
+        let (cctx, utxos) = tx.tx_and_utxos();
+        let populated_transaction = PopulatedTransaction::new(&cctx, utxos);
+        verify(&populated_transaction)?;
     }
-    Ok(mtx)
+    Ok(tx)
 }
 
 /// Sign a transaction using schnorr, returns a new transaction with the signatures added.
 /// The resulting transaction may be partially signed if the supplied keys are not sufficient
 /// to sign all of its inputs.
-pub fn sign(mutable_tx: tx::SignableTransaction, privkeys: &[[u8; 32]]) -> Result<tx::SignableTransaction> {
-    Ok(sign_with_multiple_v2(mutable_tx, privkeys).unwrap())
+pub fn sign(tx: Transaction, privkeys: &[[u8; 32]]) -> Result<Transaction> {
+    Ok(sign_with_multiple_v3(tx, privkeys)?.unwrap())
 }
 
 /// @category Wallet SDK
