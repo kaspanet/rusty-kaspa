@@ -18,6 +18,8 @@ cfg_if! {
             Disconnect = "disconnect",
             UtxoIndexNotEnabled = "utxo-index-not-enabled",
             SyncState = "sync-state",
+            UtxoProcStart = "utxo-proc-start",
+            UtxoProcStop = "utxo-proc-stop",
             UtxoProcError = "utxo-proc-error",
             DaaScoreChange = "daa-score-change",
             Pending = "pending",
@@ -47,6 +49,7 @@ cfg_if! {
             | IDiscoveryEvent
             | IBalanceEvent
             | IErrorEvent
+            | undefined
             ;
 
         /**
@@ -60,6 +63,8 @@ cfg_if! {
             "utxo-index-not-enabled": IUtxoIndexNotEnabledEvent,
             "sync-state": ISyncStateEvent,
             "server-status": IServerStatusEvent,
+            "utxo-proc-start": undefined,
+            "utxo-proc-stop": undefined,
             "utxo-proc-error": IUtxoProcErrorEvent,
             "daa-score-change": IDaaScoreChangeEvent,
             "pending": IPendingEvent,
@@ -178,6 +183,7 @@ cfg_if! {
             | IDiscoveryEvent
             | IBalanceEvent
             | IErrorEvent
+            | undefined
             ;
 
         /**
@@ -195,7 +201,7 @@ cfg_if! {
              "wallet-create": IWalletCreateEvent,
              "wallet-reload": IWalletReloadEvent,
              "wallet-error": IWalletErrorEvent,
-            //  "wallet-close": IWalletCloseEvent,
+             "wallet-close": undefined,
              "prv-key-data-create": IPrvKeyDataCreateEvent,
              "account-activation": IAccountActivationEvent,
              "account-deactivation": IAccountDeactivationEvent,
@@ -203,8 +209,8 @@ cfg_if! {
              "account-create": IAccountCreateEvent,
              "account-update": IAccountUpdateEvent,
              "server-status": IServerStatusEvent,
-            //  "utxo-proc-start": IUtxoProcStartEvent,
-            //  "utxo-proc-stop": IUtxoProcStopEvent,
+             "utxo-proc-start": undefined,
+             "utxo-proc-stop": undefined,
              "utxo-proc-error": IUtxoProcErrorEvent,
              "daa-score-change": IDaaScoreChangeEvent,
              "pending": IPendingEvent,
