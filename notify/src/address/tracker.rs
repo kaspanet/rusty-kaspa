@@ -18,22 +18,20 @@ pub trait Indexer {
 
     fn contains(&self, index: Index) -> bool;
 
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool;
+}
+
+trait IndexerStorage {
     /// Inserts an [`Index`].
     ///
     /// Returns true if the index was not present and was successfully inserted, false otherwise.
-    ///
-    /// Do not call from outside of this module.
     fn insert(&mut self, index: Index) -> bool;
 
     /// Removes an [`Index`].
     ///
     /// Returns true if the index was present and successfully removed, false otherwise.
-    ///
-    /// Do not call from outside of this module.
     fn remove(&mut self, index: Index) -> bool;
-
-    fn len(&self) -> usize;
-    fn is_empty(&self) -> bool;
 }
 
 pub type Index = u32;
@@ -46,7 +44,7 @@ pub type Counters = CounterMap;
 pub type Indexes = IndexSet;
 
 /// Tracks reference count of indexes
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct CounterMap {
     /// Tracker storing the addresses
     tracker: Tracker,
@@ -64,9 +62,27 @@ impl CounterMap {
         Self { tracker, indexes: HashMap::with_capacity(capacity) }
     }
 
-    #[cfg(test)]
-    pub fn with_counters(tracker: Tracker, counters: Vec<Counter>) -> Self {
-        Self { tracker, indexes: counters.into_iter().map(|x| (x.index, x.count)).collect() }
+    /// Registers a vector of addresses, inserting them if not existing yet and increasing their reference count.
+    ///
+    /// On success, returns the addresses that were actually inserted.
+    ///
+    /// Fails with [`Error::MaxCapacityReached`] if the maximum capacity of the underlying [`Tracker`] gets reached,
+    /// leaving both the tracker and the object unchanged.
+    pub fn register(&mut self, addresses: Vec<Address>) -> Result<Vec<Address>> {
+        self.tracker.clone().register(self, addresses)
+    }
+
+    /// Unregisters a vector of addresses, decreasing their reference count when existing in the map and removing them
+    /// when their reference count reaches zero.
+    ///
+    /// Returns the addresses that where successfully removed.
+    pub fn unregister(&mut self, addresses: Vec<Address>) -> Vec<Address> {
+        self.tracker.clone().unregister(self, addresses)
+    }
+
+    /// Unregisters all indexes, draining the map in the process.
+    pub fn clear(&mut self) {
+        self.tracker.clone().clear_counters(self)
     }
 
     pub fn iter(&self) -> hash_map::Iter<'_, Index, RefCount> {
@@ -84,6 +100,11 @@ impl CounterMap {
     pub fn capacity(&self) -> usize {
         self.indexes.capacity()
     }
+
+    #[cfg(test)]
+    pub fn test_direct_insert(&mut self, index: Index) -> bool {
+        self.insert(index)
+    }
 }
 
 impl Indexer for CounterMap {
@@ -95,6 +116,16 @@ impl Indexer for CounterMap {
         self.indexes.contains_key(&index)
     }
 
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+}
+
+impl IndexerStorage for CounterMap {
     fn insert(&mut self, index: Index) -> bool {
         let mut result = true;
         self.indexes
@@ -117,21 +148,23 @@ impl Indexer for CounterMap {
         });
         result
     }
-
-    fn len(&self) -> usize {
-        self.len()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.is_empty()
-    }
 }
 
 impl Clone for CounterMap {
     fn clone(&self) -> Self {
-        //panic!("Unexpected CounterMap cloning");
+        // Clone the indexes...
         let indexes = self.indexes.clone();
+        // ...and make sure that the tracker increases the reference count of each cloned index
+        self.tracker.reference_indexes(indexes.keys());
+
         Self { tracker: self.tracker.clone(), indexes }
+    }
+}
+
+impl Drop for CounterMap {
+    fn drop(&mut self) {
+        // Decreases the tracker indexes reference count
+        self.clear()
     }
 }
 
@@ -141,48 +174,6 @@ impl PartialEq for CounterMap {
     }
 }
 impl Eq for CounterMap {}
-
-#[cfg(test)]
-#[derive(Debug, Clone)]
-#[cfg(test)]
-pub struct Counter {
-    pub index: Index,
-    pub count: RefCount,
-    pub locked: bool,
-}
-
-#[cfg(test)]
-impl Counter {
-    pub fn new(index: Index, count: RefCount) -> Self {
-        Self { index, count, locked: false }
-    }
-
-    pub fn active(&self) -> bool {
-        self.count > 0
-    }
-}
-
-#[cfg(test)]
-impl PartialEq for Counter {
-    fn eq(&self, other: &Self) -> bool {
-        self.index == other.index
-    }
-}
-#[cfg(test)]
-impl Eq for Counter {}
-
-#[cfg(test)]
-impl PartialOrd for Counter {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-#[cfg(test)]
-impl Ord for Counter {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.index.cmp(&other.index)
-    }
-}
 
 /// Set of `Index`
 #[derive(Debug)]
@@ -203,6 +194,28 @@ impl IndexSet {
         Self { tracker, indexes: HashSet::with_capacity(capacity) }
     }
 
+    /// Registers a vector of addresses, inserting them if not existing yet.
+    ///
+    /// On success, returns the addresses that were actually inserted.
+    ///
+    /// Fails with [`Error::MaxCapacityReached`] if the maximum capacity of the underlying [`Tracker`] gets reached,
+    /// leaving both the tracker and the object unchanged.
+    pub fn register(&mut self, addresses: Vec<Address>) -> Result<Vec<Address>> {
+        self.tracker.clone().register(self, addresses)
+    }
+
+    /// Unregisters a vector of addresses, removing them if they exist.
+    ///
+    /// Returns the addresses that where successfully removed.
+    pub fn unregister(&mut self, addresses: Vec<Address>) -> Vec<Address> {
+        self.tracker.clone().unregister(self, addresses)
+    }
+
+    /// Unregisters all indexes, draining the set in the process.
+    pub fn clear(&mut self) {
+        self.tracker.clone().clear_indexes(self)
+    }
+
     pub fn iter(&self) -> hash_set::Iter<'_, Index> {
         self.indexes.iter()
     }
@@ -219,8 +232,9 @@ impl IndexSet {
         self.indexes.capacity()
     }
 
-    pub fn drain(&mut self) -> hash_set::Drain<'_, Index> {
-        self.indexes.drain()
+    #[cfg(test)]
+    pub fn test_direct_insert(&mut self, index: Index) -> bool {
+        self.insert(index)
     }
 }
 
@@ -233,14 +247,6 @@ impl Indexer for IndexSet {
         self.indexes.contains(&index)
     }
 
-    fn insert(&mut self, index: Index) -> bool {
-        self.indexes.insert(index)
-    }
-
-    fn remove(&mut self, index: Index) -> bool {
-        self.indexes.remove(&index)
-    }
-
     fn len(&self) -> usize {
         self.len()
     }
@@ -250,9 +256,31 @@ impl Indexer for IndexSet {
     }
 }
 
+impl IndexerStorage for IndexSet {
+    fn insert(&mut self, index: Index) -> bool {
+        self.indexes.insert(index)
+    }
+
+    fn remove(&mut self, index: Index) -> bool {
+        self.indexes.remove(&index)
+    }
+}
+
 impl Clone for IndexSet {
     fn clone(&self) -> Self {
-        panic!("Unexpected IndexSet cloning");
+        // Clone the indexes...
+        let indexes = self.indexes.clone();
+        // ...and make sure that the tracker increases the reference count of each cloned index
+        self.tracker.reference_indexes(indexes.iter());
+
+        Self { tracker: self.tracker.clone(), indexes }
+    }
+}
+
+impl Drop for IndexSet {
+    fn drop(&mut self) {
+        // Decreases the tracker indexes reference count
+        self.clear()
     }
 }
 
@@ -483,11 +511,12 @@ impl Tracker {
         TrackerReadGuard { guard: self.inner.read() }
     }
 
-    pub fn get(&self, spk: &ScriptPublicKey) -> Option<(Index, RefCount)> {
+    fn get(&self, spk: &ScriptPublicKey) -> Option<(Index, RefCount)> {
         self.inner.read().get(spk)
     }
 
-    pub fn get_address(&self, address: &Address) -> Option<(Index, RefCount)> {
+    #[cfg(test)]
+    fn get_address(&self, address: &Address) -> Option<(Index, RefCount)> {
         self.get(&pay_to_address_script(address))
     }
 
@@ -503,26 +532,13 @@ impl Tracker {
         self.contains(indexes, &pay_to_address_script(address))
     }
 
-    /// Returns an index set containing the indexes of all the addresses both registered in the tracker and in `indexes`.
-    pub fn unregistering_indexes(&self, indexes: &Indexes, addresses: &[Address]) -> Indexes {
-        Indexes::new(
-            self.clone(),
-            addresses
-                .iter()
-                .filter_map(|address| {
-                    self.get(&pay_to_address_script(address)).and_then(|(index, _)| indexes.contains(index).then_some(index))
-                })
-                .collect(),
-        )
-    }
-
     /// Tries to register an `Address` vector into an `Indexer`. The addresses are first registered in the tracker if unknown
     /// yet and their reference count is increased when successfully inserted in the `Indexer`.
     ///
     /// On success, returns the addresses that were actually inserted in the `Indexer`.
     ///
     /// Fails if the maximum capacity gets reached, leaving the tracker unchanged.
-    pub fn register<T: Indexer>(&self, indexes: &mut T, mut addresses: Vec<Address>) -> Result<Vec<Address>> {
+    fn register<T: Indexer + IndexerStorage>(&self, indexes: &mut T, mut addresses: Vec<Address>) -> Result<Vec<Address>> {
         let mut rollback: bool = false;
         {
             let mut counter: usize = 0;
@@ -564,7 +580,7 @@ impl Tracker {
     /// decreased.
     ///
     /// Returns the addresses that where successfully unregistered from the `Indexer`.
-    pub fn unregister<T: Indexer>(&self, indexes: &mut T, mut addresses: Vec<Address>) -> Vec<Address> {
+    fn unregister<T: Indexer + IndexerStorage>(&self, indexes: &mut T, mut addresses: Vec<Address>) -> Vec<Address> {
         if indexes.is_empty() {
             vec![]
         } else {
@@ -591,11 +607,30 @@ impl Tracker {
         }
     }
 
+    fn reference_indexes<'a>(&self, indexes: impl Iterator<Item = &'a Index>) {
+        for chunk in &indexes.chunks(Self::ADDRESS_CHUNK_SIZE) {
+            let mut inner = self.inner.write();
+            chunk.for_each(|index| inner.inc_count(*index));
+        }
+    }
+
     /// Unregisters all indexes contained in `indexes`, draining it in the process.
-    pub fn unregister_indexes(&self, indexes: &mut Indexes) {
-        for chunk in &indexes.drain().chunks(Self::ADDRESS_CHUNK_SIZE) {
+    fn clear_indexes(&self, indexes: &mut Indexes) {
+        for chunk in &indexes.indexes.drain().chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
             chunk.for_each(|index| inner.dec_count(index));
+        }
+    }
+
+    /// Unregisters all indexes contained in `counters`, draining it in the process.
+    fn clear_counters(&self, counters: &mut Counters) {
+        for chunk in &counters.indexes.drain().chunks(Self::ADDRESS_CHUNK_SIZE) {
+            let mut inner = self.inner.write();
+            chunk.for_each(|(index, counter)| {
+                if counter > 0 {
+                    inner.dec_count(index)
+                }
+            });
         }
     }
 
@@ -682,7 +717,7 @@ mod tests {
 
         // Register addresses 0..MAX_ADDRESSES
         let mut idx_a = Indexes::new(tracker.clone(), vec![]);
-        let aa = tracker.register(&mut idx_a, aa).unwrap();
+        let aa = idx_a.register(aa).unwrap();
         let aai = aa.iter().map(|x| tracker.get_address(x).unwrap().0).collect_vec();
         assert_eq!(aa.len(), MAX_ADDRESSES, "all addresses should be registered");
         assert_eq!(idx_a.len(), MAX_ADDRESSES, "all addresses should be registered");
@@ -693,30 +728,27 @@ mod tests {
         assert_eq!(tracker.capacity(), CAPACITY);
 
         // Try to re-register addresses 0..MAX_ADDRESSES
-        let a = tracker.register(&mut idx_a, aa).unwrap();
+        let a = idx_a.register(aa).unwrap();
         assert_eq!(a.len(), 0, "all addresses should already be registered");
         assert_eq!(idx_a.len(), MAX_ADDRESSES, "all addresses should still be registered");
 
         // Try to register an additional address while the tracker is full
-        assert!(
-            tracker.register(&mut idx_a, create_addresses(MAX_ADDRESSES, 1)).is_err(),
-            "the tracker is full and should refuse a new address"
-        );
+        assert!(idx_a.register(create_addresses(MAX_ADDRESSES, 1)).is_err(), "the tracker is full and should refuse a new address");
 
         // Register address set 1..MAX_ADDRESSES, already fully covered by the tracker address set
         const AB_COUNT: usize = MAX_ADDRESSES - 1;
         let mut idx_b = Indexes::new(tracker.clone(), vec![]);
-        let ab = tracker.register(&mut idx_b, create_addresses(1, AB_COUNT)).unwrap();
+        let ab = idx_b.register(create_addresses(1, AB_COUNT)).unwrap();
         assert_eq!(ab.len(), AB_COUNT, "all addresses should be registered");
         assert_eq!(idx_b.len(), AB_COUNT, "all addresses should be registered");
 
         // Empty the tracker entry containing A0
-        assert_eq!(tracker.unregister(&mut idx_a, create_addresses(0, 1)).len(), 1);
+        assert_eq!(idx_a.unregister(create_addresses(0, 1)).len(), 1);
         assert_eq!(idx_a.len(), MAX_ADDRESSES - 1, "entry #0 with address A0 should now be marked empty");
 
         // Fill the empty entry with a single new address A8
         const AC_COUNT: usize = 1;
-        let ac = tracker.register(&mut idx_a, create_addresses(MAX_ADDRESSES, AC_COUNT)).unwrap();
+        let ac = idx_a.register(create_addresses(MAX_ADDRESSES, AC_COUNT)).unwrap();
         let aci = ac.iter().map(|x| tracker.get_address(x).unwrap().0).collect_vec();
         assert_eq!(ac.len(), AC_COUNT, "a new address should be registered");
         assert_eq!(idx_a.len(), MAX_ADDRESSES, "a new address should be registered");

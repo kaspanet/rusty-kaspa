@@ -79,7 +79,7 @@ impl Deref for SubscriptionContext {
 #[cfg(test)]
 mod tests {
     use crate::{
-        address::tracker::{CounterMap, Index, IndexSet, Indexer, RefCount, Tracker},
+        address::tracker::{CounterMap, Index, IndexSet, RefCount, Tracker},
         subscription::SubscriptionContext,
     };
     use itertools::Itertools;
@@ -235,7 +235,7 @@ mod tests {
                         let mut item = CounterMap::with_capacity(tracker.clone(), ITEM_LEN);
 
                         (0..ITEM_LEN as Index).for_each(|x| {
-                            item.insert(x);
+                            item.test_direct_insert(x);
                         });
                         item
                     })
@@ -339,7 +339,7 @@ mod tests {
                         let mut item = IndexSet::with_capacity(tracker.clone(), ITEM_LEN);
 
                         (0..ITEM_LEN as Index).for_each(|x| {
-                            item.insert(x);
+                            item.test_direct_insert(x);
                         });
                         item
                     })

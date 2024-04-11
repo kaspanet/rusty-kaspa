@@ -152,7 +152,7 @@ impl Subscription for VirtualChainChangedSubscription {
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UtxosChangedSubscription {
     all: usize,
     indexes: Counters,
@@ -176,12 +176,12 @@ impl UtxosChangedSubscription {
             .collect_vec()
     }
 
-    pub fn register(&mut self, addresses: Vec<Address>, context: &SubscriptionContext) -> Result<Vec<Address>> {
-        context.address_tracker.register(&mut self.indexes, addresses)
+    pub fn register(&mut self, addresses: Vec<Address>) -> Result<Vec<Address>> {
+        self.indexes.register(addresses)
     }
 
-    pub fn unregister(&mut self, addresses: Vec<Address>, context: &SubscriptionContext) -> Vec<Address> {
-        context.address_tracker.unregister(&mut self.indexes, addresses)
+    pub fn unregister(&mut self, addresses: Vec<Address>) -> Vec<Address> {
+        self.indexes.unregister(addresses)
     }
 }
 
@@ -199,7 +199,7 @@ impl Compounded for UtxosChangedSubscription {
                         }
                     } else {
                         // Add(A)
-                        let added = self.register(scope.addresses, context).expect("compounded always registers");
+                        let added = self.register(scope.addresses).expect("compounded always registers");
                         if !added.is_empty() && self.all == 0 {
                             return Some(Mutation::new(Command::Start, UtxosChangedScope::new(added).into()));
                         }
@@ -208,7 +208,7 @@ impl Compounded for UtxosChangedSubscription {
                 Command::Stop => {
                     if !scope.addresses.is_empty() {
                         // Remove(R)
-                        let removed = self.unregister(scope.addresses, context);
+                        let removed = self.unregister(scope.addresses);
                         if !removed.is_empty() && self.all == 0 {
                             return Some(Mutation::new(Command::Stop, UtxosChangedScope::new(removed).into()));
                         }
@@ -254,10 +254,7 @@ mod tests {
 
     use super::super::*;
     use super::*;
-    use crate::{
-        address::{test_helpers::get_3_addresses, tracker::Counter},
-        scope::BlockAddedScope,
-    };
+    use crate::{address::test_helpers::get_3_addresses, scope::BlockAddedScope};
     use std::panic::AssertUnwindSafe;
 
     struct Step {
@@ -360,14 +357,14 @@ mod tests {
     #[allow(clippy::redundant_clone)]
     fn test_utxos_changed_compounding() {
         kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
-        let tracker = Tracker::new(None);
+        let context = SubscriptionContext::new();
         let a_stock = get_3_addresses(true);
 
         let a = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<Vec<_>>();
         let m = |command: Command, indexes: &[usize]| -> Mutation {
             Mutation { command, scope: Scope::UtxosChanged(UtxosChangedScope::new(a(indexes))) }
         };
-        let none = Box::<UtxosChangedSubscription>::default;
+        let none = || Box::new(UtxosChangedSubscription::new(context.address_tracker.clone()));
 
         let add_all = || m(Command::Start, &[]);
         let remove_all = || m(Command::Stop, &[]);
@@ -377,10 +374,15 @@ mod tests {
         let remove_0 = || m(Command::Stop, &[0]);
         let remove_1 = || m(Command::Stop, &[1]);
 
+        let final_tracker = Tracker::new(None);
+        let mut final_indexes = Counters::new(final_tracker.clone());
+        final_indexes.register(a(&[0, 1])).unwrap();
+        final_indexes.unregister(a(&[0, 1]));
+
         let test = Test {
             name: "UtxosChanged",
-            context: SubscriptionContext::new(),
             initial_state: none(),
+            context,
             steps: vec![
                 Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
                 Step { name: "add all 2", mutation: add_all(), result: None },
@@ -401,13 +403,7 @@ mod tests {
                 Step { name: "remove all 1, revealing a0", mutation: remove_all(), result: Some(add_0()) },
                 Step { name: "remove a0", mutation: remove_0(), result: Some(remove_0()) },
             ],
-            final_state: Box::new(UtxosChangedSubscription {
-                all: 0,
-                indexes: Counters::with_counters(
-                    tracker,
-                    vec![Counter { index: 0, count: 0, locked: true }, Counter { index: 1, count: 0, locked: false }],
-                ),
-            }),
+            final_state: Box::new(UtxosChangedSubscription { all: 0, indexes: final_indexes }),
         };
         let mut state = test.run();
 
