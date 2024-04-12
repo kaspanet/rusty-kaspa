@@ -179,7 +179,7 @@ where
                             let event = notification.event_type();
                             for (subscription, encoding_set) in plan[event].iter() {
                                 // ... by subscription scope
-                                if let Some(applied_notification) = notification.apply_subscription(&**subscription, &context) {
+                                if let Some(applied_notification) = notification.apply_subscription(&**subscription, ) {
                                     for (encoding, connection_set) in encoding_set.iter() {
                                         // ... by message encoding
                                         let message = C::into_message(&applied_notification, encoding);

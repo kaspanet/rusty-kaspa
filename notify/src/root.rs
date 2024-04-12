@@ -117,7 +117,7 @@ where
     fn send(&self, notification: N) -> Result<()> {
         let event = notification.event_type();
         let subscription = &self.subscriptions.read()[event];
-        if let Some(applied_notification) = notification.apply_subscription(&**subscription, &self.subscription_context) {
+        if let Some(applied_notification) = notification.apply_subscription(&**subscription) {
             self.sender.try_send(applied_notification)?;
         }
         Ok(())
@@ -138,7 +138,7 @@ where
         let event = notification.event_type();
         let subscription = &self.subscriptions.read()[event];
         if subscription.active() {
-            if let Some(applied_notification) = notification.apply_subscription(&**subscription, &self.subscription_context) {
+            if let Some(applied_notification) = notification.apply_subscription(&**subscription) {
                 self.sender.try_send(applied_notification)?;
             }
         }
