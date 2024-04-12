@@ -1,5 +1,5 @@
 use crate::{
-    address::tracker::{Index, Indexes, Tracker},
+    address::tracker::{Index, Indexer, Indexes, Tracker},
     error::Result,
     events::EventType,
     listener::ListenerId,
@@ -249,8 +249,12 @@ impl UtxosChangedSubscriptionData {
         self.state = new_state;
     }
 
-    pub fn contains(&self, spk: &ScriptPublicKey, context: &SubscriptionContext) -> bool {
-        context.address_tracker.contains(&self.indexes, spk)
+    pub fn tracker(&self) -> &Tracker {
+        self.indexes.tracker()
+    }
+
+    pub fn contains(&self, spk: &ScriptPublicKey) -> bool {
+        self.indexes.contains_spk(spk)
     }
 
     pub fn len(&self) -> usize {
@@ -269,8 +273,8 @@ impl UtxosChangedSubscriptionData {
         self.indexes.iter()
     }
 
-    pub fn contains_address(&self, address: &Address, context: &SubscriptionContext) -> bool {
-        context.address_tracker.contains_address(&self.indexes, address)
+    pub fn contains_address(&self, address: &Address) -> bool {
+        self.indexes.contains(address)
     }
 
     pub fn to_addresses(&self, prefix: Prefix, context: &SubscriptionContext) -> Vec<Address> {

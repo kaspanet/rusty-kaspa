@@ -143,11 +143,7 @@ pub mod test_helpers {
             }
         }
 
-        fn apply_utxos_changed_subscription(
-            &self,
-            subscription: &UtxosChangedSubscription,
-            context: &SubscriptionContext,
-        ) -> Option<Self> {
+        fn apply_utxos_changed_subscription(&self, subscription: &UtxosChangedSubscription, _: &SubscriptionContext) -> Option<Self> {
             match subscription.active() {
                 true => {
                     if let TestNotification::UtxosChanged(ref payload) = self {
@@ -156,12 +152,8 @@ pub mod test_helpers {
                             // trace!("apply_utxos_changed_subscription: Notification payload {:?}", payload);
                             // trace!("apply_utxos_changed_subscription: Subscription content {:?}", subscription);
                             // trace!("apply_utxos_changed_subscription: Subscription Context {}", context.address_tracker);
-                            let addresses = payload
-                                .addresses
-                                .iter()
-                                .filter(|x| subscription.contains_address(x, context))
-                                .cloned()
-                                .collect::<Vec<_>>();
+                            let addresses =
+                                payload.addresses.iter().filter(|x| subscription.contains_address(x)).cloned().collect::<Vec<_>>();
                             if !addresses.is_empty() {
                                 return Some(TestNotification::UtxosChanged(UtxosChangedNotification {
                                     data: payload.data,

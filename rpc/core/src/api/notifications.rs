@@ -94,15 +94,11 @@ impl NotificationTrait for Notification {
         }
     }
 
-    fn apply_utxos_changed_subscription(
-        &self,
-        subscription: &UtxosChangedSubscription,
-        context: &SubscriptionContext,
-    ) -> Option<Self> {
+    fn apply_utxos_changed_subscription(&self, subscription: &UtxosChangedSubscription, _: &SubscriptionContext) -> Option<Self> {
         match subscription.active() {
             true => {
                 let Self::UtxosChanged(notification) = self else { return None };
-                notification.apply_utxos_changed_subscription(subscription, context).map(Self::UtxosChanged)
+                notification.apply_utxos_changed_subscription(subscription).map(Self::UtxosChanged)
             }
             false => None,
         }

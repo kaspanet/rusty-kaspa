@@ -16,7 +16,18 @@ pub trait Indexer {
     /// The tracker used internally to register/unregister/lookup addresses
     fn tracker(&self) -> &Tracker;
 
-    fn contains(&self, index: Index) -> bool;
+    /// Returns `true` if the `Indexer` contains the index.
+    fn contains_index(&self, index: Index) -> bool;
+
+    /// Returns `true` if the `Indexer` contains the value.
+    fn contains_spk(&self, spk: &ScriptPublicKey) -> bool {
+        self.tracker().get(spk).is_some_and(|(index, counter)| (counter > 0) && self.contains_index(index))
+    }
+
+    /// Returns `true` if the `Indexer` contains the value.
+    fn contains(&self, address: &Address) -> bool {
+        self.contains_spk(&pay_to_address_script(address))
+    }
 
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool;
@@ -112,8 +123,8 @@ impl Indexer for CounterMap {
         &self.tracker
     }
 
-    fn contains(&self, index: Index) -> bool {
-        self.indexes.contains_key(&index)
+    fn contains_index(&self, index: Index) -> bool {
+        self.indexes.get(&index).is_some_and(|counter| *counter > 0)
     }
 
     fn len(&self) -> usize {
@@ -244,7 +255,7 @@ impl Indexer for IndexSet {
         &self.tracker
     }
 
-    fn contains(&self, index: Index) -> bool {
+    fn contains_index(&self, index: Index) -> bool {
         self.indexes.contains(&index)
     }
 
@@ -388,6 +399,11 @@ impl Inner {
             .map(|(spk, _)| extract_script_pub_key_address(spk, prefix).expect("is retro-convertible"))
     }
 
+    /// Get or insert `spk` and returns its index.
+    ///
+    /// Fails with [`Error::MaxCapacityReached`] if the tracker is full and `spk` should have been inserted.
+    ///
+    /// Note: on success, the returned index may point to an empty entry, notably in case of an insertion.
     fn get_or_insert(&mut self, spk: ScriptPublicKey) -> Result<Index> {
         match self.is_full() {
             false => match self.script_pub_keys.entry(spk) {
@@ -539,14 +555,6 @@ impl Tracker {
 
     pub fn get_address_at_index(&self, index: Index, prefix: Prefix) -> Option<Address> {
         self.inner.read().get_index_address(index, prefix)
-    }
-
-    pub fn contains<T: Indexer>(&self, indexes: &T, spk: &ScriptPublicKey) -> bool {
-        self.get(spk).is_some_and(|(index, _)| indexes.contains(index))
-    }
-
-    pub fn contains_address<T: Indexer>(&self, indexes: &T, address: &Address) -> bool {
-        self.contains(indexes, &pay_to_address_script(address))
     }
 
     /// Tries to register an `Address` vector into an `Indexer`. The addresses are first registered in the tracker if unknown
@@ -743,8 +751,8 @@ mod tests {
         assert_eq!(aa.len(), MAX_ADDRESSES, "all addresses should be registered");
         assert_eq!(idx_a.len(), MAX_ADDRESSES, "all addresses should be registered");
         for i in 0..aa.len() {
-            assert!(tracker.contains_address(&idx_a, &aa[i]), "tracker should contain the registered address");
-            assert!(idx_a.contains(aai[i]), "index set should contain the registered address index");
+            assert!(idx_a.contains(&aa[i]), "tracker should contain the registered address");
+            assert!(idx_a.contains_index(aai[i]), "index set should contain the registered address index");
         }
         assert_eq!(tracker.capacity(), CAPACITY);
 
@@ -774,7 +782,7 @@ mod tests {
         assert_eq!(ac.len(), AC_COUNT, "a new address should be registered");
         assert_eq!(idx_a.len(), MAX_ADDRESSES, "a new address should be registered");
         assert_eq!(ac[0], create_addresses(MAX_ADDRESSES, AC_COUNT)[0], "the new address A8 should be registered");
-        assert!(tracker.contains_address(&idx_a, &ac[0]), "the new address A8 should be registered");
+        assert!(idx_a.contains(&ac[0]), "the new address A8 should be registered");
         assert_eq!(aai[0], aci[0], "the newly registered address A8 should occupy the previously emptied entry");
 
         assert_eq!(
