@@ -769,7 +769,7 @@ impl TransactionRecord {
 
     #[wasm_bindgen(getter, js_name = "data")]
     pub fn data_as_js_value(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.binding).unwrap()
+        serde_wasm_bindgen::to_value(&self.transaction_data).unwrap()
     }
 
     /// Check if the transaction record has the given address within the associated UTXO set.
