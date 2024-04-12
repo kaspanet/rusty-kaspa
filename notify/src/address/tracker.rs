@@ -155,7 +155,8 @@ impl Clone for CounterMap {
         // Clone the indexes...
         let indexes = self.indexes.clone();
         // ...and make sure that the tracker increases the reference count of each cloned index
-        self.tracker.reference_indexes(indexes.keys());
+        // which associated ref counter here is non-zero
+        self.tracker.reference_indexes(indexes.iter().filter_map(|(index, count)| (*count > 0).then_some(index)));
 
         Self { tracker: self.tracker.clone(), indexes }
     }
@@ -634,6 +635,8 @@ impl Tracker {
     fn clear_indexes(&self, indexes: &mut Indexes) {
         for chunk in &indexes.indexes.drain().chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
+            // Any index existing in `indexes` was registered in the tracker so it must get
+            // its tracked reference count decreased.
             chunk.for_each(|index| inner.dec_count(index));
         }
     }
@@ -643,6 +646,8 @@ impl Tracker {
         for chunk in &counters.indexes.drain().chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
             chunk.for_each(|(index, counter)| {
+                // If the counter is non-zero, its associated index is currently tracked here so
+                // it must get its tracked reference count decreased.
                 if counter > 0 {
                     inner.dec_count(index)
                 }
