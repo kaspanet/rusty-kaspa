@@ -25,8 +25,6 @@ impl From<&RpcUtxosByAddressesEntry> for UtxoEntryReference {
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "wasm32-sdk")] {
-        use kaspa_consensus_core::tx;
-        use kaspa_consensus_wasm::*;
 
         impl From<TransactionInput> for RpcTransactionInput {
             fn from(tx_input: TransactionInput) -> Self {
@@ -73,25 +71,6 @@ cfg_if::cfg_if! {
                     mass: 0, // TODO: apply mass to all external APIs including wasm
                     verbose_data: None,
                 }
-            }
-        }
-
-        impl TryFrom<SignableTransaction> for RpcTransaction {
-            type Error = crate::error::RpcError;
-            fn try_from(mtx: SignableTransaction) -> crate::error::RpcResult<Self> {
-                let tx = tx::SignableTransaction::from(mtx).tx;
-
-                Ok(RpcTransaction {
-                    version: tx.version,
-                    inputs: RpcTransactionInput::from_transaction_inputs(tx.inputs),
-                    outputs: RpcTransactionOutput::from_transaction_outputs(tx.outputs),
-                    lock_time: tx.lock_time,
-                    subnetwork_id: tx.subnetwork_id,
-                    gas: tx.gas,
-                    payload: tx.payload,
-                    mass: 0, // TODO: apply mass to all external APIs including wasm
-                    verbose_data: None,
-                })
             }
         }
     }

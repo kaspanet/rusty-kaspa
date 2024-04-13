@@ -153,6 +153,20 @@ impl Transaction {
         Array::from_iter(inputs)
     }
 
+    #[wasm_bindgen(getter = addresses)]
+    pub fn addresses(&self) -> kaspa_addresses::AddressArrayT {
+        let mut list = std::collections::HashSet::new();
+        for input in &self.inner.lock().unwrap().inputs {
+            if let Some(utxo) = input.get_utxo() {
+                if let Some(address) = &utxo.utxo.address {
+                    list.insert(address.clone());
+                }
+            }
+        }
+          
+        Array::from_iter(list.into_iter().map(JsValue::from)).unchecked_into()
+    }
+
     #[wasm_bindgen(setter = inputs)]
     pub fn set_inputs_from_js_array(&mut self, js_value: &JsValue) {
         let inputs = Array::from(js_value)

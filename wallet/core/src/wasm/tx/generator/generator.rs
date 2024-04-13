@@ -76,6 +76,11 @@ interface IGeneratorSettingsObject {
      * Optional data payload to be included in the transaction.
      */
     payload?: Uint8Array | HexString;
+
+    /**
+     * NetworkId or network id as string (i.e. `mainnet` or `testnet-11`)
+     */
+    networkId: NetworkId | string
 }
 "#;
 
