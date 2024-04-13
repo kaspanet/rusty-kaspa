@@ -7,7 +7,6 @@ use kaspa_addresses::Address;
 use kaspa_addresses::AddressOrStringArrayT;
 use kaspa_consensus_client::Transaction;
 use kaspa_consensus_client::UtxoEntryReference;
-use kaspa_consensus_wasm::SignableTransaction;
 use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;
 pub use serde_wasm_bindgen::from_value;
 use wasm_bindgen::prelude::*;
@@ -1310,7 +1309,7 @@ try_from! ( args: SubmitBlockResponse, ISubmitBlockResponse, {
 
 declare! {
     ISubmitTransactionRequest,
-    // "ISubmitTransactionRequest | Transaction | SignableTransaction",
+    // "ISubmitTransactionRequest | Transaction",
     r#"
     /**
      * Submit transaction to the node.
@@ -1318,7 +1317,7 @@ declare! {
      * @category Node RPC
      */
     export interface ISubmitTransactionRequest {
-        transaction : Transaction | SignableTransaction,
+        transaction : Transaction,
         allowOrphan? : boolean
     }
     "#,
@@ -1332,12 +1331,7 @@ try_from! ( args: ISubmitTransactionRequest, SubmitTransactionRequest, {
         (args.into(), false)
     };
 
-    let request = if let Ok(signable) = SignableTransaction::try_owned_from(&transaction) {
-        SubmitTransactionRequest {
-            transaction : Transaction::from(signable).into(),
-            allow_orphan,
-        }
-    } else if let Ok(transaction) = Transaction::try_owned_from(&transaction) {
+    let request = if let Ok(transaction) = Transaction::try_owned_from(&transaction) {
         SubmitTransactionRequest {
             transaction : transaction.into(),
             allow_orphan,
