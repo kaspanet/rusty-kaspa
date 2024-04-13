@@ -49,6 +49,10 @@ declare! {
 /// transactions occur. If not provided, a random id will be generated. This id
 /// typically represents an account id in the context of a wallet application.
 /// The integrated Wallet API uses UtxoContext to represent wallet accounts.
+/// 
+/// **Exchanges:** if you are building an exchange wallet, it is recommended
+/// to use UtxoContext for each user account.  This way you can track and isolate
+/// each user activity (use address set, balances, transaction records).
 ///
 /// UtxoContext maintains a real-time cumulative balance of all addresses
 /// registered against it and provides balance update notification events
