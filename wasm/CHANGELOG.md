@@ -1,5 +1,13 @@
 Latest online documentation available at: https://kaspa.aspectron.org/docs/
 
+### Release 2024-04-13
+
+- Change `signTransaction()` to accept `Transaction` instead of `SignableTransaction`
+- Remove `SignableTransaction` from the SDK (as `Transaction` now provides all signing functionality)
+- Fix a bug in `TransactionRecord` that was returning incorrect getter for `record.data`
+- Added `Transaction::addresses()` that returns address list for all UTXOs associated with transaction inputs.
+- Fix declarations of events (RpcClient,UtxoProcessor) that do not carry any event data (event data is now declared as `undefined`)
+
 ### Release 2024-03-31
 
 - Rename `kaspa-beacon` app to `kaspa-resolver`
