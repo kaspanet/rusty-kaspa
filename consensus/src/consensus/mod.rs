@@ -440,8 +440,9 @@ impl ConsensusApi for Consensus {
         self.services.mass_calculator.calc_tx_compute_mass(transaction)
     }
 
-    fn calculate_transaction_storage_mass(&self, transaction: &MutableTransaction) -> Option<u64> {
-        self.services.mass_calculator.calc_tx_storage_mass(&transaction.as_verifiable())
+    fn calculate_transaction_storage_mass(&self, _transaction: &MutableTransaction) -> Option<u64> {
+        // self.services.mass_calculator.calc_tx_storage_mass(&transaction.as_verifiable())
+        unimplemented!("unsupported at the API level until KIP9 is finalized")
     }
 
     fn get_stats(&self) -> ConsensusStats {

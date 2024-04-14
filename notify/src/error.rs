@@ -25,6 +25,9 @@ pub enum Error {
 
     #[error("Invalid event type: {0}")]
     InvalidEventType(String),
+
+    #[error(transparent)]
+    AddressError(#[from] crate::address::error::Error),
 }
 
 impl From<BoxedStdError> for Error {

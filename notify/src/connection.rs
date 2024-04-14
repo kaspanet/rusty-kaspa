@@ -1,11 +1,11 @@
 use crate::error::Error;
 use crate::notification::Notification;
 use async_channel::Sender;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
 #[async_trait::async_trait]
-pub trait Connection: Clone + Debug + Send + Sync + 'static {
+pub trait Connection: Clone + Display + Debug + Send + Sync + 'static {
     type Notification;
     type Message: Clone + Send + Sync;
     type Encoding: Hash + Clone + Eq + PartialEq + Send + Sync;
@@ -29,6 +29,7 @@ pub struct ChannelConnection<N>
 where
     N: Notification,
 {
+    name: &'static str,
     sender: Sender<N>,
     channel_type: ChannelType,
 }
@@ -37,13 +38,22 @@ impl<N> ChannelConnection<N>
 where
     N: Notification,
 {
-    pub fn new(sender: Sender<N>, channel_type: ChannelType) -> Self {
-        Self { sender, channel_type }
+    pub fn new(name: &'static str, sender: Sender<N>, channel_type: ChannelType) -> Self {
+        Self { name, sender, channel_type }
     }
 
     /// Close the connection, ignoring the channel type
     pub fn force_close(&self) -> bool {
         self.sender.close()
+    }
+}
+
+impl<N> Display for ChannelConnection<N>
+where
+    N: Notification,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
     }
 }
 

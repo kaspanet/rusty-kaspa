@@ -10,6 +10,7 @@ use kaspa_core::{core::Core, info, trace};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
 use kaspa_database::prelude::CachePolicy;
 use kaspa_grpc_server::service::GrpcService;
+use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 use kaspa_utils::networking::ContextualNetAddress;
@@ -90,6 +91,9 @@ pub fn validate_args(args: &Args) -> ConfigResult<()> {
     }
     if args.ram_scale > 10.0 {
         return Err(ConfigError::RamScaleTooHigh);
+    }
+    if args.max_tracked_addresses > Tracker::MAX_ADDRESS_UPPER_BOUND {
+        return Err(ConfigError::MaxTrackedAddressesTooHigh(Tracker::MAX_ADDRESS_UPPER_BOUND));
     }
     Ok(())
 }
@@ -356,7 +360,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     let tick_service = Arc::new(TickService::new());
     let (notification_send, notification_recv) = unbounded();
-    let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
+    let max_tracked_addresses = if args.utxoindex && args.max_tracked_addresses > 0 { Some(args.max_tracked_addresses) } else { None };
+    let subscription_context = SubscriptionContext::with_options(max_tracked_addresses);
+    let notification_root = Arc::new(ConsensusNotificationRoot::with_context(notification_send, subscription_context.clone()));
     let processing_counters = Arc::new(ProcessingCounters::default());
     let mining_counters = Arc::new(MiningCounters::default());
     let wrpc_borsh_counters = Arc::new(WrpcServerCounters::default());
@@ -395,7 +401,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         Arc::new(perf_monitor_builder.build())
     };
 
-    let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
+    let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv, subscription_context.clone()));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
         let utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
@@ -404,7 +410,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
             .build()
             .unwrap();
         let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
-        let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex)));
+        let index_service = Arc::new(IndexService::new(&notify_service.notifier(), subscription_context.clone(), Some(utxoindex)));
         Some(index_service)
     } else {
         None
@@ -448,6 +454,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         index_service.as_ref().map(|x| x.notifier()),
         mining_manager,
         flow_context,
+        subscription_context,
         index_service.as_ref().map(|x| x.utxoindex().unwrap()),
         config.clone(),
         core.clone(),
@@ -458,6 +465,19 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         p2p_tower_counters.clone(),
         grpc_tower_counters.clone(),
     ));
+    let grpc_service_broadcasters: usize = 3; // TODO: add a command line argument or derive from other arg/config/host-related fields
+    let grpc_service = if !args.disable_grpc {
+        Some(Arc::new(GrpcService::new(
+            grpc_server_addr,
+            config,
+            rpc_core_service.clone(),
+            args.rpc_max_clients,
+            grpc_service_broadcasters,
+            grpc_tower_counters,
+        )))
+    } else {
+        None
+    };
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
@@ -470,10 +490,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         async_runtime.register(Arc::new(port_mapping_extender_svc))
     };
     async_runtime.register(rpc_core_service.clone());
-    if !args.disable_grpc {
-        let grpc_service =
-            Arc::new(GrpcService::new(grpc_server_addr, config, rpc_core_service.clone(), args.rpc_max_clients, grpc_tower_counters));
-        async_runtime.register(grpc_service);
+    if let Some(grpc_service) = grpc_service {
+        async_runtime.register(grpc_service)
     }
     async_runtime.register(p2p_service);
     async_runtime.register(consensus_monitor);
