@@ -1,5 +1,9 @@
 Latest online documentation available at: https://kaspa.aspectron.org/docs/
 
+### Release 2024-04-14
+
+- Merge with Rusty Kaspa master (0.13.6)
+
 ### Release 2024-04-13
 
 - Change `signTransaction()` to accept `Transaction` instead of `SignableTransaction`
