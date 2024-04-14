@@ -37,7 +37,7 @@ pub struct Connection {
 
 impl Connection {
     pub fn try_new(node: Arc<Node>, sender: Sender<PathParams>, args: &Arc<Args>) -> Result<Self> {
-        let client = KaspaRpcClient::new(node.encoding, Some(&node.address), None, None)?;
+        let client = KaspaRpcClient::new(node.encoding, Some(&node.address), None, None, None)?;
         let descriptor = RwLock::default();
         let shutdown_ctl = DuplexChannel::oneshot();
         let is_connected = Arc::new(AtomicBool::new(false));

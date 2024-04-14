@@ -21,6 +21,13 @@ macro_rules! event_type_enum {
                 }
             }
         }
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    $($name::$variant_name => write!(f, stringify!($variant_name))),*
+                }
+            }
+        }
         pub const EVENT_TYPE_ARRAY: [EventType; EVENT_COUNT] = [
             $($name::$variant_name),*
         ];
@@ -28,6 +35,10 @@ macro_rules! event_type_enum {
 }
 
 event_type_enum! {
+    /// Event type classifying subscriptions (see [`Scope`]) and notifications (see [`Notification`])
+    ///
+    /// Note: This enum is central to the notification system. For supporting a new notification type, it is advised to
+    /// start by adding a new variant here.
     #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
     #[serde(rename_all = "kebab-case")]
     pub enum EventType {

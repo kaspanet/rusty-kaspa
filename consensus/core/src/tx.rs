@@ -355,7 +355,7 @@ pub struct MutableTransaction<T: AsRef<Transaction> = std::sync::Arc<Transaction
     pub entries: Vec<Option<UtxoEntry>>,
     /// Populated fee
     pub calculated_fee: Option<u64>,
-    /// Populated mass (does not include the storage mass)
+    /// Populated compute mass (does not include the storage mass)
     pub calculated_compute_mass: Option<u64>,
 }
 

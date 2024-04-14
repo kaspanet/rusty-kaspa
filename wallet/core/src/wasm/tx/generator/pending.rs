@@ -86,6 +86,11 @@ impl PendingTransaction {
     }
 
     /// Submit transaction to the supplied [`RpcClient`]
+    /// **IMPORTANT:** This method will remove UTXOs from the associated
+    /// {@link UtxoContext} if one was used to create the transaction
+    /// and will return UTXOs back to {@link UtxoContext} in case of
+    /// a failed submission.
+    /// @see {@link RpcClient.submitTransaction}
     pub async fn submit(&self, wasm_rpc_client: &RpcClient) -> Result<String> {
         let rpc: Arc<DynRpcApi> = wasm_rpc_client.client().clone();
         let txid = self.inner.try_submit(&rpc).await?;
