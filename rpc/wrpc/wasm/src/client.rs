@@ -289,7 +289,7 @@ impl RpcClient {
             .transpose()?;
 
         let client = Arc::new(
-            KaspaRpcClient::new(encoding, url.as_deref(), resolver.clone().map(Into::into), network_id)
+            KaspaRpcClient::new(encoding, url.as_deref(), resolver.clone().map(Into::into), network_id, None)
                 .unwrap_or_else(|err| panic!("{err}")),
         );
 
@@ -666,6 +666,7 @@ impl RpcClient {
                             match ctl {
                                 Ctl::Open => {
                                     let listener_id = this.inner.client.register_new_listener(ChannelConnection::new(
+                                        "kaspa-wrpc-client-wasm",
                                         this.inner.notification_channel.sender.clone(),
                                         ChannelType::Persistent,
                                     ));

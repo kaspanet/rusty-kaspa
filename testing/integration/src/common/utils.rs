@@ -134,7 +134,7 @@ where
 }
 
 pub fn generate_tx(
-    schnorr_key: KeyPair,
+    schnorr_key: Keypair,
     utxos: &[(TransactionOutpoint, UtxoEntry)],
     amount: u64,
     num_outputs: u64,

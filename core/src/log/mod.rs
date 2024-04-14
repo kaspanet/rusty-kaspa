@@ -115,7 +115,7 @@ macro_rules! debug {
 macro_rules! info {
     ($($t:tt)*) => (
         if kaspa_core::log::workflow_log::log_level_enabled(log::Level::Info) {
-            kaspa_core::log::workflow_log::impls::info_impl(None, &format_args!($($t)*).to_string());
+            kaspa_core::log::workflow_log::impls::info_impl(None, &format_args!($($t)*));
         }
     )
 }

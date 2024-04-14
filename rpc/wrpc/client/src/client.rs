@@ -156,12 +156,13 @@ impl Inner {
         *self.network_id.lock().unwrap()
     }
 
-    fn build_notifier(self: &Arc<Self>, subscription_context : Option<SubscriptionContext>) -> Result<RpcClientNotifier> {
+    fn build_notifier(self: &Arc<Self>, subscription_context: Option<SubscriptionContext>) -> Result<RpcClientNotifier> {
+        let receiver = self.notification_intake_channel.lock().unwrap().receiver.clone();
 
         let enabled_events = EVENT_TYPE_ARRAY[..].into();
         let converter = Arc::new(RpcCoreConverter::new());
-        let collector = Arc::new(RpcCoreCollector::new(WRPC_CLIENT, inner.notification_channel_receiver(), converter));
-        let subscriber = Arc::new(Subscriber::new(WRPC_CLIENT, enabled_events, inner.clone(), 0));
+        let collector = Arc::new(RpcCoreCollector::new(WRPC_CLIENT, receiver, converter));
+        let subscriber = Arc::new(Subscriber::new(WRPC_CLIENT, enabled_events, self.clone(), 0));
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
         let notifier = Arc::new(Notifier::new(
             WRPC_CLIENT,
@@ -172,7 +173,6 @@ impl Inner {
             3,
             policies,
         ));
-
 
         // let receiver = self.notification_intake_channel.lock().unwrap().receiver.clone();
         // let enabled_events = EVENT_TYPE_ARRAY[..].into();
@@ -262,10 +262,10 @@ impl KaspaRpcClient {
         network_id: Option<NetworkId>,
         subscription_context: Option<SubscriptionContext>,
     ) -> Result<KaspaRpcClient> {
-        Self::new_with_args(encoding, url, resolver, network_id)
-    // FIXME
-    // pub fn new(encoding: Encoding, url: &str, ) -> Result<KaspaRpcClient> {
-    //     Self::new_with_args(encoding, NotificationMode::Direct, url, subscription_context)
+        Self::new_with_args(encoding, url, resolver, network_id, subscription_context)
+        // FIXME
+        // pub fn new(encoding: Encoding, url: &str, ) -> Result<KaspaRpcClient> {
+        //     Self::new_with_args(encoding, NotificationMode::Direct, url, subscription_context)
     }
 
     /// Extended constructor that accepts [`NotificationMode`] argument.
@@ -277,31 +277,31 @@ impl KaspaRpcClient {
         subscription_context: Option<SubscriptionContext>,
     ) -> Result<KaspaRpcClient> {
         let inner = Arc::new(Inner::new(encoding, url, resolver, network_id)?);
-        inner.build_notifier(None)?;
+        inner.build_notifier(subscription_context)?;
         let client = KaspaRpcClient { inner };
-    //     notification_mode: NotificationMode,
-    //     url: &str,
-    //     subscription_context: Option<SubscriptionContext>,
-    // ) -> Result<KaspaRpcClient> {
-    //     let inner = Arc::new(Inner::new(encoding, url)?);
-    //     let notifier = if matches!(notification_mode, NotificationMode::MultiListeners) {
-    //         let enabled_events = EVENT_TYPE_ARRAY[..].into();
-    //         let converter = Arc::new(RpcCoreConverter::new());
-    //         let collector = Arc::new(RpcCoreCollector::new(WRPC_CLIENT, inner.notification_channel_receiver(), converter));
-    //         let subscriber = Arc::new(Subscriber::new(WRPC_CLIENT, enabled_events, inner.clone(), 0));
-    //         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
-    //         Some(Arc::new(Notifier::new(
-    //             WRPC_CLIENT,
-    //             enabled_events,
-    //             vec![collector],
-    //             vec![subscriber],
-    //             subscription_context.unwrap_or_default(),
-    //             3,
-    //             policies,
-    //         )))
-    //     } else {
-    //         None
-    //     };
+        //     notification_mode: NotificationMode,
+        //     url: &str,
+        //     subscription_context: Option<SubscriptionContext>,
+        // ) -> Result<KaspaRpcClient> {
+        //     let inner = Arc::new(Inner::new(encoding, url)?);
+        //     let notifier = if matches!(notification_mode, NotificationMode::MultiListeners) {
+        //         let enabled_events = EVENT_TYPE_ARRAY[..].into();
+        //         let converter = Arc::new(RpcCoreConverter::new());
+        //         let collector = Arc::new(RpcCoreCollector::new(WRPC_CLIENT, inner.notification_channel_receiver(), converter));
+        //         let subscriber = Arc::new(Subscriber::new(WRPC_CLIENT, enabled_events, inner.clone(), 0));
+        //         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
+        //         Some(Arc::new(Notifier::new(
+        //             WRPC_CLIENT,
+        //             enabled_events,
+        //             vec![collector],
+        //             vec![subscriber],
+        //             subscription_context.unwrap_or_default(),
+        //             3,
+        //             policies,
+        //         )))
+        //     } else {
+        //         None
+        //     };
 
         // let client = KaspaRpcClient { inner, notifier, notification_mode };
 
@@ -626,7 +626,7 @@ impl RpcApi for KaspaRpcClient {
 
     /// Register a new listener and returns an id and a channel receiver.
     fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
-        self.notifier().register_new_listener(connection,ListenerLifespan::Dynamic)
+        self.notifier().register_new_listener(connection, ListenerLifespan::Dynamic)
         // match self.notification_mode {
         //     NotificationMode::MultiListeners => {
         //         self.notifier.as_ref().unwrap().register_new_listener(connection, ListenerLifespan::Dynamic)

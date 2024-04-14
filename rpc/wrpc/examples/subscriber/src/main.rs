@@ -51,7 +51,7 @@ impl Listener {
         let (resolver, url) = if let Some(url) = url { (None, Some(url)) } else { (Some(Resolver::default()), None) };
 
         // Create a basic Kaspa RPC client instance using Borsh encoding.
-        let client = Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, url.as_deref(), resolver, Some(network_id))?);
+        let client = Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, url.as_deref(), resolver, Some(network_id), None)?);
 
         let inner = Inner {
             task_ctl: DuplexChannel::oneshot(),
@@ -113,10 +113,11 @@ impl Listener {
         // are "lost" if we disconnect. For that reason we must
         // re-register all notification scopes when we connect.
 
-        let listener_id = self
-            .client()
-            .rpc_api()
-            .register_new_listener(ChannelConnection::new(self.inner.notification_channel.sender.clone(), ChannelType::Persistent));
+        let listener_id = self.client().rpc_api().register_new_listener(ChannelConnection::new(
+            "wrpc-example-subscriber",
+            self.inner.notification_channel.sender.clone(),
+            ChannelType::Persistent,
+        ));
         *self.inner.listener_id.lock().unwrap() = Some(listener_id);
         self.client().rpc_api().start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         Ok(())
