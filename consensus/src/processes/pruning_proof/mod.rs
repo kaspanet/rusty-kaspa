@@ -281,6 +281,7 @@ impl PruningProofManager {
             .set_batch(&mut batch, SortableBlock { hash: pruning_point, blue_work: pruning_point_header.blue_work })
             .unwrap();
         self.selected_chain_store.write().init_with_pruning_point(&mut batch, pruning_point).unwrap();
+        self.depth_store.insert_batch(&mut batch, pruning_point, ORIGIN, ORIGIN).unwrap();
         self.db.write(batch).unwrap();
 
         Ok(())
