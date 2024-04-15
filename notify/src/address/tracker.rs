@@ -119,6 +119,11 @@ impl CounterMap {
     pub fn test_direct_insert(&mut self, index: Index) -> bool {
         self.insert(index)
     }
+
+    #[cfg(test)]
+    fn test_get_address(&self, address: &Address) -> Option<RefCount> {
+        self.tracker.get_address(address).and_then(|(index, _)| self.indexes.get(&index).copied())
+    }
 }
 
 impl Indexer for CounterMap {
@@ -208,8 +213,8 @@ pub struct IndexSet {
 }
 
 impl IndexSet {
-    pub fn new(tracker: Tracker, indexes: Vec<Index>) -> Self {
-        Self { tracker, indexes: indexes.into_iter().collect() }
+    pub fn new(tracker: Tracker) -> Self {
+        Self { tracker, indexes: HashSet::new() }
     }
 
     pub fn with_capacity(tracker: Tracker, capacity: usize) -> Self {
@@ -255,8 +260,19 @@ impl IndexSet {
     }
 
     #[cfg(test)]
+    pub fn test_with_indexes(tracker: Tracker, indexes: Vec<Index>) -> Self {
+        tracker.reference_indexes(indexes.iter());
+        Self { tracker, indexes: indexes.into_iter().collect() }
+    }
+
+    #[cfg(test)]
     pub fn test_direct_insert(&mut self, index: Index) -> bool {
         self.insert(index)
+    }
+
+    #[cfg(test)]
+    fn test_get_address(&self, address: &Address) -> bool {
+        self.tracker.get_address(address).and_then(|(index, _)| self.indexes.get(&index)).is_some()
     }
 }
 
@@ -671,6 +687,7 @@ impl Tracker {
                 }
             });
         }
+        counters.empty_entries = 0;
     }
 
     pub fn to_addresses(&self, indexes: &[Index], prefix: Prefix) -> Vec<Address> {
@@ -755,7 +772,7 @@ mod tests {
         assert_eq!(aa.len(), MAX_ADDRESSES);
 
         // Register addresses 0..MAX_ADDRESSES
-        let mut idx_a = Indexes::new(tracker.clone(), vec![]);
+        let mut idx_a = Indexes::new(tracker.clone());
         let aa = idx_a.register(aa).unwrap();
         let aai = aa.iter().map(|x| tracker.get_address(x).unwrap().0).collect_vec();
         assert_eq!(aa.len(), MAX_ADDRESSES, "all addresses should be registered");
@@ -776,7 +793,7 @@ mod tests {
 
         // Register address set 1..MAX_ADDRESSES, already fully covered by the tracker address set
         const AB_COUNT: usize = MAX_ADDRESSES - 1;
-        let mut idx_b = Indexes::new(tracker.clone(), vec![]);
+        let mut idx_b = Indexes::new(tracker.clone());
         let ab = idx_b.register(create_addresses(1, AB_COUNT)).unwrap();
         assert_eq!(ab.len(), AB_COUNT, "all addresses should be registered");
         assert_eq!(idx_b.len(), AB_COUNT, "all addresses should be registered");
@@ -805,10 +822,10 @@ mod tests {
     #[test]
     fn test_indexes_eq() {
         let tracker = Tracker::new(None);
-        let i1 = IndexSet::new(tracker.clone(), vec![0, 1, 2, 3, 5, 7, 11]);
-        let i2 = IndexSet::new(tracker.clone(), vec![5, 7, 11, 0, 1, 2, 3]);
-        let i3 = IndexSet::new(tracker.clone(), vec![0, 1, 2, 4, 8, 16, 32]);
-        let i4 = IndexSet::new(tracker.clone(), vec![0, 1]);
+        let i1 = IndexSet::test_with_indexes(tracker.clone(), vec![0, 1, 2, 3, 5, 7, 11]);
+        let i2 = IndexSet::test_with_indexes(tracker.clone(), vec![5, 7, 11, 0, 1, 2, 3]);
+        let i3 = IndexSet::test_with_indexes(tracker.clone(), vec![0, 1, 2, 4, 8, 16, 32]);
+        let i4 = IndexSet::test_with_indexes(tracker.clone(), vec![0, 1]);
         assert_eq!(i1, i1);
         assert_eq!(i1, i2);
         assert_ne!(i1, i3);
@@ -850,5 +867,143 @@ mod tests {
         }
         m.insert(CAPACITY as u64 + 1, 0);
         assert_eq!(m.capacity(), ((CAPACITY + 1) * 8 / 7).next_power_of_two() * 7 / 8);
+    }
+
+    #[test]
+    fn test_counter_map_tracking() {
+        struct Test {
+            tracker: Tracker,
+            addresses: Vec<Address>,
+        }
+
+        impl Test {
+            fn assert(&self, label: &str, item: &CounterMap, item_counters: &[RefCount], tracker_counters: &[RefCount]) {
+                self.assert_tracker(label, tracker_counters);
+                self.assert_counter_map(label, item, item_counters)
+            }
+
+            fn assert_tracker(&self, label: &str, counters: &[RefCount]) {
+                assert_eq!(self.tracker.len(), counters.iter().filter(|x| **x > 0).count(), "{}: length should match", label);
+                let tracker_counters =
+                    (0..counters.len()).map(|i| self.tracker.get_address(&self.addresses[i]).unwrap().1).collect_vec();
+                assert_eq!(tracker_counters, *counters, "{}: counters should match", label);
+            }
+
+            fn assert_counter_map(&self, label: &str, item: &CounterMap, counters: &[RefCount]) {
+                assert_eq!(item.len(), counters.iter().filter(|x| **x > 0).count(), "{}: length should match", label);
+                let item_counters =
+                    (0..counters.len()).map(|i| item.test_get_address(&self.addresses[i]).unwrap_or_default()).collect_vec();
+                assert_eq!(item_counters, *counters, "{}: counters should match", label);
+            }
+        }
+
+        let tracker = Tracker::new(None);
+        let addresses = create_addresses(0, 3);
+        let test = Test { tracker: tracker.clone(), addresses };
+
+        let mut c1 = CounterMap::new(tracker.clone());
+        test.assert("c1: new", &c1, &[], &[]);
+        assert_eq!(c1.register(test.addresses.clone()).unwrap(), test.addresses);
+        test.assert("c1: register [0, 1 ,2]", &c1, &[1, 1, 1], &[1, 1, 1]);
+        assert_eq!(c1.register(test.addresses[0..=1].to_vec()).unwrap(), vec![]);
+        test.assert("c1: register [0, 1]", &c1, &[2, 2, 1], &[1, 1, 1]);
+
+        let mut c2 = c1.clone();
+        test.assert("c2: clone c1", &c2, &[2, 2, 1], &[2, 2, 2]);
+
+        let mut c3 = c1.clone();
+        test.assert("c3: clone c1", &c3, &[2, 2, 1], &[3, 3, 3]);
+        c3.clear();
+        test.assert("c3: clear", &c3, &[0, 0, 0], &[2, 2, 2]);
+        drop(c3);
+        test.assert_tracker("c3: drop", &[2, 2, 2]);
+
+        assert_eq!(c2.unregister(test.addresses[1..=2].to_vec()), test.addresses[2..=2].to_vec());
+        test.assert("c2: unregister [1, 2]", &c2, &[2, 1, 0], &[2, 2, 1]);
+        assert_eq!(c2.unregister(test.addresses[0..=1].to_vec()), test.addresses[1..=1].to_vec());
+        test.assert("c2: unregister [0, 1]", &c2, &[1, 0, 0], &[2, 1, 1]);
+        assert_eq!(c2.unregister(test.addresses[0..=0].to_vec()), test.addresses[0..=0].to_vec());
+        test.assert("c2: unregister [0]", &c2, &[], &[1, 1, 1]);
+        drop(c2);
+        test.assert_tracker("c2: drop", &[1, 1, 1]);
+
+        assert_eq!(c1.unregister(test.addresses[0..=0].to_vec()), vec![]);
+        test.assert("c1: unregister [0]", &c1, &[1, 2, 1], &[1, 1, 1]);
+        assert_eq!(c1.unregister(test.addresses[0..=1].to_vec()), test.addresses[0..=0].to_vec());
+        test.assert("c1: unregister [0, 1]", &c1, &[0, 1, 1], &[0, 1, 1]);
+        assert_eq!(c1.unregister(test.addresses[1..=2].to_vec()), test.addresses[1..=2].to_vec());
+        test.assert("c1: unregister [1, 2]", &c1, &[0, 0, 0], &[0, 0, 0]);
+
+        drop(c1);
+        test.assert_tracker("c1: drop", &[0, 0, 0]);
+    }
+
+    #[test]
+    fn test_index_set_tracking() {
+        struct Test {
+            tracker: Tracker,
+            addresses: Vec<Address>,
+        }
+
+        impl Test {
+            fn assert(&self, label: &str, item: &IndexSet, item_bits: &[RefCount], tracker_counters: &[RefCount]) {
+                self.assert_tracker(label, tracker_counters);
+                self.assert_index_set(label, item, item_bits)
+            }
+
+            fn assert_tracker(&self, label: &str, counters: &[RefCount]) {
+                assert_eq!(self.tracker.len(), counters.iter().filter(|x| **x > 0).count(), "{}: length should match", label);
+                let tracker_counters =
+                    (0..counters.len()).map(|i| self.tracker.get_address(&self.addresses[i]).unwrap().1).collect_vec();
+                assert_eq!(tracker_counters, *counters, "{}: counters should match", label);
+            }
+
+            fn assert_index_set(&self, label: &str, item: &IndexSet, bits: &[RefCount]) {
+                assert_eq!(item.len(), bits.iter().filter(|x| **x > 0).count(), "{}: length should match", label);
+                let item_counters =
+                    (0..bits.len()).map(|i| if item.test_get_address(&self.addresses[i]) { 1 } else { 0 }).collect_vec();
+                assert_eq!(item_counters, *bits, "{}: counters should match", label);
+            }
+        }
+
+        let tracker = Tracker::new(None);
+        let addresses = create_addresses(0, 3);
+        let test = Test { tracker: tracker.clone(), addresses };
+
+        let mut c1 = IndexSet::new(tracker.clone());
+        test.assert("c1: new", &c1, &[], &[]);
+        assert_eq!(c1.register(test.addresses.clone()).unwrap(), test.addresses);
+        test.assert("c1: register [0, 1 ,2]", &c1, &[1, 1, 1], &[1, 1, 1]);
+        assert_eq!(c1.register(test.addresses[0..=1].to_vec()).unwrap(), vec![]);
+        test.assert("c1: register [0, 1]", &c1, &[1, 1, 1], &[1, 1, 1]);
+
+        let mut c2 = c1.clone();
+        test.assert("c2: clone c1", &c2, &[1, 1, 1], &[2, 2, 2]);
+
+        let mut c3 = c1.clone();
+        test.assert("c3: clone c1", &c3, &[1, 1, 1], &[3, 3, 3]);
+        c3.clear();
+        test.assert("c3: clear", &c3, &[0, 0, 0], &[2, 2, 2]);
+        drop(c3);
+        test.assert_tracker("c3: drop", &[2, 2, 2]);
+
+        assert_eq!(c2.unregister(test.addresses[1..=2].to_vec()), test.addresses[1..=2].to_vec());
+        test.assert("c2: unregister [1, 2]", &c2, &[1, 0, 0], &[2, 1, 1]);
+        assert_eq!(c2.unregister(test.addresses[0..=1].to_vec()), test.addresses[0..=0].to_vec());
+        test.assert("c2: unregister [0, 1]", &c2, &[0, 0, 0], &[1, 1, 1]);
+        assert_eq!(c2.unregister(test.addresses[0..=0].to_vec()), vec![]);
+        test.assert("c2: unregister [0]", &c2, &[], &[1, 1, 1]);
+        drop(c2);
+        test.assert_tracker("c2: drop", &[1, 1, 1]);
+
+        assert_eq!(c1.unregister(test.addresses[0..=0].to_vec()), test.addresses[0..=0].to_vec());
+        test.assert("c1: unregister [0]", &c1, &[0, 1, 1], &[0, 1, 1]);
+        assert_eq!(c1.unregister(test.addresses[0..=1].to_vec()), test.addresses[1..=1].to_vec());
+        test.assert("c1: unregister [0, 1]", &c1, &[0, 0, 1], &[0, 0, 1]);
+        assert_eq!(c1.unregister(test.addresses[1..=2].to_vec()), test.addresses[2..=2].to_vec());
+        test.assert("c1: unregister [1, 2]", &c1, &[0, 0, 0], &[0, 0, 0]);
+
+        drop(c1);
+        test.assert_tracker("c1: drop", &[0, 0, 0]);
     }
 }
