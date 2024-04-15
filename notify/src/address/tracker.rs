@@ -62,15 +62,18 @@ pub struct CounterMap {
 
     /// Map of address index to reference count
     indexes: HashMap<Index, RefCount>,
+
+    ///
+    empty_entries: usize,
 }
 
 impl CounterMap {
     pub fn new(tracker: Tracker) -> Self {
-        Self { tracker, indexes: HashMap::new() }
+        Self { tracker, indexes: HashMap::new(), empty_entries: 0 }
     }
 
     pub fn with_capacity(tracker: Tracker, capacity: usize) -> Self {
-        Self { tracker, indexes: HashMap::with_capacity(capacity) }
+        Self { tracker, indexes: HashMap::with_capacity(capacity), empty_entries: 0 }
     }
 
     /// Registers a vector of addresses, inserting them if not existing yet and increasing their reference count.
@@ -101,11 +104,11 @@ impl CounterMap {
     }
 
     pub fn len(&self) -> usize {
-        self.indexes.len()
+        self.indexes.len() - self.empty_entries
     }
 
     pub fn is_empty(&self) -> bool {
-        self.indexes.is_empty()
+        self.indexes.is_empty() || self.indexes.len() == self.empty_entries
     }
 
     pub fn capacity(&self) -> usize {
@@ -143,7 +146,11 @@ impl IndexerStorage for CounterMap {
             .entry(index)
             .and_modify(|x| {
                 *x += 1;
-                result = *x == 1;
+                if *x == 1 {
+                    self.empty_entries -= 1;
+                } else {
+                    result = false;
+                }
             })
             .or_insert(1);
         result
@@ -154,7 +161,10 @@ impl IndexerStorage for CounterMap {
         self.indexes.entry(index).and_modify(|x| {
             if *x > 0 {
                 *x -= 1;
-                result = *x == 0
+                if *x == 0 {
+                    self.empty_entries += 1;
+                    result = true;
+                }
             }
         });
         result
@@ -169,7 +179,7 @@ impl Clone for CounterMap {
         // which associated ref counter here is non-zero
         self.tracker.reference_indexes(indexes.iter().filter_map(|(index, count)| (*count > 0).then_some(index)));
 
-        Self { tracker: self.tracker.clone(), indexes }
+        Self { tracker: self.tracker.clone(), indexes, empty_entries: self.empty_entries }
     }
 }
 
