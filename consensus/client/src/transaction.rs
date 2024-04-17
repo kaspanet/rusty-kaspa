@@ -153,7 +153,6 @@ impl Transaction {
         Array::from_iter(inputs)
     }
 
-    #[wasm_bindgen(getter = addresses)]
     pub fn addresses(&self) -> kaspa_addresses::AddressArrayT {
         let mut list = std::collections::HashSet::new();
         for input in &self.inner.lock().unwrap().inputs {
@@ -163,7 +162,6 @@ impl Transaction {
                 }
             }
         }
-
         Array::from_iter(list.into_iter().map(JsValue::from)).unchecked_into()
     }
 

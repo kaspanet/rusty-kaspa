@@ -879,8 +879,6 @@ dependencies = [
 [[package]]
 name = "chrome-sys"
 version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01c631c2cf4b95746cf065f732219ec0f2eb1497cd4c7fe07cb336ddf0d7c503"
 dependencies = [
  "js-sys",
  "thiserror",

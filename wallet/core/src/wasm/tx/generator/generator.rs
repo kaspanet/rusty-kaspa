@@ -78,9 +78,9 @@ interface IGeneratorSettingsObject {
     payload?: Uint8Array | HexString;
 
     /**
-     * NetworkId or network id as string (i.e. `mainnet` or `testnet-11`)
+     * Optional NetworkId or network id as string (i.e. `mainnet` or `testnet-11`). Required when {@link IGeneratorSettingsObject.entries} is array
      */
-    networkId: NetworkId | string
+    networkId?: NetworkId | string
 }
 "#;
 

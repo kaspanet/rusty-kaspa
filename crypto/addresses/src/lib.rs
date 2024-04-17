@@ -221,6 +221,11 @@ impl Address {
         address.try_into().unwrap_or_else(|err| panic!("Address::constructor() - address error `{}`: {err}", address))
     }
 
+    #[wasm_bindgen(js_name=validate)]
+    pub fn validate(address: &str) -> bool {
+        Self::try_from(address).is_ok()
+    }
+
     /// Convert an address to a string.
     #[wasm_bindgen(js_name = toString)]
     pub fn address_to_string(&self) -> String {
