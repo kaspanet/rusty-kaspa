@@ -9,6 +9,7 @@ use crate::serializable::{numeric, string};
 use crate::utxo::{UtxoEntryId, UtxoEntryReference};
 use ahash::AHashMap;
 use kaspa_consensus_core::network::NetworkType;
+use kaspa_consensus_core::network::NetworkTypeT;
 use kaspa_consensus_core::subnets::{self, SubnetworkId};
 use kaspa_consensus_core::tx::UtxoEntry;
 use kaspa_txscript::extract_script_pub_key_address;
@@ -155,18 +156,20 @@ impl Transaction {
         Array::from_iter(inputs)
     }
 
-    pub fn addresses(&self, network_type: NetworkType) -> kaspa_addresses::AddressArrayT {
+    pub fn addresses(&self, network_type: &NetworkTypeT) -> Result<kaspa_addresses::AddressArrayT> {
         let mut list = std::collections::HashSet::new();
         for input in &self.inner.lock().unwrap().inputs {
             if let Some(utxo) = input.get_utxo() {
                 if let Some(address) = &utxo.utxo.address {
                     list.insert(address.clone());
-                } else if let Ok(address) = extract_script_pub_key_address(&utxo.utxo.script_public_key, network_type.into()) {
+                } else if let Ok(address) =
+                    extract_script_pub_key_address(&utxo.utxo.script_public_key, NetworkType::try_from(network_type)?.into())
+                {
                     list.insert(address);
                 }
             }
         }
-        Array::from_iter(list.into_iter().map(JsValue::from)).unchecked_into()
+        Ok(Array::from_iter(list.into_iter().map(JsValue::from)).unchecked_into())
     }
 
     #[wasm_bindgen(setter = inputs)]
