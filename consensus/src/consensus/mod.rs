@@ -535,13 +535,13 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_virtual_chain_from_block(&self, low: Hash, high: Option<Hash>, max_blocks: usize) -> ConsensusResult<ChainPath> {
-        // Calculate chain changes between the given `low` and `high` hash (or up to `max_blocks`). 
-        // Note: 
+        // Calculate chain changes between the given `low` and `high` hash (or up to `max_blocks`).
+        // Note:
         // 1) that we explicitly don't
         // do the calculation against the virtual itself so that we
         // won't later need to remove it from the result.
         // 2) high will default to the sink, if `None``.
-        // 3) supplying `usize::MAX` as `max_blocks` will result in the full chain path, with optimized performance. 
+        // 3) supplying `usize::MAX` as `max_blocks` will result in the full chain path, with optimized performance.
         let _guard = self.pruning_lock.blocking_read();
 
         self.validate_block_exists(low)?;
