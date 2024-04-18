@@ -88,7 +88,10 @@ impl UtxosChangedNotification {
         // and check existence over the larger set (O(1))
         let mut result = HashMap::default();
         let subscription_data = subscription.data();
-        if utxo_set.len() < subscription_data.len() {
+
+        // Compare capacities instead of lengths since iterators do also visit empty buckets,
+        // so we have O(capacity) time complexity
+        if utxo_set.capacity() < subscription_data.capacity() {
             {
                 utxo_set.iter().for_each(|(script_public_key, collection)| {
                     if subscription_data.contains(script_public_key) {
