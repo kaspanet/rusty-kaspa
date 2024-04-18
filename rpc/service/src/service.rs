@@ -529,16 +529,9 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<GetVirtualChainFromBlockResponse> {
         let session = self.consensus_manager.consensus().session().await;
 
-        // If start_hash is empty - use ORIGIN instead.
-        let start_hash = match request.start_hash {
-            Some(start_hash) => {
-                // Make sure start_hash points to an existing and valid block
-                session.async_get_ghostdag_data(start_hash).await?;
-                start_hash
-            }
-            None => session.async_get_source().await,
-        };
-
+        // If start_hash is empty - use source instead.
+        let start_hash = request.start_hash.unwrap_or(session.async_get_source().await);
+        // limit is set to 10 times the mergeset_size_limit, bounded by number of merged blocks. 
         let limit = (self.config.mergeset_size_limit * 10) as usize;
         let virtual_chain_batch = session.async_get_virtual_chain_from_block(start_hash, None, limit).await?;
         let accepted_transaction_ids = if request.include_accepted_transaction_ids {
