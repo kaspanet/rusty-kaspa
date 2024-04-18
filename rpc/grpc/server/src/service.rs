@@ -9,37 +9,54 @@ use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::{networking::NetAddress, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use std::sync::Arc;
-
-const GRPC_SERVICE: &str = "grpc-service";
+use triggered::Listener;
 
 pub struct GrpcService {
     net_address: NetAddress,
     config: Arc<Config>,
     core_service: Arc<RpcCoreService>,
     rpc_max_clients: usize,
+    broadcasters: usize,
+    started: SingleTrigger,
     shutdown: SingleTrigger,
     counters: Arc<TowerConnectionCounters>,
 }
 
 impl GrpcService {
+    pub const IDENT: &'static str = "grpc-service";
+
     pub fn new(
         address: NetAddress,
         config: Arc<Config>,
         core_service: Arc<RpcCoreService>,
         rpc_max_clients: usize,
+        broadcasters: usize,
         counters: Arc<TowerConnectionCounters>,
     ) -> Self {
-        Self { net_address: address, config, core_service, rpc_max_clients, shutdown: Default::default(), counters }
+        Self {
+            net_address: address,
+            config,
+            core_service,
+            rpc_max_clients,
+            broadcasters,
+            started: Default::default(),
+            shutdown: Default::default(),
+            counters,
+        }
+    }
+
+    pub fn started(&self) -> Listener {
+        self.started.listener.clone()
     }
 }
 
 impl AsyncService for GrpcService {
     fn ident(self: Arc<Self>) -> &'static str {
-        GRPC_SERVICE
+        Self::IDENT
     }
 
     fn start(self: Arc<Self>) -> AsyncServiceFuture {
-        trace!("{} starting", GRPC_SERVICE);
+        trace!("{} starting", Self::IDENT);
 
         // Prepare a shutdown signal receiver
         let shutdown_signal = self.shutdown.listener.clone();
@@ -51,8 +68,13 @@ impl AsyncService for GrpcService {
             manager,
             self.core_service.clone(),
             self.core_service.notifier(),
+            self.core_service.subscription_context(),
+            self.broadcasters,
             self.counters.clone(),
         );
+
+        // Signal the server was started
+        self.started.trigger.trigger();
 
         // Launch the service and wait for a shutdown signal
         Box::pin(async move {
@@ -65,7 +87,7 @@ impl AsyncService for GrpcService {
                     debug!("GRPC, Adaptor terminated successfully");
                 }
                 Err(err) => {
-                    warn!("{} error while stopping the connection handler: {}", GRPC_SERVICE, err);
+                    warn!("{} error while stopping the connection handler: {}", Self::IDENT, err);
                 }
             }
 
@@ -75,13 +97,13 @@ impl AsyncService for GrpcService {
     }
 
     fn signal_exit(self: Arc<Self>) {
-        trace!("sending an exit signal to {}", GRPC_SERVICE);
+        trace!("sending an exit signal to {}", Self::IDENT);
         self.shutdown.trigger.trigger();
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
         Box::pin(async move {
-            trace!("{} stopped", GRPC_SERVICE);
+            trace!("{} stopped", Self::IDENT);
             Ok(())
         })
     }
