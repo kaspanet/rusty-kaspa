@@ -324,12 +324,12 @@ impl GetSubnetworkResponse {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetVirtualChainFromBlockRequest {
-    pub start_hash: RpcHash,
+    pub start_hash: Option<RpcHash>,
     pub include_accepted_transaction_ids: bool,
 }
 
 impl GetVirtualChainFromBlockRequest {
-    pub fn new(start_hash: RpcHash, include_accepted_transaction_ids: bool) -> Self {
+    pub fn new(start_hash: Option<RpcHash>, include_accepted_transaction_ids: bool) -> Self {
         Self { start_hash, include_accepted_transaction_ids }
     }
 }

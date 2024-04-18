@@ -90,7 +90,7 @@ async fn sanity_test() {
                     // and the virtual chain is the genesis only
                     let response = rpc_client
                         .get_virtual_chain_from_block_call(GetVirtualChainFromBlockRequest {
-                            start_hash: SIMNET_GENESIS.hash,
+                            start_hash: Some(SIMNET_GENESIS.hash),
                             include_accepted_transaction_ids: false,
                         })
                         .await
@@ -140,7 +140,7 @@ async fn sanity_test() {
                     // and the virtual chain from genesis contains the added block
                     let response = rpc_client
                         .get_virtual_chain_from_block_call(GetVirtualChainFromBlockRequest {
-                            start_hash: SIMNET_GENESIS.hash,
+                            start_hash: None, // None implicitly means genesis
                             include_accepted_transaction_ids: false,
                         })
                         .await

@@ -850,11 +850,27 @@ impl ConsensusApi for Consensus {
         self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))
     }
 
-    fn get_blocks_acceptance_data(&self, hashes: &[Hash]) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
+    fn get_blocks_acceptance_data(&self, hashes: &[Hash], merged_blocks_limit: usize) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
+        if merged_blocks_limit == usize::MAX {
+            return hashes
+                .iter()
+                .copied()
+                .map(|hash| self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash)))
+                .collect::<ConsensusResult<Vec<_>>>();
+        }
+        let mut num_of_merged_blocks = 0usize;
         hashes
             .iter()
             .copied()
-            .map(|hash| self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash)))
+            .map_while(|hash| {
+                let entry = self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash));
+                num_of_merged_blocks += entry.as_ref().map_or(0, |entry| entry.len());
+                if num_of_merged_blocks > merged_blocks_limit {
+                    None
+                } else {
+                    Some(entry)
+                }
+            })
             .collect::<ConsensusResult<Vec<_>>>()
     }
 

@@ -258,7 +258,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetSubnetworkResponse>, protowire::GetSub
 // ~~~
 
 from!(item: &kaspa_rpc_core::GetVirtualChainFromBlockRequest, protowire::GetVirtualChainFromBlockRequestMessage, {
-    Self { start_hash: item.start_hash.to_string(), include_accepted_transaction_ids: item.include_accepted_transaction_ids }
+    Self { start_hash: item.start_hash.map_or(Default::default(), |x| x.to_string()), include_accepted_transaction_ids: item.include_accepted_transaction_ids }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetVirtualChainFromBlockResponse>, protowire::GetVirtualChainFromBlockResponseMessage, {
     Self {
@@ -655,7 +655,7 @@ try_from!(item: &protowire::GetSubnetworkResponseMessage, RpcResult<kaspa_rpc_co
 });
 
 try_from!(item: &protowire::GetVirtualChainFromBlockRequestMessage, kaspa_rpc_core::GetVirtualChainFromBlockRequest, {
-    Self { start_hash: RpcHash::from_str(&item.start_hash)?, include_accepted_transaction_ids: item.include_accepted_transaction_ids }
+    Self { start_hash: if item.start_hash.is_empty() { None } else { Some(RpcHash::from_str(&item.start_hash)?) }, include_accepted_transaction_ids: item.include_accepted_transaction_ids }
 });
 try_from!(item: &protowire::GetVirtualChainFromBlockResponseMessage, RpcResult<kaspa_rpc_core::GetVirtualChainFromBlockResponse>, {
     Self {
