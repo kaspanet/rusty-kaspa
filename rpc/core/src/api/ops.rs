@@ -114,6 +114,9 @@ pub enum RpcApiOps {
     VirtualDaaScoreChangedNotification,
     PruningPointUtxoSetOverrideNotification,
     NewBlockTemplateNotification,
+
+    /// Get UTXO Return Addresses
+    GetUtxoReturnAddress,
 }
 
 impl RpcApiOps {
