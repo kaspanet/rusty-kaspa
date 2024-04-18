@@ -528,13 +528,14 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         request: GetVirtualChainFromBlockRequest,
     ) -> RpcResult<GetVirtualChainFromBlockResponse> {
         let session = self.consensus_manager.consensus().session().await;
-        let virtual_chain = session.async_get_virtual_chain_from_block(request.start_hash).await?;
+        // TODO: discuss and implement batching either by high hash, or max_traversal limit, in `get_virtual_chain_from_block`
+        let virtual_chain_batch = session.async_get_virtual_chain_from_block(request.start_hash, None, usize::MAX).await?;
         let accepted_transaction_ids = if request.include_accepted_transaction_ids {
-            self.consensus_converter.get_virtual_chain_accepted_transaction_ids(&session, &virtual_chain).await?
+            self.consensus_converter.get_virtual_chain_accepted_transaction_ids(&session, &virtual_chain_batch).await?
         } else {
             vec![]
         };
-        Ok(GetVirtualChainFromBlockResponse::new(virtual_chain.removed, virtual_chain.added, accepted_transaction_ids))
+        Ok(GetVirtualChainFromBlockResponse::new(virtual_chain_batch.removed, virtual_chain_batch.added, accepted_transaction_ids))
     }
 
     async fn get_block_count_call(&self, _: GetBlockCountRequest) -> RpcResult<GetBlockCountResponse> {

@@ -534,14 +534,28 @@ impl ConsensusApi for Consensus {
         self.config.is_nearly_synced(compact.timestamp, compact.daa_score)
     }
 
-    fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
-        // Calculate chain changes between the given hash and the
-        // sink. Note that we explicitly don't
+    fn get_virtual_chain_from_block(&self, low: Hash, high: Option<Hash>, max_blocks: usize) -> ConsensusResult<ChainPath> {
+        // Calculate chain changes between the given `low` and `high` hash (or up to `max_blocks`). 
+        // Note: 
+        // 1) that we explicitly don't
         // do the calculation against the virtual itself so that we
         // won't later need to remove it from the result.
+        // 2) high will default to the sink, if `None``.
+        // 3) supplying `usize::MAX` as `max_blocks` will result in the full chain path, with optimized performance. 
         let _guard = self.pruning_lock.blocking_read();
-        self.validate_block_exists(hash)?;
-        Ok(self.services.dag_traversal_manager.calculate_chain_path(hash, self.get_sink()))
+
+        self.validate_block_exists(low)?;
+        let high = if let Some(high) = high {
+            self.validate_block_exists(high)?;
+            if !self.services.reachability_service.is_chain_ancestor_of(low, high) {
+                return Err(ConsensusError::ExpectedAncestor(low, high));
+            };
+            self.services.sync_manager.find_highest_common_chain_block(low, high)
+        } else {
+            self.get_sink()
+        };
+
+        Ok(self.services.dag_traversal_manager.calculate_chain_path(low, high, max_blocks))
     }
 
     /// Returns a Vec of header samples since genesis

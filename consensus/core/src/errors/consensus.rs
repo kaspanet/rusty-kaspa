@@ -17,6 +17,9 @@ pub enum ConsensusError {
     #[error("some data is missing for block {0}")]
     MissingData(Hash),
 
+    #[error("expected block: {0} to be an ancestor of block: {1}")]
+    ExpectedAncestor(Hash, Hash),
+
     #[error("got unexpected pruning point")]
     UnexpectedPruningPoint,
 
