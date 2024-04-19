@@ -337,7 +337,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build wasm release
-        run: cd wasm && build-release
+        run: cd wasm && bash build-release
 
   build-release:
     name: Build Ubuntu Release
