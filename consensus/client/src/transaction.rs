@@ -71,7 +71,10 @@ pub struct TransactionInner {
     pub id: TransactionId,
 }
 
-/// Represents a Kaspa transaction
+/// Represents a Kaspa transaction.
+/// This is an artificial construct that includes additional
+/// transaction-related data such as additional data from UTXOs
+/// used by transaction inputs.
 /// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[wasm_bindgen(inspectable)]
@@ -156,6 +159,9 @@ impl Transaction {
         Array::from_iter(inputs)
     }
 
+    /// Returns a list of unique addresses used by transaction inputs.
+    /// This method can be used to determine addresses used by transaction inputs
+    /// in order to select private keys needed for transaction signing.
     pub fn addresses(&self, network_type: &NetworkTypeT) -> Result<kaspa_addresses::AddressArrayT> {
         let mut list = std::collections::HashSet::new();
         for input in &self.inner.lock().unwrap().inputs {

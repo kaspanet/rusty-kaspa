@@ -1,5 +1,11 @@
 Latest online documentation available at: https://kaspa.aspectron.org/docs/
 
+### Release 2024-04-17
+
+- Transaction::addresses() returns a list of unique addresses used by transaction inputs
+- PendingTransaction::addresses change from getter to a function
+- Address::validate(string) static helper to test address validity
+
 ### Release 2024-04-14
 
 - Merge with Rusty Kaspa master (0.13.6)
@@ -25,7 +31,7 @@ as Rust or WASM objects, allowing user to call `hasAddress(<address>)` on the re
 
 ### Release 2024-03-14
 
-- Introcue IWASM32BindingsConfig for configuration of class naming when using WASM32 bindings.
+- Introduce IWASM32BindingsConfig for configuration of class naming when using WASM32 bindings.
 - Introduce serializeToJSON for `PendingTransaction` class (deserializable with `Transaction` class).
 - Introduce serializeToJSON and deserializeFromJSON methods for `Transaction` class.
 

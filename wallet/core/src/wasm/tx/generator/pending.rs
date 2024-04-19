@@ -58,7 +58,9 @@ impl PendingTransaction {
         }
     }
 
-    #[wasm_bindgen(getter)]
+    /// List of unique addresses used by transaction inputs.
+    /// This method can be used to determine addresses used by transaction inputs
+    /// in order to select private keys needed for transaction signing.
     pub fn addresses(&self) -> Array {
         self.inner.addresses().iter().map(|address| JsValue::from(address.to_string())).collect()
     }
