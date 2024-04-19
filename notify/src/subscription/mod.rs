@@ -97,11 +97,11 @@ impl Mutation {
 pub trait Subscription {
     fn event_type(&self) -> EventType;
     fn active(&self) -> bool;
-    fn scope(&self, context: &SubscriptionContext) -> Scope;
+    fn scope(&self, context: &SubscriptionContext) -> Scope; // TODO: remove context
 }
 
 pub trait Compounded: Subscription + AsAny + DynEq + CompoundedClone + Debug + Send + Sync {
-    fn compound(&mut self, mutation: Mutation, context: &SubscriptionContext) -> Option<Mutation>;
+    fn compound(&mut self, mutation: Mutation, context: &SubscriptionContext) -> Option<Mutation>; // TODO: remove context
 }
 
 impl PartialEq for dyn Compounded {
@@ -177,7 +177,7 @@ pub trait Single: Subscription + AsAny + DynHash + DynEq + Debug + Send + Sync {
         arc_self: &Arc<dyn Single>,
         mutation: Mutation,
         policies: MutationPolicies,
-        context: &SubscriptionContext,
+        context: &SubscriptionContext, // TODO: remove context which is not used anymore
     ) -> Result<MutationOutcome>;
 }
 

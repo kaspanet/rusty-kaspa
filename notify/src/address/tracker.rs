@@ -94,6 +94,35 @@ impl CounterMap {
         self.tracker.clone().unregister(self, addresses)
     }
 
+    /// Registers the indexes contained in an [`Indexes`].
+    ///
+    /// Returns the indexes that were actually inserted.
+    pub fn register_indexes(&mut self, indexes: Indexes) -> Indexes {
+        self.tracker.clone().register_indexes(self, indexes)
+    }
+
+    /// Unregisters the indexes contained in an [`Indexes`].
+    ///
+    /// Returns the indexes that were successfully removed.
+    pub fn unregister_indexes(&mut self, indexes: Indexes) -> Indexes {
+        self.tracker.clone().unregister_indexes(self, indexes)
+    }
+
+    /// Returns an [`Indexes`] containing a copy of all active indexes.
+    pub fn get_indexes(&self) -> Indexes {
+        // Create the destination index set with enough capacity to store all active indexes
+        let mut target = Indexes::with_capacity(self.tracker.clone(), self.len());
+        // Fill the index set with copies of all indexes having a reference count greater than zero
+        self.indexes.iter().for_each(|(index, count)| {
+            if *count > 0 {
+                let _ = target.insert(*index);
+            }
+        });
+        // Reference all duplicated indexes in the tracker
+        self.tracker.reference_indexes(target.iter());
+        target
+    }
+
     /// Unregisters all indexes, draining the map in the process.
     pub fn clear(&mut self) {
         self.tracker.clone().clear_counters(self)
@@ -236,6 +265,33 @@ impl IndexSet {
     /// Returns the addresses that where successfully removed.
     pub fn unregister(&mut self, addresses: Vec<Address>) -> Vec<Address> {
         self.tracker.clone().unregister(self, addresses)
+    }
+
+    /// Registers the indexes contained in an [`Indexes`].
+    ///
+    /// Returns the indexes that were actually inserted.
+    pub fn register_indexes(&mut self, indexes: Indexes) -> Self {
+        self.tracker.clone().register_indexes(self, indexes)
+    }
+
+    /// Unregisters the indexes contained in an [`Indexes`].
+    ///
+    /// Returns the indexes that were successfully removed.
+    pub fn unregister_indexes(&mut self, indexes: Indexes) -> Self {
+        self.tracker.clone().unregister_indexes(self, indexes)
+    }
+
+    /// Drains all indexes, inserts them in a new instance and return it.
+    ///
+    /// Keeps the allocated memory for reuse.
+    pub fn transfer(&mut self) -> Self {
+        // This operation has no impact on the reference count of the indexes in the tracker
+        // since indexes are moved from `self` to `target`.
+        let mut target = Self::with_capacity(self.tracker.clone(), self.len());
+        self.indexes.drain().for_each(|index| {
+            let _ = target.indexes.insert(index);
+        });
+        target
     }
 
     /// Unregisters all indexes, draining the set in the process.
@@ -626,11 +682,35 @@ impl Tracker {
         }
     }
 
-    /// Unregisters an `Address` vector from an `Indexer`. The addresses, when existing both in the tracker
-    /// and the `Indexer`, are first removed from the `Indexer` and on success get their reference count
+    /// Registers the indexes contained in an [`Indexes`] into an [`Indexer`].
+    ///
+    /// Returns the indexes that were actually inserted in the [`Indexer`].
+    fn register_indexes<T: Indexer + IndexerStorage>(&self, indexes: &mut T, mut other: Indexes) -> Indexes {
+        let mut counter: usize = 0;
+        let mut inner = self.inner.write();
+        other.indexes.retain(|index| {
+            counter += 1;
+            if counter % Self::ADDRESS_CHUNK_SIZE == 0 {
+                RwLockWriteGuard::bump(&mut inner);
+            }
+            if indexes.insert(*index) {
+                // Increase `index` ref count since `indexes` newly inserted the index and `other` retains it too
+                inner.inc_count(*index);
+                true
+            } else {
+                // Decrease `index` ref count since `indexes` already contains the index and `other` does not retain it
+                inner.dec_count(*index);
+                false
+            }
+        });
+        other
+    }
+
+    /// Unregisters an [`Address`] vector from an [`Indexer`]. The addresses, when existing both in the tracker
+    /// and the [`Indexer`], are first removed from the [`Indexer`] and on success get their reference count
     /// decreased.
     ///
-    /// Returns the addresses that where successfully unregistered from the `Indexer`.
+    /// Returns the addresses that where successfully removed from the [`Indexer`].
     fn unregister<T: Indexer + IndexerStorage>(&self, indexes: &mut T, mut addresses: Vec<Address>) -> Vec<Address> {
         if indexes.is_empty() {
             vec![]
@@ -656,6 +736,27 @@ impl Tracker {
             });
             addresses
         }
+    }
+
+    /// Unregisters the indexes contained in an [`Indexes`] from an [`Indexer`].
+    ///
+    /// Returns the indexes that were successfully removed from the [`Indexer`].
+    fn unregister_indexes<T: Indexer + IndexerStorage>(&self, indexes: &mut T, mut other: Indexes) -> Indexes {
+        let mut counter: usize = 0;
+        let mut inner = self.inner.write();
+        other.indexes.retain(|index| {
+            counter += 1;
+            if counter % Self::ADDRESS_CHUNK_SIZE == 0 {
+                RwLockWriteGuard::bump(&mut inner);
+            }
+            // Decrease `index` ref count since one of the following cases occurs:
+            // a) `indexes` removes the index (-1) and `other` retains it (0)
+            // b) `indexes` keeps the index (0) and `other` does not retain it (-1)
+            inner.dec_count(*index);
+
+            indexes.remove(*index)
+        });
+        other
     }
 
     fn reference_indexes<'a>(&self, indexes: impl Iterator<Item = &'a Index>) {
@@ -690,6 +791,8 @@ impl Tracker {
         counters.empty_entries = 0;
     }
 
+    // TODO: make this private, generic over Indexer and use an internal prefix when available
+    //       expose a similar public fn in CounterMap and IndexSet
     pub fn to_addresses(&self, indexes: &[Index], prefix: Prefix) -> Vec<Address> {
         let mut addresses = Vec::with_capacity(indexes.len());
         for chunk in indexes.chunks(Self::ADDRESS_CHUNK_SIZE) {
@@ -931,11 +1034,21 @@ mod tests {
         test.assert("c1: unregister [0]", &c1, &[1, 2, 1], &[1, 1, 1]);
         assert_eq!(c1.unregister(test.addresses[0..=1].to_vec()), test.addresses[0..=0].to_vec());
         test.assert("c1: unregister [0, 1]", &c1, &[0, 1, 1], &[0, 1, 1]);
+
+        let mut c4 = c1.clone();
+        test.assert("c4: clone c1", &c4, &[0, 1, 1], &[0, 2, 2]);
+
         assert_eq!(c1.unregister(test.addresses[1..=2].to_vec()), test.addresses[1..=2].to_vec());
-        test.assert("c1: unregister [1, 2]", &c1, &[0, 0, 0], &[0, 0, 0]);
+        test.assert("c1: unregister [1, 2]", &c1, &[0, 0, 0], &[0, 1, 1]);
 
         drop(c1);
-        test.assert_tracker("c1: drop", &[0, 0, 0]);
+        test.assert_tracker("c1: drop", &[0, 1, 1]);
+
+        assert_eq!(c4.unregister(test.addresses[1..=2].to_vec()), test.addresses[1..=2].to_vec());
+        test.assert("c4: unregister [1, 2]", &c4, &[0, 0, 0], &[0, 0, 0]);
+
+        drop(c4);
+        test.assert_tracker("c4: drop", &[0, 0, 0]);
     }
 
     #[test]
@@ -1000,10 +1113,20 @@ mod tests {
         test.assert("c1: unregister [0]", &c1, &[0, 1, 1], &[0, 1, 1]);
         assert_eq!(c1.unregister(test.addresses[0..=1].to_vec()), test.addresses[1..=1].to_vec());
         test.assert("c1: unregister [0, 1]", &c1, &[0, 0, 1], &[0, 0, 1]);
+
+        let mut c4 = c1.clone();
+        test.assert("c4: clone c1", &c4, &[0, 0, 1], &[0, 0, 2]);
+
         assert_eq!(c1.unregister(test.addresses[1..=2].to_vec()), test.addresses[2..=2].to_vec());
-        test.assert("c1: unregister [1, 2]", &c1, &[0, 0, 0], &[0, 0, 0]);
+        test.assert("c1: unregister [1, 2]", &c1, &[0, 0, 0], &[0, 0, 1]);
 
         drop(c1);
-        test.assert_tracker("c1: drop", &[0, 0, 0]);
+        test.assert_tracker("c1: drop", &[0, 0, 1]);
+
+        assert_eq!(c4.unregister(test.addresses[1..=2].to_vec()), test.addresses[2..=2].to_vec());
+        test.assert("c4: unregister [1, 2]", &c4, &[0, 0, 0], &[0, 0, 0]);
+
+        drop(c4);
+        test.assert_tracker("c4: drop", &[0, 0, 0]);
     }
 }

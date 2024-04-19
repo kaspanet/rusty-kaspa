@@ -7,8 +7,6 @@ use crate::{
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
     subscription::{context::SubscriptionContext, Command, Compounded, Mutation, Subscription},
 };
-use itertools::Itertools;
-use kaspa_addresses::{Address, Prefix};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OverallSubscription {
@@ -167,31 +165,32 @@ impl UtxosChangedSubscription {
         Self { all: 0, indexes: Counters::with_capacity(tracker, capacity) }
     }
 
-    pub fn to_addresses(&self, prefix: Prefix, context: &SubscriptionContext) -> Vec<Address> {
-        self.indexes
-            .iter()
-            .filter_map(|(&index, &count)| {
-                (count > 0).then_some(()).and_then(|_| context.address_tracker.get_address_at_index(index, prefix))
-            })
-            .collect_vec()
+    pub fn register(&mut self, scope: UtxosChangedScope) -> Result<UtxosChangedScope> {
+        match scope {
+            UtxosChangedScope::Addresses(addresses) => Ok(UtxosChangedScope::new(self.indexes.register(addresses)?)),
+            UtxosChangedScope::Indexes(indexes) => Ok(UtxosChangedScope::new_indexes(self.indexes.register_indexes(indexes))),
+        }
     }
 
-    pub fn register(&mut self, addresses: Vec<Address>) -> Result<Vec<Address>> {
-        self.indexes.register(addresses)
+    pub fn unregister(&mut self, scope: UtxosChangedScope) -> UtxosChangedScope {
+        match scope {
+            UtxosChangedScope::Addresses(addresses) => UtxosChangedScope::new(self.indexes.unregister(addresses)),
+            UtxosChangedScope::Indexes(indexes) => UtxosChangedScope::new_indexes(self.indexes.unregister_indexes(indexes)),
+        }
     }
 
-    pub fn unregister(&mut self, addresses: Vec<Address>) -> Vec<Address> {
-        self.indexes.unregister(addresses)
+    pub fn get_indexes(&self) -> UtxosChangedScope {
+        UtxosChangedScope::new_indexes(self.indexes.get_indexes())
     }
 }
 
 impl Compounded for UtxosChangedSubscription {
-    fn compound(&mut self, mutation: Mutation, context: &SubscriptionContext) -> Option<Mutation> {
+    fn compound(&mut self, mutation: Mutation, _: &SubscriptionContext) -> Option<Mutation> {
         assert_eq!(self.event_type(), mutation.event_type());
         if let Scope::UtxosChanged(scope) = mutation.scope {
             match mutation.command {
                 Command::Start => {
-                    if scope.addresses.is_empty() {
+                    if scope.is_empty() {
                         // Add All
                         self.all += 1;
                         if self.all == 1 {
@@ -199,27 +198,27 @@ impl Compounded for UtxosChangedSubscription {
                         }
                     } else {
                         // Add(A)
-                        let added = self.register(scope.addresses).expect("compounded always registers");
+                        let added = self.register(scope).expect("compounded always registers");
                         if !added.is_empty() && self.all == 0 {
-                            return Some(Mutation::new(Command::Start, UtxosChangedScope::new(added).into()));
+                            return Some(Mutation::new(Command::Start, added.into()));
                         }
                     }
                 }
                 Command::Stop => {
-                    if !scope.addresses.is_empty() {
+                    if !scope.is_empty() {
                         // Remove(R)
-                        let removed = self.unregister(scope.addresses);
+                        let removed = self.unregister(scope);
                         if !removed.is_empty() && self.all == 0 {
-                            return Some(Mutation::new(Command::Stop, UtxosChangedScope::new(removed).into()));
+                            return Some(Mutation::new(Command::Stop, removed.into()));
                         }
                     } else {
                         // Remove All
                         assert!(self.all > 0);
                         self.all -= 1;
                         if self.all == 0 {
-                            let addresses = self.to_addresses(Prefix::Mainnet, context);
-                            if !addresses.is_empty() {
-                                return Some(Mutation::new(Command::Start, UtxosChangedScope::new(addresses).into()));
+                            let indexes = self.get_indexes();
+                            if !indexes.is_empty() {
+                                return Some(Mutation::new(Command::Start, indexes.into()));
                             } else {
                                 return Some(Mutation::new(Command::Stop, UtxosChangedScope::default().into()));
                             }
@@ -242,9 +241,9 @@ impl Subscription for UtxosChangedSubscription {
         self.all > 0 || !self.indexes.is_empty()
     }
 
-    fn scope(&self, context: &SubscriptionContext) -> Scope {
-        let addresses = if self.all > 0 { vec![] } else { self.to_addresses(Prefix::Mainnet, context) };
-        Scope::UtxosChanged(UtxosChangedScope::new(addresses))
+    fn scope(&self, _: &SubscriptionContext) -> Scope {
+        let scope = if self.all > 0 { Default::default() } else { self.get_indexes() };
+        scope.into()
     }
 }
 
