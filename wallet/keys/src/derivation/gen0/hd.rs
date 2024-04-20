@@ -361,16 +361,7 @@ impl WalletDerivationManagerV0 {
         address_type: AddressType,
         attrs: &ExtendedKeyAttrs,
     ) -> Result<(secp256k1::SecretKey, ExtendedKeyAttrs, HmacSha512)> {
-        // if let Some(cosigner_index) = cosigner_index {
-        //     public_key = public_key.derive_child(ChildNumber::new(cosigner_index, false)?)?;
-        // }
-        //let attrs = private_key.attrs().clone();
-        // let (public_key, attrs) =
-        //     Self::derive_public_key(&public_key.public_key, public_key.attrs(), ChildNumber::new(address_type.index(), true)?).await?; //public_key.derive_child(ChildNumber::new(address_type.index(), false)?)?;
         let (private_key, attrs) = Self::derive_private_key(private_key, attrs, ChildNumber::new(address_type.index(), true)?)?;
-        // let mut hmac = HmacSha512::new_from_slice(&attrs.chain_code).map_err(Error::Hmac)?;
-        // hmac.update(&[0]);
-        // hmac.update(&private_key.to_bytes());
         let hmac = Self::create_hmac(&private_key, &attrs, true)?;
 
         Ok((private_key, attrs, hmac))
