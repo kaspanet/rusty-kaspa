@@ -3,16 +3,18 @@ use crate::{adaptor::Adaptor, manager::Manager};
 use kaspa_core::info;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::scope::{NewBlockTemplateScope, Scope};
-use kaspa_rpc_core::api::rpc::RpcApi;
+use kaspa_rpc_core::{api::rpc::RpcApi, RpcNetworkType};
 use kaspa_utils::networking::{ContextualNetAddress, NetAddress};
 use std::sync::Arc;
+
+pub const NETWORK_TYPE: RpcNetworkType = RpcNetworkType::Mainnet;
 
 #[tokio::test]
 async fn test_client_server_sanity_check() {
     kaspa_core::log::try_init_logger("info, kaspa_grpc_core=trace, kaspa_grpc_server=trace, kaspa_grpc_client=trace");
 
     // Create and start a fake core service
-    let rpc_core_service = Arc::new(RpcCoreMock::new());
+    let rpc_core_service = Arc::new(RpcCoreMock::new(NETWORK_TYPE));
     rpc_core_service.start();
 
     // Create and start the server
@@ -55,7 +57,7 @@ async fn test_client_server_connections() {
             info!("{}", self.name);
 
             // Create and start a fake core service
-            let rpc_core_service = Arc::new(RpcCoreMock::new());
+            let rpc_core_service = Arc::new(RpcCoreMock::new(NETWORK_TYPE));
             rpc_core_service.start();
 
             // Create and start the server
@@ -153,7 +155,7 @@ async fn test_client_server_notifications() {
     kaspa_core::log::try_init_logger("info, kaspa_grpc_core=trace, kaspa_grpc_server=trace, kaspa_grpc_client=trace");
 
     // Create and start a fake core service
-    let rpc_core_service = Arc::new(RpcCoreMock::new());
+    let rpc_core_service = Arc::new(RpcCoreMock::new(NETWORK_TYPE));
     rpc_core_service.start();
 
     // Create and start the server

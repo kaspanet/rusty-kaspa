@@ -18,10 +18,10 @@ pub(super) struct RpcCoreMock {
 }
 
 impl RpcCoreMock {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(network: RpcNetworkType) -> Self {
         let (sync_sender, sync_receiver) = unbounded();
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
-        let subscription_context = SubscriptionContext::new();
+        let subscription_context = SubscriptionContext::new(Some(network.into()));
         let core_notifier: Arc<RpcCoreNotifier> = Arc::new(Notifier::with_sync(
             "rpc-core",
             EVENT_TYPE_ARRAY[..].into(),

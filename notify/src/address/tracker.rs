@@ -90,7 +90,7 @@ impl CounterMap {
     /// when their reference count reaches zero.
     ///
     /// Returns the addresses that where successfully removed.
-    pub fn unregister(&mut self, addresses: Vec<Address>) -> Vec<Address> {
+    pub fn unregister(&mut self, addresses: Vec<Address>) -> Result<Vec<Address>> {
         self.tracker.clone().unregister(self, addresses)
     }
 
@@ -254,16 +254,24 @@ impl IndexSet {
     ///
     /// On success, returns the addresses that were actually inserted.
     ///
-    /// Fails with [`Error::MaxCapacityReached`] if the maximum capacity of the underlying [`Tracker`] gets reached,
-    /// leaving both the tracker and the object unchanged.
+    /// Fails, leaving both the tracker and the object unchanged, if:
+    ///
+    /// - the tracker does not have `Some` prefix, returning [`Error::NoPrefix`],
+    /// - the maximum capacity of the underlying [`Tracker`] gets reached, returning [`Error::MaxCapacityReached`],
+    /// - some address did not match the tracker prefix, returning [`Error::PrefixMismatch`] with the offending address.
     pub fn register(&mut self, addresses: Vec<Address>) -> Result<Vec<Address>> {
         self.tracker.clone().register(self, addresses)
     }
 
     /// Unregisters a vector of addresses, removing them if they exist.
     ///
-    /// Returns the addresses that where successfully removed.
-    pub fn unregister(&mut self, addresses: Vec<Address>) -> Vec<Address> {
+    /// On success, returns the addresses that where successfully removed.
+    ///
+    /// Fails, leaving both the tracker and the object unchanged, if:
+    ///
+    /// - the tracker does not have `Some` prefix, returning [`Error::NoPrefix`],
+    /// - some address did not match the tracker prefix, returning [`Error::PrefixMismatch`] with the offending address.
+    pub fn unregister(&mut self, addresses: Vec<Address>) -> Result<Vec<Address>> {
         self.tracker.clone().unregister(self, addresses)
     }
 
@@ -281,7 +289,7 @@ impl IndexSet {
         self.tracker.clone().unregister_indexes(self, indexes)
     }
 
-    /// Drains all indexes, inserts them in a new instance and return it.
+    /// Drains all indexes, inserts them in a new instance and returns it.
     ///
     /// Keeps the allocated memory for reuse.
     pub fn transfer(&mut self) -> Self {
@@ -387,6 +395,9 @@ impl Eq for IndexSet {}
 
 #[derive(Debug)]
 struct Inner {
+    /// Addresses prefix
+    prefix: Option<Prefix>,
+
     /// Index-based map of [`ScriptPublicKey`] to its reference count
     ///
     /// ### Implementation note
@@ -440,7 +451,7 @@ impl Inner {
         }
     }
 
-    fn new(max_addresses: Option<usize>) -> Self {
+    fn new(prefix: Option<Prefix>, max_addresses: Option<usize>) -> Self {
         // Expands the maximum address count to the IndexMap actual usable allocated size minus 1.
         // Saving one entry for the insert/swap_remove scheme during entry recycling prevents a reallocation
         // when reaching the maximum.
@@ -460,7 +471,19 @@ impl Inner {
         debug!("Creating an address tracker with a capacity of {}", script_pub_keys.capacity());
 
         let empty_entries = HashSet::with_capacity(capacity);
-        Self { script_pub_keys, max_addresses, addresses_preallocation, empty_entries }
+        Self { prefix, script_pub_keys, max_addresses, addresses_preallocation, empty_entries }
+    }
+
+    /// Tries to set the address prefix.
+    ///
+    /// For this to succeed, the tracker must have no prefix yet, it must be empty
+    /// or `prefix` must match the internal prefix.
+    fn set_prefix(&mut self, prefix: Prefix) -> bool {
+        let result = self.prefix.is_none() || self.prefix == Some(prefix) || self.is_empty();
+        if result {
+            self.prefix = Some(prefix);
+        }
+        result
     }
 
     fn is_full(&self) -> bool {
@@ -602,16 +625,20 @@ impl Tracker {
         Inner::expand_max_addresses(max_addresses)
     }
 
-    /// Creates a new `Tracker` instance. If `max_addresses` is `Some`, uses it to prealloc
-    /// the internal index as well as for bounding the index size. Otherwise, performs no
-    /// prealloc while bounding the index size by `Tracker::DEFAULT_MAX_ADDRESSES`
-    pub fn new(max_addresses: Option<usize>) -> Self {
-        Self { inner: Arc::new(RwLock::new(Inner::new(max_addresses))) }
+    /// Creates a new `Tracker` instance.
+    ///
+    /// If `prefix` is `Some`, the tracker is activated and tracks matching addresses. Otherwise, the tracker
+    /// rejects all addresses until `set_prefix()` get called.
+    ///
+    /// If `max_addresses` is `Some`, uses it to prealloc the internal index as well as for bounding the index
+    /// size. Otherwise, performs no prealloc while bounding the index size by `Tracker::DEFAULT_MAX_ADDRESSES`.
+    pub fn new(prefix: Option<Prefix>, max_addresses: Option<usize>) -> Self {
+        Self { inner: Arc::new(RwLock::new(Inner::new(prefix, max_addresses))) }
     }
 
     #[cfg(test)]
-    pub fn with_addresses(addresses: &[Address]) -> Self {
-        let tracker = Self { inner: Arc::new(RwLock::new(Inner::new(None))) };
+    pub fn with_addresses(prefix: Prefix, addresses: &[Address]) -> Self {
+        let tracker = Self { inner: Arc::new(RwLock::new(Inner::new(Some(prefix), None))) };
         for chunk in addresses.chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = tracker.inner.write();
             for address in chunk {
@@ -620,6 +647,18 @@ impl Tracker {
             }
         }
         tracker
+    }
+
+    pub fn prefix(&self) -> Option<Prefix> {
+        self.inner.read().prefix
+    }
+
+    /// Tries to set the address prefix.
+    ///
+    /// For this to succeed, the tracker must have no prefix yet, it must be empty
+    /// or `prefix` must match the internal prefix.
+    pub fn set_prefix(&mut self, prefix: Prefix) -> bool {
+        self.inner.write().set_prefix(prefix)
     }
 
     pub fn data(&self) -> TrackerReadGuard<'_> {
@@ -644,40 +683,56 @@ impl Tracker {
     ///
     /// On success, returns the addresses that were actually inserted in the `Indexer`.
     ///
-    /// Fails if the maximum capacity gets reached, leaving the tracker unchanged.
+    /// Fails, leaving the tracker unchanged, if:
+    ///
+    /// - the tracker does not have `Some` prefix,
+    /// - the maximum capacity gets reached,
+    /// - some address did not match the tracker prefix.
     fn register<T: Indexer + IndexerStorage>(&self, indexes: &mut T, mut addresses: Vec<Address>) -> Result<Vec<Address>> {
-        let mut rollback: bool = false;
+        let mut result: Result<()> = Ok(());
         {
-            let mut counter: usize = 0;
             let mut inner = self.inner.write();
-            addresses.retain(|address| {
-                counter += 1;
-                if counter % Self::ADDRESS_CHUNK_SIZE == 0 {
-                    RwLockWriteGuard::bump(&mut inner);
-                }
-                let spk = pay_to_address_script(address);
-                match inner.get_or_insert(spk) {
-                    Ok(index) => {
-                        if indexes.insert(index) {
-                            inner.inc_count(index);
-                            true
-                        } else {
-                            false
-                        }
+            if let Some(prefix) = inner.prefix {
+                let mut counter: usize = 0;
+                addresses.retain(|address| {
+                    counter += 1;
+                    if counter % Self::ADDRESS_CHUNK_SIZE == 0 {
+                        RwLockWriteGuard::bump(&mut inner);
                     }
-                    Err(Error::MaxCapacityReached) => {
-                        // Rollback registration
-                        rollback = true;
+                    if result.is_err() {
+                        false
+                    } else if address.prefix == prefix {
+                        let spk = pay_to_address_script(address);
+                        match inner.get_or_insert(spk) {
+                            Ok(index) => {
+                                if indexes.insert(index) {
+                                    inner.inc_count(index);
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            Err(err) => {
+                                result = Err(err);
+                                false
+                            }
+                        }
+                    } else {
+                        result = Err(Error::PrefixMismatch(address.clone()));
                         false
                     }
-                }
-            });
+                });
+            } else {
+                return Err(Error::NoPrefix);
+            }
         }
-        match rollback {
-            false => Ok(addresses),
-            true => {
+        match result {
+            Ok(()) => Ok(addresses),
+            Err(err) => {
+                // Rollback if some error occurred...
                 let _ = self.unregister(indexes, addresses);
-                Err(Error::MaxCapacityReached)
+                // ...and return the error
+                Err(err)
             }
         }
     }
@@ -706,17 +761,25 @@ impl Tracker {
         other
     }
 
-    /// Unregisters an [`Address`] vector from an [`Indexer`]. The addresses, when existing both in the tracker
+    /// Tries to unregisters an [`Address`] vector from an [`Indexer`]. The addresses, when existing both in the tracker
     /// and the [`Indexer`], are first removed from the [`Indexer`] and on success get their reference count
     /// decreased.
     ///
-    /// Returns the addresses that where successfully removed from the [`Indexer`].
-    fn unregister<T: Indexer + IndexerStorage>(&self, indexes: &mut T, mut addresses: Vec<Address>) -> Vec<Address> {
-        if indexes.is_empty() {
-            vec![]
-        } else {
-            let mut counter: usize = 0;
-            let mut inner = self.inner.write();
+    /// On success, returns the addresses that where successfully removed from the [`Indexer`].
+    ///
+    /// Fails, leaving the tracker unchanged, if:
+    ///
+    /// - the tracker does not have `Some` prefix,
+    /// - some address did not match the tracker prefix.
+    fn unregister<T: Indexer + IndexerStorage>(&self, indexes: &mut T, mut addresses: Vec<Address>) -> Result<Vec<Address>> {
+        let mut counter: usize = 0;
+        let mut inner = self.inner.write();
+        if let Some(prefix) = inner.prefix {
+            // Make sure all addresses match the tracker prefix
+            if let Some(address) = addresses.iter().find(|address| address.prefix != prefix) {
+                return Err(Error::PrefixMismatch(address.clone()));
+            }
+
             addresses.retain(|address| {
                 counter += 1;
                 if counter % Self::ADDRESS_CHUNK_SIZE == 0 {
@@ -734,8 +797,10 @@ impl Tracker {
                     false
                 }
             });
-            addresses
+        } else {
+            return Err(Error::NoPrefix);
         }
+        Ok(addresses)
     }
 
     /// Unregisters the indexes contained in an [`Indexes`] from an [`Indexer`].
@@ -823,12 +888,6 @@ impl Tracker {
     }
 }
 
-impl Default for Tracker {
-    fn default() -> Self {
-        Self::new(None)
-    }
-}
-
 pub struct TrackerReadGuard<'a> {
     guard: RwLockReadGuard<'a, Inner>,
 }
@@ -846,11 +905,12 @@ impl<'a> TrackerReadGuard<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::address::test_helpers::ADDRESS_PREFIX;
     use kaspa_math::Uint256;
 
     fn create_addresses(start: usize, count: usize) -> Vec<Address> {
         (start..start + count)
-            .map(|i| Address::new(Prefix::Mainnet, kaspa_addresses::Version::PubKey, &Uint256::from_u64(i as u64).to_le_bytes()))
+            .map(|i| Address::new(ADDRESS_PREFIX, kaspa_addresses::Version::PubKey, &Uint256::from_u64(i as u64).to_le_bytes()))
             .collect()
     }
 
@@ -860,7 +920,7 @@ mod tests {
         const MAX_ADDRESSES: usize = ((INIT_MAX_ADDRESSES + 1) * 8 / 7).next_power_of_two() * 7 / 8 - 1;
         const CAPACITY: usize = MAX_ADDRESSES + 1;
 
-        let tracker = Tracker::new(Some(MAX_ADDRESSES));
+        let tracker = Tracker::new(Some(ADDRESS_PREFIX), Some(MAX_ADDRESSES));
         assert_eq!(
             tracker.addresses_preallocation().unwrap(),
             MAX_ADDRESSES,
@@ -902,7 +962,7 @@ mod tests {
         assert_eq!(idx_b.len(), AB_COUNT, "all addresses should be registered");
 
         // Empty the tracker entry containing A0
-        assert_eq!(idx_a.unregister(create_addresses(0, 1)).len(), 1);
+        assert_eq!(idx_a.unregister(create_addresses(0, 1)).unwrap().len(), 1);
         assert_eq!(idx_a.len(), MAX_ADDRESSES - 1, "entry #0 with address A0 should now be marked empty");
 
         // Fill the empty entry with a single new address A8
@@ -924,7 +984,7 @@ mod tests {
 
     #[test]
     fn test_indexes_eq() {
-        let tracker = Tracker::new(None);
+        let tracker = Tracker::new(Some(ADDRESS_PREFIX), None);
         let i1 = IndexSet::test_with_indexes(tracker.clone(), vec![0, 1, 2, 3, 5, 7, 11]);
         let i2 = IndexSet::test_with_indexes(tracker.clone(), vec![5, 7, 11, 0, 1, 2, 3]);
         let i3 = IndexSet::test_with_indexes(tracker.clone(), vec![0, 1, 2, 4, 8, 16, 32]);
@@ -1000,7 +1060,7 @@ mod tests {
             }
         }
 
-        let tracker = Tracker::new(None);
+        let tracker = Tracker::new(Some(ADDRESS_PREFIX), None);
         let addresses = create_addresses(0, 3);
         let test = Test { tracker: tracker.clone(), addresses };
 
@@ -1021,30 +1081,30 @@ mod tests {
         drop(c3);
         test.assert_tracker("c3: drop", &[2, 2, 2]);
 
-        assert_eq!(c2.unregister(test.addresses[1..=2].to_vec()), test.addresses[2..=2].to_vec());
+        assert_eq!(c2.unregister(test.addresses[1..=2].to_vec()).unwrap(), test.addresses[2..=2].to_vec());
         test.assert("c2: unregister [1, 2]", &c2, &[2, 1, 0], &[2, 2, 1]);
-        assert_eq!(c2.unregister(test.addresses[0..=1].to_vec()), test.addresses[1..=1].to_vec());
+        assert_eq!(c2.unregister(test.addresses[0..=1].to_vec()).unwrap(), test.addresses[1..=1].to_vec());
         test.assert("c2: unregister [0, 1]", &c2, &[1, 0, 0], &[2, 1, 1]);
-        assert_eq!(c2.unregister(test.addresses[0..=0].to_vec()), test.addresses[0..=0].to_vec());
+        assert_eq!(c2.unregister(test.addresses[0..=0].to_vec()).unwrap(), test.addresses[0..=0].to_vec());
         test.assert("c2: unregister [0]", &c2, &[], &[1, 1, 1]);
         drop(c2);
         test.assert_tracker("c2: drop", &[1, 1, 1]);
 
-        assert_eq!(c1.unregister(test.addresses[0..=0].to_vec()), vec![]);
+        assert_eq!(c1.unregister(test.addresses[0..=0].to_vec()).unwrap(), vec![]);
         test.assert("c1: unregister [0]", &c1, &[1, 2, 1], &[1, 1, 1]);
-        assert_eq!(c1.unregister(test.addresses[0..=1].to_vec()), test.addresses[0..=0].to_vec());
+        assert_eq!(c1.unregister(test.addresses[0..=1].to_vec()).unwrap(), test.addresses[0..=0].to_vec());
         test.assert("c1: unregister [0, 1]", &c1, &[0, 1, 1], &[0, 1, 1]);
 
         let mut c4 = c1.clone();
         test.assert("c4: clone c1", &c4, &[0, 1, 1], &[0, 2, 2]);
 
-        assert_eq!(c1.unregister(test.addresses[1..=2].to_vec()), test.addresses[1..=2].to_vec());
+        assert_eq!(c1.unregister(test.addresses[1..=2].to_vec()).unwrap(), test.addresses[1..=2].to_vec());
         test.assert("c1: unregister [1, 2]", &c1, &[0, 0, 0], &[0, 1, 1]);
 
         drop(c1);
         test.assert_tracker("c1: drop", &[0, 1, 1]);
 
-        assert_eq!(c4.unregister(test.addresses[1..=2].to_vec()), test.addresses[1..=2].to_vec());
+        assert_eq!(c4.unregister(test.addresses[1..=2].to_vec()).unwrap(), test.addresses[1..=2].to_vec());
         test.assert("c4: unregister [1, 2]", &c4, &[0, 0, 0], &[0, 0, 0]);
 
         drop(c4);
@@ -1079,7 +1139,7 @@ mod tests {
             }
         }
 
-        let tracker = Tracker::new(None);
+        let tracker = Tracker::new(Some(ADDRESS_PREFIX), None);
         let addresses = create_addresses(0, 3);
         let test = Test { tracker: tracker.clone(), addresses };
 
@@ -1100,30 +1160,30 @@ mod tests {
         drop(c3);
         test.assert_tracker("c3: drop", &[2, 2, 2]);
 
-        assert_eq!(c2.unregister(test.addresses[1..=2].to_vec()), test.addresses[1..=2].to_vec());
+        assert_eq!(c2.unregister(test.addresses[1..=2].to_vec()).unwrap(), test.addresses[1..=2].to_vec());
         test.assert("c2: unregister [1, 2]", &c2, &[1, 0, 0], &[2, 1, 1]);
-        assert_eq!(c2.unregister(test.addresses[0..=1].to_vec()), test.addresses[0..=0].to_vec());
+        assert_eq!(c2.unregister(test.addresses[0..=1].to_vec()).unwrap(), test.addresses[0..=0].to_vec());
         test.assert("c2: unregister [0, 1]", &c2, &[0, 0, 0], &[1, 1, 1]);
-        assert_eq!(c2.unregister(test.addresses[0..=0].to_vec()), vec![]);
+        assert_eq!(c2.unregister(test.addresses[0..=0].to_vec()).unwrap(), vec![]);
         test.assert("c2: unregister [0]", &c2, &[], &[1, 1, 1]);
         drop(c2);
         test.assert_tracker("c2: drop", &[1, 1, 1]);
 
-        assert_eq!(c1.unregister(test.addresses[0..=0].to_vec()), test.addresses[0..=0].to_vec());
+        assert_eq!(c1.unregister(test.addresses[0..=0].to_vec()).unwrap(), test.addresses[0..=0].to_vec());
         test.assert("c1: unregister [0]", &c1, &[0, 1, 1], &[0, 1, 1]);
-        assert_eq!(c1.unregister(test.addresses[0..=1].to_vec()), test.addresses[1..=1].to_vec());
+        assert_eq!(c1.unregister(test.addresses[0..=1].to_vec()).unwrap(), test.addresses[1..=1].to_vec());
         test.assert("c1: unregister [0, 1]", &c1, &[0, 0, 1], &[0, 0, 1]);
 
         let mut c4 = c1.clone();
         test.assert("c4: clone c1", &c4, &[0, 0, 1], &[0, 0, 2]);
 
-        assert_eq!(c1.unregister(test.addresses[1..=2].to_vec()), test.addresses[2..=2].to_vec());
+        assert_eq!(c1.unregister(test.addresses[1..=2].to_vec()).unwrap(), test.addresses[2..=2].to_vec());
         test.assert("c1: unregister [1, 2]", &c1, &[0, 0, 0], &[0, 0, 1]);
 
         drop(c1);
         test.assert_tracker("c1: drop", &[0, 0, 1]);
 
-        assert_eq!(c4.unregister(test.addresses[1..=2].to_vec()), test.addresses[2..=2].to_vec());
+        assert_eq!(c4.unregister(test.addresses[1..=2].to_vec()).unwrap(), test.addresses[2..=2].to_vec());
         test.assert("c4: unregister [1, 2]", &c4, &[0, 0, 0], &[0, 0, 0]);
 
         drop(c4);

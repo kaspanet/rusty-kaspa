@@ -258,6 +258,7 @@ where
 mod tests {
     use super::*;
     use crate::{
+        address::test_helpers::ADDRESS_PREFIX,
         connection::{ChannelConnection, ChannelType},
         listener::Listener,
         notification::test_helpers::*,
@@ -287,7 +288,7 @@ mod tests {
     impl Test {
         fn new(name: &'static str, listener_count: usize, steps: Vec<Step>) -> Self {
             const IDENT: &str = "test";
-            let subscription_context = SubscriptionContext::new();
+            let subscription_context = SubscriptionContext::new(Some(ADDRESS_PREFIX));
             let (sync_sender, sync_receiver) = unbounded();
             let (notification_sender, notification_receiver) = unbounded();
             let broadcaster =

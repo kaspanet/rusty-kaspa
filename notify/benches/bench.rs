@@ -3,14 +3,16 @@ use kaspa_addresses::{Address, Prefix};
 use kaspa_math::Uint256;
 use kaspa_notify::{address::tracker::Indexes, subscription::context::SubscriptionContext};
 
+const ADDRESS_PREFIX: Prefix = Prefix::Mainnet;
+
 fn create_addresses(count: usize) -> Vec<Address> {
     (0..count)
-        .map(|i| Address::new(Prefix::Mainnet, kaspa_addresses::Version::PubKey, &Uint256::from_u64(i as u64).to_le_bytes()))
+        .map(|i| Address::new(ADDRESS_PREFIX, kaspa_addresses::Version::PubKey, &Uint256::from_u64(i as u64).to_le_bytes()))
         .collect()
 }
 
 fn create_and_fill_context(addresses: Vec<Address>) -> SubscriptionContext {
-    let context = SubscriptionContext::with_options(Some(ADDRESS_COUNT));
+    let context = SubscriptionContext::with_options(Some(ADDRESS_PREFIX), Some(ADDRESS_COUNT));
     let mut indexes = Indexes::new(context.address_tracker.clone());
     let _ = indexes.register(addresses);
     context

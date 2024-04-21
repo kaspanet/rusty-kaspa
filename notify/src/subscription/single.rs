@@ -288,10 +288,10 @@ impl UtxosChangedSubscriptionData {
         }
     }
 
-    pub fn unregister(&mut self, scope: UtxosChangedScope) -> UtxosChangedScope {
+    pub fn unregister(&mut self, scope: UtxosChangedScope) -> Result<UtxosChangedScope> {
         match scope {
-            UtxosChangedScope::Addresses(addresses) => UtxosChangedScope::new(self.indexes.unregister(addresses)),
-            UtxosChangedScope::Indexes(indexes) => UtxosChangedScope::new_indexes(self.indexes.unregister_indexes(indexes)),
+            UtxosChangedScope::Addresses(addresses) => Ok(UtxosChangedScope::new(self.indexes.unregister(addresses)?)),
+            UtxosChangedScope::Indexes(indexes) => Ok(UtxosChangedScope::new_indexes(self.indexes.unregister_indexes(indexes))),
         }
     }
 
@@ -468,7 +468,7 @@ impl Single for UtxosChangedSubscription {
                 }
                 (UtxosChangedState::Selected, UtxosChangedMutation::Remove) => {
                     // State Selected(S) + Mutation Remove(R) => Mutated state Selected(S – R) or mutated new state None or no change
-                    let removed = data.unregister(scope);
+                    let removed = data.unregister(scope)?;
                     match (removed.is_empty(), data.indexes.is_empty()) {
                         (false, false) => {
                             let mutations = match policies.utxo_changed {
@@ -593,7 +593,10 @@ impl BroadcastingSingle for DynSubscription {
 mod tests {
     use super::super::*;
     use super::*;
-    use crate::{address::test_helpers::get_3_addresses, scope::BlockAddedScope};
+    use crate::{
+        address::test_helpers::{get_3_addresses, ADDRESS_PREFIX},
+        scope::BlockAddedScope,
+    };
     use std::collections::hash_map::DefaultHasher;
 
     #[test]
@@ -654,7 +657,7 @@ mod tests {
             comparisons: Vec<Comparison>,
         }
 
-        let context = SubscriptionContext::new();
+        let context = SubscriptionContext::new(Some(ADDRESS_PREFIX));
         let addresses = get_3_addresses(false);
         let mut sorted_addresses = addresses.clone();
         sorted_addresses.sort();
@@ -768,7 +771,7 @@ mod tests {
 
     #[test]
     fn test_overall_mutation() {
-        let context = SubscriptionContext::new();
+        let context = SubscriptionContext::new(Some(ADDRESS_PREFIX));
 
         fn s(active: bool) -> DynSubscription {
             Arc::new(OverallSubscription { event_type: EventType::BlockAdded, active })
@@ -821,7 +824,7 @@ mod tests {
 
     #[test]
     fn test_virtual_chain_changed_mutation() {
-        let context = SubscriptionContext::new();
+        let context = SubscriptionContext::new(Some(ADDRESS_PREFIX));
 
         fn s(active: bool, include_accepted_transaction_ids: bool) -> DynSubscription {
             Arc::new(VirtualChainChangedSubscription { active, include_accepted_transaction_ids })
@@ -933,7 +936,7 @@ mod tests {
 
     #[test]
     fn test_utxos_changed_mutation() {
-        let context = SubscriptionContext::new();
+        let context = SubscriptionContext::new(Some(ADDRESS_PREFIX));
         let a_stock = get_3_addresses(true);
 
         let av = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<Vec<_>>();

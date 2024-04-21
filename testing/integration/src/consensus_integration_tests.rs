@@ -940,7 +940,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
 
     let tick_service = Arc::new(TickService::default());
     let (notification_send, notification_recv) = unbounded();
-    let subscription_context = SubscriptionContext::new();
+    let subscription_context = SubscriptionContext::new(Some(config.net.into()));
     let tc = Arc::new(TestConsensus::with_notifier(&config, notification_send, subscription_context.clone()));
     let notify_service = Arc::new(NotifyService::new(tc.notification_root(), notification_recv, subscription_context.clone()));
 
@@ -1729,7 +1729,7 @@ async fn staging_consensus_test() {
     let meta_db = kaspa_database::prelude::ConnBuilder::default().with_db_path(meta_db_dir).with_files_limit(5).build().unwrap();
 
     let (notification_send, _notification_recv) = unbounded();
-    let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
+    let notification_root = Arc::new(ConsensusNotificationRoot::new(config.net.into(), notification_send));
     let counters = Arc::new(ProcessingCounters::default());
     let tx_script_cache_counters = Arc::new(TxScriptCacheCounters::default());
 

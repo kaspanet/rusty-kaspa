@@ -200,7 +200,7 @@ impl KaspaRpcClient {
                 enabled_events,
                 vec![collector],
                 vec![subscriber],
-                subscription_context.unwrap_or_default(),
+                subscription_context.unwrap_or_else(|| SubscriptionContext::new(None)), // FIXME
                 3,
                 policies,
             )))

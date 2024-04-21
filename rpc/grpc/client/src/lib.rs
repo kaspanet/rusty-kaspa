@@ -29,8 +29,7 @@ use kaspa_notify::{
 };
 use kaspa_rpc_core::{
     api::rpc::RpcApi,
-    error::RpcError,
-    error::RpcResult,
+    error::{RpcError, RpcResult},
     model::message::*,
     notify::{collector::RpcCoreConverter, connection::ChannelConnection, mode::NotificationMode},
     Notification,
@@ -137,7 +136,7 @@ impl GrpcClient {
         .await?;
         let converter = Arc::new(RpcCoreConverter::new());
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
-        let subscription_context = subscription_context.unwrap_or_default();
+        let subscription_context = subscription_context.unwrap_or_else(|| SubscriptionContext::new(None)); // FIXME
         let (notifier, collector, subscriptions) = match notification_mode {
             NotificationMode::MultiListeners => {
                 let enabled_events = EVENT_TYPE_ARRAY[..].into();

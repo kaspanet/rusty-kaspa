@@ -31,7 +31,7 @@ pub struct ClientManager {
 impl ClientManager {
     pub fn new(args: Args) -> Self {
         let network = args.network();
-        let context = SubscriptionContext::with_options(None);
+        let context = SubscriptionContext::with_options(Some(network.into()), None);
         let rpc_port = args.rpclisten.unwrap().normalize(0).port;
         let p2p_port = args.listen.unwrap().normalize(0).port;
         let args = RwLock::new(args);

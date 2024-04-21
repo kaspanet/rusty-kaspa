@@ -172,10 +172,10 @@ impl UtxosChangedSubscription {
         }
     }
 
-    pub fn unregister(&mut self, scope: UtxosChangedScope) -> UtxosChangedScope {
+    pub fn unregister(&mut self, scope: UtxosChangedScope) -> Result<UtxosChangedScope> {
         match scope {
-            UtxosChangedScope::Addresses(addresses) => UtxosChangedScope::new(self.indexes.unregister(addresses)),
-            UtxosChangedScope::Indexes(indexes) => UtxosChangedScope::new_indexes(self.indexes.unregister_indexes(indexes)),
+            UtxosChangedScope::Addresses(addresses) => Ok(UtxosChangedScope::new(self.indexes.unregister(addresses)?)),
+            UtxosChangedScope::Indexes(indexes) => Ok(UtxosChangedScope::new_indexes(self.indexes.unregister_indexes(indexes))),
         }
     }
 
@@ -207,7 +207,7 @@ impl Compounded for UtxosChangedSubscription {
                 Command::Stop => {
                     if !scope.is_empty() {
                         // Remove(R)
-                        let removed = self.unregister(scope);
+                        let removed = self.unregister(scope).expect("compounded always unregisters");
                         if !removed.is_empty() && self.all == 0 {
                             return Some(Mutation::new(Command::Stop, removed.into()));
                         }
@@ -253,7 +253,10 @@ mod tests {
 
     use super::super::*;
     use super::*;
-    use crate::{address::test_helpers::get_3_addresses, scope::BlockAddedScope};
+    use crate::{
+        address::test_helpers::{get_3_addresses, ADDRESS_PREFIX},
+        scope::BlockAddedScope,
+    };
     use std::panic::AssertUnwindSafe;
 
     struct Step {
@@ -292,7 +295,7 @@ mod tests {
         let remove = || Mutation::new(Command::Stop, Scope::BlockAdded(BlockAddedScope {}));
         let test = Test {
             name: "OverallSubscription 0 to 2 to 0",
-            context: SubscriptionContext::new(),
+            context: SubscriptionContext::new(Some(ADDRESS_PREFIX)),
             initial_state: none(),
             steps: vec![
                 Step { name: "add 1", mutation: add(), result: Some(add()) },
@@ -322,7 +325,7 @@ mod tests {
         let remove_all = || m(Command::Stop, true);
         let test = Test {
             name: "VirtualChainChanged",
-            context: SubscriptionContext::new(),
+            context: SubscriptionContext::new(Some(ADDRESS_PREFIX)),
             initial_state: none(),
             steps: vec![
                 Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
@@ -356,7 +359,7 @@ mod tests {
     #[allow(clippy::redundant_clone)]
     fn test_utxos_changed_compounding() {
         kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
-        let context = SubscriptionContext::new();
+        let context = SubscriptionContext::new(Some(ADDRESS_PREFIX));
         let a_stock = get_3_addresses(true);
 
         let a = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<Vec<_>>();
@@ -373,10 +376,10 @@ mod tests {
         let remove_0 = || m(Command::Stop, &[0]);
         let remove_1 = || m(Command::Stop, &[1]);
 
-        let final_tracker = Tracker::new(None);
+        let final_tracker = Tracker::new(Some(ADDRESS_PREFIX), None);
         let mut final_indexes = Counters::new(final_tracker.clone());
         final_indexes.register(a(&[0, 1])).unwrap();
-        final_indexes.unregister(a(&[0, 1]));
+        final_indexes.unregister(a(&[0, 1])).unwrap();
 
         let test = Test {
             name: "UtxosChanged",

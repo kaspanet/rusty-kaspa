@@ -361,7 +361,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
     let tick_service = Arc::new(TickService::new());
     let (notification_send, notification_recv) = unbounded();
     let max_tracked_addresses = if args.utxoindex && args.max_tracked_addresses > 0 { Some(args.max_tracked_addresses) } else { None };
-    let subscription_context = SubscriptionContext::with_options(max_tracked_addresses);
+    let subscription_context = SubscriptionContext::with_options(Some(config.net.into()), max_tracked_addresses);
     let notification_root = Arc::new(ConsensusNotificationRoot::with_context(notification_send, subscription_context.clone()));
     let processing_counters = Arc::new(ProcessingCounters::default());
     let mining_counters = Arc::new(MiningCounters::default());

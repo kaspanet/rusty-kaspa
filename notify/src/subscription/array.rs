@@ -49,7 +49,7 @@ mod tests {
 
     #[test]
     fn test_array_builder() {
-        let tracker = Tracker::new(None);
+        let tracker = Tracker::new(None, None);
         let single = ArrayBuilder::single(0, &tracker, None);
         let compounded = ArrayBuilder::compounded(&tracker, None);
         EVENT_TYPE_ARRAY.into_iter().for_each(|event| {

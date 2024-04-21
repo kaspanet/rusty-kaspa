@@ -6,6 +6,7 @@ use crate::{
         DynSubscription,
     },
 };
+use kaspa_addresses::Prefix;
 use std::{ops::Deref, sync::Arc};
 
 #[cfg(test)]
@@ -20,50 +21,44 @@ pub struct SubscriptionContextInner {
 impl SubscriptionContextInner {
     const CONTEXT_LISTENER_ID: ListenerId = ListenerId::MAX;
 
-    pub fn new() -> Self {
-        Self::with_options(None)
+    pub fn new(prefix: Option<Prefix>) -> Self {
+        Self::with_options(prefix, None)
     }
 
-    pub fn with_options(max_addresses: Option<usize>) -> Self {
-        let address_tracker = Tracker::new(max_addresses);
+    pub fn with_options(prefix: Option<Prefix>, max_addresses: Option<usize>) -> Self {
+        let address_tracker = Tracker::new(prefix, max_addresses);
         let utxos_changed_subscription_all =
             Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID, address_tracker.clone()));
         Self { address_tracker, utxos_changed_subscription_to_all: utxos_changed_subscription_all }
     }
 
     #[cfg(test)]
-    pub fn with_addresses(addresses: &[Address]) -> Self {
-        let address_tracker = Tracker::with_addresses(addresses);
+    pub fn with_addresses(prefix: Prefix, addresses: &[Address]) -> Self {
+        let address_tracker = Tracker::with_addresses(prefix, addresses);
         let utxos_changed_subscription_all =
             Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID, address_tracker.clone()));
         Self { address_tracker, utxos_changed_subscription_to_all: utxos_changed_subscription_all }
     }
 }
 
-impl Default for SubscriptionContextInner {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct SubscriptionContext {
     inner: Arc<SubscriptionContextInner>,
 }
 
 impl SubscriptionContext {
-    pub fn new() -> Self {
-        Self::with_options(None)
+    pub fn new(prefix: Option<Prefix>) -> Self {
+        Self::with_options(prefix, None)
     }
 
-    pub fn with_options(max_addresses: Option<usize>) -> Self {
-        let inner = Arc::new(SubscriptionContextInner::with_options(max_addresses));
+    pub fn with_options(prefix: Option<Prefix>, max_addresses: Option<usize>) -> Self {
+        let inner = Arc::new(SubscriptionContextInner::with_options(prefix, max_addresses));
         Self { inner }
     }
 
     #[cfg(test)]
-    pub fn with_addresses(addresses: &[Address]) -> Self {
-        let inner = Arc::new(SubscriptionContextInner::with_addresses(addresses));
+    pub fn with_addresses(prefix: Prefix, addresses: &[Address]) -> Self {
+        let inner = Arc::new(SubscriptionContextInner::with_addresses(prefix, addresses));
         Self { inner }
     }
 }
@@ -90,9 +85,11 @@ mod tests {
     use std::collections::{HashMap, HashSet};
     use workflow_perf_monitor::mem::get_process_memory_info;
 
+    const ADDRESS_PREFIX: Prefix = Prefix::Mainnet;
+
     fn create_addresses(count: usize) -> Vec<Address> {
         (0..count)
-            .map(|i| Address::new(Prefix::Mainnet, kaspa_addresses::Version::PubKey, &Uint256::from_u64(i as u64).to_le_bytes()))
+            .map(|i| Address::new(ADDRESS_PREFIX, kaspa_addresses::Version::PubKey, &Uint256::from_u64(i as u64).to_le_bytes()))
             .collect()
     }
 
@@ -169,7 +166,7 @@ mod tests {
         let _ = measure_consumed_memory(
             ITEM_LEN,
             NUM_ITEMS,
-            || (0..NUM_ITEMS).map(|_| SubscriptionContext::with_addresses(&addresses)).collect_vec(),
+            || (0..NUM_ITEMS).map(|_| SubscriptionContext::with_addresses(ADDRESS_PREFIX, &addresses)).collect_vec(),
             |x| (x.address_tracker.len(), x.address_tracker.capacity()),
         );
     }
@@ -223,7 +220,7 @@ mod tests {
         const ITEM_LEN: usize = 10;
         const NUM_ITEMS: usize = 10_000_000;
 
-        let tracker = Tracker::new(None);
+        let tracker = Tracker::new(Some(ADDRESS_PREFIX), None);
         let _ = init_and_measure_consumed_memory(
             ITEM_LEN,
             NUM_ITEMS,
@@ -327,7 +324,7 @@ mod tests {
         const ITEM_LEN: usize = 10_000_000;
         const NUM_ITEMS: usize = 10;
 
-        let tracker = Tracker::new(None);
+        let tracker = Tracker::new(Some(ADDRESS_PREFIX), None);
         let _ = init_and_measure_consumed_memory(
             ITEM_LEN,
             NUM_ITEMS,
