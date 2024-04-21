@@ -334,7 +334,7 @@ impl KaspaRpcClient {
     }
 
     pub fn is_connected(&self) -> bool {
-        self.inner.rpc_client.is_open()
+        self.inner.rpc_client.is_connected()
     }
 
     pub fn encoding(&self) -> Encoding {
@@ -538,10 +538,10 @@ impl KaspaRpcClient {
                     msg = wrpc_ctl_channel.receiver.recv().fuse() => {
                         if let Ok(msg) = msg {
                             match msg {
-                                WrpcCtl::Open => {
+                                WrpcCtl::Connect => {
                                     inner.rpc_ctl.signal_open().await.expect("(KaspaRpcClient) rpc_ctl.signal_open() error");
                                 }
-                                WrpcCtl::Close => {
+                                WrpcCtl::Disconnect => {
                                     inner.rpc_ctl.signal_close().await.expect("(KaspaRpcClient) rpc_ctl.signal_close() error");
                                 }
                             }

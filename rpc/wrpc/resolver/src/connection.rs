@@ -127,7 +127,7 @@ impl Connection {
 
                             // handle wRPC channel connection and disconnection events
                             match msg {
-                                RpcState::Opened => {
+                                RpcState::Connected => {
                                     log_success!("Connected","{}",self.node.address);
                                     self.is_connected.store(true, Ordering::Relaxed);
                                     if self.update_metrics().await.is_ok() {
@@ -137,7 +137,7 @@ impl Connection {
                                         self.is_online.store(false, Ordering::Relaxed);
                                     }
                                 },
-                                RpcState::Closed => {
+                                RpcState::Disconnected => {
                                     self.is_connected.store(false, Ordering::Relaxed);
                                     self.is_online.store(false, Ordering::Relaxed);
                                     self.update(false).await?;

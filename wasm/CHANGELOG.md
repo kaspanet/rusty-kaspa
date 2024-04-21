@@ -2,6 +2,12 @@ Latest online documentation available at: https://kaspa.aspectron.org/docs/
 
 ### Release 2024-04-17
 
+- Rename RPC "open" and "close" events to "connect" and "disconnect", TypeScript `RpcEventType.Open` and `RpcEventType.Close` enums to `RpcEventType.Connect` and `RpcEventType.Disconnect` (the renaming is done to prevent confusion in other layers of the WASM SDK where "open" and "close" event names represent the Wallet open state).
+- `RpcClient.open` boolean state getter renamed to `RpcClient.connected`
+- Fix examples missed during `publicKey()->toPublicKey()` rename.
+
+### Release 2024-04-17
+
 - Transaction::addresses() returns a list of unique addresses used by transaction inputs
 - PendingTransaction::addresses change from getter to a function
 - Address::validate(string) static helper to test address validity

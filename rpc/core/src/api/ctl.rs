@@ -6,10 +6,10 @@ use workflow_core::channel::Multiplexer;
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RpcState {
     /// RpcApi channel open (connected)
-    Opened,
+    Connected,
     /// RpcApi channel close (disconnected)
     #[default]
-    Closed,
+    Disconnected,
 }
 
 #[derive(Default)]
@@ -50,7 +50,7 @@ impl RpcCtl {
     }
 
     pub fn is_connected(&self) -> bool {
-        *self.inner.state.lock().unwrap() == RpcState::Opened
+        *self.inner.state.lock().unwrap() == RpcState::Connected
     }
 
     pub fn state(&self) -> RpcState {
@@ -59,26 +59,26 @@ impl RpcCtl {
 
     /// Signal open to all listeners (async)
     pub async fn signal_open(&self) -> RpcResult<()> {
-        *self.inner.state.lock().unwrap() = RpcState::Opened;
-        Ok(self.inner.multiplexer.broadcast(RpcState::Opened).await?)
+        *self.inner.state.lock().unwrap() = RpcState::Connected;
+        Ok(self.inner.multiplexer.broadcast(RpcState::Connected).await?)
     }
 
     /// Signal close to all listeners (async)
     pub async fn signal_close(&self) -> RpcResult<()> {
-        *self.inner.state.lock().unwrap() = RpcState::Closed;
-        Ok(self.inner.multiplexer.broadcast(RpcState::Closed).await?)
+        *self.inner.state.lock().unwrap() = RpcState::Disconnected;
+        Ok(self.inner.multiplexer.broadcast(RpcState::Disconnected).await?)
     }
 
     /// Try signal open to all listeners (sync)
     pub fn try_signal_open(&self) -> RpcResult<()> {
-        *self.inner.state.lock().unwrap() = RpcState::Opened;
-        Ok(self.inner.multiplexer.try_broadcast(RpcState::Opened)?)
+        *self.inner.state.lock().unwrap() = RpcState::Connected;
+        Ok(self.inner.multiplexer.try_broadcast(RpcState::Connected)?)
     }
 
     /// Try signal close to all listeners (sync)
     pub fn try_signal_close(&self) -> RpcResult<()> {
-        *self.inner.state.lock().unwrap() = RpcState::Closed;
-        Ok(self.inner.multiplexer.try_broadcast(RpcState::Closed)?)
+        *self.inner.state.lock().unwrap() = RpcState::Disconnected;
+        Ok(self.inner.multiplexer.try_broadcast(RpcState::Disconnected)?)
     }
 
     /// Set the connection descriptor (URL, peer address, etc.)

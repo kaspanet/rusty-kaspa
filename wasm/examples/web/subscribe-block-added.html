@@ -31,7 +31,7 @@
                 });
 
                 let id;
-                rpc.addEventListener("open", async (event) => {
+                rpc.addEventListener("connect", async (event) => {
                     clearId(id);
                     id = randomId();
 
@@ -40,9 +40,9 @@
                     await rpc.subscribeBlockAdded();
                 });
                 
-                rpc.addEventListener("close", async (event) => {
+                rpc.addEventListener("disconnect", async (event) => {
                     log("Disconnected from", rpc.url.class("network"));
-                    console.log("Close",event);
+                    console.log("Disconnect",event);
                 });
 
                 rpc.addEventListener("block-added", async (event) => {

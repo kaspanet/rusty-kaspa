@@ -30,16 +30,16 @@
                         logToId(id, event);
                     });
                     
-                    rpc.addEventListener("open", async (event) => {
+                    rpc.addEventListener("connect", async (event) => {
                         id = randomId();
                         log("Connected to", rpc.url.class("network"));
                         log("Subscribing to DAA score...");
                         await rpc.subscribeVirtualDaaScoreChanged();
                     });
                     
-                    rpc.addEventListener("close", async (event) => {
+                    rpc.addEventListener("disconnect", async (event) => {
                         log("Disconnected from", rpc.url.class("network"));
-                        console.log("Close",event);
+                        console.log("Disconnect",event);
                     });
 
                     log("Connecting to public node...");

@@ -29,7 +29,7 @@ const {
     });
     
     console.log("Registering for RPC online event...");
-    rpc.addEventListener("open", async (event) => {
+    rpc.addEventListener("connect", async (event) => {
         console.log("Connected to", rpc.url);
         console.log(event);
         console.log("Subscribing to DAA score...");

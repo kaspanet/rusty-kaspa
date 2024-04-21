@@ -203,12 +203,12 @@ impl Listener {
 
                                 // handle RPC channel connection and disconnection events
                                 match msg {
-                                    RpcState::Opened => {
+                                    RpcState::Connected => {
                                         if let Err(err) = listener.handle_connect().await {
                                             log_error!("Error in connect handler: {err}");
                                         }
                                     },
-                                    RpcState::Closed => {
+                                    RpcState::Disconnected => {
                                         if let Err(err) = listener.handle_disconnect().await {
                                             log_error!("Error in disconnect handler: {err}");
                                         }

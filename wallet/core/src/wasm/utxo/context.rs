@@ -137,6 +137,8 @@ impl UtxoContext {
     }
 
     /// Clear the UtxoContext.  Unregister all addresses and clear all UTXO entries.
+    /// IMPORTANT: This function must be manually called when disconnecting or re-connecting to the node
+    /// (followed by address re-registration).  
     pub async fn clear(&self) -> Result<()> {
         self.inner().clear().await
     }

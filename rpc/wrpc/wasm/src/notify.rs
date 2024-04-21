@@ -10,8 +10,8 @@ const TS_HEADER: &'static str = r#"
  * @see {RpcClient.addEventListener}, {RpcClient.removeEventListener}
  */
 export enum RpcEventType {
-    Open = "open",
-    Close = "close",
+    Connect = "connect",
+    Disconnect = "disconnect",
     BlockAdded = "block-added",
     VirtualChainChanged = "virtual-chain-changed",
     FinalityConflict = "finality-conflict",
@@ -44,8 +44,8 @@ export type RpcEventData = IBlockAdded
  * @category Node RPC
  */
 export type RpcEventMap = {
-    // "open" : Open,
-    // "close" : Close,
+    "connect" : undefined,
+    "disconnect" : undefined,
     "block-added" : IBlockAdded,
     "virtual-chain-changed" : IVirtualChainChanged,
     "finality-conflict" : IFinalityConflict,

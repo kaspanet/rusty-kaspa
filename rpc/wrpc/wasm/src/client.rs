@@ -202,12 +202,12 @@ impl Inner {
 ///     networkId : "mainnet",
 /// });
 ///
-/// rpc.addEventListener("open", async (event) => {
+/// rpc.addEventListener("connect", async (event) => {
 ///     console.log("Connected to", rpc.url);
 ///     await rpc.subscribeDaaScore();
 /// });
 ///
-/// rpc.addEventListener("close", (event) => {
+/// rpc.addEventListener("disconnect", (event) => {
 ///     console.log("Disconnected from", rpc.url);
 /// });
 ///
@@ -227,7 +227,7 @@ impl Inner {
 /// notifications:
 ///
 /// ```typescript
-/// rpc.addEventListener("open", async (event) => {
+/// rpc.addEventListener("connect", async (event) => {
 ///     console.log("Connected to", rpc.url);
 ///     // re-subscribe each time we connect
 ///     await rpc.subscribeDaaScore();
@@ -441,7 +441,7 @@ impl RpcClient {
     /// to register event listeners when the RPC `open` event is received.
     ///
     /// ```javascript
-    /// rpc.addEventListener("open", async (event) => {
+    /// rpc.addEventListener("connect", async (event) => {
     ///     console.log("Connected to", rpc.url);
     ///     await rpc.subscribeDaaScore();
     ///     // ... perform wallet address subscriptions
@@ -455,7 +455,7 @@ impl RpcClient {
     ///
     /// ```javascript
     /// // Registering a single event listener for multiple events:
-    /// rpc.addEventListener(["open", "close"], (event) => {
+    /// rpc.addEventListener(["connect", "disconnect"], (event) => {
     ///     console.log(event);
     /// });
     ///
@@ -466,10 +466,10 @@ impl RpcClient {
     /// });
     ///
     /// // Registering multiple event listeners for the same event:
-    /// rpc.addEventListener("open", (event) => { // first listener
+    /// rpc.addEventListener("connect", (event) => { // first listener
     ///     console.log(event);
     /// });
-    /// rpc.addEventListener("open", (event) => { // second listener
+    /// rpc.addEventListener("connect", (event) => { // second listener
     ///     console.log(event);
     /// });
     /// ```
@@ -490,20 +490,20 @@ impl RpcClient {
     ///         console.log(event);
     ///     }
     /// };
-    /// rpc.addEventListener(["open","close"], context);
+    /// rpc.addEventListener(["connect","disconnect"], context);
     ///
     /// ```
     ///
     /// **General use examples**
     ///
-    /// In TypeScript you can use {@link RpcEventType} enum (such as `RpcEventType.Open`)
-    /// or `string` (such as "open") to register event listeners.
+    /// In TypeScript you can use {@link RpcEventType} enum (such as `RpcEventType.Connect`)
+    /// or `string` (such as "connect") to register event listeners.
     /// In JavaScript you can only use `string`.
     ///
     /// ```typescript
     /// // Example usage (TypeScript):
     ///
-    /// rpc.addEventListener(RpcEventType.Open, (event) => {
+    /// rpc.addEventListener(RpcEventType.Connect, (event) => {
     ///     console.log("Connected to", rpc.url);
     /// });
     ///
@@ -664,7 +664,7 @@ impl RpcClient {
                         if let Ok(ctl) = msg {
 
                             match ctl {
-                                Ctl::Open => {
+                                Ctl::Connect => {
                                     let listener_id = this.inner.client.register_new_listener(ChannelConnection::new(
                                         "kaspa-wrpc-client-wasm",
                                         this.inner.notification_channel.sender.clone(),
@@ -672,7 +672,7 @@ impl RpcClient {
                                     ));
                                     *this.inner.listener_id.lock().unwrap() = Some(listener_id);
                                 }
-                                Ctl::Close => {
+                                Ctl::Disconnect => {
                                     let listener_id = this.inner.listener_id.lock().unwrap().take();
                                     if let Some(listener_id) = listener_id {
                                         if let Err(err) = this.inner.client.unregister_listener(listener_id).await {

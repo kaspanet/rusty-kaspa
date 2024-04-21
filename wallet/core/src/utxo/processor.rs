@@ -618,7 +618,7 @@ impl UtxoProcessor {
 
                                 // handle RPC channel connection and disconnection events
                                 match msg {
-                                    RpcState::Opened => {
+                                    RpcState::Connected => {
                                         if !this.is_connected() {
                                             if let Err(err) = this.handle_connect().await {
                                                 log_error!("UtxoProcessor error: {err}");
@@ -630,7 +630,7 @@ impl UtxoProcessor {
                                             }
                                         }
                                     },
-                                    RpcState::Closed => {
+                                    RpcState::Disconnected => {
                                         if this.is_connected() {
                                             this.inner.multiplexer.try_broadcast(Box::new(Events::Disconnect {
                                                 network_id : this.network_id().expect("network id expected during connection"),
