@@ -533,7 +533,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let start_hash = request.start_hash.unwrap_or(session.async_get_source().await);
         // limit is set to 10 times the mergeset_size_limit, bounded by number of merged blocks.
         let limit = (self.config.mergeset_size_limit * 10) as usize;
-        let mut virtual_chain_batch = session.async_get_virtual_chain_from_block(start_hash, None, limit).await?;
+        let mut virtual_chain_batch = session.async_get_virtual_chain_from_block(start_hash, limit).await?;
         let accepted_transaction_ids = if request.include_accepted_transaction_ids {
             let accepted_transaction_ids =
                 self.consensus_converter.get_virtual_chain_accepted_transaction_ids(&session, &virtual_chain_batch, limit).await?;

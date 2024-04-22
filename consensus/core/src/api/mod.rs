@@ -147,14 +147,12 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    /// Gets the virtual chain paths from `low` to the `high` hash, or until max_blocks is reached
+    /// Gets the virtual chain paths from `low` to the `sink` hash, or until `limit`` is reached
     ///
     /// Note:   
-    /// 1) Specifying the `high` hash as `None` will calculate the chain path up to the current sink.
-    /// 2) Specifying `max_blocks` as `None` will impose no limit.
-    /// 3) `max_blocks` limit will populate removed & added chain path, up to max_blocks.
-    /// 3.1) use usize::MAX to get all blocks in the chain path, with optimized performance, (in cases where batching is not required)
-    fn get_virtual_chain_from_block(&self, low: Hash, high: Option<Hash>, max_blocks: usize) -> ConsensusResult<ChainPath> {
+    /// 1) `limit` will populate removed and then the added chain path, up to the specified amount.
+    /// 1.1) use `usize::MAX` to impose no limit with optimized backward chain iteration, for better performance in cases where batching is not required. 
+    fn get_virtual_chain_from_block(&self, low: Hash, limit: usize) -> ConsensusResult<ChainPath> {
         unimplemented!()
     }
 
