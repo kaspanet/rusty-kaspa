@@ -7,11 +7,14 @@ use async_trait::async_trait;
 pub use client_pool::ClientPool;
 use connection_event::ConnectionEvent;
 use futures::{future::FutureExt, pin_mut, select};
+use kaspa_consensus_core::network::NetworkTypeError;
 use kaspa_core::{debug, error, trace};
 use kaspa_grpc_core::{
     channel::NotificationChannel,
     ops::KaspadPayloadOps,
-    protowire::{kaspad_request, rpc_client::RpcClient, GetInfoRequestMessage, KaspadRequest, KaspadResponse},
+    protowire::{
+        kaspad_request, rpc_client::RpcClient, GetCurrentNetworkRequestMessage, GetInfoRequestMessage, KaspadRequest, KaspadResponse,
+    },
     RPC_MAX_MESSAGE_SIZE,
 };
 use kaspa_notify::{
@@ -74,8 +77,6 @@ pub struct GrpcClient {
     /// In direct mode, a Collector relaying incoming notifications via a channel (see `self.notification_channel_receiver()`)
     collector: Option<Arc<GrpcClientCollector>>,
     subscriptions: Option<Arc<DirectSubscriptions>>,
-    subscription_context: SubscriptionContext,
-    policies: MutationPolicies,
     notification_mode: NotificationMode,
 }
 
@@ -126,8 +127,15 @@ impl GrpcClient {
         if !schema.is_match(&url) {
             return Err(Error::GrpcAddressSchema(url));
         }
+
+        // If not provided, create a subscription context without network type and let the first connection query it from the server
+        let subscription_context = subscription_context.unwrap_or_else(|| SubscriptionContext::new(None));
+        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
+
         let inner = Inner::connect(
             url,
+            subscription_context,
+            policies,
             connection_event_sender,
             override_handle_stop_notify,
             timeout_duration.unwrap_or(REQUEST_TIMEOUT_DURATION),
@@ -135,8 +143,6 @@ impl GrpcClient {
         )
         .await?;
         let converter = Arc::new(RpcCoreConverter::new());
-        let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
-        let subscription_context = subscription_context.unwrap_or_else(|| SubscriptionContext::new(None)); // FIXME
         let (notifier, collector, subscriptions) = match notification_mode {
             NotificationMode::MultiListeners => {
                 let enabled_events = EVENT_TYPE_ARRAY[..].into();
@@ -147,7 +153,7 @@ impl GrpcClient {
                     enabled_events,
                     vec![collector],
                     vec![subscriber],
-                    subscription_context.clone(),
+                    inner.subscription_context.clone(),
                     3,
                     policies,
                 );
@@ -155,17 +161,18 @@ impl GrpcClient {
             }
             NotificationMode::Direct => {
                 let collector = GrpcClientCollector::new(GRPC_CLIENT, inner.notification_channel_receiver(), converter);
-                let subscriptions = ArrayBuilder::single(Self::DIRECT_MODE_LISTENER_ID, &subscription_context.address_tracker, None);
+                let subscriptions =
+                    ArrayBuilder::single(Self::DIRECT_MODE_LISTENER_ID, &inner.subscription_context.address_tracker, None);
                 (None, Some(Arc::new(collector)), Some(Arc::new(Mutex::new(subscriptions))))
             }
         };
 
         if reconnect {
             // Start the connection monitor
-            inner.clone().spawn_connection_monitor(notifier.clone(), subscriptions.clone(), subscription_context.clone());
+            inner.clone().spawn_connection_monitor(notifier.clone(), subscriptions.clone());
         }
 
-        Ok(Self { inner, notifier, collector, subscriptions, subscription_context, policies, notification_mode })
+        Ok(Self { inner, notifier, collector, subscriptions, notification_mode })
     }
 
     #[inline(always)]
@@ -310,8 +317,8 @@ impl RpcApi for GrpcClient {
                     let event = scope.event_type();
                     self.subscriptions.as_ref().unwrap().lock().await[event].mutate(
                         Mutation::new(Command::Start, scope.clone()),
-                        self.policies,
-                        &self.subscription_context,
+                        self.inner.policies,
+                        &self.inner.subscription_context,
                     )?;
                 }
                 self.inner.start_notify_to_client(scope).await?;
@@ -332,8 +339,8 @@ impl RpcApi for GrpcClient {
                         let event = scope.event_type();
                         self.subscriptions.as_ref().unwrap().lock().await[event].mutate(
                             Mutation::new(Command::Stop, scope.clone()),
-                            self.policies,
-                            &self.subscription_context,
+                            self.inner.policies,
+                            &self.inner.subscription_context,
                         )?;
                     }
                     self.inner.stop_notify_to_client(scope).await?;
@@ -398,6 +405,8 @@ struct Inner {
     url: String,
 
     server_features: ServerFeatures,
+    subscription_context: SubscriptionContext,
+    policies: MutationPolicies,
 
     // Pushing incoming notifications forward
     notification_channel: NotificationChannel,
@@ -438,6 +447,8 @@ impl Inner {
     fn new(
         url: String,
         server_features: ServerFeatures,
+        subscription_context: SubscriptionContext,
+        policies: MutationPolicies,
         request_sender: KaspadRequestSender,
         request_receiver: KaspadRequestReceiver,
         connection_event_sender: Option<Sender<ConnectionEvent>>,
@@ -453,6 +464,8 @@ impl Inner {
         Self {
             url,
             server_features,
+            subscription_context,
+            policies,
             notification_channel,
             request_sender,
             request_receiver,
@@ -475,6 +488,8 @@ impl Inner {
     // TODO - remove the override (discuss how to handle this in relation to the golang client)
     async fn connect(
         url: String,
+        subscription_context: SubscriptionContext,
+        policies: MutationPolicies,
         connection_event_sender: Option<Sender<ConnectionEvent>>,
         override_handle_stop_notify: bool,
         timeout_duration: u64,
@@ -484,14 +499,22 @@ impl Inner {
         let (request_sender, request_receiver) = async_channel::unbounded();
 
         // Try to connect to the server
-        let (stream, server_features) =
-            Inner::try_connect(url.clone(), request_sender.clone(), request_receiver.clone(), timeout_duration, counters.clone())
-                .await?;
+        let (stream, server_features) = Inner::try_connect(
+            url.clone(),
+            &subscription_context,
+            request_sender.clone(),
+            request_receiver.clone(),
+            timeout_duration,
+            counters.clone(),
+        )
+        .await?;
 
         // create the inner object
         let inner = Arc::new(Inner::new(
             url,
             server_features,
+            subscription_context,
+            policies,
             request_sender,
             request_receiver,
             connection_event_sender,
@@ -513,6 +536,7 @@ impl Inner {
     #[allow(unused_variables)]
     async fn try_connect(
         url: String,
+        subscription_context: &SubscriptionContext,
         request_sender: KaspadRequestSender,
         request_receiver: KaspadRequestReceiver,
         request_timeout: u64,
@@ -569,6 +593,7 @@ impl Inner {
 
         // Actual KaspadRequest to KaspadResponse stream
         let mut stream: Streaming<KaspadResponse> = client.message_stream(request_stream).await?.into_inner();
+        let mut closed: bool = false;
 
         // Collect server capabilities as stated in GetInfoResponse
         let mut server_features = ServerFeatures::default();
@@ -583,9 +608,35 @@ impl Inner {
                 }
             }
             None => {
-                debug!("GRPC client: try_connect - stream closed by the server");
-                return Err(Error::String("GRPC stream was closed by the server".to_string()));
+                closed = true;
             }
+        }
+
+        // Get current network type
+        request_sender.send(GetCurrentNetworkRequestMessage {}.into()).await?;
+        match stream.message().await? {
+            Some(ref msg) => {
+                trace!("GRPC client: try_connect - GetCurrentNetwork got a response");
+                let response: RpcResult<GetCurrentNetworkResponse> = msg.try_into();
+                if let Ok(response) = response {
+                    // Try to set the subscription context network type.
+                    // This always succeeds when not defined in the context yet.
+                    if !subscription_context.set_network_type(response.network) {
+                        return Err(NetworkTypeError::InvalidNetworkType(response.network.to_string()).into());
+                    }
+                } else {
+                    debug!("GRPC client: try_connect - stream closed since the query to GetCurrentNetwork failed");
+                    return Err(Error::GetCurrentNetwork);
+                }
+            }
+            None => {
+                closed = true;
+            }
+        }
+
+        if closed {
+            debug!("GRPC client: try_connect - stream closed by the server");
+            return Err(Error::ServerClosedStream);
         }
 
         Ok((stream, server_features))
@@ -607,6 +658,7 @@ impl Inner {
         // Try to connect to the server
         let (stream, _) = Inner::try_connect(
             self.url.clone(),
+            &self.subscription_context,
             self.request_sender.clone(),
             self.request_receiver.clone(),
             self.timeout_duration,
@@ -809,7 +861,6 @@ impl Inner {
         self: Arc<Self>,
         notifier: Option<Arc<GrpcClientNotifier>>,
         subscriptions: Option<Arc<DirectSubscriptions>>,
-        subscription_context: SubscriptionContext,
     ) {
         // Note: self is a cloned Arc here so that it can be used in the spawned task.
 
@@ -832,7 +883,7 @@ impl Inner {
                     _ = delay => {
                         trace!("GRPC client: connection monitor task - running");
                         if !self.is_connected() {
-                            match self.clone().reconnect(notifier.clone(), subscriptions.clone(), &subscription_context).await {
+                            match self.clone().reconnect(notifier.clone(), subscriptions.clone(), &self.subscription_context).await {
                                 Ok(_) => {
                                     trace!("GRPC client: reconnection to server succeeded");
                                 },

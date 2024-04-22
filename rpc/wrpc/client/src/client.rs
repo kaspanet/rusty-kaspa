@@ -1,7 +1,7 @@
 use crate::error::Error;
 use crate::imports::*;
 use crate::parse::parse_host;
-use kaspa_consensus_core::network::NetworkType;
+use kaspa_consensus_core::network::{NetworkType, NetworkTypeError};
 use kaspa_notify::{
     listener::ListenerLifespan,
     subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
@@ -176,9 +176,8 @@ pub struct KaspaRpcClient {
 
 impl KaspaRpcClient {
     /// Create a new `KaspaRpcClient` with the given Encoding and URL
-    // FIXME
-    pub fn new(encoding: Encoding, url: &str, subscription_context: Option<SubscriptionContext>) -> Result<KaspaRpcClient> {
-        Self::new_with_args(encoding, NotificationMode::Direct, url, subscription_context)
+    pub fn new(encoding: Encoding, url: &str) -> Result<KaspaRpcClient> {
+        Self::new_with_args(encoding, NotificationMode::Direct, url, None)
     }
 
     /// Extended constructor that accepts [`NotificationMode`] argument.
@@ -200,7 +199,7 @@ impl KaspaRpcClient {
                 enabled_events,
                 vec![collector],
                 vec![subscriber],
-                subscription_context.unwrap_or_else(|| SubscriptionContext::new(None)), // FIXME
+                subscription_context.unwrap_or_else(|| SubscriptionContext::new(None)),
                 3,
                 policies,
             )))
@@ -281,7 +280,16 @@ impl KaspaRpcClient {
             self.inner.rpc_ctl.set_descriptor(Some(url.clone()));
         }
         self.start().await?;
-        Ok(self.inner.rpc_client.connect(options).await?)
+        let result = self.inner.rpc_client.connect(options).await?;
+        // Sets the network type if in MultiListeners mode
+        if let Some(ref notifier) = self.notifier {
+            let network = self.get_current_network().await?;
+            if !notifier.subscription_context().set_network_type(network) {
+                let _ = self.shutdown().await;
+                return Err(NetworkTypeError::InvalidNetworkType(network.to_string()).into());
+            }
+        }
+        Ok(result)
     }
 
     pub async fn disconnect(&self) -> Result<()> {

@@ -95,7 +95,7 @@ impl RpcApi for RpcCoreMock {
     }
 
     async fn get_current_network_call(&self, _request: GetCurrentNetworkRequest) -> RpcResult<GetCurrentNetworkResponse> {
-        Err(RpcError::NotImplemented)
+        Ok(GetCurrentNetworkResponse::new(self.core_notifier.subscription_context().network_type().unwrap()))
     }
 
     async fn submit_block_call(&self, _request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
