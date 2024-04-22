@@ -115,8 +115,16 @@ impl UtxoProcessor {
         self.inner.rpc.lock().unwrap().as_ref().expect("UtxoProcessor RPC not initialized").rpc_api().clone()
     }
 
+    pub fn try_rpc_api(&self) -> Option<Arc<DynRpcApi>> {
+        self.inner.rpc.lock().unwrap().as_ref().map(|rpc| rpc.rpc_api()).cloned()
+    }
+
     pub fn rpc_ctl(&self) -> RpcCtl {
         self.inner.rpc.lock().unwrap().as_ref().expect("UtxoProcessor RPC not initialized").rpc_ctl().clone()
+    }
+
+    pub fn try_rpc_ctl(&self) -> Option<RpcCtl> {
+        self.inner.rpc.lock().unwrap().as_ref().map(|rpc| rpc.rpc_ctl()).cloned()
     }
 
     pub fn rpc_url(&self) -> Option<String> {

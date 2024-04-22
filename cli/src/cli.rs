@@ -160,8 +160,12 @@ impl KaspaCli {
         self.wallet.rpc_api().clone()
     }
 
-    pub fn rpc_client(&self) -> Option<Arc<KaspaRpcClient>> {
-        self.wallet.wrpc_client().clone()
+    pub fn try_rpc_api(&self) -> Option<Arc<DynRpcApi>> {
+        self.wallet.try_rpc_api().clone()
+    }
+
+    pub fn try_rpc_client(&self) -> Option<Arc<KaspaRpcClient>> {
+        self.wallet.try_wrpc_client().clone()
     }
 
     pub fn store(&self) -> Arc<dyn Interface> {

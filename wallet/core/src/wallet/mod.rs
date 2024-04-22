@@ -458,16 +458,24 @@ impl Wallet {
         Ok(self.get_prv_key_info(account).await?.map(|info| info.is_encrypted()))
     }
 
-    pub fn wrpc_client(&self) -> Option<Arc<KaspaRpcClient>> {
-        self.rpc_api().clone().downcast_arc::<KaspaRpcClient>().ok()
+    pub fn try_wrpc_client(&self) -> Option<Arc<KaspaRpcClient>> {
+        self.try_rpc_api().and_then(|api| api.clone().downcast_arc::<KaspaRpcClient>().ok())
     }
 
     pub fn rpc_api(&self) -> Arc<DynRpcApi> {
         self.utxo_processor().rpc_api()
     }
 
+    pub fn try_rpc_api(&self) -> Option<Arc<DynRpcApi>> {
+        self.utxo_processor().try_rpc_api()
+    }
+
     pub fn rpc_ctl(&self) -> RpcCtl {
         self.utxo_processor().rpc_ctl()
+    }
+
+    pub fn try_rpc_ctl(&self) -> Option<RpcCtl> {
+        self.utxo_processor().try_rpc_ctl()
     }
 
     pub fn has_rpc(&self) -> bool {
@@ -505,7 +513,7 @@ impl Wallet {
         }
 
         if let Some(url) = settings.get::<String>(WalletSettings::Server) {
-            if let Some(wrpc_client) = self.wrpc_client() {
+            if let Some(wrpc_client) = self.try_wrpc_client() {
                 wrpc_client.set_url(Some(url.as_str())).unwrap_or_else(|_| log_error!("Unable to set rpc url: `{}`", url));
             }
         }
@@ -521,7 +529,7 @@ impl Wallet {
         self.start_task().await?;
         self.utxo_processor().start().await?;
         // rpc services (notifier)
-        if let Some(rpc_client) = self.wrpc_client() {
+        if let Some(rpc_client) = self.try_wrpc_client() {
             rpc_client.start().await?;
         }
 
@@ -564,7 +572,7 @@ impl Wallet {
         }
         self.utxo_processor().set_network_id(network_id);
 
-        if let Some(wrpc_client) = self.wrpc_client() {
+        if let Some(wrpc_client) = self.try_wrpc_client() {
             wrpc_client.set_network_id(network_id)?;
         }
         Ok(())
@@ -580,7 +588,7 @@ impl Wallet {
 
     pub fn default_port(&self) -> Result<Option<u16>> {
         let network_type = self.network_id()?;
-        if let Some(wrpc_client) = self.wrpc_client() {
+        if let Some(wrpc_client) = self.try_wrpc_client() {
             let port = match wrpc_client.encoding() {
                 WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
                 WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),

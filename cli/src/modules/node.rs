@@ -106,7 +106,7 @@ impl Node {
                     tprintln!(ctx, "starting kaspa node... {}", style("(use 'node mute' to mute logging)").dim());
                 }
 
-                let wrpc_client = ctx.wallet().wrpc_client().ok_or(Error::custom("Unable to start node with non-wRPC client"))?;
+                let wrpc_client = ctx.wallet().try_wrpc_client().ok_or(Error::custom("Unable to start node with non-wRPC client"))?;
 
                 kaspad.configure(self.create_config(&ctx).await?).await?;
                 kaspad.start().await?;

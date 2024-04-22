@@ -27,7 +27,8 @@ impl WalletApi for super::Wallet {
         let is_synced = self.is_synced();
         let is_open = self.is_open();
         let network_id = self.network_id().ok();
-        let (url, is_wrpc_client) = if let Some(wrpc_client) = self.wrpc_client() { (wrpc_client.url(), true) } else { (None, false) };
+        let (url, is_wrpc_client) =
+            if let Some(wrpc_client) = self.try_wrpc_client() { (wrpc_client.url(), true) } else { (None, false) };
 
         let selected_account_id = self.inner.selected_account.lock().unwrap().as_ref().map(|account| *account.id());
 
@@ -76,7 +77,7 @@ impl WalletApi for super::Wallet {
 
         let ConnectRequest { url, network_id } = request;
 
-        if let Some(wrpc_client) = self.wrpc_client().as_ref() {
+        if let Some(wrpc_client) = self.try_wrpc_client().as_ref() {
             // self.set_network_id(network_id)?;
 
             // let network_type = NetworkType::from(network_id);
@@ -96,7 +97,7 @@ impl WalletApi for super::Wallet {
     }
 
     async fn disconnect_call(self: Arc<Self>, _request: DisconnectRequest) -> Result<DisconnectResponse> {
-        if let Some(wrpc_client) = self.wrpc_client().as_ref() {
+        if let Some(wrpc_client) = self.try_wrpc_client() {
             wrpc_client.disconnect().await?;
             Ok(DisconnectResponse {})
         } else {
