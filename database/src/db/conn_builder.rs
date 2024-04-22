@@ -100,6 +100,8 @@ impl<Path, StatsPeriod, FDLimit> ConnBuilder<Path, true, StatsPeriod, FDLimit> {
     }
 }
 
+// used ChatGPT to modify the section below to change the rocksdb
+// block size to 128KB
 macro_rules! default_opts {
     ($self: expr) => {{
         let mut opts = rocksdb::Options::default();
@@ -161,11 +163,17 @@ macro_rules! default_opts {
             opts.set_block_based_table_factory(&b_opts);
         }
         let guard = kaspa_utils::fd_budget::acquire_guard($self.files_limit)?;
+
+        // Create BlockBasedOptions and set block size
+        let mut block_opts = rocksdb::BlockBasedOptions::default();
+        block_opts.set_block_size(128 * 1024);
+        opts.set_block_based_table_factory(&block_opts);
+
         opts.set_max_open_files($self.files_limit);
         opts.create_if_missing($self.create_if_missing);
         Ok((opts, guard))
     }};
-}
+}  
 
 impl ConnBuilder<PathBuf, false, Unspecified, i32> {
     pub fn build(self) -> Result<Arc<DB>, kaspa_utils::fd_budget::Error> {
