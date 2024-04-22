@@ -535,22 +535,21 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_virtual_chain_from_block(&self, low: Hash, high: Option<Hash>, max_blocks: usize) -> ConsensusResult<ChainPath> {
-        // Calculate chain changes between the given `low` and `high` hash (or up to `max_blocks`).
+        // Calculate chain changes between the given `low` and `high` hash (up to `max_blocks`).
         // Note:
         // 1) that we explicitly don't
         // do the calculation against the virtual itself so that we
         // won't later need to remove it from the result.
         // 2) high will default to the sink, if `None``.
-        // 3) supplying `usize::MAX` as `max_blocks` will result in the full chain path, with optimized performance.
+        // 3) if high is not a chain block it will get the virtual chain to the highest common chain block between high and sink.
+        // 4) supplying `usize::MAX` as `max_blocks` will result in the full chain path, with optimized performance.
         let _guard = self.pruning_lock.blocking_read();
 
         self.validate_block_exists(low)?;
         let high = if let Some(high) = high {
             self.validate_block_exists(high)?;
-            if !self.services.reachability_service.is_chain_ancestor_of(low, high) {
-                return Err(ConsensusError::ExpectedAncestor(low, high));
-            };
-            self.services.sync_manager.find_highest_common_chain_block(low, high)
+            self.services.sync_manager.find_highest_common_chain_block(high, self.get_sink());
+            high
         } else {
             self.get_sink()
         };
