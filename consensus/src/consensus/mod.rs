@@ -548,7 +548,10 @@ impl ConsensusApi for Consensus {
         self.validate_block_exists(low)?;
         let high = if let Some(high) = high {
             self.validate_block_exists(high)?;
-            self.services.sync_manager.find_highest_common_chain_block(high, self.get_sink());
+            high = self.services.sync_manager.find_highest_common_chain_block(high, self.get_sink());
+            if !self.is_chain_ancestor_of(low, new_high)? {
+                return Err(ConsensusError::ExpectedAncestor(low, high));
+            }
             high
         } else {
             self.get_sink()
