@@ -365,7 +365,7 @@ message GetSubnetworkResponseMessage{
 // note: 
 // 1) this call batches the response to:
 // a. the network's `mergeset size limit * 10` amount of chain blocks, if `includeAcceptedTransactionIds = false`
-// b. the network's `mergeset size limit * 10` amount of merged blocks, if `includeAcceptedTransactionIds = true`
+// b. when the acceptance data queried exceeds the network's `mergeset size limit * 10` amount of merged blocks, if `includeAcceptedTransactionIds = true`
 // 2) if startHash is not supplied it will default to the node's source hash
 message GetVirtualChainFromBlockRequestMessage{
   string startHash = 1;
