@@ -36,7 +36,7 @@ impl RpcCoreMock {
             EVENT_TYPE_ARRAY[..].into(),
             vec![],
             vec![],
-            SubscriptionContext::new(Some(network.into())),
+            SubscriptionContext::new(Some(network)),
             10,
             policies,
             Some(sync_sender),

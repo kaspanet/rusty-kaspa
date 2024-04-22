@@ -594,7 +594,7 @@ mod tests {
     use super::super::*;
     use super::*;
     use crate::{
-        address::test_helpers::{get_3_addresses, ADDRESS_PREFIX},
+        address::test_helpers::{get_3_addresses, NETWORK_TYPE},
         scope::BlockAddedScope,
     };
     use std::collections::hash_map::DefaultHasher;
@@ -657,7 +657,7 @@ mod tests {
             comparisons: Vec<Comparison>,
         }
 
-        let context = SubscriptionContext::new(Some(ADDRESS_PREFIX));
+        let context = SubscriptionContext::new(Some(NETWORK_TYPE));
         let addresses = get_3_addresses(false);
         let mut sorted_addresses = addresses.clone();
         sorted_addresses.sort();
@@ -771,7 +771,7 @@ mod tests {
 
     #[test]
     fn test_overall_mutation() {
-        let context = SubscriptionContext::new(Some(ADDRESS_PREFIX));
+        let context = SubscriptionContext::new(Some(NETWORK_TYPE));
 
         fn s(active: bool) -> DynSubscription {
             Arc::new(OverallSubscription { event_type: EventType::BlockAdded, active })
@@ -824,7 +824,7 @@ mod tests {
 
     #[test]
     fn test_virtual_chain_changed_mutation() {
-        let context = SubscriptionContext::new(Some(ADDRESS_PREFIX));
+        let context = SubscriptionContext::new(Some(NETWORK_TYPE));
 
         fn s(active: bool, include_accepted_transaction_ids: bool) -> DynSubscription {
             Arc::new(VirtualChainChangedSubscription { active, include_accepted_transaction_ids })
@@ -936,7 +936,7 @@ mod tests {
 
     #[test]
     fn test_utxos_changed_mutation() {
-        let context = SubscriptionContext::new(Some(ADDRESS_PREFIX));
+        let context = SubscriptionContext::new(Some(NETWORK_TYPE));
         let a_stock = get_3_addresses(true);
 
         let av = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<Vec<_>>();

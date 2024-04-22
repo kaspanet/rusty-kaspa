@@ -13,7 +13,7 @@ use crate::{
 };
 use async_channel::Sender;
 use async_trait::async_trait;
-use kaspa_addresses::Prefix;
+use kaspa_consensus_core::network::NetworkType;
 use kaspa_core::{debug, trace};
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -37,8 +37,8 @@ impl<N> Root<N>
 where
     N: Notification,
 {
-    pub fn new(prefix: Prefix, sender: Sender<N>) -> Self {
-        let subscription_context = SubscriptionContext::new(Some(prefix));
+    pub fn new(network_type: NetworkType, sender: Sender<N>) -> Self {
+        let subscription_context = SubscriptionContext::new(Some(network_type));
         Self::with_context(sender, subscription_context)
     }
 

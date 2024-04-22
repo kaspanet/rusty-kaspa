@@ -254,7 +254,7 @@ mod tests {
     use super::super::*;
     use super::*;
     use crate::{
-        address::test_helpers::{get_3_addresses, ADDRESS_PREFIX},
+        address::test_helpers::{get_3_addresses, ADDRESS_PREFIX, NETWORK_TYPE},
         scope::BlockAddedScope,
     };
     use std::panic::AssertUnwindSafe;
@@ -295,7 +295,7 @@ mod tests {
         let remove = || Mutation::new(Command::Stop, Scope::BlockAdded(BlockAddedScope {}));
         let test = Test {
             name: "OverallSubscription 0 to 2 to 0",
-            context: SubscriptionContext::new(Some(ADDRESS_PREFIX)),
+            context: SubscriptionContext::new(Some(NETWORK_TYPE)),
             initial_state: none(),
             steps: vec![
                 Step { name: "add 1", mutation: add(), result: Some(add()) },
@@ -325,7 +325,7 @@ mod tests {
         let remove_all = || m(Command::Stop, true);
         let test = Test {
             name: "VirtualChainChanged",
-            context: SubscriptionContext::new(Some(ADDRESS_PREFIX)),
+            context: SubscriptionContext::new(Some(NETWORK_TYPE)),
             initial_state: none(),
             steps: vec![
                 Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
@@ -359,7 +359,7 @@ mod tests {
     #[allow(clippy::redundant_clone)]
     fn test_utxos_changed_compounding() {
         kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
-        let context = SubscriptionContext::new(Some(ADDRESS_PREFIX));
+        let context = SubscriptionContext::new(Some(NETWORK_TYPE));
         let a_stock = get_3_addresses(true);
 
         let a = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<Vec<_>>();

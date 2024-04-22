@@ -476,14 +476,14 @@ impl Inner {
 
     /// Tries to set the address prefix.
     ///
-    /// For this to succeed, the tracker must have no prefix yet, it must be empty
-    /// or `prefix` must match the internal prefix.
+    /// For this to succeed, the tracker must have no prefix yet or `prefix` must match the internal prefix.
     fn set_prefix(&mut self, prefix: Prefix) -> bool {
-        let result = self.prefix.is_none() || self.prefix == Some(prefix) || self.is_empty();
-        if result {
+        if self.prefix.is_none() {
             self.prefix = Some(prefix);
+            true
+        } else {
+            self.prefix == Some(prefix)
         }
-        result
     }
 
     fn is_full(&self) -> bool {
@@ -596,9 +596,12 @@ impl Inner {
 /// #### Implementation design
 ///
 /// Each [`Address`](kaspa_addresses::Address) is stored internally as a [`ScriptPubKey`](kaspa_consensus_core::tx::ScriptPublicKey).
-/// This prevents inter-network duplication and optimizes UTXOs filtering efficiency.
+/// This optimizes UTXOs filtering efficiency, which is the most solicited service in the tracker.
 ///
-/// But consequently the address network prefix gets lost and must be globally provided when querying for addresses by indexes.
+/// The tracker needs a defined prefix in order to be active. This prefix can be provided to the ctor or via a call to `set_prefix()`.
+/// Once defined, the tracker prefix cannot be changed anymore.
+///
+/// The tracker rejects addresses whose prefix differs from that of the tracker.
 #[derive(Debug, Clone)]
 pub struct Tracker {
     inner: Arc<RwLock<Inner>>,
@@ -655,9 +658,8 @@ impl Tracker {
 
     /// Tries to set the address prefix.
     ///
-    /// For this to succeed, the tracker must have no prefix yet, it must be empty
-    /// or `prefix` must match the internal prefix.
-    pub fn set_prefix(&mut self, prefix: Prefix) -> bool {
+    /// For this to succeed, the tracker must have no prefix yet or `prefix` must match the internal prefix.
+    pub fn set_prefix(&self, prefix: Prefix) -> bool {
         self.inner.write().set_prefix(prefix)
     }
 

@@ -6,7 +6,7 @@ use crate::{
         DynSubscription,
     },
 };
-use kaspa_addresses::Prefix;
+use kaspa_consensus_core::network::NetworkType;
 use std::{ops::Deref, sync::Arc};
 
 #[cfg(test)]
@@ -21,44 +21,63 @@ pub struct SubscriptionContextInner {
 impl SubscriptionContextInner {
     const CONTEXT_LISTENER_ID: ListenerId = ListenerId::MAX;
 
-    pub fn new(prefix: Option<Prefix>) -> Self {
-        Self::with_options(prefix, None)
+    pub fn new(network_type: Option<NetworkType>) -> Self {
+        Self::with_options(network_type, None)
     }
 
-    pub fn with_options(prefix: Option<Prefix>, max_addresses: Option<usize>) -> Self {
-        let address_tracker = Tracker::new(prefix, max_addresses);
+    pub fn with_options(network_type: Option<NetworkType>, max_addresses: Option<usize>) -> Self {
+        let address_tracker = Tracker::new(network_type.map(From::from), max_addresses);
         let utxos_changed_subscription_all =
             Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID, address_tracker.clone()));
         Self { address_tracker, utxos_changed_subscription_to_all: utxos_changed_subscription_all }
     }
 
     #[cfg(test)]
-    pub fn with_addresses(prefix: Prefix, addresses: &[Address]) -> Self {
-        let address_tracker = Tracker::with_addresses(prefix, addresses);
+    pub fn with_addresses(network_type: NetworkType, addresses: &[Address]) -> Self {
+        let address_tracker = Tracker::with_addresses(network_type.into(), addresses);
         let utxos_changed_subscription_all =
             Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID, address_tracker.clone()));
         Self { address_tracker, utxos_changed_subscription_to_all: utxos_changed_subscription_all }
     }
+
+    pub fn network_type(&self) -> Option<NetworkType> {
+        self.address_tracker.prefix().map(|x| x.try_into().expect("in non-test configuration, the conversion is infallible"))
+    }
+
+    /// Tries to set the network type.
+    ///
+    /// For this to succeed, the context must have no network type yet or `network_type` must match the internal type.
+    pub fn set_network_type(&self, network_type: NetworkType) -> bool {
+        self.address_tracker.set_prefix(network_type.into())
+    }
 }
 
+/// Subscription context
+///
+/// #### Implementation design
+///
+/// The context needs a defined network type in order to be active. The network type can be provided to the ctor or via
+/// a call to `set_network_type()`.
+///
+/// Once defined, the network type cannot be changed anymore.
 #[derive(Clone, Debug)]
 pub struct SubscriptionContext {
     inner: Arc<SubscriptionContextInner>,
 }
 
 impl SubscriptionContext {
-    pub fn new(prefix: Option<Prefix>) -> Self {
-        Self::with_options(prefix, None)
+    pub fn new(network_type: Option<NetworkType>) -> Self {
+        Self::with_options(network_type, None)
     }
 
-    pub fn with_options(prefix: Option<Prefix>, max_addresses: Option<usize>) -> Self {
-        let inner = Arc::new(SubscriptionContextInner::with_options(prefix, max_addresses));
+    pub fn with_options(network_type: Option<NetworkType>, max_addresses: Option<usize>) -> Self {
+        let inner = Arc::new(SubscriptionContextInner::with_options(network_type, max_addresses));
         Self { inner }
     }
 
     #[cfg(test)]
-    pub fn with_addresses(prefix: Prefix, addresses: &[Address]) -> Self {
-        let inner = Arc::new(SubscriptionContextInner::with_addresses(prefix, addresses));
+    pub fn with_addresses(network_type: NetworkType, addresses: &[Address]) -> Self {
+        let inner = Arc::new(SubscriptionContextInner::with_addresses(network_type, addresses));
         Self { inner }
     }
 }
@@ -166,7 +185,11 @@ mod tests {
         let _ = measure_consumed_memory(
             ITEM_LEN,
             NUM_ITEMS,
-            || (0..NUM_ITEMS).map(|_| SubscriptionContext::with_addresses(ADDRESS_PREFIX, &addresses)).collect_vec(),
+            || {
+                (0..NUM_ITEMS)
+                    .map(|_| SubscriptionContext::with_addresses(ADDRESS_PREFIX.try_into().unwrap(), &addresses))
+                    .collect_vec()
+            },
             |x| (x.address_tracker.len(), x.address_tracker.capacity()),
         );
     }

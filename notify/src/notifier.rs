@@ -823,7 +823,7 @@ pub mod test_helpers {
 mod tests {
     use super::{test_helpers::*, *};
     use crate::{
-        address::test_helpers::ADDRESS_PREFIX,
+        address::test_helpers::NETWORK_TYPE,
         collector::CollectorFrom,
         connection::ChannelType,
         converter::ConverterFrom,
@@ -858,7 +858,7 @@ mod tests {
             let (subscription_sender, subscription_receiver) = unbounded();
             let collector = Arc::new(TestCollector::new(IDENT, notification_receiver, Arc::new(TestConverter::new())));
             let subscription_manager = Arc::new(SubscriptionManagerMock::new(subscription_sender));
-            let subscription_context = SubscriptionContext::new(Some(ADDRESS_PREFIX));
+            let subscription_context = SubscriptionContext::new(Some(NETWORK_TYPE));
             let subscriber =
                 Arc::new(Subscriber::new("test", EVENT_TYPE_ARRAY[..].into(), subscription_manager, SUBSCRIPTION_MANAGER_ID));
             let notifier = Arc::new(TestNotifier::with_sync(

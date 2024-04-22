@@ -2,10 +2,11 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use clap::{Arg, ArgAction, Command};
 use itertools::Itertools;
-use kaspa_addresses::{Address, Prefix, Version};
+use kaspa_addresses::{Address, Version};
 use kaspa_consensus_core::{
     config::params::{TESTNET11_PARAMS, TESTNET_PARAMS},
     constants::{SOMPI_PER_KASPA, TX_VERSION},
+    network::NetworkType,
     sign::sign,
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry},
@@ -23,7 +24,7 @@ use tokio::time::{interval, MissedTickBehavior};
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
 const FEE_PER_MASS: u64 = 10;
 const MILLIS_PER_TICK: u64 = 10;
-const ADDRESS_PREFIX: Prefix = Prefix::Testnet;
+const NETWORK_TYPE: NetworkType = NetworkType::Testnet;
 const ADDRESS_VERSION: Version = Version::PubKey;
 
 struct Stats {
@@ -116,7 +117,7 @@ async fn main() {
     kaspa_core::log::init_logger(None, "");
     let args = Args::parse();
     let stats = Arc::new(Mutex::new(Stats { num_txs: 0, since: unix_now(), num_utxos: 0, utxos_amount: 0, num_outs: 0 }));
-    let subscription_context = SubscriptionContext::new(Some(ADDRESS_PREFIX));
+    let subscription_context = SubscriptionContext::new(Some(NETWORK_TYPE));
     let rpc_client = GrpcClient::connect_with_args(
         NotificationMode::Direct,
         format!("grpc://{}", args.rpc_server),
@@ -138,7 +139,7 @@ async fn main() {
         secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap()
     } else {
         let (sk, pk) = &secp256k1::generate_keypair(&mut thread_rng());
-        let kaspa_addr = Address::new(ADDRESS_PREFIX, ADDRESS_VERSION, &pk.x_only_public_key().0.serialize());
+        let kaspa_addr = Address::new(NETWORK_TYPE.into(), ADDRESS_VERSION, &pk.x_only_public_key().0.serialize());
         info!(
             "Generated private key {} and address {}. Send some funds to this address and rerun rothschild with `--private-key {}`",
             sk.display_secret(),
@@ -148,7 +149,7 @@ async fn main() {
         return;
     };
 
-    let kaspa_addr = Address::new(ADDRESS_PREFIX, ADDRESS_VERSION, &schnorr_key.x_only_public_key().0.serialize());
+    let kaspa_addr = Address::new(NETWORK_TYPE.into(), ADDRESS_VERSION, &schnorr_key.x_only_public_key().0.serialize());
 
     rayon::ThreadPoolBuilder::new().num_threads(args.threads as usize).build_global().unwrap();
 
