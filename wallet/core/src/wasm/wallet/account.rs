@@ -6,7 +6,11 @@ use kaspa_consensus_core::network::NetworkTypeT;
 use kaspa_wallet_keys::keypair::Keypair;
 use workflow_core::abortable::Abortable;
 
-/// @category Wallet API
+///
+/// The `Account` class is a wallet account that can be used to send and receive payments.
+///
+///
+///  @category Wallet API
 #[wasm_bindgen(inspectable)]
 #[derive(Clone, CastFromJs)]
 pub struct Account {
