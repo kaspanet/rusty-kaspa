@@ -169,8 +169,12 @@ where
             Self::Addresses(ref addresses) => {
                 borsh::BorshSerialize::serialize(addresses, writer)?;
             }
-            Self::Indexes(_) => {
-                todo!("Convert indexes into addresses and serialize");
+            Self::Indexes(ref indexes) => {
+                // This variant cannot be serialized as such because indexes are relative to their underlying
+                // tracker and the relation index->address is specific to the local execution context.
+                // So we build a temporary vector of addresses and serialize it.
+                let addresses = indexes.to_addresses();
+                borsh::BorshSerialize::serialize(&addresses, writer)?;
             }
         }
         Ok(())
@@ -198,17 +202,20 @@ const _: () = {
         where
             __S: _serde::Serializer,
         {
+            let mut __serde_state = _serde::Serializer::serialize_struct(__serializer, "UtxosChangedScope", false as usize + 1)?;
             match self {
                 Self::Addresses(ref addresses) => {
-                    let mut __serde_state =
-                        _serde::Serializer::serialize_struct(__serializer, "UtxosChangedScope", false as usize + 1)?;
                     _serde::ser::SerializeStruct::serialize_field(&mut __serde_state, "addresses", addresses)?;
-                    _serde::ser::SerializeStruct::end(__serde_state)
                 }
-                Self::Indexes(_) => {
-                    todo!("Convert indexes into addresses and serialize");
+                Self::Indexes(ref indexes) => {
+                    // This variant cannot be serialized as such because indexes are relative to their underlying
+                    // tracker and the relation index->address is specific to the local execution context.
+                    // So we build a temporary vector of addresses and serialize it.
+                    let addresses = indexes.to_addresses();
+                    _serde::ser::SerializeStruct::serialize_field(&mut __serde_state, "addresses", &addresses)?;
                 }
             }
+            _serde::ser::SerializeStruct::end(__serde_state)
         }
     }
 };
