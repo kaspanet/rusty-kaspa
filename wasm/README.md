@@ -51,14 +51,16 @@ If building from source, you must run `build-release` or `build-web` scripts bef
 ## Building from Source
 
 To build the WASM32 SDK from source, you need to have the Rust environment installed. To do that,
-follow instructions in the [Rusty-Kaspa README](https://github.com/kaspanet/rusty-kaspa).
+follow instructions in the [Rusty Kaspa README](https://github.com/kaspanet/rusty-kaspa).
 
 Once you have Rust installed, you can build the WASM32 SDK as follows:
 
 - `./build-release` - build the release version of the WASM32 SDK + Docs. The release version also contains `debug` builds of the libraries.
-- `./build-web` - build the web packages
-- `./build-docs` - runs `build-web` and then generates typedoc documentation
-- `./build-node` - build the NodeJS packages
+- `./build-web` - build the web package (ES6 module)
+- `./build-node` - build the NodeJS package (CommonJS module)
+- `./build-docs` - runs `build-web` and then generates TypeDoc documentation from the resulting build.
+
+Please note that to build from source, you need to have TypeDoc installed globally via `npm install -g typedoc` (see below).
 
 ## WASM32 SDK release packages
 
