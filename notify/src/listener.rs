@@ -67,14 +67,9 @@ where
     }
 
     /// Apply a mutation to the subscriptions
-    pub fn mutate(
-        &mut self,
-        mutation: Mutation,
-        policies: MutationPolicies,
-        context: &SubscriptionContext,
-    ) -> Result<MutationOutcome> {
+    pub fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies) -> Result<MutationOutcome> {
         let event_type = mutation.event_type();
-        self.subscriptions[event_type].mutate(mutation, policies, context)
+        self.subscriptions[event_type].mutate(mutation, policies)
     }
 
     pub fn close(&self) {

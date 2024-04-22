@@ -315,11 +315,8 @@ impl RpcApi for GrpcClient {
             NotificationMode::Direct => {
                 if self.inner.will_reconnect() {
                     let event = scope.event_type();
-                    self.subscriptions.as_ref().unwrap().lock().await[event].mutate(
-                        Mutation::new(Command::Start, scope.clone()),
-                        self.inner.policies,
-                        &self.inner.subscription_context,
-                    )?;
+                    self.subscriptions.as_ref().unwrap().lock().await[event]
+                        .mutate(Mutation::new(Command::Start, scope.clone()), self.inner.policies)?;
                 }
                 self.inner.start_notify_to_client(scope).await?;
             }
@@ -337,11 +334,8 @@ impl RpcApi for GrpcClient {
                 NotificationMode::Direct => {
                     if self.inner.will_reconnect() {
                         let event = scope.event_type();
-                        self.subscriptions.as_ref().unwrap().lock().await[event].mutate(
-                            Mutation::new(Command::Stop, scope.clone()),
-                            self.inner.policies,
-                            &self.inner.subscription_context,
-                        )?;
+                        self.subscriptions.as_ref().unwrap().lock().await[event]
+                            .mutate(Mutation::new(Command::Stop, scope.clone()), self.inner.policies)?;
                     }
                     self.inner.stop_notify_to_client(scope).await?;
                 }
@@ -646,7 +640,6 @@ impl Inner {
         self: Arc<Self>,
         notifier: Option<Arc<GrpcClientNotifier>>,
         subscriptions: Option<Arc<DirectSubscriptions>>,
-        subscription_context: &SubscriptionContext,
     ) -> RpcResult<()> {
         assert_ne!(
             notifier.is_some(),
@@ -679,7 +672,7 @@ impl Inner {
             let subscriptions = subscriptions.lock().await;
             for event in EVENT_TYPE_ARRAY {
                 if subscriptions[event].active() {
-                    self.clone().start_notify_to_client(subscriptions[event].scope(subscription_context)).await?;
+                    self.clone().start_notify_to_client(subscriptions[event].scope()).await?;
                 }
             }
         }
@@ -883,7 +876,7 @@ impl Inner {
                     _ = delay => {
                         trace!("GRPC client: connection monitor task - running");
                         if !self.is_connected() {
-                            match self.clone().reconnect(notifier.clone(), subscriptions.clone(), &self.subscription_context).await {
+                            match self.clone().reconnect(notifier.clone(), subscriptions.clone()).await {
                                 Ok(_) => {
                                     trace!("GRPC client: reconnection to server succeeded");
                                 },

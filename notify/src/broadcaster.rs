@@ -326,8 +326,7 @@ mod tests {
                     if let Some(ref mutation) = mutation {
                         trace!("{} #{} - {}: L{} {:?}", self.name, step_idx, step.name, idx, mutation);
                         let event = mutation.event_type();
-                        let outcome =
-                            self.listeners[idx].mutate(mutation.clone(), Default::default(), &self.subscription_context).unwrap();
+                        let outcome = self.listeners[idx].mutate(mutation.clone(), Default::default()).unwrap();
                         if outcome.has_new_state() {
                             trace!(
                                 "{} #{} - {}: - L{} has the new state {:?}",

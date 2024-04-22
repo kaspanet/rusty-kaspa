@@ -38,13 +38,7 @@ impl OverallSubscription {
 }
 
 impl Single for OverallSubscription {
-    fn apply_mutation(
-        &self,
-        _: &Arc<dyn Single>,
-        mutation: Mutation,
-        _: MutationPolicies,
-        _: &SubscriptionContext,
-    ) -> Result<MutationOutcome> {
+    fn apply_mutation(&self, _: &Arc<dyn Single>, mutation: Mutation, _: MutationPolicies) -> Result<MutationOutcome> {
         assert_eq!(self.event_type(), mutation.event_type());
         Ok(if self.active != mutation.active() {
             let mutated = Self::new(self.event_type, mutation.active());
@@ -66,7 +60,7 @@ impl Subscription for OverallSubscription {
         self.active
     }
 
-    fn scope(&self, _context: &SubscriptionContext) -> Scope {
+    fn scope(&self) -> Scope {
         self.event_type.into()
     }
 }
@@ -88,13 +82,7 @@ impl VirtualChainChangedSubscription {
 }
 
 impl Single for VirtualChainChangedSubscription {
-    fn apply_mutation(
-        &self,
-        _: &Arc<dyn Single>,
-        mutation: Mutation,
-        _: MutationPolicies,
-        _: &SubscriptionContext,
-    ) -> Result<MutationOutcome> {
+    fn apply_mutation(&self, _: &Arc<dyn Single>, mutation: Mutation, _: MutationPolicies) -> Result<MutationOutcome> {
         assert_eq!(self.event_type(), mutation.event_type());
         let result = if let Scope::VirtualChainChanged(ref scope) = mutation.scope {
             // Here we want the code to (almost) match a double entry table structure
@@ -165,7 +153,7 @@ impl Subscription for VirtualChainChangedSubscription {
         self.active
     }
 
-    fn scope(&self, _context: &SubscriptionContext) -> Scope {
+    fn scope(&self) -> Scope {
         VirtualChainChangedScope::new(self.include_accepted_transaction_ids).into()
     }
 }
@@ -412,13 +400,7 @@ impl Hash for UtxosChangedSubscription {
 }
 
 impl Single for UtxosChangedSubscription {
-    fn apply_mutation(
-        &self,
-        current: &Arc<dyn Single>,
-        mutation: Mutation,
-        policies: MutationPolicies,
-        _: &SubscriptionContext,
-    ) -> Result<MutationOutcome> {
+    fn apply_mutation(&self, current: &Arc<dyn Single>, mutation: Mutation, policies: MutationPolicies) -> Result<MutationOutcome> {
         assert_eq!(self.event_type(), mutation.event_type());
         let outcome = if let Scope::UtxosChanged(scope) = mutation.scope {
             let mut data = self.data_mut();
@@ -566,7 +548,7 @@ impl Subscription for UtxosChangedSubscription {
         self.state().active()
     }
 
-    fn scope(&self, _: &SubscriptionContext) -> Scope {
+    fn scope(&self) -> Scope {
         UtxosChangedScope::new(self.data().to_addresses()).into()
     }
 }
@@ -754,10 +736,10 @@ mod tests {
             Self { tests }
         }
 
-        fn run(&self, context: &SubscriptionContext) {
+        fn run(&self) {
             for test in self.tests.iter() {
                 let mut new_state = test.state.clone();
-                let outcome = new_state.mutate(test.mutation.clone(), Default::default(), context).unwrap();
+                let outcome = new_state.mutate(test.mutation.clone(), Default::default()).unwrap();
                 assert_eq!(test.new_state.active(), new_state.active(), "Testing '{}': wrong new state activity", test.name);
                 assert_eq!(*test.new_state, *new_state, "Testing '{}': wrong new state", test.name);
                 assert_eq!(test.outcome.has_new_state(), outcome.has_new_state(), "Testing '{}': wrong new state presence", test.name);
@@ -768,8 +750,6 @@ mod tests {
 
     #[test]
     fn test_overall_mutation() {
-        let context = SubscriptionContext::new(Some(NETWORK_TYPE));
-
         fn s(active: bool) -> DynSubscription {
             Arc::new(OverallSubscription { event_type: EventType::BlockAdded, active })
         }
@@ -816,13 +796,11 @@ mod tests {
                 outcome: MutationOutcome::with_mutated(none(), vec![stop_all()]),
             },
         ]);
-        tests.run(&context)
+        tests.run()
     }
 
     #[test]
     fn test_virtual_chain_changed_mutation() {
-        let context = SubscriptionContext::new(Some(NETWORK_TYPE));
-
         fn s(active: bool, include_accepted_transaction_ids: bool) -> DynSubscription {
             Arc::new(VirtualChainChangedSubscription { active, include_accepted_transaction_ids })
         }
@@ -928,7 +906,7 @@ mod tests {
                 outcome: MutationOutcome::with_mutated(none(), vec![stop_all()]),
             },
         ]);
-        tests.run(&context)
+        tests.run()
     }
 
     #[test]
@@ -1081,6 +1059,6 @@ mod tests {
                 outcome: MutationOutcome::with_mutated(none(), vec![stop_all()]),
             },
         ]);
-        tests.run(&context)
+        tests.run()
     }
 }

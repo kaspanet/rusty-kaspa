@@ -97,11 +97,11 @@ impl Mutation {
 pub trait Subscription {
     fn event_type(&self) -> EventType;
     fn active(&self) -> bool;
-    fn scope(&self, context: &SubscriptionContext) -> Scope; // TODO: remove context
+    fn scope(&self) -> Scope;
 }
 
 pub trait Compounded: Subscription + AsAny + DynEq + CompoundedClone + Debug + Send + Sync {
-    fn compound(&mut self, mutation: Mutation, context: &SubscriptionContext) -> Option<Mutation>; // TODO: remove context
+    fn compound(&mut self, mutation: Mutation) -> Option<Mutation>;
 }
 
 impl PartialEq for dyn Compounded {
@@ -172,13 +172,7 @@ pub trait Single: Subscription + AsAny + DynHash + DynEq + Debug + Send + Sync {
     ///   otherwise the outcome should contain both a new state (see next point for exception) and some mutations.
     /// - If the subscription has inner mutability and its current state and incoming mutation do allow an inner mutation,
     ///   the outcome new state must be empty.
-    fn apply_mutation(
-        &self,
-        arc_self: &Arc<dyn Single>,
-        mutation: Mutation,
-        policies: MutationPolicies,
-        context: &SubscriptionContext, // TODO: remove context which is not used anymore
-    ) -> Result<MutationOutcome>;
+    fn apply_mutation(&self, arc_self: &Arc<dyn Single>, mutation: Mutation, policies: MutationPolicies) -> Result<MutationOutcome>;
 }
 
 pub trait MutateSingle: Deref<Target = dyn Single> {
@@ -186,12 +180,12 @@ pub trait MutateSingle: Deref<Target = dyn Single> {
     ///
     /// On success, updates `self` to the new state if any and returns both the optional new state and the mutations
     /// resulting of the process as a [`MutationOutcome`].
-    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies, context: &SubscriptionContext) -> Result<MutationOutcome>;
+    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies) -> Result<MutationOutcome>;
 }
 
 impl MutateSingle for Arc<dyn Single> {
-    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies, context: &SubscriptionContext) -> Result<MutationOutcome> {
-        let outcome = self.apply_mutation(self, mutation, policies, context)?.apply_to(self);
+    fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies) -> Result<MutationOutcome> {
+        let outcome = self.apply_mutation(self, mutation, policies)?.apply_to(self);
         Ok(outcome)
     }
 }

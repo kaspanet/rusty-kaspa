@@ -5,7 +5,7 @@ use crate::{
     },
     events::EventType,
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
-    subscription::{context::SubscriptionContext, Command, Compounded, Mutation, Subscription},
+    subscription::{Command, Compounded, Mutation, Subscription},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -21,7 +21,7 @@ impl OverallSubscription {
 }
 
 impl Compounded for OverallSubscription {
-    fn compound(&mut self, mutation: Mutation, _context: &SubscriptionContext) -> Option<Mutation> {
+    fn compound(&mut self, mutation: Mutation) -> Option<Mutation> {
         assert_eq!(self.event_type(), mutation.event_type());
         match mutation.command {
             Command::Start => {
@@ -52,7 +52,7 @@ impl Subscription for OverallSubscription {
         self.active > 0
     }
 
-    fn scope(&self, _context: &SubscriptionContext) -> Scope {
+    fn scope(&self) -> Scope {
         self.event_type.into()
     }
 }
@@ -85,7 +85,7 @@ impl VirtualChainChangedSubscription {
 }
 
 impl Compounded for VirtualChainChangedSubscription {
-    fn compound(&mut self, mutation: Mutation, _context: &SubscriptionContext) -> Option<Mutation> {
+    fn compound(&mut self, mutation: Mutation) -> Option<Mutation> {
         assert_eq!(self.event_type(), mutation.event_type());
         if let Scope::VirtualChainChanged(ref scope) = mutation.scope {
             let all = scope.include_accepted_transaction_ids;
@@ -145,7 +145,7 @@ impl Subscription for VirtualChainChangedSubscription {
         self.include_accepted_transaction_ids.iter().sum::<usize>() > 0
     }
 
-    fn scope(&self, _context: &SubscriptionContext) -> Scope {
+    fn scope(&self) -> Scope {
         Scope::VirtualChainChanged(VirtualChainChangedScope::new(self.all() > 0))
     }
 }
@@ -185,7 +185,7 @@ impl UtxosChangedSubscription {
 }
 
 impl Compounded for UtxosChangedSubscription {
-    fn compound(&mut self, mutation: Mutation, _: &SubscriptionContext) -> Option<Mutation> {
+    fn compound(&mut self, mutation: Mutation) -> Option<Mutation> {
         assert_eq!(self.event_type(), mutation.event_type());
         if let Scope::UtxosChanged(scope) = mutation.scope {
             match mutation.command {
@@ -241,7 +241,7 @@ impl Subscription for UtxosChangedSubscription {
         self.all > 0 || !self.indexes.is_empty()
     }
 
-    fn scope(&self, _: &SubscriptionContext) -> Scope {
+    fn scope(&self) -> Scope {
         let scope = if self.all > 0 { Default::default() } else { self.get_indexes() };
         scope.into()
     }
@@ -267,7 +267,6 @@ mod tests {
 
     struct Test {
         name: &'static str,
-        context: SubscriptionContext,
         initial_state: CompoundedSubscription,
         steps: Vec<Step>,
         final_state: CompoundedSubscription,
@@ -278,7 +277,7 @@ mod tests {
             let mut state = self.initial_state.clone_box();
             for (idx, step) in self.steps.iter().enumerate() {
                 trace!("{}: {}", idx, step.name);
-                let result = state.compound(step.mutation.clone(), &self.context);
+                let result = state.compound(step.mutation.clone());
                 assert_eq!(step.result, result, "{} - {}: wrong compound result", self.name, step.name);
                 trace!("{}: state = {:?}", idx, state);
             }
@@ -295,7 +294,6 @@ mod tests {
         let remove = || Mutation::new(Command::Stop, Scope::BlockAdded(BlockAddedScope {}));
         let test = Test {
             name: "OverallSubscription 0 to 2 to 0",
-            context: SubscriptionContext::new(Some(NETWORK_TYPE)),
             initial_state: none(),
             steps: vec![
                 Step { name: "add 1", mutation: add(), result: Some(add()) },
@@ -308,7 +306,7 @@ mod tests {
         let mut state = test.run();
 
         // Removing once more must panic
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove(), &test.context)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove())));
         assert!(result.is_err(), "{}: trying to remove when counter is zero must panic", test.name);
     }
 
@@ -325,7 +323,6 @@ mod tests {
         let remove_all = || m(Command::Stop, true);
         let test = Test {
             name: "VirtualChainChanged",
-            context: SubscriptionContext::new(Some(NETWORK_TYPE)),
             initial_state: none(),
             steps: vec![
                 Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
@@ -349,9 +346,9 @@ mod tests {
         let mut state = test.run();
 
         // Removing once more must panic
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_all(), &test.context)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_all())));
         assert!(result.is_err(), "{}: trying to remove all when counter is zero must panic", test.name);
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_reduced(), &test.context)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_reduced())));
         assert!(result.is_err(), "{}: trying to remove reduced when counter is zero must panic", test.name);
     }
 
@@ -384,7 +381,6 @@ mod tests {
         let test = Test {
             name: "UtxosChanged",
             initial_state: none(),
-            context,
             steps: vec![
                 Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
                 Step { name: "add all 2", mutation: add_all(), result: None },
@@ -410,7 +406,7 @@ mod tests {
         let mut state = test.run();
 
         // Removing once more must panic
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_all(), &test.context)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_all())));
         assert!(result.is_err(), "{}: trying to remove all when counter is zero must panic", test.name);
         // let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_0(), &test.context)));
         // assert!(result.is_err(), "{}: trying to remove an address when its counter is zero must panic", test.name);

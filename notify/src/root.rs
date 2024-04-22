@@ -99,7 +99,6 @@ where
 {
     sender: Sender<N>,
     subscriptions: RwLock<EventArray<DynSubscription>>,
-    subscription_context: SubscriptionContext,
     policies: MutationPolicies,
 }
 
@@ -112,7 +111,7 @@ where
     fn new(sender: Sender<N>, subscription_context: SubscriptionContext) -> Self {
         let subscriptions = RwLock::new(ArrayBuilder::single(Self::ROOT_LISTENER_ID, &subscription_context.address_tracker, None));
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::Wildcard);
-        Self { sender, subscriptions, subscription_context, policies }
+        Self { sender, subscriptions, policies }
     }
 
     fn send(&self, notification: N) -> Result<()> {
@@ -127,7 +126,7 @@ where
     pub fn execute_subscribe_command(&self, scope: Scope, command: Command) -> Result<()> {
         let mutation = Mutation::new(command, scope);
         let mut subscriptions = self.subscriptions.write();
-        subscriptions[mutation.event_type()].mutate(mutation, self.policies, &self.subscription_context)?;
+        subscriptions[mutation.event_type()].mutate(mutation, self.policies)?;
         Ok(())
     }
 
