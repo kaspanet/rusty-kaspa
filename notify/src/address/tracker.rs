@@ -7,7 +7,7 @@ use kaspa_core::{debug, info, trace};
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
-    collections::{hash_map, hash_set, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fmt::Display,
     sync::Arc,
 };
@@ -31,6 +31,12 @@ pub trait Indexer {
 
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool;
+
+    fn iter_index(&self) -> impl Iterator<Item = Index>;
+    fn iter_address(&self) -> impl Iterator<Item = Address> {
+        self.iter_index()
+            .map(|index| self.tracker().get_index_address(index).expect("the index is tracked thus has a matching address"))
+    }
 }
 
 trait IndexerStorage {
@@ -119,17 +125,18 @@ impl CounterMap {
             }
         });
         // Reference all duplicated indexes in the tracker
-        self.tracker.reference_indexes(target.iter());
+        self.tracker.reference_indexes(target.iter_index());
         target
+    }
+
+    /// Converts the indexes into addresses.
+    pub fn to_addresses(&self) -> Vec<Address> {
+        self.tracker().to_addresses(self)
     }
 
     /// Unregisters all indexes, draining the map in the process.
     pub fn clear(&mut self) {
         self.tracker.clone().clear_counters(self)
-    }
-
-    pub fn iter(&self) -> hash_map::Iter<'_, Index, RefCount> {
-        self.indexes.iter()
     }
 
     pub fn len(&self) -> usize {
@@ -171,6 +178,10 @@ impl Indexer for CounterMap {
     fn is_empty(&self) -> bool {
         self.is_empty()
     }
+
+    fn iter_index(&self) -> impl Iterator<Item = Index> {
+        self.indexes.keys().copied()
+    }
 }
 
 impl IndexerStorage for CounterMap {
@@ -211,7 +222,7 @@ impl Clone for CounterMap {
         let indexes = self.indexes.clone();
         // ...and make sure that the tracker increases the reference count of each cloned index
         // which associated ref counter here is non-zero
-        self.tracker.reference_indexes(indexes.iter().filter_map(|(index, count)| (*count > 0).then_some(index)));
+        self.tracker.reference_indexes(indexes.iter().filter_map(|(index, count)| (*count > 0).then_some(*index)));
 
         Self { tracker: self.tracker.clone(), indexes, empty_entries: self.empty_entries }
     }
@@ -302,13 +313,14 @@ impl IndexSet {
         target
     }
 
+    /// Converts the indexes into addresses.
+    pub fn to_addresses(&self) -> Vec<Address> {
+        self.tracker().to_addresses(self)
+    }
+
     /// Unregisters all indexes, draining the set in the process.
     pub fn clear(&mut self) {
         self.tracker.clone().clear_indexes(self)
-    }
-
-    pub fn iter(&self) -> hash_set::Iter<'_, Index> {
-        self.indexes.iter()
     }
 
     pub fn len(&self) -> usize {
@@ -325,7 +337,7 @@ impl IndexSet {
 
     #[cfg(test)]
     pub fn test_with_indexes(tracker: Tracker, indexes: Vec<Index>) -> Self {
-        tracker.reference_indexes(indexes.iter());
+        tracker.reference_indexes(indexes.iter().copied());
         Self { tracker, indexes: indexes.into_iter().collect() }
     }
 
@@ -356,6 +368,10 @@ impl Indexer for IndexSet {
     fn is_empty(&self) -> bool {
         self.is_empty()
     }
+
+    fn iter_index(&self) -> impl Iterator<Item = Index> {
+        self.indexes.iter().copied()
+    }
 }
 
 impl IndexerStorage for IndexSet {
@@ -373,7 +389,7 @@ impl Clone for IndexSet {
         // Clone the indexes...
         let indexes = self.indexes.clone();
         // ...and make sure that the tracker increases the reference count of each cloned index
-        self.tracker.reference_indexes(indexes.iter());
+        self.tracker.reference_indexes(indexes.iter().copied());
 
         Self { tracker: self.tracker.clone(), indexes }
     }
@@ -498,10 +514,11 @@ impl Inner {
         self.script_pub_keys.get_index(index as usize).map(|(spk, _)| spk)
     }
 
-    fn get_index_address(&self, index: Index, prefix: Prefix) -> Option<Address> {
-        self.script_pub_keys
-            .get_index(index as usize)
-            .map(|(spk, _)| extract_script_pub_key_address(spk, prefix).expect("is retro-convertible"))
+    fn get_index_address(&self, index: Index) -> Option<Address> {
+        self.script_pub_keys.get_index(index as usize).map(|(spk, _)| {
+            extract_script_pub_key_address(spk, self.prefix.expect("no address tracking without a defined prefix"))
+                .expect("is retro-convertible")
+        })
     }
 
     /// Get or insert `spk` and returns its index.
@@ -676,8 +693,8 @@ impl Tracker {
         self.get(&pay_to_address_script(address))
     }
 
-    pub fn get_address_at_index(&self, index: Index, prefix: Prefix) -> Option<Address> {
-        self.inner.read().get_index_address(index, prefix)
+    fn get_index_address(&self, index: Index) -> Option<Address> {
+        self.inner.read().get_index_address(index)
     }
 
     /// Tries to register an `Address` vector into an `Indexer`. The addresses are first registered in the tracker if unknown
@@ -826,10 +843,10 @@ impl Tracker {
         other
     }
 
-    fn reference_indexes<'a>(&self, indexes: impl Iterator<Item = &'a Index>) {
+    fn reference_indexes(&self, indexes: impl Iterator<Item = Index>) {
         for chunk in &indexes.chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
-            chunk.for_each(|index| inner.inc_count(*index));
+            chunk.for_each(|index| inner.inc_count(index));
         }
     }
 
@@ -858,18 +875,20 @@ impl Tracker {
         counters.empty_entries = 0;
     }
 
-    // TODO: make this private, generic over Indexer and use an internal prefix when available
-    //       expose a similar public fn in CounterMap and IndexSet
-    pub fn to_addresses(&self, indexes: &[Index], prefix: Prefix) -> Vec<Address> {
+    /// Converts the indexes of an [`Indexer`] into a vector of addresses.
+    pub fn to_addresses<T: Indexer>(&self, indexes: &T) -> Vec<Address> {
         let mut addresses = Vec::with_capacity(indexes.len());
-        for chunk in indexes.chunks(Self::ADDRESS_CHUNK_SIZE) {
-            let inner = self.inner.read();
-            chunk.iter().for_each(|index| {
-                if let Some(address) = inner.get_index_address(*index, prefix) {
-                    addresses.push(address);
-                }
-            });
-        }
+        let mut counter: usize = 0;
+        let mut inner = self.inner.write();
+        indexes.iter_index().for_each(|index| {
+            counter += 1;
+            if counter % Self::ADDRESS_CHUNK_SIZE == 0 {
+                RwLockWriteGuard::bump(&mut inner);
+            }
+            if let Some(address) = inner.get_index_address(index) {
+                addresses.push(address);
+            }
+        });
         addresses
     }
 

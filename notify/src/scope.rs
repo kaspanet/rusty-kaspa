@@ -151,7 +151,7 @@ impl PartialEq for UtxosChangedScope {
                     indexes.len() == other_addresses.len() && other_addresses.iter().all(|x| indexes.contains(x))
                 }
                 Self::Indexes(ref other_indexes) => {
-                    indexes.len() == other_indexes.len() && indexes.iter().all(|x| other_indexes.contains_index(*x))
+                    indexes.len() == other_indexes.len() && indexes.iter_index().all(|x| other_indexes.contains_index(x))
                 }
             },
         }

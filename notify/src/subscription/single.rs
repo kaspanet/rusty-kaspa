@@ -9,13 +9,11 @@ use crate::{
         Single, Subscription, UtxosChangedMutationPolicy,
     },
 };
-use itertools::Itertools;
-use kaspa_addresses::{Address, Prefix};
+use kaspa_addresses::Address;
 use kaspa_consensus_core::tx::ScriptPublicKey;
 use kaspa_core::trace;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{
-    collections::hash_set,
     fmt::{Debug, Display},
     hash::{Hash, Hasher},
     sync::{
@@ -269,16 +267,16 @@ impl UtxosChangedSubscriptionData {
         self.indexes.capacity()
     }
 
-    pub fn iter(&self) -> hash_set::Iter<'_, Index> {
-        self.indexes.iter()
+    pub fn iter_index(&self) -> impl Iterator<Item = Index> + '_ {
+        self.indexes.iter_index()
     }
 
     pub fn contains_address(&self, address: &Address) -> bool {
         self.indexes.contains(address)
     }
 
-    pub fn to_addresses(&self, prefix: Prefix, context: &SubscriptionContext) -> Vec<Address> {
-        self.indexes.iter().filter_map(|index| context.address_tracker.get_address_at_index(*index, prefix)).collect_vec()
+    pub fn to_addresses(&self) -> Vec<Address> {
+        self.indexes.to_addresses()
     }
 
     pub fn register(&mut self, scope: UtxosChangedScope) -> Result<UtxosChangedScope> {
@@ -568,9 +566,8 @@ impl Subscription for UtxosChangedSubscription {
         self.state().active()
     }
 
-    fn scope(&self, context: &SubscriptionContext) -> Scope {
-        // TODO: consider using a provided prefix
-        UtxosChangedScope::new(self.data().to_addresses(Prefix::Mainnet, context)).into()
+    fn scope(&self, _: &SubscriptionContext) -> Scope {
+        UtxosChangedScope::new(self.data().to_addresses()).into()
     }
 }
 

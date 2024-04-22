@@ -101,8 +101,8 @@ impl UtxosChangedNotification {
             }
         } else {
             let tracker_data = subscription_data.tracker().data();
-            subscription_data.iter().for_each(|index| {
-                if let Some(script_public_key) = tracker_data.get_index(*index) {
+            subscription_data.iter_index().for_each(|index| {
+                if let Some(script_public_key) = tracker_data.get_index(index) {
                     if let Some(collection) = utxo_set.get(script_public_key) {
                         result.insert(script_public_key.clone(), collection.clone());
                     }
