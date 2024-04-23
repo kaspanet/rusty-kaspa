@@ -209,7 +209,7 @@ impl ConnectionHandler {
         self.running.store(false, Ordering::SeqCst);
 
         // Wait for the internal notifier to stop
-        // Note that this requires the core service it is listening to to have closed its listener
+        // Note that this requires the core service it is listening to have closed its listener
         match timeout(Duration::from_millis(100), self.notifier().join()).await {
             Ok(_) => {
                 debug!("GRPC, Stopped the connection handler");

@@ -310,7 +310,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
 
     // check_error_condition is called whenever we finish a chunk of the scripts
     // (all original scripts, all scripts including p2sh, and maybe future extensions)
-    // returns Ok(()) if the running script has ended and was successful, leaving a a true boolean
+    // returns Ok(()) if the running script has ended and was successful, leaving a true boolean
     // on the stack. An error otherwise.
     #[inline]
     fn check_error_condition(&mut self, final_script: bool) -> Result<(), TxScriptError> {
