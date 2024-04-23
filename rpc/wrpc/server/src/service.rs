@@ -128,7 +128,7 @@ impl WrpcService {
         WrpcService { options, server, rpc_handler, shutdown: SingleTrigger::default() }
     }
 
-    /// Start listening on the configured address (will panic if the the socket listen() fails)
+    /// Start listening on the configured address (will panic if the socket listen() fails)
     pub fn serve(self: Arc<Self>) -> OneshotSender<()> {
         let (termination_sender, termination_receiver) = oneshot_channel::<()>();
         let listen_address = self.options.listen_address.clone();
