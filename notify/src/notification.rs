@@ -1,5 +1,3 @@
-use crate::subscription::context::SubscriptionContext;
-
 use super::{
     events::EventType,
     subscription::{
@@ -11,26 +9,21 @@ use std::fmt::{Debug, Display};
 
 /// A notification, usable throughout the full notification system via types implementing this trait
 pub trait Notification: Clone + Debug + Display + Send + Sync + 'static {
-    fn apply_overall_subscription(&self, subscription: &OverallSubscription, context: &SubscriptionContext) -> Option<Self>;
+    fn apply_overall_subscription(&self, subscription: &OverallSubscription) -> Option<Self>;
 
-    fn apply_virtual_chain_changed_subscription(
-        &self,
-        subscription: &VirtualChainChangedSubscription,
-        context: &SubscriptionContext,
-    ) -> Option<Self>;
+    fn apply_virtual_chain_changed_subscription(&self, subscription: &VirtualChainChangedSubscription) -> Option<Self>;
 
-    fn apply_utxos_changed_subscription(&self, subscription: &UtxosChangedSubscription, context: &SubscriptionContext)
-        -> Option<Self>;
+    fn apply_utxos_changed_subscription(&self, subscription: &UtxosChangedSubscription) -> Option<Self>;
 
-    fn apply_subscription(&self, subscription: &dyn Single, context: &SubscriptionContext) -> Option<Self> {
+    fn apply_subscription(&self, subscription: &dyn Single) -> Option<Self> {
         match subscription.event_type() {
             EventType::VirtualChainChanged => self.apply_virtual_chain_changed_subscription(
                 subscription.as_any().downcast_ref::<VirtualChainChangedSubscription>().unwrap(),
-                context,
             ),
-            EventType::UtxosChanged => self
-                .apply_utxos_changed_subscription(subscription.as_any().downcast_ref::<UtxosChangedSubscription>().unwrap(), context),
-            _ => self.apply_overall_subscription(subscription.as_any().downcast_ref::<OverallSubscription>().unwrap(), context),
+            EventType::UtxosChanged => {
+                self.apply_utxos_changed_subscription(subscription.as_any().downcast_ref::<UtxosChangedSubscription>().unwrap())
+            }
+            _ => self.apply_overall_subscription(subscription.as_any().downcast_ref::<OverallSubscription>().unwrap()),
         }
     }
 
@@ -76,9 +69,8 @@ macro_rules! full_featured {
 pub use full_featured;
 
 pub mod test_helpers {
-    use crate::subscription::{context::SubscriptionContext, Subscription};
-
     use super::*;
+    use crate::subscription::Subscription;
     use derive_more::Display;
     use kaspa_addresses::Address;
     use kaspa_core::trace;
@@ -114,7 +106,7 @@ pub mod test_helpers {
     }
 
     impl Notification for TestNotification {
-        fn apply_overall_subscription(&self, subscription: &OverallSubscription, _: &SubscriptionContext) -> Option<Self> {
+        fn apply_overall_subscription(&self, subscription: &OverallSubscription) -> Option<Self> {
             trace!("apply_overall_subscription: {self:?}, {subscription:?}");
             match subscription.active() {
                 true => Some(self.clone()),
@@ -122,11 +114,7 @@ pub mod test_helpers {
             }
         }
 
-        fn apply_virtual_chain_changed_subscription(
-            &self,
-            subscription: &VirtualChainChangedSubscription,
-            _: &SubscriptionContext,
-        ) -> Option<Self> {
+        fn apply_virtual_chain_changed_subscription(&self, subscription: &VirtualChainChangedSubscription) -> Option<Self> {
             match subscription.active() {
                 true => {
                     if let TestNotification::VirtualChainChanged(ref payload) = self {
@@ -143,11 +131,7 @@ pub mod test_helpers {
             }
         }
 
-        fn apply_utxos_changed_subscription(
-            &self,
-            subscription: &UtxosChangedSubscription,
-            context: &SubscriptionContext,
-        ) -> Option<Self> {
+        fn apply_utxos_changed_subscription(&self, subscription: &UtxosChangedSubscription) -> Option<Self> {
             match subscription.active() {
                 true => {
                     if let TestNotification::UtxosChanged(ref payload) = self {
@@ -156,12 +140,8 @@ pub mod test_helpers {
                             // trace!("apply_utxos_changed_subscription: Notification payload {:?}", payload);
                             // trace!("apply_utxos_changed_subscription: Subscription content {:?}", subscription);
                             // trace!("apply_utxos_changed_subscription: Subscription Context {}", context.address_tracker);
-                            let addresses = payload
-                                .addresses
-                                .iter()
-                                .filter(|x| subscription.contains_address(x, context))
-                                .cloned()
-                                .collect::<Vec<_>>();
+                            let addresses =
+                                payload.addresses.iter().filter(|x| subscription.contains_address(x)).cloned().collect::<Vec<_>>();
                             if !addresses.is_empty() {
                                 return Some(TestNotification::UtxosChanged(UtxosChangedNotification {
                                     data: payload.data,

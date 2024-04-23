@@ -5,7 +5,6 @@ use kaspa_notify::{
     events::EventType,
     notification::{full_featured, Notification as NotificationTrait},
     subscription::{
-        context::SubscriptionContext,
         single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
         Subscription,
     },
@@ -65,18 +64,14 @@ impl Notification {
 }
 
 impl NotificationTrait for Notification {
-    fn apply_overall_subscription(&self, subscription: &OverallSubscription, _context: &SubscriptionContext) -> Option<Self> {
+    fn apply_overall_subscription(&self, subscription: &OverallSubscription) -> Option<Self> {
         match subscription.active() {
             true => Some(self.clone()),
             false => None,
         }
     }
 
-    fn apply_virtual_chain_changed_subscription(
-        &self,
-        subscription: &VirtualChainChangedSubscription,
-        _context: &SubscriptionContext,
-    ) -> Option<Self> {
+    fn apply_virtual_chain_changed_subscription(&self, subscription: &VirtualChainChangedSubscription) -> Option<Self> {
         match subscription.active() {
             true => {
                 if let Notification::VirtualChainChanged(ref payload) = self {
@@ -94,15 +89,11 @@ impl NotificationTrait for Notification {
         }
     }
 
-    fn apply_utxos_changed_subscription(
-        &self,
-        subscription: &UtxosChangedSubscription,
-        context: &SubscriptionContext,
-    ) -> Option<Self> {
+    fn apply_utxos_changed_subscription(&self, subscription: &UtxosChangedSubscription) -> Option<Self> {
         match subscription.active() {
             true => {
                 let Self::UtxosChanged(notification) = self else { return None };
-                notification.apply_utxos_changed_subscription(subscription, context).map(Self::UtxosChanged)
+                notification.apply_utxos_changed_subscription(subscription).map(Self::UtxosChanged)
             }
             false => None,
         }

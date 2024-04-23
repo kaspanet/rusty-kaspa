@@ -38,8 +38,12 @@ impl<C> Listener<C>
 where
     C: Connection,
 {
-    pub fn new(id: ListenerId, connection: C) -> Self {
-        Self { connection, subscriptions: ArrayBuilder::single(id, None), _lifespan: ListenerLifespan::Dynamic }
+    pub fn new(id: ListenerId, connection: C, context: &SubscriptionContext) -> Self {
+        Self {
+            connection,
+            subscriptions: ArrayBuilder::single(id, &context.address_tracker, None),
+            _lifespan: ListenerLifespan::Dynamic,
+        }
     }
 
     pub fn new_static(id: ListenerId, connection: C, context: &SubscriptionContext, policies: MutationPolicies) -> Self {
@@ -54,7 +58,7 @@ where
             }
             UtxosChangedMutationPolicy::Wildcard => None,
         };
-        let subscriptions = ArrayBuilder::single(id, capacity);
+        let subscriptions = ArrayBuilder::single(id, &context.address_tracker, capacity);
         Self { connection, subscriptions, _lifespan: ListenerLifespan::Static(policies) }
     }
 
@@ -63,14 +67,9 @@ where
     }
 
     /// Apply a mutation to the subscriptions
-    pub fn mutate(
-        &mut self,
-        mutation: Mutation,
-        policies: MutationPolicies,
-        context: &SubscriptionContext,
-    ) -> Result<MutationOutcome> {
+    pub fn mutate(&mut self, mutation: Mutation, policies: MutationPolicies) -> Result<MutationOutcome> {
         let event_type = mutation.event_type();
-        self.subscriptions[event_type].mutate(mutation, policies, context)
+        self.subscriptions[event_type].mutate(mutation, policies)
     }
 
     pub fn close(&self) {

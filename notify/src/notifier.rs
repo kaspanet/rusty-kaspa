@@ -316,7 +316,7 @@ where
         Self {
             enabled_events,
             listeners: Mutex::new(HashMap::new()),
-            subscriptions: Mutex::new(ArrayBuilder::compounded(utxos_changed_capacity)),
+            subscriptions: Mutex::new(ArrayBuilder::compounded(&subscription_context.address_tracker, utxos_changed_capacity)),
             started: Arc::new(AtomicBool::new(false)),
             notification_channel,
             broadcasters,
@@ -352,7 +352,7 @@ where
                 trace!("[Notifier {}] registering listener {id}", self.name);
                 let listener = match lifespan {
                     ListenerLifespan::Static(policies) => Listener::new_static(id, connection, &self.subscription_context, policies),
-                    ListenerLifespan::Dynamic => Listener::new(id, connection),
+                    ListenerLifespan::Dynamic => Listener::new(id, connection, &self.subscription_context),
                 };
                 e.insert(listener);
                 return id;
@@ -412,7 +412,7 @@ where
         let event = scope.event_type();
         let scope_trace = format!("{scope}");
         debug!("[Notifier {}] {command} notifying about {scope_trace} to listener {id} - {}", self.name, listener.connection());
-        let outcome = listener.mutate(Mutation::new(command, scope), self.policies, &self.subscription_context)?;
+        let outcome = listener.mutate(Mutation::new(command, scope), self.policies)?;
         if outcome.has_changes() {
             trace!(
                 "[Notifier {}] {command} notifying listener {id} about {scope_trace} involves {} mutations",
@@ -433,7 +433,7 @@ where
                     self.broadcasters.iter().try_for_each(|broadcaster| broadcaster.unregister(event, id))?;
                 }
             }
-            self.apply_mutations(event, outcome.mutations, &self.subscription_context)?;
+            self.apply_mutations(event, outcome.mutations)?;
         } else {
             trace!("[Notifier {}] {command} notifying listener {id} about {scope_trace} is ignored (no mutation)", self.name);
             sync_feedback = true;
@@ -448,12 +448,12 @@ where
         Ok(())
     }
 
-    fn apply_mutations(&self, event: EventType, mutations: Vec<Mutation>, context: &SubscriptionContext) -> Result<()> {
+    fn apply_mutations(&self, event: EventType, mutations: Vec<Mutation>) -> Result<()> {
         let mut subscriptions = self.subscriptions.lock();
         // Compound mutations
         let mut compound_result = None;
         for mutation in mutations {
-            compound_result = subscriptions[event].compound(mutation, context);
+            compound_result = subscriptions[event].compound(mutation);
         }
         // Report to the parent if any
         if let Some(mutation) = compound_result {
@@ -482,7 +482,7 @@ where
     fn renew_subscriptions(&self) -> Result<()> {
         let subscriptions = self.subscriptions.lock();
         EVENT_TYPE_ARRAY.iter().copied().filter(|x| self.enabled_events[*x] && subscriptions[*x].active()).try_for_each(|x| {
-            let mutation = Mutation::new(Command::Start, subscriptions[x].scope(&self.subscription_context));
+            let mutation = Mutation::new(Command::Start, subscriptions[x].scope());
             self.subscribers.iter().try_for_each(|subscriber| subscriber.mutate(mutation.clone()))?;
             Ok(())
         })
@@ -823,6 +823,7 @@ pub mod test_helpers {
 mod tests {
     use super::{test_helpers::*, *};
     use crate::{
+        address::test_helpers::NETWORK_TYPE,
         collector::CollectorFrom,
         connection::ChannelType,
         converter::ConverterFrom,
@@ -857,7 +858,7 @@ mod tests {
             let (subscription_sender, subscription_receiver) = unbounded();
             let collector = Arc::new(TestCollector::new(IDENT, notification_receiver, Arc::new(TestConverter::new())));
             let subscription_manager = Arc::new(SubscriptionManagerMock::new(subscription_sender));
-            let subscription_context = SubscriptionContext::new();
+            let subscription_context = SubscriptionContext::new(Some(NETWORK_TYPE));
             let subscriber =
                 Arc::new(Subscriber::new("test", EVENT_TYPE_ARRAY[..].into(), subscription_manager, SUBSCRIPTION_MANAGER_ID));
             let notifier = Arc::new(TestNotifier::with_sync(

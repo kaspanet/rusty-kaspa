@@ -12,6 +12,12 @@ pub enum Error {
     #[error("GRPC invalid address schema {0}")]
     GrpcAddressSchema(String),
 
+    #[error("GRPC stream was closed by the server")]
+    ServerClosedStream,
+
+    #[error("GRPC query to GetCurrentNetwork failed")]
+    GetCurrentNetwork,
+
     #[error("GRPC client error {0}")]
     TonicStatus(#[from] tonic::Status),
 
@@ -24,6 +30,9 @@ pub enum Error {
 
     #[error("Notify error: {0}")]
     NotifyError(#[from] kaspa_notify::error::Error),
+
+    #[error("{0}")]
+    NetworkType(#[from] kaspa_consensus_core::network::NetworkTypeError),
 
     #[error("RPC: channel receive error")]
     ChannelRecvError,

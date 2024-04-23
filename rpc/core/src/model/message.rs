@@ -2,7 +2,7 @@ use crate::model::*;
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_consensus_core::api::stats::BlockCount;
 use kaspa_core::debug;
-use kaspa_notify::subscription::{context::SubscriptionContext, single::UtxosChangedSubscription, Command};
+use kaspa_notify::subscription::{single::UtxosChangedSubscription, Command};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::{Display, Formatter},
@@ -984,16 +984,12 @@ pub struct UtxosChangedNotification {
 }
 
 impl UtxosChangedNotification {
-    pub(crate) fn apply_utxos_changed_subscription(
-        &self,
-        subscription: &UtxosChangedSubscription,
-        context: &SubscriptionContext,
-    ) -> Option<Self> {
+    pub(crate) fn apply_utxos_changed_subscription(&self, subscription: &UtxosChangedSubscription) -> Option<Self> {
         if subscription.to_all() {
             Some(self.clone())
         } else {
-            let added = Self::filter_utxos(&self.added, subscription, context);
-            let removed = Self::filter_utxos(&self.removed, subscription, context);
+            let added = Self::filter_utxos(&self.added, subscription);
+            let removed = Self::filter_utxos(&self.removed, subscription);
             if added.is_empty() && removed.is_empty() {
                 None
             } else {
@@ -1003,13 +999,9 @@ impl UtxosChangedNotification {
         }
     }
 
-    fn filter_utxos(
-        utxo_set: &[RpcUtxosByAddressesEntry],
-        subscription: &UtxosChangedSubscription,
-        context: &SubscriptionContext,
-    ) -> Vec<RpcUtxosByAddressesEntry> {
+    fn filter_utxos(utxo_set: &[RpcUtxosByAddressesEntry], subscription: &UtxosChangedSubscription) -> Vec<RpcUtxosByAddressesEntry> {
         let subscription_data = subscription.data();
-        utxo_set.iter().filter(|x| subscription_data.contains(&x.utxo_entry.script_public_key, context)).cloned().collect()
+        utxo_set.iter().filter(|x| subscription_data.contains(&x.utxo_entry.script_public_key)).cloned().collect()
     }
 }
 

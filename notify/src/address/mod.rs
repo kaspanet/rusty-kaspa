@@ -4,7 +4,9 @@ pub mod tracker;
 pub mod test_helpers {
     use kaspa_addresses::Address;
     use kaspa_addresses::{Prefix, Version};
+    use kaspa_consensus_core::network::NetworkType;
 
+    pub const NETWORK_TYPE: NetworkType = NetworkType::Mainnet;
     pub const ADDRESS_PREFIX: Prefix = Prefix::Mainnet;
 
     pub fn get_3_addresses(sorted: bool) -> Vec<Address> {

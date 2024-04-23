@@ -913,7 +913,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     /// Start sending notifications of some type to a listener.
     async fn start_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
         match scope {
-            Scope::UtxosChanged(ref utxos_changed_scope) if !self.config.unsafe_rpc && utxos_changed_scope.addresses.is_empty() => {
+            Scope::UtxosChanged(ref utxos_changed_scope) if !self.config.unsafe_rpc && utxos_changed_scope.is_empty() => {
                 // The subscription to blanket UtxosChanged notifications is restricted to unsafe mode only
                 // since the notifications yielded are highly resource intensive.
                 //
