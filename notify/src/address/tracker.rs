@@ -411,9 +411,6 @@ impl Eq for IndexSet {}
 
 #[derive(Debug)]
 struct Inner {
-    /// Tracker identifier
-    id: u64,
-
     /// Addresses prefix
     prefix: Option<Prefix>,
 
@@ -490,8 +487,7 @@ impl Inner {
         debug!("Creating an address tracker with a capacity of {}", script_pub_keys.capacity());
 
         let empty_entries = HashSet::with_capacity(capacity);
-        let id = u64::from_le_bytes(rand::random::<[u8; 8]>());
-        Self { id, prefix, script_pub_keys, max_addresses, addresses_preallocation, empty_entries }
+        Self { prefix, script_pub_keys, max_addresses, addresses_preallocation, empty_entries }
     }
 
     /// Tries to set the address prefix.
@@ -673,10 +669,6 @@ impl Tracker {
         tracker
     }
 
-    fn id(&self) -> u64 {
-        self.inner.read().id
-    }
-
     pub fn prefix(&self) -> Option<Prefix> {
         self.inner.read().prefix
     }
@@ -717,8 +709,7 @@ impl Tracker {
     /// - some address did not match the tracker prefix.
     fn register<T: Indexer + IndexerStorage>(&self, indexes: &mut T, mut addresses: Vec<Address>) -> Result<Vec<Address>> {
         // Make sure all objects are bound to this tracker
-        let id = self.id();
-        assert_eq!(id, indexes.tracker().id());
+        assert!(Arc::ptr_eq(&self.inner, &indexes.tracker().inner));
 
         let mut result: Result<()> = Ok(());
         {
@@ -773,9 +764,8 @@ impl Tracker {
     /// Returns the indexes that were actually inserted in the [`Indexer`].
     fn register_indexes<T: Indexer + IndexerStorage>(&self, indexes: &mut T, mut other: Indexes) -> Indexes {
         // Make sure all objects are bound to this tracker
-        let id = self.id();
-        assert_eq!(id, indexes.tracker().id());
-        assert_eq!(id, other.tracker().id());
+        assert!(Arc::ptr_eq(&self.inner, &indexes.tracker().inner));
+        assert!(Arc::ptr_eq(&self.inner, &other.tracker.inner));
 
         let mut counter: usize = 0;
         let mut inner = self.inner.write();
@@ -809,8 +799,7 @@ impl Tracker {
     /// - some address did not match the tracker prefix.
     fn unregister<T: Indexer + IndexerStorage>(&self, indexes: &mut T, mut addresses: Vec<Address>) -> Result<Vec<Address>> {
         // Make sure all objects are bound to this tracker
-        let id = self.id();
-        assert_eq!(id, indexes.tracker().id());
+        assert!(Arc::ptr_eq(&self.inner, &indexes.tracker().inner));
 
         let mut counter: usize = 0;
         let mut inner = self.inner.write();
@@ -848,9 +837,8 @@ impl Tracker {
     /// Returns the indexes that were successfully removed from the [`Indexer`].
     fn unregister_indexes<T: Indexer + IndexerStorage>(&self, indexes: &mut T, mut other: Indexes) -> Indexes {
         // Make sure all objects are bound to this tracker
-        let id = self.id();
-        assert_eq!(id, indexes.tracker().id());
-        assert_eq!(id, other.tracker().id());
+        assert!(Arc::ptr_eq(&self.inner, &indexes.tracker().inner));
+        assert!(Arc::ptr_eq(&self.inner, &other.tracker.inner));
 
         let mut counter: usize = 0;
         let mut inner = self.inner.write();
@@ -879,8 +867,7 @@ impl Tracker {
     /// Unregisters all indexes contained in `indexes`, draining it in the process.
     fn clear_indexes(&self, indexes: &mut Indexes) {
         // Make sure all objects are bound to this tracker
-        let id = self.id();
-        assert_eq!(id, indexes.tracker().id());
+        assert!(Arc::ptr_eq(&self.inner, &indexes.tracker.inner));
 
         for chunk in &indexes.indexes.drain().chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
@@ -893,8 +880,7 @@ impl Tracker {
     /// Unregisters all indexes contained in `counters`, draining it in the process.
     fn clear_counters(&self, counters: &mut Counters) {
         // Make sure all objects are bound to this tracker
-        let id = self.id();
-        assert_eq!(id, counters.tracker().id());
+        assert!(Arc::ptr_eq(&self.inner, &counters.tracker.inner));
 
         for chunk in &counters.indexes.drain().chunks(Self::ADDRESS_CHUNK_SIZE) {
             let mut inner = self.inner.write();
@@ -912,8 +898,7 @@ impl Tracker {
     /// Converts the indexes of an [`Indexer`] into a vector of addresses.
     pub fn to_addresses<T: Indexer>(&self, indexes: &T) -> Vec<Address> {
         // Make sure all objects are bound to this tracker
-        let id = self.id();
-        assert_eq!(id, indexes.tracker().id());
+        assert!(Arc::ptr_eq(&self.inner, &indexes.tracker().inner));
 
         let mut addresses = Vec::with_capacity(indexes.len());
         let mut counter: usize = 0;
