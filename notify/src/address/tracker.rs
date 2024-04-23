@@ -1053,161 +1053,268 @@ mod tests {
         assert_eq!(m.capacity(), ((CAPACITY + 1) * 8 / 7).next_power_of_two() * 7 / 8);
     }
 
+    struct Test {
+        tracker: Tracker,
+        addresses: Vec<Address>,
+    }
+
+    impl Test {
+        fn assert_ci(
+            &self,
+            label: &str,
+            c: &CounterMap,
+            c_counters: &[RefCount],
+            i: &IndexSet,
+            i_bits: &[RefCount],
+            tracker_counters: &[RefCount],
+        ) {
+            self.assert_tracker(label, tracker_counters);
+            self.assert_counter_map(label, c, c_counters);
+            self.assert_index_set(label, i, i_bits);
+        }
+
+        fn assert_c(&self, label: &str, item: &CounterMap, item_counters: &[RefCount], tracker_counters: &[RefCount]) {
+            self.assert_tracker(label, tracker_counters);
+            self.assert_counter_map(label, item, item_counters);
+        }
+
+        fn assert_ii(
+            &self,
+            label: &str,
+            c: &IndexSet,
+            c_bits: &[RefCount],
+            i: &IndexSet,
+            i_bits: &[RefCount],
+            tracker_counters: &[RefCount],
+        ) {
+            self.assert_tracker(label, tracker_counters);
+            self.assert_index_set(label, c, c_bits);
+            self.assert_index_set(label, i, i_bits);
+        }
+
+        fn assert_i(&self, label: &str, item: &IndexSet, item_bits: &[RefCount], tracker_counters: &[RefCount]) {
+            self.assert_tracker(label, tracker_counters);
+            self.assert_index_set(label, item, item_bits);
+        }
+
+        fn assert_tracker(&self, label: &str, counters: &[RefCount]) {
+            assert_eq!(self.tracker.len(), counters.iter().filter(|x| **x > 0).count(), "{}: length should match", label);
+            let tracker_counters = (0..counters.len()).map(|i| self.tracker.get_address(&self.addresses[i]).unwrap().1).collect_vec();
+            assert_eq!(tracker_counters, *counters, "{}: counters should match", label);
+        }
+
+        fn assert_counter_map(&self, label: &str, item: &CounterMap, counters: &[RefCount]) {
+            assert_eq!(item.len(), counters.iter().filter(|x| **x > 0).count(), "{}: length should match", label);
+            let item_counters =
+                (0..counters.len()).map(|i| item.test_get_address(&self.addresses[i]).unwrap_or_default()).collect_vec();
+            assert_eq!(item_counters, *counters, "{}: counters should match", label);
+        }
+
+        fn assert_index_set(&self, label: &str, item: &IndexSet, bits: &[RefCount]) {
+            assert_eq!(item.len(), bits.iter().filter(|x| **x > 0).count(), "{}: length should match", label);
+            let item_counters = (0..bits.len()).map(|i| if item.test_get_address(&self.addresses[i]) { 1 } else { 0 }).collect_vec();
+            assert_eq!(item_counters, *bits, "{}: bits should match", label);
+        }
+    }
+
     #[test]
     fn test_counter_map_tracking() {
-        struct Test {
-            tracker: Tracker,
-            addresses: Vec<Address>,
-        }
-
-        impl Test {
-            fn assert(&self, label: &str, item: &CounterMap, item_counters: &[RefCount], tracker_counters: &[RefCount]) {
-                self.assert_tracker(label, tracker_counters);
-                self.assert_counter_map(label, item, item_counters)
-            }
-
-            fn assert_tracker(&self, label: &str, counters: &[RefCount]) {
-                assert_eq!(self.tracker.len(), counters.iter().filter(|x| **x > 0).count(), "{}: length should match", label);
-                let tracker_counters =
-                    (0..counters.len()).map(|i| self.tracker.get_address(&self.addresses[i]).unwrap().1).collect_vec();
-                assert_eq!(tracker_counters, *counters, "{}: counters should match", label);
-            }
-
-            fn assert_counter_map(&self, label: &str, item: &CounterMap, counters: &[RefCount]) {
-                assert_eq!(item.len(), counters.iter().filter(|x| **x > 0).count(), "{}: length should match", label);
-                let item_counters =
-                    (0..counters.len()).map(|i| item.test_get_address(&self.addresses[i]).unwrap_or_default()).collect_vec();
-                assert_eq!(item_counters, *counters, "{}: counters should match", label);
-            }
-        }
-
         let tracker = Tracker::new(Some(ADDRESS_PREFIX), None);
         let addresses = create_addresses(0, 3);
         let test = Test { tracker: tracker.clone(), addresses };
 
         let mut c1 = CounterMap::new(tracker.clone());
-        test.assert("c1: new", &c1, &[], &[]);
+        test.assert_c("c1: new", &c1, &[], &[]);
         assert_eq!(c1.register(test.addresses.clone()).unwrap(), test.addresses);
-        test.assert("c1: register [0, 1 ,2]", &c1, &[1, 1, 1], &[1, 1, 1]);
+        test.assert_c("c1: register [0, 1 ,2]", &c1, &[1, 1, 1], &[1, 1, 1]);
         assert_eq!(c1.register(test.addresses[0..=1].to_vec()).unwrap(), vec![]);
-        test.assert("c1: register [0, 1]", &c1, &[2, 2, 1], &[1, 1, 1]);
+        test.assert_c("c1: register [0, 1]", &c1, &[2, 2, 1], &[1, 1, 1]);
 
         let mut c2 = c1.clone();
-        test.assert("c2: clone c1", &c2, &[2, 2, 1], &[2, 2, 2]);
+        test.assert_c("c2: clone c1", &c2, &[2, 2, 1], &[2, 2, 2]);
 
         let mut c3 = c1.clone();
-        test.assert("c3: clone c1", &c3, &[2, 2, 1], &[3, 3, 3]);
+        test.assert_c("c3: clone c1", &c3, &[2, 2, 1], &[3, 3, 3]);
         c3.clear();
-        test.assert("c3: clear", &c3, &[0, 0, 0], &[2, 2, 2]);
+        test.assert_c("c3: clear", &c3, &[0, 0, 0], &[2, 2, 2]);
         drop(c3);
         test.assert_tracker("c3: drop", &[2, 2, 2]);
 
         assert_eq!(c2.unregister(test.addresses[1..=2].to_vec()).unwrap(), test.addresses[2..=2].to_vec());
-        test.assert("c2: unregister [1, 2]", &c2, &[2, 1, 0], &[2, 2, 1]);
+        test.assert_c("c2: unregister [1, 2]", &c2, &[2, 1, 0], &[2, 2, 1]);
         assert_eq!(c2.unregister(test.addresses[0..=1].to_vec()).unwrap(), test.addresses[1..=1].to_vec());
-        test.assert("c2: unregister [0, 1]", &c2, &[1, 0, 0], &[2, 1, 1]);
+        test.assert_c("c2: unregister [0, 1]", &c2, &[1, 0, 0], &[2, 1, 1]);
         assert_eq!(c2.unregister(test.addresses[0..=0].to_vec()).unwrap(), test.addresses[0..=0].to_vec());
-        test.assert("c2: unregister [0]", &c2, &[], &[1, 1, 1]);
+        test.assert_c("c2: unregister [0]", &c2, &[], &[1, 1, 1]);
         drop(c2);
         test.assert_tracker("c2: drop", &[1, 1, 1]);
 
         assert_eq!(c1.unregister(test.addresses[0..=0].to_vec()).unwrap(), vec![]);
-        test.assert("c1: unregister [0]", &c1, &[1, 2, 1], &[1, 1, 1]);
+        test.assert_c("c1: unregister [0]", &c1, &[1, 2, 1], &[1, 1, 1]);
         assert_eq!(c1.unregister(test.addresses[0..=1].to_vec()).unwrap(), test.addresses[0..=0].to_vec());
-        test.assert("c1: unregister [0, 1]", &c1, &[0, 1, 1], &[0, 1, 1]);
+        test.assert_c("c1: unregister [0, 1]", &c1, &[0, 1, 1], &[0, 1, 1]);
 
         let mut c4 = c1.clone();
-        test.assert("c4: clone c1", &c4, &[0, 1, 1], &[0, 2, 2]);
+        test.assert_c("c4: clone c1", &c4, &[0, 1, 1], &[0, 2, 2]);
 
         assert_eq!(c1.unregister(test.addresses[1..=2].to_vec()).unwrap(), test.addresses[1..=2].to_vec());
-        test.assert("c1: unregister [1, 2]", &c1, &[0, 0, 0], &[0, 1, 1]);
+        test.assert_c("c1: unregister [1, 2]", &c1, &[0, 0, 0], &[0, 1, 1]);
 
         drop(c1);
         test.assert_tracker("c1: drop", &[0, 1, 1]);
 
         assert_eq!(c4.unregister(test.addresses[1..=2].to_vec()).unwrap(), test.addresses[1..=2].to_vec());
-        test.assert("c4: unregister [1, 2]", &c4, &[0, 0, 0], &[0, 0, 0]);
+        test.assert_c("c4: unregister [1, 2]", &c4, &[0, 0, 0], &[0, 0, 0]);
 
         drop(c4);
         test.assert_tracker("c4: drop", &[0, 0, 0]);
     }
 
     #[test]
+    fn test_counter_map_tracking_indexes() {
+        let tracker = Tracker::new(Some(ADDRESS_PREFIX), None);
+        let addresses = create_addresses(0, 3);
+        let test = Test { tracker: tracker.clone(), addresses };
+
+        let mut c1 = CounterMap::new(tracker.clone());
+        test.assert_c("c1: new", &c1, &[], &[]);
+        assert_eq!(c1.register(test.addresses[0..=1].to_vec()).unwrap(), test.addresses[0..=1].to_vec());
+        test.assert_c("c1: register [0, 1]", &c1, &[1, 1], &[1, 1]);
+        assert_eq!(c1.register(test.addresses[0..=0].to_vec()).unwrap(), vec![]);
+        test.assert_c("c1: register [0]", &c1, &[2, 1], &[1, 1]);
+
+        let mut i1 = IndexSet::new(tracker.clone());
+        assert_eq!(i1.register(test.addresses.clone()).unwrap(), test.addresses);
+        test.assert_i("i1: register [0, 1 ,2]", &i1, &[1, 1, 1], &[2, 2, 1]);
+
+        let i2 = c1.register_indexes(i1);
+        test.assert_ci("i2: c1.register_indexes(i1)", &c1, &[3, 2, 1], &i2, &[0, 0, 1], &[1, 1, 2]);
+
+        let mut i3 = IndexSet::new(tracker.clone());
+        assert_eq!(i3.register(test.addresses[1..=2].to_vec()).unwrap(), test.addresses[1..=2].to_vec());
+        test.assert_i("i3: register [1 ,2]", &i3, &[0, 1, 1], &[1, 2, 3]);
+
+        let i4 = c1.unregister_indexes(i3);
+        test.assert_ci("i4: c1.unregister_indexes(i3)", &c1, &[3, 1, 0], &i4, &[0, 0, 1], &[1, 1, 2]);
+        drop(i2);
+        drop(i4);
+        test.assert_tracker("i2, i4: drop", &[1, 1, 0]);
+
+        let i5 = c1.get_indexes();
+        test.assert_ci("i5: c1.get_indexes()", &c1, &[3, 1, 0], &i5, &[1, 1, 0], &[2, 2, 0]);
+        let i6 = c1.register_indexes(i5);
+        test.assert_ci("i6: c1.register_indexes(i5)", &c1, &[4, 2, 0], &i6, &[0, 0, 0], &[1, 1, 0]);
+
+        let _ = c1.unregister_indexes(c1.get_indexes());
+        let i7 = c1.unregister_indexes(c1.get_indexes());
+        test.assert_ci("i7: 2 x c1.unregister_indexes(get_index)", &c1, &[2, 0, 0], &i7, &[0, 1, 0], &[1, 1, 0]);
+        drop(i7);
+        test.assert_tracker("i7: drop", &[1, 0, 0]);
+
+        let _ = c1.unregister_indexes(c1.get_indexes());
+        let i8 = c1.unregister_indexes(c1.get_indexes());
+        test.assert_ci("i8: 2 x c1.unregister_indexes(get_index)", &c1, &[0, 0, 0], &i8, &[1, 0, 0], &[1, 0, 0]);
+        drop(i8);
+        test.assert_tracker("i8: drop", &[0, 0, 0]);
+
+        drop(c1);
+        test.assert_tracker("c1: drop", &[0, 0, 0]);
+    }
+
+    #[test]
     fn test_index_set_tracking() {
-        struct Test {
-            tracker: Tracker,
-            addresses: Vec<Address>,
-        }
-
-        impl Test {
-            fn assert(&self, label: &str, item: &IndexSet, item_bits: &[RefCount], tracker_counters: &[RefCount]) {
-                self.assert_tracker(label, tracker_counters);
-                self.assert_index_set(label, item, item_bits)
-            }
-
-            fn assert_tracker(&self, label: &str, counters: &[RefCount]) {
-                assert_eq!(self.tracker.len(), counters.iter().filter(|x| **x > 0).count(), "{}: length should match", label);
-                let tracker_counters =
-                    (0..counters.len()).map(|i| self.tracker.get_address(&self.addresses[i]).unwrap().1).collect_vec();
-                assert_eq!(tracker_counters, *counters, "{}: counters should match", label);
-            }
-
-            fn assert_index_set(&self, label: &str, item: &IndexSet, bits: &[RefCount]) {
-                assert_eq!(item.len(), bits.iter().filter(|x| **x > 0).count(), "{}: length should match", label);
-                let item_counters =
-                    (0..bits.len()).map(|i| if item.test_get_address(&self.addresses[i]) { 1 } else { 0 }).collect_vec();
-                assert_eq!(item_counters, *bits, "{}: counters should match", label);
-            }
-        }
-
         let tracker = Tracker::new(Some(ADDRESS_PREFIX), None);
         let addresses = create_addresses(0, 3);
         let test = Test { tracker: tracker.clone(), addresses };
 
         let mut c1 = IndexSet::new(tracker.clone());
-        test.assert("c1: new", &c1, &[], &[]);
+        test.assert_i("c1: new", &c1, &[], &[]);
         assert_eq!(c1.register(test.addresses.clone()).unwrap(), test.addresses);
-        test.assert("c1: register [0, 1 ,2]", &c1, &[1, 1, 1], &[1, 1, 1]);
+        test.assert_i("c1: register [0, 1 ,2]", &c1, &[1, 1, 1], &[1, 1, 1]);
         assert_eq!(c1.register(test.addresses[0..=1].to_vec()).unwrap(), vec![]);
-        test.assert("c1: register [0, 1]", &c1, &[1, 1, 1], &[1, 1, 1]);
+        test.assert_i("c1: register [0, 1]", &c1, &[1, 1, 1], &[1, 1, 1]);
 
         let mut c2 = c1.clone();
-        test.assert("c2: clone c1", &c2, &[1, 1, 1], &[2, 2, 2]);
+        test.assert_i("c2: clone c1", &c2, &[1, 1, 1], &[2, 2, 2]);
 
         let mut c3 = c1.clone();
-        test.assert("c3: clone c1", &c3, &[1, 1, 1], &[3, 3, 3]);
+        test.assert_i("c3: clone c1", &c3, &[1, 1, 1], &[3, 3, 3]);
         c3.clear();
-        test.assert("c3: clear", &c3, &[0, 0, 0], &[2, 2, 2]);
+        test.assert_i("c3: clear", &c3, &[0, 0, 0], &[2, 2, 2]);
         drop(c3);
         test.assert_tracker("c3: drop", &[2, 2, 2]);
 
         assert_eq!(c2.unregister(test.addresses[1..=2].to_vec()).unwrap(), test.addresses[1..=2].to_vec());
-        test.assert("c2: unregister [1, 2]", &c2, &[1, 0, 0], &[2, 1, 1]);
+        test.assert_i("c2: unregister [1, 2]", &c2, &[1, 0, 0], &[2, 1, 1]);
         assert_eq!(c2.unregister(test.addresses[0..=1].to_vec()).unwrap(), test.addresses[0..=0].to_vec());
-        test.assert("c2: unregister [0, 1]", &c2, &[0, 0, 0], &[1, 1, 1]);
+        test.assert_i("c2: unregister [0, 1]", &c2, &[0, 0, 0], &[1, 1, 1]);
         assert_eq!(c2.unregister(test.addresses[0..=0].to_vec()).unwrap(), vec![]);
-        test.assert("c2: unregister [0]", &c2, &[], &[1, 1, 1]);
+        test.assert_i("c2: unregister [0]", &c2, &[], &[1, 1, 1]);
         drop(c2);
         test.assert_tracker("c2: drop", &[1, 1, 1]);
 
         assert_eq!(c1.unregister(test.addresses[0..=0].to_vec()).unwrap(), test.addresses[0..=0].to_vec());
-        test.assert("c1: unregister [0]", &c1, &[0, 1, 1], &[0, 1, 1]);
+        test.assert_i("c1: unregister [0]", &c1, &[0, 1, 1], &[0, 1, 1]);
         assert_eq!(c1.unregister(test.addresses[0..=1].to_vec()).unwrap(), test.addresses[1..=1].to_vec());
-        test.assert("c1: unregister [0, 1]", &c1, &[0, 0, 1], &[0, 0, 1]);
+        test.assert_i("c1: unregister [0, 1]", &c1, &[0, 0, 1], &[0, 0, 1]);
 
         let mut c4 = c1.clone();
-        test.assert("c4: clone c1", &c4, &[0, 0, 1], &[0, 0, 2]);
+        test.assert_i("c4: clone c1", &c4, &[0, 0, 1], &[0, 0, 2]);
 
         assert_eq!(c1.unregister(test.addresses[1..=2].to_vec()).unwrap(), test.addresses[2..=2].to_vec());
-        test.assert("c1: unregister [1, 2]", &c1, &[0, 0, 0], &[0, 0, 1]);
+        test.assert_i("c1: unregister [1, 2]", &c1, &[0, 0, 0], &[0, 0, 1]);
 
         drop(c1);
         test.assert_tracker("c1: drop", &[0, 0, 1]);
 
         assert_eq!(c4.unregister(test.addresses[1..=2].to_vec()).unwrap(), test.addresses[2..=2].to_vec());
-        test.assert("c4: unregister [1, 2]", &c4, &[0, 0, 0], &[0, 0, 0]);
+        test.assert_i("c4: unregister [1, 2]", &c4, &[0, 0, 0], &[0, 0, 0]);
 
         drop(c4);
         test.assert_tracker("c4: drop", &[0, 0, 0]);
+    }
+
+    #[test]
+    fn test_index_set_tracking_indexes() {
+        let tracker = Tracker::new(Some(ADDRESS_PREFIX), None);
+        let addresses = create_addresses(0, 3);
+        let test = Test { tracker: tracker.clone(), addresses };
+
+        let mut c1 = IndexSet::new(tracker.clone());
+        test.assert_i("c1: new", &c1, &[], &[]);
+        assert_eq!(c1.register(test.addresses[0..=1].to_vec()).unwrap(), test.addresses[0..=1].to_vec());
+        test.assert_i("c1: register [0, 1]", &c1, &[1, 1], &[1, 1]);
+        assert_eq!(c1.register(test.addresses[0..=0].to_vec()).unwrap(), vec![]);
+        test.assert_i("c1: register [0]", &c1, &[1, 1], &[1, 1]);
+
+        let mut i1 = IndexSet::new(tracker.clone());
+        assert_eq!(i1.register(test.addresses.clone()).unwrap(), test.addresses);
+        test.assert_i("i1: register [0, 1 ,2]", &i1, &[1, 1, 1], &[2, 2, 1]);
+
+        let i2 = c1.register_indexes(i1);
+        test.assert_ii("i2: c1.register_indexes(i1)", &c1, &[1, 1, 1], &i2, &[0, 0, 1], &[1, 1, 2]);
+
+        let mut i3 = IndexSet::new(tracker.clone());
+        assert_eq!(i3.register(test.addresses[1..=2].to_vec()).unwrap(), test.addresses[1..=2].to_vec());
+        test.assert_i("i3: register [1 ,2]", &i3, &[0, 1, 1], &[1, 2, 3]);
+
+        let mut i4 = c1.unregister_indexes(i3);
+        test.assert_ii("i4: c1.unregister_indexes(i3)", &c1, &[1, 0, 0], &i4, &[0, 1, 1], &[1, 1, 2]);
+
+        drop(i2);
+        test.assert_tracker("i2: drop", &[1, 1, 1]);
+
+        let i5 = i4.transfer();
+        test.assert_ii("i5: i4.transfer()", &i4, &[0, 0, 0], &i5, &[0, 1, 1], &[1, 1, 1]);
+        drop(i4);
+        test.assert_tracker("i4: drop", &[1, 1, 1]);
+
+        let i6 = c1.unregister_indexes(i5);
+        test.assert_ii("c1: i4.unregister_indexes(i5)", &c1, &[1, 0, 0], &i6, &[0, 0, 0], &[1, 0, 0]);
+        drop(i6);
+        test.assert_tracker("i6: drop", &[1, 0, 0]);
+
+        drop(c1);
+        test.assert_tracker("c1: drop", &[0, 0, 0]);
     }
 }
