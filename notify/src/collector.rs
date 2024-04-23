@@ -14,11 +14,10 @@ pub type CollectorNotificationChannel<T> = Channel<T>;
 pub type CollectorNotificationSender<T> = Sender<T>;
 pub type CollectorNotificationReceiver<T> = Receiver<T>;
 
-/// A notification collector, relaying notifications to a [`Notifier`](notifier::Notifier).
+/// A notification collector, relaying notifications to a [`Notifier`](crate::notifier::Notifier).
 ///
-/// A [`Collector`] is responsible for collecting notifications of
-/// a specific form from a specific source, convert them if necessary
-/// into `N`s and forward them to the [Notifier] provided
+/// A collector is responsible for collecting notifications of a specific form from a specific source,
+/// convert them if necessary into `N`s and forward them to the [`Notifier`](crate::notifier::Notifier) provided
 /// to `Collector::start`.
 #[async_trait]
 pub trait Collector<N>: Send + Sync + Debug
@@ -127,7 +126,10 @@ mod tests {
         converter::ConverterFrom,
         events::EventType,
         notifier::test_helpers::NotifyMock,
-        subscription::single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
+        subscription::{
+            context::SubscriptionContext,
+            single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
+        },
     };
     use derive_more::Display;
 
@@ -153,15 +155,19 @@ mod tests {
     }
 
     impl crate::notification::Notification for OutgoingNotification {
-        fn apply_overall_subscription(&self, _: &OverallSubscription) -> Option<Self> {
+        fn apply_overall_subscription(&self, _: &OverallSubscription, _: &SubscriptionContext) -> Option<Self> {
             unimplemented!()
         }
 
-        fn apply_virtual_chain_changed_subscription(&self, _: &VirtualChainChangedSubscription) -> Option<Self> {
+        fn apply_virtual_chain_changed_subscription(
+            &self,
+            _: &VirtualChainChangedSubscription,
+            _: &SubscriptionContext,
+        ) -> Option<Self> {
             unimplemented!()
         }
 
-        fn apply_utxos_changed_subscription(&self, _: &UtxosChangedSubscription) -> Option<Self> {
+        fn apply_utxos_changed_subscription(&self, _: &UtxosChangedSubscription, _: &SubscriptionContext) -> Option<Self> {
             unimplemented!()
         }
 

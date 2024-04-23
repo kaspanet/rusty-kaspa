@@ -5,9 +5,12 @@ use crate::{
         RuleError::{BadAcceptedIDMerkleRoot, BadCoinbaseTransaction, BadUTXOCommitment, InvalidTransactionsInUtxoContext},
     },
     model::stores::{block_transactions::BlockTransactionsStoreReader, daa::DaaStoreReader, ghostdag::GhostdagData},
-    processes::transaction_validator::{
-        errors::{TxResult, TxRuleError},
-        transaction_validator_populated::TxValidationFlags,
+    processes::{
+        mass::Kip9Version,
+        transaction_validator::{
+            errors::{TxResult, TxRuleError},
+            transaction_validator_populated::TxValidationFlags,
+        },
     },
 };
 use kaspa_consensus_core::{
@@ -290,12 +293,15 @@ impl VirtualStateProcessor {
     ) -> TxResult<()> {
         self.populate_mempool_transaction_in_utxo_context(mutable_tx, utxo_view)?;
 
+        // For non-activated nets (mainnet, TN10) we can update mempool rules to KIP9 beta asap. For
+        // TN11 we need to hard-fork consensus first (since the new beta rules are more permissive)
+        let kip9_version = if self.storage_mass_activation_daa_score == u64::MAX { Kip9Version::Beta } else { Kip9Version::Alpha };
+
         // Calc the full contextual mass including storage mass
         let contextual_mass = self
             .transaction_validator
             .mass_calculator
-            .calc_tx_storage_mass(&mutable_tx.as_verifiable())
-            .and_then(|m| m.checked_add(mutable_tx.calculated_compute_mass.unwrap()))
+            .calc_tx_overall_mass(&mutable_tx.as_verifiable(), mutable_tx.calculated_compute_mass, kip9_version)
             .ok_or(TxRuleError::MassIncomputable)?;
 
         // Set the inner mass field
