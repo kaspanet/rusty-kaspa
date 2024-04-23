@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 pub enum Fees {
     /// Fee management disabled (sweep transactions, pays all fees)
     None,
-    /// all fees are are added to the final transaction value
+    /// all fees are added to the final transaction value
     SenderPays(u64),
     /// all fees are subtracted from the final transaction value
     ReceiverPays(u64),
