@@ -199,7 +199,7 @@ impl UtxoIndexApi for UtxoIndex {
             }
         }
 
-        // Commit to the the remaining stores.
+        // Commit to the remaining stores.
 
         trace!("[{0}] committing circulating supply {1} from consensus db", IDENT, circulating_supply);
         self.store.insert_circulating_supply(circulating_supply, true)?;
@@ -385,7 +385,7 @@ mod tests {
 
         // Since we changed virtual state in the emulator, but not in test-consensus db,
         // we expect the resync to get the utxo-set from the test-consensus,
-        // these utxos correspond the the initial sync test.
+        // these utxos correspond the initial sync test.
         let consensus_utxos = tc.get_virtual_utxos(None, usize::MAX, false); // `usize::MAX` to ensure to get all.
         let mut i = 0;
         let consensus_utxoset_count = consensus_utxos.len();
