@@ -14,6 +14,7 @@ RUN apt-get install -y clang-format clang-tidy \
 RUN cargo install wasm-pack
 RUN rustup target add wasm32-unknown-unknown
 
+# TODO cache build dependencies
 COPY . /rusty-kaspa
 WORKDIR /rusty-kaspa
 RUN cargo build --release
@@ -23,9 +24,3 @@ FROM debian:bookworm
 
 COPY --from=builder /rusty-kaspa/target/release/kaspad /usr/bin/
 COPY --from=builder /rusty-kaspa/target/release/kaspa-wallet /usr/bin/
-COPY --from=builder /rusty-kaspa/target/release/kaspa_p2p_client /usr/bin/
-COPY --from=builder /rusty-kaspa/target/release/kaspa_p2p_server /usr/bin/
-COPY --from=builder /rusty-kaspa/target/release/kaspa_p2p_server /usr/bin/
-COPY --from=builder /rusty-kaspa/target/release/kaspa-wrpc-proxy /usr/bin/
-COPY --from=builder /rusty-kaspa/target/release/simpa /usr/bin/
-COPY --from=builder /rusty-kaspa/target/release/rothschild /usr/bin/
