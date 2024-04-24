@@ -30,38 +30,6 @@ The SDK is currently separated into the following top-level categories:
 - **Wallet SDK** — Bindings for primitives related to key management and transactions.
 - **Wallet API** — API for the Rusty Kaspa Wallet framework.
 
-## Examples
-
-**IMPORTANT:** To view web examples, you need to serve them from a local web server and
-serve them from the root of the SDK folder (`kaspa-wasm32-sdk` if using a redistributable or
-`rusty-kaspa/wasm` if building from source). This is because examples use relative paths.
-WASM32 currently can not be loaded using the `file://` protocol.
-
-You can use any web server of your choice. If you don't have one, you can run one as follows:
-```bash
-cargo install http-server
-http-server
-```
-Access the examples at  [http://localhost:7878/examples/web/index.html](http://localhost:7878/examples/web/index.html).
-(Make sure to change the port if you are using a different server. Many servers will serve on 
-[http://localhost:8000/examples/web/index.html](http://localhost:8000/examples/web/index.html) by default)
-
-If building from source, you must run `build-release` or `build-web` scripts before running the examples.
-
-## Building from Source
-
-To build the WASM32 SDK from source, you need to have the Rust environment installed. To do that,
-follow instructions in the [Rusty Kaspa README](https://github.com/kaspanet/rusty-kaspa).
-
-Once you have Rust installed, you can build the WASM32 SDK as follows:
-
-- `./build-release` - build the release version of the WASM32 SDK + Docs. The release version also contains `debug` builds of the libraries.
-- `./build-web` - build the web package (ES6 module)
-- `./build-node` - build the NodeJS package (CommonJS module)
-- `./build-docs` - runs `build-web` and then generates TypeDoc documentation from the resulting build.
-
-Please note that to build from source, you need to have TypeDoc installed globally via `npm install -g typedoc` (see below).
-
 ## WASM32 SDK release packages
 
 The SDK is built as 4 packages for Web Browsers as follows:
@@ -87,13 +55,66 @@ The following is a brief overview of the SDK folder structure (as available in t
 - `examples/javascript/wallet` - Interfacing with the Rusty Kaspa Wallet framework.
 - `examples/typescript` - TypeScript examples.
 
-
 If you are using JavaScript and Visual Studio Code, it is highly recommended you replicate 
 the `jsconfig.json` configuration file as is done in the SDK examples. This file allows 
 Visual Studio to provide TypeScript-like code completion, type checking and documentation.
 
 Included documentation in the release can be accessed by loading the `docs/kaspa/index.html` 
 file in a web browser.
+
+## Building from Source
+
+To build the WASM32 SDK from source, you need to have the Rust environment installed. To do that,
+follow instructions in the [Rusty Kaspa README](https://github.com/kaspanet/rusty-kaspa).
+
+Once you have Rust installed, you can build the WASM32 SDK as follows:
+
+- `./build-release` - build the release version of the WASM32 SDK + Docs. The release version also contains `debug` builds of the libraries.
+- `./build-web` - build the web package (ES6 module)
+- `./build-node` - build the NodeJS package (CommonJS module)
+- `./build-docs` - runs `build-web` and then generates TypeDoc documentation from the resulting build.
+
+Please note that to build from source, you need to have TypeDoc installed globally via `npm install -g typedoc` (see below).
+
+## Running Web examples
+
+**IMPORTANT:** To view web examples, you need to serve them from a local web server and
+serve them from the root of the SDK folder (`kaspa-wasm32-sdk` if using a redistributable or
+`rusty-kaspa/wasm` if building from source). This is because examples use relative paths.
+WASM32 currently can not be loaded using the `file://` protocol.
+
+You can use any web server of your choice. If you don't have one, you can run one as follows:
+```bash
+cargo install http-server
+http-server
+```
+Access the examples at  [http://localhost:7878/examples/web/index.html](http://localhost:7878/examples/web/index.html).
+(Make sure to change the port if you are using a different server. Many servers will serve on 
+[http://localhost:8000/examples/web/index.html](http://localhost:8000/examples/web/index.html) by default)
+
+If building from source, you must run `build-release` or `build-web` scripts before running the examples.
+
+## Running NodeJs examples
+
+This applies to running examples while building the project from source as some dependencies are instantiated as a part of the build process. You just need to run `node init` to initialize a local config.
+
+NOTES:
+- `npm install` will install NodeJs types for TypeScript and W3C websocket modules
+- `npm install -g typedoc` is needed for the release build to generate documentation
+- `node init` creates a local `examples/data/config.json` that contains a private key (mnemonic) use across NodeJS examples. You can override address used in some examples by specifying the address as a command line argument.
+- Majority of examples will accept following arguments: `node <script> [address] [mainnet|testnet-10|testnet-11] [--address <address>] [--network <mainnet|testnet-10|testnet-11>] [--encoding <borsh|json>]`.
+
+    By default all wRPC connections use Borsh binary encoding.
+
+Example:
+```bash
+cd wasm
+./build-release
+cd examples
+npm install
+node init
+node nodejs/javascript/general/rpc.js
+```
 
 ## Using RPC
 
