@@ -1,7 +1,7 @@
 FROM rust:bookworm AS builder
 
 RUN apt-get update
-RUN apt-get install -y curl git build-essential libssl-dev pkg-config 
+RUN apt-get install -y build-essential libssl-dev pkg-config
 RUN apt-get install -y protobuf-compiler libprotobuf-dev
 RUN apt-get install -y clang-format clang-tidy \
         clang-tools clang clangd libc++-dev \
