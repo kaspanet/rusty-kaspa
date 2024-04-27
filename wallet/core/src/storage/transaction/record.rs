@@ -7,6 +7,7 @@ use crate::imports::*;
 use crate::storage::Binding;
 use crate::tx::PendingTransactionInner;
 use workflow_core::time::{unixtime_as_millis_u64, unixtime_to_locale_string};
+use workflow_wasm::utils::try_get_js_value_prop;
 
 pub use kaspa_consensus_core::tx::TransactionId;
 use zeroize::Zeroize;
@@ -276,6 +277,11 @@ export interface ITransactionRecord {
      * and store its own metadata into the value of this key.
      */
     metadata?: string;
+
+    /**
+     * Transaction data type.
+     */
+    type: string;
 }
 "#;
 
@@ -284,6 +290,22 @@ extern "C" {
     #[wasm_bindgen(extends = Object, typescript_type = "ITransactionRecord")]
     #[derive(Clone, Debug, PartialEq, Eq)]
     pub type ITransactionRecord;
+}
+
+#[wasm_bindgen(inspectable)]
+#[derive(Debug, Clone, Serialize)]
+pub struct TransactionRecordNotification {
+    #[serde(rename = "type")]
+    #[wasm_bindgen(js_name = "type", getter_with_clone)]
+    pub type_: String,
+    #[wasm_bindgen(getter_with_clone)]
+    pub data: TransactionRecord,
+}
+
+impl TransactionRecordNotification {
+    pub fn new(type_: String, data: TransactionRecord) -> Self {
+        Self { type_, data }
+    }
 }
 
 /// @category Wallet SDK
@@ -769,7 +791,12 @@ impl TransactionRecord {
 
     #[wasm_bindgen(getter, js_name = "data")]
     pub fn data_as_js_value(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.transaction_data).unwrap()
+        try_get_js_value_prop(&serde_wasm_bindgen::to_value(&self.transaction_data).unwrap(), "data").unwrap()
+    }
+
+    #[wasm_bindgen(getter, js_name = "type")]
+    pub fn data_type(&self) -> String {
+        self.transaction_data.kind().to_string()
     }
 
     /// Check if the transaction record has the given address within the associated UTXO set.

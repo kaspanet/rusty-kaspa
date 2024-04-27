@@ -227,7 +227,7 @@ cfg_if! {
          * @category Wallet API
          */
         export type IWalletEvent = {
-            [K in keyof WalletEventMap]: { event: K, data: WalletEventMap[K] }
+            [K in keyof WalletEventMap]: { type: K, data: WalletEventMap[K] }
         }[keyof WalletEventMap];
 
         /**
@@ -553,9 +553,7 @@ declare! {
      * 
      * @category Wallet Events
      */
-    export interface IPendingEvent {
-        record : ITransactionRecord;
-    }
+    export type IPendingEvent = TransactionRecord;
     "#,
 }
 
@@ -571,9 +569,7 @@ declare! {
      * 
      * @category Wallet Events
      */
-    export interface IReorgEvent {
-        record : ITransactionRecord;
-    }
+    export type IReorgEvent = TransactionRecord;
     "#,
 }
 
@@ -588,9 +584,7 @@ declare! {
      * 
      * @category Wallet Events
      */
-    export interface IStasisEvent {
-        record : ITransactionRecord;
-    }
+    export type IStasisEvent = TransactionRecord;
     "#,
 }
 
@@ -603,9 +597,7 @@ declare! {
      * 
      * @category Wallet Events
      */
-    export interface IMaturityEvent {
-        record : ITransactionRecord;
-    }
+    export type IMaturityEvent = TransactionRecord;
     "#,
 }
 
@@ -628,9 +620,7 @@ declare! {
      * 
      * @category Wallet Events
      */
-    export interface IDiscoveryEvent {
-        record : ITransactionRecord;
-    }
+    export type IDiscoveryEvent = TransactionRecord;
     "#,
 }
 

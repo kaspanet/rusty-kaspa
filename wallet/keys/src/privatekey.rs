@@ -85,8 +85,7 @@ impl PrivateKey {
     #[wasm_bindgen(js_name = toAddressECDSA)]
     pub fn to_address_ecdsa(&self, network: &NetworkTypeT) -> Result<Address> {
         let public_key = secp256k1::PublicKey::from_secret_key_global(&self.inner);
-        let (x_only_public_key, _) = public_key.x_only_public_key();
-        let payload = x_only_public_key.serialize();
+        let payload = public_key.serialize();
         let address = Address::new(network.try_into()?, AddressVersion::PubKeyECDSA, &payload);
         Ok(address)
     }

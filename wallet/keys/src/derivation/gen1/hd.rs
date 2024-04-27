@@ -59,9 +59,14 @@ impl PubkeyDerivationManager {
         Ok(key)
     }
 
-    pub fn create_address(key: &secp256k1::PublicKey, prefix: AddressPrefix, _ecdsa: bool) -> Result<Address> {
-        let payload = &key.to_bytes()[1..];
-        let address = Address::new(prefix, AddressVersion::PubKey, payload);
+    pub fn create_address(key: &secp256k1::PublicKey, prefix: AddressPrefix, ecdsa: bool) -> Result<Address> {
+        let address = if ecdsa {
+            let payload = &key.serialize();
+            Address::new(prefix, AddressVersion::PubKeyECDSA, payload)
+        } else {
+            let payload = &key.x_only_public_key().0.serialize();
+            Address::new(prefix, AddressVersion::PubKey, payload)
+        };
 
         Ok(address)
     }

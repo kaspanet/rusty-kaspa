@@ -71,7 +71,7 @@ impl Keypair {
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddressECDSA)]
     pub fn to_address_ecdsa(&self, network: &NetworkTypeT) -> Result<Address> {
-        let payload = &self.xonly_public_key.serialize();
+        let payload = &self.public_key.serialize();
         let address = Address::new(network.try_into()?, AddressVersion::PubKeyECDSA, payload);
         Ok(address)
     }

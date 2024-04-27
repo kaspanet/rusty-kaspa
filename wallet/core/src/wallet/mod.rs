@@ -368,7 +368,7 @@ impl Wallet {
         }
     }
 
-    async fn activate_accounts_impl(self: &Arc<Wallet>, account_ids: Option<&[AccountId]>) -> Result<()> {
+    async fn activate_accounts_impl(self: &Arc<Wallet>, account_ids: Option<&[AccountId]>) -> Result<Vec<AccountId>> {
         let stored_accounts = if let Some(ids) = account_ids {
             self.inner.store.as_account_store().unwrap().load_multiple(ids).await?
         } else {
@@ -393,9 +393,9 @@ impl Wallet {
             }
         }
 
-        self.notify(Events::AccountActivation { ids }).await?;
+        self.notify(Events::AccountActivation { ids: ids.clone() }).await?;
 
-        Ok(())
+        Ok(ids)
     }
 
     /// Activates accounts (performs account address space counts, initializes balance tracking, etc.)
@@ -1577,6 +1577,7 @@ impl Wallet {
 
             let prv_key_data_args = PrvKeyDataCreateArgs::new(None, payment_secret.cloned(), mnemonic_phrase_string);
 
+            self.store().batch().await?;
             let prv_key_data_id = self.clone().create_prv_key_data(wallet_secret, prv_key_data_args).await?;
 
             let account_create_args = AccountCreateArgs::new_bip32(prv_key_data_id, payment_secret.cloned(), None, None);
