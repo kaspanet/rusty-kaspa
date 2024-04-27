@@ -682,8 +682,6 @@ impl UtxoProcessor {
                 }
             }
 
-            log_info!("utxo processing task existing");
-
             // handle power down on rpc channel that remains connected
             if this.is_connected() {
                 this.handle_disconnect().await.unwrap_or_else(|err| log_error!("{err}"));
