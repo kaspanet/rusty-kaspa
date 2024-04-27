@@ -1015,34 +1015,52 @@ declare! {
      *  
      * @category Wallet API
      */
-    export interface IAccountsCreateRequest {
+    export type IAccountsCreateRequest = {
         walletSecret: string;
-        accountCreateArgs : IAccountCreateArgs;
-        // accountKind: AccountKind | string,
-    }
+        type: "bip32";
+        accountName:string;
+        accountIndex?:number;
+        prvKeyDataId:string;
+        paymentSecret?:string;
+    };
+    //   |{
+    //     walletSecret: string;
+    //     type: "multisig";
+    //     accountName:string;
+    //     accountIndex?:number;
+    //     prvKeyDataId:string;
+    //     pubkeys:HexString[];
+    //     paymentSecret?:string;
+    //   }
+
+    //   |{
+    //     walletSecret: string;
+    //     type: "bip32-readonly";
+    //     accountName:string;
+    //     accountIndex?:number;
+    //     pubkey:HexString;
+    //     paymentSecret?:string;
+    //  }
     "#,
 }
 
 try_from! (args: IAccountsCreateRequest, AccountsCreateRequest, {
     let wallet_secret = args.get_secret("walletSecret")?;
 
-    let account_create_args = args.try_get_object("accountCreateArgs")?.ok_or(Error::custom("accountCreateArgs is required"))?;
-
-    let kind = AccountKind::try_from(account_create_args.get_value("type")?)?;
-    let prv_key_data_args = account_create_args.try_get_object("prvKeyDataArgs")?;
+    let kind = AccountKind::try_from(args.try_get_value("type")?.ok_or(Error::custom("type is required"))?)?;
 
     if kind != crate::account::BIP32_ACCOUNT_KIND {
         return Err(Error::custom("only BIP32 accounts are currently supported"));
     }
-    let prv_key_data_args = prv_key_data_args.ok_or(Error::custom("prvKeyDataArgs is required for BIP32 account"))?;
+
     let prv_key_data_args = PrvKeyDataArgs {
-        prv_key_data_id: prv_key_data_args.get_prv_key_data_id("prvKeyDataId")?,
-        payment_secret: prv_key_data_args.try_get_secret("paymentSecret")?,
+        prv_key_data_id: args.try_get_prv_key_data_id("prvKeyDataId")?.ok_or(Error::custom("prvKeyDataId is required"))?,
+        payment_secret: args.try_get_secret("paymentSecret")?,
     };
 
     let account_args = AccountCreateArgsBip32 {
-        account_name: account_create_args.try_get_string("accountName")?,
-        account_index: account_create_args.get_u64("accountIndex").ok(),
+        account_name: args.try_get_string("accountName")?,
+        account_index: args.get_u64("accountIndex").ok(),
     };
 
     let account_create_args = AccountCreateArgs::Bip32 { prv_key_data_args, account_args };

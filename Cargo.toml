@@ -272,17 +272,17 @@ workflow-perf-monitor = "0.0.2"
 nw-sys = "0.1.6"
 
 # workflow dependencies
-workflow-core = { version = "0.12.0" }
-workflow-d3 = { version = "0.12.0" }
-workflow-dom = { version = "0.12.0" }
-workflow-http = { version = "0.12.0" }
-workflow-log = { version = "0.12.0" }
-workflow-node = { version = "0.12.0" }
-workflow-nw = { version = "0.12.0" }
-workflow-rpc = { version = "0.12.0" }
-workflow-store = { version = "0.12.0" }
-workflow-terminal = { version = "0.12.0" }
-workflow-wasm = { version = "0.12.0" }
+workflow-core = { version = "0.12.1" }
+workflow-d3 = { version = "0.12.1" }
+workflow-dom = { version = "0.12.1" }
+workflow-http = { version = "0.12.1" }
+workflow-log = { version = "0.12.1" }
+workflow-node = { version = "0.12.1" }
+workflow-nw = { version = "0.12.1" }
+workflow-rpc = { version = "0.12.1" }
+workflow-store = { version = "0.12.1" }
+workflow-terminal = { version = "0.12.1" }
+workflow-wasm = { version = "0.12.1" }
 
 # if below is enabled, this means that there is an ongoing work
 # on the workflow-rs crate. This requires that you clone workflow-rs

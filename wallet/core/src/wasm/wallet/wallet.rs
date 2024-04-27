@@ -6,7 +6,6 @@ use crate::wasm::notify::{WalletEventTarget, WalletNotificationCallback, WalletN
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 use kaspa_wasm_core::events::{get_event_targets, Sink};
 use kaspa_wrpc_wasm::{IConnectOptions, Resolver, RpcClient, RpcConfig, WrpcEncoding};
-use serde_wasm_bindgen::to_value;
 
 declare! {
     IWalletConfig,
@@ -298,23 +297,9 @@ impl Wallet {
                             let callbacks = inner.callbacks(event_type);
                             if let Some(handlers) = callbacks {
                                 for handler in handlers.into_iter() {
-                                    match notification.as_ref() {
-                                        Events::Pending { record } |
-                                        Events::Reorg { record } |
-                                        Events::Stasis { record } |
-                                        Events::Maturity { record } |
-                                        Events::Discovery { record } => {
-                                            let value = JsValue::from(record.clone());
-                                            if let Err(err) = handler.call(&value) {
-                                                log_error!("Error while executing notification callback: {:?}", err);
-                                            }
-                                        }
-                                        _ => {
-                                            let value = to_value(&notification).unwrap();
-                                            if let Err(err) = handler.call(&value) {
-                                                log_error!("Error while executing notification callback: {:?}", err);
-                                            }
-                                        }
+                                    let value = notification.as_ref().to_js_value();
+                                    if let Err(err) = handler.call(&value) {
+                                        log_error!("Error while executing notification callback: {:?}", err);
                                     }
                                 }
                             }

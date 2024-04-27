@@ -6,11 +6,24 @@ use crate::imports::*;
 use fixedstr::*;
 use std::hash::Hash;
 use std::str::FromStr;
+use workflow_wasm::convert::CastFromJs;
 
 /// @category Wallet SDK
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Hash)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Hash, CastFromJs)]
 #[wasm_bindgen]
 pub struct AccountKind(str64);
+
+#[wasm_bindgen]
+impl AccountKind {
+    #[wasm_bindgen(constructor)]
+    pub fn ctor(kind: &str) -> Result<AccountKind> {
+        Self::from_str(kind)
+    }
+    #[wasm_bindgen(js_name=toString)]
+    pub fn js_to_string(&self) -> String {
+        self.0.as_str().to_string()
+    }
+}
 
 impl AccountKind {
     pub fn as_str(&self) -> &str {
@@ -62,7 +75,9 @@ impl FromStr for AccountKind {
 impl TryFrom<JsValue> for AccountKind {
     type Error = Error;
     fn try_from(kind: JsValue) -> Result<Self> {
-        if let Some(kind) = kind.as_string() {
+        if let Ok(kind_ref) = Self::try_ref_from_js_value(&kind) {
+            Ok(*kind_ref)
+        } else if let Some(kind) = kind.as_string() {
             Ok(AccountKind::from_str(kind.as_str())?)
         } else {
             Err(Error::InvalidAccountKind)

@@ -1,4 +1,9 @@
 Latest online documentation available at: https://kaspa.aspectron.org/docs/
+### Release 2024-04-27
+ - IAccountsCreateRequest interface simplified by flattering it and now it is union for future expansion for multisig etc.
+ - IWalletEvent interface updated for Events with TransactionRecord
+ - WIP: wallet api example under wallet/wallet.js
+ - Bug fixes: wallet.ensure_default_account, ECDSA address creation methods
 
 ### Release 2024-04-17
 

@@ -6,6 +6,7 @@ pub trait WalletApiObjectExtension {
     fn get_secret(&self, key: &str) -> Result<Secret>;
     fn try_get_secret(&self, key: &str) -> Result<Option<Secret>>;
     fn get_network_id(&self, key: &str) -> Result<NetworkId>;
+    fn try_get_prv_key_data_id(&self, key: &str) -> Result<Option<PrvKeyDataId>>;
     fn get_prv_key_data_id(&self, key: &str) -> Result<PrvKeyDataId>;
     fn get_account_id(&self, key: &str) -> Result<AccountId>;
     fn try_get_account_id_list(&self, key: &str) -> Result<Option<Vec<AccountId>>>;
@@ -38,6 +39,14 @@ impl WalletApiObjectExtension for Object {
     fn get_network_id(&self, key: &str) -> Result<NetworkId> {
         let value = self.get_value(key)?;
         Ok(NetworkId::try_from(value)?)
+    }
+
+    fn try_get_prv_key_data_id(&self, key: &str) -> Result<Option<PrvKeyDataId>> {
+        if let Some(value) = self.try_get_value(key)? {
+            Ok(Some(PrvKeyDataId::try_from(&value)?))
+        } else {
+            Ok(None)
+        }
     }
 
     fn get_prv_key_data_id(&self, key: &str) -> Result<PrvKeyDataId> {
