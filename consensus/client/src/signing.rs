@@ -1,3 +1,7 @@
+//
+// This module is currently disabled, kept for potential future re-integration.
+//
+
 use crate::imports::*;
 use crate::result::Result;
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
@@ -30,9 +34,7 @@ pub struct SigHashCache {
 impl SigHashCache {
     #[wasm_bindgen(constructor)]
     pub fn ctor() -> SigHashCache {
-
         // let tx = Transaction::try_cast_from(tx)?.as_ref();
-
         Self::default()
     }
 
@@ -148,12 +150,6 @@ impl SigHashCache {
         hasher.write_u16(script_public_key.version());
         hasher.write_var_bytes(script_public_key.script());
     }
-
-
-
-
-
-
 }
 
 pub fn calc_schnorr_signature_hash(
