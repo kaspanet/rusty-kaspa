@@ -7,39 +7,6 @@ use crate::{
 use kaspa_hashes::Hash;
 use std::sync::Arc;
 
-// use wasm_bindgen::prelude::*;
-// #[wasm_bindgen(typescript_custom_section)]
-// const TS_BLOCK: &'static str = r#"
-// /**
-//  * Interface defining the structure of a block.
-//  *
-//  * @category Consensus
-//  */
-// export interface IBlock {
-//     header: IHeader;
-//     transactions: ITransaction[];
-//     verboseData?: IBlockVerboseData;
-// }
-
-// /**
-//  * Interface defining the structure of a block verbose data.
-//  *
-//  * @category Node RPC
-//  */
-// export interface IBlockVerboseData {
-//     hash: HexString;
-//     difficulty: number;
-//     selectedParentHash: HexString;
-//     transactionIds: HexString[];
-//     isHeaderOnly: boolean;
-//     blueScore: number;
-//     childrenHashes: HexString[];
-//     mergeSetBluesHashes: HexString[];
-//     mergeSetRedsHashes: HexString[];
-//     isChainBlock: boolean;
-// }
-// "#;
-
 /// A mutable block structure where header and transactions within can still be mutated.
 #[derive(Debug, Clone)]
 pub struct MutableBlock {
