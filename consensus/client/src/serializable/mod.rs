@@ -26,13 +26,12 @@ export interface ISerializableUtxoEntry {
  * @category Wallet SDK
  */
 export interface ISerializableTransactionInput {
-    // previousOutpoint: ITransactionOutpoint;
     transactionId : HexString;
     index: number;
     sequence: bigint;
     sigOpCount: number;
     signatureScript: HexString;
-    utxo?: ISerializableUtxoEntry;
+    utxo: ISerializableUtxoEntry;
 }
 
 /**
