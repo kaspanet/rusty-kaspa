@@ -235,6 +235,22 @@ The framework is compatible with all major desktop and mobile browsers.
 </details>
 
 
+<details>
+<summary>Building on Docker</summary>
+
+You can also use Docker to build binaries.
+```
+docker build -t kaspa-rusty .
+```
+
+Then you can run kaspad using.
+```
+docker run --rm -it kaspa-rusty:latest
+```
+
+</details>
+
+
 ## Running the node
 
   **Start a mainnet node**

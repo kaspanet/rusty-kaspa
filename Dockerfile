@@ -24,3 +24,5 @@ FROM debian:bookworm
 
 COPY --from=builder /rusty-kaspa/target/release/kaspad /usr/bin/
 COPY --from=builder /rusty-kaspa/target/release/kaspa-wallet /usr/bin/
+
+CMD kaspad
