@@ -294,6 +294,7 @@ impl IbdFlow {
         let mut trusted_set = pkg.build_trusted_subdag(entries)?;
 
         if self.ctx.config.enable_sanity_checks {
+            let con = self.ctx.consensus().unguarded_session_blocking();
             trusted_set = staging
                 .clone()
                 .spawn_blocking(move |c| {
@@ -314,7 +315,8 @@ impl IbdFlow {
                     }
                     if mismatch_detected {
                         info!("Validating the locally built proof (sanity test fallback #2)");
-                        if let Err(err) = c.validate_pruning_proof(&built_proof) {
+                        // Note: the proof is validated in the context of *current* consensus
+                        if let Err(err) = con.validate_pruning_proof(&built_proof) {
                             panic!("Locally built proof failed validation: {}", err);
                         }
                         info!("Locally built proof was validated successfully");
