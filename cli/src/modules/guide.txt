@@ -1,6 +1,6 @@
 Please note - this is an alpha version of the softeware, not all features are currently functional.
 
-If using a dekstop or a web version of this software, you can use Ctrl+'+' or Ctrl+'-' (Command on MacOS) to
+If using a desktop or a web version of this software, you can use Ctrl+'+' or Ctrl+'-' (Command on MacOS) to
 change the terminal font size.
 
 If using a desktop version, you can use Ctrl+M (Command on MacOS) to bring up metrics.

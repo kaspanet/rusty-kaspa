@@ -2749,7 +2749,7 @@ mod test {
             (1u64, vec![], false),                                // Case 1: 0 = locktime < txLockTime
             (0x800000, vec![0x7f, 0, 0], false),                  // Case 2: 0 < locktime < txLockTime
             (0x800000, vec![0x7f, 0, 0, 0, 0, 0, 0, 0, 0], true), // Case 3: locktime too big
-            (LOCK_TIME_THRESHOLD * 2, vec![0x7f, 0, 0, 0], true), // Case 4: lock times are inconsistant
+            (LOCK_TIME_THRESHOLD * 2, vec![0x7f, 0, 0, 0], true), // Case 4: lock times are inconsistent
         ] {
             let mut tx = base_tx.clone();
             tx.0.lock_time = tx_lock_time;

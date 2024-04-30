@@ -7,7 +7,7 @@ the Rusty Kaspa framework.
 This application is compatible with Windows, MacOS and Linux desktop environments.
 
 Please note that this project is comprised of 3 top-level components:
-- `/kos` - desktop application environment (can run as a dekstop application)
+- `/kos` - desktop application environment (can run as a desktop application)
 - `/cli` - native terminal environment (can run from a command line)
 - `/wallet/wasm` - web application (can run in the browser)
 
