@@ -91,7 +91,7 @@ impl ConsensusInstance {
 
     /// Returns an unguarded *blocking* consensus session. There's no guarantee that data will not be pruned between
     /// two sequential consensus calls. This session doesn't hold the consensus pruning lock, so it should
-    /// be preferred upon [`session`] when data consistency is not important.
+    /// be preferred upon [`session_blocking`] when data consistency is not important.
     pub fn unguarded_session_blocking(&self) -> ConsensusSessionBlocking<'static> {
         ConsensusSessionBlocking::new_without_session_guard(self.consensus.clone())
     }

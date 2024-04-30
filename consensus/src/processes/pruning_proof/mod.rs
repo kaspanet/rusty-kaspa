@@ -189,7 +189,7 @@ impl PruningProofManager {
         }
 
         let new_pruning_point = pruning_points.last().unwrap().hash;
-        info!("Setting {new_pruning_point} as the current pruning point");
+        info!("Setting {new_pruning_point} as the staging pruning point");
 
         let mut pruning_point_write = self.pruning_point_store.write();
         let mut batch = WriteBatch::default();
