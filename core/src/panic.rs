@@ -1,5 +1,5 @@
 use kaspa_core::error;
-use std::{panic, process};
+use std::{panic, process, thread};
 
 /// Configures the panic hook to exit the program on every panic
 pub fn configure_panic() {
@@ -9,7 +9,7 @@ pub fn configure_panic() {
         default_hook(panic_info);
         println!("Exiting...");
 
-        // Get the panic location and message
+        // Get the panic details
         let (file, line, column) = match panic_info.location() {
             Some(location) => (location.file(), location.line(), location.column()),
             None => ("unknown", 0, 0),
@@ -22,8 +22,14 @@ pub fn configure_panic() {
                 None => "unknown",
             },
         };
+        // Get the thread name
+        let current_thread = thread::current();
+        let thread_name = match current_thread.name() {
+            Some(name) => name,
+            None => "unnamed",
+        };
         // Log the panic
-        error!("Panic at {}:{}:{}: {}", file, line, column, message);
+        error!("Panic at the thread {} at {}:{}:{}: {}", thread_name, file, line, column, message);
 
         process::exit(1);
     }));
