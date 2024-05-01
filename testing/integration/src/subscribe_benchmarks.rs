@@ -75,10 +75,11 @@ fn create_client_addresses(index: usize, network_id: &NetworkId) -> Vec<Address>
 #[ignore = "bmk"]
 async fn utxos_changed_subscriptions_sanity_check() {
     init_allocator_with_default_settings();
-    kaspa_core::panic::configure_panic();
     kaspa_core::log::try_init_logger(
-        "INFO, kaspa_core::time=debug, kaspa_rpc_core=debug, kaspa_grpc_client=debug, kaspa_notify=info, kaspa_notify::address::tracker=debug, kaspa_notify::listener=debug, kaspa_notify::subscription::single=debug, kaspa_mining::monitor=debug, kaspa_testing_integration::subscribe_benchmarks=trace", 
+        "INFO, kaspa_core::time=debug, kaspa_rpc_core=debug, kaspa_grpc_client=debug, kaspa_notify=info, kaspa_notify::address::tracker=debug, kaspa_notify::listener=debug, kaspa_notify::subscription::single=debug, kaspa_mining::monitor=debug, kaspa_testing_integration::subscribe_benchmarks=trace",
     );
+    // As we log the panic, we want to set it up after the logger
+    kaspa_core::panic::configure_panic();
 
     let (prealloc_sk, _) = secp256k1::generate_keypair(&mut thread_rng());
     let args = ArgsBuilder::simnet(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR, PREALLOC_AMOUNT)
@@ -131,10 +132,11 @@ async fn utxos_changed_subscriptions_sanity_check() {
 #[ignore = "bmk"]
 async fn bench_utxos_changed_subscriptions_daemon() {
     init_allocator_with_default_settings();
-    kaspa_core::panic::configure_panic();
     kaspa_core::log::try_init_logger(
-        "INFO, kaspa_core::core=trace, kaspa_core::time=debug, kaspa_rpc_core=debug, kaspa_grpc_client=debug, kaspa_notify=info, kaspa_notify::address::tracker=debug, kaspa_notify::listener=debug, kaspa_notify::subscription::single=debug, kaspa_mining::monitor=debug, kaspa_testing_integration::subscribe_benchmarks=trace", 
+        "INFO, kaspa_core::core=trace, kaspa_core::time=debug, kaspa_rpc_core=debug, kaspa_grpc_client=debug, kaspa_notify=info, kaspa_notify::address::tracker=debug, kaspa_notify::listener=debug, kaspa_notify::subscription::single=debug, kaspa_mining::monitor=debug, kaspa_testing_integration::subscribe_benchmarks=trace",
     );
+    // As we log the panic, we want to set it up after the logger
+    kaspa_core::panic::configure_panic();
 
     let daemon_args = DaemonArgs::from_env_args();
     let args = ArgsBuilder::simnet(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR, PREALLOC_AMOUNT).apply_daemon_args(&daemon_args).build();
@@ -157,10 +159,11 @@ async fn bench_utxos_changed_subscriptions_daemon() {
 
 async fn utxos_changed_subscriptions_client(address_cycle_seconds: u64, address_max_cycles: usize) {
     init_allocator_with_default_settings();
-    kaspa_core::panic::configure_panic();
     kaspa_core::log::try_init_logger(
-        "INFO, kaspa_core::time=debug, kaspa_rpc_core=debug, kaspa_grpc_client=debug, kaspa_notify=info, kaspa_notify::address::tracker=debug, kaspa_notify::listener=debug, kaspa_notify::subscription::single=debug, kaspa_mining::monitor=debug, kaspa_testing_integration::subscribe_benchmarks=trace", 
+        "INFO, kaspa_core::time=debug, kaspa_rpc_core=debug, kaspa_grpc_client=debug, kaspa_notify=info, kaspa_notify::address::tracker=debug, kaspa_notify::listener=debug, kaspa_notify::subscription::single=debug, kaspa_mining::monitor=debug, kaspa_testing_integration::subscribe_benchmarks=trace",
     );
+    // As we log the panic, we want to set it up after the logger
+    kaspa_core::panic::configure_panic();
 
     assert!(address_cycle_seconds >= 60);
     if TX_COUNT < TX_LEVEL_WIDTH {
