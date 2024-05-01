@@ -5,11 +5,7 @@ use std::{panic, process, thread};
 pub fn configure_panic() {
     let default_hook = panic::take_hook();
     panic::set_hook(Box::new(move |panic_info| {
-        // Invoke the default hook and exit the process
-        default_hook(panic_info);
-        println!("Exiting...");
-
-        // Get the panic details
+        // Get the panic location details
         let (file, line, column) = match panic_info.location() {
             Some(location) => (location.file(), location.line(), location.column()),
             None => ("unknown", 0, 0),
@@ -19,18 +15,17 @@ pub fn configure_panic() {
             Some(s) => *s,
             None => match panic_info.payload().downcast_ref::<String>() {
                 Some(s) => &s[..],
-                None => "unknown",
+                None => "Box<dyn Any>",
             },
         };
         // Get the thread name
         let current_thread = thread::current();
-        let thread_name = match current_thread.name() {
-            Some(name) => name,
-            None => "unnamed",
-        };
+        let thread_name = current_thread.name().unwrap_or("<unnamed>");
         // Log the panic
-        error!("Panic at the thread {} at {}:{}:{}: {}", thread_name, file, line, column, message);
-
+        error!("thread '{}' panicked at {}:{}:{}: {}", thread_name, file, line, column, message);
+        // Invoke the default hook as well, since it might include additional info such as the full backtrace
+        default_hook(panic_info);
+        println!("Exiting...");
         process::exit(1);
     }));
 }
