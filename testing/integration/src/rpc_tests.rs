@@ -39,8 +39,9 @@ macro_rules! tst {
 /// `cargo test --release --package kaspa-testing-integration --lib -- rpc_tests::sanity_test`
 #[tokio::test]
 async fn sanity_test() {
-    kaspa_core::panic::configure_panic();
     kaspa_core::log::try_init_logger("info");
+    // As we log the panic, we want to set it up after the logger
+    kaspa_core::panic::configure_panic();
 
     let args = Args {
         simnet: true,

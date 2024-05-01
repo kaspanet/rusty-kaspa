@@ -39,8 +39,9 @@ use tokio::join;
 #[tokio::test]
 #[ignore = "bmk"]
 async fn bench_bbt_latency() {
-    kaspa_core::panic::configure_panic();
     kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_mining::monitor=debug");
+    // As we log the panic, we want to set it up after the logger
+    kaspa_core::panic::configure_panic();
 
     // Constants
     const BLOCK_COUNT: usize = usize::MAX;
@@ -286,8 +287,9 @@ async fn bench_bbt_latency() {
 #[tokio::test]
 #[ignore = "bmk"]
 async fn bench_bbt_latency_2() {
-    kaspa_core::panic::configure_panic();
     kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_mining::monitor=debug");
+    // As we log the panic, we want to set it up after the logger
+    kaspa_core::panic::configure_panic();
 
     // Constants
     const BLOCK_COUNT: usize = usize::MAX;

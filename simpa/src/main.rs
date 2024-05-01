@@ -136,6 +136,7 @@ fn main() {
     kaspa_core::log::init_logger(None, &args.log_level);
 
     // Configure the panic behavior
+    // As we log the panic, we want to set it up after the logger
     kaspa_core::panic::configure_panic();
 
     // Print package name and version
@@ -170,7 +171,7 @@ fn main_impl(mut args: Args) {
 
     if args.miners > 1 {
         warn!(
-            "Warning: number of miners was configured to {}. Currently each miner added doubles the simulation 
+            "Warning: number of miners was configured to {}. Currently each miner added doubles the simulation
         memory and runtime footprint, while a single miner is sufficient for most simulation purposes (delay is simulated anyway).",
             args.miners
         );
@@ -441,8 +442,9 @@ mod tests {
         args.tpb = 1;
         args.test_pruning = true;
 
-        kaspa_core::panic::configure_panic();
         kaspa_core::log::try_init_logger(&args.log_level);
+        // As we log the panic, we want to set it up after the logger
+        kaspa_core::panic::configure_panic();
         main_impl(args);
     }
 }
