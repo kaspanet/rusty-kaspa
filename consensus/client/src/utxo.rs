@@ -57,6 +57,15 @@ pub struct UtxoEntry {
     pub is_coinbase: bool,
 }
 
+#[wasm_bindgen]
+impl UtxoEntry {
+    #[wasm_bindgen(js_name = toString)]
+    pub fn js_to_string(&self) -> Result<js_sys::JsString> {
+        //SerializableUtxoEntry::from(self).serialize_to_json()
+        Ok(js_sys::JSON::stringify(&self.to_js_object()?.into())?)
+    }
+}
+
 impl UtxoEntry {
     #[inline(always)]
     pub fn amount(&self) -> u64 {
@@ -70,6 +79,25 @@ impl UtxoEntry {
     #[inline(always)]
     pub fn is_coinbase(&self) -> bool {
         self.is_coinbase
+    }
+
+    fn to_js_object(&self) -> Result<js_sys::Object> {
+        let obj = js_sys::Object::new();
+        if let Some(address) = &self.address {
+            obj.set("address", &address.to_string().into())?;
+        }
+
+        let outpoint = js_sys::Object::new();
+        outpoint.set("transactionId", &self.outpoint.transaction_id().to_string().into())?;
+        outpoint.set("index", &self.outpoint.index().into())?;
+
+        obj.set("amount", &self.amount.to_string().into())?;
+        obj.set("outpoint", &outpoint.into())?;
+        obj.set("scriptPublicKey", &workflow_wasm::serde::to_value(&self.script_public_key)?)?;
+        obj.set("blockDaaScore", &self.block_daa_score.to_string().into())?;
+        obj.set("isCoinbase", &self.is_coinbase.into())?;
+
+        Ok(obj)
     }
 }
 
@@ -95,6 +123,14 @@ pub struct UtxoEntryReference {
 
 #[wasm_bindgen]
 impl UtxoEntryReference {
+    #[wasm_bindgen(js_name = toString)]
+    pub fn js_to_string(&self) -> Result<js_sys::JsString> {
+        //let entry = workflow_wasm::serde::to_value(&SerializableUtxoEntry::from(self))?;
+        let object = js_sys::Object::new();
+        object.set("entry", &self.utxo.to_js_object()?.into())?;
+        Ok(js_sys::JSON::stringify(&object)?)
+    }
+
     #[wasm_bindgen(getter)]
     pub fn entry(&self) -> UtxoEntry {
         self.as_ref().clone()

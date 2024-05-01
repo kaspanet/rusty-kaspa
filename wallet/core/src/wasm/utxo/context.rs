@@ -193,7 +193,7 @@ impl UtxoContext {
 
     /// Obtain the length of the mature UTXO entries that are currently
     /// managed by the UtxoContext.
-    #[wasm_bindgen(getter, js_name = "getMatureLength")]
+    #[wasm_bindgen(getter, js_name = "matureLength")]
     pub fn mature_length(&self) -> usize {
         self.context().mature.len()
     }
