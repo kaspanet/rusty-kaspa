@@ -10,9 +10,9 @@ pub fn configure_panic() {
         println!("Exiting...");
 
         // Get the panic location and message
-        let (file, line) = match panic_info.location() {
-            Some(location) => (location.file(), location.line()),
-            None => ("unknown", 0),
+        let (file, line, column) = match panic_info.location() {
+            Some(location) => (location.file(), location.line(), location.column()),
+            None => ("unknown", 0, 0),
         };
 
         let message = match panic_info.payload().downcast_ref::<&str>() {
@@ -23,7 +23,7 @@ pub fn configure_panic() {
             },
         };
         // Log the panic
-        error!("Panic at {}:{}: {}", file, line, message);
+        error!("Panic at {}:{}:{}: {}", file, line, column, message);
 
         process::exit(1);
     }));
