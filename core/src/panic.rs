@@ -8,7 +8,6 @@ pub fn configure_panic() {
         // Invoke the default hook and exit the process
         default_hook(panic_info);
         println!("Exiting...");
-        // TODO: setup a wait time and fold the log system properly
 
         // Get the panic location and message
         let (file, line) = match panic_info.location() {
