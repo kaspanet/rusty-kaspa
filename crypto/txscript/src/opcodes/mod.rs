@@ -1013,7 +1013,7 @@ mod test {
         let mut reused_values = SigHashReusedValues::new();
         for ErrorTestCase { init, code, error } in tests {
             let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
-            vm.dstack = init.clone();
+            vm.dstack.clone_from(&init);
             assert_eq!(
                 code.execute(&mut vm)
                     .expect_err(format!("Opcode {} should have errored (init: {:?})", code.value(), init.clone()).as_str()),
