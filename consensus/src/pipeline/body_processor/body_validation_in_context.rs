@@ -125,7 +125,7 @@ mod tests {
         let wait_handles = consensus.init();
         let body_processor = consensus.block_body_processor();
 
-        consensus.add_block_with_parents(1.into(), vec![config.genesis.hash]).await.unwrap();
+        consensus.add_header_only_block_with_parents(1.into(), vec![config.genesis.hash]).await.unwrap();
 
         {
             let block = consensus.build_block_with_parents_and_transactions(2.into(), vec![1.into()], vec![]);
