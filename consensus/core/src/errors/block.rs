@@ -147,6 +147,9 @@ pub enum RuleError {
 
     #[error("DAA window data has only {0} entries")]
     InsufficientDaaWindowSize(usize),
+
+    #[error("cannot add block body to a pruned block")]
+    PrunedBlock,
 }
 
 pub type BlockProcessResult<T> = std::result::Result<T, RuleError>;

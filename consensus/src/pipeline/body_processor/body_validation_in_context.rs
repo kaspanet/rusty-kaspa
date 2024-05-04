@@ -1,7 +1,10 @@
 use super::BlockBodyProcessor;
 use crate::{
     errors::{BlockProcessResult, RuleError},
-    model::stores::{ghostdag::GhostdagStoreReader, statuses::StatusesStoreReader},
+    model::{
+        services::reachability::ReachabilityService,
+        stores::{ghostdag::GhostdagStoreReader, pruning::PruningStoreReader, statuses::StatusesStoreReader},
+    },
     processes::window::WindowManager,
 };
 use kaspa_consensus_core::block::Block;
@@ -12,16 +15,27 @@ use std::sync::Arc;
 
 impl BlockBodyProcessor {
     pub fn validate_body_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
+        self.check_block_is_not_pruned(block)?;
         self.check_parent_bodies_exist(block)?;
         self.check_coinbase_blue_score_and_subsidy(block)?;
-        self.check_block_transactions_in_context(block)?;
-        self.check_block_is_not_pruned(block)
+        self.check_block_transactions_in_context(block)
     }
 
     fn check_block_is_not_pruned(self: &Arc<Self>, _block: &Block) -> BlockProcessResult<()> {
-        // TODO: In kaspad code it checks that the block is not in the past of the current tips.
-        // We should decide what's the best indication that a block was pruned.
-        Ok(())
+        match self.statuses_store.read().get(_block.hash()).unwrap_option() {
+            Some(_) => {
+                let Some(pp) = self.pruning_point_store.read().pruning_point().unwrap_option() else {
+                    return Ok(());
+                };
+
+                if self.reachability_service.is_dag_ancestor_of(_block.hash(), pp) {
+                    Err(RuleError::PrunedBlock)
+                } else {
+                    Ok(())
+                }
+            }
+            None => Ok(()),
+        }
     }
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {

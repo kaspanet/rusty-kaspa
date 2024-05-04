@@ -149,6 +149,14 @@ impl TestConsensus {
             .virtual_state_task
     }
 
+    pub fn add_empty_utxo_valid_block_with_parents(
+        &self,
+        hash: Hash,
+        parents: Vec<Hash>,
+    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+        self.add_utxo_valid_block_with_parents(hash, parents, vec![])
+    }
+
     pub fn build_utxo_valid_block_with_parents(
         &self,
         hash: Hash,

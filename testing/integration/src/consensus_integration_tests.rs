@@ -62,6 +62,7 @@ use std::cmp::{max, Ordering};
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{
     collections::HashMap,
     fs::File,
@@ -1324,6 +1325,54 @@ async fn bounded_merge_depth_test() {
 
     // point_at_blue_kosherizing is kosherizing kosherizing_hash, so this should pass.
     consensus.add_block_with_parents(1201.into(), vec![point_at_blue_kosherizing, *selected_chain.last().unwrap()]).await.unwrap();
+
+    consensus.shutdown(wait_handles);
+}
+
+#[tokio::test]
+async fn pruning_test() {
+    init_allocator_with_default_settings();
+    let config = ConfigBuilder::new(MAINNET_PARAMS)
+        .skip_proof_of_work()
+        .edit_consensus_params(|p| {
+            p.finality_depth = 2;
+            p.mergeset_size_limit = 2;
+            p.ghostdag_k = 2;
+            p.merge_depth = 3;
+            p.pruning_depth = 100;
+        })
+        .build();
+
+    assert!((config.ghostdag_k as u64) < config.merge_depth, "K must be smaller than merge depth for this test to run");
+
+    let consensus = TestConsensus::new(&config);
+    let wait_handles = consensus.init();
+
+    let mut selected_chain = vec![config.genesis.hash];
+
+    let genesis_child = 1.into();
+    consensus.add_empty_utxo_valid_block_with_parents(genesis_child, vec![*selected_chain.last().unwrap()]).await.unwrap();
+    selected_chain.push(genesis_child);
+    let genesis_child_block = consensus.get_block(genesis_child).unwrap();
+
+    let genesis_child_child = 2.into();
+    consensus.add_empty_utxo_valid_block_with_parents(genesis_child_child, vec![*selected_chain.last().unwrap()]).await.unwrap();
+    selected_chain.push(genesis_child_child);
+    let genesis_child_child_block = consensus.get_block(genesis_child_child).unwrap();
+
+    for i in 3..config.pruning_depth + config.finality_depth + 100 {
+        let hash: Hash = i.into();
+        consensus.add_empty_utxo_valid_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
+        selected_chain.push(hash);
+    }
+
+    // Waiting for genesis_child to get pruned
+    while consensus.get_block_status(genesis_child).unwrap() == BlockStatus::StatusUTXOValid {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    assert!(consensus.validate_and_insert_block(genesis_child_block).virtual_state_task.await.is_err());
+    assert!(consensus.validate_and_insert_block(genesis_child_child_block).virtual_state_task.await.is_err());
 
     consensus.shutdown(wait_handles);
 }

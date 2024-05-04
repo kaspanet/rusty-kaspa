@@ -235,6 +235,7 @@ impl Consensus {
             storage.headers_store.clone(),
             storage.block_transactions_store.clone(),
             storage.body_tips_store.clone(),
+            storage.pruning_point_store.clone(),
             services.reachability_service.clone(),
             services.coinbase_manager.clone(),
             services.mass_calculator.clone(),
