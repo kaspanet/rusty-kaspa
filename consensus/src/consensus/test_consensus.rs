@@ -117,7 +117,9 @@ impl TestConsensus {
     }
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
-        let mut header = header_from_precomputed_hash(hash, parents);
+        let mut header = header_from_precomputed_hash(hash, Default::default());
+        let parents_by_level = self.consensus.services.parents_manager.calc_block_parents(self.pruning_point(), &parents);
+        header.parents_by_level = parents_by_level;
         let ghostdag_data = self.consensus.services.ghostdag_primary_manager.ghostdag(header.direct_parents());
         header.pruning_point = self
             .consensus

@@ -1378,6 +1378,31 @@ async fn pruning_test() {
 }
 
 #[tokio::test]
+async fn indirect_parents_test() {
+    init_allocator_with_default_settings();
+    let config = ConfigBuilder::new(DEVNET_PARAMS).skip_proof_of_work().build();
+    let consensus = TestConsensus::new(&config);
+    let wait_handles = consensus.init();
+
+    let mut level_3_count = 3;
+    let mut selected_chain = vec![config.genesis.hash];
+    for i in 1.. {
+        let hash: Hash = i.into();
+        consensus.add_block_with_parents(hash, vec![*selected_chain.last().unwrap()]).await.unwrap();
+        selected_chain.push(hash);
+        if consensus.get_header(*selected_chain.last().unwrap()).unwrap().parents_by_level.len() >= 3 {
+            level_3_count += 1;
+        }
+
+        if level_3_count > 5 {
+            break;
+        }
+    }
+
+    consensus.shutdown(wait_handles);
+}
+
+#[tokio::test]
 async fn difficulty_test() {
     init_allocator_with_default_settings();
     async fn add_block(consensus: &TestConsensus, block_time: Option<u64>, parents: Vec<Hash>) -> Header {
