@@ -1,3 +1,4 @@
+use kaspa_consensus_core::subnets::SubnetworkConversionError;
 use thiserror::Error;
 
 #[derive(Clone, Debug, Error)]
@@ -20,9 +21,12 @@ pub enum ConversionError {
     #[error("Integer parsing error: {0}")]
     IntCastingError(#[from] std::num::TryFromIntError),
 
-    #[error("{0}")]
+    #[error(transparent)]
     AddressParsingError(#[from] std::net::AddrParseError),
 
-    #[error("{0}")]
+    #[error(transparent)]
     IdentityError(#[from] uuid::Error),
+
+    #[error(transparent)]
+    SubnetParsingError(#[from] SubnetworkConversionError),
 }

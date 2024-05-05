@@ -6,7 +6,7 @@
 
 use crate::imports::*;
 use crate::tx::PendingTransaction;
-use crate::utxo::{UtxoContext, UtxoEntryReference};
+use crate::utxo::{UtxoContext, UtxoEntryId, UtxoEntryReference};
 
 struct Inner {
     pub id: TransactionId,
@@ -81,7 +81,7 @@ impl OutgoingTransaction {
         self.inner.pending_transaction.is_batch()
     }
 
-    pub fn utxo_entries(&self) -> &AHashSet<UtxoEntryReference> {
+    pub fn utxo_entries(&self) -> &AHashMap<UtxoEntryId, UtxoEntryReference> {
         self.inner.pending_transaction.utxo_entries()
     }
 

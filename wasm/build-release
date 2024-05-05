@@ -1,0 +1,90 @@
+#!/bin/bash
+# This script builds the Rusty Kaspa WASM32 SDK release.
+
+# make the script fail for any failed command
+set -e
+
+rm -rf release/*
+rm -rf web/*
+rm -rf nodejs/*
+rm -rf docs/*
+rm -rf examples/nodejs/typescript/lib
+
+mkdir -p release/kaspa-wasm32-sdk/web
+mkdir -p release/kaspa-wasm32-sdk/nodejs
+mkdir -p release/kaspa-wasm32-sdk/docs
+
+# pushd .
+# cd ../rpc/wrpc/wasm
+# wasm-pack build --target web --out-name kaspa-rpc --out-dir web/kaspa-rpc --features wasm32-sdk $@
+# popd
+
+wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-keygen --features wasm32-keygen $@
+wasm-pack build --weak-refs --dev --target web --out-name kaspa --out-dir web/kaspa-keygen-dev --features wasm32-keygen $@
+
+wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-rpc --features wasm32-rpc $@
+wasm-pack build --weak-refs --dev --target web --out-name kaspa --out-dir web/kaspa-rpc-dev --features wasm32-rpc $@
+
+wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa-core --features wasm32-core $@
+wasm-pack build --weak-refs --dev --target web --out-name kaspa --out-dir web/kaspa-core-dev --features wasm32-core $@
+
+wasm-pack build --weak-refs --target web --out-name kaspa --out-dir web/kaspa --features wasm32-sdk $@
+wasm-pack build --weak-refs --dev --target web --out-name kaspa --out-dir web/kaspa-dev --features wasm32-sdk $@
+
+wasm-pack build --weak-refs --target nodejs --out-name kaspa --out-dir nodejs/kaspa --features wasm32-sdk $@
+wasm-pack build --weak-refs --dev --target nodejs --out-name kaspa --out-dir nodejs/kaspa-dev --features wasm32-sdk $@
+
+# wasm-pack build --target web --dev --out-name kaspa --out-dir build/docs/kaspa --features wasm32-sdk $@
+typedoc --name "Kaspa WASM32 SDK - Key Generation" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa-keygen ./build/docs/kaspa-keygen.ts
+typedoc --name "Kaspa WASM32 SDK - RPC" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa-rpc ./build/docs/kaspa-rpc.ts
+typedoc --name "Kaspa WASM32 SDK - Core" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa-core ./build/docs/kaspa-core.ts
+typedoc --name "Kaspa WASM32 SDK" --sourceLinkExternal --readme ./README.md --options ./build/docs/ --out docs/kaspa ./build/docs/kaspa.ts
+
+# cp -r ../rpc/wrpc/wasm/web/kaspa-rpc release/kaspa-wasm32-sdk/web/kaspa-rpc
+cp -r web/kaspa-keygen release/kaspa-wasm32-sdk/web/kaspa-keygen
+cp -r web/kaspa-keygen-dev release/kaspa-wasm32-sdk/web/kaspa-keygen-dev
+
+cp -r web/kaspa-rpc release/kaspa-wasm32-sdk/web/kaspa-rpc
+cp -r web/kaspa-rpc-dev release/kaspa-wasm32-sdk/web/kaspa-rpc-dev
+
+cp -r web/kaspa-core release/kaspa-wasm32-sdk/web/kaspa-core
+cp -r web/kaspa-core-dev release/kaspa-wasm32-sdk/web/kaspa-core-dev
+
+cp -r web/kaspa release/kaspa-wasm32-sdk/web/kaspa
+cp -r web/kaspa-dev release/kaspa-wasm32-sdk/web/kaspa-dev
+
+cp -r nodejs/kaspa release/kaspa-wasm32-sdk/nodejs/kaspa
+cp -r nodejs/kaspa-dev release/kaspa-wasm32-sdk/nodejs/kaspa-dev
+
+cp -r docs/kaspa-keygen release/kaspa-wasm32-sdk/docs/kaspa-keygen
+cp -r docs/kaspa-rpc release/kaspa-wasm32-sdk/docs/kaspa-rpc
+cp -r docs/kaspa-core release/kaspa-wasm32-sdk/docs/kaspa-core
+cp -r docs/kaspa release/kaspa-wasm32-sdk/docs/kaspa
+
+mkdir -p release/kaspa-wasm32-sdk/examples/data
+cp -r examples/data/.gitignore release/kaspa-wasm32-sdk/examples/data/.gitignore
+cp -r examples/nodejs release/kaspa-wasm32-sdk/examples/
+cp -r examples/web release/kaspa-wasm32-sdk/examples/
+cp -r examples/init.js release/kaspa-wasm32-sdk/examples/
+cp -r examples/jsconfig.json release/kaspa-wasm32-sdk/examples/
+cp -r examples/package.json release/kaspa-wasm32-sdk/examples/
+
+pushd .
+cd release/kaspa-wasm32-sdk/examples
+npm install
+popd
+
+# tsc release/kaspa-wasm32-sdk/examples/nodejs/typescript/
+
+cp index.html release/kaspa-wasm32-sdk/index.html
+cp README.md release/kaspa-wasm32-sdk/README.md
+cp CHANGELOG.md release/kaspa-wasm32-sdk/CHANGELOG.md
+cp LICENSE release/kaspa-wasm32-sdk/LICENSE
+
+node build/package-sizes.js
+cp package-sizes.js release/kaspa-wasm32-sdk/package-sizes.js
+
+pushd .
+cd release
+zip -q -r kaspa-wasm32-sdk.zip kaspa-wasm32-sdk
+popd

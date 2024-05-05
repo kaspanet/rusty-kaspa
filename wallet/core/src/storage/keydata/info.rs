@@ -3,12 +3,36 @@
 //!
 
 use crate::imports::*;
+use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 use std::fmt::{Display, Formatter};
+
+declare! {
+    IPrvKeyDataInfo,
+    r#"
+    /**
+     * Private key data information.
+     * @category Wallet API
+     */
+    export interface IPrvKeyDataInfo {
+        /** Deterministic wallet id of the private key */
+        id: HexString;
+        /** Optional name of the private key */
+        name?: string;
+        /** 
+         * Indicates if the key requires additional payment or a recovery secret
+         * to perform wallet operations that require access to it.
+         * For BIP39 keys this indicates that the key was created with a BIP39 passphrase.
+         */
+        isEncrypted: boolean;
+    }
+    "#,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct PrvKeyDataInfo {
     pub id: PrvKeyDataId,
     pub name: Option<String>,
+    #[serde(rename = "isEncrypted")]
     pub is_encrypted: bool,
 }
 
