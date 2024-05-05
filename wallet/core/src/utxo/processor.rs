@@ -136,7 +136,7 @@ impl UtxoProcessor {
     }
 
     pub async fn bind_rpc(&self, rpc: Option<Rpc>) -> Result<()> {
-        *self.inner.rpc.lock().unwrap() = rpc.clone();
+        self.inner.rpc.lock().unwrap().clone_from(&rpc);
         let rpc_api = rpc.as_ref().map(|rpc| rpc.rpc_api().clone());
         self.metrics().bind_rpc(rpc_api);
         self.sync_proc().bind_rpc(rpc).await?;

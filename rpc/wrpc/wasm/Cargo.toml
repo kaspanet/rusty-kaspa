@@ -40,3 +40,6 @@ js-sys.workspace = true
 wasm-bindgen-futures.workspace = true
 workflow-core.workspace = true
 futures.workspace = true
+
+[lints.clippy]
+empty_docs = "allow"

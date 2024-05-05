@@ -154,7 +154,7 @@ impl Args {
         config.is_archival = self.archival;
         // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
         config.enable_sanity_checks = true;
-        config.user_agent_comments = self.user_agent_comments.clone();
+        config.user_agent_comments.clone_from(&self.user_agent_comments);
         config.block_template_cache_lifetime = self.block_template_cache_lifetime;
         config.p2p_listen_address = self.listen.unwrap_or(ContextualNetAddress::unspecified());
         config.externalip = self.externalip.map(|v| v.normalize(config.default_p2p_port()));

@@ -63,6 +63,7 @@ impl FeesExpected {
 }
 
 trait PendingTransactionExtension {
+    #[allow(dead_code)]
     fn tuple(self) -> (PendingTransaction, Transaction);
     fn expect<SOMPI>(self, expected: &Expected<SOMPI>) -> Self
     where
@@ -297,7 +298,7 @@ impl Harness {
         Rc::new(Harness { generator, accumulator: RefCell::new(Accumulator::default()) })
     }
 
-    pub fn fetch<SOMPI: Into<Sompi>>(self: &Rc<Self>, expected: &Expected<SOMPI>) -> Rc<Self>
+    pub fn fetch<SOMPI>(self: &Rc<Self>, expected: &Expected<SOMPI>) -> Rc<Self>
     where
         SOMPI: Into<Sompi> + Debug + Copy,
     {

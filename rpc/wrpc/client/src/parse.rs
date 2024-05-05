@@ -15,7 +15,7 @@ impl Display for ParseHostOutput<'_> {
         if let Some(scheme) = self.scheme {
             write!(f, "{}://", scheme)?;
         }
-        write!(f, "{}", self.host.to_string())?;
+        write!(f, "{}", self.host)?;
         if let Some(port) = self.port {
             write!(f, ":{}", port)?;
         }
@@ -31,13 +31,13 @@ pub enum Host<'a> {
     Ipv6(Ipv6Addr),
 }
 
-impl ToString for Host<'_> {
-    fn to_string(&self) -> String {
+impl Display for Host<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Host::Domain(domain) => domain.to_string(),
-            Host::Hostname(hostname) => hostname.to_string(),
-            Host::Ipv4(ipv4) => ipv4.to_string(),
-            Host::Ipv6(ipv6) => format!("[{}]", ipv6),
+            Host::Domain(domain) => write!(f, "{}", domain),
+            Host::Hostname(hostname) => write!(f, "{}", hostname),
+            Host::Ipv4(ipv4) => write!(f, "{}", ipv4),
+            Host::Ipv6(ipv6) => write!(f, "[{}]", ipv6),
         }
     }
 }

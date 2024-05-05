@@ -54,7 +54,7 @@ pub fn sign_with_multiple_v3(tx: Transaction, privkeys: &[[u8; 32]]) -> crate::r
                 }
             };
             let script = script_pub_key.script();
-            if let Some(schnorr_key) = map.get(&script.to_vec()) {
+            if let Some(schnorr_key) = map.get(script) {
                 let sig_hash = calc_schnorr_signature_hash(&populated_transaction, i, SIG_HASH_ALL, &mut reused_values);
                 let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
                 let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();

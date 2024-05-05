@@ -15,3 +15,6 @@ wasm32-sdk = []
 wasm-bindgen.workspace = true
 js-sys.workspace = true
 faster-hex.workspace = true
+
+[lints.clippy]
+empty_docs = "allow"

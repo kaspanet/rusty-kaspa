@@ -79,3 +79,6 @@ features = [
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio.workspace = true
+
+[lints.clippy]
+empty_docs = "allow"
