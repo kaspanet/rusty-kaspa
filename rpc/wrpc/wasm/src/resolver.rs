@@ -89,7 +89,7 @@ extern "C" {
 ///
 /// // specifying custom resolver URLs
 /// let rpc = RpcClient({
-///     resolver: new Resolver(["<resolver-url>",...]),
+///     resolver: new Resolver({urls: ["<resolver-url>",...]}),
 ///     networkId : "mainnet"
 /// });
 /// ```
@@ -163,12 +163,14 @@ impl Resolver {
 impl TryFrom<IResolverConfig> for NativeResolver {
     type Error = Error;
     fn try_from(config: IResolverConfig) -> Result<Self> {
-        if let Ok(urls) = config.get_vec("urls") {
-            let urls = urls.into_iter().map(|v| v.as_string()).collect::<Option<Vec<_>>>().ok_or(Error::custom("Invalid URL"))?;
-            Ok(NativeResolver::new(urls.into_iter().map(Arc::new).collect()))
-        } else {
-            Ok(NativeResolver::default())
-        }
+        let resolver = config
+            .get_vec("urls")
+            .map(|urls| urls.into_iter().map(|v| v.as_string()).collect::<Option<Vec<_>>>())
+            .or_else(|_| config.dyn_into::<Array>().map(|urls| urls.into_iter().map(|v| v.as_string()).collect::<Option<Vec<_>>>()))
+            .map_err(|_| Error::custom("Invalid or missing resolver URL"))?
+            .map(|urls| NativeResolver::new(urls.into_iter().map(Arc::new).collect()));
+
+        Ok(resolver.unwrap_or_default())
     }
 }
 

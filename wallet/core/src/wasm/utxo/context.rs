@@ -105,6 +105,10 @@ impl UtxoContext {
     pub fn context(&self) -> MutexGuard<native::context::Context> {
         self.inner.context()
     }
+
+    pub fn processor(&self) -> &native::UtxoProcessor {
+        self.inner.processor()
+    }
 }
 
 #[wasm_bindgen]
@@ -141,6 +145,11 @@ impl UtxoContext {
     /// (followed by address re-registration).  
     pub async fn clear(&self) -> Result<()> {
         self.inner().clear().await
+    }
+
+    pub fn active(&self) -> bool {
+        let processor = self.inner().processor();
+        processor.try_rpc_ctl().map(|ctl| ctl.is_connected()).unwrap_or(false) && processor.is_connected() && processor.is_running()
     }
 
     // Returns all mature UTXO entries that are currently managed by the UtxoContext and are available for spending.

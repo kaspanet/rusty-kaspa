@@ -431,6 +431,10 @@ impl UtxoProcessor {
         self.sync_proc().is_synced()
     }
 
+    pub fn is_running(&self) -> bool {
+        self.inner.task_is_running.load(Ordering::SeqCst)
+    }
+
     pub async fn init_state_from_server(&self) -> Result<bool> {
         let GetServerInfoResponse {
             server_version,

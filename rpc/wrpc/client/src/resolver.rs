@@ -56,6 +56,10 @@ impl Default for Resolver {
 
 impl Resolver {
     pub fn new(urls: Vec<Arc<String>>) -> Self {
+        if urls.is_empty() {
+            panic!("Resolver: Empty URL list supplied to the constructor.");
+        }
+
         Self { inner: Arc::new(Inner::new(urls)) }
     }
 
