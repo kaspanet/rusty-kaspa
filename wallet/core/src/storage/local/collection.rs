@@ -44,7 +44,7 @@ where
     }
 
     pub fn insert(&mut self, id: Id, data: Arc<Data>) -> Result<()> {
-        if self.map.get(&id).is_some() {
+        if self.map.contains_key(&id) {
             self.map.remove(&id);
             self.vec.retain(|d| d.id() != &id);
         }
@@ -84,7 +84,7 @@ where
     pub fn store_multiple(&mut self, data: Vec<Data>) -> Result<()> {
         for data in data.into_iter() {
             let id = data.id().clone();
-            if self.map.get(&id).is_some() {
+            if self.map.contains_key(&id) {
                 self.map.remove(&id);
                 self.vec.retain(|d| d.id() != &id);
             }
@@ -98,7 +98,7 @@ where
 
     pub fn store_single(&mut self, data: &Data) -> Result<()> {
         let id = data.id();
-        if self.map.get(id).is_some() {
+        if self.map.contains_key(id) {
             self.map.remove(id);
             self.vec.retain(|d| d.id() != id);
         }

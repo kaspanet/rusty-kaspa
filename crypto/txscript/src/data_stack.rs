@@ -14,6 +14,7 @@ pub(crate) trait DataStack {
     fn pop_items<const SIZE: usize, T: Debug>(&mut self) -> Result<[T; SIZE], TxScriptError>
     where
         Vec<u8>: OpcodeData<T>;
+    #[allow(dead_code)]
     fn peek_items<const SIZE: usize, T: Debug>(&self) -> Result<[T; SIZE], TxScriptError>
     where
         Vec<u8>: OpcodeData<T>;

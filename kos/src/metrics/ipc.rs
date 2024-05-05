@@ -18,6 +18,7 @@ impl MetricsIpc {
     }
 }
 
+#[allow(dead_code)]
 #[async_trait]
 pub trait MetricsCtl: Send + Sync + 'static {
     async fn post_data(&self, data: MetricsSnapshot) -> Result<()>;
