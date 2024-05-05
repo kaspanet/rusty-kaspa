@@ -1,4 +1,7 @@
+<<<<<<< HEAD
 use serde::{Deserialize, Serialize};
+=======
+>>>>>>> 4364f37f (WASM SDK update, public node resolver and TypeScript bindings (#459))
 use wasm_bindgen::prelude::*;
 
 pub const SIG_HASH_ALL: SigHashType = SigHashType(0b00000001);
@@ -19,7 +22,11 @@ const ALLOWED_SIG_HASH_TYPES_VALUES: [u8; 6] = [
     SIG_HASH_SINGLE.0 | SIG_HASH_ANY_ONE_CAN_PAY.0,
 ];
 
+<<<<<<< HEAD
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+=======
+#[derive(Copy, Clone)]
+>>>>>>> 4364f37f (WASM SDK update, public node resolver and TypeScript bindings (#459))
 #[wasm_bindgen]
 pub struct SigHashType(pub(crate) u8);
 

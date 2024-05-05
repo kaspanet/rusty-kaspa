@@ -1,7 +1,6 @@
 use crate::imports::NetworkParams;
 use crate::result::Result;
 use crate::tx::mass;
-// use crate::utxo::NetworkParams;
 use crate::wasm::tx::*;
 use kaspa_consensus_client::*;
 use kaspa_consensus_core::config::params::Params;
@@ -14,7 +13,6 @@ use workflow_wasm::convert::*;
 #[wasm_bindgen]
 pub struct MassCalculator {
     mc: Arc<mass::MassCalculator>,
-    // params: Arc<Params>,
 }
 
 #[wasm_bindgen]
