@@ -42,6 +42,7 @@ kaspa-metrics-core.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-wallet-core.workspace = true
+kaspa-wallet-keys.workspace = true
 kaspa-wrpc-client.workspace = true
 nw-sys.workspace = true
 pad.workspace = true

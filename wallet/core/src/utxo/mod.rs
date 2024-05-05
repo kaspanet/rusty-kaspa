@@ -19,7 +19,7 @@ pub use balance::Balance;
 pub use binding::UtxoContextBinding;
 pub use context::{UtxoContext, UtxoContextId};
 pub use iterator::UtxoIterator;
-pub use kaspa_consensus_wasm::UtxoEntryId;
+pub use kaspa_consensus_client::UtxoEntryId;
 pub use outgoing::OutgoingTransaction;
 pub use pending::PendingUtxoEntryReference;
 pub use processor::UtxoProcessor;

@@ -12,6 +12,12 @@ pub fn build_wrpc_client_interface(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 #[proc_macro_error]
+pub fn declare_typescript_wasm_interface(input: TokenStream) -> TokenStream {
+    wrpc::wasm::declare_typescript_wasm_interface(input)
+}
+
+#[proc_macro]
+#[proc_macro_error]
 pub fn build_wrpc_server_interface(input: TokenStream) -> TokenStream {
     wrpc::server::build_wrpc_server_interface(input)
 }

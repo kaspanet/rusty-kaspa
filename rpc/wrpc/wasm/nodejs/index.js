@@ -1,15 +1,18 @@
 // W3C WebSocket module shim
 globalThis.WebSocket = require('websocket').w3cwebsocket;
 
-let {RpcClient,Encoding,init_console_panic_hook,defer} = require('./kaspa-rpc');
-// init_console_panic_hook();
+let {RpcClient,Encoding,initConsolePanicHook,defer} = require('./kaspa-rpc');
+initConsolePanicHook();
 
 const MAX_NOTIFICATION = 10;
-let URL = "ws://127.0.0.1:17110";
-let rpc = new RpcClient(Encoding.Borsh,URL);
+let url = "ws://127.0.0.1:17110";
+let rpc = new RpcClient({
+    url,
+    encoding : Encoding.Borsh,
+});
 
 (async () => {
-    console.log(`# connecting to ${URL}`)
+    console.log(`# connecting to ${url}`)
     await rpc.connect();
     console.log(`# connected ...`)
 
@@ -19,8 +22,8 @@ let rpc = new RpcClient(Encoding.Borsh,URL);
     let finish = defer();
     let seq = 0;
     // register notification handler
-    await rpc.notify(async (op, payload) => {
-        console.log(`#${seq} - `,"op:",op,"payload:",payload);
+    rpc.addEventListener(async (event) => {
+        console.log(`#${seq} - `,"type:",event.type,"data:",event.data);
         seq++;
         if (seq == MAX_NOTIFICATION) {
             // await rpc.disconnect();
@@ -31,12 +34,12 @@ let rpc = new RpcClient(Encoding.Borsh,URL);
 
     // test subscription
     console.log("subscribing...");
-    await rpc.subscribeDaaScore();
+    await rpc.subscribeVirtualDaaScoreChanged();
 
     // wait until notifier signals completion
     await finish;
     // clear notification handler
-    await rpc.notify(null);
+    await rpc.removeAllEventListeners();
     // disconnect RPC interface
     await rpc.disconnect();
 

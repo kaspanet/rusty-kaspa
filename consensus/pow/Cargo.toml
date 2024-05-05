@@ -9,18 +9,22 @@ include.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+wasm32-sdk = []
+
 [dependencies]
 js-sys.workspace = true
 kaspa-consensus-core.workspace = true
+kaspa-consensus-client.workspace = true
 kaspa-hashes.workspace = true
 kaspa-math.workspace = true
 kaspa-utils.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
+num.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
-
 
 [[bench]]
 name = "bench"

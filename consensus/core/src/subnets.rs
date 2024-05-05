@@ -4,6 +4,7 @@ use std::str::{self, FromStr};
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_utils::hex::{FromHex, ToHex};
 use kaspa_utils::{serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref};
+use thiserror::Error;
 
 /// The size of the array used to store subnetwork IDs.
 pub const SUBNETWORK_ID_SIZE: usize = 20;
@@ -65,12 +66,28 @@ impl SubnetworkId {
     }
 }
 
+#[derive(Error, Debug, Clone)]
+pub enum SubnetworkConversionError {
+    #[error("Invalid bytes")]
+    InvalidBytes,
+
+    #[error(transparent)]
+    SliceError(#[from] std::array::TryFromSliceError),
+
+    #[error(transparent)]
+    HexError(#[from] faster_hex::Error),
+}
+
 impl TryFrom<&[u8]> for SubnetworkId {
-    type Error = std::array::TryFromSliceError;
+    type Error = SubnetworkConversionError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         let bytes = <[u8; SUBNETWORK_ID_SIZE]>::try_from(value)?;
-        Ok(Self(bytes))
+        if bytes != Self::from_byte(0).0 && bytes != Self::from_byte(1).0 {
+            Err(Self::Error::InvalidBytes)
+        } else {
+            Ok(Self(bytes))
+        }
     }
 }
 
@@ -92,22 +109,30 @@ impl ToHex for SubnetworkId {
 }
 
 impl FromStr for SubnetworkId {
-    type Err = faster_hex::Error;
+    type Err = SubnetworkConversionError;
 
     #[inline]
     fn from_str(hex_str: &str) -> Result<Self, Self::Err> {
         let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
         faster_hex::hex_decode(hex_str.as_bytes(), &mut bytes)?;
-        Ok(SubnetworkId(bytes))
+        if bytes != Self::from_byte(0).0 && bytes != Self::from_byte(1).0 {
+            Err(Self::Err::InvalidBytes)
+        } else {
+            Ok(Self(bytes))
+        }
     }
 }
 
 impl FromHex for SubnetworkId {
-    type Error = faster_hex::Error;
+    type Error = SubnetworkConversionError;
     fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
         let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
         faster_hex::hex_decode(hex_str.as_bytes(), &mut bytes)?;
-        Ok(SubnetworkId(bytes))
+        if bytes != Self::from_byte(0).0 && bytes != Self::from_byte(1).0 {
+            Err(Self::Error::InvalidBytes)
+        } else {
+            Ok(Self(bytes))
+        }
     }
 }
 
