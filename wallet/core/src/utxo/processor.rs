@@ -120,7 +120,7 @@ impl UtxoProcessor {
     }
 
     pub async fn bind_rpc(&self, rpc: Option<Rpc>) -> Result<()> {
-        *self.inner.rpc.lock().unwrap() = rpc.clone();
+        self.inner.rpc.lock().unwrap().clone_from(&rpc);
         self.sync_proc().bind_rpc(rpc).await?;
         Ok(())
     }
