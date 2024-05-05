@@ -50,3 +50,6 @@ harness = false
 
 [features]
 devnet-prealloc = []
+
+[lints.clippy]
+empty_docs = "allow"
