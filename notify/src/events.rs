@@ -1,5 +1,8 @@
 use super::scope::Scope;
+use crate::error::Error;
+use serde::{Deserialize, Serialize};
 use std::ops::{Index, IndexMut};
+use std::str::FromStr;
 use workflow_core::enums::usize_try_from;
 
 macro_rules! event_type_enum {
@@ -47,11 +50,31 @@ pub enum EventType {
     VirtualDaaScoreChanged,
     PruningPointUtxoSetOverride,
     NewBlockTemplate,
-    ChainAcceptanceDataPruned,
+    PruningPointAdvancement,
 }
 }
 
 pub const EVENT_COUNT: usize = 10;
+
+impl FromStr for EventType {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "block-added" => Ok(EventType::BlockAdded),
+            "virtual-chain-changed" => Ok(EventType::VirtualChainChanged),
+            "finality-conflict" => Ok(EventType::FinalityConflict),
+            "finality-conflict-resolved" => Ok(EventType::FinalityConflictResolved),
+            "utxos-changed" => Ok(EventType::UtxosChanged),
+            "sink-blue-score-changed" => Ok(EventType::SinkBlueScoreChanged),
+            "virtual-daa-score-changed" => Ok(EventType::VirtualDaaScoreChanged),
+            "pruning-point-utxo-set-override" => Ok(EventType::PruningPointUtxoSetOverride),
+            "new-block-template" => Ok(EventType::NewBlockTemplate),
+            "pruning-point-advancement" => Ok(EventType::PruningPointAdvancement),
+            _ => Err(Error::InvalidEventType(s.to_string())),
+        }
+    }
+}
 
 /// Generic array with [`EventType`] strongly-typed index
 #[derive(Default, Clone, Copy, Debug)]

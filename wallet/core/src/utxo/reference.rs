@@ -3,7 +3,7 @@
 //!
 
 use crate::imports::*;
-pub use kaspa_consensus_wasm::{TryIntoUtxoEntryReferences, UtxoEntryReference};
+pub use kaspa_consensus_client::{TryIntoUtxoEntryReferences, UtxoEntryReference};
 
 pub enum Maturity {
     /// Coinbase UTXO that has not reached stasis period.

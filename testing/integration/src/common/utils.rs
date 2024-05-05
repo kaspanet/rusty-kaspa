@@ -19,7 +19,7 @@ use kaspa_grpc_client::GrpcClient;
 use kaspa_rpc_core::{api::rpc::RpcApi, BlockAddedNotification, Notification, VirtualDaaScoreChangedNotification};
 use kaspa_txscript::pay_to_address_script;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
-use secp256k1::KeyPair;
+use secp256k1::Keypair;
 use std::{
     collections::{hash_map::Entry::Occupied, HashMap, HashSet},
     future::Future,
@@ -43,7 +43,7 @@ pub const fn required_fee(num_inputs: usize, num_outputs: u64) -> u64 {
 /// Builds a TX DAG based on the initial UTXO set and on constant params
 pub fn generate_tx_dag(
     mut utxoset: UtxoCollection,
-    schnorr_key: KeyPair,
+    schnorr_key: Keypair,
     spk: ScriptPublicKey,
     target_levels: usize,
     target_width: usize,
@@ -134,7 +134,7 @@ where
 }
 
 pub fn generate_tx(
-    schnorr_key: KeyPair,
+    schnorr_key: Keypair,
     utxos: &[(TransactionOutpoint, UtxoEntry)],
     amount: u64,
     num_outputs: u64,

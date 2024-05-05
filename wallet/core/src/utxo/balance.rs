@@ -9,7 +9,7 @@ pub enum DeltaStyle {
     Pending,
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum Delta {
     #[default]
     NoChange = 0,
@@ -43,7 +43,55 @@ impl From<std::cmp::Ordering> for Delta {
     }
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[wasm_bindgen(typescript_custom_section)]
+const TS_BALANCE: &'static str = r#"
+/**
+ * {@link UtxoContext} (wallet account) balance.
+ * @category Wallet SDK
+ */
+export interface IBalance {
+    /**
+     * Total amount of Kaspa (in SOMPI) available for 
+     * spending.
+     */
+    mature: bigint;
+    /**
+     * Total amount of Kaspa (in SOMPI) that has been 
+     * received and is pending confirmation.
+     */
+    pending: bigint;
+    /**
+     * Total amount of Kaspa (in SOMPI) currently 
+     * being sent as a part of the outgoing transaction
+     * but has not yet been accepted by the network.
+     */
+    outgoing: bigint;
+    /**
+     * Number of UTXOs available for spending.
+     */
+    matureUtxoCount: number;
+    /**
+     * Number of UTXOs that have been received and 
+     * are pending confirmation.
+     */
+    pendingUtxoCount: number;
+    /**
+     * Number of UTXOs currently in stasis (coinbase 
+     * transactions received as a result of mining).
+     * Unlike regular user transactions, coinbase 
+     * transactions go through `stasis->pending->mature`
+     * stages. Client applications should ignore `stasis`
+     * stages and should process transactions only when
+     * they have reached the `pending` stage. However, 
+     * `stasis` information can be used for informative 
+     * purposes to indicate that coinbase transactions
+     * have arrived.
+     */
+    stasisUtxoCount: number;
+}
+"#;
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Balance {
     pub mature: u64,
@@ -92,6 +140,10 @@ impl Balance {
             self.pending_delta = Delta::NoChange;
         }
     }
+
+    pub fn to_balance_strings(&self, network_type: &NetworkType, padding: Option<usize>) -> BalanceStrings {
+        (Some(self), network_type, padding).into()
+    }
 }
 
 #[derive(Default, Debug)]
@@ -133,8 +185,8 @@ pub struct BalanceStrings {
     pub pending: Option<String>,
 }
 
-impl From<(&Option<Balance>, &NetworkType, Option<usize>)> for BalanceStrings {
-    fn from((balance, network_type, padding): (&Option<Balance>, &NetworkType, Option<usize>)) -> Self {
+impl From<(Option<&Balance>, &NetworkType, Option<usize>)> for BalanceStrings {
+    fn from((balance, network_type, padding): (Option<&Balance>, &NetworkType, Option<usize>)) -> Self {
         let suffix = utils::kaspa_suffix(network_type);
         if let Some(balance) = balance {
             let mut mature = utils::sompi_to_kaspa_string(balance.mature);

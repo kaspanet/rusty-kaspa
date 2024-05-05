@@ -5,6 +5,7 @@
 
 use crate::imports::*;
 
+#[derive(Debug)]
 pub struct NetworkParams {
     pub coinbase_transaction_maturity_period_daa: u64,
     pub coinbase_transaction_stasis_period_daa: u64,

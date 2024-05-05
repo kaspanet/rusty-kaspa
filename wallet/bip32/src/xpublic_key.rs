@@ -76,7 +76,7 @@ where
         Ok(ExtendedPublicKey { public_key, attrs })
     }
 
-    pub fn derive_path(self, path: DerivationPath) -> Result<Self> {
+    pub fn derive_path(self, path: &DerivationPath) -> Result<Self> {
         path.iter().try_fold(self, |key, child_num| key.derive_child(child_num))
     }
 
