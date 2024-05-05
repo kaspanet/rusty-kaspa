@@ -4,6 +4,7 @@
 
 use crate::utxo::{UtxoContext, UtxoEntryReference};
 
+#[derive(Debug)]
 pub struct UtxoIterator {
     entries: Vec<UtxoEntryReference>,
     cursor: usize,

@@ -2,10 +2,12 @@ use convert_case::{Case, Casing};
 // use proc_macro::Literal;
 use proc_macro2::{Ident, Literal, Span};
 use quote::ToTokens;
+use syn::Attribute;
 use syn::{Error, Expr, ExprArray, Result};
 use xxhash_rust::xxh3::xxh3_64;
 use xxhash_rust::xxh32::xxh32;
 
+#[derive(Debug)]
 pub struct Handler {
     pub name: String,
     pub hash_32: Literal,
@@ -17,6 +19,11 @@ pub struct Handler {
     pub fn_camel: Ident,
     pub request_type: Ident,
     pub response_type: Ident,
+    pub typename: Ident,
+    pub ts_request_type: Ident,
+    pub ts_response_type: Ident,
+    pub ts_custom_section_ident: Ident,
+    pub docs: Vec<Attribute>,
 }
 
 impl Handler {
@@ -25,7 +32,10 @@ impl Handler {
     }
 
     pub fn new_with_args(handler: &Expr, fn_suffix: Option<&str>) -> Handler {
-        let name = handler.to_token_stream().to_string();
+        let (name, docs) = match handler {
+            syn::Expr::Path(expr_path) => (expr_path.path.to_token_stream().to_string(), expr_path.attrs.clone()),
+            _ => (handler.to_token_stream().to_string(), vec![]),
+        };
         let hash_32 = Literal::u32_suffixed(xxh32(name.as_bytes(), 0));
         let hash_64 = Literal::u64_suffixed(xxh3_64(name.as_bytes()));
         let ident = Literal::string(name.to_case(Case::Kebab).as_str());
@@ -35,7 +45,27 @@ impl Handler {
         let fn_camel = Ident::new(&name.to_case(Case::Camel), Span::call_site());
         let request_type = Ident::new(&format!("{name}Request"), Span::call_site());
         let response_type = Ident::new(&format!("{name}Response"), Span::call_site());
-        Handler { name, hash_32, hash_64, ident, fn_call, fn_with_suffix, fn_no_suffix, fn_camel, request_type, response_type }
+        let typename = Ident::new(&name.to_string(), Span::call_site());
+        let ts_request_type = Ident::new(&format!("I{name}Request"), Span::call_site());
+        let ts_response_type = Ident::new(&format!("I{name}Response"), Span::call_site());
+        let ts_custom_section_ident = Ident::new(&format!("TS_{}", name.to_uppercase()), Span::call_site());
+        Handler {
+            name,
+            hash_32,
+            hash_64,
+            ident,
+            fn_call,
+            fn_with_suffix,
+            fn_no_suffix,
+            fn_camel,
+            request_type,
+            response_type,
+            typename,
+            ts_request_type,
+            ts_response_type,
+            ts_custom_section_ident,
+            docs,
+        }
     }
 }
 

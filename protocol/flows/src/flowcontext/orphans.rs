@@ -84,7 +84,7 @@ impl OrphanBlocksPool {
                 FindRootsOutput::Roots(roots, orphan_ancestors) => (roots, orphan_ancestors),
                 FindRootsOutput::NoRoots(orphan_ancestors) => {
                     let blocks: Vec<_> =
-                        orphan_ancestors.into_iter().map(|h| self.orphans.remove(&h).expect("orphan ancestor").block).collect();
+                        orphan_ancestors.into_iter().map(|h| self.orphans.swap_remove(&h).expect("orphan ancestor").block).collect();
                     return Some(OrphanOutput::NoRoots(consensus.validate_and_insert_block_batch(blocks)));
                 }
             };
@@ -185,7 +185,7 @@ impl OrphanBlocksPool {
         consensus: &ConsensusProxy,
         root: Hash,
     ) -> (Vec<Block>, Vec<BlockValidationFuture>, Vec<BlockValidationFuture>) {
-        let root_entry = self.orphans.remove(&root); // Try removing the root just in case it was previously an orphan
+        let root_entry = self.orphans.swap_remove(&root); // Try removing the root just in case it was previously an orphan
         let mut process_queue =
             ProcessQueue::from(root_entry.map(|e| e.children).unwrap_or_else(|| self.iterate_child_orphans(root).collect()));
         let mut processing = HashMap::new();
@@ -199,7 +199,7 @@ impl OrphanBlocksPool {
                     }
                 }
                 if processable {
-                    let orphan_block = entry.remove();
+                    let orphan_block = entry.swap_remove();
                     let BlockValidationFutures { block_task, virtual_state_task } =
                         consensus.validate_and_insert_block(orphan_block.block.clone());
                     processing.insert(orphan_hash, (orphan_block.block, block_task, virtual_state_task));

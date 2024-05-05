@@ -5,6 +5,27 @@
 use crate::imports::*;
 pub use kaspa_consensus_core::tx::TransactionId;
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_TRANSACTION_KIND: &'static str = r#"
+/**
+ * 
+ * 
+ * @category Wallet SDK
+ * 
+ */
+export enum TransactionKind {
+    Reorg = "reorg",
+    Stasis = "stasis",
+    Batch = "batch",
+    Change = "change",
+    Incoming = "incoming",
+    Outgoing = "outgoing",
+    External = "external",
+    TransferIncoming = "transfer-incoming",
+    TransferOutgoing = "transfer-outgoing",
+}
+"#;
+
 // Do not change the order of the variants in this enum.
 seal! { 0x93c6, {
         #[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Eq, PartialEq)]
@@ -81,5 +102,27 @@ impl std::fmt::Display for TransactionKind {
             TransactionKind::Change => "change",
         };
         write!(f, "{s}")
+    }
+}
+
+impl TryFrom<JsValue> for TransactionKind {
+    type Error = Error;
+    fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
+        if let Some(s) = js_value.as_string() {
+            match s.as_str() {
+                "incoming" => Ok(TransactionKind::Incoming),
+                "outgoing" => Ok(TransactionKind::Outgoing),
+                "external" => Ok(TransactionKind::External),
+                "batch" => Ok(TransactionKind::Batch),
+                "reorg" => Ok(TransactionKind::Reorg),
+                "stasis" => Ok(TransactionKind::Stasis),
+                "transfer-incoming" => Ok(TransactionKind::TransferIncoming),
+                "transfer-outgoing" => Ok(TransactionKind::TransferOutgoing),
+                "change" => Ok(TransactionKind::Change),
+                _ => Err(Error::InvalidTransactionKind(s)),
+            }
+        } else {
+            Err(Error::InvalidTransactionKind(format!("{:?}", js_value)))
+        }
     }
 }

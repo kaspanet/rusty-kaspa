@@ -8,10 +8,10 @@ use kaspa_consensus_core::tx::Transaction;
 pub use kaspa_consensus_core::tx::TransactionId;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", content = "transaction")]
+#[serde(tag = "type", content = "data")]
 // the reason the struct is renamed kebab-case and then
 // each field is renamed to camelCase is to force the
-// enum tags to be lower case.
+// enum tags to be lower-kebab-case.
 #[serde(rename_all = "kebab-case")]
 pub enum TransactionData {
     Reorg {
@@ -136,6 +136,24 @@ impl TransactionData {
             TransactionData::TransferIncoming { .. } => TransactionKind::TransferIncoming,
             TransactionData::TransferOutgoing { .. } => TransactionKind::TransferOutgoing,
             TransactionData::Change { .. } => TransactionKind::Change,
+        }
+    }
+
+    pub fn has_address(&self, address: &Address) -> bool {
+        match self {
+            TransactionData::Reorg { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::Stasis { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::Incoming { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::External { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::Outgoing { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::Batch { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::TransferIncoming { utxo_entries, .. } => {
+                utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address))
+            }
+            TransactionData::TransferOutgoing { utxo_entries, .. } => {
+                utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address))
+            }
+            TransactionData::Change { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
         }
     }
 }

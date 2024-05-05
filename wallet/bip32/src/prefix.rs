@@ -215,6 +215,9 @@ impl TryFrom<&str> for Prefix {
             "kprv" => Ok(Prefix::KPRV),
             "kpub" => Ok(Prefix::KPUB),
 
+            "ktrv" => Ok(Prefix::KTRV),
+            "ktub" => Ok(Prefix::KTUB),
+
             "tprv" => Ok(Prefix::TPRV),
             "tpub" => Ok(Prefix::TPUB),
 

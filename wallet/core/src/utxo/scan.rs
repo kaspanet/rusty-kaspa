@@ -88,7 +88,7 @@ impl Scan {
             let resp = utxo_context.processor().rpc_api().get_utxos_by_addresses(addresses).await?;
             let elapsed_msec = ts.elapsed().as_secs_f32();
             if elapsed_msec > 1.0 {
-                log_warning!("get_utxos_by_address() fetched {} entries in: {} msec", resp.len(), elapsed_msec);
+                log_warn!("get_utxos_by_address() fetched {} entries in: {} msec", resp.len(), elapsed_msec);
             }
             yield_executor().await;
 

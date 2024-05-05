@@ -1,6 +1,0 @@
-
-if [ "$1" = "--dev" ]; then
-    cargo nw run --sdk
-else
-    cargo nw run
-fi

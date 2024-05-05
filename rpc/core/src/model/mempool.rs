@@ -28,3 +28,23 @@ impl RpcMempoolEntryByAddress {
         Self { address, sending, receiving }
     }
 }
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "wasm32-sdk")] {
+        use wasm_bindgen::prelude::*;
+
+        #[wasm_bindgen(typescript_custom_section)]
+        const TS_MEMPOOL_ENTRY: &'static str = r#"
+            /**
+             * Mempool entry.
+             * 
+             * @category Node RPC
+             */
+            export interface IMempoolEntry {
+                fee : bigint;
+                transaction : ITransaction;
+                isOrphan : boolean;
+            }
+        "#;
+    }
+}

@@ -1,0 +1,20 @@
+[package]
+name = "kaspa-wasm-core"
+description = "Kaspa core WASM32 types"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+wasm32-sdk = []
+
+[dependencies]
+wasm-bindgen.workspace = true
+js-sys.workspace = true
+faster-hex.workspace = true
+
+[lints.clippy]
+empty_docs = "allow"

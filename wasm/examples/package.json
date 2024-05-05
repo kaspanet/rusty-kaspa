@@ -1,0 +1,12 @@
+{
+    "name": "kaspa-wasm-examples",
+    "private": true,
+    "version": "1.0.0",
+    "dependencies": {
+        "websocket": "1.0.34",
+        "chalk": "5.3.0"
+    },
+    "devDependencies": {
+        "@types/websocket": "^1.0.10"
+    }
+}

@@ -1,10 +1,10 @@
 // public for benchmarks
 #[doc(hidden)]
 pub mod matrix;
+#[cfg(feature = "wasm32-sdk")]
+pub mod wasm;
 #[doc(hidden)]
 pub mod xoshiro;
-//#[cfg(target_arch="wasm32")]
-pub mod wasm;
 
 use std::cmp::max;
 

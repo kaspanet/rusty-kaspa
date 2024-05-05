@@ -2,6 +2,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::storage::keydata;
 
+/// @category Wallet SDK
 #[wasm_bindgen]
 pub struct PrvKeyDataInfo {
     inner: Arc<keydata::PrvKeyDataInfo>,

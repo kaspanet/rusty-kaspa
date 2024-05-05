@@ -1,7 +1,15 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::utxo::balance as native;
+use kaspa_consensus_core::network::NetworkTypeT;
 
+///
+/// Represents a {@link UtxoContext} (account) balance.
+///
+/// @see {@link IBalance}, {@link UtxoContext}
+///
+/// @category Wallet SDK
+///
 #[wasm_bindgen]
 pub struct Balance {
     inner: native::Balance,
@@ -9,19 +17,28 @@ pub struct Balance {
 
 #[wasm_bindgen]
 impl Balance {
+    /// Confirmed amount of funds available for spending.
     #[wasm_bindgen(getter)]
     pub fn mature(&self) -> BigInt {
         self.inner.mature.into()
     }
 
+    /// Amount of funds that are being received and are not yet confirmed.
     #[wasm_bindgen(getter)]
     pub fn pending(&self) -> BigInt {
         self.inner.pending.into()
     }
 
-    pub fn as_strings(&self, network_type: JsValue) -> Result<BalanceStrings> {
+    /// Amount of funds that are being send and are not yet accepted by the network.
+    #[wasm_bindgen(getter)]
+    pub fn outgoing(&self) -> BigInt {
+        self.inner.outgoing.into()
+    }
+
+    #[wasm_bindgen(js_name = "toBalanceStrings")]
+    pub fn to_balance_strings(&self, network_type: &NetworkTypeT) -> Result<BalanceStrings> {
         let network_type = NetworkType::try_from(network_type)?;
-        Ok(native::BalanceStrings::from((&Some(self.inner.clone()), &network_type, None)).into())
+        Ok(native::BalanceStrings::from((Some(&self.inner), &network_type, None)).into())
     }
 }
 
@@ -31,6 +48,13 @@ impl From<native::Balance> for Balance {
     }
 }
 
+///
+/// Formatted string representation of the {@link Balance}.
+///
+/// The value is formatted as `123,456.789`.
+///
+/// @category Wallet SDK
+///
 #[wasm_bindgen]
 pub struct BalanceStrings {
     inner: native::BalanceStrings,
@@ -39,13 +63,13 @@ pub struct BalanceStrings {
 #[wasm_bindgen]
 impl BalanceStrings {
     #[wasm_bindgen(getter)]
-    pub fn mature(&self) -> JsValue {
-        self.inner.mature.clone().into()
+    pub fn mature(&self) -> String {
+        self.inner.mature.clone()
     }
 
     #[wasm_bindgen(getter)]
-    pub fn pending(&self) -> JsValue {
-        self.inner.pending.clone().into()
+    pub fn pending(&self) -> Option<String> {
+        self.inner.pending.clone()
     }
 }
 

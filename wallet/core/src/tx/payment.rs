@@ -3,8 +3,38 @@
 //!
 
 use crate::imports::*;
-use kaspa_consensus_wasm::{TransactionOutput, TransactionOutputInner};
+use kaspa_consensus_client::{TransactionOutput, TransactionOutputInner};
 use kaspa_txscript::pay_to_address_script;
+
+#[wasm_bindgen(typescript_custom_section)]
+const TS_PAYMENT_OUTPUTS: &'static str = r#"
+/**
+ * 
+ * Defines a single payment output.
+ * 
+ * @see {@link IGeneratorSettingsObject}, {@link Generator}
+ * @category Wallet SDK
+ */
+export interface IPaymentOutput {
+    /**
+     * Destination address. The address prefix must match the network
+     * you are transacting on (e.g. `kaspa:` for mainnet, `kaspatest:` for testnet, etc).
+     */
+    address: Address | string;
+    /**
+     * Output amount in SOMPI.
+     */
+    amount: bigint;
+}
+"#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "IPaymentOutput")]
+    pub type IPaymentOutput;
+    #[wasm_bindgen(typescript_type = "IPaymentOutput[]")]
+    pub type IPaymentOutputArray;
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum PaymentDestination {
@@ -21,7 +51,8 @@ impl PaymentDestination {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+/// @category Wallet SDK
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct PaymentOutput {
     #[wasm_bindgen(getter_with_clone)]
@@ -29,25 +60,27 @@ pub struct PaymentOutput {
     pub amount: u64,
 }
 
-impl TryFrom<JsValue> for PaymentOutput {
+impl TryCastFromJs for PaymentOutput {
     type Error = Error;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        if let Ok(array) = js_value.clone().dyn_into::<Array>() {
-            let length = array.length();
-            if length != 2 {
-                Err(Error::Custom("Invalid payment output".to_string()))
-            } else {
-                let address = Address::try_from(array.get(0))?;
-                let amount = array.get(1).try_as_u64()?;
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Self::resolve(&value, || {
+            if let Some(array) = value.as_ref().dyn_ref::<Array>() {
+                let length = array.length();
+                if length != 2 {
+                    Err(Error::Custom("Invalid payment output".to_string()))
+                } else {
+                    let address = Address::try_owned_from(array.get(0))?;
+                    let amount = array.get(1).try_as_u64()?;
+                    Ok(Self { address, amount })
+                }
+            } else if let Some(object) = Object::try_from(value.as_ref()) {
+                let address = object.get_cast::<Address>("address")?.into_owned();
+                let amount = object.get_u64("amount")?;
                 Ok(Self { address, amount })
+            } else {
+                Err(Error::Custom("Invalid payment output".to_string()))
             }
-        } else if let Some(object) = Object::try_from(&js_value) {
-            let address = object.get::<Address>("address")?;
-            let amount = object.get_u64("amount")?;
-            Ok(Self { address, amount })
-        } else {
-            Err(Error::Custom("Invalid payment output".to_string()))
-        }
+        })
     }
 }
 
@@ -71,7 +104,8 @@ impl From<PaymentOutput> for PaymentDestination {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+/// @category Wallet SDK
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, CastFromJs)]
 #[wasm_bindgen]
 pub struct PaymentOutputs {
     #[wasm_bindgen(skip)]
@@ -97,32 +131,35 @@ impl From<PaymentOutputs> for PaymentDestination {
 #[wasm_bindgen]
 impl PaymentOutputs {
     #[wasm_bindgen(constructor)]
-    pub fn constructor(output_array: JsValue) -> crate::result::Result<PaymentOutputs> {
+    pub fn constructor(output_array: IPaymentOutputArray) -> crate::result::Result<PaymentOutputs> {
         let mut outputs = vec![];
         let iterator = js_sys::try_iter(&output_array)?.ok_or("need to pass iterable JS values!")?;
         for x in iterator {
-            outputs.push((x?).try_into()?);
+            // outputs.push((x?).try_into_cast()?);
+            outputs.push(PaymentOutput::try_owned_from(x?)?);
         }
 
         Ok(Self { outputs })
     }
 }
 
-impl TryFrom<JsValue> for PaymentOutputs {
+impl TryCastFromJs for PaymentOutputs {
     type Error = Error;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        let outputs = if let Some(output_array) = js_value.dyn_ref::<js_sys::Array>() {
-            let vec = output_array.to_vec();
-            vec.into_iter().map(PaymentOutput::try_from).collect::<Result<Vec<_>, _>>()?
-        } else if let Some(object) = js_value.dyn_ref::<js_sys::Object>() {
-            Object::entries(object).iter().map(PaymentOutput::try_from).collect::<Result<Vec<_>, _>>()?
-        } else if let Some(map) = js_value.dyn_ref::<js_sys::Map>() {
-            map.entries().into_iter().flat_map(|v| v.map(PaymentOutput::try_from)).collect::<Result<Vec<_>, _>>()?
-        } else {
-            return Err(Error::Custom("payment outputs must be an array or an object".to_string()));
-        };
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Self::resolve(&value, || {
+            let outputs = if let Some(output_array) = value.as_ref().dyn_ref::<js_sys::Array>() {
+                let vec = output_array.to_vec();
+                vec.into_iter().map(PaymentOutput::try_owned_from).collect::<Result<Vec<_>, _>>()?
+            } else if let Some(object) = value.as_ref().dyn_ref::<js_sys::Object>() {
+                Object::entries(object).iter().map(PaymentOutput::try_owned_from).collect::<Result<Vec<_>, _>>()?
+            } else if let Some(map) = value.as_ref().dyn_ref::<js_sys::Map>() {
+                map.entries().into_iter().flat_map(|v| v.map(PaymentOutput::try_owned_from)).collect::<Result<Vec<_>, _>>()?
+            } else {
+                return Err(Error::Custom("payment outputs must be an array or an object".to_string()));
+            };
 
-        Ok(Self { outputs })
+            Ok(Self { outputs })
+        })
     }
 }
 

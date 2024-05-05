@@ -9,8 +9,37 @@ include.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+wasm32-sdk = ["kaspa-wrpc-client/wasm32-sdk"]
+default = []
+
 [lib]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
+ahash.workspace = true
+async-std.workspace = true
+cfg-if.workspace = true
+kaspa-addresses.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-consensus-client.workspace = true
+kaspa-consensus-wasm.workspace = true
+kaspa-notify.workspace = true
 kaspa-wrpc-client.workspace = true
+kaspa-rpc-core.workspace = true
+kaspa-rpc-macros.workspace = true
+kaspa-wasm-core.workspace = true
+serde_json.workspace = true
+serde-wasm-bindgen.workspace = true
+serde.workspace = true
+workflow-log.workspace = true
+workflow-rpc.workspace = true
+workflow-wasm.workspace = true
+wasm-bindgen.workspace = true
+js-sys.workspace = true
+wasm-bindgen-futures.workspace = true
+workflow-core.workspace = true
+futures.workspace = true
+
+[lints.clippy]
+empty_docs = "allow"

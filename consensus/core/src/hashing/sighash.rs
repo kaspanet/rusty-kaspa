@@ -24,7 +24,7 @@ impl SigHashReusedValues {
     }
 }
 
-fn previous_outputs_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
+pub fn previous_outputs_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
     if hash_type.is_sighash_anyone_can_pay() {
         return ZERO_HASH;
     }
@@ -43,7 +43,7 @@ fn previous_outputs_hash(tx: &Transaction, hash_type: SigHashType, reused_values
     }
 }
 
-fn sequences_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
+pub fn sequences_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
     if hash_type.is_sighash_single() || hash_type.is_sighash_anyone_can_pay() || hash_type.is_sighash_none() {
         return ZERO_HASH;
     }
@@ -61,7 +61,7 @@ fn sequences_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut 
     }
 }
 
-fn sig_op_counts_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
+pub fn sig_op_counts_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues) -> Hash {
     if hash_type.is_sighash_anyone_can_pay() {
         return ZERO_HASH;
     }
@@ -79,7 +79,7 @@ fn sig_op_counts_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &
     }
 }
 
-fn payload_hash(tx: &Transaction) -> Hash {
+pub fn payload_hash(tx: &Transaction) -> Hash {
     if tx.subnetwork_id == SUBNETWORK_ID_NATIVE {
         return ZERO_HASH;
     }
@@ -92,7 +92,7 @@ fn payload_hash(tx: &Transaction) -> Hash {
     hasher.finalize()
 }
 
-fn outputs_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues, input_index: usize) -> Hash {
+pub fn outputs_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut SigHashReusedValues, input_index: usize) -> Hash {
     if hash_type.is_sighash_none() {
         return ZERO_HASH;
     }
@@ -122,17 +122,17 @@ fn outputs_hash(tx: &Transaction, hash_type: SigHashType, reused_values: &mut Si
     }
 }
 
-fn hash_outpoint(hasher: &mut impl Hasher, outpoint: TransactionOutpoint) {
+pub fn hash_outpoint(hasher: &mut impl Hasher, outpoint: TransactionOutpoint) {
     hasher.update(outpoint.transaction_id);
     hasher.write_u32(outpoint.index);
 }
 
-fn hash_output(hasher: &mut impl Hasher, output: &TransactionOutput) {
+pub fn hash_output(hasher: &mut impl Hasher, output: &TransactionOutput) {
     hasher.write_u64(output.value);
     hash_script_public_key(hasher, &output.script_public_key);
 }
 
-fn hash_script_public_key(hasher: &mut impl Hasher, script_public_key: &ScriptPublicKey) {
+pub fn hash_script_public_key(hasher: &mut impl Hasher, script_public_key: &ScriptPublicKey) {
     hasher.write_u16(script_public_key.version());
     hasher.write_var_bytes(script_public_key.script());
 }

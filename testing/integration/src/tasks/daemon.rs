@@ -98,7 +98,7 @@ impl DaemonArgs {
     pub fn prealloc_address(&self) -> Address {
         let mut private_key_bytes = [0u8; 32];
         faster_hex::hex_decode(self.private_key.as_bytes(), &mut private_key_bytes).unwrap();
-        let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap();
+        let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap();
         Address::new(
             NetworkType::Simnet.into(),
             kaspa_addresses::Version::PubKey,

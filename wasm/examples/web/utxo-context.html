@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <link rel="stylesheet" href="./resources/style.css">
+        <script type="module">
+            import { log, stringify, currentNetwork } from './resources/utils.js';
+
+            import * as kaspa from '../../web/kaspa-core/kaspa.js';
+            let { Resolver, RpcClient, Encoding, UtxoProcessor, UtxoContext } = kaspa;
+
+            window.monitor = {};
+
+            (async () => {
+                await kaspa.default('../../web/kaspa-core/kaspa_bg.wasm');
+
+                let network = currentNetwork();
+                log(`Connecting to Kaspa network...`);
+                log(`Selected network is ${network.class("network")}...`);
+                
+                const resolver = new Resolver();
+                // let url = resolver.getUrl(Encoding.Borsh, "mainnet")
+                const rpc = await resolver.connect(network);
+                // const rpc = new RpcClient({ url, networkId: "mainnet" });
+                
+                log("Connected to", rpc.url.class("network"));
+
+
+                // const privateKey = new PrivateKey('b99d75736a0fd0ae2da658959813d680474f5a740a9c970a7da867141596178f');
+                // const address = privateKey.toKeypair().toAddress(networkId);
+
+                // ---
+                let { monitor } = window;
+                monitor.processor = new UtxoProcessor({ rpc, networkId : network });
+                await monitor.processor.start();
+                let context = new UtxoContext({ processor : monitor.processor });
+                let events = 0;
+                monitor.processor.addEventListener((event) => {
+                    document.getElementById("actions").innerHTML = `| Received ${events} event(s)`;
+                    // log("event:", JSON.stringify(event,null,2));
+                    log("event:", event);
+                    events += 1;
+                });
+
+                // kaspa:qpamkvhgh0kzx50gwvvp5xs8ktmqutcy3dfs9dc3w7lm9rq0zs76vf959mmrp
+                // kaspa:qzeln8eue9nnrz85kn7x47smxhfqudyz6urv2wpquuvslq7ck4umys8gkt5x8
+
+                log("");
+                log("Please note that some addresses may have thousands of UTXOs which makes it");
+                log("impractical for the browser to display as a list. This type of data output");
+                log("should be paginated.") 
+                log("");
+                log("This demo is meant for manual testing to demonstrate events emitted by the");
+                log("UtxoProcessor, your browser may have difficulty rendering large sets of UTXOs.");
+
+                let el = document.createElement("div");
+                document.body.appendChild(el);
+                el.innerHTML = `
+                    <br/><input id="address" class="address" type="text" value="" placeholder=" Enter ${network} address..." />
+                    <br>&nbsp;<br>
+                    <div id="submit" class="link">Click to monitor address</div>
+                    <br>&nbsp;<br>
+                    <div id="restart" class="link">Restart</div>
+                    <br>&nbsp;<br>
+                `;
+
+                // let input = document.getElementById("address");
+                let submit = document.getElementById("submit");
+                submit.addEventListener("click", async (e) => {
+                    e.preventDefault();
+                    let input = document.getElementById("address");
+                    let address = input.value;
+                    log("Tracking address:", address);
+                    try {
+                        await context.trackAddresses([address]);
+                    } catch (e) {
+                        log("Error:", e);
+                    }
+                    input.value = "";
+                });
+
+                let restart = document.getElementById("restart");
+                restart.addEventListener("click", async (e) => {
+                    log("Restarting...");
+                    log("Stopping processor...");
+                    await context.clear();
+                    await monitor.processor.stop();
+                    log("Starting processor...");
+                    await monitor.processor.start();
+                    log("Processor started...");
+                });
+
+            })();
+
+        </script>
+    </head>
+    <body></body>
+</html>

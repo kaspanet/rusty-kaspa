@@ -3,8 +3,6 @@
 //!
 
 use crate::imports::*;
-use crate::result::Result;
-use crate::secret::Secret;
 use crate::storage::{AddressBookEntry, PrvKeyData, PrvKeyDataId};
 use kaspa_bip32::Mnemonic;
 use zeroize::{Zeroize, ZeroizeOnDrop};

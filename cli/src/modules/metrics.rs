@@ -50,7 +50,7 @@ impl Handler for Metrics {
             self.mute.store(mute, Ordering::Relaxed);
         }
 
-        self.metrics.set_rpc(Some(ctx.wallet().rpc_api().clone()));
+        self.metrics.bind_rpc(Some(ctx.wallet().rpc_api().clone()));
 
         Ok(())
     }

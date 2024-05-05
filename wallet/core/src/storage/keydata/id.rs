@@ -34,6 +34,20 @@ impl FromHex for KeyDataId {
     }
 }
 
+impl TryFrom<&JsValue> for KeyDataId {
+    type Error = Error;
+    fn try_from(value: &JsValue) -> Result<Self> {
+        let string = value.as_string().ok_or(Error::InvalidKeyDataId(format!("{value:?}")))?;
+        Self::from_hex(&string)
+    }
+}
+
+impl From<KeyDataId> for JsValue {
+    fn from(value: KeyDataId) -> Self {
+        JsValue::from(value.to_hex())
+    }
+}
+
 impl std::fmt::Debug for KeyDataId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "KeyDataId ({})", self.0.as_slice().to_hex())

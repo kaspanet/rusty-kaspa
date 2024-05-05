@@ -12,13 +12,13 @@ use kaspa_addresses::Address;
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PingRequest {
-    pub payload: Option<u64>,
+    pub message: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PingResponse {
-    pub payload: Option<u64>,
+    pub message: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -42,7 +42,7 @@ pub struct FlushResponse {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectRequest {
-    pub url: String,
+    pub url: Option<String>,
     pub network_id: NetworkId,
 }
 
@@ -60,7 +60,39 @@ pub struct DisconnectResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetStatusRequest {}
+pub struct ChangeNetworkIdRequest {
+    pub network_id: NetworkId,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangeNetworkIdResponse {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetainContextRequest {
+    pub name: String,
+    pub data: Option<Vec<u8>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetainContextResponse {
+    // pub name : String,
+    // pub data: Option<Arc<Vec<u8>>>,
+    // pub is_connected: bool,
+    // pub is_synced: bool,
+    // pub is_open: bool,
+    // pub url: Option<String>,
+    // pub is_wrpc_client: bool,
+    // pub network_id: Option<NetworkId>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetStatusRequest {
+    pub name: Option<String>,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,6 +103,10 @@ pub struct GetStatusResponse {
     pub url: Option<String>,
     pub is_wrpc_client: bool,
     pub network_id: Option<NetworkId>,
+    pub context: Option<Arc<Vec<u8>>>,
+    pub wallet_descriptor: Option<WalletDescriptor>,
+    pub account_descriptors: Option<Vec<AccountDescriptor>>,
+    pub selected_account_id: Option<AccountId>,
 }
 
 // ---
@@ -82,7 +118,7 @@ pub struct WalletEnumerateRequest {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletEnumerateResponse {
-    pub wallet_list: Vec<WalletDescriptor>,
+    pub wallet_descriptors: Vec<WalletDescriptor>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -103,7 +139,7 @@ pub struct WalletCreateResponse {
 #[serde(rename_all = "camelCase")]
 pub struct WalletOpenRequest {
     pub wallet_secret: Secret,
-    pub wallet_filename: Option<String>,
+    pub filename: Option<String>,
     pub account_descriptors: bool,
     pub legacy_accounts: Option<bool>,
 }
@@ -208,9 +244,13 @@ pub struct PrvKeyDataCreateResponse {
     pub prv_key_data_id: PrvKeyDataId,
 }
 
+// TODO
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct PrvKeyDataRemoveRequest {}
+pub struct PrvKeyDataRemoveRequest {
+    pub wallet_secret: Secret,
+    pub prv_key_data_id: PrvKeyDataId,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -236,7 +276,7 @@ pub struct AccountsEnumerateRequest {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsEnumerateResponse {
-    pub descriptor_list: Vec<AccountDescriptor>,
+    pub account_descriptors: Vec<AccountDescriptor>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -251,10 +291,22 @@ pub struct AccountsRenameRequest {
 #[serde(rename_all = "camelCase")]
 pub struct AccountsRenameResponse {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+/// @category Wallet API
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]
+#[wasm_bindgen]
 pub enum AccountsDiscoveryKind {
     Bip44,
+}
+
+impl FromStr for AccountsDiscoveryKind {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "bip44" => Ok(Self::Bip44),
+            _ => Err(Error::custom(format!("Invalid discovery kind: {s}"))),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -264,7 +316,7 @@ pub struct AccountsDiscoveryRequest {
     pub address_scan_extent: u32,
     pub account_scan_extent: u32,
     pub bip39_passphrase: Option<Secret>,
-    pub bip39_mnemonic: String,
+    pub bip39_mnemonic: Secret,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -288,11 +340,38 @@ pub struct AccountsCreateResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AccountsEnsureDefaultRequest {
+    pub wallet_secret: Secret,
+    pub payment_secret: Option<Secret>,
+    pub account_kind: AccountKind,
+    pub mnemonic_phrase: Option<Secret>,
+    // pub account_create_args: AccountCreateArgs,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsEnsureDefaultResponse {
+    pub account_descriptor: AccountDescriptor,
+}
+
+// TODO
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AccountsImportRequest {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsImportResponse {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsSelectRequest {
+    pub account_id: Option<AccountId>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsSelectResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -323,14 +402,30 @@ pub struct AccountsGetRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsGetResponse {
-    pub descriptor: AccountDescriptor,
+    pub account_descriptor: AccountDescriptor,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+/// Specifies the type of an account address to create.
+/// The address can bea receive address or a change address.
+///
+/// @category Wallet API
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen)]
 pub enum NewAddressKind {
     Receive,
     Change,
+}
+
+impl FromStr for NewAddressKind {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "receive" => Ok(Self::Receive),
+            "change" => Ok(Self::Change),
+            _ => Err(Error::custom(format!("Invalid address kind: {s}"))),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -374,6 +469,7 @@ pub struct AccountsTransferRequest {
     pub payment_secret: Option<Secret>,
     pub transfer_amount_sompi: u64,
     pub priority_fee_sompi: Option<Fees>,
+    // pub priority_fee_sompi: Fees,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -382,6 +478,8 @@ pub struct AccountsTransferResponse {
     pub generator_summary: GeneratorSummary,
     pub transaction_ids: Vec<TransactionId>,
 }
+
+// TODO: Use Generator Summary from WASM module...
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]

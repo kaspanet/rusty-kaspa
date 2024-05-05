@@ -27,9 +27,9 @@ impl From<&UtxoEntryReference> for UtxoRecord {
         UtxoRecord {
             index: utxo.outpoint.get_index(),
             address: utxo.address.clone(),
-            amount: utxo.entry.amount,
-            script_public_key: utxo.entry.script_public_key.clone(),
-            is_coinbase: utxo.entry.is_coinbase,
+            amount: utxo.amount,
+            script_public_key: utxo.script_public_key.clone(),
+            is_coinbase: utxo.is_coinbase,
         }
     }
 }

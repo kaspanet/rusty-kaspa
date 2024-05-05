@@ -10,6 +10,7 @@ pub type DynRpcApi = dyn RpcApi;
 pub type NotificationChannel = kaspa_utils::channel::Channel<kaspa_rpc_core::Notification>;
 pub use kaspa_rpc_core::notify::mode::NotificationMode;
 pub use kaspa_wrpc_client::client::{ConnectOptions, ConnectStrategy};
+pub use kaspa_wrpc_client::Resolver;
 pub use kaspa_wrpc_client::WrpcEncoding;
 
 /// RPC adaptor class that holds the [`RpcApi`]

@@ -1,3 +1,5 @@
+use wasm_bindgen::prelude::*;
+
 pub const SIG_HASH_ALL: SigHashType = SigHashType(0b00000001);
 pub const SIG_HASH_NONE: SigHashType = SigHashType(0b00000010);
 pub const SIG_HASH_SINGLE: SigHashType = SigHashType(0b00000100);
@@ -17,6 +19,7 @@ const ALLOWED_SIG_HASH_TYPES_VALUES: [u8; 6] = [
 ];
 
 #[derive(Copy, Clone)]
+#[wasm_bindgen]
 pub struct SigHashType(pub(crate) u8);
 
 impl SigHashType {

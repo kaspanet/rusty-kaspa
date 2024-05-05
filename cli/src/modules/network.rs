@@ -11,7 +11,7 @@ impl Network {
         if let Some(network_id) = argv.first() {
             let network_id: NetworkId = network_id.trim().parse::<NetworkId>()?;
             tprintln!(ctx, "Setting network id to: {network_id}");
-            ctx.wallet().set_network_id(network_id)?;
+            ctx.wallet().set_network_id(&network_id)?;
             ctx.wallet().settings().set(WalletSettings::Network, network_id).await?;
         } else {
             let network_id = ctx.wallet().network_id()?;

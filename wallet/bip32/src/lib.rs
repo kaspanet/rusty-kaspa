@@ -18,7 +18,6 @@ mod mnemonic;
 mod prefix;
 mod result;
 pub mod types;
-pub mod wasm;
 
 pub use address_type::AddressType;
 pub use attrs::ExtendedKeyAttrs;

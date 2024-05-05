@@ -69,7 +69,7 @@ where
             if let Some(ref encoding) = found_encoding {
                 self.0.get_mut(subscription).unwrap().remove(encoding);
                 if self.0.get(subscription).unwrap().is_empty() {
-                    self.0.remove(subscription);
+                    self.0.swap_remove(subscription);
                 }
             }
         }

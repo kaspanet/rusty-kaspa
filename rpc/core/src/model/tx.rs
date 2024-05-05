@@ -22,6 +22,7 @@ pub type RpcTransactionOutpoint = TransactionOutpoint;
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionInput {
     pub previous_outpoint: RpcTransactionOutpoint,
+    #[serde(with = "hex::serde")]
     pub signature_script: Vec<u8>,
     pub sequence: u64,
     pub sig_op_count: u8,
@@ -90,6 +91,7 @@ pub struct RpcTransaction {
     pub lock_time: u64,
     pub subnetwork_id: RpcSubnetworkId,
     pub gas: u64,
+    #[serde(with = "hex::serde")]
     pub payload: Vec<u8>,
     pub mass: u64,
     pub verbose_data: Option<RpcTransactionVerboseData>,
