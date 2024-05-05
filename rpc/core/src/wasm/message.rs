@@ -40,21 +40,6 @@ const TS_ACCEPTED_TRANSACTION_IDS: &'static str = r#"
     }
 "#;
 
-#[wasm_bindgen(typescript_custom_section)]
-const TS_UTXO_BY_ADDRESSES_ENTRY: &'static str = r#"
-    /**
-     * Collection of data returned by the GetUtxosByAddresses method.
-     * 
-     * @category Node RPC
-     */
-    export interface IUtxosByAddressesEntry {
-        // TODO
-        address? : string;
-        outpoint: ITransactionOutpoint;
-        utxoEntry : IUtxoEntry;
-    }
-"#;
-
 // ---
 
 declare! {
