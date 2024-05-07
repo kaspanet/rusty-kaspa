@@ -50,14 +50,13 @@ async fn export_multisig_account(ctx: Arc<KaspaCli>, account: Arc<MultiSig>) -> 
                 let prv_key_data = prv_key_data_store.load_key_data(&wallet_secret, prv_key_data_id).await?.unwrap();
                 let mnemonic = prv_key_data.as_mnemonic(None).unwrap().unwrap();
 
-                let xpub_key = prv_key_data.create_xpub(None, MULTISIG_ACCOUNT_KIND.into(), 0).await?; // todo it can be done concurrently
+                let xpub_key: kaspa_bip32::ExtendedPublicKey<kaspa_bip32::secp256k1::PublicKey> = prv_key_data.create_xpub(None, MULTISIG_ACCOUNT_KIND.into(), 0).await?; // todo it can be done concurrently
+                let xpub_export = xpub_key.to_string(Some(Prefix::KPUB));
                 generated_xpub_keys.push(xpub_key);
-
-                let xpub = prv_key_data.create_xpub(None, MULTISIG_ACCOUNT_KIND.into(), 0).await?; // todo it can be done concurrently
 
                 tprintln!(ctx, "extended public key {}:", id + 1);
                 tprintln!(ctx, "");
-                tprintln!(ctx, "{}", xpub.clone().to_string(Some(Prefix::KPUB)));
+                tprintln!(ctx, "{}", xpub_export);
                 tprintln!(ctx, "");
 
                 tprintln!(ctx, "mnemonic {}:", id + 1);
