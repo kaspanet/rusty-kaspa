@@ -85,3 +85,49 @@ async fn create_multisig(ctx: &Arc<KaspaCli>, account_name: Option<String>, mnem
     wallet.select(Some(&account)).await?;
     Ok(())
 }
+
+pub(crate) async fn watch_only(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Result<()> {
+    let term = ctx.term();
+    let wallet = ctx.wallet();
+
+    let name = if let Some(name) = name {
+        Some(name.to_string())
+    } else {
+        Some(term.ask(false, "Please enter account name (optional, press <enter> to skip): ").await?.trim().to_string())
+    };
+
+    let mut xpub_keys = Vec::with_capacity(1);
+    let xpub_key = term.ask(false, &format!("Enter extended public key: ")).await?;
+    xpub_keys.push(xpub_key.trim().to_owned());
+
+    let mut additional_xpubs: Vec<String> = vec![];
+    let mut n_required: u16 = 1;
+    if additional_xpubs.is_empty() {
+        loop {
+            let xpub_key = term
+                .ask(false, "For a multisig watch-only account enter an additional extended public key: (empty to skip or stop) ")
+                .await?;
+            if xpub_key.is_empty() {
+                break;
+            }
+            additional_xpubs.push(xpub_key.trim().to_owned());
+        }
+    }
+    if !additional_xpubs.is_empty() {
+        n_required = term.ask(false, "Enter the minimum number of signatures required: ").await?.parse()?;
+
+        xpub_keys.extend_from_slice(additional_xpubs.as_slice());
+    }
+
+    let wallet_secret = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
+    if wallet_secret.as_ref().is_empty() {
+        return Err(Error::WalletSecretRequired);
+    }
+
+    let account_create_args_watch_only = AccountCreateArgsWatchOnly::new(name, xpub_keys, n_required);
+    let account = wallet.create_account_watch_only(&wallet_secret, account_create_args_watch_only).await?;
+
+    tprintln!(ctx, "\naccount created: {}\n", account.get_list_string()?);
+    wallet.select(Some(&account)).await?;
+    Ok(())
+}

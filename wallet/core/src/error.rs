@@ -231,6 +231,12 @@ pub enum Error {
     #[error("Not allowed on a resident account")]
     ResidentAccount,
 
+    #[error("Not allowed on an watch-only account")]
+    WatchOnlyAccount,
+
+    #[error("At least one xpub is required for a watch-only account")]
+    WatchOnlyXpubRequired,
+
     #[error("This feature is not supported by this account type")]
     AccountKindFeature,
 

@@ -84,6 +84,7 @@ impl Account {
                                 "account import mnemonic multisig [additional keys]",
                                 "Import mnemonic and additional keys for a multisig account",
                             ),
+                            ("account import watchonly", "Import extended public key(s) for a watch-only bip32 or multisig account"),
                         ],
                         None,
                     )?;
@@ -174,6 +175,18 @@ impl Account {
                         }
 
                         return Ok(());
+                    }
+                    "watch-only" => {
+                        let account_name = if argv.is_empty() {
+                            None
+                        } else {
+                            let name = argv.remove(0);
+                            let name = name.trim().to_string();
+                            Some(name)
+                        };
+
+                        let account_name = account_name.as_deref();
+                        wizards::account::watch_only(&ctx, account_name).await?;
                     }
                     _ => {
                         tprintln!(ctx, "unknown account import type: '{import_kind}'");

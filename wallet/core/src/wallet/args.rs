@@ -114,6 +114,19 @@ impl AccountCreateArgsBip32 {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub struct AccountCreateArgsWatchOnly {
+    pub account_name: Option<String>,
+    pub xpub_keys: Vec<String>,
+    pub minimum_signatures: u16,
+}
+
+impl AccountCreateArgsWatchOnly {
+    pub fn new(account_name: Option<String>, xpub_keys: Vec<String>, minimum_signatures: u16) -> Self {
+        Self { account_name, xpub_keys, minimum_signatures }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct PrvKeyDataArgs {
     pub prv_key_data_id: PrvKeyDataId,
     pub payment_secret: Option<Secret>,
@@ -141,6 +154,9 @@ pub enum AccountCreateArgs {
         additional_xpub_keys: Vec<String>,
         name: Option<String>,
         minimum_signatures: u16,
+    },
+    WatchOnly {
+        account_args: AccountCreateArgsWatchOnly,
     },
 }
 

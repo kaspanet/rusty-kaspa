@@ -5,7 +5,9 @@ use crate::modules::miner::Miner;
 use crate::modules::node::Node;
 use crate::notifier::{Notification, Notifier};
 use crate::result::Result;
+use kaspa_bip32::Prefix;
 use kaspa_daemon::{DaemonEvent, DaemonKind, Daemons};
+use kaspa_wallet_core::account::{watchonly::WatchOnly, Account, WATCH_ONLY_ACCOUNT_KIND};
 use kaspa_wallet_core::rpc::DynRpcApi;
 use kaspa_wallet_core::storage::{IdT, PrvKeyDataInfo};
 use kaspa_wrpc_client::KaspaRpcClient;
@@ -653,6 +655,23 @@ impl KaspaCli {
                 let receive_address = account.receive_address()?;
                 tprintln!(self, "    • {}", account.get_list_string()?);
                 tprintln!(self, "      {}", style(receive_address.to_string()).blue());
+            }
+        }
+
+        let mut unfiltered_accounts = self.wallet.accounts(None).await?;
+        while let Some(account) = unfiltered_accounts.try_next().await? {
+            if account.account_kind() == WATCH_ONLY_ACCOUNT_KIND {
+                tprintln!(self, "• {}", account.get_list_string()?);
+                let watch_only = account.downcast_arc::<WatchOnly>()?;
+                let xpubs = watch_only.xpub_keys();
+                if xpubs.len() > 1 {
+                    let info_type: String = format!("[multisig] {}-of-{}", watch_only.minimum_signatures(), xpubs.len());
+                    tprintln!(self, "  • {}", style(info_type).cyan());
+                }
+                xpubs.iter().enumerate().for_each(|(_idx, xpub)| {
+                    let info_xpub: String = format!("{}", xpub.to_string(Some(Prefix::KPUB)));
+                    tprintln!(self, "  • [xpub] {}", style(info_xpub).dim());
+                });
             }
         }
         tprintln!(self);
