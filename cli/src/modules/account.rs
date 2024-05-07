@@ -176,7 +176,7 @@ impl Account {
 
                         return Ok(());
                     }
-                    "watch-only" => {
+                    "watchonly" => {
                         let account_name = if argv.is_empty() {
                             None
                         } else {
