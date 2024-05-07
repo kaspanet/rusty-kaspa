@@ -552,6 +552,14 @@ impl KaspaCli {
             list_by_key.push((key.clone(), prv_key_accounts));
         }
 
+        let mut watchonly_accounts = Vec::<(usize, Arc<dyn Account>)>::new();
+        while let Some(account) = self.wallet.accounts(None).await?.try_next().await? {
+            if account.account_kind() == WATCH_ONLY_ACCOUNT_KIND {
+                watchonly_accounts.push((flat_list.len(), account.clone()));
+                flat_list.push(account.clone());
+            }
+        }
+
         if flat_list.is_empty() {
             return Err(Error::NoAccounts);
         } else if autoselect && flat_list.len() == 1 {
@@ -569,6 +577,16 @@ impl KaspaCli {
                     let ls_string = account.get_list_string().unwrap_or_else(|err| panic!("{err}"));
                     tprintln!(self, "    {seq}: {ls_string}");
                 })
+            });
+
+            if watchonly_accounts.len() > 0 {
+                tprintln!(self, "• Watch-only");
+            }
+
+            watchonly_accounts.iter().for_each(|(seq, account)| {
+                let seq = style(seq.to_string()).cyan();
+                let ls_string = account.get_list_string().unwrap_or_else(|err| panic!("{err}"));
+                tprintln!(self, "    {seq}: {ls_string}");
             });
 
             tprintln!(self);
