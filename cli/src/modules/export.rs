@@ -1,5 +1,6 @@
 use crate::imports::*;
-use kaspa_wallet_core::account::{multisig::MultiSig, Account, MULTISIG_ACCOUNT_KIND};
+use kaspa_bip32::Prefix;
+use kaspa_wallet_core::account::{multisig::MultiSig, Account, BIP32_ACCOUNT_KIND, MULTISIG_ACCOUNT_KIND};
 
 #[derive(Default, Handler)]
 #[help("Export transactions, a wallet or a private key")]
@@ -49,13 +50,20 @@ async fn export_multisig_account(ctx: Arc<KaspaCli>, account: Arc<MultiSig>) -> 
                 let prv_key_data = prv_key_data_store.load_key_data(&wallet_secret, prv_key_data_id).await?.unwrap();
                 let mnemonic = prv_key_data.as_mnemonic(None).unwrap().unwrap();
 
+                let xpub_key = prv_key_data.create_xpub(None, MULTISIG_ACCOUNT_KIND.into(), 0).await?; // todo it can be done concurrently
+                generated_xpub_keys.push(xpub_key);
+
+                let xpub = prv_key_data.create_xpub(None, MULTISIG_ACCOUNT_KIND.into(), 0).await?; // todo it can be done concurrently
+
+                tprintln!(ctx, "extended public key {}:", id + 1);
+                tprintln!(ctx, "");
+                tprintln!(ctx, "{}", xpub.clone().to_string(Some(Prefix::KPUB)));
+                tprintln!(ctx, "");
+
                 tprintln!(ctx, "mnemonic {}:", id + 1);
                 tprintln!(ctx, "");
                 tprintln!(ctx, "{}", mnemonic.phrase());
                 tprintln!(ctx, "");
-
-                let xpub_key = prv_key_data.create_xpub(None, MULTISIG_ACCOUNT_KIND.into(), 0).await?; // todo it can be done concurrently
-                generated_xpub_keys.push(xpub_key);
             }
 
             let additional = account.xpub_keys().iter().filter(|xpub| !generated_xpub_keys.contains(xpub));
@@ -93,6 +101,13 @@ async fn export_single_key_account(ctx: Arc<KaspaCli>, account: Arc<dyn Account>
 
     let prv_key_data = keydata.payload.decrypt(payment_secret.as_ref())?;
     let mnemonic = prv_key_data.as_ref().as_mnemonic()?;
+
+    let xpub_key = keydata.create_xpub(None, BIP32_ACCOUNT_KIND.into(), 0).await?; // todo it can be done concurrently
+
+    tprintln!(ctx, "extended public key:");
+    tprintln!(ctx, "");
+    tprintln!(ctx, "{}", xpub_key.to_string(Some(Prefix::KPUB)));
+    tprintln!(ctx, "");
 
     match mnemonic {
         None => {
