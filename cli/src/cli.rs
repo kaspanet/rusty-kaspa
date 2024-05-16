@@ -580,7 +580,7 @@ impl KaspaCli {
                 })
             });
 
-            if watch_accounts.is_empty() {
+            if !watch_accounts.is_empty() {
                 tprintln!(self, "• watch-only");
             }
 
@@ -678,10 +678,15 @@ impl KaspaCli {
         }
 
         let mut unfiltered_accounts = self.wallet.accounts(None).await?;
+        let mut feature_header_printed = false;
         while let Some(account) = unfiltered_accounts.try_next().await? {
             if let Some(feature) = account.feature() {
-                tprintln!(self, "• {}", account.get_list_string().unwrap());
-                tprintln!(self, "    • {}", style(feature).cyan());
+                if !feature_header_printed {
+                    tprintln!(self, "{}", style("• watch-only").dim());
+                    feature_header_printed = true;
+                }
+                tprintln!(self, "  • {}", account.get_list_string().unwrap());
+                tprintln!(self, "      • {}", style(feature).cyan());
             }
         }
         tprintln!(self);
