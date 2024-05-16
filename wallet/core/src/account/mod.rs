@@ -116,6 +116,14 @@ pub trait Account: AnySync + Send + Sync + 'static {
         self.context().settings.name.clone()
     }
 
+    fn feature(&self) -> Option<String> {
+        None
+    }
+
+    fn xpub_keys(&self) -> Option<&ExtendedPublicKeys> {
+        None
+    }
+
     fn name_or_id(&self) -> String {
         if let Some(name) = self.name() {
             if name.is_empty() {
@@ -154,7 +162,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
     }
 
     fn get_list_string(&self) -> Result<String> {
-        let mut name = style(self.name_with_id()).blue();
+        let name = style(self.name_with_id()).blue();
         let balance = self.balance_as_strings(None)?;
         let mature_utxo_size = self.utxo_context().mature_utxo_size();
         let pending_utxo_size = self.utxo_context().pending_utxo_size();
@@ -170,10 +178,6 @@ pub trait Account: AnySync + Send + Sync + 'static {
                 format!("{} UTXOs, {} UTXOs pending", mature_utxo_size.separated_string(), pending_utxo_size.separated_string())
             }
         };
-
-        if self.account_kind() == WATCH_ONLY_ACCOUNT_KIND {
-            name = style(self.name_with_id() + " - watch-only").cyan();
-        }
         Ok(format!("{name}: {balance}   {}", style(info).dim()))
     }
 

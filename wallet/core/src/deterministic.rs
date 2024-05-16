@@ -2,7 +2,7 @@
 //! Deterministic byte sequence generation (used by Account ids).
 //!
 
-pub use crate::account::{bip32, keypair, legacy, multisig, watchonly};
+pub use crate::account::{bip32, bip32watch, keypair, legacy, multisig};
 use crate::encryption::sha256_hash;
 use crate::imports::*;
 use crate::storage::PrvKeyDataId;
@@ -148,10 +148,10 @@ pub fn from_multisig<const N: usize>(prv_key_data_ids: &Option<Arc<Vec<PrvKeyDat
     make_hashes(hashable)
 }
 
-/// Create deterministic hashes from watch-only multisig account data.
-pub fn from_watch_only_multisig<const N: usize>(
+/// Create deterministic hashes from bip32-watch multisig account data.
+pub fn from_bip32_watch_multisig<const N: usize>(
     prv_key_data_ids: &Option<Arc<Vec<PrvKeyDataId>>>,
-    data: &watchonly::Payload,
+    data: &bip32watch::Payload,
 ) -> [Hash; N] {
     let hashable = DeterministicHashData {
         account_kind: &multisig::MULTISIG_ACCOUNT_KIND.into(),
@@ -190,10 +190,10 @@ pub fn from_public_key<const N: usize>(account_kind: &AccountKind, public_key: &
     make_hashes(hashable)
 }
 
-/// Create deterministic hashes from watch-only.
-pub fn from_watch_only<const N: usize>(public_key: &PublicKey) -> [Hash; N] {
+/// Create deterministic hashes from bip32-watch.
+pub fn from_bip32_watch<const N: usize>(public_key: &PublicKey) -> [Hash; N] {
     let hashable: DeterministicHashData<[PrvKeyDataId; 0]> = DeterministicHashData {
-        account_kind: &watchonly::WATCH_ONLY_ACCOUNT_KIND.into(),
+        account_kind: &bip32watch::BIP32_WATCH_ACCOUNT_KIND.into(),
         prv_key_data_ids: &None,
         ecdsa: None,
         account_index: Some(0),

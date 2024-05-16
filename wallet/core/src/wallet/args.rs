@@ -114,15 +114,14 @@ impl AccountCreateArgsBip32 {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-pub struct AccountCreateArgsWatchOnly {
+pub struct AccountCreateArgsBip32Watch {
     pub account_name: Option<String>,
     pub xpub_keys: Vec<String>,
-    pub minimum_signatures: u16,
 }
 
-impl AccountCreateArgsWatchOnly {
-    pub fn new(account_name: Option<String>, xpub_keys: Vec<String>, minimum_signatures: u16) -> Self {
-        Self { account_name, xpub_keys, minimum_signatures }
+impl AccountCreateArgsBip32Watch {
+    pub fn new(account_name: Option<String>, xpub_keys: Vec<String>) -> Self {
+        Self { account_name, xpub_keys }
     }
 }
 
@@ -155,8 +154,8 @@ pub enum AccountCreateArgs {
         name: Option<String>,
         minimum_signatures: u16,
     },
-    WatchOnly {
-        account_args: AccountCreateArgsWatchOnly,
+    Bip32Watch {
+        account_args: AccountCreateArgsBip32Watch,
     },
 }
 

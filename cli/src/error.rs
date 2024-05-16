@@ -73,7 +73,7 @@ pub enum Error {
     WalletSecretRequired,
 
     #[error("watch-only wallet kpub is required")]
-    WalletWatchOnlyXpubRequired,
+    WalletBip32WatchXpubRequired,
 
     #[error("wallet secrets do not match")]
     WalletSecretMatch,
@@ -86,6 +86,9 @@ pub enum Error {
 
     #[error("key data not found")]
     KeyDataNotFound,
+
+    #[error("no key data to export for watch-only account")]
+    WatchOnlyAccountNoKeyData,
 
     #[error("no accounts found, please create an account to continue")]
     NoAccounts,
