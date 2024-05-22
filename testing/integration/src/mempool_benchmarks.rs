@@ -39,8 +39,9 @@ use tokio::join;
 #[tokio::test]
 #[ignore = "bmk"]
 async fn bench_bbt_latency() {
-    kaspa_core::panic::configure_panic();
     kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_mining::monitor=debug");
+    // As we log the panic, we want to set it up after the logger
+    kaspa_core::panic::configure_panic();
 
     // Constants
     const BLOCK_COUNT: usize = usize::MAX;
@@ -77,7 +78,7 @@ async fn bench_bbt_latency() {
     let (prealloc_sk, prealloc_pk) = secp256k1::generate_keypair(&mut thread_rng());
     let prealloc_address =
         Address::new(NetworkType::Simnet.into(), kaspa_addresses::Version::PubKey, &prealloc_pk.x_only_public_key().0.serialize());
-    let schnorr_key = secp256k1::KeyPair::from_secret_key(secp256k1::SECP256K1, &prealloc_sk);
+    let schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &prealloc_sk);
     let spk = pay_to_address_script(&prealloc_address);
 
     let args = Args {
@@ -286,8 +287,9 @@ async fn bench_bbt_latency() {
 #[tokio::test]
 #[ignore = "bmk"]
 async fn bench_bbt_latency_2() {
-    kaspa_core::panic::configure_panic();
     kaspa_core::log::try_init_logger("info,kaspa_core::time=debug,kaspa_mining::monitor=debug");
+    // As we log the panic, we want to set it up after the logger
+    kaspa_core::panic::configure_panic();
 
     // Constants
     const BLOCK_COUNT: usize = usize::MAX;
@@ -324,7 +326,7 @@ async fn bench_bbt_latency_2() {
     let (prealloc_sk, prealloc_pk) = secp256k1::generate_keypair(&mut thread_rng());
     let prealloc_address =
         Address::new(NetworkType::Simnet.into(), kaspa_addresses::Version::PubKey, &prealloc_pk.x_only_public_key().0.serialize());
-    let schnorr_key = secp256k1::KeyPair::from_secret_key(secp256k1::SECP256K1, &prealloc_sk);
+    let schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &prealloc_sk);
     let spk = pay_to_address_script(&prealloc_address);
 
     let args = ArgsBuilder::simnet(TX_LEVEL_WIDTH as u64 * CONTRACT_FACTOR, 500)

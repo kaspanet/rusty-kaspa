@@ -26,6 +26,7 @@ pub trait AddressesStoreReader {
 
 pub trait AddressesStore: AddressesStoreReader {
     fn set(&mut self, key: AddressKey, entry: Entry) -> StoreResult<()>;
+    #[allow(dead_code)]
     fn set_failed_count(&mut self, key: AddressKey, connection_failed_count: u64) -> StoreResult<()>;
     fn remove(&mut self, key: AddressKey) -> StoreResult<()>;
 }

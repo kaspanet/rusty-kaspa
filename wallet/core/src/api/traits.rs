@@ -9,8 +9,6 @@
 
 use crate::api::message::*;
 use crate::imports::*;
-use crate::result::Result;
-use crate::secret::Secret;
 use crate::storage::{PrvKeyData, PrvKeyDataId, PrvKeyDataInfo, WalletDescriptor};
 use crate::tx::GeneratorSummary;
 use workflow_core::channel::Receiver;
@@ -23,9 +21,16 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn register_notifications(self: Arc<Self>, channel: Receiver<WalletNotification>) -> Result<u64>;
     async fn unregister_notifications(self: Arc<Self>, channel_id: u64) -> Result<()>;
 
+    async fn retain_context(self: Arc<Self>, name: &str, data: Option<Vec<u8>>) -> Result<()> {
+        self.retain_context_call(RetainContextRequest { name: name.to_string(), data }).await?;
+        Ok(())
+    }
+
+    async fn retain_context_call(self: Arc<Self>, request: RetainContextRequest) -> Result<RetainContextResponse>;
+
     /// Wrapper around [`get_status_call()`](Self::get_status_call).
-    async fn get_status(self: Arc<Self>) -> Result<GetStatusResponse> {
-        Ok(self.get_status_call(GetStatusRequest {}).await?)
+    async fn get_status(self: Arc<Self>, name: Option<&str>) -> Result<GetStatusResponse> {
+        Ok(self.get_status_call(GetStatusRequest { name: name.map(String::from) }).await?)
     }
 
     /// Returns the current wallet state comprised of the following:
@@ -37,18 +42,36 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// - `is_wrpc_client` - whether the wallet is connected to a node via wRPC
     async fn get_status_call(self: Arc<Self>, request: GetStatusRequest) -> Result<GetStatusResponse>;
 
+    async fn connect(self: Arc<Self>, url: Option<String>, network_id: NetworkId) -> Result<()> {
+        self.connect_call(ConnectRequest { url, network_id }).await?;
+        Ok(())
+    }
+
     /// Request the wallet RPC subsystem to connect to a node with a given configuration
     /// comprised of the `url` and a `network_id`.
     async fn connect_call(self: Arc<Self>, request: ConnectRequest) -> Result<ConnectResponse>;
 
+    async fn disconnect(self: Arc<Self>) -> Result<()> {
+        self.disconnect_call(DisconnectRequest {}).await?;
+        Ok(())
+    }
     /// Disconnect the wallet RPC subsystem from the node.
     async fn disconnect_call(self: Arc<Self>, request: DisconnectRequest) -> Result<DisconnectResponse>;
+
+    /// Wrapper around [`change_network_id_call()`](Self::change_network_id_call).
+    async fn change_network_id(self: Arc<Self>, network_id: NetworkId) -> Result<()> {
+        self.change_network_id_call(ChangeNetworkIdRequest { network_id }).await?;
+        Ok(())
+    }
+
+    /// Change the current network id of the wallet.
+    async fn change_network_id_call(self: Arc<Self>, request: ChangeNetworkIdRequest) -> Result<ChangeNetworkIdResponse>;
 
     // ---
 
     /// Wrapper around `ping_call()`.
-    async fn ping(self: Arc<Self>, payload: Option<u64>) -> Result<Option<u64>> {
-        Ok(self.ping_call(PingRequest { payload }).await?.payload)
+    async fn ping(self: Arc<Self>, message: Option<String>) -> Result<Option<String>> {
+        Ok(self.ping_call(PingRequest { message }).await?.message)
     }
     /// Ping the wallet service. Accepts an optional `u64` value that is returned in the response.
     async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse>;
@@ -77,7 +100,7 @@ pub trait WalletApi: Send + Sync + AnySync {
 
     /// Wrapper around [`wallet_enumerate_call()`](Self::wallet_enumerate_call).
     async fn wallet_enumerate(self: Arc<Self>) -> Result<Vec<WalletDescriptor>> {
-        Ok(self.wallet_enumerate_call(WalletEnumerateRequest {}).await?.wallet_list)
+        Ok(self.wallet_enumerate_call(WalletEnumerateRequest {}).await?.wallet_descriptors)
     }
 
     /// Enumerates all wallets available in the storage. Returns `Vec<WalletDescriptor>`
@@ -100,14 +123,14 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn wallet_open(
         self: Arc<Self>,
         wallet_secret: Secret,
-        wallet_filename: Option<String>,
+        filename: Option<String>,
         account_descriptors: bool,
         legacy_accounts: bool,
     ) -> Result<Option<Vec<AccountDescriptor>>> {
         Ok(self
             .wallet_open_call(WalletOpenRequest {
                 wallet_secret,
-                wallet_filename,
+                filename,
                 account_descriptors,
                 legacy_accounts: legacy_accounts.then_some(true),
             })
@@ -241,6 +264,16 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// around this call.
     async fn accounts_rename_call(self: Arc<Self>, request: AccountsRenameRequest) -> Result<AccountsRenameResponse>;
 
+    async fn accounts_select(self: Arc<Self>, account_id: Option<AccountId>) -> Result<()> {
+        self.accounts_select_call(AccountsSelectRequest { account_id }).await?;
+        Ok(())
+    }
+
+    /// Select an account. This call will set the currently *selected* account to the
+    /// account specified by the `account_id`. The selected account is tracked within
+    /// the wallet and can be obtained via get_status() API call.
+    async fn accounts_select_call(self: Arc<Self>, request: AccountsSelectRequest) -> Result<AccountsSelectResponse>;
+
     /// Wrapper around [`accounts_activate_call()`](Self::accounts_activate_call)
     async fn accounts_activate(self: Arc<Self>, account_ids: Option<Vec<AccountId>>) -> Result<AccountsActivateResponse> {
         self.accounts_activate_call(AccountsActivateRequest { account_ids }).await
@@ -267,7 +300,7 @@ pub trait WalletApi: Send + Sync + AnySync {
 
     /// Wrapper around [`accounts_enumerate_call()`](Self::accounts_enumerate_call)
     async fn accounts_enumerate(self: Arc<Self>) -> Result<Vec<AccountDescriptor>> {
-        Ok(self.accounts_enumerate_call(AccountsEnumerateRequest {}).await?.descriptor_list)
+        Ok(self.accounts_enumerate_call(AccountsEnumerateRequest {}).await?.account_descriptors)
     }
     /// Returns a list of [`AccountDescriptor`] structs for all accounts stored in the wallet.
     async fn accounts_enumerate_call(self: Arc<Self>, request: AccountsEnumerateRequest) -> Result<AccountsEnumerateResponse>;
@@ -294,6 +327,29 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// See [`accounts_create`](Self::accounts_create) for a convenience wrapper
     /// around this call.
     async fn accounts_create_call(self: Arc<Self>, request: AccountsCreateRequest) -> Result<AccountsCreateResponse>;
+
+    /// Wrapper around [`accounts_ensure_default_call()`](Self::accounts_ensure_default_call)
+    async fn accounts_ensure_default(
+        self: Arc<Self>,
+        wallet_secret: Secret,
+        payment_secret: Option<Secret>,
+        account_kind: AccountKind,
+        mnemonic_phrase: Option<Secret>,
+    ) -> Result<AccountDescriptor> {
+        let request = AccountsEnsureDefaultRequest { wallet_secret, payment_secret, account_kind, mnemonic_phrase };
+        Ok(self.accounts_ensure_default_call(request).await?.account_descriptor)
+    }
+
+    /// Ensure that a default account exists. If the default account does not exist,
+    /// this call will create a new private key and an associated account and return
+    /// an [`AccountDescriptor`] for it. A custom mnemonic phrase can be supplied
+    /// for the private key. This function currently supports only BIP32 accounts.
+    /// If a `payment_secret` is supplied, the mnemonic phrase will be created
+    /// with a BIP39 passphrase.
+    async fn accounts_ensure_default_call(
+        self: Arc<Self>,
+        request: AccountsEnsureDefaultRequest,
+    ) -> Result<AccountsEnsureDefaultResponse>;
 
     // TODO
     async fn accounts_import_call(self: Arc<Self>, request: AccountsImportRequest) -> Result<AccountsImportResponse>;
