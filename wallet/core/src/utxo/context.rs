@@ -17,9 +17,9 @@ use crate::utxo::{
 use kaspa_hashes::Hash;
 use sorted_insert::SortedInsertBinaryByKey;
 
-static PROCESSOR_ID_SEQUENCER: AtomicU64 = AtomicU64::new(0);
-fn next_processor_id() -> Hash {
-    let id = PROCESSOR_ID_SEQUENCER.fetch_add(1, Ordering::SeqCst);
+static UTXO_CONTEXT_ID_SEQUENCER: AtomicU64 = AtomicU64::new(0);
+fn next_utxo_context_id() -> Hash {
+    let id = UTXO_CONTEXT_ID_SEQUENCER.fetch_add(1, Ordering::SeqCst);
     Hash::from_slice(sha256_hash(id.to_le_bytes().as_slice()).as_ref())
 }
 
@@ -28,7 +28,7 @@ pub struct UtxoContextId(pub(crate) Hash);
 
 impl Default for UtxoContextId {
     fn default() -> Self {
-        UtxoContextId(next_processor_id())
+        UtxoContextId(next_utxo_context_id())
     }
 }
 
@@ -250,7 +250,7 @@ impl UtxoContext {
 
             let mut context = self.context();
             let pending_utxo_entries = pending_tx.utxo_entries();
-            context.mature.retain(|entry| !pending_utxo_entries.contains(entry));
+            context.mature.retain(|entry| !pending_utxo_entries.contains_key(&entry.id()));
 
             let outgoing_transaction = OutgoingTransaction::new(current_daa_score, self.clone(), pending_tx.clone());
             self.processor().register_outgoing_transaction(outgoing_transaction.clone());
@@ -282,7 +282,7 @@ impl UtxoContext {
         let mut context = self.context();
 
         let outgoing_transaction = context.outgoing.remove(&pending_tx.id()).expect("outgoing transaction");
-        outgoing_transaction.utxo_entries().iter().for_each(|entry| {
+        outgoing_transaction.utxo_entries().iter().for_each(|(_, entry)| {
             context.mature.push(entry.clone());
         });
 
@@ -319,7 +319,7 @@ impl UtxoContext {
             }
             Ok(())
         } else {
-            log_warning!("ignoring duplicate utxo entry");
+            log_warn!("ignoring duplicate utxo entry");
             Ok(())
         }
     }
@@ -448,7 +448,7 @@ impl UtxoContext {
                         }
                     }
                 } else {
-                    log_warning!("ignoring duplicate utxo entry");
+                    log_warn!("ignoring duplicate utxo entry");
                 }
             }
 
@@ -475,8 +475,8 @@ impl UtxoContext {
 
     pub async fn calculate_balance(&self) -> Balance {
         let context = self.context();
-        let mature: u64 = context.mature.iter().map(|e| e.as_ref().entry.amount).sum();
-        let pending: u64 = context.pending.values().map(|e| e.as_ref().entry.amount).sum();
+        let mature: u64 = context.mature.iter().map(|e| e.as_ref().amount).sum();
+        let pending: u64 = context.pending.values().map(|e| e.as_ref().amount).sum();
 
         // this will aggregate only transactions containing
         // the final payments (not compound transactions)
@@ -570,9 +570,9 @@ impl UtxoContext {
         let outgoing_transactions = self.processor().outgoing();
         let mut accepted_outgoing_transactions = HashSet::<OutgoingTransaction>::new();
 
-        utxos.retain(|id| {
+        utxos.retain(|utxo| {
             for outgoing_transaction in outgoing_transactions.iter() {
-                if outgoing_transaction.utxo_entries().contains(id) {
+                if outgoing_transaction.utxo_entries().contains_key(&utxo.id()) {
                     accepted_outgoing_transactions.insert((*outgoing_transaction).clone());
                     return false;
                 }
@@ -676,7 +676,7 @@ impl UtxoContext {
                 local.remove(address);
             });
         } else {
-            log_warning!("utxo processor: unregister for an empty address set")
+            log_warn!("utxo processor: unregister for an empty address set")
         }
 
         Ok(())
@@ -686,11 +686,10 @@ impl UtxoContext {
         self.register_addresses(&addresses).await?;
         let resp = self.processor().rpc_api().get_utxos_by_addresses(addresses).await?;
         let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
-        let current_daa_score = current_daa_score.unwrap_or_else(|| {
-            self.processor()
-                .current_daa_score()
-                .expect("daa score or initialized UtxoProcessor are when invoking scan_and_register_addresses()")
-        });
+        let current_daa_score = current_daa_score.or_else(|| {
+                self.processor()
+                    .current_daa_score()
+            }).ok_or(Error::MissingDaaScore("Expecting DAA score or initialized UtxoProcessor when invoking scan_and_register_addresses() - You might be accessing UtxoProcessor APIs before it is initialized (see `utxo-proc-start` event)"))?;
         self.extend_from_scan(refs, current_daa_score).await?;
         self.update_balance().await?;
         Ok(())

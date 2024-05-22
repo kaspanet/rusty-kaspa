@@ -3,8 +3,6 @@
 //!
 
 use crate::imports::*;
-use crate::result::Result;
-use crate::secret::Secret;
 use kaspa_bip32::PrivateKey;
 use kaspa_consensus_core::{sign::sign_with_multiple_v2, tx::SignableTransaction};
 
@@ -50,9 +48,11 @@ impl SignerT for Signer {
         self.ingest(addresses)?;
 
         let keys = self.inner.keys.lock().unwrap();
-        let keys_for_signing = addresses.iter().map(|address| *keys.get(address).unwrap()).collect::<Vec<_>>();
+        let mut keys_for_signing = addresses.iter().map(|address| *keys.get(address).unwrap()).collect::<Vec<_>>();
         // TODO - refactor for multisig
-        Ok(sign_with_multiple_v2(mutable_tx, keys_for_signing).fully_signed()?)
+        let signable_tx = sign_with_multiple_v2(mutable_tx, &keys_for_signing).fully_signed()?;
+        keys_for_signing.zeroize();
+        Ok(signable_tx)
     }
 }
 
@@ -75,8 +75,10 @@ impl KeydataSigner {
 
 impl SignerT for KeydataSigner {
     fn try_sign(&self, mutable_tx: SignableTransaction, addresses: &[Address]) -> Result<SignableTransaction> {
-        let keys_for_signing = addresses.iter().map(|address| *self.inner.keys.get(address).unwrap()).collect::<Vec<_>>();
+        let mut keys_for_signing = addresses.iter().map(|address| *self.inner.keys.get(address).unwrap()).collect::<Vec<_>>();
         // TODO - refactor for multisig
-        Ok(sign_with_multiple_v2(mutable_tx, keys_for_signing).fully_signed()?)
+        let signable_tx = sign_with_multiple_v2(mutable_tx, &keys_for_signing).fully_signed()?;
+        keys_for_signing.zeroize();
+        Ok(signable_tx)
     }
 }

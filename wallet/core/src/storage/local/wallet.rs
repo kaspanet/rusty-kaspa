@@ -3,8 +3,6 @@
 //!
 
 use crate::imports::*;
-use crate::result::Result;
-use crate::secret::Secret;
 use crate::storage::local::Payload;
 use crate::storage::local::Storage;
 use crate::storage::Encryptable;
@@ -42,7 +40,10 @@ impl WalletStorage {
     }
 
     pub fn payload(&self, secret: &Secret) -> Result<Decrypted<Payload>> {
-        self.payload.decrypt::<Payload>(secret)
+        self.payload.decrypt::<Payload>(secret).map_err(|err| match err {
+            Error::Chacha20poly1305(e) => Error::WalletDecrypt(e),
+            _ => err,
+        })
     }
 
     pub async fn try_load(store: &Storage) -> Result<WalletStorage> {

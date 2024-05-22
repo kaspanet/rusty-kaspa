@@ -5,8 +5,6 @@
 use crate::result::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::prelude::*;
-use workflow_wasm::prelude::*;
 
 /// Transaction fees.  Fees are comprised of 2 values:
 ///
@@ -94,18 +92,5 @@ impl TryFrom<String> for Fees {
     type Error = crate::error::Error;
     fn try_from(fee: String) -> Result<Self> {
         Self::try_from(fee.as_str())
-    }
-}
-
-impl TryFrom<JsValue> for Fees {
-    type Error = crate::error::Error;
-    fn try_from(fee: JsValue) -> Result<Self> {
-        if fee.is_undefined() || fee.is_null() {
-            Ok(Fees::None)
-        } else if let Ok(fee) = fee.try_as_u64() {
-            Ok(Fees::SenderPays(fee))
-        } else {
-            Err(crate::error::Error::custom("Invalid fee"))
-        }
     }
 }

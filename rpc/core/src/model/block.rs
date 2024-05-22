@@ -1,7 +1,6 @@
+use crate::prelude::{RpcHash, RpcHeader, RpcTransaction};
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
-
-use crate::prelude::{RpcHash, RpcHeader, RpcTransaction};
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,4 +23,42 @@ pub struct RpcBlockVerboseData {
     pub merge_set_blues_hashes: Vec<RpcHash>,
     pub merge_set_reds_hashes: Vec<RpcHash>,
     pub is_chain_block: bool,
+}
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "wasm32-sdk")] {
+        use wasm_bindgen::prelude::*;
+
+        #[wasm_bindgen(typescript_custom_section)]
+        const TS_BLOCK: &'static str = r#"
+        /**
+         * Interface defining the structure of a block.
+         * 
+         * @category Consensus
+         */
+        export interface IBlock {
+            header: IHeader;
+            transactions: ITransaction[];
+            verboseData?: IBlockVerboseData;
+        }
+
+        /**
+         * Interface defining the structure of a block verbose data.
+         * 
+         * @category Node RPC
+         */
+        export interface IBlockVerboseData {
+            hash: HexString;
+            difficulty: number;
+            selectedParentHash: HexString;
+            transactionIds: HexString[];
+            isHeaderOnly: boolean;
+            blueScore: number;
+            childrenHashes: HexString[];
+            mergeSetBluesHashes: HexString[];
+            mergeSetRedsHashes: HexString[];
+            isChainBlock: boolean;
+        }
+        "#;
+    }
 }

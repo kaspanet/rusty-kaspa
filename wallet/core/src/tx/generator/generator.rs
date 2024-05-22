@@ -63,11 +63,10 @@ use crate::tx::{
     PendingTransactionStream,
 };
 use crate::utxo::{NetworkParams, UtxoContext, UtxoEntryReference};
+use kaspa_consensus_client::UtxoEntry;
 use kaspa_consensus_core::constants::UNACCEPTED_DAA_SCORE;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-use kaspa_consensus_core::tx as cctx;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
-use kaspa_consensus_wasm::UtxoEntry;
 use kaspa_txscript::pay_to_address_script;
 use std::collections::VecDeque;
 
@@ -225,6 +224,7 @@ impl Data {
 }
 
 /// Helper struct for passing around transaction value
+#[derive(Debug)]
 struct FinalTransaction {
     /// Total output value required for the final transaction
     value_no_fees: u64,
@@ -298,6 +298,31 @@ struct Inner {
     context: Mutex<Context>,
 }
 
+impl std::fmt::Debug for Inner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Inner")
+            .field("network_id", &self.network_id)
+            .field("network_params", &self.network_params)
+            // .field("source_utxo_context", &self.source_utxo_context)
+            // .field("destination_utxo_context", &self.destination_utxo_context)
+            // .field("multiplexer", &self.multiplexer)
+            .field("sig_op_count", &self.sig_op_count)
+            .field("minimum_signatures", &self.minimum_signatures)
+            .field("change_address", &self.change_address)
+            .field("standard_change_output_compute_mass", &self.standard_change_output_compute_mass)
+            .field("signature_mass_per_input", &self.signature_mass_per_input)
+            // .field("final_transaction", &self.final_transaction)
+            .field("final_transaction_priority_fee", &self.final_transaction_priority_fee)
+            .field("final_transaction_outputs", &self.final_transaction_outputs)
+            .field("final_transaction_outputs_harmonic", &self.final_transaction_outputs_harmonic)
+            .field("final_transaction_outputs_compute_mass", &self.final_transaction_outputs_compute_mass)
+            .field("final_transaction_payload", &self.final_transaction_payload)
+            .field("final_transaction_payload_mass", &self.final_transaction_payload_mass)
+            // .field("context", &self.context)
+            .finish()
+    }
+}
+
 ///
 /// Transaction generator
 ///
@@ -337,6 +362,10 @@ impl Generator {
             }
             PaymentDestination::PaymentOutputs(outputs) => {
                 // sanity checks
+                if final_transaction_priority_fee.is_none() {
+                    return Err(Error::GeneratorNoFeesForFinalTransaction);
+                }
+
                 for output in outputs.iter() {
                     if NetworkType::try_from(output.address.prefix)? != network_type {
                         return Err(Error::GeneratorPaymentOutputNetworkTypeMismatch);
@@ -419,6 +448,7 @@ impl Generator {
             final_transaction_payload_mass,
             destination_utxo_context,
         };
+
         Ok(Self { inner: Arc::new(inner) })
     }
 
@@ -1037,9 +1067,15 @@ impl Generator {
         script_public_key: ScriptPublicKey,
         address: &Address,
     ) -> UtxoEntryReference {
-        let entry = cctx::UtxoEntry { amount, script_public_key, block_daa_score: UNACCEPTED_DAA_SCORE, is_coinbase: false };
         let outpoint = TransactionOutpoint::new(txid, 0);
-        let utxo = UtxoEntry { address: Some(address.clone()), outpoint: outpoint.into(), entry };
+        let utxo = UtxoEntry {
+            address: Some(address.clone()),
+            outpoint: outpoint.into(),
+            amount,
+            script_public_key,
+            block_daa_score: UNACCEPTED_DAA_SCORE,
+            is_coinbase: false, // entry
+        };
         UtxoEntryReference { utxo: Arc::new(utxo) }
     }
 

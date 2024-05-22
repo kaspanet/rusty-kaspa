@@ -1,11 +1,13 @@
 use borsh::{BorshDeserialize, BorshSerialize};
-use js_sys::Array;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
 use wasm_bindgen::prelude::*;
-use workflow_wasm::extensions::object::*;
+use workflow_wasm::{
+    convert::{Cast, CastFromJs, TryCastFromJs},
+    extensions::object::*,
+};
 
 mod bech32;
 
@@ -31,6 +33,9 @@ pub enum AddressError {
 
     #[error("The address is invalid")]
     InvalidAddress,
+
+    #[error("The address array is invalid")]
+    InvalidAddressArray,
 
     #[error("{0}")]
     WASM(String),
@@ -109,6 +114,7 @@ impl TryFrom<&str> for Prefix {
 ///
 ///  Kaspa `Address` version (`PubKey`, `PubKey ECDSA`, `ScriptHash`)
 ///
+/// @category Address
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[repr(u8)]
 #[wasm_bindgen(js_name = "AddressVersion")]
@@ -177,7 +183,8 @@ pub const PAYLOAD_VECTOR_SIZE: usize = 36;
 pub type PayloadVec = SmallVec<[u8; PAYLOAD_VECTOR_SIZE]>;
 
 /// Kaspa `Address` struct that serializes to and from an address format string: `kaspa:qz0s...t8cv`.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+/// @category Address
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct Address {
     #[wasm_bindgen(skip)]
@@ -212,6 +219,11 @@ impl Address {
     #[wasm_bindgen(constructor)]
     pub fn constructor(address: &str) -> Address {
         address.try_into().unwrap_or_else(|err| panic!("Address::constructor() - address error `{}`: {err}", address))
+    }
+
+    #[wasm_bindgen(js_name=validate)]
+    pub fn validate(address: &str) -> bool {
+        Self::try_from(address).is_ok()
     }
 
     /// Convert an address to a string.
@@ -475,44 +487,40 @@ impl<'de> Deserialize<'de> for Address {
     }
 }
 
-impl TryFrom<JsValue> for Address {
+impl TryCastFromJs for Address {
     type Error = AddressError;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        if let Some(string) = js_value.as_string() {
-            Address::try_from(string)
-        } else if let Some(object) = js_sys::Object::try_from(&js_value) {
-            let prefix: Prefix = object.get_string("prefix")?.as_str().try_into()?;
-            let payload = object.get_string("payload")?; //.as_str();
-            Self::decode_payload(prefix, &payload)
-        } else {
-            Err(AddressError::InvalidAddress)
-        }
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Self::resolve(&value, || {
+            if let Some(string) = value.as_ref().as_string() {
+                Address::try_from(string)
+            } else if let Some(object) = js_sys::Object::try_from(value.as_ref()) {
+                let prefix: Prefix = object.get_string("prefix")?.as_str().try_into()?;
+                let payload = object.get_string("payload")?; //.as_str();
+                Address::decode_payload(prefix, &payload)
+            } else {
+                Err(AddressError::InvalidAddress)
+            }
+        })
     }
 }
 
 #[wasm_bindgen]
-pub struct AddressList(Vec<Address>);
-
-impl From<AddressList> for Vec<Address> {
-    fn from(address_list: AddressList) -> Self {
-        address_list.0
-    }
+extern "C" {
+    #[wasm_bindgen(extends = js_sys::Array, typescript_type = "Address | string")]
+    pub type AddressT;
+    #[wasm_bindgen(extends = js_sys::Array, typescript_type = "(Address | string)[]")]
+    pub type AddressOrStringArrayT;
+    #[wasm_bindgen(extends = js_sys::Array, typescript_type = "Address[]")]
+    pub type AddressArrayT;
 }
 
-impl TryFrom<JsValue> for AddressList {
+impl TryFrom<AddressOrStringArrayT> for Vec<Address> {
     type Error = AddressError;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        js_value.as_ref().try_into()
-    }
-}
-
-impl TryFrom<&JsValue> for AddressList {
-    type Error = AddressError;
-    fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
-        if let Ok(array) = js_value.clone().dyn_into::<Array>() {
-            Ok(Self(array.iter().map(|v| v.try_into()).collect::<Result<Vec<Address>, AddressError>>()?))
+    fn try_from(js_value: AddressOrStringArrayT) -> Result<Self, Self::Error> {
+        if js_value.is_array() {
+            js_value.iter().map(Address::try_owned_from).collect::<Result<Vec<Address>, AddressError>>()
         } else {
-            Err(AddressError::InvalidAddress)
+            Err(AddressError::InvalidAddressArray)
         }
     }
 }
