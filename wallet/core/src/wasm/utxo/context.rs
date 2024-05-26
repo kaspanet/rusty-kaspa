@@ -147,6 +147,7 @@ impl UtxoContext {
         self.inner().clear().await
     }
 
+    #[wasm_bindgen(getter, js_name = "isActive")]
     pub fn active(&self) -> bool {
         let processor = self.inner().processor();
         processor.try_rpc_ctl().map(|ctl| ctl.is_connected()).unwrap_or(false) && processor.is_connected() && processor.is_running()
