@@ -3588,6 +3588,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-wallet-pskt"
+version = "0.14.1"
+dependencies = [
+ "kaspa-bip32",
+ "kaspa-consensus-core",
+ "secp256k1",
+ "serde",
+ "serde-value",
+ "thiserror",
+]
+
+[[package]]
 name = "kaspa-wasm"
 version = "0.14.1"
 dependencies = [
