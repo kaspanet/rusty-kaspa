@@ -275,6 +275,10 @@ impl ContextualNetAddress {
         Self { ip, port }
     }
 
+    pub fn has_port(&self) -> bool {
+        self.port.is_some()
+    }
+
     pub fn normalize(&self, default_port: u16) -> NetAddress {
         NetAddress::new(self.ip, self.port.unwrap_or(default_port))
     }
