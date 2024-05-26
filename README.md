@@ -223,7 +223,7 @@ The framework is compatible with all major desktop and mobile browsers.
 
   ```bash
   cargo run --release --bin kaspad
-  # or with UTXO-index enabled
+  # or with UTXO-index enabled (needed when using wallets)
   cargo run --release --bin kaspad -- --utxoindex
   ```
   **Start a testnet node**
