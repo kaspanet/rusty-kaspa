@@ -223,6 +223,8 @@ The framework is compatible with all major desktop and mobile browsers.
 
   ```bash
   cargo run --release --bin kaspad
+  # or with UTXO-index enabled
+  cargo run --release --bin kaspad -- --utxoindex
   ```
   **Start a testnet node**
 
@@ -275,11 +277,15 @@ wRPC
   JSON protocol:
   ```bash
   --rpclisten-json = <interface:port>
+  # or use the defaults for current network
+  --rpclisten-json = default
   ```
 
   Borsh protocol:
   ```bash
   --rpclisten-borsh = <interface:port>
+  # or use the defaults for current network
+  --rpclisten-borsh = default
   ```
 
   **Sidenote:**
@@ -301,33 +307,11 @@ wRPC
   TypeScript capable of running in web browsers and Node.js are available as a part of
   the Kaspa WASM framework.
 
-  **wRPC to gRPC Proxy is deprecated and no longer supported.**
-
 </details>
 
 
 
 <details>
-
-<summary>
-Mining
-</summary>
-
-Mining is currently supported only on testnet, so once you've setup a test node, follow these instructions.
-
-1. Download and unzip the latest binaries bundle of [kaspanet/kaspad](https://github.com/kaspanet/kaspad/releases).
-
-2. In a separate terminal run the kaspanet/kaspad miner:
-
-    ```
-    kaspaminer --testnet --miningaddr kaspatest:qrcqat6l9zcjsu7swnaztqzrv0s7hu04skpaezxk43y4etj8ncwfk308jlcew
-    ```
-
-    This will create and feed a DAG with the miner getting block templates from the node and submitting them back when mined. The node processes and stores the blocks while applying all currently implemented logic. Execution can be stopped and resumed, the data is persisted in a database.
-
-    You can replace the above mining address with your own address by creating one as described [here](https://github.com/kaspanet/docs/blob/main/Getting%20Started/Full%20Node%20Installation.md#creating-a-wallet-optional). 
-
-</details>
 
 
 ## Benchmarking & Testing
