@@ -329,6 +329,12 @@ impl ScriptPublicKey {
 }
 
 #[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "ScriptPublicKey | HexString")]
+    pub type ScriptPublicKeyT;
+}
+
+#[wasm_bindgen]
 impl ScriptPublicKey {
     #[wasm_bindgen(constructor)]
     pub fn constructor(version: u16, script: JsValue) -> Result<ScriptPublicKey, JsError> {

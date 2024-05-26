@@ -1,4 +1,11 @@
 Latest online documentation available at: https://kaspa.aspectron.org/docs/
+
+### Release 2024-05-26
+
+- Adding utility functions:  `payToAddressScript`, `payToScriptHashScript`, `payToScriptHashSignatureScript`, `addressFromScriptPublicKey`, `isScriptPayToPubkey`, `isScriptPayToPubkeyECDSA`, `isScriptPayToScriptHash`.
+- Adding `UtxoProcessor::isActive` property to check if the processor is in active state (connected and running). This property can be used to validate the processor state before invoking it's functions (that can throw is the UtxoProcessor is offline).
+- Rename `UtxoContext::active` to `UtxoContext::isActive` for consistency.
+
 ### Release 2024-04-27
  - IAccountsCreateRequest interface simplified by flattering it and now it is union for future expansion for multisig etc.
  - IWalletEvent interface updated for Events with TransactionRecord
