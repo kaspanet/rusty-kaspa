@@ -47,7 +47,7 @@ pub enum RpcError {
     #[error("Rejected transaction {0}: {1}")]
     RejectedTransaction(RpcTransactionId, String),
 
-    #[error("Transaction {0} has an input with an empty signature_script at indices {1}.")]
+    #[error("Transaction {0} has input with empty signature scripts at indices {1}.")]
     EmptySignatureScript(RpcTransactionId, String),
 
     #[error("Block {0} is invalid. No verbose data can be built.")]

@@ -495,24 +495,26 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let transaction_id = transaction.id();
         let inputs = &transaction.inputs;
 
-        let empty_indices: Vec<usize> =
-            inputs.iter().enumerate().filter_map(|(index, input)| (input.signature_script.is_empty()).then(|| index)).collect();
+        let empty_indices = inputs
+            .iter()
+            .enumerate()
+            .filter_map(|(index, input)| (input.signature_script.is_empty()).then_some(index.to_string()))
+            .collect::<Vec<_>>();
         if !empty_indices.is_empty() {
-            let indices_str = empty_indices.iter().map(|index| index.to_string()).collect::<Vec<_>>().join(", ");
-            return Err(RpcError::EmptySignatureScript(transaction_id, indices_str));
+            Err(RpcError::EmptySignatureScript(transaction_id, empty_indices.join(", ")))
+        } else {
+            let session = self.consensus_manager.consensus().unguarded_session();
+            let orphan = match allow_orphan {
+                true => Orphan::Allowed,
+                false => Orphan::Forbidden,
+            };
+            self.flow_context.submit_rpc_transaction(&session, transaction, orphan).await.map_err(|err| {
+                let err = RpcError::RejectedTransaction(transaction_id, err.to_string());
+                debug!("{err}");
+                err
+            })?;
+            Ok(SubmitTransactionResponse::new(transaction_id))
         }
-
-        let session = self.consensus_manager.consensus().unguarded_session();
-        let orphan = match allow_orphan {
-            true => Orphan::Allowed,
-            false => Orphan::Forbidden,
-        };
-        self.flow_context.submit_rpc_transaction(&session, transaction, orphan).await.map_err(|err| {
-            let err = RpcError::RejectedTransaction(transaction_id, err.to_string());
-            debug!("{err}");
-            err
-        })?;
-        Ok(SubmitTransactionResponse::new(transaction_id))
     }
 
     async fn get_current_network_call(&self, _: GetCurrentNetworkRequest) -> RpcResult<GetCurrentNetworkResponse> {
