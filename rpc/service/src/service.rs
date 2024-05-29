@@ -495,9 +495,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let transaction_id = transaction.id();
         let inputs = &transaction.inputs;
 
-        if let Some((index, _)) = inputs.iter().enumerate().find(|(_, input)| input.signature_script.is_empty()) {
-            let err = RpcError::EmptySignatureScript(transaction_id, index);
-            return Err(err)
+        let empty_indices: Vec<usize> =
+            inputs.iter().enumerate().filter_map(|(index, input)| (input.signature_script.is_empty()).then(|| index)).collect();
+        if !empty_indices.is_empty() {
+            let indices_str = empty_indices.iter().map(|index| index.to_string()).collect::<Vec<_>>().join(", ");
+            return Err(RpcError::EmptySignatureScript(transaction_id, indices_str));
         }
 
         let session = self.consensus_manager.consensus().unguarded_session();
