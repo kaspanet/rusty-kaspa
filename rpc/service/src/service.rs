@@ -493,6 +493,13 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
         let transaction: Transaction = (&request.transaction).try_into()?;
         let transaction_id = transaction.id();
+        let inputs = &transaction.inputs;
+
+        if let Some((index, _)) = inputs.iter().enumerate().find(|(_, input)| input.signature_script.is_empty()) {
+            let err = RpcError::EmptySignatureScript(transaction_id, index);
+            return Err(err)
+        }
+
         let session = self.consensus_manager.consensus().unguarded_session();
         let orphan = match allow_orphan {
             true => Orphan::Allowed,
