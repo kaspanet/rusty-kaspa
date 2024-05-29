@@ -7,26 +7,36 @@ use kaspa_consensus_core::{
     tx::{TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use std::collections::BTreeMap;
+use std::marker::PhantomData;
 use std::ops::Add;
+use derive_builder::Builder;
 
 // todo add unknown field? combine them by deduplicating, if there are different values - return error?
+#[derive(Builder)]
+#[builder(setter(skip))]
 pub struct Input {
+    #[builder(setter(strip_option))]
     pub utxo_entry: Option<UtxoEntry>,
+    #[builder(setter)]
     pub previous_outpoint: TransactionOutpoint,
     /// The sequence number of this input.
     ///
     /// If omitted, assumed to be the final sequence number
     pub sequence: Option<u64>,
+    #[builder(setter)]
     /// The minimum Unix timestamp that this input requires to be set as the transaction's lock time.
     pub min_time: Option<u64>,
     /// A map from public keys to their corresponding signature as would be
     /// pushed to the stack from a scriptSig.
     pub partial_sigs: PartialSigs,
+    #[builder(setter)]
     /// The sighash type to be used for this input. Signatures for this input
     /// must use the sighash type.
     pub sighash_type: SigHashType,
+    #[builder(setter(strip_option))]
     /// The redeem script for this input.
     pub redeem_script: Option<Vec<u8>>,
+    #[builder(setter(strip_option))]
     pub sig_op_count: Option<u8>,
     /// A map from public keys needed to sign this input to their corresponding
     /// master key fingerprints and derivation paths.
@@ -34,6 +44,12 @@ pub struct Input {
     /// The finalized, fully-constructed scriptSig with signatures and any other
     /// scripts necessary for this input to pass validation.
     pub final_script_sig: Option<Vec<u8>>,
+    hidden: PhantomData<()>, // prevents manual filling of fields
+
+    //     /// Proprietary key-value pairs for this output. // todo
+    //     pub proprietaries: BTreeMap<String, Vec<u8>>,
+    //     /// Unknown key-value pairs for this output.
+    //     pub unknowns: BTreeMap<String, Vec<u8>>,
 }
 
 impl Default for Input {
@@ -49,6 +65,7 @@ impl Default for Input {
             sig_op_count: Default::default(),
             bip32_derivations: Default::default(),
             final_script_sig: Default::default(),
+            hidden: Default::default(),
         }
     }
 }

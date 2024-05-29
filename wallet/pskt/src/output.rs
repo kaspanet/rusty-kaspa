@@ -1,13 +1,16 @@
 use crate::KeySource;
 use kaspa_consensus_core::tx::ScriptPublicKey;
 use std::{collections::BTreeMap, ops::Add};
+use derive_builder::Builder;
 
-#[derive(Default)]
+#[derive(Builder, Default)]
+#[builder(setter)]
 pub struct Output {
     /// The output's amount (serialized as sompi).
     pub amount: u64,
     /// The script for this output, also known as the scriptPubKey.
     pub script_public_key: ScriptPublicKey,
+    #[builder(setter(strip_option))]
     /// The redeem script for this output.
     pub redeem_script: Option<Vec<u8>>,
     /// A map from public keys needed to spend this output to their

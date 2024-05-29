@@ -4,9 +4,7 @@ use kaspa_consensus_core::{
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{SignableTransaction, Transaction, TransactionInput, TransactionOutput},
 };
-use std::cmp::Ordering;
-use std::fmt::Formatter;
-use std::{collections::BTreeMap, fmt::Display, future::Future, marker::PhantomData, ops::Deref};
+use std::{collections::BTreeMap, fmt::Display, fmt::Formatter, future::Future, marker::PhantomData, ops::Deref};
 
 mod error;
 mod global;
@@ -148,7 +146,7 @@ impl PSKT<Constructor> {
 
 impl PSKT<Updater> {
     pub fn set_sequence(mut self, n: u64, input_index: usize) -> Result<Self, Error> {
-     self.inner_pskt.inputs.get_mut(input_index).ok_or(Error::OutOfBounds)?.sequence = Some(n);
+        self.inner_pskt.inputs.get_mut(input_index).ok_or(Error::OutOfBounds)?.sequence = Some(n);
         Ok(self)
     }
 
@@ -232,25 +230,25 @@ impl std::ops::Add for PSKT<Combiner> {
     fn add(mut self, mut rhs: Self) -> Self::Output {
         self.inner_pskt.global = (std::mem::take(&mut self.inner_pskt.global) + std::mem::take(&mut rhs.inner_pskt.global))?;
         macro_rules! combine {
-            ($left:expr, $right:expr, $err: ty) => {{
-                let (mut left, mut right) = (std::mem::take(&mut $left), std::mem::take(&mut $right));
-                let (left_ref, right) = match left.len().cmp(&right.len()) {
-                    Ordering::Less => {
-                        let right = right.split_at_mut(left.len()).0;
-                        (right, &mut left[..])
-                    }
-                    Ordering::Equal => (&mut left[..], &mut right[..]),
-                    Ordering::Greater => {
-                        let left = left.split_at_mut(right.len()).0;
-                        (left, &mut right[..])
-                    }
-                };
-                left_ref.into_iter().zip(right).try_for_each(|(left, right)| -> Result<(), $err>{
-                    *left = (std::mem::take(left) + std::mem::take(right))?;
-                    Ok(())
-                })?;
-                left
-            }};
+            ($left:expr, $right:expr, $err: ty) => {
+                if $left.len() >  $right.len() {
+                    $left.iter_mut().zip($right.iter_mut()).try_for_each(
+                        |(left, right)| -> Result<(), $err> {
+                            *left = (std::mem::take(left) + std::mem::take(right))?;
+                            Ok(())
+                        },
+                    )?;
+                    $left
+                } else {
+                     $right.iter_mut().zip($left.iter_mut()).try_for_each(
+                        |(left, right)| -> Result<(), $err> {
+                            *left = (std::mem::take(left) + std::mem::take(right))?;
+                            Ok(())
+                        },
+                    )?;
+                    $right
+                }
+            };
         }
         self.inner_pskt.inputs = combine!(self.inner_pskt.inputs, rhs.inner_pskt.inputs, input::CombineError);
         self.inner_pskt.outputs = combine!(self.inner_pskt.outputs, rhs.inner_pskt.outputs, output::CombineError);
@@ -271,7 +269,6 @@ pub enum CombineError {
 
 #[cfg(test)]
 mod tests {
-    
 
     // #[test]
     // fn it_works() {

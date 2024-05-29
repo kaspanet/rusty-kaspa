@@ -164,6 +164,7 @@ ctrlc = "3.4.1"
 crypto_box = { version = "0.9.1", features = ["chacha20"] }
 dashmap = "5.5.3"
 derivative = "2.2.0"
+derive_builder = "0.20.0"
 derive_more = "0.99.17"
 dhat = "0.3.2"
 dirs = "5.0.1"

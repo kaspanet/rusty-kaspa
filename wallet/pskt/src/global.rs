@@ -1,18 +1,20 @@
 use crate::{KeySource, Version};
 use std::collections::{btree_map, BTreeMap};
 use std::ops::Add;
+use derive_builder::Builder;
 
 type Xpub = kaspa_bip32::ExtendedPublicKey<secp256k1::PublicKey>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Builder)]
+#[builder(setter)]
 pub struct Global {
     /// The version number of this PSKT.
     pub version: Version,
     /// The version number of the transaction being built.
     pub tx_version: u16,
+    #[builder(setter(strip_option))]
     /// The transaction locktime to use if no inputs specify a required locktime.
     pub fallback_lock_time: Option<u64>,
-    pub fallback_sequence: Option<u64>,
 
     pub inputs_modifiable: bool,
     pub outputs_modifiable: bool,
@@ -23,6 +25,11 @@ pub struct Global {
     pub output_count: usize,
     /// A map from xpub to the used key fingerprint and derivation path as defined by BIP 32.
     pub xpubs: BTreeMap<Xpub, KeySource>,
+
+    //     /// Proprietary key-value pairs for this output. // todo
+    //     pub proprietaries: BTreeMap<String, Vec<u8>>,
+    //     /// Unknown key-value pairs for this output.
+    //     pub unknowns: BTreeMap<String, Vec<u8>>,
 }
 
 impl Add for Global {
@@ -55,8 +62,6 @@ impl Add for Global {
                     // 3) choose longest derivation otherwise
 
                     let (fingerprint2, derivation2) = entry.get().clone();
-
-                    // todo fix me
 
                     if (derivation1 == derivation2 && fingerprint1 == fingerprint2)
                         || (derivation1.len() < derivation2.len()
