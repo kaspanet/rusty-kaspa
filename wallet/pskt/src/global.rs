@@ -1,12 +1,13 @@
+use crate::utils::combine_if_no_conflicts;
 use crate::{KeySource, Version};
+use derive_builder::Builder;
 use std::collections::{btree_map, BTreeMap};
 use std::ops::Add;
-use derive_builder::Builder;
 
 type Xpub = kaspa_bip32::ExtendedPublicKey<secp256k1::PublicKey>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Builder)]
-#[builder(setter)]
+#[builder(default)]
 pub struct Global {
     /// The version number of this PSKT.
     pub version: Version,
@@ -26,10 +27,10 @@ pub struct Global {
     /// A map from xpub to the used key fingerprint and derivation path as defined by BIP 32.
     pub xpubs: BTreeMap<Xpub, KeySource>,
 
-    //     /// Proprietary key-value pairs for this output. // todo
-    //     pub proprietaries: BTreeMap<String, Vec<u8>>,
-    //     /// Unknown key-value pairs for this output.
-    //     pub unknowns: BTreeMap<String, Vec<u8>>,
+    /// Proprietary key-value pairs for this output.
+    pub proprietaries: BTreeMap<String, Vec<u8>>,
+    /// Unknown key-value pairs for this output.
+    pub unknowns: BTreeMap<String, Vec<u8>>,
 }
 
 impl Add for Global {
@@ -65,13 +66,10 @@ impl Add for Global {
 
                     if (derivation1 == derivation2 && fingerprint1 == fingerprint2)
                         || (derivation1.len() < derivation2.len()
-                        && derivation1.as_ref()
-                        == &derivation2.as_ref()[derivation2.len() - derivation1.len()..])
+                            && derivation1.as_ref() == &derivation2.as_ref()[derivation2.len() - derivation1.len()..])
                     {
                         continue;
-                    } else if derivation2.as_ref()
-                        == &derivation1.as_ref()[derivation1.len() - derivation2.len()..]
-                    {
+                    } else if derivation2.as_ref() == &derivation1.as_ref()[derivation1.len() - derivation2.len()..] {
                         entry.insert((fingerprint1, derivation1));
                         continue;
                     }
@@ -88,6 +86,10 @@ impl Add for Global {
         // pub input_count: usize,
         // /// The number of outputs in this PSKT.
         // pub output_count: usize,
+
+        self.proprietaries =
+            combine_if_no_conflicts(self.proprietaries, rhs.proprietaries).map_err(CombineError::NotCompatibleProprietary)?;
+        self.unknowns = combine_if_no_conflicts(self.unknowns, rhs.unknowns).map_err(CombineError::NotCompatibleUnknownField)?;
         Ok(self)
     }
 }
@@ -98,12 +100,13 @@ impl Default for Global {
             version: Version::Zero,
             tx_version: kaspa_consensus_core::constants::TX_VERSION,
             fallback_lock_time: None,
-            fallback_sequence: None,
             inputs_modifiable: false,
             outputs_modifiable: false,
             input_count: 0,
             output_count: 0,
             xpubs: Default::default(),
+            proprietaries: Default::default(),
+            unknowns: Default::default(),
         }
     }
 }
@@ -129,4 +132,9 @@ pub enum CombineError {
     #[error("combining PSBT, key-source conflict for xpub {0}")]
     /// Xpubs have inconsistent key sources.
     InconsistentKeySources(Xpub),
+
+    #[error("Two different unknown field values")]
+    NotCompatibleUnknownField(crate::utils::Error<String, Vec<u8>>),
+    #[error("Two different proprietary values")]
+    NotCompatibleProprietary(crate::utils::Error<String, Vec<u8>>),
 }

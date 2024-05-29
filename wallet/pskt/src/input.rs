@@ -1,6 +1,8 @@
 // todo add builder, separate signatures
 
+use crate::utils::{combine_if_no_conflicts, Error as CombineMapErr};
 use crate::{KeySource, PartialSigs};
+use derive_builder::Builder;
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::{
     hashing::sighash_type::SigHashType,
@@ -9,10 +11,10 @@ use kaspa_consensus_core::{
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::ops::Add;
-use derive_builder::Builder;
 
 // todo add unknown field? combine them by deduplicating, if there are different values - return error?
 #[derive(Builder)]
+#[builder(default)]
 #[builder(setter(skip))]
 pub struct Input {
     #[builder(setter(strip_option))]
@@ -45,11 +47,12 @@ pub struct Input {
     /// scripts necessary for this input to pass validation.
     pub final_script_sig: Option<Vec<u8>>,
     hidden: PhantomData<()>, // prevents manual filling of fields
-
-    //     /// Proprietary key-value pairs for this output. // todo
-    //     pub proprietaries: BTreeMap<String, Vec<u8>>,
-    //     /// Unknown key-value pairs for this output.
-    //     pub unknowns: BTreeMap<String, Vec<u8>>,
+    #[builder(setter)]
+    /// Proprietary key-value pairs for this output.
+    pub proprietaries: BTreeMap<String, Vec<u8>>,
+    #[builder(setter)]
+    /// Unknown key-value pairs for this output.
+    pub unknowns: BTreeMap<String, Vec<u8>>,
 }
 
 impl Default for Input {
@@ -66,6 +69,8 @@ impl Default for Input {
             bip32_derivations: Default::default(),
             final_script_sig: Default::default(),
             hidden: Default::default(),
+            proprietaries: Default::default(),
+            unknowns: Default::default(),
         }
     }
 }
@@ -87,7 +92,6 @@ impl Add for Input {
                 that: rhs.previous_outpoint.index,
             });
         }
-        // todo check if it's correct
         self.utxo_entry = match (self.utxo_entry.take(), rhs.utxo_entry) {
             (None, None) => None,
             (Some(utxo), None) | (None, Some(utxo)) => Some(utxo),
@@ -110,7 +114,6 @@ impl Add for Input {
                 return Err(CombineError::NotCompatibleRedeemScripts { this: script_left, that: script_right })
             }
         };
-        self.bip32_derivations.extend(rhs.bip32_derivations);
 
         // todo Does Combiner allowed to change final script sig??
         // self.final_script_sig = match (self.final_script_sig.take(), rhs.final_script_sig) {
@@ -121,6 +124,12 @@ impl Add for Input {
         //         return Err(CombineError::NotCompatibleRedeemScripts { this: script_left, that: script_right })
         //     }
         // };
+
+        self.bip32_derivations = combine_if_no_conflicts(self.bip32_derivations, rhs.bip32_derivations)?;
+        self.proprietaries =
+            combine_if_no_conflicts(self.proprietaries, rhs.proprietaries).map_err(CombineError::NotCompatibleProprietary)?;
+        self.unknowns = combine_if_no_conflicts(self.unknowns, rhs.unknowns).map_err(CombineError::NotCompatibleUnknownField)?;
+
         Ok(self)
     }
 }
@@ -146,4 +155,11 @@ pub enum CombineError {
     NotCompatibleRedeemScripts { this: Vec<u8>, that: Vec<u8> },
     #[error("Two different utxos detected")]
     NotCompatibleUtxos { this: UtxoEntry, that: UtxoEntry },
+
+    #[error("Two different derivations for the same key")]
+    NotCompatibleBip32Derivations(#[from] CombineMapErr<secp256k1::PublicKey, KeySource>),
+    #[error("Two different unknown field values")]
+    NotCompatibleUnknownField(CombineMapErr<String, Vec<u8>>),
+    #[error("Two different proprietary values")]
+    NotCompatibleProprietary(CombineMapErr<String, Vec<u8>>),
 }

@@ -13,6 +13,7 @@ mod input;
 mod output;
 
 mod role;
+mod utils;
 
 pub use error::Error;
 pub use global::Global;
@@ -164,7 +165,7 @@ impl PSKT<Signer> {
                 .map(|Input { previous_outpoint, sequence, sig_op_count, .. }| TransactionInput {
                     previous_outpoint: *previous_outpoint,
                     signature_script: vec![],
-                    sequence: sequence.unwrap_or(self.global.fallback_sequence.unwrap_or(0)),
+                    sequence: sequence.unwrap_or(u64::MAX),
                     sig_op_count: sig_op_count.unwrap_or(0),
                 })
                 .collect(),
@@ -228,28 +229,25 @@ impl std::ops::Add for PSKT<Combiner> {
     type Output = Result<Self, CombineError>;
 
     fn add(mut self, mut rhs: Self) -> Self::Output {
-        self.inner_pskt.global = (std::mem::take(&mut self.inner_pskt.global) + std::mem::take(&mut rhs.inner_pskt.global))?;
+        self.inner_pskt.global = (self.inner_pskt.global + rhs.inner_pskt.global)?;
         macro_rules! combine {
             ($left:expr, $right:expr, $err: ty) => {
-                if $left.len() >  $right.len() {
-                    $left.iter_mut().zip($right.iter_mut()).try_for_each(
-                        |(left, right)| -> Result<(), $err> {
-                            *left = (std::mem::take(left) + std::mem::take(right))?;
-                            Ok(())
-                        },
-                    )?;
+                if $left.len() > $right.len() {
+                    $left.iter_mut().zip($right.iter_mut()).try_for_each(|(left, right)| -> Result<(), $err> {
+                        *left = (std::mem::take(left) + std::mem::take(right))?;
+                        Ok(())
+                    })?;
                     $left
                 } else {
-                     $right.iter_mut().zip($left.iter_mut()).try_for_each(
-                        |(left, right)| -> Result<(), $err> {
-                            *left = (std::mem::take(left) + std::mem::take(right))?;
-                            Ok(())
-                        },
-                    )?;
+                    $right.iter_mut().zip($left.iter_mut()).try_for_each(|(left, right)| -> Result<(), $err> {
+                        *left = (std::mem::take(left) + std::mem::take(right))?;
+                        Ok(())
+                    })?;
                     $right
                 }
             };
         }
+        // todo add sort to build deterministic combination
         self.inner_pskt.inputs = combine!(self.inner_pskt.inputs, rhs.inner_pskt.inputs, input::CombineError);
         self.inner_pskt.outputs = combine!(self.inner_pskt.outputs, rhs.inner_pskt.outputs, output::CombineError);
         Ok(self)
