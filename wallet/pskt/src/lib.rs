@@ -15,6 +15,7 @@ mod output;
 mod role;
 mod utils;
 
+use crate::role::Finalizer;
 pub use error::Error;
 pub use global::Global;
 pub use input::Input;
@@ -185,7 +186,8 @@ impl PSKT<Signer> {
         let entries = self.inputs.iter().filter_map(|Input { utxo_entry, .. }| utxo_entry.clone()).collect();
         SignableTransaction::with_entries(tx, entries)
     }
-    pub fn pass_signature_sync<SignFn, E>(&mut self, sign_fn: SignFn) -> Result<(), E>
+    // todo use iterator instead of vector
+    pub fn pass_signature_sync<SignFn, E>(mut self, sign_fn: SignFn) -> Result<Self, E>
     where
         E: Display,
         SignFn: FnOnce(SignableTransaction, Vec<SigHashType>) -> Result<Vec<SignInputOk>, E>,
@@ -199,9 +201,10 @@ impl PSKT<Signer> {
             },
         );
 
-        Ok(())
+        Ok(self)
     }
-    pub async fn pass_signature<SignFn, Fut, E>(&mut self, sign_fn: SignFn) -> Result<(), E>
+    // todo use iterator instead of vector
+    pub async fn pass_signature<SignFn, Fut, E>(mut self, sign_fn: SignFn) -> Result<Self, E>
     where
         E: Display,
         Fut: Future<Output = Result<Vec<SignInputOk>, E>>,
@@ -215,7 +218,7 @@ impl PSKT<Signer> {
                 input.partial_sigs.insert(pub_key, signature);
             },
         );
-        Ok(())
+        Ok(self)
     }
 }
 
@@ -254,6 +257,35 @@ impl std::ops::Add for PSKT<Combiner> {
     }
 }
 
+impl PSKT<Finalizer> {
+    pub fn finalize_sync<E: Display>(
+        self,
+        final_sig_fn: impl FnOnce(&Inner) -> Result<Vec<Vec<u8>>, E>,
+    ) -> Result<Self, FinalizeError<E>> {
+        let sigs = final_sig_fn(&self);
+        self.finalize_internal(sigs)
+    }
+
+    pub async fn finalize<F, Fut, E>(self, final_sig_fn: F) -> Result<Self, FinalizeError<E>>
+    where
+        E: Display,
+        F: FnOnce(&Inner) -> Fut,
+        Fut: Future<Output = Result<Vec<Vec<u8>>, E>>,
+    {
+        let sigs = final_sig_fn(&self).await;
+        self.finalize_internal(sigs)
+    }
+
+    fn finalize_internal<E: Display>(mut self, sigs: Result<Vec<Vec<u8>>, E>) -> Result<Self, FinalizeError<E>> {
+        let sigs = sigs?;
+        if sigs.len() != self.inputs.len() {
+            return Err(FinalizeError::WrongFinalizedSigsCount { expected: self.inputs.len(), actual: sigs.len() });
+        }
+        self.inner_pskt.inputs.iter_mut().zip(sigs).for_each(|(input, sig)| input.final_script_sig = Some(sig));
+        Ok(self)
+    }
+}
+
 /// Error combining pskt.
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
 pub enum CombineError {
@@ -263,6 +295,14 @@ pub enum CombineError {
     Inputs(#[from] input::CombineError),
     #[error(transparent)]
     Outputs(#[from] output::CombineError),
+}
+
+#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
+pub enum FinalizeError<E> {
+    #[error("Signatures count mismatch")]
+    WrongFinalizedSigsCount { expected: usize, actual: usize },
+    #[error(transparent)]
+    FinalaziCb(#[from] E),
 }
 
 #[cfg(test)]
