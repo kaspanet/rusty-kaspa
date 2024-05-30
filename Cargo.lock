@@ -3253,6 +3253,7 @@ name = "kaspa-rpc-service"
 version = "0.14.1"
 dependencies = [
  "async-trait",
+ "itertools 0.11.0",
  "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
