@@ -36,6 +36,7 @@ pub(crate) trait Pool {
 
     /// Returns an index over either high or low priority transaction ids which can
     /// in turn be topologically ordered.
+    #[allow(dead_code)]
     fn index(&self, priority: Priority) -> PoolIndex {
         let transactions: TransactionIdSet =
             self.all().iter().filter_map(|(id, tx)| if tx.priority == priority { Some(*id) } else { None }).collect();

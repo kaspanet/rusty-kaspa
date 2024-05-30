@@ -6,7 +6,7 @@ pub mod sighash;
 pub mod sighash_type;
 pub mod tx;
 
-pub(crate) trait HasherExtensions {
+pub trait HasherExtensions {
     /// Writes the len as u64 little endian bytes
     fn write_len(&mut self, len: usize) -> &mut Self;
 

@@ -47,7 +47,7 @@ impl SyncMonitor {
     pub async fn track(&self, is_synced: bool) -> Result<()> {
         if self.is_synced() != is_synced || !is_synced && !self.is_running() {
             if is_synced {
-                log_trace!("sync monitor: node synced state detected");
+                // log_trace!("sync monitor: node synced state detected");
                 self.inner.is_synced.store(true, Ordering::SeqCst);
                 if self.is_running() {
                     log_trace!("sync monitor: stopping sync monitor task");
@@ -56,7 +56,7 @@ impl SyncMonitor {
                 self.notify(Events::SyncState { sync_state: SyncState::Synced }).await?;
             } else {
                 self.inner.is_synced.store(false, Ordering::SeqCst);
-                log_trace!("sync monitor: node is not synced");
+                // log_trace!("sync monitor: node is not synced");
                 if !self.is_running() {
                     log_trace!("sync monitor: starting sync monitor task");
                     self.start_task().await?;

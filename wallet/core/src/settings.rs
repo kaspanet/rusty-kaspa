@@ -27,7 +27,7 @@ pub enum WalletSettings {
 #[async_trait]
 impl DefaultSettings for WalletSettings {
     async fn defaults() -> Vec<(Self, Value)> {
-        vec![(Self::Server, to_value("127.0.0.1").unwrap()), (Self::Wallet, to_value("kaspa").unwrap())]
+        vec![(Self::Server, to_value("public").unwrap()), (Self::Wallet, to_value("kaspa").unwrap())]
     }
 }
 

@@ -1,0 +1,50 @@
+[package]
+name = "kaspa-wallet-keys"
+description = "Kaspa wallet key primitives"
+keywords = ["kaspa", "wallet"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+async-trait.workspace = true
+borsh.workspace = true
+downcast.workspace = true
+faster-hex.workspace = true
+hmac.workspace = true
+js-sys.workspace = true
+kaspa-addresses.workspace = true
+kaspa-bip32.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-txscript-errors.workspace = true
+kaspa-txscript.workspace = true
+kaspa-utils.workspace = true
+kaspa-wasm-core.workspace = true
+rand.workspace = true
+ripemd.workspace = true
+secp256k1.workspace = true
+serde_json.workspace = true
+serde-wasm-bindgen.workspace = true
+serde.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+wasm-bindgen-futures.workspace = true
+wasm-bindgen.workspace = true
+workflow-core.workspace = true
+workflow-wasm.workspace = true
+zeroize.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tokio.workspace = true
+
+[lints.clippy]
+empty_docs = "allow"

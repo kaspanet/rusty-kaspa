@@ -41,7 +41,7 @@ impl Default for Metrics {
 }
 
 impl Metrics {
-    pub fn set_rpc(&self, rpc: Option<Arc<dyn RpcApi>>) {
+    pub fn bind_rpc(&self, rpc: Option<Arc<dyn RpcApi>>) {
         *self.rpc.lock().unwrap() = rpc;
     }
 
@@ -81,23 +81,23 @@ impl Metrics {
                     },
                     _ = interval.next().fuse() => {
 
-                            let last_metrics_data = current_metrics_data;
-                            current_metrics_data = MetricsData::new(unixtime_as_millis_f64());
+                        let last_metrics_data = current_metrics_data;
+                        current_metrics_data = MetricsData::new(unixtime_as_millis_f64());
 
-                            if let Some(rpc) = this.rpc() {
-                                if let Err(err) = this.sample_metrics(rpc.clone(), &mut current_metrics_data).await {
-                                    log_trace!("Metrics::sample_metrics() error: {}", err);
-                                }
+                        if let Some(rpc) = this.rpc() {
+                            if let Err(err) = this.sample_metrics(rpc.clone(), &mut current_metrics_data).await {
+                                log_trace!("Metrics::sample_metrics() error: {}", err);
                             }
+                        }
 
-                            this.data.lock().unwrap().replace(current_metrics_data.clone());
+                        this.data.lock().unwrap().replace(current_metrics_data.clone());
 
-                            if let Some(sink) = this.sink() {
-                                let snapshot = MetricsSnapshot::from((&last_metrics_data, &current_metrics_data));
-                                if let Some(future) = sink(snapshot) {
-                                    future.await.ok();
-                                }
+                        if let Some(sink) = this.sink() {
+                            let snapshot = MetricsSnapshot::from((&last_metrics_data, &current_metrics_data));
+                            if let Some(future) = sink(snapshot) {
+                                future.await.ok();
                             }
+                        }
                     }
                 }
             }

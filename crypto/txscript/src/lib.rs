@@ -441,7 +441,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
                 let pk = secp256k1::XOnlyPublicKey::from_slice(key).map_err(TxScriptError::InvalidSignature)?;
                 let sig = secp256k1::schnorr::Signature::from_slice(sig).map_err(TxScriptError::InvalidSignature)?;
                 let sig_hash = calc_schnorr_signature_hash(tx, id, hash_type, self.reused_values);
-                let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
+                let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
                 let sig_cache_key =
                     SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Schnorr(pk), message: msg };
 
@@ -476,7 +476,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
                 let pk = secp256k1::PublicKey::from_slice(key).map_err(TxScriptError::InvalidSignature)?;
                 let sig = secp256k1::ecdsa::Signature::from_compact(sig).map_err(TxScriptError::InvalidSignature)?;
                 let sig_hash = calc_ecdsa_signature_hash(tx, id, hash_type, self.reused_values);
-                let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
+                let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
                 let sig_cache_key = SigCacheKey { signature: Signature::Ecdsa(sig), pub_key: PublicKey::Ecdsa(pk), message: msg };
 
                 match self.sig_cache.get(&sig_cache_key) {
