@@ -86,7 +86,7 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
             "\
             PLEASE NOTE: The optional bip39 mnemonic passphrase, if provided, will be required to \
             issue transactions. This passphrase will also be required when recovering your wallet \
-            in addition to your private key or mnemonic. If you loose this passphrase, you will not \
+            in addition to your private key or mnemonic. If you lose this passphrase, you will not \
             be able to use or recover your wallet! \
             \
             If you do not want to use bip39 recovery passphrase, press ENTER.\
