@@ -1,5 +1,4 @@
 use crate::model::message::*;
-use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::Display;
 use kaspa_notify::{
     events::EventType,
@@ -13,10 +12,11 @@ use kaspa_notify::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use wasm_bindgen::JsValue;
+use workflow_serializer::prelude::*;
 use workflow_wasm::serde::to_value;
 
 full_featured! {
-#[derive(Clone, Debug, Display, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Display, Serialize, Deserialize)]
 pub enum Notification {
     #[display(fmt = "BlockAdded notification: block hash {}", "_0.block.header.hash")]
     BlockAdded(BlockAddedNotification),
@@ -113,14 +113,91 @@ impl NotificationTrait for Notification {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
+impl Serializer for Notification {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u32, &1, writer)?;
+        match self {
+            Notification::BlockAdded(notification) => {
+                store!(u32, &0, writer)?;
+                serialize!(BlockAddedNotification, notification, writer)?;
+            }
+            Notification::VirtualChainChanged(notification) => {
+                store!(u32, &1, writer)?;
+                serialize!(VirtualChainChangedNotification, notification, writer)?;
+            }
+            Notification::FinalityConflict(notification) => {
+                store!(u32, &2, writer)?;
+                serialize!(FinalityConflictNotification, notification, writer)?;
+            }
+            Notification::FinalityConflictResolved(notification) => {
+                store!(u32, &3, writer)?;
+                serialize!(FinalityConflictResolvedNotification, notification, writer)?;
+            }
+            Notification::UtxosChanged(notification) => {
+                store!(u32, &4, writer)?;
+                serialize!(UtxosChangedNotification, notification, writer)?;
+            }
+            Notification::SinkBlueScoreChanged(notification) => {
+                store!(u32, &5, writer)?;
+                serialize!(SinkBlueScoreChangedNotification, notification, writer)?;
+            }
+            Notification::VirtualDaaScoreChanged(notification) => {
+                store!(u32, &6, writer)?;
+                serialize!(VirtualDaaScoreChangedNotification, notification, writer)?;
+            }
+            Notification::PruningPointUtxoSetOverride(notification) => {
+                store!(u32, &7, writer)?;
+                serialize!(PruningPointUtxoSetOverrideNotification, notification, writer)?;
+            }
+            Notification::NewBlockTemplate(notification) => {
+                store!(u32, &8, writer)?;
+                serialize!(NewBlockTemplateNotification, notification, writer)?;
+            }
+        }
+        Ok(())
+    }
 
-    #[test]
-    fn test_notification_from_bytes() {
-        let bytes = &vec![6, 169, 167, 75, 2, 0, 0, 0, 0][..];
-        let notification = Notification::try_from_slice(bytes);
-        println!("notification: {notification:?}");
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, buf)?;
+        match load!(u32, buf)? {
+            0 => {
+                let notification = deserialize!(BlockAddedNotification, buf)?;
+                Ok(Notification::BlockAdded(notification))
+            }
+            1 => {
+                let notification = deserialize!(VirtualChainChangedNotification, buf)?;
+                Ok(Notification::VirtualChainChanged(notification))
+            }
+            2 => {
+                let notification = deserialize!(FinalityConflictNotification, buf)?;
+                Ok(Notification::FinalityConflict(notification))
+            }
+            3 => {
+                let notification = deserialize!(FinalityConflictResolvedNotification, buf)?;
+                Ok(Notification::FinalityConflictResolved(notification))
+            }
+            4 => {
+                let notification = deserialize!(UtxosChangedNotification, buf)?;
+                Ok(Notification::UtxosChanged(notification))
+            }
+            5 => {
+                let notification = deserialize!(SinkBlueScoreChangedNotification, buf)?;
+                Ok(Notification::SinkBlueScoreChanged(notification))
+            }
+            6 => {
+                let notification = deserialize!(VirtualDaaScoreChangedNotification, buf)?;
+                Ok(Notification::VirtualDaaScoreChanged(notification))
+            }
+            7 => {
+                let notification = deserialize!(PruningPointUtxoSetOverrideNotification, buf)?;
+                Ok(Notification::PruningPointUtxoSetOverride(notification))
+            }
+            8 => {
+                let notification = deserialize!(NewBlockTemplateNotification, buf)?;
+                Ok(Notification::NewBlockTemplate(notification))
+            }
+            _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid variant")),
+        }
     }
 }
+

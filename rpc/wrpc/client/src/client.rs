@@ -18,7 +18,7 @@ use workflow_rpc::client::Ctl as WrpcCtl;
 pub use workflow_rpc::client::{
     ConnectOptions, ConnectResult, ConnectStrategy, Resolver as RpcResolver, ResolverResult, WebSocketConfig, WebSocketError,
 };
-
+use workflow_serializer::prelude::*;
 type RpcClientNotifier = Arc<Notifier<Notification, ChannelConnection>>;
 
 struct Inner {
@@ -73,16 +73,16 @@ impl Inner {
             let notification_sender_ = notification_relay_channel.sender.clone();
             interface.notification(
                 notification_op,
-                workflow_rpc::client::Notification::new(move |notification: kaspa_rpc_core::Notification| {
+                workflow_rpc::client::Notification::new(move |notification: Serializable<kaspa_rpc_core::Notification>| {
                     let notification_sender = notification_sender_.clone();
                     Box::pin(async move {
                         // log_info!("notification receivers: {}", notification_sender.receiver_count());
                         // log_trace!("notification {:?}", notification);
                         if notification_sender.receiver_count() > 1 {
                             // log_info!("notification: posting to channel: {notification:?}");
-                            notification_sender.send(notification).await?;
+                            notification_sender.send(notification.into_inner()).await?;
                         } else {
-                            log_warn!("WARNING: Kaspa RPC notification is not consumed by user: {:?}", notification);
+                            log_warn!("WARNING: Kaspa RPC notification is not consumed by user: {:?}", notification.into_inner());
                         }
                         Ok(())
                     })
@@ -121,14 +121,15 @@ impl Inner {
 
     /// Start sending notifications of some type to the client.
     async fn start_notify_to_client(&self, scope: Scope) -> RpcResult<()> {
-        let _response: SubscribeResponse = self.rpc_client.call(RpcApiOps::Subscribe, scope).await.map_err(|err| err.to_string())?;
+        let _response: Serializable<SubscribeResponse> =
+            self.rpc_client.call(RpcApiOps::Subscribe, Serializable(scope)).await.map_err(|err| err.to_string())?;
         Ok(())
     }
 
     /// Stop sending notifications of some type to the client.
     async fn stop_notify_to_client(&self, scope: Scope) -> RpcResult<()> {
-        let _response: UnsubscribeResponse =
-            self.rpc_client.call(RpcApiOps::Unsubscribe, scope).await.map_err(|err| err.to_string())?;
+        let _response: Serializable<UnsubscribeResponse> =
+            self.rpc_client.call(RpcApiOps::Unsubscribe, Serializable(scope)).await.map_err(|err| err.to_string())?;
         Ok(())
     }
 
@@ -584,6 +585,7 @@ impl RpcApi for KaspaRpcClient {
     build_wrpc_client_interface!(
         RpcApiOps,
         [
+            Ping,
             AddPeer,
             Ban,
             EstimateNetworkHashesPerSecond,
@@ -612,7 +614,6 @@ impl RpcApi for KaspaRpcClient {
             GetUtxosByAddresses,
             GetSinkBlueScore,
             GetVirtualChainFromBlock,
-            Ping,
             ResolveFinalityConflict,
             Shutdown,
             SubmitBlock,

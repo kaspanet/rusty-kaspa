@@ -1,7 +1,7 @@
-use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use workflow_serializer::prelude::*;
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockCount {
     pub header_count: u64,
@@ -11,6 +11,24 @@ pub struct BlockCount {
 impl BlockCount {
     pub fn new(block_count: u64, header_count: u64) -> Self {
         Self { block_count, header_count }
+    }
+}
+
+impl Serializer for BlockCount {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u32, &1, writer)?;
+        store!(u64, &self.header_count, writer)?;
+        store!(u64, &self.block_count, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, buf)?;
+        let header_count: u64 = load!(u64, buf)?;
+        let block_count: u64 = load!(u64, buf)?;
+
+        Ok(Self { header_count, block_count })
     }
 }
 

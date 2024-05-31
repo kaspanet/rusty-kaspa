@@ -3,6 +3,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use derive_more::Display;
 use kaspa_addresses::Address;
 use serde::{Deserialize, Serialize};
+use workflow_serializer::prelude::*;
 
 macro_rules! scope_enum {
     ($(#[$meta:meta])* $vis:vis enum $name:ident {
@@ -53,8 +54,31 @@ impl Scope {
     }
 }
 
+impl Serializer for Scope {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u32, &1, writer)?;
+        store!(Scope, self, writer)?;
+        Ok(())
+    }
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, buf)?;
+        load!(Scope, buf)
+    }
+}
+
 #[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct BlockAddedScope {}
+
+impl Serializer for BlockAddedScope {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u32, &1, writer)?;
+        Ok(())
+    }
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, buf)?;
+        Ok(Self {})
+    }
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct VirtualChainChangedScope {
@@ -73,11 +97,46 @@ impl std::fmt::Display for VirtualChainChangedScope {
     }
 }
 
+impl Serializer for VirtualChainChangedScope {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u32, &1, writer)?;
+        store!(bool, &self.include_accepted_transaction_ids, writer)?;
+        Ok(())
+    }
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, buf)?;
+        let include_accepted_transaction_ids: bool = load!(bool, buf)?;
+        Ok(Self { include_accepted_transaction_ids })
+    }
+}
+
 #[derive(Clone, Display, Debug, PartialEq, Eq, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct FinalityConflictScope {}
 
+impl Serializer for FinalityConflictScope {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u32, &1, writer)?;
+        Ok(())
+    }
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, buf)?;
+        Ok(Self {})
+    }
+}
+
 #[derive(Clone, Display, Debug, PartialEq, Eq, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct FinalityConflictResolvedScope {}
+
+impl Serializer for FinalityConflictResolvedScope {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u32, &1, writer)?;
+        Ok(())
+    }
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, buf)?;
+        Ok(Self {})
+    }
+}
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct UtxosChangedScope {
@@ -109,14 +168,71 @@ impl UtxosChangedScope {
     }
 }
 
+impl Serializer for UtxosChangedScope {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u32, &1, writer)?;
+        store!(Vec<Address>, &self.addresses, writer)?;
+        Ok(())
+    }
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, buf)?;
+        let addresses: Vec<Address> = load!(Vec<Address>, buf)?;
+        Ok(Self { addresses })
+    }
+}
+
 #[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct SinkBlueScoreChangedScope {}
+
+impl Serializer for SinkBlueScoreChangedScope {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u32, &1, writer)?;
+        Ok(())
+    }
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, buf)?;
+        Ok(Self {})
+    }
+}
 
 #[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct VirtualDaaScoreChangedScope {}
 
+impl Serializer for VirtualDaaScoreChangedScope {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u32, &1, writer)?;
+        Ok(())
+    }
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, buf)?;
+        Ok(Self {})
+    }
+}
+
 #[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct PruningPointUtxoSetOverrideScope {}
 
+impl Serializer for PruningPointUtxoSetOverrideScope {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u32, &1, writer)?;
+        Ok(())
+    }
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, buf)?;
+        Ok(Self {})
+    }
+}
+
 #[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct NewBlockTemplateScope {}
+
+impl Serializer for NewBlockTemplateScope {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u32, &1, writer)?;
+        Ok(())
+    }
+    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, buf)?;
+        Ok(Self {})
+    }
+}

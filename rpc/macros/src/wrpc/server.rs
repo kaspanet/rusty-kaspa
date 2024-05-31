@@ -50,13 +50,13 @@ impl ToTokens for RpcTable {
 
             targets.push(quote! {
                 #rpc_api_ops::#handler => {
-                    interface.method(#rpc_api_ops::#handler, method!(|server_ctx: #server_ctx_type, connection_ctx: #connection_ctx_type, request: #request_type| async move {
+                    interface.method(#rpc_api_ops::#handler, method!(|server_ctx: #server_ctx_type, connection_ctx: #connection_ctx_type, request: Serializable<#request_type>| async move {
                         let verbose = server_ctx.verbose();
                         if verbose { workflow_log::log_info!("request: {:?}",request); }
-                        let response: #response_type = server_ctx.rpc_service(&connection_ctx).#fn_call(request).await
+                        let response: #response_type = server_ctx.rpc_service(&connection_ctx).#fn_call(request.into_inner()).await
                             .map_err(|e|ServerError::Text(e.to_string()))?;
                         if verbose { workflow_log::log_info!("response: {:?}",response); }
-                        Ok(response)
+                        Ok(Serializable(response))
                     }));
                 }
             });
@@ -72,6 +72,7 @@ impl ToTokens for RpcTable {
                 >::new(#server_ctx);
 
                 for op in #rpc_api_ops::list() {
+                    use workflow_serializer::prelude::*;
                     match op {
                         #(#targets)*
                         _ => { }
