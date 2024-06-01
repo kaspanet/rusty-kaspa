@@ -12,7 +12,7 @@ pub const MAX_SCRIPT_PUBLIC_KEY_VERSION: u16 = 0;
 /// SompiPerKaspa is the number of sompi in one kaspa (1 KAS).
 pub const SOMPI_PER_KASPA: u64 = 100_000_000;
 
-/// The parameter for scaling inverse KAS value to mass units (unpublished KIP-0009)
+/// The parameter for scaling inverse KAS value to mass units (KIP-0009)
 pub const STORAGE_MASS_PARAMETER: u64 = SOMPI_PER_KASPA * 10_000;
 
 /// MaxSompi is the maximum transaction amount allowed in sompi.

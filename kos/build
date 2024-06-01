@@ -1,3 +1,0 @@
-cargo fmt --all
-
-wasm-pack build --target web --out-name kaspa --out-dir app/wasm $@

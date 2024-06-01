@@ -35,7 +35,7 @@ impl TransactionValidator {
             // Storage mass hardfork was activated
             self.check_mass_commitment(tx)?;
 
-            if pov_daa_score < self.storage_mass_activation_daa_score + 10 {
+            if pov_daa_score < self.storage_mass_activation_daa_score + 10 && self.storage_mass_activation_daa_score > 0 {
                 warn!("--------- Storage mass hardfork was activated successfully!!! --------- (DAA score: {})", pov_daa_score);
             }
         }
@@ -98,8 +98,7 @@ impl TransactionValidator {
     fn check_mass_commitment(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
         let calculated_contextual_mass = self
             .mass_calculator
-            .calc_tx_storage_mass(tx)
-            .and_then(|m| m.checked_add(self.mass_calculator.calc_tx_compute_mass(tx.tx())))
+            .calc_tx_overall_mass(tx, None, crate::processes::mass::Kip9Version::Alpha)
             .ok_or(TxRuleError::MassIncomputable)?;
         let committed_contextual_mass = tx.tx().mass();
         if committed_contextual_mass != calculated_contextual_mass {
@@ -676,7 +675,7 @@ mod tests {
                 is_coinbase: false,
             },
         ];
-        let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
+        let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
         let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), schnorr_key);
         let populated_tx = signed_tx.as_verifiable();
         assert_eq!(tv.check_scripts(&populated_tx), Ok(()));

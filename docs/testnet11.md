@@ -1,8 +1,8 @@
 # Testnet 11
 
-*Testnet 11* is the network where we will launch the first public 10BPS Kaspa experiment. The goal of this document is to provide a quick guide for anyone who wants to participate.
+*Testnet 11* is the test network running the first public 10BPS Kaspa experiment. The goal of this document is to provide a quick guide for anyone who wants to participate.
 
-In the future testnet 11 will act as a staging zone for all sorts of crazy experiments, allowing us to stress test various approaches and ideas on a global scale with the participation of the community. The approaches we decide to adopt will then be stress tested for longer periods on testnet 10 before being incorporated into the mainnet.
+In the future testnet 11 will act as a staging zone for all sorts of experiments, allowing us to stress test various approaches and ideas on a global scale with the participation of the community. The approaches we decide to adopt will then be stress tested for longer periods on testnet 10 before being incorporated into the mainnet.
 
 ## Overview
 

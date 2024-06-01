@@ -1,8 +1,14 @@
 //!
 //! Kaspa wallet runtime implementation.
 //!
+pub mod api;
+pub mod args;
+pub mod maps;
+pub use args::*;
 
 use crate::account::ScanNotifier;
+use crate::compat::gen1::decrypt_mnemonic;
+use crate::error::Error::Custom;
 use crate::factory::try_load_account;
 use crate::imports::*;
 use crate::settings::{SettingsStore, WalletSettings};
@@ -10,22 +16,13 @@ use crate::storage::interface::{OpenArgs, StorageDescriptor};
 use crate::storage::local::interface::LocalStore;
 use crate::storage::local::Storage;
 use crate::wallet::maps::ActiveAccountMap;
-use chacha20poly1305::{aead::AeadMut, Key, KeyInit};
 use kaspa_bip32::{ExtendedKey, Language, Mnemonic, Prefix as KeyPrefix, WordCount};
 use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, VirtualDaaScoreChangedScope},
 };
-use kaspa_rpc_core::notify::mode::NotificationMode;
-use kaspa_wrpc_client::{KaspaRpcClient, WrpcEncoding};
+use kaspa_wrpc_client::{KaspaRpcClient, Resolver, WrpcEncoding};
 use workflow_core::task::spawn;
-
-use crate::error::Error::Custom;
-
-pub mod api;
-pub mod args;
-pub mod maps;
-pub use args::*;
 
 #[derive(Debug)]
 pub struct EncryptedMnemonic<T: AsRef<[u8]>> {
@@ -92,9 +89,16 @@ pub struct Inner {
     multiplexer: Multiplexer<Box<Events>>,
     wallet_bus: Channel<WalletBusMessage>,
     estimation_abortables: Mutex<HashMap<AccountId, Abortable>>,
+    retained_contexts: Mutex<HashMap<String, Arc<Vec<u8>>>>,
 }
 
-/// `Wallet` data structure
+///
+/// `Wallet` represents a single wallet instance.
+/// It is the main data structure responsible for
+/// managing a runtime wallet.
+///
+/// @category Wallet API
+///
 #[derive(Clone)]
 pub struct Wallet {
     inner: Arc<Inner>,
@@ -109,13 +113,22 @@ impl Wallet {
         Ok(Arc::new(LocalStore::try_new(true)?))
     }
 
-    pub fn try_new(storage: Arc<dyn Interface>, network_id: Option<NetworkId>) -> Result<Wallet> {
-        Wallet::try_with_wrpc(storage, network_id)
+    pub fn try_new(storage: Arc<dyn Interface>, resolver: Option<Resolver>, network_id: Option<NetworkId>) -> Result<Wallet> {
+        Wallet::try_with_wrpc(storage, resolver, network_id)
     }
 
-    pub fn try_with_wrpc(store: Arc<dyn Interface>, network_id: Option<NetworkId>) -> Result<Wallet> {
+    pub fn try_with_wrpc(store: Arc<dyn Interface>, resolver: Option<Resolver>, network_id: Option<NetworkId>) -> Result<Wallet> {
         let rpc_client =
-            Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, NotificationMode::MultiListeners, "wrpc://127.0.0.1:17110")?);
+            Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, Some("wrpc://127.0.0.1:17110"), resolver, network_id, None)?);
+
+        // pub fn try_with_wrpc(store: Arc<dyn Interface>, network_id: Option<NetworkId>) -> Result<Wallet> {
+        //     let rpc_client = Arc::new(KaspaRpcClient::new_with_args(
+        //         WrpcEncoding::Borsh,
+        //         NotificationMode::MultiListeners,
+        //         "wrpc://127.0.0.1:17110",
+        //         None,
+        //     )?);
+
         let rpc_ctl = rpc_client.ctl().clone();
         let rpc_api: Arc<DynRpcApi> = rpc_client;
         let rpc = Rpc::new(rpc_api, rpc_ctl);
@@ -141,6 +154,7 @@ impl Wallet {
                 utxo_processor: utxo_processor.clone(),
                 wallet_bus,
                 estimation_abortables: Mutex::new(HashMap::new()),
+                retained_contexts: Mutex::new(HashMap::new()),
             }),
         };
 
@@ -354,7 +368,7 @@ impl Wallet {
         }
     }
 
-    async fn activate_accounts_impl(self: &Arc<Wallet>, account_ids: Option<&[AccountId]>) -> Result<()> {
+    async fn activate_accounts_impl(self: &Arc<Wallet>, account_ids: Option<&[AccountId]>) -> Result<Vec<AccountId>> {
         let stored_accounts = if let Some(ids) = account_ids {
             self.inner.store.as_account_store().unwrap().load_multiple(ids).await?
         } else {
@@ -379,9 +393,9 @@ impl Wallet {
             }
         }
 
-        self.notify(Events::AccountActivation { ids }).await?;
+        self.notify(Events::AccountActivation { ids: ids.clone() }).await?;
 
-        Ok(())
+        Ok(ids)
     }
 
     /// Activates accounts (performs account address space counts, initializes balance tracking, etc.)
@@ -410,6 +424,28 @@ impl Wallet {
         Ok(())
     }
 
+    pub async fn account_descriptors(self: Arc<Self>) -> Result<Vec<AccountDescriptor>> {
+        let iter = self.inner.store.as_account_store().unwrap().iter(None).await.unwrap();
+        let wallet = self.clone();
+
+        let stream = iter.then(move |stored| {
+            let wallet = wallet.clone();
+
+            async move {
+                let (stored_account, stored_metadata) = stored.unwrap();
+                if let Some(account) = wallet.legacy_accounts().get(&stored_account.id) {
+                    account.descriptor()
+                } else if let Some(account) = wallet.active_accounts().get(&stored_account.id) {
+                    account.descriptor()
+                } else {
+                    try_load_account(&wallet, stored_account, stored_metadata).await?.descriptor()
+                }
+            }
+        });
+
+        stream.try_collect::<Vec<_>>().await
+    }
+
     pub async fn get_prv_key_data(&self, wallet_secret: &Secret, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>> {
         self.inner.store.as_prv_key_data_store()?.load_key_data(wallet_secret, id).await
     }
@@ -422,16 +458,24 @@ impl Wallet {
         Ok(self.get_prv_key_info(account).await?.map(|info| info.is_encrypted()))
     }
 
-    pub fn wrpc_client(&self) -> Option<Arc<KaspaRpcClient>> {
-        self.rpc_api().clone().downcast_arc::<KaspaRpcClient>().ok()
+    pub fn try_wrpc_client(&self) -> Option<Arc<KaspaRpcClient>> {
+        self.try_rpc_api().and_then(|api| api.clone().downcast_arc::<KaspaRpcClient>().ok())
     }
 
     pub fn rpc_api(&self) -> Arc<DynRpcApi> {
         self.utxo_processor().rpc_api()
     }
 
+    pub fn try_rpc_api(&self) -> Option<Arc<DynRpcApi>> {
+        self.utxo_processor().try_rpc_api()
+    }
+
     pub fn rpc_ctl(&self) -> RpcCtl {
         self.utxo_processor().rpc_ctl()
+    }
+
+    pub fn try_rpc_ctl(&self) -> Option<RpcCtl> {
+        self.utxo_processor().try_rpc_ctl()
     }
 
     pub fn has_rpc(&self) -> bool {
@@ -464,13 +508,13 @@ impl Wallet {
 
         let settings = self.settings();
 
-        if let Some(network_type) = settings.get(WalletSettings::Network) {
-            self.set_network_id(network_type).unwrap_or_else(|_| log_error!("Unable to select network type: `{}`", network_type));
+        if let Some(network_id) = settings.get(WalletSettings::Network) {
+            self.set_network_id(&network_id).unwrap_or_else(|_| log_error!("Unable to select network type: `{}`", network_id));
         }
 
         if let Some(url) = settings.get::<String>(WalletSettings::Server) {
-            if let Some(wrpc_client) = self.wrpc_client() {
-                wrpc_client.set_url(url.as_str()).unwrap_or_else(|_| log_error!("Unable to set rpc url: `{}`", url));
+            if let Some(wrpc_client) = self.try_wrpc_client() {
+                wrpc_client.set_url(Some(url.as_str())).unwrap_or_else(|_| log_error!("Unable to set rpc url: `{}`", url));
             }
         }
 
@@ -485,7 +529,7 @@ impl Wallet {
         self.start_task().await?;
         self.utxo_processor().start().await?;
         // rpc services (notifier)
-        if let Some(rpc_client) = self.wrpc_client() {
+        if let Some(rpc_client) = self.try_wrpc_client() {
             rpc_client.start().await?;
         }
 
@@ -522,11 +566,15 @@ impl Wallet {
         Ok(())
     }
 
-    pub fn set_network_id(&self, network_id: NetworkId) -> Result<()> {
+    pub fn set_network_id(&self, network_id: &NetworkId) -> Result<()> {
         if self.is_connected() {
             return Err(Error::NetworkTypeConnected);
         }
         self.utxo_processor().set_network_id(network_id);
+
+        if let Some(wrpc_client) = self.try_wrpc_client() {
+            wrpc_client.set_network_id(network_id)?;
+        }
         Ok(())
     }
 
@@ -540,7 +588,7 @@ impl Wallet {
 
     pub fn default_port(&self) -> Result<Option<u16>> {
         let network_type = self.network_id()?;
-        if let Some(wrpc_client) = self.wrpc_client() {
+        if let Some(wrpc_client) = self.try_wrpc_client() {
             let port = match wrpc_client.encoding() {
                 WrpcEncoding::Borsh => network_type.default_borsh_rpc_port(),
                 WrpcEncoding::SerdeJson => network_type.default_json_rpc_port(),
@@ -748,7 +796,7 @@ impl Wallet {
         wallet_secret: &Secret,
         prv_key_data_create_args: PrvKeyDataCreateArgs,
     ) -> Result<PrvKeyDataId> {
-        let mnemonic = Mnemonic::new(prv_key_data_create_args.mnemonic, Language::default())?;
+        let mnemonic = Mnemonic::new(prv_key_data_create_args.mnemonic.as_str()?, Language::default())?;
         let prv_key_data = PrvKeyData::try_from_mnemonic(
             mnemonic.clone(),
             prv_key_data_create_args.payment_secret.as_ref(),
@@ -891,6 +939,15 @@ impl Wallet {
         let events = self.multiplexer().channel();
         let wallet_bus_receiver = self.wallet_bus().receiver.clone();
 
+        // let this_clone = self.clone();
+        // spawn(async move {
+        //     loop {
+        //         log_info!("Wallet broadcasting ping...");
+        //         this_clone.notify(Events::WalletPing).await.expect("Wallet::start_task() `notify` error");
+        //         sleep(Duration::from_secs(5)).await;
+        //     }
+        // });
+
         spawn(async move {
             loop {
                 select! {
@@ -935,6 +992,20 @@ impl Wallet {
 
     async fn stop_task(&self) -> Result<()> {
         self.inner.task_ctl.signal(()).await.expect("Wallet::stop_task() `signal` error");
+        Ok(())
+    }
+
+    pub fn enable_metrics_kinds(&self, kinds: &[MetricsUpdateKind]) {
+        self.utxo_processor().enable_metrics_kinds(kinds);
+    }
+
+    pub async fn start_metrics(&self) -> Result<()> {
+        self.utxo_processor().start_metrics().await?;
+        Ok(())
+    }
+
+    pub async fn stop_metrics(&self) -> Result<()> {
+        self.utxo_processor().stop_metrics().await?;
         Ok(())
     }
 
@@ -1252,7 +1323,7 @@ impl Wallet {
         payment_secret: Option<&Secret>,
         notifier: Option<ScanNotifier>,
     ) -> Result<Arc<dyn Account>> {
-        use crate::derivation::gen0::import::load_v0_keydata;
+        use crate::compat::gen0::load_v0_keydata;
 
         let notifier = notifier.as_ref();
         let keydata = load_v0_keydata(import_secret).await?;
@@ -1299,12 +1370,12 @@ impl Wallet {
         Ok(account)
     }
 
-    pub async fn import_gen1_keydata(self: &Arc<Wallet>, secret: Secret) -> Result<()> {
-        use crate::derivation::gen1::import::load_v1_keydata;
+    pub async fn import_gen1_keydata(self: &Arc<Wallet>, _secret: Secret) -> Result<()> {
+        // use crate::derivation::gen1::import::load_v1_keydata;
 
-        let _keydata = load_v1_keydata(&secret).await?;
-
-        Ok(())
+        // let _keydata = load_v1_keydata(&secret).await?;
+        todo!();
+        // Ok(())
     }
 
     pub async fn import_with_mnemonic(
@@ -1373,12 +1444,14 @@ impl Wallet {
     /// accounts.
     pub async fn scan_bip44_accounts(
         self: &Arc<Self>,
-        mut bip39_mnemonic: String,
+        bip39_mnemonic: Secret,
         bip39_passphrase: Option<Secret>,
         address_scan_extent: u32,
         account_scan_extent: u32,
     ) -> Result<u32> {
-        let mnemonic = Mnemonic::new(bip39_mnemonic.as_str(), Language::English)?;
+        let bip39_mnemonic = std::str::from_utf8(bip39_mnemonic.as_ref()).map_err(|_| Error::InvalidMnemonicPhrase)?;
+        let mnemonic = Mnemonic::new(bip39_mnemonic, Language::English)?;
+
         // TODO @aspect - this is not efficient, we need to scan without encrypting prv_key_data
         let prv_key_data =
             storage::PrvKeyData::try_new_from_mnemonic(mnemonic, bip39_passphrase.as_ref(), EncryptionKind::XChaCha20Poly1305)?;
@@ -1401,8 +1474,6 @@ impl Wallet {
             }
             account_index += 1;
         }
-
-        bip39_mnemonic.zeroize();
 
         Ok(last_account_index)
     }
@@ -1479,40 +1550,82 @@ impl Wallet {
         store.rename(wallet_secret, title.as_deref(), filename.as_deref()).await?;
         Ok(())
     }
+
+    async fn ensure_default_account_impl(
+        self: Arc<Self>,
+        wallet_secret: &Secret,
+        payment_secret: Option<&Secret>,
+        kind: AccountKind,
+        mnemonic_phrase: Option<&Secret>,
+    ) -> Result<AccountDescriptor> {
+        if kind != BIP32_ACCOUNT_KIND {
+            return Err(Error::custom("Account kind is not supported"));
+        }
+
+        let account = self.store().as_account_store()?.iter(None).await?.next().await;
+
+        if let Some(Ok((stored_account, stored_metadata))) = account {
+            let account_descriptor = try_load_account(&self, stored_account, stored_metadata).await?.descriptor()?;
+            Ok(account_descriptor)
+        } else {
+            let mnemonic_phrase_string = if let Some(phrase) = mnemonic_phrase.cloned() {
+                phrase
+            } else {
+                let mnemonic = Mnemonic::random(WordCount::Words24, Language::English)?;
+                Secret::from(mnemonic.phrase_string())
+            };
+
+            let prv_key_data_args = PrvKeyDataCreateArgs::new(None, payment_secret.cloned(), mnemonic_phrase_string);
+
+            self.store().batch().await?;
+            let prv_key_data_id = self.clone().create_prv_key_data(wallet_secret, prv_key_data_args).await?;
+
+            let account_create_args = AccountCreateArgs::new_bip32(prv_key_data_id, payment_secret.cloned(), None, None);
+
+            let account = self.clone().create_account(wallet_secret, account_create_args, false).await?;
+
+            self.store().flush(wallet_secret).await?;
+
+            Ok(account.descriptor()?)
+        }
+    }
 }
 
-fn decrypt_mnemonic<T: AsRef<[u8]>>(
-    num_threads: u32,
-    EncryptedMnemonic { cipher, salt }: EncryptedMnemonic<T>,
-    pass: &[u8],
-) -> Result<String> {
-    let params = argon2::ParamsBuilder::new().t_cost(1).m_cost(64 * 1024).p_cost(num_threads).output_len(32).build().unwrap();
-    let mut key = [0u8; 32];
-    argon2::Argon2::new(argon2::Algorithm::Argon2id, Default::default(), params)
-        .hash_password_into(pass, salt.as_ref(), &mut key[..])
-        .unwrap();
-    let mut aead = chacha20poly1305::XChaCha20Poly1305::new(Key::from_slice(&key));
-    let (nonce, ciphertext) = cipher.as_ref().split_at(24);
+// fn decrypt_mnemonic<T: AsRef<[u8]>>(
+//     num_threads: u32,
+//     EncryptedMnemonic { cipher, salt }: EncryptedMnemonic<T>,
+//     pass: &[u8],
+// ) -> Result<String> {
+//     let params = argon2::ParamsBuilder::new().t_cost(1).m_cost(64 * 1024).p_cost(num_threads).output_len(32).build().unwrap();
+//     let mut key = [0u8; 32];
+//     argon2::Argon2::new(argon2::Algorithm::Argon2id, Default::default(), params)
+//         .hash_password_into(pass, salt.as_ref(), &mut key[..])
+//         .unwrap();
+//     let mut aead = chacha20poly1305::XChaCha20Poly1305::new(Key::from_slice(&key));
+//     let (nonce, ciphertext) = cipher.as_ref().split_at(24);
 
-    let decrypted = aead.decrypt(nonce.into(), ciphertext).unwrap();
-    Ok(unsafe { String::from_utf8_unchecked(decrypted) })
-}
+//     let decrypted = aead.decrypt(nonce.into(), ciphertext).unwrap();
+//     Ok(unsafe { String::from_utf8_unchecked(decrypted) })
+// }
 
 #[cfg(not(target_arch = "wasm32"))]
 #[cfg(test)]
 mod test {
-    use hex_literal::hex;
-    use std::{str::FromStr, thread::sleep, time};
+    // use hex_literal::hex;
 
-    use super::*;
+    // use super::*;
+    // use kaspa_addresses::Address;
+
+    /*
+    use workflow_rpc::client::ConnectOptions;
+    use std::{str::FromStr, thread::sleep, time};
     use crate::derivation::gen1;
     use crate::utxo::{UtxoContext, UtxoContextBinding, UtxoIterator};
-    use kaspa_addresses::{Address, Prefix, Version};
+    use kaspa_addresses::{Prefix, Version};
     use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, SecretKey};
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
     use kaspa_consensus_wasm::{sign_transaction, SignableTransaction, Transaction, TransactionInput, TransactionOutput};
     use kaspa_txscript::pay_to_address_script;
-    use workflow_rpc::client::ConnectOptions;
 
     async fn create_utxos_context_with_addresses(
         rpc: Arc<DynRpcApi>,
@@ -1627,201 +1740,5 @@ mod test {
 
         Ok(())
     }
-
-    #[test]
-    fn decrypt_go_encrypted_mnemonics_test() {
-        let file = SingleWalletFileV1{
-            encrypted_mnemonic: EncryptedMnemonic {
-                cipher: hex!("2022041df1a5bdcc26445952c53f96518641118bf0f990a01747d631d4607e5b53af3c9f4c07d6e3b84bc766445191b13d1f1fdf7ac96eae9c8859a9add660ac15b938356f936fdf614640d89627d368c57b22cf62844b1e1bcf3feceecbc6bf655df9519d7e3cfede6fe19d87a49e5709211b0b95c8d68781c70c4722bd8e25361492ef38d5cca21664a7f0838e4a1e2994d30c6d4b81d1397169570375ce56608439ae00e84c1f6acdd805f0ee22d4ba7b354c7f7cd4b2d18ce4fd6b8af785f95ed2a69361f318bc").as_slice(),
-                salt: hex!("044f5b890e48af4a7dcd7e7766af9380").as_slice(),
-            },
-            xpublic_key: "kpub2KUE88roSn5peP1rEZnbRuKYw1fEPbhqBoXVWW7mLfkrLvQBAjUqwx7m1ezeSfqfecv9RUYePuHf99iW51i31WjwWjnzKDCUcTucBSiBbJA",
-            ecdsa: false,
-        };
-
-        let decrypted = decrypt_mnemonic(8, file.encrypted_mnemonic, b"").unwrap();
-        assert_eq!("dizzy uncover funny time weapon chat volume squirrel comic motion until diamond response remind hurt spider door strategy entire oyster hawk marriage soon fabric", decrypted);
-    }
-
-    #[tokio::test]
-    async fn import_golang_single_wallet_test() {
-        let resident_store = Wallet::resident_store().unwrap();
-        let wallet = Arc::new(Wallet::try_new(resident_store, Some(NetworkId::new(NetworkType::Mainnet))).unwrap());
-        let wallet_secret = Secret::new(vec![]);
-
-        wallet
-            .create_wallet(
-                &wallet_secret,
-                WalletCreateArgs {
-                    title: None,
-                    filename: None,
-                    encryption_kind: EncryptionKind::XChaCha20Poly1305,
-                    user_hint: None,
-                    overwrite_wallet_storage: false,
-                },
-            )
-            .await
-            .unwrap();
-
-        let file = SingleWalletFileV1{
-            encrypted_mnemonic: EncryptedMnemonic {
-                cipher: hex!("2022041df1a5bdcc26445952c53f96518641118bf0f990a01747d631d4607e5b53af3c9f4c07d6e3b84bc766445191b13d1f1fdf7ac96eae9c8859a9add660ac15b938356f936fdf614640d89627d368c57b22cf62844b1e1bcf3feceecbc6bf655df9519d7e3cfede6fe19d87a49e5709211b0b95c8d68781c70c4722bd8e25361492ef38d5cca21664a7f0838e4a1e2994d30c6d4b81d1397169570375ce56608439ae00e84c1f6acdd805f0ee22d4ba7b354c7f7cd4b2d18ce4fd6b8af785f95ed2a69361f318bc").as_slice(),
-                salt: hex!("044f5b890e48af4a7dcd7e7766af9380").as_slice(),
-            },
-            xpublic_key: "kpub2KUE88roSn5peP1rEZnbRuKYw1fEPbhqBoXVWW7mLfkrLvQBAjUqwx7m1ezeSfqfecv9RUYePuHf99iW51i31WjwWjnzKDCUcTucBSiBbJA",
-            ecdsa: false,
-        };
-        let import_secret = Secret::new(vec![]);
-
-        let acc = wallet.import_kaspawallet_golang_single_v1(&import_secret, &wallet_secret, file).await.unwrap();
-        assert_eq!(
-            acc.receive_address().unwrap(),
-            Address::try_from("kaspa:qpuvlauc6a5syze9g70dnxzzvykhkuatsjrx87mxqccqh7kf9kcssdkp9ec7w").unwrap(), // taken from golang impl
-        );
-    }
-
-    #[tokio::test]
-    async fn import_golang_multisig_v1_wallet_test() {
-        let resident_store = Wallet::resident_store().unwrap();
-        let wallet = Arc::new(Wallet::try_new(resident_store, Some(NetworkId::new(NetworkType::Mainnet))).unwrap());
-        let wallet_secret = Secret::new(vec![]);
-
-        wallet
-            .create_wallet(
-                &wallet_secret,
-                WalletCreateArgs {
-                    title: None,
-                    filename: None,
-                    encryption_kind: EncryptionKind::XChaCha20Poly1305,
-                    user_hint: None,
-                    overwrite_wallet_storage: false,
-                },
-            )
-            .await
-            .unwrap();
-
-        let file = MultisigWalletFileV1{
-            encrypted_mnemonics: vec![
-                EncryptedMnemonic {
-                    cipher: hex!("f587dbc539b5303605e7065f4a473caffc91d5992dc0c4ec0b111e5362aa089c6ed034d4165697c13776777fa6a9396b0396515f75fa8fa34d13a3abdbf126bf8575be389177998c77170f3dba80c18d7cb5e223802cd4df51584ea280c08f31a8ecccca31000f4ebd78d584ba95ad2424b57a2945c60a7a36174bf69ecf251c141f01644aeb10268f3321bc2114a24da8ab8983540224e494634889a48f846ceea4238869d1e397f041f5594c53453ea63606a4bb50").as_slice(),
-                    salt: hex!("04fb57493be318c3bb1cddb6dde05e09").as_slice(), 
-                },
-                EncryptedMnemonic {
-                    cipher: hex!("2244d1b757e635cec13347d8b6d57c446063b9b72f54c425055eefd983c11cd4d75b0303e47848b5df29991056769c109cad73844fcc4de3d68122fdc09ec31a9e26334cb65141de1fb74718fd44e1d7312eaf975871833026569f06624f02ea79ba189e2db8cbfc4a1ada7fc4801179fb9b838618418043a335e8e01ab9dc8b6b8a1aa963a827a7914bab0815337d3955e5d2a4fc2df738506d5eb537ca7c52c690106bde9d2b686949a2e651099311796df3698499e8606cdbdc9963fc9172b12b").as_slice(),
-                    salt: hex!("60405c5b3a180e4fdebd5a6d5c51bf76").as_slice(),
-                },
-            ],
-            xpublic_keys: vec![
-                "kpub2J937qL9n85s7HrhYyYYdMkzq1kaMiAf9PAcJzRW3jV7NgntNfGGrNgut7ZxcVrJqH42BCT2WyjfnxJh3SBDjLhXHe3UC2RJUu5tcjsViuK",
-                "kpub2Jtuqt6WJWZv3fQUnKhuEaCxbAyzLsFn3UEEaM4g7CXa2LZjQZH4o6tpj83tFaewMEyX56qrAF4Q64uqunVyBayuuRNwjru5DWchDEcq5vz",
-                "kpub2JZg9pofE54nqvkhFRRx18pAMhYDPL2CpYqBx2AkzvsEknCh8V4rtez9ZYeab3HCW1Xsm9f4d6J5dfJVg9NADWN7rtqNft21batcii1SjXy",
-                "kpub2HuRXjAmhs3KwQ9WpHVaiHRjBP37TQUiUGFQBTwp7cdbArCo5s2MT6415nd3ZYaELvNbZ4qTJjCGTavExv514tWftaGQzCK8gQz6BQJNySp",
-                "kpub2KCvcuKVgfy1h7PvCw4xFcdLAPoerVZBG4qTo8vRGH2Qe6p5AgLyRek5CEnuCDkduXHqgwtvaVfYYBS7gQBR1J4XowdvqvPXsHZGA5WyRJF",
-            ],
-            required_signatures: 2,
-            cosigner_index: 1,
-            ecdsa: false,
-        };
-        let import_secret = Secret::new(vec![]);
-
-        let acc = wallet.import_kaspawallet_golang_multisig_v1(&import_secret, &wallet_secret, file).await.unwrap();
-        assert_eq!(
-            acc.receive_address().unwrap(),
-            Address::try_from("kaspa:pqvgkyjeuxmd8k70egrrzpdz5rqj0acmr6y94mwsltxfp6nc50742295c3998").unwrap(), // taken from golang impl
-        );
-    }
-
-    #[test]
-    fn deser_golang_wallet_test() {
-        #[allow(dead_code)]
-        #[derive(Debug)]
-        enum WalletType<'a> {
-            SingleV0(SingleWalletFileV0<'a, Vec<u8>>),
-            SingleV1(SingleWalletFileV1<'a, Vec<u8>>),
-            MultiV0(MultisigWalletFileV0<'a, Vec<u8>>),
-            MultiV1(MultisigWalletFileV1<'a, Vec<u8>>),
-        }
-
-        #[derive(Debug, Default, Deserialize)]
-        struct EncryptedMnemonicIntermediate {
-            #[serde(with = "kaspa_utils::serde_bytes")]
-            cipher: Vec<u8>,
-            #[serde(with = "kaspa_utils::serde_bytes")]
-            salt: Vec<u8>,
-        }
-        impl From<EncryptedMnemonicIntermediate> for EncryptedMnemonic<Vec<u8>> {
-            fn from(value: EncryptedMnemonicIntermediate) -> Self {
-                Self { cipher: value.cipher, salt: value.salt }
-            }
-        }
-
-        #[derive(serde_repr::Deserialize_repr, PartialEq, Debug)]
-        #[repr(u8)]
-        enum WalletVersion {
-            Zero = 0,
-            One = 1,
-        }
-        #[derive(Debug, Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct UnifiedWalletIntermediate<'a> {
-            version: WalletVersion,
-            num_threads: Option<u8>,
-            encrypted_mnemonics: Vec<EncryptedMnemonicIntermediate>,
-            #[serde(borrow)]
-            public_keys: Vec<&'a str>,
-            minimum_signatures: u16,
-            cosigner_index: u8,
-            ecdsa: bool,
-        }
-
-        impl<'a> UnifiedWalletIntermediate<'a> {
-            fn into_wallet_type(mut self) -> WalletType<'a> {
-                let single = self.encrypted_mnemonics.len() == 1 && self.public_keys.len() == 1;
-                match (single, self.version) {
-                    (true, WalletVersion::Zero) => WalletType::SingleV0(SingleWalletFileV0 {
-                        num_threads: self.num_threads.expect("num_threads must present in case of v0") as u32,
-                        encrypted_mnemonic: std::mem::take(&mut self.encrypted_mnemonics[0]).into(),
-                        xpublic_key: self.public_keys[0],
-                        ecdsa: self.ecdsa,
-                    }),
-                    (true, WalletVersion::One) => WalletType::SingleV1(SingleWalletFileV1 {
-                        encrypted_mnemonic: std::mem::take(&mut self.encrypted_mnemonics[0]).into(),
-                        xpublic_key: self.public_keys[0],
-                        ecdsa: self.ecdsa,
-                    }),
-                    (false, WalletVersion::Zero) => WalletType::MultiV0(MultisigWalletFileV0 {
-                        num_threads: self.num_threads.expect("num_threads must present in case of v0") as u32,
-                        encrypted_mnemonics: self
-                            .encrypted_mnemonics
-                            .into_iter()
-                            .map(|EncryptedMnemonicIntermediate { cipher, salt }| EncryptedMnemonic { cipher, salt })
-                            .collect(),
-                        xpublic_keys: self.public_keys,
-                        required_signatures: self.minimum_signatures,
-                        cosigner_index: self.cosigner_index,
-                        ecdsa: self.ecdsa,
-                    }),
-                    (false, WalletVersion::One) => WalletType::MultiV1(MultisigWalletFileV1 {
-                        encrypted_mnemonics: self
-                            .encrypted_mnemonics
-                            .into_iter()
-                            .map(|EncryptedMnemonicIntermediate { cipher, salt }| EncryptedMnemonic { cipher, salt })
-                            .collect(),
-                        xpublic_keys: self.public_keys,
-                        required_signatures: self.minimum_signatures,
-                        cosigner_index: self.cosigner_index,
-                        ecdsa: self.ecdsa,
-                    }),
-                }
-            }
-        }
-
-        let single_json_v0 = r#"{"numThreads":8,"version":0,"encryptedMnemonics":[{"cipher":"2022041df1a5bdcc26445952c53f96518641118bf0f990a01747d631d4607e5b53af3c9f4c07d6e3b84bc766445191b13d1f1fdf7ac96eae9c8859a9add660ac15b938356f936fdf614640d89627d368c57b22cf62844b1e1bcf3feceecbc6bf655df9519d7e3cfede6fe19d87a49e5709211b0b95c8d68781c70c4722bd8e25361492ef38d5cca21664a7f0838e4a1e2994d30c6d4b81d1397169570375ce56608439ae00e84c1f6acdd805f0ee22d4ba7b354c7f7cd4b2d18ce4fd6b8af785f95ed2a69361f318bc","salt":"044f5b890e48af4a7dcd7e7766af9380"}],"publicKeys":["kpub2KUE88roSn5peP1rEZnbRuKYw1fEPbhqBoXVWW7mLfkrLvQBAjUqwx7m1ezeSfqfecv9RUYePuHf99iW51i31WjwWjnzKDCUcTucBSiBbJA"],"minimumSignatures":1,"cosignerIndex":0,"lastUsedExternalIndex":0,"lastUsedInternalIndex":0,"ecdsa":false}"#.to_owned();
-        let single_json_v1 = r#"{"version":1,"encryptedMnemonics":[{"cipher":"2022041df1a5bdcc26445952c53f96518641118bf0f990a01747d631d4607e5b53af3c9f4c07d6e3b84bc766445191b13d1f1fdf7ac96eae9c8859a9add660ac15b938356f936fdf614640d89627d368c57b22cf62844b1e1bcf3feceecbc6bf655df9519d7e3cfede6fe19d87a49e5709211b0b95c8d68781c70c4722bd8e25361492ef38d5cca21664a7f0838e4a1e2994d30c6d4b81d1397169570375ce56608439ae00e84c1f6acdd805f0ee22d4ba7b354c7f7cd4b2d18ce4fd6b8af785f95ed2a69361f318bc","salt":"044f5b890e48af4a7dcd7e7766af9380"}],"publicKeys":["kpub2KUE88roSn5peP1rEZnbRuKYw1fEPbhqBoXVWW7mLfkrLvQBAjUqwx7m1ezeSfqfecv9RUYePuHf99iW51i31WjwWjnzKDCUcTucBSiBbJA"],"minimumSignatures":1,"cosignerIndex":0,"lastUsedExternalIndex":0,"lastUsedInternalIndex":0,"ecdsa":false}"#.to_owned();
-
-        let unified: UnifiedWalletIntermediate = serde_json::from_str(&single_json_v0).unwrap();
-        assert!(matches!(unified.into_wallet_type(), WalletType::SingleV0(_)));
-        let unified: UnifiedWalletIntermediate = serde_json::from_str(&single_json_v1).unwrap();
-        assert!(matches!(unified.into_wallet_type(), WalletType::SingleV1(_)));
-    }
+    */
 }

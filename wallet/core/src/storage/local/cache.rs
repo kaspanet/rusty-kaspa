@@ -3,8 +3,6 @@
 //!
 
 use crate::imports::*;
-use crate::result::Result;
-use crate::secret::Secret;
 use crate::storage::local::wallet::WalletStorage;
 use crate::storage::local::*;
 use std::collections::HashMap;

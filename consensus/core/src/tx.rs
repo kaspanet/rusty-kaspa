@@ -28,9 +28,10 @@ pub type TransactionId = kaspa_hashes::Hash;
 /// set such as whether or not it was contained in a coinbase tx, the daa
 /// score of the block that accepts the tx, its public key script, and how
 /// much it pays.
+/// @category Consensus
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-#[wasm_bindgen(inspectable, js_name = TxUtxoEntry)]
+#[wasm_bindgen(inspectable, js_name = TransactionUtxoEntry)]
 pub struct UtxoEntry {
     pub amount: u64,
     #[wasm_bindgen(js_name = scriptPublicKey, getter_with_clone)]
@@ -354,7 +355,7 @@ pub struct MutableTransaction<T: AsRef<Transaction> = std::sync::Arc<Transaction
     pub entries: Vec<Option<UtxoEntry>>,
     /// Populated fee
     pub calculated_fee: Option<u64>,
-    /// Populated mass (does not include the storage mass)
+    /// Populated compute mass (does not include the storage mass)
     pub calculated_compute_mass: Option<u64>,
 }
 

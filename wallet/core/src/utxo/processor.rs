@@ -6,6 +6,7 @@
 //!
 
 use crate::imports::*;
+// use futures::pin_mut;
 use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, UtxosChangedScope, VirtualDaaScoreChangedScope},
@@ -28,11 +29,12 @@ use crate::utxo::{
     Maturity, OutgoingTransaction, PendingUtxoEntryReference, SyncMonitor, UtxoContext, UtxoEntryId, UtxoEntryReference,
 };
 use crate::wallet::WalletBusMessage;
-use async_std::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 use kaspa_rpc_core::{
     notify::connection::{ChannelConnection, ChannelType},
     Notification,
 };
+// use workflow_core::task;
+// use kaspa_metrics_core::{Metrics,Metric};
 
 pub struct Inner {
     /// Coinbase UTXOs in stasis
@@ -56,7 +58,10 @@ pub struct Inner {
     sync_proc: SyncMonitor,
     multiplexer: Multiplexer<Box<Events>>,
     wallet_bus: Option<Channel<WalletBusMessage>>,
-    notification_lock: AsyncMutex<()>,
+    notification_guard: AsyncMutex<()>,
+    connect_disconnect_guard: AsyncMutex<()>,
+    metrics: Arc<Metrics>,
+    metrics_kinds: Mutex<Vec<MetricsUpdateKind>>,
 }
 
 impl Inner {
@@ -82,7 +87,10 @@ impl Inner {
             sync_proc: SyncMonitor::new(rpc.clone(), &multiplexer),
             multiplexer,
             wallet_bus,
-            notification_lock: AsyncMutex::new(()),
+            notification_guard: Default::default(),
+            connect_disconnect_guard: Default::default(),
+            metrics: Arc::new(Metrics::default()),
+            metrics_kinds: Mutex::new(vec![]),
         }
     }
 }
@@ -107,8 +115,16 @@ impl UtxoProcessor {
         self.inner.rpc.lock().unwrap().as_ref().expect("UtxoProcessor RPC not initialized").rpc_api().clone()
     }
 
+    pub fn try_rpc_api(&self) -> Option<Arc<DynRpcApi>> {
+        self.inner.rpc.lock().unwrap().as_ref().map(|rpc| rpc.rpc_api()).cloned()
+    }
+
     pub fn rpc_ctl(&self) -> RpcCtl {
         self.inner.rpc.lock().unwrap().as_ref().expect("UtxoProcessor RPC not initialized").rpc_ctl().clone()
+    }
+
+    pub fn try_rpc_ctl(&self) -> Option<RpcCtl> {
+        self.inner.rpc.lock().unwrap().as_ref().map(|rpc| rpc.rpc_ctl()).cloned()
     }
 
     pub fn rpc_url(&self) -> Option<String> {
@@ -120,9 +136,15 @@ impl UtxoProcessor {
     }
 
     pub async fn bind_rpc(&self, rpc: Option<Rpc>) -> Result<()> {
-        *self.inner.rpc.lock().unwrap() = rpc.clone();
+        self.inner.rpc.lock().unwrap().clone_from(&rpc);
+        let rpc_api = rpc.as_ref().map(|rpc| rpc.rpc_api().clone());
+        self.metrics().bind_rpc(rpc_api);
         self.sync_proc().bind_rpc(rpc).await?;
         Ok(())
+    }
+
+    pub fn metrics(&self) -> &Arc<Metrics> {
+        &self.inner.metrics
     }
 
     pub fn wallet_bus(&self) -> &Option<Channel<WalletBusMessage>> {
@@ -138,7 +160,7 @@ impl UtxoProcessor {
     }
 
     pub async fn notification_lock(&self) -> AsyncMutexGuard<()> {
-        self.inner.notification_lock.lock().await
+        self.inner.notification_guard.lock().await
     }
 
     pub fn sync_proc(&self) -> &SyncMonitor {
@@ -149,8 +171,8 @@ impl UtxoProcessor {
         self.inner.listener_id.lock().unwrap().ok_or(Error::ListenerId)
     }
 
-    pub fn set_network_id(&self, network_id: NetworkId) {
-        self.inner.network_id.lock().unwrap().replace(network_id);
+    pub fn set_network_id(&self, network_id: &NetworkId) {
+        self.inner.network_id.lock().unwrap().replace(*network_id);
     }
 
     pub fn network_id(&self) -> Result<NetworkId> {
@@ -194,10 +216,10 @@ impl UtxoProcessor {
         if self.is_connected() {
             if !addresses.is_empty() {
                 let addresses = addresses.into_iter().map(|address| (*address).clone()).collect::<Vec<_>>();
-                let utxos_changed_scope = UtxosChangedScope { addresses };
-                self.rpc_api().start_notify(self.listener_id()?, Scope::UtxosChanged(utxos_changed_scope)).await?;
+                let utxos_changed_scope = UtxosChangedScope::new(addresses);
+                self.rpc_api().start_notify(self.listener_id()?, utxos_changed_scope.into()).await?;
             } else {
-                log_error!("registering empty address list!");
+                log_error!("registering an empty address list!");
             }
         }
         Ok(())
@@ -211,8 +233,8 @@ impl UtxoProcessor {
         if self.is_connected() {
             if !addresses.is_empty() {
                 let addresses = addresses.into_iter().map(|address| (*address).clone()).collect::<Vec<_>>();
-                let utxos_changed_scope = UtxosChangedScope { addresses };
-                self.rpc_api().stop_notify(self.listener_id()?, Scope::UtxosChanged(utxos_changed_scope)).await?;
+                let utxos_changed_scope = UtxosChangedScope::new(addresses);
+                self.rpc_api().stop_notify(self.listener_id()?, utxos_changed_scope.into()).await?;
             } else {
                 log_error!("unregistering empty address list!");
             }
@@ -236,7 +258,7 @@ impl UtxoProcessor {
 
     pub async fn handle_daa_score_change(&self, current_daa_score: u64) -> Result<()> {
         self.inner.current_daa_score.store(current_daa_score, Ordering::SeqCst);
-        self.notify(Events::DAAScoreChange { current_daa_score }).await?;
+        self.notify(Events::DaaScoreChange { current_daa_score }).await?;
         self.handle_pending(current_daa_score).await?;
         self.handle_outgoing(current_daa_score).await?;
         Ok(())
@@ -409,6 +431,10 @@ impl UtxoProcessor {
         self.sync_proc().is_synced()
     }
 
+    pub fn is_running(&self) -> bool {
+        self.inner.task_is_running.load(Ordering::SeqCst)
+    }
+
     pub async fn init_state_from_server(&self) -> Result<bool> {
         let GetServerInfoResponse {
             server_version,
@@ -450,22 +476,43 @@ impl UtxoProcessor {
         self.notify(Events::UtxoProcStart).await?;
         self.sync_proc().track(is_synced).await?;
 
+        let this = self.clone();
+        self.inner.metrics.register_sink(Arc::new(Box::new(move |snapshot: MetricsSnapshot| {
+            if let Err(err) = this.deliver_metrics_snapshot(Box::new(snapshot)) {
+                println!("Error ingesting metrics snapshot: {}", err);
+            }
+            None
+        })));
+
         Ok(())
     }
 
     pub async fn handle_connect(&self) -> Result<()> {
-        if let Err(err) = self.handle_connect_impl().await {
-            log_error!("UtxoProcessor: error while connecting to node: {err}");
-            self.notify(Events::UtxoProcError { message: err.to_string() }).await?;
-            if let Some(client) = self.rpc_client() {
-                client.disconnect().await?;
+        let _ = self.inner.connect_disconnect_guard.lock().await;
+
+        match self.handle_connect_impl().await {
+            Err(err) => {
+                log_error!("UtxoProcessor: error while connecting to node: {err}");
+                self.notify(Events::UtxoProcError { message: err.to_string() }).await?;
+                if let Some(client) = self.rpc_client() {
+                    // try force disconnect the client if we have failed
+                    // to negotiate the connection to the node.
+                    client.disconnect().await?;
+                }
+                Err(err)
             }
+            Ok(_) => Ok(()),
         }
-        Ok(())
     }
 
     pub async fn handle_disconnect(&self) -> Result<()> {
+        let _ = self.inner.connect_disconnect_guard.lock().await;
+
         self.inner.is_connected.store(false, Ordering::SeqCst);
+        // self.stop_metrics();
+
+        self.inner.metrics.unregister_sink();
+
         self.unregister_notification_listener().await?;
         self.notify(Events::UtxoProcStop).await?;
         self.cleanup().await?;
@@ -482,13 +529,13 @@ impl UtxoProcessor {
     }
 
     async fn register_notification_listener(&self) -> Result<()> {
-        let listener_id = self
-            .rpc_api()
-            .register_new_listener(ChannelConnection::new(self.inner.notification_channel.sender.clone(), ChannelType::Persistent));
+        let listener_id = self.rpc_api().register_new_listener(ChannelConnection::new(
+            "utxo processor",
+            self.inner.notification_channel.sender.clone(),
+            ChannelType::Persistent,
+        ));
         *self.inner.listener_id.lock().unwrap() = Some(listener_id);
-
         self.rpc_api().start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
-
         Ok(())
     }
 
@@ -518,9 +565,40 @@ impl UtxoProcessor {
             }
 
             _ => {
-                log_warning!("unknown notification: {:?}", notification);
+                log_warn!("unknown notification: {:?}", notification);
             }
         }
+
+        Ok(())
+    }
+
+    fn deliver_metrics_snapshot(&self, snapshot: Box<MetricsSnapshot>) -> Result<()> {
+        let metrics_kinds = self.inner.metrics_kinds.lock().unwrap().clone();
+        for kind in metrics_kinds.into_iter() {
+            match kind {
+                MetricsUpdateKind::WalletMetrics => {
+                    let mempool_size = snapshot.get(&Metric::NetworkMempoolSize) as u64;
+                    let node_peers = snapshot.get(&Metric::NodeActivePeers) as u32;
+                    let network_tps = snapshot.get(&Metric::NetworkTransactionsPerSecond);
+                    let metrics = MetricsUpdate::WalletMetrics { mempool_size, node_peers, network_tps };
+                    self.try_notify(Events::Metrics { network_id: self.network_id()?, metrics })?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn start_metrics(&self) -> Result<()> {
+        self.inner.metrics.start_task().await?;
+        self.inner.metrics.bind_rpc(Some(self.rpc_api().clone()));
+
+        Ok(())
+    }
+
+    pub async fn stop_metrics(&self) -> Result<()> {
+        self.inner.metrics.stop_task().await?;
+        self.inner.metrics.bind_rpc(None);
 
         Ok(())
     }
@@ -551,18 +629,20 @@ impl UtxoProcessor {
                             Ok(msg) => {
 
                                 // handle RPC channel connection and disconnection events
-
                                 match msg {
-                                    RpcState::Opened => {
+                                    RpcState::Connected => {
                                         if !this.is_connected() {
-                                            this.inner.multiplexer.try_broadcast(Box::new(Events::Connect {
-                                                network_id : this.network_id().expect("network id expected during connection"),
-                                                url : this.rpc_url()
-                                            })).unwrap_or_else(|err| log_error!("{err}"));
-                                            this.handle_connect().await.unwrap_or_else(|err| log_error!("{err}"));
+                                            if let Err(err) = this.handle_connect().await {
+                                                log_error!("UtxoProcessor error: {err}");
+                                            } else {
+                                                this.inner.multiplexer.try_broadcast(Box::new(Events::Connect {
+                                                    network_id : this.network_id().expect("network id expected during connection"),
+                                                    url : this.rpc_url()
+                                                })).unwrap_or_else(|err| log_error!("{err}"));
+                                            }
                                         }
                                     },
-                                    RpcState::Closed => {
+                                    RpcState::Disconnected => {
                                         if this.is_connected() {
                                             this.inner.multiplexer.try_broadcast(Box::new(Events::Disconnect {
                                                 network_id : this.network_id().expect("network id expected during connection"),
@@ -623,6 +703,10 @@ impl UtxoProcessor {
             self.inner.task_ctl.signal(()).await.expect("UtxoProcessor::stop_task() `signal` error");
         }
         Ok(())
+    }
+
+    pub fn enable_metrics_kinds(&self, metrics_kinds: &[MetricsUpdateKind]) {
+        *self.inner.metrics_kinds.lock().unwrap() = metrics_kinds.to_vec();
     }
 }
 
