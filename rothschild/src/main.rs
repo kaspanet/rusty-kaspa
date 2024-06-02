@@ -40,6 +40,7 @@ pub struct Args {
     pub rpc_server: String,
     pub threads: u8,
     pub unleashed: bool,
+    pub addr: Option<String>,
 }
 
 impl Args {
@@ -51,6 +52,7 @@ impl Args {
             rpc_server: m.get_one::<String>("rpcserver").cloned().unwrap_or("localhost:16210".to_owned()),
             threads: m.get_one::<u8>("threads").cloned().unwrap(),
             unleashed: m.get_one::<bool>("unleashed").cloned().unwrap_or(false),
+            addr: m.get_one::<String>("addr").cloned(),
         }
     }
 }
@@ -85,6 +87,7 @@ pub fn cli() -> Command {
                 .help("The number of threads to use for TX generation. Set to 0 to use 1 thread per core. Default is 2."),
         )
         .arg(Arg::new("unleashed").long("unleashed").action(ArgAction::SetTrue).hide(true).help("Allow higher TPS"))
+        .arg(Arg::new("addr").long("to-addr").short('a').value_name("addr").help("address to send to"))
 }
 
 async fn new_rpc_client(subscription_context: &SubscriptionContext, address: &str) -> GrpcClient {
@@ -150,9 +153,15 @@ async fn main() {
 
     let kaspa_addr = Address::new(ADDRESS_PREFIX, ADDRESS_VERSION, &schnorr_key.x_only_public_key().0.serialize());
 
+    let kaspa_to_addr = if let Some(addr_str) = args.addr {
+        Address::try_from(addr_str).unwrap()
+    } else {
+        kaspa_addr.clone()
+    };
+
     rayon::ThreadPoolBuilder::new().num_threads(args.threads as usize).build_global().unwrap();
 
-    info!("Using Rothschild with private key {} and address {}", schnorr_key.display_secret(), String::from(&kaspa_addr));
+    info!("Using Rothschild with private key {} and address {}\n\tspend to {}", schnorr_key.display_secret(), String::from(&kaspa_addr), String::from(&kaspa_to_addr));
     let info = rpc_client.get_block_dag_info().await.unwrap();
     let coinbase_maturity = match info.network.suffix {
         Some(11) => TESTNET11_PARAMS.coinbase_maturity,
@@ -249,7 +258,7 @@ async fn main() {
         let has_funds = maybe_send_tx(
             txs_to_send,
             &tx_sender,
-            kaspa_addr.clone(),
+            kaspa_to_addr.clone(),
             &mut utxos,
             &mut pending,
             schnorr_key,
