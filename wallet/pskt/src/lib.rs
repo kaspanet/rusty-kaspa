@@ -15,24 +15,11 @@ pub use error::Error;
 pub use global::Global;
 pub use input::Input;
 use kaspa_consensus_core::{
-    hashing::{
-        sighash::SigHashReusedValues,
-        sighash_type::SigHashType
-    },
+    hashing::{sighash::SigHashReusedValues, sighash_type::SigHashType},
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{
-        SignableTransaction,
-        Transaction,
-        TransactionInput,
-        TransactionOutput,
-        MutableTransaction,
-        TransactionId
-    }
+    tx::{MutableTransaction, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput},
 };
-use kaspa_txscript::{
-    caches::Cache,
-    TxScriptEngine
-};
+use kaspa_txscript::{caches::Cache, TxScriptEngine};
 pub use output::Output;
 pub use role::{Combiner, Constructor, Creator, Signer, Updater};
 
