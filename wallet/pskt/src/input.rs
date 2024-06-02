@@ -103,7 +103,7 @@ impl Add for Input {
         self.sequence = self.sequence.max(rhs.sequence);
         self.min_time = self.min_time.max(rhs.min_time);
         self.partial_sigs.extend(rhs.partial_sigs);
-        // todo combine sighash? or always use sighash all since all signatures must be passed after competition of construction step
+        // todo combine sighash? or always use sighash all since all signatures must be passed after completion of construction step
         // self.sighash_type
 
         self.redeem_script = match (self.redeem_script.take(), rhs.redeem_script) {
