@@ -1,9 +1,4 @@
 use kaspa_bip32::{secp256k1, DerivationPath, KeyFingerprint};
-use kaspa_consensus_core::{
-    hashing::sighash_type::SigHashType,
-    subnets::SUBNETWORK_ID_NATIVE,
-    tx::{SignableTransaction, Transaction, TransactionInput, TransactionOutput},
-};
 use std::{collections::BTreeMap, fmt::Display, fmt::Formatter, future::Future, marker::PhantomData, ops::Deref};
 
 mod error;
@@ -15,10 +10,29 @@ mod output;
 mod role;
 mod utils;
 
-use crate::role::Finalizer;
+use crate::role::{Extractor, Finalizer};
 pub use error::Error;
 pub use global::Global;
 pub use input::Input;
+use kaspa_consensus_core::{
+    hashing::{
+        sighash::SigHashReusedValues,
+        sighash_type::SigHashType
+    },
+    subnets::SUBNETWORK_ID_NATIVE,
+    tx::{
+        SignableTransaction,
+        Transaction,
+        TransactionInput,
+        TransactionOutput,
+        MutableTransaction,
+        TransactionId
+    }
+};
+use kaspa_txscript::{
+    caches::Cache,
+    TxScriptEngine
+};
 pub use output::Output;
 pub use role::{Combiner, Constructor, Creator, Signer, Updater};
 
@@ -60,6 +74,7 @@ pub enum Signature {
 pub struct PSKT<ROLE> {
     inner_pskt: Inner,
     role: PhantomData<ROLE>,
+    id: Option<TransactionId>,
 }
 
 impl<ROLE> Deref for PSKT<ROLE> {
@@ -70,15 +85,46 @@ impl<ROLE> Deref for PSKT<ROLE> {
     }
 }
 
-impl Default for PSKT<Creator> {
-    fn default() -> Self {
-        PSKT { inner_pskt: Default::default(), role: Default::default() }
+impl<R> PSKT<R> {
+    fn unsigned_tx(&self) -> SignableTransaction {
+        let tx = Transaction::new_non_finalized(
+            self.global.tx_version,
+            self.inputs
+                .iter()
+                .map(|Input { previous_outpoint, sequence, sig_op_count, .. }| TransactionInput {
+                    previous_outpoint: *previous_outpoint,
+                    signature_script: vec![],
+                    sequence: sequence.unwrap_or(u64::MAX),
+                    sig_op_count: sig_op_count.unwrap_or(0),
+                })
+                .collect(),
+            self.outputs
+                .iter()
+                .map(|Output { amount, script_public_key, .. }: &Output| TransactionOutput {
+                    value: *amount,
+                    script_public_key: script_public_key.clone(),
+                })
+                .collect(),
+            0,
+            SUBNETWORK_ID_NATIVE,
+            0,
+            vec![],
+        );
+
+        let entries = self.inputs.iter().filter_map(|Input { utxo_entry, .. }| utxo_entry.clone()).collect();
+        SignableTransaction::with_entries(tx, entries)
+    }
+
+    fn calculate_id_internal(&self) -> TransactionId {
+        let mut tx = self.unsigned_tx().tx.clone();
+        tx.finalize();
+        tx.id()
     }
 }
 
-impl<R> PSKT<R> {
-    pub fn determine_lock_time(&self) -> u64 {
-        self.inputs.iter().map(|input: &Input| input.min_time).max().unwrap_or(self.global.fallback_lock_time).unwrap_or(0)
+impl Default for PSKT<Creator> {
+    fn default() -> Self {
+        PSKT { inner_pskt: Default::default(), role: Default::default(), id: None }
     }
 }
 
@@ -103,7 +149,7 @@ impl PSKT<Creator> {
     }
 
     pub fn constructor(self) -> PSKT<Constructor> {
-        PSKT { inner_pskt: self.inner_pskt, role: Default::default() }
+        PSKT { inner_pskt: self.inner_pskt, role: Default::default(), id: None }
     }
 }
 
@@ -138,7 +184,7 @@ impl PSKT<Constructor> {
     /// Returns a PSBT [`Updater`] once construction is completed.
     pub fn updater(self) -> PSKT<Updater> {
         let pskt = self.no_more_inputs().no_more_outputs();
-        PSKT { inner_pskt: pskt.inner_pskt, role: Default::default() }
+        PSKT { inner_pskt: pskt.inner_pskt, role: Default::default(), id: None }
     }
 
     pub fn signer(self) -> PSKT<Signer> {
@@ -153,39 +199,11 @@ impl PSKT<Updater> {
     }
 
     pub fn signer(self) -> PSKT<Signer> {
-        PSKT { inner_pskt: self.inner_pskt, role: Default::default() }
+        PSKT { inner_pskt: self.inner_pskt, role: Default::default(), id: None }
     }
 }
 
 impl PSKT<Signer> {
-    fn unsigned_tx(&self) -> SignableTransaction {
-        let tx = Transaction::new(
-            self.global.tx_version,
-            self.inputs
-                .iter()
-                .map(|Input { previous_outpoint, sequence, sig_op_count, .. }| TransactionInput {
-                    previous_outpoint: *previous_outpoint,
-                    signature_script: vec![],
-                    sequence: sequence.unwrap_or(u64::MAX),
-                    sig_op_count: sig_op_count.unwrap_or(0),
-                })
-                .collect(),
-            self.outputs
-                .iter()
-                .map(|Output { amount, script_public_key, .. }: &Output| TransactionOutput {
-                    value: *amount,
-                    script_public_key: script_public_key.clone(),
-                })
-                .collect(),
-            0,
-            SUBNETWORK_ID_NATIVE,
-            0,
-            vec![],
-        );
-
-        let entries = self.inputs.iter().filter_map(|Input { utxo_entry, .. }| utxo_entry.clone()).collect();
-        SignableTransaction::with_entries(tx, entries)
-    }
     // todo use iterator instead of vector
     pub fn pass_signature_sync<SignFn, E>(mut self, sign_fn: SignFn) -> Result<Self, E>
     where
@@ -219,6 +237,14 @@ impl PSKT<Signer> {
             },
         );
         Ok(self)
+    }
+
+    pub fn calculate_id(&self) -> TransactionId {
+        self.calculate_id_internal()
+    }
+
+    pub fn finalizer(self) -> PSKT<Finalizer> {
+        PSKT { inner_pskt: self.inner_pskt, role: Default::default(), id: None }
     }
 }
 
@@ -276,13 +302,74 @@ impl PSKT<Finalizer> {
         self.finalize_internal(sigs)
     }
 
+    pub fn id(&self) -> Option<TransactionId> {
+        self.id
+    }
+
+    pub fn extractor(self) -> Result<PSKT<Extractor>, TxNotFinalized> {
+        if self.id.is_none() {
+            Err(TxNotFinalized {})
+        } else {
+            Ok(PSKT { inner_pskt: self.inner_pskt, role: Default::default(), id: self.id })
+        }
+    }
+
     fn finalize_internal<E: Display>(mut self, sigs: Result<Vec<Vec<u8>>, E>) -> Result<Self, FinalizeError<E>> {
         let sigs = sigs?;
         if sigs.len() != self.inputs.len() {
             return Err(FinalizeError::WrongFinalizedSigsCount { expected: self.inputs.len(), actual: sigs.len() });
         }
-        self.inner_pskt.inputs.iter_mut().zip(sigs).for_each(|(input, sig)| input.final_script_sig = Some(sig));
+        self.inner_pskt.inputs.iter_mut().enumerate().zip(sigs).try_for_each(|((idx, input), sig)| {
+            if sig.is_empty() {
+                return Err(FinalizeError::EmptySignature(idx));
+            }
+            input.sequence = Some(input.sequence.unwrap_or(u64::MAX)); // todo discussable
+            input.final_script_sig = Some(sig);
+            Ok(())
+        })?;
+        self.id = Some(self.calculate_id_internal());
         Ok(self)
+    }
+}
+
+impl PSKT<Extractor> {
+    pub fn determine_lock_time(&self) -> u64 {
+        self.inputs.iter().map(|input: &Input| input.min_time).max().unwrap_or(self.global.fallback_lock_time).unwrap_or(0)
+    }
+
+    pub fn extract_tx_unchecked(self) -> impl FnOnce(u64) -> Transaction {
+        let lock_time = self.determine_lock_time();
+        let mut tx = self.unsigned_tx().tx;
+        move |mass| {
+            tx.lock_time = lock_time;
+            tx.set_mass(mass);
+            tx
+        }
+    }
+
+    pub fn extract_tx(mut self) -> Result<impl FnOnce(u64) -> Transaction, kaspa_txscript_errors::TxScriptError> {
+        let lock_time = self.determine_lock_time();
+        let entries =
+            self.inner_pskt.inputs.iter_mut().filter_map(|Input { utxo_entry, .. }| utxo_entry.as_mut()).map(std::mem::take).collect();
+        let tx = self.extract_tx_unchecked()(0);
+
+        let tx = MutableTransaction::with_entries(tx, entries);
+        use kaspa_consensus_core::tx::VerifiableTransaction;
+        let tx = tx.as_verifiable();
+        let cache = Cache::new(10_000);
+        let mut reused_values = SigHashReusedValues::new();
+
+        tx.populated_inputs().enumerate().try_for_each(|(idx, (input, entry))| {
+            TxScriptEngine::from_transaction_input(&tx, input, idx, entry, &mut reused_values, &cache)?.execute()?;
+            Ok(())
+        })?;
+        let mut tx = tx.tx().clone();
+        let closure = move |mass| {
+            tx.lock_time = lock_time;
+            tx.set_mass(mass);
+            tx
+        };
+        Ok(closure)
     }
 }
 
@@ -301,9 +388,15 @@ pub enum CombineError {
 pub enum FinalizeError<E> {
     #[error("Signatures count mismatch")]
     WrongFinalizedSigsCount { expected: usize, actual: usize },
+    #[error("Signatures at index: {0} is empty")]
+    EmptySignature(usize),
     #[error(transparent)]
     FinalaziCb(#[from] E),
 }
+
+#[derive(thiserror::Error, Debug, Clone)]
+#[error("Transaction is not finalized")]
+pub struct TxNotFinalized {}
 
 #[cfg(test)]
 mod tests {

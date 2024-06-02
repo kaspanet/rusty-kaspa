@@ -3625,6 +3625,8 @@ dependencies = [
  "derive_builder",
  "kaspa-bip32",
  "kaspa-consensus-core",
+ "kaspa-txscript",
+ "kaspa-txscript-errors",
  "secp256k1",
  "serde",
  "serde-value",

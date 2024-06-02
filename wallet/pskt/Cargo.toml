@@ -17,7 +17,8 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 kaspa-bip32.workspace = true
 kaspa-consensus-core.workspace = true
-
+kaspa-txscript.workspace = true
+kaspa-txscript-errors.workspace = true
 derive_builder.workspace = true
 secp256k1.workspace = true
 serde.workspace = true
