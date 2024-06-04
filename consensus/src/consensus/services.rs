@@ -126,6 +126,7 @@ impl ConsensusServices {
                         relations_services[level].clone(),
                         storage.headers_store.clone(),
                         reachability_service.clone(),
+                        level != 0,
                     )
                 })
                 .collect_vec(),

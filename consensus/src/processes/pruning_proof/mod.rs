@@ -448,6 +448,7 @@ impl PruningProofManager {
                     relations_stores[level].clone(),
                     headers_store.clone(),
                     reachability_services[level].clone(),
+                    level != 0,
                 )
             })
             .collect_vec();
