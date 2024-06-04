@@ -356,13 +356,13 @@ impl HeaderProcessor {
                     .unwrap_or_else(|| Arc::new(self.ghostdag_managers[level].ghostdag(&ctx.known_parents[level])))
             })
             .collect_vec();
-
         self.counters.mergeset_counts.fetch_add(ghostdag_data[0].mergeset_size() as u64, Ordering::Relaxed);
         ctx.ghostdag_data = Some(ghostdag_data);
     }
 
     fn commit_header(&self, ctx: HeaderProcessingContext, header: &Header) {
         let ghostdag_data = ctx.ghostdag_data.as_ref().unwrap();
+        let ghostdag_primary_data = &ghostdag_data[0];
         let pp = ctx.pruning_point();
 
         // Create a DB batch writer
@@ -375,6 +375,7 @@ impl HeaderProcessor {
         for (level, datum) in ghostdag_data.iter().enumerate() {
             self.ghostdag_stores[level].insert_batch(&mut batch, ctx.hash, datum).unwrap();
         }
+
         if let Some(window) = ctx.block_window_for_difficulty {
             self.block_window_cache_for_difficulty.insert(ctx.hash, window);
         }
@@ -395,8 +396,8 @@ impl HeaderProcessor {
         // time, and thus serializing this part will do no harm. However this should be benchmarked. The
         // alternative is to create a separate ReachabilityProcessor and to manage things more tightly.
         let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
-        let selected_parent = ghostdag_data[0].selected_parent;
-        let mut reachability_mergeset = ghostdag_data[0].unordered_mergeset_without_selected_parent();
+        let selected_parent = ghostdag_primary_data.selected_parent;
+        let mut reachability_mergeset = ghostdag_primary_data.unordered_mergeset_without_selected_parent();
         reachability::add_block(&mut staging, ctx.hash, selected_parent, &mut reachability_mergeset).unwrap();
 
         // Non-append only stores need to use write locks.
