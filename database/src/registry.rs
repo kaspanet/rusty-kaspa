@@ -38,6 +38,8 @@ pub enum DatabaseStorePrefixes {
     VirtualState = 28,
     GhostdagProof = 29,
     GhostdagCompactProof = 30,
+    TempGhostdag = 33,
+    TempGhostdagCompact = 34,
 
     // ---- Decomposed reachability stores ----
     ReachabilityTreeChildren = 31,

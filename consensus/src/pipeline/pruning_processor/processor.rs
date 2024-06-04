@@ -455,7 +455,8 @@ impl PruningProcessor {
         );
 
         if self.config.enable_sanity_checks {
-            self.assert_proof_rebuilding(proof, new_pruning_point);
+            // self.assert_proof_rebuilding(proof, new_pruning_point);
+            self.pruning_proof_manager.validate_pruning_point_proof(&proof).unwrap();
             self.assert_data_rebuilding(data, new_pruning_point);
         }
 

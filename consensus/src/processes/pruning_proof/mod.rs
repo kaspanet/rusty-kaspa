@@ -25,7 +25,7 @@ use kaspa_consensus_core::{
     trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
-use kaspa_core::{debug, info, trace};
+use kaspa_core::{debug, info, trace, warn};
 use kaspa_database::{
     prelude::{CachePolicy, ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions},
     utils::DbLifetime,
@@ -41,11 +41,14 @@ use crate::{
         storage::ConsensusStorage,
     },
     model::{
-        services::reachability::{MTReachabilityService, ReachabilityService},
+        services::{
+            reachability::{MTReachabilityService, ReachabilityService},
+            relations::MTRelationsService,
+        },
         stores::{
             depth::DbDepthStore,
             ghostdag::{CompactGhostdagData, DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
-            headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
+            headers::{DbHeadersStore, HeaderStore, HeaderStoreReader, HeaderWithBlockLevel},
             headers_selected_tip::DbHeadersSelectedTipStore,
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
             pruning::{DbPruningStore, PruningStoreReader},
@@ -78,7 +81,11 @@ enum PruningProofManagerInternalError {
 
     #[error("cannot find a common ancestor: {0}")]
     NoCommonAncestor(String),
+
+    #[error("missing headers to build proof: {0}")]
+    NotEnoughHeadersToBuildProof(String),
 }
+type PruningProofManagerInternalResult<T> = std::result::Result<T, PruningProofManagerInternalError>;
 
 struct CachedPruningPointData<T: ?Sized> {
     pruning_point: Hash,
@@ -714,40 +721,280 @@ impl PruningProofManager {
         Err(PruningImportError::PruningProofNotEnoughHeaders)
     }
 
+    // TODO: Find a better name
+    fn find_current_dag_level(&self, pp_header: &Header) -> BlockLevel {
+        let direct_parents = BlockHashSet::from_iter(pp_header.direct_parents().iter().copied());
+        pp_header
+            .parents_by_level
+            .iter()
+            .enumerate()
+            .skip(1)
+            .find_map(|(level, parents)| {
+                if BlockHashSet::from_iter(parents.iter().copied()) == direct_parents {
+                    None
+                } else {
+                    Some((level - 1) as BlockLevel)
+                }
+            })
+            .unwrap_or(self.max_block_level)
+    }
+
+    fn estimated_blue_depth_at_level_0(&self, level: BlockLevel, level_depth: u64, current_dag_level: BlockLevel) -> u64 {
+        level_depth << current_dag_level.saturating_sub(level)
+    }
+
+    fn find_selected_parent_header_at_level(
+        &self,
+        header: &Header,
+        level: BlockLevel,
+    ) -> PruningProofManagerInternalResult<Arc<Header>> {
+        let parents = self.parents_manager.parents_at_level(header, level);
+        let mut sp = SortableBlock { hash: parents[0], blue_work: self.headers_store.get_blue_score(parents[0]).unwrap_or(0).into() };
+        for parent in parents.iter().copied().skip(1) {
+            let sblock = SortableBlock {
+                hash: parent,
+                blue_work: self
+                    .headers_store
+                    .get_blue_score(parent)
+                    .unwrap_option()
+                    .ok_or(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(format!(
+                        "find_selected_parent_header_at_level (level {level}) couldn't find the header for block {parent}"
+                    )))?
+                    .into(),
+            };
+            if sblock > sp {
+                sp = sblock;
+            }
+        }
+        // TODO: For higher levels the chance of having more than two parents is very small, so it might make sense to fetch the whole header for the SortableBlock instead of blue_score (which will probably come from a compact header).
+        self.headers_store.get_header(sp.hash).unwrap_option().ok_or(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(
+            format!("find_selected_parent_header_at_level (level {level}) couldn't find the header for block {}", sp.hash,),
+        ))
+        // Ok(self.headers_store.get_header(sp.hash).unwrap_option().expect("already checked if compact header exists above"))
+    }
+
+    fn find_sufficient_root(
+        &self,
+        pp_header: &HeaderWithBlockLevel,
+        level: BlockLevel,
+        current_dag_level: BlockLevel,
+        required_block: Option<Hash>,
+        temp_db: Arc<DB>,
+    ) -> PruningProofManagerInternalResult<(Arc<DbGhostdagStore>, Hash, Hash)> {
+        let selected_tip_header = if pp_header.block_level >= level {
+            pp_header.header.clone()
+        } else {
+            self.find_selected_parent_header_at_level(&pp_header.header, level)?
+        };
+        let selected_tip = selected_tip_header.hash;
+        let pp = pp_header.header.hash;
+        let relations_service = MTRelationsService::new(self.relations_stores.clone(), level);
+        let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize); // TODO: We can probably reduce cache size
+        let required_level_depth = 2 * self.pruning_proof_m;
+        let mut required_level_0_depth = if level == 0 {
+            required_level_depth
+        } else {
+            self.estimated_blue_depth_at_level_0(
+                level,
+                required_level_depth * 5 / 4, // We take a safety margin
+                current_dag_level,
+            )
+        };
+
+        let mut tries = 0;
+        loop {
+            let required_block = if let Some(required_block) = required_block {
+                // TODO: We can change it to skip related checks if `None`
+                required_block
+            } else {
+                selected_tip
+            };
+
+            let mut finished_headers = false;
+            let mut finished_headers_for_required_block_chain = false;
+            let mut current_header = selected_tip_header.clone();
+            let mut required_block_chain = BlockHashSet::new();
+            let mut selected_chain = BlockHashSet::new();
+            let mut intersected_with_required_block_chain = false;
+            let mut current_required_chain_block = self.headers_store.get_header(required_block).unwrap();
+            let root_header = loop {
+                if !intersected_with_required_block_chain {
+                    required_block_chain.insert(current_required_chain_block.hash);
+                    selected_chain.insert(current_header.hash);
+                    if required_block_chain.contains(&current_header.hash)
+                        || required_block_chain.contains(&current_required_chain_block.hash)
+                    {
+                        intersected_with_required_block_chain = true;
+                    }
+                }
+
+                if current_header.direct_parents().is_empty() // Stop at genesis
+                    || (pp_header.header.blue_score >= current_header.blue_score + required_level_0_depth
+                        && intersected_with_required_block_chain)
+                {
+                    break current_header;
+                }
+                current_header = match self.find_selected_parent_header_at_level(&current_header, level) {
+                    Ok(header) => header,
+                    Err(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(_)) => {
+                        if !intersected_with_required_block_chain {
+                            warn!("it's unknown if the selected root for level {level} ( {} ) is in the chain of the required block {required_block}", current_header.hash)
+                        }
+                        finished_headers = true; // We want to give this root a shot if all its past is pruned
+                        break current_header;
+                    }
+                    Err(e) => return Err(e),
+                };
+
+                if !finished_headers_for_required_block_chain && !intersected_with_required_block_chain {
+                    current_required_chain_block =
+                        match self.find_selected_parent_header_at_level(&current_required_chain_block, level) {
+                            Ok(header) => header,
+                            Err(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(_)) => {
+                                finished_headers_for_required_block_chain = true;
+                                current_required_chain_block
+                            }
+                            Err(e) => return Err(e),
+                        };
+                }
+            };
+            let root = root_header.hash;
+
+            if level == 0 {
+                return Ok((self.ghostdag_primary_store.clone(), selected_tip, root));
+            }
+
+            let ghostdag_store = Arc::new(DbGhostdagStore::new_temp(temp_db.clone(), level, cache_policy, cache_policy, tries));
+            let gd_manager = GhostdagManager::new(
+                root,
+                self.ghostdag_k,
+                ghostdag_store.clone(),
+                relations_service.clone(),
+                self.headers_store.clone(),
+                self.reachability_service.clone(),
+                true,
+            );
+            ghostdag_store.insert(root, Arc::new(gd_manager.genesis_ghostdag_data())).unwrap();
+            let mut topological_heap: BinaryHeap<_> = Default::default();
+            let mut visited = BlockHashSet::new();
+            for child in relations_service.get_children(root).unwrap().read().iter().copied() {
+                topological_heap.push(Reverse(SortableBlock {
+                    hash: child,
+                    // It's important to use here blue work and not score so we can iterate the heap in a way that respects the topology
+                    blue_work: self.headers_store.get_header(child).unwrap().blue_work, // TODO: Maybe add to compact data?
+                }));
+            }
+
+            let mut has_required_block = root == required_block;
+            loop {
+                let Some(current) = topological_heap.pop() else {
+                    break;
+                };
+                let current_hash = current.0.hash;
+                if !visited.insert(current_hash) {
+                    continue;
+                }
+
+                if !self.reachability_service.is_dag_ancestor_of(current_hash, pp) {
+                    // We don't care about blocks in the antipast of the pruning point
+                    continue;
+                }
+
+                if !has_required_block && current_hash == required_block {
+                    has_required_block = true;
+                }
+
+                let relevant_parents: Box<[Hash]> = relations_service
+                    .get_parents(current_hash)
+                    .unwrap()
+                    .iter()
+                    .copied()
+                    .filter(|parent| self.reachability_service.is_dag_ancestor_of(root, *parent))
+                    .collect();
+                let current_gd = gd_manager.ghostdag(&relevant_parents);
+                ghostdag_store.insert(current_hash, Arc::new(current_gd)).unwrap();
+                for child in relations_service.get_children(current_hash).unwrap().read().iter().copied() {
+                    topological_heap.push(Reverse(SortableBlock {
+                        hash: child,
+                        // It's important to use here blue work and not score so we can iterate the heap in a way that respects the topology
+                        blue_work: self.headers_store.get_header(child).unwrap().blue_work, // TODO: Maybe add to compact data?
+                    }));
+                }
+            }
+
+            if has_required_block
+                && (root == self.genesis_hash || ghostdag_store.get_blue_score(selected_tip).unwrap() >= required_level_depth)
+            {
+                break Ok((ghostdag_store, selected_tip, root));
+            }
+
+            tries += 1;
+            if finished_headers {
+                panic!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_level_0_depth} are already pruned")
+            }
+            required_level_0_depth <<= 1;
+            warn!("Failed to find sufficient root for level {level} after {tries} tries. Retrying again to find with depth {required_level_0_depth}");
+        }
+    }
+
+    fn calc_gd_for_all_levels(
+        &self,
+        pp_header: &HeaderWithBlockLevel,
+        temp_db: Arc<DB>,
+    ) -> (Vec<Arc<DbGhostdagStore>>, Vec<Hash>, Vec<Hash>) {
+        let current_dag_level = self.find_current_dag_level(&pp_header.header);
+        let mut ghostdag_stores: Vec<Option<Arc<DbGhostdagStore>>> = vec![None; self.max_block_level as usize + 1];
+        let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
+        let mut root_by_level = vec![None; self.max_block_level as usize + 1];
+        for level in (0..=self.max_block_level).rev() {
+            let level_usize = level as usize;
+            let required_block = if level != self.max_block_level {
+                let next_level_store = ghostdag_stores[level_usize + 1].as_ref().unwrap().clone();
+                let block_at_depth_m_at_next_level = self
+                    .block_at_depth(&*next_level_store, selected_tip_by_level[level_usize + 1].unwrap(), self.pruning_proof_m)
+                    .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
+                    .unwrap();
+                Some(block_at_depth_m_at_next_level)
+            } else {
+                None
+            };
+            let (store, selected_tip, root) = self
+                .find_sufficient_root(&pp_header, level, current_dag_level, required_block, temp_db.clone())
+                .expect(&format!("find_sufficient_root failed for level {level}"));
+            ghostdag_stores[level_usize] = Some(store);
+            selected_tip_by_level[level_usize] = Some(selected_tip);
+            root_by_level[level_usize] = Some(root);
+        }
+
+        (
+            ghostdag_stores.into_iter().map(Option::unwrap).collect_vec(),
+            selected_tip_by_level.into_iter().map(Option::unwrap).collect_vec(),
+            root_by_level.into_iter().map(Option::unwrap).collect_vec(),
+        )
+    }
+
     pub(crate) fn build_pruning_point_proof(&self, pp: Hash) -> PruningPointProof {
         if pp == self.genesis_hash {
             return vec![];
         }
 
+        let (_db_lifetime, temp_db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let pp_header = self.headers_store.get_header_with_block_level(pp).unwrap();
-        let selected_tip_by_level = (0..=self.max_block_level)
-            .map(|level| {
-                if level <= pp_header.block_level {
-                    pp
-                } else {
-                    self.ghostdag_managers[level as usize].find_selected_parent(
-                        self.parents_manager
-                            .parents_at_level(&pp_header.header, level)
-                            .iter()
-                            .filter(|parent| self.ghostdag_stores[level as usize].has(**parent).unwrap())
-                            .cloned(),
-                    )
-                }
-            })
-            .collect_vec();
+        let (ghostdag_stores, selected_tip_by_level, roots_by_level) = self.calc_gd_for_all_levels(&pp_header, temp_db);
 
         (0..=self.max_block_level)
             .map(|level| {
                 let level = level as usize;
                 let selected_tip = selected_tip_by_level[level];
                 let block_at_depth_2m = self
-                    .block_at_depth(&*self.ghostdag_stores[level], selected_tip, 2 * self.pruning_proof_m)
+                    .block_at_depth(&*ghostdag_stores[level], selected_tip, 2 * self.pruning_proof_m)
                     .map_err(|err| format!("level: {}, err: {}", level, err))
                     .unwrap();
 
-                let root = if level != self.max_block_level as usize {
+                let root = roots_by_level[level];
+                let old_root = if level != self.max_block_level as usize {
                     let block_at_depth_m_at_next_level = self
-                        .block_at_depth(&*self.ghostdag_stores[level + 1], selected_tip_by_level[level + 1], self.pruning_proof_m)
+                        .block_at_depth(&*ghostdag_stores[level + 1], selected_tip_by_level[level + 1], self.pruning_proof_m)
                         .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
                         .unwrap();
                     if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, block_at_depth_2m) {
@@ -756,7 +1003,7 @@ impl PruningProofManager {
                         block_at_depth_2m
                     } else {
                         self.find_common_ancestor_in_chain_of_a(
-                            &*self.ghostdag_stores[level],
+                            &*ghostdag_stores[level],
                             block_at_depth_m_at_next_level,
                             block_at_depth_2m,
                         )
@@ -766,11 +1013,12 @@ impl PruningProofManager {
                 } else {
                     block_at_depth_2m
                 };
+                // assert!(self.reachability_service.is_dag_ancestor_of(root, old_root));
 
                 let mut headers = Vec::with_capacity(2 * self.pruning_proof_m as usize);
                 let mut queue = BinaryHeap::<Reverse<SortableBlock>>::new();
                 let mut visited = BlockHashSet::new();
-                queue.push(Reverse(SortableBlock::new(root, self.ghostdag_stores[level].get_blue_work(root).unwrap())));
+                queue.push(Reverse(SortableBlock::new(root, self.headers_store.get_header(root).unwrap().blue_work)));
                 while let Some(current) = queue.pop() {
                     let current = current.0.hash;
                     if !visited.insert(current) {
@@ -783,7 +1031,7 @@ impl PruningProofManager {
 
                     headers.push(self.headers_store.get_header(current).unwrap());
                     for child in self.relations_stores.read()[level].get_children(current).unwrap().read().iter().copied() {
-                        queue.push(Reverse(SortableBlock::new(child, self.ghostdag_stores[level].get_blue_work(child).unwrap())));
+                        queue.push(Reverse(SortableBlock::new(child, self.headers_store.get_header(child).unwrap().blue_work)));
                     }
                 }
 

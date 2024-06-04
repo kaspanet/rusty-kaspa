@@ -222,6 +222,11 @@ fn main_impl(mut args: Args) {
             Default::default(),
             unix_now(),
         ));
+
+        // TODO: Remove the call to get_pruning_point_proof
+        // let the_hash = Hash::from_str("45d0bb998ab8c3513d18fef3f70d9c686539da7cbe4fab8021e55be1b3a0f8df").unwrap();
+        // assert!(topologically_ordered_hashes(&consensus, config.params.genesis.hash).into_iter().contains(&the_hash));
+        let _ = consensus.get_pruning_point_proof();
         (consensus, lifetime)
     } else {
         let until = if args.target_blocks.is_none() { config.genesis.timestamp + args.sim_time * 1000 } else { u64::MAX }; // milliseconds
@@ -441,6 +446,8 @@ mod tests {
         args.target_blocks = Some(5000);
         args.tpb = 1;
         args.test_pruning = true;
+        // args.output_dir = Some("/tmp/simpa".into());
+        // args.input_dir = Some("/tmp/simpa".into());
 
         kaspa_core::log::try_init_logger(&args.log_level);
         // As we log the panic, we want to set it up after the logger
