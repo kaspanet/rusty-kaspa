@@ -185,6 +185,7 @@ impl ConsensusServices {
             parents_manager.clone(),
             reachability_service.clone(),
             ghostdag_managers.clone(),
+            ghostdag_primary_manager.clone(),
             dag_traversal_manager.clone(),
             window_manager.clone(),
             params.max_block_level,

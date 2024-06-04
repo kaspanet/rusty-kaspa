@@ -26,7 +26,10 @@ use kaspa_consensus_core::{
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
 use kaspa_core::{debug, info, trace};
-use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions};
+use kaspa_database::{
+    prelude::{CachePolicy, ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions},
+    utils::DbLifetime,
+};
 use kaspa_hashes::Hash;
 use kaspa_pow::calc_block_level;
 use kaspa_utils::{binary_heap::BinaryHeapExtensions, vec::VecExtensions};
@@ -41,7 +44,7 @@ use crate::{
         services::reachability::{MTReachabilityService, ReachabilityService},
         stores::{
             depth::DbDepthStore,
-            ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
+            ghostdag::{CompactGhostdagData, DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
             headers_selected_tip::DbHeadersSelectedTipStore,
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
@@ -88,6 +91,16 @@ impl<T> Clone for CachedPruningPointData<T> {
     }
 }
 
+struct TempProofContext {
+    headers_store: Arc<DbHeadersStore>,
+    ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
+    relations_stores: Vec<DbRelationsStore>,
+    reachability_stores: Vec<Arc<parking_lot::lock_api::RwLock<parking_lot::RawRwLock, DbReachabilityStore>>>,
+    ghostdag_managers:
+        Vec<GhostdagManager<DbGhostdagStore, DbRelationsStore, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>>,
+    db_lifetime: DbLifetime,
+}
+
 pub struct PruningProofManager {
     db: Arc<DB>,
 
@@ -96,6 +109,7 @@ pub struct PruningProofManager {
     reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
+    ghostdag_primary_store: Arc<DbGhostdagStore>,
     relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
     pruning_point_store: Arc<RwLock<DbPruningStore>>,
     past_pruning_points_store: Arc<DbPastPruningPointsStore>,
@@ -106,6 +120,7 @@ pub struct PruningProofManager {
     selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
 
     ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
+    ghostdag_primary_manager: DbGhostdagManager,
     traversal_manager: DbDagTraversalManager,
     window_manager: DbWindowManager,
     parents_manager: DbParentsManager,
@@ -130,6 +145,7 @@ impl PruningProofManager {
         parents_manager: DbParentsManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
+        ghostdag_manager: DbGhostdagManager,
         traversal_manager: DbDagTraversalManager,
         window_manager: DbWindowManager,
         max_block_level: BlockLevel,
@@ -146,6 +162,7 @@ impl PruningProofManager {
             reachability_relations_store: storage.reachability_relations_store.clone(),
             reachability_service,
             ghostdag_stores: storage.ghostdag_stores.clone(),
+            ghostdag_primary_store: storage.ghostdag_primary_store.clone(),
             relations_stores: storage.relations_stores.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
             past_pruning_points_store: storage.past_pruning_points_store.clone(),
@@ -168,6 +185,7 @@ impl PruningProofManager {
             pruning_proof_m,
             anticone_finalization_depth,
             ghostdag_k,
+            ghostdag_primary_manager: ghostdag_manager,
 
             is_consensus_exiting,
         }
@@ -244,8 +262,12 @@ impl PruningProofManager {
                 self.relations_stores.write()[level].insert(header.hash, parents.clone()).unwrap();
                 let gd = if header.hash == self.genesis_hash {
                     self.ghostdag_managers[level].genesis_ghostdag_data()
-                } else if level == 0 {
-                    if let Some(gd) = trusted_gd_map.get(&header.hash) {
+                } else {
+                    self.ghostdag_managers[level].ghostdag(&parents)
+                };
+
+                if level == 0 {
+                    let gd = if let Some(gd) = trusted_gd_map.get(&header.hash) {
                         gd.clone()
                     } else {
                         let calculated_gd = self.ghostdag_managers[level].ghostdag(&parents);
@@ -258,18 +280,18 @@ impl PruningProofManager {
                             mergeset_reds: calculated_gd.mergeset_reds.clone(),
                             blues_anticone_sizes: calculated_gd.blues_anticone_sizes.clone(),
                         }
-                    }
+                    };
+                    self.ghostdag_primary_store.insert(header.hash, Arc::new(gd)).unwrap();
                 } else {
-                    self.ghostdag_managers[level].ghostdag(&parents)
-                };
-                self.ghostdag_stores[level].insert(header.hash, Arc::new(gd)).unwrap();
+                    self.ghostdag_stores[level].insert(header.hash, Arc::new(gd)).unwrap();
+                }
             }
         }
 
         let virtual_parents = vec![pruning_point];
         let virtual_state = Arc::new(VirtualState {
             parents: virtual_parents.clone(),
-            ghostdag_data: self.ghostdag_managers[0].ghostdag(&virtual_parents),
+            ghostdag_data: self.ghostdag_primary_manager.ghostdag(&virtual_parents),
             ..VirtualState::default()
         });
         self.virtual_stores.write().state.set(virtual_state).unwrap();
@@ -387,18 +409,16 @@ impl PruningProofManager {
         }
     }
 
-    pub fn validate_pruning_point_proof(&self, proof: &PruningPointProof) -> PruningImportResult<()> {
-        if proof.len() != self.max_block_level as usize + 1 {
-            return Err(PruningImportError::ProofNotEnoughLevels(self.max_block_level as usize + 1));
-        }
+    fn init_validate_pruning_point_proof_stores_and_processes(
+        &self,
+        proof: &PruningPointProof,
+    ) -> PruningImportResult<TempProofContext> {
         if proof[0].is_empty() {
             return Err(PruningImportError::PruningProofNotEnoughHeaders);
         }
 
         let headers_estimate = self.estimate_proof_unique_size(proof);
-        let proof_pp_header = proof[0].last().expect("checked if empty");
-        let proof_pp = proof_pp_header.hash;
-        let proof_pp_level = calc_block_level(proof_pp_header, self.max_block_level);
+
         let (db_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize);
         let headers_store =
@@ -443,6 +463,23 @@ impl PruningProofManager {
 
             db.write(batch).unwrap();
         }
+
+        Ok(TempProofContext { db_lifetime, headers_store, ghostdag_stores, relations_stores, reachability_stores, ghostdag_managers })
+    }
+
+    fn populate_stores_for_validate_pruning_point_proof(
+        &self,
+        proof: &PruningPointProof,
+        stores_and_processes: &mut TempProofContext,
+    ) -> PruningImportResult<Vec<Hash>> {
+        let headers_store = &stores_and_processes.headers_store;
+        let ghostdag_stores = &stores_and_processes.ghostdag_stores;
+        let mut relations_stores = stores_and_processes.relations_stores.clone();
+        let reachability_stores = &stores_and_processes.reachability_stores;
+        let ghostdag_managers = &stores_and_processes.ghostdag_managers;
+
+        let proof_pp_header = proof[0].last().expect("checked if empty");
+        let proof_pp = proof_pp_header.hash;
 
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         for level in (0..=self.max_block_level).rev() {
@@ -533,45 +570,91 @@ impl PruningProofManager {
             selected_tip_by_level[level_idx] = selected_tip;
         }
 
+        Ok(selected_tip_by_level.into_iter().map(|selected_tip| selected_tip.unwrap()).collect())
+    }
+
+    fn validate_proof_selected_tip(
+        &self,
+        proof_selected_tip: Hash,
+        level: BlockLevel,
+        proof_pp_level: BlockLevel,
+        proof_pp: Hash,
+        proof_pp_header: &Header,
+    ) -> PruningImportResult<()> {
+        // A proof selected tip of some level has to be the proof suggested prunint point itself if its level
+        // is lower or equal to the pruning point level, or a parent of the pruning point on the relevant level
+        // otherwise.
+        if level <= proof_pp_level {
+            if proof_selected_tip != proof_pp {
+                return Err(PruningImportError::PruningProofSelectedTipIsNotThePruningPoint(proof_selected_tip, level));
+            }
+        } else if !self.parents_manager.parents_at_level(proof_pp_header, level).contains(&proof_selected_tip) {
+            return Err(PruningImportError::PruningProofSelectedTipNotParentOfPruningPoint(proof_selected_tip, level));
+        }
+
+        Ok(())
+    }
+
+    // find_proof_and_consensus_common_chain_ancestor_ghostdag_data returns an option of a tuple
+    // that contains the ghostdag data of the proof and current consensus common ancestor. If no
+    // such ancestor exists, it returns None.
+    fn find_proof_and_consensus_common_ancestor_ghostdag_data(
+        &self,
+        ghostdag_stores: &[Arc<DbGhostdagStore>],
+        proof_selected_tip: Hash,
+        level: BlockLevel,
+        proof_selected_tip_gd: CompactGhostdagData,
+    ) -> Option<(CompactGhostdagData, CompactGhostdagData)> {
+        let mut proof_current = proof_selected_tip;
+        let mut proof_current_gd = proof_selected_tip_gd;
+        loop {
+            match self.ghostdag_stores[level as usize].get_compact_data(proof_current).unwrap_option() {
+                Some(current_gd) => {
+                    break Some((proof_current_gd, current_gd));
+                }
+                None => {
+                    proof_current = proof_current_gd.selected_parent;
+                    if proof_current.is_origin() {
+                        break None;
+                    }
+                    proof_current_gd = ghostdag_stores[level as usize].get_compact_data(proof_current).unwrap();
+                }
+            };
+        }
+    }
+
+    pub fn validate_pruning_point_proof(&self, proof: &PruningPointProof) -> PruningImportResult<()> {
+        if proof.len() != self.max_block_level as usize + 1 {
+            return Err(PruningImportError::ProofNotEnoughLevels(self.max_block_level as usize + 1));
+        }
+
+        let proof_pp_header = proof[0].last().expect("checked if empty");
+        let proof_pp = proof_pp_header.hash;
+        let proof_pp_level = calc_block_level(proof_pp_header, self.max_block_level);
+        let mut stores_and_processes = self.init_validate_pruning_point_proof_stores_and_processes(&proof)?;
+        let selected_tip_by_level = self.populate_stores_for_validate_pruning_point_proof(proof, &mut stores_and_processes)?;
+        let ghostdag_stores = stores_and_processes.ghostdag_stores;
+
         let pruning_read = self.pruning_point_store.read();
         let relations_read = self.relations_stores.read();
         let current_pp = pruning_read.get().unwrap().pruning_point;
         let current_pp_header = self.headers_store.get_header(current_pp).unwrap();
 
-        for (level_idx, selected_tip) in selected_tip_by_level.into_iter().enumerate() {
+        for (level_idx, selected_tip) in selected_tip_by_level.iter().copied().enumerate() {
             let level = level_idx as BlockLevel;
-            let selected_tip = selected_tip.unwrap();
-            if level <= proof_pp_level {
-                if selected_tip != proof_pp {
-                    return Err(PruningImportError::PruningProofSelectedTipIsNotThePruningPoint(selected_tip, level));
-                }
-            } else if !self.parents_manager.parents_at_level(proof_pp_header, level).contains(&selected_tip) {
-                return Err(PruningImportError::PruningProofSelectedTipNotParentOfPruningPoint(selected_tip, level));
-            }
+            self.validate_proof_selected_tip(selected_tip, level, proof_pp_level, proof_pp, proof_pp_header)?;
 
             let proof_selected_tip_gd = ghostdag_stores[level_idx].get_compact_data(selected_tip).unwrap();
             if proof_selected_tip_gd.blue_score < 2 * self.pruning_proof_m {
                 continue;
             }
 
-            let mut proof_current = selected_tip;
-            let mut proof_current_gd = proof_selected_tip_gd;
-            let common_ancestor_data = loop {
-                match self.ghostdag_stores[level_idx].get_compact_data(proof_current).unwrap_option() {
-                    Some(current_gd) => {
-                        break Some((proof_current_gd, current_gd));
-                    }
-                    None => {
-                        proof_current = proof_current_gd.selected_parent;
-                        if proof_current.is_origin() {
-                            break None;
-                        }
-                        proof_current_gd = ghostdag_stores[level_idx].get_compact_data(proof_current).unwrap();
-                    }
-                };
-            };
-
-            if let Some((proof_common_ancestor_gd, common_ancestor_gd)) = common_ancestor_data {
+            if let Some((proof_common_ancestor_gd, common_ancestor_gd)) = self.find_proof_and_consensus_common_ancestor_ghostdag_data(
+                &ghostdag_stores,
+                selected_tip,
+                level,
+                proof_selected_tip_gd,
+            ) {
                 let selected_tip_blue_work_diff =
                     SignedInteger::from(proof_selected_tip_gd.blue_work) - SignedInteger::from(proof_common_ancestor_gd.blue_work);
                 for parent in self.parents_manager.parents_at_level(&current_pp_header, level).iter().copied() {
@@ -593,8 +676,19 @@ impl PruningProofManager {
             return Ok(());
         }
 
+        // If we got here it means there's no level with shared blocks
+        // between the proof and the current consensus. In this case we
+        // consider the proof to be better if it has at least one level
+        // with 2*self.pruning_proof_m blue blocks where consensus doesn't.
         for level in (0..=self.max_block_level).rev() {
             let level_idx = level as usize;
+
+            let proof_selected_tip = selected_tip_by_level[level_idx];
+            let proof_selected_tip_gd = ghostdag_stores[level_idx].get_compact_data(proof_selected_tip).unwrap();
+            if proof_selected_tip_gd.blue_score < 2 * self.pruning_proof_m {
+                continue;
+            }
+
             match relations_read[level_idx].get_parents(current_pp).unwrap_option() {
                 Some(parents) => {
                     if parents
@@ -614,7 +708,7 @@ impl PruningProofManager {
 
         drop(pruning_read);
         drop(relations_read);
-        drop(db_lifetime);
+        drop(stores_and_processes.db_lifetime);
 
         Err(PruningImportError::PruningProofNotEnoughHeaders)
     }
@@ -816,7 +910,7 @@ impl PruningProofManager {
         let mut current = hash;
         for _ in 0..=self.ghostdag_k {
             hashes.push(current);
-            let Some(parent) = self.ghostdag_stores[0].get_selected_parent(current).unwrap_option() else {
+            let Some(parent) = self.ghostdag_primary_store.get_selected_parent(current).unwrap_option() else {
                 break;
             };
             if parent == self.genesis_hash || parent == blockhash::ORIGIN {
@@ -836,7 +930,7 @@ impl PruningProofManager {
             .traversal_manager
             .anticone(pruning_point, virtual_parents, None)
             .expect("no error is expected when max_traversal_allowed is None");
-        let mut anticone = self.ghostdag_managers[0].sort_blocks(anticone);
+        let mut anticone = self.ghostdag_primary_manager.sort_blocks(anticone);
         anticone.insert(0, pruning_point);
 
         let mut daa_window_blocks = BlockHashMap::new();
@@ -847,14 +941,14 @@ impl PruningProofManager {
         for anticone_block in anticone.iter().copied() {
             let window = self
                 .window_manager
-                .block_window(&self.ghostdag_stores[0].get_data(anticone_block).unwrap(), WindowType::FullDifficultyWindow)
+                .block_window(&self.ghostdag_primary_store.get_data(anticone_block).unwrap(), WindowType::FullDifficultyWindow)
                 .unwrap();
 
             for hash in window.deref().iter().map(|block| block.0.hash) {
                 if let Entry::Vacant(e) = daa_window_blocks.entry(hash) {
                     e.insert(TrustedHeader {
                         header: self.headers_store.get_header(hash).unwrap(),
-                        ghostdag: (&*self.ghostdag_stores[0].get_data(hash).unwrap()).into(),
+                        ghostdag: (&*self.ghostdag_primary_store.get_data(hash).unwrap()).into(),
                     });
                 }
             }
@@ -862,7 +956,7 @@ impl PruningProofManager {
             let ghostdag_chain = self.get_ghostdag_chain_k_depth(anticone_block);
             for hash in ghostdag_chain {
                 if let Entry::Vacant(e) = ghostdag_blocks.entry(hash) {
-                    let ghostdag = self.ghostdag_stores[0].get_data(hash).unwrap();
+                    let ghostdag = self.ghostdag_primary_store.get_data(hash).unwrap();
                     e.insert((&*ghostdag).into());
 
                     // We fill `ghostdag_blocks` only for kaspad-go legacy reasons, but the real set we
@@ -894,7 +988,7 @@ impl PruningProofManager {
                 if header.blue_work < min_blue_work {
                     continue;
                 }
-                let ghostdag = (&*self.ghostdag_stores[0].get_data(current).unwrap()).into();
+                let ghostdag = (&*self.ghostdag_primary_store.get_data(current).unwrap()).into();
                 e.insert(TrustedHeader { header, ghostdag });
             }
             let parents = self.relations_stores.read()[0].get_parents(current).unwrap();
