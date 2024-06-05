@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::imports::*;
-use crate::storage::Binding;
+use crate::storage::{Binding, BindingT};
 use crate::tx::PendingTransactionInner;
 use workflow_core::time::{unixtime_as_millis_u64, unixtime_to_locale_string};
 use workflow_wasm::utils::try_get_js_value_prop;
@@ -289,7 +289,9 @@ export interface ITransactionRecord {
 extern "C" {
     #[wasm_bindgen(extends = Object, typescript_type = "ITransactionRecord")]
     #[derive(Clone, Debug, PartialEq, Eq)]
-    pub type ITransactionRecord;
+    pub type TransactionRecordT;
+    #[wasm_bindgen(extends = Object, typescript_type = "ITransactionData")]
+    pub type TransactionDataT;
 }
 
 #[wasm_bindgen(inspectable)]
@@ -785,13 +787,13 @@ impl TransactionRecord {
 #[wasm_bindgen]
 impl TransactionRecord {
     #[wasm_bindgen(getter, js_name = "binding")]
-    pub fn binding_as_js_value(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.binding).unwrap()
+    pub fn binding_as_js_value(&self) -> BindingT {
+        serde_wasm_bindgen::to_value(&self.binding).unwrap().unchecked_into()
     }
 
     #[wasm_bindgen(getter, js_name = "data")]
-    pub fn data_as_js_value(&self) -> JsValue {
-        try_get_js_value_prop(&serde_wasm_bindgen::to_value(&self.transaction_data).unwrap(), "data").unwrap()
+    pub fn data_as_js_value(&self) -> TransactionDataT {
+        try_get_js_value_prop(&serde_wasm_bindgen::to_value(&self.transaction_data).unwrap(), "data").unwrap().unchecked_into()
     }
 
     #[wasm_bindgen(getter, js_name = "type")]
@@ -861,7 +863,7 @@ impl BorshDeserialize for TransactionRecord {
 //     }
 // }
 
-impl From<TransactionRecord> for ITransactionRecord {
+impl From<TransactionRecord> for TransactionRecordT {
     fn from(record: TransactionRecord) -> Self {
         JsValue::from(record).unchecked_into()
     }
