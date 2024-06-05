@@ -1,4 +1,4 @@
-const kaspa = require('../../../../nodejs/kaspa');
+const kaspa = require('../../../../nodejs/kaspa/kaspa');
 const {parseArgs} = require("../utils");
 kaspa.initConsolePanicHook();
 
@@ -32,12 +32,12 @@ kaspa.initConsolePanicHook();
     console.log("header.blueWork:", header.blueWork);
     console.log("header.blueWork.toString(16):", header.blueWork.toString(16));
 
-    console.log("creating state");
-    const state = new kaspa.State(header);
+    console.log("creating PoW");
+    const pow = new kaspa.PoW(header);
     const nonce = BigInt("0xffffffffffffffff");
     console.log("nonce:", nonce);
-    const [a, v] = state.checkPow(nonce);
-    console.log("state:", state);
+    const [a, v] = pow.checkWork(nonce);
+    console.log("pow:", pow);
     console.log("[a,v]:", a, v);
     console.log("v.toString(16):", v.toString(16));
 })();
