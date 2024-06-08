@@ -3,6 +3,7 @@ use crate::{KeySource, Version};
 use derive_builder::Builder;
 use std::collections::{btree_map, BTreeMap};
 use std::ops::Add;
+use kaspa_consensus_core::tx::TransactionId;
 
 type Xpub = kaspa_bip32::ExtendedPublicKey<secp256k1::PublicKey>;
 
@@ -26,7 +27,7 @@ pub struct Global {
     pub output_count: usize,
     /// A map from xpub to the used key fingerprint and derivation path as defined by BIP 32.
     pub xpubs: BTreeMap<Xpub, KeySource>,
-
+    pub id: Option<TransactionId>,
     /// Proprietary key-value pairs for this output.
     pub proprietaries: BTreeMap<String, Vec<u8>>,
     /// Unknown key-value pairs for this output.
@@ -105,6 +106,7 @@ impl Default for Global {
             input_count: 0,
             output_count: 0,
             xpubs: Default::default(),
+            id: None,
             proprietaries: Default::default(),
             unknowns: Default::default(),
         }

@@ -61,7 +61,6 @@ pub enum Signature {
 pub struct PSKT<ROLE> {
     inner_pskt: Inner,
     role: PhantomData<ROLE>,
-    id: Option<TransactionId>,
 }
 
 impl<ROLE> Deref for PSKT<ROLE> {
@@ -111,7 +110,7 @@ impl<R> PSKT<R> {
 
 impl Default for PSKT<Creator> {
     fn default() -> Self {
-        PSKT { inner_pskt: Default::default(), role: Default::default(), id: None }
+        PSKT { inner_pskt: Default::default(), role: Default::default()}
     }
 }
 
@@ -136,7 +135,7 @@ impl PSKT<Creator> {
     }
 
     pub fn constructor(self) -> PSKT<Constructor> {
-        PSKT { inner_pskt: self.inner_pskt, role: Default::default(), id: None }
+        PSKT { inner_pskt: self.inner_pskt, role: Default::default()}
     }
 }
 
@@ -171,7 +170,7 @@ impl PSKT<Constructor> {
     /// Returns a PSBT [`Updater`] once construction is completed.
     pub fn updater(self) -> PSKT<Updater> {
         let pskt = self.no_more_inputs().no_more_outputs();
-        PSKT { inner_pskt: pskt.inner_pskt, role: Default::default(), id: None }
+        PSKT { inner_pskt: pskt.inner_pskt, role: Default::default()}
     }
 
     pub fn signer(self) -> PSKT<Signer> {
@@ -186,7 +185,7 @@ impl PSKT<Updater> {
     }
 
     pub fn signer(self) -> PSKT<Signer> {
-        PSKT { inner_pskt: self.inner_pskt, role: Default::default(), id: None }
+        PSKT { inner_pskt: self.inner_pskt, role: Default::default()}
     }
 }
 
@@ -231,7 +230,7 @@ impl PSKT<Signer> {
     }
 
     pub fn finalizer(self) -> PSKT<Finalizer> {
-        PSKT { inner_pskt: self.inner_pskt, role: Default::default(), id: None }
+        PSKT { inner_pskt: self.inner_pskt, role: Default::default()}
     }
 }
 
@@ -290,14 +289,14 @@ impl PSKT<Finalizer> {
     }
 
     pub fn id(&self) -> Option<TransactionId> {
-        self.id
+        self.global.id
     }
 
     pub fn extractor(self) -> Result<PSKT<Extractor>, TxNotFinalized> {
-        if self.id.is_none() {
+        if self.global.id.is_none() {
             Err(TxNotFinalized {})
         } else {
-            Ok(PSKT { inner_pskt: self.inner_pskt, role: Default::default(), id: self.id })
+            Ok(PSKT { inner_pskt: self.inner_pskt, role: Default::default()})
         }
     }
 
@@ -314,7 +313,7 @@ impl PSKT<Finalizer> {
             input.final_script_sig = Some(sig);
             Ok(())
         })?;
-        self.id = Some(self.calculate_id_internal());
+        self.inner_pskt.global.id = Some(self.calculate_id_internal());
         Ok(self)
     }
 }
