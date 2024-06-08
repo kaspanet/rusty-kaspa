@@ -124,7 +124,7 @@ kaspa-utxoindex = { version = "0.14.1", path = "indexes/utxoindex" }
 kaspa-wallet = { version = "0.14.1", path = "wallet/native" }
 kaspa-wallet-cli-wasm = { version = "0.14.1", path = "wallet/wasm" }
 kaspa-wallet-keys = { version = "0.14.1", path = "wallet/keys" }
-kaspa-wallet-pskt = { version = "0.13.6", path = "wallet/pskt" }
+kaspa-wallet-pskt = { version = "0.14.1", path = "wallet/pskt" }
 kaspa-wallet-core = { version = "0.14.1", path = "wallet/core" }
 kaspa-wallet-macros = { version = "0.14.1", path = "wallet/macros" }
 kaspa-wasm = { version = "0.14.1", path = "wasm" }
