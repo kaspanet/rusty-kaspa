@@ -1,5 +1,7 @@
 use kaspa_bip32::{secp256k1, DerivationPath, KeyFingerprint};
+use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt::Display, fmt::Formatter, future::Future, marker::PhantomData, ops::Deref};
+use serde_repr::{Deserialize_repr, Serialize_repr};
 
 mod error;
 mod global;
@@ -23,7 +25,7 @@ use kaspa_txscript::{caches::Cache, TxScriptEngine};
 pub use output::Output;
 pub use role::{Combiner, Constructor, Creator, Signer, Updater};
 
-#[derive(Default)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Inner {
     /// The global map.
     pub global: Global,
@@ -33,7 +35,8 @@ pub struct Inner {
     pub outputs: Vec<Output>,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize_repr, Deserialize_repr)]
+#[repr(u8)]
 pub enum Version {
     #[default]
     Zero = 0,
@@ -49,17 +52,33 @@ impl Display for Version {
 
 /// Full information on the used extended public key: fingerprint of the
 /// master extended public key and a derivation path from it.
-pub type KeySource = (KeyFingerprint, DerivationPath);
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct KeySource {
+    #[serde(with = "kaspa_utils::serde_bytes_fixed")]
+    pub key_fingerprint: KeyFingerprint,
+    pub derivation_path: DerivationPath,
+}
+
+impl KeySource {
+    pub fn new(key_fingerprint: KeyFingerprint, derivation_path: DerivationPath) -> Self {
+        Self { key_fingerprint, derivation_path }
+    }
+}
 
 pub type PartialSigs = BTreeMap<secp256k1::PublicKey, Signature>;
 
+
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Copy, Clone)]
 pub enum Signature {
     ECDSA(secp256k1::ecdsa::Signature),
     Schnorr(secp256k1::schnorr::Signature),
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PSKT<ROLE> {
+    #[serde(flatten)]
     inner_pskt: Inner,
+    #[serde(skip_serializing, default)]
     role: PhantomData<ROLE>,
 }
 
@@ -110,7 +129,7 @@ impl<R> PSKT<R> {
 
 impl Default for PSKT<Creator> {
     fn default() -> Self {
-        PSKT { inner_pskt: Default::default(), role: Default::default()}
+        PSKT { inner_pskt: Default::default(), role: Default::default() }
     }
 }
 
@@ -135,7 +154,7 @@ impl PSKT<Creator> {
     }
 
     pub fn constructor(self) -> PSKT<Constructor> {
-        PSKT { inner_pskt: self.inner_pskt, role: Default::default()}
+        PSKT { inner_pskt: self.inner_pskt, role: Default::default() }
     }
 }
 
@@ -170,7 +189,7 @@ impl PSKT<Constructor> {
     /// Returns a PSBT [`Updater`] once construction is completed.
     pub fn updater(self) -> PSKT<Updater> {
         let pskt = self.no_more_inputs().no_more_outputs();
-        PSKT { inner_pskt: pskt.inner_pskt, role: Default::default()}
+        PSKT { inner_pskt: pskt.inner_pskt, role: Default::default() }
     }
 
     pub fn signer(self) -> PSKT<Signer> {
@@ -185,7 +204,7 @@ impl PSKT<Updater> {
     }
 
     pub fn signer(self) -> PSKT<Signer> {
-        PSKT { inner_pskt: self.inner_pskt, role: Default::default()}
+        PSKT { inner_pskt: self.inner_pskt, role: Default::default() }
     }
 }
 
@@ -230,10 +249,11 @@ impl PSKT<Signer> {
     }
 
     pub fn finalizer(self) -> PSKT<Finalizer> {
-        PSKT { inner_pskt: self.inner_pskt, role: Default::default()}
+        PSKT { inner_pskt: self.inner_pskt, role: Default::default() }
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignInputOk {
     pub signature: Signature,
     pub pub_key: secp256k1::PublicKey,
@@ -296,7 +316,7 @@ impl PSKT<Finalizer> {
         if self.global.id.is_none() {
             Err(TxNotFinalized {})
         } else {
-            Ok(PSKT { inner_pskt: self.inner_pskt, role: Default::default()})
+            Ok(PSKT { inner_pskt: self.inner_pskt, role: Default::default() })
         }
     }
 

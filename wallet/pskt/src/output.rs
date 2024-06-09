@@ -2,9 +2,10 @@ use crate::utils::combine_if_no_conflicts;
 use crate::KeySource;
 use derive_builder::Builder;
 use kaspa_consensus_core::tx::ScriptPublicKey;
+use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, ops::Add};
 
-#[derive(Builder, Default)]
+#[derive(Builder, Default, Serialize, Deserialize, Clone, Debug)]
 #[builder(default)]
 pub struct Output {
     /// The output's amount (serialized as sompi).
@@ -12,15 +13,17 @@ pub struct Output {
     /// The script for this output, also known as the scriptPubKey.
     pub script_public_key: ScriptPublicKey,
     #[builder(setter(strip_option))]
+    #[serde(with = "kaspa_utils::serde_bytes_optional")]
     /// The redeem script for this output.
     pub redeem_script: Option<Vec<u8>>,
     /// A map from public keys needed to spend this output to their
     /// corresponding master key fingerprints and derivation paths.
     pub bip32_derivations: BTreeMap<secp256k1::PublicKey, KeySource>,
     /// Proprietary key-value pairs for this output.
-    pub proprietaries: BTreeMap<String, Vec<u8>>,
+    pub proprietaries: BTreeMap<String, serde_value::Value>,
+    #[serde(flatten)]
     /// Unknown key-value pairs for this output.
-    pub unknowns: BTreeMap<String, Vec<u8>>,
+    pub unknowns: BTreeMap<String, serde_value::Value>,
 }
 
 impl Add for Output {
@@ -73,7 +76,7 @@ pub enum CombineError {
     #[error("Two different derivations for the same key")]
     NotCompatibleBip32Derivations(#[from] crate::utils::Error<secp256k1::PublicKey, KeySource>),
     #[error("Two different unknown field values")]
-    NotCompatibleUnknownField(crate::utils::Error<String, Vec<u8>>),
+    NotCompatibleUnknownField(crate::utils::Error<String, serde_value::Value>),
     #[error("Two different proprietary values")]
-    NotCompatibleProprietary(crate::utils::Error<String, Vec<u8>>),
+    NotCompatibleProprietary(crate::utils::Error<String, serde_value::Value>),
 }

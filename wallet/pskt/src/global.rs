@@ -1,13 +1,14 @@
 use crate::utils::combine_if_no_conflicts;
 use crate::{KeySource, Version};
 use derive_builder::Builder;
+use kaspa_consensus_core::tx::TransactionId;
 use std::collections::{btree_map, BTreeMap};
 use std::ops::Add;
-use kaspa_consensus_core::tx::TransactionId;
+use serde::{Deserialize, Serialize};
 
 type Xpub = kaspa_bip32::ExtendedPublicKey<secp256k1::PublicKey>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Builder)]
+#[derive(Debug, Clone, Builder, Serialize, Deserialize)]
 #[builder(default)]
 pub struct Global {
     /// The version number of this PSKT.
@@ -29,9 +30,9 @@ pub struct Global {
     pub xpubs: BTreeMap<Xpub, KeySource>,
     pub id: Option<TransactionId>,
     /// Proprietary key-value pairs for this output.
-    pub proprietaries: BTreeMap<String, Vec<u8>>,
+    pub proprietaries: BTreeMap<String, serde_value::Value>,
     /// Unknown key-value pairs for this output.
-    pub unknowns: BTreeMap<String, Vec<u8>>,
+    pub unknowns: BTreeMap<String, serde_value::Value>,
 }
 
 impl Add for Global {
@@ -48,10 +49,10 @@ impl Add for Global {
         //          the specification. It can pick arbitrarily when conflicts occur.
 
         // Merging xpubs
-        for (xpub, (fingerprint1, derivation1)) in rhs.xpubs {
+        for (xpub, KeySource { key_fingerprint: fingerprint1, derivation_path: derivation1 }) in rhs.xpubs {
             match self.xpubs.entry(xpub) {
                 btree_map::Entry::Vacant(entry) => {
-                    entry.insert((fingerprint1, derivation1));
+                    entry.insert(KeySource::new(fingerprint1, derivation1));
                 }
                 btree_map::Entry::Occupied(mut entry) => {
                     // Here in case of the conflict we select the version with algorithm:
@@ -63,7 +64,7 @@ impl Add for Global {
                     //      is not the strict suffix of the longer one
                     // 3) choose longest derivation otherwise
 
-                    let (fingerprint2, derivation2) = entry.get().clone();
+                    let KeySource { key_fingerprint: fingerprint2, derivation_path: derivation2 } = entry.get().clone();
 
                     if (derivation1 == derivation2 && fingerprint1 == fingerprint2)
                         || (derivation1.len() < derivation2.len()
@@ -71,7 +72,7 @@ impl Add for Global {
                     {
                         continue;
                     } else if derivation2.as_ref() == &derivation1.as_ref()[derivation1.len() - derivation2.len()..] {
-                        entry.insert((fingerprint1, derivation1));
+                        entry.insert(KeySource::new(fingerprint1, derivation1));
                         continue;
                     }
                     return Err(CombineError::InconsistentKeySources(entry.key().clone()));
@@ -136,7 +137,7 @@ pub enum CombineError {
     InconsistentKeySources(Xpub),
 
     #[error("Two different unknown field values")]
-    NotCompatibleUnknownField(crate::utils::Error<String, Vec<u8>>),
+    NotCompatibleUnknownField(crate::utils::Error<String, serde_value::Value>),
     #[error("Two different proprietary values")]
-    NotCompatibleProprietary(crate::utils::Error<String, Vec<u8>>),
+    NotCompatibleProprietary(crate::utils::Error<String, serde_value::Value>),
 }

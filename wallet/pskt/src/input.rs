@@ -11,9 +11,10 @@ use kaspa_consensus_core::{
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use std::ops::Add;
+use serde::{Deserialize, Serialize};
 
 // todo add unknown field? combine them by deduplicating, if there are different values - return error?
-#[derive(Builder)]
+#[derive(Builder, Serialize, Deserialize, Debug, Clone)]
 #[builder(default)]
 #[builder(setter(skip))]
 pub struct Input {
@@ -35,6 +36,7 @@ pub struct Input {
     /// The sighash type to be used for this input. Signatures for this input
     /// must use the sighash type.
     pub sighash_type: SigHashType,
+    #[serde(with = "kaspa_utils::serde_bytes_optional")]
     #[builder(setter(strip_option))]
     /// The redeem script for this input.
     pub redeem_script: Option<Vec<u8>>,
@@ -46,13 +48,15 @@ pub struct Input {
     /// The finalized, fully-constructed scriptSig with signatures and any other
     /// scripts necessary for this input to pass validation.
     pub final_script_sig: Option<Vec<u8>>,
+    #[serde(skip_serializing, default)]
     hidden: PhantomData<()>, // prevents manual filling of fields
     #[builder(setter)]
     /// Proprietary key-value pairs for this output.
-    pub proprietaries: BTreeMap<String, Vec<u8>>,
+    pub proprietaries: BTreeMap<String, serde_value::Value>,
+    #[serde(flatten)]
     #[builder(setter)]
     /// Unknown key-value pairs for this output.
-    pub unknowns: BTreeMap<String, Vec<u8>>,
+    pub unknowns: BTreeMap<String, serde_value::Value>,
 }
 
 impl Default for Input {
@@ -159,7 +163,7 @@ pub enum CombineError {
     #[error("Two different derivations for the same key")]
     NotCompatibleBip32Derivations(#[from] CombineMapErr<secp256k1::PublicKey, KeySource>),
     #[error("Two different unknown field values")]
-    NotCompatibleUnknownField(CombineMapErr<String, Vec<u8>>),
+    NotCompatibleUnknownField(CombineMapErr<String, serde_value::Value>),
     #[error("Two different proprietary values")]
-    NotCompatibleProprietary(CombineMapErr<String, Vec<u8>>),
+    NotCompatibleProprietary(CombineMapErr<String, serde_value::Value>),
 }

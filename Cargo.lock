@@ -3624,12 +3624,15 @@ version = "0.14.1"
 dependencies = [
  "derive_builder",
  "kaspa-bip32",
+ "kaspa-consensus-client",
  "kaspa-consensus-core",
  "kaspa-txscript",
  "kaspa-txscript-errors",
+ "kaspa-utils",
  "secp256k1",
  "serde",
  "serde-value",
+ "serde_repr",
  "thiserror",
 ]
 

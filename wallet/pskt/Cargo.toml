@@ -14,13 +14,21 @@ include.workspace = true
 [lib]
 crate-type = ["cdylib", "lib"]
 
+[features]
+wasm32-sdk = ["kaspa-consensus-client/wasm32-sdk"]
+wasm32-types = ["kaspa-consensus-client/wasm32-types"]
+
 [dependencies]
 kaspa-bip32.workspace = true
+kaspa-consensus-client.workspace = true
 kaspa-consensus-core.workspace = true
-kaspa-txscript.workspace = true
 kaspa-txscript-errors.workspace = true
+kaspa-txscript.workspace = true
+kaspa-utils.workspace = true
+
 derive_builder.workspace = true
 secp256k1.workspace = true
-serde.workspace = true
 serde-value.workspace = true
+serde.workspace = true
+serde_repr.workspace = true
 thiserror.workspace = true
