@@ -76,27 +76,27 @@ mod ser {
     pub trait Serialize {
         #[allow(missing_docs)]
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-            where
-                S: Serializer;
+        where
+            S: Serializer;
     }
 
     impl<T> Serialize for Option<T>
-        where
-            T: crate::serde_bytes::Serialize + std::convert::AsRef<[u8]>,
+    where
+        T: crate::serde_bytes::Serialize + std::convert::AsRef<[u8]>,
     {
         fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-            where
-                S: Serializer,
+        where
+            S: Serializer,
         {
-            struct AsBytes<T:>(T);
+            struct AsBytes<T>(T);
 
             impl<T> serde::Serialize for AsBytes<T>
-                where
-                    T: crate::serde_bytes::Serialize,
+            where
+                T: crate::serde_bytes::Serialize,
             {
                 fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-                    where
-                        S: Serializer,
+                where
+                    S: Serializer,
                 {
                     crate::serde_bytes::Serialize::serialize(&self.0, serializer)
                 }
