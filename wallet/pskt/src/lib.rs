@@ -1,7 +1,7 @@
 use kaspa_bip32::{secp256k1, DerivationPath, KeyFingerprint};
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, fmt::Display, fmt::Formatter, future::Future, marker::PhantomData, ops::Deref};
 use serde_repr::{Deserialize_repr, Serialize_repr};
+use std::{collections::BTreeMap, fmt::Display, fmt::Formatter, future::Future, marker::PhantomData, ops::Deref};
 
 mod error;
 mod global;
@@ -12,18 +12,18 @@ mod output;
 mod role;
 mod utils;
 
-use crate::role::{Extractor, Finalizer};
 pub use error::Error;
-pub use global::Global;
-pub use input::Input;
+pub use global::{Global, GlobalBuilder};
+pub use input::{Input, InputBuilder};
+use kaspa_consensus_core::tx::UtxoEntry;
 use kaspa_consensus_core::{
     hashing::{sighash::SigHashReusedValues, sighash_type::SigHashType},
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput},
 };
 use kaspa_txscript::{caches::Cache, TxScriptEngine};
-pub use output::Output;
-pub use role::{Combiner, Constructor, Creator, Signer, Updater};
+pub use output::{Output, OutputBuilder};
+pub use role::{Combiner, Constructor, Creator, Extractor, Finalizer, Signer, Updater};
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Inner {
@@ -67,19 +67,33 @@ impl KeySource {
 
 pub type PartialSigs = BTreeMap<secp256k1::PublicKey, Signature>;
 
-
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Copy, Clone)]
 pub enum Signature {
     ECDSA(secp256k1::ecdsa::Signature),
     Schnorr(secp256k1::schnorr::Signature),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+impl Signature {
+    pub fn into_bytes(self) -> [u8; 64] {
+        match self {
+            Signature::ECDSA(s) => s.serialize_compact(),
+            Signature::Schnorr(s) => s.serialize(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PSKT<ROLE> {
     #[serde(flatten)]
     inner_pskt: Inner,
     #[serde(skip_serializing, default)]
     role: PhantomData<ROLE>,
+}
+
+impl<ROLE> Clone for PSKT<ROLE> {
+    fn clone(&self) -> Self {
+        PSKT { inner_pskt: self.inner_pskt.clone(), role: Default::default() }
+    }
 }
 
 impl<ROLE> Deref for PSKT<ROLE> {
@@ -92,7 +106,7 @@ impl<ROLE> Deref for PSKT<ROLE> {
 
 impl<R> PSKT<R> {
     fn unsigned_tx(&self) -> SignableTransaction {
-        let tx = Transaction::new_non_finalized(
+        let tx = Transaction::new(
             self.global.tx_version,
             self.inputs
                 .iter()
@@ -110,20 +124,21 @@ impl<R> PSKT<R> {
                     script_public_key: script_public_key.clone(),
                 })
                 .collect(),
-            0,
+            self.determine_lock_time(),
             SUBNETWORK_ID_NATIVE,
             0,
             vec![],
         );
-
         let entries = self.inputs.iter().filter_map(|Input { utxo_entry, .. }| utxo_entry.clone()).collect();
         SignableTransaction::with_entries(tx, entries)
     }
 
     fn calculate_id_internal(&self) -> TransactionId {
-        let mut tx = self.unsigned_tx().tx.clone();
-        tx.finalize();
-        tx.id()
+        self.unsigned_tx().tx.id()
+    }
+
+    fn determine_lock_time(&self) -> u64 {
+        self.inputs.iter().map(|input: &Input| input.min_time).max().unwrap_or(self.global.fallback_lock_time).unwrap_or(0)
     }
 }
 
@@ -195,6 +210,10 @@ impl PSKT<Constructor> {
     pub fn signer(self) -> PSKT<Signer> {
         self.updater().signer()
     }
+
+    pub fn combiner(self) -> PSKT<Combiner> {
+        PSKT { inner_pskt: self.inner_pskt, role: Default::default() }
+    }
 }
 
 impl PSKT<Updater> {
@@ -204,6 +223,10 @@ impl PSKT<Updater> {
     }
 
     pub fn signer(self) -> PSKT<Signer> {
+        PSKT { inner_pskt: self.inner_pskt, role: Default::default() }
+    }
+
+    pub fn combiner(self) -> PSKT<Combiner> {
         PSKT { inner_pskt: self.inner_pskt, role: Default::default() }
     }
 }
@@ -251,19 +274,23 @@ impl PSKT<Signer> {
     pub fn finalizer(self) -> PSKT<Finalizer> {
         PSKT { inner_pskt: self.inner_pskt, role: Default::default() }
     }
+
+    pub fn combiner(self) -> PSKT<Combiner> {
+        PSKT { inner_pskt: self.inner_pskt, role: Default::default() }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignInputOk {
     pub signature: Signature,
     pub pub_key: secp256k1::PublicKey,
-    pub key_source: KeySource,
+    pub key_source: Option<KeySource>,
 }
 
-impl std::ops::Add for PSKT<Combiner> {
+impl<R> std::ops::Add<PSKT<R>> for PSKT<Combiner> {
     type Output = Result<Self, CombineError>;
 
-    fn add(mut self, mut rhs: Self) -> Self::Output {
+    fn add(mut self, mut rhs: PSKT<R>) -> Self::Output {
         self.inner_pskt.global = (self.inner_pskt.global + rhs.inner_pskt.global)?;
         macro_rules! combine {
             ($left:expr, $right:expr, $err: ty) => {
@@ -286,6 +313,15 @@ impl std::ops::Add for PSKT<Combiner> {
         self.inner_pskt.inputs = combine!(self.inner_pskt.inputs, rhs.inner_pskt.inputs, input::CombineError);
         self.inner_pskt.outputs = combine!(self.inner_pskt.outputs, rhs.inner_pskt.outputs, output::CombineError);
         Ok(self)
+    }
+}
+
+impl PSKT<Combiner> {
+    pub fn signer(self) -> PSKT<Signer> {
+        PSKT { inner_pskt: self.inner_pskt, role: Default::default() }
+    }
+    pub fn finalizer(self) -> PSKT<Finalizer> {
+        PSKT { inner_pskt: self.inner_pskt, role: Default::default() }
     }
 }
 
@@ -339,41 +375,42 @@ impl PSKT<Finalizer> {
 }
 
 impl PSKT<Extractor> {
-    pub fn determine_lock_time(&self) -> u64 {
-        self.inputs.iter().map(|input: &Input| input.min_time).max().unwrap_or(self.global.fallback_lock_time).unwrap_or(0)
-    }
-
-    pub fn extract_tx_unchecked(self) -> impl FnOnce(u64) -> Transaction {
-        let lock_time = self.determine_lock_time();
-        let mut tx = self.unsigned_tx().tx;
-        move |mass| {
-            tx.lock_time = lock_time;
-            tx.set_mass(mass);
-            tx
-        }
-    }
-
-    pub fn extract_tx(mut self) -> Result<impl FnOnce(u64) -> Transaction, kaspa_txscript_errors::TxScriptError> {
-        let lock_time = self.determine_lock_time();
-        let entries =
-            self.inner_pskt.inputs.iter_mut().filter_map(|Input { utxo_entry, .. }| utxo_entry.as_mut()).map(std::mem::take).collect();
-        let tx = self.extract_tx_unchecked()(0);
-
-        let tx = MutableTransaction::with_entries(tx, entries);
-        use kaspa_consensus_core::tx::VerifiableTransaction;
-        let tx = tx.as_verifiable();
-        let cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValues::new();
-
-        tx.populated_inputs().enumerate().try_for_each(|(idx, (input, entry))| {
-            TxScriptEngine::from_transaction_input(&tx, input, idx, entry, &mut reused_values, &cache)?.execute()?;
+    pub fn extract_tx_unchecked(self) -> Result<impl FnOnce(u64) -> (Transaction, Vec<Option<UtxoEntry>>), TxNotFinalized> {
+        let tx = self.unsigned_tx();
+        let entries = tx.entries;
+        let mut tx = tx.tx;
+        tx.inputs.iter_mut().zip(self.inner_pskt.inputs).try_for_each(|(dest, src)| {
+            dest.signature_script = src.final_script_sig.ok_or(TxNotFinalized{})?;
             Ok(())
         })?;
-        let mut tx = tx.tx().clone();
-        let closure = move |mass| {
-            tx.lock_time = lock_time;
+        Ok(move |mass| {
             tx.set_mass(mass);
-            tx
+            (tx, entries)
+        })
+    }
+
+    pub fn extract_tx(
+        self,
+    ) -> Result<impl FnOnce(u64) -> (Transaction, Vec<Option<UtxoEntry>>), ExtractError> {
+        let (tx, entries) = self.extract_tx_unchecked()?(0);
+
+        let tx = MutableTransaction::with_entries(tx, entries.into_iter().flatten().collect());
+        use kaspa_consensus_core::tx::VerifiableTransaction;
+        {
+            let tx = tx.as_verifiable();
+            let cache = Cache::new(10_000);
+            let mut reused_values = SigHashReusedValues::new();
+
+            tx.populated_inputs().enumerate().try_for_each(|(idx, (input, entry))| {
+                TxScriptEngine::from_transaction_input(&tx, input, idx, entry, &mut reused_values, &cache)?.execute()?;
+                <Result<(), ExtractError>>::Ok(())
+            })?;
+        }
+        let entries = tx.entries;
+        let tx = tx.tx;
+        let closure = move |mass| {
+            tx.set_mass(mass);
+            (tx, entries)
         };
         Ok(closure)
     }
@@ -400,7 +437,16 @@ pub enum FinalizeError<E> {
     FinalaziCb(#[from] E),
 }
 
-#[derive(thiserror::Error, Debug, Clone)]
+#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
+pub enum ExtractError{
+    #[error(transparent)]
+    TxScriptError(#[from] kaspa_txscript_errors::TxScriptError),
+    #[error(transparent)]
+    TxNotFinalized(#[from] TxNotFinalized),
+}
+
+
+#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
 #[error("Transaction is not finalized")]
 pub struct TxNotFinalized {}
 

@@ -32,3 +32,6 @@ serde-value.workspace = true
 serde.workspace = true
 serde_repr.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -1,17 +1,24 @@
-// todo add builder, separate signatures
-
-use crate::utils::{combine_if_no_conflicts, Error as CombineMapErr};
-use crate::{KeySource, PartialSigs};
-use derive_builder::Builder;
-use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
-use kaspa_consensus_core::{
-    hashing::sighash_type::SigHashType,
-    tx::{TransactionId, TransactionOutpoint, UtxoEntry},
+use crate::{
+    utils::{combine_if_no_conflicts, Error as CombineMapErr},
+    KeySource,
+    PartialSigs
 };
-use std::collections::BTreeMap;
-use std::marker::PhantomData;
-use std::ops::Add;
+use derive_builder::Builder;
+use kaspa_consensus_core::{
+    hashing::{
+        sighash_type::{
+            SIG_HASH_ALL,
+            SigHashType
+        }
+    },
+    tx::{TransactionId, TransactionOutpoint, UtxoEntry}
+};
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::BTreeMap,
+    marker::PhantomData,
+    ops::Add
+};
 
 // todo add unknown field? combine them by deduplicating, if there are different values - return error?
 #[derive(Builder, Serialize, Deserialize, Debug, Clone)]
@@ -44,7 +51,8 @@ pub struct Input {
     pub sig_op_count: Option<u8>,
     /// A map from public keys needed to sign this input to their corresponding
     /// master key fingerprints and derivation paths.
-    pub bip32_derivations: BTreeMap<secp256k1::PublicKey, KeySource>,
+    pub bip32_derivations: BTreeMap<secp256k1::PublicKey, Option<KeySource>>,
+    #[serde(with = "kaspa_utils::serde_bytes_optional")]
     /// The finalized, fully-constructed scriptSig with signatures and any other
     /// scripts necessary for this input to pass validation.
     pub final_script_sig: Option<Vec<u8>>,
@@ -120,14 +128,14 @@ impl Add for Input {
         };
 
         // todo Does Combiner allowed to change final script sig??
-        // self.final_script_sig = match (self.final_script_sig.take(), rhs.final_script_sig) {
-        //     (None, None) => None,
-        //     (Some(script), None) | (None, Some(script)) => Some(script),
-        //     (Some(script_left), Some(script_right)) if script_left == script_right => Some(script_left),
-        //     (Some(script_left), Some(script_right)) => {
-        //         return Err(CombineError::NotCompatibleRedeemScripts { this: script_left, that: script_right })
-        //     }
-        // };
+        self.final_script_sig = match (self.final_script_sig.take(), rhs.final_script_sig) {
+            (None, None) => None,
+            (Some(script), None) | (None, Some(script)) => Some(script),
+            (Some(script_left), Some(script_right)) if script_left == script_right => Some(script_left),
+            (Some(script_left), Some(script_right)) => {
+                return Err(CombineError::NotCompatibleRedeemScripts { this: script_left, that: script_right })
+            }
+        };
 
         self.bip32_derivations = combine_if_no_conflicts(self.bip32_derivations, rhs.bip32_derivations)?;
         self.proprietaries =
@@ -161,7 +169,7 @@ pub enum CombineError {
     NotCompatibleUtxos { this: UtxoEntry, that: UtxoEntry },
 
     #[error("Two different derivations for the same key")]
-    NotCompatibleBip32Derivations(#[from] CombineMapErr<secp256k1::PublicKey, KeySource>),
+    NotCompatibleBip32Derivations(#[from] CombineMapErr<secp256k1::PublicKey, Option<KeySource>>),
     #[error("Two different unknown field values")]
     NotCompatibleUnknownField(CombineMapErr<String, serde_value::Value>),
     #[error("Two different proprietary values")]

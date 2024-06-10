@@ -73,12 +73,12 @@ mod tests {
     use crate::{caches::Cache, opcodes::codes::OpData65, pay_to_script_hash_script, TxScriptEngine};
     use core::str::FromStr;
     use kaspa_consensus_core::{
+        subnets::SUBNETWORK_ID_NATIVE,
         hashing::{
             sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues},
             sighash_type::SIG_HASH_ALL,
         },
-        subnets::SubnetworkId,
-        tx::*,
+        tx::*
     };
     use rand::thread_rng;
     use secp256k1::Keypair;
@@ -130,18 +130,17 @@ mod tests {
             let pks = filtered.map(|input| input.kp.public_key().serialize());
             multisig_redeem_script_ecdsa(pks, required).unwrap()
         };
-
         let tx = Transaction::new(
             0,
             vec![TransactionInput {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                 signature_script: vec![],
-                sequence: 0,
-                sig_op_count: 4,
+                sequence: u64::MAX,
+                sig_op_count: inputs.len() as u8,
             }],
             vec![],
-            0,
-            SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
+            10,
+            SUBNETWORK_ID_NATIVE,
             0,
             vec![],
         );
@@ -153,6 +152,7 @@ mod tests {
             is_coinbase: false,
         }];
         let mut tx = MutableTransaction::with_entries(tx, entries);
+        let mut tx = dbg!(tx);
 
         let mut reused_values = SigHashReusedValues::new();
         let sig_hash = if !is_ecdsa {
@@ -178,8 +178,8 @@ mod tests {
         {
             tx.tx.inputs[0].signature_script =
                 signatures.into_iter().chain(ScriptBuilder::new().add_data(&script).unwrap().drain()).collect();
+            println!("signature: {}", hex::encode(&tx.tx.inputs[0].signature_script));
         }
-
         let tx = tx.as_verifiable();
         let (input, entry) = tx.populated_inputs().next().unwrap();
 

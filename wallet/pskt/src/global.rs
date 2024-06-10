@@ -1,10 +1,15 @@
-use crate::utils::combine_if_no_conflicts;
-use crate::{KeySource, Version};
+use crate::{
+    utils::combine_if_no_conflicts,
+    KeySource,
+    Version
+};
 use derive_builder::Builder;
 use kaspa_consensus_core::tx::TransactionId;
-use std::collections::{btree_map, BTreeMap};
-use std::ops::Add;
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::{btree_map, BTreeMap},
+    ops::Add
+};
 
 type Xpub = kaspa_bip32::ExtendedPublicKey<secp256k1::PublicKey>;
 
@@ -45,6 +50,16 @@ impl Add for Global {
         if self.tx_version != rhs.tx_version {
             return Err(CombineError::TxVersionMismatch { this: self.tx_version, that: rhs.tx_version });
         }
+        self.fallback_lock_time = match (self.fallback_lock_time, rhs.fallback_lock_time) {
+            (Some(lhs), Some(rhs)) if lhs != rhs => return Err(CombineError::LockTimeMismatch { this: lhs, that: rhs }),
+            (Some(v), _) | (_, Some(v)) => Some(v),
+            _ => None,
+        };
+        // todo discussable, maybe throw error
+        self.inputs_modifiable &= rhs.inputs_modifiable;
+        self.outputs_modifiable &= rhs.outputs_modifiable;
+        self.input_count = self.input_count.max(rhs.input_count);
+        self.output_count = self.output_count.max(rhs.output_count);
         // BIP 174: The Combiner must remove any duplicate key-value pairs, in accordance with
         //          the specification. It can pick arbitrarily when conflicts occur.
 
@@ -79,15 +94,11 @@ impl Add for Global {
                 }
             }
         }
-
-        // todo combine inputs count? combine modifiers?
-        // pub inputs_modifiable: bool,
-        // pub outputs_modifiable: bool,
-        //
-        // /// The number of inputs in this PSKT.
-        // pub input_count: usize,
-        // /// The number of outputs in this PSKT.
-        // pub output_count: usize,
+        self.id = match (self.id, rhs.id) {
+            (Some(lhs), Some(rhs)) if lhs != rhs => return Err(CombineError::TransactionIdMismatch { this: lhs, that: rhs }),
+            (Some(v), _) | (_, Some(v)) => Some(v),
+            _ => None,
+        };
 
         self.proprietaries =
             combine_if_no_conflicts(self.proprietaries, rhs.proprietaries).map_err(CombineError::NotCompatibleProprietary)?;
@@ -132,6 +143,21 @@ pub enum CombineError {
         /// Into a PBST with `that` tx version.
         that: u16,
     },
+    #[error("The transaction lock times are not the same")]
+    LockTimeMismatch {
+        /// Attempted to combine a PBST with `this` lock times.
+        this: u64,
+        /// Into a PBST with `that` lock times.
+        that: u64,
+    },
+    #[error("The transaction ids are not the same")]
+    TransactionIdMismatch {
+        /// Attempted to combine a PBST with `this` tx id.
+        this: TransactionId,
+        /// Into a PBST with `that` tx id.
+        that: TransactionId,
+    },
+
     #[error("combining PSBT, key-source conflict for xpub {0}")]
     /// Xpubs have inconsistent key sources.
     InconsistentKeySources(Xpub),
