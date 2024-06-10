@@ -3,16 +3,13 @@ use kaspa_consensus_core::{
     tx::{TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_txscript::{multisig_redeem_script, opcodes::codes::OpData65, pay_to_script_hash_script, script_builder::ScriptBuilder};
-use kaspa_wallet_pskt::{
-    Combiner, Creator, Extractor, Finalizer, Inner, InputBuilder, SignInputOk, Signature, Signer, Updater,
-    PSKT,
-};
+use kaspa_wallet_pskt::{Combiner, Creator, Extractor, Finalizer, Inner, InputBuilder, SignInputOk, Signature, Signer, Updater, PSKT};
 use secp256k1::{rand::thread_rng, Keypair};
 use std::{iter, str::FromStr};
 
 fn main() {
     let kps = [Keypair::new(secp256k1::SECP256K1, &mut thread_rng()), Keypair::new(secp256k1::SECP256K1, &mut thread_rng())];
-      let redeem_script = multisig_redeem_script(kps.iter().map(|pk| pk.x_only_public_key().0.serialize()), 2).unwrap();
+    let redeem_script = multisig_redeem_script(kps.iter().map(|pk| pk.x_only_public_key().0.serialize()), 2).unwrap();
     // Create the PSKT.
     let created = PSKT::<Creator>::default().inputs_modifiable().outputs_modifiable();
     let ser = serde_json::to_string_pretty(&created).expect("Failed to serialize after creation");

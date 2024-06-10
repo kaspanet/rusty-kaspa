@@ -380,7 +380,7 @@ impl PSKT<Extractor> {
         let entries = tx.entries;
         let mut tx = tx.tx;
         tx.inputs.iter_mut().zip(self.inner_pskt.inputs).try_for_each(|(dest, src)| {
-            dest.signature_script = src.final_script_sig.ok_or(TxNotFinalized{})?;
+            dest.signature_script = src.final_script_sig.ok_or(TxNotFinalized {})?;
             Ok(())
         })?;
         Ok(move |mass| {
@@ -389,9 +389,7 @@ impl PSKT<Extractor> {
         })
     }
 
-    pub fn extract_tx(
-        self,
-    ) -> Result<impl FnOnce(u64) -> (Transaction, Vec<Option<UtxoEntry>>), ExtractError> {
+    pub fn extract_tx(self) -> Result<impl FnOnce(u64) -> (Transaction, Vec<Option<UtxoEntry>>), ExtractError> {
         let (tx, entries) = self.extract_tx_unchecked()?(0);
 
         let tx = MutableTransaction::with_entries(tx, entries.into_iter().flatten().collect());
@@ -438,13 +436,12 @@ pub enum FinalizeError<E> {
 }
 
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
-pub enum ExtractError{
+pub enum ExtractError {
     #[error(transparent)]
     TxScriptError(#[from] kaspa_txscript_errors::TxScriptError),
     #[error(transparent)]
     TxNotFinalized(#[from] TxNotFinalized),
 }
-
 
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
 #[error("Transaction is not finalized")]

@@ -1,24 +1,14 @@
 use crate::{
     utils::{combine_if_no_conflicts, Error as CombineMapErr},
-    KeySource,
-    PartialSigs
+    KeySource, PartialSigs,
 };
 use derive_builder::Builder;
 use kaspa_consensus_core::{
-    hashing::{
-        sighash_type::{
-            SIG_HASH_ALL,
-            SigHashType
-        }
-    },
-    tx::{TransactionId, TransactionOutpoint, UtxoEntry}
+    hashing::sighash_type::{SigHashType, SIG_HASH_ALL},
+    tx::{TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::BTreeMap,
-    marker::PhantomData,
-    ops::Add
-};
+use std::{collections::BTreeMap, marker::PhantomData, ops::Add};
 
 // todo add unknown field? combine them by deduplicating, if there are different values - return error?
 #[derive(Builder, Serialize, Deserialize, Debug, Clone)]

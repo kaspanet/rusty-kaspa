@@ -1,14 +1,10 @@
-use crate::{
-    utils::combine_if_no_conflicts,
-    KeySource,
-    Version
-};
+use crate::{utils::combine_if_no_conflicts, KeySource, Version};
 use derive_builder::Builder;
 use kaspa_consensus_core::tx::TransactionId;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{btree_map, BTreeMap},
-    ops::Add
+    ops::Add,
 };
 
 type Xpub = kaspa_bip32::ExtendedPublicKey<secp256k1::PublicKey>;

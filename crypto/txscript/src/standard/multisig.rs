@@ -73,12 +73,12 @@ mod tests {
     use crate::{caches::Cache, opcodes::codes::OpData65, pay_to_script_hash_script, TxScriptEngine};
     use core::str::FromStr;
     use kaspa_consensus_core::{
-        subnets::SUBNETWORK_ID_NATIVE,
         hashing::{
             sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues},
             sighash_type::SIG_HASH_ALL,
         },
-        tx::*
+        subnets::SUBNETWORK_ID_NATIVE,
+        tx::*,
     };
     use rand::thread_rng;
     use secp256k1::Keypair;
