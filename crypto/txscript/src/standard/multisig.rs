@@ -152,7 +152,6 @@ mod tests {
             is_coinbase: false,
         }];
         let mut tx = MutableTransaction::with_entries(tx, entries);
-        let mut tx = dbg!(tx);
 
         let mut reused_values = SigHashReusedValues::new();
         let sig_hash = if !is_ecdsa {
