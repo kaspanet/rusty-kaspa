@@ -157,47 +157,46 @@ impl Serializer for Notification {
         Ok(())
     }
 
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, buf)?;
-        match load!(u32, buf)? {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, reader)?;
+        match load!(u32, reader)? {
             0 => {
-                let notification = deserialize!(BlockAddedNotification, buf)?;
+                let notification = deserialize!(BlockAddedNotification, reader)?;
                 Ok(Notification::BlockAdded(notification))
             }
             1 => {
-                let notification = deserialize!(VirtualChainChangedNotification, buf)?;
+                let notification = deserialize!(VirtualChainChangedNotification, reader)?;
                 Ok(Notification::VirtualChainChanged(notification))
             }
             2 => {
-                let notification = deserialize!(FinalityConflictNotification, buf)?;
+                let notification = deserialize!(FinalityConflictNotification, reader)?;
                 Ok(Notification::FinalityConflict(notification))
             }
             3 => {
-                let notification = deserialize!(FinalityConflictResolvedNotification, buf)?;
+                let notification = deserialize!(FinalityConflictResolvedNotification, reader)?;
                 Ok(Notification::FinalityConflictResolved(notification))
             }
             4 => {
-                let notification = deserialize!(UtxosChangedNotification, buf)?;
+                let notification = deserialize!(UtxosChangedNotification, reader)?;
                 Ok(Notification::UtxosChanged(notification))
             }
             5 => {
-                let notification = deserialize!(SinkBlueScoreChangedNotification, buf)?;
+                let notification = deserialize!(SinkBlueScoreChangedNotification, reader)?;
                 Ok(Notification::SinkBlueScoreChanged(notification))
             }
             6 => {
-                let notification = deserialize!(VirtualDaaScoreChangedNotification, buf)?;
+                let notification = deserialize!(VirtualDaaScoreChangedNotification, reader)?;
                 Ok(Notification::VirtualDaaScoreChanged(notification))
             }
             7 => {
-                let notification = deserialize!(PruningPointUtxoSetOverrideNotification, buf)?;
+                let notification = deserialize!(PruningPointUtxoSetOverrideNotification, reader)?;
                 Ok(Notification::PruningPointUtxoSetOverride(notification))
             }
             8 => {
-                let notification = deserialize!(NewBlockTemplateNotification, buf)?;
+                let notification = deserialize!(NewBlockTemplateNotification, reader)?;
                 Ok(Notification::NewBlockTemplate(notification))
             }
             _ => Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid variant")),
         }
     }
 }
-

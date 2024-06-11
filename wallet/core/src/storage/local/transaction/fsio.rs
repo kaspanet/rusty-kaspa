@@ -315,6 +315,6 @@ async fn write(path: &Path, record: &TransactionRecord, secret: Option<&Secret>,
     } else {
         Encryptable::from(record.clone())
     };
-    fs::write(path, &data.try_to_vec()?).await?;
+    fs::write(path, &borsh::to_vec(&data)?).await?;
     Ok(())
 }

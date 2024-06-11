@@ -23,10 +23,10 @@ impl Serializer for BlockCount {
         Ok(())
     }
 
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, buf)?;
-        let header_count: u64 = load!(u64, buf)?;
-        let block_count: u64 = load!(u64, buf)?;
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, reader)?;
+        let header_count: u64 = load!(u64, reader)?;
+        let block_count: u64 = load!(u64, reader)?;
 
         Ok(Self { header_count, block_count })
     }

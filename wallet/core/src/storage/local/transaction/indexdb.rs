@@ -494,7 +494,7 @@ fn transaction_record_to_js_value(
     } else {
         Encryptable::from(transaction_record.clone())
     };
-    let encryped_data_vec = encryped_data.try_to_vec()?;
+    let encryped_data_vec = borsh::to_vec(&encryped_data)?;
     let borsh_data_uint8_arr = Uint8Array::from(encryped_data_vec.as_slice());
     let borsh_data_js_value = borsh_data_uint8_arr.into();
 

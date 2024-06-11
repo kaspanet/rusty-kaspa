@@ -60,9 +60,9 @@ impl Serializer for Scope {
         store!(Scope, self, writer)?;
         Ok(())
     }
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, buf)?;
-        load!(Scope, buf)
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, reader)?;
+        load!(Scope, reader)
     }
 }
 
@@ -74,8 +74,8 @@ impl Serializer for BlockAddedScope {
         store!(u32, &1, writer)?;
         Ok(())
     }
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, buf)?;
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, reader)?;
         Ok(Self {})
     }
 }
@@ -103,9 +103,9 @@ impl Serializer for VirtualChainChangedScope {
         store!(bool, &self.include_accepted_transaction_ids, writer)?;
         Ok(())
     }
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, buf)?;
-        let include_accepted_transaction_ids: bool = load!(bool, buf)?;
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, reader)?;
+        let include_accepted_transaction_ids: bool = load!(bool, reader)?;
         Ok(Self { include_accepted_transaction_ids })
     }
 }
@@ -118,8 +118,8 @@ impl Serializer for FinalityConflictScope {
         store!(u32, &1, writer)?;
         Ok(())
     }
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, buf)?;
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, reader)?;
         Ok(Self {})
     }
 }
@@ -132,8 +132,8 @@ impl Serializer for FinalityConflictResolvedScope {
         store!(u32, &1, writer)?;
         Ok(())
     }
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, buf)?;
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, reader)?;
         Ok(Self {})
     }
 }
@@ -174,9 +174,9 @@ impl Serializer for UtxosChangedScope {
         store!(Vec<Address>, &self.addresses, writer)?;
         Ok(())
     }
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, buf)?;
-        let addresses: Vec<Address> = load!(Vec<Address>, buf)?;
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, reader)?;
+        let addresses: Vec<Address> = load!(Vec<Address>, reader)?;
         Ok(Self { addresses })
     }
 }
@@ -189,8 +189,8 @@ impl Serializer for SinkBlueScoreChangedScope {
         store!(u32, &1, writer)?;
         Ok(())
     }
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, buf)?;
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, reader)?;
         Ok(Self {})
     }
 }
@@ -203,8 +203,8 @@ impl Serializer for VirtualDaaScoreChangedScope {
         store!(u32, &1, writer)?;
         Ok(())
     }
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, buf)?;
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, reader)?;
         Ok(Self {})
     }
 }
@@ -217,8 +217,8 @@ impl Serializer for PruningPointUtxoSetOverrideScope {
         store!(u32, &1, writer)?;
         Ok(())
     }
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, buf)?;
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, reader)?;
         Ok(Self {})
     }
 }
@@ -231,8 +231,8 @@ impl Serializer for NewBlockTemplateScope {
         store!(u32, &1, writer)?;
         Ok(())
     }
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, buf)?;
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version: u32 = load!(u32, reader)?;
         Ok(Self {})
     }
 }

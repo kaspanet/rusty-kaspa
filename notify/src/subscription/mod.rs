@@ -16,6 +16,7 @@ pub mod context;
 pub mod single;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[borsh(use_discriminant = true)]
 pub enum Command {
     Start = 0,
     Stop = 1,
