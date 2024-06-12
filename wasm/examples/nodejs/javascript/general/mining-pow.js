@@ -1,4 +1,4 @@
-const kaspa = require('../../../../nodejs/kaspa/kaspa');
+const kaspa = require('../../../../nodejs/kaspa');
 const {parseArgs} = require("../utils");
 kaspa.initConsolePanicHook();
 
