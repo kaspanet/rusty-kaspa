@@ -956,7 +956,8 @@ impl PruningProofManager {
 
             tries += 1;
             if finished_headers {
-                panic!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_level_0_depth} are already pruned")
+                warn!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_level_0_depth} are already pruned. Trying anyway.");
+                break Ok((ghostdag_store, selected_tip, root));
             }
             required_level_0_depth <<= 1;
             warn!("Failed to find sufficient root for level {level} after {tries} tries. Retrying again to find with depth {required_level_0_depth}");
