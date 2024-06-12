@@ -113,5 +113,5 @@ pub fn calculate_target(difficulty: f32) -> Result<BigInt> {
         return Err(Error::custom("Target is too big"));
     }
 
-    Ok(Uint256(buf).try_into().map_err(Error::custom)?)
+    Uint256(buf).try_into().map_err(Error::custom)
 }
