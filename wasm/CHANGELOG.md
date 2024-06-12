@@ -1,5 +1,13 @@
 Latest online documentation available at: https://kaspa.aspectron.org/docs/
 
+### Release 2024-06-12
+
+- Fix `PublicKeyGenerator::change_address_as_string()` that was returning the receive address.
+- WASM SDK now builds as a GitHub artifact during the CI process.
+- `State` renamed to `PoW`
+- Docs now have a PoW section that unifies all PoW-related classes and functions.
+- `TransactionRecord.data` (`TransactionData`) now has correct TypeScript bindings.
+
 ### Release 2024-05-26
 
 - Adding utility functions:  `payToAddressScript`, `payToScriptHashScript`, `payToScriptHashSignatureScript`, `addressFromScriptPublicKey`, `isScriptPayToPubkey`, `isScriptPayToPubkeyECDSA`, `isScriptPayToScriptHash`.
