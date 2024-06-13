@@ -7,6 +7,7 @@ use syn::{Attribute, Error, Expr, ExprArray, Result};
 pub struct Handler {
     pub name: String,
     pub fn_call: Ident,
+    #[allow(dead_code)]
     pub fn_with_suffix: Option<Ident>,
     pub fn_no_suffix: Ident,
     pub fn_camel: Ident,

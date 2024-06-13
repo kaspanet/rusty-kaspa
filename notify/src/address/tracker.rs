@@ -111,7 +111,6 @@ impl Indexer for CounterMap {
 
 #[cfg(test)]
 #[derive(Debug, Clone)]
-#[cfg(test)]
 pub struct Counter {
     pub index: Index,
     pub count: RefCount,
