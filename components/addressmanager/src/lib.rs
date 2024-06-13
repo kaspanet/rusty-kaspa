@@ -596,7 +596,7 @@ mod address_store_with_cache {
             // The target uniform distribution
             let target_u_dist = Uniform::new(0.0, (num_of_buckets) as f64).unwrap();
             for _ in 0..num_of_trials {
-                // The weight sampled expected uniform distibution
+                // The weight sampled expected uniform distribution
                 let prioritized_address_distribution = am
                     .lock()
                     .iterate_prioritized_random_addresses(HashSet::new())
