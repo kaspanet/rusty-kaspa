@@ -1638,6 +1638,7 @@ pub struct GetMetricsRequest {
     pub connection_metrics: bool,
     pub bandwidth_metrics: bool,
     pub consensus_metrics: bool,
+    pub storage_metrics: bool,
 }
 
 impl Serializer for GetMetricsRequest {
@@ -1647,6 +1648,7 @@ impl Serializer for GetMetricsRequest {
         store!(bool, &self.connection_metrics, writer)?;
         store!(bool, &self.bandwidth_metrics, writer)?;
         store!(bool, &self.consensus_metrics, writer)?;
+        store!(bool, &self.storage_metrics, writer)?;
 
         Ok(())
     }
@@ -1657,8 +1659,9 @@ impl Serializer for GetMetricsRequest {
         let connection_metrics = load!(bool, reader)?;
         let bandwidth_metrics = load!(bool, reader)?;
         let consensus_metrics = load!(bool, reader)?;
+        let storage_metrics = load!(bool, reader)?;
 
-        Ok(Self { process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics })
+        Ok(Self { process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, storage_metrics })
     }
 }
 
@@ -1901,6 +1904,28 @@ impl Serializer for ConsensusMetrics {
     }
 }
 
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageMetrics {
+    pub storage_size_bytes: u64,
+}
+
+impl Serializer for StorageMetrics {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u32, &1, writer)?;
+        store!(u64, &self.storage_size_bytes, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u32, reader)?;
+        let storage_size_bytes = load!(u64, reader)?;
+
+        Ok(Self { storage_size_bytes })
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMetricsResponse {
@@ -1909,6 +1934,7 @@ pub struct GetMetricsResponse {
     pub connection_metrics: Option<ConnectionMetrics>,
     pub bandwidth_metrics: Option<BandwidthMetrics>,
     pub consensus_metrics: Option<ConsensusMetrics>,
+    pub storage_metrics: Option<StorageMetrics>,
 }
 
 impl GetMetricsResponse {
@@ -1918,8 +1944,9 @@ impl GetMetricsResponse {
         connection_metrics: Option<ConnectionMetrics>,
         bandwidth_metrics: Option<BandwidthMetrics>,
         consensus_metrics: Option<ConsensusMetrics>,
+        storage_metrics: Option<StorageMetrics>,
     ) -> Self {
-        Self { process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, server_time }
+        Self { process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, storage_metrics, server_time }
     }
 }
 
@@ -1931,6 +1958,7 @@ impl Serializer for GetMetricsResponse {
         serialize!(Option<ConnectionMetrics>, &self.connection_metrics, writer)?;
         serialize!(Option<BandwidthMetrics>, &self.bandwidth_metrics, writer)?;
         serialize!(Option<ConsensusMetrics>, &self.consensus_metrics, writer)?;
+        serialize!(Option<StorageMetrics>, &self.storage_metrics, writer)?;
 
         Ok(())
     }
@@ -1942,8 +1970,9 @@ impl Serializer for GetMetricsResponse {
         let connection_metrics = deserialize!(Option<ConnectionMetrics>, reader)?;
         let bandwidth_metrics = deserialize!(Option<BandwidthMetrics>, reader)?;
         let consensus_metrics = deserialize!(Option<ConsensusMetrics>, reader)?;
+        let storage_metrics = deserialize!(Option<StorageMetrics>, reader)?;
 
-        Ok(Self { server_time, process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics })
+        Ok(Self { server_time, process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, storage_metrics })
     }
 }
 

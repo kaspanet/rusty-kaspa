@@ -866,9 +866,18 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             None
         };
 
+        let storage_metrics = req.storage_metrics.then_some(StorageMetrics { storage_size_bytes: 0 });
+
         let server_time = unix_now();
 
-        let response = GetMetricsResponse { server_time, process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics };
+        let response = GetMetricsResponse {
+            server_time,
+            process_metrics,
+            connection_metrics,
+            bandwidth_metrics,
+            consensus_metrics,
+            storage_metrics,
+        };
 
         Ok(response)
     }

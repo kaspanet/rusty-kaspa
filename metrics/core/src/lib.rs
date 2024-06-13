@@ -115,8 +115,14 @@ impl Metrics {
     // --- samplers
 
     async fn sample_metrics(self: &Arc<Self>, rpc: Arc<dyn RpcApi>, data: &mut MetricsData) -> Result<()> {
-        let GetMetricsResponse { server_time: _, consensus_metrics, connection_metrics, bandwidth_metrics, process_metrics } =
-            rpc.get_metrics(true, true, true, true).await?;
+        let GetMetricsResponse {
+            server_time: _,
+            consensus_metrics,
+            connection_metrics,
+            bandwidth_metrics,
+            process_metrics,
+            storage_metrics,
+        } = rpc.get_metrics(true, true, true, true, true).await?;
 
         if let Some(consensus_metrics) = consensus_metrics {
             data.node_blocks_submitted_count = consensus_metrics.node_blocks_submitted_count;
@@ -180,6 +186,9 @@ impl Metrics {
             data.node_disk_io_write_per_sec = process_metrics.disk_io_write_per_sec;
         }
 
+        if let Some(storage_metrics) = storage_metrics {
+            data.node_storage_size_bytes = storage_metrics.storage_size_bytes;
+        }
         Ok(())
     }
 }

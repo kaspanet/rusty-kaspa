@@ -461,6 +461,7 @@ async fn sanity_test() {
                             connection_metrics: true,
                             bandwidth_metrics: true,
                             process_metrics: true,
+                            storage_metrics: true,
                         })
                         .await
                         .unwrap();
@@ -473,6 +474,7 @@ async fn sanity_test() {
                             connection_metrics: true,
                             bandwidth_metrics: true,
                             process_metrics: true,
+                            storage_metrics: true,
                         })
                         .await
                         .unwrap();
@@ -485,6 +487,7 @@ async fn sanity_test() {
                             connection_metrics: true,
                             bandwidth_metrics: false,
                             process_metrics: false,
+                            storage_metrics: false,
                         })
                         .await
                         .unwrap();
@@ -497,6 +500,7 @@ async fn sanity_test() {
                             connection_metrics: true,
                             bandwidth_metrics: false,
                             process_metrics: false,
+                            storage_metrics: false,
                         })
                         .await
                         .unwrap();

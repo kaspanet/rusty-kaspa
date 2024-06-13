@@ -403,6 +403,7 @@ from!(item: &kaspa_rpc_core::GetMetricsRequest, protowire::GetMetricsRequestMess
         connection_metrics: item.connection_metrics,
         bandwidth_metrics: item.bandwidth_metrics,
         consensus_metrics: item.consensus_metrics,
+        storage_metrics: item.storage_metrics,
     }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetricsResponseMessage, {
@@ -412,6 +413,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetric
         connection_metrics: item.connection_metrics.as_ref().map(|x| x.into()),
         bandwidth_metrics: item.bandwidth_metrics.as_ref().map(|x| x.into()),
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.into()),
+        storage_metrics: item.storage_metrics.as_ref().map(|x| x.into()),
         error: None,
     }
 });
@@ -795,7 +797,7 @@ try_from!(&protowire::PingRequestMessage, kaspa_rpc_core::PingRequest);
 try_from!(&protowire::PingResponseMessage, RpcResult<kaspa_rpc_core::PingResponse>);
 
 try_from!(item: &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetricsRequest, {
-    Self { process_metrics: item.process_metrics, connection_metrics: item.connection_metrics, bandwidth_metrics:item.bandwidth_metrics, consensus_metrics: item.consensus_metrics }
+    Self { process_metrics: item.process_metrics, connection_metrics: item.connection_metrics, bandwidth_metrics:item.bandwidth_metrics, consensus_metrics: item.consensus_metrics, storage_metrics: item.storage_metrics }
 });
 try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetMetricsResponse>, {
     Self {
@@ -804,6 +806,7 @@ try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core:
         connection_metrics: item.connection_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         bandwidth_metrics: item.bandwidth_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.try_into()).transpose()?,
+        storage_metrics: item.storage_metrics.as_ref().map(|x| x.try_into()).transpose()?,
     }
 });
 

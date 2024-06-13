@@ -56,6 +56,7 @@ impl MetricGroup {
                 Metric::NodeDiskIoReadPerSec,
                 Metric::NodeDiskIoWriteBytes,
                 Metric::NodeDiskIoWritePerSec,
+                Metric::NodeStorageSizeBytes,
             ]
             .as_slice()
             .iter(),
@@ -127,7 +128,8 @@ impl From<Metric> for MetricGroup {
             | Metric::NodeDiskIoReadBytes
             | Metric::NodeDiskIoWriteBytes
             | Metric::NodeDiskIoReadPerSec
-            | Metric::NodeDiskIoWritePerSec => MetricGroup::Storage,
+            | Metric::NodeDiskIoWritePerSec
+            | Metric::NodeStorageSizeBytes => MetricGroup::Storage,
             // --
             Metric::NodeBorshLiveConnections
             | Metric::NodeBorshConnectionAttempts
@@ -194,6 +196,7 @@ pub enum Metric {
     NodeDiskIoWriteBytes,
     NodeDiskIoReadPerSec,
     NodeDiskIoWritePerSec,
+    NodeStorageSizeBytes,
     // ---
     NodeActivePeers,
     NodeBorshLiveConnections,
@@ -252,62 +255,62 @@ pub enum Metric {
 impl Metric {
     // TODO - this will be refactored at a later date
     // as this requires changes and testing in /kos
-    pub fn group(&self) -> &'static str {
-        match self {
-            Metric::NodeCpuUsage
-            | Metric::NodeResidentSetSizeBytes
-            | Metric::NodeVirtualMemorySizeBytes
-            | Metric::NodeFileHandlesCount
-            | Metric::NodeDiskIoReadBytes
-            | Metric::NodeDiskIoWriteBytes
-            | Metric::NodeDiskIoReadPerSec
-            | Metric::NodeDiskIoWritePerSec
-            | Metric::NodeBorshLiveConnections
-            | Metric::NodeBorshConnectionAttempts
-            | Metric::NodeBorshHandshakeFailures
-            | Metric::NodeJsonLiveConnections
-            | Metric::NodeJsonConnectionAttempts
-            | Metric::NodeJsonHandshakeFailures
-            | Metric::NodeBorshBytesTx
-            | Metric::NodeBorshBytesRx
-            | Metric::NodeJsonBytesTx
-            | Metric::NodeJsonBytesRx
-            | Metric::NodeP2pBytesTx
-            | Metric::NodeP2pBytesRx
-            | Metric::NodeGrpcUserBytesTx
-            | Metric::NodeGrpcUserBytesRx
-            | Metric::NodeTotalBytesTx
-            | Metric::NodeTotalBytesRx
-            | Metric::NodeBorshBytesTxPerSecond
-            | Metric::NodeBorshBytesRxPerSecond
-            | Metric::NodeJsonBytesTxPerSecond
-            | Metric::NodeJsonBytesRxPerSecond
-            | Metric::NodeP2pBytesTxPerSecond
-            | Metric::NodeP2pBytesRxPerSecond
-            | Metric::NodeGrpcUserBytesTxPerSecond
-            | Metric::NodeGrpcUserBytesRxPerSecond
-            | Metric::NodeTotalBytesTxPerSecond
-            | Metric::NodeTotalBytesRxPerSecond
-            | Metric::NodeActivePeers => "system",
-            // --
-            Metric::NodeBlocksSubmittedCount
-            | Metric::NodeHeadersProcessedCount
-            | Metric::NodeDependenciesProcessedCount
-            | Metric::NodeBodiesProcessedCount
-            | Metric::NodeTransactionsProcessedCount
-            | Metric::NodeChainBlocksProcessedCount
-            | Metric::NodeMassProcessedCount
-            | Metric::NodeDatabaseBlocksCount
-            | Metric::NodeDatabaseHeadersCount
-            | Metric::NetworkMempoolSize
-            | Metric::NetworkTransactionsPerSecond
-            | Metric::NetworkTipHashesCount
-            | Metric::NetworkDifficulty
-            | Metric::NetworkPastMedianTime
-            | Metric::NetworkVirtualParentHashesCount
-            | Metric::NetworkVirtualDaaScore => "kaspa",
-        }
-    }
+    // pub fn group(&self) -> &'static str {
+    //     match self {
+    //         Metric::NodeCpuUsage
+    //         | Metric::NodeResidentSetSizeBytes
+    //         | Metric::NodeVirtualMemorySizeBytes
+    //         | Metric::NodeFileHandlesCount
+    //         | Metric::NodeDiskIoReadBytes
+    //         | Metric::NodeDiskIoWriteBytes
+    //         | Metric::NodeDiskIoReadPerSec
+    //         | Metric::NodeDiskIoWritePerSec
+    //         | Metric::NodeBorshLiveConnections
+    //         | Metric::NodeBorshConnectionAttempts
+    //         | Metric::NodeBorshHandshakeFailures
+    //         | Metric::NodeJsonLiveConnections
+    //         | Metric::NodeJsonConnectionAttempts
+    //         | Metric::NodeJsonHandshakeFailures
+    //         | Metric::NodeBorshBytesTx
+    //         | Metric::NodeBorshBytesRx
+    //         | Metric::NodeJsonBytesTx
+    //         | Metric::NodeJsonBytesRx
+    //         | Metric::NodeP2pBytesTx
+    //         | Metric::NodeP2pBytesRx
+    //         | Metric::NodeGrpcUserBytesTx
+    //         | Metric::NodeGrpcUserBytesRx
+    //         | Metric::NodeTotalBytesTx
+    //         | Metric::NodeTotalBytesRx
+    //         | Metric::NodeBorshBytesTxPerSecond
+    //         | Metric::NodeBorshBytesRxPerSecond
+    //         | Metric::NodeJsonBytesTxPerSecond
+    //         | Metric::NodeJsonBytesRxPerSecond
+    //         | Metric::NodeP2pBytesTxPerSecond
+    //         | Metric::NodeP2pBytesRxPerSecond
+    //         | Metric::NodeGrpcUserBytesTxPerSecond
+    //         | Metric::NodeGrpcUserBytesRxPerSecond
+    //         | Metric::NodeTotalBytesTxPerSecond
+    //         | Metric::NodeTotalBytesRxPerSecond
+    //         | Metric::NodeActivePeers => "system",
+    //         // --
+    //         Metric::NodeBlocksSubmittedCount
+    //         | Metric::NodeHeadersProcessedCount
+    //         | Metric::NodeDependenciesProcessedCount
+    //         | Metric::NodeBodiesProcessedCount
+    //         | Metric::NodeTransactionsProcessedCount
+    //         | Metric::NodeChainBlocksProcessedCount
+    //         | Metric::NodeMassProcessedCount
+    //         | Metric::NodeDatabaseBlocksCount
+    //         | Metric::NodeDatabaseHeadersCount
+    //         | Metric::NetworkMempoolSize
+    //         | Metric::NetworkTransactionsPerSecond
+    //         | Metric::NetworkTipHashesCount
+    //         | Metric::NetworkDifficulty
+    //         | Metric::NetworkPastMedianTime
+    //         | Metric::NetworkVirtualParentHashesCount
+    //         | Metric::NetworkVirtualDaaScore => "kaspa",
+    //     }
+    // }
 
     pub fn is_key_performance_metric(&self) -> bool {
         matches!(
@@ -362,6 +365,7 @@ impl Metric {
             Metric::NodeDiskIoWriteBytes => as_mb(f, si, short),
             Metric::NodeDiskIoReadPerSec => format!("{}/s", as_data_size(f, si)),
             Metric::NodeDiskIoWritePerSec => format!("{}/s", as_data_size(f, si)),
+            Metric::NodeStorageSizeBytes => as_gb(f, si, short),
             // --
             Metric::NodeBorshLiveConnections => f.trunc().separated_string(),
             Metric::NodeBorshConnectionAttempts => f.trunc().separated_string(),
@@ -425,6 +429,7 @@ impl Metric {
             Metric::NodeDiskIoWriteBytes => ("Storage Write", "Stor Write"),
             Metric::NodeDiskIoReadPerSec => ("Storage Read/s", "Stor Read"),
             Metric::NodeDiskIoWritePerSec => ("Storage Write/s", "Stor Write"),
+            Metric::NodeStorageSizeBytes => ("Storage Size", "Stor Size"),
             // --
             Metric::NodeActivePeers => ("Active p2p Peers", "Peers"),
             Metric::NodeBorshLiveConnections => ("Borsh Active Connections", "Borsh Conn"),
@@ -493,6 +498,7 @@ pub struct MetricsData {
     pub node_disk_io_write_bytes: u64,
     pub node_disk_io_read_per_sec: f32,
     pub node_disk_io_write_per_sec: f32,
+    pub node_storage_size_bytes: u64,
     // ---
     pub node_borsh_live_connections: u32,
     pub node_borsh_connection_attempts: u64,
@@ -615,6 +621,8 @@ pub struct MetricsSnapshot {
     pub network_past_median_time: f64,
     pub network_virtual_parent_hashes_count: f64,
     pub network_virtual_daa_score: f64,
+    // ---
+    pub node_storage_size_bytes: f64,
 }
 
 impl MetricsSnapshot {
@@ -629,6 +637,7 @@ impl MetricsSnapshot {
             Metric::NodeDiskIoWriteBytes => self.node_disk_io_write_bytes,
             Metric::NodeDiskIoReadPerSec => self.node_disk_io_read_per_sec,
             Metric::NodeDiskIoWritePerSec => self.node_disk_io_write_per_sec,
+            Metric::NodeStorageSizeBytes => self.node_storage_size_bytes,
             // ---
             Metric::NodeActivePeers => self.node_active_peers,
             Metric::NodeBorshLiveConnections => self.node_borsh_active_connections,
@@ -725,6 +734,7 @@ impl From<(&MetricsData, &MetricsData)> for MetricsSnapshot {
             node_disk_io_write_bytes: b.node_disk_io_write_bytes as f64,
             node_disk_io_read_per_sec: b.node_disk_io_read_per_sec as f64,
             node_disk_io_write_per_sec: b.node_disk_io_write_per_sec as f64,
+            node_storage_size_bytes: b.node_storage_size_bytes as f64,
             // ---
             node_borsh_active_connections: b.node_borsh_live_connections as f64,
             node_borsh_connection_attempts: b.node_borsh_connection_attempts as f64,

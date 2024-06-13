@@ -806,11 +806,16 @@ message ConsensusMetrics{
   uint64 virtualDaaScore = 18;
 }
 
+message StorageMetrics{
+  uint64 storageSizeBytes = 1;
+}
+
 message GetMetricsRequestMessage{
   bool processMetrics = 1;
   bool connectionMetrics = 2;
   bool bandwidthMetrics = 3;
   bool consensusMetrics = 4;
+  bool storageMetrics = 5;
 }
 
 message GetMetricsResponseMessage{
@@ -819,6 +824,7 @@ message GetMetricsResponseMessage{
   ConnectionMetrics connectionMetrics = 12;
   BandwidthMetrics bandwidthMetrics = 13;
   ConsensusMetrics consensusMetrics = 14;
+  StorageMetrics storageMetrics = 15;
   RPCError error = 1000;
 }
 
