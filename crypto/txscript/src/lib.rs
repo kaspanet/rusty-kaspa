@@ -505,9 +505,10 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
 mod tests {
     use std::iter::once;
 
-    use crate::opcodes::codes::{OpBlake2b, OpCheckSig, OpData1, OpData2, OpData32, OpDup, OpEqual, OpPushData1, OpTrue};
+    use crate::opcodes::codes::{OpBlake2b, OpCheckSig, OpData1, OpData2, OpData32, OpDup, OpEqual, OpEqualVerify, OpGreaterThanOrEqual, OpInputAmount, OpInputSPK, OpOutputAmount, OpOutputSpk, OpPushData1, OpSub, OpTrue};
 
     use super::*;
+    use crate::script_builder::ScriptBuilder;
     use kaspa_consensus_core::tx::{
         PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
     };
@@ -911,6 +912,44 @@ mod tests {
                 test.name
             );
         }
+    }
+    #[test]
+    fn output_gt_input_test() {
+        let threshold: i64 = 100;
+        let sig_cache = Cache::new(10_000);
+        let mut reused_values = SigHashReusedValues::new();
+        let script = ScriptBuilder::new()
+            .add_ops(&[OpInputSPK, OpOutputSpk, OpEqualVerify, OpOutputAmount])
+            .unwrap()
+            .add_i64(threshold)
+            .unwrap()
+            .add_ops(&[OpSub, OpInputAmount, OpGreaterThanOrEqual])
+            .unwrap()
+            .drain();
+        let spk = pay_to_script_hash_script(&script);
+        let input = TransactionInput {
+            previous_outpoint: TransactionOutpoint {
+                transaction_id: TransactionId::from_bytes([
+                    0xc9, 0x97, 0xa5, 0xe5, 0x6e, 0x10, 0x41, 0x02, 0xfa, 0x20, 0x9c, 0x6a, 0x85, 0x2d, 0xd9, 0x06, 0x60, 0xa2, 0x0b,
+                    0x2d, 0x9c, 0x35, 0x24, 0x23, 0xed, 0xce, 0x25, 0x85, 0x7f, 0xcd, 0x37, 0x04,
+                ]),
+                index: 0,
+            },
+            signature_script: ScriptBuilder::new().add_data(&script).unwrap().drain(),
+            sequence: 4294967295,
+            sig_op_count: 0,
+        };
+        let input_value = 1000000000;
+        let output = TransactionOutput { value: 1000000000 + threshold as u64, script_public_key: spk.clone() };
+
+        let tx = Transaction::new(1, vec![input.clone()], vec![output.clone()], 0, Default::default(), 0, vec![]);
+        let utxo_entry = UtxoEntry::new(input_value, spk, 0, tx.is_coinbase());
+
+        let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
+
+        let mut vm = TxScriptEngine::from_transaction_input(&populated_tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache)
+            .expect("Script creation failed");
+        assert_eq!(vm.execute(), Ok(()));
     }
 }
 
