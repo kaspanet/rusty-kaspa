@@ -875,92 +875,68 @@ opcode_list! {
             _ => Err(TxScriptError::InvalidSource("LockTimeVerify only applies to transaction inputs".to_string()))
         }
     }
+
+    // Undefined opcodes.
     opcode OpInputSPK<0xb2, 1>(self, vm) {
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "kip-10-mutual-tx")] {
-                match vm.script_source {
-                    ScriptSource::TxInput{
-                        utxo_entry: kaspa_consensus_core::tx::UtxoEntry{
-                            script_public_key: spk @ kaspa_consensus_core::tx::ScriptPublicKey{
-                                version, ..},
-                            ..
-                        },
-                        ..
-                    } => {
-                        let version = version.to_be_bytes();
-                        let script = spk.script();
-                        let mut v = Vec::with_capacity(version.len() + script.len());
-                        v.extend_from_slice(&version);
-                        v.extend_from_slice(script);
-                        vm.dstack.push(v);
-                        Ok(())
-                    },
-                    _ => Err(TxScriptError::InvalidSource("OpInputSPK only applies to transaction inputs".to_string()))
-                }
-            } else {
-                 Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-            }
+        match vm.script_source {
+            ScriptSource::TxInput{
+                utxo_entry: kaspa_consensus_core::tx::UtxoEntry{
+                    script_public_key: spk @ kaspa_consensus_core::tx::ScriptPublicKey{
+                        version, ..},
+                    ..
+                },
+                ..
+            } => {
+                let version = version.to_be_bytes();
+                let script = spk.script();
+                let mut v = Vec::with_capacity(version.len() + script.len());
+                v.extend_from_slice(&version);
+                v.extend_from_slice(script);
+                vm.dstack.push(v);
+                Ok(())
+            },
+            _ => Err(TxScriptError::InvalidSource("OpInputSPK only applies to transaction inputs".to_string()))
         }
     }
     opcode OpInputAmount<0xb3, 1>(self, vm) {
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "kip-10-mutual-tx")] {
-                match vm.script_source {
-                    ScriptSource::TxInput{
-                        utxo_entry: kaspa_consensus_core::tx::UtxoEntry{
-                            amount,
-                            ..
-                        },
-                        ..
-                    } => {
-                        push_number(*amount as i64, vm)
-                    },
-                    _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
-                }
-            } else {
-                Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-            }
+        match vm.script_source {
+            ScriptSource::TxInput{
+                utxo_entry: kaspa_consensus_core::tx::UtxoEntry{
+                    amount,
+                    ..
+                },
+                ..
+            } => {
+                push_number(*amount as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
         }
     }
     opcode OpOutputSpk<0xb4, 1>(self, vm) {
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "kip-10-mutual-tx")] {
-                  match vm.script_source {
-                    ScriptSource::TxInput{tx, id , ..} => {
-                        let v = tx.outputs().get(id).map(|output| {
-                            let version =  output.script_public_key.version.to_be_bytes();
-                            let script = output.script_public_key.script();
-                            let mut v = Vec::with_capacity(version.len() + script.len());
-                            v.extend_from_slice(&version);
-                            v.extend_from_slice(script);
-                            v
-                        });
-                        vm.dstack.push(v.unwrap_or_default());
-                        Ok(())
-                    },
-                    _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
-                 }
-            } else {
-                Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-            }
+        match vm.script_source {
+            ScriptSource::TxInput{tx, id , ..} => {
+                let v = tx.outputs().get(id).map(|output| {
+                    let version =  output.script_public_key.version.to_be_bytes();
+                    let script = output.script_public_key.script();
+                    let mut v = Vec::with_capacity(version.len() + script.len());
+                    v.extend_from_slice(&version);
+                    v.extend_from_slice(script);
+                    v
+                });
+                vm.dstack.push(v.unwrap_or_default());
+                Ok(())
+            },
+            _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
         }
     }
     opcode OpOutputAmount<0xb5, 1>(self, vm) {
-        cfg_if::cfg_if! {
-            if #[cfg(feature = "kip-10-mutual-tx")] {
-                match vm.script_source {
-                    ScriptSource::TxInput{tx, id , ..} => {
-                        push_number(tx.outputs().get(id).map(|output| output.value).unwrap_or_default() as i64, vm)
-                    },
-                    _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
-                }
-            } else {
-                Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-            }
+        match vm.script_source {
+            ScriptSource::TxInput{tx, id , ..} => {
+                push_number(tx.outputs().get(id).map(|output| output.value).unwrap_or_default() as i64, vm)
+            },
+            _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
         }
     }
-
-    // Undefined opcodes.
     opcode OpUnknown182<0xb6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown183<0xb7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown184<0xb8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
