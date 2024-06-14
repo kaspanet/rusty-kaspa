@@ -127,34 +127,34 @@ pub enum CombineError {
     #[error("The version numbers are not the same")]
     /// The version numbers are not the same.
     VersionMismatch {
-        /// Attempted to combine a PBST with `this` version.
+        /// Attempted to combine a PSKT with `this` version.
         this: Version,
-        /// Into a PBST with `that` version.
+        /// Into a PSKT with `that` version.
         that: Version,
     },
     #[error("The transaction version numbers are not the same")]
     TxVersionMismatch {
-        /// Attempted to combine a PBST with `this` tx version.
+        /// Attempted to combine a PSKT with `this` tx version.
         this: u16,
-        /// Into a PBST with `that` tx version.
+        /// Into a PSKT with `that` tx version.
         that: u16,
     },
     #[error("The transaction lock times are not the same")]
     LockTimeMismatch {
-        /// Attempted to combine a PBST with `this` lock times.
+        /// Attempted to combine a PSKT with `this` lock times.
         this: u64,
-        /// Into a PBST with `that` lock times.
+        /// Into a PSKT with `that` lock times.
         that: u64,
     },
     #[error("The transaction ids are not the same")]
     TransactionIdMismatch {
-        /// Attempted to combine a PBST with `this` tx id.
+        /// Attempted to combine a PSKT with `this` tx id.
         this: TransactionId,
-        /// Into a PBST with `that` tx id.
+        /// Into a PSKT with `that` tx id.
         that: TransactionId,
     },
 
-    #[error("combining PSBT, key-source conflict for xpub {0}")]
+    #[error("combining PSKT, key-source conflict for xpub {0}")]
     /// Xpubs have inconsistent key sources.
     InconsistentKeySources(Xpub),
 

@@ -201,7 +201,7 @@ impl PSKT<Constructor> {
         self
     }
 
-    /// Returns a PSBT [`Updater`] once construction is completed.
+    /// Returns a PSKT [`Updater`] once construction is completed.
     pub fn updater(self) -> PSKT<Updater> {
         let pskt = self.no_more_inputs().no_more_outputs();
         PSKT { inner_pskt: pskt.inner_pskt, role: Default::default() }

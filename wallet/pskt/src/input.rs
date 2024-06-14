@@ -141,16 +141,16 @@ impl Add for Input {
 pub enum CombineError {
     #[error("The previous txids are not the same")]
     PreviousTxidMismatch {
-        /// Attempted to combine a PBST with `this` previous txid.
+        /// Attempted to combine a PSKT with `this` previous txid.
         this: TransactionId,
-        /// Into a PBST with `that` previous txid.
+        /// Into a PSKT with `that` previous txid.
         that: TransactionId,
     },
     #[error("The spent output indexes are not the same")]
     SpentOutputIndexMismatch {
-        /// Attempted to combine a PBST with `this` spent output index.
+        /// Attempted to combine a PSKT with `this` spent output index.
         this: u32,
-        /// Into a PBST with `that` spent output index.
+        /// Into a PSKT with `that` spent output index.
         that: u32,
     },
     #[error("Two different redeem scripts detected")]
