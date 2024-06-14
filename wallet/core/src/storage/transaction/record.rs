@@ -320,11 +320,12 @@ pub struct TransactionRecord {
     #[serde(rename = "unixtimeMsec")]
     #[wasm_bindgen(js_name = unixtimeMsec)]
     pub unixtime_msec: Option<u64>,
+    #[wasm_bindgen(skip)]
     pub value: u64,
     #[wasm_bindgen(skip)]
     pub binding: Binding,
     #[serde(rename = "blockDaaScore")]
-    #[wasm_bindgen(js_name = blockDaaScore)]
+    #[wasm_bindgen(skip)]
     pub block_daa_score: u64,
     #[serde(rename = "network")]
     #[wasm_bindgen(js_name = network)]
@@ -786,6 +787,16 @@ impl TransactionRecord {
 
 #[wasm_bindgen]
 impl TransactionRecord {
+    #[wasm_bindgen(getter)]
+    pub fn value_as_js_bigint(&self) -> BigInt {
+        self.value.into()
+    }
+
+    #[wasm_bindgen(getter, js_name = "blockDaaScore")]
+    pub fn block_daa_score_as_js_bigint(&self) -> BigInt {
+        self.block_daa_score.into()
+    }
+
     #[wasm_bindgen(getter, js_name = "binding")]
     pub fn binding_as_js_value(&self) -> BindingT {
         serde_wasm_bindgen::to_value(&self.binding).unwrap().unchecked_into()
