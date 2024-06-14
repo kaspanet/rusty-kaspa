@@ -77,7 +77,7 @@ mod tests {
             sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues},
             sighash_type::SIG_HASH_ALL,
         },
-        subnets::SUBNETWORK_ID_NATIVE,
+        subnets::SubnetworkId,
         tx::*,
     };
     use rand::thread_rng;
@@ -130,17 +130,18 @@ mod tests {
             let pks = filtered.map(|input| input.kp.public_key().serialize());
             multisig_redeem_script_ecdsa(pks, required).unwrap()
         };
+
         let tx = Transaction::new(
             0,
             vec![TransactionInput {
                 previous_outpoint: TransactionOutpoint { transaction_id: prev_tx_id, index: 0 },
                 signature_script: vec![],
-                sequence: u64::MAX,
-                sig_op_count: inputs.len() as u8,
+                sequence: 0,
+                sig_op_count: 4,
             }],
             vec![],
-            10,
-            SUBNETWORK_ID_NATIVE,
+            0,
+            SubnetworkId::from_bytes([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
             0,
             vec![],
         );
@@ -177,8 +178,8 @@ mod tests {
         {
             tx.tx.inputs[0].signature_script =
                 signatures.into_iter().chain(ScriptBuilder::new().add_data(&script).unwrap().drain()).collect();
-            println!("signature: {}", hex::encode(&tx.tx.inputs[0].signature_script));
         }
+
         let tx = tx.as_verifiable();
         let (input, entry) = tx.populated_inputs().next().unwrap();
 
