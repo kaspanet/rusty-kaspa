@@ -39,6 +39,8 @@ pub struct MiningManager {
     block_template_cache: BlockTemplateCache,
     mempool: RwLock<Mempool>,
     counters: Arc<MiningCounters>,
+    // Storage mass hardfork DAA score
+    pub(crate) storage_mass_activation_daa_score: u64,
 }
 
 impl MiningManager {
@@ -50,7 +52,7 @@ impl MiningManager {
         counters: Arc<MiningCounters>,
     ) -> Self {
         let config = Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass);
-        Self::with_config(config, cache_lifetime, counters)
+        Self::with_config(config, cache_lifetime, counters, u64::MAX)
     }
 
     pub fn new_with_extended_config(
@@ -60,17 +62,23 @@ impl MiningManager {
         ram_scale: f64,
         cache_lifetime: Option<u64>,
         counters: Arc<MiningCounters>,
+        storage_mass_activation_daa_score: u64,
     ) -> Self {
         let config =
             Config::build_default(target_time_per_block, relay_non_std_transactions, max_block_mass).apply_ram_scale(ram_scale);
-        Self::with_config(config, cache_lifetime, counters)
+        Self::with_config(config, cache_lifetime, counters, storage_mass_activation_daa_score)
     }
 
-    pub(crate) fn with_config(config: Config, cache_lifetime: Option<u64>, counters: Arc<MiningCounters>) -> Self {
+    pub(crate) fn with_config(
+        config: Config,
+        cache_lifetime: Option<u64>,
+        counters: Arc<MiningCounters>,
+        storage_mass_activation_daa_score: u64,
+    ) -> Self {
         let config = Arc::new(config);
         let mempool = RwLock::new(Mempool::new(config.clone(), counters.clone()));
         let block_template_cache = BlockTemplateCache::new(cache_lifetime);
-        Self { config, block_template_cache, mempool, counters }
+        Self { config, block_template_cache, mempool, counters, storage_mass_activation_daa_score }
     }
 
     pub fn get_block_template(&self, consensus: &dyn ConsensusApi, miner_data: &MinerData) -> MiningManagerResult<BlockTemplate> {
@@ -86,7 +94,12 @@ impl MiningManager {
             }
             // Miner data is new -- make the minimum changes required
             // Note the call returns a modified clone of the cached block template
-            let block_template = BlockTemplateBuilder::modify_block_template(consensus, miner_data, &immutable_template)?;
+            let block_template = BlockTemplateBuilder::modify_block_template(
+                consensus,
+                miner_data,
+                &immutable_template,
+                self.storage_mass_activation_daa_score,
+            )?;
 
             // No point in updating cache since we have no reason to believe this coinbase will be used more
             // than the previous one, and we want to maintain the original template caching time

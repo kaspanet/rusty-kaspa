@@ -4,7 +4,7 @@ use kaspa_consensus_core::{
     api::ConsensusApi,
     block::{BlockTemplate, TemplateBuildMode},
     coinbase::MinerData,
-    merkle::calc_hash_merkle_root,
+    merkle::calc_hash_merkle_root_with_options,
     tx::COINBASE_TRANSACTION_INDEX,
 };
 use kaspa_core::{
@@ -103,6 +103,7 @@ impl BlockTemplateBuilder {
         consensus: &dyn ConsensusApi,
         new_miner_data: &MinerData,
         block_template_to_modify: &BlockTemplate,
+        storage_mass_activation_daa_score: u64,
     ) -> BuilderResult<BlockTemplate> {
         let mut block_template = block_template_to_modify.clone();
 
@@ -115,7 +116,9 @@ impl BlockTemplateBuilder {
             coinbase_tx.outputs.last_mut().unwrap().script_public_key = new_miner_data.script_public_key.clone();
         }
         // Update the hash merkle root according to the modified transactions
-        block_template.block.header.hash_merkle_root = calc_hash_merkle_root(block_template.block.transactions.iter());
+        let storage_mass_activated = block_template.block.header.daa_score > storage_mass_activation_daa_score;
+        block_template.block.header.hash_merkle_root =
+            calc_hash_merkle_root_with_options(block_template.block.transactions.iter(), storage_mass_activated);
         let new_timestamp = unix_now();
         if new_timestamp > block_template.block.header.timestamp {
             // Only if new time stamp is later than current, update the header. Otherwise,

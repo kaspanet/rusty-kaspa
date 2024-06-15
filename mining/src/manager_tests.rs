@@ -585,7 +585,7 @@ mod tests {
         // Limit the orphan pool to 2 transactions
         config.maximum_orphan_transaction_count = 2;
         let counters = Arc::new(MiningCounters::default());
-        let mining_manager = MiningManager::with_config(config.clone(), None, counters);
+        let mining_manager = MiningManager::with_config(config.clone(), None, counters, u64::MAX);
 
         // Create pairs of transaction parent-and-child pairs according to the test vector
         let (parent_txs, child_txs) = create_arrays_of_parent_and_children_transactions(&consensus, tests.len());
@@ -853,7 +853,7 @@ mod tests {
         let expected_template = result.unwrap();
 
         // Modify to miner_data_1
-        let result = BlockTemplateBuilder::modify_block_template(consensus, &miner_data_1, &expected_template);
+        let result = BlockTemplateBuilder::modify_block_template(consensus, &miner_data_1, &expected_template, u64::MAX);
         assert!(result.is_ok(), "modify block template failed for miner data 1");
         let mut modified_template = result.unwrap();
         // Make sure timestamps are equal before comparing the hash
@@ -872,7 +872,7 @@ mod tests {
         assert_ne!(expected_block.hash(), modified_block.hash(), "built and modified blocks should have different hashes");
 
         // And modify back to miner_data_2
-        let result = BlockTemplateBuilder::modify_block_template(consensus, &miner_data_2, &modified_template);
+        let result = BlockTemplateBuilder::modify_block_template(consensus, &miner_data_2, &modified_template, u64::MAX);
         assert!(result.is_ok(), "modify block template failed for miner data 2");
         let mut modified_template_2 = result.unwrap();
         // Make sure timestamps are equal before comparing the hash

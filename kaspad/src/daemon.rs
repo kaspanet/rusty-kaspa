@@ -427,6 +427,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         config.ram_scale,
         config.block_template_cache_lifetime,
         mining_counters,
+        config.storage_mass_activation_daa_score,
     )));
 
     let flow_context = Arc::new(FlowContext::new(
