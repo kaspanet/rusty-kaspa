@@ -812,15 +812,16 @@ impl PruningProofManager {
 
         let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize); // TODO: We can probably reduce cache size
         let required_level_depth = 2 * self.pruning_proof_m;
-        let mut required_level_0_depth = if level == 0 {
-            required_level_depth
-        } else {
-            self.estimated_blue_depth_at_level_0(
-                level,
-                required_level_depth * 5 / 4, // We take a safety margin
-                current_dag_level,
-            )
-        };
+        let mut required_level_0_depth = required_level_depth;
+        // let mut required_level_0_depth = if level == 0 {
+        //     required_level_depth
+        // } else {
+        //     self.estimated_blue_depth_at_level_0(
+        //         level,
+        //         required_level_depth * 5 / 4, // We take a safety margin
+        //         current_dag_level,
+        //     )
+        // };
 
         let mut tries = 0;
         loop {
