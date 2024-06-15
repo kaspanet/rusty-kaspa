@@ -34,7 +34,7 @@ pub enum AddressError {
     #[error("The address checksum is invalid")]
     BadChecksum,
 
-    #[error("The address payload invalid")]
+    #[error("The address payload is invalid")]
     BadPayload,
 
     #[error("The address is invalid")]
