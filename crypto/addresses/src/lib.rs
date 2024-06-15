@@ -28,8 +28,14 @@ pub enum AddressError {
     #[error("The address contains an invalid character {0}")]
     DecodingError(char),
 
+    #[error("The address checksum is invalid (must be exactly 8 bytes)")]
+    BadChecksumSize,
+
     #[error("The address checksum is invalid")]
     BadChecksum,
+
+    #[error("The address payload invalid")]
+    BadPayload,
 
     #[error("The address is invalid")]
     InvalidAddress,
