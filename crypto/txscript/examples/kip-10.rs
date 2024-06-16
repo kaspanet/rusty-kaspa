@@ -94,6 +94,7 @@ fn main() -> ScriptBuilderResult<()> {
 
     // Check owner branch
     {
+        println!("check owner scenario");
         let mut tx = MutableTransaction::with_entries(tx.clone(), vec![utxo_entry.clone()]);
         let sig_hash = calc_schnorr_signature_hash(&tx.as_verifiable(), 0, SIG_HASH_ALL, &mut reused_values);
         let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
@@ -116,25 +117,30 @@ fn main() -> ScriptBuilderResult<()> {
         let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &mut reused_values, &sig_cache)
             .expect("Script creation failed");
         assert_eq!(vm.execute(), Ok(()));
+        println!("owner scenario successes");
     }
 
     // Check borrower branch
     {
+        println!("check borrower scenario");
         tx.inputs[0].signature_script = ScriptBuilder::new().add_op(OpFalse)?.add_data(&script)?.drain();
         let tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
         let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, &mut reused_values, &sig_cache)
             .expect("Script creation failed");
         assert_eq!(vm.execute(), Ok(()));
+        println!("borrower scenario successes");
     }
 
     // Check borrower branch with threshold not reached
     {
+        println!("check borrower scenario with underflow");
         // Less than threshold
         tx.outputs[0].value -= 1;
         let tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
         let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, &mut reused_values, &sig_cache)
             .expect("Script creation failed");
         assert_eq!(vm.execute(), Err(EvalFalse));
+        println!("borrower scenario with underflow failed! all good");
     }
 
     Ok(())
