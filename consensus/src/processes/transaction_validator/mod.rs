@@ -33,6 +33,7 @@ pub struct TransactionValidator {
 }
 
 impl TransactionValidator {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         max_tx_inputs: usize,
         max_tx_outputs: usize,
