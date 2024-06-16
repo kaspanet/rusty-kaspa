@@ -20,6 +20,7 @@ kip-10-mutual-tx = []
 [dependencies]
 blake2b_simd.workspace = true
 borsh.workspace = true
+cfg-if.workspace = true
 indexmap.workspace = true
 itertools.workspace = true
 kaspa-addresses.workspace = true
