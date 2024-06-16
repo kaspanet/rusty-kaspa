@@ -1162,6 +1162,7 @@ mod test {
 
     #[test]
     fn test_opcode_invalid() {
+        #[allow(unused_mut)]
         let mut tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction>>> = vec![
             opcodes::OpUnknown166::empty().expect("Should accept empty"),
             opcodes::OpUnknown167::empty().expect("Should accept empty"),
@@ -1234,15 +1235,15 @@ mod test {
             opcodes::OpUnknown248::empty().expect("Should accept empty"),
             opcodes::OpUnknown249::empty().expect("Should accept empty"),
         ];
+
         #[cfg(not(feature = "kip-10-mutual-tx"))]
-        {
-            tests.extend(&[
-                opcodes::OpInputSPK::empty().expect("Should accept empty"),
-                opcodes::OpInputAmount::empty().expect("Should accept empty"),
-                opcodes::OpOutputSpk::empty().expect("Should accept empty"),
-                opcodes::OpOutputAmount::empty().expect("Should accept empty"),
-            ])
-        }
+        tests.extend([
+            opcodes::OpInputSPK::empty().expect("Should accept empty"),
+            opcodes::OpInputAmount::empty().expect("Should accept empty"),
+            opcodes::OpOutputSpk::empty().expect("Should accept empty"),
+            opcodes::OpOutputAmount::empty().expect("Should accept empty"),
+        ]);
+
         let cache = Cache::new(10_000);
         let mut reused_values = SigHashReusedValues::new();
         let mut vm = TxScriptEngine::new(&mut reused_values, &cache);

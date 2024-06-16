@@ -505,13 +505,9 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
 mod tests {
     use std::iter::once;
 
-    use crate::opcodes::codes::{
-        OpBlake2b, OpCheckSig, OpData1, OpData2, OpData32, OpDup, OpEqual, OpEqualVerify, OpGreaterThanOrEqual, OpInputAmount,
-        OpInputSPK, OpOutputAmount, OpOutputSpk, OpPushData1, OpSub, OpTrue,
-    };
+    use crate::opcodes::codes::{OpBlake2b, OpCheckSig, OpData1, OpData2, OpData32, OpDup, OpEqual, OpPushData1, OpTrue};
 
     use super::*;
-    use crate::script_builder::ScriptBuilder;
     use kaspa_consensus_core::tx::{
         PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
     };
@@ -919,6 +915,13 @@ mod tests {
     #[cfg(feature = "kip-10-mutual-tx")]
     #[cfg_attr(feature = "kip-10-mutual-tx", test)]
     fn output_gt_input_test() {
+        use crate::opcodes::codes::{
+            OpEqualVerify, OpGreaterThanOrEqual, OpInputAmount, OpInputSPK, OpOutputAmount, OpOutputSpk, OpSub,
+        };
+
+        use super::*;
+        use crate::script_builder::ScriptBuilder;
+
         let threshold: i64 = 100;
         let sig_cache = Cache::new(10_000);
         let mut reused_values = SigHashReusedValues::new();
@@ -960,6 +963,7 @@ mod tests {
 #[cfg(test)]
 mod bitcoind_tests {
     // Bitcoind tests
+    use cfg_if::cfg_if;
     use serde::Deserialize;
     use std::fs::File;
     use std::io::BufReader;
@@ -1146,8 +1150,15 @@ mod bitcoind_tests {
 
     #[test]
     fn test_bitcoind_tests() {
-        let file = File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join("script_tests.json"))
-            .expect("Could not find test file");
+        cfg_if!(
+            if #[cfg(feature = "hf")] {
+                let file_name = "script_tests-hf.json";
+            } else {
+                let file_name = "script_tests.json";
+            }
+        );
+        let file =
+            File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join(file_name)).expect("Could not find test file");
         let reader = BufReader::new(file);
 
         // Read the JSON contents of the file as an instance of `User`.
