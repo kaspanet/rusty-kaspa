@@ -875,7 +875,7 @@ opcode_list! {
             _ => Err(TxScriptError::InvalidSource("LockTimeVerify only applies to transaction inputs".to_string()))
         }
     }
-    opcode OpInputSPK<0xb2, 1>(self, vm) {
+    opcode OpInputSpk<0xb2, 1>(self, vm) {
         cfg_if::cfg_if! {
             if #[cfg(feature = "kip-10-mutual-tx")] {
                 match vm.script_source {
@@ -895,7 +895,7 @@ opcode_list! {
                         vm.dstack.push(v);
                         Ok(())
                     },
-                    _ => Err(TxScriptError::InvalidSource("OpInputSPK only applies to transaction inputs".to_string()))
+                    _ => Err(TxScriptError::InvalidSource("OpInputSpk only applies to transaction inputs".to_string()))
                 }
             } else {
                  Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1238,7 +1238,7 @@ mod test {
 
         #[cfg(not(feature = "kip-10-mutual-tx"))]
         tests.extend([
-            opcodes::OpInputSPK::empty().expect("Should accept empty"),
+            opcodes::OpInputSpk::empty().expect("Should accept empty"),
             opcodes::OpInputAmount::empty().expect("Should accept empty"),
             opcodes::OpOutputSpk::empty().expect("Should accept empty"),
             opcodes::OpOutputAmount::empty().expect("Should accept empty"),

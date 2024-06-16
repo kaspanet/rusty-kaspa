@@ -17,7 +17,7 @@ use kaspa_consensus_core::{
 use kaspa_txscript::{
     caches::Cache,
     opcodes::codes::{
-        OpCheckSig, OpDup, OpElse, OpEndIf, OpEqualVerify, OpFalse, OpGreaterThanOrEqual, OpIf, OpInputAmount, OpInputSPK,
+        OpCheckSig, OpDup, OpElse, OpEndIf, OpEqualVerify, OpFalse, OpGreaterThanOrEqual, OpIf, OpInputAmount, OpInputSpk,
         OpOutputAmount, OpOutputSpk, OpSub, OpTrue,
     },
     pay_to_script_hash_script,
@@ -57,7 +57,7 @@ fn main() -> ScriptBuilderResult<()> {
         .add_op(OpCheckSig)?
         // Borrower branch
         .add_op(OpElse)?
-        .add_ops(&[OpInputSPK, OpOutputSpk, OpEqualVerify, OpOutputAmount])?
+        .add_ops(&[OpInputSpk, OpOutputSpk, OpEqualVerify, OpOutputAmount])?
         .add_i64(threshold)?
         .add_ops(&[OpSub, OpInputAmount, OpGreaterThanOrEqual])?
         .add_op(OpEndIf)?

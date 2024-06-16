@@ -916,7 +916,7 @@ mod tests {
     #[cfg_attr(feature = "kip-10-mutual-tx", test)]
     fn output_gt_input_test() {
         use crate::opcodes::codes::{
-            OpEqualVerify, OpGreaterThanOrEqual, OpInputAmount, OpInputSPK, OpOutputAmount, OpOutputSpk, OpSub,
+            OpEqualVerify, OpGreaterThanOrEqual, OpInputAmount, OpInputSpk, OpOutputAmount, OpOutputSpk, OpSub,
         };
 
         use super::*;
@@ -926,7 +926,7 @@ mod tests {
         let sig_cache = Cache::new(10_000);
         let mut reused_values = SigHashReusedValues::new();
         let script = ScriptBuilder::new()
-            .add_ops(&[OpInputSPK, OpOutputSpk, OpEqualVerify, OpOutputAmount])
+            .add_ops(&[OpInputSpk, OpOutputSpk, OpEqualVerify, OpOutputAmount])
             .unwrap()
             .add_i64(threshold)
             .unwrap()
