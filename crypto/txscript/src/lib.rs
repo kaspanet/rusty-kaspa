@@ -916,7 +916,8 @@ mod tests {
             );
         }
     }
-    #[test]
+    #[cfg(feature = "kip-10-mutual-tx")]
+    #[cfg_attr(feature = "kip-10-mutual-tx", test)]
     fn output_gt_input_test() {
         let threshold: i64 = 100;
         let sig_cache = Cache::new(10_000);
