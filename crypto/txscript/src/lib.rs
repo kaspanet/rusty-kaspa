@@ -505,7 +505,10 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
 mod tests {
     use std::iter::once;
 
-    use crate::opcodes::codes::{OpBlake2b, OpCheckSig, OpData1, OpData2, OpData32, OpDup, OpEqual, OpEqualVerify, OpGreaterThanOrEqual, OpInputAmount, OpInputSPK, OpOutputAmount, OpOutputSpk, OpPushData1, OpSub, OpTrue};
+    use crate::opcodes::codes::{
+        OpBlake2b, OpCheckSig, OpData1, OpData2, OpData32, OpDup, OpEqual, OpEqualVerify, OpGreaterThanOrEqual, OpInputAmount,
+        OpInputSPK, OpOutputAmount, OpOutputSpk, OpPushData1, OpSub, OpTrue,
+    };
 
     use super::*;
     use crate::script_builder::ScriptBuilder;
