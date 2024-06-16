@@ -80,6 +80,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction> {
     cond_stack: Vec<OpCond>, // Following if stacks, and whether it is running
 
     num_ops: i32,
+    kip10_enabled: bool,
 }
 
 fn parse_script<T: VerifiableTransaction>(
@@ -152,6 +153,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
             sig_cache,
             cond_stack: vec![],
             num_ops: 0,
+            kip10_enabled: false,
         }
     }
 
@@ -162,6 +164,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         utxo_entry: &'a UtxoEntry,
         reused_values: &'a mut SigHashReusedValues,
         sig_cache: &'a Cache<SigCacheKey, bool>,
+        kip10_enabled: bool,
     ) -> Result<Self, TxScriptError> {
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
@@ -176,6 +179,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
                 sig_cache,
                 cond_stack: Default::default(),
                 num_ops: 0,
+                kip10_enabled,
             }),
             false => Err(TxScriptError::InvalidIndex(input_idx, tx.tx().inputs.len())),
         }
@@ -190,6 +194,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
             sig_cache,
             cond_stack: Default::default(),
             num_ops: 0,
+            kip10_enabled: false,
         }
     }
 
@@ -561,8 +566,9 @@ mod tests {
 
             let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
 
-            let mut vm = TxScriptEngine::from_transaction_input(&populated_tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache)
-                .expect("Script creation failed");
+            let mut vm =
+                TxScriptEngine::from_transaction_input(&populated_tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache, false)
+                    .expect("Script creation failed");
             assert_eq!(vm.execute(), test.expected_result);
         }
     }
@@ -912,8 +918,7 @@ mod tests {
             );
         }
     }
-    #[cfg(feature = "kip-10-mutual-tx")]
-    #[cfg_attr(feature = "kip-10-mutual-tx", test)]
+    #[test]
     fn output_gt_input_test() {
         use crate::opcodes::codes::{
             OpEqualVerify, OpGreaterThanOrEqual, OpInputAmount, OpInputSpk, OpOutputAmount, OpOutputSpk, OpSub,
@@ -954,8 +959,9 @@ mod tests {
 
         let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
 
-        let mut vm = TxScriptEngine::from_transaction_input(&populated_tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache)
-            .expect("Script creation failed");
+        let mut vm =
+            TxScriptEngine::from_transaction_input(&populated_tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache, true)
+                .expect("Script creation failed");
         assert_eq!(vm.execute(), Ok(()));
     }
 }
@@ -963,7 +969,6 @@ mod tests {
 #[cfg(test)]
 mod bitcoind_tests {
     // Bitcoind tests
-    use cfg_if::cfg_if;
     use serde::Deserialize;
     use std::fs::File;
     use std::io::BufReader;
@@ -1030,7 +1035,7 @@ mod bitcoind_tests {
     }
 
     impl JsonTestRow {
-        fn test_row(&self) -> Result<(), TestError> {
+        fn test_row(&self, kip10_enabled: bool) -> Result<(), TestError> {
             // Parse test to objects
             let (sig_script, script_pub_key, expected_result) = match self.clone() {
                 JsonTestRow::Test(sig_script, sig_pub_key, _, expected_result) => (sig_script, sig_pub_key, expected_result),
@@ -1042,7 +1047,7 @@ mod bitcoind_tests {
                 }
             };
 
-            let result = Self::run_test(sig_script, script_pub_key);
+            let result = Self::run_test(sig_script, script_pub_key, kip10_enabled);
 
             match Self::result_name(result.clone()).contains(&expected_result.as_str()) {
                 true => Ok(()),
@@ -1050,7 +1055,7 @@ mod bitcoind_tests {
             }
         }
 
-        fn run_test(sig_script: String, script_pub_key: String) -> Result<(), UnifiedError> {
+        fn run_test(sig_script: String, script_pub_key: String, kip10_enabled: bool) -> Result<(), UnifiedError> {
             let script_sig = opcodes::parse_short_form(sig_script).map_err(UnifiedError::ScriptBuilderError)?;
             let script_pub_key =
                 ScriptPublicKey::from_vec(0, opcodes::parse_short_form(script_pub_key).map_err(UnifiedError::ScriptBuilderError)?);
@@ -1070,6 +1075,7 @@ mod bitcoind_tests {
                 &populated_tx.entries[0],
                 &mut reused_values,
                 &sig_cache,
+                kip10_enabled,
             )
             .map_err(UnifiedError::TxScriptError)?;
             vm.execute().map_err(UnifiedError::TxScriptError)
@@ -1150,29 +1156,24 @@ mod bitcoind_tests {
 
     #[test]
     fn test_bitcoind_tests() {
-        cfg_if!(
-            if #[cfg(feature = "hf")] {
-                let file_name = "script_tests-hf.json";
-            } else {
-                let file_name = "script_tests.json";
-            }
-        );
-        let file =
-            File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join(file_name)).expect("Could not find test file");
-        let reader = BufReader::new(file);
+        for (file_name, kip10_enabled) in [("script_tests.json", false), ("script_tests-kip10.json", true)] {
+            let file =
+                File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join(file_name)).expect("Could not find test file");
+            let reader = BufReader::new(file);
 
-        // Read the JSON contents of the file as an instance of `User`.
-        let tests: Vec<JsonTestRow> = serde_json::from_reader(reader).expect("Failed Parsing {:?}");
-        let mut had_errors = 0;
-        let total_tests = tests.len();
-        for row in tests {
-            if let Err(error) = row.test_row() {
-                println!("Test: {:?} failed: {:?}", row.clone(), error);
-                had_errors += 1;
+            // Read the JSON contents of the file as an instance of `User`.
+            let tests: Vec<JsonTestRow> = serde_json::from_reader(reader).expect("Failed Parsing {:?}");
+            let mut had_errors = 0;
+            let total_tests = tests.len();
+            for row in tests {
+                if let Err(error) = row.test_row(kip10_enabled) {
+                    println!("Test: {:?} failed: {:?}", row.clone(), error);
+                    had_errors += 1;
+                }
             }
-        }
-        if had_errors > 0 {
-            panic!("{}/{} json tests failed", had_errors, total_tests)
+            if had_errors > 0 {
+                panic!("{}/{} json tests failed", had_errors, total_tests)
+            }
         }
     }
 }

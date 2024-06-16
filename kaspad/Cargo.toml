@@ -60,4 +60,3 @@ serde_with = "3.7.0"
 [features]
 heap = ["dhat", "kaspa-alloc/heap"]
 devnet-prealloc = ["kaspa-consensus/devnet-prealloc"]
-hf = ["kaspa-txscript/hf"]

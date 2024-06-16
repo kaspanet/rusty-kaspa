@@ -12,7 +12,6 @@ repository.workspace = true
 [features]
 wasm32-sdk = []
 wasm32-types = []
-hf = ["kaspa-txscript/hf"]
 
 [dependencies]
 kaspa-consensus-core.workspace = true

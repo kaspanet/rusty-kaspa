@@ -3343,7 +3343,6 @@ version = "0.14.1"
 dependencies = [
  "blake2b_simd",
  "borsh",
- "cfg-if 1.0.0",
  "criterion",
  "hex",
  "indexmap 2.2.6",

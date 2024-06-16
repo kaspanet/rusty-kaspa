@@ -343,13 +343,6 @@ mod tests {
         for test in tests {
             let serialized: Vec<u8> = OpcodeData::<i64>::serialize(&test.num);
             assert_eq!(serialized, test.serialized);
-            println!(
-                "number: {}; serialized: {}; be: {}, le: {}",
-                test.num,
-                hex::encode(serialized),
-                hex::encode(test.num.to_be_bytes()),
-                hex::encode(test.num.to_le_bytes()),
-            )
         }
     }
 

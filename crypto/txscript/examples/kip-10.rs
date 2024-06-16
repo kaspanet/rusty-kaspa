@@ -114,8 +114,9 @@ fn main() -> ScriptBuilderResult<()> {
         }
 
         let tx = tx.as_verifiable();
-        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &mut reused_values, &sig_cache)
-            .expect("Script creation failed");
+        let mut vm =
+            TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &mut reused_values, &sig_cache, true)
+                .expect("Script creation failed");
         assert_eq!(vm.execute(), Ok(()));
         println!("owner scenario successes");
     }
@@ -125,8 +126,9 @@ fn main() -> ScriptBuilderResult<()> {
         println!("check borrower scenario");
         tx.inputs[0].signature_script = ScriptBuilder::new().add_op(OpFalse)?.add_data(&script)?.drain();
         let tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
-        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, &mut reused_values, &sig_cache)
-            .expect("Script creation failed");
+        let mut vm =
+            TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, &mut reused_values, &sig_cache, true)
+                .expect("Script creation failed");
         assert_eq!(vm.execute(), Ok(()));
         println!("borrower scenario successes");
     }
@@ -137,8 +139,9 @@ fn main() -> ScriptBuilderResult<()> {
         // Less than threshold
         tx.outputs[0].value -= 1;
         let tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
-        let mut vm = TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, &mut reused_values, &sig_cache)
-            .expect("Script creation failed");
+        let mut vm =
+            TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, &mut reused_values, &sig_cache, true)
+                .expect("Script creation failed");
         assert_eq!(vm.execute(), Err(EvalFalse));
         println!("borrower scenario with underflow failed! all good");
     }

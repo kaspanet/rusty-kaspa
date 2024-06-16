@@ -75,4 +75,3 @@ kaspa-txscript-errors.workspace = true
 heap = ["dhat"]
 html_reports = []
 devnet-prealloc = ["kaspad/devnet-prealloc"]
-hf = ["kaspa-txscript/hf"]

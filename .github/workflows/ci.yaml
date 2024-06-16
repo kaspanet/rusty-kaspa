@@ -126,9 +126,6 @@ jobs:
       - name: Run cargo doc tests with features=no-asm on kaspa-hashes
         run: cargo test --doc --release -p kaspa-hashes --features=no-asm
 
-      - name: Run txscipt tests with features=hf on kaspa-txscipt
-        run: cargo nextest run --release -p kaspa-txscript --features=hf
-
   # test-release:
   #   name: Test Suite Release
   #   runs-on: ${{ matrix.os }}
