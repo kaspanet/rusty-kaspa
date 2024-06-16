@@ -347,8 +347,8 @@ mod tests {
                 "number: {}; serialized: {}; be: {}, le: {}",
                 test.num,
                 hex::encode(serialized),
-                hex::encode(&test.num.to_be_bytes()),
-                hex::encode(&test.num.to_le_bytes()),
+                hex::encode(test.num.to_be_bytes()),
+                hex::encode(test.num.to_le_bytes()),
             )
         }
     }
