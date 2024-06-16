@@ -11,6 +11,7 @@ repository.workspace = true
 
 [features]
 default = []
+hf = ["kaspa-txscript/hf"]
 
 [lib]
 crate-type = ["cdylib", "lib"]

@@ -27,6 +27,7 @@ wasm32-sdk = [
 ]
 default = ["wasm32-sdk"]
 # default = []
+hf = ["kaspa-txscript/hf"]
 
 [lib]
 crate-type = ["cdylib", "lib"]

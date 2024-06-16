@@ -61,3 +61,4 @@ harness = false
 [features]
 html_reports = []
 devnet-prealloc = ["kaspa-consensus-core/devnet-prealloc"]
+hf = ["kaspa-txscript/hf"]
