@@ -290,7 +290,7 @@ impl TransactionRecordStore for TransactionStore {
 
             let transactions = records
                 .iter()
-                .filter_map(|js_value| match transaction_record_from_js_value(&js_value, None) {
+                .filter_map(|js_value| match transaction_record_from_js_value(js_value, None) {
                     Ok(transaction_record) => Some(Arc::new(transaction_record)),
                     Err(err) => {
                         log_error!("Failed to deserialize transaction record from indexdb {:?}", err);
