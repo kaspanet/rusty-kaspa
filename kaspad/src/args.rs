@@ -366,7 +366,7 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
                 .long("ram-scale")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(f64))
-                .help("Apply a scale factor to memory allocation bounds. Nodes with limited RAM (~4-8GB) should set this to ~0.3-0.5 respectively. Nodes with 
+                .help("Apply a scale factor to memory allocation bounds. Nodes with limited RAM (~4-8GB) should set this to ~0.3-0.5 respectively. Nodes with
 a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance especially for syncing peers faster"),
         )
         ;
