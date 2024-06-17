@@ -218,9 +218,9 @@ impl TransactionRecordStore for TransactionStore {
         binding: &Binding,
         network_id: &NetworkId,
         _filter: Option<Vec<TransactionKind>>,
-        _range: std::ops::Range<usize>,
+        range: std::ops::Range<usize>,
     ) -> Result<TransactionRangeResult> {
-        // log_info!("DEBUG IDB: Loading transaction records for range {:?}", _range);
+        log_info!("DEBUG IDB: Loading transaction records for range {:?}", range);
 
         let binding_str = binding.to_hex();
         let network_id_str = network_id.to_string();
@@ -239,13 +239,56 @@ impl TransactionRecordStore for TransactionStore {
                 .object_store(TRANSACTIONS_STORE_NAME)
                 .map_err(|err| Error::Custom(format!("Failed to open indexdb object store for reading {:?}", err)))?;
 
-            let array = store
-                .get_all()
-                .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
+            let total = store
+                .count()
+                .map_err(|err| Error::Custom(format!("Failed to count indexdb records {:?}", err)))?
                 .await
-                .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?;
+                .map_err(|err| Error::Custom(format!("Failed to count indexdb records from future {:?}", err)))?;
+            let cursor = store
+                .open_cursor()
+                .map_err(|err| Error::Custom(format!("Failed to open indexdb store cursor for reading {:?}", err)))?;
+            let mut records = vec![];
+            let cursor = cursor.await.map_err(|err| Error::Custom(format!("Failed to open indexdb store cursor {:?}", err)))?;
 
-            let transactions = array
+            if let Some(cursor) = cursor {
+                if range.start > 0 {
+                    let res = cursor
+                        .advance(range.start as u32)
+                        .map_err(|err| Error::Custom(format!("Unable to advance indexdb cursor {:?}", err)))?
+                        .await;
+                    let _res = res.map_err(|err| Error::Custom(format!("Unable to advance indexdb cursor future {:?}", err)))?;
+                    // if !res {
+                    //     //return Err(Error::Custom(format!("Unable to advance indexdb cursor future {:?}", err)));
+                    // }
+                }
+
+                let count = range.end - range.start;
+
+                loop {
+                    if records.len() < count {
+                        records.push(cursor.value());
+                        if let Ok(b) = cursor.continue_cursor() {
+                            match b.await {
+                                Ok(b) => {
+                                    if !b {
+                                        break;
+                                    }
+                                }
+                                Err(err) => {
+                                    log_info!("DEBUG IDB: Loading transaction error,  cursor.continue_cursor() {:?}", err);
+                                    break;
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+            }
+
+            let transactions = records
                 .iter()
                 .filter_map(|js_value| match transaction_record_from_js_value(&js_value, None) {
                     Ok(transaction_record) => Some(Arc::new(transaction_record)),
@@ -256,8 +299,8 @@ impl TransactionRecordStore for TransactionStore {
                 })
                 .collect::<Vec<_>>();
 
-            let total = transactions.len() as u64;
-            Ok(TransactionRangeResult { transactions, total })
+            //let total = transactions.len() as u64;
+            Ok(TransactionRangeResult { transactions, total: total.into() })
         })
     }
 
