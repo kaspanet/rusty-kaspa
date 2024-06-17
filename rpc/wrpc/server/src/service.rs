@@ -147,10 +147,15 @@ impl WrpcService {
         info!("WRPC Server starting on: {}", listen_address);
         tokio::spawn(async move {
             let config = WebSocketConfig { max_message_size: Some(MAX_WRPC_MESSAGE_SIZE), ..Default::default() };
-            let serve_result = self.server.listen(&listen_address, Some(config)).await;
-            match serve_result {
-                Ok(_) => info!("WRPC Server stopped on: {}", listen_address),
-                Err(err) => panic!("WRPC Server {listen_address} stopped with error: {err:?}"),
+            match self.server.bind(&listen_address).await {
+                Ok(listener) => {
+                    let serve_result = self.server.listen(listener, Some(config)).await;
+                    match serve_result {
+                        Ok(_) => info!("WRPC Server stopped on: {}", listen_address),
+                        Err(err) => panic!("WRPC Server {listen_address} stopped with error: {err:?}"),
+                    }
+                }
+                Err(err) => panic!("WRPC Server bind error on {listen_address}: {err:?}"),
             }
         });
 
