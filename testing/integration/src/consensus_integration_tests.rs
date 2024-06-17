@@ -831,6 +831,7 @@ impl KaspadGoParams {
             max_block_mass: self.MaxBlockMass,
             storage_mass_parameter: STORAGE_MASS_PARAMETER,
             storage_mass_activation_daa_score: u64::MAX,
+            kip10_activation_daa_score: u64::MAX,
             deflationary_phase_daa_score: self.DeflationaryPhaseDaaScore,
             pre_deflationary_phase_base_subsidy: self.PreDeflationaryPhaseBaseSubsidy,
             coinbase_maturity: MAINNET_PARAMS.coinbase_maturity,

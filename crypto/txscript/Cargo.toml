@@ -9,6 +9,11 @@ include.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[[example]]
+name = "kip-10"
+
+[features]
+
 [dependencies]
 blake2b_simd.workspace = true
 borsh.workspace = true

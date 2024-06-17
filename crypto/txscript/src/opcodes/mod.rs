@@ -875,12 +875,82 @@ opcode_list! {
             _ => Err(TxScriptError::InvalidSource("LockTimeVerify only applies to transaction inputs".to_string()))
         }
     }
+    opcode OpInputSpk<0xb2, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{
+                    utxo_entry: kaspa_consensus_core::tx::UtxoEntry{
+                        script_public_key: spk @ kaspa_consensus_core::tx::ScriptPublicKey{
+                            version, ..},
+                        ..
+                    },
+                    ..
+                } => {
+                    let version = version.to_be_bytes();
+                    let script = spk.script();
+                    let mut v = Vec::with_capacity(version.len() + script.len());
+                    v.extend_from_slice(&version);
+                    v.extend_from_slice(script);
+                    vm.dstack.push(v);
+                    Ok(())
+                },
+                _ => Err(TxScriptError::InvalidSource("OpInputSpk only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+    opcode OpInputAmount<0xb3, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{
+                    utxo_entry: kaspa_consensus_core::tx::UtxoEntry{
+                        amount,
+                        ..
+                    },
+                    ..
+                } => push_number(*amount as i64, vm),
+                _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+    opcode OpOutputSpk<0xb4, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, id , ..} => {
+                    let v = tx.outputs().get(id).map(|output| {
+                        let version =  output.script_public_key.version.to_be_bytes();
+                        let script = output.script_public_key.script();
+                        let mut v = Vec::with_capacity(version.len() + script.len());
+                        v.extend_from_slice(&version);
+                        v.extend_from_slice(script);
+                        v
+                    });
+                    vm.dstack.push(v.unwrap_or_default());
+                    Ok(())
+                },
+                _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+    opcode OpOutputAmount<0xb5, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, id , ..} => {
+                    push_number(tx.outputs().get(id).map(|output| output.value).unwrap_or_default() as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
 
     // Undefined opcodes.
-    opcode OpUnknown178<0xb2, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown179<0xb3, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown180<0xb4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown181<0xb5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown182<0xb6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown183<0xb7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown184<0xb8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1085,10 +1155,6 @@ mod test {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction>>> = vec![
             opcodes::OpUnknown166::empty().expect("Should accept empty"),
             opcodes::OpUnknown167::empty().expect("Should accept empty"),
-            opcodes::OpUnknown178::empty().expect("Should accept empty"),
-            opcodes::OpUnknown179::empty().expect("Should accept empty"),
-            opcodes::OpUnknown180::empty().expect("Should accept empty"),
-            opcodes::OpUnknown181::empty().expect("Should accept empty"),
             opcodes::OpUnknown182::empty().expect("Should accept empty"),
             opcodes::OpUnknown183::empty().expect("Should accept empty"),
             opcodes::OpUnknown184::empty().expect("Should accept empty"),
@@ -2753,7 +2819,7 @@ mod test {
         ] {
             let mut tx = base_tx.clone();
             tx.0.lock_time = tx_lock_time;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache)
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache, false)
                 .expect("Shouldn't fail");
             vm.dstack = vec![lock_time.clone()];
             match code.execute(&mut vm) {
@@ -2796,7 +2862,7 @@ mod test {
         ] {
             let mut input = base_input.clone();
             input.sequence = tx_sequence;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache)
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache, false)
                 .expect("Shouldn't fail");
             vm.dstack = vec![sequence.clone()];
             match code.execute(&mut vm) {

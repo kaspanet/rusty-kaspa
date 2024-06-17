@@ -83,6 +83,9 @@ pub struct Params {
     /// DAA score from which storage mass calculation and transaction mass field are activated as a consensus rule
     pub storage_mass_activation_daa_score: u64,
 
+    /// DAA score from which tx engine supports kip10 opcodes: OpInputAmount, OpInputSpk, OpOutputAmount, OpOutputSpk
+    pub kip10_activation_daa_score: u64,
+
     /// DAA score after which the pre-deflationary period switches to the deflationary period
     pub deflationary_phase_daa_score: u64,
 
@@ -349,6 +352,7 @@ pub const MAINNET_PARAMS: Params = Params {
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
     storage_mass_activation_daa_score: u64::MAX,
+    kip10_activation_daa_score: u64::MAX,
 
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
     // switches to the deflationary period. This number is calculated as follows:
@@ -408,7 +412,7 @@ pub const TESTNET_PARAMS: Params = Params {
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
     storage_mass_activation_daa_score: u64::MAX,
-
+    kip10_activation_daa_score: u64::MAX,
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
     // switches to the deflationary period. This number is calculated as follows:
     // We define a year as 365.25 days
@@ -474,6 +478,7 @@ pub const TESTNET11_PARAMS: Params = Params {
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
     storage_mass_activation_daa_score: 0,
+    kip10_activation_daa_score: u64::MAX,
 
     skip_proof_of_work: false,
     max_block_level: 250,
@@ -526,6 +531,7 @@ pub const SIMNET_PARAMS: Params = Params {
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
     storage_mass_activation_daa_score: 0,
+    kip10_activation_daa_score: u64::MAX,
 
     skip_proof_of_work: true, // For simnet only, PoW can be simulated by default
     max_block_level: 250,
@@ -572,6 +578,7 @@ pub const DEVNET_PARAMS: Params = Params {
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
     storage_mass_activation_daa_score: u64::MAX,
+    kip10_activation_daa_score: u64::MAX,
 
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
     // switches to the deflationary period. This number is calculated as follows:
