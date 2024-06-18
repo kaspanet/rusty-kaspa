@@ -666,7 +666,7 @@ impl PruningProofManager {
                 let selected_tip_blue_work_diff =
                     SignedInteger::from(proof_selected_tip_gd.blue_work) - SignedInteger::from(proof_common_ancestor_gd.blue_work);
                 for parent in self.parents_manager.parents_at_level(&current_pp_header, level).iter().copied() {
-                    let parent_blue_work = self.ghostdag_stores[level_idx].get_blue_work(parent).unwrap();
+                    let parent_blue_work = ghostdag_stores[level_idx].get_blue_work(parent).unwrap();
                     let parent_blue_work_diff =
                         SignedInteger::from(parent_blue_work) - SignedInteger::from(common_ancestor_gd.blue_work);
                     if parent_blue_work_diff >= selected_tip_blue_work_diff {
@@ -702,7 +702,7 @@ impl PruningProofManager {
                     if parents
                         .iter()
                         .copied()
-                        .any(|parent| self.ghostdag_stores[level_idx].get_blue_score(parent).unwrap() < 2 * self.pruning_proof_m)
+                        .any(|parent| ghostdag_stores[level_idx].get_blue_score(parent).unwrap() < 2 * self.pruning_proof_m)
                     {
                         return Ok(());
                     }
