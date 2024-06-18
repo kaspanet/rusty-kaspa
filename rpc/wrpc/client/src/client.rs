@@ -222,7 +222,7 @@ impl RpcResolver for Inner {
             self.node_descriptor.lock().unwrap().replace(Arc::new(node));
             url
         } else {
-            panic!("RpcClient resolver configuration error (expecting Some(Resolver))")
+            panic!("RpcClient resolver configuration error (expecting `url` or `resolver` as `Some(Resolver))`")
         };
 
         self.rpc_ctl.set_descriptor(Some(url.clone()));
@@ -406,9 +406,7 @@ impl KaspaRpcClient {
         let mut options = options.unwrap_or_default();
         let strategy = options.strategy;
 
-        if let Some(url) = options.url.take() {
-            self.set_url(Some(&url))?;
-        }
+        self.set_url(options.url.take().as_deref())?;
 
         // 1Gb message and frame size limits (on native and NodeJs platforms)
         let ws_config = WebSocketConfig {
