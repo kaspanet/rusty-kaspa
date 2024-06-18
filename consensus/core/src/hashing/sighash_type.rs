@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 pub const SIG_HASH_ALL: SigHashType = SigHashType(0b00000001);
@@ -18,7 +19,7 @@ const ALLOWED_SIG_HASH_TYPES_VALUES: [u8; 6] = [
     SIG_HASH_SINGLE.0 | SIG_HASH_ANY_ONE_CAN_PAY.0,
 ];
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[wasm_bindgen]
 pub struct SigHashType(pub(crate) u8);
 

@@ -6,6 +6,7 @@ use core::{
     fmt::{self, Display},
     str::FromStr,
 };
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 
 /// Prefix for all derivation paths.
 const PREFIX: &str = "m";
@@ -14,6 +15,45 @@ const PREFIX: &str = "m";
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct DerivationPath {
     path: Vec<ChildNumber>,
+}
+
+impl<'de> Deserialize<'de> for DerivationPath {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<DerivationPath, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct DerivationPathVisitor;
+        impl<'de> de::Visitor<'de> for DerivationPathVisitor {
+            type Value = DerivationPath;
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a string containing list of permissions separated by a '+'")
+            }
+
+            fn visit_str<E>(self, value: &str) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                DerivationPath::from_str(value).map_err(|err| de::Error::custom(err.to_string()))
+            }
+            fn visit_borrowed_str<E>(self, v: &'de str) -> std::result::Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                DerivationPath::from_str(v).map_err(|err| de::Error::custom(err.to_string()))
+            }
+        }
+
+        deserializer.deserialize_str(DerivationPathVisitor)
+    }
+}
+
+impl Serialize for DerivationPath {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
 }
 
 impl DerivationPath {
