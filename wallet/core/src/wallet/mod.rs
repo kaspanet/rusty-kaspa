@@ -7,6 +7,7 @@ pub mod maps;
 pub use args::*;
 
 use crate::account::ScanNotifier;
+use crate::api::traits::WalletApi;
 use crate::compat::gen1::decrypt_mnemonic;
 use crate::error::Error::Custom;
 use crate::factory::try_load_account;
@@ -104,6 +105,13 @@ pub struct Wallet {
     inner: Arc<Inner>,
 }
 
+impl Default for Wallet {
+    fn default() -> Self {
+        let storage = Wallet::local_store().expect("Unable to initialize local storage");
+        Wallet::try_new(storage, None, None).unwrap()
+    }
+}
+
 impl Wallet {
     pub fn local_store() -> Result<Arc<dyn Interface>> {
         Ok(Arc::new(LocalStore::try_new(false)?))
@@ -120,14 +128,6 @@ impl Wallet {
     pub fn try_with_wrpc(store: Arc<dyn Interface>, resolver: Option<Resolver>, network_id: Option<NetworkId>) -> Result<Wallet> {
         let rpc_client =
             Arc::new(KaspaRpcClient::new_with_args(WrpcEncoding::Borsh, Some("wrpc://127.0.0.1:17110"), resolver, network_id, None)?);
-
-        // pub fn try_with_wrpc(store: Arc<dyn Interface>, network_id: Option<NetworkId>) -> Result<Wallet> {
-        //     let rpc_client = Arc::new(KaspaRpcClient::new_with_args(
-        //         WrpcEncoding::Borsh,
-        //         NotificationMode::MultiListeners,
-        //         "wrpc://127.0.0.1:17110",
-        //         None,
-        //     )?);
 
         let rpc_ctl = rpc_client.ctl().clone();
         let rpc_api: Arc<DynRpcApi> = rpc_client;
@@ -159,6 +159,26 @@ impl Wallet {
         };
 
         Ok(wallet)
+    }
+
+    pub fn to_arc(self) -> Arc<Self> {
+        Arc::new(self)
+    }
+
+    /// Helper fn for creating the wallet using a builder pattern.
+    pub fn with_network_id(self, network_id: NetworkId) -> Self {
+        self.set_network_id(&network_id).expect("Unable to set network id");
+        self
+    }
+
+    pub fn with_resolver(self, resolver: Resolver) -> Self {
+        self.wrpc_client().set_resolver(resolver).expect("Unable to set resolver");
+        self
+    }
+
+    pub fn with_url(self, url: Option<&str>) -> Self {
+        self.wrpc_client().set_url(url).expect("Unable to set url");
+        self
     }
 
     pub fn inner(&self) -> &Arc<Inner> {
@@ -462,6 +482,10 @@ impl Wallet {
         self.try_rpc_api().and_then(|api| api.clone().downcast_arc::<KaspaRpcClient>().ok())
     }
 
+    pub fn wrpc_client(&self) -> Arc<KaspaRpcClient> {
+        self.try_rpc_api().and_then(|api| api.clone().downcast_arc::<KaspaRpcClient>().ok()).unwrap()
+    }
+
     pub fn rpc_api(&self) -> Arc<DynRpcApi> {
         self.utxo_processor().rpc_api()
     }
@@ -485,6 +509,14 @@ impl Wallet {
     pub async fn bind_rpc(self: &Arc<Self>, rpc: Option<Rpc>) -> Result<()> {
         self.utxo_processor().bind_rpc(rpc).await?;
         Ok(())
+    }
+
+    pub fn as_api(self: &Arc<Self>) -> Arc<dyn WalletApi> {
+        self.clone()
+    }
+
+    pub fn to_api(self) -> Arc<dyn WalletApi> {
+        Arc::new(self)
     }
 
     pub fn multiplexer(&self) -> &Multiplexer<Box<Events>> {
