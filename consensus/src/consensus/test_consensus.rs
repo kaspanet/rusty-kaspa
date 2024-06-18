@@ -117,7 +117,9 @@ impl TestConsensus {
     }
 
     pub fn build_header_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> Header {
-        let mut header = header_from_precomputed_hash(hash, parents);
+        let mut header = header_from_precomputed_hash(hash, Default::default());
+        let parents_by_level = self.consensus.services.parents_manager.calc_block_parents(self.pruning_point(), &parents);
+        header.parents_by_level = parents_by_level;
         let ghostdag_data = self.consensus.services.ghostdag_primary_manager.ghostdag(header.direct_parents());
         header.pruning_point = self
             .consensus
@@ -134,8 +136,12 @@ impl TestConsensus {
         header
     }
 
-    pub fn add_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
-        self.validate_and_insert_block(self.build_block_with_parents(hash, parents).to_immutable()).virtual_state_task
+    pub fn add_header_only_block_with_parents(
+        &self,
+        hash: Hash,
+        parents: Vec<Hash>,
+    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+        self.validate_and_insert_block(self.build_header_only_block_with_parents(hash, parents).to_immutable()).virtual_state_task
     }
 
     pub fn add_utxo_valid_block_with_parents(
@@ -147,6 +153,14 @@ impl TestConsensus {
         let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
         self.validate_and_insert_block(self.build_utxo_valid_block_with_parents(hash, parents, miner_data, txs).to_immutable())
             .virtual_state_task
+    }
+
+    pub fn add_empty_utxo_valid_block_with_parents(
+        &self,
+        hash: Hash,
+        parents: Vec<Hash>,
+    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+        self.add_utxo_valid_block_with_parents(hash, parents, vec![])
     }
 
     pub fn build_utxo_valid_block_with_parents(
@@ -180,7 +194,7 @@ impl TestConsensus {
         MutableBlock::new(header, txs)
     }
 
-    pub fn build_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> MutableBlock {
+    pub fn build_header_only_block_with_parents(&self, hash: Hash, parents: Vec<Hash>) -> MutableBlock {
         MutableBlock::from_header(self.build_header_with_parents(hash, parents))
     }
 

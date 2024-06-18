@@ -7,6 +7,7 @@ use crate::{
             block_transactions::DbBlockTransactionsStore,
             ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
+            pruning::DbPruningStore,
             reachability::DbReachabilityStore,
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             tips::{DbTipsStore, TipsStore},
@@ -59,6 +60,7 @@ pub struct BlockBodyProcessor {
     pub(super) headers_store: Arc<DbHeadersStore>,
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
+    pub(super) pruning_point_store: Arc<RwLock<DbPruningStore>>,
 
     // Managers and services
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
@@ -96,6 +98,7 @@ impl BlockBodyProcessor {
         headers_store: Arc<DbHeadersStore>,
         block_transactions_store: Arc<DbBlockTransactionsStore>,
         body_tips_store: Arc<RwLock<DbTipsStore>>,
+        pruning_point_store: Arc<RwLock<DbPruningStore>>,
 
         reachability_service: MTReachabilityService<DbReachabilityStore>,
         coinbase_manager: CoinbaseManager,
@@ -120,6 +123,7 @@ impl BlockBodyProcessor {
             headers_store,
             block_transactions_store,
             body_tips_store,
+            pruning_point_store,
             coinbase_manager,
             mass_calculator,
             transaction_validator,
