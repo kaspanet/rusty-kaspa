@@ -6835,9 +6835,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-chrome"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98d9071998d28aba6399cd7627febaf1a43661c392d9f1c3248ef4fd9b7b6777"
+checksum = "cbca78ed1a9353795737f02ee2a789c37f615142e98a93efea226b0a2d23d1c3"
 dependencies = [
  "cfg-if 1.0.0",
  "chrome-sys",
@@ -6850,9 +6850,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-core"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fdb2cf53ab23f5c92f010aeb141fcc458edf450ea68deaa9ad0eb98e6d8cce5f"
+checksum = "8f37e9dd70a07ec5a5b5a690c6314e717175b542d86bbe7b53ea184ad2b32099"
 dependencies = [
  "async-channel 2.2.1",
  "async-std",
@@ -6882,9 +6882,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-core-macros"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccbd182d16e43e04da1bd2bd33877d6c58dc84da9fe6675bea83b37d55558862"
+checksum = "7b6636289adf08a3589c402b8d412c417ce97bf409068e5fe25fcf6bd345eb2c"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -6899,9 +6899,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-dom"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b53bee7985c0feed6534aacf14f53cc42ea1803b29ad286b887daa4ab47cc36"
+checksum = "4f8624afca0958da6cab8445df720b8f24f2b3998458d0d72ad12cde2123f70a"
 dependencies = [
  "futures",
  "js-sys",
@@ -6917,9 +6917,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-http"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1f26f77f7857e47a9356c953ef776600fabfdb334c6af0f43d91006d4e46d86"
+checksum = "1c71ae40b4fc516f79c2f1535a30f5c8c32248b0bad1992c80eb7d8c5035b59b"
 dependencies = [
  "cfg-if 1.0.0",
  "reqwest",
@@ -6933,9 +6933,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-log"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07bffdd5581af954a6c27f1e36361aa4628cdc50aec0a0ea9a2319b804ff824a"
+checksum = "a236ea5f11a586df2118076a187e781ff1968c24087c7afff4968d89f313626d"
 dependencies = [
  "cfg-if 1.0.0",
  "console",
@@ -6949,9 +6949,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-macro-tools"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c74953849ead8e3d664f194b8b92f6847d30010d54e300936e99571f33a856a"
+checksum = "8c915eff417eaceead109c27ebb8bd07ada056fb2637620cb2030261ddaca880"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -6962,9 +6962,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-node"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd5818cae741747cdb1d91ae5dcb32cec7c6b049d4a2c5b0a88206f1b7c8f838"
+checksum = "0ab160ef28b0564eca8fb720529be87ce8e8c93ea33257a481f1a0d58ad322db"
 dependencies = [
  "borsh",
  "futures",
@@ -6983,9 +6983,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-nw"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b273ca51c258ebe4249157a301e76a365af0ac968319d7c517d997e98c375db"
+checksum = "709cd750bcde559c26af294cadc91aea5142fa73fd7b567b61d0ad2f01474ae5"
 dependencies = [
  "ahash",
  "async-trait",
@@ -7007,9 +7007,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-panic-hook"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53b3a81fd6cec4e61d7210037604bdf9777e4db9110f4e49ba284b41dc8f8f49"
+checksum = "b93bf9cf8e442935d357a9457355012a6753986071fdcda2924fdf24ecd617dd"
 dependencies = [
  "cfg-if 1.0.0",
  "wasm-bindgen",
@@ -7032,9 +7032,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-rpc"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3edece974143ddc3d3aa3e8ec6bc5f75689922e758378c61ceeca2dab5c50e31"
+checksum = "f103543561d4c8be736a30a70ca1bebdd1c3a4f2cef101c265da97d1a57bf88c"
 dependencies = [
  "ahash",
  "async-std",
@@ -7062,9 +7062,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-rpc-macros"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1a208e54c43414b7fc48d15fa99a6bec60b0ce16cab5c2fc0fc682afa06cb7e"
+checksum = "7c1a76618e22c237260c1e89872652c42515d433649882f63c0c54939c4a52a8"
 dependencies = [
  "parse-variants",
  "proc-macro-error",
@@ -7075,9 +7075,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-serializer"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71e420ffb8ab865d8072ba034a72ad1128077529d38623ab8c8533e0ccb72d2f"
+checksum = "93efad71dc66bb68c3afb332d8835d020779aed7a9f67429ce3dca837f040564"
 dependencies = [
  "ahash",
  "borsh",
@@ -7086,9 +7086,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-store"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d05d8c0b4444de383bef68abbed7b28d71be77e1712ff24ca6814e24213ce385"
+checksum = "0cf7f06cc779c10419ec983a99ab11578262dff945554734d1a2ec8b221549fd"
 dependencies = [
  "async-std",
  "base64 0.21.7",
@@ -7114,9 +7114,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-task"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce39eb639b8d799e868a746b017817ddddc1158063d20cde7d165f8935be22c9"
+checksum = "13da44b9cfa0fdef9ad7cdeb3d9425f43faf7c9d5681058bb47c6886e70de01a"
 dependencies = [
  "futures",
  "thiserror",
@@ -7126,9 +7126,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-task-macros"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35be4886c67ac6a03394ce78c82b6504fc980aa9d4e87e56c67347822a7e1371"
+checksum = "b221a893e0ee67cf7e20e6177a083e8cb4262c2e343c65b61e46a81ba84dd459"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -7142,9 +7142,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-terminal"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "343b71e007578706d9600ae121505c4fb0dc93005f5afcd9c963b3b459dc9ff3"
+checksum = "c812e0e207be43b9387d47333b614c210c5f2bc074d7a8b125086bffc5fca9f9"
 dependencies = [
  "async-std",
  "async-trait",
@@ -7171,9 +7171,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-terminal-macros"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "698264d025bc77ecc8d64f40967cef13116653de0709173c3ed9074fc1f98a57"
+checksum = "c2dcdd1d269d83afc908bca8bcac8cc26dc170772f1e2abe938d94da367335f6"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -7187,9 +7187,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-wasm"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44a962dd16fa3b6070bb45a1fbb5b58b07b35cc65438eb23c4de0cd9b5e3b136"
+checksum = "e0120884d7a35c598972f67651144d9d09afec93c88e62becca9ba9e7b34c0dd"
 dependencies = [
  "cfg-if 1.0.0",
  "faster-hex 0.9.0",
@@ -7208,9 +7208,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-wasm-macros"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4a20b3b0217643a4b5b7f68c0edadb0a5cfb82861fc209568de676adc7cc644"
+checksum = "c08251c28898bce81f0697827d4d4238ea6a2c52fc58cc21af151158841e087e"
 dependencies = [
  "js-sys",
  "proc-macro-error",
@@ -7222,9 +7222,9 @@ dependencies = [
 
 [[package]]
 name = "workflow-websocket"
-version = "0.13.0"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "88e6546ada08f288919e312363c35f87ebc60f07991543469570a5da2ea6f0c2"
+checksum = "df3c9cc4c8ab618ff8d8905f45d5c69d6629afe8ebce477ce01d949001302d31"
 dependencies = [
  "ahash",
  "async-channel 2.2.1",
