@@ -8,7 +8,7 @@ use crate::result::Result;
 use kaspa_daemon::{DaemonEvent, DaemonKind, Daemons};
 use kaspa_wallet_core::rpc::DynRpcApi;
 use kaspa_wallet_core::storage::{IdT, PrvKeyDataInfo};
-use kaspa_wrpc_client::KaspaRpcClient;
+use kaspa_wrpc_client::{KaspaRpcClient, Resolver};
 use workflow_core::channel::*;
 use workflow_core::time::Instant;
 use workflow_log::*;
@@ -102,7 +102,7 @@ impl KaspaCli {
     }
 
     pub async fn try_new_arc(options: Options) -> Result<Arc<Self>> {
-        let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, None, None)?);
+        let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, Some(Resolver::default()), None)?);
 
         let kaspa_cli = Arc::new(KaspaCli {
             term: Arc::new(Mutex::new(None)),
