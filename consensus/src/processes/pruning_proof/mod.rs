@@ -900,6 +900,7 @@ impl PruningProofManager {
                 true,
             );
             ghostdag_store.insert(root, Arc::new(gd_manager.genesis_ghostdag_data())).unwrap();
+            ghostdag_store.insert(ORIGIN, gd_manager.origin_ghostdag_data()).unwrap();
             let mut topological_heap: BinaryHeap<_> = Default::default();
             let mut visited = BlockHashSet::new();
             for child in relations_service.get_children(root).unwrap().read().iter().copied() {
