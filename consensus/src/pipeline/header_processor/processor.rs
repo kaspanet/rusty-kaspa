@@ -55,7 +55,7 @@ pub struct HeaderProcessingContext {
     pub known_parents: Vec<BlockHashes>,
 
     // Staging data
-    pub ghostdag_data: Option<Vec<Arc<GhostdagData>>>,
+    pub ghostdag_data: Option<Arc<GhostdagData>>,
     pub block_window_for_difficulty: Option<Arc<BlockWindowHeap>>,
     pub block_window_for_past_median_time: Option<Arc<BlockWindowHeap>>,
     pub mergeset_non_daa: Option<BlockHashSet>,
@@ -99,7 +99,7 @@ impl HeaderProcessingContext {
     /// Returns the primary (level 0) GHOSTDAG data of this header.
     /// NOTE: is expected to be called only after GHOSTDAG computation was pushed into the context
     pub fn ghostdag_data(&self) -> &Arc<GhostdagData> {
-        &self.ghostdag_data.as_ref().unwrap()[0]
+        &self.ghostdag_data.as_ref().unwrap()
     }
 }
 
@@ -348,18 +348,17 @@ impl HeaderProcessor {
 
     /// Runs the GHOSTDAG algorithm for all block levels and writes the data into the context (if hasn't run already)
     fn ghostdag(&self, ctx: &mut HeaderProcessingContext) {
-        let ghostdag_data = vec![self
+        let ghostdag_data = self
             .ghostdag_primary_store
             .get_data(ctx.hash)
             .unwrap_option()
-            .unwrap_or_else(|| Arc::new(self.ghostdag_primary_manager.ghostdag(&ctx.known_parents[0])))];
-        self.counters.mergeset_counts.fetch_add(ghostdag_data[0].mergeset_size() as u64, Ordering::Relaxed);
+            .unwrap_or_else(|| Arc::new(self.ghostdag_primary_manager.ghostdag(&ctx.known_parents[0])));
+        self.counters.mergeset_counts.fetch_add(ghostdag_data.mergeset_size() as u64, Ordering::Relaxed);
         ctx.ghostdag_data = Some(ghostdag_data);
     }
 
     fn commit_header(&self, ctx: HeaderProcessingContext, header: &Header) {
-        let ghostdag_data = ctx.ghostdag_data.as_ref().unwrap();
-        let ghostdag_primary_data = &ghostdag_data[0];
+        let ghostdag_primary_data = ctx.ghostdag_data.as_ref().unwrap();
         let pp = ctx.pruning_point();
 
         // Create a DB batch writer
@@ -369,9 +368,7 @@ impl HeaderProcessor {
         // Append-only stores: these require no lock and hence done first in order to reduce locking time
         //
 
-        for (level, datum) in ghostdag_data.iter().enumerate() {
-            self.ghostdag_primary_store.insert_batch(&mut batch, ctx.hash, datum).unwrap();
-        }
+        self.ghostdag_primary_store.insert_batch(&mut batch, ctx.hash, ghostdag_primary_data).unwrap();
 
         if let Some(window) = ctx.block_window_for_difficulty {
             self.block_window_cache_for_difficulty.insert(ctx.hash, window);
@@ -449,10 +446,7 @@ impl HeaderProcessor {
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
 
-        for (level, datum) in ghostdag_data.iter().enumerate() {
-            // This data might have been already written when applying the pruning proof.
-            self.ghostdag_primary_store.insert_batch(&mut batch, ctx.hash, datum).unwrap_or_exists();
-        }
+        self.ghostdag_primary_store.insert_batch(&mut batch, ctx.hash, ghostdag_data).unwrap_or_exists();
 
         let mut relations_write = self.relations_stores.write();
         ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
@@ -492,7 +486,7 @@ impl HeaderProcessor {
             PruningPointInfo::from_genesis(self.genesis.hash),
             (0..=self.max_block_level).map(|_| BlockHashes::new(vec![ORIGIN])).collect(),
         );
-        ctx.ghostdag_data = Some(vec![Arc::new(self.ghostdag_primary_manager.genesis_ghostdag_data())]);
+        ctx.ghostdag_data = Some(Arc::new(self.ghostdag_primary_manager.genesis_ghostdag_data()));
         ctx.mergeset_non_daa = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);
