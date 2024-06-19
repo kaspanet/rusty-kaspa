@@ -1042,7 +1042,7 @@ impl PruningProofManager {
                 } else {
                     block_at_depth_2m
                 };
-                // assert!(self.reachability_service.is_dag_ancestor_of(root, old_root));
+                assert!(self.reachability_service.is_dag_ancestor_of(root, old_root));
 
                 let mut headers = Vec::with_capacity(2 * self.pruning_proof_m as usize);
                 let mut queue = BinaryHeap::<Reverse<SortableBlock>>::new();
