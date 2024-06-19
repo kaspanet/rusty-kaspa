@@ -8,11 +8,11 @@ use crate::imports::*;
 use crate::tx::PendingTransaction;
 use crate::utxo::{UtxoContext, UtxoEntryId, UtxoEntryReference};
 
-struct Inner {
+struct Inner<RpcImpl> {
     pub id: TransactionId,
-    pub pending_transaction: PendingTransaction,
-    pub originating_context: UtxoContext,
-    pub destination_context: Option<UtxoContext>,
+    pub pending_transaction: PendingTransaction<RpcImpl>,
+    pub originating_context: UtxoContext<RpcImpl>,
+    pub destination_context: Option<UtxoContext<RpcImpl>>,
     #[allow(dead_code)]
     pub creation_daa_score: u64,
     pub acceptance_daa_score: AtomicU64,
@@ -21,12 +21,12 @@ struct Inner {
 /// A wrapper around [`PendingTransaction`] that adds additional context and
 /// convenience methods for handling within [`UtxoContext`].
 #[derive(Clone)]
-pub struct OutgoingTransaction {
-    inner: Arc<Inner>,
+pub struct OutgoingTransaction<RpcImpl> {
+    inner: Arc<Inner<RpcImpl>>,
 }
 
-impl OutgoingTransaction {
-    pub fn new(current_daa_score: u64, originating_context: UtxoContext, pending_transaction: PendingTransaction) -> Self {
+impl<RpcImpl> OutgoingTransaction<RpcImpl> {
+    pub fn new(current_daa_score: u64, originating_context: UtxoContext<RpcImpl>, pending_transaction: PendingTransaction) -> Self {
         let destination_context = pending_transaction.generator().destination_utxo_context().clone();
 
         let inner = Inner {

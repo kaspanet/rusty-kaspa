@@ -19,6 +19,8 @@ pub use workflow_rpc::client::{
     ConnectOptions, ConnectResult, ConnectStrategy, Resolver as RpcResolver, ResolverResult, WebSocketConfig, WebSocketError,
 };
 use workflow_serializer::prelude::*;
+use kaspa_rpc_core::api::rpc::DummyRpcConnection;
+
 type RpcClientNotifier = Arc<Notifier<Notification, ChannelConnection>>;
 
 struct Inner {
@@ -364,7 +366,7 @@ impl KaspaRpcClient {
         &self.inner.rpc_client
     }
 
-    pub fn rpc_api(self: &Arc<Self>) -> Arc<dyn RpcApi> {
+    pub fn rpc_api(self: &Arc<Self>) -> Arc<impl RpcApi> {
         self.clone()
     }
 
@@ -571,8 +573,8 @@ impl KaspaRpcClient {
     }
 }
 
-#[async_trait]
 impl RpcApi for KaspaRpcClient {
+    type RpcConnection = DummyRpcConnection;
     //
     // The following proc-macro iterates over the array of enum variants
     // generating a function for each variant as follows:

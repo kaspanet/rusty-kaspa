@@ -12,22 +12,23 @@ use kaspa_grpc_core::{
     ops::KaspadPayloadOps,
     protowire::{KaspadRequest, KaspadResponse},
 };
+use std::fmt::Debug;
 
-pub struct RequestHandler {
+pub struct RequestHandler<RpcApiImpl: kaspa_rpc_core::api::rpc::RpcApi + Clone + std::fmt::Debug> {
     rpc_op: KaspadPayloadOps,
     incoming_route: IncomingRoute,
-    server_ctx: ServerContext,
-    method: DynKaspadMethod,
-    connection: Connection,
+    server_ctx: ServerContext<RpcApiImpl>,
+    method: DynKaspadMethod<RpcApiImpl>,
+    connection: Connection<RpcApiImpl>,
 }
 
-impl RequestHandler {
+impl<RpcApiImpl: kaspa_rpc_core::api::rpc::RpcApi + std::clone::Clone + Debug> RequestHandler<RpcApiImpl> {
     pub fn new(
         rpc_op: KaspadPayloadOps,
         incoming_route: IncomingRoute,
-        server_context: ServerContext,
-        interface: &Interface,
-        connection: Connection,
+        server_context: ServerContext<RpcApiImpl>,
+        interface: &Interface<RpcApiImpl>,
+        connection: Connection<RpcApiImpl>,
     ) -> Self {
         let method = interface.get_method(&rpc_op);
         Self { rpc_op, incoming_route, server_ctx: server_context, method, connection }
@@ -42,7 +43,7 @@ impl RequestHandler {
 }
 
 #[async_trait::async_trait]
-impl Handler for RequestHandler {
+impl<RpcApiImpl: kaspa_rpc_core::api::rpc::RpcApi + std::clone::Clone + std::fmt::Debug> Handler for RequestHandler<RpcApiImpl> {
     async fn start(&mut self) {
         debug!("GRPC, Starting request handler {:?} for client {}", self.rpc_op, self.connection);
         while let Ok(request) = self.incoming_route.recv().await {

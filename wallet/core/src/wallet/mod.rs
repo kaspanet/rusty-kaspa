@@ -23,6 +23,7 @@ use kaspa_notify::{
 };
 use kaspa_wrpc_client::{KaspaRpcClient, Resolver, WrpcEncoding};
 use workflow_core::task::spawn;
+use kaspa_rpc_core::api::rpc::RpcApi;
 
 #[derive(Debug)]
 pub struct EncryptedMnemonic<T: AsRef<[u8]>> {
@@ -77,7 +78,7 @@ pub enum WalletBusMessage {
     Discovery { record: TransactionRecord },
 }
 
-pub struct Inner {
+pub struct Inner<RpcImpl> {
     active_accounts: ActiveAccountMap,
     legacy_accounts: ActiveAccountMap,
     listener_id: Mutex<Option<ListenerId>>,
@@ -85,7 +86,7 @@ pub struct Inner {
     selected_account: Mutex<Option<Arc<dyn Account>>>,
     store: Arc<dyn Interface>,
     settings: SettingsStore<WalletSettings>,
-    utxo_processor: Arc<UtxoProcessor>,
+    utxo_processor: Arc<UtxoProcessor<RpcImpl>>,
     multiplexer: Multiplexer<Box<Events>>,
     wallet_bus: Channel<WalletBusMessage>,
     estimation_abortables: Mutex<HashMap<AccountId, Abortable>>,
@@ -100,11 +101,11 @@ pub struct Inner {
 /// @category Wallet API
 ///
 #[derive(Clone)]
-pub struct Wallet {
-    inner: Arc<Inner>,
+pub struct Wallet<RpcImpl>{
+    inner: Arc<Inner<RpcImpl>>,
 }
 
-impl Wallet {
+impl<RpcImpl> Wallet<RpcImpl> {
     pub fn local_store() -> Result<Arc<dyn Interface>> {
         Ok(Arc::new(LocalStore::try_new(false)?))
     }
@@ -130,8 +131,7 @@ impl Wallet {
         //     )?);
 
         let rpc_ctl = rpc_client.ctl().clone();
-        let rpc_api: Arc<DynRpcApi> = rpc_client;
-        let rpc = Rpc::new(rpc_api, rpc_ctl);
+        let rpc = Rpc::new(rpc_client, rpc_ctl);
         Self::try_with_rpc(Some(rpc), store, network_id)
     }
 
@@ -462,11 +462,11 @@ impl Wallet {
         self.try_rpc_api().and_then(|api| api.clone().downcast_arc::<KaspaRpcClient>().ok())
     }
 
-    pub fn rpc_api(&self) -> Arc<DynRpcApi> {
+    pub fn rpc_api(&self) -> Arc<impl RpcApi> {
         self.utxo_processor().rpc_api()
     }
 
-    pub fn try_rpc_api(&self) -> Option<Arc<DynRpcApi>> {
+    pub fn try_rpc_api(&self) -> Option<Arc<impl RpcApi>> {
         self.utxo_processor().try_rpc_api()
     }
 

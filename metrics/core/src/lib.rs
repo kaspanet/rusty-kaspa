@@ -22,14 +22,14 @@ use workflow_log::*;
 pub type MetricsSinkFn =
     Arc<Box<dyn Send + Sync + Fn(MetricsSnapshot) -> Option<Pin<Box<(dyn Send + 'static + Future<Output = Result<()>>)>>> + 'static>>;
 
-pub struct Metrics {
+pub struct Metrics<Rpc: RpcApi> {
     task_ctl: DuplexChannel,
-    rpc: Arc<Mutex<Option<Arc<dyn RpcApi>>>>,
+    rpc: Arc<Mutex<Option<Arc<Rpc>>>>,
     sink: Arc<Mutex<Option<MetricsSinkFn>>>,
     data: Arc<Mutex<Option<MetricsData>>>,
 }
 
-impl Default for Metrics {
+impl<Rpc: RpcApi> Default for Metrics<Rpc> {
     fn default() -> Self {
         Metrics {
             task_ctl: DuplexChannel::oneshot(),
@@ -40,12 +40,12 @@ impl Default for Metrics {
     }
 }
 
-impl Metrics {
-    pub fn bind_rpc(&self, rpc: Option<Arc<dyn RpcApi>>) {
+impl<Rpc: RpcApi> Metrics<Rpc> {
+    pub fn bind_rpc(&self, rpc: Option<Arc<Rpc>>) {
         *self.rpc.lock().unwrap() = rpc;
     }
 
-    fn rpc(&self) -> Option<Arc<dyn RpcApi>> {
+    fn rpc(&self) -> Option<Arc<Rpc>> {
         self.rpc.lock().unwrap().clone()
     }
 
@@ -114,7 +114,7 @@ impl Metrics {
 
     // --- samplers
 
-    async fn sample_metrics(self: &Arc<Self>, rpc: Arc<dyn RpcApi>, data: &mut MetricsData) -> Result<()> {
+    async fn sample_metrics(self: &Arc<Self>, rpc: Arc<Rpc>, data: &mut MetricsData) -> Result<()> {
         let GetMetricsResponse { server_time: _, consensus_metrics, connection_metrics, bandwidth_metrics, process_metrics } =
             rpc.get_metrics(true, true, true, true).await?;
 

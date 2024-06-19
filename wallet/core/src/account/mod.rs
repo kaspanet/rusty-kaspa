@@ -26,7 +26,7 @@ use workflow_core::abortable::Abortable;
 
 /// Notification callback type used by [`Account::sweep`] and [`Account::send`].
 /// Allows tracking in-flight transactions during transaction generation.
-pub type GenerationNotifier = Arc<dyn Fn(&PendingTransaction) + Send + Sync>;
+pub type GenerationNotifier<RpcImpl> = Arc<dyn Fn(&PendingTransaction<RpcImpl>) + Send + Sync>;
 /// Scan notification callback type used by [`DerivationCapableAccount::derivation_scan`].
 /// Provides derivation discovery scan progress information.
 pub type ScanNotifier = Arc<dyn Fn(usize, usize, u64, Option<TransactionId>) + Send + Sync>;
@@ -47,23 +47,23 @@ impl Context {
 }
 
 /// Account `Inner` struct used by most account types.
-pub struct Inner {
+pub struct Inner<RpcImpl> {
     context: Mutex<Context>,
     id: AccountId,
     storage_key: AccountStorageKey,
-    wallet: Arc<Wallet>,
-    utxo_context: UtxoContext,
+    wallet: Arc<Wallet<RpcImpl>>,
+    utxo_context: UtxoContext<RpcImpl>,
 }
 
-impl Inner {
-    pub fn new(wallet: &Arc<Wallet>, id: AccountId, storage_key: AccountStorageKey, settings: AccountSettings) -> Self {
+impl<RpcImpl> Inner<RpcImpl> {
+    pub fn new(wallet: &Arc<Wallet<RpcImpl>>, id: AccountId, storage_key: AccountStorageKey, settings: AccountSettings) -> Self {
         let utxo_context = UtxoContext::new(wallet.utxo_processor(), UtxoContextBinding::AccountId(id));
 
         let context = Context { settings };
         Inner { context: Mutex::new(context), id, storage_key, wallet: wallet.clone(), utxo_context: utxo_context.clone() }
     }
 
-    pub fn from_storage(wallet: &Arc<Wallet>, storage: &AccountStorage) -> Self {
+    pub fn from_storage(wallet: &Arc<Wallet<RpcImpl>>, storage: &AccountStorage) -> Self {
         Self::new(wallet, storage.id, storage.storage_key, storage.settings.clone())
     }
 

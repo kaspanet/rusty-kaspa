@@ -15,6 +15,7 @@ use std::sync::Arc;
 use workflow_log::*;
 use workflow_rpc::server::prelude::*;
 use workflow_rpc::server::WebSocketCounters;
+use kaspa_rpc_core::api::rpc::DummyRpcConnection;
 
 #[derive(Debug, Parser)]
 #[clap(name = "proxy")]
@@ -85,7 +86,7 @@ async fn main() -> Result<()> {
     let rpc_handler = Arc::new(KaspaRpcHandler::new(tasks, encoding, None, options.clone()));
 
     let router = Arc::new(Router::new(rpc_handler.server.clone()));
-    let server = RpcServer::new_with_encoding::<Server, Connection, RpcApiOps, Id64>(
+    let server = RpcServer::new_with_encoding::<Server<DummyRpcConnection>, Connection, RpcApiOps, Id64>(
         encoding,
         rpc_handler.clone(),
         router.interface.clone(),
@@ -97,7 +98,8 @@ async fn main() -> Result<()> {
     log_info!("Using `{encoding}` protocol encoding");
 
     let config = WebSocketConfig { max_message_size: Some(1024 * 1024 * 1024), ..Default::default() };
-    server.listen(&options.listen_address, Some(config)).await?;
+    let listener = TcpListener::bind(&options.listen_address).await.unwrap();
+    server.listen(listener, Some(config)).await?;
 
     Ok(())
 }

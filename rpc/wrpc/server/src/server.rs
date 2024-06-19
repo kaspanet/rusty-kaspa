@@ -4,6 +4,7 @@ use crate::{
     result::Result,
     service::Options,
 };
+use enum_dispatch::enum_dispatch;
 use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::{
     connection::ChannelType,
@@ -14,8 +15,10 @@ use kaspa_notify::{
     subscriber::Subscriber,
     subscription::{MutationPolicies, UtxosChangedMutationPolicy},
 };
+use kaspa_rpc_core::api::connection::RpcConnection;
+use kaspa_rpc_core::api::rpc::DynRpcService;
 use kaspa_rpc_core::{
-    api::rpc::{DynRpcService, RpcApi},
+    api::rpc::RpcApi,
     notify::{channel::NotificationChannel, connection::ChannelConnection, mode::NotificationMode},
     Notification, RpcResult,
 };
@@ -32,28 +35,28 @@ use workflow_rpc::server::prelude::*;
 
 pub type WrpcNotifier = Notifier<Notification, Connection>;
 
-struct RpcCore {
-    pub service: Arc<RpcCoreService>,
+struct RpcCore<RpcConn> {
+    pub service: Arc<RpcCoreService<RpcConn>>,
     pub wrpc_notifier: Arc<WrpcNotifier>,
 }
 
-struct ServerInner {
+struct ServerInner<RpcConn> {
     pub next_connection_id: AtomicU64,
     pub _encoding: Encoding,
     pub sockets: Mutex<HashMap<u64, Connection>>,
-    pub rpc_core: Option<RpcCore>,
+    pub rpc_core: Option<RpcCore<RpcConn>>,
     pub options: Arc<Options>,
 }
 
 #[derive(Clone)]
-pub struct Server {
-    inner: Arc<ServerInner>,
+pub struct Server<RpcConn> {
+    inner: Arc<ServerInner<RpcConn>>,
 }
 
 const WRPC_SERVER: &str = "wrpc-server";
 
-impl Server {
-    pub fn new(tasks: usize, encoding: Encoding, core_service: Option<Arc<RpcCoreService>>, options: Arc<Options>) -> Self {
+impl<RpcConn: RpcConnection + Clone + Sync + Send> Server<RpcConn> {
+    pub fn new(tasks: usize, encoding: Encoding, core_service: Option<Arc<RpcCoreService<RpcConn>>>, options: Arc<Options>) -> Self {
         // This notifier UTXOs subscription granularity to rpc-core notifier
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
 
@@ -167,13 +170,19 @@ impl Server {
     pub fn notifier(&self) -> Option<Arc<WrpcNotifier>> {
         self.inner.rpc_core.as_ref().map(|x| x.wrpc_notifier.clone())
     }
-
-    pub fn rpc_service(&self, connection: &Connection) -> DynRpcService {
-        if let Some(rpc_core) = &self.inner.rpc_core {
-            rpc_core.service.clone()
-        } else {
-            connection.grpc_client()
+    pub fn rpc_service(&self, connection: &Connection) -> impl RpcApi {
+        #[enum_dispatch(RpcApi)]
+        enum RpcApiImpl<T> {
+            RpcCore(Arc<RpcCoreService<T>>),
+            GrpcClient(Arc<GrpcClient>),
         }
+
+        // if let Some(rpc_core) = &self.inner.rpc_core {
+        //     RpcApiImpl::RpcCore(rpc_core.service.clone())
+        // } else {
+        connection.grpc_client()
+        // RpcApiImpl::GrpcClient(connection.grpc_client())
+        // }
     }
 
     pub async fn start_notify(&self, connection: &Connection, scope: Scope) -> RpcResult<()> {

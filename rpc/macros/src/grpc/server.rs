@@ -4,38 +4,30 @@ use quote::{quote, ToTokens};
 use std::convert::Into;
 use syn::{
     parse::{Parse, ParseStream},
-    parse_macro_input,
-    punctuated::Punctuated,
-    Error, Expr, ExprArray, Result, Token,
+    parse_macro_input, Expr, ExprArray, Result, Token, Type,
 };
 
 #[derive(Debug)]
 struct RpcTable {
     server_ctx: Expr,
-    server_ctx_type: Expr,
-    connection_ctx_type: Expr,
-    kaspad_request_type: Expr,
-    kaspad_response_type: Expr,
-    payload_ops: Expr,
+    server_ctx_type: Type,
+    connection_ctx_type: Type,
+    kaspad_request_type: Type,
+    kaspad_response_type: Type,
+    payload_ops: Type,
     handlers: ExprArray,
 }
 
 impl Parse for RpcTable {
     fn parse(input: ParseStream) -> Result<Self> {
-        let parsed = Punctuated::<Expr, Token![,]>::parse_terminated(input).unwrap();
-        if parsed.len() != 7 {
-            return Err(Error::new_spanned(parsed,
-                "usage: build_grpc_server_interface!(server_context, ServerContextType, ConnectionType, KaspadRequestType, KaspadResponseType, KaspadPayloadOps, [GetInfo, ..])".to_string()));
-        }
-
-        let mut iter = parsed.iter();
-        let server_ctx = iter.next().unwrap().clone();
-        let server_ctx_type = iter.next().unwrap().clone();
-        let connection_ctx_type = iter.next().unwrap().clone();
-        let kaspad_request_type = iter.next().unwrap().clone();
-        let kaspad_response_type = iter.next().unwrap().clone();
-        let payload_ops = iter.next().unwrap().clone();
-        let handlers = get_handlers(iter.next().unwrap().clone())?;
+        let server_ctx: Expr = input.parse()?;
+        let [server_ctx_type, connection_ctx_type, kaspad_request_type, kaspad_response_type, payload_ops] =
+            core::array::from_fn(|_| {
+                input.parse::<Token![,]>().unwrap();
+                input.parse().unwrap()
+            });
+        input.parse::<Token![,]>()?;
+        let handlers: ExprArray = input.parse()?;
 
         Ok(RpcTable {
             server_ctx,
@@ -73,7 +65,7 @@ impl ToTokens for RpcTable {
                                     let mut response: #kaspad_response_type = match request.payload {
                                         Some(Payload::#request_type(ref request)) => match request.try_into() {
                                             // TODO: RPC-CONNECTION
-                                            Ok(request) => server_ctx.core_service.#fn_call(None,request).await.into(),
+                                            Ok(request) => server_ctx.core_service.#fn_call(core::default::Default::default(), request).await.into(),
                                             Err(err) => #response_message_type::from(err).into(),
                                         },
                                         _ => {

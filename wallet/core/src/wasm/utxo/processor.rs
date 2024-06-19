@@ -105,7 +105,7 @@ impl UtxoProcessor {
     #[wasm_bindgen(constructor)]
     pub fn ctor(js_value: IUtxoProcessorArgs) -> Result<UtxoProcessor> {
         let UtxoProcessorCreateArgs { rpc, network_id } = js_value.try_into()?;
-        let rpc_api: Arc<DynRpcApi> = rpc.client().clone();
+        let rpc_api = rpc.client().clone();
         let rpc_ctl = rpc.client().rpc_ctl().clone();
         let rpc_binding = Rpc::new(rpc_api, rpc_ctl);
         let processor = native::UtxoProcessor::new(Some(rpc_binding), Some(network_id), None, None);

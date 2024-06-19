@@ -85,8 +85,8 @@ impl BorshDeserialize for Payload {
     }
 }
 
-pub struct Keypair {
-    inner: Arc<Inner>,
+pub struct Keypair<RpcImpl> {
+    inner: Arc<Inner<RpcImpl>>,
     prv_key_data_id: PrvKeyDataId,
     public_key: PublicKey,
     ecdsa: bool,

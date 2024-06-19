@@ -5,17 +5,17 @@
 use crate::result::Result;
 use crate::tx::{Generator, PendingTransaction};
 
-pub struct PendingTransactionIterator {
-    generator: Generator,
+pub struct PendingTransactionIterator<RpcImpl> {
+    generator: Generator<RpcImpl>,
 }
 
-impl PendingTransactionIterator {
-    pub fn new(generator: &Generator) -> Self {
+impl<RpcImpl> PendingTransactionIterator<RpcImpl> {
+    pub fn new(generator: &Generator<RpcImpl>) -> Self {
         Self { generator: generator.clone() }
     }
 }
 
-impl Iterator for PendingTransactionIterator {
+impl<RpcImpl> Iterator for PendingTransactionIterator<RpcImpl> {
     type Item = Result<PendingTransaction>;
     fn next(&mut self) -> Option<Self::Item> {
         self.generator.generate_transaction().transpose()

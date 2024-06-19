@@ -48,8 +48,8 @@ pub struct Inner {
     pub address_to_index_map: HashMap<Address, u32>,
 }
 
-pub struct AddressManager {
-    pub wallet: Arc<Wallet>,
+pub struct AddressManager<RpcImpl> {
+    pub wallet: Arc<Wallet<RpcImpl>>,
     pub account_kind: AccountKind,
     pub pubkey_managers: Vec<Arc<dyn PubkeyDerivationManagerTrait>>,
     pub ecdsa: bool,
@@ -57,9 +57,9 @@ pub struct AddressManager {
     pub minimum_signatures: usize,
 }
 
-impl AddressManager {
+impl<RpcImpl> AddressManager<RpcImpl> {
     pub fn new(
-        wallet: Arc<Wallet>,
+        wallet: Arc<Wallet<RpcImpl>>,
         account_kind: AccountKind,
         pubkey_managers: Vec<Arc<dyn PubkeyDerivationManagerTrait>>,
         ecdsa: bool,
@@ -171,20 +171,20 @@ impl AddressManager {
     }
 }
 
-pub struct AddressDerivationManager {
+pub struct AddressDerivationManager<RpcImpl> {
     pub account_kind: AccountKind,
     pub account_index: u64,
     pub cosigner_index: Option<u32>,
     pub derivators: Vec<Arc<dyn WalletDerivationManagerTrait>>,
     #[allow(dead_code)]
-    wallet: Arc<Wallet>,
-    pub receive_address_manager: Arc<AddressManager>,
-    pub change_address_manager: Arc<AddressManager>,
+    wallet: Arc<Wallet<RpcImpl>>,
+    pub receive_address_manager: Arc<AddressManager<RpcImpl>>,
+    pub change_address_manager: Arc<AddressManager<RpcImpl>>,
 }
 
-impl AddressDerivationManager {
+impl<RpcImpl> AddressDerivationManager<RpcImpl> {
     pub async fn new(
-        wallet: &Arc<Wallet>,
+        wallet: &Arc<Wallet<RpcImpl>>,
         account_kind: AccountKind,
         keys: &ExtendedPublicKeys,
         ecdsa: bool,

@@ -4,34 +4,28 @@ use quote::{quote, ToTokens};
 use std::convert::Into;
 use syn::{
     parse::{Parse, ParseStream},
-    parse_macro_input,
-    punctuated::Punctuated,
-    Error, Expr, ExprArray, Result, Token,
+    parse_macro_input, Expr, ExprArray, Result, Token, Type,
 };
 
 #[derive(Debug)]
 struct RpcTable {
     server_ctx: Expr,
-    server_ctx_type: Expr,
-    connection_ctx_type: Expr,
-    rpc_api_ops: Expr,
+    server_ctx_type: Type,
+    connection_ctx_type: Type,
+    rpc_api_ops: Type,
     handlers: ExprArray,
 }
 
 impl Parse for RpcTable {
     fn parse(input: ParseStream) -> Result<Self> {
-        let parsed = Punctuated::<Expr, Token![,]>::parse_terminated(input).unwrap();
-        if parsed.len() != 5 {
-            return Err(Error::new_spanned(parsed,
-                "usage: build_wrpc_server_interface!(server_instance,router_instance,ServerType,ConnectionType,RpcApiOps,[getInfo, ..])".to_string()));
-        }
+        let server_ctx: Expr = input.parse()?;
+        let [server_ctx_type, connection_ctx_type, rpc_api_ops] = core::array::from_fn(|_| {
+            input.parse::<Token![,]>().unwrap();
+            input.parse().unwrap()
+        });
+        input.parse::<Token![,]>()?;
 
-        let mut iter = parsed.iter();
-        let server_ctx = iter.next().unwrap().clone();
-        let server_ctx_type = iter.next().unwrap().clone();
-        let connection_ctx_type = iter.next().unwrap().clone();
-        let rpc_api_ops = iter.next().unwrap().clone();
-        let handlers = get_handlers(iter.next().unwrap().clone())?;
+        let handlers = input.parse()?;
 
         Ok(RpcTable { server_ctx, server_ctx_type, connection_ctx_type, rpc_api_ops, handlers })
     }
@@ -54,7 +48,7 @@ impl ToTokens for RpcTable {
                         let verbose = server_ctx.verbose();
                         if verbose { workflow_log::log_info!("request: {:?}",request); }
                         // TODO: RPC-CONNECT
-                        let response: #response_type = server_ctx.rpc_service(&connection_ctx).#fn_call(None, request.into_inner()).await
+                        let response: #response_type = server_ctx.rpc_service(&connection_ctx).#fn_call(core::default::Default::default(), request.into_inner()).await
                             .map_err(|e|ServerError::Text(e.to_string()))?;
                         if verbose { workflow_log::log_info!("response: {:?}",response); }
                         Ok(Serializable(response))

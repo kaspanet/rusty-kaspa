@@ -83,19 +83,19 @@ impl BorshDeserialize for Payload {
     }
 }
 
-pub struct MultiSig {
-    inner: Arc<Inner>,
+pub struct MultiSig<RpcImpl> {
+    inner: Arc<Inner<RpcImpl>>,
     xpub_keys: ExtendedPublicKeys,
     prv_key_data_ids: Option<Arc<Vec<PrvKeyDataId>>>,
     cosigner_index: Option<u8>,
     minimum_signatures: u16,
     ecdsa: bool,
-    derivation: Arc<AddressDerivationManager>,
+    derivation: Arc<AddressDerivationManager<RpcImpl>>,
 }
 
-impl MultiSig {
+impl<RpcImpl> MultiSig<RpcImpl> {
     pub async fn try_new(
-        wallet: &Arc<Wallet>,
+        wallet: &Arc<Wallet<RpcImpl>>,
         name: Option<String>,
         xpub_keys: ExtendedPublicKeys,
         prv_key_data_ids: Option<Arc<Vec<PrvKeyDataId>>>,

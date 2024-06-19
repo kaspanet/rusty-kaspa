@@ -11,7 +11,7 @@ use crate::utxo::{UtxoContext, UtxoEntryReference, UtxoIterator};
 use kaspa_addresses::Address;
 use workflow_core::channel::Multiplexer;
 
-pub struct GeneratorSettings {
+pub struct GeneratorSettings<RpcImpl> {
     // Network type
     pub network_id: NetworkId,
     // Event multiplexer
@@ -19,7 +19,7 @@ pub struct GeneratorSettings {
     // Utxo iterator
     pub utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
     // Utxo Context
-    pub source_utxo_context: Option<UtxoContext>,
+    pub source_utxo_context: Option<UtxoContext<RpcImpl>>,
     // typically a number of keys required to sign the transaction
     pub sig_op_count: u8,
     // number of minimum signatures required to sign the transaction
@@ -33,7 +33,7 @@ pub struct GeneratorSettings {
     // payload
     pub final_transaction_payload: Option<Vec<u8>>,
     // transaction is a transfer between accounts
-    pub destination_utxo_context: Option<UtxoContext>,
+    pub destination_utxo_context: Option<UtxoContext<RpcImpl>>,
 }
 
 // impl std::fmt::Debug for GeneratorSettings {
@@ -54,7 +54,7 @@ pub struct GeneratorSettings {
 //     }
 // }
 
-impl GeneratorSettings {
+impl<RpcImpl> GeneratorSettings<RpcImpl> {
     pub fn try_new_with_account(
         account: Arc<dyn Account>,
         final_transaction_destination: PaymentDestination,

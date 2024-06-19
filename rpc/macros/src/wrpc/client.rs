@@ -52,18 +52,13 @@ impl ToTokens for RpcTable {
             // the async implementation of the RPC caller is inlined
             targets.push(quote! {
 
-                fn #fn_call<'life0, 'life1, 'async_trait>(
-                    &'life0 self,
-                    _connection : ::core::option::Option<&'life1 Arc<dyn kaspa_rpc_core::api::connection::RpcConnection>>,
+                async fn #fn_call(
+                    &self,
+                    _connection : ::core::option::Option<Self::RpcConnection>,
                     request: #request_type,
-                ) -> ::core::pin::Pin<Box<dyn ::core::future::Future<Output = RpcResult<#response_type>> + ::core::marker::Send + 'async_trait>>
-                where
-                    'life0: 'async_trait,
-                    'life1: 'async_trait,
-                    Self: 'async_trait,
+                ) -> RpcResult<#response_type>
                 {
                     use workflow_serializer::prelude::*;
-                    Box::pin(async move {
                         if let ::core::option::Option::Some(__ret) = ::core::option::Option::None::<RpcResult<#response_type>> {
                             return __ret;
                         }
@@ -75,7 +70,6 @@ impl ToTokens for RpcTable {
                         };
                         #[allow(unreachable_code)]
                         __ret.map(Serializable::into_inner)
-                    })
                 }
 
             });

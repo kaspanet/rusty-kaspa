@@ -151,7 +151,7 @@ impl Wallet {
         let rpc_config = RpcConfig { url, resolver, encoding, network_id };
 
         let rpc = RpcClient::new(Some(rpc_config))?;
-        let rpc_api: Arc<DynRpcApi> = rpc.client().rpc_api().clone();
+        let rpc_api = rpc.client().rpc_api().clone();
         let rpc_ctl = rpc.client().rpc_ctl().clone();
         let rpc_binding = Rpc::new(rpc_api, rpc_ctl);
         let wallet = Arc::new(native::Wallet::try_with_rpc(Some(rpc_binding), store, network_id)?);

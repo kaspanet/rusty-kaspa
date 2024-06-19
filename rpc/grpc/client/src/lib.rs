@@ -27,6 +27,7 @@ use kaspa_notify::{
         UtxosChangedMutationPolicy,
     },
 };
+use kaspa_rpc_core::api::connection::RpcConnection;
 use kaspa_rpc_core::{
     api::rpc::RpcApi,
     error::RpcError,
@@ -230,8 +231,15 @@ impl GrpcClient {
     }
 }
 
-#[async_trait]
+pub struct DummyConnection {}
+impl RpcConnection for DummyConnection {
+    fn id(&self) -> u64 {
+        todo!()
+    }
+}
+
 impl RpcApi for GrpcClient {
+    type RpcConnection = DummyConnection;
     // this example illustrates the body of the function created by the route!() macro
     // async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
     //     self.inner.call(KaspadPayloadOps::SubmitBlock, request).await?.as_ref().try_into()

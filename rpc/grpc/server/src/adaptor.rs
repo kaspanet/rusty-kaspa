@@ -1,31 +1,33 @@
 use crate::{connection_handler::ConnectionHandler, manager::Manager};
 use kaspa_core::debug;
 use kaspa_notify::{notifier::Notifier, subscription::context::SubscriptionContext};
-use kaspa_rpc_core::{api::rpc::DynRpcService, notify::connection::ChannelConnection, Notification, RpcResult};
+use kaspa_rpc_core::api::rpc::RpcApi;
+use kaspa_rpc_core::{notify::connection::ChannelConnection, Notification, RpcResult};
 use kaspa_utils::networking::NetAddress;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
+use std::fmt::Debug;
 use std::{ops::Deref, sync::Arc};
 use tokio::sync::{mpsc::channel as mpsc_channel, oneshot::Sender as OneshotSender};
 
-pub struct Adaptor {
+pub struct Adaptor<RpcApi: kaspa_rpc_core::api::rpc::RpcApi + std::clone::Clone + std::fmt::Debug> {
     /// If a server was started, it will get cleaned up when this sender is dropped or invoked
     _server_termination: Option<OneshotSender<()>>,
 
     /// An object for handling new connections coming from clients
-    connection_handler: ConnectionHandler,
+    connection_handler: ConnectionHandler<RpcApi>,
 
     /// An object for managing a list of active connections
-    manager: Manager,
+    manager: Manager<RpcApi>,
 
     /// The network address of the server
     serve_address: NetAddress,
 }
 
-impl Adaptor {
+impl<RpcApiImpl: RpcApi + Clone + Debug> Adaptor<RpcApiImpl> {
     fn new(
         server_termination: Option<OneshotSender<()>>,
-        connection_handler: ConnectionHandler,
-        manager: Manager,
+        connection_handler: ConnectionHandler<RpcApiImpl>,
+        manager: Manager<RpcApiImpl>,
         serve_address: NetAddress,
     ) -> Self {
         Self { _server_termination: server_termination, connection_handler, manager, serve_address }
@@ -34,8 +36,8 @@ impl Adaptor {
     pub fn server(
         serve_address: NetAddress,
         network_bps: u64,
-        manager: Manager,
-        core_service: DynRpcService,
+        manager: Manager<RpcApiImpl>,
+        core_service: RpcApiImpl,
         core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
         subscription_context: SubscriptionContext,
         broadcasters: usize,
@@ -80,8 +82,8 @@ impl Adaptor {
 }
 
 /// Expose all public `Manager` methods directly through the `Adaptor`
-impl Deref for Adaptor {
-    type Target = Manager;
+impl<RpcApi: kaspa_rpc_core::api::rpc::RpcApi + std::clone::Clone + std::fmt::Debug> Deref for Adaptor<RpcApi> {
+    type Target = Manager<RpcApi>;
 
     fn deref(&self) -> &Self::Target {
         &self.manager

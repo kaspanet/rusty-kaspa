@@ -94,7 +94,7 @@ impl PendingTransaction {
     /// a failed submission.
     /// @see {@link RpcClient.submitTransaction}
     pub async fn submit(&self, wasm_rpc_client: &RpcClient) -> Result<String> {
-        let rpc: Arc<DynRpcApi> = wasm_rpc_client.client().clone();
+        let rpc = wasm_rpc_client.client().clone();
         let txid = self.inner.try_submit(&rpc).await?;
         Ok(txid.to_string())
     }

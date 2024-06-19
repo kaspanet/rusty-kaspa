@@ -21,8 +21,8 @@ use kaspa_notify::{
     subscriber::Subscriber,
     subscription::{context::SubscriptionContext, MutationPolicies, UtxosChangedMutationPolicy},
 };
+use kaspa_rpc_core::api::rpc::RpcApi;
 use kaspa_rpc_core::{
-    api::rpc::DynRpcService,
     notify::{channel::NotificationChannel, connection::ChannelConnection},
     Notification, RpcResult,
 };
@@ -49,20 +49,20 @@ use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tonic::{codec::CompressionEncoding, transport::Server as TonicServer, Request, Response};
 
 #[derive(Clone)]
-pub struct ServerContext {
+pub struct ServerContext<RpcApiImpl: RpcApi + std::clone::Clone + std::fmt::Debug + Sync + Send + 'static> {
     /// The RPC core service API the RPC methods are calling
-    pub core_service: DynRpcService,
+    pub core_service: RpcApiImpl,
     /// The notifier relaying RPC core notifications to connections
-    pub notifier: Arc<Notifier<Notification, Connection>>,
+    pub notifier: Arc<Notifier<Notification, Connection<RpcApiImpl>>>,
 }
 
-impl ServerContext {
-    pub fn new(core_service: DynRpcService, notifier: Arc<Notifier<Notification, Connection>>) -> Self {
+impl<RpcApiImpl: RpcApi + std::clone::Clone + std::fmt::Debug> ServerContext<RpcApiImpl> {
+    pub fn new(core_service: RpcApiImpl, notifier: Arc<Notifier<Notification, Connection<RpcApiImpl>>>) -> Self {
         Self { core_service, notifier }
     }
 }
 
-impl Debug for ServerContext {
+impl<T: kaspa_rpc_core::api::rpc::RpcApi + std::clone::Clone + std::clone::Clone + std::fmt::Debug> Debug for ServerContext<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ServerContext").finish()
     }
@@ -70,21 +70,21 @@ impl Debug for ServerContext {
 
 /// A protowire gRPC connections handler.
 #[derive(Clone)]
-pub struct ConnectionHandler {
-    manager_sender: MpscSender<ManagerEvent>,
-    server_context: ServerContext,
-    interface: Arc<Interface>,
+pub struct ConnectionHandler<RpcApiImpl: kaspa_rpc_core::api::rpc::RpcApi + std::clone::Clone + std::fmt::Debug> {
+    manager_sender: MpscSender<ManagerEvent<RpcApiImpl>>,
+    server_context: ServerContext<RpcApiImpl>,
+    interface: Arc<Interface<RpcApiImpl>>,
     running: Arc<AtomicBool>,
     counters: Arc<TowerConnectionCounters>,
 }
 
 const GRPC_SERVER: &str = "grpc-server";
 
-impl ConnectionHandler {
+impl<RpcApiImpl: RpcApi + std::clone::Clone + std::fmt::Debug> ConnectionHandler<RpcApiImpl> {
     pub(crate) fn new(
         network_bps: u64,
-        manager_sender: MpscSender<ManagerEvent>,
-        core_service: DynRpcService,
+        manager_sender: MpscSender<ManagerEvent<RpcApiImpl>>,
+        core_service: RpcApiImpl,
         core_notifier: Arc<Notifier<Notification, ChannelConnection>>,
         subscription_context: SubscriptionContext,
         broadcasters: usize,
@@ -105,7 +105,7 @@ impl ConnectionHandler {
         let converter = Arc::new(GrpcServiceConverter::new());
         let collector = Arc::new(GrpcServiceCollector::new(GRPC_SERVER, core_channel.receiver(), converter));
         let subscriber = Arc::new(Subscriber::new(GRPC_SERVER, core_events, core_notifier, core_listener_id));
-        let notifier: Arc<Notifier<Notification, Connection>> = Arc::new(Notifier::new(
+        let notifier: Arc<Notifier<Notification, Connection<RpcApiImpl>>> = Arc::new(Notifier::new(
             GRPC_SERVER,
             core_events,
             vec![collector],
@@ -173,22 +173,22 @@ impl ConnectionHandler {
     }
 
     #[inline(always)]
-    fn server_context(&self) -> ServerContext {
+    fn server_context(&self) -> ServerContext<RpcApiImpl> {
         self.server_context.clone()
     }
 
     #[inline(always)]
-    fn interface(&self) -> Arc<Interface> {
+    fn interface(&self) -> Arc<Interface<RpcApiImpl>> {
         self.interface.clone()
     }
 
     #[inline(always)]
-    fn manager_sender(&self) -> MpscSender<ManagerEvent> {
+    fn manager_sender(&self) -> MpscSender<ManagerEvent<RpcApiImpl>> {
         self.manager_sender.clone()
     }
 
     #[inline(always)]
-    fn notifier(&self) -> Arc<Notifier<Notification, Connection>> {
+    fn notifier(&self) -> Arc<Notifier<Notification, Connection<RpcApiImpl>>> {
         self.server_context.notifier.clone()
     }
 
@@ -227,14 +227,18 @@ impl ConnectionHandler {
     }
 }
 
-impl Drop for ConnectionHandler {
+impl<T: kaspa_rpc_core::api::rpc::RpcApi + std::clone::Clone + std::clone::Clone + std::fmt::Debug + std::fmt::Debug> Drop
+    for ConnectionHandler<T>
+{
     fn drop(&mut self) {
         debug!("GRPC, Dropping connection handler, refs {}", Arc::strong_count(&self.running));
     }
 }
 
 #[tonic::async_trait]
-impl Rpc for ConnectionHandler {
+impl<T: std::marker::Sync + std::marker::Send + kaspa_rpc_core::api::rpc::RpcApi + std::clone::Clone + std::fmt::Debug> Rpc
+    for ConnectionHandler<T>
+{
     type MessageStreamStream = Pin<Box<dyn Stream<Item = Result<KaspadResponse, tonic::Status>> + Send + Sync + 'static>>;
 
     /// Handle the new arriving client connection

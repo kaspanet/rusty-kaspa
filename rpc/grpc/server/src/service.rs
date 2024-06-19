@@ -5,16 +5,18 @@ use kaspa_core::{
     task::service::{AsyncService, AsyncServiceFuture},
     trace, warn,
 };
+use kaspa_rpc_core::api::connection::RpcConnection;
+use kaspa_rpc_core::api::rpc::RpcApi;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::{networking::NetAddress, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use std::sync::Arc;
 use triggered::Listener;
 
-pub struct GrpcService {
+pub struct GrpcService<RpcConn> {
     net_address: NetAddress,
     config: Arc<Config>,
-    core_service: Arc<RpcCoreService>,
+    core_service: Arc<RpcCoreService<RpcConn>>,
     rpc_max_clients: usize,
     broadcasters: usize,
     started: SingleTrigger,
@@ -22,13 +24,13 @@ pub struct GrpcService {
     counters: Arc<TowerConnectionCounters>,
 }
 
-impl GrpcService {
+impl<RpcConn> GrpcService<RpcConn> {
     pub const IDENT: &'static str = "grpc-service";
 
     pub fn new(
         address: NetAddress,
         config: Arc<Config>,
-        core_service: Arc<RpcCoreService>,
+        core_service: Arc<RpcCoreService<RpcConn>>,
         rpc_max_clients: usize,
         broadcasters: usize,
         counters: Arc<TowerConnectionCounters>,
@@ -50,7 +52,7 @@ impl GrpcService {
     }
 }
 
-impl AsyncService for GrpcService {
+impl<RpcConn: RpcConnection + 'static> AsyncService for GrpcService<RpcConn> {
     fn ident(self: Arc<Self>) -> &'static str {
         Self::IDENT
     }

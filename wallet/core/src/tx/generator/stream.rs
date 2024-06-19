@@ -9,12 +9,12 @@ use crate::result::Result;
 use crate::tx::{Generator, PendingTransaction};
 use futures::Stream;
 
-pub struct PendingTransactionStream {
-    generator: Generator,
+pub struct PendingTransactionStream<RpcImpl> {
+    generator: Generator<RpcImpl>,
 }
 
-impl PendingTransactionStream {
-    pub fn new(generator: &Generator) -> Self {
+impl<RpcImpl> PendingTransactionStream<RpcImpl> {
+    pub fn new(generator: &Generator<RpcImpl>) -> Self {
         Self { generator: generator.clone() }
     }
 }

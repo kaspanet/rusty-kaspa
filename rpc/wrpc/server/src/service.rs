@@ -5,6 +5,7 @@ use kaspa_core::{
     task::service::{AsyncService, AsyncServiceError, AsyncServiceFuture},
     trace, warn,
 };
+use kaspa_rpc_core::api::connection::RpcConnection;
 use kaspa_rpc_core::api::ops::RpcApiOps;
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_utils::triggers::SingleTrigger;
@@ -43,24 +44,24 @@ impl Default for Options {
 ///
 /// RPC method handling is implemented in the [`Router`].
 ///
-pub struct KaspaRpcHandler {
-    pub server: Server,
+pub struct KaspaRpcHandler<RpcConn> {
+    pub server: Server<RpcConn>,
     pub options: Arc<Options>,
 }
 
-impl KaspaRpcHandler {
+impl<RpcConn: RpcConnection + Clone + Send + Sync> KaspaRpcHandler<RpcConn> {
     pub fn new(
         tasks: usize,
         encoding: WrpcEncoding,
-        core_service: Option<Arc<RpcCoreService>>,
+        core_service: Option<Arc<RpcCoreService<RpcConn>>>,
         options: Arc<Options>,
-    ) -> KaspaRpcHandler {
+    ) -> KaspaRpcHandler<RpcConn> {
         KaspaRpcHandler { server: Server::new(tasks, encoding, core_service, options.clone()), options }
     }
 }
 
 #[async_trait]
-impl RpcHandler for KaspaRpcHandler {
+impl<RpcConn: RpcConnection + std::marker::Sync + std::marker::Send + 'static + Clone> RpcHandler for KaspaRpcHandler<RpcConn> {
     type Context = Connection;
 
     async fn handshake(
@@ -94,19 +95,19 @@ impl RpcHandler for KaspaRpcHandler {
 ///
 ///  wRPC Server - A wrapper around and an initializer of the RpcServer
 ///
-pub struct WrpcService {
+pub struct WrpcService<RpcConn> {
     // TODO: see if tha Adapter/ConnectionHandler design of P2P and gRPC can be applied here too
     options: Arc<Options>,
     server: RpcServer,
-    rpc_handler: Arc<KaspaRpcHandler>,
+    rpc_handler: Arc<KaspaRpcHandler<RpcConn>>,
     shutdown: SingleTrigger,
 }
 
-impl WrpcService {
+impl<RpcConn: Clone + Send + Sync + 'static + kaspa_rpc_core::api::connection::RpcConnection> WrpcService<RpcConn> {
     /// Create and initialize RpcServer
     pub fn new(
         tasks: usize,
-        core_service: Option<Arc<RpcCoreService>>,
+        core_service: Option<Arc<RpcCoreService<RpcConn>>>,
         encoding: &Encoding,
         counters: Arc<WebSocketCounters>,
         options: Options,
@@ -118,7 +119,7 @@ impl WrpcService {
         // Create router (initializes Interface registering RPC method and notification handlers)
         let router = Arc::new(Router::new(rpc_handler.server.clone()));
         // Create a server
-        let server = RpcServer::new_with_encoding::<Server, Connection, RpcApiOps, Id64>(
+        let server = RpcServer::new_with_encoding::<Server<RpcConn>, Connection, RpcApiOps, Id64>(
             *encoding,
             rpc_handler.clone(),
             router.interface.clone(),
@@ -147,7 +148,8 @@ impl WrpcService {
         info!("WRPC Server starting on: {}", listen_address);
         tokio::spawn(async move {
             let config = WebSocketConfig { max_message_size: Some(MAX_WRPC_MESSAGE_SIZE), ..Default::default() };
-            let serve_result = self.server.listen(&listen_address, Some(config)).await;
+            let listener = TcpListener::bind(&listen_address).await.unwrap();
+            let serve_result = self.server.listen(listener, Some(config)).await;
             match serve_result {
                 Ok(_) => info!("WRPC Server stopped on: {}", listen_address),
                 Err(err) => panic!("WRPC Server {listen_address} stopped with error: {err:?}"),
@@ -160,7 +162,7 @@ impl WrpcService {
 
 const WRPC_SERVER: &str = "wrpc-service";
 
-impl AsyncService for WrpcService {
+impl<RpcConn: RpcConnection + Clone + Sync + Send + 'static> AsyncService for WrpcService<RpcConn> {
     fn ident(self: Arc<Self>) -> &'static str {
         WRPC_SERVER
     }

@@ -135,7 +135,7 @@ extern "C" {
 /// @category Wallet SDK
 #[wasm_bindgen]
 pub struct Generator {
-    inner: Arc<native::Generator>,
+    inner: Arc<native::Generator>, // todo
 }
 
 #[wasm_bindgen]

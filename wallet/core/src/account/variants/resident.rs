@@ -9,8 +9,8 @@ use secp256k1::{PublicKey, SecretKey};
 
 pub const RESIDENT_ACCOUNT_KIND: &str = "kaspa-resident-standard";
 
-pub struct Resident {
-    inner: Arc<Inner>,
+pub struct Resident<RpcImpl> {
+    inner: Arc<Inner<RpcImpl>>,
     public_key: PublicKey,
 
     #[allow(dead_code)]

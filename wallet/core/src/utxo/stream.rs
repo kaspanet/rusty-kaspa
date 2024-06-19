@@ -5,13 +5,13 @@
 use super::{UtxoContext, UtxoEntryReference};
 use crate::imports::*;
 
-pub struct UtxoStream {
-    utxo_context: UtxoContext,
+pub struct UtxoStream<RpcImpl> {
+    utxo_context: UtxoContext<RpcImpl>,
     cursor: usize,
 }
 
-impl UtxoStream {
-    pub fn new(utxo_context: &UtxoContext) -> Self {
+impl<RpcImpl> UtxoStream<RpcImpl> {
+    pub fn new(utxo_context: &UtxoContext<RpcImpl>) -> Self {
         Self { utxo_context: utxo_context.clone(), cursor: 0 }
     }
 }

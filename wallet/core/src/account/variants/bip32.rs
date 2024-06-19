@@ -82,18 +82,18 @@ impl BorshDeserialize for Payload {
     }
 }
 
-pub struct Bip32 {
-    inner: Arc<Inner>,
+pub struct Bip32<RpcImpl> {
+    inner: Arc<Inner<RpcImpl>>,
     prv_key_data_id: PrvKeyDataId,
     account_index: u64,
     xpub_keys: ExtendedPublicKeys,
     ecdsa: bool,
-    derivation: Arc<AddressDerivationManager>,
+    derivation: Arc<AddressDerivationManager<RpcImpl>>,
 }
 
-impl Bip32 {
+impl<RpcImpl> Bip32<RpcImpl> {
     pub async fn try_new(
-        wallet: &Arc<Wallet>,
+        wallet: &Arc<Wallet<RpcImpl>>,
         name: Option<String>,
         prv_key_data_id: PrvKeyDataId,
         account_index: u64,
@@ -120,7 +120,7 @@ impl Bip32 {
         Ok(Self { inner, prv_key_data_id, account_index, xpub_keys, ecdsa, derivation })
     }
 
-    pub async fn try_load(wallet: &Arc<Wallet>, storage: &AccountStorage, meta: Option<Arc<AccountMetadata>>) -> Result<Self> {
+    pub async fn try_load(wallet: &Arc<Wallet<RpcImpl>>, storage: &AccountStorage, meta: Option<Arc<AccountMetadata>>) -> Result<Self> {
         let storable = Payload::try_load(storage)?;
         let prv_key_data_id: PrvKeyDataId = storage.prv_key_data_ids.clone().try_into()?;
         let inner = Arc::new(Inner::from_storage(wallet, storage));
@@ -160,8 +160,8 @@ impl Bip32 {
 }
 
 #[async_trait]
-impl Account for Bip32 {
-    fn inner(&self) -> &Arc<Inner> {
+impl<RpcImpl> Account for Bip32<RpcImpl> {
+    fn inner(&self) -> &Arc<Inner<RpcImpl>> {
         &self.inner
     }
 
@@ -234,7 +234,7 @@ impl Account for Bip32 {
     }
 }
 
-impl DerivationCapableAccount for Bip32 {
+impl<RpcImpl> DerivationCapableAccount for Bip32<RpcImpl> {
     fn derivation(&self) -> Arc<dyn AddressDerivationManagerTrait> {
         self.derivation.clone()
     }

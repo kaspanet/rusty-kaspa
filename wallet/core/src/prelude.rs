@@ -10,7 +10,7 @@ pub use crate::deterministic::{AccountId, AccountStorageKey};
 pub use crate::encryption::EncryptionKind;
 pub use crate::events::{Events, SyncState};
 pub use crate::metrics::{MetricsUpdate, MetricsUpdateKind};
-pub use crate::rpc::{ConnectOptions, ConnectStrategy, DynRpcApi};
+pub use crate::rpc::{ConnectOptions, ConnectStrategy};
 pub use crate::settings::WalletSettings;
 pub use crate::storage::{IdT, Interface, PrvKeyDataId, PrvKeyDataInfo, TransactionId, TransactionRecord, WalletDescriptor};
 pub use crate::tx::{Fees, PaymentDestination, PaymentOutput, PaymentOutputs};

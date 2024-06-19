@@ -67,14 +67,14 @@ impl BorshDeserialize for Payload {
     }
 }
 
-pub struct Legacy {
-    inner: Arc<Inner>,
+pub struct Legacy<RpcImpl> {
+    inner: Arc<Inner<RpcImpl>>,
     prv_key_data_id: PrvKeyDataId,
-    derivation: Arc<AddressDerivationManager>,
+    derivation: Arc<AddressDerivationManager<RpcImpl>>,
 }
 
-impl Legacy {
-    pub async fn try_new(wallet: &Arc<Wallet>, name: Option<String>, prv_key_data_id: PrvKeyDataId) -> Result<Self> {
+impl<RpcImpl> Legacy<RpcImpl> {
+    pub async fn try_new(wallet: &Arc<Wallet<RpcImpl>>, name: Option<String>, prv_key_data_id: PrvKeyDataId) -> Result<Self> {
         let storable = Payload;
         let settings = AccountSettings { name, ..Default::default() };
 

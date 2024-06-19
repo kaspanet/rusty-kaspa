@@ -1,7 +1,9 @@
 use crate::connection::{Connection, ConnectionId};
 use kaspa_core::{debug, info, warn};
 use kaspa_notify::connection::Connection as ConnectionT;
+use kaspa_rpc_core::api::rpc::RpcApi;
 use parking_lot::RwLock;
+use std::fmt::Debug;
 use std::{
     collections::{hash_map::Entry::Occupied, HashMap, HashSet},
     sync::Arc,
@@ -18,36 +20,38 @@ pub(crate) enum RegistrationError {
 }
 pub(crate) type RegistrationResult = Result<(), RegistrationError>;
 
-pub(crate) struct RegistrationRequest {
-    connection: Connection,
+pub(crate) struct RegistrationRequest<RpcApiImpl: kaspa_rpc_core::api::rpc::RpcApi + std::clone::Clone + std::fmt::Debug> {
+    connection: Connection<RpcApiImpl>,
     response_sender: OneshotSender<RegistrationResult>,
 }
 
-impl RegistrationRequest {
-    pub fn new(connection: Connection, response_sender: OneshotSender<RegistrationResult>) -> Self {
+impl<RpcApiImpl: kaspa_rpc_core::api::rpc::RpcApi + std::clone::Clone + std::fmt::Debug> RegistrationRequest<RpcApiImpl> {
+    pub fn new(connection: Connection<RpcApiImpl>, response_sender: OneshotSender<RegistrationResult>) -> Self {
         Self { connection, response_sender }
     }
 }
 
-pub(crate) enum ManagerEvent {
-    NewConnection(RegistrationRequest),
-    ConnectionClosing(Connection),
+pub(crate) enum ManagerEvent<RpcApiImpl: kaspa_rpc_core::api::rpc::RpcApi + std::clone::Clone + std::fmt::Debug> {
+    NewConnection(RegistrationRequest<RpcApiImpl>),
+    ConnectionClosing(Connection<RpcApiImpl>),
 }
 
 #[derive(Clone, Debug)]
-pub struct Manager {
-    connections: Arc<RwLock<HashMap<ConnectionId, Connection>>>,
+pub struct Manager<RpcApiImpl: RpcApi + std::clone::Clone + std::fmt::Debug> {
+    connections: Arc<RwLock<HashMap<ConnectionId, Connection<RpcApiImpl>>>>,
     max_connections: usize,
 }
 
-impl Manager {
+impl<RpcApiImpl: Clone + Debug + std::marker::Sync + std::marker::Send + 'static + kaspa_rpc_core::api::rpc::RpcApi>
+    Manager<RpcApiImpl>
+{
     pub fn new(max_connections: usize) -> Self {
         Self { connections: Default::default(), max_connections }
     }
 
     /// Starts a loop for receiving central manager events from all connections. This mechanism is used for
     /// managing a collection of active connections.
-    pub(crate) fn start_event_loop(self, mut manager_receiver: MpscReceiver<ManagerEvent>) {
+    pub(crate) fn start_event_loop(self, mut manager_receiver: MpscReceiver<ManagerEvent<RpcApiImpl>>) {
         debug!("GRPC, Manager event loop starting");
         tokio::spawn(async move {
             while let Some(new_event) = manager_receiver.recv().await {
@@ -70,7 +74,7 @@ impl Manager {
         });
     }
 
-    fn register(&self, connection: Connection) -> RegistrationResult {
+    fn register(&self, connection: Connection<RpcApiImpl>) -> RegistrationResult {
         let mut connections_write = self.connections.write();
 
         // Check if there is room for a new connection
@@ -94,7 +98,7 @@ impl Manager {
         Ok(())
     }
 
-    fn unregister(&self, connection: Connection) {
+    fn unregister(&self, connection: Connection<RpcApiImpl>) {
         let mut connections_write = self.connections.write();
         let connection_count = connections_write.len();
         if let Occupied(entry) = connections_write.entry(connection.identity()) {
@@ -142,7 +146,7 @@ impl Manager {
     }
 }
 
-impl Drop for Manager {
+impl<RpcApiImpl: kaspa_rpc_core::api::rpc::RpcApi + std::clone::Clone + std::fmt::Debug> Drop for Manager<RpcApiImpl> {
     fn drop(&mut self) {
         debug!("GRPC, Dropping Manager, refs count {}", Arc::strong_count(&self.connections));
     }

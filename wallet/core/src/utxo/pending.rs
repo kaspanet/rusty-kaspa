@@ -6,23 +6,23 @@
 use crate::imports::*;
 use crate::utxo::{Maturity, UtxoContext, UtxoEntryId, UtxoEntryReference, UtxoEntryReferenceExtension};
 
-pub struct PendingUtxoEntryReferenceInner {
+pub struct PendingUtxoEntryReferenceInner<RpcImpl> {
     pub entry: UtxoEntryReference,
-    pub utxo_context: UtxoContext,
+    pub utxo_context: UtxoContext<RpcImpl>,
 }
 
 #[derive(Clone)]
-pub struct PendingUtxoEntryReference {
-    pub inner: Arc<PendingUtxoEntryReferenceInner>,
+pub struct PendingUtxoEntryReference<RpcImpl> {
+    pub inner: Arc<PendingUtxoEntryReferenceInner<RpcImpl>>,
 }
 
-impl PendingUtxoEntryReference {
-    pub fn new(entry: UtxoEntryReference, utxo_context: UtxoContext) -> Self {
+impl<RpcImpl> PendingUtxoEntryReference<RpcImpl> {
+    pub fn new(entry: UtxoEntryReference, utxo_context: UtxoContext<RpcImpl>) -> Self {
         Self { inner: Arc::new(PendingUtxoEntryReferenceInner { entry, utxo_context }) }
     }
 
     #[inline(always)]
-    pub fn inner(&self) -> &PendingUtxoEntryReferenceInner {
+    pub fn inner(&self) -> &PendingUtxoEntryReferenceInner<RpcImpl> {
         &self.inner
     }
 
@@ -32,7 +32,7 @@ impl PendingUtxoEntryReference {
     }
 
     #[inline(always)]
-    pub fn utxo_context(&self) -> &UtxoContext {
+    pub fn utxo_context(&self) -> &UtxoContext<RpcImpl> {
         &self.inner().utxo_context
     }
 
@@ -52,14 +52,14 @@ impl PendingUtxoEntryReference {
     }
 }
 
-impl From<(&Arc<dyn Account>, UtxoEntryReference)> for PendingUtxoEntryReference {
+impl<RpcImpl> From<(&Arc<dyn Account>, UtxoEntryReference)> for PendingUtxoEntryReference<RpcImpl> {
     fn from((account, entry): (&Arc<dyn Account>, UtxoEntryReference)) -> Self {
         Self::new(entry, (*account.utxo_context()).clone())
     }
 }
 
-impl From<PendingUtxoEntryReference> for UtxoEntryReference {
-    fn from(pending: PendingUtxoEntryReference) -> Self {
+impl<RpcImpl> From<PendingUtxoEntryReference<RpcImpl>> for UtxoEntryReference {
+    fn from(pending: PendingUtxoEntryReference<RpcImpl>) -> Self {
         pending.inner().entry.clone()
     }
 }

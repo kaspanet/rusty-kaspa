@@ -8,9 +8,11 @@ use crate::result::Result;
 use futures::pin_mut;
 use futures::stream::StreamExt;
 use regex::Regex;
-struct Inner {
+use kaspa_rpc_core::api::rpc::RpcApi;
+
+struct Inner<RpcImpl> {
     task_ctl: DuplexChannel,
-    rpc: Mutex<Option<Rpc>>,
+    rpc: Mutex<Option<Rpc<RpcImpl>>>,
     multiplexer: Multiplexer<Box<Events>>,
     running: AtomicBool,
     is_synced: AtomicBool,
@@ -18,12 +20,12 @@ struct Inner {
 }
 
 #[derive(Clone)]
-pub struct SyncMonitor {
-    inner: Arc<Inner>,
+pub struct SyncMonitor<RpcImpl> {
+    inner: Arc<Inner<RpcImpl>>,
 }
 
-impl SyncMonitor {
-    pub fn new(rpc: Option<Rpc>, multiplexer: &Multiplexer<Box<Events>>) -> Self {
+impl<RpcImpl> SyncMonitor<RpcImpl> {
+    pub fn new(rpc: Option<Rpc<RpcImpl>>, multiplexer: &Multiplexer<Box<Events>>) -> Self {
         Self {
             inner: Arc::new(Inner {
                 rpc: Mutex::new(rpc.clone()),
@@ -76,7 +78,7 @@ impl SyncMonitor {
         Ok(())
     }
 
-    pub fn rpc_api(&self) -> Arc<DynRpcApi> {
+    pub fn rpc_api(&self) -> Arc<impl RpcApi> {
         self.inner.rpc.lock().unwrap().as_ref().expect("SyncMonitor RPC not initialized").rpc_api().clone()
     }
 

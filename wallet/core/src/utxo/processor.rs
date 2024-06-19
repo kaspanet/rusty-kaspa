@@ -33,40 +33,41 @@ use kaspa_rpc_core::{
     notify::connection::{ChannelConnection, ChannelType},
     Notification,
 };
+use kaspa_rpc_core::api::rpc::RpcApi;
 // use workflow_core::task;
 // use kaspa_metrics_core::{Metrics,Metric};
 
-pub struct Inner {
+pub struct Inner<RpcImpl: RpcApi> {
     /// Coinbase UTXOs in stasis
-    stasis: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
+    stasis: DashMap<UtxoEntryId, PendingUtxoEntryReference<RpcImpl>>,
     /// UTXOs pending maturity
-    pending: DashMap<UtxoEntryId, PendingUtxoEntryReference>,
+    pending: DashMap<UtxoEntryId, PendingUtxoEntryReference<RpcImpl>>,
     /// Outgoing Transactions
-    outgoing: DashMap<TransactionId, OutgoingTransaction>,
+    outgoing: DashMap<TransactionId, OutgoingTransaction<RpcImpl>>,
     /// Address to UtxoContext map (maps all addresses used by
     /// all UtxoContexts to their respective UtxoContexts)
-    address_to_utxo_context_map: DashMap<Arc<Address>, UtxoContext>,
+    address_to_utxo_context_map: DashMap<Arc<Address>, UtxoContext<RpcImpl>>,
     // ---
     current_daa_score: Arc<AtomicU64>,
     network_id: Arc<Mutex<Option<NetworkId>>>,
-    rpc: Mutex<Option<Rpc>>,
+    rpc: Mutex<Option<Rpc<RpcImpl>>>,
     is_connected: AtomicBool,
     listener_id: Mutex<Option<ListenerId>>,
     task_ctl: DuplexChannel,
     task_is_running: AtomicBool,
     notification_channel: Channel<Notification>,
-    sync_proc: SyncMonitor,
+    sync_proc: SyncMonitor<RpcImpl>,
     multiplexer: Multiplexer<Box<Events>>,
     wallet_bus: Option<Channel<WalletBusMessage>>,
     notification_guard: AsyncMutex<()>,
     connect_disconnect_guard: AsyncMutex<()>,
-    metrics: Arc<Metrics>,
+    metrics: Arc<Metrics<RpcImpl>>,
     metrics_kinds: Mutex<Vec<MetricsUpdateKind>>,
 }
 
-impl Inner {
+impl<RpcImpl: RpcApi> Inner<RpcImpl> {
     pub fn new(
-        rpc: Option<Rpc>,
+        rpc: Option<RpcImpl>,
         network_id: Option<NetworkId>,
         multiplexer: Multiplexer<Box<Events>>,
         wallet_bus: Option<Channel<WalletBusMessage>>,
@@ -96,13 +97,13 @@ impl Inner {
 }
 
 #[derive(Clone)]
-pub struct UtxoProcessor {
-    inner: Arc<Inner>,
+pub struct UtxoProcessor<RpcImpl> {
+    inner: Arc<Inner<RpcImpl>>,
 }
 
-impl UtxoProcessor {
+impl<RpcImpl> UtxoProcessor<RpcImpl> {
     pub fn new(
-        rpc: Option<Rpc>,
+        rpc: Option<Rpc<RpcImpl>>,
         network_id: Option<NetworkId>,
         multiplexer: Option<Multiplexer<Box<Events>>>,
         wallet_bus: Option<Channel<WalletBusMessage>>,
@@ -111,11 +112,11 @@ impl UtxoProcessor {
         UtxoProcessor { inner: Arc::new(Inner::new(rpc, network_id, multiplexer, wallet_bus)) }
     }
 
-    pub fn rpc_api(&self) -> Arc<DynRpcApi> {
+    pub fn rpc_api(&self) -> Arc<impl RpcApi> {
         self.inner.rpc.lock().unwrap().as_ref().expect("UtxoProcessor RPC not initialized").rpc_api().clone()
     }
 
-    pub fn try_rpc_api(&self) -> Option<Arc<DynRpcApi>> {
+    pub fn try_rpc_api(&self) -> Option<Arc<impl RpcApi>> {
         self.inner.rpc.lock().unwrap().as_ref().map(|rpc| rpc.rpc_api()).cloned()
     }
 
@@ -135,7 +136,7 @@ impl UtxoProcessor {
         self.rpc_api().clone().downcast_arc::<KaspaRpcClient>().ok()
     }
 
-    pub async fn bind_rpc(&self, rpc: Option<Rpc>) -> Result<()> {
+    pub async fn bind_rpc(&self, rpc: Option<RpcImpl>) -> Result<()> {
         self.inner.rpc.lock().unwrap().clone_from(&rpc);
         let rpc_api = rpc.as_ref().map(|rpc| rpc.rpc_api().clone());
         self.metrics().bind_rpc(rpc_api);
@@ -143,7 +144,7 @@ impl UtxoProcessor {
         Ok(())
     }
 
-    pub fn metrics(&self) -> &Arc<Metrics> {
+    pub fn metrics(&self) -> &Arc<Metrics<RpcImpl>> {
         &self.inner.metrics
     }
 
@@ -163,7 +164,7 @@ impl UtxoProcessor {
         self.inner.notification_guard.lock().await
     }
 
-    pub fn sync_proc(&self) -> &SyncMonitor {
+    pub fn sync_proc(&self) -> &SyncMonitor<RpcImpl> {
         &self.inner.sync_proc
     }
 
@@ -184,7 +185,7 @@ impl UtxoProcessor {
         Ok(network_id.into())
     }
 
-    pub fn pending(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference> {
+    pub fn pending(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference<RpcImpl>> {
         &self.inner.pending
     }
 
@@ -192,7 +193,7 @@ impl UtxoProcessor {
         &self.inner.outgoing
     }
 
-    pub fn stasis(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference> {
+    pub fn stasis(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference<RpcImpl>> {
         &self.inner.stasis
     }
 
@@ -200,15 +201,15 @@ impl UtxoProcessor {
         self.is_connected().then_some(self.inner.current_daa_score.load(Ordering::SeqCst))
     }
 
-    pub fn address_to_utxo_context_map(&self) -> &DashMap<Arc<Address>, UtxoContext> {
+    pub fn address_to_utxo_context_map(&self) -> &DashMap<Arc<Address>, UtxoContext<RpcImpl>> {
         &self.inner.address_to_utxo_context_map
     }
 
-    pub fn address_to_utxo_context(&self, address: &Address) -> Option<UtxoContext> {
+    pub fn address_to_utxo_context(&self, address: &Address) -> Option<UtxoContext<RpcImpl>> {
         self.inner.address_to_utxo_context_map.get(address).map(|v| v.clone())
     }
 
-    pub async fn register_addresses(&self, addresses: Vec<Arc<Address>>, utxo_context: &UtxoContext) -> Result<()> {
+    pub async fn register_addresses(&self, addresses: Vec<Arc<Address>>, utxo_context: &UtxoContext<RpcImpl>) -> Result<()> {
         addresses.iter().for_each(|address| {
             self.inner.address_to_utxo_context_map.insert(address.clone(), utxo_context.clone());
         });
@@ -714,7 +715,7 @@ impl UtxoProcessor {
 pub(crate) mod mock {
     use super::*;
 
-    impl UtxoProcessor {
+    impl<RpcImpl> UtxoProcessor<RpcImpl> {
         pub fn mock_set_connected(&self, connected: bool) {
             self.inner.is_connected.store(connected, Ordering::SeqCst);
         }

@@ -79,7 +79,7 @@ pub enum UtxoEntryVariant {
     Stasis(UtxoEntryReference),
 }
 
-pub struct Context {
+pub struct Context<RpcImpl> {
     /// Mature (Confirmed) UTXOs
     pub(crate) mature: Vec<UtxoEntryReference>,
     /// UTXOs that are pending confirmation
@@ -91,14 +91,14 @@ pub struct Context {
     /// Outgoing transactions that have not yet been confirmed.
     /// Confirmation occurs when the transaction UTXOs are
     /// removed from the context by the UTXO change notification.
-    pub(crate) outgoing: AHashMap<TransactionId, OutgoingTransaction>,
+    pub(crate) outgoing: AHashMap<TransactionId, OutgoingTransaction<RpcImpl>>,
     /// Total balance of all UTXOs in this context (mature, pending)
     balance: Option<Balance>,
     /// Addresses monitored by this UTXO context
     addresses: Arc<DashSet<Arc<Address>>>,
 }
 
-impl Default for Context {
+impl<RpcImpl> Default for Context<RpcImpl> {
     fn default() -> Self {
         Self {
             mature: vec![],
@@ -112,7 +112,7 @@ impl Default for Context {
     }
 }
 
-impl Context {
+impl<RpcImpl> Context<RpcImpl> {
     fn new_with_mature(mature: Vec<UtxoEntryReference>) -> Self {
         Self { mature, ..Default::default() }
     }
@@ -128,19 +128,19 @@ impl Context {
     }
 }
 
-struct Inner {
+struct Inner<RpcImpl> {
     id: UtxoContextId,
     binding: UtxoContextBinding,
-    context: Mutex<Context>,
-    processor: UtxoProcessor,
+    context: Mutex<Context<RpcImpl>>,
+    processor: UtxoProcessor<RpcImpl>,
 }
 
-impl Inner {
-    pub fn new(processor: &UtxoProcessor, binding: UtxoContextBinding) -> Self {
+impl<RpcImpl> Inner<RpcImpl> {
+    pub fn new(processor: &UtxoProcessor<RpcImpl>, binding: UtxoContextBinding) -> Self {
         Self { id: binding.id(), binding, context: Mutex::new(Context::default()), processor: processor.clone() }
     }
 
-    pub fn new_with_mature_entries(processor: &UtxoProcessor, binding: UtxoContextBinding, mature: Vec<UtxoEntryReference>) -> Self {
+    pub fn new_with_mature_entries(processor: &UtxoProcessor<RpcImpl>, binding: UtxoContextBinding, mature: Vec<UtxoEntryReference>) -> Self {
         let context = Context::new_with_mature(mature);
         Self { id: binding.id(), binding, context: Mutex::new(context), processor: processor.clone() }
     }
@@ -161,17 +161,17 @@ impl Inner {
 /// different types of UtxoEntry updates (regular incoming vs. change).
 ///
 #[derive(Clone)]
-pub struct UtxoContext {
-    inner: Arc<Inner>,
+pub struct UtxoContext<RpcImpl> {
+    inner: Arc<Inner<RpcImpl>>,
 }
 
-impl UtxoContext {
-    pub fn new(processor: &UtxoProcessor, binding: UtxoContextBinding) -> Self {
+impl<RpcImpl> UtxoContext<RpcImpl> {
+    pub fn new(processor: &UtxoProcessor<RpcImpl>, binding: UtxoContextBinding) -> Self {
         Self { inner: Arc::new(Inner::new(processor, binding)) }
     }
 
     pub fn new_with_mature_entries(
-        processor: &UtxoProcessor,
+        processor: &UtxoProcessor<RpcImpl>,
         binding: UtxoContextBinding,
         mature_entries: Vec<UtxoEntryReference>,
     ) -> Self {
@@ -182,7 +182,7 @@ impl UtxoContext {
         self.inner.context.lock().unwrap()
     }
 
-    pub fn processor(&self) -> &UtxoProcessor {
+    pub fn processor(&self) -> &UtxoProcessor<RpcImpl> {
         &self.inner.processor
     }
 

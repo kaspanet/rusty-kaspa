@@ -15,6 +15,7 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 async-trait.workspace = true
 borsh = { workspace = true, features = ["rc"] }
+enum_dispatch.workspace = true
 futures.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-core.workspace = true

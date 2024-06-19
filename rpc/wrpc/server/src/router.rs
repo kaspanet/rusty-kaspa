@@ -1,5 +1,7 @@
 use crate::{connection::*, server::*};
 use kaspa_notify::scope::Scope;
+use kaspa_rpc_core::api::connection::RpcConnection;
+use kaspa_rpc_core::api::rpc::RpcApi;
 use kaspa_rpc_core::{api::ops::RpcApiOps, prelude::*};
 use kaspa_rpc_macros::build_wrpc_server_interface;
 use std::sync::Arc;
@@ -11,13 +13,13 @@ use workflow_serializer::prelude::*;
 /// is later given to the RpcServer.  This wrapper exists to allow
 /// a single initialization location for both the Kaspad Server and
 /// the GRPC Proxy.
-pub struct Router {
-    pub interface: Arc<Interface<Server, Connection, RpcApiOps>>,
-    pub server_context: Server,
+pub struct Router<RpcConn: std::clone::Clone + std::marker::Sync + std::marker::Send + 'static> {
+    pub interface: Arc<Interface<Server<RpcConn>, Connection, RpcApiOps>>,
+    pub server_context: Server<RpcConn>,
 }
 
-impl Router {
-    pub fn new(server_context: Server) -> Self {
+impl<RpcConn: RpcConnection + std::clone::Clone + std::marker::Sync + std::marker::Send> Router<RpcConn> {
+    pub fn new(server_context: Server<RpcConn>) -> Self {
         // let router_target = server_context.router_target();
 
         // The following macro iterates the supplied enum variants taking the variant
@@ -29,7 +31,7 @@ impl Router {
         #[allow(unreachable_patterns)]
         let mut interface = build_wrpc_server_interface!(
             server_context.clone(),
-            Server,
+            Server<RpcConn>,
             Connection,
             RpcApiOps,
             [
@@ -73,7 +75,7 @@ impl Router {
 
         interface.method(
             RpcApiOps::Subscribe,
-            workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, scope: Serializable<Scope>| {
+            workflow_rpc::server::Method::new(move |manager: Server<RpcConn>, connection: Connection, scope: Serializable<Scope>| {
                 Box::pin(async move {
                     manager.start_notify(&connection, scope.into_inner()).await.map_err(|err| err.to_string())?;
                     Ok(Serializable(SubscribeResponse::new(connection.id())))
@@ -83,7 +85,7 @@ impl Router {
 
         interface.method(
             RpcApiOps::Unsubscribe,
-            workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, scope: Serializable<Scope>| {
+            workflow_rpc::server::Method::new(move |manager: Server<RpcConn>, connection: Connection, scope: Serializable<Scope>| {
                 Box::pin(async move {
                     manager.stop_notify(&connection, scope.into_inner()).await.unwrap_or_else(|err| {
                         workflow_log::log_trace!("wRPC server -> error calling stop_notify(): {err}");

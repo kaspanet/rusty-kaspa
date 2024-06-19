@@ -23,6 +23,7 @@ use kaspa_notify::{
 };
 use kaspa_rpc_core::Notification;
 use parking_lot::Mutex;
+use std::fmt::{Debug, Formatter};
 use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::Display,
@@ -40,7 +41,7 @@ use tonic::Streaming;
 use uuid::Uuid;
 
 pub type IncomingRoute = MpmcReceiver<KaspadRequest>;
-pub type GrpcNotifier = Notifier<Notification, Connection>;
+pub type GrpcNotifier<RpcApi> = Notifier<Notification, Connection<RpcApi>>;
 pub type GrpcSender = MpscSender<KaspadResponse>;
 pub type StatusResult<T> = Result<T, tonic::Status>;
 pub type ConnectionId = Uuid;
@@ -63,7 +64,7 @@ impl InnerMutableState {
 }
 
 #[derive(Debug)]
-struct Inner {
+struct Inner<RpcApi: kaspa_rpc_core::api::rpc::RpcApi + std::clone::Clone + std::fmt::Debug> {
     connection_id: ConnectionId,
 
     /// The socket address of this client
@@ -74,10 +75,10 @@ struct Inner {
 
     /// A channel sender for internal event management.
     /// Used to send information from each router to a central manager object
-    manager_sender: MpscSender<ManagerEvent>,
+    manager_sender: MpscSender<ManagerEvent<RpcApi>>,
 
     /// The server RPC core service and notifier
-    server_context: ServerContext,
+    server_context: ServerContext<RpcApi>,
 
     /// Used for managing connection mutable state
     mutable_state: Mutex<InnerMutableState>,
@@ -86,7 +87,9 @@ struct Inner {
     is_closed: AtomicBool,
 }
 
-impl Drop for Inner {
+impl<RpcApi: kaspa_rpc_core::api::rpc::RpcApi + std::clone::Clone + std::clone::Clone + std::fmt::Debug + std::fmt::Debug> Drop
+    for Inner<RpcApi>
+{
     fn drop(&mut self) {
         debug!("GRPC, Dropping connection {}", self.connection_id);
     }
@@ -116,23 +119,23 @@ impl Deref for Route {
 
 type RoutingMap = HashMap<KaspadPayloadOps, Route>;
 
-struct Router {
+struct Router<RpcApi: kaspa_rpc_core::api::rpc::RpcApi + std::clone::Clone + std::fmt::Debug> {
     /// Routing map for mapping messages to RPC op handlers
     routing_map: RoutingMap,
 
     /// The server RPC core service and notifier
-    server_context: ServerContext,
+    server_context: ServerContext<RpcApi>,
 
     /// The interface providing the RPC methods to the request handlers
-    interface: Arc<Interface>,
+    interface: Arc<Interface<RpcApi>>,
 }
 
-impl Router {
-    fn new(server_context: ServerContext, interface: Arc<Interface>) -> Self {
+impl<RpcApi: kaspa_rpc_core::api::rpc::RpcApi + Clone + Debug> Router<RpcApi> {
+    fn new(server_context: ServerContext<RpcApi>, interface: Arc<Interface<RpcApi>>) -> Self {
         Self { routing_map: Default::default(), server_context, interface }
     }
 
-    fn get_or_subscribe(&mut self, connection: &Connection, rpc_op: KaspadPayloadOps) -> &Route {
+    fn get_or_subscribe(&mut self, connection: &Connection<RpcApi>, rpc_op: KaspadPayloadOps) -> &Route {
         match self.routing_map.entry(rpc_op) {
             Entry::Vacant(entry) => {
                 let method = self.interface.get_method(&rpc_op);
@@ -170,7 +173,7 @@ impl Router {
         self.routing_map.get(&rpc_op).unwrap()
     }
 
-    async fn route_to_handler(&mut self, connection: &Connection, request: KaspadRequest) -> GrpcServerResult<()> {
+    async fn route_to_handler(&mut self, connection: &Connection<RpcApi>, request: KaspadRequest) -> GrpcServerResult<()> {
         if request.payload.is_none() {
             debug!("GRPC, Route to handler got empty payload, client: {}", connection);
             return Err(GrpcServerError::InvalidRequestPayload);
@@ -201,23 +204,40 @@ impl Router {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Connection {
-    inner: Arc<Inner>,
+#[derive(Debug)]
+pub struct Connection<RpcApi: kaspa_rpc_core::api::rpc::RpcApi + std::clone::Clone + std::fmt::Debug> {
+    inner: Arc<Inner<RpcApi>>,
 }
 
-impl Display for Connection {
+impl<RpcApi: kaspa_rpc_core::api::rpc::RpcApi + std::fmt::Debug + std::clone::Clone + std::clone::Clone> Clone for Connection<RpcApi> {
+    fn clone(&self) -> Self {
+        Self { inner: self.inner.clone() }
+    }
+}
+
+impl<
+        RpcApi: kaspa_rpc_core::api::rpc::RpcApi
+            + std::clone::Clone
+            + std::clone::Clone
+            + std::clone::Clone
+            + std::clone::Clone
+            + std::fmt::Debug
+            + std::fmt::Debug
+            + std::fmt::Debug
+            + std::fmt::Debug,
+    > Display for Connection<RpcApi>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}@{}", self.inner.connection_id, self.inner.net_address)
     }
 }
 
-impl Connection {
+impl<RpcApi: kaspa_rpc_core::api::rpc::RpcApi + Clone + Debug> Connection<RpcApi> {
     pub(crate) fn new(
         net_address: SocketAddr,
-        server_context: ServerContext,
-        interface: Arc<Interface>,
-        manager_sender: MpscSender<ManagerEvent>,
+        server_context: ServerContext<RpcApi>,
+        interface: Arc<Interface<RpcApi>>,
+        manager_sender: MpscSender<ManagerEvent<RpcApi>>,
         mut incoming_stream: Streaming<KaspadRequest>,
         outgoing_route: GrpcSender,
     ) -> Self {
@@ -314,7 +334,7 @@ impl Connection {
         self.inner.connection_id
     }
 
-    pub fn notifier(&self) -> Arc<GrpcNotifier> {
+    pub fn notifier(&self) -> Arc<GrpcNotifier<RpcApi>> {
         self.inner.server_context.notifier.clone()
     }
 
@@ -402,7 +422,7 @@ pub enum GrpcEncoding {
 }
 
 #[async_trait::async_trait]
-impl ConnectionT for Connection {
+impl<RpcApi: Clone + Debug + kaspa_rpc_core::api::rpc::RpcApi> ConnectionT for Connection<RpcApi> {
     type Notification = Notification;
     type Message = Arc<KaspadResponse>;
     type Encoding = GrpcEncoding;

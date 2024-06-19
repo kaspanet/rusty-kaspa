@@ -21,30 +21,30 @@ pub enum ScanExtent {
     Depth(u32),
 }
 
-enum Provider {
-    AddressManager(Arc<AddressManager>),
+enum Provider<RpcImpl> {
+    AddressManager(Arc<AddressManager<RpcImpl>>),
     AddressSet(HashSet<Address>),
 }
 
-pub struct Scan {
-    provider: Provider,
+pub struct Scan<RpcImpl> {
+    provider: Provider<RpcImpl>,
     window_size: Option<usize>,
     extent: Option<ScanExtent>,
     balance: Arc<AtomicBalance>,
     current_daa_score: u64,
 }
 
-impl Scan {
+impl<RpcImpl> Scan<RpcImpl> {
     pub fn new_with_address_manager(
-        address_manager: Arc<AddressManager>,
+        address_manager: Arc<AddressManager<RpcImpl>>,
         balance: &Arc<AtomicBalance>,
         current_daa_score: u64,
         window_size: Option<usize>,
         extent: Option<ScanExtent>,
-    ) -> Scan {
+    ) -> Scan<RpcImpl> {
         Scan { provider: Provider::AddressManager(address_manager), window_size, extent, balance: balance.clone(), current_daa_score }
     }
-    pub fn new_with_address_set(addresses: HashSet<Address>, balance: &Arc<AtomicBalance>, current_daa_score: u64) -> Scan {
+    pub fn new_with_address_set(addresses: HashSet<Address>, balance: &Arc<AtomicBalance>, current_daa_score: u64) -> Scan<RpcImpl> {
         Scan {
             provider: Provider::AddressSet(addresses),
             window_size: None,
@@ -54,7 +54,7 @@ impl Scan {
         }
     }
 
-    pub async fn scan(&self, utxo_context: &UtxoContext) -> Result<()> {
+    pub async fn scan(&self, utxo_context: &UtxoContext<RpcImpl>) -> Result<()> {
         match &self.provider {
             Provider::AddressManager(address_manager) => self.scan_with_address_manager(address_manager, utxo_context).await,
             Provider::AddressSet(addresses) => self.scan_with_address_set(addresses, utxo_context).await,

@@ -32,6 +32,7 @@ use kaspa_mining::{
 use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
 
 use kaspa_perf_monitor::{builder::Builder as PerfMonitorBuilder, counters::CountersSnapshot};
+use kaspa_rpc_core::api::rpc::DummyRpcConnection;
 use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WebSocketCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
 
@@ -171,6 +172,30 @@ impl Runtime {
     }
 }
 
+use kaspa_rpc_core::api::connection::RpcConnection;
+pub enum DaemonConnection {
+    Wrpc(DummyRpcConnection),
+    Grpc(DummyRpcConnection),
+}
+
+impl RpcConnection for DaemonConnection {
+    fn id(&self) -> u64 {
+        match self {
+            DaemonConnection::Wrpc(conn) => conn.id(),
+            DaemonConnection::Grpc(conn) => conn.id(),
+        }
+    }
+}
+
+impl Clone for DaemonConnection {
+    fn clone(&self) -> Self {
+        match self {
+            DaemonConnection::Wrpc(dummy) => Self::Wrpc(DummyRpcConnection {}),
+            DaemonConnection::Grpc(dummy) => Self::Grpc(DummyRpcConnection {}),
+        }
+    }
+}
+
 /// Create [`Core`] instance with supplied [`Args`].
 /// This function will automatically create a [`Runtime`]
 /// instance with the supplied [`Args`] and then
@@ -182,7 +207,7 @@ impl Runtime {
 /// The instance of the [`RpcCoreService`] needs to be released
 /// (dropped) before the `Core` is shut down.
 ///
-pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
+pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService<DaemonConnection>>) {
     let rt = Runtime::from_args(&args);
     create_core_with_runtime(&rt, &args, fd_total_budget)
 }
@@ -198,7 +223,7 @@ pub fn create_core(args: Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreS
 /// The instance of the [`RpcCoreService`] needs to be released
 /// (dropped) before the `Core` is shut down.
 ///
-pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService>) {
+pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget: i32) -> (Arc<Core>, Arc<RpcCoreService<DaemonConnection>>) {
     let network = args.network();
     let mut fd_remaining = fd_total_budget;
     let utxo_files_limit = if args.utxoindex {

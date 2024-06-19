@@ -37,6 +37,7 @@ borsh.workspace = true
 cfg-if.workspace = true
 derive_more.workspace = true
 downcast.workspace = true
+enum_dispatch.workspace = true
 faster-hex.workspace = true
 hex.workspace = true
 js-sys.workspace = true

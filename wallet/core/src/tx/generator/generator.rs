@@ -250,7 +250,7 @@ struct MassDisposition {
 ///
 ///  Internal Generator settings and references
 ///
-struct Inner {
+struct Inner<RpcImpl> {
     // Atomic abortable trigger that will cause the processing to halt with `Error::Aborted`
     abortable: Option<Abortable>,
     // Optional signer that is passed on to the [`PendingTransaction`] allowing [`PendingTransaction`] to expose signing functions for convenience.
@@ -263,9 +263,9 @@ struct Inner {
     network_params: NetworkParams,
 
     // Source Utxo Context (Used for source UtxoEntry aggregation)
-    source_utxo_context: Option<UtxoContext>,
+    source_utxo_context: Option<UtxoContext<RpcImpl>>,
     // Destination Utxo Context (Used only during transfer transactions)
-    destination_utxo_context: Option<UtxoContext>,
+    destination_utxo_context: Option<UtxoContext<RpcImpl>>,
     // Event multiplexer
     multiplexer: Option<Multiplexer<Box<Events>>>,
     // typically a number of keys required to sign the transaction
@@ -327,11 +327,11 @@ impl std::fmt::Debug for Inner {
 /// Transaction generator
 ///
 #[derive(Clone)]
-pub struct Generator {
-    inner: Arc<Inner>,
+pub struct Generator<RpcImpl> {
+    inner: Arc<Inner<RpcImpl>>,
 }
 
-impl Generator {
+impl<RpcImpl> Generator<RpcImpl> {
     /// Create a new [`Generator`] instance using [`GeneratorSettings`].
     pub fn try_new(settings: GeneratorSettings, signer: Option<Arc<dyn SignerT>>, abortable: Option<&Abortable>) -> Result<Self> {
         let GeneratorSettings {

@@ -120,9 +120,9 @@ pub trait EventHandler: Send + Sync {
 /// API methods that can be invoked via Borsh or Serde messages containing
 /// serializations created using the [`Transport`] interface. The [`WalletServer`]
 /// is a counter-part to [`WalletClient`].
-pub struct WalletServer {
+pub struct WalletServer<RpcImpl> {
     // pub wallet_api: Arc<dyn WalletApi>,
-    pub wallet: Arc<Wallet>,
+    pub wallet: Arc<Wallet<RpcImpl>>,
     pub event_handler: Arc<dyn EventHandler>,
     task_ctl: DuplexChannel,
 }

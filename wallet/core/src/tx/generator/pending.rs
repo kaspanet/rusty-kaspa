@@ -5,16 +5,16 @@
 
 use crate::imports::*;
 use crate::result::Result;
-use crate::rpc::DynRpcApi;
 use crate::tx::{DataKind, Generator};
 use crate::utxo::{UtxoContext, UtxoEntryId, UtxoEntryReference};
 use kaspa_consensus_core::sign::sign_with_multiple_v2;
 use kaspa_consensus_core::tx::{SignableTransaction, Transaction, TransactionId};
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionId};
+use kaspa_rpc_core::api::rpc::RpcApi;
 
-pub(crate) struct PendingTransactionInner {
+pub(crate) struct PendingTransactionInner<RpcImpl> {
     /// Generator that produced the transaction
-    pub(crate) generator: Generator,
+    pub(crate) generator: Generator<RpcImpl>,
     /// UtxoEntryReferences of the pending transaction
     pub(crate) utxo_entries: AHashMap<UtxoEntryId, UtxoEntryReference>,
     /// Transaction Id (cached in pending to avoid mutex lock)
@@ -62,14 +62,14 @@ impl std::fmt::Debug for PendingTransaction {
 /// Contains auxiliary information about the transaction such as aggregate
 /// input/output amounts, fees, etc.
 #[derive(Clone)]
-pub struct PendingTransaction {
-    pub(crate) inner: Arc<PendingTransactionInner>,
+pub struct PendingTransaction<RpcImpl> {
+    pub(crate) inner: Arc<PendingTransactionInner<RpcImpl>>,
 }
 
-impl PendingTransaction {
+impl<RpcImpl> PendingTransaction<RpcImpl> {
     #[allow(clippy::too_many_arguments)]
     pub fn try_new(
-        generator: &Generator,
+        generator: &Generator<RpcImpl>,
         transaction: Transaction,
         utxo_entries: Vec<UtxoEntryReference>,
         addresses: Vec<Address>,
@@ -175,7 +175,7 @@ impl PendingTransaction {
     }
 
     /// Submit the transaction on the supplied rpc
-    pub async fn try_submit(&self, rpc: &Arc<DynRpcApi>) -> Result<RpcTransactionId> {
+    pub async fn try_submit(&self, rpc: &Arc<impl RpcApi>) -> Result<RpcTransactionId> {
         // sanity check to prevent multiple invocations (for API use)
         self.inner.is_submitted.load(Ordering::SeqCst).then(|| {
             panic!("PendingTransaction::try_submit() called multiple times");

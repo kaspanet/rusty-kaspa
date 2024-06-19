@@ -14,7 +14,7 @@ pub use crate::factory::{factories, Factory};
 pub use crate::metrics::{MetricsUpdate, MetricsUpdateKind};
 pub use crate::result::Result;
 pub use crate::rpc::Rpc;
-pub use crate::rpc::{DynRpcApi, RpcCtl};
+pub use crate::rpc::{RpcCtl};
 pub use crate::serializer::*;
 pub use crate::storage::*;
 pub use crate::tx::MassCombinationStrategy;
