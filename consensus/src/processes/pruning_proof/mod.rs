@@ -117,7 +117,6 @@ pub struct PruningProofManager {
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
     reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
     reachability_service: MTReachabilityService<DbReachabilityStore>,
-    ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
     ghostdag_primary_store: Arc<DbGhostdagStore>,
     relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
     pruning_point_store: Arc<RwLock<DbPruningStore>>,
@@ -128,7 +127,6 @@ pub struct PruningProofManager {
     depth_store: Arc<DbDepthStore>,
     selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
 
-    ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
     ghostdag_primary_manager: DbGhostdagManager,
     traversal_manager: DbDagTraversalManager,
     window_manager: DbWindowManager,
@@ -153,7 +151,6 @@ impl PruningProofManager {
         storage: &Arc<ConsensusStorage>,
         parents_manager: DbParentsManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
-        ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
         ghostdag_manager: DbGhostdagManager,
         traversal_manager: DbDagTraversalManager,
         window_manager: DbWindowManager,
@@ -170,7 +167,6 @@ impl PruningProofManager {
             reachability_store: storage.reachability_store.clone(),
             reachability_relations_store: storage.reachability_relations_store.clone(),
             reachability_service,
-            ghostdag_stores: storage.ghostdag_stores.clone(),
             ghostdag_primary_store: storage.ghostdag_primary_store.clone(),
             relations_stores: storage.relations_stores.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
@@ -181,7 +177,6 @@ impl PruningProofManager {
             selected_chain_store: storage.selected_chain_store.clone(),
             depth_store: storage.depth_store.clone(),
 
-            ghostdag_managers,
             traversal_manager,
             window_manager,
             parents_manager,
@@ -467,7 +462,7 @@ impl PruningProofManager {
                 let level = level as usize;
                 reachability::init(reachability_stores[level].write().deref_mut()).unwrap();
                 relations_stores[level].insert_batch(&mut batch, ORIGIN, BlockHashes::new(vec![])).unwrap();
-                ghostdag_stores[level].insert(ORIGIN, self.ghostdag_managers[level].origin_ghostdag_data()).unwrap();
+                ghostdag_stores[level].insert(ORIGIN, ghostdag_managers[level].origin_ghostdag_data()).unwrap();
             }
 
             db.write(batch).unwrap();

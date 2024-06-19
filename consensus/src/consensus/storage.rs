@@ -50,7 +50,6 @@ pub struct ConsensusStorage {
     pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
 
     // Append-only stores
-    pub ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
     pub ghostdag_primary_store: Arc<DbGhostdagStore>,
     pub headers_store: Arc<DbHeadersStore>,
     pub block_transactions_store: Arc<DbBlockTransactionsStore>,
@@ -193,19 +192,12 @@ impl ConsensusStorage {
             children_builder.build(),
         )));
 
-        let ghostdag_stores = Arc::new(
-            (0..=params.max_block_level)
-                .map(|level| {
-                    Arc::new(DbGhostdagStore::new(
-                        db.clone(),
-                        level,
-                        ghostdag_builder.downscale(level).build(),
-                        ghostdag_compact_builder.downscale(level).build(),
-                    ))
-                })
-                .collect_vec(),
-        );
-        let ghostdag_primary_store = ghostdag_stores[0].clone();
+        let ghostdag_primary_store = Arc::new(DbGhostdagStore::new(
+            db.clone(),
+            0,
+            ghostdag_builder.downscale(0).build(),
+            ghostdag_compact_builder.downscale(0).build(),
+        ));
         let daa_excluded_store = Arc::new(DbDaaStore::new(db.clone(), daa_excluded_builder.build()));
         let headers_store = Arc::new(DbHeadersStore::new(db.clone(), headers_builder.build(), headers_compact_builder.build()));
         let depth_store = Arc::new(DbDepthStore::new(db.clone(), header_data_builder.build()));
@@ -245,7 +237,6 @@ impl ConsensusStorage {
             relations_stores,
             reachability_relations_store,
             reachability_store,
-            ghostdag_stores,
             ghostdag_primary_store,
             pruning_point_store,
             headers_selected_tip_store,
