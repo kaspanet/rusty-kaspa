@@ -1,7 +1,9 @@
 use std::{
     cmp::{max, Reverse},
-    collections::{hash_map::Entry, BinaryHeap},
-    collections::{hash_map::Entry::Vacant, VecDeque},
+    collections::{
+        hash_map::Entry::{self, Vacant},
+        BinaryHeap, HashSet, VecDeque,
+    },
     ops::{Deref, DerefMut},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -254,30 +256,29 @@ impl PruningProofManager {
 
         for (level, headers) in proof.iter().enumerate() {
             trace!("Applying level {} from the pruning point proof", level);
-            self.ghostdag_stores[level].insert(ORIGIN, self.ghostdag_managers[level].origin_ghostdag_data()).unwrap();
+            let mut level_ancestors: HashSet<Hash> = HashSet::new();
+            level_ancestors.insert(ORIGIN);
+
             for header in headers.iter() {
                 let parents = Arc::new(
                     self.parents_manager
                         .parents_at_level(header, level as BlockLevel)
                         .iter()
                         .copied()
-                        .filter(|parent| self.ghostdag_stores[level].has(*parent).unwrap())
+                        .filter(|parent| level_ancestors.contains(parent))
                         .collect_vec()
                         .push_if_empty(ORIGIN),
                 );
 
                 self.relations_stores.write()[level].insert(header.hash, parents.clone()).unwrap();
-                let gd = if header.hash == self.genesis_hash {
-                    self.ghostdag_managers[level].genesis_ghostdag_data()
-                } else {
-                    self.ghostdag_managers[level].ghostdag(&parents)
-                };
 
                 if level == 0 {
+                    self.ghostdag_primary_store.insert(ORIGIN, self.ghostdag_primary_manager.origin_ghostdag_data()).unwrap();
+
                     let gd = if let Some(gd) = trusted_gd_map.get(&header.hash) {
                         gd.clone()
                     } else {
-                        let calculated_gd = self.ghostdag_managers[level].ghostdag(&parents);
+                        let calculated_gd = self.ghostdag_primary_manager.ghostdag(&parents);
                         // Override the ghostdag data with the real blue score and blue work
                         GhostdagData {
                             blue_score: header.blue_score,
@@ -289,9 +290,9 @@ impl PruningProofManager {
                         }
                     };
                     self.ghostdag_primary_store.insert(header.hash, Arc::new(gd)).unwrap();
-                } else {
-                    self.ghostdag_stores[level].insert(header.hash, Arc::new(gd)).unwrap();
                 }
+
+                level_ancestors.insert(header.hash);
             }
         }
 
@@ -616,7 +617,7 @@ impl PruningProofManager {
         let mut proof_current = proof_selected_tip;
         let mut proof_current_gd = proof_selected_tip_gd;
         loop {
-            match self.ghostdag_stores[level as usize].get_compact_data(proof_current).unwrap_option() {
+            match ghostdag_stores[level as usize].get_compact_data(proof_current).unwrap_option() {
                 Some(current_gd) => {
                     break Some((proof_current_gd, current_gd));
                 }

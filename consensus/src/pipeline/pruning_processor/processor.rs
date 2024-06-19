@@ -411,7 +411,9 @@ impl PruningProcessor {
                         let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[level]);
                         relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
                         staging_level_relations.commit(&mut batch).unwrap();
-                        self.ghostdag_stores[level].delete_batch(&mut batch, current).unwrap_option();
+                        if level == 0 {
+                            self.ghostdag_primary_store.delete_batch(&mut batch, current).unwrap_option();
+                        }
                     });
 
                     // Remove additional header related data
