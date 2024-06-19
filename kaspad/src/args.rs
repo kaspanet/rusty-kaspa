@@ -90,6 +90,7 @@ pub struct Args {
     #[serde(rename = "nogrpc")]
     pub disable_grpc: bool,
     pub ram_scale: f64,
+    pub rocksdb_consensus_cache_size: Option<usize>,
 }
 
 impl Default for Args {
@@ -140,6 +141,7 @@ impl Default for Args {
             disable_dns_seeding: false,
             disable_grpc: false,
             ram_scale: 1.0,
+            rocksdb_consensus_cache_size: None,
         }
     }
 }
@@ -159,6 +161,7 @@ impl Args {
         config.p2p_listen_address = self.listen.unwrap_or(ContextualNetAddress::unspecified());
         config.externalip = self.externalip.map(|v| v.normalize(config.default_p2p_port()));
         config.ram_scale = self.ram_scale;
+        config.rocksdb_cache_size = self.rocksdb_consensus_cache_size;
 
         #[cfg(feature = "devnet-prealloc")]
         if let Some(num_prealloc_utxos) = self.num_prealloc_utxos {
@@ -369,6 +372,7 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
                 .help("Apply a scale factor to memory allocation bounds. Nodes with limited RAM (~4-8GB) should set this to ~0.3-0.5 respectively. Nodes with
 a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance especially for syncing peers faster"),
         )
+        .arg(Arg::new("rocksdb-consensus-cache-size").long("rocksdb-consensus-cache-size").require_equals(true).value_parser(clap::value_parser!(u64)))
         ;
 
     #[cfg(feature = "devnet-prealloc")]
@@ -448,6 +452,7 @@ impl Args {
             disable_dns_seeding: arg_match_unwrap_or::<bool>(&m, "nodnsseed", defaults.disable_dns_seeding),
             disable_grpc: arg_match_unwrap_or::<bool>(&m, "nogrpc", defaults.disable_grpc),
             ram_scale: arg_match_unwrap_or::<f64>(&m, "ram-scale", defaults.ram_scale),
+            rocksdb_consensus_cache_size: m.get_one::<usize>("rocksdb-consensus-cache-size").cloned(),
 
             #[cfg(feature = "devnet-prealloc")]
             num_prealloc_utxos: m.get_one::<u64>("num-prealloc-utxos").cloned(),
