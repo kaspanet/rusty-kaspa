@@ -721,8 +721,12 @@ impl PruningProofManager {
         Err(PruningImportError::PruningProofNotEnoughHeaders)
     }
 
-    /// Looks for the first level whose parents are different from the direct parents of the pp_header
-    /// The current DAG level is the one right below that.
+    // The "current dag level" is the level right before the level whose parents are
+    // not the same as our header's direct parents
+    //
+    // Find the current DAG level by going through all the parents at each level,
+    // starting from the bottom level and see which is the first level that has
+    // parents that are NOT our current pp_header's direct parents.
     fn find_current_dag_level(&self, pp_header: &Header) -> BlockLevel {
         let direct_parents = BlockHashSet::from_iter(pp_header.direct_parents().iter().copied());
         pp_header
@@ -846,7 +850,8 @@ impl PruningProofManager {
                 }
 
                 if current_header.direct_parents().is_empty() // Stop at genesis
-                    || (pp_header.header.blue_score >= current_header.blue_score + required_level_0_depth
+                    // Need to ensure this does the same 2M+1 depth that block_at_depth does
+                    || (pp_header.header.blue_score > current_header.blue_score + required_level_0_depth
                         && intersected_with_required_block_chain)
                 {
                     break current_header;
@@ -942,8 +947,9 @@ impl PruningProofManager {
                 }
             }
 
+            // Need to ensure this does the same 2M+1 depth that block_at_depth does
             if has_required_block
-                && (root == self.genesis_hash || ghostdag_store.get_blue_score(selected_tip).unwrap() >= required_level_depth)
+                && (root == self.genesis_hash || ghostdag_store.get_blue_score(selected_tip).unwrap() > required_level_depth)
             {
                 break Ok((ghostdag_store, selected_tip, root));
             }
