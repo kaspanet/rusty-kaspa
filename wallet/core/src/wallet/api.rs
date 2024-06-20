@@ -75,22 +75,37 @@ impl WalletApi for super::Wallet {
     async fn connect_call(self: Arc<Self>, request: ConnectRequest) -> Result<ConnectResponse> {
         use workflow_rpc::client::{ConnectOptions, ConnectStrategy};
 
-        let ConnectRequest { url, network_id } = request;
+        let ConnectRequest { url, network_id, retry_on_error, block_async_connect, require_sync } = request;
 
         if let Some(wrpc_client) = self.try_wrpc_client().as_ref() {
-            // self.set_network_id(network_id)?;
+            let strategy = if retry_on_error { ConnectStrategy::Retry } else { ConnectStrategy::Fallback };
 
-            // let network_type = NetworkType::from(network_id);
             let url = url
                 .map(|url| wrpc_client.parse_url_with_network_type(url, network_id.into()).map_err(|e| e.to_string()))
                 .transpose()?;
-            let options = ConnectOptions { block_async_connect: false, strategy: ConnectStrategy::Retry, url, ..Default::default() };
+            let options = ConnectOptions { block_async_connect, strategy, url, ..Default::default() };
             wrpc_client.disconnect().await?;
 
             self.set_network_id(&network_id)?;
 
+            let processor = self.utxo_processor().clone();
+            let (sender, receiver) = oneshot();
+
+            // set connection signaler that gets triggered
+            // by utxo processor when connection occurs
+            processor.set_connection_signaler(sender);
+
+            // connect rpc
             wrpc_client.connect(Some(options)).await.map_err(|e| e.to_string())?;
-            Ok(ConnectResponse {})
+
+            // wait for connection signal, cascade if error
+            receiver.recv().await?.map_err(Error::custom)?;
+
+            if require_sync && !self.is_synced() {
+                Err(Error::NotSynced)
+            } else {
+                Ok(ConnectResponse {})
+            }
         } else {
             Err(Error::NotWrpcClient)
         }

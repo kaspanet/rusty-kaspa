@@ -20,7 +20,7 @@ use kaspa_rpc_core::{
     GetServerInfoResponse,
 };
 use kaspa_wrpc_client::KaspaRpcClient;
-use workflow_core::channel::{Channel, DuplexChannel};
+use workflow_core::channel::{Channel, DuplexChannel, Sender};
 use workflow_core::task::spawn;
 
 use crate::events::Events;
@@ -62,6 +62,7 @@ pub struct Inner {
     connect_disconnect_guard: AsyncMutex<()>,
     metrics: Arc<Metrics>,
     metrics_kinds: Mutex<Vec<MetricsUpdateKind>>,
+    connection_signaler: Mutex<Option<Sender<std::result::Result<(), String>>>>,
 }
 
 impl Inner {
@@ -91,6 +92,7 @@ impl Inner {
             connect_disconnect_guard: Default::default(),
             metrics: Arc::new(Metrics::default()),
             metrics_kinds: Mutex::new(vec![]),
+            connection_signaler: Mutex::new(None),
         }
     }
 }
@@ -487,12 +489,30 @@ impl UtxoProcessor {
         Ok(())
     }
 
+    /// Allows use to supply a channel Sender that will
+    /// receive the result of the wRPC connection attempt.
+    pub fn set_connection_signaler(&self, signal: Sender<std::result::Result<(), String>>) {
+        *self.inner.connection_signaler.lock().unwrap() = Some(signal);
+    }
+
+    fn signal_connection(&self, result: std::result::Result<(), String>) -> bool {
+        let signal = self.inner.connection_signaler.lock().unwrap().take();
+        if let Some(signal) = signal.as_ref() {
+            let _ = signal.try_send(result);
+            true
+        } else {
+            false
+        }
+    }
+
     pub async fn handle_connect(&self) -> Result<()> {
         let _ = self.inner.connect_disconnect_guard.lock().await;
 
         match self.handle_connect_impl().await {
             Err(err) => {
-                log_error!("UtxoProcessor: error while connecting to node: {err}");
+                if !self.signal_connection(Err(err.to_string())) {
+                    log_error!("UtxoProcessor: error while connecting to node: {err}");
+                }
                 self.notify(Events::UtxoProcError { message: err.to_string() }).await?;
                 if let Some(client) = self.rpc_client() {
                     // try force disconnect the client if we have failed
@@ -501,7 +521,10 @@ impl UtxoProcessor {
                 }
                 Err(err)
             }
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                self.signal_connection(Ok(()));
+                Ok(())
+            }
         }
     }
 
@@ -631,15 +654,11 @@ impl UtxoProcessor {
                                 // handle RPC channel connection and disconnection events
                                 match msg {
                                     RpcState::Connected => {
-                                        if !this.is_connected() {
-                                            if let Err(err) = this.handle_connect().await {
-                                                log_error!("UtxoProcessor error: {err}");
-                                            } else {
-                                                this.inner.multiplexer.try_broadcast(Box::new(Events::Connect {
-                                                    network_id : this.network_id().expect("network id expected during connection"),
-                                                    url : this.rpc_url()
-                                                })).unwrap_or_else(|err| log_error!("{err}"));
-                                            }
+                                        if !this.is_connected() && this.handle_connect().await.is_ok() {
+                                            this.inner.multiplexer.try_broadcast(Box::new(Events::Connect {
+                                                network_id : this.network_id().expect("network id expected during connection"),
+                                                url : this.rpc_url()
+                                            })).unwrap_or_else(|err| log_error!("{err}"));
                                         }
                                     },
                                     RpcState::Disconnected => {

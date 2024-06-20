@@ -222,6 +222,7 @@ impl Account for MultiSig {
             MULTISIG_ACCOUNT_KIND.into(),
             *self.id(),
             self.name(),
+            self.balance(),
             self.prv_key_data_ids.clone().try_into()?,
             self.receive_address().ok(),
             self.change_address().ok(),

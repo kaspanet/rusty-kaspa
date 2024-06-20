@@ -153,8 +153,16 @@ declare! {
      * @category Wallet API
      */
     export interface IConnectRequest {
-        url : string;
+        // destination wRPC node URL (if omitted, the resolver is used)
+        url? : string;
+        // network identifier
         networkId : NetworkId | string;
+        // retry on error
+        retryOnError? : boolean;
+        // block async connect (method will not return until the connection is established)
+        block? : boolean;
+        // require node to be synced (fail otherwise)
+        requireSync? : boolean;
     }
     "#,
 }
@@ -162,7 +170,10 @@ declare! {
 try_from! ( args: IConnectRequest, ConnectRequest, {
     let url = args.try_get_string("url")?;
     let network_id = args.get_network_id("networkId")?;
-    Ok(ConnectRequest { url, network_id })
+    let retry_on_error = args.try_get_bool("retryOnError")?.unwrap_or(true);
+    let block_async_connect = args.try_get_bool("block")?.unwrap_or(false);
+    let require_sync = args.try_get_bool("requireSync")?.unwrap_or(true);
+    Ok(ConnectRequest { url, network_id, retry_on_error, block_async_connect, require_sync })
 });
 
 declare! {

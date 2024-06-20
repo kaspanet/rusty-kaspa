@@ -44,6 +44,52 @@ pub struct FlushResponse {}
 pub struct ConnectRequest {
     pub url: Option<String>,
     pub network_id: NetworkId,
+    // retry on error, otherwise give up
+    pub retry_on_error: bool,
+    // block async call until connected, otherwise return immediately
+    // and continue attempting to connect in the background
+    pub block_async_connect: bool,
+    // require node to be synced, fail otherwise
+    pub require_sync: bool,
+}
+
+impl Default for ConnectRequest {
+    fn default() -> Self {
+        Self {
+            url: None,
+            network_id: NetworkId::new(NetworkType::Mainnet),
+            retry_on_error: true,
+            block_async_connect: true,
+            require_sync: true,
+        }
+    }
+}
+
+impl ConnectRequest {
+    pub fn with_url(mut self, url: Option<String>) -> Self {
+        self.url = url;
+        self
+    }
+
+    pub fn with_network_id(mut self, network_id: &NetworkId) -> Self {
+        self.network_id = *network_id;
+        self
+    }
+
+    pub fn with_retry_on_error(mut self, retry_on_error: bool) -> Self {
+        self.retry_on_error = retry_on_error;
+        self
+    }
+
+    pub fn with_block_async_connect(mut self, block_async_connect: bool) -> Self {
+        self.block_async_connect = block_async_connect;
+        self
+    }
+
+    pub fn with_require_sync(mut self, require_sync: bool) -> Self {
+        self.require_sync = require_sync;
+        self
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]

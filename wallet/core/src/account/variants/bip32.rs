@@ -217,6 +217,7 @@ impl Account for Bip32 {
             BIP32_ACCOUNT_KIND.into(),
             *self.id(),
             self.name(),
+            self.balance(),
             self.prv_key_data_id.into(),
             self.receive_address().ok(),
             self.change_address().ok(),

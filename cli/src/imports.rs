@@ -14,7 +14,6 @@ pub use kaspa_utils::hex::*;
 pub use kaspa_wallet_core::compat::*;
 pub use kaspa_wallet_core::prelude::*;
 pub use kaspa_wallet_core::settings::{DefaultSettings, SettingsStore, WalletSettings};
-pub use kaspa_wallet_core::utils::*;
 pub use pad::PadStr;
 pub use regex::Regex;
 pub use separator::Separatable;
