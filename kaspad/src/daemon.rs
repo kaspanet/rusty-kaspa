@@ -132,11 +132,14 @@ pub struct Runtime {
 /// This function can be used to identify the location of
 /// the application folder that contains kaspad logs and the database.
 pub fn get_app_dir_from_args(args: &Args) -> PathBuf {
-    let app_dir = args
-        .appdir
-        .clone()
-        .unwrap_or_else(|| get_app_dir().as_path().to_str().unwrap().to_string())
-        .replace('~', get_home_dir().as_path().to_str().unwrap());
+    let mut app_dir = args.appdir.clone().unwrap_or_else(|| get_app_dir().as_path().to_str().unwrap().to_string());
+
+    // TODO: temporary patch. Why do we do this replace for every OS in the first place?
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        app_dir = app_dir.replace('~', get_home_dir().as_path().to_str().unwrap());
+    }
+
     if app_dir.is_empty() {
         get_app_dir()
     } else {
