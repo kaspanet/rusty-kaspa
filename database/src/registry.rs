@@ -36,10 +36,12 @@ pub enum DatabaseStorePrefixes {
     UtxoMultisets = 26,
     VirtualUtxoset = 27,
     VirtualState = 28,
+    GhostdagProof = 29,
+    GhostdagCompactProof = 30,
 
     // ---- Decomposed reachability stores ----
-    ReachabilityTreeChildren = 30,
-    ReachabilityFutureCoveringSet = 31,
+    ReachabilityTreeChildren = 31,
+    ReachabilityFutureCoveringSet = 32,
 
     // ---- Metadata ----
     MultiConsensusMetadata = 124,
