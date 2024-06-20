@@ -66,29 +66,24 @@ impl Default for ConnectRequest {
 }
 
 impl ConnectRequest {
-    pub fn with_url(mut self, url: Option<String>) -> Self {
-        self.url = url;
-        self
+    pub fn with_url(self, url: Option<String>) -> Self {
+        ConnectRequest { url, ..self }
     }
 
-    pub fn with_network_id(mut self, network_id: &NetworkId) -> Self {
-        self.network_id = *network_id;
-        self
+    pub fn with_network_id(self, network_id: &NetworkId) -> Self {
+        ConnectRequest { network_id: *network_id, ..self }
     }
 
-    pub fn with_retry_on_error(mut self, retry_on_error: bool) -> Self {
-        self.retry_on_error = retry_on_error;
-        self
+    pub fn with_retry_on_error(self, retry_on_error: bool) -> Self {
+        ConnectRequest { retry_on_error, ..self }
     }
 
-    pub fn with_block_async_connect(mut self, block_async_connect: bool) -> Self {
-        self.block_async_connect = block_async_connect;
-        self
+    pub fn with_block_async_connect(self, block_async_connect: bool) -> Self {
+        ConnectRequest { block_async_connect, ..self }
     }
 
-    pub fn with_require_sync(mut self, require_sync: bool) -> Self {
-        self.require_sync = require_sync;
-        self
+    pub fn with_require_sync(self, require_sync: bool) -> Self {
+        ConnectRequest { require_sync, ..self }
     }
 }
 
