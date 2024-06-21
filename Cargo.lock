@@ -2631,6 +2631,7 @@ dependencies = [
 name = "kaspa-consensus-core"
 version = "0.14.1"
 dependencies = [
+ "arc-swap",
  "async-trait",
  "bincode",
  "borsh",

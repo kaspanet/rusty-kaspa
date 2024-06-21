@@ -1,5 +1,6 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
-use kaspa_consensus_core::{hashing::sighash::SigHashReusedValues, tx::VerifiableTransaction};
+use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
+use kaspa_consensus_core::{hashing::sighash::SigHashReusedValuesUnsync, tx::VerifiableTransaction};
 use kaspa_core::warn;
 use kaspa_txscript::{get_sig_op_count, TxScriptEngine};
 
@@ -42,7 +43,7 @@ impl TransactionValidator {
         Self::check_sequence_lock(tx, pov_daa_score)?;
         match flags {
             TxValidationFlags::Full | TxValidationFlags::SkipMassCheck => {
-                Self::check_sig_op_counts(tx)?;
+                Self::check_sig_op_counts::<_, SigHashReusedValuesUnsync>(tx)?;
                 self.check_scripts(tx)?;
             }
             TxValidationFlags::SkipScriptChecks => {}
@@ -134,9 +135,9 @@ impl TransactionValidator {
         Ok(())
     }
 
-    fn check_sig_op_counts<T: VerifiableTransaction>(tx: &T) -> TxResult<()> {
+    fn check_sig_op_counts<T: VerifiableTransaction, Reused: SigHashReusedValues>(tx: &T) -> TxResult<()> {
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-            let calculated = get_sig_op_count::<T>(&input.signature_script, &entry.script_public_key);
+            let calculated = get_sig_op_count::<T, Reused>(&input.signature_script, &entry.script_public_key);
             if calculated != input.sig_op_count as u64 {
                 return Err(TxRuleError::WrongSigOpCount(i, input.sig_op_count as u64, calculated));
             }
@@ -145,9 +146,9 @@ impl TransactionValidator {
     }
 
     pub fn check_scripts(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
-        let mut reused_values = SigHashReusedValues::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-            let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &mut reused_values, &self.sig_cache)
+            let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &reused_values, &self.sig_cache)
                 .map_err(TxRuleError::SignatureInvalid)?;
             engine.execute().map_err(TxRuleError::SignatureInvalid)?;
         }
