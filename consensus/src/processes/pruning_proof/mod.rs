@@ -635,7 +635,7 @@ impl PruningProofManager {
         let proof_pp_header = proof[0].last().expect("checked if empty");
         let proof_pp = proof_pp_header.hash;
         let proof_pp_level = calc_block_level(proof_pp_header, self.max_block_level);
-        let mut stores_and_processes = self.init_validate_pruning_point_proof_stores_and_processes(&proof)?;
+        let mut stores_and_processes = self.init_validate_pruning_point_proof_stores_and_processes(proof)?;
         let selected_tip_by_level = self.populate_stores_for_validate_pruning_point_proof(proof, &mut stores_and_processes)?;
         let ghostdag_stores = stores_and_processes.ghostdag_stores;
 
@@ -982,8 +982,8 @@ impl PruningProofManager {
                 None
             };
             let (store, selected_tip, root) = self
-                .find_sufficient_root(&pp_header, level, required_block, temp_db.clone())
-                .expect(&format!("find_sufficient_root failed for level {level}"));
+                .find_sufficient_root(pp_header, level, required_block, temp_db.clone())
+                .unwrap_or_else(|_| panic!("find_sufficient_root failed for level {level}"));
             ghostdag_stores[level_usize] = Some(store);
             selected_tip_by_level[level_usize] = Some(selected_tip);
             root_by_level[level_usize] = Some(root);

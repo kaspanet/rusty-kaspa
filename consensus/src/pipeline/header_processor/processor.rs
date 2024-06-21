@@ -99,7 +99,7 @@ impl HeaderProcessingContext {
     /// Returns the primary (level 0) GHOSTDAG data of this header.
     /// NOTE: is expected to be called only after GHOSTDAG computation was pushed into the context
     pub fn ghostdag_data(&self) -> &Arc<GhostdagData> {
-        &self.ghostdag_data.as_ref().unwrap()
+        self.ghostdag_data.as_ref().unwrap()
     }
 }
 
