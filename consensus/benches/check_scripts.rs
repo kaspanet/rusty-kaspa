@@ -74,17 +74,20 @@ fn benchmark_check_scripts(c: &mut Criterion) {
     for inputs_count in (1..101).step_by(10).rev() {
         for non_uniq_signatures in 0..inputs_count {
             let (tx, utxos) = mock_tx(1, 0);
-            let cache = Cache::new(10_000);
             let mut group = c.benchmark_group(format!("inputs: {inputs_count}, non uniq: {non_uniq_signatures}"));
             group.bench_function("check_scripts", |b| {
                 let tx = MutableTransaction::with_entries(&tx, utxos.clone());
+                let cache = Cache::new(100);
                 b.iter(|| {
+                    cache.map.write().clear();
                     check_scripts(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
                 })
             });
             group.bench_function("check_scripts_par_iter", |b| {
                 let tx = Arc::new(MutableTransaction::with_entries(tx.clone(), utxos.clone()));
+                let cache = Cache::new(100);
                 b.iter(|| {
+                    cache.map.write().clear();
                     check_scripts_par_iter(black_box(&cache), black_box(&tx)).unwrap();
                 })
             });
@@ -92,7 +95,9 @@ fn benchmark_check_scripts(c: &mut Criterion) {
             for i in 2..=8 {
                 group.bench_function(&format!("check_scripts_par_iter_thread, thread count {i}"), |b| {
                     let tx = Arc::new(MutableTransaction::with_entries(tx.clone(), utxos.clone()));
+                    let cache = Cache::new(100);
                     b.iter(|| {
+                        cache.map.write().clear();
                         check_scripts_par_iter_thread(black_box(&cache), black_box(&tx), i).unwrap();
                     })
                 });

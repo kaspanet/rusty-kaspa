@@ -17,6 +17,7 @@ use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
 use kaspa_txscript_errors::TxScriptError;
 use log::trace;
+use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
 use opcodes::codes::OpReturn;
 use opcodes::{codes, to_small_int, OpCond};
 use script_class::ScriptClass;
@@ -450,22 +451,33 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
                 let sig_cache_key =
                     SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Schnorr(pk), message: msg };
 
-                match self.sig_cache.get(&sig_cache_key) {
-                    Some(valid) => Ok(valid),
-                    None => {
-                        // TODO: Find a way to parallelize this part.
-                        match sig.verify(&msg, &pk) {
-                            Ok(()) => {
-                                self.sig_cache.insert(sig_cache_key, true);
-                                Ok(true)
-                            }
-                            Err(_) => {
-                                self.sig_cache.insert(sig_cache_key, false);
-                                Ok(false)
-                            }
-                        }
-                    }
+                let read = self.sig_cache.map.upgradable_read();
+                if let Some(valid) = read.get(&sig_cache_key) {
+                    return Ok(*valid)
                 }
+                let mut write: RwLockWriteGuard<_> =
+                    RwLockUpgradableReadGuard::<_>::upgrade(read);
+                let v = write.entry(sig_cache_key).or_insert_with(|| {
+                    sig.verify(&msg, &pk).is_ok()
+                });
+                Ok(*v)
+                // match self.sig_cache.get(&sig_cache_key) {
+                //     Some(valid) => Ok(valid),
+                //     None => {
+                //         // TODO: Find a way to parallelize this part.
+                //         match sig.verify(&msg, &pk) {
+                //             Ok(()) => {
+                //                 self.sig_cache.insert(sig_cache_key, true);
+                //                 Ok(true)
+                //             }
+                //             Err(_) => {
+                //                 self.sig_cache.insert(sig_cache_key, false);
+                //                 Ok(false)
+                //             }
+                //         }
+                //     }
+                // }
+                // Ok(sig.verify(&msg, &pk).is_ok())
             }
             _ => Err(TxScriptError::NotATransactionInput),
         }
