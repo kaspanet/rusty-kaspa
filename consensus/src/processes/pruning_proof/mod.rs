@@ -957,7 +957,7 @@ impl PruningProofManager {
                 break Ok((ghostdag_store, selected_tip, root));
             }
             required_level_0_depth <<= 1;
-            warn!("Failed to find sufficient root for level {level} after {tries} tries. Retrying again to find with depth {required_level_0_depth}");
+            trace!("Failed to find sufficient root for level {level} after {tries} tries. Retrying again to find with depth {required_level_0_depth}");
         }
     }
 
