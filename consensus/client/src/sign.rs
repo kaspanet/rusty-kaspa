@@ -40,7 +40,7 @@ pub fn sign_with_multiple_v3(tx: Transaction, privkeys: &[[u8; 32]]) -> crate::r
         map.insert(script_pub_key_script, schnorr_key);
     }
 
-    let mut reused_values = SigHashReusedValuesUnsync::new();
+    let reused_values = SigHashReusedValuesUnsync::new();
     let mut additional_signatures_required = false;
     {
         let input_len = tx.inner().inputs.len();
