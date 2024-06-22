@@ -1,6 +1,8 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use kaspa_addresses::{Address, Prefix, Version};
-use kaspa_consensus::processes::transaction_validator::transaction_validator_populated::{check_scripts, check_scripts_par_iter, check_scripts_par_iter_thread};
+use kaspa_consensus::processes::transaction_validator::transaction_validator_populated::{
+    check_scripts, check_scripts_par_iter, check_scripts_par_iter_thread,
+};
 use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync};
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::subnets::SubnetworkId;
@@ -71,13 +73,14 @@ fn mock_tx(inputs_count: usize, non_uniq_signatures: usize) -> (Transaction, Vec
 }
 
 fn benchmark_check_scripts(c: &mut Criterion) {
-    for inputs_count in (1..101).step_by(10).rev() {
-        for non_uniq_signatures in 0..inputs_count {
+    // for inputs_count in (91..101).step_by(10).rev() {
+    for inputs_count in [100, 10_000_000]{
+        for non_uniq_signatures in [0] {
             let (tx, utxos) = mock_tx(1, 0);
             let mut group = c.benchmark_group(format!("inputs: {inputs_count}, non uniq: {non_uniq_signatures}"));
             group.bench_function("check_scripts", |b| {
                 let tx = MutableTransaction::with_entries(&tx, utxos.clone());
-                let cache = Cache::new(100);
+                let cache = Cache::new(inputs_count);
                 b.iter(|| {
                     cache.map.write().clear();
                     check_scripts(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
@@ -85,24 +88,26 @@ fn benchmark_check_scripts(c: &mut Criterion) {
             });
             group.bench_function("check_scripts_par_iter", |b| {
                 let tx = Arc::new(MutableTransaction::with_entries(tx.clone(), utxos.clone()));
-                let cache = Cache::new(100);
+                let cache = Cache::new(inputs_count);
                 b.iter(|| {
                     cache.map.write().clear();
                     check_scripts_par_iter(black_box(&cache), black_box(&tx)).unwrap();
                 })
             });
 
-            for i in 2..=8 {
+            for i in [1, 2, 4, 8, 16, 0] {
                 group.bench_function(&format!("check_scripts_par_iter_thread, thread count {i}"), |b| {
                     let tx = Arc::new(MutableTransaction::with_entries(tx.clone(), utxos.clone()));
-                    let cache = Cache::new(100);
+                    let cache = Cache::new(inputs_count);
+                    use rayon::ThreadPoolBuilder;
+                    // Create a custom thread pool with the specified number of threads
+                    let pool = ThreadPoolBuilder::new().num_threads(i).build().unwrap();
                     b.iter(|| {
                         cache.map.write().clear();
-                        check_scripts_par_iter_thread(black_box(&cache), black_box(&tx), i).unwrap();
+                        check_scripts_par_iter_thread(black_box(&cache), black_box(&tx), black_box(&pool)).unwrap();
                     })
                 });
             }
-
         }
     }
 }

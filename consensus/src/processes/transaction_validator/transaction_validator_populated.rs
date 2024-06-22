@@ -5,8 +5,9 @@ use kaspa_consensus_core::{hashing::sighash::SigHashReusedValuesUnsync, tx::Veri
 use kaspa_core::warn;
 use kaspa_txscript::caches::Cache;
 use kaspa_txscript::{get_sig_op_count, SigCacheKey, TxScriptEngine};
-use rayon::iter::{IntoParallelIterator};
+use rayon::iter::IntoParallelIterator;
 use std::sync::Arc;
+use rayon::ThreadPool;
 
 use super::{
     errors::{TxResult, TxRuleError},
@@ -168,50 +169,36 @@ pub fn check_scripts(sig_cache: &Cache<SigCacheKey, bool>, tx: &impl VerifiableT
 pub fn check_scripts_par_iter(sig_cache: &Cache<SigCacheKey, bool>, tx: &Arc<MutableTransaction<Transaction>>) -> TxResult<()> {
     use rayon::iter::ParallelIterator;
     let reused_values = std::sync::Arc::new(SigHashReusedValuesSync::new());
-    let res: Vec<_> = (0..tx.tx.inputs.len())
+    (0..tx.tx.inputs.len())
         .into_par_iter()
-        .map(|idx| {
+        .try_for_each(|idx| {
             let tx = tx.as_verifiable();
             let reused_values = reused_values.clone(); // Clone the Arc to share ownership
             let (input, utxo) = tx.populated_input(idx);
             let mut engine = TxScriptEngine::from_transaction_input(&tx, input, idx, utxo, &reused_values, sig_cache)?;
             engine.execute()
         })
-        .collect();
-
-    for res in res {
-        if let Err(err) = res {
-            return Err(TxRuleError::SignatureInvalid(err));
-        };
-    }
-    Ok(())
+        .map_err(TxRuleError::SignatureInvalid)
 }
 
-pub fn check_scripts_par_iter_thread(sig_cache: &Cache<SigCacheKey, bool>, tx: &Arc<MutableTransaction<Transaction>>, num_threads: usize) -> TxResult<()> {
-    use rayon::ThreadPoolBuilder;
+pub fn check_scripts_par_iter_thread(
+    sig_cache: &Cache<SigCacheKey, bool>,
+    tx: &Arc<MutableTransaction<Transaction>>,
+    pool: &ThreadPool,
+) -> TxResult<()> {
     use rayon::iter::ParallelIterator;
-    // Create a custom thread pool with the specified number of threads
-    let pool = ThreadPoolBuilder::new().num_threads(num_threads).build().unwrap();
-
     pool.install(|| {
         let reused_values = Arc::new(SigHashReusedValuesSync::new());
-        let res: Vec<_> = (0..tx.tx.inputs.len())
+        (0..tx.tx.inputs.len())
             .into_par_iter()
-            .map(|idx| {
+            .try_for_each(|idx| {
                 let tx = tx.as_verifiable();
                 let reused_values = reused_values.clone(); // Clone the Arc to share ownership
                 let (input, utxo) = tx.populated_input(idx);
                 let mut engine = TxScriptEngine::from_transaction_input(&tx, input, idx, utxo, &reused_values, sig_cache)?;
                 engine.execute()
             })
-            .collect();
-
-        for res in res {
-            if let Err(err) = res {
-                return Err(TxRuleError::SignatureInvalid(err));
-            };
-        }
-        Ok(())
+            .map_err(TxRuleError::SignatureInvalid)
     })
 }
 
