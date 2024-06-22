@@ -564,21 +564,19 @@ impl UtxoContext {
         Ok(())
     }
 
-    pub(crate) async fn handle_utxo_removed(&self, mut utxos: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
+    pub(crate) async fn handle_utxo_removed(&self, utxos: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
         // remove UTXOs from account set
 
         let outgoing_transactions = self.processor().outgoing();
         let mut accepted_outgoing_transactions = HashSet::<OutgoingTransaction>::new();
 
-        utxos.retain(|utxo| {
+        for utxo in &utxos {
             for outgoing_transaction in outgoing_transactions.iter() {
                 if outgoing_transaction.utxo_entries().contains_key(&utxo.id()) {
                     accepted_outgoing_transactions.insert((*outgoing_transaction).clone());
-                    return false;
                 }
             }
-            true
-        });
+        }
 
         for accepted_outgoing_transaction in accepted_outgoing_transactions.into_iter() {
             if accepted_outgoing_transaction.is_batch() {

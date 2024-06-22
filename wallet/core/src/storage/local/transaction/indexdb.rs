@@ -26,12 +26,13 @@ pub struct Inner {
 impl Inner {
     async fn open_db(&self, db_name: String) -> Result<IdbDatabase> {
         call_async_no_send!(async move {
-            let mut db_req: OpenDbRequest = IdbDatabase::open_u32(&db_name, 1)
+            let mut db_req: OpenDbRequest = IdbDatabase::open_u32(&db_name, 2)
                 .map_err(|err| Error::Custom(format!("Failed to open indexdb database {:?}", err)))?;
-
-            fn on_upgrade_needed(evt: &IdbVersionChangeEvent) -> Result<(), JsValue> {
-                // Check if the object store exists; create it if it doesn't
-                if !evt.db().object_store_names().any(|n| n == TRANSACTIONS_STORE_NAME) {
+            let fix_timestamp = Arc::new(Mutex::new(false));
+            let fix_timestamp_clone = fix_timestamp.clone();
+            let on_upgrade_needed = move |evt: &IdbVersionChangeEvent| -> Result<(), JsValue> {
+                let old_version = evt.old_version();
+                if old_version < 1.0 {
                     let object_store = evt.db().create_object_store(TRANSACTIONS_STORE_NAME)?;
                     object_store.create_index_with_params(
                         TRANSACTIONS_STORE_ID_INDEX,
@@ -48,13 +49,79 @@ impl Inner {
                         &IdbKeyPath::str(TRANSACTIONS_STORE_DATA_INDEX),
                         IdbIndexParameters::new().unique(false),
                     )?;
+
+                // these changes are not required for new db
+                } else if old_version < 2.0 {
+                    *fix_timestamp_clone.lock().unwrap() = true;
                 }
+                // // Check if the object store exists; create it if it doesn't
+                // if !evt.db().object_store_names().any(|n| n == TRANSACTIONS_STORE_NAME) {
+
+                // }
                 Ok(())
-            }
+            };
 
             db_req.set_on_upgrade_needed(Some(on_upgrade_needed));
 
-            db_req.await.map_err(|err| Error::Custom(format!("Open database request failed for indexdb database {:?}", err)))
+            let db =
+                db_req.await.map_err(|err| Error::Custom(format!("Open database request failed for indexdb database {:?}", err)))?;
+
+            if *fix_timestamp.lock().unwrap() {
+                log_info!("DEBUG: fixing timestamp");
+                let idb_tx = db
+                    .transaction_on_one_with_mode(TRANSACTIONS_STORE_NAME, IdbTransactionMode::Readwrite)
+                    .map_err(|err| Error::Custom(format!("Failed to open indexdb transaction for reading {:?}", err)))?;
+                let store = idb_tx
+                    .object_store(TRANSACTIONS_STORE_NAME)
+                    .map_err(|err| Error::Custom(format!("Failed to open indexdb object store for reading {:?}", err)))?;
+                let binding = store
+                    .index(TRANSACTIONS_STORE_TIMESTAMP_INDEX)
+                    .map_err(|err| Error::Custom(format!("Failed to open indexdb indexed store cursor {:?}", err)))?;
+                let cursor = binding
+                    .open_cursor_with_range_and_direction(&JsValue::NULL, web_sys::IdbCursorDirection::Prev)
+                    .map_err(|err| Error::Custom(format!("Failed to open indexdb store cursor for reading {:?}", err)))?;
+                let cursor = cursor.await.map_err(|err| Error::Custom(format!("Failed to open indexdb store cursor {:?}", err)))?;
+
+                // let next_year_date = Date::new_0();
+                // next_year_date.set_full_year(next_year_date.get_full_year() + 1);
+                // let next_year_ts = next_year_date.get_time();
+
+                if let Some(cursor) = cursor {
+                    loop {
+                        let js_value = cursor.value();
+                        if let Ok(record) = transaction_record_from_js_value(&js_value, None) {
+                            if record.unixtime_msec.is_some() {
+                                let new_js_value = transaction_record_to_js_value(&record, None, ENCRYPTION_KIND)?;
+
+                                //log_info!("DEBUG: new_js_value: {:?}", new_js_value);
+
+                                cursor
+                                    .update(&new_js_value)
+                                    .map_err(|err| Error::Custom(format!("Failed to update record timestamp {:?}", err)))?
+                                    .await
+                                    .map_err(|err| Error::Custom(format!("Failed to update record timestamp {:?}", err)))?;
+                            }
+                        }
+                        if let Ok(b) = cursor.continue_cursor() {
+                            match b.await {
+                                Ok(b) => {
+                                    if !b {
+                                        break;
+                                    }
+                                }
+                                Err(err) => {
+                                    log_info!("DEBUG IDB: Loading transaction error,  cursor.continue_cursor() {:?}", err);
+                                    break;
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            Ok(db)
         })
     }
 }
@@ -510,8 +577,6 @@ fn transaction_record_to_js_value(
 ) -> Result<JsValue, Error> {
     let id = transaction_record.id.to_string();
     let unixtime_msec = transaction_record.unixtime_msec;
-    let mut borsh_data = vec![];
-    <TransactionRecord as BorshSerialize>::serialize(transaction_record, &mut borsh_data)?;
 
     let id_js_value = JsValue::from_str(&id);
     let timestamp_js_value = match unixtime_msec {
@@ -555,6 +620,6 @@ fn transaction_record_from_js_value(js_value: &JsValue, secret: Option<&Secret>)
 
         Ok(transaction_record.0)
     } else {
-        Err(Error::Custom("supplied argument must be an object".to_string()))
+        Err(Error::Custom("supplied argument must be an object, found ({js_value:?})".to_string()))
     }
 }
