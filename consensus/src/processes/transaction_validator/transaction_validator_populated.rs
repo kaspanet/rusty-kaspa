@@ -6,8 +6,8 @@ use kaspa_core::warn;
 use kaspa_txscript::caches::Cache;
 use kaspa_txscript::{get_sig_op_count, SigCacheKey, TxScriptEngine};
 use rayon::iter::IntoParallelIterator;
-use std::sync::Arc;
 use rayon::ThreadPool;
+use std::sync::Arc;
 
 use super::{
     errors::{TxResult, TxRuleError},

@@ -17,9 +17,9 @@ use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionInput, UtxoEntry, VerifiableTransaction};
 use kaspa_txscript_errors::TxScriptError;
 use log::trace;
-use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
 use opcodes::codes::OpReturn;
 use opcodes::{codes, to_small_int, OpCond};
+use parking_lot::{RwLockUpgradableReadGuard, RwLockWriteGuard};
 use script_class::ScriptClass;
 
 pub mod prelude {
@@ -453,13 +453,10 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
 
                 let read = self.sig_cache.map.upgradable_read();
                 if let Some(valid) = read.get(&sig_cache_key) {
-                    return Ok(*valid)
+                    return Ok(*valid);
                 }
-                let mut write: RwLockWriteGuard<_> =
-                    RwLockUpgradableReadGuard::<_>::upgrade(read);
-                let v = write.entry(sig_cache_key).or_insert_with(|| {
-                    sig.verify(&msg, &pk).is_ok()
-                });
+                let mut write: RwLockWriteGuard<_> = RwLockUpgradableReadGuard::<_>::upgrade(read);
+                let v = write.entry(sig_cache_key).or_insert_with(|| sig.verify(&msg, &pk).is_ok());
                 Ok(*v)
                 // match self.sig_cache.get(&sig_cache_key) {
                 //     Some(valid) => Ok(valid),
@@ -525,11 +522,11 @@ mod tests {
     use crate::opcodes::codes::{OpBlake2b, OpCheckSig, OpData1, OpData2, OpData32, OpDup, OpEqual, OpPushData1, OpTrue};
 
     use super::*;
+    use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::tx::{
         PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
     };
     use smallvec::SmallVec;
-    use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 
     struct ScriptTestCase {
         script: &'static [u8],
@@ -1037,7 +1034,7 @@ mod bitcoind_tests {
 
             // Run transaction
             let sig_cache = Cache::new(10_000);
-            let mut reused_values = SigHashReusedValuesUnsync::new();
+            let reused_values = SigHashReusedValuesUnsync::new();
             let mut vm = TxScriptEngine::from_transaction_input(
                 &populated_tx,
                 &populated_tx.tx().inputs[0],
