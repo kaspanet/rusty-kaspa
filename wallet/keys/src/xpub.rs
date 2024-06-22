@@ -32,9 +32,9 @@ impl XPub {
     }
 
     #[wasm_bindgen(js_name=deriveChild)]
-    pub fn derive_child(&self, chile_number: u32, hardened: Option<bool>) -> Result<XPub> {
-        let chile_number = ChildNumber::new(chile_number, hardened.unwrap_or(false))?;
-        let inner = self.inner.derive_child(chile_number)?;
+    pub fn derive_child(&self, child_number: u32, hardened: Option<bool>) -> Result<XPub> {
+        let child_number = ChildNumber::new(child_number, hardened.unwrap_or(false))?;
+        let inner = self.inner.derive_child(child_number)?;
         Ok(Self { inner })
     }
 
