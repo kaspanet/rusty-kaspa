@@ -50,7 +50,7 @@ pub trait SigHashReusedValues {
     fn outputs_hash(&self, set: impl Fn() -> Hash) -> Hash;
 }
 
-impl<T: SigHashReusedValues>  SigHashReusedValues for Arc<T> {
+impl<T: SigHashReusedValues> SigHashReusedValues for Arc<T> {
     fn previous_outputs_hash(&self, set: impl Fn() -> Hash) -> Hash {
         self.as_ref().previous_outputs_hash(set)
     }
