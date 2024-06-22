@@ -493,22 +493,29 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
                 let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
                 let sig_cache_key = SigCacheKey { signature: Signature::Ecdsa(sig), pub_key: PublicKey::Ecdsa(pk), message: msg };
 
-                match self.sig_cache.get(&sig_cache_key) {
-                    Some(valid) => Ok(valid),
-                    None => {
-                        // TODO: Find a way to parallelize this part.
-                        match sig.verify(&msg, &pk) {
-                            Ok(()) => {
-                                self.sig_cache.insert(sig_cache_key, true);
-                                Ok(true)
-                            }
-                            Err(_) => {
-                                self.sig_cache.insert(sig_cache_key, false);
-                                Ok(false)
-                            }
-                        }
-                    }
+                let read = self.sig_cache.map.upgradable_read();
+                if let Some(valid) = read.get(&sig_cache_key) {
+                    return Ok(*valid);
                 }
+                let mut write: RwLockWriteGuard<_> = RwLockUpgradableReadGuard::<_>::upgrade(read);
+                let v = write.entry(sig_cache_key).or_insert_with(|| sig.verify(&msg, &pk).is_ok());
+                Ok(*v)
+                // match self.sig_cache.get(&sig_cache_key) {
+                //     Some(valid) => Ok(valid),
+                //     None => {
+                //         // TODO: Find a way to parallelize this part.
+                //         match sig.verify(&msg, &pk) {
+                //             Ok(()) => {
+                //                 self.sig_cache.insert(sig_cache_key, true);
+                //                 Ok(true)
+                //             }
+                //             Err(_) => {
+                //                 self.sig_cache.insert(sig_cache_key, false);
+                //                 Ok(false)
+                //             }
+                //         }
+                //     }
+                // }
             }
             _ => Err(TxScriptError::NotATransactionInput),
         }
