@@ -450,33 +450,9 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
                 let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
                 let sig_cache_key =
                     SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Schnorr(pk), message: msg };
-
-                Ok(self.sig_cache.get_or_insert(sig_cache_key, || sig.verify(&msg, &pk).is_ok()))
-                // Ok(*self.sig_cache.map.entry(sig_cache_key).or_put_with(|| sig.verify(&msg, &pk).is_ok()).1.get())
-                // let read = self.sig_cache.map.upgradable_read();
-                // if let Some(valid) = read.get(&sig_cache_key) {
-                //     return Ok(*valid);
-                // }
-                // let mut write: RwLockWriteGuard<_> = RwLockUpgradableReadGuard::<_>::upgrade(read);
-                // let v = write.entry(sig_cache_key).or_insert_with(|| sig.verify(&msg, &pk).is_ok());
-                // Ok(*v)
-                // match self.sig_cache.get(&sig_cache_key) {
-                //     Some(valid) => Ok(valid),
-                //     None => {
-                //         // TODO: Find a way to parallelize this part.
-                //         match sig.verify(&msg, &pk) {
-                //             Ok(()) => {
-                //                 self.sig_cache.insert(sig_cache_key, true);
-                //                 Ok(true)
-                //             }
-                //             Err(_) => {
-                //                 self.sig_cache.insert(sig_cache_key, false);
-                //                 Ok(false)
-                //             }
-                //         }
-                //     }
-                // }
-                // Ok(sig.verify(&msg, &pk).is_ok())
+                let value = sig.verify(&msg, &pk).is_ok();
+                _ = self.sig_cache.map.put(sig_cache_key, value);
+                Ok(value)
             }
             _ => Err(TxScriptError::NotATransactionInput),
         }
@@ -494,31 +470,9 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
                 let sig_hash = calc_ecdsa_signature_hash(tx, id, hash_type, self.reused_values);
                 let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
                 let sig_cache_key = SigCacheKey { signature: Signature::Ecdsa(sig), pub_key: PublicKey::Ecdsa(pk), message: msg };
-
-                Ok(self.sig_cache.get_or_insert(sig_cache_key, || sig.verify(&msg, &pk).is_ok()))
-                // let read = self.sig_cache.map.upgradable_read();
-                // if let Some(valid) = read.get(&sig_cache_key) {
-                //     return Ok(*valid);
-                // }
-                // let mut write: RwLockWriteGuard<_> = RwLockUpgradableReadGuard::<_>::upgrade(read);
-                // let v = write.entry(sig_cache_key).or_insert_with(|| sig.verify(&msg, &pk).is_ok());
-                // Ok(*v)
-                // match self.sig_cache.get(&sig_cache_key) {
-                //     Some(valid) => Ok(valid),
-                //     None => {
-                //         // TODO: Find a way to parallelize this part.
-                //         match sig.verify(&msg, &pk) {
-                //             Ok(()) => {
-                //                 self.sig_cache.insert(sig_cache_key, true);
-                //                 Ok(true)
-                //             }
-                //             Err(_) => {
-                //                 self.sig_cache.insert(sig_cache_key, false);
-                //                 Ok(false)
-                //             }
-                //         }
-                //     }
-                // }
+                let value = sig.verify(&msg, &pk).is_ok();
+                _ = self.sig_cache.map.put(sig_cache_key, value);
+                Ok(value)
             }
             _ => Err(TxScriptError::NotATransactionInput),
         }
