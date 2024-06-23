@@ -73,8 +73,8 @@ fn mock_tx(inputs_count: usize, non_uniq_signatures: usize) -> (Transaction, Vec
 }
 
 fn benchmark_check_scripts(c: &mut Criterion) {
-    for inputs_count in [100] {
-        for non_uniq_signatures in [0] {
+    for inputs_count in [100, 50, 25, 10, 5, 2] {
+        for non_uniq_signatures in [0, inputs_count/2] {
             let (tx, utxos) = mock_tx(inputs_count, non_uniq_signatures);
             let mut group = c.benchmark_group(format!("inputs: {inputs_count}, non uniq: {non_uniq_signatures}"));
             group.sampling_mode(SamplingMode::Flat);
@@ -83,7 +83,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                 let tx = MutableTransaction::with_entries(&tx, utxos.clone());
                 let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
-                    cache.map.clear();
+                    cache.map.write().clear();
                     check_scripts(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
                 })
             });
@@ -92,7 +92,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                 let tx = Arc::new(MutableTransaction::with_entries(tx.clone(), utxos.clone()));
                 let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
-                    cache.map.clear();
+                    cache.map.write().clear();
                     check_scripts_par_iter(black_box(&cache), black_box(&tx)).unwrap();
                 })
             });

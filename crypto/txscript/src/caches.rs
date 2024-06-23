@@ -1,4 +1,6 @@
-use scc::HashCache;
+use indexmap::IndexMap;
+use parking_lot::RwLock;
+use rand::Rng;
 use std::{
     collections::hash_map::RandomState,
     hash::BuildHasher,
@@ -9,12 +11,10 @@ use std::{
 };
 
 #[derive(Clone)]
-pub struct Cache<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Sync, S = RandomState>
-where
-    S: std::hash::BuildHasher,
-{
+pub struct Cache<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Sync, S = RandomState> {
     // We use IndexMap and not HashMap, because it makes it cheaper to remove a random element when the cache is full.
-    pub map: Arc<scc::hash_cache::HashCache<TKey, TData, S>>,
+    pub map: Arc<RwLock<IndexMap<TKey, TData, S>>>,
+    size: usize,
     counters: Arc<TxScriptCacheCounters>,
 }
 
@@ -24,44 +24,31 @@ impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Syn
     }
 
     pub fn with_counters(size: u64, counters: Arc<TxScriptCacheCounters>) -> Self {
-        Self { map: Arc::new(HashCache::with_capacity_and_hasher(size as usize, size as usize, S::default())), counters }
+        Self {
+            map: Arc::new(RwLock::new(IndexMap::with_capacity_and_hasher(size as usize, S::default()))),
+            size: size as usize,
+            counters,
+        }
     }
 
-    pub(crate) fn get_or_insert(&self, key: TKey, v: impl FnOnce() -> TData) -> TData {
-        let mut found = true;
-        let res = self
-            .map
-            .entry(key)
-            .or_put_with(|| {
-                found = false;
-                v()
-            })
-            .1
-            .get()
-            .clone();
-        if found {
+    pub(crate) fn get(&self, key: &TKey) -> Option<TData> {
+        self.map.read().get(key).cloned().map(|data| {
             self.counters.get_counts.fetch_add(1, Ordering::Relaxed);
-        } else {
-            self.counters.insert_counts.fetch_add(1, Ordering::Relaxed);
-        }
-        res
+            data
+        })
     }
-    // pub(crate) fn get(&self, key: &TKey) -> Option<TData> {
-    //     self.map.get(key).cloned().map(|data| {
-    //         self.counters.get_counts.fetch_add(1, Ordering::Relaxed);
-    //         data
-    //     })
-    // }
-    //
-    // pub(crate) fn insert(&self, key: TKey, data: TData) {
-    //     _ = self.map.put(key, data);
-    //             let mut write_guard = self.map.write();
-    //     if write_guard.len() == self.size {
-    //         write_guard.swap_remove_index(rand::thread_rng().gen_range(0..self.size));
-    //     }
-    //     write_guard.insert(key, data);
-    //     self.counters.insert_counts.fetch_add(1, Ordering::Relaxed);
-    // }
+
+    pub(crate) fn insert(&self, key: TKey, data: TData) {
+        if self.size == 0 {
+            return;
+        }
+        let mut write_guard = self.map.write();
+        if write_guard.len() == self.size {
+            write_guard.swap_remove_index(rand::thread_rng().gen_range(0..self.size));
+        }
+        write_guard.insert(key, data);
+        self.counters.insert_counts.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 #[derive(Default)]
