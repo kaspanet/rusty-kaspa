@@ -451,7 +451,8 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
                 let sig_cache_key =
                     SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Schnorr(pk), message: msg };
 
-                Ok(*self.sig_cache.map.entry(sig_cache_key).or_put_with(|| sig.verify(&msg, &pk).is_ok()).1.get())
+                Ok(self.sig_cache.get_or_insert(sig_cache_key, || sig.verify(&msg, &pk).is_ok()))
+                // Ok(*self.sig_cache.map.entry(sig_cache_key).or_put_with(|| sig.verify(&msg, &pk).is_ok()).1.get())
                 // let read = self.sig_cache.map.upgradable_read();
                 // if let Some(valid) = read.get(&sig_cache_key) {
                 //     return Ok(*valid);
@@ -494,7 +495,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
                 let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
                 let sig_cache_key = SigCacheKey { signature: Signature::Ecdsa(sig), pub_key: PublicKey::Ecdsa(pk), message: msg };
 
-                Ok(*self.sig_cache.map.entry(sig_cache_key).or_put_with(|| sig.verify(&msg, &pk).is_ok()).1.get())
+                Ok(self.sig_cache.get_or_insert(sig_cache_key, || sig.verify(&msg, &pk).is_ok()))
                 // let read = self.sig_cache.map.upgradable_read();
                 // if let Some(valid) = read.get(&sig_cache_key) {
                 //     return Ok(*valid);

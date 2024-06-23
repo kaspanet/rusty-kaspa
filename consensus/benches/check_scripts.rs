@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion, SamplingMode};
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::processes::transaction_validator::transaction_validator_populated::{
     check_scripts, check_scripts_par_iter, check_scripts_par_iter_thread,
@@ -72,19 +72,23 @@ fn mock_tx(inputs_count: usize, non_uniq_signatures: usize) -> (Transaction, Vec
     (tx, utxos)
 }
 
-fn benchmark_check_scripts(_: &mut Criterion) {
-    let mut c = Criterion::default().with_output_color(true)
-        .sample_size(100)  // Number of samples
-        .measurement_time(std::time::Duration::new(10, 0))  // Increase measurement time to 10 seconds
-        .warm_up_time(std::time::Duration::new(5, 0));
-
-    for inputs_count in [100, 50, 10, 5, 2] {
-        // for non_uniq_signatures in (0..inputs_count).step_by(inputs_count / 2) {
-        for non_uniq_signatures in [0] {
-            let (tx, utxos) = mock_tx(inputs_count, 0);
+fn benchmark_check_scripts(c: &mut Criterion) {
+    for inputs_count in [100, 75, 50, 25, 10, 5, 2] {
+        for non_uniq_signatures in [0, inputs_count / 2] {
+            let (tx, utxos) = mock_tx(inputs_count, non_uniq_signatures);
             let mut group = c.benchmark_group(format!("inputs: {inputs_count}, non uniq: {non_uniq_signatures}"));
+            group.sampling_mode(SamplingMode::Flat);
 
-            group.bench_function("check_scripts_par_iter", |b| {
+            group.bench_function("single_thread", |b| {
+                let tx = MutableTransaction::with_entries(&tx, utxos.clone());
+                let cache = Cache::new(inputs_count as u64);
+                b.iter(|| {
+                    cache.map.clear();
+                    check_scripts(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
+                })
+            });
+
+            group.bench_function("rayon par iter", |b| {
                 let tx = Arc::new(MutableTransaction::with_entries(tx.clone(), utxos.clone()));
                 let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
@@ -95,29 +99,27 @@ fn benchmark_check_scripts(_: &mut Criterion) {
 
             for i in [2, 4, 8, 16, 32, 0] {
                 if inputs_count >= i {
-                    group.bench_function(&format!("check_scripts_par_iter_thread, thread count {i}"), |b| {
+                    group.bench_function(&format!("rayon, custom threadpool, thread count {i}"), |b| {
                         let tx = Arc::new(MutableTransaction::with_entries(tx.clone(), utxos.clone()));
-                        // Create a custom thread pool with the specified number of threads
-                        let pool = rayon::ThreadPoolBuilder::new().num_threads(2).build().unwrap();
                         let cache = Cache::new(inputs_count as u64);
                         b.iter(|| {
+                            // Create a custom thread pool with the specified number of threads
+                            let pool = rayon::ThreadPoolBuilder::new().num_threads(i).build().unwrap();
                             cache.map.clear();
                             check_scripts_par_iter_thread(black_box(&cache), black_box(&tx), black_box(&pool)).unwrap();
                         })
                     });
                 }
             }
-            group.bench_function("check_scripts", |b| {
-                let tx = MutableTransaction::with_entries(&tx, utxos.clone());
-                let cache = Cache::new(inputs_count as u64);
-                b.iter(|| {
-                    cache.map.clear();
-                    check_scripts(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
-                })
-            });
         }
     }
 }
 
-criterion_group!(benches, benchmark_check_scripts);
+criterion_group! {
+    name = benches;
+    // This can be any expression that returns a `Criterion` object.
+    config = Criterion::default().with_output_color(true).measurement_time(std::time::Duration::new(20, 0));
+    targets = benchmark_check_scripts
+}
+
 criterion_main!(benches);
