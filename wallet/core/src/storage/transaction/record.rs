@@ -787,7 +787,7 @@ impl TransactionRecord {
 
 #[wasm_bindgen]
 impl TransactionRecord {
-    #[wasm_bindgen(getter)]
+    #[wasm_bindgen(getter, js_name = "value")]
     pub fn value_as_js_bigint(&self) -> BigInt {
         self.value.into()
     }
