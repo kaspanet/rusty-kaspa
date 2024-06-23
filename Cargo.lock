@@ -695,8 +695,18 @@ version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "15bf3650200d8bffa99015595e10f1fbd17de07abbc25bb067da79e769939bfa"
 dependencies = [
- "borsh-derive",
+ "borsh-derive 0.9.3",
  "hashbrown 0.11.2",
+]
+
+[[package]]
+name = "borsh"
+version = "1.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6362ed55def622cddc70a4746a68554d7b687713770de539e59a739b249f8ed"
+dependencies = [
+ "borsh-derive 1.5.1",
+ "cfg_aliases 0.2.1",
 ]
 
 [[package]]
@@ -707,9 +717,23 @@ checksum = "6441c552f230375d18e3cc377677914d2ca2b0d36e52129fe15450a2dce46775"
 dependencies = [
  "borsh-derive-internal",
  "borsh-schema-derive-internal",
- "proc-macro-crate",
+ "proc-macro-crate 0.1.5",
  "proc-macro2",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "borsh-derive"
+version = "1.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3ef8005764f53cd4dca619f5bf64cafd4664dada50ece25e4d81de54c80cc0b"
+dependencies = [
+ "once_cell",
+ "proc-macro-crate 3.1.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.60",
+ "syn_derive",
 ]
 
 [[package]]
@@ -857,6 +881,12 @@ name = "cfg_aliases"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
+
+[[package]]
+name = "cfg_aliases"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "chacha20"
@@ -1912,6 +1942,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "h2"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa82e28a107a8cc405f0839610bdc9b15f1e25ec7d696aa5cf173edbcb1486ab"
+dependencies = [
+ "atomic-waker",
+ "bytes",
+ "fnv",
+ "futures-core",
+ "futures-sink",
+ "http 1.1.0",
+ "indexmap 2.2.6",
+ "slab",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
 name = "half"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2121,7 +2170,7 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "futures-util",
- "h2",
+ "h2 0.3.26",
  "http 0.2.12",
  "http-body 0.4.6",
  "httparse",
@@ -2144,6 +2193,7 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-util",
+ "h2 0.4.5",
  "http 1.1.0",
  "http-body 1.0.0",
  "httparse",
@@ -2152,6 +2202,24 @@ dependencies = [
  "pin-project-lite",
  "smallvec",
  "tokio",
+ "want",
+]
+
+[[package]]
+name = "hyper-rustls"
+version = "0.27.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ee4be2c948921a1a5320b629c4193916ed787a7f7f293fd3f7f5a6c9de74155"
+dependencies = [
+ "futures-util",
+ "http 1.1.0",
+ "hyper 1.3.1",
+ "hyper-util",
+ "rustls 0.23.10",
+ "rustls-pki-types",
+ "tokio",
+ "tokio-rustls 0.26.0",
+ "tower-service",
 ]
 
 [[package]]
@@ -2168,15 +2236,18 @@ dependencies = [
 
 [[package]]
 name = "hyper-tls"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6183ddfa99b85da61a140bea0efc93fdf56ceaa041b37d553518030827f9905"
+checksum = "70206fc6890eaca9fde8a0bf71caa2ddfc9fe045ac9e5c70df101a7dbde866e0"
 dependencies = [
  "bytes",
- "hyper 0.14.28",
+ "http-body-util",
+ "hyper 1.3.1",
+ "hyper-util",
  "native-tls",
  "tokio",
  "tokio-native-tls",
+ "tower-service",
 ]
 
 [[package]]
@@ -2186,6 +2257,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca38ef113da30126bbff9cd1705f9273e15d45498615d138b0c20279ac7a76aa"
 dependencies = [
  "bytes",
+ "futures-channel",
  "futures-util",
  "http 1.1.0",
  "http-body 1.0.0",
@@ -2193,6 +2265,9 @@ dependencies = [
  "pin-project-lite",
  "socket2 0.5.7",
  "tokio",
+ "tower",
+ "tower-service",
+ "tracing",
 ]
 
 [[package]]
@@ -2425,7 +2500,7 @@ dependencies = [
 name = "kaspa-addresses"
 version = "0.14.1"
 dependencies = [
- "borsh",
+ "borsh 0.9.3",
  "criterion",
  "js-sys",
  "serde",
@@ -2442,7 +2517,7 @@ dependencies = [
 name = "kaspa-addressmanager"
 version = "0.14.1"
 dependencies = [
- "borsh",
+ "borsh 0.9.3",
  "igd-next",
  "itertools 0.11.0",
  "kaspa-consensus-core",
@@ -2472,7 +2547,7 @@ dependencies = [
 name = "kaspa-bip32"
 version = "0.14.1"
 dependencies = [
- "borsh",
+ "borsh 0.9.3",
  "bs58",
  "faster-hex 0.6.1",
  "getrandom 0.2.14",
@@ -2499,7 +2574,7 @@ name = "kaspa-cli"
 version = "0.14.1"
 dependencies = [
  "async-trait",
- "borsh",
+ "borsh 0.9.3",
  "cfg-if 1.0.0",
  "convert_case 0.6.0",
  "dashmap",
@@ -2633,7 +2708,7 @@ version = "0.14.1"
 dependencies = [
  "async-trait",
  "bincode",
- "borsh",
+ "borsh 0.9.3",
  "cfg-if 1.0.0",
  "criterion",
  "faster-hex 0.6.1",
@@ -2748,7 +2823,7 @@ name = "kaspa-daemon"
 version = "0.14.1"
 dependencies = [
  "async-trait",
- "borsh",
+ "borsh 0.9.3",
  "cfg-if 1.0.0",
  "downcast-rs",
  "futures",
@@ -2797,7 +2872,7 @@ dependencies = [
  "faster-hex 0.6.1",
  "futures",
  "futures-util",
- "h2",
+ "h2 0.3.26",
  "itertools 0.11.0",
  "kaspa-core",
  "kaspa-grpc-core",
@@ -2827,7 +2902,7 @@ dependencies = [
  "async-trait",
  "faster-hex 0.6.1",
  "futures",
- "h2",
+ "h2 0.3.26",
  "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-notify",
@@ -2856,7 +2931,7 @@ dependencies = [
  "async-trait",
  "faster-hex 0.6.1",
  "futures",
- "h2",
+ "h2 0.3.26",
  "itertools 0.11.0",
  "kaspa-consensus-core",
  "kaspa-core",
@@ -2887,7 +2962,7 @@ name = "kaspa-hashes"
 version = "0.14.1"
 dependencies = [
  "blake2b_simd",
- "borsh",
+ "borsh 0.9.3",
  "cc",
  "criterion",
  "faster-hex 0.6.1",
@@ -2954,7 +3029,7 @@ dependencies = [
 name = "kaspa-math"
 version = "0.14.1"
 dependencies = [
- "borsh",
+ "borsh 0.9.3",
  "criterion",
  "faster-hex 0.6.1",
  "js-sys",
@@ -2983,7 +3058,7 @@ name = "kaspa-metrics-core"
 version = "0.14.1"
 dependencies = [
  "async-trait",
- "borsh",
+ "borsh 0.9.3",
  "futures",
  "kaspa-core",
  "kaspa-rpc-core",
@@ -3047,7 +3122,7 @@ version = "0.14.1"
 dependencies = [
  "async-channel 2.2.1",
  "async-trait",
- "borsh",
+ "borsh 0.9.3",
  "criterion",
  "derive_more",
  "futures",
@@ -3111,10 +3186,10 @@ dependencies = [
 name = "kaspa-p2p-lib"
 version = "0.14.1"
 dependencies = [
- "borsh",
+ "borsh 0.9.3",
  "ctrlc",
  "futures",
- "h2",
+ "h2 0.3.26",
  "hex",
  "itertools 0.11.0",
  "kaspa-consensus-core",
@@ -3202,7 +3277,7 @@ version = "0.14.1"
 dependencies = [
  "async-channel 2.2.1",
  "async-trait",
- "borsh",
+ "borsh 0.9.3",
  "cfg-if 1.0.0",
  "derive_more",
  "downcast",
@@ -3342,7 +3417,7 @@ name = "kaspa-txscript"
 version = "0.14.1"
 dependencies = [
  "blake2b_simd",
- "borsh",
+ "borsh 0.9.3",
  "criterion",
  "hex",
  "indexmap 2.2.6",
@@ -3378,7 +3453,7 @@ dependencies = [
  "async-channel 2.2.1",
  "async-trait",
  "bincode",
- "borsh",
+ "borsh 0.9.3",
  "cfg-if 1.0.0",
  "criterion",
  "event-listener 2.5.3",
@@ -3472,7 +3547,7 @@ dependencies = [
  "async-std",
  "async-trait",
  "base64 0.21.7",
- "borsh",
+ "borsh 0.9.3",
  "cfb-mode",
  "cfg-if 1.0.0",
  "chacha20poly1305",
@@ -3547,7 +3622,7 @@ name = "kaspa-wallet-keys"
 version = "0.14.1"
 dependencies = [
  "async-trait",
- "borsh",
+ "borsh 0.9.3",
  "downcast",
  "faster-hex 0.6.1",
  "hmac",
@@ -3629,7 +3704,7 @@ version = "0.14.1"
 dependencies = [
  "async-std",
  "async-trait",
- "borsh",
+ "borsh 0.9.3",
  "cfg-if 1.0.0",
  "futures",
  "js-sys",
@@ -3696,7 +3771,7 @@ name = "kaspa-wrpc-server"
 version = "0.14.1"
 dependencies = [
  "async-trait",
- "borsh",
+ "borsh 0.9.3",
  "futures",
  "kaspa-consensus-core",
  "kaspa-core",
@@ -4264,7 +4339,7 @@ checksum = "ab2156c4fce2f8df6c499cc1c763e4394b7482525bf2a9701c9d79d215f519e4"
 dependencies = [
  "bitflags 2.5.0",
  "cfg-if 1.0.0",
- "cfg_aliases",
+ "cfg_aliases 0.1.1",
  "libc",
 ]
 
@@ -4786,6 +4861,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "proc-macro-crate"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d37c51ca738a55da99dc0c4a34860fd675453b8b36209178c2249bb13651284"
+dependencies = [
+ "toml_edit 0.21.1",
+]
+
+[[package]]
 name = "proc-macro-error"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5055,20 +5139,23 @@ checksum = "adad44e29e4c806119491a7f06f03de4d1af22c3a680dd47f1e6e179439d1f56"
 
 [[package]]
 name = "reqwest"
-version = "0.11.27"
+version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd67538700a17451e7cba03ac727fb961abb7607553461627b97de0b89cf4a62"
+checksum = "c7d6d2a27d57148378eb5e111173f4276ad26340ecc5c49a4a2152167a2d6a37"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "bytes",
  "encoding_rs",
  "futures-core",
  "futures-util",
- "h2",
- "http 0.2.12",
- "http-body 0.4.6",
- "hyper 0.14.28",
+ "h2 0.4.5",
+ "http 1.1.0",
+ "http-body 1.0.0",
+ "http-body-util",
+ "hyper 1.3.1",
+ "hyper-rustls",
  "hyper-tls",
+ "hyper-util",
  "ipnet",
  "js-sys",
  "log",
@@ -5077,11 +5164,11 @@ dependencies = [
  "once_cell",
  "percent-encoding",
  "pin-project-lite",
- "rustls-pemfile",
+ "rustls-pemfile 2.1.2",
  "serde",
  "serde_json",
  "serde_urlencoded",
- "sync_wrapper 0.1.2",
+ "sync_wrapper 1.0.1",
  "system-configuration",
  "tokio",
  "tokio-native-tls",
@@ -5216,8 +5303,21 @@ checksum = "3f56a14d1f48b391359b22f731fd4bd7e43c97f3c50eee276f3aa09c94784d3e"
 dependencies = [
  "log",
  "ring",
- "rustls-webpki",
+ "rustls-webpki 0.101.7",
  "sct",
+]
+
+[[package]]
+name = "rustls"
+version = "0.23.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05cff451f60db80f490f3c182b77c35260baace73209e9cdbbe526bfe3a4d402"
+dependencies = [
+ "once_cell",
+ "rustls-pki-types",
+ "rustls-webpki 0.102.4",
+ "subtle",
+ "zeroize",
 ]
 
 [[package]]
@@ -5230,12 +5330,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustls-pemfile"
+version = "2.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29993a25686778eb88d4189742cd713c9bce943bc54251a33509dc63cbacf73d"
+dependencies = [
+ "base64 0.22.1",
+ "rustls-pki-types",
+]
+
+[[package]]
+name = "rustls-pki-types"
+version = "1.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "976295e77ce332211c0d24d92c0e83e50f5c5f046d11082cea19f3df13a3562d"
+
+[[package]]
 name = "rustls-webpki"
 version = "0.101.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b6275d1ee7a1cd780b64aca7726599a1dbc893b1e64144529e55c3c2f745765"
 dependencies = [
  "ring",
+ "untrusted",
+]
+
+[[package]]
+name = "rustls-webpki"
+version = "0.102.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff448f7e92e913c4b7d4c6d8e4540a1724b319b4152b8aef6d4cf8339712b33e"
+dependencies = [
+ "ring",
+ "rustls-pki-types",
  "untrusted",
 ]
 
@@ -5753,6 +5880,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "syn_derive"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1329189c02ff984e9736652b1631330da25eaa6bc639089ed4915d25446cbe7b"
+dependencies = [
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.60",
+]
+
+[[package]]
 name = "sync_wrapper"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5985,7 +6124,18 @@ version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c28327cf380ac148141087fbfb9de9d7bd4e84ab5d2c28fbc911d753de8a7081"
 dependencies = [
- "rustls",
+ "rustls 0.21.12",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-rustls"
+version = "0.26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c7bc40d0e5a97695bb96e27995cd3a08538541b0a846f65bba7a359f36700d4"
+dependencies = [
+ "rustls 0.23.10",
+ "rustls-pki-types",
  "tokio",
 ]
 
@@ -6002,9 +6152,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-tungstenite"
-version = "0.21.0"
+version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c83b561d025642014097b66e6c1bb422783339e0909e4429cde4749d1990bc38"
+checksum = "c6989540ced10490aaf14e6bad2e3d33728a2813310a0c71d1574304c49631cd"
 dependencies = [
  "futures-util",
  "log",
@@ -6045,7 +6195,7 @@ dependencies = [
  "serde",
  "serde_spanned",
  "toml_datetime",
- "toml_edit",
+ "toml_edit 0.22.12",
 ]
 
 [[package]]
@@ -6059,6 +6209,17 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a8534fd7f78b5405e860340ad6575217ce99f38d4d5c8f2442cb5ecb50090e1"
+dependencies = [
+ "indexmap 2.2.6",
+ "toml_datetime",
+ "winnow 0.5.40",
+]
+
+[[package]]
+name = "toml_edit"
 version = "0.22.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3328d4f68a705b2a4498da1d580585d39a6510f98318a2cec3018a7ec61ddef"
@@ -6067,7 +6228,7 @@ dependencies = [
  "serde",
  "serde_spanned",
  "toml_datetime",
- "winnow",
+ "winnow 0.6.7",
 ]
 
 [[package]]
@@ -6082,7 +6243,7 @@ dependencies = [
  "base64 0.21.7",
  "bytes",
  "flate2",
- "h2",
+ "h2 0.3.26",
  "http 0.2.12",
  "http-body 0.4.6",
  "hyper 0.14.28",
@@ -6090,10 +6251,10 @@ dependencies = [
  "percent-encoding",
  "pin-project",
  "prost",
- "rustls",
- "rustls-pemfile",
+ "rustls 0.21.12",
+ "rustls-pemfile 1.0.4",
  "tokio",
- "tokio-rustls",
+ "tokio-rustls 0.24.1",
  "tokio-stream",
  "tower",
  "tower-layer",
@@ -6252,9 +6413,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tungstenite"
-version = "0.21.0"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ef1a641ea34f399a848dea702823bbecfb4c486f911735368f1f137cb8257e1"
+checksum = "6e2e2ce1e47ed2994fd43b04c8f618008d4cabdd5ee34027cf14f9d918edd9c8"
 dependencies = [
  "byteorder",
  "bytes",
@@ -6266,7 +6427,6 @@ dependencies = [
  "rand 0.8.5",
  "sha1",
  "thiserror",
- "url",
  "utf-8",
 ]
 
@@ -6777,6 +6937,15 @@ checksum = "bec47e5bfd1bff0eeaf6d8b485cc1074891a197ab4225d504cb7a1ab88b02bf0"
 
 [[package]]
 name = "winnow"
+version = "0.5.40"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f593a95398737aeed53e489c785df13f3618e41dbcd6718c6addbf1395aa6876"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
+name = "winnow"
 version = "0.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14b9415ee827af173ebb3f15f9083df5a122eb93572ec28741fb153356ea2578"
@@ -6786,9 +6955,9 @@ dependencies = [
 
 [[package]]
 name = "winreg"
-version = "0.50.0"
+version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "524e57b2c537c0f9b1e69f1965311ec12182b4122e45035b1508cd24d2adadb1"
+checksum = "a277a57398d4bfa075df44f501a17cfdf8542d224f0d36095a2adc7aee4ef0a5"
 dependencies = [
  "cfg-if 1.0.0",
  "windows-sys 0.48.0",
@@ -6796,9 +6965,8 @@ dependencies = [
 
 [[package]]
 name = "workflow-chrome"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "109b6289f65b3e1cdfa6f2d9e8eb454453d5763c5061350e2300473c48d91b99"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "cfg-if 1.0.0",
  "chrome-sys",
@@ -6811,13 +6979,12 @@ dependencies = [
 
 [[package]]
 name = "workflow-core"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcea01cb6122ac3f20dc14f8e4104e2c0cd9c718c17ddb3fc115f9b2ed99f9ae"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "async-channel 2.2.1",
  "async-std",
- "borsh",
+ "borsh 1.5.1",
  "bs58",
  "cfg-if 1.0.0",
  "chrono",
@@ -6838,13 +7005,13 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "workflow-core-macros",
+ "workflow-log",
 ]
 
 [[package]]
 name = "workflow-core-macros"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe24820a62e2b544c75c000cff72781383495a0e05157ec3e29b2abafe1ca2cb"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -6859,9 +7026,8 @@ dependencies = [
 
 [[package]]
 name = "workflow-dom"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "91264d4e789f23c6730c2f3adede04a24b6a9eb9797f9d4ab23de370ba04c27f"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "futures",
  "js-sys",
@@ -6877,9 +7043,8 @@ dependencies = [
 
 [[package]]
 name = "workflow-http"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5b191def1625c3aa5e7d62d1ebbbb3e639113a4a2f122418e4cf8d3379374f8"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "cfg-if 1.0.0",
  "reqwest",
@@ -6893,9 +7058,8 @@ dependencies = [
 
 [[package]]
 name = "workflow-log"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "077a8f720aa45c8cd867de1ccc73e068c4084d9fea46d11be7697a108e6a00ba"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "cfg-if 1.0.0",
  "console",
@@ -6909,9 +7073,8 @@ dependencies = [
 
 [[package]]
 name = "workflow-macro-tools"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5a8af8b8951fa0cf94df4057b8cf583e067a525d3d997370db7797f33ba201f"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -6922,11 +7085,10 @@ dependencies = [
 
 [[package]]
 name = "workflow-node"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7748eb6c76779993ed7f4457356d6b57f48f97f9e264c64c3405098330bcb8c7"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
- "borsh",
+ "borsh 1.5.1",
  "futures",
  "js-sys",
  "lazy_static",
@@ -6943,13 +7105,12 @@ dependencies = [
 
 [[package]]
 name = "workflow-nw"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "010fff3468303b39fb0d5d267847a3d293ed083afbf83f4184fb1a749be56010"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "ahash 0.8.11",
  "async-trait",
- "borsh",
+ "borsh 1.5.1",
  "futures",
  "js-sys",
  "nw-sys",
@@ -6967,9 +7128,8 @@ dependencies = [
 
 [[package]]
 name = "workflow-panic-hook"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71c1ed51290daf255e5fd83dfe6bd754b108e371b971afbb5c5fd1ea8fe148af"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "cfg-if 1.0.0",
  "wasm-bindgen",
@@ -6992,14 +7152,13 @@ dependencies = [
 
 [[package]]
 name = "workflow-rpc"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14784fbad27d0403fc752d835c4c4683cfc6af970a484ea83f40ce7ad6dc7745"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "ahash 0.8.11",
  "async-std",
  "async-trait",
- "borsh",
+ "borsh 1.5.1",
  "downcast-rs",
  "futures",
  "futures-util",
@@ -7022,9 +7181,8 @@ dependencies = [
 
 [[package]]
 name = "workflow-rpc-macros"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c372e99d1336a137b907274a3c50fc195e30141c87fc6da4dba54e7d4b09b8ec"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "parse-variants",
  "proc-macro-error",
@@ -7035,12 +7193,11 @@ dependencies = [
 
 [[package]]
 name = "workflow-store"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "762861614298160b9205302bec4f2b7eb45853413d10a90ad8edca44bafc324b"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "async-std",
- "base64 0.21.7",
+ "base64 0.22.1",
  "cfg-if 1.0.0",
  "chrome-sys",
  "faster-hex 0.9.0",
@@ -7063,9 +7220,8 @@ dependencies = [
 
 [[package]]
 name = "workflow-task"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4023e2598734e04aa4e968a4dd1cd2b5d0c344edc38b40970926d5742f5afa0"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "futures",
  "thiserror",
@@ -7075,9 +7231,8 @@ dependencies = [
 
 [[package]]
 name = "workflow-task-macros"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "057801365ce04c520a2a694bc5bfdf1784f1a33fff97af4cd735f94eb12947b1"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -7091,9 +7246,8 @@ dependencies = [
 
 [[package]]
 name = "workflow-terminal"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "895c236dd5cf493e01fc31733c4687b3e67032f610d594ce3b8e5cafd14eaf33"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "async-std",
  "async-trait",
@@ -7120,9 +7274,8 @@ dependencies = [
 
 [[package]]
 name = "workflow-terminal-macros"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb1fe67beb12d31f2e69715898aa32abd2349ffc8fe0555617f0d77500cebc56"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "convert_case 0.6.0",
  "parse-variants",
@@ -7136,9 +7289,8 @@ dependencies = [
 
 [[package]]
 name = "workflow-wasm"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93ffbd1de665304ba6040a1ab4e0867fd9174446491d257bc6a1474ae25d4a6c"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "cfg-if 1.0.0",
  "faster-hex 0.9.0",
@@ -7157,9 +7309,8 @@ dependencies = [
 
 [[package]]
 name = "workflow-wasm-macros"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "082644f52215ecc86b4b8a20a763e482adee52c338208ade268f47fe25eb07ca"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "js-sys",
  "proc-macro-error",
@@ -7171,9 +7322,8 @@ dependencies = [
 
 [[package]]
 name = "workflow-websocket"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6967baf2bd85deb2a014a32d34c1664ded9333e10d11d43ffc179fa09cc55db8"
+version = "0.13.3"
+source = "git+https://github.com/workflow-rs/workflow-rs.git?branch=master#402fba4dae12a7453787cabad8e9ebb47520ed77"
 dependencies = [
  "ahash 0.8.11",
  "async-channel 2.2.1",

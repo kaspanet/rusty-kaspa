@@ -271,17 +271,17 @@ workflow-perf-monitor = "0.0.2"
 nw-sys = "0.1.6"
 
 # workflow dependencies
-workflow-core = { version = "0.12.1" }
-workflow-d3 = { version = "0.12.1" }
-workflow-dom = { version = "0.12.1" }
-workflow-http = { version = "0.12.1" }
-workflow-log = { version = "0.12.1" }
-workflow-node = { version = "0.12.1" }
-workflow-nw = { version = "0.12.1" }
-workflow-rpc = { version = "0.12.1" }
-workflow-store = { version = "0.12.1" }
-workflow-terminal = { version = "0.12.1" }
-workflow-wasm = { version = "0.12.1" }
+# workflow-core = { version = "0.12.1" }
+# workflow-d3 = { version = "0.12.1" }
+# workflow-dom = { version = "0.12.1" }
+# workflow-http = { version = "0.12.1" }
+# workflow-log = { version = "0.12.1" }
+# workflow-node = { version = "0.12.1" }
+# workflow-nw = { version = "0.12.1" }
+# workflow-rpc = { version = "0.12.1" }
+# workflow-store = { version = "0.12.1" }
+# workflow-terminal = { version = "0.12.1" }
+# workflow-wasm = { version = "0.12.1" }
 
 # if below is enabled, this means that there is an ongoing work
 # on the workflow-rs crate. This requires that you clone workflow-rs
@@ -299,6 +299,18 @@ workflow-wasm = { version = "0.12.1" }
 # workflow-wasm = { path = "../workflow-rs/wasm" }
 
 # ---
+workflow-core = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
+workflow-d3 = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
+workflow-dom = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
+workflow-http = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
+workflow-log = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
+workflow-node = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
+workflow-nw = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
+workflow-rpc = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
+workflow-store = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
+workflow-terminal = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
+workflow-wasm = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
+
 # workflow-core = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-d3 = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-dom = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
