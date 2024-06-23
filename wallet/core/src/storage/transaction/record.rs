@@ -381,9 +381,9 @@ impl TransactionRecord {
         let params = NetworkParams::from(self.network_id);
 
         let maturity = if self.is_coinbase() {
-            params.coinbase_transaction_maturity_period_daa
+            params.coinbase_transaction_maturity_period_daa()
         } else {
-            params.user_transaction_maturity_period_daa
+            params.user_transaction_maturity_period_daa()
         };
 
         if current_daa_score < self.block_daa_score() + maturity {
@@ -434,9 +434,9 @@ impl TransactionRecord {
     pub fn maturity_progress(&self, current_daa_score: u64) -> Option<f64> {
         let params = NetworkParams::from(self.network_id);
         let maturity = if self.is_coinbase() {
-            params.coinbase_transaction_maturity_period_daa
+            params.coinbase_transaction_maturity_period_daa()
         } else {
-            params.user_transaction_maturity_period_daa
+            params.user_transaction_maturity_period_daa()
         };
 
         if current_daa_score < self.block_daa_score + maturity {

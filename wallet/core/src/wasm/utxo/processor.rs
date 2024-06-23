@@ -159,6 +159,40 @@ impl UtxoProcessor {
         let processor = &self.inner.processor;
         processor.try_rpc_ctl().map(|ctl| ctl.is_connected()).unwrap_or(false) && processor.is_connected() && processor.is_running()
     }
+
+    ///
+    /// Set the coinbase transaction maturity period DAA score for a given network.
+    /// This controls the DAA period after which the user transactions are considered mature
+    /// and the wallet subsystem emits the transaction maturity event.
+    ///
+    /// @see {@link TransactionRecord}
+    /// @see {@link Events}
+    ///
+    /// @category Wallet SDK
+    ///
+    #[wasm_bindgen(js_name = "setCoinbaseTransactionMaturityDAA")]
+    pub fn set_coinbase_transaction_maturity_period_daa_js(network_id: NetworkIdT, value: u64) -> Result<()> {
+        let network_id = NetworkId::try_cast_from(network_id)?.into_owned();
+        crate::utxo::set_coinbase_transaction_maturity_period_daa(&network_id, value);
+        Ok(())
+    }
+
+    ///
+    /// Set the user transaction maturity period DAA score for a given network.
+    /// This controls the DAA period after which the user transactions are considered mature
+    /// and the wallet subsystem emits the transaction maturity event.
+    ///
+    /// @see {@link TransactionRecord}
+    /// @see {@link Events}
+    ///
+    /// @category Wallet SDK
+    ///
+    #[wasm_bindgen(js_name = "setUserTransactionMaturityDAA")]
+    pub fn set_user_transaction_maturity_period_daa_js(network_id: NetworkIdT, value: u64) -> Result<()> {
+        let network_id = NetworkId::try_cast_from(network_id)?.into_owned();
+        crate::utxo::set_user_transaction_maturity_period_daa(&network_id, value);
+        Ok(())
+    }
 }
 
 impl TryCastFromJs for UtxoProcessor {
