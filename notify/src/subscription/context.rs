@@ -6,7 +6,7 @@ use crate::{
         DynSubscription,
     },
 };
-use kaspa_consensus_core::network::NetworkType;
+use kaspa_consensus_core::network::{NetworkType, NetworkTypeError};
 use std::{ops::Deref, sync::Arc};
 
 #[cfg(test)]
@@ -47,8 +47,11 @@ impl SubscriptionContextInner {
     /// Tries to set the network type.
     ///
     /// For this to succeed, the context must have no network type yet or `network_type` must match the internal type.
-    pub fn set_network_type(&self, network_type: NetworkType) -> bool {
-        self.address_tracker.set_prefix(network_type.into())
+    pub fn set_network_type(&self, network_type: NetworkType) -> Result<(), NetworkTypeError> {
+        self.address_tracker
+            .set_prefix(network_type.into())
+            .then_some(())
+            .ok_or(NetworkTypeError::InvalidNetworkType(network_type.to_string()))
     }
 }
 

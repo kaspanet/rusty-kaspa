@@ -156,7 +156,15 @@ impl Inner {
         *self.network_id.lock().unwrap()
     }
 
-    fn build_notifier(self: &Arc<Self>, subscription_context: Option<SubscriptionContext>) -> Result<RpcClientNotifier> {
+    fn build_notifier(
+        self: &Arc<Self>,
+        network_id: Option<NetworkId>,
+        subscription_context: Option<SubscriptionContext>,
+    ) -> Result<RpcClientNotifier> {
+        let subscription_context = subscription_context.unwrap_or_else(|| SubscriptionContext::new(None));
+        if let Some(network_id) = network_id {
+            subscription_context.set_network_type(network_id.into())?;
+        }
         let receiver = self.notification_intake_channel.lock().unwrap().receiver.clone();
 
         let enabled_events = EVENT_TYPE_ARRAY[..].into();
@@ -164,15 +172,8 @@ impl Inner {
         let collector = Arc::new(RpcCoreCollector::new(WRPC_CLIENT, receiver, converter));
         let subscriber = Arc::new(Subscriber::new(WRPC_CLIENT, enabled_events, self.clone(), 0));
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
-        let notifier = Arc::new(Notifier::new(
-            WRPC_CLIENT,
-            enabled_events,
-            vec![collector],
-            vec![subscriber],
-            subscription_context.unwrap_or_default(),
-            3,
-            policies,
-        ));
+        let notifier =
+            Arc::new(Notifier::new(WRPC_CLIENT, enabled_events, vec![collector], vec![subscriber], subscription_context, 3, policies));
 
         // let receiver = self.notification_intake_channel.lock().unwrap().receiver.clone();
         // let enabled_events = EVENT_TYPE_ARRAY[..].into();
@@ -277,7 +278,7 @@ impl KaspaRpcClient {
         subscription_context: Option<SubscriptionContext>,
     ) -> Result<KaspaRpcClient> {
         let inner = Arc::new(Inner::new(encoding, url, resolver, network_id)?);
-        inner.build_notifier(subscription_context)?;
+        inner.build_notifier(network_id, subscription_context)?;
         let client = KaspaRpcClient { inner };
         //     notification_mode: NotificationMode,
         //     url: &str,
@@ -309,7 +310,7 @@ impl KaspaRpcClient {
     }
 
     async fn start_notifier(&self) -> Result<()> {
-        let notifier = self.inner.build_notifier(None)?;
+        let notifier = self.inner.build_notifier(self.inner.network_id(), self.subscription_context())?;
         notifier.start();
         Ok(())
     }
@@ -322,6 +323,10 @@ impl KaspaRpcClient {
 
     fn notifier(&self) -> RpcClientNotifier {
         self.inner.notifier.lock().unwrap().clone().expect("Rpc client is not correctly initialized")
+    }
+
+    fn subscription_context(&self) -> Option<SubscriptionContext> {
+        self.inner.notifier.lock().unwrap().clone().map(|x| x.subscription_context().clone())
     }
 
     pub fn url(&self) -> Option<String> {
@@ -351,6 +356,7 @@ impl KaspaRpcClient {
     }
 
     pub fn set_network_id(&self, network_id: &NetworkId) -> Result<()> {
+        self.notifier().subscription_context().set_network_type(**network_id)?;
         self.inner.network_id.lock().unwrap().replace(*network_id);
         Ok(())
     }

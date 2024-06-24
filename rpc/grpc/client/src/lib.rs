@@ -7,7 +7,6 @@ use async_trait::async_trait;
 pub use client_pool::ClientPool;
 use connection_event::ConnectionEvent;
 use futures::{future::FutureExt, pin_mut, select};
-use kaspa_consensus_core::network::NetworkTypeError;
 use kaspa_core::{debug, error, trace};
 use kaspa_grpc_core::{
     channel::NotificationChannel,
@@ -615,9 +614,7 @@ impl Inner {
                 if let Ok(response) = response {
                     // Try to set the subscription context network type.
                     // This always succeeds when not defined in the context yet.
-                    if !subscription_context.set_network_type(response.network) {
-                        return Err(NetworkTypeError::InvalidNetworkType(response.network.to_string()).into());
-                    }
+                    subscription_context.set_network_type(response.network)?
                 } else {
                     debug!("GRPC client: try_connect - stream closed since the query to GetCurrentNetwork failed");
                     return Err(Error::GetCurrentNetwork);
