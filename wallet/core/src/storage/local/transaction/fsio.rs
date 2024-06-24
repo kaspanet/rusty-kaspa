@@ -4,8 +4,6 @@
 
 use crate::encryption::*;
 use crate::imports::*;
-use crate::result::Result;
-use crate::secret::Secret;
 use crate::storage::interface::{StorageStream, TransactionRangeResult};
 use crate::storage::TransactionRecord;
 use crate::storage::{Binding, TransactionKind, TransactionRecordStore};

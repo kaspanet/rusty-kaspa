@@ -64,7 +64,7 @@ async fn create_multisig(ctx: &Arc<KaspaCli>, account_name: Option<String>, mnem
 
     let mut prv_key_data_args = Vec::with_capacity(prv_keys_len);
     for _ in 0..prv_keys_len {
-        let bip39_mnemonic = Mnemonic::random(mnemonic_phrase_word_count, Language::default())?.phrase().to_string();
+        let bip39_mnemonic = Secret::from(Mnemonic::random(mnemonic_phrase_word_count, Language::default())?.phrase());
 
         let prv_key_data_create_args = PrvKeyDataCreateArgs::new(None, None, bip39_mnemonic); // can be optimized with Rc<WalletSecret>
         let prv_key_data_id = wallet.create_prv_key_data(&wallet_secret, prv_key_data_create_args).await?;

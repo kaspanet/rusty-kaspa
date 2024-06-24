@@ -158,13 +158,14 @@ pub fn get_log_dir(args: &Args) -> Option<String> {
 
 impl Runtime {
     pub fn from_args(args: &Args) -> Self {
-        // Configure the panic behavior
-        kaspa_core::panic::configure_panic();
-
         let log_dir = get_log_dir(args);
 
         // Initialize the logger
         kaspa_core::log::init_logger(log_dir.as_deref(), &args.log_level);
+
+        // Configure the panic behavior
+        // As we log the panic, we want to set it up after the logger
+        kaspa_core::panic::configure_panic();
 
         Self { log_dir: log_dir.map(|log_dir| log_dir.to_owned()) }
     }
@@ -248,7 +249,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
 
     // Reset Condition: User explicitly requested a reset
     if is_db_reset_needed && db_dir.exists() {
-        let msg = "Reset DB was requested -- this means the current databases will be fully deleted, 
+        let msg = "Reset DB was requested -- this means the current databases will be fully deleted,
 do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm all interactive questions)";
         get_user_approval_or_exit(msg, args.yes);
         info!("Deleting databases");

@@ -154,7 +154,7 @@ impl Args {
         config.is_archival = self.archival;
         // TODO: change to `config.enable_sanity_checks = self.sanity` when we reach stable versions
         config.enable_sanity_checks = true;
-        config.user_agent_comments = self.user_agent_comments.clone();
+        config.user_agent_comments.clone_from(&self.user_agent_comments);
         config.block_template_cache_lifetime = self.block_template_cache_lifetime;
         config.p2p_listen_address = self.listen.unwrap_or(ContextualNetAddress::unspecified());
         config.externalip = self.externalip.map(|v| v.normalize(config.default_p2p_port()));
@@ -366,7 +366,7 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
                 .long("ram-scale")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(f64))
-                .help("Apply a scale factor to memory allocation bounds. Nodes with limited RAM (~4-8GB) should set this to ~0.3-0.5 respectively. Nodes with 
+                .help("Apply a scale factor to memory allocation bounds. Nodes with limited RAM (~4-8GB) should set this to ~0.3-0.5 respectively. Nodes with
 a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance especially for syncing peers faster"),
         )
         ;

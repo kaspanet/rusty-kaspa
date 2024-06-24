@@ -28,9 +28,10 @@ pub type TransactionId = kaspa_hashes::Hash;
 /// set such as whether or not it was contained in a coinbase tx, the daa
 /// score of the block that accepts the tx, its public key script, and how
 /// much it pays.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+/// @category Consensus
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-#[wasm_bindgen(inspectable, js_name = TxUtxoEntry)]
+#[wasm_bindgen(inspectable, js_name = TransactionUtxoEntry)]
 pub struct UtxoEntry {
     pub amount: u64,
     #[wasm_bindgen(js_name = scriptPublicKey, getter_with_clone)]
@@ -52,7 +53,7 @@ impl MemSizeEstimator for UtxoEntry {}
 pub type TransactionIndexType = u32;
 
 /// Represents a Kaspa transaction outpoint
-#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Eq, Default, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutpoint {
     #[serde(with = "serde_bytes_fixed_ref")]

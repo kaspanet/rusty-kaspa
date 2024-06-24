@@ -3,7 +3,8 @@
         <script type="module">
             import * as kaspa from './kaspa-rpc/kaspa-rpc.js';
             (async () => {
-                const wasm = await kaspa.default('./kaspa-rpc/kaspa-rpc_bg.wasm');
+                await kaspa.default('./kaspa-rpc/kaspa-rpc_bg.wasm');
+                console.log(kaspa.version());
             })();
         </script>
     </head>

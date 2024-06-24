@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <link rel="stylesheet" href="./resources/style.css">
+        <script type="module">
+            import { log, logToId, randomId, stringify, currentNetwork, disconnectHandler } from './resources/utils.js';
+
+            // import WASM32 SDK
+            import * as kaspa from '../../web/kaspa-rpc/kaspa.js';
+            let { Resolver, RpcClient, Encoding } = kaspa;
+
+            (async () => {
+                // load WASM32 SDK binaries 
+                await kaspa.default('../../web/kaspa-rpc/kaspa_bg.wasm');
+
+                // try {
+                    
+                    let networkId = currentNetwork();
+                    log(`Connecting to Kaspa network...`);
+                    log(`Selected network is ${networkId.class("network")}...`);
+                    
+                    const rpc = new RpcClient({
+                        resolver : new Resolver(),
+                        networkId,
+                    });
+                    
+                    let id;
+                    log("Registering for DAA notifications...");
+                    rpc.addEventListener("virtual-daa-score-changed", async (event) => {
+                        logToId(id, event);
+                    });
+                    
+                    rpc.addEventListener("connect", async (event) => {
+                        id = randomId();
+                        log("Connected to", rpc.url.class("network"));
+                        log("Subscribing to DAA score...");
+                        await rpc.subscribeVirtualDaaScoreChanged();
+                    });
+                    
+                    rpc.addEventListener("disconnect", async (event) => {
+                        log("Disconnected from", rpc.url.class("network"));
+                        console.log("Disconnect",event);
+                    });
+
+                    log("Connecting to public node...");
+                    await rpc.connect();
+
+                    disconnectHandler(rpc);
+
+                // } catch (e) {
+                //     log("Error:", e);
+                // }
+                
+            })();
+        </script>
+    </head>
+    <body></body>
+</html>

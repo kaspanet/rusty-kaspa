@@ -45,6 +45,7 @@ trait RwLockTrait<T> {
     type WriteGuard;
     fn new(value: T) -> Self;
     async fn read_(&self) -> Self::ReadGuard;
+    #[allow(dead_code)]
     async fn write_(&self) -> Self::WriteGuard;
 }
 

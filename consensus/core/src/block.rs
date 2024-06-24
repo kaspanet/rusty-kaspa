@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::{
     coinbase::MinerData,
     header::Header,
@@ -7,6 +5,7 @@ use crate::{
     BlueWorkType,
 };
 use kaspa_hashes::Hash;
+use std::sync::Arc;
 
 /// A mutable block structure where header and transactions within can still be mutated.
 #[derive(Debug, Clone)]
