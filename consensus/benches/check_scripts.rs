@@ -74,7 +74,7 @@ fn mock_tx(inputs_count: usize, non_uniq_signatures: usize) -> (Transaction, Vec
 
 fn benchmark_check_scripts(c: &mut Criterion) {
     for inputs_count in [100, 50, 25, 10, 5, 2] {
-        for non_uniq_signatures in [0, inputs_count/2] {
+        for non_uniq_signatures in [0, inputs_count / 2] {
             let (tx, utxos) = mock_tx(inputs_count, non_uniq_signatures);
             let mut group = c.benchmark_group(format!("inputs: {inputs_count}, non uniq: {non_uniq_signatures}"));
             group.sampling_mode(SamplingMode::Flat);

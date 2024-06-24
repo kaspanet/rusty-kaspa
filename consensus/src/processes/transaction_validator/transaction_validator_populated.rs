@@ -30,7 +30,7 @@ pub enum TxValidationFlags {
 impl TransactionValidator {
     pub fn validate_populated_transaction_and_get_fee(
         &self,
-        tx: &impl VerifiableTransaction,
+        tx: &(impl VerifiableTransaction + std::marker::Sync),
         pov_daa_score: u64,
         flags: TxValidationFlags,
     ) -> TxResult<u64> {
@@ -150,17 +150,31 @@ impl TransactionValidator {
         Ok(())
     }
 
-    pub fn check_scripts(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
+    pub fn check_scripts(&self, tx: &(impl VerifiableTransaction + std::marker::Sync)) -> TxResult<()> {
         check_scripts(&self.sig_cache, tx)
     }
 }
 
-pub fn check_scripts(sig_cache: &Cache<SigCacheKey, bool>, tx: &impl VerifiableTransaction) -> TxResult<()> {
-    let reused_values = SigHashReusedValuesUnsync::new();
-    for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-        let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &reused_values, sig_cache)
+pub fn check_scripts(sig_cache: &Cache<SigCacheKey, bool>, tx: &(impl VerifiableTransaction + Sync)) -> TxResult<()> {
+    if tx.inputs().len() > 1 {
+        use rayon::iter::ParallelIterator;
+        let reused_values = std::sync::Arc::new(SigHashReusedValuesSync::new());
+        (0..tx.inputs().len())
+            .into_par_iter()
+            .try_for_each(|idx| {
+                let reused_values = reused_values.clone(); // Clone the Arc to share ownership
+                let (input, utxo) = tx.populated_input(idx);
+                let mut engine = TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache)?;
+                engine.execute()
+            })
             .map_err(TxRuleError::SignatureInvalid)?;
-        engine.execute().map_err(TxRuleError::SignatureInvalid)?;
+    } else {
+        let reused_values = SigHashReusedValuesUnsync::new();
+        for (i, (input, entry)) in tx.populated_inputs().enumerate() {
+            let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &reused_values, sig_cache)
+                .map_err(TxRuleError::SignatureInvalid)?;
+            engine.execute().map_err(TxRuleError::SignatureInvalid)?;
+        }
     }
 
     Ok(())
