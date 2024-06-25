@@ -546,7 +546,7 @@ mod tests {
 
     fn run_test_script_cases(test_cases: Vec<ScriptTestCase>) {
         let sig_cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValuesUnsync::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
 
         for test in test_cases {
             // Ensure encapsulation of variables (no leaking between tests)

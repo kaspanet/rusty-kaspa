@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, SamplingMode};
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::processes::transaction_validator::transaction_validator_populated::{
-    check_scripts, check_scripts_par_iter, check_scripts_par_iter_thread,
+    check_scripts, check_scripts_par_iter, check_scripts_par_iter_thread, check_scripts_single_threaded,
 };
 use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync};
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
@@ -84,7 +84,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                 let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
                     cache.map.write().clear();
-                    check_scripts(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
+                    check_scripts_single_threaded(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
                 })
             });
 

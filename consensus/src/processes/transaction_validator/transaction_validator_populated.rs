@@ -157,39 +157,34 @@ impl TransactionValidator {
 
 pub fn check_scripts(sig_cache: &Cache<SigCacheKey, bool>, tx: &(impl VerifiableTransaction + Sync)) -> TxResult<()> {
     if tx.inputs().len() > 1 {
-        use rayon::iter::ParallelIterator;
-        let reused_values = std::sync::Arc::new(SigHashReusedValuesSync::new());
-        (0..tx.inputs().len())
-            .into_par_iter()
-            .try_for_each(|idx| {
-                let reused_values = reused_values.clone(); // Clone the Arc to share ownership
-                let (input, utxo) = tx.populated_input(idx);
-                let mut engine = TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache)?;
-                engine.execute()
-            })
-            .map_err(TxRuleError::SignatureInvalid)?;
+        check_scripts_par_iter(sig_cache, tx)
     } else {
-        let reused_values = SigHashReusedValuesUnsync::new();
-        for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-            let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &reused_values, sig_cache)
-                .map_err(TxRuleError::SignatureInvalid)?;
-            engine.execute().map_err(TxRuleError::SignatureInvalid)?;
-        }
+        check_scripts_single_threaded(sig_cache, tx)
     }
+}
 
+pub fn check_scripts_single_threaded(sig_cache: &Cache<SigCacheKey, bool>, tx: &impl VerifiableTransaction) -> TxResult<()> {
+    let reused_values = SigHashReusedValuesUnsync::new();
+    for (i, (input, entry)) in tx.populated_inputs().enumerate() {
+        let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &reused_values, sig_cache)
+            .map_err(TxRuleError::SignatureInvalid)?;
+        engine.execute().map_err(TxRuleError::SignatureInvalid)?;
+    }
     Ok(())
 }
 
-pub fn check_scripts_par_iter(sig_cache: &Cache<SigCacheKey, bool>, tx: &Arc<MutableTransaction<Transaction>>) -> TxResult<()> {
+pub fn check_scripts_par_iter(
+    sig_cache: &Cache<SigCacheKey, bool>,
+    tx: &(impl VerifiableTransaction + std::marker::Sync),
+) -> TxResult<()> {
     use rayon::iter::ParallelIterator;
     let reused_values = std::sync::Arc::new(SigHashReusedValuesSync::new());
-    (0..tx.tx.inputs.len())
+    (0..tx.inputs().len())
         .into_par_iter()
         .try_for_each(|idx| {
-            let tx = tx.as_verifiable();
             let reused_values = reused_values.clone(); // Clone the Arc to share ownership
             let (input, utxo) = tx.populated_input(idx);
-            let mut engine = TxScriptEngine::from_transaction_input(&tx, input, idx, utxo, &reused_values, sig_cache)?;
+            let mut engine = TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache)?;
             engine.execute()
         })
         .map_err(TxRuleError::SignatureInvalid)
@@ -221,6 +216,7 @@ mod tests {
     use super::super::errors::TxRuleError;
     use core::str::FromStr;
     use itertools::Itertools;
+    use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::sign::sign;
     use kaspa_consensus_core::subnets::SubnetworkId;
     use kaspa_consensus_core::tx::{MutableTransaction, PopulatedTransaction, ScriptVec, TransactionId, UtxoEntry};
@@ -739,6 +735,6 @@ mod tests {
         let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), schnorr_key);
         let populated_tx = signed_tx.as_verifiable();
         assert_eq!(tv.check_scripts(&populated_tx), Ok(()));
-        assert_eq!(TransactionValidator::check_sig_op_counts(&populated_tx), Ok(()));
+        assert_eq!(TransactionValidator::check_sig_op_counts::<_, SigHashReusedValuesUnsync>(&populated_tx), Ok(()));
     }
 }

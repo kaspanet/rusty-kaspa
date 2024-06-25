@@ -997,19 +997,19 @@ mod test {
 
     struct TestCase<'a> {
         init: Stack,
-        code: Box<dyn OpCodeImplementation<PopulatedTransaction<'a>>>,
+        code: Box<dyn OpCodeImplementation<PopulatedTransaction<'a>, SigHashReusedValuesUnsync>>,
         dstack: Stack,
     }
 
     struct ErrorTestCase<'a> {
         init: Stack,
-        code: Box<dyn OpCodeImplementation<PopulatedTransaction<'a>>>,
+        code: Box<dyn OpCodeImplementation<PopulatedTransaction<'a>, SigHashReusedValuesUnsync>>,
         error: TxScriptError,
     }
 
     fn run_success_test_cases(tests: Vec<TestCase>) {
         let cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValuesUnsync::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
         for TestCase { init, code, dstack } in tests {
             let mut vm = TxScriptEngine::new(&reused_values, &cache);
             vm.dstack = init;
@@ -1020,7 +1020,7 @@ mod test {
 
     fn run_error_test_cases(tests: Vec<ErrorTestCase>) {
         let cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValuesUnsync::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
         for ErrorTestCase { init, code, error } in tests {
             let mut vm = TxScriptEngine::new(&reused_values, &cache);
             vm.dstack.clone_from(&init);
@@ -1037,7 +1037,7 @@ mod test {
 
     #[test]
     fn test_opcode_disabled() {
-        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction>>> = vec![
+        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpCat::empty().expect("Should accept empty"),
             opcodes::OpSubStr::empty().expect("Should accept empty"),
             opcodes::OpLeft::empty().expect("Should accept empty"),
@@ -1056,7 +1056,7 @@ mod test {
         ];
 
         let cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValuesUnsync::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
         let mut vm = TxScriptEngine::new(&reused_values, &cache);
 
         for pop in tests {
@@ -1069,7 +1069,7 @@ mod test {
 
     #[test]
     fn test_opcode_reserved() {
-        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction>>> = vec![
+        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpReserved::empty().expect("Should accept empty"),
             opcodes::OpVer::empty().expect("Should accept empty"),
             opcodes::OpVerIf::empty().expect("Should accept empty"),
@@ -1079,7 +1079,7 @@ mod test {
         ];
 
         let cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValuesUnsync::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
         let mut vm = TxScriptEngine::new(&reused_values, &cache);
 
         for pop in tests {
@@ -1092,7 +1092,7 @@ mod test {
 
     #[test]
     fn test_opcode_invalid() {
-        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction>>> = vec![
+        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpUnknown166::empty().expect("Should accept empty"),
             opcodes::OpUnknown167::empty().expect("Should accept empty"),
             opcodes::OpUnknown178::empty().expect("Should accept empty"),
@@ -1170,7 +1170,7 @@ mod test {
         ];
 
         let cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValuesUnsync::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
         let mut vm = TxScriptEngine::new(&reused_values, &cache);
 
         for pop in tests {
@@ -2751,7 +2751,7 @@ mod test {
         let (base_tx, input, utxo_entry) = make_mock_transaction(1);
 
         let sig_cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValuesUnsync::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
 
         let code = opcodes::OpCheckLockTimeVerify::empty().expect("Should accept empty");
 
@@ -2793,7 +2793,7 @@ mod test {
         let (tx, base_input, utxo_entry) = make_mock_transaction(1);
 
         let sig_cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValuesUnsync::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
 
         let code = opcodes::OpCheckSequenceVerify::empty().expect("Should accept empty");
 
