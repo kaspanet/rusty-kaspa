@@ -90,6 +90,7 @@ async fn main() -> Result<()> {
         rpc_handler.clone(),
         router.interface.clone(),
         Some(counters),
+        false,
     );
 
     log_info!("Kaspa wRPC server is listening on {}", options.listen_address);

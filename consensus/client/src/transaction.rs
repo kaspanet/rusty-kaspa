@@ -5,7 +5,7 @@ use crate::input::TransactionInput;
 use crate::outpoint::TransactionOutpoint;
 use crate::output::TransactionOutput;
 use crate::result::Result;
-use crate::serializable::{numeric, string};
+use crate::serializable::{numeric, string, SerializableTransactionT};
 use crate::utxo::{UtxoEntryId, UtxoEntryReference};
 use ahash::AHashMap;
 use kaspa_consensus_core::network::NetworkType;
@@ -401,7 +401,7 @@ impl Transaction {
     /// The schema of the JavaScript object is defined by {@link ISerializableTransaction}.
     /// @see {@link ISerializableTransaction}
     #[wasm_bindgen(js_name = "serializeToObject")]
-    pub fn serialize_to_object(&self) -> Result<ITransaction> {
+    pub fn serialize_to_object(&self) -> Result<SerializableTransactionT> {
         Ok(numeric::SerializableTransaction::from_client_transaction(self)?.serialize_to_object()?.into())
     }
 
