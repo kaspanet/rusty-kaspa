@@ -1,6 +1,5 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use kaspa_consensus_core::hashing::sighash::{SigHashReusedValues, SigHashReusedValuesSync};
-use kaspa_consensus_core::tx::{MutableTransaction, Transaction};
 use kaspa_consensus_core::{hashing::sighash::SigHashReusedValuesUnsync, tx::VerifiableTransaction};
 use kaspa_core::warn;
 use kaspa_txscript::caches::Cache;
@@ -192,19 +191,18 @@ pub fn check_scripts_par_iter(
 
 pub fn check_scripts_par_iter_thread(
     sig_cache: &Cache<SigCacheKey, bool>,
-    tx: &Arc<MutableTransaction<Transaction>>,
+    tx: &(impl VerifiableTransaction + std::marker::Sync),
     pool: &ThreadPool,
 ) -> TxResult<()> {
     use rayon::iter::ParallelIterator;
     pool.install(|| {
         let reused_values = Arc::new(SigHashReusedValuesSync::new());
-        (0..tx.tx.inputs.len())
+        (0..tx.inputs().len())
             .into_par_iter()
             .try_for_each(|idx| {
-                let tx = tx.as_verifiable();
                 let reused_values = reused_values.clone(); // Clone the Arc to share ownership
                 let (input, utxo) = tx.populated_input(idx);
-                let mut engine = TxScriptEngine::from_transaction_input(&tx, input, idx, utxo, &reused_values, sig_cache)?;
+                let mut engine = TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache)?;
                 engine.execute()
             })
             .map_err(TxRuleError::SignatureInvalid)
