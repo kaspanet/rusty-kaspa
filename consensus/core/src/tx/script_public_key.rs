@@ -393,7 +393,7 @@ impl TryCastFromJs for ScriptPublicKey {
                     let mut version_bytes = vec![0u8; 2];
                     faster_hex::hex_decode(version.as_bytes(), version_bytes.as_mut_slice())
                         .map_err(|err| CastError::custom(format!("Error decoding version: {err}")))?;
-                    u16::from_le_bytes(version_bytes.try_into().unwrap())
+                    u16::from_be_bytes(version_bytes.try_into().unwrap())
                 } else {
                     return Err(CastError::custom("Invalid version value '{version:?}'"));
                 };
