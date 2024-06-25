@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, SamplingMode};
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::processes::transaction_validator::transaction_validator_populated::{
-    check_scripts, check_scripts_par_iter, check_scripts_par_iter_thread, check_scripts_single_threaded,
+    check_scripts_par_iter, check_scripts_single_threaded,
 };
 use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync};
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
@@ -11,7 +11,6 @@ use kaspa_txscript::caches::Cache;
 use kaspa_txscript::pay_to_address_script;
 use rand::{thread_rng, Rng};
 use secp256k1::Keypair;
-use std::sync::Arc;
 
 // You may need to add more detailed mocks depending on your actual code.
 fn mock_tx(inputs_count: usize, non_uniq_signatures: usize) -> (Transaction, Vec<UtxoEntry>) {
@@ -51,11 +50,11 @@ fn mock_tx(inputs_count: usize, non_uniq_signatures: usize) -> (Transaction, Vec
             is_coinbase: false,
         });
     }
-    for i in 0..inputs_count - non_uniq_signatures {
+    for (i, kp) in kps.iter().enumerate().take(inputs_count - non_uniq_signatures) {
         let mut_tx = MutableTransaction::with_entries(&tx, utxos.clone());
         let sig_hash = calc_schnorr_signature_hash(&mut_tx.as_verifiable(), i, SIG_HASH_ALL, &reused_values);
         let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
-        let sig: [u8; 64] = *kps[i].sign_schnorr(msg).as_ref();
+        let sig: [u8; 64] = *kp.sign_schnorr(msg).as_ref();
         // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)
         tx.inputs[i].signature_script = std::iter::once(65u8).chain(sig).chain([SIG_HASH_ALL.to_u8()]).collect();
     }
@@ -89,11 +88,11 @@ fn benchmark_check_scripts(c: &mut Criterion) {
             });
 
             group.bench_function("rayon par iter", |b| {
-                let tx = Arc::new(MutableTransaction::with_entries(tx.clone(), utxos.clone()));
+                let tx = MutableTransaction::with_entries(tx.clone(), utxos.clone());
                 let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
                     cache.map.write().clear();
-                    check_scripts_par_iter(black_box(&cache), black_box(&tx)).unwrap();
+                    check_scripts_par_iter(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
                 })
             });
 

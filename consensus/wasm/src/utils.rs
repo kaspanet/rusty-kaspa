@@ -9,7 +9,7 @@ pub fn script_hashes(mut mutable_tx: tx::SignableTransaction) -> Result<Vec<kasp
         mutable_tx.tx.inputs[i].sig_op_count = 1;
     }
 
-    let mut reused_values = SigHashReusedValuesUnsync::new();
+    let reused_values = SigHashReusedValuesUnsync::new();
     for i in 0..mutable_tx.tx.inputs.len() {
         let sig_hash = calc_schnorr_signature_hash(&mutable_tx.as_verifiable(), i, SIG_HASH_ALL, &reused_values);
         list.push(sig_hash);

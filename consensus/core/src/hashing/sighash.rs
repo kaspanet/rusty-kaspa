@@ -674,7 +674,7 @@ mod tests {
                 }
             }
             let populated_tx = PopulatedTransaction::new(&tx, entries);
-            let mut reused_values = SigHashReusedValuesUnsync::new();
+            let reused_values = SigHashReusedValuesUnsync::new();
             assert_eq!(
                 calc_schnorr_signature_hash(&populated_tx, test.input_index, test.hash_type, &reused_values).to_string(),
                 test.expected_hash,
