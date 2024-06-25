@@ -385,15 +385,6 @@ impl TryCastFromJs for ScriptPublicKey {
 
                 let version = if let Ok(version) = version.try_as_u16() {
                     version
-                } else if let Some(version) = version.as_string() {
-                    if version.len() != 2 {
-                        return Err(CastError::custom("Invalid version data: must be a number or a 2-character hex string"));
-                    }
-
-                    let mut version_bytes = vec![0u8; 2];
-                    faster_hex::hex_decode(version.as_bytes(), version_bytes.as_mut_slice())
-                        .map_err(|err| CastError::custom(format!("Error decoding version: {err}")))?;
-                    u16::from_be_bytes(version_bytes.try_into().unwrap())
                 } else {
                     return Err(CastError::custom("Invalid version value '{version:?}'"));
                 };
