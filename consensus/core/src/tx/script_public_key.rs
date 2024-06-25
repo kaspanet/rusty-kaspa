@@ -14,6 +14,7 @@ use std::{
     collections::HashSet,
     str::{self, FromStr},
 };
+use js_sys::Object;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::prelude::*;
 
@@ -41,6 +42,7 @@ const TS_SCRIPT_PUBLIC_KEY: &'static str = r#"
  * @category Consensus
  */
 export interface IScriptPublicKey {
+    version : number;
     script: HexString;
 }
 "#;
@@ -376,6 +378,12 @@ impl TryCastFromJs for ScriptPublicKey {
         Self::resolve(&value, || {
             if let Some(hex_str) = value.as_ref().as_string() {
                 Ok(Self::from_str(&hex_str).map_err(CastError::custom)?)
+            // } else if let Some(object) = Object::try_from(value.as_ref()) {
+                // let version = object.get("version").ok_or_else(|| CastError::custom("Missing version"))?;
+                // let script = object.get("script").ok_or_else(|| CastError::custom("Missing script"))?;
+                // let version = version.as_f64().ok_or_else(|| CastError::custom("Invalid version"))? as u16;
+                // let script = script.as_string().ok_or_else(|| CastError::custom("Invalid script"))?;
+                // Ok(ScriptPublicKey::constructor(version, JsValue::from_str(script)).map_err(|_| CastError::custom("Invalid script"))?)
             } else {
                 Err(CastError::custom(format!("Unable to convert ScriptPublicKey from: {:?}", value.as_ref())))
             }
