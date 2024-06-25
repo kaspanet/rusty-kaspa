@@ -1,7 +1,8 @@
-use std::thread::available_parallelism;
 use criterion::{black_box, criterion_group, criterion_main, Criterion, SamplingMode};
 use kaspa_addresses::{Address, Prefix, Version};
-use kaspa_consensus::processes::transaction_validator::transaction_validator_populated::{check_scripts_par_iter, check_scripts_par_iter_thread, check_scripts_single_threaded};
+use kaspa_consensus::processes::transaction_validator::transaction_validator_populated::{
+    check_scripts_par_iter, check_scripts_par_iter_thread, check_scripts_single_threaded,
+};
 use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync};
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
 use kaspa_consensus_core::subnets::SubnetworkId;
@@ -10,6 +11,7 @@ use kaspa_txscript::caches::Cache;
 use kaspa_txscript::pay_to_address_script;
 use rand::{thread_rng, Rng};
 use secp256k1::Keypair;
+use std::thread::available_parallelism;
 
 // You may need to add more detailed mocks depending on your actual code.
 fn mock_tx(inputs_count: usize, non_uniq_signatures: usize) -> (Transaction, Vec<UtxoEntry>) {
@@ -104,8 +106,8 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                         b.iter(|| {
                             // Create a custom thread pool with the specified number of threads
                             cache.map.write().clear();
-                            check_scripts_par_iter_thread(black_box(&cache), black_box(&tx.as_verifiable()
-                            ), black_box(&pool)).unwrap();
+                            check_scripts_par_iter_thread(black_box(&cache), black_box(&tx.as_verifiable()), black_box(&pool))
+                                .unwrap();
                         })
                     });
                 }
