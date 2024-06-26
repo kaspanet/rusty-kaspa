@@ -1,5 +1,13 @@
 Latest online documentation available at: https://kaspa.aspectron.org/docs/
 
+### Latest Release
+
+- Fix issues with deserializing manually-created objects matching `IUtxoEntry` interface.
+- Allow arguments expecting ScriptPublicKey to receive `{ version, script }` object or a hex string.
+- Fix `Transaction::serializeToObject()` return type (now returning `ISerializeTransaction` interface).
+- Adding `setUserTransactionMaturityDAA()` and `setCoinbaseTransactionMaturityDAA()` that allow customizing
+the maturity DAA periods for user and coinbase transactions.
+
 ### Release 2024-06-12
 
 - Fix `PublicKeyGenerator::change_address_as_string()` that was returning the receive address.
@@ -10,7 +18,7 @@ Latest online documentation available at: https://kaspa.aspectron.org/docs/
 
 ### Release 2024-05-26
 
-- Adding utility functions:  `payToAddressScript`, `payToScriptHashScript`, `payToScriptHashSignatureScript`, `addressFromScriptPublicKey`, `isScriptPayToPubkey`, `isScriptPayToPubkeyECDSA`, `isScriptPayToScriptHash`.
+- Adding utility functions:  `payToAddressScript()`, `payToScriptHashScript()`, `payToScriptHashSignatureScript()`, `addressFromScriptPublicKey()`, `isScriptPayToPubkey()`, `isScriptPayToPubkeyECDSA()`, `isScriptPayToScriptHash()`.
 - Adding `UtxoProcessor::isActive` property to check if the processor is in active state (connected and running). This property can be used to validate the processor state before invoking it's functions (that can throw is the UtxoProcessor is offline).
 - Rename `UtxoContext::active` to `UtxoContext::isActive` for consistency.
 
