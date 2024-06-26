@@ -127,7 +127,7 @@ pub struct HeaderProcessor {
     pub(super) relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
     pub(super) reachability_store: Arc<RwLock<DbReachabilityStore>>,
     pub(super) reachability_relations_store: Arc<RwLock<DbRelationsStore>>,
-    pub(super) ghostdag_primary_store: Arc<DbGhostdagStore>,
+    pub(super) ghostdag_store: Arc<DbGhostdagStore>,
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
     pub(super) pruning_point_store: Arc<RwLock<DbPruningStore>>,
     pub(super) block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
@@ -138,7 +138,7 @@ pub struct HeaderProcessor {
     pub(super) depth_store: Arc<DbDepthStore>,
 
     // Managers and services
-    pub(super) ghostdag_primary_manager: DbGhostdagManager,
+    pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) dag_traversal_manager: DbDagTraversalManager,
     pub(super) window_manager: DbWindowManager,
     pub(super) depth_manager: DbBlockDepthManager,
@@ -178,7 +178,7 @@ impl HeaderProcessor {
             relations_stores: storage.relations_stores.clone(),
             reachability_store: storage.reachability_store.clone(),
             reachability_relations_store: storage.reachability_relations_store.clone(),
-            ghostdag_primary_store: storage.ghostdag_primary_store.clone(),
+            ghostdag_store: storage.ghostdag_store.clone(),
             statuses_store: storage.statuses_store.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
             daa_excluded_store: storage.daa_excluded_store.clone(),
@@ -188,7 +188,7 @@ impl HeaderProcessor {
             block_window_cache_for_difficulty: storage.block_window_cache_for_difficulty.clone(),
             block_window_cache_for_past_median_time: storage.block_window_cache_for_past_median_time.clone(),
 
-            ghostdag_primary_manager: services.ghostdag_primary_manager.clone(),
+            ghostdag_manager: services.ghostdag_manager.clone(),
             dag_traversal_manager: services.dag_traversal_manager.clone(),
             window_manager: services.window_manager.clone(),
             reachability_service: services.reachability_service.clone(),
@@ -349,10 +349,10 @@ impl HeaderProcessor {
     /// Runs the GHOSTDAG algorithm for all block levels and writes the data into the context (if hasn't run already)
     fn ghostdag(&self, ctx: &mut HeaderProcessingContext) {
         let ghostdag_data = self
-            .ghostdag_primary_store
+            .ghostdag_store
             .get_data(ctx.hash)
             .unwrap_option()
-            .unwrap_or_else(|| Arc::new(self.ghostdag_primary_manager.ghostdag(&ctx.known_parents[0])));
+            .unwrap_or_else(|| Arc::new(self.ghostdag_manager.ghostdag(&ctx.known_parents[0])));
         self.counters.mergeset_counts.fetch_add(ghostdag_data.mergeset_size() as u64, Ordering::Relaxed);
         ctx.ghostdag_data = Some(ghostdag_data);
     }
@@ -369,7 +369,7 @@ impl HeaderProcessor {
         //
 
         // This data might have been already written when applying the pruning proof.
-        self.ghostdag_primary_store.insert_batch(&mut batch, ctx.hash, ghostdag_primary_data).unwrap();
+        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_primary_data).unwrap();
 
         if let Some(window) = ctx.block_window_for_difficulty {
             self.block_window_cache_for_difficulty.insert(ctx.hash, window);
@@ -447,7 +447,7 @@ impl HeaderProcessor {
         // Create a DB batch writer
         let mut batch = WriteBatch::default();
 
-        self.ghostdag_primary_store.insert_batch(&mut batch, ctx.hash, ghostdag_data).unwrap_or_exists();
+        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_data).unwrap_or_exists();
 
         let mut relations_write = self.relations_stores.write();
         ctx.known_parents.into_iter().enumerate().for_each(|(level, parents_by_level)| {
@@ -487,7 +487,7 @@ impl HeaderProcessor {
             PruningPointInfo::from_genesis(self.genesis.hash),
             (0..=self.max_block_level).map(|_| BlockHashes::new(vec![ORIGIN])).collect(),
         );
-        ctx.ghostdag_data = Some(Arc::new(self.ghostdag_primary_manager.genesis_ghostdag_data()));
+        ctx.ghostdag_data = Some(Arc::new(self.ghostdag_manager.genesis_ghostdag_data()));
         ctx.mergeset_non_daa = Some(Default::default());
         ctx.merge_depth_root = Some(ORIGIN);
         ctx.finality_point = Some(ORIGIN);

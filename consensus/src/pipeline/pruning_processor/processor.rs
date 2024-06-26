@@ -280,7 +280,7 @@ impl PruningProcessor {
             let mut counter = 0;
             let mut batch = WriteBatch::default();
             for kept in keep_relations.iter().copied() {
-                let Some(ghostdag) = self.ghostdag_primary_store.get_data(kept).unwrap_option() else {
+                let Some(ghostdag) = self.ghostdag_store.get_data(kept).unwrap_option() else {
                     continue;
                 };
                 if ghostdag.unordered_mergeset().any(|h| !keep_relations.contains(&h)) {
@@ -292,7 +292,7 @@ impl PruningProcessor {
                         mutable_ghostdag.selected_parent = ORIGIN;
                     }
                     counter += 1;
-                    self.ghostdag_primary_store.update_batch(&mut batch, kept, &Arc::new(mutable_ghostdag.into())).unwrap();
+                    self.ghostdag_store.update_batch(&mut batch, kept, &Arc::new(mutable_ghostdag.into())).unwrap();
                 }
             }
             self.db.write(batch).unwrap();
@@ -413,7 +413,7 @@ impl PruningProcessor {
                         staging_level_relations.commit(&mut batch).unwrap();
                     });
 
-                    self.ghostdag_primary_store.delete_batch(&mut batch, current).unwrap_option();
+                    self.ghostdag_store.delete_batch(&mut batch, current).unwrap_option();
 
                     // Remove additional header related data
                     self.daa_excluded_store.delete_batch(&mut batch, current).unwrap();
