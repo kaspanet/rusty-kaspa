@@ -232,7 +232,7 @@ impl MassCalculator {
             mass_per_script_pub_key_byte: consensus_params.mass_per_script_pub_key_byte,
             mass_per_sig_op: consensus_params.mass_per_sig_op,
             storage_mass_parameter: consensus_params.storage_mass_parameter,
-            mass_combination_strategy: network_params.mass_combination_strategy,
+            mass_combination_strategy: network_params.mass_combination_strategy(),
         }
     }
 

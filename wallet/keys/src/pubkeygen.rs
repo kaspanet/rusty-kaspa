@@ -193,7 +193,7 @@ impl PublicKeyGenerator {
     #[wasm_bindgen(js_name=changeAddressAsString)]
     #[allow(non_snake_case)]
     pub fn change_address_as_string(&self, networkType: &NetworkTypeT, index: u32) -> Result<String> {
-        Ok(PublicKey::from(self.hd_wallet.receive_pubkey_manager().derive_pubkey(index)?)
+        Ok(PublicKey::from(self.hd_wallet.change_pubkey_manager().derive_pubkey(index)?)
             .to_address(networkType.try_into()?)?
             .to_string())
     }

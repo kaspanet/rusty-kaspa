@@ -123,6 +123,7 @@ impl WrpcService {
             rpc_handler.clone(),
             router.interface.clone(),
             Some(counters),
+            false,
         );
 
         WrpcService { options, server, rpc_handler, shutdown: SingleTrigger::default() }

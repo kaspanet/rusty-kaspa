@@ -640,7 +640,7 @@ impl Generator {
         if data.aggregate_mass
             + input_compute_mass
             + self.inner.standard_change_output_compute_mass
-            + self.inner.network_params.additional_compound_transaction_mass
+            + self.inner.network_params.additional_compound_transaction_mass()
             > MAXIMUM_STANDARD_TRANSACTION_MASS
         {
             // note, we've used input for mass boundary calc and now abandon it
@@ -648,7 +648,7 @@ impl Generator {
 
             context.utxo_stash.push_back(utxo_entry_reference);
             data.aggregate_mass +=
-                self.inner.standard_change_output_compute_mass + self.inner.network_params.additional_compound_transaction_mass;
+                self.inner.standard_change_output_compute_mass + self.inner.network_params.additional_compound_transaction_mass();
             data.transaction_fees = self.calc_relay_transaction_compute_fees(data);
             stage.aggregate_fees += data.transaction_fees;
             context.aggregate_fees += data.transaction_fees;
@@ -837,7 +837,7 @@ impl Generator {
                 let storage_mass_with_change = self.calc_storage_mass(data, output_harmonic_with_change);
 
                 if storage_mass_with_change == 0
-                    || (self.inner.network_params.mass_combination_strategy == MassCombinationStrategy::Max
+                    || (self.inner.network_params.mass_combination_strategy() == MassCombinationStrategy::Max
                         && storage_mass_with_change < compute_mass_with_change)
                 {
                     0
@@ -878,7 +878,7 @@ impl Generator {
 
         let compute_mass = data.aggregate_mass
             + self.inner.standard_change_output_compute_mass
-            + self.inner.network_params.additional_compound_transaction_mass;
+            + self.inner.network_params.additional_compound_transaction_mass();
         let compute_fees = calc.calc_minimum_transaction_fee_from_mass(compute_mass);
 
         // TODO - consider removing this as calculated storage mass should produce `0` value

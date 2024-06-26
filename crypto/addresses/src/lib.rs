@@ -512,6 +512,8 @@ extern "C" {
     pub type AddressOrStringArrayT;
     #[wasm_bindgen(extends = js_sys::Array, typescript_type = "Address[]")]
     pub type AddressArrayT;
+    #[wasm_bindgen(typescript_type = "Address | undefined")]
+    pub type AddressOrUndefinedT;
 }
 
 impl TryFrom<AddressOrStringArrayT> for Vec<Address> {

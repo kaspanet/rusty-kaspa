@@ -169,7 +169,7 @@ fn validate(pt: &PendingTransaction) {
     );
 
     let calc = MassCalculator::new(&pt.network_type().into(), network_params);
-    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass };
+    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass() };
     let compute_mass = calc.calc_mass_for_signed_transaction(&tx, 1);
 
     let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
@@ -199,7 +199,7 @@ where
 
     let pt_fees = pt.fees();
     let calc = MassCalculator::new(&pt.network_type().into(), network_params);
-    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass };
+    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass() };
 
     let compute_mass = calc.calc_mass_for_signed_transaction(&tx, 1);
 

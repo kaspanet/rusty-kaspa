@@ -37,7 +37,7 @@ export interface IHeader {
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(typescript_type = "IHeader | Header")]
-    pub type IHeader;
+    pub type HeaderT;
 }
 
 /// @category Consensus
@@ -64,7 +64,7 @@ impl Header {
 #[wasm_bindgen]
 impl Header {
     #[wasm_bindgen(constructor)]
-    pub fn constructor(js_value: IHeader) -> std::result::Result<Header, JsError> {
+    pub fn constructor(js_value: HeaderT) -> std::result::Result<Header, JsError> {
         Ok(js_value.try_into_owned()?)
     }
 

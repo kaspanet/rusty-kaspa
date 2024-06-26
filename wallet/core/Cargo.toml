@@ -74,6 +74,7 @@ kaspa-wallet-macros.workspace = true
 kaspa-wasm-core.workspace = true
 kaspa-wrpc-client.workspace = true
 kaspa-wrpc-wasm.workspace = true
+lazy_static.workspace = true
 md-5.workspace = true
 pad.workspace = true
 pbkdf2.workspace = true
@@ -125,5 +126,5 @@ serde_repr.workspace = true
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio.workspace = true
 
-[lints.clippy]
-empty_docs = "allow"
+[lints]
+workspace = true
