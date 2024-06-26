@@ -368,6 +368,7 @@ impl HeaderProcessor {
         // Append-only stores: these require no lock and hence done first in order to reduce locking time
         //
 
+        // This data might have been already written when applying the pruning proof.
         self.ghostdag_primary_store.insert_batch(&mut batch, ctx.hash, ghostdag_primary_data).unwrap();
 
         if let Some(window) = ctx.block_window_for_difficulty {

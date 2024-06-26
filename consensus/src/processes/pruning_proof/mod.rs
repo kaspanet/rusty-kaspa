@@ -268,8 +268,6 @@ impl PruningProofManager {
                 self.relations_stores.write()[level].insert(header.hash, parents.clone()).unwrap();
 
                 if level == 0 {
-                    // self.ghostdag_primary_store.insert(ORIGIN, self.ghostdag_primary_manager.origin_ghostdag_data()).unwrap();
-
                     let gd = if let Some(gd) = trusted_gd_map.get(&header.hash) {
                         gd.clone()
                     } else {
@@ -474,13 +472,13 @@ impl PruningProofManager {
     fn populate_stores_for_validate_pruning_point_proof(
         &self,
         proof: &PruningPointProof,
-        stores_and_processes: &mut TempProofContext,
+        ctx: &mut TempProofContext,
     ) -> PruningImportResult<Vec<Hash>> {
-        let headers_store = &stores_and_processes.headers_store;
-        let ghostdag_stores = &stores_and_processes.ghostdag_stores;
-        let mut relations_stores = stores_and_processes.relations_stores.clone();
-        let reachability_stores = &stores_and_processes.reachability_stores;
-        let ghostdag_managers = &stores_and_processes.ghostdag_managers;
+        let headers_store = &ctx.headers_store;
+        let ghostdag_stores = &ctx.ghostdag_stores;
+        let mut relations_stores = ctx.relations_stores.clone();
+        let reachability_stores = &ctx.reachability_stores;
+        let ghostdag_managers = &ctx.ghostdag_managers;
 
         let proof_pp_header = proof[0].last().expect("checked if empty");
         let proof_pp = proof_pp_header.hash;
@@ -741,7 +739,7 @@ impl PruningProofManager {
     }
 
     fn estimated_blue_depth_at_level_0(&self, level: BlockLevel, level_depth: u64, current_dag_level: BlockLevel) -> u64 {
-        level_depth << current_dag_level.saturating_sub(level)
+        level_depth.checked_shl(level.saturating_sub(current_dag_level) as u32).unwrap_or(level_depth)
     }
 
     /// selected parent at level = the parent of the header at the level
@@ -792,6 +790,7 @@ impl PruningProofManager {
         &self,
         pp_header: &HeaderWithBlockLevel,
         level: BlockLevel,
+        current_dag_level: BlockLevel,
         required_block: Option<Hash>,
         temp_db: Arc<DB>,
     ) -> PruningProofManagerInternalResult<(Arc<DbGhostdagStore>, Hash, Hash)> {
@@ -807,16 +806,15 @@ impl PruningProofManager {
 
         let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize); // TODO: We can probably reduce cache size
         let required_level_depth = 2 * self.pruning_proof_m;
-        let mut required_level_0_depth = required_level_depth;
-        // let mut required_level_0_depth = if level == 0 {
-        //     required_level_depth
-        // } else {
-        //     self.estimated_blue_depth_at_level_0(
-        //         level,
-        //         required_level_depth * 5 / 4, // We take a safety margin
-        //         current_dag_level,
-        //     )
-        // };
+        let mut required_level_0_depth = if level == 0 {
+            required_level_depth
+        } else {
+            self.estimated_blue_depth_at_level_0(
+                level,
+                required_level_depth * 5 / 4, // We take a safety margin
+                current_dag_level,
+            )
+        };
 
         let mut tries = 0;
         loop {
@@ -957,7 +955,7 @@ impl PruningProofManager {
                 break Ok((ghostdag_store, selected_tip, root));
             }
             required_level_0_depth <<= 1;
-            trace!("Failed to find sufficient root for level {level} after {tries} tries. Retrying again to find with depth {required_level_0_depth}");
+            warn!("Failed to find sufficient root for level {level} after {tries} tries. Retrying again to find with depth {required_level_0_depth}");
         }
     }
 
@@ -966,6 +964,7 @@ impl PruningProofManager {
         pp_header: &HeaderWithBlockLevel,
         temp_db: Arc<DB>,
     ) -> (Vec<Arc<DbGhostdagStore>>, Vec<Hash>, Vec<Hash>) {
+        let current_dag_level = self.find_current_dag_level(&pp_header.header);
         let mut ghostdag_stores: Vec<Option<Arc<DbGhostdagStore>>> = vec![None; self.max_block_level as usize + 1];
         let mut selected_tip_by_level = vec![None; self.max_block_level as usize + 1];
         let mut root_by_level = vec![None; self.max_block_level as usize + 1];
@@ -982,7 +981,7 @@ impl PruningProofManager {
                 None
             };
             let (store, selected_tip, root) = self
-                .find_sufficient_root(pp_header, level, required_block, temp_db.clone())
+                .find_sufficient_root(pp_header, level, current_dag_level, required_block, temp_db.clone())
                 .unwrap_or_else(|_| panic!("find_sufficient_root failed for level {level}"));
             ghostdag_stores[level_usize] = Some(store);
             selected_tip_by_level[level_usize] = Some(selected_tip);

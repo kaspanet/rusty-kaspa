@@ -411,10 +411,9 @@ impl PruningProcessor {
                         let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[level]);
                         relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
                         staging_level_relations.commit(&mut batch).unwrap();
-                        if level == 0 {
-                            self.ghostdag_primary_store.delete_batch(&mut batch, current).unwrap_option();
-                        }
                     });
+
+                    self.ghostdag_primary_store.delete_batch(&mut batch, current).unwrap_option();
 
                     // Remove additional header related data
                     self.daa_excluded_store.delete_batch(&mut batch, current).unwrap();
@@ -457,7 +456,7 @@ impl PruningProcessor {
         );
 
         if self.config.enable_sanity_checks {
-            // self.assert_proof_rebuilding(proof, new_pruning_point);
+            self.assert_proof_rebuilding(proof.clone(), new_pruning_point);
             self.pruning_proof_manager.validate_pruning_point_proof(&proof).unwrap();
             self.assert_data_rebuilding(data, new_pruning_point);
         }
