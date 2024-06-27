@@ -807,7 +807,7 @@ impl PruningProofManager {
         let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize); // TODO: We can probably reduce cache size
         let required_level_depth = 2 * self.pruning_proof_m;
         let mut required_level_0_depth = if level == 0 {
-            required_level_depth
+            required_level_depth + 100 // smaller safety margin
         } else {
             self.estimated_blue_depth_at_level_0(
                 level,
@@ -1035,6 +1035,8 @@ impl PruningProofManager {
                 } else {
                     block_at_depth_2m
                 };
+
+                // new root is expected to be always an ancestor of old root because new root takes a safety margin
                 assert!(self.reachability_service.is_dag_ancestor_of(root, old_root));
 
                 let mut headers = Vec::with_capacity(2 * self.pruning_proof_m as usize);
