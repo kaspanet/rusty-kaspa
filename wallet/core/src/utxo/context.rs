@@ -346,7 +346,7 @@ impl UtxoContext {
                 } else {
                     remove_mature_ids.push(id);
                 }
-            } else {
+            } else if context.outgoing.get(&utxo.transaction_id()).is_none() {
                 log_error!("Error: UTXO not found in UtxoContext map!");
             }
         }
@@ -482,19 +482,25 @@ impl UtxoContext {
         // the final payments (not compound transactions)
         // and outgoing transactions that have not yet
         // been accepted
+        let mut outgoing_without_batch_tx = 0;
         let mut outgoing: u64 = 0;
         let mut consumed: u64 = 0;
-        for tx in context.outgoing.values() {
-            if !tx.is_accepted() {
-                if let Some(payment_value) = tx.payment_value() {
+
+        let transactions = context.outgoing.values().filter(|tx| !tx.is_accepted());
+        for tx in transactions {
+            if let Some(payment_value) = tx.payment_value() {
+                consumed += tx.aggregate_input_value();
+                if tx.is_batch() {
+                    outgoing += tx.fees() + tx.aggregate_output_value();
+                } else {
                     // final tx
                     outgoing += tx.fees() + payment_value;
-                    consumed += tx.aggregate_input_value();
-                } else {
-                    // compound tx has no payment value
-                    outgoing += tx.fees() + tx.aggregate_output_value();
-                    consumed += tx.aggregate_input_value()
+                    outgoing_without_batch_tx += payment_value;
                 }
+            } else {
+                // compound tx has no payment value
+                outgoing += tx.fees() + tx.aggregate_output_value();
+                consumed += tx.aggregate_input_value();
             }
         }
 
@@ -502,13 +508,12 @@ impl UtxoContext {
         // this condition does not occur. This is a temporary
         // log for a fixed bug, but we want to keep the check
         // just in case.
-        if mature + consumed < outgoing {
-            log_error!("Error: outgoing transaction value exceeds available balance");
+        if consumed < outgoing {
+            log_error!("Error: outgoing transaction value exceeds available balance, mature: {mature}, consumed: {consumed}, outgoing: {outgoing}");
         }
 
         let mature = (mature + consumed).saturating_sub(outgoing);
-
-        Balance::new(mature, pending, outgoing, context.mature.len(), context.pending.len(), context.stasis.len())
+        Balance::new(mature, pending, outgoing_without_batch_tx, context.mature.len(), context.pending.len(), context.stasis.len())
     }
 
     pub(crate) async fn handle_utxo_added(&self, utxos: Vec<UtxoEntryReference>, current_daa_score: u64) -> Result<()> {
@@ -527,12 +532,14 @@ impl UtxoContext {
             let force_maturity_if_outgoing = outgoing_transaction.is_some();
             let is_coinbase_stasis =
                 utxos.first().map(|utxo| matches!(utxo.maturity(&params, current_daa_score), Maturity::Stasis)).unwrap_or_default();
-
-            for utxo in utxos.iter() {
-                if let Err(err) = self.insert(utxo.clone(), current_daa_score, force_maturity_if_outgoing).await {
-                    // TODO - remove `Result<>` from insert at a later date once
-                    // we are confident that the insert will never result in an error.
-                    log_error!("{}", err);
+            let is_batch = outgoing_transaction.as_ref().map_or_else(|| false, |tx| tx.is_batch());
+            if !is_batch {
+                for utxo in utxos.iter() {
+                    if let Err(err) = self.insert(utxo.clone(), current_daa_score, force_maturity_if_outgoing).await {
+                        // TODO - remove `Result<>` from insert at a later date once
+                        // we are confident that the insert will never result in an error.
+                        log_error!("{}", err);
+                    }
                 }
             }
 
