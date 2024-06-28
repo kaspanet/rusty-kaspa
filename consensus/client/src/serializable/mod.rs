@@ -30,7 +30,7 @@ export interface ISerializableTransactionInput {
     index: number;
     sequence: bigint;
     sigOpCount: number;
-    signatureScript: HexString;
+    signatureScript?: HexString;
     utxo: ISerializableUtxoEntry;
 }
 

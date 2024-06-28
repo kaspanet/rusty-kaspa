@@ -31,7 +31,7 @@ cfg_if::cfg_if! {
                 let inner = tx_input.inner();
                 RpcTransactionInput {
                     previous_outpoint: inner.previous_outpoint.clone().into(),
-                    signature_script: inner.signature_script.clone(),
+                    signature_script: inner.signature_script.clone().unwrap_or_default(),
                     sequence: inner.sequence,
                     sig_op_count: inner.sig_op_count,
                     verbose_data: None,

@@ -199,7 +199,7 @@ impl Transaction {
     pub fn set_outputs_from_js_array(&mut self, js_value: &JsValue) {
         let outputs = Array::from(js_value)
             .iter()
-            .map(|js_value| TransactionOutput::try_from(&js_value).unwrap_or_else(|err| panic!("invalid transaction output: {err}")))
+            .map(|js_value| TryCastFromJs::try_owned_from(&js_value).unwrap_or_else(|err| panic!("invalid transaction output: {err}")))
             .collect::<Vec<_>>();
         self.inner().outputs = outputs;
     }
@@ -285,7 +285,7 @@ impl TryCastFromJs for Transaction {
                     let outputs: Vec<TransactionOutput> = object
                         .get_vec("outputs")?
                         .iter()
-                        .map(|jsv| jsv.try_into())
+                        .map(TryCastFromJs::try_owned_from)
                         .collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?;
                     Transaction::new(id, version, inputs, outputs, lock_time, subnetwork_id, gas, payload).map(Into::into)
                 }
@@ -342,7 +342,13 @@ impl Transaction {
             .map(|input| {
                 let previous_outpoint: TransactionOutpoint = input.previous_outpoint.into();
                 let utxo = utxos.get(previous_outpoint.id()).cloned();
-                TransactionInput::new(previous_outpoint, input.signature_script.clone(), input.sequence, input.sig_op_count, utxo)
+                TransactionInput::new(
+                    previous_outpoint,
+                    Some(input.signature_script.clone()),
+                    input.sequence,
+                    input.sig_op_count,
+                    utxo,
+                )
             })
             .collect::<Vec<TransactionInput>>();
         let outputs: Vec<TransactionOutput> = tx.outputs.iter().map(|output| output.into()).collect::<Vec<TransactionOutput>>();
