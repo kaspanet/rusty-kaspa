@@ -1,4 +1,6 @@
 use borsh::{BorshDeserialize, BorshSerialize};
+#[cfg(feature = "py-sdk")]
+use pyo3::{exceptions::PyException, prelude::*};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
 use std::fmt::{Display, Formatter};
@@ -193,6 +195,7 @@ pub type PayloadVec = SmallVec<[u8; PAYLOAD_VECTOR_SIZE]>;
 /// Kaspa `Address` struct that serializes to and from an address format string: `kaspa:qz0s...t8cv`.
 /// @category Address
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, CastFromJs)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen(inspectable)]
 pub struct Address {
     #[wasm_bindgen(skip)]
@@ -222,6 +225,7 @@ impl Address {
     }
 }
 
+// PY-NOTE: WASM specific fn implementations
 #[wasm_bindgen]
 impl Address {
     #[wasm_bindgen(constructor)]
@@ -233,28 +237,38 @@ impl Address {
     pub fn validate(address: &str) -> bool {
         Self::try_from(address).is_ok()
     }
+}
 
+// PY-NOTE: fns exposed to both WASM and Python
+#[cfg_attr(feature = "py-sdk", pymethods)]
+#[wasm_bindgen]
+impl Address {
+    // PY-NOTE: want to use `#[pyo3(name = "to_string")]` for this fn, but cannot use #[pyo3()] in block where pymethods is applied via cfg_attr
     /// Convert an address to a string.
     #[wasm_bindgen(js_name = toString)]
     pub fn address_to_string(&self) -> String {
         self.into()
     }
 
+    // PY-NOTE: want to use `#[pyo3(name = "version")]` for this fn, but cannot use #[pyo3()] in block where pymethods is applied via cfg_attr
     #[wasm_bindgen(getter, js_name = "version")]
     pub fn version_to_string(&self) -> String {
         self.version.to_string()
     }
 
+    // PY-NOTE: want to use `#[pyo3(name = "prefix")]` for this fn, but cannot use #[pyo3()] in block where pymethods is applied via cfg_attr
     #[wasm_bindgen(getter, js_name = "prefix")]
     pub fn prefix_to_string(&self) -> String {
         self.prefix.to_string()
     }
 
+    // PY-NOTE: want to use `#[pyo3(name = "set_prefix")]` for this fn, but cannot use #[pyo3()] in block where pymethods is applied via cfg_attr
     #[wasm_bindgen(setter, js_name = "setPrefix")]
     pub fn set_prefix_from_str(&mut self, prefix: &str) {
         self.prefix = Prefix::try_from(prefix).unwrap_or_else(|err| panic!("Address::prefix() - invalid prefix `{prefix}`: {err}"));
     }
 
+    // PY-NOTE: want to use `#[pyo3(name = "payload")]` for this fn, but cannot use #[pyo3()] in block where pymethods is applied via cfg_attr
     #[wasm_bindgen(getter, js_name = "payload")]
     pub fn payload_to_string(&self) -> String {
         self.encode_payload()
@@ -264,6 +278,24 @@ impl Address {
         let payload = self.encode_payload();
         let n = std::cmp::min(n, payload.len() / 4);
         format!("{}:{}....{}", self.prefix, &payload[0..n], &payload[payload.len() - n..])
+    }
+}
+
+// PY-NOTE: Python specific fn implementations
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl Address {
+    // PY-NOTE: #[new] can only be used in block that has #[pymethods] applied directly. applying via #[cfg_attr()] does not work (PyO3 limitation).
+    #[new]
+    pub fn constructor_py(address: &str) -> Address {
+        address.try_into().unwrap_or_else(|err| panic!("Address::constructor() - address error `{}`: {err}", address))
+    }
+
+    // PY-NOTE: #[pyo3()] and #[staticmethod] can only be used in block that has #[pymethods] applied directly. applying via #[cfg_attr()] does not work (PyO3 limitation).
+    #[pyo3(name = "validate")]
+    #[staticmethod]
+    pub fn validate_py(address: &str) -> bool {
+        Self::try_from(address).is_ok()
     }
 }
 
@@ -511,6 +543,13 @@ impl TryCastFromJs for Address {
                 Err(AddressError::InvalidAddress)
             }
         })
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+impl From<AddressError> for PyErr {
+    fn from(value: AddressError) -> PyErr {
+        PyException::new_err(value.to_string())
     }
 }
 

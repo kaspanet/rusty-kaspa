@@ -11,6 +11,9 @@ repository.workspace = true
 
 [features]
 default = []
+py-sdk = [
+    "pyo3",
+]
 
 [lib]
 crate-type = ["cdylib", "lib"]
@@ -18,6 +21,7 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 async-trait.workspace = true
 borsh.workspace = true
+cfg-if.workspace = true
 downcast.workspace = true
 faster-hex.workspace = true
 hmac.workspace = true
@@ -29,6 +33,7 @@ kaspa-txscript-errors.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 kaspa-wasm-core.workspace = true
+pyo3 = { workspace = true, optional = true } 
 rand.workspace = true
 ripemd.workspace = true
 secp256k1.workspace = true

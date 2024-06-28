@@ -18,6 +18,8 @@ pub use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, ExtendedPublicKey, Secret
 pub use kaspa_consensus_core::network::{NetworkId, NetworkTypeT};
 pub use kaspa_utils::hex::*;
 pub use kaspa_wasm_core::types::*;
+#[cfg(feature = "py-sdk")]
+pub use pyo3::prelude::*;
 pub use serde::{Deserialize, Serialize};
 pub use std::collections::HashMap;
 pub use std::str::FromStr;
