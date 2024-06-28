@@ -3623,6 +3623,7 @@ name = "kaspa-wallet-pskt"
 version = "0.14.1"
 dependencies = [
  "derive_builder",
+ "js-sys",
  "kaspa-bip32",
  "kaspa-consensus-client",
  "kaspa-consensus-core",
@@ -3632,9 +3633,12 @@ dependencies = [
  "secp256k1",
  "serde",
  "serde-value",
+ "serde-wasm-bindgen",
  "serde_json",
  "serde_repr",
  "thiserror",
+ "wasm-bindgen",
+ "workflow-wasm",
 ]
 
 [[package]]
