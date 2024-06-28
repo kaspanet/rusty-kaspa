@@ -19,10 +19,7 @@ impl Parse for RpcTable {
     fn parse(input: ParseStream) -> Result<Self> {
         let parsed = Punctuated::<Expr, Token![,]>::parse_terminated(input).unwrap();
         if parsed.len() != 2 {
-            return Err(Error::new_spanned(
-                parsed,
-                "usage: build_wrpc_client_interface!(interface, RpcApiOps,[getInfo, ..])".to_string(),
-            ));
+            return Err(Error::new_spanned(parsed, "usage: build_wrpc_client_interface!(RpcApiOps,[getInfo, ..])".to_string()));
         }
 
         let mut iter = parsed.iter();

@@ -1,4 +1,6 @@
 use kaspa_rpc_core::api::rpc::RpcApi;
+use kaspa_rpc_core::model::*;
+use kaspa_rpc_macros::build_wrpc_python_interface;
 use kaspa_wrpc_client::{
     client::{ConnectOptions, ConnectStrategy},
     KaspaRpcClient, WrpcEncoding,
@@ -71,3 +73,47 @@ impl RpcClient {
         Python::with_gil(|py| Ok(py_fut.into_py(py)))
     }
 }
+
+#[pymethods]
+impl RpcClient {
+    fn is_connected_test(&self) -> bool {
+        self.inner.is_connected()
+    }
+}
+
+build_wrpc_python_interface!([
+    AddPeer,
+    Ban,
+    EstimateNetworkHashesPerSecond,
+    GetBalanceByAddress,
+    GetBalancesByAddresses,
+    GetBlock,
+    GetBlockCount,
+    GetBlockDagInfo,
+    GetBlocks,
+    GetBlockTemplate,
+    GetCoinSupply,
+    GetConnectedPeerInfo,
+    GetDaaScoreTimestampEstimate,
+    GetServerInfo,
+    GetCurrentNetwork,
+    GetHeaders,
+    GetInfo,
+    GetMempoolEntries,
+    GetMempoolEntriesByAddresses,
+    GetMempoolEntry,
+    GetPeerAddresses,
+    GetMetrics,
+    GetSink,
+    GetSyncStatus,
+    GetSubnetwork,
+    GetUtxosByAddresses,
+    GetSinkBlueScore,
+    GetVirtualChainFromBlock,
+    Ping,
+    ResolveFinalityConflict,
+    Shutdown,
+    SubmitBlock,
+    SubmitTransaction,
+    Unban,
+]);

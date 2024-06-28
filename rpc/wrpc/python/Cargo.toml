@@ -20,6 +20,7 @@ py-sdk = [
 cfg-if.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-rpc-core.workspace = true
+kaspa-rpc-macros.workspace = true
 kaspa-wrpc-client.workspace = true
 pyo3.workspace = true
 pyo3-asyncio-0-21.workspace = true

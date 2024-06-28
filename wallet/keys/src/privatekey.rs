@@ -91,6 +91,13 @@ impl PrivateKey {
         use kaspa_utils::hex::ToHex;
         self.secret_bytes().to_vec().to_hex()
     }
+
+    // TODO-PY
+    // Generate a [`Keypair`] from this [`PrivateKey`].
+    // #[wasm_bindgen(js_name = toKeypair)]
+    // pub fn to_keypair(&self) -> Result<Keypair, JsError> {
+    //     Keypair::from_private_key(self)
+    // }
 }
 
 // PY-NOTE: Python specific fn implementations
