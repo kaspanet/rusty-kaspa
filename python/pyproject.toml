@@ -1,0 +1,24 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "kaspapy"
+version = "0.0.1"
+description = "Kaspa Python Bindings"
+license = "ISC"
+# readme = "README.md"
+# documentation = "https://your_documentation_link"
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Rust",
+]
+dependencies = []
+
+[package.metadata.maturin]
+name = "kaspapy"
+description = "Kaspa Python Bindings"
+
+[tool.maturin]
+name = "kaspapy"
+# python-source = "python"

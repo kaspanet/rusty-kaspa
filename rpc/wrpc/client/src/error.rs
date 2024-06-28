@@ -1,3 +1,5 @@
+#[cfg(feature = "py-sdk")]
+use pyo3::{exceptions::PyException, prelude::PyErr};
 use thiserror::Error;
 use wasm_bindgen::JsError;
 use wasm_bindgen::JsValue;
@@ -111,6 +113,13 @@ impl From<Error> for JsValue {
             Error::JsValue(err) => err.as_ref().into(),
             _ => JsValue::from(value.to_string()),
         }
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+impl From<Error> for PyErr {
+    fn from(value: Error) -> Self {
+        PyException::new_err(value.to_string())
     }
 }
 

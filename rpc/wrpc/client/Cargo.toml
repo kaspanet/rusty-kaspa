@@ -11,6 +11,7 @@ repository.workspace = true
 
 [features]
 wasm32-sdk = ["kaspa-consensus-wasm/wasm32-sdk","kaspa-rpc-core/wasm32-sdk","workflow-rpc/wasm32-sdk"]
+py-sdk = ["pyo3"]
 default = []
 
 [lib]
@@ -30,6 +31,7 @@ kaspa-notify.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-rpc-macros.workspace = true
 paste.workspace = true
+pyo3 = { workspace = true, optional = true }
 rand.workspace = true
 regex.workspace = true
 serde_json.workspace = true

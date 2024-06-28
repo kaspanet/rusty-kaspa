@@ -40,6 +40,7 @@ members = [
     "rpc/wrpc/server",
     "rpc/wrpc/client",
     "rpc/wrpc/proxy",
+    "rpc/wrpc/python",
     "rpc/wrpc/wasm",
     "rpc/wrpc/examples/subscriber",
     "mining",
@@ -59,6 +60,7 @@ members = [
     "metrics/core",
     "metrics/perf_monitor",
     "utils/alloc",
+    "python",
 ]
 
 [workspace.package]
@@ -113,6 +115,7 @@ kaspa-p2p-flows = { version = "0.14.1", path = "protocol/flows" }
 kaspa-p2p-lib = { version = "0.14.1", path = "protocol/p2p" }
 kaspa-perf-monitor = { version = "0.14.1", path = "metrics/perf_monitor" }
 kaspa-pow = { version = "0.14.1", path = "consensus/pow" }
+kaspa-python = { version = "0.14.1", path = "python" }
 kaspa-rpc-core = { version = "0.14.1", path = "rpc/core" }
 kaspa-rpc-macros = { version = "0.14.1", path = "rpc/macros" }
 kaspa-rpc-service = { version = "0.14.1", path = "rpc/service" }
@@ -132,6 +135,7 @@ kaspa-wasm-core = { version = "0.14.1", path = "wasm/core" }
 kaspa-wrpc-client = { version = "0.14.1", path = "rpc/wrpc/client" }
 kaspa-wrpc-core = { version = "0.14.1", path = "rpc/wrpc/core" }
 kaspa-wrpc-proxy = { version = "0.14.1", path = "rpc/wrpc/proxy" }
+kaspa-wrpc-python = { version = "0.14.1", path = "rpc/wrpc/python" }
 kaspa-wrpc-server = { version = "0.14.1", path = "rpc/wrpc/server" }
 kaspa-wrpc-wasm = { version = "0.14.1", path = "rpc/wrpc/wasm" }
 kaspa-wrpc-example-subscriber = { version = "0.14.1", path = "rpc/wrpc/examples/subscriber" }
@@ -211,6 +215,8 @@ paste = "1.0.14"
 pbkdf2 = "0.12.2"
 portable-atomic = { version = "1.5.1", features = ["float"] }
 prost = "0.12.1"
+pyo3 = { version = "0.21.0", features = ["extension-module", "multiple-pymethods"] }
+pyo3-asyncio-0-21 = { version = "0.21", features = ["attributes", "tokio-runtime"] }
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 rand_core = { version = "0.6.4", features = ["std"] }
