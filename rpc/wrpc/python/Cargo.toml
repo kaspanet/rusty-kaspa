@@ -22,6 +22,7 @@ kaspa-consensus-core.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-rpc-macros.workspace = true
 kaspa-wrpc-client.workspace = true
+kaspa-python-macros.workspace = true
 pyo3.workspace = true
 pyo3-asyncio-0-21.workspace = true
 serde_json.workspace = true
