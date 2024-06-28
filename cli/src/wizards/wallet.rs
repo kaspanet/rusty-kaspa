@@ -8,6 +8,9 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
     let term = ctx.term();
     let wallet = ctx.wallet();
 
+    let guard = ctx.wallet().guard();
+    let guard = guard.lock().await;
+
     // TODO @aspect
     let word_count = WordCount::Words12;
 
@@ -173,8 +176,8 @@ pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_
     term.writeln(style(receive_address).blue().to_string());
     term.writeln("");
 
-    wallet.open(&wallet_secret, name.map(String::from), WalletOpenArgs::default_with_legacy_accounts()).await?;
-    wallet.activate_accounts(None).await?;
+    wallet.open(&wallet_secret, name.map(String::from), WalletOpenArgs::default_with_legacy_accounts(), &guard).await?;
+    wallet.activate_accounts(None, &guard).await?;
 
     Ok(())
 }

@@ -17,6 +17,7 @@ pub use crate::tx::{Fees, PaymentDestination, PaymentOutput, PaymentOutputs};
 pub use crate::utxo::balance::{Balance, BalanceStrings};
 pub use crate::wallet::args::*;
 pub use crate::wallet::Wallet;
+pub use async_std::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
 pub use kaspa_addresses::{Address, Prefix as AddressPrefix};
 pub use kaspa_bip32::{Language, Mnemonic, WordCount};
 pub use kaspa_wallet_keys::secret::Secret;

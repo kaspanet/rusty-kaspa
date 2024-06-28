@@ -311,7 +311,9 @@ impl KaspaCli {
                                 Events::SyncState { sync_state } => {
 
                                     if sync_state.is_synced() && this.wallet().is_open() {
-                                        if let Err(error) = this.wallet().reload(false).await {
+                                        let guard = this.wallet().guard();
+                                        let guard = guard.lock().await;
+                                        if let Err(error) = this.wallet().reload(false, &guard).await {
                                             terrorln!(this, "Unable to reload wallet: {error}");
                                         }
                                     }
@@ -383,8 +385,11 @@ impl KaspaCli {
                                     record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
+                                        let guard = this.wallet.guard();
+                                        let guard = guard.lock().await;
+
                                         let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_transaction_with_state(&this.wallet,Some("reorg"),include_utxos).await;
+                                        let tx = record.format_transaction_with_state(&this.wallet,Some("reorg"),include_utxos, &guard).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
@@ -393,8 +398,11 @@ impl KaspaCli {
                                 } => {
                                     // Pending and coinbase stasis fall under the same `Track` category
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
+                                        let guard = this.wallet.guard();
+                                        let guard = guard.lock().await;
+
                                         let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_transaction_with_state(&this.wallet,Some("stasis"),include_utxos).await;
+                                        let tx = record.format_transaction_with_state(&this.wallet,Some("stasis"),include_utxos, &guard).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
@@ -411,8 +419,11 @@ impl KaspaCli {
                                     record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
+                                        let guard = this.wallet.guard();
+                                        let guard = guard.lock().await;
+
                                         let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_transaction_with_state(&this.wallet,Some("pending"),include_utxos).await;
+                                        let tx = record.format_transaction_with_state(&this.wallet,Some("pending"),include_utxos, &guard).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
@@ -420,8 +431,11 @@ impl KaspaCli {
                                     record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
+                                        let guard = this.wallet.guard();
+                                        let guard = guard.lock().await;
+
                                         let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_transaction_with_state(&this.wallet,Some("confirmed"),include_utxos).await;
+                                        let tx = record.format_transaction_with_state(&this.wallet,Some("confirmed"),include_utxos, &guard).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
@@ -532,6 +546,9 @@ impl KaspaCli {
     }
 
     async fn select_account_with_args(&self, autoselect: bool) -> Result<Arc<dyn Account>> {
+        let guard = self.wallet.guard();
+        let guard = guard.lock().await;
+
         let mut selection = None;
 
         let mut list_by_key = Vec::<(Arc<PrvKeyDataInfo>, Vec<(usize, Arc<dyn Account>)>)>::new();
@@ -540,7 +557,7 @@ impl KaspaCli {
         let mut keys = self.wallet.keys().await?;
         while let Some(key) = keys.try_next().await? {
             let mut prv_key_accounts = Vec::new();
-            let mut accounts = self.wallet.accounts(Some(key.id)).await?;
+            let mut accounts = self.wallet.accounts(Some(key.id), &guard).await?;
             while let Some(account) = accounts.next().await {
                 let account = account?;
                 prv_key_accounts.push((flat_list.len(), account.clone()));
@@ -643,12 +660,16 @@ impl KaspaCli {
     }
 
     pub async fn list(&self) -> Result<()> {
+        let guard = self.wallet.guard();
+        let guard = guard.lock().await;
+
         let mut keys = self.wallet.keys().await?;
 
         tprintln!(self);
         while let Some(key) = keys.try_next().await? {
             tprintln!(self, "• {}", style(&key).dim());
-            let mut accounts = self.wallet.accounts(Some(key.id)).await?;
+
+            let mut accounts = self.wallet.accounts(Some(key.id), &guard).await?;
             while let Some(account) = accounts.try_next().await? {
                 let receive_address = account.receive_address()?;
                 tprintln!(self, "    • {}", account.get_list_string()?);
