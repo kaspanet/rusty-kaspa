@@ -42,7 +42,7 @@ impl ToTokens for RpcTable {
                 impl RpcClient {
                     fn #fn_call(&self, py: Python) -> PyResult<Py<PyAny>> {
                         // Returns result as JSON string
-                        let client = self.inner.clone();
+                        let client = self.client.clone();
 
                         // TODO - receive argument from Python and deserialize it
                         // explore https://docs.rs/serde-pyobject/latest/serde_pyobject/ for arg intake / return

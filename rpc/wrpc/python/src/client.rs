@@ -1,3 +1,4 @@
+use kaspa_python_macros::py_async;
 use kaspa_rpc_core::api::rpc::RpcApi;
 use kaspa_rpc_core::model::*;
 use kaspa_rpc_macros::build_wrpc_python_interface;
@@ -5,12 +6,13 @@ use kaspa_wrpc_client::{
     client::{ConnectOptions, ConnectStrategy},
     KaspaRpcClient, WrpcEncoding,
 };
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::time::Duration;
 
 #[pyclass]
 pub struct RpcClient {
-    inner: KaspaRpcClient,
+    client: KaspaRpcClient,
     // url: String,
     // encoding: Option<WrpcEncoding>,
     // verbose : Option<bool>,
@@ -34,7 +36,7 @@ impl RpcClient {
             client.connect(Some(options)).await.map_err(|e| pyo3::exceptions::PyException::new_err(e.to_string()))?;
 
             Python::with_gil(|py| {
-                Py::new(py, RpcClient { inner: client })
+                Py::new(py, RpcClient { client })
                     .map(|py_rpc_client| py_rpc_client.into_py(py))
                     .map_err(|e| pyo3::exceptions::PyException::new_err(e.to_string()))
             })
@@ -42,15 +44,15 @@ impl RpcClient {
     }
 
     fn is_connected(&self) -> bool {
-        self.inner.is_connected()
+        self.client.is_connected()
     }
 
     fn get_server_info(&self, py: Python) -> PyResult<Py<PyAny>> {
         // Returns result as JSON string
-        let inner = self.inner.clone();
+        let client = self.client.clone();
 
         let fut = async move {
-            let r = inner.get_server_info().await?;
+            let r = client.get_server_info().await?;
             serde_json::to_string(&r).map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
         };
 
@@ -59,25 +61,33 @@ impl RpcClient {
         Python::with_gil(|py| Ok(py_fut.into_py(py)))
     }
 
+    // fn get_block_dag_info(&self, py: Python) -> PyResult<Py<PyAny>> {
+    //     // Returns result as JSON string
+    //     let client = self.client.clone();
+
+    //     let fut = async move {
+    //         let r = client.get_block_dag_info().await?;
+    //         serde_json::to_string(&r).map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
+    //     };
+
+    //     let py_fut = pyo3_asyncio_0_21::tokio::future_into_py(py, fut)?;
+
+    //     Python::with_gil(|py| Ok(py_fut.into_py(py)))
+    // }
+
     fn get_block_dag_info(&self, py: Python) -> PyResult<Py<PyAny>> {
-        // Returns result as JSON string
-        let inner = self.inner.clone();
-
-        let fut = async move {
-            let r = inner.get_block_dag_info().await?;
-            serde_json::to_string(&r).map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
-        };
-
-        let py_fut = pyo3_asyncio_0_21::tokio::future_into_py(py, fut)?;
-
-        Python::with_gil(|py| Ok(py_fut.into_py(py)))
+        let client = self.client.clone();
+        py_async! {py, async move {
+            let response = client.get_block_dag_info_call(GetBlockDagInfoRequest { }).await?;
+            serde_json::to_string(&response).map_err(|err| PyValueError::new_err(err.to_string()))
+        }}
     }
 }
 
 #[pymethods]
 impl RpcClient {
     fn is_connected_test(&self) -> bool {
-        self.inner.is_connected()
+        self.client.is_connected()
     }
 }
 

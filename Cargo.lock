@@ -3134,6 +3134,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-python-macros"
+version = "0.15.2"
+dependencies = [
+ "convert_case 0.6.0",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "kaspa-resolver"
+version = "0.14.1"
+dependencies = [
+ "ahash 0.8.11",
+ "axum 0.7.5",
+ "cfg-if 1.0.0",
+ "clap 4.5.4",
+ "console",
+ "convert_case 0.6.0",
+ "futures",
+ "kaspa-consensus-core",
+ "kaspa-rpc-core",
+ "kaspa-utils",
+ "kaspa-wrpc-client",
+ "mime",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "toml 0.8.12",
+ "tower",
+ "tower-http 0.5.2",
+ "tracing-subscriber",
+ "workflow-core",
+ "workflow-http",
+ "workflow-log",
+ "xxhash-rust",
+]
+
+[[package]]
 name = "kaspa-rpc-core"
 version = "0.15.2"
 dependencies = [
@@ -3702,6 +3744,7 @@ version = "0.14.1"
 dependencies = [
  "cfg-if 1.0.0",
  "kaspa-consensus-core",
+ "kaspa-python-macros",
  "kaspa-rpc-core",
  "kaspa-rpc-macros",
  "kaspa-wrpc-client",
