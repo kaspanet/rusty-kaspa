@@ -946,7 +946,8 @@ mod mockery {
     impl Mock for GetServerInfoResponse {
         fn mock() -> Self {
             GetServerInfoResponse {
-                rpc_api_version: [mock(), mock(), mock(), mock()],
+                rpc_api_version: mock(),
+                rpc_api_revision: mock(),
                 server_version: "0.4.2".to_string(),
                 network_id: NetworkType::Mainnet.try_into().unwrap(),
                 has_utxo_index: true,

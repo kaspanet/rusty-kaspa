@@ -54,7 +54,7 @@ use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
 use kaspa_rpc_core::{
     api::{
         connection::DynRpcConnection,
-        ops::RPC_API_VERSION,
+        ops::{RPC_API_REVISION, RPC_API_VERSION},
         rpc::{RpcApi, MAX_SAFE_WINDOW_SIZE},
     },
     model::*,
@@ -968,6 +968,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
         Ok(GetServerInfoResponse {
             rpc_api_version: RPC_API_VERSION,
+            rpc_api_revision: RPC_API_REVISION,
             server_version: version().to_string(),
             network_id: self.config.net,
             has_utxo_index: self.config.utxoindex,

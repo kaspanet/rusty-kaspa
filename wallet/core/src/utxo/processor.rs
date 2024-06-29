@@ -14,7 +14,7 @@ use kaspa_notify::{
 use kaspa_rpc_core::{
     api::{
         ctl::{RpcCtl, RpcState},
-        ops::RPC_API_VERSION,
+        ops::{RPC_API_REVISION, RPC_API_VERSION},
     },
     message::UtxosChangedNotification,
     GetServerInfoResponse,
@@ -437,13 +437,20 @@ impl UtxoProcessor {
 
     pub async fn init_state_from_server(&self) -> Result<bool> {
         let GetServerInfoResponse {
+            rpc_api_version,
+            rpc_api_revision,
             server_version,
             network_id: server_network_id,
             has_utxo_index,
             is_synced,
             virtual_daa_score,
-            rpc_api_version,
         } = self.rpc_api().get_server_info().await?;
+
+        if rpc_api_version > RPC_API_VERSION {
+            let current = format!("{RPC_API_VERSION}.{RPC_API_REVISION}");
+            let connected = format!("{rpc_api_version}.{rpc_api_revision}");
+            return Err(Error::RpcApiVersion(current, connected));
+        }
 
         if !has_utxo_index {
             self.notify(Events::UtxoIndexNotEnabled { url: self.rpc_url() }).await?;
@@ -453,12 +460,6 @@ impl UtxoProcessor {
         let network_id = self.network_id()?;
         if network_id != server_network_id {
             return Err(Error::InvalidNetworkType(network_id.to_string(), server_network_id.to_string()));
-        }
-
-        if rpc_api_version[0] > RPC_API_VERSION[0] || rpc_api_version[1] > RPC_API_VERSION[1] {
-            let current = RPC_API_VERSION.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(".");
-            let connected = rpc_api_version.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(".");
-            return Err(Error::RpcApiVersion(current, connected));
         }
 
         self.inner.current_daa_score.store(virtual_daa_score, Ordering::SeqCst);

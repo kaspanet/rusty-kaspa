@@ -1994,7 +1994,8 @@ impl Serializer for GetServerInfoRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetServerInfoResponse {
-    pub rpc_api_version: [u16; 4],
+    pub rpc_api_version: u16,
+    pub rpc_api_revision: u16,
     pub server_version: String,
     pub network_id: RpcNetworkId,
     pub has_utxo_index: bool,
@@ -2005,8 +2006,10 @@ pub struct GetServerInfoResponse {
 impl Serializer for GetServerInfoResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        // TODO
-        store!([u16; 4], &self.rpc_api_version, writer)?;
+
+        store!(u16, &self.rpc_api_version, writer)?;
+        store!(u16, &self.rpc_api_revision, writer)?;
+
         store!(String, &self.server_version, writer)?;
         store!(RpcNetworkId, &self.network_id, writer)?;
         store!(bool, &self.has_utxo_index, writer)?;
@@ -2018,14 +2021,17 @@ impl Serializer for GetServerInfoResponse {
 
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let rpc_api_version = load!([u16; 4], reader)?;
+
+        let rpc_api_version = load!(u16, reader)?;
+        let rpc_api_revision = load!(u16, reader)?;
+
         let server_version = load!(String, reader)?;
         let network_id = load!(RpcNetworkId, reader)?;
         let has_utxo_index = load!(bool, reader)?;
         let is_synced = load!(bool, reader)?;
         let virtual_daa_score = load!(u64, reader)?;
 
-        Ok(Self { rpc_api_version, server_version, network_id, has_utxo_index, is_synced, virtual_daa_score })
+        Ok(Self { rpc_api_version, rpc_api_revision, server_version, network_id, has_utxo_index, is_synced, virtual_daa_score })
     }
 }
 

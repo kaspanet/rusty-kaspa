@@ -420,7 +420,8 @@ from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetric
 from!(&kaspa_rpc_core::GetServerInfoRequest, protowire::GetServerInfoRequestMessage);
 from!(item: RpcResult<&kaspa_rpc_core::GetServerInfoResponse>, protowire::GetServerInfoResponseMessage, {
     Self {
-        rpc_api_version: item.rpc_api_version.iter().map(|x| *x as u32).collect(),
+        rpc_api_version: item.rpc_api_version as u32,
+        rpc_api_revision: item.rpc_api_revision as u32,
         server_version: item.server_version.clone(),
         network_id: item.network_id.to_string(),
         has_utxo_index: item.has_utxo_index,
@@ -813,7 +814,8 @@ try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core:
 try_from!(&protowire::GetServerInfoRequestMessage, kaspa_rpc_core::GetServerInfoRequest);
 try_from!(item: &protowire::GetServerInfoResponseMessage, RpcResult<kaspa_rpc_core::GetServerInfoResponse>, {
     Self {
-        rpc_api_version: item.rpc_api_version.iter().map(|x| *x as u16).collect::<Vec<_>>().as_slice().try_into().map_err(|_| RpcError::RpcApiVersionFormatError)?,
+        rpc_api_version: item.rpc_api_version as u16,
+        rpc_api_revision: item.rpc_api_revision as u16,
         server_version: item.server_version.clone(),
         network_id: NetworkId::from_str(&item.network_id)?,
         has_utxo_index: item.has_utxo_index,

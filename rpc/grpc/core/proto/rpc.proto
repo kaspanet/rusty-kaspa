@@ -832,12 +832,13 @@ message GetServerInfoRequestMessage{
 }
 
 message GetServerInfoResponseMessage{
-  repeated uint32 rpcApiVersion = 1; // Expecting exactly 4 elements
-  string serverVersion = 2;
-  string networkId = 3;
-  bool hasUtxoIndex = 4;
-  bool isSynced = 5;
-  uint64 virtualDaaScore = 6;
+  uint32 rpcApiVersion = 1;
+  uint32 rpcApiRevision = 2;
+  string serverVersion = 3;
+  string networkId = 4;
+  bool hasUtxoIndex = 5;
+  bool isSynced = 6;
+  uint64 virtualDaaScore = 7;
   RPCError error = 1000;
 }
 
