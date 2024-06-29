@@ -56,12 +56,12 @@ impl Scope {
 
 impl Serializer for Scope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u32, &1, writer)?;
+        store!(u16, &1, writer)?;
         store!(Scope, self, writer)?;
         Ok(())
     }
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, reader)?;
+        let _version = load!(u16, reader)?;
         load!(Scope, reader)
     }
 }
@@ -71,11 +71,11 @@ pub struct BlockAddedScope {}
 
 impl Serializer for BlockAddedScope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u32, &1, writer)?;
+        store!(u16, &1, writer)?;
         Ok(())
     }
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, reader)?;
+        let _version = load!(u16, reader)?;
         Ok(Self {})
     }
 }
@@ -99,13 +99,13 @@ impl std::fmt::Display for VirtualChainChangedScope {
 
 impl Serializer for VirtualChainChangedScope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u32, &1, writer)?;
+        store!(u16, &1, writer)?;
         store!(bool, &self.include_accepted_transaction_ids, writer)?;
         Ok(())
     }
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, reader)?;
-        let include_accepted_transaction_ids: bool = load!(bool, reader)?;
+        let _version = load!(u16, reader)?;
+        let include_accepted_transaction_ids = load!(bool, reader)?;
         Ok(Self { include_accepted_transaction_ids })
     }
 }
@@ -115,11 +115,11 @@ pub struct FinalityConflictScope {}
 
 impl Serializer for FinalityConflictScope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u32, &1, writer)?;
+        store!(u16, &1, writer)?;
         Ok(())
     }
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, reader)?;
+        let _version = load!(u16, reader)?;
         Ok(Self {})
     }
 }
@@ -129,11 +129,11 @@ pub struct FinalityConflictResolvedScope {}
 
 impl Serializer for FinalityConflictResolvedScope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u32, &1, writer)?;
+        store!(u16, &1, writer)?;
         Ok(())
     }
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, reader)?;
+        let _version = load!(u16, reader)?;
         Ok(Self {})
     }
 }
@@ -170,13 +170,13 @@ impl UtxosChangedScope {
 
 impl Serializer for UtxosChangedScope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u32, &1, writer)?;
+        store!(u16, &1, writer)?;
         store!(Vec<Address>, &self.addresses, writer)?;
         Ok(())
     }
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, reader)?;
-        let addresses: Vec<Address> = load!(Vec<Address>, reader)?;
+        let _version = load!(u16, reader)?;
+        let addresses = load!(Vec<Address>, reader)?;
         Ok(Self { addresses })
     }
 }
@@ -186,11 +186,11 @@ pub struct SinkBlueScoreChangedScope {}
 
 impl Serializer for SinkBlueScoreChangedScope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u32, &1, writer)?;
+        store!(u16, &1, writer)?;
         Ok(())
     }
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, reader)?;
+        let _version = load!(u16, reader)?;
         Ok(Self {})
     }
 }
@@ -200,11 +200,11 @@ pub struct VirtualDaaScoreChangedScope {}
 
 impl Serializer for VirtualDaaScoreChangedScope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u32, &1, writer)?;
+        store!(u16, &1, writer)?;
         Ok(())
     }
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, reader)?;
+        let _version = load!(u16, reader)?;
         Ok(Self {})
     }
 }
@@ -214,11 +214,11 @@ pub struct PruningPointUtxoSetOverrideScope {}
 
 impl Serializer for PruningPointUtxoSetOverrideScope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u32, &1, writer)?;
+        store!(u16, &1, writer)?;
         Ok(())
     }
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, reader)?;
+        let _version = load!(u16, reader)?;
         Ok(Self {})
     }
 }
@@ -228,11 +228,11 @@ pub struct NewBlockTemplateScope {}
 
 impl Serializer for NewBlockTemplateScope {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u32, &1, writer)?;
+        store!(u16, &1, writer)?;
         Ok(())
     }
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, reader)?;
+        let _version = load!(u16, reader)?;
         Ok(Self {})
     }
 }
