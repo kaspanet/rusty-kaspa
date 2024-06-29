@@ -2509,6 +2509,7 @@ dependencies = [
  "getrandom 0.2.14",
  "hmac",
  "js-sys",
+ "kaspa-consensus-core",
  "kaspa-utils",
  "once_cell",
  "pbkdf2",

@@ -204,7 +204,7 @@ impl AddressDerivationManager {
             let derivator: Arc<dyn WalletDerivationManagerTrait> = match account_kind.as_ref() {
                 LEGACY_ACCOUNT_KIND => Arc::new(WalletDerivationManagerV0::from_extended_public_key(xpub.clone(), cosigner_index)?),
                 MULTISIG_ACCOUNT_KIND => {
-                    let cosigner_index = cosigner_index.ok_or(Error::InvalidAccountKind)?;
+                    let cosigner_index = cosigner_index.unwrap_or(0);
                     Arc::new(WalletDerivationManager::from_extended_public_key(xpub.clone(), Some(cosigner_index))?)
                 }
                 _ => Arc::new(WalletDerivationManager::from_extended_public_key(xpub.clone(), cosigner_index)?),

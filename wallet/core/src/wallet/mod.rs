@@ -21,6 +21,7 @@ use kaspa_notify::{
     listener::ListenerId,
     scope::{Scope, VirtualDaaScoreChangedScope},
 };
+use kaspa_wallet_keys::xpub::NetworkTaggedXpub;
 use kaspa_wrpc_client::{KaspaRpcClient, Resolver, WrpcEncoding};
 use workflow_core::task::spawn;
 
@@ -647,6 +648,7 @@ impl Wallet {
             AccountCreateArgs::Multisig { prv_key_data_args, additional_xpub_keys, name, minimum_signatures } => {
                 self.create_account_multisig(wallet_secret, prv_key_data_args, additional_xpub_keys, name, minimum_signatures).await?
             }
+            AccountCreateArgs::Bip32Watch { account_args } => self.create_account_bip32_watch(wallet_secret, account_args).await?,
         };
 
         if notify {
@@ -763,6 +765,36 @@ impl Wallet {
 
         let account: Arc<dyn Account> =
             Arc::new(bip32::Bip32::try_new(self, account_name, prv_key_data.id, account_index, xpub_keys, false).await?);
+
+        if account_store.load_single(account.id()).await?.is_some() {
+            return Err(Error::AccountAlreadyExists(*account.id()));
+        }
+
+        self.inner.store.clone().as_account_store()?.store_single(&account.to_storage()?, None).await?;
+        self.inner.store.commit(wallet_secret).await?;
+
+        Ok(account)
+    }
+
+    pub async fn create_account_bip32_watch(
+        self: &Arc<Wallet>,
+        wallet_secret: &Secret,
+        account_args: AccountCreateArgsBip32Watch,
+    ) -> Result<Arc<dyn Account>> {
+        let account_store = self.inner.store.clone().as_account_store()?;
+
+        let AccountCreateArgsBip32Watch { account_name, xpub_keys } = account_args;
+
+        let xpub_keys = Arc::new(
+            xpub_keys
+                .into_iter()
+                .map(|xpub_key| {
+                    ExtendedPublicKeySecp256k1::from_str(&xpub_key).map_err(|err| Error::InvalidExtendedPublicKey(xpub_key, err))
+                })
+                .collect::<Result<Vec<_>>>()?,
+        );
+
+        let account: Arc<dyn Account> = Arc::new(bip32watch::Bip32Watch::try_new(self, account_name, xpub_keys, false).await?);
 
         if account_store.load_single(account.id()).await?.is_some() {
             return Err(Error::AccountAlreadyExists(*account.id()));
@@ -1630,6 +1662,10 @@ impl Wallet {
 
             Ok(account.descriptor()?)
         }
+    }
+
+    pub fn network_format_xpub(&self, xpub_key: &ExtendedPublicKeySecp256k1) -> String {
+        NetworkTaggedXpub::from((xpub_key.clone(), self.network_id().unwrap())).to_string()
     }
 }
 

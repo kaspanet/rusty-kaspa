@@ -169,6 +169,10 @@ impl Account for Bip32 {
         BIP32_ACCOUNT_KIND.into()
     }
 
+    // fn xpub_keys(&self) -> Option<&ExtendedPublicKeys> {
+    //     None
+    // }
+
     fn prv_key_data_id(&self) -> Result<&PrvKeyDataId> {
         Ok(&self.prv_key_data_id)
     }

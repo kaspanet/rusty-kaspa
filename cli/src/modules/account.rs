@@ -84,6 +84,8 @@ impl Account {
                                 "account import mnemonic multisig [additional keys]",
                                 "Import mnemonic and additional keys for a multisig account",
                             ),
+                            ("account import bip32-watch", "Import a extended public key for a watch-only bip32 account"),
+                            ("account import multisig-watch", "Import extended public keys for a watch-only multisig account"),
                         ],
                         None,
                     )?;
@@ -175,9 +177,36 @@ impl Account {
 
                         return Ok(());
                     }
+                    "bip32-watch" => {
+                        let account_name = if argv.is_empty() {
+                            None
+                        } else {
+                            let name = argv.remove(0);
+                            let name = name.trim().to_string();
+                            Some(name)
+                        };
+
+                        let account_name = account_name.as_deref();
+                        wizards::account::bip32_watch(&ctx, account_name).await?;
+                    }
+                    "multisig-watch" => {
+                        let account_name = if argv.is_empty() {
+                            None
+                        } else {
+                            let name = argv.remove(0);
+                            let name = name.trim().to_string();
+
+                            Some(name)
+                        };
+
+                        let account_name = account_name.as_deref();
+                        wizards::account::multisig_watch(&ctx, account_name).await?;
+
+                        return Ok(());
+                    }
                     _ => {
                         tprintln!(ctx, "unknown account import type: '{import_kind}'");
-                        tprintln!(ctx, "supported import types are: 'mnemonic' or 'legacy-data'\r\n");
+                        tprintln!(ctx, "supported import types are: 'mnemonic', 'legacy-data' or 'multisig-watch'\r\n");
                         return Ok(());
                     }
                 }
