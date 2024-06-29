@@ -8,6 +8,7 @@ use std::{
     fmt::{Display, Formatter},
     sync::Arc,
 };
+use workflow_serializer::prelude::*;
 
 pub type RpcExtraData = Vec<u8>;
 
@@ -15,7 +16,7 @@ pub type RpcExtraData = Vec<u8>;
 /// Blocks are generally expected to have been generated using the getBlockTemplate call.
 ///
 /// See: [`GetBlockTemplateRequest`]
-#[derive(Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmitBlockRequest {
     pub block: RpcBlock,
@@ -28,8 +29,27 @@ impl SubmitBlockRequest {
     }
 }
 
+impl Serializer for SubmitBlockRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(RpcBlock, &self.block, writer)?;
+        store!(bool, &self.allow_non_daa_blocks, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let block = deserialize!(RpcBlock, reader)?;
+        let allow_non_daa_blocks = load!(bool, reader)?;
+
+        Ok(Self { block, allow_non_daa_blocks })
+    }
+}
+
 #[derive(Clone, Copy, Eq, PartialEq, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
+#[borsh(use_discriminant = true)]
 pub enum SubmitBlockRejectReason {
     BlockInvalid = 1,
     IsInIBD = 2,
@@ -54,6 +74,7 @@ impl Display for SubmitBlockRejectReason {
 #[derive(Eq, PartialEq, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "lowercase")]
 #[serde(tag = "type", content = "reason")]
+#[borsh(use_discriminant = true)]
 pub enum SubmitBlockReport {
     Success,
     Reject(SubmitBlockRejectReason),
@@ -64,17 +85,32 @@ impl SubmitBlockReport {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmitBlockResponse {
     pub report: SubmitBlockReport,
+}
+
+impl Serializer for SubmitBlockResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(SubmitBlockReport, &self.report, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let report = load!(SubmitBlockReport, reader)?;
+
+        Ok(Self { report })
+    }
 }
 
 /// GetBlockTemplateRequest requests a current block template.
 /// Callers are expected to solve the block template and submit it using the submitBlock call
 ///
 /// See: [`SubmitBlockRequest`]
-#[derive(Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockTemplateRequest {
     /// Which kaspa address should the coinbase block reward transaction pay into
@@ -88,7 +124,25 @@ impl GetBlockTemplateRequest {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetBlockTemplateRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcAddress, &self.pay_address, writer)?;
+        store!(RpcExtraData, &self.extra_data, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let pay_address = load!(RpcAddress, reader)?;
+        let extra_data = load!(RpcExtraData, reader)?;
+
+        Ok(Self { pay_address, extra_data })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockTemplateResponse {
     pub block: RpcBlock,
@@ -100,8 +154,26 @@ pub struct GetBlockTemplateResponse {
     pub is_synced: bool,
 }
 
+impl Serializer for GetBlockTemplateResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(RpcBlock, &self.block, writer)?;
+        store!(bool, &self.is_synced, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let block = deserialize!(RpcBlock, reader)?;
+        let is_synced = load!(bool, reader)?;
+
+        Ok(Self { block, is_synced })
+    }
+}
+
 /// GetBlockRequest requests information about a specific block
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockRequest {
     /// The hash of the requested block
@@ -116,18 +188,64 @@ impl GetBlockRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetBlockRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.hash, writer)?;
+        store!(bool, &self.include_transactions, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let hash = load!(RpcHash, reader)?;
+        let include_transactions = load!(bool, reader)?;
+
+        Ok(Self { hash, include_transactions })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockResponse {
     pub block: RpcBlock,
 }
 
+impl Serializer for GetBlockResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(RpcBlock, &self.block, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let block = deserialize!(RpcBlock, reader)?;
+
+        Ok(Self { block })
+    }
+}
+
 /// GetInfoRequest returns info about the node.
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetInfoRequest {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetInfoRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetInfoResponse {
     pub p2p_id: String,
@@ -139,11 +257,51 @@ pub struct GetInfoResponse {
     pub has_message_id: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetInfoResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(String, &self.p2p_id, writer)?;
+        store!(u64, &self.mempool_size, writer)?;
+        store!(String, &self.server_version, writer)?;
+        store!(bool, &self.is_utxo_indexed, writer)?;
+        store!(bool, &self.is_synced, writer)?;
+        store!(bool, &self.has_notify_command, writer)?;
+        store!(bool, &self.has_message_id, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let p2p_id = load!(String, reader)?;
+        let mempool_size = load!(u64, reader)?;
+        let server_version = load!(String, reader)?;
+        let is_utxo_indexed = load!(bool, reader)?;
+        let is_synced = load!(bool, reader)?;
+        let has_notify_command = load!(bool, reader)?;
+        let has_message_id = load!(bool, reader)?;
+
+        Ok(Self { p2p_id, mempool_size, server_version, is_utxo_indexed, is_synced, has_notify_command, has_message_id })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetCurrentNetworkRequest {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetCurrentNetworkRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetCurrentNetworkResponse {
     pub network: RpcNetworkType,
@@ -155,11 +313,37 @@ impl GetCurrentNetworkResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetCurrentNetworkResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcNetworkType, &self.network, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let network = load!(RpcNetworkType, reader)?;
+        Ok(Self { network })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetPeerAddressesRequest {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetPeerAddressesRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetPeerAddressesResponse {
     pub known_addresses: Vec<RpcPeerAddress>,
@@ -172,11 +356,39 @@ impl GetPeerAddressesResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetPeerAddressesResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcPeerAddress>, &self.known_addresses, writer)?;
+        store!(Vec<RpcIpAddress>, &self.banned_addresses, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let known_addresses = load!(Vec<RpcPeerAddress>, reader)?;
+        let banned_addresses = load!(Vec<RpcIpAddress>, reader)?;
+        Ok(Self { known_addresses, banned_addresses })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSinkRequest {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetSinkRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSinkResponse {
     pub sink: RpcHash,
@@ -188,7 +400,21 @@ impl GetSinkResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetSinkResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.sink, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let sink = load!(RpcHash, reader)?;
+        Ok(Self { sink })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMempoolEntryRequest {
     pub transaction_id: RpcTransactionId,
@@ -203,7 +429,27 @@ impl GetMempoolEntryRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetMempoolEntryRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcTransactionId, &self.transaction_id, writer)?;
+        store!(bool, &self.include_orphan_pool, writer)?;
+        store!(bool, &self.filter_transaction_pool, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let transaction_id = load!(RpcTransactionId, reader)?;
+        let include_orphan_pool = load!(bool, reader)?;
+        let filter_transaction_pool = load!(bool, reader)?;
+
+        Ok(Self { transaction_id, include_orphan_pool, filter_transaction_pool })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMempoolEntryResponse {
     pub mempool_entry: RpcMempoolEntry,
@@ -215,7 +461,21 @@ impl GetMempoolEntryResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetMempoolEntryResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(RpcMempoolEntry, &self.mempool_entry, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let mempool_entry = deserialize!(RpcMempoolEntry, reader)?;
+        Ok(Self { mempool_entry })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMempoolEntriesRequest {
     pub include_orphan_pool: bool,
@@ -229,7 +489,25 @@ impl GetMempoolEntriesRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetMempoolEntriesRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(bool, &self.include_orphan_pool, writer)?;
+        store!(bool, &self.filter_transaction_pool, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let include_orphan_pool = load!(bool, reader)?;
+        let filter_transaction_pool = load!(bool, reader)?;
+
+        Ok(Self { include_orphan_pool, filter_transaction_pool })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMempoolEntriesResponse {
     pub mempool_entries: Vec<RpcMempoolEntry>,
@@ -241,11 +519,37 @@ impl GetMempoolEntriesResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetMempoolEntriesResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(Vec<RpcMempoolEntry>, &self.mempool_entries, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let mempool_entries = deserialize!(Vec<RpcMempoolEntry>, reader)?;
+        Ok(Self { mempool_entries })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetConnectedPeerInfoRequest {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetConnectedPeerInfoRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetConnectedPeerInfoResponse {
     pub peer_info: Vec<RpcPeerInfo>,
@@ -257,7 +561,21 @@ impl GetConnectedPeerInfoResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetConnectedPeerInfoResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcPeerInfo>, &self.peer_info, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let peer_info = load!(Vec<RpcPeerInfo>, reader)?;
+        Ok(Self { peer_info })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddPeerRequest {
     pub peer_address: RpcContextualPeerAddress,
@@ -270,11 +588,41 @@ impl AddPeerRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for AddPeerRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcContextualPeerAddress, &self.peer_address, writer)?;
+        store!(bool, &self.is_permanent, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let peer_address = load!(RpcContextualPeerAddress, reader)?;
+        let is_permanent = load!(bool, reader)?;
+
+        Ok(Self { peer_address, is_permanent })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AddPeerResponse {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for AddPeerResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmitTransactionRequest {
     pub transaction: RpcTransaction,
@@ -287,7 +635,25 @@ impl SubmitTransactionRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for SubmitTransactionRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(RpcTransaction, &self.transaction, writer)?;
+        store!(bool, &self.allow_orphan, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let transaction = deserialize!(RpcTransaction, reader)?;
+        let allow_orphan = load!(bool, reader)?;
+
+        Ok(Self { transaction, allow_orphan })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmitTransactionResponse {
     pub transaction_id: RpcTransactionId,
@@ -299,7 +665,23 @@ impl SubmitTransactionResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for SubmitTransactionResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcTransactionId, &self.transaction_id, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let transaction_id = load!(RpcTransactionId, reader)?;
+
+        Ok(Self { transaction_id })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSubnetworkRequest {
     pub subnetwork_id: RpcSubnetworkId,
@@ -311,7 +693,23 @@ impl GetSubnetworkRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetSubnetworkRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcSubnetworkId, &self.subnetwork_id, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let subnetwork_id = load!(RpcSubnetworkId, reader)?;
+
+        Ok(Self { subnetwork_id })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSubnetworkResponse {
     pub gas_limit: u64,
@@ -323,7 +721,23 @@ impl GetSubnetworkResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetSubnetworkResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u64, &self.gas_limit, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let gas_limit = load!(u64, reader)?;
+
+        Ok(Self { gas_limit })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetVirtualChainFromBlockRequest {
     pub start_hash: RpcHash,
@@ -336,7 +750,25 @@ impl GetVirtualChainFromBlockRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetVirtualChainFromBlockRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.start_hash, writer)?;
+        store!(bool, &self.include_accepted_transaction_ids, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let start_hash = load!(RpcHash, reader)?;
+        let include_accepted_transaction_ids = load!(bool, reader)?;
+
+        Ok(Self { start_hash, include_accepted_transaction_ids })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetVirtualChainFromBlockResponse {
     pub removed_chain_block_hashes: Vec<RpcHash>,
@@ -354,7 +786,27 @@ impl GetVirtualChainFromBlockResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetVirtualChainFromBlockResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcHash>, &self.removed_chain_block_hashes, writer)?;
+        store!(Vec<RpcHash>, &self.added_chain_block_hashes, writer)?;
+        store!(Vec<RpcAcceptedTransactionIds>, &self.accepted_transaction_ids, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let removed_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
+        let added_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
+        let accepted_transaction_ids = load!(Vec<RpcAcceptedTransactionIds>, reader)?;
+
+        Ok(Self { removed_chain_block_hashes, added_chain_block_hashes, accepted_transaction_ids })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlocksRequest {
     pub low_hash: Option<RpcHash>,
@@ -368,7 +820,27 @@ impl GetBlocksRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetBlocksRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Option<RpcHash>, &self.low_hash, writer)?;
+        store!(bool, &self.include_blocks, writer)?;
+        store!(bool, &self.include_transactions, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let low_hash = load!(Option<RpcHash>, reader)?;
+        let include_blocks = load!(bool, reader)?;
+        let include_transactions = load!(bool, reader)?;
+
+        Ok(Self { low_hash, include_blocks, include_transactions })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlocksResponse {
     pub block_hashes: Vec<RpcHash>,
@@ -381,17 +853,59 @@ impl GetBlocksResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetBlocksResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcHash>, &self.block_hashes, writer)?;
+        serialize!(Vec<RpcBlock>, &self.blocks, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let block_hashes = load!(Vec<RpcHash>, reader)?;
+        let blocks = deserialize!(Vec<RpcBlock>, reader)?;
+
+        Ok(Self { block_hashes, blocks })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockCountRequest {}
 
+impl Serializer for GetBlockCountRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
 pub type GetBlockCountResponse = BlockCount;
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockDagInfoRequest {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetBlockDagInfoRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBlockDagInfoResponse {
     pub network: RpcNetworkId,
@@ -434,7 +948,52 @@ impl GetBlockDagInfoResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetBlockDagInfoResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcNetworkId, &self.network, writer)?;
+        store!(u64, &self.block_count, writer)?;
+        store!(u64, &self.header_count, writer)?;
+        store!(Vec<RpcHash>, &self.tip_hashes, writer)?;
+        store!(f64, &self.difficulty, writer)?;
+        store!(u64, &self.past_median_time, writer)?;
+        store!(Vec<RpcHash>, &self.virtual_parent_hashes, writer)?;
+        store!(RpcHash, &self.pruning_point_hash, writer)?;
+        store!(u64, &self.virtual_daa_score, writer)?;
+        store!(RpcHash, &self.sink, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let network = load!(RpcNetworkId, reader)?;
+        let block_count = load!(u64, reader)?;
+        let header_count = load!(u64, reader)?;
+        let tip_hashes = load!(Vec<RpcHash>, reader)?;
+        let difficulty = load!(f64, reader)?;
+        let past_median_time = load!(u64, reader)?;
+        let virtual_parent_hashes = load!(Vec<RpcHash>, reader)?;
+        let pruning_point_hash = load!(RpcHash, reader)?;
+        let virtual_daa_score = load!(u64, reader)?;
+        let sink = load!(RpcHash, reader)?;
+
+        Ok(Self {
+            network,
+            block_count,
+            header_count,
+            tip_hashes,
+            difficulty,
+            past_median_time,
+            virtual_parent_hashes,
+            pruning_point_hash,
+            virtual_daa_score,
+            sink,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveFinalityConflictRequest {
     pub finality_block_hash: RpcHash,
@@ -446,19 +1005,71 @@ impl ResolveFinalityConflictRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for ResolveFinalityConflictRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.finality_block_hash, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let finality_block_hash = load!(RpcHash, reader)?;
+
+        Ok(Self { finality_block_hash })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveFinalityConflictResponse {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for ResolveFinalityConflictResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShutdownRequest {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for ShutdownRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShutdownResponse {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for ShutdownResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetHeadersRequest {
     pub start_hash: RpcHash,
@@ -472,7 +1083,27 @@ impl GetHeadersRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetHeadersRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.start_hash, writer)?;
+        store!(u64, &self.limit, writer)?;
+        store!(bool, &self.is_ascending, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let start_hash = load!(RpcHash, reader)?;
+        let limit = load!(u64, reader)?;
+        let is_ascending = load!(bool, reader)?;
+
+        Ok(Self { start_hash, limit, is_ascending })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetHeadersResponse {
     pub headers: Vec<RpcHeader>,
@@ -484,7 +1115,23 @@ impl GetHeadersResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetHeadersResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcHeader>, &self.headers, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let headers = load!(Vec<RpcHeader>, reader)?;
+
+        Ok(Self { headers })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBalanceByAddressRequest {
     pub address: RpcAddress,
@@ -496,7 +1143,23 @@ impl GetBalanceByAddressRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetBalanceByAddressRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcAddress, &self.address, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let address = load!(RpcAddress, reader)?;
+
+        Ok(Self { address })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBalanceByAddressResponse {
     pub balance: u64,
@@ -508,7 +1171,23 @@ impl GetBalanceByAddressResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetBalanceByAddressResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u64, &self.balance, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let balance = load!(u64, reader)?;
+
+        Ok(Self { balance })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBalancesByAddressesRequest {
     pub addresses: Vec<RpcAddress>,
@@ -520,7 +1199,23 @@ impl GetBalancesByAddressesRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetBalancesByAddressesRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcAddress>, &self.addresses, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let addresses = load!(Vec<RpcAddress>, reader)?;
+
+        Ok(Self { addresses })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetBalancesByAddressesResponse {
     pub entries: Vec<RpcBalancesByAddressesEntry>,
@@ -532,11 +1227,39 @@ impl GetBalancesByAddressesResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetBalancesByAddressesResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(Vec<RpcBalancesByAddressesEntry>, &self.entries, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let entries = deserialize!(Vec<RpcBalancesByAddressesEntry>, reader)?;
+
+        Ok(Self { entries })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSinkBlueScoreRequest {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetSinkBlueScoreRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSinkBlueScoreResponse {
     pub blue_score: u64,
@@ -548,7 +1271,23 @@ impl GetSinkBlueScoreResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetSinkBlueScoreResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u64, &self.blue_score, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let blue_score = load!(u64, reader)?;
+
+        Ok(Self { blue_score })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetUtxosByAddressesRequest {
     pub addresses: Vec<RpcAddress>,
@@ -560,7 +1299,23 @@ impl GetUtxosByAddressesRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetUtxosByAddressesRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcAddress>, &self.addresses, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let addresses = load!(Vec<RpcAddress>, reader)?;
+
+        Ok(Self { addresses })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetUtxosByAddressesResponse {
     pub entries: Vec<RpcUtxosByAddressesEntry>,
@@ -572,7 +1327,23 @@ impl GetUtxosByAddressesResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetUtxosByAddressesResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(Vec<RpcUtxosByAddressesEntry>, &self.entries, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let entries = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
+
+        Ok(Self { entries })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BanRequest {
     pub ip: RpcIpAddress,
@@ -584,11 +1355,39 @@ impl BanRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for BanRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcIpAddress, &self.ip, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let ip = load!(RpcIpAddress, reader)?;
+
+        Ok(Self { ip })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BanResponse {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for BanResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnbanRequest {
     pub ip: RpcIpAddress,
@@ -600,11 +1399,39 @@ impl UnbanRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for UnbanRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcIpAddress, &self.ip, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let ip = load!(RpcIpAddress, reader)?;
+
+        Ok(Self { ip })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnbanResponse {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for UnbanResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EstimateNetworkHashesPerSecondRequest {
     pub window_size: u32,
@@ -617,7 +1444,25 @@ impl EstimateNetworkHashesPerSecondRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for EstimateNetworkHashesPerSecondRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u32, &self.window_size, writer)?;
+        store!(Option<RpcHash>, &self.start_hash, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let window_size = load!(u32, reader)?;
+        let start_hash = load!(Option<RpcHash>, reader)?;
+
+        Ok(Self { window_size, start_hash })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EstimateNetworkHashesPerSecondResponse {
     pub network_hashes_per_second: u64,
@@ -629,7 +1474,23 @@ impl EstimateNetworkHashesPerSecondResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for EstimateNetworkHashesPerSecondResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u64, &self.network_hashes_per_second, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let network_hashes_per_second = load!(u64, reader)?;
+
+        Ok(Self { network_hashes_per_second })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMempoolEntriesByAddressesRequest {
     pub addresses: Vec<RpcAddress>,
@@ -644,7 +1505,27 @@ impl GetMempoolEntriesByAddressesRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetMempoolEntriesByAddressesRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcAddress>, &self.addresses, writer)?;
+        store!(bool, &self.include_orphan_pool, writer)?;
+        store!(bool, &self.filter_transaction_pool, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let addresses = load!(Vec<RpcAddress>, reader)?;
+        let include_orphan_pool = load!(bool, reader)?;
+        let filter_transaction_pool = load!(bool, reader)?;
+
+        Ok(Self { addresses, include_orphan_pool, filter_transaction_pool })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMempoolEntriesByAddressesResponse {
     pub entries: Vec<RpcMempoolEntryByAddress>,
@@ -656,11 +1537,39 @@ impl GetMempoolEntriesByAddressesResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetMempoolEntriesByAddressesResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(Vec<RpcMempoolEntryByAddress>, &self.entries, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let entries = deserialize!(Vec<RpcMempoolEntryByAddress>, reader)?;
+
+        Ok(Self { entries })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetCoinSupplyRequest {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetCoinSupplyRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetCoinSupplyResponse {
     pub max_sompi: u64,
@@ -673,26 +1582,89 @@ impl GetCoinSupplyResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetCoinSupplyResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u64, &self.max_sompi, writer)?;
+        store!(u64, &self.circulating_sompi, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let max_sompi = load!(u64, reader)?;
+        let circulating_sompi = load!(u64, reader)?;
+
+        Ok(Self { max_sompi, circulating_sompi })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PingRequest {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for PingRequest {
+    fn serialize<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PingResponse {}
 
+impl Serializer for PingResponse {
+    fn serialize<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
+        Ok(Self {})
+    }
+}
+
 // TODO - custom wRPC commands (need review and implementation in gRPC)
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMetricsRequest {
     pub process_metrics: bool,
     pub connection_metrics: bool,
     pub bandwidth_metrics: bool,
     pub consensus_metrics: bool,
+    pub storage_metrics: bool,
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetMetricsRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(bool, &self.process_metrics, writer)?;
+        store!(bool, &self.connection_metrics, writer)?;
+        store!(bool, &self.bandwidth_metrics, writer)?;
+        store!(bool, &self.consensus_metrics, writer)?;
+        store!(bool, &self.storage_metrics, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let process_metrics = load!(bool, reader)?;
+        let connection_metrics = load!(bool, reader)?;
+        let bandwidth_metrics = load!(bool, reader)?;
+        let consensus_metrics = load!(bool, reader)?;
+        let storage_metrics = load!(bool, reader)?;
+
+        Ok(Self { process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, storage_metrics })
+    }
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessMetrics {
     pub resident_set_size: u64,
@@ -706,7 +1678,49 @@ pub struct ProcessMetrics {
     pub disk_io_write_per_sec: f32,
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for ProcessMetrics {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u64, &self.resident_set_size, writer)?;
+        store!(u64, &self.virtual_memory_size, writer)?;
+        store!(u32, &self.core_num, writer)?;
+        store!(f32, &self.cpu_usage, writer)?;
+        store!(u32, &self.fd_num, writer)?;
+        store!(u64, &self.disk_io_read_bytes, writer)?;
+        store!(u64, &self.disk_io_write_bytes, writer)?;
+        store!(f32, &self.disk_io_read_per_sec, writer)?;
+        store!(f32, &self.disk_io_write_per_sec, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let resident_set_size = load!(u64, reader)?;
+        let virtual_memory_size = load!(u64, reader)?;
+        let core_num = load!(u32, reader)?;
+        let cpu_usage = load!(f32, reader)?;
+        let fd_num = load!(u32, reader)?;
+        let disk_io_read_bytes = load!(u64, reader)?;
+        let disk_io_write_bytes = load!(u64, reader)?;
+        let disk_io_read_per_sec = load!(f32, reader)?;
+        let disk_io_write_per_sec = load!(f32, reader)?;
+
+        Ok(Self {
+            resident_set_size,
+            virtual_memory_size,
+            core_num,
+            cpu_usage,
+            fd_num,
+            disk_io_read_bytes,
+            disk_io_write_bytes,
+            disk_io_read_per_sec,
+            disk_io_write_per_sec,
+        })
+    }
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionMetrics {
     pub borsh_live_connections: u32,
@@ -719,7 +1733,43 @@ pub struct ConnectionMetrics {
     pub active_peers: u32,
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for ConnectionMetrics {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u32, &self.borsh_live_connections, writer)?;
+        store!(u64, &self.borsh_connection_attempts, writer)?;
+        store!(u64, &self.borsh_handshake_failures, writer)?;
+        store!(u32, &self.json_live_connections, writer)?;
+        store!(u64, &self.json_connection_attempts, writer)?;
+        store!(u64, &self.json_handshake_failures, writer)?;
+        store!(u32, &self.active_peers, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let borsh_live_connections = load!(u32, reader)?;
+        let borsh_connection_attempts = load!(u64, reader)?;
+        let borsh_handshake_failures = load!(u64, reader)?;
+        let json_live_connections = load!(u32, reader)?;
+        let json_connection_attempts = load!(u64, reader)?;
+        let json_handshake_failures = load!(u64, reader)?;
+        let active_peers = load!(u32, reader)?;
+
+        Ok(Self {
+            borsh_live_connections,
+            borsh_connection_attempts,
+            borsh_handshake_failures,
+            json_live_connections,
+            json_connection_attempts,
+            json_handshake_failures,
+            active_peers,
+        })
+    }
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BandwidthMetrics {
     pub borsh_bytes_tx: u64,
@@ -732,7 +1782,46 @@ pub struct BandwidthMetrics {
     pub grpc_bytes_rx: u64,
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for BandwidthMetrics {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u64, &self.borsh_bytes_tx, writer)?;
+        store!(u64, &self.borsh_bytes_rx, writer)?;
+        store!(u64, &self.json_bytes_tx, writer)?;
+        store!(u64, &self.json_bytes_rx, writer)?;
+        store!(u64, &self.p2p_bytes_tx, writer)?;
+        store!(u64, &self.p2p_bytes_rx, writer)?;
+        store!(u64, &self.grpc_bytes_tx, writer)?;
+        store!(u64, &self.grpc_bytes_rx, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let borsh_bytes_tx = load!(u64, reader)?;
+        let borsh_bytes_rx = load!(u64, reader)?;
+        let json_bytes_tx = load!(u64, reader)?;
+        let json_bytes_rx = load!(u64, reader)?;
+        let p2p_bytes_tx = load!(u64, reader)?;
+        let p2p_bytes_rx = load!(u64, reader)?;
+        let grpc_bytes_tx = load!(u64, reader)?;
+        let grpc_bytes_rx = load!(u64, reader)?;
+
+        Ok(Self {
+            borsh_bytes_tx,
+            borsh_bytes_rx,
+            json_bytes_tx,
+            json_bytes_rx,
+            p2p_bytes_tx,
+            p2p_bytes_rx,
+            grpc_bytes_tx,
+            grpc_bytes_rx,
+        })
+    }
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConsensusMetrics {
     pub node_blocks_submitted_count: u64,
@@ -754,7 +1843,89 @@ pub struct ConsensusMetrics {
     pub network_virtual_daa_score: u64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for ConsensusMetrics {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u64, &self.node_blocks_submitted_count, writer)?;
+        store!(u64, &self.node_headers_processed_count, writer)?;
+        store!(u64, &self.node_dependencies_processed_count, writer)?;
+        store!(u64, &self.node_bodies_processed_count, writer)?;
+        store!(u64, &self.node_transactions_processed_count, writer)?;
+        store!(u64, &self.node_chain_blocks_processed_count, writer)?;
+        store!(u64, &self.node_mass_processed_count, writer)?;
+        store!(u64, &self.node_database_blocks_count, writer)?;
+        store!(u64, &self.node_database_headers_count, writer)?;
+        store!(u64, &self.network_mempool_size, writer)?;
+        store!(u32, &self.network_tip_hashes_count, writer)?;
+        store!(f64, &self.network_difficulty, writer)?;
+        store!(u64, &self.network_past_median_time, writer)?;
+        store!(u32, &self.network_virtual_parent_hashes_count, writer)?;
+        store!(u64, &self.network_virtual_daa_score, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let node_blocks_submitted_count = load!(u64, reader)?;
+        let node_headers_processed_count = load!(u64, reader)?;
+        let node_dependencies_processed_count = load!(u64, reader)?;
+        let node_bodies_processed_count = load!(u64, reader)?;
+        let node_transactions_processed_count = load!(u64, reader)?;
+        let node_chain_blocks_processed_count = load!(u64, reader)?;
+        let node_mass_processed_count = load!(u64, reader)?;
+        let node_database_blocks_count = load!(u64, reader)?;
+        let node_database_headers_count = load!(u64, reader)?;
+        let network_mempool_size = load!(u64, reader)?;
+        let network_tip_hashes_count = load!(u32, reader)?;
+        let network_difficulty = load!(f64, reader)?;
+        let network_past_median_time = load!(u64, reader)?;
+        let network_virtual_parent_hashes_count = load!(u32, reader)?;
+        let network_virtual_daa_score = load!(u64, reader)?;
+
+        Ok(Self {
+            node_blocks_submitted_count,
+            node_headers_processed_count,
+            node_dependencies_processed_count,
+            node_bodies_processed_count,
+            node_transactions_processed_count,
+            node_chain_blocks_processed_count,
+            node_mass_processed_count,
+            node_database_blocks_count,
+            node_database_headers_count,
+            network_mempool_size,
+            network_tip_hashes_count,
+            network_difficulty,
+            network_past_median_time,
+            network_virtual_parent_hashes_count,
+            network_virtual_daa_score,
+        })
+    }
+}
+
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageMetrics {
+    pub storage_size_bytes: u64,
+}
+
+impl Serializer for StorageMetrics {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u64, &self.storage_size_bytes, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let storage_size_bytes = load!(u64, reader)?;
+
+        Ok(Self { storage_size_bytes })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMetricsResponse {
     pub server_time: u64,
@@ -762,6 +1933,7 @@ pub struct GetMetricsResponse {
     pub connection_metrics: Option<ConnectionMetrics>,
     pub bandwidth_metrics: Option<BandwidthMetrics>,
     pub consensus_metrics: Option<ConsensusMetrics>,
+    pub storage_metrics: Option<StorageMetrics>,
 }
 
 impl GetMetricsResponse {
@@ -771,16 +1943,55 @@ impl GetMetricsResponse {
         connection_metrics: Option<ConnectionMetrics>,
         bandwidth_metrics: Option<BandwidthMetrics>,
         consensus_metrics: Option<ConsensusMetrics>,
+        storage_metrics: Option<StorageMetrics>,
     ) -> Self {
-        Self { process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, server_time }
+        Self { process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, storage_metrics, server_time }
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetMetricsResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u64, &self.server_time, writer)?;
+        serialize!(Option<ProcessMetrics>, &self.process_metrics, writer)?;
+        serialize!(Option<ConnectionMetrics>, &self.connection_metrics, writer)?;
+        serialize!(Option<BandwidthMetrics>, &self.bandwidth_metrics, writer)?;
+        serialize!(Option<ConsensusMetrics>, &self.consensus_metrics, writer)?;
+        serialize!(Option<StorageMetrics>, &self.storage_metrics, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let server_time = load!(u64, reader)?;
+        let process_metrics = deserialize!(Option<ProcessMetrics>, reader)?;
+        let connection_metrics = deserialize!(Option<ConnectionMetrics>, reader)?;
+        let bandwidth_metrics = deserialize!(Option<BandwidthMetrics>, reader)?;
+        let consensus_metrics = deserialize!(Option<ConsensusMetrics>, reader)?;
+        let storage_metrics = deserialize!(Option<StorageMetrics>, reader)?;
+
+        Ok(Self { server_time, process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, storage_metrics })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetServerInfoRequest {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetServerInfoRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetServerInfoResponse {
     pub rpc_api_version: [u16; 4],
@@ -791,17 +2002,70 @@ pub struct GetServerInfoResponse {
     pub virtual_daa_score: u64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetServerInfoResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        // TODO
+        store!([u16; 4], &self.rpc_api_version, writer)?;
+        store!(String, &self.server_version, writer)?;
+        store!(RpcNetworkId, &self.network_id, writer)?;
+        store!(bool, &self.has_utxo_index, writer)?;
+        store!(bool, &self.is_synced, writer)?;
+        store!(u64, &self.virtual_daa_score, writer)?;
+
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let rpc_api_version = load!([u16; 4], reader)?;
+        let server_version = load!(String, reader)?;
+        let network_id = load!(RpcNetworkId, reader)?;
+        let has_utxo_index = load!(bool, reader)?;
+        let is_synced = load!(bool, reader)?;
+        let virtual_daa_score = load!(u64, reader)?;
+
+        Ok(Self { rpc_api_version, server_version, network_id, has_utxo_index, is_synced, virtual_daa_score })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSyncStatusRequest {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetSyncStatusRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSyncStatusResponse {
     pub is_synced: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetSyncStatusResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(bool, &self.is_synced, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let is_synced = load!(bool, reader)?;
+        Ok(Self { is_synced })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetDaaScoreTimestampEstimateRequest {
     pub daa_scores: Vec<u64>,
@@ -813,7 +2077,21 @@ impl GetDaaScoreTimestampEstimateRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for GetDaaScoreTimestampEstimateRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<u64>, &self.daa_scores, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let daa_scores = load!(Vec<u64>, reader)?;
+        Ok(Self { daa_scores })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetDaaScoreTimestampEstimateResponse {
     pub timestamps: Vec<u64>,
@@ -822,6 +2100,20 @@ pub struct GetDaaScoreTimestampEstimateResponse {
 impl GetDaaScoreTimestampEstimateResponse {
     pub fn new(timestamps: Vec<u64>) -> Self {
         Self { timestamps }
+    }
+}
+
+impl Serializer for GetDaaScoreTimestampEstimateResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<u64>, &self.timestamps, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let timestamps = load!(Vec<u64>, reader)?;
+        Ok(Self { timestamps })
     }
 }
 
@@ -835,7 +2127,7 @@ impl GetDaaScoreTimestampEstimateResponse {
 /// NotifyBlockAddedRequest registers this connection for blockAdded notifications.
 ///
 /// See: BlockAddedNotification
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyBlockAddedRequest {
     pub command: Command,
@@ -846,18 +2138,58 @@ impl NotifyBlockAddedRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for NotifyBlockAddedRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Command, &self.command, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let command = load!(Command, reader)?;
+        Ok(Self { command })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyBlockAddedResponse {}
+
+impl Serializer for NotifyBlockAddedResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
 
 /// BlockAddedNotification is sent whenever a blocks has been added (NOT accepted)
 /// into the DAG.
 ///
 /// See: NotifyBlockAddedRequest
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockAddedNotification {
     pub block: Arc<RpcBlock>,
+}
+
+impl Serializer for BlockAddedNotification {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(RpcBlock, &self.block, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let block = deserialize!(RpcBlock, reader)?;
+        Ok(Self { block: block.into() })
+    }
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -867,7 +2199,7 @@ pub struct BlockAddedNotification {
 // virtualDaaScoreChanged notifications.
 //
 // See: VirtualChainChangedNotification
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyVirtualChainChangedRequest {
     pub include_accepted_transaction_ids: bool,
@@ -880,15 +2212,43 @@ impl NotifyVirtualChainChangedRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for NotifyVirtualChainChangedRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(bool, &self.include_accepted_transaction_ids, writer)?;
+        store!(Command, &self.command, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let include_accepted_transaction_ids = load!(bool, reader)?;
+        let command = load!(Command, reader)?;
+        Ok(Self { include_accepted_transaction_ids, command })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyVirtualChainChangedResponse {}
+
+impl Serializer for NotifyVirtualChainChangedResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
 
 // VirtualChainChangedNotification is sent whenever the DAG's selected parent
 // chain had changed.
 //
 // See: NotifyVirtualChainChangedRequest
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VirtualChainChangedNotification {
     pub removed_chain_block_hashes: Arc<Vec<RpcHash>>,
@@ -896,10 +2256,32 @@ pub struct VirtualChainChangedNotification {
     pub accepted_transaction_ids: Arc<Vec<RpcAcceptedTransactionIds>>,
 }
 
+impl Serializer for VirtualChainChangedNotification {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcHash>, &self.removed_chain_block_hashes, writer)?;
+        store!(Vec<RpcHash>, &self.added_chain_block_hashes, writer)?;
+        store!(Vec<RpcAcceptedTransactionIds>, &self.accepted_transaction_ids, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let removed_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
+        let added_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
+        let accepted_transaction_ids = load!(Vec<RpcAcceptedTransactionIds>, reader)?;
+        Ok(Self {
+            removed_chain_block_hashes: removed_chain_block_hashes.into(),
+            added_chain_block_hashes: added_chain_block_hashes.into(),
+            accepted_transaction_ids: accepted_transaction_ids.into(),
+        })
+    }
+}
+
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // FinalityConflictNotification
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyFinalityConflictRequest {
     pub command: Command,
@@ -911,20 +2293,60 @@ impl NotifyFinalityConflictRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for NotifyFinalityConflictRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Command, &self.command, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let command = load!(Command, reader)?;
+        Ok(Self { command })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyFinalityConflictResponse {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for NotifyFinalityConflictResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalityConflictNotification {
     pub violating_block_hash: RpcHash,
 }
 
+impl Serializer for FinalityConflictNotification {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.violating_block_hash, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let violating_block_hash = load!(RpcHash, reader)?;
+        Ok(Self { violating_block_hash })
+    }
+}
+
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // FinalityConflictResolvedNotification
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyFinalityConflictResolvedRequest {
     pub command: Command,
@@ -936,14 +2358,54 @@ impl NotifyFinalityConflictResolvedRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for NotifyFinalityConflictResolvedRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Command, &self.command, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let command = load!(Command, reader)?;
+        Ok(Self { command })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyFinalityConflictResolvedResponse {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for NotifyFinalityConflictResolvedResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalityConflictResolvedNotification {
     pub finality_block_hash: RpcHash,
+}
+
+impl Serializer for FinalityConflictResolvedNotification {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.finality_block_hash, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let finality_block_hash = load!(RpcHash, reader)?;
+        Ok(Self { finality_block_hash })
+    }
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -958,7 +2420,7 @@ pub struct FinalityConflictResolvedNotification {
 // This call is only available when this kaspad was started with `--utxoindex`
 //
 // See: UtxosChangedNotification
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyUtxosChangedRequest {
     pub addresses: Vec<RpcAddress>,
@@ -971,14 +2433,42 @@ impl NotifyUtxosChangedRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for NotifyUtxosChangedRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Vec<RpcAddress>, &self.addresses, writer)?;
+        store!(Command, &self.command, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let addresses = load!(Vec<RpcAddress>, reader)?;
+        let command = load!(Command, reader)?;
+        Ok(Self { addresses, command })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyUtxosChangedResponse {}
+
+impl Serializer for NotifyUtxosChangedResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
 
 // UtxosChangedNotificationMessage is sent whenever the UTXO index had been updated.
 //
 // See: NotifyUtxosChangedRequest
-#[derive(Clone, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UtxosChangedNotification {
     pub added: Arc<Vec<RpcUtxosByAddressesEntry>>,
@@ -1015,6 +2505,22 @@ impl UtxosChangedNotification {
     }
 }
 
+impl Serializer for UtxosChangedNotification {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(Vec<RpcUtxosByAddressesEntry>, &self.added, writer)?;
+        serialize!(Vec<RpcUtxosByAddressesEntry>, &self.removed, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let added = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
+        let removed = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
+        Ok(Self { added: added.into(), removed: removed.into() })
+    }
+}
+
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // SinkBlueScoreChangedNotification
 
@@ -1022,7 +2528,7 @@ impl UtxosChangedNotification {
 // sinkBlueScoreChanged notifications.
 //
 // See: SinkBlueScoreChangedNotification
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifySinkBlueScoreChangedRequest {
     pub command: Command,
@@ -1034,18 +2540,58 @@ impl NotifySinkBlueScoreChangedRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for NotifySinkBlueScoreChangedRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Command, &self.command, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let command = load!(Command, reader)?;
+        Ok(Self { command })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifySinkBlueScoreChangedResponse {}
+
+impl Serializer for NotifySinkBlueScoreChangedResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
 
 // SinkBlueScoreChangedNotification is sent whenever the blue score
 // of the virtual's selected parent changes.
 //
 /// See: NotifySinkBlueScoreChangedRequest
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SinkBlueScoreChangedNotification {
     pub sink_blue_score: u64,
+}
+
+impl Serializer for SinkBlueScoreChangedNotification {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u64, &self.sink_blue_score, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let sink_blue_score = load!(u64, reader)?;
+        Ok(Self { sink_blue_score })
+    }
 }
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1055,7 +2601,7 @@ pub struct SinkBlueScoreChangedNotification {
 // virtualDaaScoreChanged notifications.
 //
 // See: VirtualDaaScoreChangedNotification
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyVirtualDaaScoreChangedRequest {
     pub command: Command,
@@ -1067,24 +2613,64 @@ impl NotifyVirtualDaaScoreChangedRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for NotifyVirtualDaaScoreChangedRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Command, &self.command, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let command = load!(Command, reader)?;
+        Ok(Self { command })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyVirtualDaaScoreChangedResponse {}
+
+impl Serializer for NotifyVirtualDaaScoreChangedResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
 
 // VirtualDaaScoreChangedNotification is sent whenever the DAA score
 // of the virtual changes.
 //
 // See NotifyVirtualDaaScoreChangedRequest
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VirtualDaaScoreChangedNotification {
     pub virtual_daa_score: u64,
 }
 
+impl Serializer for VirtualDaaScoreChangedNotification {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u64, &self.virtual_daa_score, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let virtual_daa_score = load!(u64, reader)?;
+        Ok(Self { virtual_daa_score })
+    }
+}
+
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // PruningPointUtxoSetOverrideNotification
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyPruningPointUtxoSetOverrideRequest {
     pub command: Command,
@@ -1096,13 +2682,51 @@ impl NotifyPruningPointUtxoSetOverrideRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for NotifyPruningPointUtxoSetOverrideRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Command, &self.command, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let command = load!(Command, reader)?;
+        Ok(Self { command })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyPruningPointUtxoSetOverrideResponse {}
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for NotifyPruningPointUtxoSetOverrideResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PruningPointUtxoSetOverrideNotification {}
+
+impl Serializer for PruningPointUtxoSetOverrideNotification {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 // NewBlockTemplateNotification
@@ -1110,7 +2734,7 @@ pub struct PruningPointUtxoSetOverrideNotification {}
 /// NotifyNewBlockTemplateRequest registers this connection for blockAdded notifications.
 ///
 /// See: NewBlockTemplateNotification
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyNewBlockTemplateRequest {
     pub command: Command,
@@ -1121,22 +2745,60 @@ impl NotifyNewBlockTemplateRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for NotifyNewBlockTemplateRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(Command, &self.command, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let command = load!(Command, reader)?;
+        Ok(Self { command })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyNewBlockTemplateResponse {}
+
+impl Serializer for NotifyNewBlockTemplateResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
 
 /// NewBlockTemplateNotification is sent whenever a blocks has been added (NOT accepted)
 /// into the DAG.
 ///
 /// See: NotifyNewBlockTemplateRequest
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewBlockTemplateNotification {}
+
+impl Serializer for NewBlockTemplateNotification {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
 
 ///
 ///  wRPC response for RpcApiOps::Subscribe request
 ///
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubscribeResponse {
     id: u64,
@@ -1148,9 +2810,34 @@ impl SubscribeResponse {
     }
 }
 
+impl Serializer for SubscribeResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u64, &self.id, writer)?;
+        Ok(())
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let id = load!(u64, reader)?;
+        Ok(Self { id })
+    }
+}
+
 ///
 ///  wRPC response for RpcApiOps::Unsubscribe request
 ///
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnsubscribeResponse {}
+
+impl Serializer for UnsubscribeResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u32, &1, writer)
+    }
+
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u32, reader);
+        Ok(Self {})
+    }
+}

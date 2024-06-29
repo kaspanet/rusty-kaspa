@@ -101,7 +101,7 @@ where
     T: AsSlice<Element = PrvKeyDataId> + BorshSerialize,
 {
     let mut hashes: [Hash; N] = [Hash::default(); N];
-    let bytes = hashable.try_to_vec().unwrap();
+    let bytes = borsh::to_vec(&hashable).unwrap();
     hashes[0] = Hash::from_slice(sha256_hash(&bytes).as_ref());
     for i in 1..N {
         hashes[i] = Hash::from_slice(sha256_hash(&hashes[i - 1].as_bytes()).as_ref());
@@ -143,7 +143,7 @@ pub fn from_multisig<const N: usize>(prv_key_data_ids: &Option<Arc<Vec<PrvKeyDat
         ecdsa: Some(data.ecdsa),
         account_index: None,
         secp256k1_public_key: None,
-        data: Some(data.xpub_keys.try_to_vec().unwrap()),
+        data: Some(borsh::to_vec(&data.xpub_keys).unwrap()),
     };
     make_hashes(hashable)
 }

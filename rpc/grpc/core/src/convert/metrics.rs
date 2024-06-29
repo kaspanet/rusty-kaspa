@@ -66,6 +66,12 @@ from!(item: &kaspa_rpc_core::ConsensusMetrics, protowire::ConsensusMetrics, {
     }
 });
 
+from!(item: &kaspa_rpc_core::StorageMetrics, protowire::StorageMetrics, {
+    Self {
+        storage_size_bytes: item.storage_size_bytes,
+    }
+});
+
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
@@ -127,5 +133,11 @@ try_from!(item: &protowire::ConsensusMetrics, kaspa_rpc_core::ConsensusMetrics, 
         network_past_median_time: item.past_median_time,
         network_virtual_parent_hashes_count: item.virtual_parent_hashes_count,
         network_virtual_daa_score: item.virtual_daa_score,
+    }
+});
+
+try_from!(item: &protowire::StorageMetrics, kaspa_rpc_core::StorageMetrics, {
+    Self {
+        storage_size_bytes: item.storage_size_bytes,
     }
 });

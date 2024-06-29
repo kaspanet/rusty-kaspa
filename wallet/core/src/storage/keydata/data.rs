@@ -44,11 +44,12 @@ impl BorshSerialize for PrvKeyDataVariant {
 }
 
 impl BorshDeserialize for PrvKeyDataVariant {
-    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
-        let StorageHeader { version: _, .. } = StorageHeader::deserialize(buf)?.try_magic(Self::MAGIC)?.try_version(Self::VERSION)?;
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> IoResult<Self> {
+        let StorageHeader { version: _, .. } =
+            StorageHeader::deserialize_reader(reader)?.try_magic(Self::MAGIC)?.try_version(Self::VERSION)?;
 
-        let kind: PrvKeyDataVariantKind = BorshDeserialize::deserialize(buf)?;
-        let string: String = BorshDeserialize::deserialize(buf)?;
+        let kind: PrvKeyDataVariantKind = BorshDeserialize::deserialize_reader(reader)?;
+        let string: String = BorshDeserialize::deserialize_reader(reader)?;
 
         match kind {
             PrvKeyDataVariantKind::Mnemonic => Ok(Self::Mnemonic(string)),

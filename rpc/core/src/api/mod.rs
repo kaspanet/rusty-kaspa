@@ -1,3 +1,4 @@
+pub mod connection;
 pub mod ctl;
 pub mod notifications;
 pub mod ops;

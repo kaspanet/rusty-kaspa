@@ -26,10 +26,10 @@ impl BorshSerialize for AccountSettings {
 }
 
 impl BorshDeserialize for AccountSettings {
-    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
-        let _version: u32 = BorshDeserialize::deserialize(buf)?;
-        let name = BorshDeserialize::deserialize(buf)?;
-        let meta = BorshDeserialize::deserialize(buf)?;
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> IoResult<Self> {
+        let _version: u32 = BorshDeserialize::deserialize_reader(reader)?;
+        let name = BorshDeserialize::deserialize_reader(reader)?;
+        let meta = BorshDeserialize::deserialize_reader(reader)?;
 
         Ok(Self { name, meta })
     }
@@ -63,7 +63,7 @@ impl AccountStorage {
     where
         A: AccountStorable,
     {
-        Ok(Self { id: *id, storage_key: *storage_key, kind, prv_key_data_ids, settings, serialized: serialized.try_to_vec()? })
+        Ok(Self { id: *id, storage_key: *storage_key, kind, prv_key_data_ids, settings, serialized: borsh::to_vec(&serialized)? })
     }
 
     pub fn id(&self) -> &AccountId {
@@ -107,16 +107,16 @@ impl BorshSerialize for AccountStorage {
 }
 
 impl BorshDeserialize for AccountStorage {
-    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
-            StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
+            StorageHeader::deserialize_reader(reader)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
 
-        let kind = BorshDeserialize::deserialize(buf)?;
-        let id = BorshDeserialize::deserialize(buf)?;
-        let storage_key = BorshDeserialize::deserialize(buf)?;
-        let prv_key_data_ids = BorshDeserialize::deserialize(buf)?;
-        let settings = BorshDeserialize::deserialize(buf)?;
-        let serialized = BorshDeserialize::deserialize(buf)?;
+        let kind = BorshDeserialize::deserialize_reader(reader)?;
+        let id = BorshDeserialize::deserialize_reader(reader)?;
+        let storage_key = BorshDeserialize::deserialize_reader(reader)?;
+        let prv_key_data_ids = BorshDeserialize::deserialize_reader(reader)?;
+        let settings = BorshDeserialize::deserialize_reader(reader)?;
+        let serialized = BorshDeserialize::deserialize_reader(reader)?;
 
         Ok(Self { kind, id, storage_key, prv_key_data_ids, settings, serialized })
     }

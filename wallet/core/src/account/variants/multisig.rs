@@ -70,14 +70,14 @@ impl BorshSerialize for Payload {
 }
 
 impl BorshDeserialize for Payload {
-    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
-            StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
+            StorageHeader::deserialize_reader(reader)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
 
-        let xpub_keys = BorshDeserialize::deserialize(buf)?;
-        let cosigner_index = BorshDeserialize::deserialize(buf)?;
-        let minimum_signatures = BorshDeserialize::deserialize(buf)?;
-        let ecdsa = BorshDeserialize::deserialize(buf)?;
+        let xpub_keys = BorshDeserialize::deserialize_reader(reader)?;
+        let cosigner_index = BorshDeserialize::deserialize_reader(reader)?;
+        let minimum_signatures = BorshDeserialize::deserialize_reader(reader)?;
+        let ecdsa = BorshDeserialize::deserialize_reader(reader)?;
 
         Ok(Self { xpub_keys, cosigner_index, minimum_signatures, ecdsa })
     }

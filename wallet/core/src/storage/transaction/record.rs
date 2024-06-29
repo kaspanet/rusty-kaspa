@@ -837,19 +837,19 @@ impl BorshSerialize for TransactionRecord {
 }
 
 impl BorshDeserialize for TransactionRecord {
-    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
-            StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
+            StorageHeader::deserialize_reader(reader)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
 
-        let id = BorshDeserialize::deserialize(buf)?;
-        let unixtime = BorshDeserialize::deserialize(buf)?;
-        let value = BorshDeserialize::deserialize(buf)?;
-        let binding = BorshDeserialize::deserialize(buf)?;
-        let block_daa_score = BorshDeserialize::deserialize(buf)?;
-        let network_id = BorshDeserialize::deserialize(buf)?;
-        let transaction_data = BorshDeserialize::deserialize(buf)?;
-        let note = BorshDeserialize::deserialize(buf)?;
-        let metadata = BorshDeserialize::deserialize(buf)?;
+        let id = BorshDeserialize::deserialize_reader(reader)?;
+        let unixtime = BorshDeserialize::deserialize_reader(reader)?;
+        let value = BorshDeserialize::deserialize_reader(reader)?;
+        let binding = BorshDeserialize::deserialize_reader(reader)?;
+        let block_daa_score = BorshDeserialize::deserialize_reader(reader)?;
+        let network_id = BorshDeserialize::deserialize_reader(reader)?;
+        let transaction_data = BorshDeserialize::deserialize_reader(reader)?;
+        let note = BorshDeserialize::deserialize_reader(reader)?;
+        let metadata = BorshDeserialize::deserialize_reader(reader)?;
 
         Ok(Self { id, unixtime_msec: unixtime, value, binding, block_daa_score, network_id, transaction_data, note, metadata })
     }

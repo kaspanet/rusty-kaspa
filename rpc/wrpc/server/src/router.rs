@@ -4,6 +4,7 @@ use kaspa_rpc_core::{api::ops::RpcApiOps, prelude::*};
 use kaspa_rpc_macros::build_wrpc_server_interface;
 use std::sync::Arc;
 use workflow_rpc::server::prelude::*;
+use workflow_serializer::prelude::*;
 
 /// A wrapper that creates an [`Interface`] instance and initializes
 /// RPC methods and notifications against this interface. The interface
@@ -32,6 +33,7 @@ impl Router {
             Connection,
             RpcApiOps,
             [
+                Ping,
                 AddPeer,
                 Ban,
                 EstimateNetworkHashesPerSecond,
@@ -61,7 +63,6 @@ impl Router {
                 GetUtxosByAddresses,
                 GetSinkBlueScore,
                 GetVirtualChainFromBlock,
-                Ping,
                 ResolveFinalityConflict,
                 Shutdown,
                 SubmitBlock,
@@ -72,22 +73,22 @@ impl Router {
 
         interface.method(
             RpcApiOps::Subscribe,
-            workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, scope: Scope| {
+            workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, scope: Serializable<Scope>| {
                 Box::pin(async move {
-                    manager.start_notify(&connection, scope).await.map_err(|err| err.to_string())?;
-                    Ok(SubscribeResponse::new(connection.id()))
+                    manager.start_notify(&connection, scope.into_inner()).await.map_err(|err| err.to_string())?;
+                    Ok(Serializable(SubscribeResponse::new(connection.id())))
                 })
             }),
         );
 
         interface.method(
             RpcApiOps::Unsubscribe,
-            workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, scope: Scope| {
+            workflow_rpc::server::Method::new(move |manager: Server, connection: Connection, scope: Serializable<Scope>| {
                 Box::pin(async move {
-                    manager.stop_notify(&connection, scope).await.unwrap_or_else(|err| {
+                    manager.stop_notify(&connection, scope.into_inner()).await.unwrap_or_else(|err| {
                         workflow_log::log_trace!("wRPC server -> error calling stop_notify(): {err}");
                     });
-                    Ok(UnsubscribeResponse {})
+                    Ok(Serializable(UnsubscribeResponse {}))
                 })
             }),
         );

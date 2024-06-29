@@ -39,3 +39,9 @@ pub fn build_wrpc_wasm_bindgen_subscriptions(input: TokenStream) -> TokenStream 
 pub fn build_grpc_server_interface(input: TokenStream) -> TokenStream {
     grpc::server::build_grpc_server_interface(input)
 }
+
+#[proc_macro]
+#[proc_macro_error]
+pub fn test_wrpc_serializer(input: TokenStream) -> TokenStream {
+    wrpc::test::build_test(input)
+}

@@ -1,5 +1,6 @@
 use crate::protowire;
 use crate::{from, try_from};
+use kaspa_consensus_core::header::Header;
 use kaspa_rpc_core::{FromRpcHex, RpcError, RpcHash, RpcResult, ToRpcHex};
 use std::str::FromStr;
 
@@ -31,8 +32,11 @@ from!(item: &Vec<RpcHash>, protowire::RpcBlockLevelParents, { Self { parent_hash
 // ----------------------------------------------------------------------------
 
 try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcHeader, {
+
+    // TODO - restructure using dual structs (with and without hash)
+
     // We re-hash the block to remain as most trustless as possible
-    Self::new_finalized(
+    let header = Header::new_finalized(
         item.version.try_into()?,
         item.parents.iter().map(Vec::<RpcHash>::try_from).collect::<RpcResult<Vec<Vec<RpcHash>>>>()?,
         RpcHash::from_str(&item.hash_merkle_root)?,
@@ -45,7 +49,9 @@ try_from!(item: &protowire::RpcBlockHeader, kaspa_rpc_core::RpcHeader, {
         kaspa_rpc_core::RpcBlueWorkType::from_rpc_hex(&item.blue_work)?,
         item.blue_score,
         RpcHash::from_str(&item.pruning_point)?,
-    )
+    );
+
+    header.into()
 });
 
 try_from!(item: &protowire::RpcBlockLevelParents, Vec<RpcHash>, {
@@ -55,6 +61,7 @@ try_from!(item: &protowire::RpcBlockLevelParents, Vec<RpcHash>, {
 #[cfg(test)]
 mod tests {
     use crate::protowire;
+    use kaspa_consensus_core::header::Header;
     use kaspa_rpc_core::{RpcHash, RpcHeader};
 
     fn new_unique() -> RpcHash {
@@ -106,7 +113,7 @@ mod tests {
 
     #[test]
     fn test_rpc_header() {
-        let r = RpcHeader::new_finalized(
+        let r = Header::new_finalized(
             0,
             vec![vec![new_unique(), new_unique(), new_unique()], vec![new_unique()], vec![new_unique(), new_unique()]],
             new_unique(),
@@ -120,6 +127,7 @@ mod tests {
             1928374,
             new_unique(),
         );
+        let r = RpcHeader::from(r);
         let p: protowire::RpcBlockHeader = (&r).into();
         let r2: RpcHeader = (&p).try_into().unwrap();
         let p2: protowire::RpcBlockHeader = (&r2).into();

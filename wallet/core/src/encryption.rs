@@ -146,7 +146,7 @@ where
     }
 
     pub fn encrypt(&self, secret: &Secret, encryption_kind: EncryptionKind) -> Result<Encrypted> {
-        let bytes = self.0.try_to_vec()?;
+        let bytes = borsh::to_vec(&self.0)?;
         let encrypted = match encryption_kind {
             EncryptionKind::XChaCha20Poly1305 => encrypt_xchacha20poly1305(bytes.as_slice(), secret)?,
         };
