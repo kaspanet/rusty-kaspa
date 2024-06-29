@@ -44,8 +44,16 @@ impl Ord for SortableBlock {
 impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {
     pub fn sort_blocks(&self, blocks: impl IntoIterator<Item = Hash>) -> Vec<Hash> {
         let mut sorted_blocks: Vec<Hash> = blocks.into_iter().collect();
-        sorted_blocks
-            .sort_by_cached_key(|block| SortableBlock { hash: *block, blue_work: self.ghostdag_store.get_blue_work(*block).unwrap() });
+        sorted_blocks.sort_by_cached_key(|block| SortableBlock {
+            hash: *block,
+            // Since we're only calculating GD at all levels on-demand, we may get blocks from the relations
+            // store in the mergeset that are not on our level
+            // Options for fixes:
+            // - do this
+            // - guarantee that we're only getting parents that are in this store
+            // - make relations store only return parents at the same or higher level
+            blue_work: self.ghostdag_store.get_blue_work(*block).unwrap_or_default(),
+        });
         sorted_blocks
     }
 }
