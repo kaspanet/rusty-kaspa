@@ -16,7 +16,7 @@ impl BlockCount {
 
 impl Serializer for BlockCount {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u32, &1, writer)?;
+        store!(u16, &1, writer)?;
         store!(u64, &self.header_count, writer)?;
         store!(u64, &self.block_count, writer)?;
 
@@ -24,9 +24,9 @@ impl Serializer for BlockCount {
     }
 
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, reader)?;
-        let header_count: u64 = load!(u64, reader)?;
-        let block_count: u64 = load!(u64, reader)?;
+        let _version = load!(u16, reader)?;
+        let header_count = load!(u64, reader)?;
+        let block_count = load!(u64, reader)?;
 
         Ok(Self { header_count, block_count })
     }

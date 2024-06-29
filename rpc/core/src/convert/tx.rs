@@ -36,7 +36,7 @@ impl From<&TransactionOutput> for RpcTransactionOutput {
 impl From<&TransactionInput> for RpcTransactionInput {
     fn from(item: &TransactionInput) -> Self {
         Self {
-            previous_outpoint: item.previous_outpoint,
+            previous_outpoint: item.previous_outpoint.into(),
             signature_script: item.signature_script.clone(),
             sequence: item.sequence,
             sig_op_count: item.sig_op_count,
@@ -83,6 +83,6 @@ impl TryFrom<&RpcTransactionOutput> for TransactionOutput {
 impl TryFrom<&RpcTransactionInput> for TransactionInput {
     type Error = RpcError;
     fn try_from(item: &RpcTransactionInput) -> RpcResult<Self> {
-        Ok(Self::new(item.previous_outpoint, item.signature_script.clone(), item.sequence, item.sig_op_count))
+        Ok(Self::new(item.previous_outpoint.into(), item.signature_script.clone(), item.sequence, item.sig_op_count))
     }
 }

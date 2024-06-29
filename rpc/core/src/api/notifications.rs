@@ -115,42 +115,42 @@ impl NotificationTrait for Notification {
 
 impl Serializer for Notification {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u32, &1, writer)?;
+        store!(u16, &1, writer)?;
         match self {
             Notification::BlockAdded(notification) => {
-                store!(u32, &0, writer)?;
+                store!(u16, &0, writer)?;
                 serialize!(BlockAddedNotification, notification, writer)?;
             }
             Notification::VirtualChainChanged(notification) => {
-                store!(u32, &1, writer)?;
+                store!(u16, &1, writer)?;
                 serialize!(VirtualChainChangedNotification, notification, writer)?;
             }
             Notification::FinalityConflict(notification) => {
-                store!(u32, &2, writer)?;
+                store!(u16, &2, writer)?;
                 serialize!(FinalityConflictNotification, notification, writer)?;
             }
             Notification::FinalityConflictResolved(notification) => {
-                store!(u32, &3, writer)?;
+                store!(u16, &3, writer)?;
                 serialize!(FinalityConflictResolvedNotification, notification, writer)?;
             }
             Notification::UtxosChanged(notification) => {
-                store!(u32, &4, writer)?;
+                store!(u16, &4, writer)?;
                 serialize!(UtxosChangedNotification, notification, writer)?;
             }
             Notification::SinkBlueScoreChanged(notification) => {
-                store!(u32, &5, writer)?;
+                store!(u16, &5, writer)?;
                 serialize!(SinkBlueScoreChangedNotification, notification, writer)?;
             }
             Notification::VirtualDaaScoreChanged(notification) => {
-                store!(u32, &6, writer)?;
+                store!(u16, &6, writer)?;
                 serialize!(VirtualDaaScoreChangedNotification, notification, writer)?;
             }
             Notification::PruningPointUtxoSetOverride(notification) => {
-                store!(u32, &7, writer)?;
+                store!(u16, &7, writer)?;
                 serialize!(PruningPointUtxoSetOverrideNotification, notification, writer)?;
             }
             Notification::NewBlockTemplate(notification) => {
-                store!(u32, &8, writer)?;
+                store!(u16, &8, writer)?;
                 serialize!(NewBlockTemplateNotification, notification, writer)?;
             }
         }
@@ -158,8 +158,8 @@ impl Serializer for Notification {
     }
 
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version: u32 = load!(u32, reader)?;
-        match load!(u32, reader)? {
+        let _version = load!(u16, reader)?;
+        match load!(u16, reader)? {
             0 => {
                 let notification = deserialize!(BlockAddedNotification, reader)?;
                 Ok(Notification::BlockAdded(notification))
