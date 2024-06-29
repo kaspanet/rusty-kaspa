@@ -92,6 +92,12 @@ impl Header {
     }
 }
 
+impl AsRef<Header> for Header {
+    fn as_ref(&self) -> &Header {
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

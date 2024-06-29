@@ -32,7 +32,7 @@ impl SubmitBlockRequest {
 impl Serializer for SubmitBlockRequest {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        store!(RpcBlock, &self.block, writer)?;
+        serialize!(RpcBlock, &self.block, writer)?;
         store!(bool, &self.allow_non_daa_blocks, writer)?;
 
         Ok(())
@@ -40,7 +40,7 @@ impl Serializer for SubmitBlockRequest {
 
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let block = load!(RpcBlock, reader)?;
+        let block = deserialize!(RpcBlock, reader)?;
         let allow_non_daa_blocks = load!(bool, reader)?;
 
         Ok(Self { block, allow_non_daa_blocks })
@@ -157,7 +157,7 @@ pub struct GetBlockTemplateResponse {
 impl Serializer for GetBlockTemplateResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        store!(RpcBlock, &self.block, writer)?;
+        serialize!(RpcBlock, &self.block, writer)?;
         store!(bool, &self.is_synced, writer)?;
 
         Ok(())
@@ -165,7 +165,7 @@ impl Serializer for GetBlockTemplateResponse {
 
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let block = load!(RpcBlock, reader)?;
+        let block = deserialize!(RpcBlock, reader)?;
         let is_synced = load!(bool, reader)?;
 
         Ok(Self { block, is_synced })
@@ -215,14 +215,14 @@ pub struct GetBlockResponse {
 impl Serializer for GetBlockResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        store!(RpcBlock, &self.block, writer)?;
+        serialize!(RpcBlock, &self.block, writer)?;
 
         Ok(())
     }
 
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let block = load!(RpcBlock, reader)?;
+        let block = deserialize!(RpcBlock, reader)?;
 
         Ok(Self { block })
     }
@@ -464,13 +464,13 @@ impl GetMempoolEntryResponse {
 impl Serializer for GetMempoolEntryResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        store!(RpcMempoolEntry, &self.mempool_entry, writer)?;
+        serialize!(RpcMempoolEntry, &self.mempool_entry, writer)?;
         Ok(())
     }
 
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let mempool_entry = load!(RpcMempoolEntry, reader)?;
+        let mempool_entry = deserialize!(RpcMempoolEntry, reader)?;
         Ok(Self { mempool_entry })
     }
 }
@@ -522,13 +522,13 @@ impl GetMempoolEntriesResponse {
 impl Serializer for GetMempoolEntriesResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        store!(Vec<RpcMempoolEntry>, &self.mempool_entries, writer)?;
+        serialize!(Vec<RpcMempoolEntry>, &self.mempool_entries, writer)?;
         Ok(())
     }
 
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let mempool_entries = load!(Vec<RpcMempoolEntry>, reader)?;
+        let mempool_entries = deserialize!(Vec<RpcMempoolEntry>, reader)?;
         Ok(Self { mempool_entries })
     }
 }
@@ -638,8 +638,7 @@ impl SubmitTransactionRequest {
 impl Serializer for SubmitTransactionRequest {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        // TODO
-        store!(RpcTransaction, &self.transaction, writer)?;
+        serialize!(RpcTransaction, &self.transaction, writer)?;
         store!(bool, &self.allow_orphan, writer)?;
 
         Ok(())
@@ -647,7 +646,7 @@ impl Serializer for SubmitTransactionRequest {
 
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let transaction = load!(RpcTransaction, reader)?;
+        let transaction = deserialize!(RpcTransaction, reader)?;
         let allow_orphan = load!(bool, reader)?;
 
         Ok(Self { transaction, allow_orphan })
@@ -858,7 +857,7 @@ impl Serializer for GetBlocksResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
         store!(Vec<RpcHash>, &self.block_hashes, writer)?;
-        store!(Vec<RpcBlock>, &self.blocks, writer)?;
+        serialize!(Vec<RpcBlock>, &self.blocks, writer)?;
 
         Ok(())
     }
@@ -866,7 +865,7 @@ impl Serializer for GetBlocksResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let block_hashes = load!(Vec<RpcHash>, reader)?;
-        let blocks = load!(Vec<RpcBlock>, reader)?;
+        let blocks = deserialize!(Vec<RpcBlock>, reader)?;
 
         Ok(Self { block_hashes, blocks })
     }
@@ -1231,14 +1230,14 @@ impl GetBalancesByAddressesResponse {
 impl Serializer for GetBalancesByAddressesResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        store!(Vec<RpcBalancesByAddressesEntry>, &self.entries, writer)?;
+        serialize!(Vec<RpcBalancesByAddressesEntry>, &self.entries, writer)?;
 
         Ok(())
     }
 
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let entries = load!(Vec<RpcBalancesByAddressesEntry>, reader)?;
+        let entries = deserialize!(Vec<RpcBalancesByAddressesEntry>, reader)?;
 
         Ok(Self { entries })
     }
@@ -1331,14 +1330,14 @@ impl GetUtxosByAddressesResponse {
 impl Serializer for GetUtxosByAddressesResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        store!(Vec<RpcUtxosByAddressesEntry>, &self.entries, writer)?;
+        serialize!(Vec<RpcUtxosByAddressesEntry>, &self.entries, writer)?;
 
         Ok(())
     }
 
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let entries = load!(Vec<RpcUtxosByAddressesEntry>, reader)?;
+        let entries = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
 
         Ok(Self { entries })
     }
@@ -1541,14 +1540,14 @@ impl GetMempoolEntriesByAddressesResponse {
 impl Serializer for GetMempoolEntriesByAddressesResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        store!(Vec<RpcMempoolEntryByAddress>, &self.entries, writer)?;
+        serialize!(Vec<RpcMempoolEntryByAddress>, &self.entries, writer)?;
 
         Ok(())
     }
 
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let entries = load!(Vec<RpcMempoolEntryByAddress>, reader)?;
+        let entries = deserialize!(Vec<RpcMempoolEntryByAddress>, reader)?;
 
         Ok(Self { entries })
     }
@@ -2182,13 +2181,13 @@ pub struct BlockAddedNotification {
 impl Serializer for BlockAddedNotification {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        store!(RpcBlock, &self.block, writer)?;
+        serialize!(RpcBlock, &self.block, writer)?;
         Ok(())
     }
 
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let block = load!(RpcBlock, reader)?;
+        let block = deserialize!(RpcBlock, reader)?;
         Ok(Self { block: block.into() })
     }
 }
@@ -2509,15 +2508,15 @@ impl UtxosChangedNotification {
 impl Serializer for UtxosChangedNotification {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        store!(Vec<RpcUtxosByAddressesEntry>, &self.added, writer)?;
-        store!(Vec<RpcUtxosByAddressesEntry>, &self.removed, writer)?;
+        serialize!(Vec<RpcUtxosByAddressesEntry>, &self.added, writer)?;
+        serialize!(Vec<RpcUtxosByAddressesEntry>, &self.removed, writer)?;
         Ok(())
     }
 
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let added = load!(Vec<RpcUtxosByAddressesEntry>, reader)?;
-        let removed = load!(Vec<RpcUtxosByAddressesEntry>, reader)?;
+        let added = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
+        let removed = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
         Ok(Self { added: added.into(), removed: removed.into() })
     }
 }
