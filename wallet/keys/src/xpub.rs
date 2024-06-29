@@ -1,3 +1,6 @@
+use kaspa_bip32::Prefix;
+use std::{fmt, str::FromStr};
+
 use crate::imports::*;
 
 ///
@@ -79,5 +82,28 @@ impl TryCastFromJs for XPub {
                 Err(Error::InvalidXPub)
             }
         })
+    }
+}
+
+pub struct NetworkTaggedXpub {
+    pub xpub: ExtendedPublicKey<secp256k1::PublicKey>,
+    pub network_id: NetworkId,
+}
+// impl NetworkTaggedXpub {
+
+// }
+
+impl fmt::Display for NetworkTaggedXpub {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let obj: XPub = self.xpub.clone().into();
+        write!(f, "{}", obj.inner.to_string(Some(Prefix::from(self.network_id))))
+    }
+}
+
+type TaggedXpub = (ExtendedPublicKey<secp256k1::PublicKey>, NetworkId);
+
+impl From<TaggedXpub> for NetworkTaggedXpub {
+    fn from(value: TaggedXpub) -> Self {
+        Self { xpub: value.0, network_id: value.1 }
     }
 }

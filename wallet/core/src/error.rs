@@ -186,7 +186,7 @@ pub enum Error {
     #[error("{0}")]
     TryFromEnum(#[from] workflow_core::enums::TryFromError),
 
-    #[error("Account factory found for type: {0}")]
+    #[error("Account factory not found for type: {0}")]
     AccountFactoryNotFound(AccountKind),
 
     #[error("Account not found: {0}")]
@@ -230,6 +230,12 @@ pub enum Error {
 
     #[error("Not allowed on a resident account")]
     ResidentAccount,
+
+    #[error("Not allowed on an bip32-watch account")]
+    Bip32WatchAccount,
+
+    #[error("At least one xpub is required for a bip32-watch account")]
+    Bip32WatchXpubRequired,
 
     #[error("This feature is not supported by this account type")]
     AccountKindFeature,

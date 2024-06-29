@@ -116,6 +116,14 @@ pub trait Account: AnySync + Send + Sync + 'static {
         self.context().settings.name.clone()
     }
 
+    fn feature(&self) -> Option<String> {
+        None
+    }
+
+    fn xpub_keys(&self) -> Option<&ExtendedPublicKeys> {
+        None
+    }
+
     fn name_or_id(&self) -> String {
         if let Some(name) = self.name() {
             if name.is_empty() {
