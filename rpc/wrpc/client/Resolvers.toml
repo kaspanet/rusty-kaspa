@@ -1,9 +1,9 @@
 [[resolver]]
-url = "https://beacon.kaspa-ng.org"
+url = "https://resolver.kaspa-ng.org"
 enable = true
 
 [[resolver]]
-url = "https://beacon.kaspa-ng.io"
+url = "https://resolver.kaspa-ng.io"
 enable = true
 
 [[resolver]]
