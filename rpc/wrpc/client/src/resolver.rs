@@ -6,7 +6,7 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use workflow_http::get_json;
 
-const DEFAULT_VERSION: usize = 1;
+const DEFAULT_VERSION: usize = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolverRecord {
@@ -68,7 +68,7 @@ impl Resolver {
     }
 
     async fn fetch_node_info(&self, url: &str, encoding: Encoding, network_id: NetworkId) -> Result<NodeDescriptor> {
-        let url = format!("{}/v{}/wrpc/{}/{}", url, DEFAULT_VERSION, encoding, network_id);
+        let url = format!("{}/v{}/kaspad/wrpc/{}/{}", url, DEFAULT_VERSION, encoding, network_id);
         let node =
             get_json::<NodeDescriptor>(&url).await.map_err(|error| Error::custom(format!("Unable to connect to {url}: {error}")))?;
         Ok(node)
