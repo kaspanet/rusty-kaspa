@@ -7,6 +7,7 @@ use crate::mempool::{
     tx::{Orphan, Priority},
     Mempool,
 };
+use crate::model::tx_query::TransactionQuery;
 use kaspa_consensus_core::{
     api::ConsensusApi,
     constants::UNACCEPTED_DAA_SCORE,
@@ -25,7 +26,6 @@ impl Mempool {
         // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
         transaction.calculated_compute_mass = Some(consensus.calculate_transaction_compute_mass(&transaction.tx));
         self.validate_transaction_in_isolation(&transaction)?;
-        self.transaction_pool.check_double_spends(&transaction)?;
         self.populate_mempool_entries(&mut transaction);
         Ok(transaction)
     }
@@ -79,6 +79,27 @@ impl Mempool {
         let accepted_transaction =
             self.transaction_pool.add_transaction(transaction, consensus.get_virtual_daa_score(), priority)?.mtx.tx.clone();
         Ok(Some(accepted_transaction))
+    }
+
+    pub(crate) fn try_solve_conflicts(&mut self, transaction: &MutableTransaction) -> Result<(), RuleError> {
+        if let Err(e) = self.transaction_pool.check_double_spends(transaction) {
+            if let RuleError::RejectDoubleSpendInMempool(_, transaction_id) = e {
+                let double_spent_tx = self.get_transaction(&transaction_id, TransactionQuery::TransactionsOnly).unwrap();
+
+                if double_spent_tx.calculated_fee.unwrap() < transaction.calculated_fee.unwrap() {
+                    debug!("replaced by fee");
+                    self.remove_transaction(&transaction_id, true, TxRemovalReason::Expired, "replaced by fee")?;
+                } else {
+                    debug!("cant replace by fee, returning error!");
+                    return Err(e);
+                }
+                return Ok(());
+            } else {
+                return Err(e);
+            }
+        }
+
+        Ok(())
     }
 
     /// Validates that the transaction wasn't already accepted into the DAG
