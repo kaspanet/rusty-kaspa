@@ -87,10 +87,13 @@ impl Mempool {
                 let double_spent_tx = self.get_transaction(&transaction_id, TransactionQuery::TransactionsOnly).unwrap();
 
                 if double_spent_tx.calculated_fee.unwrap() < transaction.calculated_fee.unwrap() {
-                    debug!("replaced by fee");
-                    self.remove_transaction(&transaction_id, true, TxRemovalReason::Expired, "replaced by fee")?;
+                    self.remove_transaction(
+                        &transaction_id,
+                        true,
+                        TxRemovalReason::ReplacedByFee,
+                        format!("by {}", transaction.id()).as_str(),
+                    )?;
                 } else {
-                    debug!("cant replace by fee, returning error!");
                     return Err(e);
                 }
                 return Ok(());
