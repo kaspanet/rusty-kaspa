@@ -534,14 +534,18 @@ impl ConsensusApi for Consensus {
         self.config.is_nearly_synced(compact.timestamp, compact.daa_score)
     }
 
-    fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
-        // Calculate chain changes between the given hash and the
-        // sink. Note that we explicitly don't
+    fn get_virtual_chain_from_block(&self, low: Hash, limit: usize) -> ConsensusResult<ChainPath> {
+        // Calculate chain changes between the given `low` and the current sink hash (up to `limit` amount of block hashes).
+        // Note:
+        // 1) that we explicitly don't
         // do the calculation against the virtual itself so that we
         // won't later need to remove it from the result.
+        // 2) supplying `usize::MAX` as `limit` will result in the full chain path, with optimized performance.
         let _guard = self.pruning_lock.blocking_read();
-        self.validate_block_exists(hash)?;
-        Ok(self.services.dag_traversal_manager.calculate_chain_path(hash, self.get_sink()))
+
+        self.validate_block_exists(low)?;
+
+        Ok(self.services.dag_traversal_manager.calculate_chain_path(low, self.get_sink(), limit))
     }
 
     /// Returns a Vec of header samples since genesis
@@ -836,11 +840,29 @@ impl ConsensusApi for Consensus {
         self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))
     }
 
-    fn get_blocks_acceptance_data(&self, hashes: &[Hash]) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
+    fn get_blocks_acceptance_data(&self, hashes: &[Hash], merged_blocks_limit: usize) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
+        // Note: merged_blocks_limit will limit after the sum of merged blocks is breached along the supplied hash's acceptance data
+        // and not limit the acceptance data within a queried hash. i.e. It has mergeset_size_limit granularity, this is to guarantee full acceptance data coverage.
+        if merged_blocks_limit == usize::MAX {
+            return hashes
+                .iter()
+                .copied()
+                .map(|hash| self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash)))
+                .collect::<ConsensusResult<Vec<_>>>();
+        }
+        let mut num_of_merged_blocks = 0usize;
         hashes
             .iter()
             .copied()
-            .map(|hash| self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash)))
+            .map_while(|hash| {
+                let entry = self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash));
+                num_of_merged_blocks += entry.as_ref().map_or(0, |entry| entry.len());
+                if num_of_merged_blocks > merged_blocks_limit {
+                    None
+                } else {
+                    Some(entry)
+                }
+            })
             .collect::<ConsensusResult<Vec<_>>>()
     }
 

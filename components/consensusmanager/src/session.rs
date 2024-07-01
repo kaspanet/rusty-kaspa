@@ -263,8 +263,8 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.is_nearly_synced()).await
     }
 
-    pub async fn async_get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
-        self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(hash)).await
+    pub async fn async_get_virtual_chain_from_block(&self, low: Hash, limit: usize) -> ConsensusResult<ChainPath> {
+        self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(low, limit)).await
     }
 
     pub async fn async_get_virtual_utxos(
@@ -376,8 +376,12 @@ impl ConsensusSessionOwned {
     /// Returns acceptance data for a set of blocks belonging to the selected parent chain.
     ///
     /// See `self::get_virtual_chain`
-    pub async fn async_get_blocks_acceptance_data(&self, hashes: Vec<Hash>) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
-        self.clone().spawn_blocking(move |c| c.get_blocks_acceptance_data(&hashes)).await
+    pub async fn async_get_blocks_acceptance_data(
+        &self,
+        hashes: Vec<Hash>,
+        merged_blocks_limit: usize,
+    ) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
+        self.clone().spawn_blocking(move |c| c.get_blocks_acceptance_data(&hashes, merged_blocks_limit)).await
     }
 
     pub async fn async_is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {

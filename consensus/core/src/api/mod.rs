@@ -147,7 +147,12 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
+    /// Gets the virtual chain paths from `low` to the `sink` hash, or until `limit`` is reached
+    ///
+    /// Note:   
+    /// 1) `limit` will populate removed and then the added chain path, up to the specified amount.
+    /// 1.1) use `usize::MAX` to impose no limit with optimized backward chain iteration, for better performance in cases where batching is not required.
+    fn get_virtual_chain_from_block(&self, low: Hash, limit: usize) -> ConsensusResult<ChainPath> {
         unimplemented!()
     }
 
@@ -283,7 +288,7 @@ pub trait ConsensusApi: Send + Sync {
     /// Returns acceptance data for a set of blocks belonging to the selected parent chain.
     ///
     /// See `self::get_virtual_chain`
-    fn get_blocks_acceptance_data(&self, hashes: &[Hash]) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
+    fn get_blocks_acceptance_data(&self, hashes: &[Hash], merged_blocks_limit: usize) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
         unimplemented!()
     }
 
