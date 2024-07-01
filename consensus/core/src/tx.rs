@@ -29,7 +29,7 @@ pub type TransactionId = kaspa_hashes::Hash;
 /// score of the block that accepts the tx, its public key script, and how
 /// much it pays.
 /// @category Consensus
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable, js_name = TransactionUtxoEntry)]
 pub struct UtxoEntry {
@@ -53,7 +53,7 @@ impl MemSizeEstimator for UtxoEntry {}
 pub type TransactionIndexType = u32;
 
 /// Represents a Kaspa transaction outpoint
-#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Eq, Default, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutpoint {
     #[serde(with = "serde_bytes_fixed_ref")]
