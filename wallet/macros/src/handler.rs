@@ -10,10 +10,12 @@ use xxhash_rust::xxh32::xxh32;
 #[derive(Debug)]
 pub struct Handler {
     pub name: String,
+    #[allow(dead_code)]
     pub hash_32: Literal,
     pub hash_64: Literal,
     pub ident: Literal,
     pub fn_call: Ident,
+    #[allow(dead_code)]
     pub fn_with_suffix: Option<Ident>,
     pub fn_no_suffix: Ident,
     pub fn_camel: Ident,
