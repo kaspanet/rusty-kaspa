@@ -137,7 +137,12 @@ impl VirtualStores {
     pub fn new(db: Arc<DB>, lkg_virtual_state: LkgVirtualState, utxoset_cache_policy: CachePolicy) -> Self {
         Self {
             state: DbVirtualStateStore::new(db.clone(), lkg_virtual_state),
-            utxo_set: DbUtxoSetStore::new(db, utxoset_cache_policy, DatabaseStorePrefixes::VirtualUtxoset.into()),
+            utxo_set: DbUtxoSetStore::new(
+                db,
+                utxoset_cache_policy,
+                DatabaseStorePrefixes::VirtualUtxoset.into(),
+                DatabaseStorePrefixes::VirtualUtxosetCount.into(),
+            ),
         }
     }
 }

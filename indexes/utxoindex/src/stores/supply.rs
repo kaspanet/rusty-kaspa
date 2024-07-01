@@ -22,6 +22,8 @@ pub trait CirculatingSupplyStore: CirculatingSupplyStoreReader {
 #[derive(Clone)]
 pub struct DbCirculatingSupplyStore {
     db: Arc<DB>,
+    // TODO: implement CachedAtomicDbItem store for primitives.
+    // Should be no need to use a RwLock here.
     access: CachedDbItem<u64>,
 }
 

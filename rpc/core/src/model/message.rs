@@ -404,9 +404,12 @@ pub struct GetBlockDagInfoResponse {
     pub pruning_point_hash: RpcHash,
     pub virtual_daa_score: u64,
     pub sink: RpcHash,
+    pub virtual_utxo_count: u64,
+    pub pruning_point_utxo_count: u64,
 }
 
 impl GetBlockDagInfoResponse {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         network: RpcNetworkId,
         block_count: u64,
@@ -418,6 +421,8 @@ impl GetBlockDagInfoResponse {
         pruning_point_hash: RpcHash,
         virtual_daa_score: u64,
         sink: RpcHash,
+        virtual_utxo_count: u64,
+        pruning_point_utxo_count: u64,
     ) -> Self {
         Self {
             network,
@@ -430,6 +435,8 @@ impl GetBlockDagInfoResponse {
             pruning_point_hash,
             virtual_daa_score,
             sink,
+            virtual_utxo_count,
+            pruning_point_utxo_count,
         }
     }
 }
