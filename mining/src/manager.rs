@@ -237,6 +237,8 @@ impl MiningManager {
         let validation_result = validate_mempool_transaction(consensus, &mut transaction);
         // write lock on mempool
         let mut mempool = self.mempool.write();
+        mempool.try_solve_conflicts(&transaction)?;
+
         if let Some(accepted_transaction) =
             mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan)?
         {

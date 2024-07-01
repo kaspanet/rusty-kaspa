@@ -63,6 +63,7 @@ pub(crate) enum TxRemovalReason {
     DoubleSpend,
     InvalidInBlockTemplate,
     RevalidationWithMissingOutpoints,
+    ReplacedByFee,
 }
 
 impl TxRemovalReason {
@@ -76,6 +77,7 @@ impl TxRemovalReason {
             TxRemovalReason::DoubleSpend => "double spend",
             TxRemovalReason::InvalidInBlockTemplate => "invalid in block template",
             TxRemovalReason::RevalidationWithMissingOutpoints => "revalidation with missing outpoints",
+            TxRemovalReason::ReplacedByFee => "replaced by fee",
         }
     }
 

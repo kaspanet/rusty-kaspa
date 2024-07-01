@@ -205,7 +205,7 @@ mod tests {
         assert!(result.is_ok(), "the mempool should accept a valid transaction when it is able to populate its UTXO entries");
 
         let mut double_spending_transaction = transaction.clone();
-        double_spending_transaction.outputs[0].value -= 1; // do some minor change so that txID is different
+        double_spending_transaction.outputs[0].value += 1; // do some minor change so that txID is different while not increasing fee
         double_spending_transaction.finalize();
         assert_ne!(
             transaction.id(),
@@ -233,6 +233,46 @@ mod tests {
                 result.err().unwrap()
             );
         }
+    }
+
+    // test_replace_by_fee_in_mempool verifies that an attempt to insert a double-spending transaction with a higher fee
+    // will cause the existing transaction in the mempool to be replaced.
+    #[test]
+    fn test_replace_by_fee_in_mempool() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+
+        let transaction = create_child_and_parent_txs_and_add_parent_to_consensus(&consensus);
+        assert!(
+            consensus.can_finance_transaction(&MutableTransaction::from_tx(transaction.clone())),
+            "the consensus mock should have spendable UTXOs for the newly created transaction {}",
+            transaction.id()
+        );
+
+        let result =
+            mining_manager.validate_and_insert_transaction(consensus.as_ref(), transaction.clone(), Priority::Low, Orphan::Allowed);
+        assert!(result.is_ok(), "the mempool should accept a valid transaction when it is able to populate its UTXO entries");
+
+        let mut double_spending_transaction = transaction.clone();
+        double_spending_transaction.outputs[0].value -= 1; // increasing fee of transaction
+        double_spending_transaction.finalize();
+        assert_ne!(
+            transaction.id(),
+            double_spending_transaction.id(),
+            "two transactions differing by only one output value should have different ids"
+        );
+        let result = mining_manager.validate_and_insert_transaction(
+            consensus.as_ref(),
+            double_spending_transaction.clone(),
+            Priority::Low,
+            Orphan::Allowed,
+        );
+        assert!(result.is_ok(), "mempool shouldnt refuse a double spend transaction with higher fee but rejected it");
+        assert!(
+            !mining_manager.has_transaction(&transaction.id(), TransactionQuery::All),
+            "replaced transaction is still on mempool while it shouldnt"
+        );
     }
 
     // test_handle_new_block_transactions verifies that all the transactions in the block were successfully removed from the mempool.
