@@ -34,7 +34,7 @@ const TS_IP_ADDRESS: &'static str = r#"
 /// A bucket based on an ip's prefix bytes.
 /// for ipv4 it consists of 6 leading zero bytes, and the first two octets,
 /// for ipv6 it consists of the first 8 octets,
-/// encoded into a big endian u64.  
+/// encoded into a big endian u64.
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
 pub struct PrefixBucket(u64);
 
@@ -271,7 +271,7 @@ pub struct ContextualNetAddress {
 }
 
 impl ContextualNetAddress {
-    fn new(ip: IpAddress, port: Option<u16>) -> Self {
+    pub fn new(ip: IpAddress, port: Option<u16>) -> Self {
         Self { ip, port }
     }
 
@@ -285,6 +285,14 @@ impl ContextualNetAddress {
 
     pub fn loopback() -> Self {
         Self { ip: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)).into(), port: None }
+    }
+
+    pub fn port_not_specified(&self) -> bool {
+        self.port.is_none()
+    }
+
+    pub fn with_port(&self, port: u16) -> Self {
+        Self { ip: self.ip, port: Some(port) }
     }
 }
 
