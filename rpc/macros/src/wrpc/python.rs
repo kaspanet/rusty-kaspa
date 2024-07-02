@@ -40,23 +40,17 @@ impl ToTokens for RpcTable {
 
                 #[pymethods]
                 impl RpcClient {
-                    fn #fn_call(&self, py: Python) -> PyResult<Py<PyAny>> {
-                        // Returns result as JSON string
+                    fn #fn_call(&self, py: Python, request: Py<PyDict>) -> PyResult<Py<PyAny>> {
                         let client = self.client.clone();
 
-                        // TODO - receive argument from Python and deserialize it
-                        // explore https://docs.rs/serde-pyobject/latest/serde_pyobject/ for arg intake / return
+                        let request : #request_type = serde_pyobject::from_pyobject(request.into_bound(py)).unwrap();
 
-                        // TODO replace serde_json with serde_pyobject
-                        let request : #request_type = serde_json::from_str("{}").map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-
-                        let fut = async move {
+                        let py_fut = pyo3_asyncio_0_21::tokio::future_into_py(py, async move {
                             let response : #response_type = client.#fn_call(request).await?;
-                            // TODO - replace serde_json with serde_pyobject
-                            serde_json::to_string(&response).map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))
-                        };
-
-                        let py_fut = pyo3_asyncio_0_21::tokio::future_into_py(py, fut)?;
+                            Python::with_gil(|py| {
+                                Ok(serde_pyobject::to_pyobject(py, &response).unwrap().to_object(py))
+                            })
+                        })?;
 
                         Python::with_gil(|py| Ok(py_fut.into_py(py)))
                     }

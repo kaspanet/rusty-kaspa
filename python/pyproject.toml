@@ -4,16 +4,23 @@ build-backend = "maturin"
 
 [project]
 name = "kaspapy"
-version = "0.0.1"
 description = "Kaspa Python Bindings"
+version = "0.1.0"
+requires-python = ">=3.8"
 license = "ISC"
-# readme = "README.md"
-# documentation = "https://your_documentation_link"
 classifiers = [
-    "Programming Language :: Python",
     "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dependencies = []
+
+[project.urls]
+# homepage = ""
+# documentation = ""
+# repository = ""
+# issues = ""
+# changelog = ""
 
 [package.metadata.maturin]
 name = "kaspapy"
@@ -21,4 +28,3 @@ description = "Kaspa Python Bindings"
 
 [tool.maturin]
 name = "kaspapy"
-# python-source = "python"
