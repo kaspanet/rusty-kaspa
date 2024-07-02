@@ -3750,6 +3750,7 @@ dependencies = [
  "kaspa-wrpc-client",
  "pyo3",
  "pyo3-asyncio-0-21",
+ "serde-pyobject",
  "serde_json",
  "thiserror",
  "workflow-core",
@@ -5601,6 +5602,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cff085d2cb684faa248efb494c39b68e522822ac0de72ccf08109abde717cfb2"
 dependencies = [
  "serde_derive",
+]
+
+[[package]]
+name = "serde-pyobject"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70ffe7ea77d8eba5774068d55b00a4a3a7c6f9fa9b97dd8e3bc8750cc8503fee"
+dependencies = [
+ "pyo3",
+ "serde",
 ]
 
 [[package]]

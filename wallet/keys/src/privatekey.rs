@@ -78,6 +78,12 @@ impl PrivateKey {
         let address = Address::new(network.try_into()?, AddressVersion::PubKeyECDSA, &payload);
         Ok(address)
     }
+
+    /// Generate a [`Keypair`] from this [`PrivateKey`].
+    #[wasm_bindgen(js_name = toKeypair)]
+    pub fn to_keypair(&self) -> Result<Keypair, JsError> {
+        Keypair::from_private_key(self)
+    }
 }
 
 // PY-NOTE: fns exposed to both WASM and Python
@@ -91,13 +97,6 @@ impl PrivateKey {
         use kaspa_utils::hex::ToHex;
         self.secret_bytes().to_vec().to_hex()
     }
-
-    // TODO-PY
-    // Generate a [`Keypair`] from this [`PrivateKey`].
-    // #[wasm_bindgen(js_name = toKeypair)]
-    // pub fn to_keypair(&self) -> Result<Keypair, JsError> {
-    //     Keypair::from_private_key(self)
-    // }
 }
 
 // PY-NOTE: Python specific fn implementations
@@ -108,11 +107,6 @@ impl PrivateKey {
     pub fn try_new_py(key: &str) -> Result<PrivateKey> {
         Ok(Self { inner: secp256k1::SecretKey::from_str(key)? })
     }
-
-    // #[wasm_bindgen(js_name = toKeypair)]
-    // pub fn to_keypair(&self) -> Result<Keypair, JsError> {
-    //     Keypair::from_private_key(self)
-    // }
 
     // PY-NOTE: #[pyo3()] can only be used in block that has #[pymethods] applied directly. applying via #[cfg_attr()] does not work (PyO3 limitation).
     #[pyo3(name = "to_public_key")]
@@ -140,6 +134,12 @@ impl PrivateKey {
         let address = Address::new(network.try_into()?, AddressVersion::PubKeyECDSA, &payload);
         Ok(address)
     }
+
+    // TODO
+    // #[wasm_bindgen(js_name = toKeypair)]
+    // pub fn to_keypair(&self) -> Result<Keypair, JsError> {
+    //     Keypair::from_private_key(self)
+    // }
 }
 
 impl TryCastFromJs for PrivateKey {
