@@ -229,6 +229,10 @@ impl Rpc {
                     }
                 }
             }
+            RpcApiOps::GetPriorityFeeEstimate => {
+                let result = rpc.get_priority_fee_estimate_call(GetPriorityFeeEstimateRequest {}).await;
+                self.println(&ctx, result);
+            }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");
                 return Ok(());

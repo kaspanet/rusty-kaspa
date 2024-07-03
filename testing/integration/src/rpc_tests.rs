@@ -621,6 +621,12 @@ async fn sanity_test() {
                     rpc_client.stop_notify(id, PruningPointUtxoSetOverrideScope {}.into()).await.unwrap();
                 })
             }
+            KaspadPayloadOps::GetPriorityFeeEstimate => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let _ = rpc_client.get_priority_fee_estimate_call(GetPriorityFeeEstimateRequest {}).await.unwrap();
+                })
+            }
         };
         tasks.push(task);
     }

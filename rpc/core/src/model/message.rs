@@ -825,6 +825,36 @@ impl GetDaaScoreTimestampEstimateResponse {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetPriorityFeeEstimateRequest {}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VirtualFeePerMass {
+    pub max: f64,
+    pub median: f64,
+    pub min: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FeePerMass {
+    VirtualFeePerMass(VirtualFeePerMass),
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetPriorityFeeEstimateResponse {
+    pub fee_per_mass: FeePerMass,
+}
+
+impl GetPriorityFeeEstimateResponse {
+    pub fn new(fee_per_mass: FeePerMass) -> Self {
+        Self { fee_per_mass }
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Subscriptions & notifications
 // ----------------------------------------------------------------------------

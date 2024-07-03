@@ -23,8 +23,8 @@ use kaspa_consensus_core::network::NetworkId;
 use kaspa_core::debug;
 use kaspa_notify::subscription::Command;
 use kaspa_rpc_core::{
-    RpcContextualPeerAddress, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult,
-    SubmitBlockRejectReason, SubmitBlockReport,
+    FeePerMass, RpcContextualPeerAddress, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult,
+    SubmitBlockRejectReason, SubmitBlockReport, VirtualFeePerMass,
 };
 use std::str::FromStr;
 
@@ -392,6 +392,28 @@ from!(item: &kaspa_rpc_core::GetDaaScoreTimestampEstimateRequest, protowire::Get
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetDaaScoreTimestampEstimateResponse>, protowire::GetDaaScoreTimestampEstimateResponseMessage, {
     Self { timestamps: item.timestamps.clone(), error: None }
+});
+
+from!(_item: &kaspa_rpc_core::GetPriorityFeeEstimateRequest, protowire::GetPriorityFeeEstimateRequestMessage, {
+    Self {}
+});
+
+from!(item: RpcResult<&kaspa_rpc_core::GetPriorityFeeEstimateResponse>, protowire::GetPriorityFeeEstimateResponseMessage, {
+    let fee_per_mass = match item.fee_per_mass {
+        FeePerMass::VirtualFeePerMass(VirtualFeePerMass{max, median, min}) => {
+            protowire::get_priority_fee_estimate_response_message::FeePerMass::Virtual(
+                protowire::Virtual{
+                    max,
+                    median,
+                    min,
+                }
+            )
+        }
+    };
+    Self {
+        fee_per_mass: Some(fee_per_mass),
+        error: None,
+    }
 });
 
 from!(&kaspa_rpc_core::PingRequest, protowire::PingRequestMessage);
@@ -789,6 +811,27 @@ try_from!(item: &protowire::GetDaaScoreTimestampEstimateRequestMessage, kaspa_rp
 });
 try_from!(item: &protowire::GetDaaScoreTimestampEstimateResponseMessage, RpcResult<kaspa_rpc_core::GetDaaScoreTimestampEstimateResponse>, {
     Self { timestamps: item.timestamps.clone() }
+});
+
+try_from!(_item: &protowire::GetPriorityFeeEstimateRequestMessage, kaspa_rpc_core::GetPriorityFeeEstimateRequest , {
+    Self {}
+});
+try_from!(item: &protowire::GetPriorityFeeEstimateResponseMessage, RpcResult<kaspa_rpc_core::GetPriorityFeeEstimateResponse>, {
+    let fee_per_mass =  item.fee_per_mass.as_ref().ok_or(RpcError::MissingRpcFieldError(
+            "GetPriorityFeeEstimateResponseMessage".to_string(),
+            "fee_per_mass".to_string(),
+        )
+    )?;
+
+    match fee_per_mass {
+        protowire::get_priority_fee_estimate_response_message::FeePerMass::Virtual(protowire::Virtual{max, median, min}) => {
+            kaspa_rpc_core::GetPriorityFeeEstimateResponse{ fee_per_mass: kaspa_rpc_core::FeePerMass::VirtualFeePerMass(
+                VirtualFeePerMass{
+                    max: *max , median: *median , min: *min,
+                }
+            )}
+        },
+    }
 });
 
 try_from!(&protowire::PingRequestMessage, kaspa_rpc_core::PingRequest);

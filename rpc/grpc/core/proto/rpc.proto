@@ -851,3 +851,18 @@ message GetDaaScoreTimestampEstimateResponseMessage{
         repeated uint64 timestamps = 1;
         RPCError error = 1000;
 }
+
+message GetPriorityFeeEstimateRequestMessage {}
+
+message GetPriorityFeeEstimateResponseMessage {
+  oneof fee_per_mass {
+    Virtual virtual = 2; // 1 is reserved for `All`
+  }
+  RPCError error = 1000;
+}
+
+message Virtual {
+  double max = 1;
+  double median = 2;
+  double min = 3;
+}

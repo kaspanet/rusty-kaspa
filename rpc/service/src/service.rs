@@ -4,8 +4,10 @@ use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
+use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::api::counters::ProcessingCounters;
 use kaspa_consensus_core::errors::block::RuleError;
+use kaspa_consensus_core::network::NetworkId;
 use kaspa_consensus_core::{
     block::Block,
     coinbase::MinerData,
@@ -64,6 +66,7 @@ use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
+use std::ops::Mul;
 use std::{
     collections::HashMap,
     iter::once,
@@ -645,6 +648,57 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let timestamps = request.daa_scores.iter().map(|curr_daa_score| daa_score_timestamp_map[curr_daa_score]).collect();
 
         Ok(GetDaaScoreTimestampEstimateResponse::new(timestamps))
+    }
+    async fn get_priority_fee_estimate_call(
+        &self,
+        _request: GetPriorityFeeEstimateRequest,
+    ) -> RpcResult<GetPriorityFeeEstimateResponse> {
+        trace!("incoming GetPriorityFeeEstimateRequest request");
+        let prefix = match self.config.net {
+            NetworkId { network_type: NetworkType::Mainnet, .. } => Prefix::Mainnet,
+            NetworkId { network_type: NetworkType::Testnet, .. } => Prefix::Testnet,
+            NetworkId { network_type: NetworkType::Devnet, .. } => Prefix::Devnet,
+            NetworkId { network_type: NetworkType::Simnet, .. } => Prefix::Simnet,
+        };
+        let script_public_key = kaspa_txscript::pay_to_address_script(&Address::new(prefix, Version::PubKey, &[0u8; 32]));
+        let miner_data: MinerData = MinerData::new(script_public_key, vec![]);
+        let session = self.consensus_manager.consensus().unguarded_session();
+        let kaspa_consensus_core::block::BlockTemplate {
+            block: kaspa_consensus_core::block::MutableBlock { transactions, .. }, ..
+        } = self.mining_manager.clone().get_block_template(&session, miner_data).await?;
+        if transactions.is_empty() {
+            return Ok(GetPriorityFeeEstimateResponse { fee_per_mass: FeePerMass::VirtualFeePerMass(VirtualFeePerMass::default()) });
+        }
+        let mut fees_and_masses = Vec::with_capacity(transactions.len());
+        for (id, mass) in transactions.into_iter().map(|tx| (tx.id(), tx.mass())) {
+            let fee = self
+                .mining_manager
+                .clone()
+                .get_transaction(id, TransactionQuery::All)
+                .await
+                .and_then(|tx| tx.calculated_fee)
+                .unwrap_or_default();
+            fees_and_masses.push((fee, mass));
+        }
+        fees_and_masses.sort_unstable_by(|(lhs_fee, lhs_mass), (rhs_fee, rhs_mass)| lhs_fee.mul(rhs_mass).cmp(&rhs_fee.mul(lhs_mass)));
+        let max = {
+            let (fee, mass) = fees_and_masses.last().unwrap();
+            *fee as f64 / *mass as f64
+        };
+        let min = {
+            let (fee, mass) = fees_and_masses.first().unwrap();
+            *fee as f64 / *mass as f64
+        };
+        let median = if fees_and_masses.len() % 2 != 0 {
+            let (fee, mass) = fees_and_masses[fees_and_masses.len() / 2];
+            fee as f64 / mass as f64
+        } else {
+            let (below_fee, below_mass) = fees_and_masses[fees_and_masses.len() / 2 - 1];
+            let (above_fee, above_mass) = fees_and_masses[fees_and_masses.len() / 2];
+            (below_fee as f64 / below_mass as f64 + above_fee as f64 / above_mass as f64) / 2.0
+        };
+
+        Ok(GetPriorityFeeEstimateResponse { fee_per_mass: FeePerMass::VirtualFeePerMass(VirtualFeePerMass { max, median, min }) })
     }
 
     async fn ping_call(&self, _: PingRequest) -> RpcResult<PingResponse> {
