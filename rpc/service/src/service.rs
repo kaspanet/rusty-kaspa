@@ -655,13 +655,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _request: GetPriorityFeeEstimateRequest,
     ) -> RpcResult<GetPriorityFeeEstimateResponse> {
         trace!("incoming GetPriorityFeeEstimateRequest request");
-        let prefix = match self.config.net {
-            NetworkId { network_type: NetworkType::Mainnet, .. } => Prefix::Mainnet,
-            NetworkId { network_type: NetworkType::Testnet, .. } => Prefix::Testnet,
-            NetworkId { network_type: NetworkType::Devnet, .. } => Prefix::Devnet,
-            NetworkId { network_type: NetworkType::Simnet, .. } => Prefix::Simnet,
-        };
-        let script_public_key = kaspa_txscript::pay_to_address_script(&Address::new(prefix, Version::PubKey, &[0u8; 32]));
+        let script_public_key =
+            kaspa_txscript::pay_to_address_script(&Address::new(self.config.net.into(), Version::PubKey, &[0u8; 32]));
         let miner_data: MinerData = MinerData::new(script_public_key, vec![]);
         let session = self.consensus_manager.consensus().unguarded_session();
         let kaspa_consensus_core::block::BlockTemplate {
