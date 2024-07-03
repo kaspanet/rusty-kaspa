@@ -36,6 +36,7 @@ use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
     notifier::IndexNotifier,
 };
+use kaspa_math::uint::malachite_base::num::arithmetic::traits::DivRem;
 use kaspa_mining::model::tx_query::TransactionQuery;
 use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::Orphan};
 use kaspa_notify::listener::ListenerLifespan;
@@ -75,7 +76,6 @@ use std::{
 };
 use tokio::join;
 use workflow_rpc::server::WebSocketCounters as WrpcServerCounters;
-use kaspa_math::uint::malachite_base::num::arithmetic::traits::DivRem;
 
 /// A service implementing the Rpc API at kaspa_rpc_core level.
 ///
