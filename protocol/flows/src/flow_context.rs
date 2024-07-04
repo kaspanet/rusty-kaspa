@@ -618,14 +618,33 @@ impl FlowContext {
         transaction: Transaction,
         orphan: Orphan,
     ) -> Result<(), ProtocolError> {
-        let accepted_transactions =
+        let transaction_insertion =
             self.mining_manager().clone().validate_and_insert_transaction(consensus, transaction, Priority::High, orphan).await?;
         self.broadcast_transactions(
-            accepted_transactions.iter().map(|x| x.id()),
+            transaction_insertion.accepted.iter().map(|x| x.id()),
             false, // RPC transactions are considered high priority, so we don't want to throttle them
         )
         .await;
         Ok(())
+    }
+
+    /// Replaces the rpc-submitted transaction to the mempool and propagates it to peers.
+    ///
+    /// Transactions submitted through rpc are considered high priority. This definition does not affect the tx selection algorithm
+    /// but only changes how we manage the lifetime of the tx. A high-priority tx does not expire and is repeatedly rebroadcasted to
+    /// peers
+    pub async fn submit_rpc_transaction_replacement(
+        &self,
+        consensus: &ConsensusProxy,
+        transaction: Transaction,
+    ) -> Result<Arc<Transaction>, ProtocolError> {
+        let transaction_insertion = self.mining_manager().clone().validate_and_replace_transaction(consensus, transaction).await?;
+        self.broadcast_transactions(
+            transaction_insertion.accepted.iter().map(|x| x.id()),
+            false, // RPC transactions are considered high priority, so we don't want to throttle them
+        )
+        .await;
+        Ok(transaction_insertion.removed.expect("on RBF success, a removed transaction is returned"))
     }
 
     /// Returns true if the time has come for running the task cleaning mempool transactions.

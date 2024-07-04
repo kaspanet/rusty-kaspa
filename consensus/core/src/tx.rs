@@ -406,6 +406,13 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
             *entry = None;
         }
     }
+
+    pub fn calculated_fee_per_compute_mass(&self) -> Option<f64> {
+        match (self.calculated_fee, self.calculated_compute_mass) {
+            (Some(fee), Some(compute_mass)) => Some(fee as f64 / compute_mass as f64),
+            _ => None,
+        }
+    }
 }
 
 impl<T: AsRef<Transaction>> AsRef<Transaction> for MutableTransaction<T> {

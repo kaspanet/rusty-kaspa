@@ -24,8 +24,11 @@ pub enum RuleError {
     #[error("transaction {0} is already in the mempool")]
     RejectDuplicate(TransactionId),
 
-    #[error("output {0} already spent by transaction {1} in the memory pool")]
+    #[error("output {0} already spent by transaction {1} in the mempool")]
     RejectDoubleSpendInMempool(TransactionOutpoint, TransactionId),
+
+    #[error("replace by fee found no replaceable transaction in the mempool")]
+    RejectReplaceByFee,
 
     /// New behavior: a transaction is rejected if the mempool is full
     #[error("number of high-priority transactions in mempool ({0}) has reached the maximum allowed ({1})")]

@@ -7,6 +7,7 @@ mod tests {
         mempool::{
             config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE},
             errors::RuleError,
+            model::tx::RbfPolicy,
             tx::{Orphan, Priority},
         },
         model::{candidate_tx::CandidateTransaction, tx_query::TransactionQuery},
@@ -52,6 +53,7 @@ mod tests {
                 transaction.clone(),
                 Priority::Low,
                 Orphan::Allowed,
+                RbfPolicy::Forbidden,
             );
             assert!(result.is_ok(), "inserting a valid transaction failed");
         }
@@ -158,6 +160,7 @@ mod tests {
             transaction.clone(),
             Priority::Low,
             Orphan::Allowed,
+            RbfPolicy::Forbidden,
         );
         assert!(result.is_ok(), "mempool should have accepted a valid transaction but did not");
 
@@ -262,16 +265,13 @@ mod tests {
             double_spending_transaction.id(),
             "two transactions differing by only one output value should have different ids"
         );
-        let result = mining_manager.validate_and_insert_transaction(
-            consensus.as_ref(),
-            double_spending_transaction.clone(),
-            Priority::Low,
-            Orphan::Allowed,
-        );
-        assert!(result.is_ok(), "mempool shouldnt refuse a double spend transaction with higher fee but rejected it");
+        let result = mining_manager.validate_and_replace_transaction(consensus.as_ref(), double_spending_transaction.clone());
+        assert!(result.is_ok(), "mempool should accept a RBF transaction with higher fee but rejected it");
+        let tx_insertion = result.unwrap();
+        assert_eq!(tx_insertion.removed.as_ref().unwrap().id(), transaction.id(), "RBF should return the replaced transaction");
         assert!(
             !mining_manager.has_transaction(&transaction.id(), TransactionQuery::All),
-            "replaced transaction is still on mempool while it shouldnt"
+            "replaced transaction is in the mempool while it should have been removed by RBF"
         );
     }
 
@@ -528,7 +528,7 @@ mod tests {
         let result =
             mining_manager.validate_and_insert_transaction(consensus.as_ref(), parent_txs[0].clone(), Priority::Low, Orphan::Allowed);
         assert!(result.is_ok(), "the insertion of the remaining parent transaction in the mempool failed");
-        let unorphaned_txs = result.unwrap();
+        let unorphaned_txs = result.unwrap().accepted;
         let (populated_txs, orphans) = mining_manager.get_all_transactions(TransactionQuery::All);
         assert_eq!(
             unorphaned_txs.len(), SKIPPED_TXS + 1,
@@ -663,7 +663,7 @@ mod tests {
                 test.insert_result()
             );
             if let Ok(unorphaned_txs) = result {
-                assert!(unorphaned_txs.is_empty(), "mempool should unorphan no transaction since it only contains orphans");
+                assert!(unorphaned_txs.accepted.is_empty(), "mempool should unorphan no transaction since it only contains orphans");
             } else if let Err(MiningManagerError::MempoolError(RuleError::RejectOrphanPoolIsFull(pool_len, config_len))) = result {
                 assert_eq!(
                     (config.maximum_orphan_transaction_count as usize, config.maximum_orphan_transaction_count),
@@ -685,7 +685,7 @@ mod tests {
             let result =
                 mining_manager.validate_and_insert_transaction(consensus.as_ref(), tx.clone(), test.priority, Orphan::Allowed);
             assert!(result.is_ok(), "mempool should accept a valid transaction with {:?} when asked to do so", test.priority,);
-            let unorphaned_txs = result.as_ref().unwrap();
+            let unorphaned_txs = &result.as_ref().unwrap().accepted;
             assert_eq!(
                 test.should_unorphan,
                 unorphaned_txs.len() > 1,

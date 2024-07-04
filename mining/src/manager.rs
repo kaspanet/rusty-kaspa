@@ -4,7 +4,7 @@ use crate::{
     errors::MiningManagerResult,
     mempool::{
         config::Config,
-        model::tx::{MempoolTransaction, TxRemovalReason},
+        model::tx::{MempoolTransaction, RbfPolicy, TransactionInsertOutcome, TxRemovalReason},
         populate_entries_and_try_validate::{
             populate_mempool_transactions_in_parallel, validate_mempool_transaction, validate_mempool_transactions_in_parallel,
         },
@@ -15,6 +15,7 @@ use crate::{
         candidate_tx::CandidateTransaction,
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
         topological_sort::IntoIterTopologically,
+        tx_insert::TransactionInsertion,
         tx_query::TransactionQuery,
     },
     MempoolCountersSnapshot, MiningCounters, P2pTxCountSample,
@@ -212,49 +213,85 @@ impl MiningManager {
     /// adds it to the set of known transactions that have not yet been
     /// added to any block.
     ///
-    /// The returned transactions are clones of objects owned by the mempool.
+    /// Replace by fee is strictly forbidden so any double spend returns an error.
+    ///
+    /// On success, returns transactions that where unorphaned following the insertion
+    /// of the provided transaction.
+    ///
+    /// The returned transactions are references of objects owned by the mempool.
     pub fn validate_and_insert_transaction(
         &self,
         consensus: &dyn ConsensusApi,
         transaction: Transaction,
         priority: Priority,
         orphan: Orphan,
-    ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
-        self.validate_and_insert_mutable_transaction(consensus, MutableTransaction::from_tx(transaction), priority, orphan)
+    ) -> MiningManagerResult<TransactionInsertion> {
+        self.validate_and_insert_mutable_transaction(
+            consensus,
+            MutableTransaction::from_tx(transaction),
+            priority,
+            orphan,
+            RbfPolicy::Forbidden,
+        )
     }
 
-    /// Exposed only for tests. Ordinary users should call `validate_and_insert_transaction` instead
-    pub fn validate_and_insert_mutable_transaction(
+    /// validate_and_replace_transaction validates the given transaction, and
+    /// adds it to the set of known transactions that have not yet been
+    /// added to any block.
+    ///
+    /// Replace by Fee is mandatory, consequently if the provided transaction cannot not replace
+    /// an existing transaction in the mempool, an error is returned.
+    ///
+    /// On success, returns the replaced transaction and the transactions that where unorphaned
+    /// following the insertion of the provided transaction.
+    ///
+    /// The returned transactions are references of objects owned by the mempool.
+    pub fn validate_and_replace_transaction(
+        &self,
+        consensus: &dyn ConsensusApi,
+        transaction: Transaction,
+    ) -> MiningManagerResult<TransactionInsertion> {
+        self.validate_and_insert_mutable_transaction(
+            consensus,
+            MutableTransaction::from_tx(transaction),
+            Priority::High,
+            Orphan::Forbidden,
+            RbfPolicy::Mandatory,
+        )
+    }
+
+    /// Exposed for tests only
+    ///
+    /// Regular users should call `validate_and_insert_transaction` or `validate_and_replace_transaction` instead.
+    pub(crate) fn validate_and_insert_mutable_transaction(
         &self,
         consensus: &dyn ConsensusApi,
         transaction: MutableTransaction,
         priority: Priority,
         orphan: Orphan,
-    ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+        rbf_policy: RbfPolicy,
+    ) -> MiningManagerResult<TransactionInsertion> {
         // read lock on mempool
-        let mut transaction = self.mempool.read().pre_validate_and_populate_transaction(consensus, transaction)?;
+        let mut transaction = self.mempool.read().pre_validate_and_populate_transaction(consensus, transaction, rbf_policy)?;
         // no lock on mempool
         let validation_result = validate_mempool_transaction(consensus, &mut transaction);
         // write lock on mempool
         let mut mempool = self.mempool.write();
-        mempool.try_solve_conflicts(&transaction)?;
+        match mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan, rbf_policy)? {
+            TransactionInsertOutcome { removed, accepted: Some(accepted_transaction) } => {
+                let unorphaned_transactions = mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction);
+                drop(mempool);
 
-        if let Some(accepted_transaction) =
-            mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan)?
-        {
-            let unorphaned_transactions = mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction);
-            drop(mempool);
+                // The capacity used here may be exceeded since accepted unorphaned transaction may themselves unorphan other transactions.
+                let mut accepted_transactions = Vec::with_capacity(unorphaned_transactions.len() + 1);
+                // We include the original accepted transaction as well
+                accepted_transactions.push(accepted_transaction);
+                accepted_transactions.extend(self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions));
+                self.counters.increase_tx_counts(1, priority);
 
-            // The capacity used here may be exceeded since accepted unorphaned transaction may themselves unorphan other transactions.
-            let mut accepted_transactions = Vec::with_capacity(unorphaned_transactions.len() + 1);
-            // We include the original accepted transaction as well
-            accepted_transactions.push(accepted_transaction);
-            accepted_transactions.extend(self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions));
-            self.counters.increase_tx_counts(1, priority);
-
-            Ok(accepted_transactions)
-        } else {
-            Ok(vec![])
+                Ok(TransactionInsertion::new(removed, accepted_transactions))
+            }
+            TransactionInsertOutcome { removed, accepted: None } => Ok(TransactionInsertion::new(removed, vec![])),
         }
     }
 
@@ -299,13 +336,14 @@ impl MiningManager {
                         transaction,
                         priority,
                         Orphan::Forbidden,
+                        RbfPolicy::Forbidden,
                     ) {
-                        Ok(Some(accepted_transaction)) => {
+                        Ok(TransactionInsertOutcome { removed: _, accepted: Some(accepted_transaction) }) => {
                             accepted_transactions.push(accepted_transaction.clone());
                             self.counters.increase_tx_counts(1, priority);
                             mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction)
                         }
-                        Ok(None) => vec![],
+                        Ok(TransactionInsertOutcome { removed: _, accepted: None }) => vec![],
                         Err(err) => {
                             debug!("Failed to unorphan transaction {0} due to rule error: {1}", orphan_id, err);
                             vec![]
@@ -322,7 +360,7 @@ impl MiningManager {
     /// adds those to the set of known transactions that have not yet been added to any block.
     ///
     /// Returns transactions that where unorphaned following the insertion of the provided
-    /// transactions. The returned transactions are clones of objects owned by the mempool.
+    /// transactions. The returned transactions are references of objects owned by the mempool.
     pub fn validate_and_insert_transaction_batch(
         &self,
         consensus: &dyn ConsensusApi,
@@ -346,7 +384,7 @@ impl MiningManager {
             let mempool = self.mempool.read();
             let txs = chunk.filter_map(|tx| {
                 let transaction_id = tx.id();
-                match mempool.pre_validate_and_populate_transaction(consensus, tx) {
+                match mempool.pre_validate_and_populate_transaction(consensus, tx, RbfPolicy::Allowed) {
                     Ok(tx) => Some(tx),
                     Err(RuleError::RejectAlreadyAccepted(transaction_id)) => {
                         debug!("Ignoring already accepted transaction {}", transaction_id);
@@ -388,13 +426,21 @@ impl MiningManager {
             let mut mempool = self.mempool.write();
             let txs = chunk.flat_map(|(transaction, validation_result)| {
                 let transaction_id = transaction.id();
-                match mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan) {
-                    Ok(Some(accepted_transaction)) => {
+                // FIXME: validate allowed RBF
+                match mempool.post_validate_and_insert_transaction(
+                    consensus,
+                    validation_result,
+                    transaction,
+                    priority,
+                    orphan,
+                    RbfPolicy::Allowed,
+                ) {
+                    Ok(TransactionInsertOutcome { removed: _, accepted: Some(accepted_transaction) }) => {
                         insert_results.push(Ok(accepted_transaction.clone()));
                         self.counters.increase_tx_counts(1, priority);
                         mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction)
                     }
-                    Ok(None) => {
+                    Ok(TransactionInsertOutcome { removed: _, accepted: None }) => {
                         // Either orphaned or already existing in the mempool
                         vec![]
                     }
@@ -761,22 +807,34 @@ impl MiningManagerProxy {
     /// Validates a transaction and adds it to the set of known transactions that have not yet been
     /// added to any block.
     ///
-    /// The returned transactions are clones of objects owned by the mempool.
+    /// The returned transactions are references of objects owned by the mempool.
     pub async fn validate_and_insert_transaction(
         self,
         consensus: &ConsensusProxy,
         transaction: Transaction,
         priority: Priority,
         orphan: Orphan,
-    ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+    ) -> MiningManagerResult<TransactionInsertion> {
         consensus.clone().spawn_blocking(move |c| self.inner.validate_and_insert_transaction(c, transaction, priority, orphan)).await
+    }
+
+    /// Validates a transaction and adds it to the set of known transactions that have not yet been
+    /// added to any block.
+    ///
+    /// The returned transactions are references of objects owned by the mempool.
+    pub async fn validate_and_replace_transaction(
+        self,
+        consensus: &ConsensusProxy,
+        transaction: Transaction,
+    ) -> MiningManagerResult<TransactionInsertion> {
+        consensus.clone().spawn_blocking(move |c| self.inner.validate_and_replace_transaction(c, transaction)).await
     }
 
     /// Validates a batch of transactions, handling iteratively only the independent ones, and
     /// adds those to the set of known transactions that have not yet been added to any block.
     ///
     /// Returns transactions that where unorphaned following the insertion of the provided
-    /// transactions. The returned transactions are clones of objects owned by the mempool.
+    /// transactions. The returned transactions are references of objects owned by the mempool.
     pub async fn validate_and_insert_transaction_batch(
         self,
         consensus: &ConsensusProxy,

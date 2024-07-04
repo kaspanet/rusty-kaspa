@@ -1,8 +1,9 @@
 use crate::mempool::tx::Priority;
-use kaspa_consensus_core::{tx::MutableTransaction, tx::TransactionId};
+use kaspa_consensus_core::tx::{MutableTransaction, Transaction, TransactionId};
 use std::{
     cmp::Ordering,
     fmt::{Display, Formatter},
+    sync::Arc,
 };
 
 pub(crate) struct MempoolTransaction {
@@ -50,6 +51,29 @@ impl PartialOrd for MempoolTransaction {
 impl PartialEq for MempoolTransaction {
     fn eq(&self, other: &Self) -> bool {
         self.fee_rate() == other.fee_rate()
+    }
+}
+
+/// Replace by Fee policy
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RbfPolicy {
+    /// RBF is forbidden, fails on double spend
+    Forbidden,
+    /// RBF may occur, fails on double spend when not all RBF conditions are met
+    Allowed,
+    /// RBF must occur, fails if no transaction can be replaced
+    Mandatory,
+}
+
+#[derive(Default)]
+pub(crate) struct TransactionInsertOutcome {
+    pub removed: Option<Arc<Transaction>>,
+    pub accepted: Option<Arc<Transaction>>,
+}
+
+impl TransactionInsertOutcome {
+    pub(crate) fn new(removed: Option<Arc<Transaction>>, accepted: Option<Arc<Transaction>>) -> Self {
+        Self { removed, accepted }
     }
 }
 

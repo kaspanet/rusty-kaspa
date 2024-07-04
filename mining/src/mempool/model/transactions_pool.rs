@@ -182,6 +182,7 @@ impl TransactionsPool {
         }
         false
     }
+
     /// Returns the exceeding low-priority transactions having the lowest fee rates in order
     /// to have room for at least `free_slots` new transactions. The returned transactions
     /// are guaranteed to be unchained (no successor in mempool) and to not be parent of
@@ -247,6 +248,26 @@ impl TransactionsPool {
 
     pub(crate) fn check_double_spends(&self, transaction: &MutableTransaction) -> RuleResult<()> {
         self.utxo_set.check_double_spends(transaction)
+    }
+
+    pub(crate) fn get_first_double_spend<'a>(
+        &'a self,
+        transaction: &MutableTransaction,
+    ) -> RuleResult<Option<(TransactionOutpoint, &'a MempoolTransaction)>> {
+        let double_spend = self.utxo_set.get_first_double_spend(transaction);
+        match double_spend {
+            None => Ok(None),
+            Some((outpoint, transaction_id)) => {
+                match self.get(&transaction_id) {
+                    Some(transaction) => Ok(Some((outpoint, transaction))),
+                    None => {
+                        // If a double spent transaction id is found but the matching transaction cannot be located in the mempool
+                        // a replacement is no longer possible and a double spend error is returned
+                        Err(RuleError::RejectDoubleSpendInMempool(outpoint, transaction_id))
+                    }
+                }
+            }
+        }
     }
 
     pub(crate) fn collect_expired_low_priority_transactions(&mut self, virtual_daa_score: u64) -> Vec<TransactionId> {
