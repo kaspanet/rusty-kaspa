@@ -1,7 +1,10 @@
 use crate::imports::*;
 use crate::result::Result;
 use kaspa_addresses::*;
-use kaspa_consensus_core::tx::ScriptPublicKeyT;
+use kaspa_consensus_core::{
+    network::{NetworkType, NetworkTypeT},
+    tx::ScriptPublicKeyT,
+};
 use kaspa_txscript::{script_class::ScriptClass, standard};
 use kaspa_utils::hex::ToHex;
 use kaspa_wasm_core::types::{BinaryT, HexString};
@@ -40,10 +43,11 @@ pub fn pay_to_script_hash_signature_script(redeem_script: BinaryT, signature: Bi
 /// @param prefix - The address prefix.
 /// @category Wallet SDK
 #[wasm_bindgen(js_name = addressFromScriptPublicKey)]
-pub fn address_from_script_public_key(script_public_key: ScriptPublicKeyT, prefix: String) -> Result<AddressOrUndefinedT> {
+pub fn address_from_script_public_key(script_public_key: ScriptPublicKeyT, network: &NetworkTypeT) -> Result<AddressOrUndefinedT> {
     let script_public_key = ScriptPublicKey::try_cast_from(script_public_key)?;
-    let prefix = Prefix::try_from(prefix.as_str())?;
-    match standard::extract_script_pub_key_address(script_public_key.as_ref(), prefix) {
+    let network_type = NetworkType::try_from(network)?;
+
+    match standard::extract_script_pub_key_address(script_public_key.as_ref(), network_type.into()) {
         Ok(address) => Ok(AddressOrUndefinedT::from(JsValue::from(address))),
         Err(_) => Ok(AddressOrUndefinedT::from(JsValue::UNDEFINED)),
     }
