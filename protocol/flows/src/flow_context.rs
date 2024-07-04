@@ -628,7 +628,9 @@ impl FlowContext {
         Ok(())
     }
 
-    /// Replaces the rpc-submitted transaction to the mempool and propagates it to peers.
+    /// Replaces the rpc-submitted transaction into the mempool and propagates it to peers.
+    ///
+    /// Returns the removed mempool transaction on successful replace by fee.
     ///
     /// Transactions submitted through rpc are considered high priority. This definition does not affect the tx selection algorithm
     /// but only changes how we manage the lifetime of the tx. A high-priority tx does not expire and is repeatedly rebroadcasted to

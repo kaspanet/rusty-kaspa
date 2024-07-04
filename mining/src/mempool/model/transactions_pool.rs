@@ -5,7 +5,7 @@ use crate::{
         model::{
             map::MempoolTransactionCollection,
             pool::{Pool, TransactionsEdges},
-            tx::MempoolTransaction,
+            tx::{DoubleSpend, MempoolTransaction},
             utxo_set::MempoolUtxoSet,
         },
         tx::Priority,
@@ -250,22 +250,19 @@ impl TransactionsPool {
         self.utxo_set.check_double_spends(transaction)
     }
 
-    pub(crate) fn get_first_double_spend<'a>(
-        &'a self,
-        transaction: &MutableTransaction,
-    ) -> RuleResult<Option<(TransactionOutpoint, &'a MempoolTransaction)>> {
-        let double_spend = self.utxo_set.get_first_double_spend(transaction);
-        match double_spend {
-            None => Ok(None),
-            Some((outpoint, transaction_id)) => {
-                match self.get(&transaction_id) {
-                    Some(transaction) => Ok(Some((outpoint, transaction))),
-                    None => {
-                        // If a double spent transaction id is found but the matching transaction cannot be located in the mempool
-                        // a replacement is no longer possible and a double spend error is returned
-                        Err(RuleError::RejectDoubleSpendInMempool(outpoint, transaction_id))
-                    }
-                }
+    pub(crate) fn get_double_spends(&self, transaction: &MutableTransaction) -> Vec<DoubleSpend> {
+        self.utxo_set.get_double_spends(transaction)
+    }
+
+    pub(crate) fn get_double_spend_owner<'a>(&'a self, double_spend: &DoubleSpend) -> RuleResult<&'a MempoolTransaction> {
+        match self.get(&double_spend.owner_id) {
+            Some(transaction) => Ok(transaction),
+            None => {
+                // This case should never arise in the first place.
+                // Anyway, in case it does, if a double spent transaction id is found but the matching
+                // transaction cannot be located in the mempool a replacement is no longer possible
+                // so a double spend error is returned.
+                Err(double_spend.into())
             }
         }
     }

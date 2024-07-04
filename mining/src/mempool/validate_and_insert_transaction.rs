@@ -2,7 +2,7 @@ use crate::mempool::{
     errors::{RuleError, RuleResult},
     model::{
         pool::Pool,
-        tx::{MempoolTransaction, RbfPolicy, TransactionInsertOutcome, TxRemovalReason},
+        tx::{DoubleSpend, MempoolTransaction, RbfPolicy, TransactionInsertOutcome, TxRemovalReason},
     },
     tx::{Orphan, Priority},
     Mempool,
@@ -20,7 +20,7 @@ impl Mempool {
         &self,
         consensus: &dyn ConsensusApi,
         mut transaction: MutableTransaction,
-        rbf: RbfPolicy,
+        rbf_policy: RbfPolicy,
     ) -> RuleResult<MutableTransaction> {
         self.validate_transaction_unacceptance(&transaction)?;
         // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
@@ -28,7 +28,7 @@ impl Mempool {
         self.validate_transaction_in_isolation(&transaction)?;
 
         // When replace by fee is forbidden, fail early on double spend
-        if rbf == RbfPolicy::Forbidden {
+        if rbf_policy == RbfPolicy::Forbidden {
             self.transaction_pool.check_double_spends(&transaction)?;
         }
 
@@ -73,7 +73,9 @@ impl Mempool {
             }
         }
 
+        // Check double spends and remove them if the RBF policy requires to
         let removed_transaction = self.validate_replace_by_fee(&transaction, rbf_policy)?;
+
         self.validate_transaction_in_context(&transaction)?;
 
         // Before adding the transaction, check if there is room in the pool
@@ -87,60 +89,73 @@ impl Mempool {
         Ok(TransactionInsertOutcome::new(removed_transaction, Some(accepted_transaction)))
     }
 
-    /// Validates replace by fee (RBF) for a transaction and a policy.
+    /// Validates replace by fee (RBF) for an incoming transaction and a policy.
     ///
-    /// The RBF target is the transaction of the first double spend found in the mempool iterating the inputs of `transaction`
-    /// in order.
-    ///
-    /// The target is replaceable if it has a lower fee/mass ratio than `transaction`.
-    ///
-    /// If the policy allows or requires a replacement and a replaceable target is found, the target and all its direct
-    /// and indirect redeemers (chained transactions) are removed.
-    ///
-    /// The validation fails if:
-    /// - a target is found and RBF is forbidden
-    /// - a target is found but is not replaceable
-    /// - another double spend is found after having removed the replaceable target
-    /// - no replaceable target is found and RBF is mandatory
-    /// - a double spend transaction id is found but the matching transaction is not in the mempool (edge case)
+    /// See [`RbfPolicy`] variants for details of each policy process and success conditions.
     ///
     /// On success, `transaction` is guaranteed to have no double spend.
     ///
-    /// On mandatory RBF success, a removed transaction is always provided.
+    /// On mandatory RBF success, some removed transaction is always returned.
     fn validate_replace_by_fee(
         &mut self,
         transaction: &MutableTransaction,
         rbf_policy: RbfPolicy,
     ) -> RuleResult<Option<Arc<Transaction>>> {
-        match self.transaction_pool.get_first_double_spend(transaction)? {
-            Some((outpoint, conflicting_tx)) => match rbf_policy {
-                RbfPolicy::Forbidden => Err(RuleError::RejectDoubleSpendInMempool(outpoint, conflicting_tx.id())),
-                RbfPolicy::Allowed | RbfPolicy::Mandatory => {
-                    if transaction.calculated_fee_per_compute_mass().unwrap()
-                        > conflicting_tx.mtx.calculated_fee_per_compute_mass().unwrap()
-                    {
-                        let conflicting_tx = conflicting_tx.mtx.tx.clone();
+        match rbf_policy {
+            RbfPolicy::Forbidden => {
+                self.transaction_pool.check_double_spends(transaction)?;
+                Ok(None)
+            }
+
+            RbfPolicy::Allowed => {
+                let double_spends = self.transaction_pool.get_double_spends(transaction);
+                match double_spends.is_empty() {
+                    true => Ok(None),
+                    false => {
+                        let removed = self.validate_double_spend_transaction(transaction, &double_spends[0])?.mtx.tx.clone();
+                        for double_spend in double_spends {
+                            self.remove_transaction(
+                                &double_spend.owner_id,
+                                true,
+                                TxRemovalReason::ReplacedByFee,
+                                format!("by {}", transaction.id()).as_str(),
+                            )?;
+                        }
+                        Ok(Some(removed))
+                    }
+                }
+            }
+
+            RbfPolicy::Mandatory => {
+                let double_spends = self.transaction_pool.get_double_spends(transaction);
+                match double_spends.len() {
+                    0 => Err(RuleError::RejectRbfNoDoubleSpend),
+                    1 => {
+                        let removed = self.validate_double_spend_transaction(transaction, &double_spends[0])?.mtx.tx.clone();
                         self.remove_transaction(
-                            &conflicting_tx.id(),
+                            &double_spends[0].owner_id,
                             true,
                             TxRemovalReason::ReplacedByFee,
                             format!("by {}", transaction.id()).as_str(),
                         )?;
-
-                        // Re-check for double spends since `transaction` may have additional double spent inputs
-                        // not included in the removed transactions
-                        self.transaction_pool.check_double_spends(transaction)?;
-
-                        Ok(Some(conflicting_tx))
-                    } else {
-                        Err(RuleError::RejectDoubleSpendInMempool(outpoint, conflicting_tx.id()))
+                        Ok(Some(removed))
                     }
+                    _ => Err(RuleError::RejectRbfTooManyDoubleSpends),
                 }
-            },
-            None => match rbf_policy {
-                RbfPolicy::Forbidden | RbfPolicy::Allowed => Ok(None),
-                RbfPolicy::Mandatory => Err(RuleError::RejectReplaceByFee),
-            },
+            }
+        }
+    }
+
+    fn validate_double_spend_transaction<'a>(
+        &'a self,
+        transaction: &MutableTransaction,
+        double_spend: &DoubleSpend,
+    ) -> RuleResult<&'a MempoolTransaction> {
+        let owner = self.transaction_pool.get_double_spend_owner(double_spend)?;
+        if transaction.calculated_fee_per_compute_mass().unwrap() > owner.mtx.calculated_fee_per_compute_mass().unwrap() {
+            Ok(owner)
+        } else {
+            Err(double_spend.into())
         }
     }
 

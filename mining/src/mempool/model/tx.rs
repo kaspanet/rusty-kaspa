@@ -1,5 +1,6 @@
 use crate::mempool::tx::Priority;
-use kaspa_consensus_core::tx::{MutableTransaction, Transaction, TransactionId};
+use kaspa_consensus_core::tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint};
+use kaspa_mining_errors::mempool::RuleError;
 use std::{
     cmp::Ordering,
     fmt::{Display, Formatter},
@@ -54,15 +55,75 @@ impl PartialEq for MempoolTransaction {
     }
 }
 
-/// Replace by Fee policy
+/// Replace by Fee (RBF) policy
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RbfPolicy {
-    /// RBF is forbidden, fails on double spend
+    /// ### RBF is forbidden
+    ///
+    /// Inserts the incoming transaction.
+    ///
+    /// Conditions of success:
+    ///
+    /// - no double spend
+    ///
+    /// If conditions are not met, leaves the mempool unchanged and fails with a double spend error.
     Forbidden,
-    /// RBF may occur, fails on double spend when not all RBF conditions are met
+
+    /// ### RBF may occur
+    ///
+    /// Identifies double spends in mempool and their owning transactions checking in order every input of the incoming
+    /// transaction.
+    ///
+    /// Removes all mempool transactions owning double spends and inserts the incoming transaction.
+    ///
+    /// Conditions of success:
+    ///
+    /// - on absence of double spends, always succeeds
+    /// - on double spends, the incoming transaction has a higher fee/mass ratio than the mempool transaction owning
+    ///   the first double spend
+    ///
+    /// If conditions are not met, leaves the mempool unchanged and fails with a double spend error.
     Allowed,
-    /// RBF must occur, fails if no transaction can be replaced
+
+    /// ### RBF must occur
+    ///
+    /// Identifies double spends in mempool and their owning transactions checking in order every input of the incoming
+    /// transaction.
+    ///
+    /// Removes the mempool transaction owning the double spends and inserts the incoming transaction.
+    ///
+    /// Conditions of success:
+    ///
+    /// - at least one double spend
+    /// - all double spends belong to the same mempool transaction
+    /// - the incoming transaction has a higher fee/mass ratio than the mempool transaction owning
+    ///   the double spends
+    ///
+    /// If conditions are not met, leaves the mempool unchanged and fails with a double spend error.
     Mandatory,
+}
+
+pub(crate) struct DoubleSpend {
+    pub outpoint: TransactionOutpoint,
+    pub owner_id: TransactionId,
+}
+
+impl DoubleSpend {
+    pub fn new(outpoint: TransactionOutpoint, owner_id: TransactionId) -> Self {
+        Self { outpoint, owner_id }
+    }
+}
+
+impl From<DoubleSpend> for RuleError {
+    fn from(value: DoubleSpend) -> Self {
+        RuleError::RejectDoubleSpendInMempool(value.outpoint, value.owner_id)
+    }
+}
+
+impl From<&DoubleSpend> for RuleError {
+    fn from(value: &DoubleSpend) -> Self {
+        RuleError::RejectDoubleSpendInMempool(value.outpoint, value.owner_id)
+    }
 }
 
 #[derive(Default)]

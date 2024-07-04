@@ -28,7 +28,10 @@ pub enum RuleError {
     RejectDoubleSpendInMempool(TransactionOutpoint, TransactionId),
 
     #[error("replace by fee found no replaceable transaction in the mempool")]
-    RejectReplaceByFee,
+    RejectRbfNoDoubleSpend,
+
+    #[error("replace by fee found more than one replaceable transaction in the mempool")]
+    RejectRbfTooManyDoubleSpends,
 
     /// New behavior: a transaction is rejected if the mempool is full
     #[error("number of high-priority transactions in mempool ({0}) has reached the maximum allowed ({1})")]
