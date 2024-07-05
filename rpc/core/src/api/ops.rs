@@ -46,8 +46,6 @@ pub enum RpcApiOps {
     AddPeer,
     /// Extracts a transaction out of the request message and attempts to add it to the mempool Returns an empty response or an error message
     SubmitTransaction,
-    /// Extracts a transaction out of the request message and attempts to replace a matching transaction in the mempool with it, applying a mandatory Replace by Fee policy
-    SubmitTransactionReplacement,
     /// Requests info on a block corresponding to a given block hash Returns block info if the block is known.
     GetBlock,
     //
@@ -116,6 +114,9 @@ pub enum RpcApiOps {
     VirtualDaaScoreChangedNotification,
     PruningPointUtxoSetOverrideNotification,
     NewBlockTemplateNotification,
+
+    /// Extracts a transaction out of the request message and attempts to replace a matching transaction in the mempool with it, applying a mandatory Replace by Fee policy
+    SubmitTransactionReplacement,
 }
 
 impl RpcApiOps {
