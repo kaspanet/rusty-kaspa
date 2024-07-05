@@ -4,10 +4,9 @@ use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
-use kaspa_addresses::{Address, Prefix, Version};
+use kaspa_addresses::{Address, Version};
 use kaspa_consensus_core::api::counters::ProcessingCounters;
 use kaspa_consensus_core::errors::block::RuleError;
-use kaspa_consensus_core::network::NetworkId;
 use kaspa_consensus_core::{
     block::Block,
     coinbase::MinerData,
@@ -68,6 +67,8 @@ use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::ops::Mul;
+use std::sync::atomic::{AtomicBool, AtomicU64};
+use std::time::Duration;
 use std::{
     collections::HashMap,
     iter::once,
@@ -113,6 +114,8 @@ pub struct RpcCoreService {
     perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
     p2p_tower_counters: Arc<TowerConnectionCounters>,
     grpc_tower_counters: Arc<TowerConnectionCounters>,
+
+    estimated_fee_cache: EstimatedFeeCache,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -212,6 +215,7 @@ impl RpcCoreService {
             perf_monitor,
             p2p_tower_counters,
             grpc_tower_counters,
+            estimated_fee_cache: Default::default(),
         }
     }
 
@@ -655,47 +659,79 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _request: GetPriorityFeeEstimateRequest,
     ) -> RpcResult<GetPriorityFeeEstimateResponse> {
         trace!("incoming GetPriorityFeeEstimateRequest request");
-        let script_public_key =
-            kaspa_txscript::pay_to_address_script(&Address::new(self.config.net.into(), Version::PubKey, &[0u8; 32]));
-        let miner_data: MinerData = MinerData::new(script_public_key, vec![]);
-        let session = self.consensus_manager.consensus().unguarded_session();
-        let kaspa_consensus_core::block::BlockTemplate {
-            block: kaspa_consensus_core::block::MutableBlock { transactions, .. }, ..
-        } = self.mining_manager.clone().get_block_template(&session, miner_data).await?;
-        if transactions.is_empty() {
-            return Ok(GetPriorityFeeEstimateResponse { fee_per_mass: FeePerMass::VirtualFeePerMass(VirtualFeePerMass::default()) });
-        }
-        let mut fees_and_masses = Vec::with_capacity(transactions.len());
-        for (id, mass) in transactions.into_iter().map(|tx| (tx.id(), tx.mass())) {
-            let fee = self
-                .mining_manager
-                .clone()
-                .get_transaction(id, TransactionQuery::All)
-                .await
-                .and_then(|tx| tx.calculated_fee)
-                .unwrap_or_default();
-            fees_and_masses.push((fee, mass));
-        }
-        fees_and_masses.sort_unstable_by(|(lhs_fee, lhs_mass), (rhs_fee, rhs_mass)| lhs_fee.mul(rhs_mass).cmp(&rhs_fee.mul(lhs_mass)));
-        let max = {
-            let (fee, mass) = fees_and_masses.last().unwrap();
-            *fee as f64 / *mass as f64
-        };
-        let min = {
-            let (fee, mass) = fees_and_masses.first().unwrap();
-            *fee as f64 / *mass as f64
-        };
-        let (div, rem) = fees_and_masses.len().div_rem(2);
-        let median = if rem != 0 {
-            let (fee, mass) = fees_and_masses[div];
-            fee as f64 / mass as f64
-        } else {
-            let (below_fee, below_mass) = fees_and_masses[div - 1];
-            let (above_fee, above_mass) = fees_and_masses[div];
-            (below_fee as f64 / below_mass as f64 + above_fee as f64 / above_mass as f64) / 2.0
-        };
 
-        Ok(GetPriorityFeeEstimateResponse { fee_per_mass: FeePerMass::VirtualFeePerMass(VirtualFeePerMass { max, median, min }) })
+        const CACHE_FOR: Duration = Duration::from_secs(1);
+
+        let relaxed_cache_resp = || GetPriorityFeeEstimateResponse {
+            fee_per_mass: FeePerMass::VirtualFeePerMass(VirtualFeePerMass {
+                max: self.estimated_fee_cache.max.load(Ordering::Relaxed),
+                median: self.estimated_fee_cache.median.load(Ordering::Relaxed),
+                min: self.estimated_fee_cache.min.load(Ordering::Relaxed),
+            }),
+        };
+        if self.estimated_fee_cache.expired_at.load(Ordering::Relaxed) > unix_now() {
+            return Ok(relaxed_cache_resp());
+        }
+        if self
+            .estimated_fee_cache
+            .computing_in_progress
+            .compare_exchange_weak(false, true, Ordering::SeqCst, Ordering::Relaxed)
+            .is_err()
+        {
+            return Ok(relaxed_cache_resp());
+        }
+
+        let compute = || async {
+            let script_public_key =
+                kaspa_txscript::pay_to_address_script(&Address::new(self.config.net.into(), Version::PubKey, &[0u8; 32]));
+            let miner_data: MinerData = MinerData::new(script_public_key, vec![]);
+            let session = self.consensus_manager.consensus().unguarded_session();
+            let kaspa_consensus_core::block::BlockTemplate {
+                block: kaspa_consensus_core::block::MutableBlock { transactions, .. },
+                calculated_fees,
+                ..
+            } = self.mining_manager.clone().get_block_template(&session, miner_data).await?;
+            if transactions.len() < 2 {
+                // don't count coinbase tx
+                return Ok(GetPriorityFeeEstimateResponse {
+                    fee_per_mass: FeePerMass::VirtualFeePerMass(VirtualFeePerMass::default()),
+                });
+            }
+            let transactions = &transactions[1..];
+            let mut fees_and_masses = Vec::with_capacity(transactions.len());
+            for (mass, fee) in transactions.iter().map(Transaction::mass).zip(calculated_fees) {
+                fees_and_masses.push((fee, mass));
+            }
+            fees_and_masses
+                .sort_unstable_by(|(lhs_fee, lhs_mass), (rhs_fee, rhs_mass)| lhs_fee.mul(rhs_mass).cmp(&rhs_fee.mul(lhs_mass)));
+            let max = {
+                let (fee, mass) = fees_and_masses.last().unwrap();
+                *fee as f64 / *mass as f64
+            };
+            let min = {
+                let (fee, mass) = fees_and_masses.first().unwrap();
+                *fee as f64 / *mass as f64
+            };
+            let (div, rem) = fees_and_masses.len().div_rem(2);
+            let median = if rem != 0 {
+                let (fee, mass) = fees_and_masses[div];
+                fee as f64 / mass as f64
+            } else {
+                let (below_fee, below_mass) = fees_and_masses[div - 1];
+                let (above_fee, above_mass) = fees_and_masses[div];
+                (below_fee as f64 / below_mass as f64 + above_fee as f64 / above_mass as f64) / 2.0
+            };
+
+            self.estimated_fee_cache.max.store(max, Ordering::Relaxed);
+            self.estimated_fee_cache.min.store(min, Ordering::Relaxed);
+            self.estimated_fee_cache.median.store(median, Ordering::Relaxed);
+            self.estimated_fee_cache.expired_at.store(unix_now() + CACHE_FOR.as_secs(), Ordering::Relaxed);
+
+            Ok(GetPriorityFeeEstimateResponse { fee_per_mass: FeePerMass::VirtualFeePerMass(VirtualFeePerMass { max, median, min }) })
+        };
+        let res = compute().await;
+        self.estimated_fee_cache.computing_in_progress.store(false, Ordering::Release);
+        res
     }
 
     async fn ping_call(&self, _: PingRequest) -> RpcResult<PingResponse> {
@@ -1027,4 +1063,13 @@ impl AsyncService for RpcCoreService {
             Ok(())
         })
     }
+}
+
+#[derive(Debug, Default)]
+struct EstimatedFeeCache {
+    min: portable_atomic::AtomicF64,
+    median: portable_atomic::AtomicF64,
+    max: portable_atomic::AtomicF64,
+    expired_at: AtomicU64,
+    computing_in_progress: AtomicBool,
 }

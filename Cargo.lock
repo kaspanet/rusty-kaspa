@@ -3303,6 +3303,7 @@ dependencies = [
  "kaspa-utils-tower",
  "kaspa-utxoindex",
  "log",
+ "portable-atomic",
  "tokio",
  "triggered",
  "workflow-rpc",
