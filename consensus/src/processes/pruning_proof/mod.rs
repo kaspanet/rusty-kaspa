@@ -775,9 +775,8 @@ impl PruningProofManager {
         level: BlockLevel,
         relations_service: &MTRelationsService<DbRelationsStore>,
     ) -> PruningProofManagerInternalResult<Arc<Header>> {
-        // Logic of apply_proof only inserts parent entries for a header from the proof
-        // into the relations store for a level if there was GD data in the old stores for that
-        // header. To mimic that logic here, we need to filter out parents that are NOT in the relations_service
+        // Parents manager parents_at_level may return parents that aren't in relations_service, so it's important
+        // to filter to include only parents that are in relations_service.
         let parents = self
             .parents_manager
             .parents_at_level(header, level)
