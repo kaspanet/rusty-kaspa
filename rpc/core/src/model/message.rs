@@ -847,11 +847,12 @@ pub enum FeePerMass {
 #[serde(rename_all = "camelCase")]
 pub struct GetPriorityFeeEstimateResponse {
     pub fee_per_mass: FeePerMass,
+    pub mempool_total_mass: u64,
 }
 
 impl GetPriorityFeeEstimateResponse {
-    pub fn new(fee_per_mass: FeePerMass) -> Self {
-        Self { fee_per_mass }
+    pub fn new(fee_per_mass: FeePerMass, mempool_total_mass: u64) -> Self {
+        Self { fee_per_mass, mempool_total_mass }
     }
 }
 

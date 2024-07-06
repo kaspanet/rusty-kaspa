@@ -33,6 +33,8 @@ pub struct MiningCounters {
     pub txs_sample: AtomicU64,
     pub orphans_sample: AtomicU64,
     pub accepted_sample: AtomicU64,
+
+    pub total_mass: AtomicU64,
 }
 
 impl Default for MiningCounters {
@@ -49,6 +51,7 @@ impl Default for MiningCounters {
             txs_sample: Default::default(),
             orphans_sample: Default::default(),
             accepted_sample: Default::default(),
+            total_mass: Default::default(),
         }
     }
 }
@@ -67,6 +70,7 @@ impl MiningCounters {
             txs_sample: self.txs_sample.load(Ordering::Relaxed),
             orphans_sample: self.orphans_sample.load(Ordering::Relaxed),
             accepted_sample: self.accepted_sample.load(Ordering::Relaxed),
+            total_mass: self.total_mass.load(Ordering::Relaxed),
         }
     }
 
@@ -102,6 +106,7 @@ pub struct MempoolCountersSnapshot {
     pub txs_sample: u64,
     pub orphans_sample: u64,
     pub accepted_sample: u64,
+    pub total_mass: u64,
 }
 
 impl MempoolCountersSnapshot {
@@ -157,6 +162,7 @@ impl core::ops::Sub for &MempoolCountersSnapshot {
             txs_sample: (self.txs_sample + rhs.txs_sample) / 2,
             orphans_sample: (self.orphans_sample + rhs.orphans_sample) / 2,
             accepted_sample: (self.accepted_sample + rhs.accepted_sample) / 2,
+            total_mass: self.total_mass.checked_sub(rhs.total_mass).unwrap_or_default(),
         }
     }
 }

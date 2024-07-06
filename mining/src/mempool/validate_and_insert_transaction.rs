@@ -13,6 +13,7 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_core::{debug, info};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 impl Mempool {
@@ -78,6 +79,7 @@ impl Mempool {
         // Add the transaction to the mempool as a MempoolTransaction and return a clone of the embedded Arc<Transaction>
         let accepted_transaction =
             self.transaction_pool.add_transaction(transaction, consensus.get_virtual_daa_score(), priority)?.mtx.tx.clone();
+        self.counters.total_mass.fetch_add(accepted_transaction.mass(), Ordering::Relaxed);
         Ok(Some(accepted_transaction))
     }
 

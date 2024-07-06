@@ -668,6 +668,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 median: self.estimated_fee_cache.median.load(Ordering::Relaxed),
                 min: self.estimated_fee_cache.min.load(Ordering::Relaxed),
             }),
+            mempool_total_mass: self.mining_manager.snapshot().total_mass,
         };
         if self.estimated_fee_cache.expired_at.load(Ordering::Relaxed) > unix_now() {
             return Ok(relaxed_cache_resp());
@@ -695,9 +696,10 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 // don't count coinbase tx
                 return Ok(GetPriorityFeeEstimateResponse {
                     fee_per_mass: FeePerMass::VirtualFeePerMass(VirtualFeePerMass::default()),
+                    mempool_total_mass: 0,
                 });
             }
-            let transactions = &transactions[1..];
+            let transactions = &transactions[1..]; // skip coinbase tx
             let mut fees_and_masses = Vec::with_capacity(transactions.len());
             for (mass, fee) in transactions.iter().map(Transaction::mass).zip(calculated_fees) {
                 fees_and_masses.push((fee, mass));
@@ -727,7 +729,10 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             self.estimated_fee_cache.median.store(median, Ordering::Relaxed);
             self.estimated_fee_cache.expired_at.store(unix_now() + CACHE_FOR.as_secs(), Ordering::Relaxed);
 
-            Ok(GetPriorityFeeEstimateResponse { fee_per_mass: FeePerMass::VirtualFeePerMass(VirtualFeePerMass { max, median, min }) })
+            Ok(GetPriorityFeeEstimateResponse {
+                fee_per_mass: FeePerMass::VirtualFeePerMass(VirtualFeePerMass { max, median, min }),
+                mempool_total_mass: self.mining_manager.snapshot().total_mass,
+            })
         };
         let res = compute().await;
         self.estimated_fee_cache.computing_in_progress.store(false, Ordering::Release);

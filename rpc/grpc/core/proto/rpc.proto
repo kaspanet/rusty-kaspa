@@ -858,6 +858,7 @@ message GetPriorityFeeEstimateResponseMessage {
   oneof fee_per_mass {
     Virtual virtual = 2; // 1 is reserved for `All`
   }
+  uint64 mempool_total_mass = 11;
   RPCError error = 1000;
 }
 
