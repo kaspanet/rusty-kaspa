@@ -4,7 +4,7 @@ use kaspa_consensus_core::{
 };
 use thiserror::Error;
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum RuleError {
     /// A consensus transaction rule error
     ///

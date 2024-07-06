@@ -13,3 +13,14 @@ pub enum MiningManagerError {
 }
 
 pub type MiningManagerResult<T> = std::result::Result<T, MiningManagerError>;
+
+impl TryFrom<MiningManagerError> for RuleError {
+    type Error = &'static str;
+
+    fn try_from(value: MiningManagerError) -> Result<Self, Self::Error> {
+        match value {
+            MiningManagerError::BlockTemplateBuilderError(_) => Err("wrong variant"),
+            MiningManagerError::MempoolError(err) => Ok(err),
+        }
+    }
+}

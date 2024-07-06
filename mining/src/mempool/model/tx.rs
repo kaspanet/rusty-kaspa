@@ -103,6 +103,17 @@ pub(crate) enum RbfPolicy {
     Mandatory,
 }
 
+impl RbfPolicy {
+    #[cfg(test)]
+    /// Returns an alternate policy accepting a transaction insertion in case the policy requires a replacement
+    pub(crate) fn for_insert(&self) -> RbfPolicy {
+        match self {
+            RbfPolicy::Forbidden | RbfPolicy::Allowed => *self,
+            RbfPolicy::Mandatory => RbfPolicy::Allowed,
+        }
+    }
+}
+
 pub(crate) struct DoubleSpend {
     pub outpoint: TransactionOutpoint,
     pub owner_id: TransactionId,

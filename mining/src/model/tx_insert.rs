@@ -1,6 +1,7 @@
 use kaspa_consensus_core::tx::Transaction;
 use std::sync::Arc;
 
+#[derive(Debug)]
 pub struct TransactionInsertion {
     pub removed: Option<Arc<Transaction>>,
     pub accepted: Vec<Arc<Transaction>>,
