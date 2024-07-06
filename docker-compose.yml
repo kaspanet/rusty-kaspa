@@ -1,0 +1,21 @@
+version: '3.6'
+
+services:
+  kaspad:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile
+    image: docker.io/kaspa/kaspad
+    ports:
+      # P2P
+      - 16111:16111
+      # grpc
+      - 16110:16110
+    command: './kaspad --utxoindex --appdir /app/data'
+    volumes:
+      - type: volume
+        source: data
+        target: /app/data
+
+volumes:
+  data:
