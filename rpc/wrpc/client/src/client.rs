@@ -372,6 +372,10 @@ impl KaspaRpcClient {
         &self.inner.rpc_ctl
     }
 
+    pub fn ctl_multiplexer(&self) -> Multiplexer<WrpcCtl> {
+        self.inner.wrpc_ctl_multiplexer.clone()
+    }
+
     /// Start background RPC services.
     pub async fn start(&self) -> Result<()> {
         if !self.inner.background_services_running.load(Ordering::SeqCst) {
