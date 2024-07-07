@@ -671,6 +671,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             mempool_total_mass: self.mining_manager.snapshot().total_mass,
         };
         if self.estimated_fee_cache.expired_at.load(Ordering::Relaxed) > unix_now() {
+            debug!("Cache is not expired, return response from cache");
             return Ok(relaxed_cache_resp());
         }
         if self
@@ -679,6 +680,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             .compare_exchange_weak(false, true, Ordering::SeqCst, Ordering::Relaxed)
             .is_err()
         {
+            debug!("Computation is in progress, return response from cache");
             return Ok(relaxed_cache_resp());
         }
 
@@ -692,12 +694,10 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 calculated_fees,
                 ..
             } = self.mining_manager.clone().get_block_template(&session, miner_data).await?;
+            // don't count coinbase tx
             if transactions.len() < 2 {
-                // don't count coinbase tx
-                return Ok(GetPriorityFeeEstimateResponse {
-                    fee_per_mass: FeePerMass::VirtualFeePerMass(VirtualFeePerMass::default()),
-                    mempool_total_mass: 0,
-                });
+                debug!("Block template has no txs, return response from cache");
+                return Ok(relaxed_cache_resp())
             }
             let transactions = &transactions[1..]; // skip coinbase tx
             let mut fees_and_masses = Vec::with_capacity(transactions.len());
@@ -728,6 +728,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             self.estimated_fee_cache.min.store(min, Ordering::Relaxed);
             self.estimated_fee_cache.median.store(median, Ordering::Relaxed);
             self.estimated_fee_cache.expired_at.store(unix_now() + CACHE_FOR.as_secs(), Ordering::Relaxed);
+            debug!("Computation is successful. Updating cache and returning fresh response");
 
             Ok(GetPriorityFeeEstimateResponse {
                 fee_per_mass: FeePerMass::VirtualFeePerMass(VirtualFeePerMass { max, median, min }),
