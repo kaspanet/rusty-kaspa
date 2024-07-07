@@ -697,7 +697,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             // don't count coinbase tx
             if transactions.len() < 2 {
                 debug!("Block template has no txs, return response from cache");
-                return Ok(relaxed_cache_resp())
+                return Ok(relaxed_cache_resp());
             }
             let transactions = &transactions[1..]; // skip coinbase tx
             let mut fees_and_masses = Vec::with_capacity(transactions.len());
