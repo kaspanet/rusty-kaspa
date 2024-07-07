@@ -63,7 +63,7 @@ mod mockery {
     // and comparing A and B buffers.
     fn test<T>(kind: &str)
     where
-        T: Serializer + Mock,
+        T: Serializer + Deserializer + Mock,
     {
         let data = T::mock();
 
@@ -1225,4 +1225,34 @@ mod mockery {
     }
 
     test!(UnsubscribeResponse);
+
+    struct Misalign;
+
+    impl Mock for Misalign {
+        fn mock() -> Self {
+            Misalign
+        }
+    }
+
+    impl Serializer for Misalign {
+        fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+            store!(u32, &1, writer)?;
+            store!(u32, &2, writer)?;
+            store!(u32, &3, writer)?;
+            Ok(())
+        }
+    }
+
+    impl Deserializer for Misalign {
+        fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+            let version: u32 = load!(u32, reader)?;
+            assert_eq!(version, 1);
+            Ok(Self)
+        }
+    }
+
+    #[test]
+    fn test_misalignment() {
+        test::<Misalign>("Misalign");
+    }
 }

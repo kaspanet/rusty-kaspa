@@ -129,7 +129,7 @@ impl ToTokens for RpcTable {
             {
                 let mut interface = Interface::new(#server_ctx);
 
-                for op in #payload_ops::list() {
+                for op in #payload_ops::iter() {
                     match op {
                         #(#targets)*
                     }

@@ -22,7 +22,9 @@ impl Serializer for RpcMempoolEntry {
         serialize!(RpcTransaction, &self.transaction, writer)?;
         store!(bool, &self.is_orphan, writer)
     }
+}
 
+impl Deserializer for RpcMempoolEntry {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let fee = load!(u64, reader)?;
         let transaction = deserialize!(RpcTransaction, reader)?;
@@ -50,7 +52,9 @@ impl Serializer for RpcMempoolEntryByAddress {
         serialize!(Vec<RpcMempoolEntry>, &self.sending, writer)?;
         serialize!(Vec<RpcMempoolEntry>, &self.receiving, writer)
     }
+}
 
+impl Deserializer for RpcMempoolEntryByAddress {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let address = load!(RpcAddress, reader)?;
         let sending = deserialize!(Vec<RpcMempoolEntry>, reader)?;

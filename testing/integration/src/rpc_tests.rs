@@ -64,7 +64,7 @@ async fn sanity_test() {
     // The intent of this for/match design (emphasizing the absence of an arm with fallback pattern in the match)
     // is to force any implementor of a new RpcApi method to add a matching arm here and to strongly incentivize
     // the adding of an actual sanity test of said new method.
-    for op in KaspadPayloadOps::list() {
+    for op in KaspadPayloadOps::iter() {
         let network_id = daemon.network;
         let task: JoinHandle<()> = match op {
             KaspadPayloadOps::SubmitBlock => {

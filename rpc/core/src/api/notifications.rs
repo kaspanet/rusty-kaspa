@@ -156,7 +156,9 @@ impl Serializer for Notification {
         }
         Ok(())
     }
+}
 
+impl Deserializer for Notification {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         match load!(u16, reader)? {

@@ -9,12 +9,11 @@ impl Settings {
         let ctx = ctx.clone().downcast_arc::<KaspaCli>()?;
 
         tprintln!(ctx, "\nSettings:\n");
-        let list = WalletSettings::list();
-        let list = list
-            .iter()
+        // let list = WalletSettings::list();
+        let list = WalletSettings::into_iter()
             .map(|setting| {
                 let value: String = ctx.wallet().settings().get(setting.clone()).unwrap_or_else(|| "-".to_string());
-                let descr = setting.descr();
+                let descr = setting.describe();
                 (setting.as_str().to_lowercase(), value, descr)
             })
             .collect::<Vec<(_, _, _)>>();

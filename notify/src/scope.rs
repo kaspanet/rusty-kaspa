@@ -60,6 +60,9 @@ impl Serializer for Scope {
         store!(Scope, self, writer)?;
         Ok(())
     }
+}
+
+impl Deserializer for Scope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         load!(Scope, reader)
@@ -74,6 +77,9 @@ impl Serializer for BlockAddedScope {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
+
+impl Deserializer for BlockAddedScope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -103,6 +109,9 @@ impl Serializer for VirtualChainChangedScope {
         store!(bool, &self.include_accepted_transaction_ids, writer)?;
         Ok(())
     }
+}
+
+impl Deserializer for VirtualChainChangedScope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let include_accepted_transaction_ids = load!(bool, reader)?;
@@ -118,6 +127,9 @@ impl Serializer for FinalityConflictScope {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
+
+impl Deserializer for FinalityConflictScope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -132,6 +144,9 @@ impl Serializer for FinalityConflictResolvedScope {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
+
+impl Deserializer for FinalityConflictResolvedScope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -174,6 +189,9 @@ impl Serializer for UtxosChangedScope {
         store!(Vec<Address>, &self.addresses, writer)?;
         Ok(())
     }
+}
+
+impl Deserializer for UtxosChangedScope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let addresses = load!(Vec<Address>, reader)?;
@@ -189,6 +207,9 @@ impl Serializer for SinkBlueScoreChangedScope {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
+
+impl Deserializer for SinkBlueScoreChangedScope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -203,6 +224,9 @@ impl Serializer for VirtualDaaScoreChangedScope {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
+
+impl Deserializer for VirtualDaaScoreChangedScope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -217,6 +241,9 @@ impl Serializer for PruningPointUtxoSetOverrideScope {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
+
+impl Deserializer for PruningPointUtxoSetOverrideScope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -231,6 +258,9 @@ impl Serializer for NewBlockTemplateScope {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
+
+impl Deserializer for NewBlockTemplateScope {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})

@@ -22,7 +22,9 @@ impl Serializer for BlockCount {
 
         Ok(())
     }
+}
 
+impl Deserializer for BlockCount {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let header_count = load!(u64, reader)?;

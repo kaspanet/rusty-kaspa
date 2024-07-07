@@ -63,7 +63,9 @@ impl Serializer for RpcUtxoEntry {
 
         Ok(())
     }
+}
 
+impl Deserializer for RpcUtxoEntry {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
         let amount = load!(u64, reader)?;
@@ -117,7 +119,9 @@ impl Serializer for RpcTransactionOutpoint {
 
         Ok(())
     }
+}
 
+impl Deserializer for RpcTransactionOutpoint {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
         let transaction_id = load!(TransactionId, reader)?;
@@ -168,7 +172,9 @@ impl Serializer for RpcTransactionInput {
 
         Ok(())
     }
+}
 
+impl Deserializer for RpcTransactionInput {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
         let previous_outpoint = deserialize!(RpcTransactionOutpoint, reader)?;
@@ -191,7 +197,9 @@ impl Serializer for RpcTransactionInputVerboseData {
         store!(u8, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for RpcTransactionInputVerboseData {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
         Ok(Self {})
@@ -228,7 +236,9 @@ impl Serializer for RpcTransactionOutput {
 
         Ok(())
     }
+}
 
+impl Deserializer for RpcTransactionOutput {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
         let value = load!(u64, reader)?;
@@ -255,7 +265,9 @@ impl Serializer for RpcTransactionOutputVerboseData {
 
         Ok(())
     }
+}
 
+impl Deserializer for RpcTransactionOutputVerboseData {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
         let script_public_key_type = load!(RpcScriptClass, reader)?;
@@ -296,7 +308,9 @@ impl Serializer for RpcTransaction {
 
         Ok(())
     }
+}
 
+impl Deserializer for RpcTransaction {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _struct_version = load!(u16, reader)?;
         let version = load!(u16, reader)?;
@@ -335,7 +349,9 @@ impl Serializer for RpcTransactionVerboseData {
 
         Ok(())
     }
+}
 
+impl Deserializer for RpcTransactionVerboseData {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
         let transaction_id = load!(RpcTransactionId, reader)?;

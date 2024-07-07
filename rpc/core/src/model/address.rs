@@ -20,7 +20,9 @@ impl Serializer for RpcUtxosByAddressesEntry {
         serialize!(RpcTransactionOutpoint, &self.outpoint, writer)?;
         serialize!(RpcUtxoEntry, &self.utxo_entry, writer)
     }
+}
 
+impl Deserializer for RpcUtxosByAddressesEntry {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version: u8 = load!(u8, reader)?;
         let address = load!(Option<RpcAddress>, reader)?;
@@ -46,7 +48,9 @@ impl Serializer for RpcBalancesByAddressesEntry {
         store!(RpcAddress, &self.address, writer)?;
         store!(Option<u64>, &self.balance, writer)
     }
+}
 
+impl Deserializer for RpcBalancesByAddressesEntry {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version: u8 = load!(u8, reader)?;
         let address = load!(RpcAddress, reader)?;
