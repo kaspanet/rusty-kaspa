@@ -524,6 +524,7 @@ pub trait DerivationCapableAccount: Account {
                     let settings = GeneratorSettings::try_new_with_iterator(
                         self.wallet().network_id()?,
                         Box::new(utxos.into_iter()),
+                        None,
                         change_address.clone(),
                         1,
                         1,

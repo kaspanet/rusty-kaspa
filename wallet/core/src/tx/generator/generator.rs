@@ -87,6 +87,11 @@ const TRANSACTION_MASS_BOUNDARY_FOR_STAGE_INPUT_ACCUMULATION: u64 = MAXIMUM_STAN
 struct Context {
     /// iterator containing UTXO entries available for transaction generation
     utxo_source_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
+    /// List of priority UTXO entries, that are consumed before polling the iterator
+    priority_utxo_entries: Option<VecDeque<UtxoEntryReference>>,
+    /// HashSet containing priority UTXO entries, used for filtering
+    /// for potential duplicates from the iterator
+    priority_utxo_entry_filter: Option<HashSet<UtxoEntryReference>>,
     /// total number of UTXOs consumed by the single generator instance
     aggregated_utxos: usize,
     /// total fees of all transactions issued by
@@ -339,6 +344,7 @@ impl Generator {
             multiplexer,
             utxo_iterator,
             source_utxo_context: utxo_context,
+            priority_utxo_entries,
             sig_op_count,
             minimum_signatures,
             change_address,
@@ -414,8 +420,14 @@ impl Generator {
             return Err(Error::GeneratorTransactionOutputsAreTooHeavy { mass: mass_sanity_check, kind: "compute mass" });
         }
 
+        let priority_utxo_entry_filter = priority_utxo_entries.as_ref().map(|entries| entries.iter().cloned().collect());
+        // remap to VecDeque as this list gets drained
+        let priority_utxo_entries = priority_utxo_entries.map(|entries| entries.into_iter().collect::<VecDeque<_>>());
+
         let context = Mutex::new(Context {
             utxo_source_iterator: utxo_iterator,
+            priority_utxo_entries,
+            priority_utxo_entry_filter,
             number_of_transactions: 0,
             aggregated_utxos: 0,
             aggregate_fees: 0,
@@ -527,15 +539,29 @@ impl Generator {
     }
 
     /// Get next UTXO entry. This function obtains UTXO in the following order:
-    /// 1. From the UTXO stash (used to store UTxOs that were not used in the previous transaction)
+    /// 1. From the UTXO stash (used to store UTxOs that were consumed during previous transaction generation but were rejected due to various conditions, such as mass overflow)
     /// 2. From the current stage
-    /// 3. From the UTXO source iterator
+    /// 3. From priority UTXO entries
+    /// 4. From the UTXO source iterator (while filtering against priority UTXO entries)
     fn get_utxo_entry(&self, context: &mut Context, stage: &mut Stage) -> Option<UtxoEntryReference> {
         context
             .utxo_stash
             .pop_front()
             .or_else(|| stage.utxo_iterator.as_mut().and_then(|utxo_stage_iterator| utxo_stage_iterator.next()))
-            .or_else(|| context.utxo_source_iterator.next())
+            .or_else(|| context.priority_utxo_entries.as_mut().and_then(|entries| entries.pop_front()))
+            .or_else(|| loop {
+                let utxo_entry = context.utxo_source_iterator.next()?;
+
+                if let Some(filter) = context.priority_utxo_entry_filter.as_ref() {
+                    if filter.contains(&utxo_entry) {
+                        // skip the entry from the iterator intake
+                        // if it has been supplied as a priority entry
+                        continue;
+                    }
+                }
+
+                break Some(utxo_entry);
+            })
     }
 
     /// Calculate relay transaction mass for the current transaction `data`
