@@ -35,6 +35,10 @@ export interface ITransactionInputVerboseData { }
 extern "C" {
     #[wasm_bindgen(typescript_type = "ITransactionInput | TransactionInput")]
     pub type TransactionInputT;
+    #[wasm_bindgen(typescript_type = "(ITransactionInput | TransactionInput)[]")]
+    pub type TransactionInputArrayAsArgT;
+    #[wasm_bindgen(typescript_type = "TransactionInput[]")]
+    pub type TransactionInputArrayAsResultT;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

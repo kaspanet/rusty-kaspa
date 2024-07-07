@@ -26,6 +26,16 @@ export interface ITransactionOutputVerboseData {
 }
 "#;
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "ITransactionOutput | TransactionOutput")]
+    pub type TransactionOutputT;
+    #[wasm_bindgen(typescript_type = "(ITransactionOutput | TransactionOutput)[]")]
+    pub type TransactionOutputArrayAsArgT;
+    #[wasm_bindgen(typescript_type = "TransactionOutput[]")]
+    pub type TransactionOutputArrayAsResultT;
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutputInner {

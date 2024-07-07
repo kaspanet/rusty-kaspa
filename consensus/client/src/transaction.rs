@@ -1,9 +1,9 @@
 #![allow(non_snake_case)]
 
 use crate::imports::*;
-use crate::input::TransactionInput;
+use crate::input::{TransactionInput, TransactionInputArrayAsArgT, TransactionInputArrayAsResultT};
 use crate::outpoint::TransactionOutpoint;
-use crate::output::TransactionOutput;
+use crate::output::{TransactionOutput, TransactionOutputArrayAsArgT, TransactionOutputArrayAsResultT};
 use crate::result::Result;
 use crate::serializable::{numeric, string, SerializableTransactionT};
 use crate::utxo::{UtxoEntryId, UtxoEntryReference};
@@ -53,10 +53,6 @@ export interface ITransactionVerboseData {
 extern "C" {
     #[wasm_bindgen(typescript_type = "ITransaction | Transaction")]
     pub type TransactionT;
-    #[wasm_bindgen(typescript_type = "(ITransaction | Transaction)[]")]
-    pub type TransactionArrayAsArgT;
-    #[wasm_bindgen(typescript_type = "Transaction[]")]
-    pub type TransactionArrayAsResultT;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,7 +154,7 @@ impl Transaction {
     }
 
     #[wasm_bindgen(getter = inputs)]
-    pub fn get_inputs_as_js_array(&self) -> TransactionArrayAsResultT {
+    pub fn get_inputs_as_js_array(&self) -> TransactionInputArrayAsResultT {
         let inputs = self.inner.lock().unwrap().inputs.clone().into_iter().map(JsValue::from);
         Array::from_iter(inputs).unchecked_into()
     }
@@ -183,7 +179,7 @@ impl Transaction {
     }
 
     #[wasm_bindgen(setter = inputs)]
-    pub fn set_inputs_from_js_array(&mut self, js_value: &JsValue) {
+    pub fn set_inputs_from_js_array(&mut self, js_value: &TransactionInputArrayAsArgT) {
         let inputs = Array::from(js_value)
             .iter()
             .map(|js_value| {
@@ -194,13 +190,13 @@ impl Transaction {
     }
 
     #[wasm_bindgen(getter = outputs)]
-    pub fn get_outputs_as_js_array(&self) -> Array {
+    pub fn get_outputs_as_js_array(&self) -> TransactionOutputArrayAsResultT {
         let outputs = self.inner.lock().unwrap().outputs.clone().into_iter().map(JsValue::from);
-        Array::from_iter(outputs)
+        Array::from_iter(outputs).unchecked_into()
     }
 
     #[wasm_bindgen(setter = outputs)]
-    pub fn set_outputs_from_js_array(&mut self, js_value: &JsValue) {
+    pub fn set_outputs_from_js_array(&mut self, js_value: &TransactionOutputArrayAsArgT) {
         let outputs = Array::from(js_value)
             .iter()
             .map(|js_value| TransactionOutput::try_from(&js_value).unwrap_or_else(|err| panic!("invalid transaction output: {err}")))
