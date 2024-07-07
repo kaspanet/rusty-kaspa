@@ -2190,6 +2190,19 @@ impl Deserializer for GetMetricsResponse {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+#[borsh(use_discriminant = true)]
+pub enum RpcCaps {
+    Full = 0,
+    Blocks,
+    UtxoIndex,
+    Mempool,
+    Metrics,
+    Visualizer,
+    Mining,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetServerInfoRequest {}
