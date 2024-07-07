@@ -810,12 +810,21 @@ message StorageMetrics{
   uint64 storageSizeBytes = 1;
 }
 
+message GetConnectionsRequestMessage{
+}
+
+message GetConnectionsResponseMessage{
+  uint32 activeConnections = 1;
+  RPCError error = 1000;
+}
+
 message GetMetricsRequestMessage{
   bool processMetrics = 1;
   bool connectionMetrics = 2;
   bool bandwidthMetrics = 3;
   bool consensusMetrics = 4;
   bool storageMetrics = 5;
+  bool customMetrics = 6;
 }
 
 message GetMetricsResponseMessage{

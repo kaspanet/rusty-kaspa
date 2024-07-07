@@ -122,7 +122,8 @@ impl Metrics {
             bandwidth_metrics,
             process_metrics,
             storage_metrics,
-        } = rpc.get_metrics(true, true, true, true, true).await?;
+            custom_metrics: _,
+        } = rpc.get_metrics(true, true, true, true, true, false).await?;
 
         if let Some(consensus_metrics) = consensus_metrics {
             data.node_blocks_submitted_count = consensus_metrics.node_blocks_submitted_count;

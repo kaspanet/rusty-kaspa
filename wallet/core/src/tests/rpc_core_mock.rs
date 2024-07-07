@@ -107,6 +107,14 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn get_connections_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetConnectionsRequest,
+    ) -> RpcResult<GetConnectionsResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     async fn get_server_info_call(
         &self,
         _connection: Option<&DynRpcConnection>,

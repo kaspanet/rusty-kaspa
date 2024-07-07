@@ -12,16 +12,18 @@ pub struct RpcBlock {
 
 impl Serializer for RpcBlock {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u32, &1, writer)?;
+        store!(u16, &1, writer)?;
         serialize!(RpcHeader, &self.header, writer)?;
         serialize!(Vec<RpcTransaction>, &self.transactions, writer)?;
         serialize!(Option<RpcBlockVerboseData>, &self.verbose_data, writer)?;
 
         Ok(())
     }
+}
 
+impl Deserializer for RpcBlock {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u32, reader)?;
+        let _version = load!(u16, reader)?;
         let header = deserialize!(RpcHeader, reader)?;
         let transactions = deserialize!(Vec<RpcTransaction>, reader)?;
         let verbose_data = deserialize!(Option<RpcBlockVerboseData>, reader)?;
@@ -61,7 +63,9 @@ impl Serializer for RpcBlockVerboseData {
 
         Ok(())
     }
+}
 
+impl Deserializer for RpcBlockVerboseData {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u8, reader)?;
         let hash = load!(RpcHash, reader)?;

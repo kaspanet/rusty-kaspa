@@ -957,6 +957,8 @@ build_wrpc_wasm_bindgen_interface!(
         /// performance and status of the Kaspa node.
         /// Returned information: Memory usage, CPU usage, network activity.
         GetMetrics,
+        /// Retrieves current number of network connections
+        GetConnections,
         /// Retrieves the current sink block, which is the block with
         /// the highest cumulative difficulty in the Kaspa BlockDAG.
         /// Returned information: Sink block hash, sink block height.

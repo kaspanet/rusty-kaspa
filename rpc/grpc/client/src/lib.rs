@@ -241,6 +241,7 @@ impl RpcApi for GrpcClient {
     route!(get_sync_status_call, GetSyncStatus);
     route!(get_server_info_call, GetServerInfo);
     route!(get_metrics_call, GetMetrics);
+    route!(get_connections_call, GetConnections);
     route!(submit_block_call, SubmitBlock);
     route!(get_block_template_call, GetBlockTemplate);
     route!(get_block_call, GetBlock);

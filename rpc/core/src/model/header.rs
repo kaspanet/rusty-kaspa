@@ -124,7 +124,7 @@ impl From<&RpcHeader> for Header {
 
 impl Serializer for RpcHeader {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u32, &1, writer)?;
+        store!(u16, &1, writer)?;
 
         store!(Hash, &self.hash, writer)?;
         store!(u16, &self.version, writer)?;
@@ -142,9 +142,11 @@ impl Serializer for RpcHeader {
 
         Ok(())
     }
+}
 
+impl Deserializer for RpcHeader {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u32, reader)?;
+        let _version = load!(u16, reader)?;
 
         let hash = load!(Hash, reader)?;
         let version = load!(u16, reader)?;

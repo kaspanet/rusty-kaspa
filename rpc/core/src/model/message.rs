@@ -4,6 +4,7 @@ use kaspa_consensus_core::api::stats::BlockCount;
 use kaspa_core::debug;
 use kaspa_notify::subscription::{context::SubscriptionContext, single::UtxosChangedSubscription, Command};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::{
     fmt::{Display, Formatter},
     sync::Arc,
@@ -37,7 +38,9 @@ impl Serializer for SubmitBlockRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for SubmitBlockRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let block = deserialize!(RpcBlock, reader)?;
@@ -97,7 +100,9 @@ impl Serializer for SubmitBlockResponse {
         store!(SubmitBlockReport, &self.report, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for SubmitBlockResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let report = load!(SubmitBlockReport, reader)?;
@@ -132,7 +137,9 @@ impl Serializer for GetBlockTemplateRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetBlockTemplateRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let pay_address = load!(RpcAddress, reader)?;
@@ -162,7 +169,9 @@ impl Serializer for GetBlockTemplateResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetBlockTemplateResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let block = deserialize!(RpcBlock, reader)?;
@@ -196,7 +205,9 @@ impl Serializer for GetBlockRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetBlockRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let hash = load!(RpcHash, reader)?;
@@ -219,7 +230,9 @@ impl Serializer for GetBlockResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetBlockResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let block = deserialize!(RpcBlock, reader)?;
@@ -238,7 +251,9 @@ impl Serializer for GetInfoRequest {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetInfoRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -270,7 +285,9 @@ impl Serializer for GetInfoResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetInfoResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let p2p_id = load!(String, reader)?;
@@ -294,7 +311,9 @@ impl Serializer for GetCurrentNetworkRequest {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetCurrentNetworkRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -319,7 +338,9 @@ impl Serializer for GetCurrentNetworkResponse {
         store!(RpcNetworkType, &self.network, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetCurrentNetworkResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let network = load!(RpcNetworkType, reader)?;
@@ -336,7 +357,9 @@ impl Serializer for GetPeerAddressesRequest {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetPeerAddressesRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -363,7 +386,9 @@ impl Serializer for GetPeerAddressesResponse {
         store!(Vec<RpcIpAddress>, &self.banned_addresses, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetPeerAddressesResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let known_addresses = load!(Vec<RpcPeerAddress>, reader)?;
@@ -381,7 +406,9 @@ impl Serializer for GetSinkRequest {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetSinkRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -406,7 +433,9 @@ impl Serializer for GetSinkResponse {
         store!(RpcHash, &self.sink, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetSinkResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let sink = load!(RpcHash, reader)?;
@@ -438,7 +467,9 @@ impl Serializer for GetMempoolEntryRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetMempoolEntryRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let transaction_id = load!(RpcTransactionId, reader)?;
@@ -467,7 +498,9 @@ impl Serializer for GetMempoolEntryResponse {
         serialize!(RpcMempoolEntry, &self.mempool_entry, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetMempoolEntryResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let mempool_entry = deserialize!(RpcMempoolEntry, reader)?;
@@ -497,7 +530,9 @@ impl Serializer for GetMempoolEntriesRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetMempoolEntriesRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let include_orphan_pool = load!(bool, reader)?;
@@ -525,7 +560,9 @@ impl Serializer for GetMempoolEntriesResponse {
         serialize!(Vec<RpcMempoolEntry>, &self.mempool_entries, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetMempoolEntriesResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let mempool_entries = deserialize!(Vec<RpcMempoolEntry>, reader)?;
@@ -542,7 +579,9 @@ impl Serializer for GetConnectedPeerInfoRequest {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetConnectedPeerInfoRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -567,7 +606,9 @@ impl Serializer for GetConnectedPeerInfoResponse {
         store!(Vec<RpcPeerInfo>, &self.peer_info, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetConnectedPeerInfoResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let peer_info = load!(Vec<RpcPeerInfo>, reader)?;
@@ -596,7 +637,9 @@ impl Serializer for AddPeerRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for AddPeerRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let peer_address = load!(RpcContextualPeerAddress, reader)?;
@@ -615,7 +658,9 @@ impl Serializer for AddPeerResponse {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for AddPeerResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -643,7 +688,9 @@ impl Serializer for SubmitTransactionRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for SubmitTransactionRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let transaction = deserialize!(RpcTransaction, reader)?;
@@ -672,7 +719,9 @@ impl Serializer for SubmitTransactionResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for SubmitTransactionResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let transaction_id = load!(RpcTransactionId, reader)?;
@@ -700,7 +749,9 @@ impl Serializer for GetSubnetworkRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetSubnetworkRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let subnetwork_id = load!(RpcSubnetworkId, reader)?;
@@ -728,7 +779,9 @@ impl Serializer for GetSubnetworkResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetSubnetworkResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let gas_limit = load!(u64, reader)?;
@@ -758,7 +811,9 @@ impl Serializer for GetVirtualChainFromBlockRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetVirtualChainFromBlockRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let start_hash = load!(RpcHash, reader)?;
@@ -795,7 +850,9 @@ impl Serializer for GetVirtualChainFromBlockResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetVirtualChainFromBlockResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let removed_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
@@ -829,7 +886,9 @@ impl Serializer for GetBlocksRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetBlocksRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let low_hash = load!(Option<RpcHash>, reader)?;
@@ -861,7 +920,9 @@ impl Serializer for GetBlocksResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetBlocksResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let block_hashes = load!(Vec<RpcHash>, reader)?;
@@ -880,7 +941,9 @@ impl Serializer for GetBlockCountRequest {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetBlockCountRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -898,7 +961,9 @@ impl Serializer for GetBlockDagInfoRequest {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetBlockDagInfoRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -964,7 +1029,9 @@ impl Serializer for GetBlockDagInfoResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetBlockDagInfoResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let network = load!(RpcNetworkId, reader)?;
@@ -1012,7 +1079,9 @@ impl Serializer for ResolveFinalityConflictRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for ResolveFinalityConflictRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let finality_block_hash = load!(RpcHash, reader)?;
@@ -1030,7 +1099,9 @@ impl Serializer for ResolveFinalityConflictResponse {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for ResolveFinalityConflictResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -1046,7 +1117,9 @@ impl Serializer for ShutdownRequest {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for ShutdownRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -1062,7 +1135,9 @@ impl Serializer for ShutdownResponse {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for ShutdownResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -1092,7 +1167,9 @@ impl Serializer for GetHeadersRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetHeadersRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let start_hash = load!(RpcHash, reader)?;
@@ -1122,7 +1199,9 @@ impl Serializer for GetHeadersResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetHeadersResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let headers = load!(Vec<RpcHeader>, reader)?;
@@ -1150,7 +1229,9 @@ impl Serializer for GetBalanceByAddressRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetBalanceByAddressRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let address = load!(RpcAddress, reader)?;
@@ -1178,7 +1259,9 @@ impl Serializer for GetBalanceByAddressResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetBalanceByAddressResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let balance = load!(u64, reader)?;
@@ -1206,7 +1289,9 @@ impl Serializer for GetBalancesByAddressesRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetBalancesByAddressesRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let addresses = load!(Vec<RpcAddress>, reader)?;
@@ -1234,7 +1319,9 @@ impl Serializer for GetBalancesByAddressesResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetBalancesByAddressesResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let entries = deserialize!(Vec<RpcBalancesByAddressesEntry>, reader)?;
@@ -1252,7 +1339,9 @@ impl Serializer for GetSinkBlueScoreRequest {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetSinkBlueScoreRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -1278,7 +1367,9 @@ impl Serializer for GetSinkBlueScoreResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetSinkBlueScoreResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let blue_score = load!(u64, reader)?;
@@ -1306,7 +1397,9 @@ impl Serializer for GetUtxosByAddressesRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetUtxosByAddressesRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let addresses = load!(Vec<RpcAddress>, reader)?;
@@ -1334,7 +1427,9 @@ impl Serializer for GetUtxosByAddressesResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetUtxosByAddressesResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let entries = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
@@ -1362,7 +1457,9 @@ impl Serializer for BanRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for BanRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let ip = load!(RpcIpAddress, reader)?;
@@ -1380,7 +1477,9 @@ impl Serializer for BanResponse {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for BanResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -1406,7 +1505,9 @@ impl Serializer for UnbanRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for UnbanRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let ip = load!(RpcIpAddress, reader)?;
@@ -1424,7 +1525,9 @@ impl Serializer for UnbanResponse {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for UnbanResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -1452,7 +1555,9 @@ impl Serializer for EstimateNetworkHashesPerSecondRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for EstimateNetworkHashesPerSecondRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let window_size = load!(u32, reader)?;
@@ -1481,7 +1586,9 @@ impl Serializer for EstimateNetworkHashesPerSecondResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for EstimateNetworkHashesPerSecondResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let network_hashes_per_second = load!(u64, reader)?;
@@ -1514,7 +1621,9 @@ impl Serializer for GetMempoolEntriesByAddressesRequest {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetMempoolEntriesByAddressesRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let addresses = load!(Vec<RpcAddress>, reader)?;
@@ -1544,7 +1653,9 @@ impl Serializer for GetMempoolEntriesByAddressesResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetMempoolEntriesByAddressesResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let entries = deserialize!(Vec<RpcMempoolEntryByAddress>, reader)?;
@@ -1562,7 +1673,9 @@ impl Serializer for GetCoinSupplyRequest {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetCoinSupplyRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -1590,7 +1703,9 @@ impl Serializer for GetCoinSupplyResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetCoinSupplyResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let max_sompi = load!(u64, reader)?;
@@ -1608,7 +1723,9 @@ impl Serializer for PingRequest {
     fn serialize<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {
         Ok(())
     }
+}
 
+impl Deserializer for PingRequest {
     fn deserialize<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
         Ok(Self {})
     }
@@ -1622,9 +1739,47 @@ impl Serializer for PingResponse {
     fn serialize<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {
         Ok(())
     }
+}
 
+impl Deserializer for PingResponse {
     fn deserialize<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
         Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetConnectionsRequest {}
+
+impl Serializer for GetConnectionsRequest {
+    fn serialize<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Deserializer for GetConnectionsRequest {
+    fn deserialize<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetConnectionsResponse {
+    pub active_connections: u32,
+}
+
+impl Serializer for GetConnectionsResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u32, &self.active_connections, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetConnectionsResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let active_connections = load!(u32, reader)?;
+        Ok(Self { active_connections })
     }
 }
 
@@ -1638,6 +1793,7 @@ pub struct GetMetricsRequest {
     pub bandwidth_metrics: bool,
     pub consensus_metrics: bool,
     pub storage_metrics: bool,
+    pub custom_metrics: bool,
 }
 
 impl Serializer for GetMetricsRequest {
@@ -1648,10 +1804,13 @@ impl Serializer for GetMetricsRequest {
         store!(bool, &self.bandwidth_metrics, writer)?;
         store!(bool, &self.consensus_metrics, writer)?;
         store!(bool, &self.storage_metrics, writer)?;
+        store!(bool, &self.custom_metrics, writer)?;
 
         Ok(())
     }
+}
 
+impl Deserializer for GetMetricsRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let process_metrics = load!(bool, reader)?;
@@ -1659,8 +1818,9 @@ impl Serializer for GetMetricsRequest {
         let bandwidth_metrics = load!(bool, reader)?;
         let consensus_metrics = load!(bool, reader)?;
         let storage_metrics = load!(bool, reader)?;
+        let custom_metrics = load!(bool, reader)?;
 
-        Ok(Self { process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, storage_metrics })
+        Ok(Self { process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, storage_metrics, custom_metrics })
     }
 }
 
@@ -1693,7 +1853,9 @@ impl Serializer for ProcessMetrics {
 
         Ok(())
     }
+}
 
+impl Deserializer for ProcessMetrics {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let resident_set_size = load!(u64, reader)?;
@@ -1746,7 +1908,9 @@ impl Serializer for ConnectionMetrics {
 
         Ok(())
     }
+}
 
+impl Deserializer for ConnectionMetrics {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let borsh_live_connections = load!(u32, reader)?;
@@ -1796,7 +1960,9 @@ impl Serializer for BandwidthMetrics {
 
         Ok(())
     }
+}
 
+impl Deserializer for BandwidthMetrics {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let borsh_bytes_tx = load!(u64, reader)?;
@@ -1864,7 +2030,9 @@ impl Serializer for ConsensusMetrics {
 
         Ok(())
     }
+}
 
+impl Deserializer for ConsensusMetrics {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let node_blocks_submitted_count = load!(u64, reader)?;
@@ -1916,12 +2084,36 @@ impl Serializer for StorageMetrics {
 
         Ok(())
     }
+}
 
+impl Deserializer for StorageMetrics {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let storage_size_bytes = load!(u64, reader)?;
 
         Ok(Self { storage_size_bytes })
+    }
+}
+
+// TODO: Custom metrics dictionary
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum CustomMetricValue {
+    Placeholder,
+}
+
+impl Serializer for CustomMetricValue {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for CustomMetricValue {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+
+        Ok(CustomMetricValue::Placeholder)
     }
 }
 
@@ -1934,6 +2126,8 @@ pub struct GetMetricsResponse {
     pub bandwidth_metrics: Option<BandwidthMetrics>,
     pub consensus_metrics: Option<ConsensusMetrics>,
     pub storage_metrics: Option<StorageMetrics>,
+    // TODO: this is currently a placeholder
+    pub custom_metrics: Option<HashMap<String, CustomMetricValue>>,
 }
 
 impl GetMetricsResponse {
@@ -1944,8 +2138,17 @@ impl GetMetricsResponse {
         bandwidth_metrics: Option<BandwidthMetrics>,
         consensus_metrics: Option<ConsensusMetrics>,
         storage_metrics: Option<StorageMetrics>,
+        custom_metrics: Option<HashMap<String, CustomMetricValue>>,
     ) -> Self {
-        Self { process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, storage_metrics, server_time }
+        Self {
+            process_metrics,
+            connection_metrics,
+            bandwidth_metrics,
+            consensus_metrics,
+            storage_metrics,
+            server_time,
+            custom_metrics,
+        }
     }
 }
 
@@ -1958,10 +2161,13 @@ impl Serializer for GetMetricsResponse {
         serialize!(Option<BandwidthMetrics>, &self.bandwidth_metrics, writer)?;
         serialize!(Option<ConsensusMetrics>, &self.consensus_metrics, writer)?;
         serialize!(Option<StorageMetrics>, &self.storage_metrics, writer)?;
+        serialize!(Option<HashMap<String, CustomMetricValue>>, &self.custom_metrics, writer)?;
 
         Ok(())
     }
+}
 
+impl Deserializer for GetMetricsResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let server_time = load!(u64, reader)?;
@@ -1970,9 +2176,31 @@ impl Serializer for GetMetricsResponse {
         let bandwidth_metrics = deserialize!(Option<BandwidthMetrics>, reader)?;
         let consensus_metrics = deserialize!(Option<ConsensusMetrics>, reader)?;
         let storage_metrics = deserialize!(Option<StorageMetrics>, reader)?;
+        let custom_metrics = deserialize!(Option<HashMap<String, CustomMetricValue>>, reader)?;
 
-        Ok(Self { server_time, process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, storage_metrics })
+        Ok(Self {
+            server_time,
+            process_metrics,
+            connection_metrics,
+            bandwidth_metrics,
+            consensus_metrics,
+            storage_metrics,
+            custom_metrics,
+        })
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+#[borsh(use_discriminant = true)]
+pub enum RpcCaps {
+    Full = 0,
+    Blocks,
+    UtxoIndex,
+    Mempool,
+    Metrics,
+    Visualizer,
+    Mining,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1984,7 +2212,9 @@ impl Serializer for GetServerInfoRequest {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetServerInfoRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -2018,7 +2248,9 @@ impl Serializer for GetServerInfoResponse {
 
         Ok(())
     }
+}
 
+impl Deserializer for GetServerInfoResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
 
@@ -2044,7 +2276,9 @@ impl Serializer for GetSyncStatusRequest {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetSyncStatusRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -2063,7 +2297,9 @@ impl Serializer for GetSyncStatusResponse {
         store!(bool, &self.is_synced, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetSyncStatusResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let is_synced = load!(bool, reader)?;
@@ -2089,7 +2325,9 @@ impl Serializer for GetDaaScoreTimestampEstimateRequest {
         store!(Vec<u64>, &self.daa_scores, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetDaaScoreTimestampEstimateRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let daa_scores = load!(Vec<u64>, reader)?;
@@ -2115,7 +2353,9 @@ impl Serializer for GetDaaScoreTimestampEstimateResponse {
         store!(Vec<u64>, &self.timestamps, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for GetDaaScoreTimestampEstimateResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let timestamps = load!(Vec<u64>, reader)?;
@@ -2150,7 +2390,9 @@ impl Serializer for NotifyBlockAddedRequest {
         store!(Command, &self.command, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifyBlockAddedRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let command = load!(Command, reader)?;
@@ -2167,7 +2409,9 @@ impl Serializer for NotifyBlockAddedResponse {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifyBlockAddedResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -2190,7 +2434,9 @@ impl Serializer for BlockAddedNotification {
         serialize!(RpcBlock, &self.block, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for BlockAddedNotification {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let block = deserialize!(RpcBlock, reader)?;
@@ -2225,7 +2471,9 @@ impl Serializer for NotifyVirtualChainChangedRequest {
         store!(Command, &self.command, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifyVirtualChainChangedRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let include_accepted_transaction_ids = load!(bool, reader)?;
@@ -2243,7 +2491,9 @@ impl Serializer for NotifyVirtualChainChangedResponse {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifyVirtualChainChangedResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -2270,7 +2520,9 @@ impl Serializer for VirtualChainChangedNotification {
         store!(Vec<RpcAcceptedTransactionIds>, &self.accepted_transaction_ids, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for VirtualChainChangedNotification {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let removed_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
@@ -2305,7 +2557,9 @@ impl Serializer for NotifyFinalityConflictRequest {
         store!(Command, &self.command, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifyFinalityConflictRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let command = load!(Command, reader)?;
@@ -2322,7 +2576,9 @@ impl Serializer for NotifyFinalityConflictResponse {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifyFinalityConflictResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -2341,7 +2597,9 @@ impl Serializer for FinalityConflictNotification {
         store!(RpcHash, &self.violating_block_hash, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for FinalityConflictNotification {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let violating_block_hash = load!(RpcHash, reader)?;
@@ -2370,7 +2628,9 @@ impl Serializer for NotifyFinalityConflictResolvedRequest {
         store!(Command, &self.command, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifyFinalityConflictResolvedRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let command = load!(Command, reader)?;
@@ -2387,7 +2647,9 @@ impl Serializer for NotifyFinalityConflictResolvedResponse {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifyFinalityConflictResolvedResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -2406,7 +2668,9 @@ impl Serializer for FinalityConflictResolvedNotification {
         store!(RpcHash, &self.finality_block_hash, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for FinalityConflictResolvedNotification {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let finality_block_hash = load!(RpcHash, reader)?;
@@ -2446,7 +2710,9 @@ impl Serializer for NotifyUtxosChangedRequest {
         store!(Command, &self.command, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifyUtxosChangedRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let addresses = load!(Vec<RpcAddress>, reader)?;
@@ -2464,7 +2730,9 @@ impl Serializer for NotifyUtxosChangedResponse {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifyUtxosChangedResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -2518,7 +2786,9 @@ impl Serializer for UtxosChangedNotification {
         serialize!(Vec<RpcUtxosByAddressesEntry>, &self.removed, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for UtxosChangedNotification {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let added = deserialize!(Vec<RpcUtxosByAddressesEntry>, reader)?;
@@ -2552,7 +2822,9 @@ impl Serializer for NotifySinkBlueScoreChangedRequest {
         store!(Command, &self.command, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifySinkBlueScoreChangedRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let command = load!(Command, reader)?;
@@ -2569,7 +2841,9 @@ impl Serializer for NotifySinkBlueScoreChangedResponse {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifySinkBlueScoreChangedResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -2592,7 +2866,9 @@ impl Serializer for SinkBlueScoreChangedNotification {
         store!(u64, &self.sink_blue_score, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for SinkBlueScoreChangedNotification {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let sink_blue_score = load!(u64, reader)?;
@@ -2625,7 +2901,9 @@ impl Serializer for NotifyVirtualDaaScoreChangedRequest {
         store!(Command, &self.command, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifyVirtualDaaScoreChangedRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let command = load!(Command, reader)?;
@@ -2642,7 +2920,9 @@ impl Serializer for NotifyVirtualDaaScoreChangedResponse {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifyVirtualDaaScoreChangedResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -2665,7 +2945,9 @@ impl Serializer for VirtualDaaScoreChangedNotification {
         store!(u64, &self.virtual_daa_score, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for VirtualDaaScoreChangedNotification {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let virtual_daa_score = load!(u64, reader)?;
@@ -2694,7 +2976,9 @@ impl Serializer for NotifyPruningPointUtxoSetOverrideRequest {
         store!(Command, &self.command, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifyPruningPointUtxoSetOverrideRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let command = load!(Command, reader)?;
@@ -2711,7 +2995,9 @@ impl Serializer for NotifyPruningPointUtxoSetOverrideResponse {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifyPruningPointUtxoSetOverrideResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -2727,7 +3013,9 @@ impl Serializer for PruningPointUtxoSetOverrideNotification {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for PruningPointUtxoSetOverrideNotification {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -2757,7 +3045,9 @@ impl Serializer for NotifyNewBlockTemplateRequest {
         store!(Command, &self.command, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifyNewBlockTemplateRequest {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let command = load!(Command, reader)?;
@@ -2774,7 +3064,9 @@ impl Serializer for NotifyNewBlockTemplateResponse {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NotifyNewBlockTemplateResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -2794,7 +3086,9 @@ impl Serializer for NewBlockTemplateNotification {
         store!(u16, &1, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for NewBlockTemplateNotification {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         Ok(Self {})
@@ -2822,7 +3116,9 @@ impl Serializer for SubscribeResponse {
         store!(u64, &self.id, writer)?;
         Ok(())
     }
+}
 
+impl Deserializer for SubscribeResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         let id = load!(u64, reader)?;
@@ -2839,11 +3135,13 @@ pub struct UnsubscribeResponse {}
 
 impl Serializer for UnsubscribeResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u32, &1, writer)
+        store!(u16, &1, writer)
     }
+}
 
+impl Deserializer for UnsubscribeResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u32, reader);
+        let _version = load!(u16, reader);
         Ok(Self {})
     }
 }

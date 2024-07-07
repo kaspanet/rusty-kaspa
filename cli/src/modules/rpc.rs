@@ -38,7 +38,11 @@ impl Rpc {
                 tprintln!(ctx, "ok");
             }
             RpcApiOps::GetMetrics => {
-                let result = rpc.get_metrics(true, true, true, true, true).await?;
+                let result = rpc.get_metrics(true, true, true, true, true, true).await?;
+                self.println(&ctx, result);
+            }
+            RpcApiOps::GetConnections => {
+                let result = rpc.get_connections().await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::GetServerInfo => {
@@ -246,9 +250,8 @@ impl Rpc {
 
     async fn display_help(self: Arc<Self>, ctx: Arc<KaspaCli>, _argv: Vec<String>) -> Result<()> {
         // RpcApiOps that do not contain docs are not displayed
-        let help = RpcApiOps::list()
-            .iter()
-            .filter_map(|op| op.doc().is_not_empty().then_some((op.as_str().to_case(Case::Kebab).to_string(), op.doc())))
+        let help = RpcApiOps::into_iter()
+            .filter_map(|op| op.rustdoc().is_not_empty().then_some((op.as_str().to_case(Case::Kebab).to_string(), op.rustdoc())))
             .collect::<Vec<(_, _)>>();
 
         ctx.term().help(&help, None)?;

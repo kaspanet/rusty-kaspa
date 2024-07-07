@@ -318,6 +318,38 @@ try_from! ( args: GetMetricsResponse, IGetMetricsResponse, {
 // ---
 
 declare! {
+    IGetConnectionsRequest,
+    r#"
+    /**
+     * @category Node RPC
+     */
+    export interface IGetConnectionsRequest { }
+    "#,
+}
+
+try_from! ( args: IGetConnectionsRequest, GetConnectionsRequest, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetConnectionsResponse,
+    r#"
+    /**
+     * @category Node RPC
+     */
+    export interface IGetConnectionsResponse {
+        [key: string]: any
+    }
+    "#,
+}
+
+try_from! ( args: GetConnectionsResponse, IGetConnectionsResponse, {
+    Ok(to_value(&args)?.into())
+});
+
+// ---
+
+declare! {
     IGetSinkRequest,
     r#"
     /**

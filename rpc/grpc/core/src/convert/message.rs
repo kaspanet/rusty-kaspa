@@ -404,6 +404,7 @@ from!(item: &kaspa_rpc_core::GetMetricsRequest, protowire::GetMetricsRequestMess
         bandwidth_metrics: item.bandwidth_metrics,
         consensus_metrics: item.consensus_metrics,
         storage_metrics: item.storage_metrics,
+        custom_metrics: item.custom_metrics,
     }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetricsResponseMessage, {
@@ -414,9 +415,23 @@ from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetric
         bandwidth_metrics: item.bandwidth_metrics.as_ref().map(|x| x.into()),
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.into()),
         storage_metrics: item.storage_metrics.as_ref().map(|x| x.into()),
+        // TODO
+        // custom_metrics : None,
         error: None,
     }
 });
+
+from!(_item: &kaspa_rpc_core::GetConnectionsRequest, protowire::GetConnectionsRequestMessage, {
+    Self {
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetConnectionsResponse>, protowire::GetConnectionsResponseMessage, {
+    Self {
+        active_connections: item.active_connections,
+        error: None,
+    }
+});
+
 from!(&kaspa_rpc_core::GetServerInfoRequest, protowire::GetServerInfoRequestMessage);
 from!(item: RpcResult<&kaspa_rpc_core::GetServerInfoResponse>, protowire::GetServerInfoResponseMessage, {
     Self {
@@ -798,7 +813,14 @@ try_from!(&protowire::PingRequestMessage, kaspa_rpc_core::PingRequest);
 try_from!(&protowire::PingResponseMessage, RpcResult<kaspa_rpc_core::PingResponse>);
 
 try_from!(item: &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetricsRequest, {
-    Self { process_metrics: item.process_metrics, connection_metrics: item.connection_metrics, bandwidth_metrics:item.bandwidth_metrics, consensus_metrics: item.consensus_metrics, storage_metrics: item.storage_metrics }
+    Self {
+        process_metrics: item.process_metrics,
+        connection_metrics: item.connection_metrics,
+        bandwidth_metrics:item.bandwidth_metrics,
+        consensus_metrics: item.consensus_metrics,
+        storage_metrics: item.storage_metrics,
+        custom_metrics : item.custom_metrics,
+    }
 });
 try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetMetricsResponse>, {
     Self {
@@ -808,6 +830,17 @@ try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core:
         bandwidth_metrics: item.bandwidth_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         storage_metrics: item.storage_metrics.as_ref().map(|x| x.try_into()).transpose()?,
+        // TODO
+        custom_metrics: None,
+    }
+});
+
+try_from!(_item: &protowire::GetConnectionsRequestMessage, kaspa_rpc_core::GetConnectionsRequest, {
+    Self { }
+});
+try_from!(item: &protowire::GetConnectionsResponseMessage, RpcResult<kaspa_rpc_core::GetConnectionsResponse>, {
+    Self {
+        active_connections: item.active_connections,
     }
 });
 

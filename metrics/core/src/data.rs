@@ -37,10 +37,6 @@ impl MetricGroup {
 }
 
 impl MetricGroup {
-    pub fn iter() -> impl Iterator<Item = MetricGroup> {
-        [MetricGroup::System, MetricGroup::Storage, MetricGroup::Connections, MetricGroup::Network].into_iter()
-    }
-
     pub fn metrics(&self) -> impl Iterator<Item = &Metric> {
         match self {
             MetricGroup::System => [

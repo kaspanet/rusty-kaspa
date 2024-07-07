@@ -29,6 +29,17 @@ pub trait RpcApi: Sync + Send + AnySync {
 
     // ---
 
+    async fn get_connections(&self) -> RpcResult<u32> {
+        Ok(self.get_connections_call(None, GetConnectionsRequest {}).await?.active_connections)
+    }
+    async fn get_connections_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetConnectionsRequest,
+    ) -> RpcResult<GetConnectionsResponse>;
+
+    // ---
+
     async fn get_metrics(
         &self,
         process_metrics: bool,
@@ -36,10 +47,18 @@ pub trait RpcApi: Sync + Send + AnySync {
         bandwidth_metrics: bool,
         consensus_metrics: bool,
         storage_metrics: bool,
+        custom_metrics: bool,
     ) -> RpcResult<GetMetricsResponse> {
         self.get_metrics_call(
             None,
-            GetMetricsRequest { process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, storage_metrics },
+            GetMetricsRequest {
+                process_metrics,
+                connection_metrics,
+                bandwidth_metrics,
+                consensus_metrics,
+                storage_metrics,
+                custom_metrics,
+            },
         )
         .await
     }
