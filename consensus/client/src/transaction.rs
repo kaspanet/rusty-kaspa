@@ -51,8 +51,12 @@ export interface ITransactionVerboseData {
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(typescript_type = "ITransaction")]
-    pub type ITransaction;
+    #[wasm_bindgen(typescript_type = "ITransaction | Transaction")]
+    pub type TransactionT;
+    #[wasm_bindgen(typescript_type = "(ITransaction | Transaction)[]")]
+    pub type TransactionArrayAsArgT;
+    #[wasm_bindgen(typescript_type = "Transaction[]")]
+    pub type TransactionArrayAsResultT;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,14 +153,14 @@ impl Transaction {
     }
 
     #[wasm_bindgen(constructor)]
-    pub fn constructor(js_value: &ITransaction) -> std::result::Result<Transaction, JsError> {
+    pub fn constructor(js_value: &TransactionT) -> std::result::Result<Transaction, JsError> {
         Ok(js_value.try_into_owned()?)
     }
 
     #[wasm_bindgen(getter = inputs)]
-    pub fn get_inputs_as_js_array(&self) -> Array {
+    pub fn get_inputs_as_js_array(&self) -> TransactionArrayAsResultT {
         let inputs = self.inner.lock().unwrap().inputs.clone().into_iter().map(JsValue::from);
-        Array::from_iter(inputs)
+        Array::from_iter(inputs).unchecked_into()
     }
 
     /// Returns a list of unique addresses used by transaction inputs.

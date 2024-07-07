@@ -33,8 +33,8 @@ export interface ITransactionInputVerboseData { }
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(typescript_type = "ITransactionInput")]
-    pub type ITransactionInput;
+    #[wasm_bindgen(typescript_type = "ITransactionInput | TransactionInput")]
+    pub type TransactionInputT;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,7 +99,7 @@ impl TransactionInput {
 #[wasm_bindgen]
 impl TransactionInput {
     #[wasm_bindgen(constructor)]
-    pub fn constructor(value: &ITransactionInput) -> Result<TransactionInput> {
+    pub fn constructor(value: &TransactionInputT) -> Result<TransactionInput> {
         Self::try_owned_from(value)
     }
 
