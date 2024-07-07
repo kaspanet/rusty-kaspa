@@ -906,6 +906,22 @@ mod mockery {
 
     test!(PingResponse);
 
+    impl Mock for GetConnectionsRequest {
+        fn mock() -> Self {
+            GetConnectionsRequest {}
+        }
+    }
+
+    test!(GetConnectionsRequest);
+
+    impl Mock for GetConnectionsResponse {
+        fn mock() -> Self {
+            GetConnectionsResponse { active_connections: mock() }
+        }
+    }
+
+    test!(GetConnectionsResponse);
+
     impl Mock for GetMetricsRequest {
         fn mock() -> Self {
             GetMetricsRequest {
@@ -914,6 +930,7 @@ mod mockery {
                 bandwidth_metrics: true,
                 consensus_metrics: true,
                 storage_metrics: true,
+                custom_metrics: false,
             }
         }
     }
@@ -929,6 +946,7 @@ mod mockery {
                 bandwidth_metrics: mock(),
                 consensus_metrics: mock(),
                 storage_metrics: mock(),
+                custom_metrics: None,
             }
         }
     }

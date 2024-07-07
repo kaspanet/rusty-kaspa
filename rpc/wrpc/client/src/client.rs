@@ -612,6 +612,7 @@ impl RpcApi for KaspaRpcClient {
             GetMempoolEntry,
             GetPeerAddresses,
             GetMetrics,
+            GetConnections,
             GetSink,
             GetSyncStatus,
             GetSubnetwork,

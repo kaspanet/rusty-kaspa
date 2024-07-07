@@ -4,6 +4,7 @@ use kaspa_consensus_core::api::stats::BlockCount;
 use kaspa_core::debug;
 use kaspa_notify::subscription::{context::SubscriptionContext, single::UtxosChangedSubscription, Command};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::{
     fmt::{Display, Formatter},
     sync::Arc,
@@ -1746,6 +1747,42 @@ impl Deserializer for PingResponse {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetConnectionsRequest {}
+
+impl Serializer for GetConnectionsRequest {
+    fn serialize<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl Deserializer for GetConnectionsRequest {
+    fn deserialize<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetConnectionsResponse {
+    pub active_connections: u32,
+}
+
+impl Serializer for GetConnectionsResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u32, &self.active_connections, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetConnectionsResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let active_connections = load!(u32, reader)?;
+        Ok(Self { active_connections })
+    }
+}
+
 // TODO - custom wRPC commands (need review and implementation in gRPC)
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1756,6 +1793,7 @@ pub struct GetMetricsRequest {
     pub bandwidth_metrics: bool,
     pub consensus_metrics: bool,
     pub storage_metrics: bool,
+    pub custom_metrics: bool,
 }
 
 impl Serializer for GetMetricsRequest {
@@ -1766,6 +1804,7 @@ impl Serializer for GetMetricsRequest {
         store!(bool, &self.bandwidth_metrics, writer)?;
         store!(bool, &self.consensus_metrics, writer)?;
         store!(bool, &self.storage_metrics, writer)?;
+        store!(bool, &self.custom_metrics, writer)?;
 
         Ok(())
     }
@@ -1779,8 +1818,9 @@ impl Deserializer for GetMetricsRequest {
         let bandwidth_metrics = load!(bool, reader)?;
         let consensus_metrics = load!(bool, reader)?;
         let storage_metrics = load!(bool, reader)?;
+        let custom_metrics = load!(bool, reader)?;
 
-        Ok(Self { process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, storage_metrics })
+        Ok(Self { process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, storage_metrics, custom_metrics })
     }
 }
 
@@ -2055,6 +2095,28 @@ impl Deserializer for StorageMetrics {
     }
 }
 
+// TODO: Custom metrics dictionary
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum CustomMetricValue {
+    Placeholder,
+}
+
+impl Serializer for CustomMetricValue {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for CustomMetricValue {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+
+        Ok(CustomMetricValue::Placeholder)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetMetricsResponse {
@@ -2064,6 +2126,8 @@ pub struct GetMetricsResponse {
     pub bandwidth_metrics: Option<BandwidthMetrics>,
     pub consensus_metrics: Option<ConsensusMetrics>,
     pub storage_metrics: Option<StorageMetrics>,
+    // TODO: this is currently a placeholder
+    pub custom_metrics: Option<HashMap<String, CustomMetricValue>>,
 }
 
 impl GetMetricsResponse {
@@ -2074,8 +2138,17 @@ impl GetMetricsResponse {
         bandwidth_metrics: Option<BandwidthMetrics>,
         consensus_metrics: Option<ConsensusMetrics>,
         storage_metrics: Option<StorageMetrics>,
+        custom_metrics: Option<HashMap<String, CustomMetricValue>>,
     ) -> Self {
-        Self { process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, storage_metrics, server_time }
+        Self {
+            process_metrics,
+            connection_metrics,
+            bandwidth_metrics,
+            consensus_metrics,
+            storage_metrics,
+            server_time,
+            custom_metrics,
+        }
     }
 }
 
@@ -2088,6 +2161,7 @@ impl Serializer for GetMetricsResponse {
         serialize!(Option<BandwidthMetrics>, &self.bandwidth_metrics, writer)?;
         serialize!(Option<ConsensusMetrics>, &self.consensus_metrics, writer)?;
         serialize!(Option<StorageMetrics>, &self.storage_metrics, writer)?;
+        serialize!(Option<HashMap<String, CustomMetricValue>>, &self.custom_metrics, writer)?;
 
         Ok(())
     }
@@ -2102,8 +2176,17 @@ impl Deserializer for GetMetricsResponse {
         let bandwidth_metrics = deserialize!(Option<BandwidthMetrics>, reader)?;
         let consensus_metrics = deserialize!(Option<ConsensusMetrics>, reader)?;
         let storage_metrics = deserialize!(Option<StorageMetrics>, reader)?;
+        let custom_metrics = deserialize!(Option<HashMap<String, CustomMetricValue>>, reader)?;
 
-        Ok(Self { server_time, process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics, storage_metrics })
+        Ok(Self {
+            server_time,
+            process_metrics,
+            connection_metrics,
+            bandwidth_metrics,
+            consensus_metrics,
+            storage_metrics,
+            custom_metrics,
+        })
     }
 }
 

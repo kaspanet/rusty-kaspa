@@ -57,6 +57,7 @@ impl Router {
                 GetMempoolEntry,
                 GetPeerAddresses,
                 GetMetrics,
+                GetConnections,
                 GetSink,
                 GetSubnetwork,
                 GetSyncStatus,

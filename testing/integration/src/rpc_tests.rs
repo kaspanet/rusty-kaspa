@@ -467,6 +467,13 @@ async fn sanity_test() {
                 })
             }
 
+            KaspadPayloadOps::GetConnections => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let _ = rpc_client.get_connections_call(None, GetConnectionsRequest {}).await.unwrap();
+                })
+            }
+
             KaspadPayloadOps::GetMetrics => {
                 let rpc_client = client.clone();
                 tst!(op, {
@@ -479,6 +486,7 @@ async fn sanity_test() {
                                 bandwidth_metrics: true,
                                 process_metrics: true,
                                 storage_metrics: true,
+                                custom_metrics: true,
                             },
                         )
                         .await
@@ -495,6 +503,7 @@ async fn sanity_test() {
                                 bandwidth_metrics: true,
                                 process_metrics: true,
                                 storage_metrics: true,
+                                custom_metrics: true,
                             },
                         )
                         .await
@@ -511,6 +520,7 @@ async fn sanity_test() {
                                 bandwidth_metrics: false,
                                 process_metrics: false,
                                 storage_metrics: false,
+                                custom_metrics: true,
                             },
                         )
                         .await
@@ -527,6 +537,7 @@ async fn sanity_test() {
                                 bandwidth_metrics: false,
                                 process_metrics: false,
                                 storage_metrics: false,
+                                custom_metrics: true,
                             },
                         )
                         .await

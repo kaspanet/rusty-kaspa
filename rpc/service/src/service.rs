@@ -867,6 +867,18 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Err(RpcError::NotImplemented)
     }
 
+    async fn get_connections_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _req: GetConnectionsRequest,
+    ) -> RpcResult<GetConnectionsResponse> {
+        let active_connections = (self.wrpc_borsh_counters.active_connections.load(Ordering::Relaxed)
+            + self.wrpc_json_counters.active_connections.load(Ordering::Relaxed)
+            + self.flow_context.hub().active_peers_len()) as u32;
+
+        Ok(GetConnectionsResponse { active_connections })
+    }
+
     async fn get_metrics_call(&self, _connection: Option<&DynRpcConnection>, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
         let CountersSnapshot {
             resident_set_size,
@@ -943,6 +955,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
         let storage_metrics = req.storage_metrics.then_some(StorageMetrics { storage_size_bytes: 0 });
 
+        let custom_metrics: Option<HashMap<String, CustomMetricValue>> = None;
+
         let server_time = unix_now();
 
         let response = GetMetricsResponse {
@@ -952,6 +966,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             bandwidth_metrics,
             consensus_metrics,
             storage_metrics,
+            custom_metrics,
         };
 
         Ok(response)
