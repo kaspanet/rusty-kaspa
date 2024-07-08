@@ -51,20 +51,20 @@ mod tests {
             let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
             let transactions_to_insert = (0..TX_COUNT).map(|i| create_transaction_with_utxo_entry(i, 0)).collect::<Vec<_>>();
             for transaction in transactions_to_insert.iter() {
-                let result = mining_manager.validate_and_insert_mutable_transaction(
+                let result = into_mempool_result(mining_manager.validate_and_insert_mutable_transaction(
                     consensus.as_ref(),
                     transaction.clone(),
                     priority,
                     orphan,
                     rbf_policy,
-                );
+                ));
                 match rbf_policy {
                     RbfPolicy::Forbidden | RbfPolicy::Allowed => {
                         assert!(result.is_ok(), "({priority:?}, {orphan:?}, {rbf_policy:?}) inserting a valid transaction failed");
                     }
                     RbfPolicy::Mandatory => {
                         assert!(result.is_err(), "({priority:?}, {orphan:?}, {rbf_policy:?}) replacing a valid transaction without replacement in mempool should fail");
-                        let err: RuleError = result.unwrap_err().try_into().unwrap();
+                        let err = result.unwrap_err();
                         assert_eq!(
                             RuleError::RejectRbfNoDoubleSpend,
                             err,
