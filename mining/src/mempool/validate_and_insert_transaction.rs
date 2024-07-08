@@ -2,7 +2,7 @@ use crate::mempool::{
     errors::{RuleError, RuleResult},
     model::{
         pool::Pool,
-        tx::{DoubleSpend, MempoolTransaction, RbfPolicy, TransactionInsertOutcome, TxRemovalReason},
+        tx::{MempoolTransaction, RbfPolicy, TransactionPostValidation, TransactionPreValidation, TxRemovalReason},
     },
     tx::{Orphan, Priority},
     Mempool,
@@ -13,7 +13,6 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_core::{debug, info};
-use std::sync::Arc;
 
 impl Mempool {
     pub(crate) fn pre_validate_and_populate_transaction(
@@ -21,19 +20,14 @@ impl Mempool {
         consensus: &dyn ConsensusApi,
         mut transaction: MutableTransaction,
         rbf_policy: RbfPolicy,
-    ) -> RuleResult<MutableTransaction> {
+    ) -> RuleResult<TransactionPreValidation> {
         self.validate_transaction_unacceptance(&transaction)?;
         // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
         transaction.calculated_compute_mass = Some(consensus.calculate_transaction_compute_mass(&transaction.tx));
         self.validate_transaction_in_isolation(&transaction)?;
-
-        // When replace by fee is forbidden, fail early on double spend
-        if rbf_policy == RbfPolicy::Forbidden {
-            self.transaction_pool.check_double_spends(&transaction)?;
-        }
-
+        let fee_per_mass_threshold = self.get_replace_by_fee_constraint(&mut transaction, rbf_policy)?;
         self.populate_mempool_entries(&mut transaction);
-        Ok(transaction)
+        Ok(TransactionPreValidation { transaction, fee_per_mass_threshold })
     }
 
     pub(crate) fn post_validate_and_insert_transaction(
@@ -44,7 +38,7 @@ impl Mempool {
         priority: Priority,
         orphan: Orphan,
         rbf_policy: RbfPolicy,
-    ) -> RuleResult<TransactionInsertOutcome> {
+    ) -> RuleResult<TransactionPostValidation> {
         let transaction_id = transaction.id();
 
         // First check if the transaction was not already added to the mempool.
@@ -53,7 +47,7 @@ impl Mempool {
         // concurrently.
         if self.transaction_pool.has(&transaction_id) {
             debug!("Transaction {0} is not post validated since already in the mempool", transaction_id);
-            return Ok(TransactionInsertOutcome::default());
+            return Ok(TransactionPostValidation::default());
         }
 
         self.validate_transaction_unacceptance(&transaction)?;
@@ -66,15 +60,15 @@ impl Mempool {
                 }
                 self.transaction_pool.check_double_spends(&transaction)?;
                 self.orphan_pool.try_add_orphan(consensus.get_virtual_daa_score(), transaction, priority)?;
-                return Ok(TransactionInsertOutcome::default());
+                return Ok(TransactionPostValidation::default());
             }
             Err(err) => {
                 return Err(err);
             }
         }
 
-        // Check double spends and remove them if the RBF policy requires to
-        let removed_transaction = self.validate_replace_by_fee(&transaction, rbf_policy)?;
+        // Check double spends and try to remove them if the RBF policy requires it
+        let removed_transaction = self.execute_replace_by_fee(&transaction, rbf_policy)?;
 
         self.validate_transaction_in_context(&transaction)?;
 
@@ -86,77 +80,7 @@ impl Mempool {
         // Add the transaction to the mempool as a MempoolTransaction and return a clone of the embedded Arc<Transaction>
         let accepted_transaction =
             self.transaction_pool.add_transaction(transaction, consensus.get_virtual_daa_score(), priority)?.mtx.tx.clone();
-        Ok(TransactionInsertOutcome::new(removed_transaction, Some(accepted_transaction)))
-    }
-
-    /// Validates replace by fee (RBF) for an incoming transaction and a policy.
-    ///
-    /// See [`RbfPolicy`] variants for details of each policy process and success conditions.
-    ///
-    /// On success, `transaction` is guaranteed to have no double spend.
-    ///
-    /// On mandatory RBF success, some removed transaction is always returned.
-    fn validate_replace_by_fee(
-        &mut self,
-        transaction: &MutableTransaction,
-        rbf_policy: RbfPolicy,
-    ) -> RuleResult<Option<Arc<Transaction>>> {
-        match rbf_policy {
-            RbfPolicy::Forbidden => {
-                self.transaction_pool.check_double_spends(transaction)?;
-                Ok(None)
-            }
-
-            RbfPolicy::Allowed => {
-                let double_spends = self.transaction_pool.get_double_spends(transaction);
-                match double_spends.is_empty() {
-                    true => Ok(None),
-                    false => {
-                        let removed = self.validate_double_spend_transaction(transaction, &double_spends[0])?.mtx.tx.clone();
-                        for double_spend in double_spends {
-                            self.remove_transaction(
-                                &double_spend.owner_id,
-                                true,
-                                TxRemovalReason::ReplacedByFee,
-                                format!("by {}", transaction.id()).as_str(),
-                            )?;
-                        }
-                        Ok(Some(removed))
-                    }
-                }
-            }
-
-            RbfPolicy::Mandatory => {
-                let double_spends = self.transaction_pool.get_double_spends(transaction);
-                match double_spends.len() {
-                    0 => Err(RuleError::RejectRbfNoDoubleSpend),
-                    1 => {
-                        let removed = self.validate_double_spend_transaction(transaction, &double_spends[0])?.mtx.tx.clone();
-                        self.remove_transaction(
-                            &double_spends[0].owner_id,
-                            true,
-                            TxRemovalReason::ReplacedByFee,
-                            format!("by {}", transaction.id()).as_str(),
-                        )?;
-                        Ok(Some(removed))
-                    }
-                    _ => Err(RuleError::RejectRbfTooManyDoubleSpends),
-                }
-            }
-        }
-    }
-
-    fn validate_double_spend_transaction<'a>(
-        &'a self,
-        transaction: &MutableTransaction,
-        double_spend: &DoubleSpend,
-    ) -> RuleResult<&'a MempoolTransaction> {
-        let owner = self.transaction_pool.get_double_spend_owner(double_spend)?;
-        if transaction.calculated_fee_per_compute_mass().unwrap() > owner.mtx.calculated_fee_per_compute_mass().unwrap() {
-            Ok(owner)
-        } else {
-            Err(double_spend.into())
-        }
+        Ok(TransactionPostValidation { removed: removed_transaction, accepted: Some(accepted_transaction) })
     }
 
     /// Validates that the transaction wasn't already accepted into the DAG

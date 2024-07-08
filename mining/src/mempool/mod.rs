@@ -23,6 +23,7 @@ pub(crate) mod handle_new_block_transactions;
 pub(crate) mod model;
 pub(crate) mod populate_entries_and_try_validate;
 pub(crate) mod remove_transaction;
+pub(crate) mod replace_by_fee;
 pub(crate) mod validate_and_insert_transaction;
 
 /// Mempool contains transactions intended to be inserted into a block and mined.

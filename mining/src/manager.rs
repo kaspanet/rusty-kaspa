@@ -4,7 +4,7 @@ use crate::{
     errors::MiningManagerResult,
     mempool::{
         config::Config,
-        model::tx::{MempoolTransaction, RbfPolicy, TransactionInsertOutcome, TxRemovalReason},
+        model::tx::{MempoolTransaction, RbfPolicy, TransactionPostValidation, TransactionPreValidation, TxRemovalReason},
         populate_entries_and_try_validate::{
             populate_mempool_transactions_in_parallel, validate_mempool_transaction, validate_mempool_transactions_in_parallel,
         },
@@ -22,7 +22,10 @@ use crate::{
 };
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    api::ConsensusApi,
+    api::{
+        args::{TransactionBatchValidationArgs, TransactionValidationArgs},
+        ConsensusApi,
+    },
     block::{BlockTemplate, TemplateBuildMode},
     coinbase::MinerData,
     errors::{block::RuleError as BlockRuleError, tx::TxRuleError},
@@ -272,13 +275,15 @@ impl MiningManager {
         rbf_policy: RbfPolicy,
     ) -> MiningManagerResult<TransactionInsertion> {
         // read lock on mempool
-        let mut transaction = self.mempool.read().pre_validate_and_populate_transaction(consensus, transaction, rbf_policy)?;
+        let TransactionPreValidation { mut transaction, fee_per_mass_threshold } =
+            self.mempool.read().pre_validate_and_populate_transaction(consensus, transaction, rbf_policy)?;
+        let args = TransactionValidationArgs::new(fee_per_mass_threshold);
         // no lock on mempool
-        let validation_result = validate_mempool_transaction(consensus, &mut transaction);
+        let validation_result = validate_mempool_transaction(consensus, &mut transaction, &args);
         // write lock on mempool
         let mut mempool = self.mempool.write();
         match mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan, rbf_policy)? {
-            TransactionInsertOutcome { removed, accepted: Some(accepted_transaction) } => {
+            TransactionPostValidation { removed, accepted: Some(accepted_transaction) } => {
                 let unorphaned_transactions = mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction);
                 drop(mempool);
 
@@ -291,7 +296,7 @@ impl MiningManager {
 
                 Ok(TransactionInsertion::new(removed, accepted_transactions))
             }
-            TransactionInsertOutcome { removed, accepted: None } => Ok(TransactionInsertion::new(removed, vec![])),
+            TransactionPostValidation { removed, accepted: None } => Ok(TransactionInsertion::new(removed, vec![])),
         }
     }
 
@@ -302,6 +307,8 @@ impl MiningManager {
     ) -> Vec<Arc<Transaction>> {
         // The capacity used here may be exceeded (see next comment).
         let mut accepted_transactions = Vec::with_capacity(incoming_transactions.len());
+        // The validation args map is immutably empty since unorphaned transactions are not eligible to replace by fee.
+        let args = TransactionBatchValidationArgs::new();
         // We loop as long as incoming unorphaned transactions do unorphan other transactions when they
         // get validated and inserted into the mempool.
         while !incoming_transactions.is_empty() {
@@ -316,8 +323,11 @@ impl MiningManager {
             let mut validation_results = Vec::with_capacity(transactions.len());
             while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
                 assert!(lower_bound < upper_bound, "the chunk is never empty");
-                validation_results
-                    .extend(validate_mempool_transactions_in_parallel(consensus, &mut transactions[lower_bound..upper_bound]));
+                validation_results.extend(validate_mempool_transactions_in_parallel(
+                    consensus,
+                    &mut transactions[lower_bound..upper_bound],
+                    &args,
+                ));
                 lower_bound = upper_bound;
             }
             assert_eq!(transactions.len(), validation_results.len(), "every transaction should have a matching validation result");
@@ -338,12 +348,12 @@ impl MiningManager {
                         Orphan::Forbidden,
                         RbfPolicy::Forbidden,
                     ) {
-                        Ok(TransactionInsertOutcome { removed: _, accepted: Some(accepted_transaction) }) => {
+                        Ok(TransactionPostValidation { removed: _, accepted: Some(accepted_transaction) }) => {
                             accepted_transactions.push(accepted_transaction.clone());
                             self.counters.increase_tx_counts(1, priority);
                             mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction)
                         }
-                        Ok(TransactionInsertOutcome { removed: _, accepted: None }) => vec![],
+                        Ok(TransactionPostValidation { removed: _, accepted: None }) => vec![],
                         Err(err) => {
                             debug!("Failed to unorphan transaction {0} due to rule error: {1}", orphan_id, err);
                             vec![]
@@ -380,12 +390,18 @@ impl MiningManager {
         // read lock on mempool
         // Here, we simply log and drop all erroneous transactions since the caller doesn't care about those anyway
         let mut transactions = Vec::with_capacity(sorted_transactions.len());
+        let mut args = TransactionBatchValidationArgs::new();
         for chunk in &sorted_transactions.chunks(TRANSACTION_CHUNK_SIZE) {
             let mempool = self.mempool.read();
             let txs = chunk.filter_map(|tx| {
                 let transaction_id = tx.id();
                 match mempool.pre_validate_and_populate_transaction(consensus, tx, RbfPolicy::Allowed) {
-                    Ok(tx) => Some(tx),
+                    Ok(TransactionPreValidation { transaction, fee_per_mass_threshold }) => {
+                        if let Some(threshold) = fee_per_mass_threshold {
+                            args.set_fee_per_mass_threshold(transaction.id(), threshold);
+                        }
+                        Some(transaction)
+                    }
                     Err(RuleError::RejectAlreadyAccepted(transaction_id)) => {
                         debug!("Ignoring already accepted transaction {}", transaction_id);
                         None
@@ -414,8 +430,11 @@ impl MiningManager {
         let mut validation_results = Vec::with_capacity(transactions.len());
         while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
             assert!(lower_bound < upper_bound, "the chunk is never empty");
-            validation_results
-                .extend(validate_mempool_transactions_in_parallel(consensus, &mut transactions[lower_bound..upper_bound]));
+            validation_results.extend(validate_mempool_transactions_in_parallel(
+                consensus,
+                &mut transactions[lower_bound..upper_bound],
+                &args,
+            ));
             lower_bound = upper_bound;
         }
         assert_eq!(transactions.len(), validation_results.len(), "every transaction should have a matching validation result");
@@ -435,12 +454,12 @@ impl MiningManager {
                     orphan,
                     RbfPolicy::Allowed,
                 ) {
-                    Ok(TransactionInsertOutcome { removed: _, accepted: Some(accepted_transaction) }) => {
+                    Ok(TransactionPostValidation { removed: _, accepted: Some(accepted_transaction) }) => {
                         insert_results.push(Ok(accepted_transaction.clone()));
                         self.counters.increase_tx_counts(1, priority);
                         mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction)
                     }
-                    Ok(TransactionInsertOutcome { removed: _, accepted: None }) => {
+                    Ok(TransactionPostValidation { removed: _, accepted: None }) => {
                         // Either orphaned or already existing in the mempool
                         vec![]
                     }

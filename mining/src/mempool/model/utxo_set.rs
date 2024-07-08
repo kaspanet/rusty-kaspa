@@ -90,7 +90,8 @@ impl MempoolUtxoSet {
         None
     }
 
-    pub(crate) fn get_double_spends(&self, transaction: &MutableTransaction) -> Vec<DoubleSpend> {
+    /// Returns the first double spend of every transaction in the mempool double spending on `transaction`
+    pub(crate) fn get_double_spend_transaction_ids(&self, transaction: &MutableTransaction) -> Vec<DoubleSpend> {
         let transaction_id = transaction.id();
         let mut double_spends = vec![];
         let mut visited = HashSet::new();

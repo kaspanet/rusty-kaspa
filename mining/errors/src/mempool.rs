@@ -27,11 +27,11 @@ pub enum RuleError {
     #[error("output {0} already spent by transaction {1} in the mempool")]
     RejectDoubleSpendInMempool(TransactionOutpoint, TransactionId),
 
-    #[error("replace by fee found no replaceable transaction in the mempool")]
+    #[error("replace by fee found no double spending transaction in the mempool")]
     RejectRbfNoDoubleSpend,
 
-    #[error("replace by fee found more than one replaceable transaction in the mempool")]
-    RejectRbfTooManyDoubleSpends,
+    #[error("replace by fee found more than one double spending transaction in the mempool")]
+    RejectRbfTooManyDoubleSpendingTransactions,
 
     /// New behavior: a transaction is rejected if the mempool is full
     #[error("number of high-priority transactions in mempool ({0}) has reached the maximum allowed ({1})")]
@@ -101,7 +101,7 @@ impl From<TxRuleError> for RuleError {
 
 pub type RuleResult<T> = std::result::Result<T, RuleError>;
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum NonStandardError {
     #[error("transaction version {1} is not in the valid range of {2}-{3}")]
     RejectVersion(TransactionId, u16, u16, u16),

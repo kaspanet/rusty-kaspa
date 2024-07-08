@@ -20,7 +20,7 @@ mod tests {
         block::TemplateBuildMode,
         coinbase::MinerData,
         constants::{MAX_TX_IN_SEQUENCE_NUM, SOMPI_PER_KASPA, TX_VERSION},
-        errors::tx::{TxResult, TxRuleError},
+        errors::tx::TxRuleError,
         mass::transaction_estimated_serialized_size,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{
@@ -29,6 +29,7 @@ mod tests {
         },
     };
     use kaspa_hashes::Hash;
+    use kaspa_mining_errors::mempool::RuleResult;
     use kaspa_txscript::{
         pay_to_address_script, pay_to_script_hash_signature_script,
         test_helpers::{create_transaction, op_true_script},
@@ -158,11 +159,15 @@ mod tests {
             // when the mempool will submit this transaction for validation.
             let mut transaction = create_transaction_with_utxo_entry(0, 1);
             Arc::make_mut(&mut transaction.tx).gas = 1000;
-            let status = Err(TxRuleError::TxHasGas);
-            consensus.set_status(transaction.id(), status.clone());
+            let tx_err = TxRuleError::TxHasGas;
+            let expected = match rbf_policy {
+                RbfPolicy::Forbidden | RbfPolicy::Allowed => Err(RuleError::from(tx_err.clone())),
+                RbfPolicy::Mandatory => Err(RuleError::RejectRbfNoDoubleSpend),
+            };
+            consensus.set_status(transaction.id(), Err(tx_err));
 
             // Try validate and insert the transaction into the mempool
-            let result = into_status(mining_manager.validate_and_insert_mutable_transaction(
+            let result = into_mempool_result(mining_manager.validate_and_insert_mutable_transaction(
                 consensus.as_ref(),
                 transaction.clone(),
                 priority,
@@ -171,8 +176,8 @@ mod tests {
             ));
 
             assert_eq!(
-                status, result,
-                "({priority:?}, {orphan:?}, {rbf_policy:?}) unexpected result when trying to insert an invalid transaction: expected: {status:?}, got: {result:?}",
+                expected, result,
+                "({priority:?}, {orphan:?}, {rbf_policy:?}) unexpected result when trying to insert an invalid transaction: expected: {expected:?}, got: {result:?}",
             );
             let pool_tx = mining_manager.get_transaction(&transaction.id(), TransactionQuery::All);
             assert!(
@@ -207,26 +212,31 @@ mod tests {
             );
 
             // submit the same transaction again to the mempool
-            let result = mining_manager.validate_and_insert_mutable_transaction(
+            let result = into_mempool_result(mining_manager.validate_and_insert_mutable_transaction(
                 consensus.as_ref(),
                 MutableTransaction::from_tx(transaction.tx.as_ref().clone()),
                 priority,
                 orphan,
                 rbf_policy,
-            );
-            assert!(result.is_err(), "({priority:?}, {orphan:?}, {rbf_policy:?}) mempool should refuse a double submit of the same transaction but accepts it");
-            match RuleError::try_from(result.unwrap_err()).unwrap() {
-                RuleError::RejectDuplicate(transaction_id) => {
+            ));
+            match result {
+                Err(RuleError::RejectDuplicate(transaction_id)) => {
                     assert_eq!(
                         transaction.id(),
                         transaction_id,
-                        "({priority:?}, {orphan:?}, {rbf_policy:?}) the error returned by the mempool should include id {} but provides {}",
+                        "({priority:?}, {orphan:?}, {rbf_policy:?}) the error returned by the mempool should include transaction id {} but provides {}",
                         transaction.id(),
                         transaction_id
                     );
                 }
-                err => {
-                    panic!("({priority:?}, {orphan:?}, {rbf_policy:?}) the error returned by the mempool should be RuleError::RejectDuplicate but is {err:?}");
+                Err(err) => {
+                    panic!(
+                        "({priority:?}, {orphan:?}, {rbf_policy:?}) the error returned by the mempool should be {:?} but is {err:?}",
+                        RuleError::RejectDuplicate(transaction.id())
+                    );
+                }
+                Ok(()) => {
+                    panic!("({priority:?}, {orphan:?}, {rbf_policy:?}) mempool should refuse a double submit of the same transaction but accepts it");
                 }
             }
         }
@@ -259,20 +269,15 @@ mod tests {
                 double_spending_transaction.id(),
                 "({priority:?}, {orphan:?}, {rbf_policy:?}) two transactions differing by only one output value should have different ids"
             );
-            let result = mining_manager.validate_and_insert_mutable_transaction(
+            let result = into_mempool_result(mining_manager.validate_and_insert_mutable_transaction(
                 consensus.as_ref(),
                 MutableTransaction::from_tx(double_spending_transaction.clone()),
                 priority,
                 orphan,
                 rbf_policy,
-            );
-            assert!(
-                result.is_err(),
-                "({priority:?}, {orphan:?}, {rbf_policy:?}) mempool should refuse a double spend transaction but accepts it"
-            );
-            let err = RuleError::try_from(result.unwrap_err()).unwrap();
-            match err {
-                RuleError::RejectDoubleSpendInMempool(_, transaction_id) => {
+            ));
+            match result {
+                Err(RuleError::RejectDoubleSpendInMempool(_, transaction_id)) => {
                     assert_eq!(
                         transaction.id(),
                         transaction_id,
@@ -281,8 +286,11 @@ mod tests {
                         transaction_id
                     );
                 }
-                err => {
+                Err(err) => {
                     panic!("({priority:?}, {orphan:?}, {rbf_policy:?}) the error returned by the mempool should be RuleError::RejectDoubleSpendInMempool but is {err:?}");
+                }
+                Ok(()) => {
+                    panic!("({priority:?}, {orphan:?}, {rbf_policy:?}) mempool should refuse a double spend transaction ineligible to RBF but accepts it");
                 }
             }
         }
@@ -1064,11 +1072,13 @@ mod tests {
         transactions.iter().any(|x| x.as_ref().id() == transaction_id)
     }
 
-    fn into_status<T>(result: MiningManagerResult<T>) -> TxResult<()> {
+    fn into_mempool_result<T>(result: MiningManagerResult<T>) -> RuleResult<()> {
         match result {
             Ok(_) => Ok(()),
-            Err(MiningManagerError::MempoolError(RuleError::RejectTxRule(err))) => Err(err),
-            _ => Ok(()),
+            Err(MiningManagerError::MempoolError(err)) => Err(err),
+            _ => {
+                panic!("result is an unsupported error");
+            }
         }
     }
 

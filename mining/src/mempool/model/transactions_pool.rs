@@ -246,12 +246,14 @@ impl TransactionsPool {
         self.utxo_set.get_outpoint_owner_id(outpoint)
     }
 
+    /// Make sure no other transaction in the mempool is already spending an output which one of this transaction inputs spends
     pub(crate) fn check_double_spends(&self, transaction: &MutableTransaction) -> RuleResult<()> {
         self.utxo_set.check_double_spends(transaction)
     }
 
-    pub(crate) fn get_double_spends(&self, transaction: &MutableTransaction) -> Vec<DoubleSpend> {
-        self.utxo_set.get_double_spends(transaction)
+    /// Returns the first double spend of every transaction in the mempool double spending on `transaction`
+    pub(crate) fn get_double_spend_transaction_ids(&self, transaction: &MutableTransaction) -> Vec<DoubleSpend> {
+        self.utxo_set.get_double_spend_transaction_ids(transaction)
     }
 
     pub(crate) fn get_double_spend_owner<'a>(&'a self, double_spend: &DoubleSpend) -> RuleResult<&'a MempoolTransaction> {

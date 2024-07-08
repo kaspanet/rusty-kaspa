@@ -82,7 +82,7 @@ pub(crate) enum RbfPolicy {
     /// - on double spends, the incoming transaction has a higher fee/mass ratio than the mempool transaction owning
     ///   the first double spend
     ///
-    /// If conditions are not met, leaves the mempool unchanged and fails with a double spend error.
+    /// If conditions are not met, leaves the mempool unchanged and fails with a double spend or a tx fee/mass too low error.
     Allowed,
 
     /// ### RBF must occur
@@ -96,10 +96,9 @@ pub(crate) enum RbfPolicy {
     ///
     /// - at least one double spend
     /// - all double spends belong to the same mempool transaction
-    /// - the incoming transaction has a higher fee/mass ratio than the mempool transaction owning
-    ///   the double spends
+    /// - the incoming transaction has a higher fee/mass ratio than the mempool double spending transaction.
     ///
-    /// If conditions are not met, leaves the mempool unchanged and fails with a double spend error.
+    /// If conditions are not met, leaves the mempool unchanged and fails with a double spend or a tx fee/mass too low error.
     Mandatory,
 }
 
@@ -137,16 +136,15 @@ impl From<&DoubleSpend> for RuleError {
     }
 }
 
-#[derive(Default)]
-pub(crate) struct TransactionInsertOutcome {
-    pub removed: Option<Arc<Transaction>>,
-    pub accepted: Option<Arc<Transaction>>,
+pub(crate) struct TransactionPreValidation {
+    pub transaction: MutableTransaction,
+    pub fee_per_mass_threshold: Option<f64>,
 }
 
-impl TransactionInsertOutcome {
-    pub(crate) fn new(removed: Option<Arc<Transaction>>, accepted: Option<Arc<Transaction>>) -> Self {
-        Self { removed, accepted }
-    }
+#[derive(Default)]
+pub(crate) struct TransactionPostValidation {
+    pub removed: Option<Arc<Transaction>>,
+    pub accepted: Option<Arc<Transaction>>,
 }
 
 #[derive(PartialEq, Eq)]
