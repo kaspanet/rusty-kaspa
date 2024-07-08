@@ -14,7 +14,7 @@ use crate::{
     },
 };
 use kaspa_consensus_core::{
-    acceptance_data::{MergesetBlockAcceptanceData, TxEntry},
+    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData, TxEntry},
     coinbase::*,
     hashing,
     header::Header,
@@ -41,7 +41,7 @@ pub(super) struct UtxoProcessingContext<'a> {
     pub multiset_hash: MuHash,
     pub mergeset_diff: UtxoDiff,
     pub accepted_tx_ids: Vec<TransactionId>,
-    pub mergeset_acceptance_data: Vec<MergesetBlockAcceptanceData>,
+    pub mergeset_acceptance_data: AcceptanceData,
     pub mergeset_rewards: BlockHashMap<BlockRewardData>,
 }
 
@@ -54,8 +54,7 @@ impl<'a> UtxoProcessingContext<'a> {
             mergeset_diff: UtxoDiff::default(),
             accepted_tx_ids: Vec::with_capacity(1), // We expect at least the selected parent coinbase tx
             mergeset_rewards: BlockHashMap::with_capacity(mergeset_size),
-            mergeset_acceptance_data: Vec::with_capacity(mergeset_size),
-        }
+            mergeset_acceptance_data: AcceptanceData { mergeset: Vec::with_capacity(mergeset_size), accepting_blue_score: u64::default() },        }
     }
 
     pub fn selected_parent(&self) -> Hash {

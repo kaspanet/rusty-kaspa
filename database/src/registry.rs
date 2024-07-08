@@ -57,10 +57,10 @@ pub enum DatabaseStorePrefixes {
     // Reserve 195 - 200 for UTXO index
 
     // 2) TX index
-    TxIndexAcceptedTxOffsets = 201,
-    TxIndexBlockAcceptanceOffsets = 202,
-    TxIndexSink = 203,
-    TxIndexSource = 204,
+    TxIndexTxEntries = 201,
+    TxIndexTxEntriesCount = 202,
+    TxIndexSinkData = 203,
+    TxIndexPruningState = 204,
     // Reserve 205 - 210 for TX index
 
     // ---- Separator ----

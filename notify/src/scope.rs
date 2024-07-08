@@ -44,7 +44,7 @@ pub enum Scope {
     VirtualDaaScoreChanged,
     PruningPointUtxoSetOverride,
     NewBlockTemplate,
-    ChainAcceptanceDataPruned,
+    PruningPointAdvancement,
 }
 }
 
@@ -58,7 +58,7 @@ impl Scope {
 pub struct BlockAddedScope {}
 
 #[derive(Clone, Display, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
-pub struct ChainAcceptanceDataPrunedScope {}
+pub struct PruningPointAdvancementScope {}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct VirtualChainChangedScope {

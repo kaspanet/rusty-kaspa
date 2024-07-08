@@ -2,6 +2,7 @@ use kaspa_consensus_core::subnets::SUBNETWORK_ID_SIZE;
 
 // Defualts for txindex perf params:
 pub const DEFAULT_MAX_TXINDEX_MEMORY_BUDGET: usize = 1_000_000_000; // 1 GB
+pub const DEFAULT_TXINDEX_PRUNING_BUDGET: usize = 1_000_000; // 100 MB
 pub const DEFAULT_TXINDEX_EXTRA_FD_BUDGET: usize = 0;
 pub const DEFAULT_TXINDEX_DB_PARALLELISM: usize = 1;
 

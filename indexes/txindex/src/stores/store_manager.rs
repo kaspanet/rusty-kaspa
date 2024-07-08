@@ -1,5 +1,6 @@
+use kaspa_consensus::testutils::generate::from_rand::tx;
 // External imports
-use kaspa_core::trace;
+use kaspa_core::{info, trace};
 use kaspa_database::{
     cache_policy_builder::CachePolicyBuilder,
     prelude::{StoreError, DB},
@@ -16,47 +17,59 @@ use crate::{
     config::Config,
     errors::TxIndexResult,
     stores::{
-        accepted_tx_offsets::DbTxIndexAcceptedTxOffsetsStore, block_acceptance_offsets::DbTxIndexBlockAcceptanceOffsetsStore,
-        sink::DbTxIndexSinkStore, source::DbTxIndexSourceStore, TxIndexAcceptedTxOffsetsStore, TxIndexBlockAcceptanceOffsetsStore,
+        tx_entries::{DbTxIndexTxEntriesStore, TxIndexTxEntriesReader},
+        sink_data::DbTxIndexSinkStore, pruning_state::DbTxIndexSourceStore,
         TxIndexSinkStore, TxIndexSourceStore,
     },
     IDENT,
 };
 
+use super::{DbTxIndexAcceptedTxEntriesStore, DbTxIndexPruningStateStore};
+
 /// Stores for the transaction index.
 pub struct TxIndexStores {
-    pub accepted_tx_offsets_store: DbTxIndexAcceptedTxOffsetsStore,
-    pub block_acceptance_offsets_store: DbTxIndexBlockAcceptanceOffsetsStore,
-    pub source_store: DbTxIndexSourceStore,
-    pub sink_store: DbTxIndexSinkStore,
+    tx_entries_store: DbTxIndexTxEntriesStore,
+    pruning_state_store: DbTxIndexPruningStateStore,
+    sink_store: DbTxIndexSinkStore,
     db: Arc<DB>,
 }
 
 impl TxIndexStores {
     pub fn new(db: Arc<DB>, config: &Arc<Config>) -> Result<Self, StoreError> {
         // Build cache policies
-        let accepted_tx_offsets_cache_policy = CachePolicyBuilder::new()
-            .bytes_budget(config.perf.mem_budget_tx_offset())
-            .unit_bytes(config.perf.mem_size_tx_offset())
+        let tx_entries_cache_policy = CachePolicyBuilder::new()
+            .bytes_budget(config.perf.mem_budget_tx_entries())
+            .unit_bytes(config.perf.mem_size_accepted_tx_entries())
             .tracked_bytes()
             .build();
 
-        let block_acceptance_offsets_cache_policy = CachePolicyBuilder::new()
-            .bytes_budget(config.perf.mem_budget_block_acceptance_offset())
-            .unit_bytes(config.perf.mem_size_block_acceptance_offset())
-            .tracked_bytes()
-            .build();
+        let tx_entries_store = DbTxIndexTxEntriesStore::new(db.clone(), tx_entries_cache_policy);
+        
+        // Sanity check
+        // TODO: remove when considered stable
+        if config.enable_sanity_checks {
+            info!("Running sanity checks on txindex stores, This may take a while...");
+            assert_eq!(tx_entries_store.num_of_entries()?, tx_entries_store.count()?);
+        };
 
         Ok(Self {
-            accepted_tx_offsets_store: DbTxIndexAcceptedTxOffsetsStore::new(db.clone(), accepted_tx_offsets_cache_policy),
-            block_acceptance_offsets_store: DbTxIndexBlockAcceptanceOffsetsStore::new(
-                db.clone(),
-                block_acceptance_offsets_cache_policy,
-            ),
-            source_store: DbTxIndexSourceStore::new(db.clone()),
+            tx_entries_store,
+            pruning_state_store: DbTxIndexPruningStateStore::new(db.clone()),
             sink_store: DbTxIndexSinkStore::new(db.clone()),
             db: db.clone(),
         })
+    }
+
+    pub fn tx_entries_store(&self) -> &DbTxIndexTxEntriesStore {
+        &self.tx_entries_store
+    }
+
+    pub fn pruning_state_store(&self) -> &DbTxIndexPruningStateStore {
+        &self.pruning_state_store
+    }
+
+    pub fn sink_store(&self) -> &DbTxIndexSinkStore {
+        &self.sink_store
     }
 
     pub fn write_batch(&self, batch: WriteBatch) -> TxIndexResult<()> {
@@ -68,10 +81,9 @@ impl TxIndexStores {
         // TODO: explore possibility of deleting and replacing whole db, currently there is an issue because of file lock and db being in an arc.
         trace!("[{0}] attempting to clear txindex database...", IDENT);
 
-        self.source_store.remove(batch)?;
-        self.sink_store.remove(batch)?;
-        self.accepted_tx_offsets_store.delete_all(batch)?;
-        self.block_acceptance_offsets_store.delete_all(batch)?;
+        self.tx_entries_store.delete_all(batch)?;
+        self.pruning_state_store.delete_all(batch)?;
+        self.sink_store.delete_all(batch)?;
 
         trace!("[{0}] cleared txindex database", IDENT);
 

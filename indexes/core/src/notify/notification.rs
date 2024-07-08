@@ -2,7 +2,7 @@ use crate::models::utxoindex::{UtxoChanges, UtxoSetByScriptPublicKey};
 use derive_more::Display;
 use kaspa_consensus_core::acceptance_data::AcceptanceData;
 use kaspa_consensus_notify::notification::{
-    ChainAcceptanceDataPrunedNotification as ConsensusChainAcceptanceDataPrunedNotification,
+    PruningPointBlueScoreChangedNotification as ConsensusPruningPointBlueScoreChangedNotification,
     PruningPointUtxoSetOverrideNotification as ConsensusPruningPointUtxoSetOverrideNotification,
     VirtualChainChangedNotification as ConsensusVirtualChainChangedNotification,
     PruningPointAdvancementNotification as ConsensusPruningPointAdvancementNotification,

@@ -1,5 +1,6 @@
 use std::{cmp::max, mem::size_of, sync::Arc};
 
+use kaspa_consensus::model::stores::pruning;
 use kaspa_consensus_core::{
     acceptance_data::{MergesetBlockAcceptanceData, TxEntry},
     config::Config as ConsensusConfig,
@@ -7,20 +8,23 @@ use kaspa_consensus_core::{
     Hash,
 };
 use kaspa_database::cache_policy_builder::bounded_size;
-use kaspa_index_core::models::txindex::{BlockAcceptanceOffset, TxOffset};
+use kaspa_index_core::models::txindex::{BlockAcceptanceOffset, TxIndexEntry, TxOffset};
 
 use crate::core::config::{
     constants::{DEFAULT_MAX_TXINDEX_MEMORY_BUDGET, DEFAULT_TXINDEX_DB_PARALLELISM, DEFAULT_TXINDEX_EXTRA_FD_BUDGET},
     params::Params,
 };
 
+use super::constants::DEFAULT_TXINDEX_PRUNING_BUDGET;
+
 #[derive(Clone, Debug)]
 pub struct PerfParams {
     pub mem_budget_total: usize,
-    pub resync_chunksize: usize,
+    pub resync_chunksize_units: usize,
+    pub pruning_chunksize_units: usize,
+    pub db_budget: usize,
     pub extra_fd_budget: usize,
     pub db_parallelism: usize,
-    unit_ratio_tx_offset_to_block_acceptance_offset: usize,
 }
 
 impl PerfParams {
@@ -28,7 +32,7 @@ impl PerfParams {
         let scale_factor = consensus_config.ram_scale;
         let scaled = |s| (s as f64 * scale_factor) as usize;
         let mem_budget_total = scaled(DEFAULT_MAX_TXINDEX_MEMORY_BUDGET);
-        let resync_chunksize = scaled(bounded_size(
+        let resync_chunksize_units = scaled(bounded_size(
             params.max_blocks_in_mergeset_depth as usize,
             DEFAULT_MAX_TXINDEX_MEMORY_BUDGET,
             max(
@@ -42,31 +46,23 @@ impl PerfParams {
                     * consensus_config.params.mergeset_size_limit as usize,
             ),
         ));
+        let pruning_chunksize_units = scaled(DEFAULT_TXINDEX_PRUNING_BUDGET / size_of::<TransactionId>() + size_of::<TxIndexEntry>());
 
         Self {
-            unit_ratio_tx_offset_to_block_acceptance_offset: params.max_default_txs_per_block as usize,
-            resync_chunksize,
+            resync_chunksize_units,
+            pruning_chunksize_units,
+            db_budget: db_cache_budget,
             mem_budget_total,
             extra_fd_budget: DEFAULT_TXINDEX_EXTRA_FD_BUDGET,
             db_parallelism: DEFAULT_TXINDEX_DB_PARALLELISM,
         }
     }
 
-    pub fn mem_size_tx_offset(&self) -> usize {
-        size_of::<TransactionId>() + size_of::<TxOffset>()
+    pub fn mem_size_accepted_tx_entries(&self) -> usize {
+        size_of::<TransactionId>() + size_of::<TxIndexEntry>()
     }
 
-    pub fn mem_size_block_acceptance_offset(&self) -> usize {
-        size_of::<BlockAcceptanceOffset>() + size_of::<Hash>()
-    }
-
-    pub fn mem_budget_tx_offset(&self) -> usize {
-        self.mem_budget_total - self.mem_budget_block_acceptance_offset()
-    }
-
-    pub fn mem_budget_block_acceptance_offset(&self) -> usize {
-        self.mem_budget_total
-            / ((size_of::<TransactionId>() + size_of::<TxOffset>()) * self.unit_ratio_tx_offset_to_block_acceptance_offset
-                / (size_of::<Hash>() + size_of::<BlockAcceptanceOffset>()))
+    pub fn mem_budget_tx_entries(&self) -> usize {
+        self.db_budget / self.mem_budget_tx_entries()
     }
 }

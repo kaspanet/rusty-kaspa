@@ -34,7 +34,7 @@ use kaspa_consensus_core::{
     BlockHashSet,
 };
 use kaspa_consensus_notify::{
-    notification::{ChainAcceptanceDataPrunedNotification, Notification},
+    notification::{PruningPointBlueScoreChangedNotification, Notification},
     root::ConsensusNotificationRoot,
 };
 
@@ -270,6 +270,14 @@ impl PruningProcessor {
         assert_eq!(genesis, self.config.genesis.hash);
         assert_eq!(genesis, proof.last().unwrap().last().unwrap().hash);
 
+        if self.notification_root.has_subscription(EventType::PruningPointBlueScoreChanged) {
+            // send notification about new pruning point and it's blue score
+            self.notification_root.send(Notification::PruningPointBlueScoreChanged(PruningPointBlueScoreChangedNotification {
+                new_pruning_point,
+                new_pruning_point_blue_score: proof[0].last().unwrap().blue_score,
+            }));
+        }
+
         // We keep full data for pruning point and its anticone, relations for DAA/GD
         // windows and pruning proof, and only headers for past pruning points
         let keep_blocks: BlockHashSet = data.anticone.iter().copied().collect();
@@ -355,33 +363,12 @@ impl PruningProcessor {
         let mut queue = VecDeque::<Hash>::from_iter(reachability_read.get_children(ORIGIN).unwrap().iter().copied());
         let (mut counter, mut traversed) = (0, 0);
 
-        let mut is_notification_sent = false;
-        let is_subscribed = self.notification_root.has_subscription(EventType::ChainAcceptanceDataPruned);
-
         info!("Header and Block pruning: starting traversal from: {} (genesis: {})", queue.iter().reusable_format(", "), genesis);
         while let Some(current) = queue.pop_front() {
-            // Check for exit possibility
-            if (
-                // if noone is subscribed
-                !is_subscribed
-                // OR we sent the notification
-                || is_notification_sent
-            )
-            // AND consenus is exiting
-            && self.is_consensus_exiting.load(Ordering::Relaxed)
-            // We may exit
-            {
-                drop(reachability_read);
-                drop(prune_guard);
-                info!("Header and Block pruning interrupted: Process is exiting");
-                return;
-            }
 
             if reachability_read.is_dag_ancestor_of_result(new_pruning_point, current).unwrap() {
                 continue;
             }
-
-            is_notification_sent = false;
 
             traversed += 1;
             // Obtain the tree children of `current` and push them to the queue before possibly being deleted below
@@ -389,6 +376,7 @@ impl PruningProcessor {
 
             // If we have the lock for more than a few milliseconds, release and recapture to allow consensus progress during pruning
             if lock_acquire_time.elapsed() > Duration::from_millis(5) {
+
                 drop(reachability_read);
                 // An exit signal was received. Exit from this long running process.
                 if self.is_consensus_exiting.load(Ordering::Relaxed) {

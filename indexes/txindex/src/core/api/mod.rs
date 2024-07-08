@@ -1,7 +1,7 @@
 use crate::core::errors::TxIndexResult;
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_consensus_notify::notification::{
-    ChainAcceptanceDataPrunedNotification as ConsensusChainAcceptanceDataPrunedNotification,
+    PruningPointBlueScoreChangedNotification as ConsensusPruningPointBlueScoreChangedNotification,
     VirtualChainChangedNotification as ConsensusVirtualChainChangedNotification,
 };
 use kaspa_consensusmanager::spawn_blocking;
@@ -38,9 +38,9 @@ pub trait TxIndexApi: Send + Sync + Debug {
 
     fn update_via_virtual_chain_changed(&mut self, vspcc_notification: ConsensusVirtualChainChangedNotification) -> TxIndexResult<()>;
 
-    fn update_via_chain_acceptance_data_pruned(
+    fn update_via_pruning_point_blue_score_changed(
         &mut self,
-        chain_acceptance_data_pruned: ConsensusChainAcceptanceDataPrunedNotification,
+        ppbsc_notification: ConsensusPruningPointBlueScoreChangedNotification,
     ) -> TxIndexResult<()>;
 }
 
@@ -70,12 +70,13 @@ impl TxIndexProxy {
         spawn_blocking(move || self.inner.write().update_via_virtual_chain_changed(vspcc_notification)).await.unwrap()
     }
 
-    pub async fn update_via_chain_acceptance_data_pruned(
+    pub async fn update_via_pruning_point_blue_score_changed(
         self,
-        chain_acceptance_data_pruned_notification: ConsensusChainAcceptanceDataPrunedNotification,
+        ppbsc_notification: ConsensusPruningPointBlueScoreChangedNotification,
     ) -> TxIndexResult<()> {
-        spawn_blocking(move || self.inner.write().update_via_chain_acceptance_data_pruned(chain_acceptance_data_pruned_notification))
+        spawn_blocking(move || self.inner.write().update_via_pruning_point_blue_score_changed(ppbsc_notification)
             .await
             .unwrap()
+        )
     }
 }

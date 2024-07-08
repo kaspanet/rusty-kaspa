@@ -47,7 +47,7 @@ pub struct TestConsensus {
 }
 
 impl TestConsensus {
-    /// Creates a test consensus instance based on `config` with the provided `db`.
+    /// Creates a test consensus instance based on `config` with the provided `db`, and a dummy notifier. 
     pub fn with_db(db: Arc<DB>, config: &Config) -> Self {
         let (dummy_notification_sender, _) = async_channel::unbounded();
         let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));

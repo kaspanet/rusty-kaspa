@@ -1,9 +1,9 @@
 use crate::models::txindex::{
-    AcceptanceDataIndexType, BlockAcceptanceOffset, BlockAcceptanceOffsetDiff, TxHashSet, TxOffset, TxOffsetById, TxOffsetDiff,
+    TxIndexTxEntryById, TxHashSet, TxIndexTxInclusionOffset, TxIndexTxEntryDiff, TxIndexTxEntry, TxIndexPruningState, TxIndexSinkData, TxOffset, TxOffsetById, TxOffsetDiff
 };
 use kaspa_consensus_core::{BlockHashMap, BlockHashSet, HashMapCustomHasher};
 use kaspa_consensus_notify::notification::{
-    ChainAcceptanceDataPrunedNotification as ConsensusChainAcceptanceDataPrunedNotification,
+    PruningPointBlueScoreChangedNotification as ConsensusPruningPointBlueScoreChangedNotification,
     VirtualChainChangedNotification as ConsensusVirtualChainChangedNotification,
 };
 use kaspa_hashes::Hash;
@@ -12,10 +12,9 @@ use kaspa_utils::arc::ArcExtensions;
 /// Reindexes a [`ConsensusVirtualChainChangedNotification`] to txindex diffs, alongside new source and sink [`Hash`], this includes the calculated [`BlockAcceptanceOffsetDiff`] and [`TxOffsetDiff`].
 #[derive(Clone, Debug, Default)]
 pub struct TxIndexReindexer {
-    pub sink: Option<Hash>,
-    pub source: Option<Hash>,
-    pub block_acceptance_offsets_changes: BlockAcceptanceOffsetDiff,
-    pub tx_offset_changes: TxOffsetDiff,
+    pub sink_data: Option<TxIndexSinkData>,
+    pub pruning_state: Option<TxIndexPruningState>,
+    pub tx_entry_changes: TxIndexTxEntryDiff,
 }
 
 impl From<ConsensusVirtualChainChangedNotification> for TxIndexReindexer {
@@ -39,13 +38,8 @@ impl From<ConsensusVirtualChainChangedNotification> for TxIndexReindexer {
         {
             for (i, mergeset_block_acceptance_datum) in acceptance_data.unwrap_or_clone().into_iter().enumerate() {
                 tx_offsets_to_add.extend(mergeset_block_acceptance_datum.accepted_transactions.into_iter().map(|tx_entry| {
-                    (tx_entry.transaction_id, TxOffset::new(mergeset_block_acceptance_datum.block_hash, tx_entry.index_within_block))
+                    (tx_entry.transaction_id, TxIndexTxEntry::new(TxIndexTxInclusionOffset::new(mergeset_block_acceptance_datum.block_hash, tx_entry.index_within_block), TxAcceptanceData::new(accepting_block_hash, todo!())),)               
                 }));
-
-                block_acceptance_offsets_to_add.insert(
-                    mergeset_block_acceptance_datum.block_hash,
-                    BlockAcceptanceOffset::new(accepting_block_hash, i as AcceptanceDataIndexType),
-                );
             }
         }
 
@@ -66,34 +60,19 @@ impl From<ConsensusVirtualChainChangedNotification> for TxIndexReindexer {
         }
 
         Self {
-            sink,
-            source: None,
-            block_acceptance_offsets_changes: BlockAcceptanceOffsetDiff::new(
-                block_acceptance_offsets_to_add,
-                block_acceptance_offsets_to_remove,
-            ),
-            tx_offset_changes: TxOffsetDiff::new(tx_offsets_to_add, tx_offsets_to_remove),
+            sink_data: Some(TxIndexSinkData::new(sink, todo!())),
+            pruning_state: None,
+            tx_entry_changes: TxOffsetDiff::new(tx_offsets_to_add, tx_offsets_to_remove),
         }
     }
 }
 
-impl From<ConsensusChainAcceptanceDataPrunedNotification> for TxIndexReindexer {
-    fn from(notification: ConsensusChainAcceptanceDataPrunedNotification) -> Self {
-        let mut tx_offsets_to_remove = TxHashSet::new();
-        let mut block_acceptance_offsets_to_remove =
-            BlockHashSet::with_capacity(notification.mergeset_block_acceptance_data_pruned.len());
-
-        for mergeset_block_acceptance_datum in notification.mergeset_block_acceptance_data_pruned.unwrap_or_clone().into_iter() {
-            tx_offsets_to_remove
-                .extend(mergeset_block_acceptance_datum.accepted_transactions.into_iter().map(|tx_entry| tx_entry.transaction_id));
-            block_acceptance_offsets_to_remove.insert(mergeset_block_acceptance_datum.block_hash);
-        }
-
-        Self {
-            sink: None,
-            source: Some(notification.source),
-            block_acceptance_offsets_changes: BlockAcceptanceOffsetDiff::new(BlockHashMap::new(), block_acceptance_offsets_to_remove),
-            tx_offset_changes: TxOffsetDiff::new(TxOffsetById::new(), tx_offsets_to_remove),
+impl From<ConsensusPruningPointBlueScoreChangedNotification> for TxIndexReindexer {
+    fn from(value: ConsensusPruningPointBlueScoreChangedNotification) -> Self {
+        Self{
+            sink_data: Some(TxIndexSinkData::new(sink, todo!())),
+            pruning_state: None,
+            tx_entry_changes: TxOffsetDiff::default(),
         }
     }
 }
@@ -111,7 +90,7 @@ pub mod test {
 
     use kaspa_consensus_core::acceptance_data::{MergesetBlockAcceptanceData, TxEntry};
     use kaspa_consensus_core::tx::TransactionId;
-    use kaspa_consensus_notify::notification::{ChainAcceptanceDataPrunedNotification, VirtualChainChangedNotification};
+    use kaspa_consensus_notify::notification::{PruningPointBlueScoreChangedNotification, VirtualChainChangedNotification};
     use kaspa_hashes::Hash;
 
     #[test]
@@ -343,77 +322,20 @@ pub mod test {
         assert_eq!(tx_offsets_removed_count, reindexer.tx_offset_changes.removed.len());
     }
 
-    #[test]
-    fn test_txindex_reindexer_from_chain_acceptance_data_pruned() {
-        // Define the block hashes:
-        let chain_block_a_pruned = Hash::from_u64_word(1);
-        let mergeset_block_b_pruned = Hash::from_u64_word(2);
-        let mergeset_block_c_pruned = Hash::from_u64_word(3);
-
-        let source = Hash::from_u64_word(4);
-
-        // Define the tx ids;
-        let tx_a_1 = TransactionId::from_u64_word(5);
-        let tx_a_2 = TransactionId::from_u64_word(6);
-        let tx_b_1 = TransactionId::from_u64_word(7);
-        let tx_b_2 = TransactionId::from_u64_word(8);
-        let tx_c_1 = TransactionId::from_u64_word(9);
-        let tx_c_2 = TransactionId::from_u64_word(10);
-
+    fn test_txindex_reindexer_from_pruning_point_blue_score_changed_notification() {
         // Define the notification:
-        let test_chain_acceptance_data_pruned_notification = ChainAcceptanceDataPrunedNotification {
-            chain_hash_pruned: chain_block_a_pruned,
-            mergeset_block_acceptance_data_pruned: Arc::new(vec![
-                MergesetBlockAcceptanceData {
-                    block_hash: chain_block_a_pruned,
-                    accepted_transactions: vec![
-                        TxEntry { transaction_id: tx_a_1, index_within_block: 0 },
-                        TxEntry { transaction_id: tx_a_2, index_within_block: 1 },
-                    ],
-                },
-                MergesetBlockAcceptanceData {
-                    block_hash: mergeset_block_b_pruned,
-                    accepted_transactions: vec![
-                        TxEntry { transaction_id: tx_b_1, index_within_block: 0 },
-                        TxEntry { transaction_id: tx_b_2, index_within_block: 1 },
-                    ],
-                },
-                MergesetBlockAcceptanceData {
-                    block_hash: mergeset_block_c_pruned,
-                    accepted_transactions: vec![
-                        TxEntry { transaction_id: tx_c_1, index_within_block: 0 },
-                        TxEntry { transaction_id: tx_c_2, index_within_block: 1 },
-                    ],
-                },
-            ]),
-            source,
-        };
+        let test_cpd_notification = PruningPointBlueScoreChangedNotification { blue_score: 42 };
 
         // Reindex
-        let reindexer = TxIndexReindexer::from(test_chain_acceptance_data_pruned_notification.clone());
+        let reindexer = TxIndexReindexer::from(test_cpd_notification.clone());
 
-        // Check the sink and source:
+        // Check the new_sink and source:
         assert!(reindexer.sink.is_none());
-        assert_eq!(reindexer.source.unwrap(), source);
-
-        // Check the added offsets:
         assert!(reindexer.block_acceptance_offsets_changes.added.is_empty());
+        assert!(reindexer.block_acceptance_offsets_changes.removed.is_empty());
         assert!(reindexer.tx_offset_changes.added.is_empty());
-
-        // Check removed offsets:
-        let mut tx_offsets_removed_count = 0;
-        let mut block_acceptance_offsets_removed_count = 0;
-        for mergeset_block_acceptance_datum in
-            test_chain_acceptance_data_pruned_notification.mergeset_block_acceptance_data_pruned.iter().cloned()
-        {
-            assert!(reindexer.block_acceptance_offsets_changes.removed.contains(&mergeset_block_acceptance_datum.block_hash));
-            block_acceptance_offsets_removed_count += 1;
-            tx_offsets_removed_count += mergeset_block_acceptance_datum.accepted_transactions.len();
-            for accepted_tx_entry in mergeset_block_acceptance_datum.accepted_transactions.iter() {
-                assert!(reindexer.tx_offset_changes.removed.contains(&accepted_tx_entry.transaction_id));
-            }
-        }
-        assert_eq!(block_acceptance_offsets_removed_count, reindexer.block_acceptance_offsets_changes.removed.len());
-        assert_eq!(tx_offsets_removed_count, reindexer.tx_offset_changes.removed.len());
+        assert!(reindexer.tx_offset_changes.removed.is_empty());
+        assert_eq!(reindexer.pruning_point_blue_score.unwrap(), 42);
+        assert_eq!(reindexer.pruning_point_blue_score.unwrap(), test_cpd_notification.blue_score);
     }
 }

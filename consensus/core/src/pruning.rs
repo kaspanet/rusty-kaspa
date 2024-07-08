@@ -19,3 +19,9 @@ pub struct PruningPointTrustedData {
     /// Union of GHOSTDAG data required to verify blocks in the future of the pruning point
     pub ghostdag_blocks: Vec<TrustedGhostdagData>,
 }
+
+
+pub struct PruningPointData {
+    pub pruning_point: Hash,
+    pub pruning_point_blue_score: u64,
+}

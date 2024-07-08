@@ -1,8 +1,8 @@
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, sync::{atomic::AtomicBool, Arc}};
 
 use kaspa_consensus_core::tx::TransactionId;
 use kaspa_consensus_notify::notification::{
-    ChainAcceptanceDataPrunedNotification as ConsensusChainAcceptanceDataPrunedNotification,
+    PruningPointBlueScoreChangedNotification as ConsensusPruningPointBlueScoreChangedNotification,
     VirtualChainChangedNotification as ConsensusVirtualChainChangedNotification,
 };
 use kaspa_consensusmanager::{ConsensusManager, ConsensusSessionBlocking};
@@ -10,7 +10,7 @@ use kaspa_core::{debug, error, info, trace};
 use kaspa_database::prelude::DB;
 use kaspa_hashes::Hash;
 use kaspa_index_core::{
-    models::txindex::{BlockAcceptanceOffset, TxOffset},
+    models::txindex::{BlockAcceptanceOffset, TxIndexPruningState, TxOffset},
     reindexers::txindex::TxIndexReindexer,
 };
 use parking_lot::RwLock;
@@ -18,19 +18,18 @@ use rocksdb::WriteBatch;
 
 use crate::{
     config::Config as TxIndexConfig,
-    core::api::TxIndexApi,
-    core::errors::TxIndexResult,
+    core::{api::TxIndexApi, errors::TxIndexResult},
     stores::{
-        TxIndexAcceptedTxOffsetsReader, TxIndexAcceptedTxOffsetsStore, TxIndexBlockAcceptanceOffsetsReader,
-        TxIndexBlockAcceptanceOffsetsStore, TxIndexSinkReader, TxIndexSinkStore, TxIndexSourceReader, TxIndexSourceStore,
-        TxIndexStores,
+        TxIndexAcceptedTxEntriesIterator, TxIndexAcceptedTxEntriesReader, TxIndexAcceptedTxEntriesStore, TxIndexAcceptedTxOffsetsReader, TxIndexAcceptedTxOffsetsStore, TxIndexBlockAcceptanceOffsetsReader, TxIndexBlockAcceptanceOffsetsStore, TxIndexPruningStateReader, TxIndexPruningStateStore, TxIndexSinkDataReader, TxIndexSinkReader, TxIndexSinkStore, TxIndexSourceReader, TxIndexSourceStore, TxIndexStores, TxIndexTxEntriesIterator, TxIndexTxEntriesReader, TxIndexTxEntriesStore
     },
     IDENT,
 };
+
 pub struct TxIndex {
     stores: TxIndexStores,
     consensus_manager: Arc<ConsensusManager>,
     config: Arc<TxIndexConfig>, // move into config, once txindex is configurable.
+    is_pruning: AtomicBool,
 }
 
 impl TxIndex {
@@ -179,6 +178,65 @@ impl TxIndex {
         }
         Ok(())
     }
+
+
+    fn prune_below_blue_score(&self, accepting_blue_score: u64) -> TxIndexResult<()> {
+        info!(
+            "[{0}] Pruning: Removing all txs with accepting blue score below: {1}",
+            IDENT, accepting_blue_score
+        );
+        let pruning_state = self.stores.pruning_state_store().get()?.expect("expected a pruning state to be set before pruning");
+        // Note: this is approximate, as new txs may be added to the txindex during the it's pruning process, these are not accounted for. 
+        let approx_to_scan_count = self.stores.accepted_tx_entries_store.num_of_entries()? - pruning_state.last_prune_count();
+        let mut is_start = true;
+        let mut is_end = false;
+        let mut total_tx_entries_processed = (0u64, 0u64); // .0 holds the value of the former display
+        let mut total_txs_pruned= (0u64, 0u64); // .0 holds the value of the former display
+        let mut percent_completed = (0f64, 0f64); // .0 holds the value of the former display
+        let percent_display_granularity = 1.0; // in percent
+        let mut instant = std::time::Instant::now();
+        let mut is_end = false;
+        let mut is_start = true;
+        
+        while !is_end{
+            let filtered_count = 0u64;
+            let last_transaction_scanned: TransactionId;
+            let entry_iter = self.stores.tx_entries_store().seek_iterator(pruning_state.last_pruned_transaction(), self.config.perf.pruning_chunksize_units, pruning_state.last_pruned_transaction().is_none());
+            let last_transaction_scanned = tx_entries_batch.last();
+            total_txs_pruned = tx_entries_batch.len() as u64;
+            total_tx_entries_processed.1 += (tx_entries_batch.len() as u64 + filtered_count);
+            is_end = last_transaction_scanned.is_none();
+            let mut batch = WriteBatch::default();
+            self.stores.tx_entries_store().remove_many(&mut batch, tx_entries_batch.into_iter())?;
+            self.stores.pruning_state_store().update(&mut batch, move |pruning_state| {
+                pruning_state.last_prune_count = total_tx_entries_processed.1;
+                pruning_state.last_pruned_transaction = last_transaction_scanned;
+                pruning_state
+            })?;
+            if percent_completed.0 + percent_display_granularity <= percent_completed.1 || is_end {
+                let total_txs_processed_diff = total_txs_processed.1 - total_txs_processed.0;
+                info!(
+                    "[{0}] Pruning Txs: Pruned: {1} ({2:.0}/s); Processed: {3} ({4:.0}/s);, Remaining: {5}; {6:.0}%",
+                    IDENT,
+                    total_txs_pruned,
+                    total_txs_processed.1,
+                    approx_to_scan_count - total_tx_entries_processed.1,
+                    total_txs_processed_diff as f64 / instant.elapsed().as_secs_f64(),
+                    if is_end { 100.0 } else { percent_completed.1 },
+                );
+                percent_completed.0 = percent_completed.1;
+                total_txs_pruned.0 = total_txs_pruned.1;
+                total_txs_processed.0 = total_txs_processed.1;
+                instant = std::time::Instant::now();
+            }
+            if is_end {
+                break;
+            } else {
+                is_start = false;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl TxIndexApi for TxIndex {
@@ -192,7 +250,7 @@ impl TxIndexApi for TxIndex {
         // Gather the necessary potential block hashes to sync from and to.
         let txindex_source = self.stores.source_store.get()?;
         let consensus_source = session.get_source(true);
-        let txindex_sink = self.stores.sink_store.get()?;
+        let txindex_sink = self.stores.sink_store()?.get().hash;
         let consensus_sink = session.get_sink();
 
         let reset_db = {
@@ -251,7 +309,7 @@ impl TxIndexApi for TxIndex {
         let consensus = self.consensus_manager.consensus();
         let session = futures::executor::block_on(consensus.session_blocking());
 
-        if let Some(txindex_sink) = self.stores.sink_store.get()? {
+        if let Some(txindex_sink) = self.stores.sink_store().get()? {
             if txindex_sink == session.get_sink() {
                 if let Some(txindex_source) = self.stores.source_store.get()? {
                     if txindex_source == session.get_source(true) {
@@ -288,17 +346,17 @@ impl TxIndexApi for TxIndex {
         self.update_with_reindexed_changes(TxIndexReindexer::from(vspcc_notification))
     }
 
-    fn update_via_chain_acceptance_data_pruned(
-        &mut self,
-        chain_acceptance_data_pruned: ConsensusChainAcceptanceDataPrunedNotification,
-    ) -> TxIndexResult<()> {
-        trace!(
-            "[{0}] Updating: Added: {1} chain blocks - via virtual chain changed notification",
-            IDENT,
-            chain_acceptance_data_pruned.mergeset_block_acceptance_data_pruned.len()
-        );
+    fn update_via_pruning_point_blue_score_changed(
+            &mut self,
+            ppbsc_notification: ConsensusPruningPointBlueScoreChangedNotification,
+        ) -> TxIndexResult<()> {
+            trace!(
+                "[{0}] Updating: Pruning point blue score changed to: {1} - via pruning point blue score changed notification",
+                IDENT,
+                ppbsc_notification.blue_score
+            );
 
-        self.update_with_reindexed_changes(TxIndexReindexer::from(chain_acceptance_data_pruned))
+            self.prune_below_accepting_blue_score(ppbsc_notification.blue_score)
     }
 
     // This potentially causes a large chunk of processing, so it should only be used only for tests.
@@ -315,7 +373,7 @@ impl TxIndexApi for TxIndex {
 
     fn get_sink(&self) -> TxIndexResult<Option<Hash>> {
         trace!("[{0}] Getting: Sink", IDENT);
-        Ok(self.stores.sink_store.get()?)
+        Ok(self.stores.sink_store().get()?)
     }
 
     fn get_source(&self) -> TxIndexResult<Option<Hash>> {

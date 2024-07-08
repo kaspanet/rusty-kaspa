@@ -12,11 +12,12 @@ use crate::core::config::{params::Params, perf::PerfParams};
 pub struct Config {
     pub perf: PerfParams,
     pub params: Params,
+    pub enable_sanity_checks: bool,
 }
 
 impl From<&Arc<ConsensusConfig>> for Config {
     fn from(consensus_config: &Arc<ConsensusConfig>) -> Self {
         let params = Params::new(consensus_config);
-        Self { params: params.clone(), perf: PerfParams::new(consensus_config, &params) }
+        Self { params: params.clone(), perf: PerfParams::new(consensus_config, &params), enable_sanity_checks: consensus_config.enable_sanity_checks }
     }
 }

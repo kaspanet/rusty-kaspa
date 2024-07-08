@@ -113,8 +113,8 @@ impl Processor {
                     self.process_virtual_chain_changed_notification(virtual_chain_chainged_notification).await?,
                 )))
             }
-            ConsensusNotification::ChainAcceptanceDataPruned(chain_acceptance_data_pruned) => {
-                self.process_chain_acceptance_data_pruned(chain_acceptance_data_pruned).await?;
+            ConsensusNotification::PruningPointBlueScoreChanged(pruning_point_blue_score_changed) => {
+                self.process_chain_acceptance_data_pruned(pruning_point_blue_score_changed).await?;
                 Ok(None)
             }
             _ => Err(IndexError::NotSupported(notification.event_type())),
@@ -163,21 +163,20 @@ impl Processor {
         Err(IndexError::NotSupported(EventType::VirtualChainChanged))
     }
 
-    async fn process_chain_acceptance_data_pruned(
+    async fn process_pruning_point_blue_score_changed(
         self: &Arc<Self>,
-        notification: consensus_notification::ChainAcceptanceDataPrunedNotification,
+        notification: consensus_notification::PruningPointBlueScoreChangedNotification,
     ) -> IndexResult<()> {
         if let Some(txindex) = self.txindex.clone() {
             debug!(
-                "[{0}] [ChainAcceptanceDataPrunedNotification] Updating: TxIndex - Source {1}; Removed {2} chain blocks",
+                "[{0}] [PruningPointBlueScoreChangedNotification] Updating: TxIndex - Pruning Point Blue Score: {1}",
                 IDENT,
-                notification.source,
-                notification.mergeset_block_acceptance_data_pruned.len()
+                notification.blue_score,
             );
             txindex.update_via_chain_acceptance_data_pruned(notification).await?;
             return Ok(());
         };
-        Err(IndexError::NotSupported(EventType::ChainAcceptanceDataPruned))
+        Err(IndexError::NotSupported(EventType::PruningPointBlueScoreChanged))
     }
 
     async fn join_collecting_task(&self) -> Result<()> {
@@ -440,30 +439,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_chain_acceptance_data_pruned_notification() {
+    async fn test_pruning_point_chainged_notification() {
         let pipeline = NotifyPipeline::new();
         let rng = &mut SmallRng::seed_from_u64(42);
 
-        let chain_hash_pruned = generate_random_hash(rng);
-        let mergeset_block_acceptance_data_pruned = generate_random_acceptance_data(rng, 18, 200, 1.0 / 3.0);
-        let source = generate_random_hash(rng);
-
-        let test_notification = consensus_notification::ChainAcceptanceDataPrunedNotification::new(
-            chain_hash_pruned,
-            Arc::new(mergeset_block_acceptance_data_pruned.clone()),
-            source,
-        );
+        let test_notification = consensus_notification::PruningPointBlueScoreChangedNotification::new(rng.gen());
 
         pipeline
             .consensus_sender
-            .send(ConsensusNotification::ChainAcceptanceDataPruned(test_notification.clone()))
+            .send(ConsensusNotification::PruningPointBlueScoreChanged(test_notification.clone()))
             .await
             .expect("expected send");
 
         // we expect no index notification response to be sent, so below is enough for the test
         assert!(pipeline.processor_receiver.is_empty(), "the notification receiver should be empty");
-        // TODO: We can none-the-less check that the notification was processed correctly via the txindex itself
         pipeline.consensus_sender.close();
-        pipeline.processor.clone().join().await.expect("stopping the processor must succeed");
+        pipeline.processor.clone().join().await.expect("stopping the processor must succeed");   
     }
 }
