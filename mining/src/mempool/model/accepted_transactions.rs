@@ -51,7 +51,6 @@ impl AcceptedTransactions {
 
         let expired_transactions: Vec<TransactionId> = self
             .transactions
-            // FIXME: use .retain() instead
             .iter()
             .filter_map(|(transaction_id, daa_score)| {
                 if virtual_daa_score > daa_score + self.config.accepted_transaction_expire_interval_daa_score {

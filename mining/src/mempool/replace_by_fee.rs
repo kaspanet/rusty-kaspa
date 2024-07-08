@@ -14,7 +14,7 @@ impl Mempool {
     /// See [`RbfPolicy`] variants for details of each policy process and success conditions.
     pub(super) fn get_replace_by_fee_constraint(
         &self,
-        transaction: &mut MutableTransaction,
+        transaction: &MutableTransaction,
         rbf_policy: RbfPolicy,
     ) -> RuleResult<Option<f64>> {
         match rbf_policy {

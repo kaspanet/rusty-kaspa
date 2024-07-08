@@ -25,7 +25,7 @@ impl Mempool {
         // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
         transaction.calculated_compute_mass = Some(consensus.calculate_transaction_compute_mass(&transaction.tx));
         self.validate_transaction_in_isolation(&transaction)?;
-        let fee_per_mass_threshold = self.get_replace_by_fee_constraint(&mut transaction, rbf_policy)?;
+        let fee_per_mass_threshold = self.get_replace_by_fee_constraint(&transaction, rbf_policy)?;
         self.populate_mempool_entries(&mut transaction);
         Ok(TransactionPreValidation { transaction, fee_per_mass_threshold })
     }

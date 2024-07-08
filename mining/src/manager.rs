@@ -445,7 +445,6 @@ impl MiningManager {
             let mut mempool = self.mempool.write();
             let txs = chunk.flat_map(|(transaction, validation_result)| {
                 let transaction_id = transaction.id();
-                // FIXME: validate allowed RBF
                 match mempool.post_validate_and_insert_transaction(
                     consensus,
                     validation_result,
