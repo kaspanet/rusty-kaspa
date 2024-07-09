@@ -45,7 +45,7 @@ impl Router {
                 GetCoinSupply,
                 GetConnectedPeerInfo,
                 GetDaaScoreTimestampEstimate,
-                GetPriorityFeeEstimate,
+                GetFeeInfo,
                 GetServerInfo,
                 GetCurrentNetwork,
                 GetHeaders,

@@ -304,13 +304,10 @@ pub trait RpcApi: Sync + Send + AnySync {
         request: GetDaaScoreTimestampEstimateRequest,
     ) -> RpcResult<GetDaaScoreTimestampEstimateResponse>;
 
-    async fn get_priority_fee_estimate(&self) -> RpcResult<GetPriorityFeeEstimateResponse> {
-        self.get_priority_fee_estimate_call(GetPriorityFeeEstimateRequest {}).await
+    async fn get_fee_info(&self) -> RpcResult<GetFeeInfoResponse> {
+        self.get_fee_info_call(GetFeeInfoRequest {}).await
     }
-    async fn get_priority_fee_estimate_call(
-        &self,
-        request: GetPriorityFeeEstimateRequest,
-    ) -> RpcResult<GetPriorityFeeEstimateResponse>;
+    async fn get_fee_info_call(&self, request: GetFeeInfoRequest) -> RpcResult<GetFeeInfoResponse>;
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API

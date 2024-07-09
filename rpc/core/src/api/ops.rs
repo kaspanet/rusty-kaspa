@@ -87,7 +87,7 @@ pub enum RpcApiOps {
     /// Get DAA Score timestamp estimate
     GetDaaScoreTimestampEstimate,
     /// Get priority fee estimate
-    GetPriorityFeeEstimate,
+    GetFeeInfo,
 
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,

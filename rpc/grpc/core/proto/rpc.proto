@@ -852,9 +852,9 @@ message GetDaaScoreTimestampEstimateResponseMessage{
         RPCError error = 1000;
 }
 
-message GetPriorityFeeEstimateRequestMessage {}
+message GetFeeInfoRequestMessage {}
 
-message GetPriorityFeeEstimateResponseMessage {
+message GetFeeInfoResponseMessage {
   oneof fee_per_mass {
     Virtual virtual = 2; // 1 is reserved for `All`
   }

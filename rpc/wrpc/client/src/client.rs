@@ -597,7 +597,7 @@ impl RpcApi for KaspaRpcClient {
             GetCoinSupply,
             GetConnectedPeerInfo,
             GetDaaScoreTimestampEstimate,
-            GetPriorityFeeEstimate,
+            GetFeeInfo,
             GetServerInfo,
             GetCurrentNetwork,
             GetHeaders,

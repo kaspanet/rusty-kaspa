@@ -228,10 +228,7 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_priority_fee_estimate_call(
-        &self,
-        _request: GetPriorityFeeEstimateRequest,
-    ) -> RpcResult<GetPriorityFeeEstimateResponse> {
+    async fn get_fee_info_call(&self, _request: GetFeeInfoRequest) -> RpcResult<GetFeeInfoResponse> {
         Err(RpcError::NotImplemented)
     }
 

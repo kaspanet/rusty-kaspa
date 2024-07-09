@@ -652,15 +652,12 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
         Ok(GetDaaScoreTimestampEstimateResponse::new(timestamps))
     }
-    async fn get_priority_fee_estimate_call(
-        &self,
-        _request: GetPriorityFeeEstimateRequest,
-    ) -> RpcResult<GetPriorityFeeEstimateResponse> {
-        trace!("incoming GetPriorityFeeEstimateRequest request");
+    async fn get_fee_info_call(&self, _request: GetFeeInfoRequest) -> RpcResult<GetFeeInfoResponse> {
+        trace!("incoming GetFeeInfoRequest request");
         const RECALC_TIMEOUT_IN_SEC: u64 = 1;
         const EXPIRATION_IN_SEC: u64 = 2;
 
-        let relaxed_cache_resp = || GetPriorityFeeEstimateResponse {
+        let relaxed_cache_resp = || GetFeeInfoResponse {
             fee_per_mass: FeePerMass::VirtualFeePerMass(VirtualFeePerMass {
                 max: self.estimated_fee_cache.max.load(Ordering::Relaxed),
                 median: self.estimated_fee_cache.median.load(Ordering::Relaxed),
@@ -728,7 +725,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
             debug!("Computation is successful. Updating cache and returning fresh response");
 
-            Ok(GetPriorityFeeEstimateResponse {
+            Ok(GetFeeInfoResponse {
                 fee_per_mass: FeePerMass::VirtualFeePerMass(VirtualFeePerMass { max, median, min }),
                 mempool_total_mass: self.mining_manager.snapshot().total_mass,
             })

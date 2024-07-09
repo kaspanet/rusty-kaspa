@@ -57,7 +57,7 @@ pub mod kaspad_request_convert {
     impl_into_kaspad_request!(GetServerInfo);
     impl_into_kaspad_request!(GetSyncStatus);
     impl_into_kaspad_request!(GetDaaScoreTimestampEstimate);
-    impl_into_kaspad_request!(GetPriorityFeeEstimate);
+    impl_into_kaspad_request!(GetFeeInfo);
 
     impl_into_kaspad_request!(NotifyBlockAdded);
     impl_into_kaspad_request!(NotifyNewBlockTemplate);
@@ -189,7 +189,7 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_response!(GetServerInfo);
     impl_into_kaspad_response!(GetSyncStatus);
     impl_into_kaspad_response!(GetDaaScoreTimestampEstimate);
-    impl_into_kaspad_response!(GetPriorityFeeEstimate);
+    impl_into_kaspad_response!(GetFeeInfo);
 
     impl_into_kaspad_notify_response!(NotifyBlockAdded);
     impl_into_kaspad_notify_response!(NotifyNewBlockTemplate);

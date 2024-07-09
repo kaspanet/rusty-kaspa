@@ -229,8 +229,8 @@ impl Rpc {
                     }
                 }
             }
-            RpcApiOps::GetPriorityFeeEstimate => {
-                let result = rpc.get_priority_fee_estimate_call(GetPriorityFeeEstimateRequest {}).await;
+            RpcApiOps::GetFeeInfo => {
+                let result = rpc.get_fee_info_call(GetFeeInfoRequest {}).await;
                 self.println(&ctx, result);
             }
             _ => {

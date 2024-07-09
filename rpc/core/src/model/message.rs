@@ -827,7 +827,7 @@ impl GetDaaScoreTimestampEstimateResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetPriorityFeeEstimateRequest {}
+pub struct GetFeeInfoRequest {}
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -845,12 +845,12 @@ pub enum FeePerMass {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetPriorityFeeEstimateResponse {
+pub struct GetFeeInfoResponse {
     pub fee_per_mass: FeePerMass,
     pub mempool_total_mass: u64,
 }
 
-impl GetPriorityFeeEstimateResponse {
+impl GetFeeInfoResponse {
     pub fn new(fee_per_mass: FeePerMass, mempool_total_mass: u64) -> Self {
         Self { fee_per_mass, mempool_total_mass }
     }

@@ -271,7 +271,7 @@ impl RpcApi for GrpcClient {
     route!(get_mempool_entries_by_addresses_call, GetMempoolEntriesByAddresses);
     route!(get_coin_supply_call, GetCoinSupply);
     route!(get_daa_score_timestamp_estimate_call, GetDaaScoreTimestampEstimate);
-    route!(get_priority_fee_estimate_call, GetPriorityFeeEstimate);
+    route!(get_fee_info_call, GetFeeInfo);
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
