@@ -69,7 +69,7 @@ impl ScriptBuilder {
         &self.script
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, target_arch = "wasm32"))]
     pub fn extend(&mut self, data: &[u8]) {
         self.script.extend(data);
     }

@@ -796,7 +796,7 @@ impl RpcClient {
     #[wasm_bindgen(js_name = subscribeVirtualDaaScoreChanged)]
     pub async fn subscribe_daa_score(&self) -> Result<()> {
         if let Some(listener_id) = self.listener_id() {
-            self.inner.client.stop_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+            self.inner.client.start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         } else {
             log_error!("RPC unsubscribe on a closed connection");
         }

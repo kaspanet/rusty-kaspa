@@ -3,7 +3,7 @@ use crate::result::Result;
 use crate::tx::generator as native;
 use crate::wasm::PrivateKeyArrayT;
 use kaspa_consensus_client::{numeric, string};
-use kaspa_consensus_client::{ITransaction, Transaction};
+use kaspa_consensus_client::{Transaction, TransactionT};
 use kaspa_wallet_keys::privatekey::PrivateKey;
 use kaspa_wrpc_wasm::RpcClient;
 
@@ -110,7 +110,7 @@ impl PendingTransaction {
     /// @see {@link ISerializableTransaction}
     /// @see {@link Transaction}, {@link ISerializableTransaction}
     #[wasm_bindgen(js_name = "serializeToObject")]
-    pub fn serialize_to_object(&self) -> Result<ITransaction> {
+    pub fn serialize_to_object(&self) -> Result<TransactionT> {
         Ok(numeric::SerializableTransaction::from_cctx_transaction(&self.inner.transaction(), self.inner.utxo_entries())?
             .serialize_to_object()?
             .into())

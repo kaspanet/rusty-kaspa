@@ -380,13 +380,34 @@ impl TryCastFromJs for UtxoEntryReference {
                 let address = object.get_cast::<Address>("address")?.into_owned();
                 let outpoint = TransactionOutpoint::try_from(object.get_value("outpoint")?.as_ref())?;
                 let utxo_entry = Object::from(object.get_value("utxoEntry")?);
-                let amount = utxo_entry.get_u64("amount")?;
-                let script_public_key = ScriptPublicKey::try_owned_from(utxo_entry.get_value("scriptPublicKey")?)?;
-                let block_daa_score = utxo_entry.get_u64("blockDaaScore")?;
-                let is_coinbase = utxo_entry.get_bool("isCoinbase")?;
 
-                let utxo_entry =
-                    UtxoEntry { address: Some(address), outpoint, amount, script_public_key, block_daa_score, is_coinbase };
+                let utxo_entry = if !utxo_entry.is_undefined() {
+                    let amount = utxo_entry.get_u64("amount").map_err(|_| {
+                        Error::custom("Supplied object does not contain `utxoEntry.amount` property (or it is not a numerical value)")
+                    })?;
+                    let script_public_key = ScriptPublicKey::try_owned_from(utxo_entry.get_value("scriptPublicKey")?)
+                        .map_err(|_|Error::custom("Supplied object does not contain `utxoEntry.scriptPublicKey` property (or it is not a hex string or a ScriptPublicKey class)"))?;
+                    let block_daa_score = utxo_entry.get_u64("blockDaaScore").map_err(|_| {
+                        Error::custom(
+                            "Supplied object does not contain `utxoEntry.blockDaaScore` property (or it is not a numerical value)",
+                        )
+                    })?;
+                    let is_coinbase = utxo_entry.get_bool("isCoinbase")?;
+
+                    UtxoEntry { address: Some(address), outpoint, amount, script_public_key, block_daa_score, is_coinbase }
+                } else {
+                    let amount = object.get_u64("amount").map_err(|_| {
+                        Error::custom("Supplied object does not contain `amount` property (or it is not a numerical value)")
+                    })?;
+                    let script_public_key = ScriptPublicKey::try_owned_from(object.get_value("scriptPublicKey")?)
+                        .map_err(|_|Error::custom("Supplied object does not contain `scriptPublicKey` property (or it is not a hex string or a ScriptPublicKey class)"))?;
+                    let block_daa_score = object.get_u64("blockDaaScore").map_err(|_| {
+                        Error::custom("Supplied object does not contain `blockDaaScore` property (or it is not a numerical value)")
+                    })?;
+                    let is_coinbase = object.try_get_bool("isCoinbase")?.unwrap_or(false);
+
+                    UtxoEntry { address: Some(address), outpoint, amount, script_public_key, block_daa_score, is_coinbase }
+                };
 
                 Ok(UtxoEntryReference::from(utxo_entry))
             } else {

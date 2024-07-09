@@ -34,14 +34,14 @@ pub trait UtxoEntryReferenceExtension {
 impl UtxoEntryReferenceExtension for UtxoEntryReference {
     fn maturity(&self, params: &NetworkParams, current_daa_score: u64) -> Maturity {
         if self.is_coinbase() {
-            if self.block_daa_score() + params.coinbase_transaction_stasis_period_daa > current_daa_score {
+            if self.block_daa_score() + params.coinbase_transaction_stasis_period_daa() > current_daa_score {
                 Maturity::Stasis
-            } else if self.block_daa_score() + params.coinbase_transaction_maturity_period_daa > current_daa_score {
+            } else if self.block_daa_score() + params.coinbase_transaction_maturity_period_daa() > current_daa_score {
                 Maturity::Pending
             } else {
                 Maturity::Confirmed
             }
-        } else if self.block_daa_score() + params.user_transaction_maturity_period_daa > current_daa_score {
+        } else if self.block_daa_score() + params.user_transaction_maturity_period_daa() > current_daa_score {
             Maturity::Pending
         } else {
             Maturity::Confirmed

@@ -179,7 +179,8 @@ impl UtxoProcessor {
         (*self.inner.network_id.lock().unwrap()).ok_or(Error::MissingNetworkId)
     }
 
-    pub fn network_params(&self) -> Result<&'static NetworkParams> {
+    // pub fn network_params(&self) -> Result<&'static NetworkParams> {
+    pub fn network_params(&self) -> Result<NetworkParams> {
         let network_id = (*self.inner.network_id.lock().unwrap()).ok_or(Error::MissingNetworkId)?;
         Ok(network_id.into())
     }
@@ -271,7 +272,7 @@ impl UtxoProcessor {
             // scan and remove any pending entries that gained maturity
             let mut mature_entries = vec![];
             let pending_entries = &self.inner.pending;
-            pending_entries.retain(|_, pending_entry| match pending_entry.maturity(params, current_daa_score) {
+            pending_entries.retain(|_, pending_entry| match pending_entry.maturity(&params, current_daa_score) {
                 Maturity::Confirmed => {
                     mature_entries.push(pending_entry.clone());
                     false
@@ -284,7 +285,7 @@ impl UtxoProcessor {
             let mut revived_entries = vec![];
             let stasis_entries = &self.inner.stasis;
             stasis_entries.retain(|_, stasis_entry| {
-                match stasis_entry.maturity(params, current_daa_score) {
+                match stasis_entry.maturity(&params, current_daa_score) {
                     Maturity::Confirmed => {
                         mature_entries.push(stasis_entry.clone());
                         false
@@ -329,7 +330,7 @@ impl UtxoProcessor {
     }
 
     async fn handle_outgoing(&self, current_daa_score: u64) -> Result<()> {
-        let longevity = self.network_params()?.user_transaction_maturity_period_daa;
+        let longevity = self.network_params()?.user_transaction_maturity_period_daa();
 
         self.inner.outgoing.retain(|_, outgoing| {
             if outgoing.acceptance_daa_score() != 0 && (outgoing.acceptance_daa_score() + longevity) < current_daa_score {

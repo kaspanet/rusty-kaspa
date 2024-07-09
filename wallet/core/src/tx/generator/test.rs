@@ -169,7 +169,7 @@ fn validate(pt: &PendingTransaction) {
     );
 
     let calc = MassCalculator::new(&pt.network_type().into(), network_params);
-    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass };
+    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass() };
     let compute_mass = calc.calc_mass_for_signed_transaction(&tx, 1);
 
     let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
@@ -199,7 +199,7 @@ where
 
     let pt_fees = pt.fees();
     let calc = MassCalculator::new(&pt.network_type().into(), network_params);
-    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass };
+    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass() };
 
     let compute_mass = calc.calc_mass_for_signed_transaction(&tx, 1);
 
@@ -392,6 +392,7 @@ where
     let sig_op_count = 1;
     let minimum_signatures = 1;
     let utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static> = Box::new(utxo_entries.into_iter());
+    let priority_utxo_entries = None;
     let source_utxo_context = None;
     let destination_utxo_context = None;
     let final_priority_fee = fees;
@@ -406,6 +407,7 @@ where
         change_address,
         utxo_iterator,
         source_utxo_context,
+        priority_utxo_entries,
         destination_utxo_context,
         final_transaction_priority_fee: final_priority_fee,
         final_transaction_destination,
