@@ -249,8 +249,7 @@ impl VirtualStateProcessor {
             }
         }
         let populated_tx = PopulatedTransaction::new(transaction, entries);
-        let res =
-            self.transaction_validator.validate_populated_transaction_and_get_fee(&populated_tx, pov_daa_score, flags, None, None);
+        let res = self.transaction_validator.validate_populated_transaction_and_get_fee(&populated_tx, pov_daa_score, flags, None);
         match res {
             Ok(calculated_fee) => Ok(ValidatedTransaction::new(populated_tx, calculated_fee)),
             Err(tx_rule_error) => {
@@ -311,12 +310,12 @@ impl VirtualStateProcessor {
         mutable_tx.tx.set_mass(contextual_mass);
 
         // At this point we know all UTXO entries are populated, so we can safely pass the tx as verifiable
+        let mass_and_fee_per_mass_threshold = args.fee_per_mass_threshold.map(|threshold| (contextual_mass, threshold));
         let calculated_fee = self.transaction_validator.validate_populated_transaction_and_get_fee(
             &mutable_tx.as_verifiable(),
             pov_daa_score,
             TxValidationFlags::SkipMassCheck, // we can skip the mass check since we just set it
-            mutable_tx.calculated_compute_mass,
-            args.fee_per_mass_threshold,
+            mass_and_fee_per_mass_threshold,
         )?;
         mutable_tx.calculated_fee = Some(calculated_fee);
         Ok(())

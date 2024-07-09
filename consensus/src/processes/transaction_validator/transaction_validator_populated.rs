@@ -27,8 +27,7 @@ impl TransactionValidator {
         tx: &impl VerifiableTransaction,
         pov_daa_score: u64,
         flags: TxValidationFlags,
-        compute_mass: Option<u64>,
-        fee_per_mass_threshold: Option<f64>,
+        mass_and_fee_per_mass_threshold: Option<(u64, f64)>,
     ) -> TxResult<u64> {
         self.check_transaction_coinbase_maturity(tx, pov_daa_score)?;
         let total_in = self.check_transaction_input_amounts(tx)?;
@@ -43,7 +42,7 @@ impl TransactionValidator {
             }
         }
         Self::check_sequence_lock(tx, pov_daa_score)?;
-        Self::check_fee_per_mass(fee, compute_mass, fee_per_mass_threshold)?;
+        Self::check_fee_per_mass(fee, mass_and_fee_per_mass_threshold)?;
         match flags {
             TxValidationFlags::Full | TxValidationFlags::SkipMassCheck => {
                 Self::check_sig_op_counts(tx)?;
@@ -54,11 +53,11 @@ impl TransactionValidator {
         Ok(fee)
     }
 
-    fn check_fee_per_mass(fee: u64, mass: Option<u64>, threshold: Option<f64>) -> TxResult<()> {
-        // An actual check can only occur if both some mass and some threshold are provided,
+    fn check_fee_per_mass(fee: u64, mass_and_fee_per_mass_threshold: Option<(u64, f64)>) -> TxResult<()> {
+        // An actual check can only occur if some mass and threshold are provided,
         // otherwise, the check does not verify anything and exits successfully.
-        if let (Some(compute_mass), Some(threshold)) = (mass, threshold) {
-            if fee as f64 / compute_mass as f64 <= threshold {
+        if let Some((contextual_mass, threshold)) = mass_and_fee_per_mass_threshold {
+            if contextual_mass > 0 && fee as f64 / contextual_mass as f64 <= threshold {
                 return Err(TxRuleError::FeePerMassTooLow);
             }
         }

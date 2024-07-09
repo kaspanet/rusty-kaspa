@@ -407,10 +407,14 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
         }
     }
 
-    pub fn calculated_fee_per_compute_mass(&self) -> Option<f64> {
-        match (self.calculated_fee, self.calculated_compute_mass) {
-            (Some(fee), Some(compute_mass)) => Some(fee as f64 / compute_mass as f64),
-            _ => None,
+    /// Returns the calculated fee per contextual (compute & storage) mass ratio when
+    /// some calculated fee does exist and the contextual mass is greater than zero.
+    pub fn calculated_fee_per_mass(&self) -> Option<f64> {
+        let contextual_mass = self.tx.as_ref().mass();
+        if contextual_mass > 0 {
+            self.calculated_fee.map(|fee| fee as f64 / contextual_mass as f64)
+        } else {
+            None
         }
     }
 }

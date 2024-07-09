@@ -109,7 +109,7 @@ impl Mempool {
 
     fn get_double_spend_fee_per_mass(&self, double_spend: &DoubleSpend) -> RuleResult<f64> {
         let owner = self.transaction_pool.get_double_spend_owner(double_spend)?;
-        match owner.mtx.calculated_fee_per_compute_mass() {
+        match owner.mtx.calculated_fee_per_mass() {
             Some(double_spend_ratio) => Ok(double_spend_ratio),
             None => Err(double_spend.into()),
         }
@@ -122,7 +122,7 @@ impl Mempool {
     ) -> RuleResult<&'a MempoolTransaction> {
         let owner = self.transaction_pool.get_double_spend_owner(double_spend)?;
         if let (Some(transaction_ratio), Some(double_spend_ratio)) =
-            (transaction.calculated_fee_per_compute_mass(), owner.mtx.calculated_fee_per_compute_mass())
+            (transaction.calculated_fee_per_mass(), owner.mtx.calculated_fee_per_mass())
         {
             if transaction_ratio > double_spend_ratio {
                 return Ok(owner);
