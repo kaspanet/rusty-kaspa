@@ -61,7 +61,7 @@ impl ToTokens for RpcTable {
                             {
                                 match __self.codec {
                                     Codec::Borsh(ref codec) => {
-                                        Ok(#response_type::try_from_slice(&codec.call(op, request.try_to_vec()?).await?)?)
+                                        Ok(#response_type::try_from_slice(&codec.call(op, borsh::to_vec(&request)?).await?)?)
                                     },
                                     Codec::Serde(ref codec) => {
                                         let request = serde_json::to_string(&request)?;

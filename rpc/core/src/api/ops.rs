@@ -3,25 +3,63 @@ use kaspa_notify::events::EventType;
 use serde::{Deserialize, Serialize};
 use workflow_core::enums::Describe;
 
-/// Rpc Api version (4 x short values); First short is reserved.
-/// The version format is as follows: `[reserved, major, minor, patch]`.
-/// The difference in the major version value indicates breaking binary API changes
-/// (i.e. changes in non-versioned model data structures)
-/// If such change occurs, BorshRPC-client should refuse to connect to the
-/// server and should request a client-side upgrade.  JsonRPC-client may opt-in to
-/// continue interop, but data structures should handle mutations by pre-filtering
-/// or using Serde attributes. This applies only to RPC infrastructure that uses internal
-/// data structures and does not affect gRPC. gRPC should issue and handle its
-/// own versioning.
-pub const RPC_API_VERSION: [u16; 4] = [0, 1, 0, 0];
+/// API version. Change in this value should result
+/// in the client refusing to connect.
+pub const RPC_API_VERSION: u16 = 1;
+/// API revision. Change in this value denotes
+/// backwards-compatible changes.
+pub const RPC_API_REVISION: u16 = 0;
 
 #[derive(Describe, Clone, Copy, Debug, PartialEq, Eq, Hash, BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[borsh(use_discriminant = true)]
 pub enum RpcApiOps {
+    NoOp = 0,
+
+    // connection control (provisional)
+    Connect,
+    Disconnect,
+
+    // subscription management
+    Subscribe,
+    Unsubscribe,
+
+    // ~~~
+
+    // Subscription commands for starting/stopping notifications
+    NotifyBlockAdded = 10,
+    NotifyNewBlockTemplate,
+    NotifyUtxosChanged,
+    NotifyPruningPointUtxoSetOverride,
+    NotifyFinalityConflict,
+    NotifyFinalityConflictResolved, // for uniformity purpose only since subscribing to NotifyFinalityConflict means receiving both FinalityConflict and FinalityConflictResolved
+    NotifyVirtualDaaScoreChanged,
+    NotifyVirtualChainChanged,
+    NotifySinkBlueScoreChanged,
+
+    // Notification ops required by wRPC
+
+    // TODO: Remove these ops and use EventType as NotificationOps when workflow_rpc::server::interface::Interface
+    //       will be generic over a MethodOps and NotificationOps instead of a single Ops param.
+    BlockAddedNotification = 60,
+    VirtualChainChangedNotification,
+    FinalityConflictNotification,
+    FinalityConflictResolvedNotification,
+    UtxosChangedNotification,
+    SinkBlueScoreChangedNotification,
+    VirtualDaaScoreChangedNotification,
+    PruningPointUtxoSetOverrideNotification,
+    NewBlockTemplateNotification,
+
+    // RPC methods
     /// Ping the node to check if connection is alive
-    Ping = 0,
+    Ping = 110,
     /// Get metrics for consensus information and node performance
     GetMetrics,
+    /// Get system information (RAM available, number of cores, available file descriptors)
+    GetSystemInfo,
+    /// Get current number of active TCP connections
+    GetConnections,
     /// Get state information on the node
     GetServerInfo,
     /// Get the current sync status of the node
@@ -86,34 +124,6 @@ pub enum RpcApiOps {
     GetCoinSupply,
     /// Get DAA Score timestamp estimate
     GetDaaScoreTimestampEstimate,
-
-    // Subscription commands for starting/stopping notifications
-    NotifyBlockAdded,
-    NotifyNewBlockTemplate,
-    NotifyUtxosChanged,
-    NotifyPruningPointUtxoSetOverride,
-    NotifyFinalityConflict,
-    NotifyFinalityConflictResolved, // for uniformity purpose only since subscribing to NotifyFinalityConflict means receiving both FinalityConflict and FinalityConflictResolved
-    NotifyVirtualDaaScoreChanged,
-    NotifyVirtualChainChanged,
-    NotifySinkBlueScoreChanged,
-
-    // ~
-    Subscribe,
-    Unsubscribe,
-
-    // Notification ops required by wRPC
-    // TODO: Remove these ops and use EventType as NotificationOps when workflow_rpc::server::interface::Interface
-    //       will be generic over a MethodOps and NotificationOps instead of a single Ops param.
-    BlockAddedNotification,
-    VirtualChainChangedNotification,
-    FinalityConflictNotification,
-    FinalityConflictResolvedNotification,
-    UtxosChangedNotification,
-    SinkBlueScoreChangedNotification,
-    VirtualDaaScoreChangedNotification,
-    PruningPointUtxoSetOverrideNotification,
-    NewBlockTemplateNotification,
 }
 
 impl RpcApiOps {

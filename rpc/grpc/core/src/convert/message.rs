@@ -403,6 +403,8 @@ from!(item: &kaspa_rpc_core::GetMetricsRequest, protowire::GetMetricsRequestMess
         connection_metrics: item.connection_metrics,
         bandwidth_metrics: item.bandwidth_metrics,
         consensus_metrics: item.consensus_metrics,
+        storage_metrics: item.storage_metrics,
+        custom_metrics: item.custom_metrics,
     }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetricsResponseMessage, {
@@ -412,13 +414,39 @@ from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetric
         connection_metrics: item.connection_metrics.as_ref().map(|x| x.into()),
         bandwidth_metrics: item.bandwidth_metrics.as_ref().map(|x| x.into()),
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.into()),
+        storage_metrics: item.storage_metrics.as_ref().map(|x| x.into()),
+        // TODO
+        // custom_metrics : None,
         error: None,
     }
 });
+
+from!(_item: &kaspa_rpc_core::GetConnectionsRequest, protowire::GetConnectionsRequestMessage, {
+    Self {
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetConnectionsResponse>, protowire::GetConnectionsResponseMessage, {
+    Self {
+        active_connections: item.active_connections,
+        error: None,
+    }
+});
+
+from!(&kaspa_rpc_core::GetSystemInfoRequest, protowire::GetSystemInfoRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetSystemInfoResponse>, protowire::GetSystemInfoResponseMessage, {
+    Self {
+        total_memory : item.total_memory,
+        core_num : item.cpu_physical_cores as u32,
+        fd_limit : item.fd_limit,
+        error: None,
+    }
+});
+
 from!(&kaspa_rpc_core::GetServerInfoRequest, protowire::GetServerInfoRequestMessage);
 from!(item: RpcResult<&kaspa_rpc_core::GetServerInfoResponse>, protowire::GetServerInfoResponseMessage, {
     Self {
-        rpc_api_version: item.rpc_api_version.iter().map(|x| *x as u32).collect(),
+        rpc_api_version: item.rpc_api_version as u32,
+        rpc_api_revision: item.rpc_api_revision as u32,
         server_version: item.server_version.clone(),
         network_id: item.network_id.to_string(),
         has_utxo_index: item.has_utxo_index,
@@ -795,7 +823,14 @@ try_from!(&protowire::PingRequestMessage, kaspa_rpc_core::PingRequest);
 try_from!(&protowire::PingResponseMessage, RpcResult<kaspa_rpc_core::PingResponse>);
 
 try_from!(item: &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetricsRequest, {
-    Self { process_metrics: item.process_metrics, connection_metrics: item.connection_metrics, bandwidth_metrics:item.bandwidth_metrics, consensus_metrics: item.consensus_metrics }
+    Self {
+        process_metrics: item.process_metrics,
+        connection_metrics: item.connection_metrics,
+        bandwidth_metrics:item.bandwidth_metrics,
+        consensus_metrics: item.consensus_metrics,
+        storage_metrics: item.storage_metrics,
+        custom_metrics : item.custom_metrics,
+    }
 });
 try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetMetricsResponse>, {
     Self {
@@ -804,13 +839,35 @@ try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core:
         connection_metrics: item.connection_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         bandwidth_metrics: item.bandwidth_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.try_into()).transpose()?,
+        storage_metrics: item.storage_metrics.as_ref().map(|x| x.try_into()).transpose()?,
+        // TODO
+        custom_metrics: None,
+    }
+});
+
+try_from!(_item: &protowire::GetConnectionsRequestMessage, kaspa_rpc_core::GetConnectionsRequest, {
+    Self { }
+});
+try_from!(item: &protowire::GetConnectionsResponseMessage, RpcResult<kaspa_rpc_core::GetConnectionsResponse>, {
+    Self {
+        active_connections: item.active_connections,
+    }
+});
+
+try_from!(&protowire::GetSystemInfoRequestMessage, kaspa_rpc_core::GetSystemInfoRequest);
+try_from!(item: &protowire::GetSystemInfoResponseMessage, RpcResult<kaspa_rpc_core::GetSystemInfoResponse>, {
+    Self {
+        total_memory: item.total_memory,
+        cpu_physical_cores: item.core_num as u16,
+        fd_limit: item.fd_limit,
     }
 });
 
 try_from!(&protowire::GetServerInfoRequestMessage, kaspa_rpc_core::GetServerInfoRequest);
 try_from!(item: &protowire::GetServerInfoResponseMessage, RpcResult<kaspa_rpc_core::GetServerInfoResponse>, {
     Self {
-        rpc_api_version: item.rpc_api_version.iter().map(|x| *x as u16).collect::<Vec<_>>().as_slice().try_into().map_err(|_| RpcError::RpcApiVersionFormatError)?,
+        rpc_api_version: item.rpc_api_version as u16,
+        rpc_api_revision: item.rpc_api_revision as u16,
         server_version: item.server_version.clone(),
         network_id: NetworkId::from_str(&item.network_id)?,
         has_utxo_index: item.has_utxo_index,

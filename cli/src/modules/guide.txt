@@ -43,7 +43,7 @@ named wallets.  Only one wallet can be opened at a time. Keep in mind that a wal
 accounts, as such you only need one wallet, unless, for example, you want to separate wallets for 
 personal and business needs (but you can also create isolated accounts within a wallet).
 
-Make sure to record your mnemonic, even if working with a testnet, not to loose your
+Make sure to record your mnemonic, even if working with a testnet, not to lose your
 testnet KAS.
 
 `open <name>` - opens the wallet (the wallet is open automatically after creation).

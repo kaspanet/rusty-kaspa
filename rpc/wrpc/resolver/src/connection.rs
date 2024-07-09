@@ -187,7 +187,7 @@ impl Connection {
                 self.is_synced.store(is_synced, Ordering::Relaxed);
 
                 if is_synced {
-                    match self.client.get_metrics(false, true, false, false).await {
+                    match self.client.get_metrics(false, true, false, false, false, false).await {
                         Ok(metrics) => {
                             if let Some(connection_metrics) = metrics.connection_metrics {
                                 // update

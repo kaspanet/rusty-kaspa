@@ -150,7 +150,7 @@ async-trait = "0.1.74"
 base64 = "0.21.5"
 bincode = { version = "1.3.3", default-features = false }
 blake2b_simd = "1.0.2"
-borsh = { version = "0.9.1", features = ["rc"] } # please keep this fixed
+borsh = { version = "1.5.1", features = ["derive", "rc"] }
 bs58 = { version = "0.5.0", features = ["check"], default-features = false }
 cc = "1.0.83"
 cfb-mode = "0.8.2"
@@ -243,6 +243,7 @@ sorted-insert = "0.2.3"
 statest = "0.2.2"
 statrs = "0.13.0" # TODO "0.16.0"
 subtle = { version = "2.5.0", default-features = false }
+sysinfo = "0.30.12"
 tempfile = "3.8.1"
 textwrap = "0.16.0"
 thiserror = "1.0.50"
@@ -275,46 +276,36 @@ workflow-perf-monitor = "0.0.2"
 nw-sys = "0.1.6"
 
 # workflow dependencies
-# workflow-core = { version = "0.12.1" }
-# workflow-d3 = { version = "0.12.1" }
-# workflow-dom = { version = "0.12.1" }
-# workflow-http = { version = "0.12.1" }
-# workflow-log = { version = "0.12.1" }
-# workflow-node = { version = "0.12.1" }
-# workflow-nw = { version = "0.12.1" }
-# workflow-rpc = { version = "0.12.1" }
-# workflow-store = { version = "0.12.1" }
-# workflow-terminal = { version = "0.12.1" }
-# workflow-wasm = { version = "0.12.1" }
+# workflow-core = { version = "0.13.2" }
+# workflow-d3 = { version = "0.13.2" }
+# workflow-dom = { version = "0.13.2" }
+# workflow-http = { version = "0.13.2" }
+# workflow-log = { version = "0.13.2" }
+# workflow-node = { version = "0.13.2" }
+# workflow-nw = { version = "0.13.2" }
+# workflow-rpc = { version = "0.13.2" }
+# workflow-serializer = { version = "0.13.2" }
+# workflow-store = { version = "0.13.2" }
+# workflow-terminal = { version = "0.13.2" }
+# workflow-wasm = { version = "0.13.2" }
 
 # if below is enabled, this means that there is an ongoing work
 # on the workflow-rs crate. This requires that you clone workflow-rs
 # into a sibling folder from https://github.com/workflow-rs/workflow-rs
-# workflow-core = { path = "../workflow-rs/core" }
-# workflow-d3 = { path = "../workflow-rs/d3" }
-# workflow-dom = { path = "../workflow-rs/dom" }
-# workflow-http = { path = "../workflow-rs/http" }
-# workflow-log = { path = "../workflow-rs/log" }
-# workflow-node = { path = "../workflow-rs/node" }
-# workflow-nw = { path = "../workflow-rs/nw" }
-# workflow-rpc = { path = "../workflow-rs/rpc" }
-# workflow-store = { path = "../workflow-rs/store" }
-# workflow-terminal = { path = "../workflow-rs/terminal" }
-# workflow-wasm = { path = "../workflow-rs/wasm" }
+workflow-core = { path = "../workflow-rs/core" }
+workflow-d3 = { path = "../workflow-rs/d3" }
+workflow-dom = { path = "../workflow-rs/dom" }
+workflow-http = { path = "../workflow-rs/http" }
+workflow-log = { path = "../workflow-rs/log" }
+workflow-node = { path = "../workflow-rs/node" }
+workflow-nw = { path = "../workflow-rs/nw" }
+workflow-rpc = { path = "../workflow-rs/rpc" }
+workflow-serializer = { path = "../workflow-rs/serializer" }
+workflow-store = { path = "../workflow-rs/store" }
+workflow-terminal = { path = "../workflow-rs/terminal" }
+workflow-wasm = { path = "../workflow-rs/wasm" }
 
 # ---
-workflow-core = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
-workflow-d3 = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
-workflow-dom = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
-workflow-http = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
-workflow-log = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
-workflow-node = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
-workflow-nw = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
-workflow-rpc = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
-workflow-store = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
-workflow-terminal = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
-workflow-wasm = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "pre-borsh-1-5-1" }
-
 # workflow-core = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-d3 = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-dom = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
@@ -323,6 +314,7 @@ workflow-wasm = { git = "https://github.com/workflow-rs/workflow-rs.git", branch
 # workflow-node = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-nw = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-rpc = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-serializer = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-store = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-terminal = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-wasm = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }

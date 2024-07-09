@@ -1,12 +1,16 @@
+use std::sync::OnceLock;
+
 use crate::error::Error;
 use crate::imports::*;
 use crate::node::NodeDescriptor;
 pub use futures::future::join_all;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use workflow_core::runtime;
 use workflow_http::get_json;
 
-const DEFAULT_VERSION: usize = 1;
+const DEFAULT_VERSION: usize = 2;
+const RESOLVERS_PER_FQDN: usize = 8;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolverRecord {
@@ -19,12 +23,27 @@ pub struct ResolverConfig {
     resolver: Vec<ResolverRecord>,
 }
 
-fn try_parse_resolvers(toml: &str) -> Result<Vec<Arc<String>>> {
+fn try_parse_resolvers(toml: &str) -> Result<Vec<String>> {
     Ok(toml::from_str::<ResolverConfig>(toml)?
         .resolver
         .into_iter()
-        .filter_map(|resolver| resolver.enable.unwrap_or(true).then_some(Arc::new(resolver.url)))
+        .filter_map(|resolver| resolver.enable.unwrap_or(true).then_some(resolver.url))
         .collect::<Vec<_>>())
+}
+
+fn transform(source_list: Vec<String>) -> Vec<Arc<String>> {
+    let mut resolvers = vec![];
+    for url in source_list.into_iter() {
+        if url.contains('*') {
+            for n in 0..RESOLVERS_PER_FQDN {
+                resolvers.push(Arc::new(url.replace('*', &format!("r{n}"))));
+            }
+        } else {
+            resolvers.push(Arc::new(url));
+        }
+    }
+
+    resolvers
 }
 
 #[derive(Debug)]
@@ -50,7 +69,7 @@ impl Default for Resolver {
     fn default() -> Self {
         let toml = include_str!("../Resolvers.toml");
         let urls = try_parse_resolvers(toml).expect("TOML: Unable to parse RPC Resolver list");
-        Self { inner: Arc::new(Inner::new(urls)) }
+        Self { inner: Arc::new(Inner::new(transform(urls))) }
     }
 }
 
@@ -67,8 +86,31 @@ impl Resolver {
         self.inner.urls.clone()
     }
 
+    fn make_url(&self, url: &str, encoding: Encoding, network_id: NetworkId) -> String {
+        static SSL: OnceLock<bool> = OnceLock::new();
+
+        let ssl = *SSL.get_or_init(|| {
+            if runtime::is_web() {
+                js_sys::Reflect::get(&js_sys::global(), &"location".into())
+                    .and_then(|location| js_sys::Reflect::get(&location, &"protocol".into()))
+                    .ok()
+                    .and_then(|protocol| protocol.as_string())
+                    .map(|protocol| protocol.starts_with("https"))
+                    .unwrap_or(false)
+            } else {
+                false
+            }
+        });
+
+        if ssl {
+            format!("{}/v{}/rk/wrpc/tls/{}/{}", url, DEFAULT_VERSION, encoding, network_id)
+        } else {
+            format!("{}/v{}/rk/wrpc/any/{}/{}", url, DEFAULT_VERSION, encoding, network_id)
+        }
+    }
+
     async fn fetch_node_info(&self, url: &str, encoding: Encoding, network_id: NetworkId) -> Result<NodeDescriptor> {
-        let url = format!("{}/v{}/wrpc/{}/{}", url, DEFAULT_VERSION, encoding, network_id);
+        let url = self.make_url(url, encoding, network_id);
         let node =
             get_json::<NodeDescriptor>(&url).await.map_err(|error| Error::custom(format!("Unable to connect to {url}: {error}")))?;
         Ok(node)

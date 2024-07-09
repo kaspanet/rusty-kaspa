@@ -16,7 +16,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::info;
 use kaspa_grpc_client::GrpcClient;
-use kaspa_rpc_core::{api::rpc::RpcApi, BlockAddedNotification, Notification, VirtualDaaScoreChangedNotification};
+use kaspa_rpc_core::{api::rpc::RpcApi, BlockAddedNotification, Notification, RpcUtxoEntry, VirtualDaaScoreChangedNotification};
 use kaspa_txscript::pay_to_address_script;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use secp256k1::Keypair;
@@ -170,13 +170,13 @@ pub async fn fetch_spendable_utxos(
     {
         assert!(resp_entry.address.is_some());
         assert_eq!(*resp_entry.address.as_ref().unwrap(), address);
-        utxos.push((resp_entry.outpoint, resp_entry.utxo_entry));
+        utxos.push((TransactionOutpoint::from(resp_entry.outpoint), UtxoEntry::from(resp_entry.utxo_entry)));
     }
     utxos.sort_by(|a, b| b.1.amount.cmp(&a.1.amount));
     utxos
 }
 
-pub fn is_utxo_spendable(entry: &UtxoEntry, virtual_daa_score: u64, coinbase_maturity: u64) -> bool {
+pub fn is_utxo_spendable(entry: &RpcUtxoEntry, virtual_daa_score: u64, coinbase_maturity: u64) -> bool {
     let needed_confirmations = if !entry.is_coinbase { 10 } else { coinbase_maturity };
     entry.block_daa_score + needed_confirmations <= virtual_daa_score
 }

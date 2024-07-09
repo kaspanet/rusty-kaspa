@@ -65,7 +65,10 @@ impl TransactionStore {
         match fs::readdir(folder, true).await {
             Ok(mut files) => {
                 // we reverse the order of the files so that the newest files are first
-                files.sort_by_key(|f| std::cmp::Reverse(f.metadata().unwrap().created()));
+                files.sort_by_key(|f| {
+                    let meta = f.metadata().expect("fsio: missing file metadata");
+                    std::cmp::Reverse(meta.created().or_else(|| meta.modified()).unwrap_or_default())
+                });
 
                 for file in files {
                     if let Ok(id) = TransactionId::from_hex(file.file_name()) {
@@ -315,6 +318,6 @@ async fn write(path: &Path, record: &TransactionRecord, secret: Option<&Secret>,
     } else {
         Encryptable::from(record.clone())
     };
-    fs::write(path, &data.try_to_vec()?).await?;
+    fs::write(path, &borsh::to_vec(&data)?).await?;
     Ok(())
 }
