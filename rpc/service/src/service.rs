@@ -35,7 +35,6 @@ use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
     notifier::IndexNotifier,
 };
-use kaspa_math::uint::malachite_base::num::arithmetic::traits::DivRem;
 use kaspa_mining::model::tx_query::TransactionQuery;
 use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::Orphan};
 use kaspa_notify::listener::ListenerLifespan;
@@ -68,7 +67,6 @@ use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::ops::Mul;
 use std::sync::atomic::{AtomicBool, AtomicU64};
-use std::time::Duration;
 use std::{
     collections::HashMap,
     iter::once,
@@ -659,8 +657,8 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _request: GetPriorityFeeEstimateRequest,
     ) -> RpcResult<GetPriorityFeeEstimateResponse> {
         trace!("incoming GetPriorityFeeEstimateRequest request");
-
-        const CACHE_FOR: Duration = Duration::from_secs(1);
+        const RECALC_TIMEOUT_IN_SEC: u64 = 1;
+        const EXPIRATION_IN_SEC: u64 = 2;
 
         let relaxed_cache_resp = || GetPriorityFeeEstimateResponse {
             fee_per_mass: FeePerMass::VirtualFeePerMass(VirtualFeePerMass {
@@ -670,17 +668,20 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             }),
             mempool_total_mass: self.mining_manager.snapshot().total_mass,
         };
-        if self.estimated_fee_cache.expired_at.load(Ordering::Relaxed) > unix_now() {
+        let calculated_at = self.estimated_fee_cache.calculated_at.load(Ordering::Relaxed);
+        let now = unix_now();
+        if calculated_at + RECALC_TIMEOUT_IN_SEC > now {
             debug!("Cache is not expired, return response from cache");
             return Ok(relaxed_cache_resp());
         }
-        if self
+
+        let captured = self
             .estimated_fee_cache
             .computing_in_progress
             .compare_exchange_weak(false, true, Ordering::SeqCst, Ordering::Relaxed)
-            .is_err()
-        {
-            debug!("Computation is in progress, return response from cache");
+            .is_ok();
+        let expired = calculated_at + EXPIRATION_IN_SEC < now;
+        if !captured && !expired {
             return Ok(relaxed_cache_resp());
         }
 
@@ -718,11 +719,13 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 let (fee, mass) = fees_and_masses[fees_and_masses.len() / 2];
                 fee as f64 / mass as f64
             };
+            if captured {
+                self.estimated_fee_cache.max.store(max, Ordering::Relaxed);
+                self.estimated_fee_cache.min.store(min, Ordering::Relaxed);
+                self.estimated_fee_cache.median.store(median, Ordering::Relaxed);
+                self.estimated_fee_cache.calculated_at.store(unix_now(), Ordering::Relaxed);
+            }
 
-            self.estimated_fee_cache.max.store(max, Ordering::Relaxed);
-            self.estimated_fee_cache.min.store(min, Ordering::Relaxed);
-            self.estimated_fee_cache.median.store(median, Ordering::Relaxed);
-            self.estimated_fee_cache.expired_at.store(unix_now() + CACHE_FOR.as_secs(), Ordering::Relaxed);
             debug!("Computation is successful. Updating cache and returning fresh response");
 
             Ok(GetPriorityFeeEstimateResponse {
@@ -731,7 +734,9 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             })
         };
         let res = compute().await;
-        self.estimated_fee_cache.computing_in_progress.store(false, Ordering::Release);
+        if captured {
+            self.estimated_fee_cache.computing_in_progress.store(false, Ordering::Release);
+        }
         res
     }
 
@@ -1071,6 +1076,6 @@ struct EstimatedFeeCache {
     min: portable_atomic::AtomicF64,
     median: portable_atomic::AtomicF64,
     max: portable_atomic::AtomicF64,
-    expired_at: AtomicU64,
+    calculated_at: AtomicU64,
     computing_in_progress: AtomicBool,
 }
