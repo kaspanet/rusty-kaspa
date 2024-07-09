@@ -131,7 +131,7 @@ pub mod test_helpers {
         let mut inputs = vec![];
         for tx_to_spend in txs_to_spend {
             for i in output_indexes.iter().copied() {
-                if (i as usize) < tx_to_spend.outputs.len() {
+                if i < tx_to_spend.outputs.len() {
                     let previous_outpoint = TransactionOutpoint::new(tx_to_spend.id(), i as u32);
                     inputs.push(TransactionInput::new(previous_outpoint, signature_script.clone(), MAX_TX_IN_SEQUENCE_NUM, 1));
                     inputs_value += tx_to_spend.outputs[i].value;

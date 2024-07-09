@@ -59,7 +59,7 @@ message KaspadRequest {
     GetServerInfoRequestMessage getServerInfoRequest = 1092;
     GetSyncStatusRequestMessage getSyncStatusRequest = 1094;
     GetDaaScoreTimestampEstimateRequestMessage getDaaScoreTimestampEstimateRequest = 1096;
-    SubmitTransactionReplacementRequestMessage submitTransactionReplacementRequest = 1098;
+    SubmitTransactionReplacementRequestMessage submitTransactionReplacementRequest = 2000;
   }
 }
 
@@ -119,7 +119,7 @@ message KaspadResponse {
     GetServerInfoResponseMessage getServerInfoResponse = 1093;
     GetSyncStatusResponseMessage getSyncStatusResponse = 1095;
     GetDaaScoreTimestampEstimateResponseMessage getDaaScoreTimestampEstimateResponse = 1097;
-    SubmitTransactionReplacementResponseMessage submitTransactionReplacementResponse = 1099;
+    SubmitTransactionReplacementResponseMessage submitTransactionReplacementResponse = 2001;
   }
 }
 
