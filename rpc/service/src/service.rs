@@ -714,14 +714,9 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 let (fee, mass) = fees_and_masses.first().unwrap();
                 *fee as f64 / *mass as f64
             };
-            let (div, rem) = fees_and_masses.len().div_rem(2);
-            let median = if rem != 0 {
-                let (fee, mass) = fees_and_masses[div];
-                fee as f64 / mass as f64
-            } else {
-                let (below_fee, below_mass) = fees_and_masses[div - 1];
-                let (above_fee, above_mass) = fees_and_masses[div];
-                (below_fee as f64 / below_mass as f64 + above_fee as f64 / above_mass as f64) / 2.0
+            let median = {
+                let (fee, mass) = fees_and_masses[fees_and_masses.len() / 2];
+                *fee as f64 / *mass as f64
             };
 
             self.estimated_fee_cache.max.store(max, Ordering::Relaxed);
