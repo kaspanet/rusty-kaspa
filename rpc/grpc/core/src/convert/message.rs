@@ -432,6 +432,16 @@ from!(item: RpcResult<&kaspa_rpc_core::GetConnectionsResponse>, protowire::GetCo
     }
 });
 
+from!(&kaspa_rpc_core::GetSystemInfoRequest, protowire::GetSystemInfoRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetSystemInfoResponse>, protowire::GetSystemInfoResponseMessage, {
+    Self {
+        total_memory : item.total_memory,
+        core_num : item.cpu_physical_cores as u32,
+        fd_limit : item.fd_limit,
+        error: None,
+    }
+});
+
 from!(&kaspa_rpc_core::GetServerInfoRequest, protowire::GetServerInfoRequestMessage);
 from!(item: RpcResult<&kaspa_rpc_core::GetServerInfoResponse>, protowire::GetServerInfoResponseMessage, {
     Self {
@@ -841,6 +851,15 @@ try_from!(_item: &protowire::GetConnectionsRequestMessage, kaspa_rpc_core::GetCo
 try_from!(item: &protowire::GetConnectionsResponseMessage, RpcResult<kaspa_rpc_core::GetConnectionsResponse>, {
     Self {
         active_connections: item.active_connections,
+    }
+});
+
+try_from!(&protowire::GetSystemInfoRequestMessage, kaspa_rpc_core::GetSystemInfoRequest);
+try_from!(item: &protowire::GetSystemInfoResponseMessage, RpcResult<kaspa_rpc_core::GetSystemInfoResponse>, {
+    Self {
+        total_memory: item.total_memory,
+        cpu_physical_cores: item.core_num as u16,
+        fd_limit: item.fd_limit,
     }
 });
 

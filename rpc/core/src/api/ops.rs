@@ -56,6 +56,8 @@ pub enum RpcApiOps {
     Ping = 110,
     /// Get metrics for consensus information and node performance
     GetMetrics,
+    /// Get system information (RAM available, number of cores, available file descriptors)
+    GetSystemInfo,
     /// Get current number of active TCP connections
     GetConnections,
     /// Get state information on the node

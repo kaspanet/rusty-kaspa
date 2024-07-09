@@ -604,6 +604,7 @@ impl RpcApi for KaspaRpcClient {
             GetConnectedPeerInfo,
             GetDaaScoreTimestampEstimate,
             GetServerInfo,
+            GetSystemInfo,
             GetCurrentNetwork,
             GetHeaders,
             GetInfo,

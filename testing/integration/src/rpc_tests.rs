@@ -547,6 +547,13 @@ async fn sanity_test() {
                 })
             }
 
+            KaspadPayloadOps::GetSystemInfo => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let _response = rpc_client.get_system_info_call(None, GetSystemInfoRequest {}).await.unwrap();
+                })
+            }
+
             KaspadPayloadOps::GetServerInfo => {
                 let rpc_client = client.clone();
                 tst!(op, {

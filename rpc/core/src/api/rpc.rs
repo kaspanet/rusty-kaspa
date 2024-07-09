@@ -29,6 +29,17 @@ pub trait RpcApi: Sync + Send + AnySync {
 
     // ---
 
+    async fn get_system_info(&self) -> RpcResult<GetSystemInfoResponse> {
+        Ok(self.get_system_info_call(None, GetSystemInfoRequest {}).await?)
+    }
+    async fn get_system_info_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetSystemInfoRequest,
+    ) -> RpcResult<GetSystemInfoResponse>;
+
+    // ---
+
     async fn get_connections(&self) -> RpcResult<u32> {
         Ok(self.get_connections_call(None, GetConnectionsRequest {}).await?.active_connections)
     }

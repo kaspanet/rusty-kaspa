@@ -818,6 +818,16 @@ message GetConnectionsResponseMessage{
   RPCError error = 1000;
 }
 
+message GetSystemInfoRequestMessage{
+}
+
+message GetSystemInfoResponseMessage{
+  uint32 coreNum = 1;
+  uint64 totalMemory = 2;
+  uint32 fdLimit = 3;
+  RPCError error = 1000;
+}
+
 message GetMetricsRequestMessage{
   bool processMetrics = 1;
   bool connectionMetrics = 2;

@@ -242,6 +242,7 @@ sorted-insert = "0.2.3"
 statest = "0.2.2"
 statrs = "0.13.0" # TODO "0.16.0"
 subtle = { version = "2.5.0", default-features = false }
+sysinfo = "0.30.12"
 tempfile = "3.8.1"
 textwrap = "0.16.0"
 thiserror = "1.0.50"

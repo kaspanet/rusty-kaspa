@@ -10,7 +10,7 @@ use workflow_core::runtime;
 use workflow_http::get_json;
 
 const DEFAULT_VERSION: usize = 2;
-const RESOLVERS_PER_FQDN: usize = 16;
+const RESOLVERS_PER_FQDN: usize = 8;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolverRecord {

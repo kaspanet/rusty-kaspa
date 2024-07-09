@@ -62,13 +62,14 @@ use kaspa_rpc_core::{
     Notification, RpcError, RpcResult,
 };
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
+use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::{
     collections::HashMap,
     iter::once,
-    sync::{atomic::Ordering, Arc},
+    sync::{atomic::Ordering, Arc, OnceLock},
     vec,
 };
 use tokio::join;
@@ -968,6 +969,23 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             storage_metrics,
             custom_metrics,
         };
+
+        Ok(response)
+    }
+
+    async fn get_system_info_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetSystemInfoRequest,
+    ) -> RpcResult<GetSystemInfoResponse> {
+        static SYSTEM_INFO: OnceLock<SystemInfo> = OnceLock::new();
+
+        let system_info = SYSTEM_INFO.get_or_init(SystemInfo::default);
+
+        let SystemInfo { cpu_physical_cores, total_memory, fd_limit } = system_info;
+
+        let response =
+            GetSystemInfoResponse { cpu_physical_cores: *cpu_physical_cores, total_memory: *total_memory, fd_limit: *fd_limit };
 
         Ok(response)
     }

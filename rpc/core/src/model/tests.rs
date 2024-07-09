@@ -922,6 +922,22 @@ mod mockery {
 
     test!(GetConnectionsResponse);
 
+    impl Mock for GetSystemInfoRequest {
+        fn mock() -> Self {
+            GetSystemInfoRequest {}
+        }
+    }
+
+    test!(GetSystemInfoRequest);
+
+    impl Mock for GetSystemInfoResponse {
+        fn mock() -> Self {
+            GetSystemInfoResponse { cpu_physical_cores: mock(), total_memory: mock(), fd_limit: mock() }
+        }
+    }
+
+    test!(GetSystemInfoResponse);
+
     impl Mock for GetMetricsRequest {
         fn mock() -> Self {
             GetMetricsRequest {

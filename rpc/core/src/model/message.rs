@@ -1783,7 +1783,55 @@ impl Deserializer for GetConnectionsResponse {
     }
 }
 
-// TODO - custom wRPC commands (need review and implementation in gRPC)
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSystemInfoRequest {}
+
+impl Serializer for GetSystemInfoRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for GetSystemInfoRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetSystemInfoResponse {
+    pub cpu_physical_cores: u16,
+    pub total_memory: u64,
+    pub fd_limit: u32,
+}
+
+impl Serializer for GetSystemInfoResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u16, &self.cpu_physical_cores, writer)?;
+        store!(u64, &self.total_memory, writer)?;
+        store!(u32, &self.fd_limit, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for GetSystemInfoResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let cpu_physical_cores = load!(u16, reader)?;
+        let total_memory = load!(u64, reader)?;
+        let fd_limit = load!(u32, reader)?;
+
+        Ok(Self { cpu_physical_cores, total_memory, fd_limit })
+    }
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

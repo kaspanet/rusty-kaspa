@@ -41,6 +41,10 @@ impl Rpc {
                 let result = rpc.get_metrics(true, true, true, true, true, true).await?;
                 self.println(&ctx, result);
             }
+            RpcApiOps::GetSystemInfo => {
+                let result = rpc.get_system_info().await?;
+                self.println(&ctx, result);
+            }
             RpcApiOps::GetConnections => {
                 let result = rpc.get_connections().await?;
                 self.println(&ctx, result);

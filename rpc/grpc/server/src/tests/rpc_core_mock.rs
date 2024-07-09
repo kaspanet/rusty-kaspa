@@ -98,6 +98,14 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn get_system_info_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetSystemInfoRequest,
+    ) -> RpcResult<GetSystemInfoResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     async fn get_server_info_call(
         &self,
         _connection: Option<&DynRpcConnection>,

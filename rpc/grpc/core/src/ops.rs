@@ -79,6 +79,7 @@ pub enum KaspadPayloadOps {
     Ping,
     GetMetrics,
     GetConnections,
+    GetSystemInfo,
     GetServerInfo,
     GetSyncStatus,
     GetDaaScoreTimestampEstimate,

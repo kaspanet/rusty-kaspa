@@ -60,6 +60,7 @@ message KaspadRequest {
     GetSyncStatusRequestMessage getSyncStatusRequest = 1094;
     GetDaaScoreTimestampEstimateRequestMessage GetDaaScoreTimestampEstimateRequest = 1096;
     GetConnectionsRequestMessage getConnectionsRequest = 1098;
+    GetSystemInfoRequestMessage getSystemInfoRequest = 1100;
   }
 }
 
@@ -120,6 +121,7 @@ message KaspadResponse {
     GetSyncStatusResponseMessage getSyncStatusResponse = 1095;
     GetDaaScoreTimestampEstimateResponseMessage GetDaaScoreTimestampEstimateResponse = 1097;
     GetConnectionsResponseMessage getConnectionsResponse= 1099;
+    GetSystemInfoResponseMessage getSystemInfoResponse= 1101;
   }
 }
 
