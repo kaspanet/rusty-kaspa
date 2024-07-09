@@ -10,6 +10,7 @@ use workflow_core::runtime;
 use workflow_http::get_json;
 
 const DEFAULT_VERSION: usize = 2;
+const RESOLVERS_PER_FQDN: usize = 16;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolverRecord {
@@ -22,12 +23,27 @@ pub struct ResolverConfig {
     resolver: Vec<ResolverRecord>,
 }
 
-fn try_parse_resolvers(toml: &str) -> Result<Vec<Arc<String>>> {
+fn try_parse_resolvers(toml: &str) -> Result<Vec<String>> {
     Ok(toml::from_str::<ResolverConfig>(toml)?
         .resolver
         .into_iter()
-        .filter_map(|resolver| resolver.enable.unwrap_or(true).then_some(Arc::new(resolver.url)))
+        .filter_map(|resolver| resolver.enable.unwrap_or(true).then_some(resolver.url))
         .collect::<Vec<_>>())
+}
+
+fn transform(source_list: Vec<String>) -> Vec<Arc<String>> {
+    let mut resolvers = vec![];
+    for url in source_list.into_iter() {
+        if url.contains('*') {
+            for n in 0..RESOLVERS_PER_FQDN {
+                resolvers.push(Arc::new(url.replace('*', &format!("r{n}"))));
+            }
+        } else {
+            resolvers.push(Arc::new(url));
+        }
+    }
+
+    resolvers
 }
 
 #[derive(Debug)]
@@ -53,7 +69,7 @@ impl Default for Resolver {
     fn default() -> Self {
         let toml = include_str!("../Resolvers.toml");
         let urls = try_parse_resolvers(toml).expect("TOML: Unable to parse RPC Resolver list");
-        Self { inner: Arc::new(Inner::new(urls)) }
+        Self { inner: Arc::new(Inner::new(transform(urls))) }
     }
 }
 
