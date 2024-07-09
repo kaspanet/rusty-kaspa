@@ -72,7 +72,7 @@ interface IGeneratorSettingsObject {
      * overflows, these inputs will be consumed into a batch/sweep transaction
      * where the destination if the `changeAddress`.
      */
-    priorityEntries: IUtxoEntry[],
+    priorityEntries?: IUtxoEntry[],
     /**
      * Optional number of signature operations in the transaction.
      */
