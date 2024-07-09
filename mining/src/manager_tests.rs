@@ -14,6 +14,7 @@ mod tests {
         testutils::consensus_mock::ConsensusMock,
         MiningCounters,
     };
+    use itertools::Itertools;
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::{
         api::ConsensusApi,
@@ -32,9 +33,9 @@ mod tests {
     use kaspa_mining_errors::mempool::RuleResult;
     use kaspa_txscript::{
         pay_to_address_script, pay_to_script_hash_signature_script,
-        test_helpers::{create_transaction, op_true_script},
+        test_helpers::{create_transaction, create_transaction_with_change, op_true_script},
     };
-    use std::sync::Arc;
+    use std::{iter::once, sync::Arc};
     use tokio::sync::mpsc::{error::TryRecvError, unbounded_channel};
 
     const TARGET_TIME_PER_BLOCK: u64 = 1_000;
@@ -242,8 +243,8 @@ mod tests {
         }
     }
 
-    // test_double_spend_in_mempool verifies that an attempt to insert a transaction double-spending
-    // another transaction already in the mempool will result in raising an appropriate error.
+    /// test_double_spend_in_mempool verifies that an attempt to insert a transaction double-spending
+    /// another transaction already in the mempool will result in raising an appropriate error.
     #[test]
     fn test_double_spend_in_mempool() {
         for (priority, orphan, rbf_policy) in all_priority_orphan_rbf_policy_combinations() {
@@ -296,44 +297,238 @@ mod tests {
         }
     }
 
-    // test_replace_by_fee_in_mempool verifies that an attempt to insert a double-spending transaction with a higher fee
-    // will cause or not the existing transaction in the mempool to be replaced, depending on varying factors.
+    /// test_replace_by_fee_in_mempool verifies that an attempt to insert a double-spending transaction
+    /// will cause or not the transaction(s) double spending in the mempool to be replaced/removed,
+    /// depending on varying factors.
     #[test]
     fn test_replace_by_fee_in_mempool() {
-        let consensus = Arc::new(ConsensusMock::new());
-        let counters = Arc::new(MiningCounters::default());
-        let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+        const BASE_FEE: u64 = DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE;
 
-        let transaction = create_child_and_parent_txs_and_add_parent_to_consensus(&consensus);
-        assert!(
-            consensus.can_finance_transaction(&MutableTransaction::from_tx(transaction.clone())),
-            "the consensus mock should have spendable UTXOs for the newly created transaction {}",
-            transaction.id()
-        );
+        struct TxOp {
+            /// Funding transaction indexes
+            tx: Vec<usize>,
+            /// Funding transaction output indexes
+            output: Vec<usize>,
+            /// Add a change output to the transaction
+            change: bool,
+            /// Transaction fee
+            fee: u64,
+            /// Children binary tree depth
+            depth: usize,
+        }
 
-        let result =
-            mining_manager.validate_and_insert_transaction(consensus.as_ref(), transaction.clone(), Priority::Low, Orphan::Allowed);
-        assert!(result.is_ok(), "the mempool should accept a valid transaction when it is able to populate its UTXO entries");
+        impl TxOp {
+            fn change(&self) -> Option<u64> {
+                self.change.then_some(900 * SOMPI_PER_KASPA)
+            }
+        }
 
-        let mut double_spending_transaction = transaction.clone();
-        double_spending_transaction.outputs[0].value -= 1; // increasing fee of transaction
-        double_spending_transaction.finalize();
-        assert_ne!(
-            transaction.id(),
-            double_spending_transaction.id(),
-            "two transactions differing by only one output value should have different ids"
-        );
-        let result = mining_manager.validate_and_replace_transaction(consensus.as_ref(), double_spending_transaction.clone());
-        assert!(result.is_ok(), "mempool should accept a RBF transaction with higher fee but rejected it");
-        let tx_insertion = result.unwrap();
-        assert_eq!(tx_insertion.removed.as_ref().unwrap().id(), transaction.id(), "RBF should return the replaced transaction");
-        assert!(
-            !mining_manager.has_transaction(&transaction.id(), TransactionQuery::All),
-            "replaced transaction is in the mempool while it should have been removed by RBF"
-        );
+        struct Test {
+            name: &'static str,
+            /// Initial transactions in the mempool
+            starts: Vec<TxOp>,
+            /// Replacement transaction submitted to the mempool
+            replacement: TxOp,
+            /// Expected RBF result for the 3 policies [Forbidden, Allowed, Mandatory]
+            expected: [bool; 3],
+        }
+
+        impl Test {
+            fn run_rbf(&self, rbf_policy: RbfPolicy, expected: bool) {
+                let consensus = Arc::new(ConsensusMock::new());
+                let counters = Arc::new(MiningCounters::default());
+                let mining_manager = MiningManager::new(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS, None, counters);
+                let funding_transactions = create_and_add_funding_transactions(&consensus, 10);
+
+                // RPC submit the initial transactions
+                let (transactions, children): (Vec<_>, Vec<_>) =
+                    self.starts
+                        .iter()
+                        .map(|tx_op| {
+                            let transaction = create_funded_transaction(
+                                select_transactions(&funding_transactions, &tx_op.tx),
+                                tx_op.output.clone(),
+                                tx_op.change(),
+                                tx_op.fee,
+                            );
+                            assert!(
+                                consensus.can_finance_transaction(&MutableTransaction::from_tx(transaction.clone())),
+                                "[{}, {:?}] the consensus should have spendable UTXOs for the newly created transaction {}",
+                                self.name, rbf_policy, transaction.id()
+                            );
+                            let result = mining_manager.validate_and_insert_transaction(
+                                consensus.as_ref(),
+                                transaction.clone(),
+                                Priority::High,
+                                Orphan::Allowed,
+                            );
+                            assert!(
+                                result.is_ok(),
+                                "[{}, {:?}] the mempool should accept a valid transaction when it is able to populate its UTXO entries",
+                                self.name, rbf_policy,
+                            );
+                            let children = create_children_tree(&transaction, tx_op.depth);
+                            let children_count = (2_usize.pow(tx_op.depth as u32) - 1) * transaction.outputs.len();
+                            assert_eq!(
+                                children.len(), children_count,
+                                "[{}, {:?}] a parent transaction with {} output(s) should generate a binary children tree of depth {} with {} children but got {}",
+                                self.name, rbf_policy, transaction.outputs.len(), tx_op.depth, children_count, children.len(),
+                            );
+                            validate_and_insert_transactions(
+                                &mining_manager,
+                                consensus.as_ref(),
+                                children.iter(),
+                                Priority::High,
+                                Orphan::Allowed,
+                            );
+                            (transaction, children)
+                        })
+                        .unzip();
+
+                // RPC submit transaction replacement
+                let transaction_replacement = create_funded_transaction(
+                    select_transactions(&funding_transactions, &self.replacement.tx),
+                    self.replacement.output.clone(),
+                    self.replacement.change(),
+                    self.replacement.fee,
+                );
+                assert!(
+                    consensus.can_finance_transaction(&MutableTransaction::from_tx(transaction_replacement.clone())),
+                    "[{}, {:?}] the consensus should have spendable UTXOs for the newly created transaction {}",
+                    self.name,
+                    rbf_policy,
+                    transaction_replacement.id()
+                );
+                let tx_count = mining_manager.transaction_count(TransactionQuery::TransactionsOnly);
+                let expected_tx_count = match expected {
+                    true => tx_count + 1 - transactions.len() - children.iter().map(|x| x.len()).sum::<usize>(),
+                    false => tx_count,
+                };
+                let result = match rbf_policy {
+                    RbfPolicy::Forbidden => mining_manager.validate_and_insert_transaction(
+                        consensus.as_ref(),
+                        transaction_replacement.clone(),
+                        Priority::High,
+                        Orphan::Forbidden,
+                    ),
+                    RbfPolicy::Allowed => mining_manager.validate_and_insert_mutable_transaction(
+                        consensus.as_ref(),
+                        MutableTransaction::from_tx(transaction_replacement.clone()),
+                        Priority::Low,
+                        Orphan::Forbidden,
+                        RbfPolicy::Allowed,
+                    ),
+                    RbfPolicy::Mandatory => {
+                        mining_manager.validate_and_replace_transaction(consensus.as_ref(), transaction_replacement.clone())
+                    }
+                };
+                if expected {
+                    assert!(result.is_ok(), "[{}, {:?}] mempool should accept a RBF transaction", self.name, rbf_policy,);
+                    let tx_insertion = result.unwrap();
+                    assert_eq!(
+                        tx_insertion.removed.as_ref().unwrap().id(),
+                        transactions[0].id(),
+                        "[{}, {:?}] RBF should return the removed transaction",
+                        self.name,
+                        rbf_policy,
+                    );
+                    transactions.iter().for_each(|x| {
+                        assert!(
+                            !mining_manager.has_transaction(&x.id(), TransactionQuery::All),
+                            "[{}, {:?}] RBF replaced transaction should no longer be in the mempool",
+                            self.name,
+                            rbf_policy,
+                        );
+                    });
+                    assert_transaction_count(
+                        &mining_manager,
+                        expected_tx_count,
+                        &format!(
+                            "[{}, {:?}] RBF should remove all chained transactions of the removed mempool transaction(s)",
+                            self.name, rbf_policy
+                        ),
+                    );
+                } else {
+                    assert!(result.is_err(), "[{}, {:?}] mempool should reject the RBF transaction", self.name, rbf_policy);
+                    transactions.iter().for_each(|x| {
+                        assert!(
+                            mining_manager.has_transaction(&x.id(), TransactionQuery::All),
+                            "[{}, {:?}] RBF transaction target is no longer in the mempool",
+                            self.name,
+                            rbf_policy
+                        );
+                    });
+                    assert_transaction_count(
+                        &mining_manager,
+                        expected_tx_count,
+                        &format!("[{}, {:?}] a failing RBF should leave the mempool unchanged", self.name, rbf_policy),
+                    );
+                }
+            }
+
+            fn run(&self) {
+                [RbfPolicy::Forbidden, RbfPolicy::Allowed, RbfPolicy::Mandatory].iter().copied().enumerate().for_each(
+                    |(i, rbf_policy)| {
+                        self.run_rbf(rbf_policy, self.expected[i]);
+                    },
+                )
+            }
+        }
+
+        let tests = vec![
+            Test {
+                name: "1 input, 1 output <=> 1 input, 1 output, constant fee",
+                starts: vec![TxOp { tx: vec![0], output: vec![0], change: false, fee: BASE_FEE, depth: 0 }],
+                replacement: TxOp { tx: vec![0], output: vec![0], change: false, fee: BASE_FEE, depth: 0 },
+                expected: [false, false, false],
+            },
+            Test {
+                name: "1 input, 1 output <=> 1 input, 1 output, increased fee",
+                starts: vec![TxOp { tx: vec![0], output: vec![0], change: false, fee: BASE_FEE, depth: 0 }],
+                replacement: TxOp { tx: vec![0], output: vec![0], change: false, fee: BASE_FEE * 2, depth: 0 },
+                expected: [false, true, true],
+            },
+            Test {
+                name: "2 inputs, 2 outputs <=> 2 inputs, 2 outputs, increased fee",
+                starts: vec![TxOp { tx: vec![0, 1], output: vec![0], change: true, fee: BASE_FEE, depth: 2 }],
+                replacement: TxOp { tx: vec![0, 1], output: vec![0], change: true, fee: BASE_FEE * 2, depth: 0 },
+                expected: [false, true, true],
+            },
+            Test {
+                name: "4 inputs, 2 outputs <=> 2 inputs, 2 outputs, constant fee",
+                starts: vec![TxOp { tx: vec![0, 1], output: vec![0, 1], change: true, fee: BASE_FEE, depth: 2 }],
+                replacement: TxOp { tx: vec![0, 1], output: vec![0], change: true, fee: BASE_FEE, depth: 0 },
+                expected: [false, true, true],
+            },
+            Test {
+                name: "2 inputs, 2 outputs <=> 2 inputs, 1 output, constant fee",
+                starts: vec![TxOp { tx: vec![0, 1], output: vec![0], change: true, fee: BASE_FEE, depth: 2 }],
+                replacement: TxOp { tx: vec![0, 1], output: vec![0], change: false, fee: BASE_FEE, depth: 0 },
+                expected: [false, true, true],
+            },
+            Test {
+                name: "2 inputs, 2 outputs <=> 2 inputs, 1 output, constant fee, partial double spend overlap",
+                starts: vec![TxOp { tx: vec![0, 1], output: vec![0], change: true, fee: BASE_FEE, depth: 2 }],
+                replacement: TxOp { tx: vec![0, 2], output: vec![0], change: false, fee: BASE_FEE, depth: 0 },
+                expected: [false, true, true],
+            },
+            Test {
+                name: "(2 inputs, 2 outputs) * 2 <=> 4 inputs, 2 outputs, increased fee, 2 double spending mempool transactions",
+                starts: vec![
+                    TxOp { tx: vec![0, 1], output: vec![0], change: true, fee: BASE_FEE, depth: 2 },
+                    TxOp { tx: vec![0, 1], output: vec![1], change: true, fee: BASE_FEE, depth: 2 },
+                ],
+                replacement: TxOp { tx: vec![0, 1], output: vec![0, 1], change: true, fee: BASE_FEE * 2, depth: 0 },
+                expected: [false, true, false],
+            },
+        ];
+
+        for test in tests {
+            test.run();
+        }
     }
 
-    // test_handle_new_block_transactions verifies that all the transactions in the block were successfully removed from the mempool.
+    /// test_handle_new_block_transactions verifies that all the transactions in the block were successfully removed from the mempool.
     #[test]
     fn test_handle_new_block_transactions() {
         let consensus = Arc::new(ConsensusMock::new());
@@ -393,8 +588,8 @@ mod tests {
     }
 
     #[test]
-    // test_double_spend_with_block verifies that any transactions which are now double spends as a result of the block's new transactions
-    // will be removed from the mempool.
+    /// test_double_spend_with_block verifies that any transactions which are now double spends as a result of the block's new transactions
+    /// will be removed from the mempool.
     fn test_double_spend_with_block() {
         let consensus = Arc::new(ConsensusMock::new());
         let counters = Arc::new(MiningCounters::default());
@@ -424,7 +619,7 @@ mod tests {
         );
     }
 
-    // test_orphan_transactions verifies that a transaction could be a part of a new block template only if it's not an orphan.
+    /// test_orphan_transactions verifies that a transaction could be a part of a new block template only if it's not an orphan.
     #[test]
     fn test_orphan_transactions() {
         let consensus = Arc::new(ConsensusMock::new());
@@ -823,7 +1018,7 @@ mod tests {
         assert!(orphan_txs.is_empty(), "orphan pool should be empty");
     }
 
-    // test_modify_block_template verifies that modifying a block template changes coinbase data correctly.
+    /// test_modify_block_template verifies that modifying a block template changes coinbase data correctly.
     #[test]
     fn test_modify_block_template() {
         let consensus = Arc::new(ConsensusMock::new());
@@ -1031,6 +1226,67 @@ mod tests {
         mutable_tx
     }
 
+    fn create_and_add_funding_transactions(consensus: &Arc<ConsensusMock>, count: usize) -> Vec<Transaction> {
+        // Make the funding amounts always different so that funding txs have different ids
+        (0..count)
+            .map(|i| {
+                let funding_tx = create_transaction_without_input(vec![1_000 * SOMPI_PER_KASPA, 2_500 * SOMPI_PER_KASPA + i as u64]);
+                consensus.add_transaction(funding_tx.clone(), 1);
+                funding_tx
+            })
+            .collect_vec()
+    }
+
+    fn select_transactions<'a>(transactions: &'a [Transaction], indexes: &'a [usize]) -> impl Iterator<Item = &'a Transaction> {
+        indexes.iter().map(|i| &transactions[*i])
+    }
+
+    fn create_funded_transaction<'a>(
+        txs_to_spend: impl Iterator<Item = &'a Transaction>,
+        output_indexes: Vec<usize>,
+        change: Option<u64>,
+        fee: u64,
+    ) -> Transaction {
+        create_transaction_with_change(txs_to_spend, output_indexes, change, fee)
+    }
+
+    fn create_children_tree(parent: &Transaction, depth: usize) -> Vec<Transaction> {
+        let mut tree = vec![];
+        let root = [parent.clone()];
+        let mut parents = &root[..];
+        let mut first_child = 0;
+        for _ in 0..depth {
+            let mut children = vec![];
+            for parent in parents {
+                children.extend(parent.outputs.iter().enumerate().map(|(i, output)| {
+                    create_transaction_with_change(
+                        once(parent),
+                        vec![i],
+                        Some(output.value / 2),
+                        DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
+                    )
+                }));
+            }
+            tree.extend(children);
+            parents = &tree[first_child..];
+            first_child = tree.len()
+        }
+        tree
+    }
+
+    fn validate_and_insert_transactions<'a>(
+        mining_manager: &MiningManager,
+        consensus: &dyn ConsensusApi,
+        transactions: impl Iterator<Item = &'a Transaction>,
+        priority: Priority,
+        orphan: Orphan,
+    ) {
+        transactions.for_each(|transaction| {
+            let result = mining_manager.validate_and_insert_transaction(consensus, transaction.clone(), priority, orphan);
+            assert!(result.is_ok(), "the mempool should accept a valid transaction when it is able to populate its UTXO entries");
+        });
+    }
+
     fn create_arrays_of_parent_and_children_transactions(
         consensus: &Arc<ConsensusMock>,
         count: usize,
@@ -1116,5 +1372,10 @@ mod tests {
                     .map(|rbf_policy| (*priority, *orphan, *rbf_policy))
             })
         })
+    }
+
+    fn assert_transaction_count(mining_manager: &MiningManager, expected_count: usize, message: &str) {
+        let count = mining_manager.transaction_count(TransactionQuery::TransactionsOnly);
+        assert_eq!(expected_count, count, "{message} mempool transaction count: expected {}, got {}", expected_count, count);
     }
 }
