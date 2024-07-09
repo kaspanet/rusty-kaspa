@@ -507,13 +507,25 @@ mod tests {
                 expected: [false, true, true],
             },
             Test {
+                name: "2 inputs, 2 outputs <=> 4 inputs, 2 output, constant fee (MUST FAIL on fee/mass)",
+                starts: vec![TxOp { tx: vec![0, 1], output: vec![0], change: true, fee: BASE_FEE, depth: 2 }],
+                replacement: TxOp { tx: vec![0, 1], output: vec![0, 1], change: true, fee: BASE_FEE, depth: 0 },
+                expected: [false, false, false],
+            },
+            Test {
+                name: "2 inputs, 1 output <=> 4 inputs, 2 output, increased fee (MUST FAIL on fee/mass)",
+                starts: vec![TxOp { tx: vec![0, 1], output: vec![0], change: false, fee: BASE_FEE, depth: 2 }],
+                replacement: TxOp { tx: vec![0, 1], output: vec![0, 1], change: true, fee: BASE_FEE + 10, depth: 0 },
+                expected: [false, false, false],
+            },
+            Test {
                 name: "2 inputs, 2 outputs <=> 2 inputs, 1 output, constant fee, partial double spend overlap",
                 starts: vec![TxOp { tx: vec![0, 1], output: vec![0], change: true, fee: BASE_FEE, depth: 2 }],
                 replacement: TxOp { tx: vec![0, 2], output: vec![0], change: false, fee: BASE_FEE, depth: 0 },
                 expected: [false, true, true],
             },
             Test {
-                name: "(2 inputs, 2 outputs) * 2 <=> 4 inputs, 2 outputs, increased fee, 2 double spending mempool transactions",
+                name: "(2 inputs, 2 outputs) * 2 <=> 4 inputs, 2 outputs, increased fee, 2 double spending mempool transactions (MUST FAIL on Mandatory)",
                 starts: vec![
                     TxOp { tx: vec![0, 1], output: vec![0], change: true, fee: BASE_FEE, depth: 2 },
                     TxOp { tx: vec![0, 1], output: vec![1], change: true, fee: BASE_FEE, depth: 2 },
