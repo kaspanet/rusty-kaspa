@@ -716,7 +716,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             };
             let median = {
                 let (fee, mass) = fees_and_masses[fees_and_masses.len() / 2];
-                *fee as f64 / *mass as f64
+                fee as f64 / mass as f64
             };
 
             self.estimated_fee_cache.max.store(max, Ordering::Relaxed);
