@@ -106,6 +106,13 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         let ordered_mergeset = self.ordered_mergeset_without_selected_parent(selected_parent, parents);
 
         for blue_candidate in ordered_mergeset.iter().cloned() {
+            if !self.ghostdag_store.has(blue_candidate).unwrap() {
+                // TODO: See comment in ordering.rs which gets called above at ordered_mergeset_without_selected_parent
+                // For now, ignore blocks hashes that aren't in this GD store.
+                // NOT expected to be relevant for calculations in GD level 0
+                continue;
+            }
+
             let coloring = self.check_blue_candidate(&new_block_data, blue_candidate);
 
             if let ColoringOutput::Blue(blue_anticone_size, blues_anticone_sizes) = coloring {
