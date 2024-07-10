@@ -13,6 +13,7 @@ use std::sync::PoisonError;
 use thiserror::Error;
 use wasm_bindgen::JsValue;
 use workflow_core::abortable::Aborted;
+use workflow_core::channel::{RecvError, SendError, TrySendError};
 use workflow_core::sendable::*;
 use workflow_rpc::client::error::Error as RpcError;
 use workflow_wasm::jserror::*;
@@ -332,6 +333,9 @@ pub enum Error {
 
     #[error(transparent)]
     Metrics(#[from] kaspa_metrics_core::error::Error),
+
+    #[error("Connected node is not synced")]
+    NotSynced,
 }
 
 impl From<Aborted> for Error {
@@ -415,8 +419,20 @@ impl<T> From<DowncastError<T>> for Error {
     }
 }
 
-impl<T> From<workflow_core::channel::SendError<T>> for Error {
-    fn from(e: workflow_core::channel::SendError<T>) -> Self {
+impl<T> From<SendError<T>> for Error {
+    fn from(e: SendError<T>) -> Self {
+        Error::Custom(e.to_string())
+    }
+}
+
+impl From<RecvError> for Error {
+    fn from(e: RecvError) -> Self {
+        Error::Custom(e.to_string())
+    }
+}
+
+impl<T> From<TrySendError<T>> for Error {
+    fn from(e: TrySendError<T>) -> Self {
         Error::Custom(e.to_string())
     }
 }

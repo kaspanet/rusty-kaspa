@@ -17,6 +17,7 @@ pub struct AccountDescriptor {
     pub kind: AccountKind,
     pub account_id: AccountId,
     pub account_name: Option<String>,
+    pub balance: Option<Balance>,
     pub prv_key_data_ids: AssocPrvKeyDataIds,
     pub receive_address: Option<Address>,
     pub change_address: Option<Address>,
@@ -29,11 +30,21 @@ impl AccountDescriptor {
         kind: AccountKind,
         account_id: AccountId,
         account_name: Option<String>,
+        balance: Option<Balance>,
         prv_key_data_ids: AssocPrvKeyDataIds,
         receive_address: Option<Address>,
         change_address: Option<Address>,
     ) -> Self {
-        Self { kind, account_id, account_name, prv_key_data_ids, receive_address, change_address, properties: BTreeMap::default() }
+        Self {
+            kind,
+            account_id,
+            account_name,
+            balance,
+            prv_key_data_ids,
+            receive_address,
+            change_address,
+            properties: BTreeMap::default(),
+        }
     }
 
     pub fn with_property(mut self, property: AccountDescriptorProperty, value: AccountDescriptorValue) -> Self {
@@ -225,6 +236,7 @@ declare! {
         receiveAddress? : Address,
         changeAddress? : Address,
         prvKeyDataIds : HexString[],
+        // balance? : Balance,
         [key: string]: any
     }
     "#,
