@@ -42,7 +42,11 @@ impl TransactionValidator {
             }
         }
         Self::check_sequence_lock(tx, pov_daa_score)?;
+
+        // The following call is not a consensus check (it could not be one in the first place since it uses floating number)
+        // but rather a mempool Replace by Fee validation rule. It was placed here purposely for avoiding unneeded script checks.
         Self::check_fee_per_mass(fee, mass_and_fee_per_mass_threshold)?;
+
         match flags {
             TxValidationFlags::Full | TxValidationFlags::SkipMassCheck => {
                 Self::check_sig_op_counts(tx)?;

@@ -89,7 +89,9 @@ pub enum TxRuleError {
     #[error("calculated contextual mass (including storage mass) {0} is not equal to the committed mass field {1}")]
     WrongMass(u64, u64),
 
-    #[error("fee per compute mass ratio is not greater than the threshold")]
+    /// [`TxRuleError::FeePerMassTooLow`] is not a consensus error but a mempool error triggered by the
+    /// fee/mass RBF validation rule
+    #[error("fee per contextual mass ratio is not greater than the threshold")]
     FeePerMassTooLow,
 }
 
