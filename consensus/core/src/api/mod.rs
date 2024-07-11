@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     acceptance_data::AcceptanceData,
-    api::args::{TransactionBatchValidationArgs, TransactionValidationArgs},
+    api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -74,7 +74,7 @@ pub trait ConsensusApi: Send + Sync {
     fn validate_mempool_transactions_in_parallel(
         &self,
         transactions: &mut [MutableTransaction],
-        args: &TransactionBatchValidationArgs,
+        args: &TransactionValidationBatchArgs,
     ) -> Vec<TxResult<()>> {
         unimplemented!()
     }

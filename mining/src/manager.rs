@@ -23,7 +23,7 @@ use crate::{
 use itertools::Itertools;
 use kaspa_consensus_core::{
     api::{
-        args::{TransactionBatchValidationArgs, TransactionValidationArgs},
+        args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         ConsensusApi,
     },
     block::{BlockTemplate, TemplateBuildMode},
@@ -308,7 +308,7 @@ impl MiningManager {
         // The capacity used here may be exceeded (see next comment).
         let mut accepted_transactions = Vec::with_capacity(incoming_transactions.len());
         // The validation args map is immutably empty since unorphaned transactions are not eligible to replace by fee.
-        let args = TransactionBatchValidationArgs::new();
+        let args = TransactionValidationBatchArgs::new();
         // We loop as long as incoming unorphaned transactions do unorphan other transactions when they
         // get validated and inserted into the mempool.
         while !incoming_transactions.is_empty() {
@@ -390,7 +390,7 @@ impl MiningManager {
         // read lock on mempool
         // Here, we simply log and drop all erroneous transactions since the caller doesn't care about those anyway
         let mut transactions = Vec::with_capacity(sorted_transactions.len());
-        let mut args = TransactionBatchValidationArgs::new();
+        let mut args = TransactionValidationBatchArgs::new();
         for chunk in &sorted_transactions.chunks(TRANSACTION_CHUNK_SIZE) {
             let mempool = self.mempool.read();
             let txs = chunk.filter_map(|tx| {

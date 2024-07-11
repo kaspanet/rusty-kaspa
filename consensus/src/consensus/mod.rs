@@ -41,7 +41,7 @@ use crate::{
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::{
-        args::{TransactionBatchValidationArgs, TransactionValidationArgs},
+        args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         stats::BlockCount,
         BlockValidationFutures, ConsensusApi, ConsensusStats,
     },
@@ -431,7 +431,7 @@ impl ConsensusApi for Consensus {
     fn validate_mempool_transactions_in_parallel(
         &self,
         transactions: &mut [MutableTransaction],
-        args: &TransactionBatchValidationArgs,
+        args: &TransactionValidationBatchArgs,
     ) -> Vec<TxResult<()>> {
         self.virtual_processor.validate_mempool_transactions_in_parallel(transactions, args)
     }

@@ -48,7 +48,7 @@ use crate::{
 };
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
-    api::args::{TransactionBatchValidationArgs, TransactionValidationArgs},
+    api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
     block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
     blockstatus::BlockStatus::{StatusDisqualifiedFromChain, StatusUTXOValid},
     coinbase::MinerData,
@@ -778,7 +778,7 @@ impl VirtualStateProcessor {
     pub fn validate_mempool_transactions_in_parallel(
         &self,
         mutable_txs: &mut [MutableTransaction],
-        args: &TransactionBatchValidationArgs,
+        args: &TransactionValidationBatchArgs,
     ) -> Vec<TxResult<()>> {
         let virtual_read = self.virtual_stores.read();
         let virtual_state = virtual_read.state.get().unwrap();

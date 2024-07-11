@@ -15,12 +15,12 @@ impl TransactionValidationArgs {
     }
 }
 
-/// A struct provided to consensus for transactions validation processing calls
-pub struct TransactionBatchValidationArgs {
+/// A struct provided to consensus for transactions validation batch processing calls
+pub struct TransactionValidationBatchArgs {
     tx_args: HashMap<TransactionId, TransactionValidationArgs>,
 }
 
-impl TransactionBatchValidationArgs {
+impl TransactionValidationBatchArgs {
     const DEFAULT_ARGS: TransactionValidationArgs = TransactionValidationArgs { fee_per_mass_threshold: None };
 
     pub fn new() -> Self {
@@ -40,7 +40,7 @@ impl TransactionBatchValidationArgs {
     }
 }
 
-impl Default for TransactionBatchValidationArgs {
+impl Default for TransactionValidationBatchArgs {
     fn default() -> Self {
         Self::new()
     }

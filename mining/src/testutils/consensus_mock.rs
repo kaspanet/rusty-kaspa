@@ -1,7 +1,7 @@
 use super::coinbase_mock::CoinbaseManagerMock;
 use kaspa_consensus_core::{
     api::{
-        args::{TransactionBatchValidationArgs, TransactionValidationArgs},
+        args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         ConsensusApi,
     },
     block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
@@ -144,7 +144,7 @@ impl ConsensusApi for ConsensusMock {
     fn validate_mempool_transactions_in_parallel(
         &self,
         transactions: &mut [MutableTransaction],
-        _: &TransactionBatchValidationArgs,
+        _: &TransactionValidationBatchArgs,
     ) -> Vec<TxResult<()>> {
         transactions.iter_mut().map(|x| self.validate_mempool_transaction(x, &Default::default())).collect()
     }

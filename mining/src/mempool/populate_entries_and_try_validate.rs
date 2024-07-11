@@ -1,7 +1,7 @@
 use crate::mempool::{errors::RuleResult, model::pool::Pool, Mempool};
 use kaspa_consensus_core::{
     api::{
-        args::{TransactionBatchValidationArgs, TransactionValidationArgs},
+        args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         ConsensusApi,
     },
     constants::UNACCEPTED_DAA_SCORE,
@@ -32,7 +32,7 @@ pub(crate) fn validate_mempool_transaction(
 pub(crate) fn validate_mempool_transactions_in_parallel(
     consensus: &dyn ConsensusApi,
     transactions: &mut [MutableTransaction],
-    args: &TransactionBatchValidationArgs,
+    args: &TransactionValidationBatchArgs,
 ) -> Vec<RuleResult<()>> {
     consensus.validate_mempool_transactions_in_parallel(transactions, args).into_iter().map(|x| x.map_err(RuleError::from)).collect()
 }
