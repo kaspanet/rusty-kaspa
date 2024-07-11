@@ -76,7 +76,7 @@ impl KaspaNetworkSimulator {
             };
 
             let (dummy_notification_sender, _) = unbounded();
-            let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
+            let notification_root = Arc::new(ConsensusNotificationRoot::new(self.config.net.into(), dummy_notification_sender));
             let consensus = Arc::new(Consensus::new(
                 db,
                 self.config.clone(),

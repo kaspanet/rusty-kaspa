@@ -13,6 +13,7 @@ use crate::{
 };
 use async_channel::Sender;
 use async_trait::async_trait;
+use kaspa_consensus_core::network::NetworkType;
 use kaspa_core::{debug, trace};
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -36,8 +37,8 @@ impl<N> Root<N>
 where
     N: Notification,
 {
-    pub fn new(sender: Sender<N>) -> Self {
-        let subscription_context = SubscriptionContext::new();
+    pub fn new(network_type: NetworkType, sender: Sender<N>) -> Self {
+        let subscription_context = SubscriptionContext::new(Some(network_type));
         Self::with_context(sender, subscription_context)
     }
 
@@ -98,7 +99,6 @@ where
 {
     sender: Sender<N>,
     subscriptions: RwLock<EventArray<DynSubscription>>,
-    subscription_context: SubscriptionContext,
     policies: MutationPolicies,
 }
 
@@ -109,15 +109,15 @@ where
     const ROOT_LISTENER_ID: ListenerId = 1;
 
     fn new(sender: Sender<N>, subscription_context: SubscriptionContext) -> Self {
-        let subscriptions = RwLock::new(ArrayBuilder::single(Self::ROOT_LISTENER_ID, None));
+        let subscriptions = RwLock::new(ArrayBuilder::single(Self::ROOT_LISTENER_ID, &subscription_context.address_tracker, None));
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::Wildcard);
-        Self { sender, subscriptions, subscription_context, policies }
+        Self { sender, subscriptions, policies }
     }
 
     fn send(&self, notification: N) -> Result<()> {
         let event = notification.event_type();
         let subscription = &self.subscriptions.read()[event];
-        if let Some(applied_notification) = notification.apply_subscription(&**subscription, &self.subscription_context) {
+        if let Some(applied_notification) = notification.apply_subscription(&**subscription) {
             self.sender.try_send(applied_notification)?;
         }
         Ok(())
@@ -126,7 +126,7 @@ where
     pub fn execute_subscribe_command(&self, scope: Scope, command: Command) -> Result<()> {
         let mutation = Mutation::new(command, scope);
         let mut subscriptions = self.subscriptions.write();
-        subscriptions[mutation.event_type()].mutate(mutation, self.policies, &self.subscription_context)?;
+        subscriptions[mutation.event_type()].mutate(mutation, self.policies)?;
         Ok(())
     }
 
@@ -138,7 +138,7 @@ where
         let event = notification.event_type();
         let subscription = &self.subscriptions.read()[event];
         if subscription.active() {
-            if let Some(applied_notification) = notification.apply_subscription(&**subscription, &self.subscription_context) {
+            if let Some(applied_notification) = notification.apply_subscription(&**subscription) {
                 self.sender.try_send(applied_notification)?;
             }
         }

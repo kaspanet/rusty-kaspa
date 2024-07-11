@@ -28,7 +28,7 @@ pub struct RpcCoreMock {
 }
 
 impl RpcCoreMock {
-    pub fn new() -> Self {
+    pub fn new(network: NetworkType) -> Self {
         let (sync_sender, sync_receiver) = unbounded();
         let policies = MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet);
         let core_notifier: Arc<RpcCoreNotifier> = Arc::new(Notifier::with_sync(
@@ -36,7 +36,7 @@ impl RpcCoreMock {
             EVENT_TYPE_ARRAY[..].into(),
             vec![],
             vec![],
-            SubscriptionContext::new(),
+            SubscriptionContext::new(Some(network)),
             10,
             policies,
             Some(sync_sender),
@@ -74,12 +74,6 @@ impl RpcCoreMock {
     }
 }
 
-impl Default for RpcCoreMock {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[async_trait]
 impl RpcApi for RpcCoreMock {
     // This fn needs to succeed while the client connects
@@ -112,7 +106,7 @@ impl RpcApi for RpcCoreMock {
     }
 
     async fn get_current_network_call(&self, _request: GetCurrentNetworkRequest) -> RpcResult<GetCurrentNetworkResponse> {
-        Err(RpcError::NotImplemented)
+        Ok(GetCurrentNetworkResponse::new(self.core_notifier.subscription_context().network_type().unwrap()))
     }
 
     async fn submit_block_call(&self, _request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {

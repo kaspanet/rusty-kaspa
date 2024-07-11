@@ -825,7 +825,7 @@ impl RpcClient {
     pub async fn subscribe_utxos_changed(&self, addresses: AddressOrStringArrayT) -> Result<()> {
         if let Some(listener_id) = self.listener_id() {
             let addresses: Vec<Address> = addresses.try_into()?;
-            self.inner.client.start_notify(listener_id, Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
+            self.inner.client.start_notify(listener_id, Scope::UtxosChanged(UtxosChangedScope::new(addresses))).await?;
         } else {
             log_error!("RPC subscribe on a closed connection");
         }
@@ -839,7 +839,7 @@ impl RpcClient {
     pub async fn unsubscribe_utxos_changed(&self, addresses: AddressOrStringArrayT) -> Result<()> {
         if let Some(listener_id) = self.listener_id() {
             let addresses: Vec<Address> = addresses.try_into()?;
-            self.inner.client.stop_notify(listener_id, Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
+            self.inner.client.stop_notify(listener_id, Scope::UtxosChanged(UtxosChangedScope::new(addresses))).await?;
         } else {
             log_error!("RPC unsubscribe on a closed connection");
         }

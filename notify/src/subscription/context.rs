@@ -6,6 +6,7 @@ use crate::{
         DynSubscription,
     },
 };
+use kaspa_consensus_core::network::{NetworkType, NetworkTypeError};
 use std::{ops::Deref, sync::Arc};
 
 #[cfg(test)]
@@ -20,50 +21,66 @@ pub struct SubscriptionContextInner {
 impl SubscriptionContextInner {
     const CONTEXT_LISTENER_ID: ListenerId = ListenerId::MAX;
 
-    pub fn new() -> Self {
-        Self::with_options(None)
+    pub fn new(network_type: Option<NetworkType>) -> Self {
+        Self::with_options(network_type, None)
     }
 
-    pub fn with_options(max_addresses: Option<usize>) -> Self {
-        let address_tracker = Tracker::new(max_addresses);
+    pub fn with_options(network_type: Option<NetworkType>, max_addresses: Option<usize>) -> Self {
+        let address_tracker = Tracker::new(network_type.map(From::from), max_addresses);
         let utxos_changed_subscription_all =
-            Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID));
+            Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID, address_tracker.clone()));
         Self { address_tracker, utxos_changed_subscription_to_all: utxos_changed_subscription_all }
     }
 
     #[cfg(test)]
-    pub fn with_addresses(addresses: &[Address]) -> Self {
-        let address_tracker = Tracker::with_addresses(addresses);
+    pub fn with_addresses(network_type: NetworkType, addresses: &[Address]) -> Self {
+        let address_tracker = Tracker::with_addresses(network_type.into(), addresses);
         let utxos_changed_subscription_all =
-            Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID));
+            Arc::new(UtxosChangedSubscription::new(UtxosChangedState::All, Self::CONTEXT_LISTENER_ID, address_tracker.clone()));
         Self { address_tracker, utxos_changed_subscription_to_all: utxos_changed_subscription_all }
     }
-}
 
-impl Default for SubscriptionContextInner {
-    fn default() -> Self {
-        Self::new()
+    pub fn network_type(&self) -> Option<NetworkType> {
+        self.address_tracker.prefix().map(|x| x.try_into().expect("in non-test configuration, the conversion is infallible"))
+    }
+
+    /// Tries to set the network type.
+    ///
+    /// For this to succeed, the context must have no network type yet or `network_type` must match the internal type.
+    pub fn set_network_type(&self, network_type: NetworkType) -> Result<(), NetworkTypeError> {
+        self.address_tracker
+            .set_prefix(network_type.into())
+            .then_some(())
+            .ok_or(NetworkTypeError::InvalidNetworkType(network_type.to_string()))
     }
 }
 
-#[derive(Clone, Debug, Default)]
+/// Subscription context
+///
+/// #### Implementation design
+///
+/// The context needs a defined network type in order to be active. The network type can be provided to the ctor or via
+/// a call to `set_network_type()`.
+///
+/// Once defined, the network type cannot be changed anymore.
+#[derive(Clone, Debug)]
 pub struct SubscriptionContext {
     inner: Arc<SubscriptionContextInner>,
 }
 
 impl SubscriptionContext {
-    pub fn new() -> Self {
-        Self::with_options(None)
+    pub fn new(network_type: Option<NetworkType>) -> Self {
+        Self::with_options(network_type, None)
     }
 
-    pub fn with_options(max_addresses: Option<usize>) -> Self {
-        let inner = Arc::new(SubscriptionContextInner::with_options(max_addresses));
+    pub fn with_options(network_type: Option<NetworkType>, max_addresses: Option<usize>) -> Self {
+        let inner = Arc::new(SubscriptionContextInner::with_options(network_type, max_addresses));
         Self { inner }
     }
 
     #[cfg(test)]
-    pub fn with_addresses(addresses: &[Address]) -> Self {
-        let inner = Arc::new(SubscriptionContextInner::with_addresses(addresses));
+    pub fn with_addresses(network_type: NetworkType, addresses: &[Address]) -> Self {
+        let inner = Arc::new(SubscriptionContextInner::with_addresses(network_type, addresses));
         Self { inner }
     }
 }
@@ -79,7 +96,7 @@ impl Deref for SubscriptionContext {
 #[cfg(test)]
 mod tests {
     use crate::{
-        address::tracker::{CounterMap, Index, IndexSet, Indexer, RefCount},
+        address::tracker::{CounterMap, Index, IndexSet, RefCount, Tracker},
         subscription::SubscriptionContext,
     };
     use itertools::Itertools;
@@ -90,9 +107,11 @@ mod tests {
     use std::collections::{HashMap, HashSet};
     use workflow_perf_monitor::mem::get_process_memory_info;
 
+    const ADDRESS_PREFIX: Prefix = Prefix::Mainnet;
+
     fn create_addresses(count: usize) -> Vec<Address> {
         (0..count)
-            .map(|i| Address::new(Prefix::Mainnet, kaspa_addresses::Version::PubKey, &Uint256::from_u64(i as u64).to_le_bytes()))
+            .map(|i| Address::new(ADDRESS_PREFIX, kaspa_addresses::Version::PubKey, &Uint256::from_u64(i as u64).to_le_bytes()))
             .collect()
     }
 
@@ -169,7 +188,11 @@ mod tests {
         let _ = measure_consumed_memory(
             ITEM_LEN,
             NUM_ITEMS,
-            || (0..NUM_ITEMS).map(|_| SubscriptionContext::with_addresses(&addresses)).collect_vec(),
+            || {
+                (0..NUM_ITEMS)
+                    .map(|_| SubscriptionContext::with_addresses(ADDRESS_PREFIX.try_into().unwrap(), &addresses))
+                    .collect_vec()
+            },
             |x| (x.address_tracker.len(), x.address_tracker.capacity()),
         );
     }
@@ -223,6 +246,7 @@ mod tests {
         const ITEM_LEN: usize = 10;
         const NUM_ITEMS: usize = 10_000_000;
 
+        let tracker = Tracker::new(Some(ADDRESS_PREFIX), None);
         let _ = init_and_measure_consumed_memory(
             ITEM_LEN,
             NUM_ITEMS,
@@ -231,10 +255,10 @@ mod tests {
                     .map(|_| {
                         // Reserve the required capacity
                         // Note: the resulting allocated HashMap bucket count is (capacity * 8 / 7).next_power_of_two()
-                        let mut item = CounterMap::with_capacity(ITEM_LEN);
+                        let mut item = CounterMap::with_capacity(tracker.clone(), ITEM_LEN);
 
                         (0..ITEM_LEN as Index).for_each(|x| {
-                            item.insert(x);
+                            item.test_direct_insert(x);
                         });
                         item
                     })
@@ -326,6 +350,7 @@ mod tests {
         const ITEM_LEN: usize = 10_000_000;
         const NUM_ITEMS: usize = 10;
 
+        let tracker = Tracker::new(Some(ADDRESS_PREFIX), None);
         let _ = init_and_measure_consumed_memory(
             ITEM_LEN,
             NUM_ITEMS,
@@ -334,10 +359,10 @@ mod tests {
                     .map(|_| {
                         // Reserve the required capacity
                         // Note: the resulting allocated HashSet bucket count is (capacity * 8 / 7).next_power_of_two()
-                        let mut item = IndexSet::with_capacity(ITEM_LEN);
+                        let mut item = IndexSet::with_capacity(tracker.clone(), ITEM_LEN);
 
                         (0..ITEM_LEN as Index).for_each(|x| {
-                            item.insert(x);
+                            item.test_direct_insert(x);
                         });
                         item
                     })

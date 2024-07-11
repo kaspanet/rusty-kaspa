@@ -6,7 +6,6 @@ use kaspa_notify::{
     full_featured,
     notification::Notification as NotificationTrait,
     subscription::{
-        context::SubscriptionContext,
         single::{OverallSubscription, UtxosChangedSubscription, VirtualChainChangedSubscription},
         Subscription,
     },
@@ -46,18 +45,14 @@ pub enum Notification {
 }
 
 impl NotificationTrait for Notification {
-    fn apply_overall_subscription(&self, subscription: &OverallSubscription, _context: &SubscriptionContext) -> Option<Self> {
+    fn apply_overall_subscription(&self, subscription: &OverallSubscription) -> Option<Self> {
         match subscription.active() {
             true => Some(self.clone()),
             false => None,
         }
     }
 
-    fn apply_virtual_chain_changed_subscription(
-        &self,
-        subscription: &VirtualChainChangedSubscription,
-        _context: &SubscriptionContext,
-    ) -> Option<Self> {
+    fn apply_virtual_chain_changed_subscription(&self, subscription: &VirtualChainChangedSubscription) -> Option<Self> {
         match subscription.active() {
             true => {
                 // If the subscription excludes accepted transaction ids and the notification includes some
@@ -77,11 +72,7 @@ impl NotificationTrait for Notification {
         }
     }
 
-    fn apply_utxos_changed_subscription(
-        &self,
-        _subscription: &UtxosChangedSubscription,
-        _context: &SubscriptionContext,
-    ) -> Option<Self> {
+    fn apply_utxos_changed_subscription(&self, _subscription: &UtxosChangedSubscription) -> Option<Self> {
         // No effort is made here to apply the subscription addresses.
         // This will be achieved farther along the notification backbone.
         Some(self.clone())

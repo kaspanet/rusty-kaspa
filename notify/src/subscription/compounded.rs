@@ -1,11 +1,12 @@
 use crate::{
-    address::{error::Result, tracker::Counters},
+    address::{
+        error::Result,
+        tracker::{Counters, Tracker},
+    },
     events::EventType,
     scope::{Scope, UtxosChangedScope, VirtualChainChangedScope},
-    subscription::{context::SubscriptionContext, Command, Compounded, Mutation, Subscription},
+    subscription::{Command, Compounded, Mutation, Subscription},
 };
-use itertools::Itertools;
-use kaspa_addresses::{Address, Prefix};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OverallSubscription {
@@ -20,7 +21,7 @@ impl OverallSubscription {
 }
 
 impl Compounded for OverallSubscription {
-    fn compound(&mut self, mutation: Mutation, _context: &SubscriptionContext) -> Option<Mutation> {
+    fn compound(&mut self, mutation: Mutation) -> Option<Mutation> {
         assert_eq!(self.event_type(), mutation.event_type());
         match mutation.command {
             Command::Start => {
@@ -51,7 +52,7 @@ impl Subscription for OverallSubscription {
         self.active > 0
     }
 
-    fn scope(&self, _context: &SubscriptionContext) -> Scope {
+    fn scope(&self) -> Scope {
         self.event_type.into()
     }
 }
@@ -84,7 +85,7 @@ impl VirtualChainChangedSubscription {
 }
 
 impl Compounded for VirtualChainChangedSubscription {
-    fn compound(&mut self, mutation: Mutation, _context: &SubscriptionContext) -> Option<Mutation> {
+    fn compound(&mut self, mutation: Mutation) -> Option<Mutation> {
         assert_eq!(self.event_type(), mutation.event_type());
         if let Scope::VirtualChainChanged(ref scope) = mutation.scope {
             let all = scope.include_accepted_transaction_ids;
@@ -144,51 +145,52 @@ impl Subscription for VirtualChainChangedSubscription {
         self.include_accepted_transaction_ids.iter().sum::<usize>() > 0
     }
 
-    fn scope(&self, _context: &SubscriptionContext) -> Scope {
+    fn scope(&self) -> Scope {
         Scope::VirtualChainChanged(VirtualChainChangedScope::new(self.all() > 0))
     }
 }
 
-#[derive(Clone, Default, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UtxosChangedSubscription {
     all: usize,
     indexes: Counters,
 }
 
 impl UtxosChangedSubscription {
-    pub fn new() -> Self {
-        Self { all: 0, indexes: Counters::new() }
+    pub fn new(tracker: Tracker) -> Self {
+        Self { all: 0, indexes: Counters::new(tracker) }
     }
 
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self { all: 0, indexes: Counters::with_capacity(capacity) }
+    pub fn with_capacity(tracker: Tracker, capacity: usize) -> Self {
+        Self { all: 0, indexes: Counters::with_capacity(tracker, capacity) }
     }
 
-    pub fn to_addresses(&self, prefix: Prefix, context: &SubscriptionContext) -> Vec<Address> {
-        self.indexes
-            .iter()
-            .filter_map(|(&index, &count)| {
-                (count > 0).then_some(()).and_then(|_| context.address_tracker.get_address_at_index(index, prefix))
-            })
-            .collect_vec()
+    pub fn register(&mut self, scope: UtxosChangedScope) -> Result<UtxosChangedScope> {
+        match scope {
+            UtxosChangedScope::Addresses(addresses) => Ok(UtxosChangedScope::new(self.indexes.register(addresses)?)),
+            UtxosChangedScope::Indexes(indexes) => Ok(UtxosChangedScope::new_indexes(self.indexes.register_indexes(indexes))),
+        }
     }
 
-    pub fn register(&mut self, addresses: Vec<Address>, context: &SubscriptionContext) -> Result<Vec<Address>> {
-        context.address_tracker.register(&mut self.indexes, addresses)
+    pub fn unregister(&mut self, scope: UtxosChangedScope) -> Result<UtxosChangedScope> {
+        match scope {
+            UtxosChangedScope::Addresses(addresses) => Ok(UtxosChangedScope::new(self.indexes.unregister(addresses)?)),
+            UtxosChangedScope::Indexes(indexes) => Ok(UtxosChangedScope::new_indexes(self.indexes.unregister_indexes(indexes))),
+        }
     }
 
-    pub fn unregister(&mut self, addresses: Vec<Address>, context: &SubscriptionContext) -> Vec<Address> {
-        context.address_tracker.unregister(&mut self.indexes, addresses)
+    pub fn get_indexes(&self) -> UtxosChangedScope {
+        UtxosChangedScope::new_indexes(self.indexes.get_indexes())
     }
 }
 
 impl Compounded for UtxosChangedSubscription {
-    fn compound(&mut self, mutation: Mutation, context: &SubscriptionContext) -> Option<Mutation> {
+    fn compound(&mut self, mutation: Mutation) -> Option<Mutation> {
         assert_eq!(self.event_type(), mutation.event_type());
         if let Scope::UtxosChanged(scope) = mutation.scope {
             match mutation.command {
                 Command::Start => {
-                    if scope.addresses.is_empty() {
+                    if scope.is_empty() {
                         // Add All
                         self.all += 1;
                         if self.all == 1 {
@@ -196,27 +198,27 @@ impl Compounded for UtxosChangedSubscription {
                         }
                     } else {
                         // Add(A)
-                        let added = self.register(scope.addresses, context).expect("compounded always registers");
+                        let added = self.register(scope).expect("compounded always registers");
                         if !added.is_empty() && self.all == 0 {
-                            return Some(Mutation::new(Command::Start, UtxosChangedScope::new(added).into()));
+                            return Some(Mutation::new(Command::Start, added.into()));
                         }
                     }
                 }
                 Command::Stop => {
-                    if !scope.addresses.is_empty() {
+                    if !scope.is_empty() {
                         // Remove(R)
-                        let removed = self.unregister(scope.addresses, context);
+                        let removed = self.unregister(scope).expect("compounded always unregisters");
                         if !removed.is_empty() && self.all == 0 {
-                            return Some(Mutation::new(Command::Stop, UtxosChangedScope::new(removed).into()));
+                            return Some(Mutation::new(Command::Stop, removed.into()));
                         }
                     } else {
                         // Remove All
                         assert!(self.all > 0);
                         self.all -= 1;
                         if self.all == 0 {
-                            let addresses = self.to_addresses(Prefix::Mainnet, context);
-                            if !addresses.is_empty() {
-                                return Some(Mutation::new(Command::Start, UtxosChangedScope::new(addresses).into()));
+                            let indexes = self.get_indexes();
+                            if !indexes.is_empty() {
+                                return Some(Mutation::new(Command::Start, indexes.into()));
                             } else {
                                 return Some(Mutation::new(Command::Stop, UtxosChangedScope::default().into()));
                             }
@@ -239,9 +241,9 @@ impl Subscription for UtxosChangedSubscription {
         self.all > 0 || !self.indexes.is_empty()
     }
 
-    fn scope(&self, context: &SubscriptionContext) -> Scope {
-        let addresses = if self.all > 0 { vec![] } else { self.to_addresses(Prefix::Mainnet, context) };
-        Scope::UtxosChanged(UtxosChangedScope::new(addresses))
+    fn scope(&self) -> Scope {
+        let scope = if self.all > 0 { Default::default() } else { self.get_indexes() };
+        scope.into()
     }
 }
 
@@ -252,7 +254,7 @@ mod tests {
     use super::super::*;
     use super::*;
     use crate::{
-        address::{test_helpers::get_3_addresses, tracker::Counter},
+        address::test_helpers::{get_3_addresses, ADDRESS_PREFIX, NETWORK_TYPE},
         scope::BlockAddedScope,
     };
     use std::panic::AssertUnwindSafe;
@@ -265,7 +267,6 @@ mod tests {
 
     struct Test {
         name: &'static str,
-        context: SubscriptionContext,
         initial_state: CompoundedSubscription,
         steps: Vec<Step>,
         final_state: CompoundedSubscription,
@@ -276,7 +277,7 @@ mod tests {
             let mut state = self.initial_state.clone_box();
             for (idx, step) in self.steps.iter().enumerate() {
                 trace!("{}: {}", idx, step.name);
-                let result = state.compound(step.mutation.clone(), &self.context);
+                let result = state.compound(step.mutation.clone());
                 assert_eq!(step.result, result, "{} - {}: wrong compound result", self.name, step.name);
                 trace!("{}: state = {:?}", idx, state);
             }
@@ -293,7 +294,6 @@ mod tests {
         let remove = || Mutation::new(Command::Stop, Scope::BlockAdded(BlockAddedScope {}));
         let test = Test {
             name: "OverallSubscription 0 to 2 to 0",
-            context: SubscriptionContext::new(),
             initial_state: none(),
             steps: vec![
                 Step { name: "add 1", mutation: add(), result: Some(add()) },
@@ -306,7 +306,7 @@ mod tests {
         let mut state = test.run();
 
         // Removing once more must panic
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove(), &test.context)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove())));
         assert!(result.is_err(), "{}: trying to remove when counter is zero must panic", test.name);
     }
 
@@ -323,7 +323,6 @@ mod tests {
         let remove_all = || m(Command::Stop, true);
         let test = Test {
             name: "VirtualChainChanged",
-            context: SubscriptionContext::new(),
             initial_state: none(),
             steps: vec![
                 Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
@@ -347,9 +346,9 @@ mod tests {
         let mut state = test.run();
 
         // Removing once more must panic
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_all(), &test.context)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_all())));
         assert!(result.is_err(), "{}: trying to remove all when counter is zero must panic", test.name);
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_reduced(), &test.context)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_reduced())));
         assert!(result.is_err(), "{}: trying to remove reduced when counter is zero must panic", test.name);
     }
 
@@ -357,13 +356,14 @@ mod tests {
     #[allow(clippy::redundant_clone)]
     fn test_utxos_changed_compounding() {
         kaspa_core::log::try_init_logger("trace,kaspa_notify=trace");
+        let context = SubscriptionContext::new(Some(NETWORK_TYPE));
         let a_stock = get_3_addresses(true);
 
         let a = |indexes: &[usize]| indexes.iter().map(|idx| (a_stock[*idx]).clone()).collect::<Vec<_>>();
         let m = |command: Command, indexes: &[usize]| -> Mutation {
             Mutation { command, scope: Scope::UtxosChanged(UtxosChangedScope::new(a(indexes))) }
         };
-        let none = Box::<UtxosChangedSubscription>::default;
+        let none = || Box::new(UtxosChangedSubscription::new(context.address_tracker.clone()));
 
         let add_all = || m(Command::Start, &[]);
         let remove_all = || m(Command::Stop, &[]);
@@ -373,9 +373,13 @@ mod tests {
         let remove_0 = || m(Command::Stop, &[0]);
         let remove_1 = || m(Command::Stop, &[1]);
 
+        let final_tracker = Tracker::new(Some(ADDRESS_PREFIX), None);
+        let mut final_indexes = Counters::new(final_tracker.clone());
+        final_indexes.register(a(&[0, 1])).unwrap();
+        final_indexes.unregister(a(&[0, 1])).unwrap();
+
         let test = Test {
             name: "UtxosChanged",
-            context: SubscriptionContext::new(),
             initial_state: none(),
             steps: vec![
                 Step { name: "add all 1", mutation: add_all(), result: Some(add_all()) },
@@ -397,18 +401,12 @@ mod tests {
                 Step { name: "remove all 1, revealing a0", mutation: remove_all(), result: Some(add_0()) },
                 Step { name: "remove a0", mutation: remove_0(), result: Some(remove_0()) },
             ],
-            final_state: Box::new(UtxosChangedSubscription {
-                all: 0,
-                indexes: Counters::with_counters(vec![
-                    Counter { index: 0, count: 0, locked: true },
-                    Counter { index: 1, count: 0, locked: false },
-                ]),
-            }),
+            final_state: Box::new(UtxosChangedSubscription { all: 0, indexes: final_indexes }),
         };
         let mut state = test.run();
 
         // Removing once more must panic
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_all(), &test.context)));
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_all())));
         assert!(result.is_err(), "{}: trying to remove all when counter is zero must panic", test.name);
         // let result = std::panic::catch_unwind(AssertUnwindSafe(|| state.compound(remove_0(), &test.context)));
         // assert!(result.is_err(), "{}: trying to remove an address when its counter is zero must panic", test.name);

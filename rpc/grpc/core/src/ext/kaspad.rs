@@ -1,4 +1,7 @@
-use kaspa_notify::{scope::Scope, subscription::Command};
+use kaspa_notify::{
+    scope::{Scope, UtxosChangedScope},
+    subscription::Command,
+};
 
 use crate::protowire::{
     kaspad_request, kaspad_response, KaspadRequest, KaspadResponse, NotifyBlockAddedRequestMessage,
@@ -46,7 +49,10 @@ impl kaspad_request::Payload {
                 })
             }
             Scope::UtxosChanged(ref scope) => kaspad_request::Payload::NotifyUtxosChangedRequest(NotifyUtxosChangedRequestMessage {
-                addresses: scope.addresses.iter().map(|x| x.into()).collect::<Vec<String>>(),
+                addresses: match scope {
+                    UtxosChangedScope::Addresses(ref addresses) => addresses.iter().map(|x| x.into()).collect::<Vec<String>>(),
+                    UtxosChangedScope::Indexes(_) => todo!("Convert indexes into addresses into strings and collect"),
+                },
                 command: command.into(),
             }),
             Scope::SinkBlueScoreChanged(_) => {

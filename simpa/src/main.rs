@@ -212,7 +212,7 @@ fn main_impl(mut args: Args) {
             (false, _) => load_existing_db!(input_dir, conn_builder),
         };
         let (dummy_notification_sender, _) = unbounded();
-        let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
+        let notification_root = Arc::new(ConsensusNotificationRoot::new(config.net.into(), dummy_notification_sender));
         let consensus = Arc::new(Consensus::new(
             db,
             config.clone(),
@@ -248,7 +248,7 @@ fn main_impl(mut args: Args) {
     // Benchmark the DAG validation time
     let (_lifetime2, db2) = create_temp_db!(ConnBuilder::default().with_parallelism(num_cpus::get()).with_files_limit(default_fd));
     let (dummy_notification_sender, _) = unbounded();
-    let notification_root = Arc::new(ConsensusNotificationRoot::new(dummy_notification_sender));
+    let notification_root = Arc::new(ConsensusNotificationRoot::new(config.net.into(), dummy_notification_sender));
     let consensus2 = Arc::new(Consensus::new(
         db2,
         config.clone(),

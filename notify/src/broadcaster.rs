@@ -179,7 +179,7 @@ where
                             let event = notification.event_type();
                             for (subscription, encoding_set) in plan[event].iter() {
                                 // ... by subscription scope
-                                if let Some(applied_notification) = notification.apply_subscription(&**subscription, &context) {
+                                if let Some(applied_notification) = notification.apply_subscription(&**subscription, ) {
                                     for (encoding, connection_set) in encoding_set.iter() {
                                         // ... by message encoding
                                         let message = C::into_message(&applied_notification, encoding);
@@ -258,6 +258,7 @@ where
 mod tests {
     use super::*;
     use crate::{
+        address::test_helpers::NETWORK_TYPE,
         connection::{ChannelConnection, ChannelType},
         listener::Listener,
         notification::test_helpers::*,
@@ -287,7 +288,7 @@ mod tests {
     impl Test {
         fn new(name: &'static str, listener_count: usize, steps: Vec<Step>) -> Self {
             const IDENT: &str = "test";
-            let subscription_context = SubscriptionContext::new();
+            let subscription_context = SubscriptionContext::new(Some(NETWORK_TYPE));
             let (sync_sender, sync_receiver) = unbounded();
             let (notification_sender, notification_receiver) = unbounded();
             let broadcaster =
@@ -297,7 +298,7 @@ mod tests {
             for i in 0..listener_count {
                 let (sender, receiver) = unbounded();
                 let connection = TestConnection::new(IDENT, sender, ChannelType::Closable);
-                let listener = Listener::new(i as ListenerId, connection);
+                let listener = Listener::new(i as ListenerId, connection, &subscription_context);
                 listeners.push(listener);
                 notification_receivers.push(receiver);
             }
@@ -325,8 +326,7 @@ mod tests {
                     if let Some(ref mutation) = mutation {
                         trace!("{} #{} - {}: L{} {:?}", self.name, step_idx, step.name, idx, mutation);
                         let event = mutation.event_type();
-                        let outcome =
-                            self.listeners[idx].mutate(mutation.clone(), Default::default(), &self.subscription_context).unwrap();
+                        let outcome = self.listeners[idx].mutate(mutation.clone(), Default::default()).unwrap();
                         if outcome.has_new_state() {
                             trace!(
                                 "{} #{} - {}: - L{} has the new state {:?}",
