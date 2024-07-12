@@ -311,16 +311,7 @@ impl MiningManager {
                 .zip(validation_results)
                 .flat_map(|((transaction, priority), validation_result)| {
                     let orphan_id = transaction.id();
-
-                    // The RBF policy applied to an orphaned transaction is not recorded in the orphan pool
-                    // but we can infer it from the priority:
-                    //  - high means a submitted tx via RPC which forbids RBF
-                    //  - low means a tx arrived via P2P which allows RBF
-                    let rbf_policy = match priority {
-                        Priority::High => RbfPolicy::Forbidden,
-                        Priority::Low => RbfPolicy::Allowed,
-                    };
-
+                    let rbf_policy = Mempool::get_orphan_transaction_rbf_policy(priority);
                     match mempool.post_validate_and_insert_transaction(
                         consensus,
                         validation_result,

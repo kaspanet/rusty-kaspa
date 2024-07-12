@@ -58,7 +58,7 @@ impl Mempool {
                 if orphan == Orphan::Forbidden {
                     return Err(RuleError::RejectDisallowedOrphan(transaction_id));
                 }
-                self.transaction_pool.check_double_spends(&transaction)?;
+                let _ = self.get_replace_by_fee_constraint(&transaction, rbf_policy)?;
                 self.orphan_pool.try_add_orphan(consensus.get_virtual_daa_score(), transaction, priority)?;
                 return Ok(TransactionPostValidation::default());
             }
@@ -186,9 +186,26 @@ impl Mempool {
         // The one we just removed from the orphan pool.
         assert_eq!(transactions.len(), 1, "the list returned by remove_orphan is expected to contain exactly one transaction");
         let transaction = transactions.pop().unwrap();
+        let rbf_policy = Self::get_orphan_transaction_rbf_policy(transaction.priority);
 
         self.validate_transaction_unacceptance(&transaction.mtx)?;
-        self.transaction_pool.check_double_spends(&transaction.mtx)?;
+        let _ = self.get_replace_by_fee_constraint(&transaction.mtx, rbf_policy)?;
         Ok(transaction)
+    }
+
+    /// Returns the RBF policy to apply to an orphan/unorphaned transaction by inferring it from the transaction priority.
+    pub(crate) fn get_orphan_transaction_rbf_policy(priority: Priority) -> RbfPolicy {
+        // The RBF policy applied to an orphaned transaction is not recorded in the orphan pool
+        // but we can infer it from the priority:
+        //
+        //  - high means a submitted tx via RPC which forbids RBF
+        //  - low means a tx arrived via P2P which allows RBF
+        //
+        // Note that the RPC submit transaction replacement case, implying a mandatory RBF, forbids orphans
+        // so is excluded here.
+        match priority {
+            Priority::High => RbfPolicy::Forbidden,
+            Priority::Low => RbfPolicy::Allowed,
+        }
     }
 }
