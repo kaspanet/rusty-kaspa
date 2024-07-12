@@ -7,8 +7,7 @@ mod tests {
         mempool::{
             config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE},
             errors::RuleError,
-            model::tx::RbfPolicy,
-            tx::{Orphan, Priority},
+            tx::{Orphan, Priority, RbfPolicy},
         },
         model::{candidate_tx::CandidateTransaction, tx_query::TransactionQuery},
         testutils::consensus_mock::ConsensusMock,
@@ -131,6 +130,7 @@ mod tests {
                 transaction_not_an_orphan.clone(),
                 priority,
                 orphan,
+                RbfPolicy::Forbidden,
             );
             assert!(
                 result.is_ok(),
@@ -213,9 +213,9 @@ mod tests {
             );
 
             // submit the same transaction again to the mempool
-            let result = into_mempool_result(mining_manager.validate_and_insert_mutable_transaction(
+            let result = into_mempool_result(mining_manager.validate_and_insert_transaction(
                 consensus.as_ref(),
-                MutableTransaction::from_tx(transaction.tx.as_ref().clone()),
+                transaction.tx.as_ref().clone(),
                 priority,
                 orphan,
                 rbf_policy,
@@ -259,7 +259,13 @@ mod tests {
                 transaction.id()
             );
 
-            let result = mining_manager.validate_and_insert_transaction(consensus.as_ref(), transaction.clone(), priority, orphan);
+            let result = mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                transaction.clone(),
+                priority,
+                orphan,
+                RbfPolicy::Forbidden,
+            );
             assert!(result.is_ok(), "({priority:?}, {orphan:?}, {rbf_policy:?}) the mempool should accept a valid transaction when it is able to populate its UTXO entries");
 
             let mut double_spending_transaction = transaction.clone();
@@ -270,9 +276,9 @@ mod tests {
                 double_spending_transaction.id(),
                 "({priority:?}, {orphan:?}, {rbf_policy:?}) two transactions differing by only one output value should have different ids"
             );
-            let result = into_mempool_result(mining_manager.validate_and_insert_mutable_transaction(
+            let result = into_mempool_result(mining_manager.validate_and_insert_transaction(
                 consensus.as_ref(),
-                MutableTransaction::from_tx(double_spending_transaction.clone()),
+                double_spending_transaction.clone(),
                 priority,
                 orphan,
                 rbf_policy,
@@ -361,6 +367,7 @@ mod tests {
                                 transaction.clone(),
                                 Priority::High,
                                 Orphan::Allowed,
+                                RbfPolicy::Forbidden,
                             );
                             assert!(
                                 result.is_ok(),
@@ -380,6 +387,7 @@ mod tests {
                                 children.iter(),
                                 Priority::High,
                                 Orphan::Allowed,
+                                RbfPolicy::Forbidden,
                             );
                             (transaction, children)
                         })
@@ -404,24 +412,17 @@ mod tests {
                     true => tx_count + 1 - transactions.len() - children.iter().map(|x| x.len()).sum::<usize>(),
                     false => tx_count,
                 };
-                let result = match rbf_policy {
-                    RbfPolicy::Forbidden => mining_manager.validate_and_insert_transaction(
-                        consensus.as_ref(),
-                        transaction_replacement.clone(),
-                        Priority::High,
-                        Orphan::Forbidden,
-                    ),
-                    RbfPolicy::Allowed => mining_manager.validate_and_insert_mutable_transaction(
-                        consensus.as_ref(),
-                        MutableTransaction::from_tx(transaction_replacement.clone()),
-                        Priority::Low,
-                        Orphan::Forbidden,
-                        RbfPolicy::Allowed,
-                    ),
-                    RbfPolicy::Mandatory => {
-                        mining_manager.validate_and_replace_transaction(consensus.as_ref(), transaction_replacement.clone())
-                    }
+                let priority = match rbf_policy {
+                    RbfPolicy::Forbidden | RbfPolicy::Mandatory => Priority::High,
+                    RbfPolicy::Allowed => Priority::Low,
                 };
+                let result = mining_manager.validate_and_insert_transaction(
+                    consensus.as_ref(),
+                    transaction_replacement.clone(),
+                    priority,
+                    Orphan::Forbidden,
+                    rbf_policy,
+                );
                 if expected {
                     assert!(result.is_ok(), "[{}, {:?}] mempool should accept a RBF transaction", self.name, rbf_policy,);
                     let tx_insertion = result.unwrap();
@@ -555,6 +556,7 @@ mod tests {
                 transaction.tx.as_ref().clone(),
                 Priority::Low,
                 Orphan::Allowed,
+                RbfPolicy::Forbidden,
             );
             assert!(result.is_ok(), "the insertion of a new valid transaction in the mempool failed");
         }
@@ -613,6 +615,7 @@ mod tests {
             transaction_in_the_mempool.tx.as_ref().clone(),
             Priority::Low,
             Orphan::Allowed,
+            RbfPolicy::Forbidden,
         );
         assert!(result.is_ok());
 
@@ -645,8 +648,13 @@ mod tests {
         assert_eq!(parent_txs.len(), TX_PAIRS_COUNT);
         assert_eq!(child_txs.len(), TX_PAIRS_COUNT);
         for orphan in child_txs.iter() {
-            let result =
-                mining_manager.validate_and_insert_transaction(consensus.as_ref(), orphan.clone(), Priority::Low, Orphan::Allowed);
+            let result = mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                orphan.clone(),
+                Priority::Low,
+                Orphan::Allowed,
+                RbfPolicy::Forbidden,
+            );
             assert!(result.is_ok(), "the mempool should accept the valid orphan transaction {}", orphan.id());
         }
         let (populated_txs, orphans) = mining_manager.get_all_transactions(TransactionQuery::All);
@@ -790,8 +798,13 @@ mod tests {
         );
 
         // Add the remaining parent transaction into the mempool
-        let result =
-            mining_manager.validate_and_insert_transaction(consensus.as_ref(), parent_txs[0].clone(), Priority::Low, Orphan::Allowed);
+        let result = mining_manager.validate_and_insert_transaction(
+            consensus.as_ref(),
+            parent_txs[0].clone(),
+            Priority::Low,
+            Orphan::Allowed,
+            RbfPolicy::Forbidden,
+        );
         assert!(result.is_ok(), "the insertion of the remaining parent transaction in the mempool failed");
         let unorphaned_txs = result.unwrap().accepted;
         let (populated_txs, orphans) = mining_manager.get_all_transactions(TransactionQuery::All);
@@ -897,8 +910,13 @@ mod tests {
 
         // Try submit children while rejecting orphans
         for (tx, test) in child_txs.iter().zip(tests.iter()) {
-            let result =
-                mining_manager.validate_and_insert_transaction(consensus.as_ref(), tx.clone(), test.priority, Orphan::Forbidden);
+            let result = mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                tx.clone(),
+                test.priority,
+                Orphan::Forbidden,
+                RbfPolicy::Forbidden,
+            );
             assert!(result.is_err(), "mempool should reject an orphan transaction with {:?} when asked to do so", test.priority);
             if let Err(MiningManagerError::MempoolError(RuleError::RejectDisallowedOrphan(transaction_id))) = result {
                 assert_eq!(
@@ -918,8 +936,13 @@ mod tests {
 
         // Try submit children while accepting orphans
         for (tx, test) in child_txs.iter().zip(tests.iter()) {
-            let result =
-                mining_manager.validate_and_insert_transaction(consensus.as_ref(), tx.clone(), test.priority, Orphan::Allowed);
+            let result = mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                tx.clone(),
+                test.priority,
+                Orphan::Allowed,
+                RbfPolicy::Forbidden,
+            );
             assert_eq!(
                 test.should_enter_orphan_pool,
                 result.is_ok(),
@@ -947,8 +970,13 @@ mod tests {
 
         // Submit all the parents
         for (i, (tx, test)) in parent_txs.iter().zip(tests.iter()).enumerate() {
-            let result =
-                mining_manager.validate_and_insert_transaction(consensus.as_ref(), tx.clone(), test.priority, Orphan::Allowed);
+            let result = mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                tx.clone(),
+                test.priority,
+                Orphan::Allowed,
+                RbfPolicy::Forbidden,
+            );
             assert!(result.is_ok(), "mempool should accept a valid transaction with {:?} when asked to do so", test.priority,);
             let unorphaned_txs = &result.as_ref().unwrap().accepted;
             assert_eq!(
@@ -987,8 +1015,13 @@ mod tests {
 
         // Add to mempool a transaction that spends child_tx_2 (as high priority)
         let spending_tx = create_transaction(&child_tx_2, 1_000);
-        let result =
-            mining_manager.validate_and_insert_transaction(consensus.as_ref(), spending_tx.clone(), Priority::High, Orphan::Allowed);
+        let result = mining_manager.validate_and_insert_transaction(
+            consensus.as_ref(),
+            spending_tx.clone(),
+            Priority::High,
+            Orphan::Allowed,
+            RbfPolicy::Forbidden,
+        );
         assert!(result.is_ok(), "the insertion in the mempool of the spending transaction failed");
 
         // Revalidate, to make sure spending_tx is still valid
@@ -1042,11 +1075,21 @@ mod tests {
         let (parent_txs, child_txs) = create_arrays_of_parent_and_children_transactions(&consensus, TX_PAIRS_COUNT);
 
         for (parent_tx, child_tx) in parent_txs.iter().zip(child_txs.iter()) {
-            let result =
-                mining_manager.validate_and_insert_transaction(consensus.as_ref(), parent_tx.clone(), Priority::Low, Orphan::Allowed);
+            let result = mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                parent_tx.clone(),
+                Priority::Low,
+                Orphan::Allowed,
+                RbfPolicy::Forbidden,
+            );
             assert!(result.is_ok(), "the mempool should accept the valid parent transaction {}", parent_tx.id());
-            let result =
-                mining_manager.validate_and_insert_transaction(consensus.as_ref(), child_tx.clone(), Priority::Low, Orphan::Allowed);
+            let result = mining_manager.validate_and_insert_transaction(
+                consensus.as_ref(),
+                child_tx.clone(),
+                Priority::Low,
+                Orphan::Allowed,
+                RbfPolicy::Forbidden,
+            );
             assert!(result.is_ok(), "the mempool should accept the valid child transaction {}", parent_tx.id());
         }
 
@@ -1292,9 +1335,10 @@ mod tests {
         transactions: impl Iterator<Item = &'a Transaction>,
         priority: Priority,
         orphan: Orphan,
+        rbf_policy: RbfPolicy,
     ) {
         transactions.for_each(|transaction| {
-            let result = mining_manager.validate_and_insert_transaction(consensus, transaction.clone(), priority, orphan);
+            let result = mining_manager.validate_and_insert_transaction(consensus, transaction.clone(), priority, orphan, rbf_policy);
             assert!(result.is_ok(), "the mempool should accept a valid transaction when it is able to populate its UTXO entries");
         });
     }

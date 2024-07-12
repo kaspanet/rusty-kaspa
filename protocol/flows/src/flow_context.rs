@@ -25,8 +25,8 @@ use kaspa_core::{
 };
 use kaspa_core::{time::unix_now, warn};
 use kaspa_hashes::Hash;
-use kaspa_mining::manager::MiningManagerProxy;
 use kaspa_mining::mempool::tx::{Orphan, Priority};
+use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::RbfPolicy};
 use kaspa_notify::notifier::Notify;
 use kaspa_p2p_lib::{
     common::ProtocolError,
@@ -618,8 +618,11 @@ impl FlowContext {
         transaction: Transaction,
         orphan: Orphan,
     ) -> Result<(), ProtocolError> {
-        let transaction_insertion =
-            self.mining_manager().clone().validate_and_insert_transaction(consensus, transaction, Priority::High, orphan).await?;
+        let transaction_insertion = self
+            .mining_manager()
+            .clone()
+            .validate_and_insert_transaction(consensus, transaction, Priority::High, orphan, RbfPolicy::Forbidden)
+            .await?;
         self.broadcast_transactions(
             transaction_insertion.accepted.iter().map(|x| x.id()),
             false, // RPC transactions are considered high priority, so we don't want to throttle them
@@ -640,13 +643,17 @@ impl FlowContext {
         consensus: &ConsensusProxy,
         transaction: Transaction,
     ) -> Result<Arc<Transaction>, ProtocolError> {
-        let transaction_insertion = self.mining_manager().clone().validate_and_replace_transaction(consensus, transaction).await?;
+        let transaction_insertion = self
+            .mining_manager()
+            .clone()
+            .validate_and_insert_transaction(consensus, transaction, Priority::High, Orphan::Forbidden, RbfPolicy::Mandatory)
+            .await?;
         self.broadcast_transactions(
             transaction_insertion.accepted.iter().map(|x| x.id()),
             false, // RPC transactions are considered high priority, so we don't want to throttle them
         )
         .await;
-        Ok(transaction_insertion.removed.expect("on RBF success, a removed transaction is returned"))
+        Ok(transaction_insertion.removed.expect("on mandatory RBF success, a removed transaction is returned"))
     }
 
     /// Returns true if the time has come for running the task cleaning mempool transactions.

@@ -1,6 +1,7 @@
 use crate::mempool::{
     errors::{RuleError, RuleResult},
-    model::tx::{DoubleSpend, MempoolTransaction, RbfPolicy, TxRemovalReason},
+    model::tx::{DoubleSpend, MempoolTransaction, TxRemovalReason},
+    tx::RbfPolicy,
     Mempool,
 };
 use kaspa_consensus_core::tx::{MutableTransaction, Transaction};

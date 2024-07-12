@@ -4,11 +4,11 @@ use crate::{
     errors::MiningManagerResult,
     mempool::{
         config::Config,
-        model::tx::{MempoolTransaction, RbfPolicy, TransactionPostValidation, TransactionPreValidation, TxRemovalReason},
+        model::tx::{MempoolTransaction, TransactionPostValidation, TransactionPreValidation, TxRemovalReason},
         populate_entries_and_try_validate::{
             populate_mempool_transactions_in_parallel, validate_mempool_transaction, validate_mempool_transactions_in_parallel,
         },
-        tx::{Orphan, Priority},
+        tx::{Orphan, Priority, RbfPolicy},
         Mempool,
     },
     model::{
@@ -216,7 +216,8 @@ impl MiningManager {
     /// adds it to the set of known transactions that have not yet been
     /// added to any block.
     ///
-    /// Replace by fee is strictly forbidden so any double spend returns an error.
+    /// The validation is constrained by a Replace by fee policy applied
+    /// to double spends in the mempool. For more information, see [`RbfPolicy`].
     ///
     /// On success, returns transactions that where unorphaned following the insertion
     /// of the provided transaction.
@@ -228,44 +229,14 @@ impl MiningManager {
         transaction: Transaction,
         priority: Priority,
         orphan: Orphan,
+        rbf_policy: RbfPolicy,
     ) -> MiningManagerResult<TransactionInsertion> {
-        self.validate_and_insert_mutable_transaction(
-            consensus,
-            MutableTransaction::from_tx(transaction),
-            priority,
-            orphan,
-            RbfPolicy::Forbidden,
-        )
-    }
-
-    /// validate_and_replace_transaction validates the given transaction, and
-    /// adds it to the set of known transactions that have not yet been
-    /// added to any block.
-    ///
-    /// Replace by Fee is mandatory, consequently if the provided transaction cannot not replace
-    /// an existing transaction in the mempool, an error is returned.
-    ///
-    /// On success, returns the replaced transaction and the transactions that where unorphaned
-    /// following the insertion of the provided transaction.
-    ///
-    /// The returned transactions are references of objects owned by the mempool.
-    pub fn validate_and_replace_transaction(
-        &self,
-        consensus: &dyn ConsensusApi,
-        transaction: Transaction,
-    ) -> MiningManagerResult<TransactionInsertion> {
-        self.validate_and_insert_mutable_transaction(
-            consensus,
-            MutableTransaction::from_tx(transaction),
-            Priority::High,
-            Orphan::Forbidden,
-            RbfPolicy::Mandatory,
-        )
+        self.validate_and_insert_mutable_transaction(consensus, MutableTransaction::from_tx(transaction), priority, orphan, rbf_policy)
     }
 
     /// Exposed for tests only
     ///
-    /// Regular users should call `validate_and_insert_transaction` or `validate_and_replace_transaction` instead.
+    /// See `validate_and_insert_transaction`
     pub(crate) fn validate_and_insert_mutable_transaction(
         &self,
         consensus: &dyn ConsensusApi,
@@ -369,6 +340,9 @@ impl MiningManager {
     /// Validates a batch of transactions, handling iteratively only the independent ones, and
     /// adds those to the set of known transactions that have not yet been added to any block.
     ///
+    /// The validation is constrained by a Replace by fee policy applied
+    /// to double spends in the mempool. For more information, see [`RbfPolicy`].
+    ///
     /// Returns transactions that where unorphaned following the insertion of the provided
     /// transactions. The returned transactions are references of objects owned by the mempool.
     pub fn validate_and_insert_transaction_batch(
@@ -377,6 +351,7 @@ impl MiningManager {
         transactions: Vec<Transaction>,
         priority: Priority,
         orphan: Orphan,
+        rbf_policy: RbfPolicy,
     ) -> Vec<MiningManagerResult<Arc<Transaction>>> {
         const TRANSACTION_CHUNK_SIZE: usize = 250;
 
@@ -395,7 +370,7 @@ impl MiningManager {
             let mempool = self.mempool.read();
             let txs = chunk.filter_map(|tx| {
                 let transaction_id = tx.id();
-                match mempool.pre_validate_and_populate_transaction(consensus, tx, RbfPolicy::Allowed) {
+                match mempool.pre_validate_and_populate_transaction(consensus, tx, rbf_policy) {
                     Ok(TransactionPreValidation { transaction, fee_per_mass_threshold }) => {
                         if let Some(threshold) = fee_per_mass_threshold {
                             args.set_fee_per_mass_threshold(transaction.id(), threshold);
@@ -825,6 +800,9 @@ impl MiningManagerProxy {
     /// Validates a transaction and adds it to the set of known transactions that have not yet been
     /// added to any block.
     ///
+    /// The validation is constrained by a Replace by fee policy applied
+    /// to double spends in the mempool. For more information, see [`RbfPolicy`].
+    ///
     /// The returned transactions are references of objects owned by the mempool.
     pub async fn validate_and_insert_transaction(
         self,
@@ -832,24 +810,19 @@ impl MiningManagerProxy {
         transaction: Transaction,
         priority: Priority,
         orphan: Orphan,
+        rbf_policy: RbfPolicy,
     ) -> MiningManagerResult<TransactionInsertion> {
-        consensus.clone().spawn_blocking(move |c| self.inner.validate_and_insert_transaction(c, transaction, priority, orphan)).await
-    }
-
-    /// Validates a transaction and adds it to the set of known transactions that have not yet been
-    /// added to any block.
-    ///
-    /// The returned transactions are references of objects owned by the mempool.
-    pub async fn validate_and_replace_transaction(
-        self,
-        consensus: &ConsensusProxy,
-        transaction: Transaction,
-    ) -> MiningManagerResult<TransactionInsertion> {
-        consensus.clone().spawn_blocking(move |c| self.inner.validate_and_replace_transaction(c, transaction)).await
+        consensus
+            .clone()
+            .spawn_blocking(move |c| self.inner.validate_and_insert_transaction(c, transaction, priority, orphan, rbf_policy))
+            .await
     }
 
     /// Validates a batch of transactions, handling iteratively only the independent ones, and
     /// adds those to the set of known transactions that have not yet been added to any block.
+    ///
+    /// The validation is constrained by a Replace by fee policy applied
+    /// to double spends in the mempool. For more information, see [`RbfPolicy`].
     ///
     /// Returns transactions that where unorphaned following the insertion of the provided
     /// transactions. The returned transactions are references of objects owned by the mempool.
@@ -859,10 +832,11 @@ impl MiningManagerProxy {
         transactions: Vec<Transaction>,
         priority: Priority,
         orphan: Orphan,
+        rbf_policy: RbfPolicy,
     ) -> Vec<MiningManagerResult<Arc<Transaction>>> {
         consensus
             .clone()
-            .spawn_blocking(move |c| self.inner.validate_and_insert_transaction_batch(c, transactions, priority, orphan))
+            .spawn_blocking(move |c| self.inner.validate_and_insert_transaction_batch(c, transactions, priority, orphan, rbf_policy))
             .await
     }
 

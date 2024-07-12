@@ -2,9 +2,9 @@ use crate::mempool::{
     errors::{RuleError, RuleResult},
     model::{
         pool::Pool,
-        tx::{MempoolTransaction, RbfPolicy, TransactionPostValidation, TransactionPreValidation, TxRemovalReason},
+        tx::{MempoolTransaction, TransactionPostValidation, TransactionPreValidation, TxRemovalReason},
     },
-    tx::{Orphan, Priority},
+    tx::{Orphan, Priority, RbfPolicy},
     Mempool,
 };
 use kaspa_consensus_core::{

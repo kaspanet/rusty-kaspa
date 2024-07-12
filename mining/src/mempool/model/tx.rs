@@ -1,4 +1,4 @@
-use crate::mempool::tx::Priority;
+use crate::mempool::tx::{Priority, RbfPolicy};
 use kaspa_consensus_core::tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint};
 use kaspa_mining_errors::mempool::RuleError;
 use std::{
@@ -53,53 +53,6 @@ impl PartialEq for MempoolTransaction {
     fn eq(&self, other: &Self) -> bool {
         self.fee_rate() == other.fee_rate()
     }
-}
-
-/// Replace by Fee (RBF) policy
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum RbfPolicy {
-    /// ### RBF is forbidden
-    ///
-    /// Inserts the incoming transaction.
-    ///
-    /// Conditions of success:
-    ///
-    /// - no double spend
-    ///
-    /// If conditions are not met, leaves the mempool unchanged and fails with a double spend error.
-    Forbidden,
-
-    /// ### RBF may occur
-    ///
-    /// Identifies double spends in mempool and their owning transactions checking in order every input of the incoming
-    /// transaction.
-    ///
-    /// Removes all mempool transactions owning double spends and inserts the incoming transaction.
-    ///
-    /// Conditions of success:
-    ///
-    /// - on absence of double spends, always succeeds
-    /// - on double spends, the incoming transaction has a higher fee/mass ratio than the mempool transaction owning
-    ///   the first double spend
-    ///
-    /// If conditions are not met, leaves the mempool unchanged and fails with a double spend or a tx fee/mass too low error.
-    Allowed,
-
-    /// ### RBF must occur
-    ///
-    /// Identifies double spends in mempool and their owning transactions checking in order every input of the incoming
-    /// transaction.
-    ///
-    /// Removes the mempool transaction owning the double spends and inserts the incoming transaction.
-    ///
-    /// Conditions of success:
-    ///
-    /// - at least one double spend
-    /// - all double spends belong to the same mempool transaction
-    /// - the incoming transaction has a higher fee/mass ratio than the mempool double spending transaction.
-    ///
-    /// If conditions are not met, leaves the mempool unchanged and fails with a double spend or a tx fee/mass too low error.
-    Mandatory,
 }
 
 impl RbfPolicy {
