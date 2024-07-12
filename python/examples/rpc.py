@@ -1,14 +1,37 @@
 import asyncio
 import json
 import time
+import os
 
-from kaspapy import RpcClient
+from kaspa import RpcClient
 
 
-async def main():
-    client = await RpcClient.connect(url = "ws://localhost:17110")
-    print(f'Client is connected: {client.is_connected()}')
+def subscription_callback(event, name, **kwargs):
+    print(f'{name} | {event}')
 
+async def rpc_subscriptions(client):
+    # client.add_event_listener('all', subscription_callback, callback_id=1, kwarg1='Im a kwarg!!')
+    client.add_event_listener('all', subscription_callback, name="all")
+
+    await client.subscribe_virtual_daa_score_changed()
+    await client.subscribe_virtual_chain_changed(True)
+    await client.subscribe_block_added()
+    await client.subscribe_new_block_template()
+
+    await asyncio.sleep(5)
+
+    client.remove_event_listener('all')
+    print('Removed all event listeners. Sleeping for 5 seconds before unsubscribing. Should see nothing print.')
+
+    await asyncio.sleep(5)
+
+    await client.unsubscribe_virtual_daa_score_changed()
+    await client.unsubscribe_virtual_chain_changed(True)
+    await client.unsubscribe_block_added()
+    await client.unsubscribe_new_block_template()
+
+
+async def rpc_calls(client):
     get_server_info_response = await client.get_server_info()
     print(get_server_info_response)
 
@@ -23,6 +46,17 @@ async def main():
     get_balances_by_addresses_request = {'addresses': ['kaspa:qqxn4k5dchwk3m207cmh9ewagzlwwvfesngkc8l90tj44mufcgmujpav8hakt', 'kaspa:qr5ekyld6j4zn0ngennj9nx5gpt3254fzs77ygh6zzkvyy8scmp97de4ln8v5']}
     get_balances_by_addresses_response =  await client.get_balances_by_addresses_call(get_balances_by_addresses_request)
     print(get_balances_by_addresses_response)
+
+async def main():
+    rpc_host = os.environ.get("KASPA_RPC_HOST")
+    client = RpcClient(url = f"ws://{rpc_host}:17210")
+    await client.connect()
+    print(f'Client is connected: {client.is_connected()}')
+
+    await rpc_calls(client)
+    await rpc_subscriptions(client)
+
+    await client.disconnect()
 
 
 if __name__ == "__main__":

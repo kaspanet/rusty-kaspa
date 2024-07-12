@@ -7,7 +7,7 @@ edition.workspace = true
 include.workspace = true
 
 [lib]
-name = "kaspapy"
+name = "kaspa"
 crate-type = ["cdylib"]
 
 [dependencies]
@@ -20,6 +20,7 @@ pyo3.workspace = true
 [features]
 default = []
 py-sdk = [
+    "pyo3/extension-module",
     "kaspa-addresses/py-sdk",
     "kaspa-wallet-keys/py-sdk",
     "kaspa-wrpc-python/py-sdk",

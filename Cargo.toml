@@ -219,7 +219,7 @@ pbkdf2 = "0.12.2"
 portable-atomic = { version = "1.5.1", features = ["float"] }
 prost = "0.12.1"
 # prost = "0.13.1"
-pyo3 = { version = "0.21.0", features = ["extension-module", "multiple-pymethods"] }
+pyo3 = { version = "0.21.0", features = ["multiple-pymethods"] }
 pyo3-asyncio-0-21 = { version = "0.21", features = ["attributes", "tokio-runtime"] }
 rand = "0.8.5"
 rand_chacha = "0.3.1"
@@ -240,6 +240,7 @@ seqlock = "0.2.0"
 serde = { version = "1.0.190", features = ["derive", "rc"] }
 serde_bytes = "0.11.12"
 serde_json = "1.0.107"
+serde-pyobject = "0.3.0"
 serde_repr = "0.1.18"
 serde-value = "0.7.0"
 serde-wasm-bindgen = "0.6.1"
