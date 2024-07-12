@@ -100,6 +100,9 @@ pub fn validate_args(args: &Args) -> ConsensusConfigResult<()> {
     if args.max_tracked_addresses > Tracker::MAX_ADDRESS_UPPER_BOUND {
         return Err(ConfigError::MaxTrackedAddressesTooHigh(Tracker::MAX_ADDRESS_UPPER_BOUND));
     }
+    if args.max_tracked_addresses > Tracker::MAX_ADDRESS_UPPER_BOUND {
+        return Err(ConfigError::MaxTrackedAddressesTooHigh(Tracker::MAX_ADDRESS_UPPER_BOUND));
+    }
     Ok(())
 }
 

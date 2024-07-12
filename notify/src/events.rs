@@ -95,6 +95,25 @@ impl FromStr for EventType {
     }
 }
 
+impl FromStr for EventType {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "block-added" => Ok(EventType::BlockAdded),
+            "virtual-chain-changed" => Ok(EventType::VirtualChainChanged),
+            "finality-conflict" => Ok(EventType::FinalityConflict),
+            "finality-conflict-resolved" => Ok(EventType::FinalityConflictResolved),
+            "utxos-changed" => Ok(EventType::UtxosChanged),
+            "sink-blue-score-changed" => Ok(EventType::SinkBlueScoreChanged),
+            "virtual-daa-score-changed" => Ok(EventType::VirtualDaaScoreChanged),
+            "pruning-point-utxo-set-override" => Ok(EventType::PruningPointUtxoSetOverride),
+            "new-block-template" => Ok(EventType::NewBlockTemplate),
+            _ => Err(Error::InvalidEventType(s.to_string())),
+        }
+    }
+}
+
 /// Generic array with [`EventType`] strongly-typed index
 #[derive(Default, Clone, Copy, Debug)]
 pub struct EventArray<T>([T; EVENT_COUNT]);

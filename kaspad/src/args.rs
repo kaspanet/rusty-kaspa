@@ -11,6 +11,19 @@ use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 use std::{ffi::OsString, fs};
 use toml::from_str;
+use clap::{arg, Arg, ArgAction, Command};
+use kaspa_consensus_core::{
+    config::Config,
+    network::{NetworkId, NetworkType},
+};
+use kaspa_core::kaspad_env::version;
+use kaspa_notify::address::tracker::Tracker;
+use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_wrpc_server::address::WrpcNetAddress;
+use serde::Deserialize;
+use serde_with::{serde_as, DisplayFromStr};
+use std::{ffi::OsString, fs};
+use toml::from_str;
 
 #[cfg(feature = "devnet-prealloc")]
 use kaspa_addresses::Address;
@@ -313,6 +326,7 @@ pub fn cli() -> Command {
                 .long("enable-mainnet-mining")
                 .action(ArgAction::SetTrue)
                 .hide(true)
+                .help("Allow mainnet mining (currently enabled by default while the flag is kept for backwards compatibility)"),
                 .help("Allow mainnet mining (currently enabled by default while the flag is kept for backwards compatibility)"),
         )
         .arg(arg!(--utxoindex "Enable the UTXO index"))
