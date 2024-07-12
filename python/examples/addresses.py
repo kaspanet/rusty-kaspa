@@ -1,4 +1,4 @@
-from kaspapy import (
+from kaspa import (
     PrivateKey, 
 )
 

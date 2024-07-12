@@ -3,7 +3,7 @@ cfg_if::cfg_if! {
         use pyo3::prelude::*;
 
         #[pymodule]
-        fn kaspapy(m: &Bound<'_, PyModule>) -> PyResult<()> {
+        fn kaspa(m: &Bound<'_, PyModule>) -> PyResult<()> {
             m.add_class::<kaspa_addresses::Address>()?;
 
             m.add_class::<kaspa_wallet_keys::privkeygen::PrivateKeyGenerator>()?;

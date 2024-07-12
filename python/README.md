@@ -17,6 +17,6 @@ Rusty-Kaspa/Rust bindings for Python, using [PyO3](https://pyo3.rs/v0.20.0/) and
 See Python files in `./python/examples`.
 
 # Project Layout
-The Python package `kaspapy` is built from the `kaspa-python` crate, which is located at `./python`. 
+The Python package `kaspa` is built from the `kaspa-python` crate, which is located at `./python`. 
 
-As such, the `kaspapy` function in `./python/src/lib.rs` is a good starting point. This function uses PyO3 to add functionality to the package. 
+As such, the `kaspa` function in `./python/src/lib.rs` is a good starting point. This function uses PyO3 to add functionality to the package. 

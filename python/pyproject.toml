@@ -3,7 +3,7 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "kaspapy"
+name = "kaspa"
 description = "Kaspa Python Bindings"
 version = "0.1.0"
 requires-python = ">=3.8"
@@ -23,8 +23,8 @@ dependencies = []
 # changelog = ""
 
 [package.metadata.maturin]
-name = "kaspapy"
+name = "kaspa"
 description = "Kaspa Python Bindings"
 
 [tool.maturin]
-name = "kaspapy"
+name = "kaspa"

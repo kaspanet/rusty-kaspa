@@ -10,15 +10,21 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-default = ["py-sdk"]
+default = []
 py-sdk = [
+    "pyo3/extension-module",
+    "kaspa-addresses/py-sdk",
     "kaspa-rpc-core/py-sdk",
     "kaspa-wrpc-client/py-sdk",
 ]
 
 [dependencies]
+ahash.workspace = true
 cfg-if.workspace = true
+futures.workspace = true
+kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
+kaspa-notify.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-rpc-macros.workspace = true
 kaspa-wrpc-client.workspace = true
@@ -26,7 +32,8 @@ kaspa-python-macros.workspace = true
 pyo3.workspace = true
 pyo3-asyncio-0-21.workspace = true
 serde_json.workspace = true
-serde-pyobject = "0.3.0"
+serde-pyobject.workspace = true
 thiserror.workspace = true
 workflow-core.workspace = true
+workflow-log.workspace = true
 workflow-rpc.workspace = true
