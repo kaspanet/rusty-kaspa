@@ -1,7 +1,8 @@
-version: '3.6'
+version: "3.6"
 
 services:
   kaspad:
+    # allow to automatically build image if not exists upstream
     build:
       context: .
       dockerfile: ./docker/Dockerfile
@@ -9,9 +10,22 @@ services:
     ports:
       # P2P
       - 16111:16111
-      # grpc
+      # mainnet RPC
       - 16110:16110
-    command: './kaspad --utxoindex --appdir /app/data'
+      # testnet RPC
+      - 16210:16210
+      # mainnet borshch RPC
+      - 17110:17110
+      # testnet borshch RPC
+      - 17210:17210
+      # mainnet json RPC
+      - 18110:18110
+      # testnet json RPC
+      - 18210:18210
+
+    command: "./kaspad --utxoindex --appdir /app/data"
+    # testnet command
+    # command: './kaspad --testnet --netsuffix=11 --utxoindex --appdir /app/data'
     volumes:
       - type: volume
         source: data
