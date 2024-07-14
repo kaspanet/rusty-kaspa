@@ -313,10 +313,6 @@ wRPC
 
 </details>
 
-
-
-<details>
-
 ### Running on Docker
 
 Note: currently, only linux-gnu is supported, hence image size is large.
@@ -331,6 +327,9 @@ docker-compose up
 docker build -t kaspa/kaspad -f docker/Dockerfile .
 docker run kaspa/kaspad kaspad [ARGS_HERE]
 ```
+
+<details>
+
 
 ## Benchmarking & Testing
 
