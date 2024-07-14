@@ -868,7 +868,8 @@ impl PruningProofManager {
                 }
 
                 if current_header.direct_parents().is_empty() // Stop at genesis
-                    || (pp_header.header.blue_score >= current_header.blue_score + required_level_0_depth
+                    // Need to ensure this does the same 2M+1 depth that block_at_depth does
+                    || (pp_header.header.blue_score > current_header.blue_score + required_level_0_depth
                         && intersected_with_required_block_chain)
                 {
                     break current_header;
@@ -915,8 +916,9 @@ impl PruningProofManager {
                 true,
             );
 
+            // Need to ensure this does the same 2M+1 depth that block_at_depth does
             if has_required_block
-                && (root == self.genesis_hash || ghostdag_store.get_blue_score(selected_tip).unwrap() >= required_level_depth)
+                && (root == self.genesis_hash || ghostdag_store.get_blue_score(selected_tip).unwrap() > required_level_depth)
             {
                 break Ok((ghostdag_store, selected_tip, root));
             }
@@ -1014,8 +1016,7 @@ impl PruningProofManager {
                 let mut headers = Vec::with_capacity(2 * self.pruning_proof_m as usize);
                 let mut queue = BinaryHeap::<Reverse<SortableBlock>>::new();
                 let mut visited = BlockHashSet::new();
-                // Still use "old_root" to make sure we use the minimum amount of records for the proof
-                queue.push(Reverse(SortableBlock::new(old_root, self.headers_store.get_header(old_root).unwrap().blue_work)));
+                queue.push(Reverse(SortableBlock::new(root, self.headers_store.get_header(root).unwrap().blue_work)));
                 while let Some(current) = queue.pop() {
                     let current = current.0.hash;
                     if !visited.insert(current) {
@@ -1157,7 +1158,7 @@ impl PruningProofManager {
         let mut current_gd = high_gd;
         let mut current = high;
         let mut res = vec![current];
-        while current_gd.blue_score + depth > high_gd.blue_score {
+        while current_gd.blue_score + depth >= high_gd.blue_score {
             if current_gd.selected_parent.is_origin() {
                 break;
             }
@@ -1185,7 +1186,7 @@ impl PruningProofManager {
             .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {depth}, {err}")))?;
         let mut current_gd = high_gd;
         let mut current = high;
-        while current_gd.blue_score + depth > high_gd.blue_score {
+        while current_gd.blue_score + depth >= high_gd.blue_score {
             if current_gd.selected_parent.is_origin() {
                 break;
             }
