@@ -538,7 +538,7 @@ pub trait DerivationCapableAccount: Account {
 
                     let mut stream = generator.stream();
                     while let Some(transaction) = stream.try_next().await? {
-                        transaction.try_sign_with_keys(&keys)?;
+                        transaction.try_sign_with_keys(&keys, None)?;
                         let id = transaction.try_submit(&rpc).await?;
                         if let Some(notifier) = notifier {
                             notifier(index, aggregate_utxo_count, balance, Some(id));
