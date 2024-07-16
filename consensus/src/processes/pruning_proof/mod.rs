@@ -725,11 +725,9 @@ impl PruningProofManager {
 
             match relations_read[level_idx].get_parents(current_pp).unwrap_option() {
                 Some(parents) => {
-                    if parents
-                        .iter()
-                        .copied()
-                        .any(|parent| proof_ghostdag_stores[level_idx].get_blue_score(parent).unwrap() < 2 * self.pruning_proof_m)
-                    {
+                    if parents.iter().copied().any(|parent| {
+                        current_consensus_ghostdag_stores[level_idx].get_blue_score(parent).unwrap() < 2 * self.pruning_proof_m
+                    }) {
                         return Ok(());
                     }
                 }
