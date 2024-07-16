@@ -3377,6 +3377,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "criterion",
  "hex",
+ "hexplay",
  "indexmap 2.2.6",
  "itertools 0.11.0",
  "kaspa-addresses",
@@ -3675,8 +3676,10 @@ name = "kaspa-wasm-core"
 version = "0.14.1"
 dependencies = [
  "faster-hex 0.6.1",
+ "hexplay",
  "js-sys",
  "wasm-bindgen",
+ "workflow-wasm",
 ]
 
 [[package]]
