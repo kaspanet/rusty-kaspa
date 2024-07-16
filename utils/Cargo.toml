@@ -21,6 +21,7 @@ log.workspace = true
 num_cpus.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
+sha2.workspace = true
 smallvec.workspace = true
 sysinfo.workspace = true
 thiserror.workspace = true
@@ -29,6 +30,7 @@ uuid.workspace = true
 wasm-bindgen.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mac_address.workspace = true
 rlimit.workspace = true
 
 [dev-dependencies]

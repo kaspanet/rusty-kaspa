@@ -26,6 +26,7 @@ use kaspa_rpc_core::{
     RpcContextualPeerAddress, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult,
     SubmitBlockRejectReason, SubmitBlockReport,
 };
+use kaspa_utils::hex::*;
 use std::str::FromStr;
 
 macro_rules! from {
@@ -435,6 +436,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetConnectionsResponse>, protowire::GetCo
 from!(&kaspa_rpc_core::GetSystemInfoRequest, protowire::GetSystemInfoRequestMessage);
 from!(item: RpcResult<&kaspa_rpc_core::GetSystemInfoResponse>, protowire::GetSystemInfoResponseMessage, {
     Self {
+        system_id : item.system_id.to_hex(),
         total_memory : item.total_memory,
         core_num : item.cpu_physical_cores as u32,
         fd_limit : item.fd_limit,
@@ -857,6 +859,7 @@ try_from!(item: &protowire::GetConnectionsResponseMessage, RpcResult<kaspa_rpc_c
 try_from!(&protowire::GetSystemInfoRequestMessage, kaspa_rpc_core::GetSystemInfoRequest);
 try_from!(item: &protowire::GetSystemInfoResponseMessage, RpcResult<kaspa_rpc_core::GetSystemInfoResponse>, {
     Self {
+        system_id: FromHex::from_hex(&item.system_id)?,
         total_memory: item.total_memory,
         cpu_physical_cores: item.core_num as u16,
         fd_limit: item.fd_limit,

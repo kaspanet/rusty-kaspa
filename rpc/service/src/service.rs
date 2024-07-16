@@ -69,7 +69,7 @@ use kaspa_utxoindex::api::UtxoIndexProxy;
 use std::{
     collections::HashMap,
     iter::once,
-    sync::{atomic::Ordering, Arc, OnceLock},
+    sync::{atomic::Ordering, Arc},
     vec,
 };
 use tokio::join;
@@ -111,6 +111,7 @@ pub struct RpcCoreService {
     perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
     p2p_tower_counters: Arc<TowerConnectionCounters>,
     grpc_tower_counters: Arc<TowerConnectionCounters>,
+    system_info: SystemInfo,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -135,6 +136,7 @@ impl RpcCoreService {
         perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
         p2p_tower_counters: Arc<TowerConnectionCounters>,
         grpc_tower_counters: Arc<TowerConnectionCounters>,
+        system_info: SystemInfo,
     ) -> Self {
         // This notifier UTXOs subscription granularity to index-processor or consensus notifier
         let policies = match index_notifier {
@@ -210,6 +212,7 @@ impl RpcCoreService {
             perf_monitor,
             p2p_tower_counters,
             grpc_tower_counters,
+            system_info,
         }
     }
 
@@ -978,14 +981,12 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _connection: Option<&DynRpcConnection>,
         _request: GetSystemInfoRequest,
     ) -> RpcResult<GetSystemInfoResponse> {
-        static SYSTEM_INFO: OnceLock<SystemInfo> = OnceLock::new();
-
-        let system_info = SYSTEM_INFO.get_or_init(SystemInfo::default);
-
-        let SystemInfo { cpu_physical_cores, total_memory, fd_limit } = system_info;
-
-        let response =
-            GetSystemInfoResponse { cpu_physical_cores: *cpu_physical_cores, total_memory: *total_memory, fd_limit: *fd_limit };
+        let response = GetSystemInfoResponse {
+            system_id: self.system_info.system_id.clone(),
+            cpu_physical_cores: self.system_info.cpu_physical_cores,
+            total_memory: self.system_info.total_memory,
+            fd_limit: self.system_info.fd_limit,
+        };
 
         Ok(response)
     }

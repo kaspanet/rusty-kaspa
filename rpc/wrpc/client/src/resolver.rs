@@ -9,41 +9,49 @@ use rand::thread_rng;
 use workflow_core::runtime;
 use workflow_http::get_json;
 
-const DEFAULT_VERSION: usize = 2;
-const RESOLVERS_PER_FQDN: usize = 8;
+const CURRENT_VERSION: usize = 2;
+const RESOLVER_CONFIG: &str = include_str!("../Resolvers.toml");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolverRecord {
-    pub url: String,
+    pub address: String,
+    pub enable: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolverGroup {
+    pub template: String,
+    pub nodes: Vec<String>,
     pub enable: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ResolverConfig {
-    resolver: Vec<ResolverRecord>,
+    #[serde(rename = "group")]
+    groups: Vec<ResolverGroup>,
+    #[serde(rename = "resolver")]
+    resolvers: Vec<ResolverRecord>,
 }
 
-fn try_parse_resolvers(toml: &str) -> Result<Vec<String>> {
-    Ok(toml::from_str::<ResolverConfig>(toml)?
-        .resolver
+fn try_parse_resolvers(toml: &str) -> Result<Vec<Arc<String>>> {
+    let config = toml::from_str::<ResolverConfig>(toml)?;
+
+    let mut resolvers = config
+        .resolvers
         .into_iter()
-        .filter_map(|resolver| resolver.enable.unwrap_or(true).then_some(resolver.url))
-        .collect::<Vec<_>>())
-}
+        .filter_map(|resolver| resolver.enable.unwrap_or(true).then_some(resolver.address))
+        .collect::<Vec<_>>();
 
-fn transform(source_list: Vec<String>) -> Vec<Arc<String>> {
-    let mut resolvers = vec![];
-    for url in source_list.into_iter() {
-        if url.contains('*') {
-            for n in 0..RESOLVERS_PER_FQDN {
-                resolvers.push(Arc::new(url.replace('*', &format!("r{n}"))));
-            }
-        } else {
-            resolvers.push(Arc::new(url));
+    let groups = config.groups.into_iter().filter(|group| group.enable.unwrap_or(true)).collect::<Vec<_>>();
+
+    for group in groups {
+        let ResolverGroup { template, nodes, .. } = group;
+        for node in nodes {
+            resolvers.push(template.replace('*', &node));
         }
     }
 
-    resolvers
+    Ok(resolvers.into_iter().map(Arc::new).collect::<Vec<_>>())
 }
 
 #[derive(Debug)]
@@ -67,9 +75,8 @@ pub struct Resolver {
 
 impl Default for Resolver {
     fn default() -> Self {
-        let toml = include_str!("../Resolvers.toml");
-        let urls = try_parse_resolvers(toml).expect("TOML: Unable to parse RPC Resolver list");
-        Self { inner: Arc::new(Inner::new(transform(urls))) }
+        let urls = try_parse_resolvers(RESOLVER_CONFIG).expect("TOML: Unable to parse RPC Resolver list");
+        Self { inner: Arc::new(Inner::new(urls)) }
     }
 }
 
@@ -87,26 +94,27 @@ impl Resolver {
     }
 
     fn make_url(&self, url: &str, encoding: Encoding, network_id: NetworkId) -> String {
-        static SSL: OnceLock<bool> = OnceLock::new();
+        static TLS: OnceLock<&'static str> = OnceLock::new();
 
-        let ssl = *SSL.get_or_init(|| {
+        let tls = *TLS.get_or_init(|| {
             if runtime::is_web() {
-                js_sys::Reflect::get(&js_sys::global(), &"location".into())
+                let tls = js_sys::Reflect::get(&js_sys::global(), &"location".into())
                     .and_then(|location| js_sys::Reflect::get(&location, &"protocol".into()))
                     .ok()
                     .and_then(|protocol| protocol.as_string())
                     .map(|protocol| protocol.starts_with("https"))
-                    .unwrap_or(false)
+                    .unwrap_or(false);
+                if tls {
+                    "tls"
+                } else {
+                    "any"
+                }
             } else {
-                false
+                "tls"
             }
         });
 
-        if ssl {
-            format!("{}/v{}/rk/wrpc/tls/{}/{}", url, DEFAULT_VERSION, encoding, network_id)
-        } else {
-            format!("{}/v{}/rk/wrpc/any/{}/{}", url, DEFAULT_VERSION, encoding, network_id)
-        }
+        format!("{url}/v{CURRENT_VERSION}/kaspa/{network_id}/wrpc/{tls}/{encoding}")
     }
 
     async fn fetch_node_info(&self, url: &str, encoding: Encoding, network_id: NetworkId) -> Result<NodeDescriptor> {
@@ -158,5 +166,39 @@ impl Resolver {
     pub async fn get_url(&self, encoding: Encoding, network_id: NetworkId) -> Result<String> {
         let nodes = self.fetch(encoding, network_id).await?;
         Ok(nodes.url.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolver_config_1() {
+        let toml = r#"
+            [[group]]
+            enable = true
+            template = "https://*.example.org"
+            nodes = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"]
+
+            [[group]]
+            enable = true
+            template = "https://*.example.com"
+            nodes = ["iota", "kappa", "lambda", "mu", "nu", "xi", "omicron", "pi"]
+
+            [[resolver]]
+            enable = true
+            address = "http://127.0.0.1:8888"
+        "#;
+
+        let urls = try_parse_resolvers(toml).expect("TOML: Unable to parse RPC Resolver list");
+        // println!("{:#?}", urls);
+        assert_eq!(urls.len(), 17);
+    }
+
+    #[test]
+    fn test_resolver_config_2() {
+        let _urls = try_parse_resolvers(RESOLVER_CONFIG).expect("TOML: Unable to parse RPC Resolver list");
+        // println!("{:#?}", urls);
     }
 }
