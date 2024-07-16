@@ -16,6 +16,7 @@ wasm32-sdk = []
 blake2b_simd.workspace = true
 borsh.workspace = true
 cfg-if.workspace = true
+hexplay.workspace = true
 indexmap.workspace = true
 itertools.workspace = true
 kaspa-addresses.workspace = true
