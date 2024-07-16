@@ -49,7 +49,7 @@ use crate::{
         },
         stores::{
             depth::DbDepthStore,
-            ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
+            ghostdag::{CompactGhostdagData, DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader, HeaderWithBlockLevel},
             headers_selected_tip::DbHeadersSelectedTipStore,
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
@@ -412,14 +412,8 @@ impl PruningProofManager {
 
     fn init_validate_pruning_point_proof_stores_and_processes(
         &self,
-        proof: &PruningPointProof,
+        headers_estimate: usize,
     ) -> PruningImportResult<TempProofContext> {
-        if proof[0].is_empty() {
-            return Err(PruningImportError::PruningProofNotEnoughHeaders);
-        }
-
-        let headers_estimate = self.estimate_proof_unique_size(proof);
-
         let (db_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize);
         let headers_store =
@@ -473,6 +467,7 @@ impl PruningProofManager {
         &self,
         proof: &PruningPointProof,
         ctx: &mut TempProofContext,
+        log_validating: bool,
     ) -> PruningImportResult<Vec<Hash>> {
         let headers_store = &ctx.headers_store;
         let ghostdag_stores = &ctx.ghostdag_stores;
@@ -490,7 +485,9 @@ impl PruningProofManager {
                 return Err(PruningImportError::PruningValidationInterrupted);
             }
 
-            info!("Validating level {level} from the pruning point proof ({} headers)", proof[level as usize].len());
+            if log_validating {
+                info!("Validating level {level} from the pruning point proof ({} headers)", proof[level as usize].len());
+            }
             let level_idx = level as usize;
             let mut selected_tip = None;
             for (i, header) in proof[level as usize].iter().enumerate() {
@@ -597,32 +594,33 @@ impl PruningProofManager {
         Ok(())
     }
 
-    /// Returns the common ancestor of the proof and the current consensus if there is one.
-    ///
-    /// ghostdag_stores currently contain only entries for blocks in the proof.
-    /// While iterating through the selected parent chain of the current consensus, if we find any
-    /// that is already in ghostdag_stores that must mean it's a common ancestor of the proof
-    /// and current consensus
-    fn find_proof_and_consensus_common_ancestor(
+    // find_proof_and_consensus_common_chain_ancestor_ghostdag_data returns an option of a tuple
+    // that contains the ghostdag data of the proof and current consensus common ancestor. If no
+    // such ancestor exists, it returns None.
+    fn find_proof_and_consensus_common_ancestor_ghostdag_data(
         &self,
-        ghostdag_store: &Arc<DbGhostdagStore>,
-        current_consensus_selected_tip_header: Arc<Header>,
+        proof_ghostdag_stores: &[Arc<DbGhostdagStore>],
+        current_consensus_ghostdag_stores: &[Arc<DbGhostdagStore>],
+        proof_selected_tip: Hash,
         level: BlockLevel,
-        relations_service: &MTRelationsService<DbRelationsStore>,
-    ) -> Option<Hash> {
-        let mut chain_block = current_consensus_selected_tip_header.clone();
-
-        for _ in 0..(2 * self.pruning_proof_m as usize) {
-            if chain_block.direct_parents().is_empty() || chain_block.hash.is_origin() {
-                break;
-            }
-            if ghostdag_store.has(chain_block.hash).unwrap() {
-                return Some(chain_block.hash);
-            }
-            chain_block = self.find_selected_parent_header_at_level(&chain_block, level, relations_service).unwrap();
+        proof_selected_tip_gd: CompactGhostdagData,
+    ) -> Option<(CompactGhostdagData, CompactGhostdagData)> {
+        let mut proof_current = proof_selected_tip;
+        let mut proof_current_gd = proof_selected_tip_gd;
+        loop {
+            match current_consensus_ghostdag_stores[level as usize].get_compact_data(proof_current).unwrap_option() {
+                Some(current_gd) => {
+                    break Some((proof_current_gd, current_gd));
+                }
+                None => {
+                    proof_current = proof_current_gd.selected_parent;
+                    if proof_current.is_origin() {
+                        break None;
+                    }
+                    proof_current_gd = proof_ghostdag_stores[level as usize].get_compact_data(proof_current).unwrap();
+                }
+            };
         }
-
-        None
     }
 
     pub fn validate_pruning_point_proof(&self, proof: &PruningPointProof) -> PruningImportResult<()> {
@@ -630,23 +628,49 @@ impl PruningProofManager {
             return Err(PruningImportError::ProofNotEnoughLevels(self.max_block_level as usize + 1));
         }
 
+        if proof[0].is_empty() {
+            return Err(PruningImportError::PruningProofNotEnoughHeaders);
+        }
+
+        let headers_estimate = self.estimate_proof_unique_size(proof);
+
+        // Initialize the stores for the proof
         let proof_pp_header = proof[0].last().expect("checked if empty");
         let proof_pp = proof_pp_header.hash;
         let proof_pp_level = calc_block_level(proof_pp_header, self.max_block_level);
-        let mut stores_and_processes = self.init_validate_pruning_point_proof_stores_and_processes(proof)?;
-        let selected_tip_by_level = self.populate_stores_for_validate_pruning_point_proof(proof, &mut stores_and_processes)?;
-        let ghostdag_stores = stores_and_processes.ghostdag_stores;
+        let mut proof_stores_and_processes = self.init_validate_pruning_point_proof_stores_and_processes(headers_estimate)?;
+        let proof_selected_tip_by_level =
+            self.populate_stores_for_validate_pruning_point_proof(proof, &mut proof_stores_and_processes, true)?;
+        let proof_ghostdag_stores = proof_stores_and_processes.ghostdag_stores;
+
+        // Get the proof for the current consensus and recreate the stores for it
+        // This is expected to be fast because if a proof exists, it will be cached.
+        // If no proof exists, this is empty
+        let mut current_consensus_proof = self.get_pruning_point_proof();
+        if current_consensus_proof.is_empty() {
+            // An empty proof can only happen if we're at genesis. We're going to create a proof for this case that contains the genesis header only
+            let genesis_header = self.headers_store.get_header(self.genesis_hash).unwrap();
+            current_consensus_proof = Arc::new((0..=self.max_block_level).map(|_| vec![genesis_header.clone()]).collect_vec());
+        }
+        let mut current_consensus_stores_and_processes =
+            self.init_validate_pruning_point_proof_stores_and_processes(headers_estimate)?;
+        let _ = self.populate_stores_for_validate_pruning_point_proof(
+            &current_consensus_proof,
+            &mut current_consensus_stores_and_processes,
+            false,
+        )?;
+        let current_consensus_ghostdag_stores = current_consensus_stores_and_processes.ghostdag_stores;
 
         let pruning_read = self.pruning_point_store.read();
         let relations_read = self.relations_stores.read();
         let current_pp = pruning_read.get().unwrap().pruning_point;
-        let current_pp_header = self.headers_store.get_header_with_block_level(current_pp).unwrap();
+        let current_pp_header = self.headers_store.get_header(current_pp).unwrap();
 
-        for (level_idx, selected_tip) in selected_tip_by_level.iter().copied().enumerate() {
+        for (level_idx, selected_tip) in proof_selected_tip_by_level.iter().copied().enumerate() {
             let level = level_idx as BlockLevel;
             self.validate_proof_selected_tip(selected_tip, level, proof_pp_level, proof_pp, proof_pp_header)?;
 
-            let proof_selected_tip_gd = ghostdag_stores[level_idx].get_compact_data(selected_tip).unwrap();
+            let proof_selected_tip_gd = proof_ghostdag_stores[level_idx].get_compact_data(selected_tip).unwrap();
 
             // Next check is to see if this proof is "better" than what's in the current consensus
             // Step 1 - look at only levels that have a full proof (least 2m blocks in the proof)
@@ -658,36 +682,19 @@ impl PruningProofManager {
             // we can determine if the proof is better. The proof is better if the score difference between the
             // old current consensus's tips and the common ancestor is less than the score difference between the
             // proof's tip and the common ancestor
-            let relations_service = MTRelationsService::new(self.relations_stores.clone(), level);
-            let current_consensus_selected_tip_header = if current_pp_header.block_level >= level {
-                current_pp_header.header.clone()
-            } else {
-                self.find_selected_parent_header_at_level(&current_pp_header.header, level, &relations_service).unwrap()
-            };
-            if let Some(common_ancestor) = self.find_proof_and_consensus_common_ancestor(
-                &ghostdag_stores[level_idx],
-                current_consensus_selected_tip_header.clone(),
+            if let Some((proof_common_ancestor_gd, common_ancestor_gd)) = self.find_proof_and_consensus_common_ancestor_ghostdag_data(
+                &proof_ghostdag_stores,
+                &current_consensus_ghostdag_stores,
+                selected_tip,
                 level,
-                &relations_service,
+                proof_selected_tip_gd,
             ) {
-                // Fill the GD store with data from current consensus,
-                // starting from the common ancestor until the current level selected tip
-                let _ = self.fill_proof_ghostdag_data(
-                    proof[level_idx].first().unwrap().hash,
-                    common_ancestor,
-                    current_consensus_selected_tip_header.hash,
-                    &ghostdag_stores[level_idx],
-                    &relations_service,
-                    level != 0,
-                    None,
-                    false,
-                );
-                let common_ancestor_blue_work = ghostdag_stores[level_idx].get_blue_work(common_ancestor).unwrap();
                 let selected_tip_blue_work_diff =
-                    SignedInteger::from(proof_selected_tip_gd.blue_work) - SignedInteger::from(common_ancestor_blue_work);
-                for parent in self.parents_manager.parents_at_level(&current_pp_header.header, level).iter().copied() {
-                    let parent_blue_work = ghostdag_stores[level_idx].get_blue_work(parent).unwrap();
-                    let parent_blue_work_diff = SignedInteger::from(parent_blue_work) - SignedInteger::from(common_ancestor_blue_work);
+                    SignedInteger::from(proof_selected_tip_gd.blue_work) - SignedInteger::from(proof_common_ancestor_gd.blue_work);
+                for parent in self.parents_manager.parents_at_level(&current_pp_header, level).iter().copied() {
+                    let parent_blue_work = current_consensus_ghostdag_stores[level_idx].get_blue_work(parent).unwrap();
+                    let parent_blue_work_diff =
+                        SignedInteger::from(parent_blue_work) - SignedInteger::from(common_ancestor_gd.blue_work);
                     if parent_blue_work_diff >= selected_tip_blue_work_diff {
                         return Err(PruningImportError::PruningProofInsufficientBlueWork);
                     }
@@ -710,8 +717,8 @@ impl PruningProofManager {
         for level in (0..=self.max_block_level).rev() {
             let level_idx = level as usize;
 
-            let proof_selected_tip = selected_tip_by_level[level_idx];
-            let proof_selected_tip_gd = ghostdag_stores[level_idx].get_compact_data(proof_selected_tip).unwrap();
+            let proof_selected_tip = proof_selected_tip_by_level[level_idx];
+            let proof_selected_tip_gd = proof_ghostdag_stores[level_idx].get_compact_data(proof_selected_tip).unwrap();
             if proof_selected_tip_gd.blue_score < 2 * self.pruning_proof_m {
                 continue;
             }
@@ -721,7 +728,7 @@ impl PruningProofManager {
                     if parents
                         .iter()
                         .copied()
-                        .any(|parent| ghostdag_stores[level_idx].get_blue_score(parent).unwrap() < 2 * self.pruning_proof_m)
+                        .any(|parent| proof_ghostdag_stores[level_idx].get_blue_score(parent).unwrap() < 2 * self.pruning_proof_m)
                     {
                         return Ok(());
                     }
@@ -735,7 +742,8 @@ impl PruningProofManager {
 
         drop(pruning_read);
         drop(relations_read);
-        drop(stores_and_processes.db_lifetime);
+        drop(proof_stores_and_processes.db_lifetime);
+        drop(current_consensus_stores_and_processes.db_lifetime);
 
         Err(PruningImportError::PruningProofNotEnoughHeaders)
     }
