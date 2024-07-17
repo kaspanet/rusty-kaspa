@@ -4,17 +4,10 @@
 
 use crate::utxo::NetworkParams;
 use kaspa_consensus_client::UtxoEntryReference;
+use kaspa_consensus_core::mass::Kip9Version;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput, SCRIPT_VECTOR_SIZE};
 use kaspa_consensus_core::{config::params::Params, constants::*, subnets::SUBNETWORK_ID_SIZE};
 use kaspa_hashes::HASH_SIZE;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MassCombinationStrategy {
-    /// `MassCombinator::Add` adds the storage and compute mass.
-    Add,
-    /// `MassCombinator::Max` returns the maximum of the storage and compute mass.
-    Max,
-}
 
 // pub const ECDSA_SIGNATURE_SIZE: u64 = 64;
 // pub const SCHNORR_SIGNATURE_SIZE: u64 = 64;
@@ -222,7 +215,7 @@ pub struct MassCalculator {
     mass_per_script_pub_key_byte: u64,
     mass_per_sig_op: u64,
     storage_mass_parameter: u64,
-    mass_combination_strategy: MassCombinationStrategy,
+    kip9_version: Kip9Version,
 }
 
 impl MassCalculator {
@@ -232,7 +225,7 @@ impl MassCalculator {
             mass_per_script_pub_key_byte: consensus_params.mass_per_script_pub_key_byte,
             mass_per_sig_op: consensus_params.mass_per_sig_op,
             storage_mass_parameter: consensus_params.storage_mass_parameter,
-            mass_combination_strategy: network_params.mass_combination_strategy(),
+            kip9_version: network_params.kip9_version(),
         }
     }
 
@@ -307,9 +300,9 @@ impl MassCalculator {
     }
 
     pub fn combine_mass(&self, compute_mass: u64, storage_mass: u64) -> u64 {
-        match self.mass_combination_strategy {
-            MassCombinationStrategy::Add => compute_mass + storage_mass,
-            MassCombinationStrategy::Max => std::cmp::max(compute_mass, storage_mass),
+        match self.kip9_version {
+            Kip9Version::Alpha => compute_mass + storage_mass,
+            Kip9Version::Beta => std::cmp::max(compute_mass, storage_mass),
         }
     }
 
@@ -330,7 +323,7 @@ impl MassCalculator {
         input values, H(S) := |S|/sum_{s in S} 1 / s is the harmonic mean over the set S and
         A(S) := sum_{s in S} / |S| is the arithmetic mean.
 
-        See the (to date unpublished) KIP-0009 for more details
+        See KIP-0009 for more details
         */
 
         // Since we are doing integer division, we perform the multiplication with C over the inner
@@ -338,15 +331,36 @@ impl MassCalculator {
         //
         // If sum of fractions overflowed (nearly impossible, requires 10^7 outputs for C = 10^12),
         // we return `None` indicating mass is incomputable
+        //
+        // Note: in theory this can be tighten by subtracting input mass in the process (possibly avoiding the overflow),
+        // however the overflow case is so unpractical with current mass limits so we avoid the hassle
 
         let harmonic_outs = outputs
             .iter()
             .map(|out| self.storage_mass_parameter / out.value)
             .try_fold(0u64, |total, current| total.checked_add(current))?; // C·|O|/H(O)
 
+        let outs_len = outputs.len() as u64;
+        let ins_len = inputs.len() as u64;
+
+        /*
+          KIP-0009 relaxed formula for the cases |O| = 1 OR |O| <= |I| <= 2:
+              max( 0 , C·( |O|/H(O) - |I|/H(I) ) )
+
+           Note: in the case |I| = 1 both formulas are equal, yet the following code (harmonic_ins) is a bit more efficient.
+                 Hence, we transform the condition to |O| = 1 OR |I| = 1 OR |O| = |I| = 2 which is equivalent (and faster).
+        */
+
+        if self.kip9_version == Kip9Version::Beta && (outs_len == 1 || ins_len == 1 || (outs_len == 2 && ins_len == 2)) {
+            let harmonic_ins = inputs
+                .iter()
+                .map(|entry| self.storage_mass_parameter / entry.amount())
+                .fold(0u64, |total, current| total.saturating_add(current)); // C·|I|/H(I)
+            return Some(harmonic_outs.saturating_sub(harmonic_ins)); // max( 0 , C·( |O|/H(O) - |I|/H(I) ) );
+        }
+
         // Total supply is bounded, so a sum of existing UTXO entries cannot overflow (nor can it be zero)
         let sum_ins = inputs.iter().map(|entry| entry.amount()).sum::<u64>(); // |I|·A(I)
-        let ins_len = inputs.len() as u64;
         let mean_ins = sum_ins / ins_len;
 
         // Inner fraction must be with C and over the mean value, in order to maximize precision.
