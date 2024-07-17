@@ -342,7 +342,7 @@ impl VirtualStateProcessor {
                 .expect("expecting an open unbounded channel");
         }
         // keep this after the virtual chain changed notification, so we commit to the txindex before the utxoindex.
-        // this should allow for higher hit rates when querying transactions in the txindex (and possibly a future addrindex).
+        // this should allow for higher hit rates when querying transactions in the txindex.
         self.notification_root
             .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)))
             .expect("expecting an open unbounded channel");

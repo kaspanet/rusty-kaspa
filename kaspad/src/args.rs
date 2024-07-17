@@ -11,19 +11,6 @@ use serde::Deserialize;
 use serde_with::{serde_as, DisplayFromStr};
 use std::{ffi::OsString, fs};
 use toml::from_str;
-use clap::{arg, Arg, ArgAction, Command};
-use kaspa_consensus_core::{
-    config::Config,
-    network::{NetworkId, NetworkType},
-};
-use kaspa_core::kaspad_env::version;
-use kaspa_notify::address::tracker::Tracker;
-use kaspa_utils::networking::ContextualNetAddress;
-use kaspa_wrpc_server::address::WrpcNetAddress;
-use serde::Deserialize;
-use serde_with::{serde_as, DisplayFromStr};
-use std::{ffi::OsString, fs};
-use toml::from_str;
 
 #[cfg(feature = "devnet-prealloc")]
 use kaspa_addresses::Address;
@@ -33,8 +20,6 @@ use kaspa_consensus_core::tx::{TransactionOutpoint, UtxoEntry};
 use kaspa_txscript::pay_to_address_script;
 #[cfg(feature = "devnet-prealloc")]
 use std::sync::Arc;
-use std::{ffi::OsString, fs};
-use toml::from_str;
 
 #[serde_as]
 #[derive(Debug, Clone, Deserialize)]
@@ -162,7 +147,7 @@ impl Default for Args {
 }
 
 impl Args {
-    pub fn apply_to_consensus_config(&self, config: &mut Config) {
+    pub fn apply_to_config(&self, config: &mut Config) {
         config.utxoindex = self.utxoindex;
         config.txindex = self.utxoindex;
         config.disable_upnp = self.disable_upnp;
@@ -326,7 +311,6 @@ pub fn cli() -> Command {
                 .long("enable-mainnet-mining")
                 .action(ArgAction::SetTrue)
                 .hide(true)
-                .help("Allow mainnet mining (currently enabled by default while the flag is kept for backwards compatibility)"),
                 .help("Allow mainnet mining (currently enabled by default while the flag is kept for backwards compatibility)"),
         )
         .arg(arg!(--utxoindex "Enable the UTXO index"))

@@ -139,12 +139,11 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn get_history_root(&self) -> Hash {
-        unimplemented!()
-    }
-
     /// source refers to the earliest block from which the current node is guaranteed to have full header & block data  
-    fn get_source(&self, exact: bool) -> Hash {
+    // Note: in a state of active / interrupted pruning there may be a "source" block known to consensus
+    // in the past of the retrieved source, but we expect this source block to be pruned soon.
+    // as such we ignore this short-lived discrepancy and return the to-be source as the source. 
+    fn get_source(&self) -> Hash {
         unimplemented!()
     }
 

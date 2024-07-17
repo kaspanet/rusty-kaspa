@@ -249,7 +249,7 @@ impl TxIndexApi for TxIndex {
 
         // Gather the necessary potential block hashes to sync from and to.
         let txindex_source = self.stores.source_store.get()?;
-        let consensus_source = session.get_source(true);
+        let consensus_source = session.get_source();
         let txindex_sink = self.stores.sink_store()?.get().hash;
         let consensus_sink = session.get_sink();
 
@@ -312,7 +312,7 @@ impl TxIndexApi for TxIndex {
         if let Some(txindex_sink) = self.stores.sink_store().get()? {
             if txindex_sink == session.get_sink() {
                 if let Some(txindex_source) = self.stores.source_store.get()? {
-                    if txindex_source == session.get_source(true) {
+                    if txindex_source == session.get_source() {
                         return Ok(true);
                     }
                 }
@@ -398,13 +398,13 @@ mod tests {
         params::MAINNET_PARAMS,
     };
     use kaspa_consensus_core::{
-        acceptance_data::{MergesetBlockAcceptanceData, TxEntry},
+        acceptance_data::{MergesetBlockAcceptanceData, AcceptedTxEntry},
         api::ConsensusApi,
         config::Config as ConsensusConfig,
         tx::TransactionId,
         ChainPath,
     };
-    use kaspa_consensus_notify::notification::{ChainAcceptanceDataPrunedNotification, VirtualChainChangedNotification};
+    use kaspa_consensus_notify::notification::{PruningPointAdvancementNotification, VirtualChainChangedNotification};
     use kaspa_consensusmanager::ConsensusManager;
 
     use kaspa_database::{create_temp_db, prelude::ConnBuilder};
@@ -420,7 +420,7 @@ mod tests {
     fn assert_equal_along_virtual_chain(virtual_chain: &ChainPath, test_consensus: Arc<TestConsensus>, txindex: Arc<RwLock<TxIndex>>) {
         assert!(txindex.write().is_synced().unwrap());
         assert_eq!(txindex.write().get_sink().unwrap().unwrap(), test_consensus.get_sink());
-        assert_eq!(txindex.write().get_source().unwrap().unwrap(), test_consensus.get_source(true));
+        assert_eq!(txindex.write().get_source().unwrap().unwrap(), test_consensus.get_source());
 
         // check intial state
         for (accepting_block_hash, acceptance_data) in
@@ -511,19 +511,19 @@ mod tests {
             MergesetBlockAcceptanceData {
                 block_hash: block_a,
                 accepted_transactions: vec![
-                    TxEntry { transaction_id: tx_a_1, index_within_block: 0 },
-                    TxEntry { transaction_id: tx_a_2, index_within_block: 1 },
-                    TxEntry { transaction_id: tx_a_3, index_within_block: 2 },
-                    TxEntry { transaction_id: tx_a_4, index_within_block: 3 },
+                    AcceptedTxEntry { transaction_id: tx_a_1, index_within_block: 0 },
+                    AcceptedTxEntry { transaction_id: tx_a_2, index_within_block: 1 },
+                    AcceptedTxEntry { transaction_id: tx_a_3, index_within_block: 2 },
+                    AcceptedTxEntry { transaction_id: tx_a_4, index_within_block: 3 },
                 ],
             },
             MergesetBlockAcceptanceData {
                 block_hash: block_aa,
                 accepted_transactions: vec![
-                    TxEntry { transaction_id: tx_aa_1, index_within_block: 0 },
-                    TxEntry { transaction_id: tx_aa_2, index_within_block: 1 },
-                    TxEntry { transaction_id: tx_aa_3, index_within_block: 2 },
-                    TxEntry { transaction_id: tx_aa_4, index_within_block: 3 },
+                    AcceptedTxEntry { transaction_id: tx_aa_1, index_within_block: 0 },
+                    AcceptedTxEntry { transaction_id: tx_aa_2, index_within_block: 1 },
+                    AcceptedTxEntry { transaction_id: tx_aa_3, index_within_block: 2 },
+                    AcceptedTxEntry { transaction_id: tx_aa_4, index_within_block: 3 },
                 ],
             },
         ]);
@@ -531,10 +531,10 @@ mod tests {
         let acceptance_data_b = Arc::new(vec![MergesetBlockAcceptanceData {
             block_hash: block_b,
             accepted_transactions: vec![
-                TxEntry { transaction_id: tx_b_1, index_within_block: 0 },
-                TxEntry { transaction_id: tx_b_2, index_within_block: 1 },
-                TxEntry { transaction_id: tx_b_3, index_within_block: 2 },
-                TxEntry { transaction_id: tx_b_4, index_within_block: 3 },
+                AcceptedTxEntry { transaction_id: tx_b_1, index_within_block: 0 },
+                AcceptedTxEntry { transaction_id: tx_b_2, index_within_block: 1 },
+                AcceptedTxEntry { transaction_id: tx_b_3, index_within_block: 2 },
+                AcceptedTxEntry { transaction_id: tx_b_4, index_within_block: 3 },
             ],
         }]);
 
@@ -565,19 +565,19 @@ mod tests {
             MergesetBlockAcceptanceData {
                 block_hash: block_h,
                 accepted_transactions: vec![
-                    TxEntry { transaction_id: tx_h_1, index_within_block: 0 },
-                    TxEntry { transaction_id: tx_h_2, index_within_block: 1 },
-                    TxEntry { transaction_id: tx_h_3, index_within_block: 2 },
-                    TxEntry { transaction_id: tx_h_4, index_within_block: 3 },
+                    AcceptedTxEntry { transaction_id: tx_h_1, index_within_block: 0 },
+                    AcceptedTxEntry { transaction_id: tx_h_2, index_within_block: 1 },
+                    AcceptedTxEntry { transaction_id: tx_h_3, index_within_block: 2 },
+                    AcceptedTxEntry { transaction_id: tx_h_4, index_within_block: 3 },
                 ],
             },
             MergesetBlockAcceptanceData {
                 block_hash: block_hh,
                 accepted_transactions: vec![
-                    TxEntry { transaction_id: tx_hh_1, index_within_block: 0 },
-                    TxEntry { transaction_id: tx_hh_2, index_within_block: 1 },
-                    TxEntry { transaction_id: tx_hh_3, index_within_block: 2 },
-                    TxEntry { transaction_id: tx_hh_4, index_within_block: 3 },
+                    AcceptedTxEntry { transaction_id: tx_hh_1, index_within_block: 0 },
+                    AcceptedTxEntry { transaction_id: tx_hh_2, index_within_block: 1 },
+                    AcceptedTxEntry { transaction_id: tx_hh_3, index_within_block: 2 },
+                    AcceptedTxEntry { transaction_id: tx_hh_4, index_within_block: 3 },
                 ],
             },
         ]);
@@ -585,10 +585,10 @@ mod tests {
         let acceptance_data_i = Arc::new(vec![MergesetBlockAcceptanceData {
             block_hash: block_i,
             accepted_transactions: vec![
-                TxEntry { transaction_id: tx_i_1, index_within_block: 0 },
-                TxEntry { transaction_id: tx_i_2, index_within_block: 1 },
-                TxEntry { transaction_id: tx_i_3, index_within_block: 2 },
-                TxEntry { transaction_id: tx_i_4, index_within_block: 3 },
+                AcceptedTxEntry { transaction_id: tx_i_1, index_within_block: 0 },
+                AcceptedTxEntry { transaction_id: tx_i_2, index_within_block: 1 },
+                AcceptedTxEntry { transaction_id: tx_i_3, index_within_block: 2 },
+                AcceptedTxEntry { transaction_id: tx_i_4, index_within_block: 3 },
             ],
         }]);
 
@@ -616,7 +616,7 @@ mod tests {
         assert_eq!(txindex.write().count_block_acceptance_offsets().unwrap(), 3);
         assert_eq!(txindex.write().count_accepted_tx_offsets().unwrap(), 12);
 
-        let prune_notification = ChainAcceptanceDataPrunedNotification {
+        let prune_notification = PruningPointAdvancementNotificationNotification {
             chain_hash_pruned: block_h,
             mergeset_block_acceptance_data_pruned: acceptance_data_h.clone(),
             source: block_i,

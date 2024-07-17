@@ -95,13 +95,7 @@ pub fn validate_args(args: &Args) -> ConsensusConfigResult<()> {
         return Err(ConsensusConfigError::RamScaleTooHigh);
     }
     if args.max_tracked_addresses > Tracker::MAX_ADDRESS_UPPER_BOUND {
-        return Err(ConfigError::MaxTrackedAddressesTooHigh(Tracker::MAX_ADDRESS_UPPER_BOUND));
-    }
-    if args.max_tracked_addresses > Tracker::MAX_ADDRESS_UPPER_BOUND {
-        return Err(ConfigError::MaxTrackedAddressesTooHigh(Tracker::MAX_ADDRESS_UPPER_BOUND));
-    }
-    if args.max_tracked_addresses > Tracker::MAX_ADDRESS_UPPER_BOUND {
-        return Err(ConfigError::MaxTrackedAddressesTooHigh(Tracker::MAX_ADDRESS_UPPER_BOUND));
+        return Err(ConsensusConfigError::MaxTrackedAddressesTooHigh(Tracker::MAX_ADDRESS_UPPER_BOUND));
     }
     Ok(())
 }
@@ -130,7 +124,7 @@ fn get_user_approval_or_exit(message: &str, approve: bool) {
     }
 }
 
-/// Runtime consensus_configuration struct for the application.
+/// Runtime configuration struct for the application.
 #[derive(Default)]
 pub struct Runtime {
     log_dir: Option<String>,

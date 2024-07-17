@@ -88,7 +88,7 @@ pub mod test {
     use crate::models::txindex::AcceptanceDataIndexType;
     use crate::reindexers::txindex::TxIndexReindexer;
 
-    use kaspa_consensus_core::acceptance_data::{MergesetBlockAcceptanceData, TxEntry};
+    use kaspa_consensus_core::acceptance_data::{MergesetBlockAcceptanceData, AcceptedTxEntry};
     use kaspa_consensus_core::tx::TransactionId;
     use kaspa_consensus_notify::notification::{PruningPointBlueScoreChangedNotification, VirtualChainChangedNotification};
     use kaspa_hashes::Hash;
@@ -183,29 +183,29 @@ pub mod test {
                     MergesetBlockAcceptanceData {
                         block_hash: block_h,
                         accepted_transactions: vec![
-                            TxEntry { transaction_id: tx_h_1, index_within_block: 0 },
-                            TxEntry { transaction_id: tx_h_2, index_within_block: 1 },
-                            TxEntry { transaction_id: tx_h_3, index_within_block: 2 },
-                            TxEntry { transaction_id: tx_h_4, index_within_block: 4 },
+                            AcceptedTxEntry { transaction_id: tx_h_1, index_within_block: 0 },
+                            AcceptedTxEntry { transaction_id: tx_h_2, index_within_block: 1 },
+                            AcceptedTxEntry { transaction_id: tx_h_3, index_within_block: 2 },
+                            AcceptedTxEntry { transaction_id: tx_h_4, index_within_block: 4 },
                         ],
                     },
                     MergesetBlockAcceptanceData {
                         block_hash: block_hh,
                         accepted_transactions: vec![
-                            TxEntry { transaction_id: tx_hh_1, index_within_block: 0 },
-                            TxEntry { transaction_id: tx_hh_2, index_within_block: 1 },
-                            TxEntry { transaction_id: tx_hh_3, index_within_block: 2 },
-                            TxEntry { transaction_id: tx_hh_4, index_within_block: 3 },
+                            AcceptedTxEntry { transaction_id: tx_hh_1, index_within_block: 0 },
+                            AcceptedTxEntry { transaction_id: tx_hh_2, index_within_block: 1 },
+                            AcceptedTxEntry { transaction_id: tx_hh_3, index_within_block: 2 },
+                            AcceptedTxEntry { transaction_id: tx_hh_4, index_within_block: 3 },
                         ],
                     },
                 ]),
                 Arc::new(vec![MergesetBlockAcceptanceData {
                     block_hash: block_i,
                     accepted_transactions: vec![
-                        TxEntry { transaction_id: tx_i_1, index_within_block: 0 },
-                        TxEntry { transaction_id: tx_i_2, index_within_block: 1 },
-                        TxEntry { transaction_id: tx_i_3, index_within_block: 2 },
-                        TxEntry { transaction_id: tx_i_4, index_within_block: 3 },
+                        AcceptedTxEntry { transaction_id: tx_i_1, index_within_block: 0 },
+                        AcceptedTxEntry { transaction_id: tx_i_2, index_within_block: 1 },
+                        AcceptedTxEntry { transaction_id: tx_i_3, index_within_block: 2 },
+                        AcceptedTxEntry { transaction_id: tx_i_4, index_within_block: 3 },
                     ],
                 }]),
             ]),
@@ -215,29 +215,29 @@ pub mod test {
                     MergesetBlockAcceptanceData {
                         block_hash: block_a,
                         accepted_transactions: vec![
-                            TxEntry { transaction_id: tx_a_1, index_within_block: 0 },
-                            TxEntry { transaction_id: tx_a_2, index_within_block: 1 },
-                            TxEntry { transaction_id: tx_a_3, index_within_block: 2 },
-                            TxEntry { transaction_id: tx_a_4, index_within_block: 3 },
+                            AcceptedTxEntry { transaction_id: tx_a_1, index_within_block: 0 },
+                            AcceptedTxEntry { transaction_id: tx_a_2, index_within_block: 1 },
+                            AcceptedTxEntry { transaction_id: tx_a_3, index_within_block: 2 },
+                            AcceptedTxEntry { transaction_id: tx_a_4, index_within_block: 3 },
                         ],
                     },
                     MergesetBlockAcceptanceData {
                         block_hash: block_aa,
                         accepted_transactions: vec![
-                            TxEntry { transaction_id: tx_aa_1, index_within_block: 0 },
-                            TxEntry { transaction_id: tx_aa_2, index_within_block: 1 },
-                            TxEntry { transaction_id: tx_aa_3, index_within_block: 2 },
-                            TxEntry { transaction_id: tx_aa_4, index_within_block: 3 },
+                            AcceptedTxEntry { transaction_id: tx_aa_1, index_within_block: 0 },
+                            AcceptedTxEntry { transaction_id: tx_aa_2, index_within_block: 1 },
+                            AcceptedTxEntry { transaction_id: tx_aa_3, index_within_block: 2 },
+                            AcceptedTxEntry { transaction_id: tx_aa_4, index_within_block: 3 },
                         ],
                     },
                 ]),
                 Arc::new(vec![MergesetBlockAcceptanceData {
                     block_hash: block_b,
                     accepted_transactions: vec![
-                        TxEntry { transaction_id: tx_b_1, index_within_block: 0 },
-                        TxEntry { transaction_id: tx_b_2, index_within_block: 1 },
-                        TxEntry { transaction_id: tx_b_3, index_within_block: 2 },
-                        TxEntry { transaction_id: tx_b_4, index_within_block: 3 },
+                        AcceptedTxEntry { transaction_id: tx_b_1, index_within_block: 0 },
+                        AcceptedTxEntry { transaction_id: tx_b_2, index_within_block: 1 },
+                        AcceptedTxEntry { transaction_id: tx_b_3, index_within_block: 2 },
+                        AcceptedTxEntry { transaction_id: tx_b_4, index_within_block: 3 },
                     ],
                 }]),
             ]),

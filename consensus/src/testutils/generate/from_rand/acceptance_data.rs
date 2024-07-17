@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData, TxEntry},
+    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData, AcceptedTxEntry},
     tx::TransactionIndexType,
 };
 use rand::{rngs::SmallRng, seq::SliceRandom};
@@ -49,7 +49,7 @@ pub fn generate_random_mergeset_block_acceptance(
     }
 }
 
-pub fn generate_random_tx_entries(rng: &mut SmallRng, indexes: &[TransactionIndexType]) -> Vec<TxEntry> {
+pub fn generate_random_tx_entries(rng: &mut SmallRng, indexes: &[TransactionIndexType]) -> Vec<AcceptedTxEntry> {
     let mut tx_entries = Vec::with_capacity(indexes.len());
     for i in indexes.iter() {
         tx_entries.push(generate_random_tx_entry_with_index(rng, *i));
@@ -57,6 +57,6 @@ pub fn generate_random_tx_entries(rng: &mut SmallRng, indexes: &[TransactionInde
     tx_entries
 }
 
-pub fn generate_random_tx_entry_with_index(rng: &mut SmallRng, index: TransactionIndexType) -> TxEntry {
+pub fn generate_random_tx_entry_with_index(rng: &mut SmallRng, index: TransactionIndexType) -> AcceptedTxEntry {
     TxEntry { transaction_id: generate_random_hash(rng), index_within_block: index }
 }

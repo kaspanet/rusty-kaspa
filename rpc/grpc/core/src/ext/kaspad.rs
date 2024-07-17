@@ -64,7 +64,7 @@ impl kaspad_request::Payload {
                     command: command.into(),
                 })
             }
-            Scope::ChainAcceptanceDataPruned(_) => unimplemented!("ChainAcceptanceDataPruned is not supported by RPC"),
+            Scope::PruningPointAdvancement(_) => unimplemented!("PruningPointAdvancement is not supported by RPC"),
         }
     }
 

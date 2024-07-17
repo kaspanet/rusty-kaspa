@@ -156,7 +156,7 @@ impl RpcCoreService {
 
         // Prepare the rpc-core notifier objects
         let mut consensus_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
-        consensus_events[EventType::ChainAcceptanceDataPruned] = false; // Not used in rpc
+        consensus_events[EventType::PruningPointAdvancement] = false; // Not used in rpc
         consensus_events[EventType::UtxosChanged] = false;
         consensus_events[EventType::PruningPointUtxoSetOverride] = utxoindex.is_none();
         consensus_events[EventType::VirtualChainChanged] = txindex.is_none();
@@ -188,7 +188,7 @@ impl RpcCoreService {
             if txindex.is_some() {
                 index_events.append(&mut vec![
                     EventType::VirtualChainChanged,
-                    //EventType::ChainAcceptanceDataPruned, this is not used by the rpc, but if it is, it should be over the index service
+                    //EventType::PruningPointAdvancementNotification, this is not used by the rpc, but if it is, it should be over the index service
                 ])
             }
 

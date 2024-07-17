@@ -12,11 +12,11 @@ pub struct AcceptanceData {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MergesetBlockAcceptanceData {
     pub block_hash: Hash,
-    pub accepted_transactions: Vec<TxEntry>,
+    pub accepted_transactions: Vec<AcceptedTxEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct TxEntry {
+pub struct AcceptedTxEntry {
     pub transaction_id: TransactionId,
     pub index_within_block: TransactionIndexType,
 }

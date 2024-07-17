@@ -1,6 +1,6 @@
 use kaspa_consensus_core::acceptance_data::AcceptanceData;
+use kaspa_consensus_core::acceptance_data::AcceptedTxEntry;
 use kaspa_consensus_core::acceptance_data::MergesetBlockAcceptanceData;
-use kaspa_consensus_core::acceptance_data::TxEntry;
 use kaspa_consensus_core::BlockHasher;
 use kaspa_database::prelude::CachePolicy;
 use kaspa_database::prelude::StoreError;
@@ -30,7 +30,7 @@ struct AcceptanceDataEntry(Arc<AcceptanceData>);
 
 impl MemSizeEstimator for AcceptanceDataEntry {
     fn estimate_mem_bytes(&self) -> usize {
-        self.0.iter().map(|l| l.accepted_transactions.len()).sum::<usize>() * size_of::<TxEntry>()
+        self.0.iter().map(|l| l.accepted_transactions.len()).sum::<usize>() * size_of::<AcceptedTxEntry>()
             + self.0.len() * size_of::<MergesetBlockAcceptanceData>()
             + size_of::<AcceptanceData>()
             + size_of::<Self>()

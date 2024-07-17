@@ -2,7 +2,7 @@ use std::{cmp::max, mem::size_of, sync::Arc};
 
 use kaspa_consensus::model::stores::pruning;
 use kaspa_consensus_core::{
-    acceptance_data::{MergesetBlockAcceptanceData, TxEntry},
+    acceptance_data::{MergesetBlockAcceptanceData, AcceptedTxEntry},
     config::Config as ConsensusConfig,
     tx::TransactionId,
     Hash,
@@ -40,7 +40,7 @@ impl PerfParams {
                 ((size_of::<TransactionId>() + size_of::<TxOffset>()) * params.max_default_txs_per_block as usize
                     + (size_of::<BlockAcceptanceOffset>() + size_of::<Hash>()))
                     * consensus_config.params.mergeset_size_limit as usize,
-                (size_of::<TxEntry>() * params.max_default_txs_per_block as usize
+                (size_of::<AcceptedTxEntry>() * params.max_default_txs_per_block as usize
                     + size_of::<MergesetBlockAcceptanceData>()
                     + size_of::<Hash>())
                     * consensus_config.params.mergeset_size_limit as usize,

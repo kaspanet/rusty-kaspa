@@ -14,7 +14,7 @@ use crate::{
     },
 };
 use kaspa_consensus_core::{
-    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData, TxEntry},
+    acceptance_data::{AcceptanceData, MergesetBlockAcceptanceData, AcceptedTxEntry},
     coinbase::*,
     hashing,
     header::Header,
@@ -109,11 +109,11 @@ impl VirtualStateProcessor {
                 // For the selected parent, we prepend the coinbase tx
                 ctx.mergeset_acceptance_data.push(MergesetBlockAcceptanceData {
                     block_hash: merged_block,
-                    accepted_transactions: once(TxEntry { transaction_id: validated_coinbase_id, index_within_block: 0 })
+                    accepted_transactions: once(AcceptedTxEntry { transaction_id: validated_coinbase_id, index_within_block: 0 })
                         .chain(
                             validated_transactions
                                 .into_iter()
-                                .map(|(tx, tx_idx)| TxEntry { transaction_id: tx.id(), index_within_block: tx_idx }),
+                                .map(|(tx, tx_idx)| AcceptedTxEntry { transaction_id: tx.id(), index_within_block: tx_idx }),
                         )
                         .collect(),
                 });

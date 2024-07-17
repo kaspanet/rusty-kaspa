@@ -1,8 +1,8 @@
+pub mod cache_policy_builder;
 pub mod ctl;
 pub mod factory;
 pub mod services;
 pub mod storage;
-
 pub mod test_consensus;
 
 #[cfg(feature = "devnet-prealloc")]
@@ -42,7 +42,7 @@ use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::{stats::BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats},
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
-    blockhash::{BlockHashExtensions, ORIGIN},
+    blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
     coinbase::MinerData,
     daa_score_timestamp::DaaScoreTimestamp,
@@ -500,40 +500,17 @@ impl ConsensusApi for Consensus {
         self.lkg_virtual_state.load().to_virtual_state_approx_id()
     }
 
-    fn get_source(&self, exact: bool) -> Hash {
+    // Note: in a state of active / interrupted pruning there may be a "source" block known to consensus
+    // in the past of the retrieved source, but we expect this source block to be pruned soon.
+    // as such we ignore this short-lived discrepancy and return the to-be source as the source. 
+    fn get_source(&self) -> Hash {
+        // we may use the history root in archival cases directly
         if self.config.is_archival {
-            // we may use the history root in archival cases directly
-            return self.pruning_point_store.read().history_root().unwrap();
+            return self.get_history_root()?
         }
 
+        // else the source is the pruning point
         let pruning_point = self.pruning_point_store.read().pruning_point().unwrap();
-
-        if exact {
-            // We require this guard from here on out, since we are accessing the history root.
-            let _pruning_guard = self.pruning_lock.blocking_read();
-
-            let history_root = self.pruning_point_store.read().history_root().ok();
-            if let Some(history_root) = history_root {
-                // in a state of interrupted pruning
-                if history_root != pruning_point {
-                    // we scan up to the first chain block with a block body form ORIGIN
-                    return self
-                        .services
-                        .reachability_service
-                        .forward_chain_iterator(ORIGIN, pruning_point, false)
-                        .skip(1) // skip ORIGIN
-                        .find(|this| {
-                            match self.statuses_store.read().get(*this).ok() {
-                                Some(res) => res.has_block_body(),
-                                None => false,
-                            }
-                        }) // find first chain block with body
-                        .unwrap(); // We expect some-such block to exist
-                } else {
-                    return pruning_point;
-                }
-            }
-        }
         pruning_point
     }
 
@@ -546,8 +523,8 @@ impl ConsensusApi for Consensus {
     /// This is an estimation based on the daa score difference between the node's `source` and `sink`'s daa score,
     /// as such, it does not include non-daa blocks, and does not include headers stored as part of the pruning proof.  
     fn estimate_block_count(&self) -> BlockCount {
-        // PRUNE SAFETY: node is either archival or none-exact source is the pruning point which its header is kept permanently
-        let source_score = self.headers_store.get_compact_header_data(self.get_source(false)).unwrap().daa_score;
+        // PRUNE SAFETY: node is either archival or exact source is the pruning point which its header is kept permanently
+        let source_score = self.headers_store.get_compact_header_data(self.get_source()).unwrap().daa_score;
         let virtual_score = self.get_virtual_daa_score();
         let header_count = self
             .headers_store
@@ -763,12 +740,6 @@ impl ConsensusApi for Consensus {
         Ok(self.services.reachability_service.is_chain_ancestor_of(low, high))
     }
 
-    fn is_chain_block(&self, this: Hash) -> ConsensusResult<bool> {
-        let _guard = self.pruning_lock.blocking_read();
-        self.validate_block_exists(this)?;
-        Ok(self.services.reachability_service.is_chain_ancestor_of(this, self.get_sink()))
-    }
-
     // max_blocks has to be greater than the merge set size limit
     fn get_hashes_between(&self, low: Hash, high: Hash, max_blocks: usize) -> ConsensusResult<(Vec<Hash>, Hash)> {
         let _guard = self.pruning_lock.blocking_read();
@@ -898,7 +869,11 @@ impl ConsensusApi for Consensus {
         self.statuses_store.read().get(hash).unwrap_option()
     }
     fn get_block_acceptance_data(&self, hash: Hash) -> ConsensusResult<Arc<AcceptanceData>> {
-        self.acceptance_data_store.get(hash).map_err(|_| ConsensusError::MissingData(hash))
+        self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))
+    }
+
+    fn is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {
+        self.is_chain_ancestor_of(hash, self.get_sink())
     }
 
     fn get_blocks_acceptance_data(&self, hashes: &[Hash]) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {

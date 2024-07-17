@@ -34,7 +34,7 @@ use kaspa_consensus_core::{
     BlockHashSet,
 };
 use kaspa_consensus_notify::{
-    notification::{PruningPointBlueScoreChangedNotification, Notification},
+    notification::{PruningPointAdvancementNotification, Notification},
     root::ConsensusNotificationRoot,
 };
 
@@ -270,9 +270,9 @@ impl PruningProcessor {
         assert_eq!(genesis, self.config.genesis.hash);
         assert_eq!(genesis, proof.last().unwrap().last().unwrap().hash);
 
-        if self.notification_root.has_subscription(EventType::PruningPointBlueScoreChanged) {
+        if self.notification_root.has_subscription(EventType::PruningPointAdvancement) {
             // send notification about new pruning point and it's blue score
-            self.notification_root.send(Notification::PruningPointBlueScoreChanged(PruningPointBlueScoreChangedNotification {
+            self.notification_root.send(Notification::PruningPointAdvancement(PruningPointAdvancementNotification {
                 new_pruning_point,
                 new_pruning_point_blue_score: proof[0].last().unwrap().blue_score,
             }));
@@ -362,21 +362,17 @@ impl PruningProcessor {
         // The most efficient way to traverse the entire DAG from the bottom-up is via the reachability tree
         let mut queue = VecDeque::<Hash>::from_iter(reachability_read.get_children(ORIGIN).unwrap().iter().copied());
         let (mut counter, mut traversed) = (0, 0);
-
         info!("Header and Block pruning: starting traversal from: {} (genesis: {})", queue.iter().reusable_format(", "), genesis);
         while let Some(current) = queue.pop_front() {
-
             if reachability_read.is_dag_ancestor_of_result(new_pruning_point, current).unwrap() {
                 continue;
             }
-
             traversed += 1;
             // Obtain the tree children of `current` and push them to the queue before possibly being deleted below
             queue.extend(reachability_read.get_children(current).unwrap().iter());
 
             // If we have the lock for more than a few milliseconds, release and recapture to allow consensus progress during pruning
             if lock_acquire_time.elapsed() > Duration::from_millis(5) {
-
                 drop(reachability_read);
                 // An exit signal was received. Exit from this long running process.
                 if self.is_consensus_exiting.load(Ordering::Relaxed) {
