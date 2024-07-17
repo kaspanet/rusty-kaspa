@@ -26,6 +26,7 @@ use kaspa_rpc_core::{
     RpcContextualPeerAddress, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult,
     SubmitBlockRejectReason, SubmitBlockReport,
 };
+use kaspa_utils::hex::FromHex;
 use std::str::FromStr;
 
 macro_rules! from {
@@ -180,6 +181,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetInfoResponse>, protowire::GetInfoRespo
         mempool_size: item.mempool_size,
         server_version: item.server_version.clone(),
         is_utxo_indexed: item.is_utxo_indexed,
+        is_tx_indexed: item.is_tx_indexed,
         is_synced: item.is_synced,
         has_notify_command: item.has_notify_command,
         has_message_id: item.has_message_id,
@@ -436,6 +438,22 @@ from!(item: RpcResult<&kaspa_rpc_core::GetSyncStatusResponse>, protowire::GetSyn
     }
 });
 
+from!(item: &kaspa_rpc_core::GetTransactionDataRequest, protowire::GetTransactionDataRequestMessage, {
+    Self {
+        transaction_ids: item.transaction_ids.iter().map(|x| x.to_string()).collect(),
+        include_transactions: item.include_transactions,
+        include_acceptance_data: item.include_acceptance_data,
+        include_inclusion_data: item.include_inclusion_data,
+        include_verbose_data: item.include_verbose_data,
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetTransactionDataResponse>, protowire::GetTransactionDataResponseMessage, {
+    Self {
+            transaction_data: item.transaction_data.iter().map(|x| x.into()).collect(),
+            error: None
+        }
+});
+
 from!(item: &kaspa_rpc_core::NotifyUtxosChangedRequest, protowire::NotifyUtxosChangedRequestMessage, {
     Self { addresses: item.addresses.iter().map(|x| x.into()).collect(), command: item.command.into() }
 });
@@ -565,6 +583,7 @@ try_from!(item: &protowire::GetInfoResponseMessage, RpcResult<kaspa_rpc_core::Ge
         mempool_size: item.mempool_size,
         server_version: item.server_version.clone(),
         is_utxo_indexed: item.is_utxo_indexed,
+        is_tx_indexed: item.is_tx_indexed,
         is_synced: item.is_synced,
         has_notify_command: item.has_notify_command,
         has_message_id: item.has_message_id,
@@ -824,6 +843,19 @@ try_from!(item: &protowire::GetSyncStatusResponseMessage, RpcResult<kaspa_rpc_co
     Self {
         is_synced: item.is_synced,
     }
+});
+
+try_from!(item: &protowire::GetTransactionDataRequestMessage, kaspa_rpc_core::GetTransactionDataRequest, {
+    Self {
+        transaction_ids: item.transaction_ids.iter().map(|x| RpcHash::from_hex(x)).collect::<Result<Vec<_>, _>>()?,
+        include_transactions: item.include_transactions,
+        include_acceptance_data: item.include_acceptance_data,
+        include_inclusion_data: item.include_inclusion_data,
+        include_verbose_data: item.include_verbose_data,
+    }
+});
+try_from!(item: &protowire::GetTransactionDataResponseMessage,  RpcResult<kaspa_rpc_core::GetTransactionDataResponse>, {
+    Self { transaction_data: item.transaction_data.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()? }
 });
 
 try_from!(item: &protowire::NotifyUtxosChangedRequestMessage, kaspa_rpc_core::NotifyUtxosChangedRequest, {

@@ -9,7 +9,7 @@ use kaspa_consensus_core::{
     blockstatus::BlockStatus,
     daa_score_timestamp::DaaScoreTimestamp,
     errors::consensus::ConsensusResult,
-    header::Header,
+    header::{CompactHeaderData, Header},
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
@@ -249,7 +249,7 @@ impl ConsensusSessionOwned {
 
     /// source refers to the earliest block from which the current node has full header & block data  
     pub async fn async_get_source(&self) -> Hash {
-        self.clone().spawn_blocking(|c| c.get_source()).await
+        self.clone().spawn_blocking(move |c| c.get_source()).await
     }
 
     pub async fn async_estimate_block_count(&self) -> BlockCount {
@@ -263,8 +263,13 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.is_nearly_synced()).await
     }
 
-    pub async fn async_get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
-        self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(hash)).await
+    pub async fn async_get_virtual_chain_from_block(
+        &self,
+        low: Hash,
+        high: Option<Hash>,
+        max_blocks: usize,
+    ) -> ConsensusResult<ChainPath> {
+        self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(low, high, max_blocks)).await
     }
 
     pub async fn async_get_virtual_utxos(
@@ -294,6 +299,10 @@ impl ConsensusSessionOwned {
 
     pub async fn async_get_header(&self, hash: Hash) -> ConsensusResult<Arc<Header>> {
         self.clone().spawn_blocking(move |c| c.get_header(hash)).await
+    }
+
+    pub async fn async_get_compact_header(&self, hash: Hash) -> ConsensusResult<CompactHeaderData> {
+        self.clone().spawn_blocking(move |c| c.get_compact_header(hash)).await
     }
 
     pub async fn async_get_headers_selected_tip(&self) -> Hash {
@@ -434,6 +443,10 @@ impl ConsensusSessionOwned {
 
     pub async fn async_finality_point(&self) -> Hash {
         self.clone().spawn_blocking(move |c| c.finality_point()).await
+    }
+
+    pub async fn async_get_block_transactions(&self, hash: Hash) -> ConsensusResult<Arc<Vec<Transaction>>> {
+        self.clone().spawn_blocking(move |c| c.get_block_transactions(hash)).await
     }
 }
 

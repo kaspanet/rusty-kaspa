@@ -1,6 +1,7 @@
 use crate::{hashing, BlueWorkType};
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_hashes::Hash;
+use kaspa_utils::{hex::ToHex, mem_size::MemSizeEstimator};
 use serde::{Deserialize, Serialize};
 
 /// @category Consensus
@@ -89,6 +90,22 @@ impl Header {
             blue_score: 0,
             pruning_point: Default::default(),
         }
+    }
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub struct CompactHeaderData {
+    pub daa_score: u64,
+    pub timestamp: u64,
+    pub bits: u32,
+    pub blue_score: u64,
+}
+
+impl MemSizeEstimator for CompactHeaderData {}
+
+impl From<&Header> for CompactHeaderData {
+    fn from(header: &Header) -> Self {
+        Self { daa_score: header.daa_score, timestamp: header.timestamp, bits: header.bits, blue_score: header.blue_score }
     }
 }
 

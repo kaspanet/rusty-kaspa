@@ -39,8 +39,7 @@ event_type_enum! {
     ///
     /// Note: This enum is central to the notification system. For supporting a new notification type, it is advised to
     /// start by adding a new variant here.
-    #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
-    #[serde(rename_all = "kebab-case")]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
     pub enum EventType {
         BlockAdded = 0,
         VirtualChainChanged,
@@ -51,10 +50,11 @@ event_type_enum! {
         VirtualDaaScoreChanged,
         PruningPointUtxoSetOverride,
         NewBlockTemplate,
+        PruningPointAdvancement,
     }
 }
 
-pub const EVENT_COUNT: usize = 9;
+pub const EVENT_COUNT: usize = 10;
 
 impl FromStr for EventType {
     type Err = Error;
@@ -70,6 +70,7 @@ impl FromStr for EventType {
             "virtual-daa-score-changed" => Ok(EventType::VirtualDaaScoreChanged),
             "pruning-point-utxo-set-override" => Ok(EventType::PruningPointUtxoSetOverride),
             "new-block-template" => Ok(EventType::NewBlockTemplate),
+            "pruning-point-advancement" => Ok(EventType::PruningPointAdvancement),
             _ => Err(Error::InvalidEventType(s.to_string())),
         }
     }

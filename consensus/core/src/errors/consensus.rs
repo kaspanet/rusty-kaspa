@@ -20,6 +20,9 @@ pub enum ConsensusError {
     #[error("got unexpected pruning point")]
     UnexpectedPruningPoint,
 
+    #[error("expected block: {0} to be an ancestor of block: {1}")]
+    ExpectedAncestor(Hash, Hash),
+
     #[error("pruning point is not at sufficient depth from virtual, cannot obtain its final anticone at this stage")]
     PruningPointInsufficientDepth,
 

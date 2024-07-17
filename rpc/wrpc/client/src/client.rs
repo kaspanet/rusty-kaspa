@@ -612,6 +612,7 @@ impl RpcApi for KaspaRpcClient {
             GetUtxosByAddresses,
             GetSinkBlueScore,
             GetVirtualChainFromBlock,
+            GetTransactionData,
             Ping,
             ResolveFinalityConflict,
             Shutdown,

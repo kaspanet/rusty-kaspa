@@ -1,17 +1,19 @@
+use kaspa_index_core::models::utxoindex::{CirculatingSupply, UtxoChanges, UtxoSetByScriptPublicKey};
+
 use crate::{
-    api::UtxoIndexApi,
+    core::api::UtxoIndexApi,
     errors::{UtxoIndexError, UtxoIndexResult},
-    model::{CirculatingSupply, UtxoChanges, UtxoSetByScriptPublicKey},
     stores::store_manager::Store,
     update_container::UtxoIndexChanges,
     IDENT,
 };
-use kaspa_consensus_core::{tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
+use kaspa_consensus_core::{tx::ScriptPublicKeys, BlockHashSet};
+use kaspa_consensus_notify::notification::UtxosChangedNotification as ConsensusUtxosChangedNotification;
 use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
 use kaspa_core::{info, trace};
 use kaspa_database::prelude::{StoreError, StoreResult, DB};
-use kaspa_hashes::Hash;
-use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
+
+use kaspa_index_core::models::utxoindex::BalanceByScriptPublicKey;
 use kaspa_utils::arc::ArcExtensions;
 use parking_lot::RwLock;
 use std::{
@@ -74,15 +76,15 @@ impl UtxoIndexApi for UtxoIndex {
     /// Updates the [UtxoIndex] via the virtual state supplied:
     /// 1) Saves updated utxo differences, virtual parent hashes and circulating supply to the database.
     /// 2) returns an event about utxoindex changes.
-    fn update(&mut self, utxo_diff: Arc<UtxoDiff>, tips: Arc<Vec<Hash>>) -> UtxoIndexResult<UtxoChanges> {
+    fn update(&mut self, utxo_changed_notification: ConsensusUtxosChangedNotification) -> UtxoIndexResult<UtxoChanges> {
         trace!("[{0}] updating...", IDENT);
-        trace!("[{0}] adding {1} utxos", IDENT, utxo_diff.add.len());
-        trace!("[{0}] removing {1} utxos", IDENT, utxo_diff.remove.len());
+        trace!("[{0}] adding {1} utxos", IDENT, utxo_changed_notification.accumulated_utxo_diff.add.len());
+        trace!("[{0}] removing {1} utxos", IDENT, utxo_changed_notification.accumulated_utxo_diff.remove.len());
 
         // Initiate update container
         let mut utxoindex_changes = UtxoIndexChanges::new();
-        utxoindex_changes.update_utxo_diff(utxo_diff.unwrap_or_clone());
-        utxoindex_changes.set_tips(tips.unwrap_or_clone().to_vec());
+        utxoindex_changes.update_utxo_diff(utxo_changed_notification.accumulated_utxo_diff.unwrap_or_clone());
+        utxoindex_changes.set_tips(utxo_changed_notification.virtual_parents.unwrap_or_clone().to_vec());
 
         // Commit changed utxo state to db
         self.store.update_utxo_state(&utxoindex_changes.utxo_changes.added, &utxoindex_changes.utxo_changes.removed, false)?;
@@ -213,7 +215,7 @@ impl ConsensusResetHandler for UtxoIndexConsensusResetHandler {
 
 #[cfg(test)]
 mod tests {
-    use crate::{api::UtxoIndexApi, model::CirculatingSupply, testutils::virtual_change_emulator::VirtualChangeEmulator, UtxoIndex};
+    use crate::{api::UtxoIndexApi, testutils::virtual_change_emulator::VirtualChangeEmulator, UtxoIndex};
     use kaspa_consensus::{
         config::Config,
         consensus::test_consensus::TestConsensus,
@@ -231,6 +233,7 @@ mod tests {
     use kaspa_core::info;
     use kaspa_database::create_temp_db;
     use kaspa_database::prelude::ConnBuilder;
+    use kaspa_index_core::models::utxoindex::CirculatingSupply;
     use std::{collections::HashSet, sync::Arc, time::Instant};
 
     /// TODO: use proper Simnet when implemented.
@@ -307,7 +310,7 @@ mod tests {
         let now = Instant::now();
         let utxo_changes = utxoindex
             .write()
-            .update(virtual_change_emulator.accumulated_utxo_diff.clone(), virtual_change_emulator.virtual_parents)
+            .update(virtual_change_emulator.generate_consensus_utxo_changed_notiication())
             .expect("expected utxoindex utxo changes");
         let bench_time = now.elapsed().as_millis();
         // TODO: move over to proper benching eventually.

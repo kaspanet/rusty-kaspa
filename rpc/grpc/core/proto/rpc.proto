@@ -55,6 +55,31 @@ message RpcBlockVerboseData{
   bool isChainBlock = 20;
 }
 
+/// AcceptanceData signifies information about when and where data was accepted in the block DAG.
+/// This information, specifically the blockBlueScore, is suitable for confirmation counting!
+message RpcTransactionAcceptanceData {
+  string blockHash = 1;
+  uint32 acceptanceDataIndex = 2; // index of the acceptance data 
+  uint64 timestamp = 3; // unix timestamp in ms
+  uint64 daaScore = 4; // note: this signifies network "time", and should not be used for confirmation counting.
+  uint64 blueScore = 5; // note: use this score for confirmation counting.
+}
+
+/// InclusionData signifies information about when and where data was included in the block DAG.
+/// This information is NOT suitable for confirmation counting!
+message RpcTransactionInclusionData {
+  string blockHash = 1;
+  uint32 transactionIndex = 2;
+  uint64 timestamp = 3; // unix timestamp in ms
+  uint64 daaScore = 4;
+}
+
+message RpcTransactionData {
+  RpcTransaction transaction = 2;
+  RpcTransactionAcceptanceData acceptanceData = 3;
+  RpcTransactionInclusionData inclusionData = 4;
+}
+
 message RpcTransaction {
   uint32 version = 1;
   repeated RpcTransactionInput inputs = 2;
@@ -682,6 +707,7 @@ message GetInfoResponseMessage{
   uint64 mempoolSize = 2;
   string serverVersion = 3;
   bool isUtxoIndexed = 4;
+  bool isTxIndexed = 6;
   bool isSynced = 5;
   bool hasNotifyCommand = 11;
   bool hasMessageId = 12;
@@ -844,10 +870,26 @@ message GetSyncStatusResponseMessage{
 }
 
 message GetDaaScoreTimestampEstimateRequestMessage {
-        repeated uint64 daa_scores = 1;
+  repeated uint64 daa_scores = 1;
 }
 
 message GetDaaScoreTimestampEstimateResponseMessage{
-        repeated uint64 timestamps = 1;
-        RPCError error = 1000;
+  repeated uint64 timestamps = 1;
+  RPCError error = 1000;
+}
+
+// This requires the the node to be run with `--txindex`
+message GetTransactionDataRequestMessage {
+  repeated string transactionIds = 1;
+  bool includeTransactions = 2;
+  bool includeAcceptanceData = 3;
+  bool includeInclusionData = 4;
+  bool includeVerboseData = 5;
+
+}
+// This requires the the node to be run with `--txindex`
+message GetTransactionDataResponseMessage{
+  repeated RpcTransactionData transactionData = 1;
+  
+  RPCError error = 1000;
 }

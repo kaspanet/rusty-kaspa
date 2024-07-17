@@ -6,10 +6,9 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::trace;
 use kaspa_database::prelude::{CachePolicy, StoreResult, DB};
-use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
+use kaspa_index_core::models::utxoindex::{BalanceByScriptPublicKey, UtxoSetByScriptPublicKey};
 
 use crate::{
-    model::UtxoSetByScriptPublicKey,
     stores::{
         indexed_utxos::{DbUtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStore, UtxoSetByScriptPublicKeyStoreReader},
         supply::{CirculatingSupplyStore, CirculatingSupplyStoreReader, DbCirculatingSupplyStore},

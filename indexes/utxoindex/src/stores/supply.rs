@@ -5,7 +5,7 @@ use kaspa_database::{
     registry::DatabaseStorePrefixes,
 };
 
-use crate::model::CirculatingSupply;
+use kaspa_index_core::models::utxoindex::CirculatingSupply;
 
 /// Reader API for `UtxoIndexTipsStore`.
 pub trait CirculatingSupplyStoreReader {
