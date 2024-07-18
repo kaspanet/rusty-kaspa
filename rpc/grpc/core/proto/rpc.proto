@@ -823,9 +823,10 @@ message GetSystemInfoRequestMessage{
 
 message GetSystemInfoResponseMessage{
   string systemId = 1;
-  uint32 coreNum = 2;
-  uint64 totalMemory = 3;
-  uint32 fdLimit = 4;
+  string gitHash = 2;
+  uint32 coreNum = 3;
+  uint64 totalMemory = 4;
+  uint32 fdLimit = 5;
   RPCError error = 1000;
 }
 
