@@ -932,7 +932,13 @@ mod mockery {
 
     impl Mock for GetSystemInfoResponse {
         fn mock() -> Self {
-            GetSystemInfoResponse { system_id: mock(), cpu_physical_cores: mock(), total_memory: mock(), fd_limit: mock() }
+            GetSystemInfoResponse {
+                system_id: mock(),
+                git_hash: mock(),
+                cpu_physical_cores: mock(),
+                total_memory: mock(),
+                fd_limit: mock(),
+            }
         }
     }
 

@@ -436,7 +436,8 @@ from!(item: RpcResult<&kaspa_rpc_core::GetConnectionsResponse>, protowire::GetCo
 from!(&kaspa_rpc_core::GetSystemInfoRequest, protowire::GetSystemInfoRequestMessage);
 from!(item: RpcResult<&kaspa_rpc_core::GetSystemInfoResponse>, protowire::GetSystemInfoResponseMessage, {
     Self {
-        system_id : item.system_id.to_hex(),
+        system_id : item.system_id.as_ref().map(|system_id|system_id.to_hex()).unwrap_or_default(),
+        git_hash : item.git_hash.as_ref().map(|git_hash|git_hash.to_hex()).unwrap_or_default(),
         total_memory : item.total_memory,
         core_num : item.cpu_physical_cores as u32,
         fd_limit : item.fd_limit,
@@ -859,7 +860,8 @@ try_from!(item: &protowire::GetConnectionsResponseMessage, RpcResult<kaspa_rpc_c
 try_from!(&protowire::GetSystemInfoRequestMessage, kaspa_rpc_core::GetSystemInfoRequest);
 try_from!(item: &protowire::GetSystemInfoResponseMessage, RpcResult<kaspa_rpc_core::GetSystemInfoResponse>, {
     Self {
-        system_id: FromHex::from_hex(&item.system_id)?,
+        system_id: (!item.system_id.is_empty()).then(|| FromHex::from_hex(&item.system_id)).transpose()?,
+        git_hash: (!item.git_hash.is_empty()).then(|| FromHex::from_hex(&item.git_hash)).transpose()?,
         total_memory: item.total_memory,
         cpu_physical_cores: item.core_num as u16,
         fd_limit: item.fd_limit,
