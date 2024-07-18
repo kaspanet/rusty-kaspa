@@ -70,6 +70,12 @@ impl XPrv {
         let public_key = self.inner.public_key();
         Ok(public_key.into())
     }
+
+    #[wasm_bindgen(js_name = toPrivateKey)]
+    pub fn to_private_key(&self) -> Result<PrivateKey> {
+        let private_key = self.inner.private_key();
+        Ok(private_key.into())
+    }
 }
 
 impl<'a> From<&'a XPrv> for &'a ExtendedPrivateKey<SecretKey> {
