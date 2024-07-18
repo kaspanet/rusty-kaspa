@@ -16,6 +16,8 @@ pub struct SystemInfo {
 
 static SYSTEM_INFO: OnceLock<SystemInfo> = OnceLock::new();
 
+const GIT_HASH: &str = env!("RUSTY_KASPA_GIT_COMMIT_HASH");
+
 impl Default for SystemInfo {
     fn default() -> Self {
         let system_info = SYSTEM_INFO.get_or_init(|| {
@@ -56,32 +58,7 @@ impl SystemInfo {
     /// Check if the codebase is built under a Git repository
     /// and return the hash of the current commit as `Vec<u8>`.
     fn try_git_hash_as_vec() -> Option<Vec<u8>> {
-        Vec::<u8>::from_hex(&Self::try_git_hash_as_string()?).ok()
-    }
-
-    /// Check if the codebase is built under Git repository
-    /// and return the hash of the current commit as `String`.
-    fn try_git_hash_as_string() -> Option<String> {
-        let current_exe = std::env::current_exe().ok()?;
-        // assume `folder/target/release/binary`, cascade back to `folder/`
-        let path = current_exe.as_path().parent()?.parent()?.parent()?;
-
-        let git_folder = path.join(".git");
-        if git_folder.is_dir() {
-            let head = git_folder.join("HEAD");
-            if head.is_file() {
-                let head = std::fs::read_to_string(head).ok()?;
-                if head.starts_with("ref: ") {
-                    let head = head.trim_start_matches("ref: ");
-                    let head = git_folder.join(head.trim());
-                    if head.is_file() {
-                        return std::fs::read_to_string(head).ok();
-                    }
-                }
-            }
-        }
-
-        None
+        FromHex::from_hex(GIT_HASH).ok()
     }
 }
 
