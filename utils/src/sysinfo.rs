@@ -16,6 +16,7 @@ pub struct SystemInfo {
 
 static SYSTEM_INFO: OnceLock<SystemInfo> = OnceLock::new();
 
+// generates by `build.rs`
 const GIT_HASH: &str = env!("RUSTY_KASPA_GIT_COMMIT_HASH");
 
 impl Default for SystemInfo {
