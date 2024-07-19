@@ -96,6 +96,7 @@ pub struct Inner {
     retained_contexts: Mutex<HashMap<String, Arc<Vec<u8>>>>,
     // Mutex used to protect concurrent access to accounts at the wallet api level
     guard: Arc<AsyncMutex<()>>,
+    account_guard: Arc<AsyncMutex<()>>,
 }
 
 ///
@@ -161,6 +162,7 @@ impl Wallet {
                 estimation_abortables: Mutex::new(HashMap::new()),
                 retained_contexts: Mutex::new(HashMap::new()),
                 guard: Arc::new(AsyncMutex::new(())),
+                account_guard: Arc::new(AsyncMutex::new(())),
             }),
         };
 
@@ -373,19 +375,24 @@ impl Wallet {
             None
         };
 
+        if let Some(accounts) = &accounts {
+            for account in accounts.iter() {
+                if let Ok(legacy_account) = account.clone().as_legacy_account() {
+                    // if let Ok(descriptor) = account.descriptor(){
+                    //     legacy_account.create_private_context(wallet_secret, None, index)
+                    // }
+
+                    legacy_account.create_private_context(wallet_secret, None, None).await?;
+                    log_info!("create_private_context: receive_address: {:?}", account.receive_address());
+                    self.legacy_accounts().insert(account.clone());
+                }
+            }
+        }
+
         let account_descriptors = accounts
             .as_ref()
             .map(|accounts| accounts.iter().map(|account| account.descriptor()).collect::<Result<Vec<_>>>())
             .transpose()?;
-
-        if let Some(accounts) = accounts {
-            for account in accounts.into_iter() {
-                if let Ok(legacy_account) = account.clone().as_legacy_account() {
-                    self.legacy_accounts().insert(account);
-                    legacy_account.create_private_context(wallet_secret, None, None).await?;
-                }
-            }
-        }
 
         self.notify(Events::WalletOpen { wallet_descriptor: wallet_name, account_descriptors: account_descriptors.clone() }).await?;
 
@@ -947,7 +954,7 @@ impl Wallet {
         account_id: &AccountId,
         _guard: &WalletGuard<'_>,
     ) -> Result<Option<Arc<dyn Account>>> {
-        let _guard = self.inner.guard.lock().await;
+        let _guard = self.inner.account_guard.lock().await;
 
         if let Some(account) = self.active_accounts().get(account_id) {
             Ok(Some(account.clone()))

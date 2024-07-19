@@ -2,6 +2,7 @@ use crate::imports::*;
 use kaspa_consensus_core::tx::{TransactionInput, TransactionOutpoint};
 use kaspa_wallet_core::storage::Binding;
 use kaspa_wallet_core::storage::{TransactionData, TransactionKind, TransactionRecord};
+use kaspa_wallet_core::wallet::WalletGuard;
 use workflow_log::style;
 
 pub trait TransactionTypeExtension {
@@ -48,13 +49,13 @@ impl TransactionTypeExtension for TransactionKind {
 
 #[async_trait]
 pub trait TransactionExtension {
-    async fn format_transaction(&self, wallet: &Arc<Wallet>, include_utxos: bool, guard: &AsyncMutexGuard<'_, ()>) -> Vec<String>;
+    async fn format_transaction(&self, wallet: &Arc<Wallet>, include_utxos: bool, guard: &WalletGuard) -> Vec<String>;
     async fn format_transaction_with_state(
         &self,
         wallet: &Arc<Wallet>,
         state: Option<&str>,
         include_utxos: bool,
-        guard: &AsyncMutexGuard<'_, ()>,
+        guard: &WalletGuard,
     ) -> Vec<String>;
     async fn format_transaction_with_args(
         &self,
@@ -64,13 +65,13 @@ pub trait TransactionExtension {
         include_utxos: bool,
         history: bool,
         account: Option<Arc<dyn Account>>,
-        guard: &AsyncMutexGuard<'_, ()>,
+        guard: &WalletGuard,
     ) -> Vec<String>;
 }
 
 #[async_trait]
 impl TransactionExtension for TransactionRecord {
-    async fn format_transaction(&self, wallet: &Arc<Wallet>, include_utxos: bool, guard: &AsyncMutexGuard<'_, ()>) -> Vec<String> {
+    async fn format_transaction(&self, wallet: &Arc<Wallet>, include_utxos: bool, guard: &WalletGuard) -> Vec<String> {
         self.format_transaction_with_args(wallet, None, None, include_utxos, false, None, guard).await
     }
 
@@ -79,7 +80,7 @@ impl TransactionExtension for TransactionRecord {
         wallet: &Arc<Wallet>,
         state: Option<&str>,
         include_utxos: bool,
-        guard: &AsyncMutexGuard<'_, ()>,
+        guard: &WalletGuard,
     ) -> Vec<String> {
         self.format_transaction_with_args(wallet, state, None, include_utxos, false, None, guard).await
     }
@@ -92,7 +93,7 @@ impl TransactionExtension for TransactionRecord {
         include_utxos: bool,
         history: bool,
         account: Option<Arc<dyn Account>>,
-        guard: &AsyncMutexGuard<'_, ()>,
+        guard: &WalletGuard,
     ) -> Vec<String> {
         let TransactionRecord { id, binding, block_daa_score, transaction_data, .. } = self;
 

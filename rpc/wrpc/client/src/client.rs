@@ -408,10 +408,12 @@ impl KaspaRpcClient {
     pub async fn connect(&self, options: Option<ConnectOptions>) -> ConnectResult<Error> {
         let _guard = self.inner.connect_guard.lock().await;
 
-        let mut options = options.unwrap_or_default();
+        let options = options.unwrap_or_default();
         let strategy = options.strategy;
 
-        self.set_url(options.url.take().as_deref())?;
+        if let Some(ref url) = options.url {
+            self.set_url(Some(url))?;
+        }
 
         // 1Gb message and frame size limits (on native and NodeJs platforms)
         let ws_config = WebSocketConfig {

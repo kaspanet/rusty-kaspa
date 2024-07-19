@@ -366,7 +366,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         payment_secret: Option<Secret>,
         abortable: &Abortable,
         notifier: Option<GenerationNotifier>,
-        guard: &AsyncMutexGuard<'_, ()>,
+        guard: &WalletGuard,
     ) -> Result<(GeneratorSummary, Vec<kaspa_hashes::Hash>)> {
         let keydata = self.prv_key_data(wallet_secret).await?;
         let signer = Arc::new(Signer::new(self.clone().as_dyn_arc(), keydata, payment_secret));
