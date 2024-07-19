@@ -13,6 +13,7 @@ use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
+use kaspa_utils::git;
 use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
@@ -228,7 +229,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
     let db_dir = app_dir.join(network.to_prefixed()).join(DEFAULT_DATA_DIR);
 
     // Print package name and version
-    info!("{} v{}", env!("CARGO_PKG_NAME"), version());
+    info!("{} v{}", env!("CARGO_PKG_NAME"), git::with_short_hash(version()));
 
     assert!(!db_dir.to_str().unwrap().is_empty());
     info!("Application directory: {}", app_dir.display());

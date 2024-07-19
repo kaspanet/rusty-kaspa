@@ -9,6 +9,9 @@ include.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[build-dependencies]
+duct = "0.13.7"
+
 [dependencies]
 async-channel.workspace = true
 borsh.workspace = true

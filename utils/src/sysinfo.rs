@@ -1,5 +1,5 @@
 use crate::fd_budget;
-use crate::hex::FromHex;
+use crate::git;
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::Read;
@@ -16,9 +16,6 @@ pub struct SystemInfo {
 
 static SYSTEM_INFO: OnceLock<SystemInfo> = OnceLock::new();
 
-// generates by `build.rs`
-const GIT_HASH: &str = env!("RUSTY_KASPA_GIT_COMMIT_HASH");
-
 impl Default for SystemInfo {
     fn default() -> Self {
         let system_info = SYSTEM_INFO.get_or_init(|| {
@@ -28,7 +25,7 @@ impl Default for SystemInfo {
             let total_memory = system.total_memory();
             let fd_limit = fd_budget::limit() as u32;
             let system_id = Self::try_system_id();
-            let git_hash = Self::try_git_hash_as_vec();
+            let git_hash = git::hash();
 
             SystemInfo { system_id, git_hash, cpu_physical_cores, total_memory, fd_limit }
         });
@@ -54,12 +51,6 @@ impl SystemInfo {
         let mut sha256 = Sha256::default();
         sha256.update(some_id.as_bytes());
         Some(sha256.finalize().to_vec())
-    }
-
-    /// Check if the codebase is built under a Git repository
-    /// and return the hash of the current commit as `Vec<u8>`.
-    fn try_git_hash_as_vec() -> Option<Vec<u8>> {
-        FromHex::from_hex(GIT_HASH).ok()
     }
 }
 

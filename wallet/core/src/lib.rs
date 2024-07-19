@@ -119,5 +119,10 @@ pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+/// Returns the version of the Wallet framework combined with short git hash.
+pub fn version_with_git_hash() -> String {
+    kaspa_utils::git::with_short_hash(env!("CARGO_PKG_VERSION")).to_string()
+}
+
 #[cfg(test)]
 pub mod tests;
