@@ -452,7 +452,7 @@ impl Args {
             disable_dns_seeding: arg_match_unwrap_or::<bool>(&m, "nodnsseed", defaults.disable_dns_seeding),
             disable_grpc: arg_match_unwrap_or::<bool>(&m, "nogrpc", defaults.disable_grpc),
             ram_scale: arg_match_unwrap_or::<f64>(&m, "ram-scale", defaults.ram_scale),
-            rocksdb_consensus_cache_size: m.get_one::<usize>("rocksdb-consensus-cache-size").cloned(),
+            rocksdb_consensus_cache_size: m.get_one::<u32>("rocksdb-consensus-cache-size").map(|v| *v as usize),
 
             #[cfg(feature = "devnet-prealloc")]
             num_prealloc_utxos: m.get_one::<u64>("num-prealloc-utxos").cloned(),
