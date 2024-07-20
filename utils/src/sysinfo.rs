@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 pub struct SystemInfo {
     pub system_id: Option<Vec<u8>>,
     pub git_hash: Option<Vec<u8>>,
+    pub git_short_hash: Option<Vec<u8>>,
     pub cpu_physical_cores: u16,
     pub total_memory: u64,
     pub fd_limit: u32,
@@ -26,8 +27,9 @@ impl Default for SystemInfo {
             let fd_limit = fd_budget::limit() as u32;
             let system_id = Self::try_system_id();
             let git_hash = git::hash();
+            let git_short_hash = git::short_hash();
 
-            SystemInfo { system_id, git_hash, cpu_physical_cores, total_memory, fd_limit }
+            SystemInfo { system_id, git_hash, git_short_hash, cpu_physical_cores, total_memory, fd_limit }
         });
         (*system_info).clone()
     }
@@ -40,10 +42,10 @@ impl SystemInfo {
             // fetch the system id from /etc/machine-id
             let mut machine_id = String::new();
             file.read_to_string(&mut machine_id).ok();
-            machine_id
+            machine_id.trim().to_string()
         } else if let Ok(Some(mac)) = mac_address::get_mac_address() {
             // fallback on the mac address
-            mac.to_string()
+            mac.to_string().trim().to_string()
         } else {
             // 🤷
             return None;
