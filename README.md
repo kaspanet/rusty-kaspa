@@ -1,11 +1,11 @@
 
 <h1>Kaspa On Rust</h1>
 
-Welcome to the Rust-based implementation of the Kaspa full-node and its ancillary libraries. This Alpha release serves as a drop-in replacement to the established <a href="https://github.com/kaspanet/kaspad">Golang node</a> (once the rust rewrite is completed), introducing developers to the possibilities of Rust in the Kaspa network's context.
+Welcome to the Rust-based implementation of the Kaspa full-node and its ancillary libraries. The contained node release serves as a drop-in replacement to the established <a href="https://github.com/kaspanet/kaspad">Golang node</a> and to date is the recommended node software for the Kaspa network, introducing developers to the possibilities of Rust in the Kaspa network's context.
 
 We invite developers and blockchain enthusiasts to collaborate, test, and optimize our Rust implementation. Each line of code here is an opportunity to contribute to the open-source blockchain movement, shaping a platform designed for scalability and speed without compromising on decentralization.
 
-Your feedback, contributions, and issue reports will be integral to evolving this codebase from its Alpha phase into a mature and reliable node in the Kaspa network.
+Your feedback, contributions, and issue reports will be integral to evolving this codebase and continuing its maturity as a reliable node in the Kaspa network.
 
 ## Installation
   <details>
@@ -151,64 +151,46 @@ To build WASM on MacOS you need to install `llvm` from homebrew (at the time of 
 
   <details>
 
-  <summary>Building WASM framework</summary>
+  <summary>Building WASM32 SDK</summary>
 
-  Rust WebAssembly (Wasm) refers to the use of the Rust programming language to write code that can be compiled into WebAssembly, a binary instruction format that runs in web browsers. This allows for easy development using JS/TS while retaining the benefits of Rust.
+  Rust WebAssembly (WASM) refers to the use of the Rust programming language to write code that can be compiled into WebAssembly, a binary instruction format that runs in web browsers and NodeJs. This allows for easy development using JavaScript and TypeScript programming languages while retaining the benefits of Rust.
 
-  The library can be build in for `NodeJS`, `React Native` and as an `ES6 Module`
+  WASM SDK components can be built from sources by running:
+    - `./build-release` - build a full release package (includes both release and debug builds for web and nodejs targets)
+    - `./build-docs` - build TypeScript documentation
+    - `./build-web` - release web build
+    - `./build-web-dev` - development web build
+    - `./build-nodejs` - release nodejs build
+    - `./build-nodejs-dev` - development nodejs build
 
-  <details>
+  IMPORTANT: do not use `dev` builds in production. They are significantly larger, slower and include debug symbols.
 
-  <summary>
-  NodeJS
-  </summary>
+### Requirements
 
-  ```bash
-  cd rusty-kaspa
-  cd wasm
-  ./build-node
-  cd nodejs
-  npm install
-  ```
+  - NodeJs (v20+): https://nodejs.org/en
+  - TypeDoc: https://typedoc.org/
 
-  </details>
+### Builds & documentation
 
-  <details>
-
-  <summary>
-  ES6
-  </summary>
-
-  ```bash
-  cd rusty-kaspa
-  cd wasm
-  ./build-web
-  ```
+  - Release builds: https://github.com/kaspanet/rusty-kaspa/releases
+  - Developer builds: https://kaspa.aspectron.org/nightly/downloads/
+  - Developer TypeScript documentation: https://kaspa.aspectron.org/docs/
 
   </details>
-
-  <br>
-  This will produce a folder: "nodejs", "web" or "react-native" library in `/wasm` directory depending on your selection.
-
-
-
-  </details>
-
 <details>
 
 <summary>
-Wallet CLI
+Kaspa CLI + Wallet
 </summary>
-
+`kaspa-cli` crate provides cli-driven RPC interface to the node and a
+terminal interface to the Rusty Kaspa Wallet runtime. These wallets are
+compatible with WASM SDK Wallet API and Kaspa NG projects.
 
 
 ```bash
 cd cli
 cargo run --release
 ```
-
-Wallet CLI is now available via the `/cli` or `/kos` projects.
-For KOS, please see [`kos/README.md`](kos/README.md)
 
 </details>
 
@@ -241,12 +223,18 @@ The framework is compatible with all major desktop and mobile browsers.
 
   ```bash
   cargo run --release --bin kaspad
+  # or with UTXO-index enabled (needed when using wallets)
+  cargo run --release --bin kaspad -- --utxoindex
   ```
   **Start a testnet node**
 
   ```bash
 cargo run --release --bin kaspad -- --testnet
   ```
+
+  **Testnet 11**
+  
+  For participation in the 10BPS test network (TN11), see the following detailed [guide](docs/testnet11.md).
 
 <details>
 
@@ -293,11 +281,15 @@ wRPC
   JSON protocol:
   ```bash
   --rpclisten-json = <interface:port>
+  # or use the defaults for current network
+  --rpclisten-json = default
   ```
 
   Borsh protocol:
   ```bash
   --rpclisten-borsh = <interface:port>
+  # or use the defaults for current network
+  --rpclisten-borsh = default
   ```
 
   **Sidenote:**
@@ -319,33 +311,11 @@ wRPC
   TypeScript capable of running in web browsers and Node.js are available as a part of
   the Kaspa WASM framework.
 
-  **wRPC to gRPC Proxy is deprecated and no longer supported.**
-
 </details>
 
 
 
 <details>
-
-<summary>
-Mining
-</summary>
-
-Mining is currently supported only on testnet, so once you've setup a test node, follow these instructions.
-
-1. Download and unzip the latest binaries bundle of [kaspanet/kaspad](https://github.com/kaspanet/kaspad/releases).
-
-2. In a separate terminal run the kaspanet/kaspad miner:
-
-    ```
-    kaspaminer --testnet --miningaddr kaspatest:qrcqat6l9zcjsu7swnaztqzrv0s7hu04skpaezxk43y4etj8ncwfk308jlcew
-    ```
-
-    This will create and feed a DAG with the miner getting block templates from the node and submitting them back when mined. The node processes and stores the blocks while applying all currently implemented logic. Execution can be stopped and resumed, the data is persisted in a database.
-
-    You can replace the above mining address with your own address by creating one as described [here](https://github.com/kaspanet/docs/blob/main/Getting%20Started/Full%20Node%20Installation.md#creating-a-wallet-optional). 
-
-</details>
 
 
 ## Benchmarking & Testing

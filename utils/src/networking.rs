@@ -9,11 +9,32 @@ use std::{
     str::FromStr,
 };
 use uuid::Uuid;
+use wasm_bindgen::prelude::*;
+
+// A network address serialization of [`ContextualNetAddress`].
+#[wasm_bindgen(typescript_custom_section)]
+const TS_IP_ADDRESS: &'static str = r#"
+    /**
+     * Generic network address representation.
+     * 
+     * @category General
+     */
+    export interface INetworkAddress {
+        /**
+         * IPv4 or IPv6 address.
+         */
+        ip: string;
+        /**
+         * Optional port number.
+         */
+        port?: number;
+    }
+"#;
 
 /// A bucket based on an ip's prefix bytes.
 /// for ipv4 it consists of 6 leading zero bytes, and the first two octets,
 /// for ipv6 it consists of the first 8 octets,
-/// encoded into a big endian u64.  
+/// encoded into a big endian u64.
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
 pub struct PrefixBucket(u64);
 
@@ -250,7 +271,7 @@ pub struct ContextualNetAddress {
 }
 
 impl ContextualNetAddress {
-    fn new(ip: IpAddress, port: Option<u16>) -> Self {
+    pub fn new(ip: IpAddress, port: Option<u16>) -> Self {
         Self { ip, port }
     }
 
@@ -264,6 +285,14 @@ impl ContextualNetAddress {
 
     pub fn loopback() -> Self {
         Self { ip: IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)).into(), port: None }
+    }
+
+    pub fn port_not_specified(&self) -> bool {
+        self.port.is_none()
+    }
+
+    pub fn with_port(&self, port: u16) -> Self {
+        Self { ip: self.ip, port: Some(port) }
     }
 }
 
@@ -419,6 +448,15 @@ mod tests {
         let prefix_bytes: [u8; 2] = [42u8, 43u8];
         let addr = NetAddress::from_str(format!("{0}.{1}.3.4:5678", prefix_bytes[0], prefix_bytes[1]).as_str()).unwrap();
         assert!(addr.prefix_bucket() == PrefixBucket(u16::from_be_bytes(prefix_bytes) as u64));
+    }
+
+    #[test]
+    fn test_contextual_address_ser() {
+        let addr = IpAddress::from_str("127.0.0.1").unwrap();
+        let port = Some(1234);
+        let net_addr = ContextualNetAddress::new(addr, port);
+        let s = serde_json::to_string(&net_addr).unwrap();
+        assert_eq!(s, r#"{"ip":"127.0.0.1","port":1234}"#);
     }
 
     #[test]

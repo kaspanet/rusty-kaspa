@@ -1,0 +1,54 @@
+<html>
+    <head>
+        <script type="module">
+            import * as kaspa from './kaspa/kaspa_wasm.js';
+            let {PublicKeyGenerator, createAddress, NetworkType, Mnemonic, XPrv} = kaspa;
+            window.XPublicKey = PublicKeyGenerator;
+            (async () => {
+                const wasm = await kaspa.default('./kaspa/kaspa_wasm_bg.wasm');
+                console.log("kaspa", kaspa);
+                console.log("version", kaspa.version());
+                tests();
+            })();
+
+            async function tests(){
+                let seed = Mnemonic.random(12).toSeed();
+                const xPrv = new XPrv(seed).intoString("kprv");
+                // HD Wallet-style public key generation
+                let xpub = await PublicKeyGenerator.fromMasterXPrv(
+                    xPrv,
+                    false,
+                    0n
+                );
+
+                console.log("xpub", xpub)
+                let xpub_str = xpub.toString();
+                console.log("xpub", xpub_str)
+
+                // Generates the first 10 Receive Public keys and their addresses
+                let compressedPublicKeys = await xpub.receivePubkeys(0, 10);
+                console.log("receive address compressedPublicKeys", compressedPublicKeys);
+                let addresses1 = compressedPublicKeys.map(key => createAddress(key, NetworkType.Mainnet).toString());
+                console.log("receive addresses", addresses1);
+
+                xpub = await PublicKeyGenerator.fromString(xpub_str);
+
+                // Generates the first 10 Receive Public keys and their addresses
+                compressedPublicKeys = await xpub.receivePubkeys(0, 10);
+                console.log("receive address compressedPublicKeys", compressedPublicKeys);
+                let addresses2 = compressedPublicKeys.map(key => createAddress(key, NetworkType.Mainnet).toString());
+                console.log("receive addresses", addresses2);
+                //addresses1[0] += "should fail";
+                if (!addresses2.length){
+                    throw new Error("Address creation failed")
+                }else if (addresses2.find((address, index)=>addresses1[index]!=address)){
+                    console.error("Xpub restore failed");
+                }else{
+                    console.info("Xpub restore success");
+                }
+
+            }
+        </script>
+    </head>
+    <body></body>
+</html>

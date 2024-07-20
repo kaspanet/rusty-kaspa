@@ -33,8 +33,21 @@ use wasm_bindgen::prelude::wasm_bindgen;
 //Represents a Set of [`ScriptPublicKey`]s
 pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_SCRIPT_PUBLIC_KEY: &'static str = r#"
+/**
+ * Interface defines the structure of a Script Public Key.
+ * 
+ * @category Consensus
+ */
+export interface IScriptPublicKey {
+    script: HexString;
+}
+"#;
+
 /// Represents a Kaspad ScriptPublicKey
-#[derive(Default, PartialEq, Eq, Clone, Hash)]
+/// @category Consensus
+#[derive(Default, PartialEq, Eq, Clone, Hash, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct ScriptPublicKey {
     pub version: ScriptPublicKeyVersion,
@@ -350,17 +363,17 @@ impl BorshDeserialize for ScriptPublicKey {
     }
 }
 
-impl TryFrom<JsValue> for ScriptPublicKey {
-    type Error = JsValue;
-
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        if let Ok(script_public_key) = ref_from_abi!(ScriptPublicKey, &js_value) {
-            Ok(script_public_key)
-        } else if let Some(hex_str) = js_value.as_string() {
-            Self::from_str(&hex_str).map_err(|e| JsValue::from_str(&format!("{}", e)))
-        } else {
-            Err(JsValue::from_str(&format!("Unable to convert ScriptPublicKey from: {js_value:?}")))
-        }
+type CastError = workflow_wasm::error::Error;
+impl TryCastFromJs for ScriptPublicKey {
+    type Error = workflow_wasm::error::Error;
+    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+        Self::resolve(&value, || {
+            if let Some(hex_str) = value.as_ref().as_string() {
+                Ok(Self::from_str(&hex_str).map_err(CastError::custom)?)
+            } else {
+                Err(CastError::custom(format!("Unable to convert ScriptPublicKey from: {:?}", value.as_ref())))
+            }
+        })
     }
 }
 
@@ -400,8 +413,10 @@ mod tests {
         assert_eq!(spk, spk2);
     }
 
+    use wasm_bindgen::convert::IntoWasmAbi;
     use wasm_bindgen_test::wasm_bindgen_test;
     use workflow_wasm::serde::{from_value, to_value};
+
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_constructor() {
         let version = 0xc0de;
@@ -418,6 +433,7 @@ mod tests {
         assert_eq!(spk, from_value(spk_js.clone()).map_err(|_| ()).unwrap());
         assert_eq!(JsValue::from_str("string"), spk_js.js_typeof());
     }
+
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_js_spk_object() {
         let version = 0xc0de;
@@ -439,8 +455,6 @@ mod tests {
 
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_spk_object() {
-        use wasm_bindgen::convert::IntoWasmAbi;
-
         let version = 0xc0de;
         let vec: Vec<u8> = (0..SCRIPT_VECTOR_SIZE as u8).collect();
         let spk = ScriptPublicKey::from_vec(version, vec.clone());

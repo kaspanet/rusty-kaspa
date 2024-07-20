@@ -11,7 +11,7 @@ pub use futures::stream::{Stream, StreamExt, TryStreamExt};
 pub use futures::{future::FutureExt, select};
 pub use kaspa_consensus_core::network::{NetworkId, NetworkType};
 pub use kaspa_utils::hex::*;
-pub use kaspa_wallet_core::derivation::gen0::import::*;
+pub use kaspa_wallet_core::compat::*;
 pub use kaspa_wallet_core::prelude::*;
 pub use kaspa_wallet_core::settings::{DefaultSettings, SettingsStore, WalletSettings};
 pub use kaspa_wallet_core::utils::*;

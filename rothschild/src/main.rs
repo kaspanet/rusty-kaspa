@@ -17,7 +17,7 @@ use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode};
 use kaspa_txscript::pay_to_address_script;
 use parking_lot::Mutex;
 use rayon::prelude::*;
-use secp256k1::{rand::thread_rng, KeyPair};
+use secp256k1::{rand::thread_rng, Keypair};
 use tokio::time::{interval, MissedTickBehavior};
 
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
@@ -135,7 +135,7 @@ async fn main() {
     let schnorr_key = if let Some(private_key_hex) = args.private_key {
         let mut private_key_bytes = [0u8; 32];
         faster_hex::hex_decode(private_key_hex.as_bytes(), &mut private_key_bytes).unwrap();
-        secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap()
+        secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap()
     } else {
         let (sk, pk) = &secp256k1::generate_keypair(&mut thread_rng());
         let kaspa_addr = Address::new(ADDRESS_PREFIX, ADDRESS_VERSION, &pk.x_only_public_key().0.serialize());
@@ -365,7 +365,7 @@ async fn maybe_send_tx(
     kaspa_addr: Address,
     utxos: &mut [(TransactionOutpoint, UtxoEntry)],
     pending: &mut HashMap<TransactionOutpoint, u64>,
-    schnorr_key: KeyPair,
+    schnorr_key: Keypair,
     stats: Arc<Mutex<Stats>>,
     maximize_inputs: bool,
     next_available_utxo_index: &mut usize,
@@ -446,7 +446,7 @@ fn estimated_mass(num_utxos: usize, num_outs: u64) -> u64 {
 }
 
 fn generate_tx(
-    schnorr_key: KeyPair,
+    schnorr_key: Keypair,
     utxos: &[(TransactionOutpoint, UtxoEntry)],
     send_amount: u64,
     num_outs: u64,

@@ -164,7 +164,7 @@ async fn daemon_utxos_propagation_test() {
     let (miner_sk, miner_pk) = secp256k1::generate_keypair(&mut thread_rng());
     let miner_address =
         Address::new(kaspad1.network.into(), kaspa_addresses::Version::PubKey, &miner_pk.x_only_public_key().0.serialize());
-    let miner_schnorr_key = secp256k1::KeyPair::from_secret_key(secp256k1::SECP256K1, &miner_sk);
+    let miner_schnorr_key = secp256k1::Keypair::from_secret_key(secp256k1::SECP256K1, &miner_sk);
     let miner_spk = pay_to_address_script(&miner_address);
 
     // User key and address
