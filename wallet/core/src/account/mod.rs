@@ -5,8 +5,15 @@
 
 pub mod descriptor;
 pub mod kind;
+pub mod pskb;
 pub mod variants;
+use kaspa_hashes::Hash;
+use kaspa_wallet_pskt::bundle::Bundle;
 pub use kind::*;
+use pskb::{
+    bundle_from_pskt_generator, bundle_to_finalizer_stream, pskb_signer_for_address, pskt_to_pending_transaction, PSKBSigner,
+    PSKTGenerator,
+};
 pub use variants::*;
 
 use crate::derivation::build_derivate_paths;
@@ -346,6 +353,66 @@ pub trait Account: AnySync + Send + Sync + 'static {
         }
 
         Ok((generator.summary(), ids))
+    }
+
+    async fn pskb_from_send_generator(
+        self: Arc<Self>,
+        destination: PaymentDestination,
+        priority_fee_sompi: Fees,
+        payload: Option<Vec<u8>>,
+        wallet_secret: Secret,
+        payment_secret: Option<Secret>,
+        abortable: &Abortable,
+    ) -> Result<Bundle, Error> {
+        let settings = GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, priority_fee_sompi, payload)?;
+        let keydata = self.prv_key_data(wallet_secret).await?;
+        let signer = Arc::new(PSKBSigner::new(self.clone().as_dyn_arc(), keydata, payment_secret));
+        let generator = Generator::try_new(settings, None, Some(abortable))?;
+        let pskt_generator = PSKTGenerator::new(generator, signer, self.wallet().address_prefix()?);
+        bundle_from_pskt_generator(pskt_generator).await
+    }
+
+    async fn pskb_sign(
+        self: Arc<Self>,
+        bundle: &Bundle,
+        wallet_secret: Secret,
+        payment_secret: Option<Secret>,
+        sign_for_address: Option<&Address>,
+    ) -> Result<Bundle, Error> {
+        let keydata = self.prv_key_data(wallet_secret).await?;
+        let signer = Arc::new(PSKBSigner::new(self.clone().as_dyn_arc(), keydata.clone(), payment_secret.clone()));
+
+        let network_id = self.wallet().clone().network_id()?;
+        let derivation = self.as_derivation_capable()?;
+
+        let (derivation_path, _) =
+            build_derivate_paths(&derivation.account_kind(), derivation.account_index(), derivation.cosigner_index())?;
+
+        let key_fingerprint = keydata.get_xprv(payment_secret.clone().as_ref())?.public_key().fingerprint();
+
+        match pskb_signer_for_address(bundle, signer, network_id, sign_for_address, derivation_path, key_fingerprint).await {
+            Ok(signer) => Ok(signer),
+            Err(e) => Err(Error::from(e.to_string())),
+        }
+    }
+
+    async fn pskb_broadcast(self: Arc<Self>, bundle: &Bundle) -> Result<Vec<Hash>, Error> {
+        let mut ids = Vec::new();
+        let mut stream = bundle_to_finalizer_stream(bundle);
+
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(pskt) => {
+                    let change = self.wallet().account()?.change_address()?;
+                    let transaction = pskt_to_pending_transaction(pskt, self.wallet().network_id()?, change)?;
+                    ids.push(transaction.try_submit(&self.wallet().rpc_api()).await?);
+                }
+                Err(e) => {
+                    eprintln!("Error processing a PSKT from bundle: {:?}", e);
+                }
+            }
+        }
+        Ok(ids)
     }
 
     /// Execute a transfer to another wallet account.

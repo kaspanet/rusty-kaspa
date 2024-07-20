@@ -18,6 +18,7 @@ mod convert;
 mod utils;
 
 pub mod prelude {
+    pub use crate::bundle::Bundle;
     pub use crate::bundle::*;
     pub use crate::global::Global;
     pub use crate::input::Input;

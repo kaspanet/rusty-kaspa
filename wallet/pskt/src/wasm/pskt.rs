@@ -96,7 +96,7 @@ impl TryCastFromJs for PSKT {
                 let pskt_inner: Inner = serde_json::from_str(&data).map_err(|_| Error::InvalidPayload)?;
                 Ok(PSKT::from(State::NoOp(Some(pskt_inner))))
             } else if let Ok(transaction) = Transaction::try_owned_from(&value) {
-                let pskt_inner: Inner = transaction.into();
+                let pskt_inner: Inner = transaction.try_into()?;
                 Ok(PSKT::from(State::NoOp(Some(pskt_inner))))
             } else {
                 Err(Error::InvalidPayload)
