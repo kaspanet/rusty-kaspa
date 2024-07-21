@@ -1,9 +1,8 @@
-from kaspa import (
-    PrivateKey, 
-)
+from kaspa import PrivateKey
 
 if __name__ == "__main__":
-    private_key = PrivateKey('b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef')
+    private_key = PrivateKey(
+        'b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef')
     print(f'Private Key: {private_key.to_hex()}')
 
     public_key = private_key.to_public_key()
