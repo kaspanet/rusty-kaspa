@@ -1,3 +1,4 @@
+use crate::error::Error;
 use crate::imports::NetworkParams;
 use crate::result::Result;
 use crate::tx::mass;
@@ -39,9 +40,9 @@ impl MassCalculator {
     ///
     /// It is exposed by `MiningManager` for use by transaction generators and wallets.
     #[wasm_bindgen(js_name=isTransactionOutputDust)]
-    pub fn is_transaction_output_dust(transaction_output: &JsValue) -> Result<bool> {
-        let transaction_output = TransactionOutput::try_from(transaction_output)?;
-        let transaction_output = cctx::TransactionOutput::from(&transaction_output);
+    pub fn is_transaction_output_dust(transaction_output: &TransactionOutputT) -> Result<bool> {
+        let transaction_output = TransactionOutput::try_cast_from(transaction_output)?;
+        let transaction_output = cctx::TransactionOutput::from(transaction_output.as_ref());
         Ok(mass::is_transaction_output_dust(&transaction_output))
     }
 
@@ -93,20 +94,22 @@ impl MassCalculator {
     }
 
     #[wasm_bindgen(js_name=calcMassForOutputs)]
-    pub fn calc_mass_for_outputs(&self, outputs: JsValue) -> Result<u32> {
+    pub fn calc_mass_for_outputs(&self, outputs: TransactionOutputArrayAsArgT) -> Result<u32> {
         let outputs = outputs
-            .dyn_into::<js_sys::Array>()?
+            .dyn_into::<js_sys::Array>()
+            .map_err(|_| Error::custom("supplied argument must be an array of outputs"))?
             .iter()
-            .map(TransactionOutput::try_from)
+            .map(TransactionOutput::try_owned_from)
             .collect::<std::result::Result<Vec<_>, kaspa_consensus_client::error::Error>>()?;
         let outputs = outputs.iter().map(|output| self.calc_mass_for_output(output)).collect::<Result<Vec<_>>>()?;
         Ok(outputs.iter().sum())
     }
 
     #[wasm_bindgen(js_name=calcMassForInputs)]
-    pub fn calc_mass_for_inputs(&self, inputs: JsValue) -> Result<u32> {
+    pub fn calc_mass_for_inputs(&self, inputs: TransactionInputArrayAsArgT) -> Result<u32> {
         let inputs = inputs
-            .dyn_into::<js_sys::Array>()?
+            .dyn_into::<js_sys::Array>()
+            .map_err(|_| Error::custom("supplied argument must be an array of inputs"))?
             .iter()
             .map(TransactionInput::try_owned_from)
             .collect::<std::result::Result<Vec<_>, kaspa_consensus_client::error::Error>>()?;

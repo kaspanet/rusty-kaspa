@@ -1,5 +1,5 @@
+use crate::pskt::KeySource;
 use crate::utils::combine_if_no_conflicts;
-use crate::KeySource;
 use derive_builder::Builder;
 use kaspa_consensus_core::tx::ScriptPublicKey;
 use serde::{Deserialize, Serialize};

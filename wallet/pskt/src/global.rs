@@ -1,4 +1,5 @@
-use crate::{utils::combine_if_no_conflicts, KeySource, Version};
+use crate::pskt::{KeySource, Version};
+use crate::utils::combine_if_no_conflicts;
 use derive_builder::Builder;
 use kaspa_consensus_core::tx::TransactionId;
 use serde::{Deserialize, Serialize};
@@ -33,6 +34,7 @@ pub struct Global {
     /// Proprietary key-value pairs for this output.
     pub proprietaries: BTreeMap<String, serde_value::Value>,
     /// Unknown key-value pairs for this output.
+    #[serde(flatten)]
     pub unknowns: BTreeMap<String, serde_value::Value>,
 }
 

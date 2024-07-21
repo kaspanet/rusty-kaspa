@@ -1,0 +1,99 @@
+{
+    "inner_list": [
+        {
+            "global": {
+                "version": 0,
+                "tx_version": 0,
+                "fallback_lock_time": null,
+                "inputs_modifiable": false,
+                "outputs_modifiable": false,
+                "input_count": 1,
+                "output_count": 0,
+                "xpubs": {},
+                "id": null,
+                "proprietaries": {}
+            },
+            "inputs": [
+                {
+                    "utxo_entry": {
+                        "amount": 3300000000,
+                        "scriptPublicKey": "000020f2b9984ea0bf9464b028534a51c84dca8d8e8037499ce9a01f43d717dc4b157cac",
+                        "blockDaaScore": 160987746,
+                        "isCoinbase": false
+                    },
+                    "previous_outpoint": {
+                        "transactionId": "6323bee26238b82f926176c08b8919c42cdb204a14c17fd35c0e2664326133ff",
+                        "index": 0
+                    },
+                    "sequence": null,
+                    "min_time": null,
+                    "partial_sigs": {},
+                    "sighash_type": 1,
+                    "redeem_script": null,
+                    "sig_op_count": 1,
+                    "bip32_derivations": {},
+                    "final_script_sig": null,
+                    "proprietaries": {}
+                },
+                {
+                    "utxo_entry": {
+                        "amount": 33210791745569,
+                        "scriptPublicKey": "0000200e6227c375a68b02da57c58f8eaf837a003c59e957890baf1cf18aaf28aca76dac",
+                        "blockDaaScore": 160987746,
+                        "isCoinbase": false
+                    },
+                    "previous_outpoint": {
+                        "transactionId": "6323bee26238b82f926176c08b8919c42cdb204a14c17fd35c0e2664326133ff",
+                        "index": 1
+                    },
+                    "sequence": null,
+                    "min_time": null,
+                    "partial_sigs": {},
+                    "sighash_type": 1,
+                    "redeem_script": null,
+                    "sig_op_count": 1,
+                    "bip32_derivations": {},
+                    "final_script_sig": null,
+                    "proprietaries": {}
+                },
+                {
+                    "utxo_entry": {
+                        "amount": 3300000000,
+                        "scriptPublicKey": "000020f2b9984ea0bf9464b028534a51c84dca8d8e8037499ce9a01f43d717dc4b157cac",
+                        "blockDaaScore": 160987746,
+                        "isCoinbase": false
+                    },
+                    "previous_outpoint": {
+                        "transactionId": "w",
+                        "index": 0
+                    },
+                    "sequence": null,
+                    "min_time": null,
+                    "partial_sigs": {},
+                    "sighash_type": 1,
+                    "redeem_script": "ac",
+                    "sig_op_count": 1,
+                    "bip32_derivations": {},
+                    "final_script_sig": null,
+                    "proprietaries": {}
+                }
+            ],
+            "outputs": [
+                {
+                    "amount": 6400000000,
+                    "script_public_key": "000020f2b9984ea0bf9464b028534a51c84dca8d8e8037499ce9a01f43d717dc4b157cac",
+                    "redeem_script": null,
+                    "bip32_derivations": {},
+                    "proprietaries": {}
+                },
+                {
+                    "amount": 33207691742259,
+                    "script_public_key": "0000200e6227c375a68b02da57c58f8eaf837a003c59e957890baf1cf18aaf28aca76dac",
+                    "redeem_script": null,
+                    "bip32_derivations": {},
+                    "proprietaries": {}
+                }
+            ]
+        }
+    ]
+}
