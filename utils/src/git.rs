@@ -1,6 +1,8 @@
 use crate::hex::FromHex;
 use std::fmt::Display;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 // generates by `build.rs`
 const FULL_HASH: &str = env!("RUSTY_KASPA_GIT_FULL_COMMIT_HASH");
 const SHORT_HASH: &str = env!("RUSTY_KASPA_GIT_SHORT_COMMIT_HASH");
@@ -23,6 +25,10 @@ pub fn hash_str() -> Option<&'static str> {
 pub fn short_hash_str() -> Option<&'static str> {
     #[allow(clippy::const_is_empty)]
     (!SHORT_HASH.is_empty()).then_some(SHORT_HASH)
+}
+
+pub fn version() -> String {
+    format!("v{VERSION}-{SHORT_HASH}")
 }
 
 pub fn with_short_hash<V>(version: V) -> impl Display

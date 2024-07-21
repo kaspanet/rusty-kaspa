@@ -822,11 +822,12 @@ message GetSystemInfoRequestMessage{
 }
 
 message GetSystemInfoResponseMessage{
-  string systemId = 1;
-  string gitHash = 2;
-  uint32 coreNum = 3;
-  uint64 totalMemory = 4;
-  uint32 fdLimit = 5;
+  string version = 1;
+  string systemId = 2;
+  string gitHash = 3;
+  uint32 coreNum = 4;
+  uint64 totalMemory = 5;
+  uint32 fdLimit = 6;
   RPCError error = 1000;
 }
 
