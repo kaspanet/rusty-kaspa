@@ -114,7 +114,7 @@ impl Resolver {
             }
         });
 
-        format!("{url}/v{CURRENT_VERSION}/kaspa/{network_id}/wrpc/{tls}/{encoding}")
+        format!("{url}/v{CURRENT_VERSION}/kaspa/{network_id}/{tls}/wrpc/{encoding}")
     }
 
     async fn fetch_node_info(&self, url: &str, encoding: Encoding, network_id: NetworkId) -> Result<NodeDescriptor> {
