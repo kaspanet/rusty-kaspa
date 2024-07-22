@@ -97,8 +97,7 @@ impl MempoolUtxoSet {
         let mut visited = HashSet::new();
         for input in transaction.tx.inputs.iter() {
             if let Some(existing_transaction_id) = self.get_outpoint_owner_id(&input.previous_outpoint) {
-                if *existing_transaction_id != transaction_id && !visited.contains(existing_transaction_id) {
-                    visited.insert(*existing_transaction_id);
+                if *existing_transaction_id != transaction_id && visited.insert(*existing_transaction_id) {
                     double_spends.push(DoubleSpend::new(input.previous_outpoint, *existing_transaction_id));
                 }
             }
