@@ -63,7 +63,7 @@ impl TransactionValidator {
         if let Some((contextual_mass, feerate_threshold)) = mass_and_feerate_threshold {
             assert!(contextual_mass > 0);
             if fee as f64 / contextual_mass as f64 <= feerate_threshold {
-                return Err(TxRuleError::FeePerMassTooLow);
+                return Err(TxRuleError::FeerateTooLow);
             }
         }
         Ok(())

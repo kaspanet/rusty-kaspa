@@ -278,7 +278,8 @@ impl MiningManager {
     ) -> Vec<Arc<Transaction>> {
         // The capacity used here may be exceeded (see next comment).
         let mut accepted_transactions = Vec::with_capacity(incoming_transactions.len());
-        // The validation args map is immutably empty since unorphaned transactions are not eligible to replace by fee.
+        // The validation args map is immutably empty since unorphaned transactions do not require pre processing so there
+        // are no feerate thresholds to use. Instead, we rely on this being checked during post processing.
         let args = TransactionValidationBatchArgs::new();
         // We loop as long as incoming unorphaned transactions do unorphan other transactions when they
         // get validated and inserted into the mempool.
