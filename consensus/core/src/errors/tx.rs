@@ -88,6 +88,11 @@ pub enum TxRuleError {
 
     #[error("calculated contextual mass (including storage mass) {0} is not equal to the committed mass field {1}")]
     WrongMass(u64, u64),
+
+    /// [`TxRuleError::FeerateTooLow`] is not a consensus error but a mempool error triggered by the
+    /// fee/mass RBF validation rule
+    #[error("fee rate per contextual mass gram is not greater than the fee rate of the replaced transaction")]
+    FeerateTooLow,
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;

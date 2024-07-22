@@ -66,6 +66,7 @@ impl Router {
                 Shutdown,
                 SubmitBlock,
                 SubmitTransaction,
+                SubmitTransactionReplacement,
                 Unban,
             ]
         );

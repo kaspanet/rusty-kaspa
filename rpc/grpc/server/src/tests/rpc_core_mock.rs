@@ -134,6 +134,13 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn submit_transaction_replacement_call(
+        &self,
+        _request: SubmitTransactionReplacementRequest,
+    ) -> RpcResult<SubmitTransactionReplacementResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     async fn get_block_call(&self, _request: GetBlockRequest) -> RpcResult<GetBlockResponse> {
         Err(RpcError::NotImplemented)
     }

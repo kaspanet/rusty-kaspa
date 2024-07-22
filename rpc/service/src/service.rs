@@ -506,6 +506,22 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(SubmitTransactionResponse::new(transaction_id))
     }
 
+    async fn submit_transaction_replacement_call(
+        &self,
+        request: SubmitTransactionReplacementRequest,
+    ) -> RpcResult<SubmitTransactionReplacementResponse> {
+        let transaction: Transaction = (&request.transaction).try_into()?;
+        let transaction_id = transaction.id();
+        let session = self.consensus_manager.consensus().unguarded_session();
+        let replaced_transaction =
+            self.flow_context.submit_rpc_transaction_replacement(&session, transaction).await.map_err(|err| {
+                let err = RpcError::RejectedTransaction(transaction_id, err.to_string());
+                debug!("{err}");
+                err
+            })?;
+        Ok(SubmitTransactionReplacementResponse::new(transaction_id, (&*replaced_transaction).into()))
+    }
+
     async fn get_current_network_call(&self, _: GetCurrentNetworkRequest) -> RpcResult<GetCurrentNetworkResponse> {
         Ok(GetCurrentNetworkResponse::new(*self.config.net))
     }

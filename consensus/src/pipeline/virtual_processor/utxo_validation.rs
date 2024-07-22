@@ -15,6 +15,7 @@ use crate::{
 };
 use kaspa_consensus_core::{
     acceptance_data::{AcceptedTxEntry, MergesetBlockAcceptanceData},
+    api::args::TransactionValidationArgs,
     coinbase::*,
     hashing,
     header::Header,
@@ -248,7 +249,7 @@ impl VirtualStateProcessor {
             }
         }
         let populated_tx = PopulatedTransaction::new(transaction, entries);
-        let res = self.transaction_validator.validate_populated_transaction_and_get_fee(&populated_tx, pov_daa_score, flags);
+        let res = self.transaction_validator.validate_populated_transaction_and_get_fee(&populated_tx, pov_daa_score, flags, None);
         match res {
             Ok(calculated_fee) => Ok(ValidatedTransaction::new(populated_tx, calculated_fee)),
             Err(tx_rule_error) => {
@@ -290,6 +291,7 @@ impl VirtualStateProcessor {
         mutable_tx: &mut MutableTransaction,
         utxo_view: &impl UtxoView,
         pov_daa_score: u64,
+        args: &TransactionValidationArgs,
     ) -> TxResult<()> {
         self.populate_mempool_transaction_in_utxo_context(mutable_tx, utxo_view)?;
 
@@ -308,10 +310,12 @@ impl VirtualStateProcessor {
         mutable_tx.tx.set_mass(contextual_mass);
 
         // At this point we know all UTXO entries are populated, so we can safely pass the tx as verifiable
+        let mass_and_feerate_threshold = args.feerate_threshold.map(|threshold| (contextual_mass, threshold));
         let calculated_fee = self.transaction_validator.validate_populated_transaction_and_get_fee(
             &mutable_tx.as_verifiable(),
             pov_daa_score,
             TxValidationFlags::SkipMassCheck, // we can skip the mass check since we just set it
+            mass_and_feerate_threshold,
         )?;
         mutable_tx.calculated_fee = Some(calculated_fee);
         Ok(())

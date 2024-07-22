@@ -301,6 +301,31 @@ impl SubmitTransactionResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SubmitTransactionReplacementRequest {
+    pub transaction: RpcTransaction,
+}
+
+impl SubmitTransactionReplacementRequest {
+    pub fn new(transaction: RpcTransaction) -> Self {
+        Self { transaction }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmitTransactionReplacementResponse {
+    pub transaction_id: RpcTransactionId,
+    pub replaced_transaction: RpcTransaction,
+}
+
+impl SubmitTransactionReplacementResponse {
+    pub fn new(transaction_id: RpcTransactionId, replaced_transaction: RpcTransaction) -> Self {
+        Self { transaction_id, replaced_transaction }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GetSubnetworkRequest {
     pub subnetwork_id: RpcSubnetworkId,
 }

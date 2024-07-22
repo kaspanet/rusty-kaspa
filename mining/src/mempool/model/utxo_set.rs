@@ -1,7 +1,9 @@
+use std::collections::HashSet;
+
 use crate::{
     mempool::{
-        errors::{RuleError, RuleResult},
-        model::map::OutpointIndex,
+        errors::RuleResult,
+        model::{map::OutpointIndex, tx::DoubleSpend},
     },
     model::TransactionIdSet,
 };
@@ -70,14 +72,36 @@ impl MempoolUtxoSet {
 
     /// Make sure no other transaction in the mempool is already spending an output which one of this transaction inputs spends
     pub(crate) fn check_double_spends(&self, transaction: &MutableTransaction) -> RuleResult<()> {
+        match self.get_first_double_spend(transaction) {
+            Some(double_spend) => Err(double_spend.into()),
+            None => Ok(()),
+        }
+    }
+
+    pub(crate) fn get_first_double_spend(&self, transaction: &MutableTransaction) -> Option<DoubleSpend> {
         let transaction_id = transaction.id();
         for input in transaction.tx.inputs.iter() {
             if let Some(existing_transaction_id) = self.get_outpoint_owner_id(&input.previous_outpoint) {
                 if *existing_transaction_id != transaction_id {
-                    return Err(RuleError::RejectDoubleSpendInMempool(input.previous_outpoint, *existing_transaction_id));
+                    return Some(DoubleSpend::new(input.previous_outpoint, *existing_transaction_id));
                 }
             }
         }
-        Ok(())
+        None
+    }
+
+    /// Returns the first double spend of every transaction in the mempool double spending on `transaction`
+    pub(crate) fn get_double_spend_transaction_ids(&self, transaction: &MutableTransaction) -> Vec<DoubleSpend> {
+        let transaction_id = transaction.id();
+        let mut double_spends = vec![];
+        let mut visited = HashSet::new();
+        for input in transaction.tx.inputs.iter() {
+            if let Some(existing_transaction_id) = self.get_outpoint_owner_id(&input.previous_outpoint) {
+                if *existing_transaction_id != transaction_id && visited.insert(*existing_transaction_id) {
+                    double_spends.push(DoubleSpend::new(input.previous_outpoint, *existing_transaction_id));
+                }
+            }
+        }
+        double_spends
     }
 }

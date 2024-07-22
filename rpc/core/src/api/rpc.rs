@@ -132,6 +132,17 @@ pub trait RpcApi: Sync + Send + AnySync {
     }
     async fn submit_transaction_call(&self, request: SubmitTransactionRequest) -> RpcResult<SubmitTransactionResponse>;
 
+    /// Submits a transaction replacement to the mempool, applying a mandatory Replace by Fee policy.
+    ///
+    /// Returns the ID of the inserted transaction and the transaction the submission replaced in the mempool.
+    async fn submit_transaction_replacement(&self, transaction: RpcTransaction) -> RpcResult<SubmitTransactionReplacementResponse> {
+        self.submit_transaction_replacement_call(SubmitTransactionReplacementRequest { transaction }).await
+    }
+    async fn submit_transaction_replacement_call(
+        &self,
+        request: SubmitTransactionReplacementRequest,
+    ) -> RpcResult<SubmitTransactionReplacementResponse>;
+
     /// Requests information about a specific block.
     async fn get_block(&self, hash: RpcHash, include_transactions: bool) -> RpcResult<RpcBlock> {
         Ok(self.get_block_call(GetBlockRequest::new(hash, include_transactions)).await?.block)

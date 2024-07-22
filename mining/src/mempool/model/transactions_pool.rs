@@ -5,7 +5,7 @@ use crate::{
         model::{
             map::MempoolTransactionCollection,
             pool::{Pool, TransactionsEdges},
-            tx::MempoolTransaction,
+            tx::{DoubleSpend, MempoolTransaction},
             utxo_set::MempoolUtxoSet,
         },
         tx::Priority,
@@ -182,6 +182,7 @@ impl TransactionsPool {
         }
         false
     }
+
     /// Returns the exceeding low-priority transactions having the lowest fee rates in order
     /// to have room for at least `free_slots` new transactions. The returned transactions
     /// are guaranteed to be unchained (no successor in mempool) and to not be parent of
@@ -245,8 +246,27 @@ impl TransactionsPool {
         self.utxo_set.get_outpoint_owner_id(outpoint)
     }
 
+    /// Make sure no other transaction in the mempool is already spending an output which one of this transaction inputs spends
     pub(crate) fn check_double_spends(&self, transaction: &MutableTransaction) -> RuleResult<()> {
         self.utxo_set.check_double_spends(transaction)
+    }
+
+    /// Returns the first double spend of every transaction in the mempool double spending on `transaction`
+    pub(crate) fn get_double_spend_transaction_ids(&self, transaction: &MutableTransaction) -> Vec<DoubleSpend> {
+        self.utxo_set.get_double_spend_transaction_ids(transaction)
+    }
+
+    pub(crate) fn get_double_spend_owner<'a>(&'a self, double_spend: &DoubleSpend) -> RuleResult<&'a MempoolTransaction> {
+        match self.get(&double_spend.owner_id) {
+            Some(transaction) => Ok(transaction),
+            None => {
+                // This case should never arise in the first place.
+                // Anyway, in case it does, if a double spent transaction id is found but the matching
+                // transaction cannot be located in the mempool a replacement is no longer possible
+                // so a double spend error is returned.
+                Err(double_spend.into())
+            }
+        }
     }
 
     pub(crate) fn collect_expired_low_priority_transactions(&mut self, virtual_daa_score: u64) -> Vec<TransactionId> {
