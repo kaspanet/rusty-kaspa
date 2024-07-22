@@ -91,7 +91,7 @@ impl From<&DoubleSpend> for RuleError {
 
 pub(crate) struct TransactionPreValidation {
     pub transaction: MutableTransaction,
-    pub fee_per_mass_threshold: Option<f64>,
+    pub feerate_threshold: Option<f64>,
 }
 
 #[derive(Default)]

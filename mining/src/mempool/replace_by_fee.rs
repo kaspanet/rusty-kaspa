@@ -31,12 +31,12 @@ impl Mempool {
                 if double_spends.is_empty() {
                     Ok(None)
                 } else {
-                    let mut fee_per_mass_threshold = 0f64;
+                    let mut feerate_threshold = 0f64;
                     for double_spend in double_spends {
                         // We take the max over all double spends as the required threshold
-                        fee_per_mass_threshold = fee_per_mass_threshold.max(self.get_double_spend_fee_per_mass(&double_spend)?);
+                        feerate_threshold = feerate_threshold.max(self.get_double_spend_feerate(&double_spend)?);
                     }
-                    Ok(Some(fee_per_mass_threshold))
+                    Ok(Some(feerate_threshold))
                 }
             }
 
@@ -46,8 +46,8 @@ impl Mempool {
                 match double_spends.len() {
                     0 => Err(RuleError::RejectRbfNoDoubleSpend),
                     1 => {
-                        let fee_per_mass_threshold = self.get_double_spend_fee_per_mass(&double_spends[0])?;
-                        Ok(Some(fee_per_mass_threshold))
+                        let feerate_threshold = self.get_double_spend_feerate(&double_spends[0])?;
+                        Ok(Some(feerate_threshold))
                     }
                     _ => Err(RuleError::RejectRbfTooManyDoubleSpendingTransactions),
                 }
@@ -117,9 +117,9 @@ impl Mempool {
         }
     }
 
-    fn get_double_spend_fee_per_mass(&self, double_spend: &DoubleSpend) -> RuleResult<f64> {
+    fn get_double_spend_feerate(&self, double_spend: &DoubleSpend) -> RuleResult<f64> {
         let owner = self.transaction_pool.get_double_spend_owner(double_spend)?;
-        match owner.mtx.calculated_fee_per_mass() {
+        match owner.mtx.calculated_feerate() {
             Some(double_spend_ratio) => Ok(double_spend_ratio),
             None => Err(double_spend.into()),
         }
@@ -131,8 +131,7 @@ impl Mempool {
         double_spend: &DoubleSpend,
     ) -> RuleResult<&'a MempoolTransaction> {
         let owner = self.transaction_pool.get_double_spend_owner(double_spend)?;
-        if let (Some(transaction_ratio), Some(double_spend_ratio)) =
-            (transaction.calculated_fee_per_mass(), owner.mtx.calculated_fee_per_mass())
+        if let (Some(transaction_ratio), Some(double_spend_ratio)) = (transaction.calculated_feerate(), owner.mtx.calculated_feerate())
         {
             if transaction_ratio > double_spend_ratio {
                 return Ok(owner);

@@ -27,7 +27,7 @@ impl TransactionValidator {
         tx: &impl VerifiableTransaction,
         pov_daa_score: u64,
         flags: TxValidationFlags,
-        mass_and_fee_per_mass_threshold: Option<(u64, f64)>,
+        mass_and_feerate_threshold: Option<(u64, f64)>,
     ) -> TxResult<u64> {
         self.check_transaction_coinbase_maturity(tx, pov_daa_score)?;
         let total_in = self.check_transaction_input_amounts(tx)?;
@@ -45,7 +45,7 @@ impl TransactionValidator {
 
         // The following call is not a consensus check (it could not be one in the first place since it uses floating number)
         // but rather a mempool Replace by Fee validation rule. It was placed here purposely for avoiding unneeded script checks.
-        Self::check_fee_per_mass(fee, mass_and_fee_per_mass_threshold)?;
+        Self::check_feerate_threshold(fee, mass_and_feerate_threshold)?;
 
         match flags {
             TxValidationFlags::Full | TxValidationFlags::SkipMassCheck => {
@@ -57,12 +57,12 @@ impl TransactionValidator {
         Ok(fee)
     }
 
-    fn check_fee_per_mass(fee: u64, mass_and_fee_per_mass_threshold: Option<(u64, f64)>) -> TxResult<()> {
+    fn check_feerate_threshold(fee: u64, mass_and_feerate_threshold: Option<(u64, f64)>) -> TxResult<()> {
         // An actual check can only occur if some mass and threshold are provided,
         // otherwise, the check does not verify anything and exits successfully.
-        if let Some((contextual_mass, threshold)) = mass_and_fee_per_mass_threshold {
+        if let Some((contextual_mass, feerate_threshold)) = mass_and_feerate_threshold {
             assert!(contextual_mass > 0);
-            if fee as f64 / contextual_mass as f64 <= threshold {
+            if fee as f64 / contextual_mass as f64 <= feerate_threshold {
                 return Err(TxRuleError::FeePerMassTooLow);
             }
         }

@@ -246,9 +246,9 @@ impl MiningManager {
         rbf_policy: RbfPolicy,
     ) -> MiningManagerResult<TransactionInsertion> {
         // read lock on mempool
-        let TransactionPreValidation { mut transaction, fee_per_mass_threshold } =
+        let TransactionPreValidation { mut transaction, feerate_threshold } =
             self.mempool.read().pre_validate_and_populate_transaction(consensus, transaction, rbf_policy)?;
-        let args = TransactionValidationArgs::new(fee_per_mass_threshold);
+        let args = TransactionValidationArgs::new(feerate_threshold);
         // no lock on mempool
         let validation_result = validate_mempool_transaction(consensus, &mut transaction, &args);
         // write lock on mempool
@@ -372,9 +372,9 @@ impl MiningManager {
             let txs = chunk.filter_map(|tx| {
                 let transaction_id = tx.id();
                 match mempool.pre_validate_and_populate_transaction(consensus, tx, rbf_policy) {
-                    Ok(TransactionPreValidation { transaction, fee_per_mass_threshold }) => {
-                        if let Some(threshold) = fee_per_mass_threshold {
-                            args.set_fee_per_mass_threshold(transaction.id(), threshold);
+                    Ok(TransactionPreValidation { transaction, feerate_threshold }) => {
+                        if let Some(threshold) = feerate_threshold {
+                            args.set_feerate_threshold(transaction.id(), threshold);
                         }
                         Some(transaction)
                     }
