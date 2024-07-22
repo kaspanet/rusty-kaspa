@@ -6,17 +6,17 @@ address = "http://127.0.0.1:8888"
 template = "https://*.kaspa.stream"
 nodes = ["eric","maxim","sean","troy"]
 
-# [[group]]
-# template = "https://*.kaspa.red"
-# nodes = ["john", "mike", "paul", "alex"]
+[[group]]
+template = "https://*.kaspa.red"
+nodes = ["john", "mike", "paul", "alex"]
 
-# [[group]]
-# template = "https://*.kaspa.green"
-# nodes = ["jake", "mark", "adam", "liam"]
+[[group]]
+template = "https://*.kaspa.green"
+nodes = ["jake", "mark", "adam", "liam"]
 
-# [[group]]
-# template = "https://*.kaspa.blue"
-# nodes = ["noah", "ryan", "jack", "luke"]
+[[group]]
+template = "https://*.kaspa.blue"
+nodes = ["noah", "ryan", "jack", "luke"]
 
 # [[group]]
 # enable = true
