@@ -31,7 +31,11 @@ impl Mempool {
                 if double_spends.is_empty() {
                     Ok(None)
                 } else {
-                    let fee_per_mass_threshold = self.get_double_spend_fee_per_mass(&double_spends[0])?;
+                    let mut fee_per_mass_threshold = 0f64;
+                    for double_spend in double_spends {
+                        // We take the max over all double spends as the required threshold
+                        fee_per_mass_threshold = fee_per_mass_threshold.max(self.get_double_spend_fee_per_mass(&double_spend)?);
+                    }
                     Ok(Some(fee_per_mass_threshold))
                 }
             }
@@ -75,6 +79,11 @@ impl Mempool {
                     true => Ok(None),
                     false => {
                         let removed = self.validate_double_spending_transaction(transaction, &double_spends[0])?.mtx.tx.clone();
+                        for double_spend in double_spends.iter().skip(1) {
+                            // Validate the feerate threshold is passed for all double spends
+                            self.validate_double_spending_transaction(transaction, double_spend)?;
+                        }
+                        // We apply consequences such as removal only after we fully validate against all double spends
                         for double_spend in double_spends {
                             self.remove_transaction(
                                 &double_spend.owner_id,
