@@ -28,7 +28,11 @@ pub fn short_hash_str() -> Option<&'static str> {
 }
 
 pub fn version() -> String {
-    format!("v{VERSION}-{SHORT_HASH}")
+    if let Some(short_hash) = short_hash_str() {
+        format!("v{VERSION}-{short_hash}")
+    } else {
+        format!("v{VERSION}")
+    }
 }
 
 pub fn with_short_hash<V>(version: V) -> impl Display
