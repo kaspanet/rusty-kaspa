@@ -643,6 +643,7 @@ impl FlowContext {
         consensus: &ConsensusProxy,
         transaction: Transaction,
     ) -> Result<Arc<Transaction>, ProtocolError> {
+        let transaction_id = transaction.id();
         let transaction_insertion = self
             .mining_manager()
             .clone()
@@ -653,7 +654,14 @@ impl FlowContext {
             false, // RPC transactions are considered high priority, so we don't want to throttle them
         )
         .await;
-        Ok(transaction_insertion.removed.expect("on mandatory RBF success, a removed transaction is returned"))
+        // The combination of args above of Orphan::Forbidden and RbfPolicy::Mandatory should always result
+        // in a removed transaction returned, however we prefer failing gracefully in case of future internal mempool changes
+        transaction_insertion.removed.ok_or_else(|| {
+            ProtocolError::OtherOwned(format!(
+                "Transaction {} was accepted but the replaced transaction was not returned from the mempool",
+                transaction_id
+            ))
+        })
     }
 
     /// Returns true if the time has come for running the task cleaning mempool transactions.

@@ -47,7 +47,7 @@ impl Mempool {
         // concurrently.
         if self.transaction_pool.has(&transaction_id) {
             debug!("Transaction {0} is not post validated since already in the mempool", transaction_id);
-            return Ok(TransactionPostValidation::default());
+            return Err(RuleError::RejectDuplicate(transaction_id));
         }
 
         self.validate_transaction_unacceptance(&transaction)?;

@@ -182,11 +182,7 @@ impl TransactionsSelector {
             self.total_mass += selected_tx.calculated_mass;
             self.total_fees += selected_tx.calculated_fee;
 
-            trace!(
-                "Adding tx {0} (fee per megagram: {1})",
-                selected_tx.tx.id(),
-                selected_tx.calculated_fee * 1_000_000 / selected_tx.calculated_mass
-            );
+            trace!("Adding tx {0} (fee per gram: {1})", selected_tx.tx.id(), selected_tx.calculated_fee / selected_tx.calculated_mass);
 
             // Mark for deletion
             selected_candidate.is_marked_for_deletion = true;

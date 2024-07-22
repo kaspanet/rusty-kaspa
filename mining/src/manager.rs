@@ -435,7 +435,7 @@ impl MiningManager {
                         self.counters.increase_tx_counts(1, priority);
                         mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction)
                     }
-                    Ok(TransactionPostValidation { removed: _, accepted: None }) => {
+                    Ok(TransactionPostValidation { removed: _, accepted: None }) | Err(RuleError::RejectDuplicate(_)) => {
                         // Either orphaned or already existing in the mempool
                         vec![]
                     }
