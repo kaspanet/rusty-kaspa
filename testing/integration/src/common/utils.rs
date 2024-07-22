@@ -36,8 +36,8 @@ const fn estimated_mass(num_inputs: usize, num_outputs: u64) -> u64 {
 }
 
 pub const fn required_fee(num_inputs: usize, num_outputs: u64) -> u64 {
-    const FEE_PER_MASS: u64 = 10;
-    FEE_PER_MASS * estimated_mass(num_inputs, num_outputs)
+    const FEE_RATE: u64 = 10;
+    FEE_RATE * estimated_mass(num_inputs, num_outputs)
 }
 
 /// Builds a TX DAG based on the initial UTXO set and on constant params
