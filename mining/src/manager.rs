@@ -427,7 +427,7 @@ impl MiningManager {
                     transaction,
                     priority,
                     orphan,
-                    RbfPolicy::Allowed,
+                    rbf_policy,
                 ) {
                     Ok(TransactionPostValidation { removed: _, accepted: Some(accepted_transaction) }) => {
                         insert_results.push(Ok(accepted_transaction.clone()));
