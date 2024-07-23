@@ -1,4 +1,4 @@
-use kaspa_bip32::Prefix;
+use kaspa_bip32::{ChainCode, KeyFingerprint, Prefix};
 use std::{fmt, str::FromStr};
 
 use crate::imports::*;
@@ -15,7 +15,7 @@ use crate::imports::*;
 /// @category Wallet SDK
 ///
 #[derive(Clone, CastFromJs)]
-#[wasm_bindgen]
+#[wasm_bindgen(inspectable)]
 pub struct XPub {
     inner: ExtendedPublicKey<secp256k1::PublicKey>,
 }
@@ -57,6 +57,44 @@ impl XPub {
     #[wasm_bindgen(js_name = toPublicKey)]
     pub fn public_key(&self) -> PublicKey {
         self.inner.public_key().into()
+    }
+
+    // ~~~~ Getters ~~~~
+
+    #[wasm_bindgen(getter)]
+    pub fn xpub(&self) -> Result<String> {
+        let str = self.inner.to_extended_key("kpub".try_into()?).to_string();
+        Ok(str)
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn depth(&self) -> u8 {
+        self.inner.attrs().depth
+    }
+
+    #[wasm_bindgen(getter, js_name = parentFingerprint)]
+    pub fn parent_fingerprint_as_hex_string(&self) -> String {
+        self.inner.attrs().parent_fingerprint.to_vec().to_hex()
+    }
+
+    #[wasm_bindgen(getter, js_name = childNumber)]
+    pub fn child_number(&self) -> u32 {
+        self.inner.attrs().child_number.into()
+    }
+
+    #[wasm_bindgen(getter, js_name = chainCode)]
+    pub fn chain_code_as_hex_string(&self) -> String {
+        self.inner.attrs().chain_code.to_vec().to_hex()
+    }
+}
+
+impl XPub {
+    pub fn parent_fingerprint(&self) -> KeyFingerprint {
+        self.inner.attrs().parent_fingerprint
+    }
+
+    pub fn chain_code(&self) -> ChainCode {
+        self.inner.attrs().chain_code
     }
 }
 
