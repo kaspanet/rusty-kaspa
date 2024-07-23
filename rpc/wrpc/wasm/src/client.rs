@@ -364,20 +364,8 @@ impl RpcClient {
     /// Optional: Resolver node id.
     #[wasm_bindgen(getter, js_name = "nodeId")]
     pub fn resolver_node_id(&self) -> Option<String> {
-        self.inner.client.node_descriptor().map(|node| node.id.clone())
+        self.inner.client.node_descriptor().map(|node| node.uid.clone())
     }
-
-    // /// Optional: public node provider name.
-    // #[wasm_bindgen(getter, js_name = "providerName")]
-    // pub fn resolver_node_provider_name(&self) -> Option<String> {
-    //     self.inner.client.node_descriptor().and_then(|node| node.provider_name.clone())
-    // }
-
-    // /// Optional: public node provider URL.
-    // #[wasm_bindgen(getter, js_name = "providerUrl")]
-    // pub fn resolver_node_provider_url(&self) -> Option<String> {
-    //     self.inner.client.node_descriptor().and_then(|node| node.provider_url.clone())
-    // }
 
     /// Connect to the Kaspa RPC server. This function starts a background
     /// task that connects and reconnects to the server if the connection

@@ -933,6 +933,7 @@ mod mockery {
     impl Mock for GetSystemInfoResponse {
         fn mock() -> Self {
             GetSystemInfoResponse {
+                version: "1.2.3".to_string(),
                 system_id: mock(),
                 git_hash: mock(),
                 cpu_physical_cores: mock(),

@@ -114,7 +114,7 @@ impl Resolver {
             }
         });
 
-        format!("{url}/v{CURRENT_VERSION}/kaspa/{network_id}/wrpc/{tls}/{encoding}")
+        format!("{url}/v{CURRENT_VERSION}/kaspa/{network_id}/{tls}/wrpc/{encoding}")
     }
 
     async fn fetch_node_info(&self, url: &str, encoding: Encoding, network_id: NetworkId) -> Result<NodeDescriptor> {
@@ -136,27 +136,6 @@ impl Resolver {
             }
         }
         Err(Error::Custom(format!("Failed to connect: {:?}", errors)))
-    }
-
-    pub async fn fetch_all(&self, encoding: Encoding, network_id: NetworkId) -> Result<Vec<NodeDescriptor>> {
-        let futures = self.inner.urls.iter().map(|url| self.fetch_node_info(url, encoding, network_id)).collect::<Vec<_>>();
-        let mut errors = Vec::default();
-        let result = join_all(futures)
-            .await
-            .into_iter()
-            .filter_map(|result| match result {
-                Ok(node) => Some(node),
-                Err(error) => {
-                    errors.push(format!("{:?}", error));
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
-        if result.is_empty() {
-            Err(Error::Custom(format!("Failed to connect: {:?}", errors)))
-        } else {
-            Ok(result)
-        }
     }
 
     pub async fn get_node(&self, encoding: Encoding, network_id: NetworkId) -> Result<NodeDescriptor> {

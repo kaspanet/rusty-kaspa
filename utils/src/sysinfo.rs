@@ -10,6 +10,7 @@ pub struct SystemInfo {
     pub system_id: Option<Vec<u8>>,
     pub git_hash: Option<Vec<u8>>,
     pub git_short_hash: Option<Vec<u8>>,
+    pub version: String,
     pub cpu_physical_cores: u16,
     pub total_memory: u64,
     pub fd_limit: u32,
@@ -28,8 +29,9 @@ impl Default for SystemInfo {
             let system_id = Self::try_system_id();
             let git_hash = git::hash();
             let git_short_hash = git::short_hash();
+            let version = git::version();
 
-            SystemInfo { system_id, git_hash, git_short_hash, cpu_physical_cores, total_memory, fd_limit }
+            SystemInfo { system_id, git_hash, git_short_hash, version, cpu_physical_cores, total_memory, fd_limit }
         });
         (*system_info).clone()
     }

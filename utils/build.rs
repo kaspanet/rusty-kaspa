@@ -10,13 +10,23 @@ struct GitHead {
 }
 
 fn main() {
-    if env::var("RUSTY_KASPA_NO_COMMIT_HASH").is_err() {
+    let success = if env::var("RUSTY_KASPA_NO_COMMIT_HASH").is_err() {
         if let Some(GitHead { head_path, head_ref_path, full_hash, short_hash }) = try_git_head() {
             println!("cargo::rerun-if-changed={head_path}");
             println!("cargo::rerun-if-changed={head_ref_path}");
             println!("cargo:rustc-env=RUSTY_KASPA_GIT_FULL_COMMIT_HASH={full_hash}");
             println!("cargo:rustc-env=RUSTY_KASPA_GIT_SHORT_COMMIT_HASH={short_hash}");
+            true
+        } else {
+            false
         }
+    } else {
+        false
+    };
+
+    if !success {
+        println!("cargo:rustc-env=RUSTY_KASPA_GIT_FULL_COMMIT_HASH=");
+        println!("cargo:rustc-env=RUSTY_KASPA_GIT_SHORT_COMMIT_HASH=");
     }
 }
 

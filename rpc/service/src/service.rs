@@ -982,6 +982,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _request: GetSystemInfoRequest,
     ) -> RpcResult<GetSystemInfoResponse> {
         let response = GetSystemInfoResponse {
+            version: self.system_info.version.clone(),
             system_id: self.system_info.system_id.clone(),
             git_hash: self.system_info.git_short_hash.clone(),
             cpu_physical_cores: self.system_info.cpu_physical_cores,

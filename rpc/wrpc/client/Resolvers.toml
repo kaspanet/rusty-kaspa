@@ -1,44 +1,41 @@
+[[resolver]]
+enable = false
+address = "http://127.0.0.1:8888"
+
 [[group]]
 template = "https://*.kaspa.stream"
-nodes = ["eric", "troy", "sean", "maxim"]
+nodes = ["eric","maxim","sean","troy"]
 
-# [[group]]
-# template = "https://*.kaspa.red"
-# nodes = ["cole", "ivan", "oscar", "zane"]
+[[group]]
+template = "https://*.kaspa.red"
+nodes = ["john", "mike", "paul", "alex"]
 
-# [[group]]
-# template = "https://*.kaspa.green"
-# nodes = ["gary", "hugo", "finn", "evan"]
+[[group]]
+template = "https://*.kaspa.green"
+nodes = ["jake", "mark", "adam", "liam"]
 
-# [[group]]
-# template = "https://*.kaspa.blue"
-# nodes = ["neil", "dave", "kyle", "toby"]
-
-# [[group]]
-# template = "https://*.kaspacalc.net"
-# nodes = ["rudy", "todd", "clay", "walt"]
+[[group]]
+template = "https://*.kaspa.blue"
+nodes = ["noah", "ryan", "jack", "luke"]
 
 # [[group]]
 # enable = true
 # template = "https://*.kaspa-ng.org"
-# nodes = ["john", "mike", "paul", "alex"]
+# nodes = ["cole", "ivan", "oscar", "zane"]
 
 # [[group]]
 # enable = true
 # template = "https://*.kaspa-ng.io"
-# nodes = ["jake", "mark", "adam", "liam"]
+# nodes = ["gary", "hugo", "finn", "evan"]
 
 # [[group]]
 # enable = true
 # template = "https://*.kaspa-ng.net"
-# nodes = ["noah", "ryan", "jack", "luke"]
+# nodes = ["neil", "dave", "kyle", "toby"]
 
-# --
+# ---
 
 # [[group]]
-# template = "https://*.kaspa.stream"
-# nodes = ["brad", "dean", "fred", "joel"]
-
-# [[resolver]]
 # enable = false
-# address = "http://127.0.0.1:8888"
+# template = "https://*."
+# nodes = ["rudy", "todd", "clay", "walt"]
