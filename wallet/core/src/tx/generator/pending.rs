@@ -8,9 +8,8 @@ use crate::result::Result;
 use crate::rpc::DynRpcApi;
 use crate::tx::{DataKind, Generator};
 use crate::utxo::{UtxoContext, UtxoEntryId, UtxoEntryReference};
-use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValues};
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
-use kaspa_consensus_core::sign::{sign_with_multiple_v2, Signed};
+use kaspa_consensus_core::sign::{sign_input, sign_with_multiple_v2, Signed};
 use kaspa_consensus_core::tx::{SignableTransaction, Transaction, TransactionId};
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionId};
 
@@ -226,17 +225,9 @@ impl PendingTransaction {
     }
 
     pub fn sign_input(&self, input_index: usize, private_key: &[u8; 32], hash_type: SigHashType) -> Result<Vec<u8>> {
-        // TODO: Move to sign.rs
         let mutable_tx = self.inner.signable_tx.lock()?.clone();
-        let mut reused_values = SigHashReusedValues::new();
 
-        let hash = calc_schnorr_signature_hash(&mutable_tx.as_verifiable(), input_index, hash_type, &mut reused_values);
-        let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice()).unwrap();
-        let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, private_key).unwrap();
-        let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
-
-        // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)
-        Ok(std::iter::once(65u8).chain(sig).chain([hash_type.to_u8()]).collect())
+        Ok(sign_input(mutable_tx, input_index, private_key, hash_type))
     }
 
     pub fn fill_input(&self, input_index: usize, signature_script: Vec<u8>) -> Result<()> {
