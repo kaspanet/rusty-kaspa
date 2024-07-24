@@ -2,7 +2,6 @@ use super::sighash_type::{self, SigHashType};
 use wasm_bindgen::prelude::*;
 
 /// Kaspa Sighash types allowed by consensus
-/// @see {@link signInput}
 /// @category Consensus
 #[wasm_bindgen]
 pub enum SighashType {

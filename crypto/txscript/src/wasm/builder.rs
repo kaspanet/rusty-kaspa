@@ -15,8 +15,6 @@ use workflow_wasm::prelude::*;
 /// data pushes which would exceed the maximum allowed script engine limits and
 /// are therefore guaranteed not to execute will not be pushed and will result in
 /// the Script function returning an error.
-///
-/// @see {@link Opcode}
 /// @category Consensus
 #[derive(Clone)]
 #[wasm_bindgen(inspectable)]
