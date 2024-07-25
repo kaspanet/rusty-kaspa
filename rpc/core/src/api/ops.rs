@@ -124,6 +124,9 @@ pub enum RpcApiOps {
     GetCoinSupply,
     /// Get DAA Score timestamp estimate
     GetDaaScoreTimestampEstimate,
+
+    /// Extracts a transaction out of the request message and attempts to replace a matching transaction in the mempool with it, applying a mandatory Replace by Fee policy
+    SubmitTransactionReplacement,
 }
 
 impl RpcApiOps {

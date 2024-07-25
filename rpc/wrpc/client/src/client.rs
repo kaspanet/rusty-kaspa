@@ -638,6 +638,7 @@ impl RpcApi for KaspaRpcClient {
             Shutdown,
             SubmitBlock,
             SubmitTransaction,
+            SubmitTransactionReplacement,
             Unban,
         ]
     );

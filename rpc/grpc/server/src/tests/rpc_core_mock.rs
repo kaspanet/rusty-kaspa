@@ -182,6 +182,14 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn submit_transaction_replacement_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: SubmitTransactionReplacementRequest,
+    ) -> RpcResult<SubmitTransactionReplacementResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     async fn add_peer_call(&self, _connection: Option<&DynRpcConnection>, _request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
         Err(RpcError::NotImplemented)
     }

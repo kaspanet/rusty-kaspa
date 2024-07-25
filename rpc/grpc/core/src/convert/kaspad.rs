@@ -36,6 +36,7 @@ pub mod kaspad_request_convert {
     impl_into_kaspad_request!(GetConnectedPeerInfo);
     impl_into_kaspad_request!(AddPeer);
     impl_into_kaspad_request!(SubmitTransaction);
+    impl_into_kaspad_request!(SubmitTransactionReplacement);
     impl_into_kaspad_request!(GetSubnetwork);
     impl_into_kaspad_request!(GetVirtualChainFromBlock);
     impl_into_kaspad_request!(GetBlocks);
@@ -169,6 +170,7 @@ pub mod kaspad_response_convert {
     impl_into_kaspad_response!(GetConnectedPeerInfo);
     impl_into_kaspad_response!(AddPeer);
     impl_into_kaspad_response!(SubmitTransaction);
+    impl_into_kaspad_response!(SubmitTransactionReplacement);
     impl_into_kaspad_response!(GetSubnetwork);
     impl_into_kaspad_response!(GetVirtualChainFromBlock);
     impl_into_kaspad_response!(GetBlocks);
