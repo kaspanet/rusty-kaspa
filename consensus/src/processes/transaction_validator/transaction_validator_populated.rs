@@ -1,5 +1,8 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
-use kaspa_consensus_core::{hashing::sighash::SigHashReusedValues, tx::{TransactionInput, VerifiableTransaction}};
+use kaspa_consensus_core::{
+    hashing::sighash::SigHashReusedValues,
+    tx::{TransactionInput, VerifiableTransaction},
+};
 use kaspa_core::warn;
 use kaspa_txscript::{get_sig_op_count, TxScriptEngine};
 use kaspa_txscript_errors::TxScriptError;
