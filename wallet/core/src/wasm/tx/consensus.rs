@@ -9,7 +9,7 @@ use wasm_bindgen::prelude::*;
 /// @see {@link getConsensusParametersByNetwork}
 /// @see {@link getConsensusParametersByAddress}
 ///
-///  @category Wallet SDK
+/// @category Wallet SDK
 ///
 #[wasm_bindgen]
 pub struct ConsensusParams {
