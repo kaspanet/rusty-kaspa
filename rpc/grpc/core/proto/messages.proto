@@ -59,8 +59,10 @@ message KaspadRequest {
     GetServerInfoRequestMessage getServerInfoRequest = 1092;
     GetSyncStatusRequestMessage getSyncStatusRequest = 1094;
     GetDaaScoreTimestampEstimateRequestMessage GetDaaScoreTimestampEstimateRequest = 1096;
-    GetConnectionsRequestMessage getConnectionsRequest = 1098;
-    GetSystemInfoRequestMessage getSystemInfoRequest = 1100;
+    // GetFeeInfoRequestMessage getFeeInfoResponse = 1098;
+    SubmitTransactionReplacementRequestMessage submitTransactionReplacementRequest = 1100;
+    GetConnectionsRequestMessage getConnectionsRequest = 1102;
+    GetSystemInfoRequestMessage getSystemInfoRequest = 1104;
   }
 }
 
@@ -120,8 +122,10 @@ message KaspadResponse {
     GetServerInfoResponseMessage getServerInfoResponse = 1093;
     GetSyncStatusResponseMessage getSyncStatusResponse = 1095;
     GetDaaScoreTimestampEstimateResponseMessage GetDaaScoreTimestampEstimateResponse = 1097;
-    GetConnectionsResponseMessage getConnectionsResponse= 1099;
-    GetSystemInfoResponseMessage getSystemInfoResponse= 1101;
+    // GetFeeInfoResponseMessage getFeeInfoResponse = 1099;
+    SubmitTransactionReplacementResponseMessage submitTransactionReplacementResponse = 1101;
+    GetConnectionsResponseMessage getConnectionsResponse= 1103;
+    GetSystemInfoResponseMessage getSystemInfoResponse= 1105;
   }
 }
 

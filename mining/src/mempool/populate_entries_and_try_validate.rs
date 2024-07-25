@@ -1,5 +1,12 @@
 use crate::mempool::{errors::RuleResult, model::pool::Pool, Mempool};
-use kaspa_consensus_core::{api::ConsensusApi, constants::UNACCEPTED_DAA_SCORE, tx::MutableTransaction, tx::UtxoEntry};
+use kaspa_consensus_core::{
+    api::{
+        args::{TransactionValidationArgs, TransactionValidationBatchArgs},
+        ConsensusApi,
+    },
+    constants::UNACCEPTED_DAA_SCORE,
+    tx::{MutableTransaction, UtxoEntry},
+};
 use kaspa_mining_errors::mempool::RuleError;
 
 impl Mempool {
@@ -14,15 +21,20 @@ impl Mempool {
     }
 }
 
-pub(crate) fn validate_mempool_transaction(consensus: &dyn ConsensusApi, transaction: &mut MutableTransaction) -> RuleResult<()> {
-    Ok(consensus.validate_mempool_transaction(transaction)?)
+pub(crate) fn validate_mempool_transaction(
+    consensus: &dyn ConsensusApi,
+    transaction: &mut MutableTransaction,
+    args: &TransactionValidationArgs,
+) -> RuleResult<()> {
+    Ok(consensus.validate_mempool_transaction(transaction, args)?)
 }
 
 pub(crate) fn validate_mempool_transactions_in_parallel(
     consensus: &dyn ConsensusApi,
     transactions: &mut [MutableTransaction],
+    args: &TransactionValidationBatchArgs,
 ) -> Vec<RuleResult<()>> {
-    consensus.validate_mempool_transactions_in_parallel(transactions).into_iter().map(|x| x.map_err(RuleError::from)).collect()
+    consensus.validate_mempool_transactions_in_parallel(transactions, args).into_iter().map(|x| x.map_err(RuleError::from)).collect()
 }
 
 pub(crate) fn populate_mempool_transactions_in_parallel(
