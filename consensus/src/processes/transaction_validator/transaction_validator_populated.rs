@@ -177,9 +177,10 @@ impl TransactionValidator {
 }
 
 fn map_script_err(script_err: TxScriptError, input: &TransactionInput) -> TxRuleError {
-    match input.signature_script.is_empty() {
-        true => TxRuleError::SignatureEmpty(script_err),
-        false => TxRuleError::SignatureInvalid(script_err),
+    if input.signature_script.is_empty() {
+        TxRuleError::SignatureEmpty(script_err)
+    } else {
+        TxRuleError::SignatureInvalid(script_err)
     }
 }
 
