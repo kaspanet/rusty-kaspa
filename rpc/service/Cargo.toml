@@ -33,5 +33,4 @@ async-trait.workspace = true
 log.workspace = true
 tokio.workspace = true
 triggered.workspace = true
-itertools.workspace = true
 workflow-rpc.workspace = true

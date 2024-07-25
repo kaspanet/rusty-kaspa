@@ -4,7 +4,6 @@ use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
-use itertools::Itertools;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::{
@@ -65,7 +64,6 @@ use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
-use std::iter;
 use std::{
     collections::HashMap,
     iter::once,
@@ -495,28 +493,17 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
         let transaction: Transaction = (&request.transaction).try_into()?;
         let transaction_id = transaction.id();
-        let inputs = &transaction.inputs;
-
-        let mut empty_indices =
-            inputs.iter().enumerate().filter_map(|(index, input)| (input.signature_script.is_empty()).then_some(index.to_string()));
-        let first_empty = empty_indices.next();
-        if let Some(first_empty) = first_empty {
-            Err(RpcError::EmptySignatureScript(transaction_id, iter::once(first_empty).chain(empty_indices).join(", ")))
-        } else {
-            let session = self.consensus_manager.consensus().unguarded_session();
-            let orphan = match allow_orphan {
-                true => Orphan::Allowed,
-                false => Orphan::Forbidden,
-            };
-            self.flow_context
-                .submit_rpc_transaction(&session, transaction, orphan)
-                .await
-                .as_ref()
-                .map_err(ToString::to_string)
-                .map_err(|err| RpcError::RejectedTransaction(transaction_id, err))
-                .inspect_err(|err| debug!("{err}"))?;
-            Ok(SubmitTransactionResponse::new(transaction_id))
-        }
+        let session = self.consensus_manager.consensus().unguarded_session();
+        let orphan = match allow_orphan {
+            true => Orphan::Allowed,
+            false => Orphan::Forbidden,
+        };
+        self.flow_context.submit_rpc_transaction(&session, transaction, orphan).await.map_err(|err| {
+            let err = RpcError::RejectedTransaction(transaction_id, err.to_string());
+            debug!("{err}");
+            err
+        })?;
+        Ok(SubmitTransactionResponse::new(transaction_id))
     }
 
     async fn submit_transaction_replacement_call(
