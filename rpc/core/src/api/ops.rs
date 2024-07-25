@@ -114,6 +114,9 @@ pub enum RpcApiOps {
     VirtualDaaScoreChangedNotification,
     PruningPointUtxoSetOverrideNotification,
     NewBlockTemplateNotification,
+
+    /// Extracts a transaction out of the request message and attempts to replace a matching transaction in the mempool with it, applying a mandatory Replace by Fee policy
+    SubmitTransactionReplacement,
 }
 
 impl RpcApiOps {
