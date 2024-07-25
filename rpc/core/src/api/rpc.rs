@@ -216,10 +216,11 @@ pub trait RpcApi: Sync + Send + AnySync {
     ///
     /// Returns the ID of the inserted transaction and the transaction the submission replaced in the mempool.
     async fn submit_transaction_replacement(&self, transaction: RpcTransaction) -> RpcResult<SubmitTransactionReplacementResponse> {
-        self.submit_transaction_replacement_call(SubmitTransactionReplacementRequest { transaction }).await
+        self.submit_transaction_replacement_call(None, SubmitTransactionReplacementRequest { transaction }).await
     }
     async fn submit_transaction_replacement_call(
         &self,
+        connection: Option<&DynRpcConnection>,
         request: SubmitTransactionReplacementRequest,
     ) -> RpcResult<SubmitTransactionReplacementResponse>;
 

@@ -742,7 +742,25 @@ impl SubmitTransactionReplacementRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for SubmitTransactionReplacementRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(RpcTransaction, &self.transaction, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for SubmitTransactionReplacementRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let transaction = deserialize!(RpcTransaction, reader)?;
+
+        Ok(Self { transaction })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmitTransactionReplacementResponse {
     pub transaction_id: RpcTransactionId,
@@ -752,6 +770,26 @@ pub struct SubmitTransactionReplacementResponse {
 impl SubmitTransactionReplacementResponse {
     pub fn new(transaction_id: RpcTransactionId, replaced_transaction: RpcTransaction) -> Self {
         Self { transaction_id, replaced_transaction }
+    }
+}
+
+impl Serializer for SubmitTransactionReplacementResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcTransactionId, &self.transaction_id, writer)?;
+        serialize!(RpcTransaction, &self.replaced_transaction, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for SubmitTransactionReplacementResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let transaction_id = load!(RpcTransactionId, reader)?;
+        let replaced_transaction = deserialize!(RpcTransaction, reader)?;
+
+        Ok(Self { transaction_id, replaced_transaction })
     }
 }
 
