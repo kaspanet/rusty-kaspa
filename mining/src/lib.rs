@@ -8,6 +8,7 @@ use mempool::tx::Priority;
 mod block_template;
 pub(crate) mod cache;
 pub mod errors;
+pub mod feerate;
 pub mod manager;
 mod manager_tests;
 pub mod mempool;

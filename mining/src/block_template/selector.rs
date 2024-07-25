@@ -18,7 +18,7 @@ use kaspa_consensus_core::{
 /// candidate transactions should be. A smaller alpha makes the distribution
 /// more uniform. ALPHA is used when determining a candidate transaction's
 /// initial p value.
-const ALPHA: i32 = 3;
+pub(crate) const ALPHA: i32 = 3;
 
 /// REBALANCE_THRESHOLD is the percentage of candidate transactions under which
 /// we don't rebalance. Rebalancing is a heavy operation so we prefer to avoid
