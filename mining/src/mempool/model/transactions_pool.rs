@@ -18,9 +18,47 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::{time::unix_now, trace, warn};
 use std::{
-    collections::{hash_map::Keys, hash_set::Iter, HashSet},
+    collections::{hash_map::Keys, hash_set::Iter, BTreeSet},
     sync::Arc,
 };
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct FeerateTxKey {
+    fee: u64,
+    mass: u64,
+    id: TransactionId,
+}
+
+impl From<&MempoolTransaction> for FeerateTxKey {
+    fn from(tx: &MempoolTransaction) -> Self {
+        Self { fee: tx.mtx.calculated_fee.unwrap(), mass: tx.mtx.tx.mass(), id: tx.id() }
+    }
+}
+
+impl PartialOrd for FeerateTxKey {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for FeerateTxKey {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        let (feerate, other_feerate) = (self.fee as f64 / self.mass as f64, other.fee as f64 / other.mass as f64);
+        match feerate.total_cmp(&other_feerate) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        match self.fee.cmp(&other.fee) {
+            core::cmp::Ordering::Equal => {}
+            ord => return ord,
+        }
+        // match self.mass.cmp(&other.mass) {
+        //     core::cmp::Ordering::Equal => {}
+        //     ord => return ord,
+        // }
+        self.id.cmp(&other.id)
+    }
+}
 
 /// Pool of transactions to be included in a block template
 ///
@@ -54,7 +92,7 @@ pub(crate) struct TransactionsPool {
     /// Transactions dependencies formed by outputs present in pool - successor relations.
     chained_transactions: TransactionsEdges,
     /// Transactions with no parents in the mempool -- ready to be inserted into a block template
-    ready_transactions: HashSet<TransactionId>,
+    ready_transactions: BTreeSet<FeerateTxKey>,
 
     last_expire_scan_daa_score: u64,
     /// last expire scan time in milliseconds
@@ -105,7 +143,7 @@ impl TransactionsPool {
         let parents = self.get_parent_transaction_ids_in_pool(&transaction.mtx);
         self.parent_transactions.insert(id, parents.clone());
         if parents.is_empty() {
-            self.ready_transactions.insert(id);
+            self.ready_transactions.insert((&transaction).into());
         }
         for parent_id in parents {
             let entry = self.chained_transactions.entry(parent_id).or_default();
@@ -133,17 +171,19 @@ impl TransactionsPool {
                 if let Some(parents) = self.parent_transactions.get_mut(chain) {
                     parents.remove(transaction_id);
                     if parents.is_empty() {
-                        self.ready_transactions.insert(*chain);
+                        let tx = self.all_transactions.get(chain).unwrap();
+                        self.ready_transactions.insert(tx.into());
                     }
                 }
             }
         }
         self.parent_transactions.remove(transaction_id);
         self.chained_transactions.remove(transaction_id);
-        self.ready_transactions.remove(transaction_id);
 
         // Remove the transaction itself
         let removed_tx = self.all_transactions.remove(transaction_id).ok_or(RuleError::RejectMissingTransaction(*transaction_id))?;
+
+        self.ready_transactions.remove(&(&removed_tx).into());
 
         // TODO: consider using `self.parent_transactions.get(transaction_id)`
         // The tradeoff to consider is whether it might be possible that a parent tx exists in the pool
@@ -165,10 +205,12 @@ impl TransactionsPool {
     /// These transactions are ready for being inserted in a block template.
     pub(crate) fn all_ready_transactions(&self) -> Vec<CandidateTransaction> {
         // The returned transactions are leaving the mempool so they are cloned
+        // self.ready_transactions.range(range)
         self.ready_transactions
             .iter()
+            .rev() // Iterate in descending feerate order
             .take(self.config.maximum_ready_transaction_count as usize)
-            .map(|id| CandidateTransaction::from_mutable(&self.all_transactions.get(id).unwrap().mtx))
+            .map(|key| CandidateTransaction::from_mutable(&self.all_transactions.get(&key.id).unwrap().mtx))
             .collect()
     }
 
