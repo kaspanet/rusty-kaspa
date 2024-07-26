@@ -1,7 +1,11 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
-use kaspa_consensus_core::{hashing::sighash::SigHashReusedValues, tx::VerifiableTransaction};
+use kaspa_consensus_core::{
+    hashing::sighash::SigHashReusedValues,
+    tx::{TransactionInput, VerifiableTransaction},
+};
 use kaspa_core::warn;
 use kaspa_txscript::{get_sig_op_count, TxScriptEngine};
+use kaspa_txscript_errors::TxScriptError;
 
 use super::{
     errors::{TxResult, TxRuleError},
@@ -167,11 +171,19 @@ impl TransactionValidator {
         let mut reused_values = SigHashReusedValues::new();
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
             let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &mut reused_values, &self.sig_cache)
-                .map_err(TxRuleError::SignatureInvalid)?;
-            engine.execute().map_err(TxRuleError::SignatureInvalid)?;
+                .map_err(|err| map_script_err(err, input))?;
+            engine.execute().map_err(|err| map_script_err(err, input))?;
         }
 
         Ok(())
+    }
+}
+
+fn map_script_err(script_err: TxScriptError, input: &TransactionInput) -> TxRuleError {
+    if input.signature_script.is_empty() {
+        TxRuleError::SignatureEmpty(script_err)
+    } else {
+        TxRuleError::SignatureInvalid(script_err)
     }
 }
 
