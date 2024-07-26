@@ -65,7 +65,7 @@ impl TransactionOutput {
         self.inner.lock().unwrap()
     }
 
-    pub fn script_length(&self) -> usize {
+    pub fn script_public_key_length(&self) -> usize {
         self.inner().script_public_key.script().len()
     }
 }
@@ -79,7 +79,7 @@ impl TransactionOutput {
     }
 
     #[wasm_bindgen(getter, js_name = value)]
-    pub fn get_value(&self) -> u64 {
+    pub fn value(&self) -> u64 {
         self.inner().value
     }
 

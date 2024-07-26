@@ -74,7 +74,6 @@ kaspa-wallet-macros.workspace = true
 kaspa-wasm-core.workspace = true
 kaspa-wrpc-client.workspace = true
 kaspa-wrpc-wasm.workspace = true
-lazy_static.workspace = true
 md-5.workspace = true
 pad.workspace = true
 pbkdf2.workspace = true

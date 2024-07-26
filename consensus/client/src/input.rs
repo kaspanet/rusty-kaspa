@@ -13,7 +13,7 @@ const TS_TRANSACTION: &'static str = r#"
  */
 export interface ITransactionInput {
     previousOutpoint: ITransactionOutpoint;
-    signatureScript: HexString;
+    signatureScript?: HexString;
     sequence: bigint;
     sigOpCount: number;
     utxo?: UtxoEntryReference;
@@ -93,6 +93,10 @@ impl TransactionInput {
 
     pub fn sig_op_count(&self) -> u8 {
         self.inner().sig_op_count
+    }
+
+    pub fn signature_script_length(&self) -> usize {
+        self.inner().signature_script.len()
     }
 
     pub fn utxo(&self) -> Option<UtxoEntryReference> {
@@ -187,7 +191,7 @@ impl TryCastFromJs for TransactionInput {
         Self::resolve_cast(&value, || {
             if let Some(object) = Object::try_from(value.as_ref()) {
                 let previous_outpoint: TransactionOutpoint = object.get_value("previousOutpoint")?.as_ref().try_into()?;
-                let signature_script = object.get_vec_u8("signatureScript")?;
+                let signature_script = object.get_vec_u8("signatureScript").unwrap_or_default();
                 let sequence = object.get_u64("sequence")?;
                 let sig_op_count = object.get_u8("sigOpCount")?;
                 let utxo = object.try_get_cast::<UtxoEntryReference>("utxo")?.map(Cast::into_owned);

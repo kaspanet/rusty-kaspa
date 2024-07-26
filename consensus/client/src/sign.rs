@@ -44,7 +44,7 @@ pub fn sign_with_multiple_v3(tx: Transaction, privkeys: &[[u8; 32]]) -> crate::r
     let mut additional_signatures_required = false;
     {
         let input_len = tx.inner().inputs.len();
-        let (cctx, utxos) = tx.tx_and_utxos();
+        let (cctx, utxos) = tx.tx_and_utxos()?;
         let populated_transaction = PopulatedTransaction::new(&cctx, utxos);
         for i in 0..input_len {
             let script_pub_key = match tx.inner().inputs[i].script_public_key() {

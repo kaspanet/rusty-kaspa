@@ -3493,7 +3493,6 @@ dependencies = [
  "kaspa-wasm-core",
  "kaspa-wrpc-client",
  "kaspa-wrpc-wasm",
- "lazy_static",
  "md-5",
  "pad",
  "pbkdf2",

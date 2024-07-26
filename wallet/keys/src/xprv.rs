@@ -1,4 +1,4 @@
-use kaspa_bip32::{ChainCode, KeyFingerprint, PrivateKey};
+use kaspa_bip32::{ChainCode, KeyFingerprint};
 
 use crate::imports::*;
 
@@ -73,6 +73,12 @@ impl XPrv {
         Ok(public_key.into())
     }
 
+    #[wasm_bindgen(js_name = toPrivateKey)]
+    pub fn to_private_key(&self) -> Result<PrivateKey> {
+        let private_key = self.inner.private_key();
+        Ok(private_key.into())
+    }
+
     // ~~~~ Getters ~~~~
 
     #[wasm_bindgen(getter)]
@@ -83,6 +89,7 @@ impl XPrv {
 
     #[wasm_bindgen(getter, js_name = "privateKey")]
     pub fn private_key_as_hex_string(&self) -> String {
+        use kaspa_bip32::PrivateKey;
         self.inner.private_key().to_bytes().to_vec().to_hex()
     }
 

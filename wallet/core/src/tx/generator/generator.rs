@@ -66,6 +66,7 @@ use crate::tx::{
 use crate::utxo::{NetworkParams, UtxoContext, UtxoEntryReference};
 use kaspa_consensus_client::UtxoEntry;
 use kaspa_consensus_core::constants::UNACCEPTED_DAA_SCORE;
+use kaspa_consensus_core::mass::Kip9Version;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use kaspa_txscript::pay_to_address_script;
@@ -215,7 +216,7 @@ struct Data {
 
 impl Data {
     fn new(calc: &MassCalculator) -> Self {
-        let aggregate_mass = calc.blank_transaction_mass();
+        let aggregate_mass = calc.blank_transaction_compute_mass();
 
         Data {
             inputs: vec![],
@@ -266,7 +267,7 @@ struct Inner {
     // Current network id
     network_id: NetworkId,
     // Current network params
-    network_params: NetworkParams,
+    network_params: &'static NetworkParams,
 
     // Source Utxo Context (Used for source UtxoEntry aggregation)
     source_utxo_context: Option<UtxoContext>,
@@ -357,7 +358,7 @@ impl Generator {
 
         let network_type = NetworkType::from(network_id);
         let network_params = NetworkParams::from(network_id);
-        let mass_calculator = MassCalculator::new(&network_id.into(), &network_params);
+        let mass_calculator = MassCalculator::new(&network_id.into(), network_params);
 
         let (final_transaction_outputs, final_transaction_amount) = match final_transaction_destination {
             PaymentDestination::Change => {
@@ -402,11 +403,11 @@ impl Generator {
         }
 
         let standard_change_output_mass =
-            mass_calculator.calc_mass_for_output(&TransactionOutput::new(0, pay_to_address_script(&change_address)));
-        let signature_mass_per_input = mass_calculator.calc_signature_mass(minimum_signatures);
-        let final_transaction_outputs_compute_mass = mass_calculator.calc_mass_for_outputs(&final_transaction_outputs);
+            mass_calculator.calc_compute_mass_for_output(&TransactionOutput::new(0, pay_to_address_script(&change_address)));
+        let signature_mass_per_input = mass_calculator.calc_compute_mass_for_signature(minimum_signatures);
+        let final_transaction_outputs_compute_mass = mass_calculator.calc_compute_mass_for_outputs(&final_transaction_outputs);
         let final_transaction_payload = final_transaction_payload.unwrap_or_default();
-        let final_transaction_payload_mass = mass_calculator.calc_mass_for_payload(final_transaction_payload.len());
+        let final_transaction_payload_mass = mass_calculator.calc_compute_mass_for_payload(final_transaction_payload.len());
         let final_transaction_outputs_harmonic =
             mass_calculator.calc_storage_mass_output_harmonic(&final_transaction_outputs).ok_or(Error::MassCalculationError)?;
 
@@ -477,7 +478,7 @@ impl Generator {
 
     /// Returns current [`NetworkParams`]
     pub fn network_params(&self) -> &NetworkParams {
-        &self.inner.network_params
+        self.inner.network_params
     }
 
     /// The underlying [`UtxoContext`] (if available).
@@ -662,7 +663,7 @@ impl Generator {
 
         let input = TransactionInput::new(utxo.outpoint.clone().into(), vec![], 0, self.inner.sig_op_count);
         let input_amount = utxo.amount();
-        let input_compute_mass = calc.calc_mass_for_input(&input) + self.inner.signature_mass_per_input;
+        let input_compute_mass = calc.calc_compute_mass_for_input(&input) + self.inner.signature_mass_per_input;
 
         // NOTE: relay transactions have no storage mass
         // mass threshold reached, yield transaction
@@ -865,8 +866,11 @@ impl Generator {
                     calc.calc_storage_mass_output_harmonic_single(change_value) + self.inner.final_transaction_outputs_harmonic;
                 let storage_mass_with_change = self.calc_storage_mass(data, output_harmonic_with_change);
 
+                // TODO - review and potentially simplify:
+                // this profiles the storage mass with change and without change
+                // and decides which one to use based on the fees
                 if storage_mass_with_change == 0
-                    || (self.inner.network_params.mass_combination_strategy() == MassCombinationStrategy::Max
+                    || (self.inner.network_params.kip9_version() == Kip9Version::Beta // max(compute vs storage)
                         && storage_mass_with_change < compute_mass_with_change)
                 {
                     0
