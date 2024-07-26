@@ -118,7 +118,7 @@ impl TransactionRecordStore for TransactionStore {
         let mut transactions = vec![];
 
         for id in ids {
-            let path = folder.join(&id.to_hex());
+            let path = folder.join(id.to_hex());
             match read(&path, None).await {
                 Ok(tx) => {
                     transactions.push(Arc::new(tx));
@@ -147,7 +147,7 @@ impl TransactionRecordStore for TransactionStore {
             let mut located = 0;
 
             for id in ids {
-                let path = folder.join(&id.to_hex());
+                let path = folder.join(id.to_hex());
 
                 match read(&path, None).await {
                     Ok(tx) => {
@@ -170,7 +170,7 @@ impl TransactionRecordStore for TransactionStore {
             let iter = ids.iter().skip(range.start).take(range.len());
 
             for id in iter {
-                let path = folder.join(&id.to_hex());
+                let path = folder.join(id.to_hex());
                 match read(&path, None).await {
                     Ok(tx) => {
                         transactions.push(Arc::new(tx));
