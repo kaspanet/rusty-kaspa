@@ -568,6 +568,7 @@ impl UtxoContext {
         // remove UTXOs from account set
 
         let outgoing_transactions = self.processor().outgoing();
+        #[allow(clippy::mutable_key_type)]
         let mut accepted_outgoing_transactions = HashSet::<OutgoingTransaction>::new();
 
         utxos.retain(|utxo| {
