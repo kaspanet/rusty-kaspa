@@ -42,7 +42,7 @@ pub enum RpcApiOps {
     // TODO: Remove these ops and use EventType as NotificationOps when workflow_rpc::server::interface::Interface
     //       will be generic over a MethodOps and NotificationOps instead of a single Ops param.
     BlockAddedNotification = 60,
-    VirtualChainChangedNotification = 61, 
+    VirtualChainChangedNotification = 61,
     FinalityConflictNotification = 62,
     FinalityConflictResolvedNotification = 63,
     UtxosChangedNotification = 64,
@@ -124,7 +124,6 @@ pub enum RpcApiOps {
     GetCoinSupply = 144,
     /// Get DAA Score timestamp estimate
     GetDaaScoreTimestampEstimate = 145,
-
     /// Extracts a transaction out of the request message and attempts to replace a matching transaction in the mempool with it, applying a mandatory Replace by Fee policy
     SubmitTransactionReplacement = 146,
 }
