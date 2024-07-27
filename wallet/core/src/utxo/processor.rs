@@ -181,10 +181,11 @@ impl UtxoProcessor {
         (*self.inner.network_id.lock().unwrap()).ok_or(Error::MissingNetworkId)
     }
 
-    // pub fn network_params(&self) -> Result<&'static NetworkParams> {
-    pub fn network_params(&self) -> Result<NetworkParams> {
+    pub fn network_params(&self) -> Result<&'static NetworkParams> {
+        // pub fn network_params(&self) -> Result<NetworkParams> {
         let network_id = (*self.inner.network_id.lock().unwrap()).ok_or(Error::MissingNetworkId)?;
-        Ok(network_id.into())
+        Ok(NetworkParams::from(network_id))
+        // Ok(network_id.into())
     }
 
     pub fn pending(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference> {
@@ -267,6 +268,7 @@ impl UtxoProcessor {
         Ok(())
     }
 
+    #[allow(clippy::mutable_key_type)]
     pub async fn handle_pending(&self, current_daa_score: u64) -> Result<()> {
         let params = self.network_params()?;
 
@@ -274,7 +276,7 @@ impl UtxoProcessor {
             // scan and remove any pending entries that gained maturity
             let mut mature_entries = vec![];
             let pending_entries = &self.inner.pending;
-            pending_entries.retain(|_, pending_entry| match pending_entry.maturity(&params, current_daa_score) {
+            pending_entries.retain(|_, pending_entry| match pending_entry.maturity(params, current_daa_score) {
                 Maturity::Confirmed => {
                     mature_entries.push(pending_entry.clone());
                     false
@@ -287,7 +289,7 @@ impl UtxoProcessor {
             let mut revived_entries = vec![];
             let stasis_entries = &self.inner.stasis;
             stasis_entries.retain(|_, stasis_entry| {
-                match stasis_entry.maturity(&params, current_daa_score) {
+                match stasis_entry.maturity(params, current_daa_score) {
                     Maturity::Confirmed => {
                         mature_entries.push(stasis_entry.clone());
                         false
@@ -391,6 +393,7 @@ impl UtxoProcessor {
     pub async fn handle_utxo_changed(&self, utxos: UtxosChangedNotification) -> Result<()> {
         let current_daa_score = self.current_daa_score().expect("DAA score expected when handling UTXO Changed notifications");
 
+        #[allow(clippy::mutable_key_type)]
         let mut updated_contexts: HashSet<UtxoContext> = HashSet::default();
 
         let removed = (*utxos.removed).clone().into_iter().filter_map(|entry| entry.address.clone().map(|address| (address, entry)));

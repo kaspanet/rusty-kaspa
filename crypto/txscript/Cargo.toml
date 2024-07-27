@@ -10,6 +10,7 @@ license.workspace = true
 repository.workspace = true
 
 [features]
+wasm32-core = []
 wasm32-sdk = []
 
 [dependencies]

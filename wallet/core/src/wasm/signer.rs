@@ -2,10 +2,13 @@ use crate::imports::*;
 use crate::result::Result;
 use js_sys::Array;
 use kaspa_consensus_client::{sign_with_multiple_v3, Transaction};
-use kaspa_consensus_core::tx::PopulatedTransaction;
+use kaspa_consensus_core::hashing::wasm::SighashType;
+use kaspa_consensus_core::sign::sign_input;
+use kaspa_consensus_core::tx::{PopulatedTransaction, SignableTransaction};
 use kaspa_consensus_core::{hashing::sighash_type::SIG_HASH_ALL, sign::verify};
 use kaspa_hashes::Hash;
 use kaspa_wallet_keys::privatekey::PrivateKey;
+use kaspa_wasm_core::types::HexString;
 use serde_wasm_bindgen::from_value;
 
 #[wasm_bindgen]
@@ -50,7 +53,7 @@ pub fn js_sign_transaction(tx: Transaction, signer: PrivateKeyArrayT, verify_sig
 pub fn sign_transaction(tx: Transaction, private_keys: &[[u8; 32]], verify_sig: bool) -> Result<Transaction> {
     let tx = sign(tx, private_keys)?;
     if verify_sig {
-        let (cctx, utxos) = tx.tx_and_utxos();
+        let (cctx, utxos) = tx.tx_and_utxos()?;
         let populated_transaction = PopulatedTransaction::new(&cctx, utxos);
         verify(&populated_transaction)?;
     }
@@ -62,6 +65,24 @@ pub fn sign_transaction(tx: Transaction, private_keys: &[[u8; 32]], verify_sig: 
 /// to sign all of its inputs.
 pub fn sign(tx: Transaction, privkeys: &[[u8; 32]]) -> Result<Transaction> {
     Ok(sign_with_multiple_v3(tx, privkeys)?.unwrap())
+}
+
+/// `createInputSignature()` is a helper function to sign a transaction input with a specific SigHash type using a private key.
+/// @category Wallet SDK
+#[wasm_bindgen(js_name = "createInputSignature")]
+pub fn create_input_signature(
+    tx: Transaction,
+    input_index: u8,
+    private_key: &PrivateKey,
+    sighash_type: Option<SighashType>,
+) -> Result<HexString> {
+    let (cctx, _) = tx.tx_and_utxos()?;
+    let mutable_tx = SignableTransaction::new(cctx);
+
+    let signature =
+        sign_input(mutable_tx, input_index.into(), &private_key.secret_bytes(), sighash_type.unwrap_or(SighashType::All).into());
+
+    Ok(signature.to_hex().into())
 }
 
 /// @category Wallet SDK

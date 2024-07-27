@@ -249,6 +249,13 @@ from!(item: RpcResult<&kaspa_rpc_core::SubmitTransactionResponse>, protowire::Su
     Self { transaction_id: item.transaction_id.to_string(), error: None }
 });
 
+from!(item: &kaspa_rpc_core::SubmitTransactionReplacementRequest, protowire::SubmitTransactionReplacementRequestMessage, {
+    Self { transaction: Some((&item.transaction).into()) }
+});
+from!(item: RpcResult<&kaspa_rpc_core::SubmitTransactionReplacementResponse>, protowire::SubmitTransactionReplacementResponseMessage, {
+    Self { transaction_id: item.transaction_id.to_string(), replaced_transaction: Some((&item.replaced_transaction).into()), error: None }
+});
+
 from!(item: &kaspa_rpc_core::GetSubnetworkRequest, protowire::GetSubnetworkRequestMessage, {
     Self { subnetwork_id: item.subnetwork_id.to_string() }
 });
@@ -428,7 +435,8 @@ from!(_item: &kaspa_rpc_core::GetConnectionsRequest, protowire::GetConnectionsRe
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetConnectionsResponse>, protowire::GetConnectionsResponseMessage, {
     Self {
-        active_connections: item.active_connections,
+        clients: item.clients,
+        peers: item.peers as u32,
         error: None,
     }
 });
@@ -679,6 +687,26 @@ try_from!(item: &protowire::SubmitTransactionResponseMessage, RpcResult<kaspa_rp
     Self { transaction_id: RpcHash::from_str(&item.transaction_id)? }
 });
 
+try_from!(item: &protowire::SubmitTransactionReplacementRequestMessage, kaspa_rpc_core::SubmitTransactionReplacementRequest, {
+    Self {
+        transaction: item
+            .transaction
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("SubmitTransactionReplacementRequestMessage".to_string(), "transaction".to_string()))?
+            .try_into()?,
+    }
+});
+try_from!(item: &protowire::SubmitTransactionReplacementResponseMessage, RpcResult<kaspa_rpc_core::SubmitTransactionReplacementResponse>, {
+    Self {
+        transaction_id: RpcHash::from_str(&item.transaction_id)?,
+        replaced_transaction: item
+            .replaced_transaction
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("SubmitTransactionReplacementRequestMessage".to_string(), "replaced_transaction".to_string()))?
+            .try_into()?,
+    }
+});
+
 try_from!(item: &protowire::GetSubnetworkRequestMessage, kaspa_rpc_core::GetSubnetworkRequest, {
     Self { subnetwork_id: kaspa_rpc_core::RpcSubnetworkId::from_str(&item.subnetwork_id)? }
 });
@@ -854,7 +882,8 @@ try_from!(_item: &protowire::GetConnectionsRequestMessage, kaspa_rpc_core::GetCo
 });
 try_from!(item: &protowire::GetConnectionsResponseMessage, RpcResult<kaspa_rpc_core::GetConnectionsResponse>, {
     Self {
-        active_connections: item.active_connections,
+        clients: item.clients,
+        peers: item.peers as u16,
     }
 });
 

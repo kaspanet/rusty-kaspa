@@ -10,4 +10,4 @@ const address = addressFromScriptPublicKey(P2SHScript, NetworkType.Mainnet)
 // Payable address
 console.log(address!.toString())
 // Unlock signature script
-console.log(myScript.createPayToScriptHashSignatureScript(""))
+console.log(myScript.encodePayToScriptHashSignatureScript(""))

@@ -299,7 +299,7 @@ impl UtxoContext {
                 context.mature.sorted_insert_binary_asc_by_key(utxo_entry.clone(), |entry| entry.amount_as_ref());
             } else {
                 let params = NetworkParams::from(self.processor().network_id()?);
-                match utxo_entry.maturity(&params, current_daa_score) {
+                match utxo_entry.maturity(params, current_daa_score) {
                     Maturity::Stasis => {
                         context.stasis.insert(utxo_entry.id().clone(), utxo_entry.clone());
                         self.processor()
@@ -428,7 +428,7 @@ impl UtxoContext {
             for utxo_entry in utxo_entries.into_iter() {
                 if let std::collections::hash_map::Entry::Vacant(e) = context.map.entry(utxo_entry.id()) {
                     e.insert(utxo_entry.clone());
-                    match utxo_entry.maturity(&params, current_daa_score) {
+                    match utxo_entry.maturity(params, current_daa_score) {
                         Maturity::Stasis => {
                             context.stasis.insert(utxo_entry.id().clone(), utxo_entry.clone());
                             self.processor()
@@ -531,7 +531,7 @@ impl UtxoContext {
 
             let force_maturity_if_outgoing = outgoing_transaction.is_some();
             let is_coinbase_stasis =
-                utxos.first().map(|utxo| matches!(utxo.maturity(&params, current_daa_score), Maturity::Stasis)).unwrap_or_default();
+                utxos.first().map(|utxo| matches!(utxo.maturity(params, current_daa_score), Maturity::Stasis)).unwrap_or_default();
             let is_batch = outgoing_transaction.as_ref().map_or_else(|| false, |tx| tx.is_batch());
             if !is_batch {
                 for utxo in utxos.iter() {
@@ -575,6 +575,7 @@ impl UtxoContext {
         // remove UTXOs from account set
 
         let outgoing_transactions = self.processor().outgoing();
+        #[allow(clippy::mutable_key_type)]
         let mut accepted_outgoing_transactions = HashSet::<OutgoingTransaction>::new();
 
         for utxo in &utxos {

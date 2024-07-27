@@ -17,113 +17,115 @@ pub enum RpcApiOps {
     NoOp = 0,
 
     // connection control (provisional)
-    Connect,
-    Disconnect,
+    Connect = 1,
+    Disconnect = 2,
 
     // subscription management
-    Subscribe,
-    Unsubscribe,
+    Subscribe = 3,
+    Unsubscribe = 4,
 
     // ~~~
 
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded = 10,
-    NotifyNewBlockTemplate,
-    NotifyUtxosChanged,
-    NotifyPruningPointUtxoSetOverride,
-    NotifyFinalityConflict,
-    NotifyFinalityConflictResolved, // for uniformity purpose only since subscribing to NotifyFinalityConflict means receiving both FinalityConflict and FinalityConflictResolved
-    NotifyVirtualDaaScoreChanged,
-    NotifyVirtualChainChanged,
-    NotifySinkBlueScoreChanged,
+    NotifyNewBlockTemplate = 11,
+    NotifyUtxosChanged = 12,
+    NotifyPruningPointUtxoSetOverride = 13,
+    NotifyFinalityConflict = 14,
+    NotifyFinalityConflictResolved = 15, // for uniformity purpose only since subscribing to NotifyFinalityConflict means receiving both FinalityConflict and FinalityConflictResolved
+    NotifyVirtualDaaScoreChanged = 16,
+    NotifyVirtualChainChanged = 17,
+    NotifySinkBlueScoreChanged = 18,
 
     // Notification ops required by wRPC
 
     // TODO: Remove these ops and use EventType as NotificationOps when workflow_rpc::server::interface::Interface
     //       will be generic over a MethodOps and NotificationOps instead of a single Ops param.
     BlockAddedNotification = 60,
-    VirtualChainChangedNotification,
-    FinalityConflictNotification,
-    FinalityConflictResolvedNotification,
-    UtxosChangedNotification,
-    SinkBlueScoreChangedNotification,
-    VirtualDaaScoreChangedNotification,
-    PruningPointUtxoSetOverrideNotification,
-    NewBlockTemplateNotification,
+    VirtualChainChangedNotification = 61,
+    FinalityConflictNotification = 62,
+    FinalityConflictResolvedNotification = 63,
+    UtxosChangedNotification = 64,
+    SinkBlueScoreChangedNotification = 65,
+    VirtualDaaScoreChangedNotification = 66,
+    PruningPointUtxoSetOverrideNotification = 67,
+    NewBlockTemplateNotification = 68,
 
     // RPC methods
     /// Ping the node to check if connection is alive
     Ping = 110,
     /// Get metrics for consensus information and node performance
-    GetMetrics,
+    GetMetrics = 111,
     /// Get system information (RAM available, number of cores, available file descriptors)
-    GetSystemInfo,
+    GetSystemInfo = 112,
     /// Get current number of active TCP connections
-    GetConnections,
+    GetConnections = 113,
     /// Get state information on the node
-    GetServerInfo,
+    GetServerInfo = 114,
     /// Get the current sync status of the node
-    GetSyncStatus,
+    GetSyncStatus = 115,
     /// Returns the network this Kaspad is connected to (Mainnet, Testnet)
-    GetCurrentNetwork,
+    GetCurrentNetwork = 116,
     /// Extracts a block out of the request message and attempts to add it to the DAG Returns an empty response or an error message
-    SubmitBlock,
+    SubmitBlock = 117,
     /// Returns a "template" by which a miner can mine a new block
-    GetBlockTemplate,
+    GetBlockTemplate = 118,
     /// Returns a list of all the addresses (IP, port) this Kaspad knows and a list of all addresses that are currently banned by this Kaspad
-    GetPeerAddresses,
+    GetPeerAddresses = 119,
     /// Returns the hash of the current selected tip block of the DAG
-    GetSink,
+    GetSink = 120,
     /// Get information about an entry in the node's mempool
-    GetMempoolEntry,
+    GetMempoolEntry = 121,
     /// Get a snapshot of the node's mempool
-    GetMempoolEntries,
+    GetMempoolEntries = 122,
     /// Returns a list of the peers currently connected to this Kaspad, along with some statistics on them
-    GetConnectedPeerInfo,
+    GetConnectedPeerInfo = 123,
     /// Instructs Kaspad to connect to a given IP address.
-    AddPeer,
+    AddPeer = 124,
     /// Extracts a transaction out of the request message and attempts to add it to the mempool Returns an empty response or an error message
-    SubmitTransaction,
+    SubmitTransaction = 125,
     /// Requests info on a block corresponding to a given block hash Returns block info if the block is known.
-    GetBlock,
+    GetBlock = 126,
     //
-    GetSubnetwork,
+    GetSubnetwork = 127,
     //
-    GetVirtualChainFromBlock,
+    GetVirtualChainFromBlock = 128,
     //
-    GetBlocks,
+    GetBlocks = 129,
     /// Returns the amount of blocks in the DAG
-    GetBlockCount,
+    GetBlockCount = 130,
     /// Returns info on the current state of the DAG
-    GetBlockDagInfo,
+    GetBlockDagInfo = 131,
     //
-    ResolveFinalityConflict,
+    ResolveFinalityConflict = 132,
     /// Instructs this node to shut down Returns an empty response or an error message
-    Shutdown,
+    Shutdown = 133,
     //
-    GetHeaders,
+    GetHeaders = 134,
     /// Get a list of available UTXOs for a given address
-    GetUtxosByAddresses,
+    GetUtxosByAddresses = 135,
     /// Get a balance for a given address
-    GetBalanceByAddress,
+    GetBalanceByAddress = 136,
     /// Get a balance for a number of addresses
-    GetBalancesByAddresses,
+    GetBalancesByAddresses = 137,
     // ?
-    GetSinkBlueScore,
+    GetSinkBlueScore = 138,
     /// Ban a specific peer by it's IP address
-    Ban,
+    Ban = 139,
     /// Unban a specific peer by it's IP address
-    Unban,
+    Unban = 140,
     /// Get generic node information
-    GetInfo,
+    GetInfo = 141,
     //
-    EstimateNetworkHashesPerSecond,
+    EstimateNetworkHashesPerSecond = 142,
     /// Get a list of mempool entries that belong to a specific address
-    GetMempoolEntriesByAddresses,
+    GetMempoolEntriesByAddresses = 143,
     /// Get current issuance supply
-    GetCoinSupply,
+    GetCoinSupply = 144,
     /// Get DAA Score timestamp estimate
-    GetDaaScoreTimestampEstimate,
+    GetDaaScoreTimestampEstimate = 145,
+    /// Extracts a transaction out of the request message and attempts to replace a matching transaction in the mempool with it, applying a mandatory Replace by Fee policy
+    SubmitTransactionReplacement = 146,
 }
 
 impl RpcApiOps {

@@ -95,6 +95,10 @@ impl TransactionInput {
         self.inner().sig_op_count
     }
 
+    pub fn signature_script_length(&self) -> usize {
+        self.inner().signature_script.as_ref().map(|signature_script| signature_script.len()).unwrap_or_default()
+    }
+
     pub fn utxo(&self) -> Option<UtxoEntryReference> {
         self.inner().utxo.clone()
     }

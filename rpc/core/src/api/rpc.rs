@@ -40,8 +40,8 @@ pub trait RpcApi: Sync + Send + AnySync {
 
     // ---
 
-    async fn get_connections(&self) -> RpcResult<u32> {
-        Ok(self.get_connections_call(None, GetConnectionsRequest {}).await?.active_connections)
+    async fn get_connections(&self) -> RpcResult<GetConnectionsResponse> {
+        self.get_connections_call(None, GetConnectionsRequest {}).await
     }
     async fn get_connections_call(
         &self,
@@ -211,6 +211,18 @@ pub trait RpcApi: Sync + Send + AnySync {
         connection: Option<&DynRpcConnection>,
         request: SubmitTransactionRequest,
     ) -> RpcResult<SubmitTransactionResponse>;
+
+    /// Submits a transaction replacement to the mempool, applying a mandatory Replace by Fee policy.
+    ///
+    /// Returns the ID of the inserted transaction and the transaction the submission replaced in the mempool.
+    async fn submit_transaction_replacement(&self, transaction: RpcTransaction) -> RpcResult<SubmitTransactionReplacementResponse> {
+        self.submit_transaction_replacement_call(None, SubmitTransactionReplacementRequest { transaction }).await
+    }
+    async fn submit_transaction_replacement_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: SubmitTransactionReplacementRequest,
+    ) -> RpcResult<SubmitTransactionReplacementResponse>;
 
     /// Requests information about a specific block.
     async fn get_block(&self, hash: RpcHash, include_transactions: bool) -> RpcResult<RpcBlock> {

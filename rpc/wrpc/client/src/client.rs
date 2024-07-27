@@ -34,7 +34,14 @@ struct Inner {
     connect_guard: AsyncMutex<()>,
     disconnect_guard: AsyncMutex<()>,
     // ---
+    // The permanent url passed in the constructor
+    // (dominant, overrides Resolver if supplied).
+    ctor_url: Mutex<Option<String>>,
+    // The url passed in the connect() method
+    // (overrides default URL and the Resolver).
     default_url: Mutex<Option<String>>,
+    // The current url wRPC is connected to
+    // (possibly acquired via the Resolver).
     current_url: Mutex<Option<String>>,
     resolver: Mutex<Option<Resolver>>,
     network_id: Mutex<Option<NetworkId>>,
@@ -104,7 +111,8 @@ impl Inner {
             connect_guard: async_std::sync::Mutex::new(()),
             disconnect_guard: async_std::sync::Mutex::new(()),
             // ---
-            default_url: Mutex::new(url.map(|s| s.to_string())),
+            ctor_url: Mutex::new(url.map(|s| s.to_string())),
+            default_url: Mutex::new(None),
             current_url: Mutex::new(None),
             resolver: Mutex::new(resolver),
             network_id: Mutex::new(network_id),
@@ -131,6 +139,10 @@ impl Inner {
         let _response: Serializable<UnsubscribeResponse> =
             self.rpc_client.call(RpcApiOps::Unsubscribe, Serializable(scope)).await.map_err(|err| err.to_string())?;
         Ok(())
+    }
+
+    fn ctor_url(&self) -> Option<String> {
+        self.ctor_url.lock().unwrap().clone()
     }
 
     fn default_url(&self) -> Option<String> {
@@ -214,7 +226,7 @@ impl SubscriptionManager for Inner {
 #[async_trait]
 impl RpcResolver for Inner {
     async fn resolve_url(&self) -> ResolverResult {
-        let url = if let Some(url) = self.default_url() {
+        let url = if let Some(url) = self.default_url().or(self.ctor_url()) {
             url
         } else if let Some(resolver) = self.resolver().as_ref() {
             let network_id = self.network_id().expect("Resolver requires network id in RPC client configuration");
@@ -255,7 +267,11 @@ impl Debug for KaspaRpcClient {
 }
 
 impl KaspaRpcClient {
-    /// Create a new `KaspaRpcClient` with the given Encoding and URL
+    /// Create a new `KaspaRpcClient` with the given Encoding, and an optional url or a Resolver.
+    /// Please note that if you pass the url to the constructor, it will force the KaspaRpcClient
+    /// to always use this url.  If you want to have the ability to switch between urls,
+    /// you must pass [`Option::None`] as the `url` argument and then supply your own url to the `connect()`
+    /// function each time you connect.
     pub fn new(
         encoding: Encoding,
         url: Option<&str>,
@@ -411,9 +427,7 @@ impl KaspaRpcClient {
         let options = options.unwrap_or_default();
         let strategy = options.strategy;
 
-        if let Some(ref url) = options.url {
-            self.set_url(Some(url))?;
-        }
+        self.inner.set_default_url(options.url.as_deref());
 
         // 1Gb message and frame size limits (on native and NodeJs platforms)
         let ws_config = WebSocketConfig {
@@ -624,6 +638,7 @@ impl RpcApi for KaspaRpcClient {
             Shutdown,
             SubmitBlock,
             SubmitTransaction,
+            SubmitTransactionReplacement,
             Unban,
         ]
     );

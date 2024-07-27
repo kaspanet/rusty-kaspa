@@ -2,6 +2,12 @@ Latest online documentation available at: https://kaspa.aspectron.org/docs/
 
 ### Latest Release
 
+- Replace `MassCalculator` with `calculateTransactionMass` and `calculateTransactionFee` functions.
+- Change `createTransaction` function signature (remove requirement for change address).
+- Make `ITransactionInput.signatureScript` optional (if not supplied, the signatureScript is assigned an empty vector).
+
+### Release 2024-07-17
+
 - Fix issues with deserializing manually-created objects matching `IUtxoEntry` interface.
 - Allow arguments expecting ScriptPublicKey to receive `{ version, script }` object or a hex string.
 - Fix `Transaction::serializeToObject()` return type (now returning `ISerializeTransaction` interface).

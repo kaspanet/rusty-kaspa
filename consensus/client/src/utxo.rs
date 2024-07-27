@@ -101,6 +101,12 @@ impl UtxoEntry {
     }
 }
 
+impl AsRef<UtxoEntry> for UtxoEntry {
+    fn as_ref(&self) -> &UtxoEntry {
+        self
+    }
+}
+
 impl From<&UtxoEntry> for cctx::UtxoEntry {
     fn from(utxo: &UtxoEntry) -> Self {
         cctx::UtxoEntry {

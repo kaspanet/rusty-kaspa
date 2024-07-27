@@ -916,7 +916,7 @@ mod mockery {
 
     impl Mock for GetConnectionsResponse {
         fn mock() -> Self {
-            GetConnectionsResponse { active_connections: mock() }
+            GetConnectionsResponse { clients: mock(), peers: mock() }
         }
     }
 

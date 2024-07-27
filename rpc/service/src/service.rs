@@ -536,6 +536,23 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(SubmitTransactionResponse::new(transaction_id))
     }
 
+    async fn submit_transaction_replacement_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: SubmitTransactionReplacementRequest,
+    ) -> RpcResult<SubmitTransactionReplacementResponse> {
+        let transaction: Transaction = (&request.transaction).try_into()?;
+        let transaction_id = transaction.id();
+        let session = self.consensus_manager.consensus().unguarded_session();
+        let replaced_transaction =
+            self.flow_context.submit_rpc_transaction_replacement(&session, transaction).await.map_err(|err| {
+                let err = RpcError::RejectedTransaction(transaction_id, err.to_string());
+                debug!("{err}");
+                err
+            })?;
+        Ok(SubmitTransactionReplacementResponse::new(transaction_id, (&*replaced_transaction).into()))
+    }
+
     async fn get_current_network_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -876,11 +893,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _connection: Option<&DynRpcConnection>,
         _req: GetConnectionsRequest,
     ) -> RpcResult<GetConnectionsResponse> {
-        let active_connections = (self.wrpc_borsh_counters.active_connections.load(Ordering::Relaxed)
-            + self.wrpc_json_counters.active_connections.load(Ordering::Relaxed)
-            + self.flow_context.hub().active_peers_len()) as u32;
+        let clients = (self.wrpc_borsh_counters.active_connections.load(Ordering::Relaxed)
+            + self.wrpc_json_counters.active_connections.load(Ordering::Relaxed)) as u32;
+        let peers = self.flow_context.hub().active_peers_len() as u16;
 
-        Ok(GetConnectionsResponse { active_connections })
+        Ok(GetConnectionsResponse { clients, peers })
     }
 
     async fn get_metrics_call(&self, _connection: Option<&DynRpcConnection>, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
