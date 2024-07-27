@@ -436,7 +436,7 @@ from!(_item: &kaspa_rpc_core::GetConnectionsRequest, protowire::GetConnectionsRe
 from!(item: RpcResult<&kaspa_rpc_core::GetConnectionsResponse>, protowire::GetConnectionsResponseMessage, {
     Self {
         clients: item.clients,
-        peers: item.peers,
+        peers: item.peers as u32,
         error: None,
     }
 });
@@ -883,7 +883,7 @@ try_from!(_item: &protowire::GetConnectionsRequestMessage, kaspa_rpc_core::GetCo
 try_from!(item: &protowire::GetConnectionsResponseMessage, RpcResult<kaspa_rpc_core::GetConnectionsResponse>, {
     Self {
         clients: item.clients,
-        peers: item.peers,
+        peers: item.peers as u16,
     }
 });
 

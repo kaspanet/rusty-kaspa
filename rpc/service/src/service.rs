@@ -895,7 +895,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<GetConnectionsResponse> {
         let clients = (self.wrpc_borsh_counters.active_connections.load(Ordering::Relaxed)
             + self.wrpc_json_counters.active_connections.load(Ordering::Relaxed)) as u32;
-        let peers = self.flow_context.hub().active_peers_len() as u32;
+        let peers = self.flow_context.hub().active_peers_len() as u16;
 
         Ok(GetConnectionsResponse { clients, peers })
     }

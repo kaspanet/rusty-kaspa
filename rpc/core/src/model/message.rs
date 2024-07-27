@@ -1830,21 +1830,23 @@ impl Deserializer for GetConnectionsRequest {
 #[serde(rename_all = "camelCase")]
 pub struct GetConnectionsResponse {
     pub clients: u32,
-    pub peers: u32,
+    pub peers: u16,
 }
 
 impl Serializer for GetConnectionsResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
         store!(u32, &self.clients, writer)?;
-        store!(u32, &self.peers, writer)?;
+        store!(u16, &self.peers, writer)?;
         Ok(())
     }
 }
 
 impl Deserializer for GetConnectionsResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
         let clients = load!(u32, reader)?;
-        let peers = load!(u32, reader)?;
+        let peers = load!(u16, reader)?;
         Ok(Self { clients, peers })
     }
 }
