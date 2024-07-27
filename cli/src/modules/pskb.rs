@@ -108,43 +108,40 @@ impl Pskb {
                         }
                     }
                     "unlock" => {
-                        todo!();
+                        if argv.len() != 1 {
+                            return self.display_help(ctx, argv).await;
+                        }
 
-                        // if argv.len() != 1 {
-                        //     return self.display_help(ctx, argv).await;
-                        // }
+                        // Get locked UTXO set.
+                        let spend_utxos: Vec<kaspa_rpc_core::RpcUtxosByAddressesEntry> =
+                            ctx.wallet().rpc_api().get_utxos_by_addresses(vec![script_p2sh.clone()]).await?;
+                        let priority_fee_sompi = try_parse_optional_kaspa_as_sompi_i64(argv.first())?.unwrap_or(0) as u64;
 
-                        // // Get locked UTXO set.
-                        // let spend_utxos: Vec<kaspa_rpc_core::RpcUtxosByAddressesEntry> =
-                        //     ctx.wallet().rpc_api().get_utxos_by_addresses(vec![script_p2sh.clone()]).await?;
-                        // let priority_fee_sompi = try_parse_optional_kaspa_as_sompi_i64(argv.first())?.unwrap_or(0) as u64;
+                        if spend_utxos.is_empty() {
+                            twarnln!(ctx, "No locked UTXO set found.");
+                            return Ok(());
+                        }
 
-                        // if spend_utxos.is_empty() {
-                        //     twarnln!(ctx, "No locked UTXO set found.");
-                        //     return Ok(());
-                        // }
+                        let references: Vec<(UtxoEntry, TransactionOutpoint)> = spend_utxos.iter().map(|entry| (entry.utxo_entry.clone().into(), entry.outpoint.into())).collect();
 
-                        // let references: Vec<(UtxoEntry, TransactionOutpoint)> =
-                        //     spend_utxos.iter().map(|entry| (entry.utxo_entry.clone(), entry.outpoint)).collect();
+                        let total_locked_sompi: u64 = spend_utxos.iter().map(|entry| entry.utxo_entry.amount).sum();
 
-                        // let total_locked_sompi: u64 = spend_utxos.iter().map(|entry| entry.utxo_entry.amount).sum();
+                        tprintln!(
+                            ctx,
+                            "{} locked UTXO{} found with total amount of {} KAS",
+                            spend_utxos.len(),
+                            if spend_utxos.len() == 1 { "" } else { "s" },
+                            sompi_to_kaspa(total_locked_sompi)
+                        );
 
-                        // tprintln!(
-                        //     ctx,
-                        //     "{} locked UTXO{} found with total amount of {} KAS",
-                        //     spend_utxos.len(),
-                        //     if spend_utxos.len() == 1 { "" } else { "s" },
-                        //     sompi_to_kaspa(total_locked_sompi)
-                        // );
-
-                        // // Sweep UTXO set.
-                        // match unlock_utxos_as_pskb(references, &receive_address, script_sig, priority_fee_sompi as u64) {
-                        //     Ok(pskb) => {
-                        //         let pskb_hex = pskb.to_hex()?;
-                        //         tprintln!(ctx, "{pskb_hex}");
-                        //     }
-                        //     Err(e) => tprintln!(ctx, "Error generating unlock PSKB: {}", e.to_string()),
-                        // }
+                        // Sweep UTXO set.
+                        match unlock_utxos_as_pskb(references, &receive_address, script_sig, priority_fee_sompi as u64) {
+                            Ok(pskb) => {
+                                let pskb_hex = pskb.to_hex()?;
+                                tprintln!(ctx, "{pskb_hex}");
+                            }
+                            Err(e) => tprintln!(ctx, "Error generating unlock PSKB: {}", e.to_string()),
+                        }
                     }
                     "sign" => {
                         let pskb = Self::parse_input_pskb(argv.first().unwrap().as_str())?;
