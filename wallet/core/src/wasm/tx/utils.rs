@@ -15,7 +15,7 @@ pub fn create_transaction_js(
     utxo_entry_source: IUtxoEntryArray,
     outputs: IPaymentOutputArray,
     priority_fee: BigInt,
-    payload: BinaryT,
+    payload: Option<BinaryT>,
     sig_op_count: Option<u8>,
 ) -> crate::result::Result<Transaction> {
     let utxo_entries = if let Some(utxo_entries) = utxo_entry_source.dyn_ref::<js_sys::Array>() {
@@ -24,7 +24,7 @@ pub fn create_transaction_js(
         return Err(Error::custom("utxo_entries must be an array"));
     };
     let priority_fee: u64 = priority_fee.try_into().map_err(|err| Error::custom(format!("invalid fee value: {err}")))?;
-    let payload = payload.try_as_vec_u8().ok().unwrap_or_default();
+    let payload = payload.and_then(|payload|payload.try_as_vec_u8().ok()).unwrap_or_default();
     let outputs = PaymentOutputs::try_owned_from(outputs)?;
     let sig_op_count = sig_op_count.unwrap_or(1);
 
