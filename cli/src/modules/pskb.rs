@@ -122,7 +122,8 @@ impl Pskb {
                             return Ok(());
                         }
 
-                        let references: Vec<(UtxoEntry, TransactionOutpoint)> = spend_utxos.iter().map(|entry| (entry.utxo_entry.clone().into(), entry.outpoint.into())).collect();
+                        let references: Vec<(UtxoEntry, TransactionOutpoint)> =
+                            spend_utxos.iter().map(|entry| (entry.utxo_entry.clone().into(), entry.outpoint.into())).collect();
 
                         let total_locked_sompi: u64 = spend_utxos.iter().map(|entry| entry.utxo_entry.amount).sum();
 
