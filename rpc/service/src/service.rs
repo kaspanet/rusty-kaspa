@@ -893,11 +893,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         _connection: Option<&DynRpcConnection>,
         _req: GetConnectionsRequest,
     ) -> RpcResult<GetConnectionsResponse> {
-        let active_connections = (self.wrpc_borsh_counters.active_connections.load(Ordering::Relaxed)
-            + self.wrpc_json_counters.active_connections.load(Ordering::Relaxed)
-            + self.flow_context.hub().active_peers_len()) as u32;
+        let clients = (self.wrpc_borsh_counters.active_connections.load(Ordering::Relaxed)
+            + self.wrpc_json_counters.active_connections.load(Ordering::Relaxed)) as u32;
+        let peers = self.flow_context.hub().active_peers_len() as u32;
 
-        Ok(GetConnectionsResponse { active_connections })
+        Ok(GetConnectionsResponse { clients, peers })
     }
 
     async fn get_metrics_call(&self, _connection: Option<&DynRpcConnection>, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {

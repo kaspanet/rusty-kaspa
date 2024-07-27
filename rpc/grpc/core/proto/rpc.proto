@@ -829,7 +829,8 @@ message GetConnectionsRequestMessage{
 }
 
 message GetConnectionsResponseMessage{
-  uint32 activeConnections = 1;
+  uint32 clients = 1;
+  uint32 peers = 2;
   RPCError error = 1000;
 }
 

@@ -40,8 +40,8 @@ pub trait RpcApi: Sync + Send + AnySync {
 
     // ---
 
-    async fn get_connections(&self) -> RpcResult<u32> {
-        Ok(self.get_connections_call(None, GetConnectionsRequest {}).await?.active_connections)
+    async fn get_connections(&self) -> RpcResult<GetConnectionsResponse> {
+        self.get_connections_call(None, GetConnectionsRequest {}).await
     }
     async fn get_connections_call(
         &self,
