@@ -1,4 +1,7 @@
+use crate::error::Error;
+use crate::result::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
+use kaspa_rpc_core::GetMetricsResponse;
 use separator::{separated_float, separated_int, separated_uint_with_output, Separatable};
 use serde::{Deserialize, Serialize};
 use workflow_core::enums::Describe;
@@ -514,17 +517,6 @@ pub struct MetricsData {
     pub node_grpc_user_bytes_rx: u64,
     pub node_total_bytes_tx: u64,
     pub node_total_bytes_rx: u64,
-
-    pub node_borsh_bytes_tx_per_second: u64,
-    pub node_borsh_bytes_rx_per_second: u64,
-    pub node_json_bytes_tx_per_second: u64,
-    pub node_json_bytes_rx_per_second: u64,
-    pub node_p2p_bytes_tx_per_second: u64,
-    pub node_p2p_bytes_rx_per_second: u64,
-    pub node_grpc_user_bytes_tx_per_second: u64,
-    pub node_grpc_user_bytes_rx_per_second: u64,
-    pub node_total_bytes_tx_per_second: u64,
-    pub node_total_bytes_rx_per_second: u64,
     // ---
     pub node_blocks_submitted_count: u64,
     pub node_headers_processed_count: u64,
@@ -548,6 +540,87 @@ pub struct MetricsData {
 impl MetricsData {
     pub fn new(unixtime: f64) -> Self {
         Self { unixtime_millis: unixtime, ..Default::default() }
+    }
+}
+
+impl TryFrom<GetMetricsResponse> for MetricsData {
+    type Error = Error;
+    fn try_from(response: GetMetricsResponse) -> Result<Self> {
+        let GetMetricsResponse {
+            server_time,
+            consensus_metrics,
+            connection_metrics,
+            bandwidth_metrics,
+            process_metrics,
+            storage_metrics,
+            custom_metrics: _,
+        } = response; //rpc.get_metrics(true, true, true, true, true, false).await?;
+
+        let consensus_metrics = consensus_metrics.ok_or(Error::MissingData("Consensus Metrics"))?;
+        let connection_metrics = connection_metrics.ok_or(Error::MissingData("Connection Metrics"))?;
+        let bandwidth_metrics = bandwidth_metrics.ok_or(Error::MissingData("Bandwidth Metrics"))?;
+        let process_metrics = process_metrics.ok_or(Error::MissingData("Process Metrics"))?;
+        let storage_metrics = storage_metrics.ok_or(Error::MissingData("Storage Metrics"))?;
+
+        Ok(MetricsData {
+            unixtime_millis: server_time as f64,
+
+            node_blocks_submitted_count: consensus_metrics.node_blocks_submitted_count,
+            node_headers_processed_count: consensus_metrics.node_headers_processed_count,
+            node_dependencies_processed_count: consensus_metrics.node_dependencies_processed_count,
+            node_bodies_processed_count: consensus_metrics.node_bodies_processed_count,
+            node_transactions_processed_count: consensus_metrics.node_transactions_processed_count,
+            node_chain_blocks_processed_count: consensus_metrics.node_chain_blocks_processed_count,
+            node_mass_processed_count: consensus_metrics.node_mass_processed_count,
+            // --
+            node_database_blocks_count: consensus_metrics.node_database_blocks_count,
+            node_database_headers_count: consensus_metrics.node_database_headers_count,
+            network_mempool_size: consensus_metrics.network_mempool_size,
+            network_tip_hashes_count: consensus_metrics.network_tip_hashes_count,
+            network_difficulty: consensus_metrics.network_difficulty,
+            network_past_median_time: consensus_metrics.network_past_median_time,
+            network_virtual_parent_hashes_count: consensus_metrics.network_virtual_parent_hashes_count,
+            network_virtual_daa_score: consensus_metrics.network_virtual_daa_score,
+
+            node_borsh_live_connections: connection_metrics.borsh_live_connections,
+            node_borsh_connection_attempts: connection_metrics.borsh_connection_attempts,
+            node_borsh_handshake_failures: connection_metrics.borsh_handshake_failures,
+            node_json_live_connections: connection_metrics.json_live_connections,
+            node_json_connection_attempts: connection_metrics.json_connection_attempts,
+            node_json_handshake_failures: connection_metrics.json_handshake_failures,
+            node_active_peers: connection_metrics.active_peers,
+
+            node_borsh_bytes_tx: bandwidth_metrics.borsh_bytes_tx,
+            node_borsh_bytes_rx: bandwidth_metrics.borsh_bytes_rx,
+            node_json_bytes_tx: bandwidth_metrics.json_bytes_tx,
+            node_json_bytes_rx: bandwidth_metrics.json_bytes_rx,
+            node_p2p_bytes_tx: bandwidth_metrics.p2p_bytes_tx,
+            node_p2p_bytes_rx: bandwidth_metrics.p2p_bytes_rx,
+            node_grpc_user_bytes_tx: bandwidth_metrics.grpc_bytes_tx,
+            node_grpc_user_bytes_rx: bandwidth_metrics.grpc_bytes_rx,
+
+            node_total_bytes_tx: bandwidth_metrics.borsh_bytes_tx
+                + bandwidth_metrics.json_bytes_tx
+                + bandwidth_metrics.p2p_bytes_tx
+                + bandwidth_metrics.grpc_bytes_tx,
+
+            node_total_bytes_rx: bandwidth_metrics.borsh_bytes_rx
+                + bandwidth_metrics.json_bytes_rx
+                + bandwidth_metrics.p2p_bytes_rx
+                + bandwidth_metrics.grpc_bytes_rx,
+
+            node_resident_set_size_bytes: process_metrics.resident_set_size,
+            node_virtual_memory_size_bytes: process_metrics.virtual_memory_size,
+            node_cpu_cores: process_metrics.core_num,
+            node_cpu_usage: process_metrics.cpu_usage,
+            node_file_handles: process_metrics.fd_num,
+            node_disk_io_read_bytes: process_metrics.disk_io_read_bytes,
+            node_disk_io_write_bytes: process_metrics.disk_io_write_bytes,
+            node_disk_io_read_per_sec: process_metrics.disk_io_read_per_sec,
+            node_disk_io_write_per_sec: process_metrics.disk_io_write_per_sec,
+
+            node_storage_size_bytes: storage_metrics.storage_size_bytes,
+        })
     }
 }
 
