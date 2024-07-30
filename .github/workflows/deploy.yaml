@@ -1,7 +1,7 @@
 name: Build and upload assets
 on:
   release:
-    types: [ published ]
+    types: [published]
 
 jobs:
   build:
@@ -11,7 +11,7 @@ jobs:
       matrix:
         # Build gnu-linux on ubuntu-18.04 and musl on ubuntu latest
         # os: [ ubuntu-18.04, ubuntu-latest, windows-latest, macos-latest ]
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     name: Building, ${{ matrix.os }}
     steps:
       - name: Fix CRLF on Windows
@@ -108,6 +108,32 @@ jobs:
           asset_name: "${{ env.asset_name }}"
           asset_content_type: application/zip
 
+  build-docker:
+    runs-on: ubuntu-latest
+    name: Building Docker images
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: https://ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push amd64, arm64
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: "ghcr.io/kaspanet/rusty-kaspad:${{ github.event.release.tag_name }},ghcr.io/kaspanet/rusty-kaspad:latest"
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
   build-wasm:
     runs-on: ubuntu-latest
     name: Building WASM32 SDK
@@ -156,7 +182,7 @@ jobs:
       - name: Install NodeJS
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install NodeJS dependencies
         run: npm install --global typedoc typescript

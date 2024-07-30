@@ -206,6 +206,7 @@ pub fn cli() -> Command {
             Arg::new("async_threads")
                 .short('t')
                 .long("async-threads")
+                .env("KASPAD_ASYNC_THREADS")
                 .value_name("async_threads")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
@@ -215,6 +216,7 @@ pub fn cli() -> Command {
             Arg::new("log_level")
                 .short('d')
                 .long("loglevel")
+                .env("KASPAD_LOG_LEVEL")
                 .value_name("LEVEL")
                 .default_value("info")
                 .require_equals(true)
@@ -223,6 +225,7 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("rpclisten")
                 .long("rpclisten")
+                .env("KASPAD_RPCLISTEN")
                 .value_name("IP[:PORT]")
                 .num_args(0..=1)
                 .require_equals(true)
@@ -232,6 +235,7 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("rpclisten-borsh")
                 .long("rpclisten-borsh")
+                .env("KASPAD_RPCLISTEN_BORSH")
                 .value_name("IP[:PORT]")
                 .num_args(0..=1)
                 .require_equals(true)
@@ -243,6 +247,7 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("rpclisten-json")
                 .long("rpclisten-json")
+                .env("KASPAD_RPCLISTEN_JSON")
                 .value_name("IP[:PORT]")
                 .num_args(0..=1)
                 .require_equals(true)
@@ -254,6 +259,7 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("connect-peers")
                 .long("connect")
+                .env("KASPAD_CONNECTPEERS")
                 .value_name("IP[:PORT]")
                 .action(ArgAction::Append)
                 .require_equals(true)
@@ -263,6 +269,7 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("add-peers")
                 .long("addpeer")
+                .env("KASPAD_ADDPEERS")
                 .value_name("IP[:PORT]")
                 .action(ArgAction::Append)
                 .require_equals(true)
@@ -272,6 +279,7 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("listen")
                 .long("listen")
+                .env("KASPAD_LISTEN")
                 .value_name("IP[:PORT]")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(ContextualNetAddress))
@@ -280,6 +288,7 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("outpeers")
                 .long("outpeers")
+                .env("KASPAD_OUTPEERS")
                 .value_name("outpeers")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
@@ -287,7 +296,8 @@ pub fn cli() -> Command {
         )
         .arg(
             Arg::new("maxinpeers")
-                .long("maxinpeers")
+                .long("maxinpeers") 
+                .env("KASPAD_MAXINPEERS")
                 .value_name("maxinpeers")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
@@ -296,6 +306,7 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("rpcmaxclients")
                 .long("rpcmaxclients")
+                .env("KASPAD_RPCMAXCLIENTS")
                 .value_name("rpcmaxclients")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
@@ -306,6 +317,7 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("enable-mainnet-mining")
                 .long("enable-mainnet-mining")
+                .env("KASPAD_ENABLE_MAINNET_MINING")
                 .action(ArgAction::SetTrue)
                 .hide(true)
                 .help("Allow mainnet mining (currently enabled by default while the flag is kept for backwards compatibility)"),
@@ -314,6 +326,7 @@ pub fn cli() -> Command {
         .arg(
             Arg::new("max-tracked-addresses")
                 .long("max-tracked-addresses")
+                .env("KASPAD_MAX_TRACKED_ADDRESSES")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(usize))
                 .help(format!("Max (preallocated) number of addresses being tracked for UTXO changed events (default: {}, maximum: {}). 
@@ -324,6 +337,7 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
         .arg(
             Arg::new("netsuffix")
                 .long("netsuffix")
+                .env("KASPAD_NETSUFFIX")
                 .value_name("netsuffix")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(u32))
@@ -337,6 +351,7 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
         .arg(
             Arg::new("user_agent_comments")
                 .long("uacomment")
+                .env("KASPAD_USER_AGENT_COMMENTS")
                 .action(ArgAction::Append)
                 .require_equals(true)
                 .help("Comment to add to the user agent -- See BIP 14 for more information."),
@@ -344,6 +359,7 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
         .arg(
             Arg::new("externalip")
                 .long("externalip")
+                .env("KASPAD_EXTERNALIP")
                 .value_name("externalip")
                 .require_equals(true)
                 .default_missing_value(None)
@@ -354,6 +370,7 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
         .arg(
             Arg::new("perf-metrics-interval-sec")
                 .long("perf-metrics-interval-sec")
+                .env("KASPAD_PERF_METRICS_INTERVAL_SEC")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(u64))
                 .help("Interval in seconds for performance metrics collection."),
@@ -364,6 +381,7 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
         .arg(
             Arg::new("ram-scale")
                 .long("ram-scale")
+                .env("KASPAD_RAM_SCALE")
                 .require_equals(true)
                 .value_parser(clap::value_parser!(f64))
                 .help("Apply a scale factor to memory allocation bounds. Nodes with limited RAM (~4-8GB) should set this to ~0.3-0.5 respectively. Nodes with

@@ -63,7 +63,7 @@ jobs:
           sudo apt-get remove -y google-cloud-cli --fix-missing || echo "::debug::The command [sudo apt-get remove -y google-cloud-cli --fix-missing] failed to complete successfully. Proceeding..."
           sudo apt-get autoremove -y || echo "::warning::The command [sudo apt-get autoremove -y] failed to complete successfully. Proceeding..."
           sudo apt-get clean || echo "::warning::The command [sudo apt-get clean] failed to complete successfully. Proceeding..."
-          df -h          
+          df -h
 
       # Free up disk space on Ubuntu
       - name: Free Disk Space (Ubuntu)
@@ -93,10 +93,10 @@ jobs:
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
-      
+
       - name: Set up cache
         uses: Swatinem/rust-cache@v2
-      
+
       - name: Install cargo-nextest
         run: cargo install cargo-nextest
 
@@ -209,7 +209,6 @@ jobs:
       - name: Run cargo clippy
         run: cargo clippy --workspace --tests --benches -- -D warnings
 
-
   check-wasm32:
     name: Check Wasm32
     runs-on: ubuntu-latest
@@ -320,7 +319,7 @@ jobs:
       - name: Install NodeJS
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install NodeJS dependencies
         run: npm install --global typedoc typescript
@@ -375,3 +374,28 @@ jobs:
         run: |
           cargo install cargo-zigbuild
           cargo --verbose zigbuild --bin kaspad --bin simpa --bin rothschild --release --target x86_64-unknown-linux-gnu.2.27 # Use an older glibc version
+
+  build-docker:
+    runs-on: ubuntu-latest
+    name: Building Docker images
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: https://ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push amd64
+        uses: docker/build-push-action@v6
+        with:
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
