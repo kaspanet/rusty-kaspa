@@ -1,4 +1,4 @@
-FROM rust:1.78 AS builder
+FROM rust:1.80 AS builder
 
 # ldd links against libstdc++ otherwise and it's not in distroless.
 ENV RUSTFLAGS='-C target-feature=+crt-static'

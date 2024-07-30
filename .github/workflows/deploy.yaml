@@ -112,6 +112,10 @@ jobs:
     runs-on: ubuntu-latest
     name: Building Docker images
     steps:
+      - name: Set outputs
+        id: vars
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -129,7 +133,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           push: true
-          tags: "ghcr.io/kaspanet/rusty-kaspad:${{ github.event.release.tag_name }},ghcr.io/kaspanet/rusty-kaspad:latest"
+          tags: "ghcr.io/kaspanet/rusty-kaspad:${{ github.event.release.tag_name }},ghcr.io/kaspanet/rusty-kaspad:${{ steps.vars.outputs.sha_short }},ghcr.io/kaspanet/rusty-kaspad:latest"
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
