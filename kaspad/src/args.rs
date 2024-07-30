@@ -204,10 +204,10 @@ pub fn cli() -> Command {
     let cmd = Command::new("kaspad")
         .about(format!("{} (rusty-kaspa) v{}", env!("CARGO_PKG_DESCRIPTION"), version()))
         .version(env!("CARGO_PKG_VERSION"))
-        .arg(arg!(-C --configfile <CONFIG_FILE> "Path of config file."))
-        .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data."))
-        .arg(arg!(--logdir <LOG_DIR> "Directory to log output."))
-        .arg(arg!(--nologfiles "Disable logging to files."))
+        .arg(arg!(-C --configfile <CONFIG_FILE> "Path of config file.").env("KASPAD_CONFIGFILE"))
+        .arg(arg!(-b --appdir <DATA_DIR> "Directory to store data.").env("KASPAD_APPDIR"))
+        .arg(arg!(--logdir <LOG_DIR> "Directory to log output.").env("KASPAD_LOGDIR"))
+        .arg(arg!(--nologfiles "Disable logging to files.").env("KASPAD_NOLOGFILES"))
         .arg(
             Arg::new("async_threads")
                 .short('t')
@@ -261,7 +261,7 @@ pub fn cli() -> Command {
                 .value_parser(clap::value_parser!(WrpcNetAddress))
                 .help("Interface:port to listen for wRPC JSON connections (default port: 18110, testnet: 18210)."),
         )
-        .arg(arg!(--unsaferpc "Enable RPC commands which affect the state of the node"))
+        .arg(arg!(--unsaferpc "Enable RPC commands which affect the state of the node").env("KASPAD_UNSAFERPC"))
         .arg(
             Arg::new("connect-peers")
                 .long("connect")
@@ -318,8 +318,8 @@ pub fn cli() -> Command {
                 .value_parser(clap::value_parser!(usize))
                 .help("Max number of RPC clients for standard connections (default: 128)."),
         )
-        .arg(arg!(--"reset-db" "Reset database before starting node. It's needed when switching between subnetworks."))
-        .arg(arg!(--"enable-unsynced-mining" "Allow the node to accept blocks from RPC while not synced (this flag is mainly used for testing)"))
+        .arg(arg!(--"reset-db" "Reset database before starting node. It's needed when switching between subnetworks.").env("KASPAD_RESET_DB"))
+        .arg(arg!(--"enable-unsynced-mining" "Allow the node to accept blocks from RPC while not synced (this flag is mainly used for testing)").env("KASPAD_ENABLE_UNSYNCED_MINING"))
         .arg(
             Arg::new("enable-mainnet-mining")
                 .long("enable-mainnet-mining")
@@ -328,7 +328,7 @@ pub fn cli() -> Command {
                 .hide(true)
                 .help("Allow mainnet mining (currently enabled by default while the flag is kept for backwards compatibility)"),
         )
-        .arg(arg!(--utxoindex "Enable the UTXO index"))
+        .arg(arg!(--utxoindex "Enable the UTXO index").env("KASPAD_UTXOINDEX"))
         .arg(
             Arg::new("max-tracked-addresses")
                 .long("max-tracked-addresses")
@@ -339,7 +339,7 @@ pub fn cli() -> Command {
 Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0 memory footprint as long as unused but to sub-optimal footprint if used.", 
 0, Tracker::MAX_ADDRESS_UPPER_BOUND, Tracker::DEFAULT_MAX_ADDRESSES)),
         )
-        .arg(arg!(--testnet "Use the test network"))
+        .arg(arg!(--testnet "Use the test network").env("KASPAD_TESTNET"))
         .arg(
             Arg::new("netsuffix")
                 .long("netsuffix")
@@ -349,11 +349,11 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
                 .value_parser(clap::value_parser!(u32))
                 .help("Testnet network suffix number"),
         )
-        .arg(arg!(--devnet "Use the development test network"))
-        .arg(arg!(--simnet "Use the simulation test network"))
-        .arg(arg!(--archival "Run as an archival node: avoids deleting old block data when moving the pruning point (Warning: heavy disk usage)"))
-        .arg(arg!(--sanity "Enable various sanity checks which might be compute-intensive (mostly performed during pruning)"))
-        .arg(arg!(--yes "Answer yes to all interactive console questions"))
+        .arg(arg!(--devnet "Use the development test network").env("KASPAD_DEVNET"))
+        .arg(arg!(--simnet "Use the simulation test network").env("KASPAD_SIMNET"))
+        .arg(arg!(--archival "Run as an archival node: avoids deleting old block data when moving the pruning point (Warning: heavy disk usage)").env("KASPAD_ARCHIVAL"))
+        .arg(arg!(--sanity "Enable various sanity checks which might be compute-intensive (mostly performed during pruning)").env("KASPAD_SANITY"))
+        .arg(arg!(--yes "Answer yes to all interactive console questions").env("KASPAD_NONINTERACTIVE"))
         .arg(
             Arg::new("user_agent_comments")
                 .long("uacomment")
@@ -372,7 +372,7 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
                 .value_parser(clap::value_parser!(ContextualNetAddress))
                 .help("Add a socket address(ip:port) to the list of local addresses we claim to listen on to peers"),
         )
-        .arg(arg!(--"perf-metrics" "Enable performance metrics: cpu, memory, disk io usage"))
+        .arg(arg!(--"perf-metrics" "Enable performance metrics: cpu, memory, disk io usage").env("KASPAD_PERF_METRICS"))
         .arg(
             Arg::new("perf-metrics-interval-sec")
                 .long("perf-metrics-interval-sec")
@@ -381,9 +381,9 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
                 .value_parser(clap::value_parser!(u64))
                 .help("Interval in seconds for performance metrics collection."),
         )
-        .arg(arg!(--"disable-upnp" "Disable upnp"))
-        .arg(arg!(--"nodnsseed" "Disable DNS seeding for peers"))
-        .arg(arg!(--"nogrpc" "Disable gRPC server"))
+        .arg(arg!(--"disable-upnp" "Disable upnp").env("KASPAD_DISABLE_UPNP"))
+        .arg(arg!(--"nodnsseed" "Disable DNS seeding for peers").env("KASPAD_NODNSSEED"))
+        .arg(arg!(--"nogrpc" "Disable gRPC server").env("KASPAD_NOGRPC"))
         .arg(
             Arg::new("ram-scale")
                 .long("ram-scale")
