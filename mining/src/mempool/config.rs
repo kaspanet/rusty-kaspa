@@ -1,7 +1,7 @@
 use kaspa_consensus_core::constants::TX_VERSION;
 
-pub(crate) const DEFAULT_MAXIMUM_TRANSACTION_COUNT: u64 = 1_000_000;
-pub(crate) const DEFAULT_MAXIMUM_READY_TRANSACTION_COUNT: u64 = 50_000;
+pub(crate) const DEFAULT_MAXIMUM_TRANSACTION_COUNT: u32 = 1_000_000;
+pub(crate) const DEFAULT_MAXIMUM_READY_TRANSACTION_COUNT: u32 = 10_000;
 pub(crate) const DEFAULT_MAXIMUM_BUILD_BLOCK_TEMPLATE_ATTEMPTS: u64 = 5;
 
 pub(crate) const DEFAULT_TRANSACTION_EXPIRE_INTERVAL_SECONDS: u64 = 60;
@@ -29,8 +29,8 @@ pub(crate) const DEFAULT_MAXIMUM_STANDARD_TRANSACTION_VERSION: u16 = TX_VERSION;
 
 #[derive(Clone, Debug)]
 pub struct Config {
-    pub maximum_transaction_count: u64,
-    pub maximum_ready_transaction_count: u64,
+    pub maximum_transaction_count: u32,
+    pub maximum_ready_transaction_count: u32,
     pub maximum_build_block_template_attempts: u64,
     pub transaction_expire_interval_daa_score: u64,
     pub transaction_expire_scan_interval_daa_score: u64,
@@ -52,8 +52,8 @@ pub struct Config {
 impl Config {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        maximum_transaction_count: u64,
-        maximum_ready_transaction_count: u64,
+        maximum_transaction_count: u32,
+        maximum_ready_transaction_count: u32,
         maximum_build_block_template_attempts: u64,
         transaction_expire_interval_daa_score: u64,
         transaction_expire_scan_interval_daa_score: u64,
@@ -122,7 +122,7 @@ impl Config {
     }
 
     pub fn apply_ram_scale(mut self, ram_scale: f64) -> Self {
-        self.maximum_transaction_count = (self.maximum_transaction_count as f64 * ram_scale.min(1.0)) as u64; // Allow only scaling down
+        self.maximum_transaction_count = (self.maximum_transaction_count as f64 * ram_scale.min(1.0)) as u32; // Allow only scaling down
         self
     }
 }

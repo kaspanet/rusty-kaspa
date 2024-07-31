@@ -17,48 +17,13 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, TransactionOutpoint},
 };
 use kaspa_core::{time::unix_now, trace, warn};
+use rand::thread_rng;
 use std::{
-    collections::{hash_map::Keys, hash_set::Iter, BTreeSet},
+    collections::{hash_map::Keys, hash_set::Iter},
     sync::Arc,
 };
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct FeerateTxKey {
-    fee: u64,
-    mass: u64,
-    id: TransactionId,
-}
-
-impl From<&MempoolTransaction> for FeerateTxKey {
-    fn from(tx: &MempoolTransaction) -> Self {
-        Self { fee: tx.mtx.calculated_fee.unwrap(), mass: tx.mtx.tx.mass(), id: tx.id() }
-    }
-}
-
-impl PartialOrd for FeerateTxKey {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for FeerateTxKey {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        let (feerate, other_feerate) = (self.fee as f64 / self.mass as f64, other.fee as f64 / other.mass as f64);
-        match feerate.total_cmp(&other_feerate) {
-            core::cmp::Ordering::Equal => {}
-            ord => return ord,
-        }
-        match self.fee.cmp(&other.fee) {
-            core::cmp::Ordering::Equal => {}
-            ord => return ord,
-        }
-        // match self.mass.cmp(&other.mass) {
-        //     core::cmp::Ordering::Equal => {}
-        //     ord => return ord,
-        // }
-        self.id.cmp(&other.id)
-    }
-}
+use super::frontier::Frontier;
 
 /// Pool of transactions to be included in a block template
 ///
@@ -92,7 +57,7 @@ pub(crate) struct TransactionsPool {
     /// Transactions dependencies formed by outputs present in pool - successor relations.
     chained_transactions: TransactionsEdges,
     /// Transactions with no parents in the mempool -- ready to be inserted into a block template
-    ready_transactions: BTreeSet<FeerateTxKey>,
+    ready_transactions: Frontier,
 
     last_expire_scan_daa_score: u64,
     /// last expire scan time in milliseconds
@@ -201,16 +166,15 @@ impl TransactionsPool {
         self.ready_transactions.len()
     }
 
-    /// all_ready_transactions returns all fully populated mempool transactions having no parents in the mempool.
+    /// all_ready_transactions returns a representative sample of fully populated
+    /// mempool transactions having no parents in the mempool.
     /// These transactions are ready for being inserted in a block template.
     pub(crate) fn all_ready_transactions(&self) -> Vec<CandidateTransaction> {
         // The returned transactions are leaving the mempool so they are cloned
-        // self.ready_transactions.range(range)
+        let mut rng = thread_rng();
         self.ready_transactions
-            .iter()
-            .rev() // Iterate in descending feerate order
-            .take(self.config.maximum_ready_transaction_count as usize)
-            .map(|key| CandidateTransaction::from_mutable(&self.all_transactions.get(&key.id).unwrap().mtx))
+            .sample(&mut rng, self.config.maximum_ready_transaction_count)
+            .map(|key| CandidateTransaction::from_mutable(&self.all_transactions.get(&key).unwrap().mtx))
             .collect()
     }
 
@@ -271,8 +235,8 @@ impl TransactionsPool {
 
         // An error is returned if the mempool is filled with high priority and other unremovable transactions.
         let tx_count = self.len() + free_slots - transactions_to_remove.len();
-        if tx_count as u64 > self.config.maximum_transaction_count {
-            let err = RuleError::RejectMempoolIsFull(tx_count - free_slots, self.config.maximum_transaction_count);
+        if tx_count as u64 > self.config.maximum_transaction_count as u64 {
+            let err = RuleError::RejectMempoolIsFull(tx_count - free_slots, self.config.maximum_transaction_count as u64);
             warn!("{}", err.to_string());
             return Err(err);
         }

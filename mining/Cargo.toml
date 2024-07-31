@@ -28,6 +28,7 @@ rand.workspace = true
 serde.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
+indexmap.workspace = true
 tokio = { workspace = true, features = [ "rt-multi-thread", "macros", "signal" ] }
 
 [dev-dependencies]
