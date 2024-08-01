@@ -100,7 +100,7 @@ pub fn bench_two_stage_sampling(c: &mut Criterion) {
     let cap = 1_000_000;
     let mut map = HashMap::with_capacity(cap);
     for i in 0..cap as u64 {
-        let fee: u64 = rng.gen_range(1..100000);
+        let fee: u64 = if i % (cap as u64 / 100000) == 0 { 1000000 } else { rng.gen_range(1..10000) };
         let mass: u64 = 1650;
         let tx = generate_unique_tx(i);
         map.insert(tx.id(), FeerateTransactionKey { fee: fee.max(mass), mass, tx });
