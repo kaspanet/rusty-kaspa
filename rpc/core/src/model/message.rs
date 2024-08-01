@@ -850,6 +850,60 @@ impl GetDaaScoreTimestampEstimateResponse {
     }
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Fee rate estimations
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetFeeEstimateRequest {}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeerateBucket {
+    pub feerate: f64,
+    pub estimated_seconds: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetFeeEstimateResponse {
+    pub low_bucket: FeerateBucket,
+    pub normal_bucket: FeerateBucket,
+    pub priority_bucket: FeerateBucket,
+}
+
+// pub struct GetFeeEstimateExperimentalRequest {
+//     pub verbose: bool,
+// }
+
+// pub struct GetFeeEstimateExperimentalResponse {
+//     // Same as the usual response
+//     pub low_bucket: FeerateBucket,
+//     pub normal_bucket: FeerateBucket,
+//     pub priority_bucket: FeerateBucket,
+
+//     /// Experimental verbose data
+//     pub verbose: Option<FeeEstimateVerboseExperimentalData>,
+// }
+
+// pub struct FeeEstimateVerboseExperimentalData {
+//     // mempool load factor in relation to tx/s
+//     // processing capacity
+//     pub mempool_load_factor: f64,
+//     // temperature of the mempool water
+//     pub mempool_water_temperature_celsius: f64,
+//     // optional internal context data that
+//     // represents components used to calculate
+//     // fee estimates and time periods.
+//     // ...
+
+//     // total_mass, total_fee, etc
+//     /// Built from Maxim's implementation
+//     pub next_block_template_feerate_min: f64,
+//     pub next_block_template_feerate_median: f64,
+//     pub next_block_template_feerate_max: f64,
+// }
+
 // ----------------------------------------------------------------------------
 // Subscriptions & notifications
 // ----------------------------------------------------------------------------
