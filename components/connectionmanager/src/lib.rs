@@ -262,7 +262,7 @@ impl ConnectionManager {
         for peer in eviction_iter_from_peers(&active_inbound)
             .filter_peers(
                 // We retain a number of peers proportional to the inbound limit.
-                (self.inbound_limit as f64 / RETAIN_RATIO).floor() as usize,
+                (self.inbound_limit as f64 * RETAIN_RATIO).floor() as usize,
                 // Based on their lowest (i.e. best performing) independent rank.
                 cmp_strats::by_lowest_rank,
             )
