@@ -6,7 +6,7 @@ use std::{
     collections::{HashMap, HashSet},
     net::{IpAddr, SocketAddr, ToSocketAddrs},
     sync::Arc,
-    time::{Duration, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
 
 use duration_string::DurationString;
@@ -243,6 +243,10 @@ impl ConnectionManager {
         let active_inbound = peer_by_address.values().filter(|peer| !peer.is_outbound()).collect_vec();
         let active_inbound_len = active_inbound.len();
         if self.inbound_limit >= active_inbound_len {
+            debug!(
+                "Connection manager: has {} incoming P2P connections, inbound limit is {}, keeping new peers..",
+                active_inbound_len, self.inbound_limit
+            );
             return;
         }
 
@@ -253,6 +257,8 @@ impl ConnectionManager {
         // the following peer selection strategy is designed to ensure that an eclipse attacker must outperform
         // the best performing peers in any independent metric in order to perform a total eclipse.
         // while keeping a bias to disconnect from newer peers, and those with concentrated prefix buckets.
+        let instant = Instant::now(); //TODO: Remove this instant, it's only for in-the-wild testing.
+        debug!("Connection manager: has {} incoming P2P connections, disconnecting {}...", active_inbound_len, peer_overflow_amount);
         for peer in eviction_iter_from_peers(&active_inbound)
             .filter_peers(
                 // We retain a number of peers proportional to the inbound limit.
@@ -273,6 +279,7 @@ impl ConnectionManager {
             debug!("Disconnecting from {} because we're above the inbound limit", peer.net_address());
             futures.push(self.p2p_adaptor.terminate(peer.key()));
         }
+        debug!("Connection manager: disconnecting peers took {}", instant.elapsed().as_millis());
         join_all(futures).await;
     }
 
