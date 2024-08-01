@@ -2,7 +2,12 @@ pub mod index {
     use rand::{distributions::Uniform, prelude::Distribution, Rng};
     use std::collections::HashSet;
 
-    /// Adaptation of `rand::seq::index::sample` for the case where there exists an a priory filter of indices
+    /// Adaptation of [`rand::seq::index::sample`] for the case where there exists an a priory filter
+    /// of indices which should not be selected.
+    ///
+    /// Assumes `|filter| << length`.
+    ///
+    /// The argument `capacity` can be used to ensure a larger allocation within the returned vector.
     pub fn sample<R>(rng: &mut R, length: u32, amount: u32, capacity: u32, filter: HashSet<u32>) -> Vec<u32>
     where
         R: Rng + ?Sized,
@@ -16,7 +21,12 @@ pub mod index {
         }
     }
 
-    /// Adaptation of `rand::seq::index::sample_inplace` for the case where there exists an a priory filter of indices
+    /// Adaptation of [`rand::seq::index::sample_inplace`] for the case where there exists an a priory filter
+    /// of indices which should not be selected.
+    ///
+    /// Assumes `|filter| << length`.
+    ///
+    /// The argument `capacity` can be used to ensure a larger allocation within the returned vector.
     fn sample_inplace<R>(rng: &mut R, length: u32, amount: u32, capacity: u32, filter: HashSet<u32>) -> Vec<u32>
     where
         R: Rng + ?Sized,
@@ -27,6 +37,7 @@ pub mod index {
         indices.extend(0..length);
         for i in 0..amount {
             let mut j: u32 = rng.gen_range(i..length);
+            // Assumes |filter| << length
             while filter.contains(&j) {
                 j = rng.gen_range(i..length);
             }
@@ -37,7 +48,12 @@ pub mod index {
         indices
     }
 
-    /// Adaptation of `rand::seq::index::sample_rejection` for the case where there exists an a priory filter of indices
+    /// Adaptation of [`rand::seq::index::sample_rejection`] for the case where there exists an a priory filter
+    /// of indices which should not be selected.
+    ///
+    /// Assumes `|filter| << length`.
+    ///
+    /// The argument `capacity` can be used to ensure a larger allocation within the returned vector.
     fn sample_rejection<R>(rng: &mut R, length: u32, amount: u32, capacity: u32, mut filter: HashSet<u32>) -> Vec<u32>
     where
         R: Rng + ?Sized,
