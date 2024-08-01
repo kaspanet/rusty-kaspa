@@ -94,6 +94,8 @@ fn stage_two_sampling(container: impl IntoIterator<Item = FeerateTransactionKey>
     selector.select_transactions()
 }
 
+// TODO: bench frontier insertions and removals
+
 pub fn bench_two_stage_sampling(c: &mut Criterion) {
     let mut rng = thread_rng();
     let mut group = c.benchmark_group("mempool sampling");
@@ -114,19 +116,19 @@ pub fn bench_two_stage_sampling(c: &mut Criterion) {
     group.bench_function("mempool sample 2 blocks", |b| {
         b.iter(|| {
             black_box({
-                let stage_one = frontier.sample(&mut rng, 600).collect_vec();
+                let stage_one = frontier.sample(&mut rng, 300).collect_vec();
                 stage_one.into_iter().map(|k| k.mass).sum::<u64>()
             })
         })
     });
-    group.bench_function("mempool sample 10k", |b| {
-        b.iter(|| {
-            black_box({
-                let stage_one = frontier.sample(&mut rng, 10_000);
-                stage_one.into_iter().map(|k| k.mass).sum::<u64>()
-            })
-        })
-    });
+    // group.bench_function("mempool sample 10k", |b| {
+    //     b.iter(|| {
+    //         black_box({
+    //             let stage_one = frontier.sample(&mut rng, 10_000);
+    //             stage_one.into_iter().map(|k| k.mass).sum::<u64>()
+    //         })
+    //     })
+    // });
     group.finish();
 }
 

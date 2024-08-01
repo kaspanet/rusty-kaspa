@@ -172,8 +172,9 @@ impl TransactionsPool {
     pub(crate) fn all_ready_transactions(&self) -> Vec<CandidateTransaction> {
         // The returned transactions are leaving the mempool so they are cloned
         let mut rng = thread_rng();
+        // TODO: adapt to one-shot sampling
         self.ready_transactions
-            .sample(&mut rng, self.config.maximum_ready_transaction_count)
+            .sample(&mut rng, 600) // self.config.maximum_ready_transaction_count)
             .map(CandidateTransaction::from_key)
             .collect()
     }
