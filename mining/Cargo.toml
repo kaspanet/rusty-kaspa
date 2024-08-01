@@ -29,7 +29,8 @@ serde.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 indexmap.workspace = true
-tokio = { workspace = true, features = [ "rt-multi-thread", "macros", "signal" ] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "signal"] }
+sweep-bptree = "0.4.1"
 
 [dev-dependencies]
 kaspa-txscript.workspace = true

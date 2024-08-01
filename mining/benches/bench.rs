@@ -111,20 +111,19 @@ pub fn bench_two_stage_sampling(c: &mut Criterion) {
     for item in map.values().take(len).cloned() {
         frontier.insert(item).then_some(()).unwrap();
     }
-    group.bench_function("mempool sample stage one", |b| {
+    group.bench_function("mempool sample 2 blocks", |b| {
         b.iter(|| {
             black_box({
-                let stage_one = frontier.sample(&mut rng, 10_000).collect_vec();
+                let stage_one = frontier.sample(&mut rng, 600).collect_vec();
                 stage_one.into_iter().map(|k| k.mass).sum::<u64>()
             })
         })
     });
-    group.bench_function("mempool sample stage one & two", |b| {
+    group.bench_function("mempool sample 10k", |b| {
         b.iter(|| {
             black_box({
                 let stage_one = frontier.sample(&mut rng, 10_000);
-                let stage_two = stage_two_sampling(stage_one);
-                stage_two.into_iter().map(|k| k.gas).sum::<u64>()
+                stage_one.into_iter().map(|k| k.mass).sum::<u64>()
             })
         })
     });
