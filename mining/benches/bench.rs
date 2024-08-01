@@ -105,7 +105,7 @@ pub fn bench_two_stage_sampling(c: &mut Criterion) {
         let fee: u64 = if i % (cap as u64 / 100000) == 0 { 1000000 } else { rng.gen_range(1..10000) };
         let mass: u64 = 1650;
         let tx = generate_unique_tx(i);
-        map.insert(tx.id(), FeerateTransactionKey { fee: fee.max(mass), mass, tx });
+        map.insert(tx.id(), FeerateTransactionKey::new(fee.max(mass), mass, tx));
     }
 
     let len = cap; // / 10;
@@ -116,7 +116,7 @@ pub fn bench_two_stage_sampling(c: &mut Criterion) {
     group.bench_function("mempool sample 2 blocks", |b| {
         b.iter(|| {
             black_box({
-                let stage_one = frontier.sample(&mut rng, 300).collect_vec();
+                let stage_one = frontier.sample(&mut rng, 400).collect_vec();
                 stage_one.into_iter().map(|k| k.mass).sum::<u64>()
             })
         })

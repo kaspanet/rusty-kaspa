@@ -1,3 +1,5 @@
+use crate::block_template::selector::ALPHA;
+
 use super::tx::MempoolTransaction;
 use kaspa_consensus_core::tx::Transaction;
 use std::sync::Arc;
@@ -6,6 +8,7 @@ use std::sync::Arc;
 pub struct FeerateTransactionKey {
     pub fee: u64,
     pub mass: u64,
+    weight: f64,
     pub tx: Arc<Transaction>,
 }
 
@@ -18,8 +21,16 @@ impl PartialEq for FeerateTransactionKey {
 }
 
 impl FeerateTransactionKey {
+    pub fn new(fee: u64, mass: u64, tx: Arc<Transaction>) -> Self {
+        Self { fee, mass, weight: (fee as f64 / mass as f64).powi(ALPHA), tx }
+    }
+
     pub fn feerate(&self) -> f64 {
         self.fee as f64 / self.mass as f64
+    }
+
+    pub fn weight(&self) -> f64 {
+        self.weight
     }
 }
 
@@ -63,6 +74,6 @@ impl Ord for FeerateTransactionKey {
 
 impl From<&MempoolTransaction> for FeerateTransactionKey {
     fn from(tx: &MempoolTransaction) -> Self {
-        Self { fee: tx.mtx.calculated_fee.unwrap(), mass: tx.mtx.tx.mass(), tx: tx.mtx.tx.clone() }
+        Self::new(tx.mtx.calculated_fee.unwrap(), tx.mtx.tx.mass(), tx.mtx.tx.clone())
     }
 }

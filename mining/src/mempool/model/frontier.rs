@@ -1,15 +1,11 @@
 use super::feerate_key::FeerateTransactionKey;
-use crate::block_template::selector::ALPHA;
 use arg::FeerateWeight;
-use indexmap::IndexSet;
 use itertools::Either;
-use kaspa_utils::{rand::seq::index, vec::VecExtensions};
 use rand::{distributions::Uniform, prelude::Distribution, Rng};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 use sweep_bptree::BPlusTreeMap;
 
 pub mod arg {
-    use crate::block_template::selector::ALPHA;
     use sweep_bptree::tree::{Argument, SearchArgument};
 
     type FeerateKey = super::FeerateTransactionKey;
@@ -26,7 +22,7 @@ pub mod arg {
 
     impl Argument<FeerateKey> for FeerateWeight {
         fn from_leaf(keys: &[FeerateKey]) -> Self {
-            Self(keys.iter().map(|k| k.feerate().powi(ALPHA)).sum())
+            Self(keys.iter().map(|k| k.weight()).sum())
         }
 
         fn from_inner(_keys: &[FeerateKey], arguments: &[Self]) -> Self {
@@ -40,7 +36,7 @@ pub mod arg {
         fn locate_in_leaf(query: Self::Query, keys: &[FeerateKey]) -> Option<usize> {
             let mut sum = 0.0;
             for (i, k) in keys.iter().enumerate() {
-                let w = k.feerate().powi(ALPHA);
+                let w = k.weight();
                 sum += w;
                 if query <= sum {
                     return Some(i);
@@ -84,7 +80,7 @@ impl Default for Frontier {
 
 impl Frontier {
     pub fn insert(&mut self, key: FeerateTransactionKey) -> bool {
-        let (weight, mass) = (key.feerate().powi(ALPHA), key.mass);
+        let (weight, mass) = (key.weight(), key.mass);
         if self.feerate_order.insert(key, ()).is_none() {
             self.total_weight += weight;
             self.total_mass += mass;
@@ -95,8 +91,8 @@ impl Frontier {
     }
 
     pub fn remove(&mut self, key: &FeerateTransactionKey) -> bool {
-        let (weight, mass) = (key.feerate().powi(ALPHA), key.mass);
-        if self.feerate_order.remove(&key).is_some() {
+        let (weight, mass) = (key.weight(), key.mass);
+        if self.feerate_order.remove(key).is_some() {
             self.total_weight -= weight;
             self.total_mass -= mass;
             true
@@ -166,7 +162,7 @@ mod tests {
             let fee: u64 = if i % (cap as u64 / 100) == 0 { 1000000 } else { rng.gen_range(1..10000) };
             let mass: u64 = 1650;
             let tx = generate_unique_tx(i);
-            map.insert(tx.id(), FeerateTransactionKey { fee: fee.max(mass), mass, tx });
+            map.insert(tx.id(), FeerateTransactionKey::new(fee.max(mass), mass, tx));
         }
 
         let len = cap;
