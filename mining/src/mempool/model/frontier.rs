@@ -1,9 +1,8 @@
-use crate::block_template::selector::ALPHA;
-
 use super::feerate_key::FeerateTransactionKey;
+use crate::block_template::selector::ALPHA;
 use indexmap::IndexSet;
 use itertools::Either;
-use kaspa_utils::vec::VecExtensions;
+use kaspa_utils::{rand::seq::index, vec::VecExtensions};
 use rand::{distributions::Uniform, prelude::Distribution, Rng};
 use std::collections::{BTreeSet, HashSet};
 
@@ -26,10 +25,6 @@ pub struct Frontier {
 }
 
 impl Frontier {
-    // pub fn new() -> Self {
-    //     Self { ..Default::default() }
-    // }
-
     pub fn insert(&mut self, key: FeerateTransactionKey) -> bool {
         let (weight, mass) = (key.feerate().powi(ALPHA), key.mass);
         self.index.insert(key.clone());
@@ -104,67 +99,15 @@ impl Frontier {
             return Either::Left(self.index.iter().cloned());
         }
 
-        // Based on values taken from `rand::seq::index::sample`
-        const C: [f32; 2] = [270.0, 330.0 / 9.0];
-        let j = if frontier_length < 500_000 { 0 } else { 1 };
-        let indices = if (frontier_length as f32) < C[j] * (overall_amount as f32) {
-            let (top, filter) = self.sample_top_bucket(rng, overall_amount);
-            sample_inplace(rng, frontier_length, overall_amount - top.len() as u32, overall_amount, filter).chain(top)
-        } else {
-            let (top, filter) = self.sample_top_bucket(rng, overall_amount);
-            sample_rejection(rng, frontier_length, overall_amount - top.len() as u32, overall_amount, filter).chain(top)
-        };
-
+        let (top, filter) = self.sample_top_bucket(rng, overall_amount);
+        // println!("|F|: {}, |P|: {}", filter.len(), top.len());
+        let indices = index::sample(rng, frontier_length, overall_amount - top.len() as u32, overall_amount, filter).chain(top);
         Either::Right(indices.into_iter().map(|i| self.index.get_index(i as usize).cloned().unwrap()))
     }
 
     pub(crate) fn len(&self) -> usize {
         self.index.len()
     }
-}
-
-/// Adaptation of `rand::seq::index::sample_inplace` for the case where there exists an
-/// initial a priory sample to begin with
-fn sample_inplace<R>(rng: &mut R, length: u32, amount: u32, capacity: u32, filter: HashSet<u32>) -> Vec<u32>
-where
-    R: Rng + ?Sized,
-{
-    debug_assert!(amount <= length);
-    debug_assert!(filter.len() <= amount as usize);
-    let mut indices: Vec<u32> = Vec::with_capacity(length.max(capacity) as usize);
-    indices.extend(0..length);
-    for i in 0..amount {
-        let mut j: u32 = rng.gen_range(i..length);
-        while filter.contains(&j) {
-            j = rng.gen_range(i..length);
-        }
-        indices.swap(i as usize, j as usize);
-    }
-    indices.truncate(amount as usize);
-    debug_assert_eq!(indices.len(), amount as usize);
-    indices
-}
-
-/// Adaptation of `rand::seq::index::sample_rejection` for the case where there exists an
-/// initial a priory sample to begin with
-fn sample_rejection<R>(rng: &mut R, length: u32, amount: u32, capacity: u32, mut filter: HashSet<u32>) -> Vec<u32>
-where
-    R: Rng + ?Sized,
-{
-    debug_assert!(amount < length);
-    debug_assert!(filter.len() <= amount as usize);
-    let distr = Uniform::new(0, length);
-    let mut indices = Vec::with_capacity(amount.max(capacity) as usize);
-    for _ in indices.len()..amount as usize {
-        let mut pos = distr.sample(rng);
-        while !filter.insert(pos) {
-            pos = distr.sample(rng);
-        }
-        indices.push(pos);
-    }
-
-    assert_eq!(indices.len(), amount as usize);
-    indices
 }
 
 #[cfg(test)]
@@ -196,10 +139,10 @@ mod tests {
     #[test]
     pub fn test_two_stage_sampling() {
         let mut rng = thread_rng();
-        let cap = 1_000_000;
+        let cap = 100_000;
         let mut map = HashMap::with_capacity(cap);
         for i in 0..cap as u64 {
-            let fee: u64 = rng.gen_range(1..100000);
+            let fee: u64 = if i % (cap as u64 / 100) == 0 { 1000000 } else { rng.gen_range(1..10000) };
             let mass: u64 = 1650;
             let tx = generate_unique_tx(i);
             map.insert(tx.id(), FeerateTransactionKey { fee: fee.max(mass), mass, tx });

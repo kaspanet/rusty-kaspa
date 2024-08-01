@@ -8,6 +8,7 @@ pub mod iter;
 pub mod mem_size;
 pub mod networking;
 pub mod option;
+pub mod rand;
 pub mod refs;
 
 pub mod as_slice;
