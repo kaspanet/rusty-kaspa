@@ -56,7 +56,8 @@ impl Frontier {
         let frontier_length = self.feerate_order.len() as u32;
         debug_assert!(overall_amount <= frontier_length);
         let sampling_ratio = overall_amount as f64 / frontier_length as f64;
-        let distr = Uniform::new(0f64, 1f64);
+        let eps = 0.0001;
+        let unit = Uniform::new(0f64, 1f64);
         let mut filter = HashSet::new();
         let filter_ref = &mut filter;
         (
@@ -67,17 +68,14 @@ impl Frontier {
                     let weight = key.feerate().powi(ALPHA);
                     let exclusive_total_weight = self.total_weight - weight;
                     let sample_approx_weight = exclusive_total_weight * sampling_ratio;
-                    if weight < exclusive_total_weight / 100.0 {
+                    if weight * (1.0 - sampling_ratio - eps) < eps * exclusive_total_weight {
                         None // break out map_while
                     } else {
-                        let p = weight / self.total_weight;
-                        let p_s = weight / (sample_approx_weight + weight);
-                        debug_assert!(p <= p_s);
                         let idx = self.index.get_index_of(key).unwrap() as u32;
                         // Register this index as "already sampled"
                         filter_ref.insert(idx);
                         // Flip a coin with the reversed probability
-                        if distr.sample(rng) < (sample_approx_weight + weight) / self.total_weight {
+                        if unit.sample(rng) < (sample_approx_weight + weight) / self.total_weight {
                             Some(Some(idx))
                         } else {
                             Some(None) // signals a continue but not a break
@@ -85,6 +83,7 @@ impl Frontier {
                     }
                 })
                 .flatten()
+                .take(overall_amount as usize) // Bound with overall amount just in case
                 .collect(),
             filter,
         )
@@ -148,7 +147,7 @@ mod tests {
             map.insert(tx.id(), FeerateTransactionKey { fee: fee.max(mass), mass, tx });
         }
 
-        let len = cap; // / 10;
+        let len = cap;
         let mut frontier = Frontier::default();
         for item in map.values().take(len).cloned() {
             frontier.insert(item).then_some(()).unwrap();
