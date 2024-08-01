@@ -174,7 +174,7 @@ impl TransactionsPool {
         let mut rng = thread_rng();
         self.ready_transactions
             .sample(&mut rng, self.config.maximum_ready_transaction_count)
-            .map(|key| CandidateTransaction::from_mutable(&self.all_transactions.get(&key).unwrap().mtx))
+            .map(CandidateTransaction::from_key)
             .collect()
     }
 

@@ -1,19 +1,19 @@
-use kaspa_consensus_core::tx::TransactionId;
-
 use super::tx::MempoolTransaction;
+use kaspa_consensus_core::tx::Transaction;
+use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub struct FeerateTransactionKey {
     pub fee: u64,
     pub mass: u64,
-    pub id: TransactionId,
+    pub tx: Arc<Transaction>,
 }
 
 impl Eq for FeerateTransactionKey {}
 
 impl PartialEq for FeerateTransactionKey {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        self.tx.id() == other.tx.id()
     }
 }
 
@@ -26,7 +26,7 @@ impl FeerateTransactionKey {
 impl std::hash::Hash for FeerateTransactionKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         // Transaction id is a sufficient identifier for this key
-        self.id.hash(state);
+        self.tx.id().hash(state);
     }
 }
 
@@ -57,12 +57,12 @@ impl Ord for FeerateTransactionKey {
 
         // Finally, we compare transaction ids in order to allow multiple transactions with
         // the same fee and mass to exist within the same sorted container
-        self.id.cmp(&other.id)
+        self.tx.id().cmp(&other.tx.id())
     }
 }
 
 impl From<&MempoolTransaction> for FeerateTransactionKey {
     fn from(tx: &MempoolTransaction) -> Self {
-        Self { fee: tx.mtx.calculated_fee.unwrap(), mass: tx.mtx.tx.mass(), id: tx.id() }
+        Self { fee: tx.mtx.calculated_fee.unwrap(), mass: tx.mtx.tx.mass(), tx: tx.mtx.tx.clone() }
     }
 }

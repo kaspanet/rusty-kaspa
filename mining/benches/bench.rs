@@ -2,7 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use itertools::Itertools;
 use kaspa_consensus_core::{
     subnets::SUBNETWORK_ID_NATIVE,
-    tx::{Transaction, TransactionId, TransactionInput, TransactionOutpoint},
+    tx::{Transaction, TransactionInput, TransactionOutpoint},
 };
 use kaspa_hashes::{HasherBase, TransactionID};
 use kaspa_mining::{
@@ -88,18 +88,8 @@ fn generate_unique_tx(i: u64) -> Arc<Transaction> {
     Arc::new(Transaction::new(0, vec![input], vec![], 0, SUBNETWORK_ID_NATIVE, 0, vec![]))
 }
 
-fn stage_two_sampling(
-    container: impl IntoIterator<Item = TransactionId>,
-    _map: &HashMap<TransactionId, FeerateTransactionKey>,
-) -> Vec<Transaction> {
-    let tx = generate_unique_tx(u64::MAX);
-    let set = container
-        .into_iter()
-        .map(|_h| {
-            // let k = map.get(&h).unwrap();
-            CandidateTransaction { calculated_fee: 2500, calculated_mass: 1650, tx: tx.clone() }
-        })
-        .collect_vec();
+fn stage_two_sampling(container: impl IntoIterator<Item = FeerateTransactionKey>) -> Vec<Transaction> {
+    let set = container.into_iter().map(CandidateTransaction::from_key).collect_vec();
     let mut selector = TransactionsSelector::new(Policy::new(500_000), set);
     selector.select_transactions()
 }
@@ -113,10 +103,10 @@ pub fn bench_two_stage_sampling(c: &mut Criterion) {
         let fee: u64 = rng.gen_range(1..100000);
         let mass: u64 = 1650;
         let tx = generate_unique_tx(i);
-        map.insert(tx.id(), FeerateTransactionKey { fee: fee.max(mass), mass, id: tx.id() });
+        map.insert(tx.id(), FeerateTransactionKey { fee: fee.max(mass), mass, tx });
     }
 
-    let len = cap;
+    let len = cap; // / 10;
     let mut frontier = Frontier::default();
     for item in map.values().take(len).cloned() {
         frontier.insert(item).then_some(()).unwrap();
@@ -124,8 +114,8 @@ pub fn bench_two_stage_sampling(c: &mut Criterion) {
     group.bench_function("mempool sample stage one", |b| {
         b.iter(|| {
             black_box({
-                let stage_one = frontier.sample(&mut rng, 10_000);
-                stage_one.into_iter().map(|k| k.as_bytes()[0] as u64).sum::<u64>()
+                let stage_one = frontier.sample(&mut rng, 10_000).collect_vec();
+                stage_one.into_iter().map(|k| k.mass).sum::<u64>()
             })
         })
     });
@@ -133,7 +123,7 @@ pub fn bench_two_stage_sampling(c: &mut Criterion) {
         b.iter(|| {
             black_box({
                 let stage_one = frontier.sample(&mut rng, 10_000);
-                let stage_two = stage_two_sampling(stage_one, &map);
+                let stage_two = stage_two_sampling(stage_one);
                 stage_two.into_iter().map(|k| k.gas).sum::<u64>()
             })
         })
