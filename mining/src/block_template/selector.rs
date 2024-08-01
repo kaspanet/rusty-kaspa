@@ -28,7 +28,7 @@ pub(crate) const ALPHA: i32 = 3;
 /// if REBALANCE_THRESHOLD is 0.95, there's a 1-in-20 chance of collision.
 const REBALANCE_THRESHOLD: f64 = 0.95;
 
-pub(crate) struct TransactionsSelector {
+pub struct TransactionsSelector {
     policy: Policy,
     /// Transaction store
     transactions: Vec<CandidateTransaction>,
@@ -53,7 +53,7 @@ pub(crate) struct TransactionsSelector {
 }
 
 impl TransactionsSelector {
-    pub(crate) fn new(policy: Policy, mut transactions: Vec<CandidateTransaction>) -> Self {
+    pub fn new(policy: Policy, mut transactions: Vec<CandidateTransaction>) -> Self {
         let _sw = Stopwatch::<100>::with_threshold("TransactionsSelector::new op");
         // Sort the transactions by subnetwork_id.
         transactions.sort_by(|a, b| a.tx.subnetwork_id.cmp(&b.tx.subnetwork_id));
@@ -103,7 +103,7 @@ impl TransactionsSelector {
     /// select_transactions loops over the candidate transactions
     /// and appends the ones that will be included in the next block into
     /// selected_txs.
-    pub(crate) fn select_transactions(&mut self) -> Vec<Transaction> {
+    pub fn select_transactions(&mut self) -> Vec<Transaction> {
         let _sw = Stopwatch::<15>::with_threshold("select_transaction op");
         let mut rng = rand::thread_rng();
 

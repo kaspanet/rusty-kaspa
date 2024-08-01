@@ -2,13 +2,13 @@
 /// the generation of block templates. See the documentation for
 /// NewBlockTemplate for more details on each of these parameters are used.
 #[derive(Clone)]
-pub(crate) struct Policy {
+pub struct Policy {
     /// max_block_mass is the maximum block mass to be used when generating a block template.
     pub(crate) max_block_mass: u64,
 }
 
 impl Policy {
-    pub(crate) fn new(max_block_mass: u64) -> Self {
+    pub fn new(max_block_mass: u64) -> Self {
         Self { max_block_mass }
     }
 }

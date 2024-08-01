@@ -4,7 +4,7 @@ use std::sync::Arc;
 /// Transaction with additional metadata needed in order to be a candidate
 /// in the transaction selection algorithm
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CandidateTransaction {
+pub struct CandidateTransaction {
     /// The actual transaction
     pub tx: Arc<Transaction>,
     /// Populated fee

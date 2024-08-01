@@ -15,6 +15,10 @@ pub mod mempool;
 pub mod model;
 pub mod monitor;
 
+// Exposed for benchmarks
+pub use block_template::{policy::Policy, selector::TransactionsSelector};
+pub use mempool::model::{feerate_key::FeerateTransactionKey, frontier::Frontier};
+
 #[cfg(test)]
 pub mod testutils;
 
