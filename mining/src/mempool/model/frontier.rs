@@ -64,8 +64,8 @@ pub type FrontierTree = BPlusTree<NodeStoreVec<FeerateTransactionKey, (), Feerat
 /// the transaction pool which have no mempool ancestors and are essentially ready
 /// to enter the next block template.
 pub struct Frontier {
-    /// Frontier transactions sorted by feerate order
-    feerate_order: FrontierTree,
+    /// Frontier transactions sorted by feerate order and searchable for weight sampling
+    search_tree: FrontierTree,
 
     /// Total sampling weight: Σ_{tx in frontier}(tx.fee/tx.mass)^alpha
     total_weight: f64,
@@ -76,14 +76,14 @@ pub struct Frontier {
 
 impl Default for Frontier {
     fn default() -> Self {
-        Self { feerate_order: FrontierTree::new(Default::default()), total_weight: Default::default(), total_mass: Default::default() }
+        Self { search_tree: FrontierTree::new(Default::default()), total_weight: Default::default(), total_mass: Default::default() }
     }
 }
 
 impl Frontier {
     pub fn insert(&mut self, key: FeerateTransactionKey) -> bool {
         let (weight, mass) = (key.weight(), key.mass);
-        if self.feerate_order.insert(key, ()).is_none() {
+        if self.search_tree.insert(key, ()).is_none() {
             self.total_weight += weight;
             self.total_mass += mass;
             true
@@ -94,7 +94,7 @@ impl Frontier {
 
     pub fn remove(&mut self, key: &FeerateTransactionKey) -> bool {
         let (weight, mass) = (key.weight(), key.mass);
-        if self.feerate_order.remove(key).is_some() {
+        if self.search_tree.remove(key).is_some() {
             self.total_weight -= weight;
             self.total_mass -= mass;
             true
@@ -107,18 +107,18 @@ impl Frontier {
     where
         R: Rng + ?Sized,
     {
-        let length = self.feerate_order.len() as u32;
+        let length = self.search_tree.len() as u32;
         if length <= amount {
-            return Either::Left(self.feerate_order.iter().map(|(k, _)| k.clone()));
+            return Either::Left(self.search_tree.iter().map(|(k, _)| k.clone()));
         }
         let mut total_weight = self.total_weight;
         let mut distr = Uniform::new(0f64, total_weight);
-        let mut down_iter = self.feerate_order.iter().rev();
+        let mut down_iter = self.search_tree.iter().rev();
         let mut top = down_iter.next().expect("amount < length").0;
         let mut cache = HashSet::new();
         Either::Right((0..amount).map(move |_| {
             let query = distr.sample(rng);
-            let mut item = self.feerate_order.get_by_argument(query).unwrap().0;
+            let mut item = self.search_tree.get_by_argument(query).unwrap().0;
             while !cache.insert(item.tx.id()) {
                 if top == item {
                     // Narrow the search to reduce further sampling collisions
@@ -127,14 +127,14 @@ impl Frontier {
                     top = down_iter.next().expect("amount < length").0;
                 }
                 let query = distr.sample(rng);
-                item = self.feerate_order.get_by_argument(query).unwrap().0;
+                item = self.search_tree.get_by_argument(query).unwrap().0;
             }
             item.clone()
         }))
     }
 
     pub fn len(&self) -> usize {
-        self.feerate_order.len()
+        self.search_tree.len()
     }
 
     pub fn is_empty(&self) -> bool {
