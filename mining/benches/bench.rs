@@ -88,6 +88,7 @@ fn generate_unique_tx(i: u64) -> Arc<Transaction> {
     Arc::new(Transaction::new(0, vec![input], vec![], 0, SUBNETWORK_ID_NATIVE, 0, vec![]))
 }
 
+#[allow(dead_code)]
 fn stage_two_sampling(container: impl IntoIterator<Item = FeerateTransactionKey>) -> Vec<Transaction> {
     let set = container.into_iter().map(CandidateTransaction::from_key).collect_vec();
     let mut selector = TransactionsSelector::new(Policy::new(500_000), set);

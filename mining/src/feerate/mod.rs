@@ -13,6 +13,7 @@ pub struct FeerateEstimations {
     pub priority_bucket: FeerateBucket,
 }
 
+#[allow(dead_code)] // TEMP (PR)
 pub struct FeerateEstimator {
     /// The total probability weight of all current mempool ready transactions, i.e., Σ_{tx in mempool}(tx.fee/tx.mass)^alpha
     total_weight: f64,
