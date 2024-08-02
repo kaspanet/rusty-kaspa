@@ -3,7 +3,7 @@ use arg::FeerateWeight;
 use itertools::Either;
 use rand::{distributions::Uniform, prelude::Distribution, Rng};
 use std::collections::HashSet;
-use sweep_bptree::BPlusTreeMap;
+use sweep_bptree::{BPlusTree, NodeStoreVec};
 
 pub mod arg {
     use sweep_bptree::tree::{Argument, SearchArgument};
@@ -58,12 +58,14 @@ pub mod arg {
     }
 }
 
+pub type FrontierTree = BPlusTree<NodeStoreVec<FeerateTransactionKey, (), FeerateWeight>>;
+
 /// Management of the transaction pool frontier, that is, the set of transactions in
 /// the transaction pool which have no mempool ancestors and are essentially ready
 /// to enter the next block template.
 pub struct Frontier {
     /// Frontier transactions sorted by feerate order
-    feerate_order: BPlusTreeMap<FeerateTransactionKey, (), FeerateWeight>,
+    feerate_order: FrontierTree,
 
     /// Total sampling weight: Σ_{tx in frontier}(tx.fee/tx.mass)^alpha
     total_weight: f64,
@@ -74,7 +76,7 @@ pub struct Frontier {
 
 impl Default for Frontier {
     fn default() -> Self {
-        Self { feerate_order: BPlusTreeMap::new(), total_weight: Default::default(), total_mass: Default::default() }
+        Self { feerate_order: FrontierTree::new(Default::default()), total_weight: Default::default(), total_mass: Default::default() }
     }
 }
 
@@ -109,12 +111,21 @@ impl Frontier {
         if length <= amount {
             return Either::Left(self.feerate_order.iter().map(|(k, _)| k.clone()));
         }
-        let distr = Uniform::new(0f64, self.total_weight);
+        let mut total_weight = self.total_weight;
+        let mut distr = Uniform::new(0f64, total_weight);
+        let mut down_iter = self.feerate_order.iter().rev();
+        let mut top = down_iter.next().expect("amount < length").0;
         let mut cache = HashSet::new();
         Either::Right((0..amount).map(move |_| {
             let query = distr.sample(rng);
             let mut item = self.feerate_order.get_by_argument(query).unwrap().0;
             while !cache.insert(item.tx.id()) {
+                if top == item {
+                    // Narrow the search to reduce further sampling collisions
+                    total_weight -= top.weight();
+                    distr = Uniform::new(0f64, total_weight);
+                    top = down_iter.next().expect("amount < length").0;
+                }
                 let query = distr.sample(rng);
                 item = self.feerate_order.get_by_argument(query).unwrap().0;
             }
@@ -186,7 +197,7 @@ mod tests {
 
     #[test]
     fn test_feerate_weight_queries() {
-        let mut btree: BPlusTreeMap<FeerateTransactionKey, (), FeerateWeight> = BPlusTreeMap::new();
+        let mut btree = FrontierTree::new(Default::default());
         let mass = 2000;
         let fees = [123, 113, 10_000, 1000, 2050, 2048];
         let mut weights = Vec::with_capacity(fees.len());
