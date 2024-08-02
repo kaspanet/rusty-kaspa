@@ -220,6 +220,24 @@ mod tests {
     }
 
     #[test]
+    fn test_btree_rev_iter() {
+        let mut btree = FrontierTree::new(Default::default());
+        let mass = 2000;
+        let fees = [123, 113, 10_000, 1000, 2050, 2048];
+        let mut weights = Vec::with_capacity(fees.len());
+        for (i, fee) in fees.iter().copied().enumerate() {
+            let key = build_feerate_key(fee, mass, i as u64);
+            weights.push(key.weight());
+            btree.insert(key, ());
+        }
+        let fees_weights = fees.into_iter().zip(weights).sorted_by(|(_, w1), (_, w2)| w1.total_cmp(w2)).collect_vec();
+        for ((fee, weight), item) in fees_weights.into_iter().rev().zip(btree.iter().rev()) {
+            assert_eq!(fee, item.0.fee);
+            assert_eq!(weight, item.0.weight());
+        }
+    }
+
+    #[test]
     fn test_sweep_btree() {
         use sweep_bptree::argument::count::Count;
         use sweep_bptree::BPlusTreeMap;
