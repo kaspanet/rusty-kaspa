@@ -42,7 +42,13 @@ pub mod arg {
                     return Some(i);
                 }
             }
-            None
+            // In order to avoid sensitivity to floating number arithmetics,
+            // we logically "clamp" the search, returning the last leaf if the query
+            // value is out of bounds
+            match keys.len() {
+                0 => None,
+                n => Some(n - 1),
+            }
         }
 
         fn locate_in_inner(mut query: Self::Query, _keys: &[FeerateKey], arguments: &[Self]) -> Option<(usize, Self::Query)> {
@@ -53,7 +59,14 @@ pub mod arg {
                     return Some((i, query));
                 }
             }
-            None
+            // In order to avoid sensitivity to floating number arithmetics,
+            // we logically "clamp" the search, returning the last subtree if the query
+            // value is out of bounds. Eventually this will lead to the return of the
+            // last leaf (see locate_in_leaf as well)
+            match arguments.len() {
+                0 => None,
+                n => Some((n - 1, arguments[n - 1].0)),
+            }
         }
     }
 }
@@ -118,7 +131,7 @@ impl Frontier {
         let mut cache = HashSet::new();
         Either::Right((0..amount).map(move |_| {
             let query = distr.sample(rng);
-            let mut item = self.search_tree.get_by_argument(query).unwrap().0;
+            let mut item = self.search_tree.get_by_argument(query).expect("clamped").0;
             while !cache.insert(item.tx.id()) {
                 if top == item {
                     // Narrow the search to reduce further sampling collisions
@@ -127,7 +140,7 @@ impl Frontier {
                     top = down_iter.next().expect("amount < length").0;
                 }
                 let query = distr.sample(rng);
-                item = self.search_tree.get_by_argument(query).unwrap().0;
+                item = self.search_tree.get_by_argument(query).expect("clamped").0;
             }
             item.clone()
         }))
