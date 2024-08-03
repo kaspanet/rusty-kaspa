@@ -137,6 +137,7 @@ impl PSKT {
     }
 
     /// Change role to `CREATOR`
+    /// #[wasm_bindgen(js_name = toCreator)]
     pub fn creator(&self) -> Result<PSKT> {
         let state = match self.take() {
             State::NoOp(inner) => match inner {
@@ -150,6 +151,7 @@ impl PSKT {
     }
 
     /// Change role to `CONSTRUCTOR`
+    #[wasm_bindgen(js_name = toConstructor)]
     pub fn constructor(&self) -> Result<PSKT> {
         let state = match self.take() {
             State::NoOp(inner) => State::Constructor(inner.ok_or(Error::NotInitialized)?.into()),
@@ -161,6 +163,7 @@ impl PSKT {
     }
 
     /// Change role to `UPDATER`
+    #[wasm_bindgen(js_name = toUpdater)]
     pub fn updater(&self) -> Result<PSKT> {
         let state = match self.take() {
             State::NoOp(inner) => State::Updater(inner.ok_or(Error::NotInitialized)?.into()),
@@ -172,6 +175,7 @@ impl PSKT {
     }
 
     /// Change role to `SIGNER`
+    #[wasm_bindgen(js_name = toSigner)]
     pub fn signer(&self) -> Result<PSKT> {
         let state = match self.take() {
             State::NoOp(inner) => State::Signer(inner.ok_or(Error::NotInitialized)?.into()),
@@ -185,6 +189,7 @@ impl PSKT {
     }
 
     /// Change role to `COMBINER`
+    #[wasm_bindgen(js_name = toCombiner)]
     pub fn combiner(&self) -> Result<PSKT> {
         let state = match self.take() {
             State::NoOp(inner) => State::Combiner(inner.ok_or(Error::NotInitialized)?.into()),
@@ -198,6 +203,7 @@ impl PSKT {
     }
 
     /// Change role to `FINALIZER`
+    #[wasm_bindgen(js_name = toFinalizer)]
     pub fn finalizer(&self) -> Result<PSKT> {
         let state = match self.take() {
             State::NoOp(inner) => State::Finalizer(inner.ok_or(Error::NotInitialized)?.into()),
@@ -209,6 +215,7 @@ impl PSKT {
     }
 
     /// Change role to `EXTRACTOR`
+    #[wasm_bindgen(js_name = toExtractor)]
     pub fn extractor(&self) -> Result<PSKT> {
         let state = match self.take() {
             State::NoOp(inner) => State::Extractor(inner.ok_or(Error::NotInitialized)?.into()),
