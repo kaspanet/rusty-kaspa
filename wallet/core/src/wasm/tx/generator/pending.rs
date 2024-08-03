@@ -72,10 +72,18 @@ impl PendingTransaction {
         self.inner.utxo_entries().values().map(|utxo_entry| JsValue::from(utxo_entry.clone())).collect()
     }
 
-    #[wasm_bindgen(js_name = signInput)]
-    pub fn sign_input(&self, input_index: u8, private_key: &PrivateKey, sighash_type: Option<SighashType>) -> Result<HexString> {
-        let signature =
-            self.inner.sign_input(input_index.into(), &private_key.secret_bytes(), sighash_type.unwrap_or(SighashType::All).into())?;
+    #[wasm_bindgen(js_name = createInputSignature)]
+    pub fn create_input_signature(
+        &self,
+        input_index: u8,
+        private_key: &PrivateKey,
+        sighash_type: Option<SighashType>,
+    ) -> Result<HexString> {
+        let signature = self.inner.create_input_signature(
+            input_index.into(),
+            &private_key.secret_bytes(),
+            sighash_type.unwrap_or(SighashType::All).into(),
+        )?;
 
         Ok(signature.to_hex().into())
     }
@@ -83,6 +91,13 @@ impl PendingTransaction {
     #[wasm_bindgen(js_name = fillInput)]
     pub fn fill_input(&self, input_index: u8, signature_script: BinaryT) -> Result<()> {
         self.inner.fill_input(input_index.into(), signature_script.try_as_vec_u8()?)
+    }
+
+    #[wasm_bindgen(js_name = signInput)]
+    pub fn sign_input(&self, input_index: u8, private_key: &PrivateKey, sighash_type: Option<SighashType>) -> Result<()> {
+        self.inner.sign_input(input_index.into(), &private_key.secret_bytes(), sighash_type.unwrap_or(SighashType::All).into())?;
+
+        Ok(())
     }
 
     /// Sign transaction with supplied [`Array`] or [`PrivateKey`] or an array of

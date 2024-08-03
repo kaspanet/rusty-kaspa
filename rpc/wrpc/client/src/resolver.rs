@@ -57,11 +57,18 @@ fn try_parse_resolvers(toml: &str) -> Result<Vec<Arc<String>>> {
 #[derive(Debug)]
 struct Inner {
     pub urls: Vec<Arc<String>>,
+    pub tls: bool,
 }
 
 impl Inner {
-    pub fn new(urls: Vec<Arc<String>>) -> Self {
-        Self { urls }
+    pub fn new(urls: Option<Vec<Arc<String>>>, tls: bool) -> Self {
+        if urls.as_ref().is_some_and(|urls| urls.is_empty()) {
+            panic!("Resolver: Empty URL list supplied to the constructor.");
+        }
+
+        let urls = urls.unwrap_or_else(|| try_parse_resolvers(RESOLVER_CONFIG).expect("TOML: Unable to parse RPC Resolver list"));
+
+        Self { urls, tls }
     }
 }
 
@@ -75,22 +82,29 @@ pub struct Resolver {
 
 impl Default for Resolver {
     fn default() -> Self {
-        let urls = try_parse_resolvers(RESOLVER_CONFIG).expect("TOML: Unable to parse RPC Resolver list");
-        Self { inner: Arc::new(Inner::new(urls)) }
+        Self { inner: Arc::new(Inner::new(None, false)) }
     }
 }
 
 impl Resolver {
-    pub fn new(urls: Vec<Arc<String>>) -> Self {
-        if urls.is_empty() {
-            panic!("Resolver: Empty URL list supplied to the constructor.");
-        }
-
-        Self { inner: Arc::new(Inner::new(urls)) }
+    pub fn new(urls: Option<Vec<Arc<String>>>, tls: bool) -> Self {
+        Self { inner: Arc::new(Inner::new(urls, tls)) }
     }
 
     pub fn urls(&self) -> Vec<Arc<String>> {
         self.inner.urls.clone()
+    }
+
+    pub fn tls(&self) -> bool {
+        self.inner.tls
+    }
+
+    pub fn tls_as_str(&self) -> &'static str {
+        if self.inner.tls {
+            "tls"
+        } else {
+            "any"
+        }
     }
 
     fn make_url(&self, url: &str, encoding: Encoding, network_id: NetworkId) -> String {
@@ -107,10 +121,10 @@ impl Resolver {
                 if tls {
                     "tls"
                 } else {
-                    "any"
+                    self.tls_as_str()
                 }
             } else {
-                "tls"
+                self.tls_as_str()
             }
         });
 
