@@ -5,7 +5,7 @@ use feerate_weight::{FeerateWeight, PrefixWeightVisitor};
 use kaspa_consensus_core::block::TemplateTransactionSelector;
 use kaspa_core::trace;
 use rand::{distributions::Uniform, prelude::Distribution, Rng};
-use selectors::{SequenceSelector, SequenceSelectorPriorityMap, TakeAllSelector, WeightTreeSelector};
+use selectors::{SequenceSelector, SequenceSelectorInput, TakeAllSelector, WeightTreeSelector};
 use std::collections::HashSet;
 use sweep_bptree::{BPlusTree, NodeStoreVec};
 
@@ -17,6 +17,10 @@ pub(crate) mod selectors;
 /// inplace sampling to be less efficient (due to collisions) and thus use
 /// the rebalancing selector
 const COLLISION_FACTOR: u64 = 4;
+
+/// Multiplication factor for in-place sampling. We sample 20% more than the
+/// hard limit in order to allow the SequenceSelector to compensate for consensus rejections.
+const MASS_LIMIT_FACTOR: f64 = 1.2;
 
 pub type FrontierTree = BPlusTree<NodeStoreVec<FeerateTransactionKey, (), FeerateWeight>>;
 
@@ -66,7 +70,7 @@ impl Frontier {
         }
     }
 
-    pub fn sample_inplace<R>(&self, rng: &mut R, policy: &Policy) -> SequenceSelectorPriorityMap
+    pub fn sample_inplace<R>(&self, rng: &mut R, policy: &Policy) -> SequenceSelectorInput
     where
         R: Rng + ?Sized,
     {
@@ -76,13 +80,13 @@ impl Frontier {
         // compensate for consensus rejections.
         // Note: this is a soft limit which is why the loop below might pass it if the
         //       next sampled transaction happens to cross the bound
-        let extended_mass_limit = (policy.max_block_mass as f64 * 1.2) as u64;
+        let extended_mass_limit = (policy.max_block_mass as f64 * MASS_LIMIT_FACTOR) as u64;
 
         let mut distr = Uniform::new(0f64, self.total_weight());
         let mut down_iter = self.search_tree.iter().rev();
         let mut top = down_iter.next().unwrap().0;
         let mut cache = HashSet::new();
-        let mut res = SequenceSelectorPriorityMap::default();
+        let mut sequence = SequenceSelectorInput::default();
         let mut total_selected_mass: u64 = 0;
         let mut _collisions = 0;
 
@@ -107,11 +111,11 @@ impl Frontier {
                 }
                 item
             };
-            res.push(item.tx.clone(), item.mass);
-            total_selected_mass += item.mass; // Max standard mass + Mempool capacity imply this will not overflow
+            sequence.push(item.tx.clone(), item.mass);
+            total_selected_mass += item.mass; // Max standard mass + Mempool capacity bound imply this will not overflow
         }
         trace!("[mempool frontier sample inplace] collisions: {_collisions}, cache: {}", cache.len());
-        res
+        sequence
     }
 
     pub fn build_selector(&self, policy: &Policy) -> Box<dyn TemplateTransactionSelector> {

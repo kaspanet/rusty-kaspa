@@ -89,12 +89,15 @@ impl SequenceSelectorTransaction {
 
 type SequenceSelectorPriorityIndex = u32;
 
+/// The input sequence for the [`SequenceSelector`] transaction selector
 #[derive(Default)]
-pub struct SequenceSelectorPriorityMap {
+pub struct SequenceSelectorInput {
+    /// We use the btree map ordered by insertion order in order to follow
+    /// the initial sequence order while allowing for efficient removal of previous selections
     inner: BTreeMap<SequenceSelectorPriorityIndex, SequenceSelectorTransaction>,
 }
 
-impl SequenceSelectorPriorityMap {
+impl SequenceSelectorInput {
     pub fn push(&mut self, tx: Arc<Transaction>, mass: u64) {
         let idx = self.inner.len() as SequenceSelectorPriorityIndex;
         self.inner.insert(idx, SequenceSelectorTransaction::new(tx, mass));
@@ -105,12 +108,20 @@ impl SequenceSelectorPriorityMap {
     }
 }
 
+/// Helper struct for storing data related to previous selections
+struct SequenceSelectorSelection {
+    tx_id: TransactionId,
+    mass: u64,
+    priority_index: SequenceSelectorPriorityIndex,
+}
+
 /// A selector which selects transactions in the order they are provided. The selector assumes
 /// that the transactions were already selected via weighted sampling and simply tries them one
 /// after the other until the block mass limit is reached.  
 pub struct SequenceSelector {
-    priority_map: SequenceSelectorPriorityMap,
-    selected: HashMap<TransactionId, (u64, SequenceSelectorPriorityIndex)>,
+    priority_map: SequenceSelectorInput,
+    selected_vec: Vec<SequenceSelectorSelection>,
+    selected_map: Option<HashMap<TransactionId, u64>>,
     total_selected_mass: u64,
     overall_candidates: usize,
     overall_rejections: usize,
@@ -118,40 +129,53 @@ pub struct SequenceSelector {
 }
 
 impl SequenceSelector {
-    pub fn new(priority_map: SequenceSelectorPriorityMap, policy: Policy) -> Self {
+    pub fn new(priority_map: SequenceSelectorInput, policy: Policy) -> Self {
         Self {
             overall_candidates: priority_map.inner.len(),
+            selected_vec: Vec::with_capacity(priority_map.inner.len()),
             priority_map,
-            selected: Default::default(),
+            selected_map: Default::default(),
             total_selected_mass: Default::default(),
             overall_rejections: Default::default(),
             policy,
         }
     }
+
+    #[inline]
+    fn reset_selection(&mut self) {
+        self.selected_vec.clear();
+        self.selected_map = None;
+    }
 }
 
 impl TemplateTransactionSelector for SequenceSelector {
     fn select_transactions(&mut self) -> Vec<Transaction> {
-        self.selected.clear();
-        let mut transactions = Vec::new();
-        for (&priority, tx) in self.priority_map.inner.iter() {
+        // Remove selections from the previous round if any
+        for selection in self.selected_vec.drain(..) {
+            self.priority_map.inner.remove(&selection.priority_index);
+        }
+        // Reset selection data structures
+        self.reset_selection();
+        let mut transactions = Vec::with_capacity(self.priority_map.inner.len());
+
+        // Iterate the input sequence in order
+        for (&priority_index, tx) in self.priority_map.inner.iter() {
             if self.total_selected_mass.saturating_add(tx.mass) > self.policy.max_block_mass {
                 // We assume the sequence is relatively small, hence we keep on searching
                 // for transactions with lower mass which might fit into the remaining gap
                 continue;
             }
             self.total_selected_mass += tx.mass;
-            self.selected.insert(tx.tx.id(), (tx.mass, priority));
+            self.selected_vec.push(SequenceSelectorSelection { tx_id: tx.tx.id(), mass: tx.mass, priority_index });
             transactions.push(tx.tx.as_ref().clone())
-        }
-        for (_, priority) in self.selected.values() {
-            self.priority_map.inner.remove(priority);
         }
         transactions
     }
 
     fn reject_selection(&mut self, tx_id: TransactionId) {
-        let &(mass, _) = self.selected.get(&tx_id).expect("only previously selected txs can be rejected (and only once)");
+        // Lazy-create the map only when there are actual rejections
+        let selected_map = self.selected_map.get_or_insert_with(|| self.selected_vec.iter().map(|tx| (tx.tx_id, tx.mass)).collect());
+        let mass = selected_map.remove(&tx_id).expect("only previously selected txs can be rejected (and only once)");
         self.total_selected_mass -= mass;
         self.overall_rejections += 1;
     }
