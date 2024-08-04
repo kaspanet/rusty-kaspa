@@ -212,69 +212,59 @@ mod tests {
     fn test_feerate_weight_queries() {
         let mut btree = FrontierTree::new(Default::default());
         let mass = 2000;
-        let fees = [123, 113, 10_000, 1000, 2050, 2048];
-        let mut weights = Vec::with_capacity(fees.len());
+        // The btree stores N=64 keys at each node/leaf, so we make sure the tree has more than
+        // 64^2 keys in order to trigger at least a few intermediate tree nodes
+        let fees = vec![[123, 113, 10_000, 1000, 2050, 2048]; 64 * (64 + 1)].into_iter().flatten().collect_vec();
+        let mut v = Vec::with_capacity(fees.len());
         for (i, fee) in fees.iter().copied().enumerate() {
             let key = build_feerate_key(fee, mass, i as u64);
-            weights.push(key.weight());
+            v.push(key.clone());
             btree.insert(key, ());
         }
-        let fees_weights = fees.into_iter().zip(weights).sorted_by(|(_, w1), (_, w2)| w1.total_cmp(w2)).collect_vec();
-        let eps = 0.000000001;
+        v.sort();
+        let eps: f64 = 0.001;
         let mut sum = 0.0;
-        for (fee, weight) in fees_weights {
-            let samples = [sum, sum + weight / 2.0, sum + weight - eps];
+        for expected in v {
+            let weight = expected.weight();
+            let eps = eps.min(weight / 3.0);
+            let samples = [sum + eps, sum + weight / 2.0, sum + weight - eps];
             for sample in samples {
                 let key = btree.get_by_argument(sample).unwrap().0;
-                assert_eq!(fee, key.fee);
+                assert_eq!(&expected, key);
+                assert!(expected.cmp(key).is_eq()); // Assert Ord equality as well
             }
             sum += weight;
         }
+
+        // Test clamped search bounds
+        assert_eq!(btree.first(), btree.get_by_argument(f64::NEG_INFINITY));
+        assert_eq!(btree.first(), btree.get_by_argument(-1.0));
+        assert_eq!(btree.first(), btree.get_by_argument(-eps));
+        assert_eq!(btree.first(), btree.get_by_argument(0.0));
+        assert_eq!(btree.last(), btree.get_by_argument(sum));
+        assert_eq!(btree.last(), btree.get_by_argument(sum + eps));
+        assert_eq!(btree.last(), btree.get_by_argument(sum + 1.0));
+        assert_eq!(btree.last(), btree.get_by_argument(1.0 / 0.0));
+        assert_eq!(btree.last(), btree.get_by_argument(f64::INFINITY));
+        assert!(btree.get_by_argument(f64::NAN).is_some());
     }
 
     #[test]
     fn test_btree_rev_iter() {
         let mut btree = FrontierTree::new(Default::default());
         let mass = 2000;
-        let fees = [123, 113, 10_000, 1000, 2050, 2048];
-        let mut weights = Vec::with_capacity(fees.len());
+        let fees = vec![[123, 113, 10_000, 1000, 2050, 2048]; 64 * (64 + 1)].into_iter().flatten().collect_vec();
+        let mut v = Vec::with_capacity(fees.len());
         for (i, fee) in fees.iter().copied().enumerate() {
             let key = build_feerate_key(fee, mass, i as u64);
-            weights.push(key.weight());
+            v.push(key.clone());
             btree.insert(key, ());
         }
-        let fees_weights = fees.into_iter().zip(weights).sorted_by(|(_, w1), (_, w2)| w1.total_cmp(w2)).collect_vec();
-        for ((fee, weight), item) in fees_weights.into_iter().rev().zip(btree.iter().rev()) {
-            assert_eq!(fee, item.0.fee);
-            assert_eq!(weight, item.0.weight());
+        v.sort();
+
+        for (expected, item) in v.into_iter().rev().zip(btree.iter().rev()) {
+            assert_eq!(&expected, item.0);
+            assert!(expected.cmp(item.0).is_eq()); // Assert Ord equality as well
         }
-    }
-
-    #[test]
-    fn test_sweep_btree() {
-        use sweep_bptree::argument::count::Count;
-        use sweep_bptree::BPlusTreeMap;
-
-        // use Count as Argument to create a order statistic tree
-        let mut map = BPlusTreeMap::<i32, i32, Count>::new();
-        map.insert(1, 2);
-        map.insert(2, 3);
-        map.insert(3, 4);
-
-        // get by order, time complexity is log(n)
-        assert_eq!(map.get_by_argument(0), Some((&1, &2)));
-        assert_eq!(map.get_by_argument(1), Some((&2, &3)));
-
-        // get the offset for key
-
-        // 0 does not exists
-        assert_eq!(map.rank_by_argument(&0), Err(0));
-
-        assert_eq!(map.rank_by_argument(&1), Ok(0));
-        assert_eq!(map.rank_by_argument(&2), Ok(1));
-        assert_eq!(map.rank_by_argument(&3), Ok(2));
-
-        // 4 does not exists
-        assert_eq!(map.rank_by_argument(&4), Err(3));
     }
 }
