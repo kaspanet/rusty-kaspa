@@ -1,12 +1,14 @@
 use super::FrontierTree;
-use crate::{FeerateTransactionKey, Policy};
-use indexmap::IndexMap;
+use crate::Policy;
 use kaspa_consensus_core::{
     block::TemplateTransactionSelector,
     tx::{Transaction, TransactionId},
 };
 use rand::Rng;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 pub struct WeightTreeSelector {
     search_tree: FrontierTree,
@@ -74,21 +76,41 @@ impl TemplateTransactionSelector for WeightTreeSelector {
     }
 }
 
+pub struct SequenceSelectorTransaction {
+    pub tx: Arc<Transaction>,
+    pub mass: u64,
+}
+
+impl SequenceSelectorTransaction {
+    pub fn new(tx: Arc<Transaction>, mass: u64) -> Self {
+        Self { tx, mass }
+    }
+}
+
+pub type SequenceSelectorPriorityIndex = u32;
+
+pub type SequenceSelectorPriorityMap = BTreeMap<SequenceSelectorPriorityIndex, SequenceSelectorTransaction>;
+
+/// A selector which selects transactions in the order they are provided. The selector assumes
+/// that the transactions were already selected via weighted sampling and simply tries them one
+/// after the other until the block mass limit is reached.  
 pub struct SequenceSelector {
-    map: IndexMap<TransactionId, FeerateTransactionKey>,
-    total_mass: u64,
-    // overall_candidates: usize,
-    // overall_rejections: usize,
+    priority_map: SequenceSelectorPriorityMap,
+    selected: HashMap<TransactionId, (u64, SequenceSelectorPriorityIndex)>,
+    total_selected_mass: u64,
+    overall_candidates: usize,
+    overall_rejections: usize,
     policy: Policy,
 }
 
 impl SequenceSelector {
-    pub fn new(map: IndexMap<TransactionId, FeerateTransactionKey>, policy: Policy) -> Self {
+    pub fn new(priority_map: SequenceSelectorPriorityMap, policy: Policy) -> Self {
         Self {
-            map,
-            total_mass: Default::default(),
-            // overall_candidates: Default::default(),
-            // overall_rejections: Default::default(),
+            overall_candidates: priority_map.len(),
+            priority_map,
+            selected: Default::default(),
+            total_selected_mass: Default::default(),
+            overall_rejections: Default::default(),
             policy,
         }
     }
@@ -96,27 +118,44 @@ impl SequenceSelector {
 
 impl TemplateTransactionSelector for SequenceSelector {
     fn select_transactions(&mut self) -> Vec<Transaction> {
+        self.selected.clear();
         let mut transactions = Vec::new();
-        for (_, key) in self.map.iter() {
-            if self.total_mass.saturating_add(key.mass) > self.policy.max_block_mass {
-                break; // TODO
+        for (&priority, tx) in self.priority_map.iter() {
+            if self.total_selected_mass.saturating_add(tx.mass) > self.policy.max_block_mass {
+                // We assume the sequence is relatively small, hence we keep on searching
+                // for transactions with lower mass which might fit into the remaining gap
+                continue;
             }
-            // self.mass_map.insert(key.tx.id(), key.mass);
-            self.total_mass += key.mass;
-            transactions.push(key.tx.as_ref().clone())
+            self.total_selected_mass += tx.mass;
+            self.selected.insert(tx.tx.id(), (tx.mass, priority));
+            transactions.push(tx.tx.as_ref().clone())
+        }
+        for (_, priority) in self.selected.values() {
+            self.priority_map.remove(priority);
         }
         transactions
     }
 
-    fn reject_selection(&mut self, _tx_id: TransactionId) {
-        todo!()
+    fn reject_selection(&mut self, tx_id: TransactionId) {
+        let &(mass, _) = self.selected.get(&tx_id).expect("only previously selected txs can be rejected (and only once)");
+        self.total_selected_mass -= mass;
+        self.overall_rejections += 1;
     }
 
     fn is_successful(&self) -> bool {
-        todo!()
+        const SUFFICIENT_MASS_THRESHOLD: f64 = 0.8;
+        const LOW_REJECTION_FRACTION: f64 = 0.2;
+
+        // We consider the operation successful if either mass occupation is above 80% or rejection rate is below 20%
+        self.overall_rejections == 0
+            || (self.total_selected_mass as f64) > self.policy.max_block_mass as f64 * SUFFICIENT_MASS_THRESHOLD
+            || (self.overall_rejections as f64) < self.overall_candidates as f64 * LOW_REJECTION_FRACTION
     }
 }
 
+/// A selector that selects all the transactions it holds and is always considered successful.
+/// If all mempool transactions have combined mass which is <= block mass limit, this selector
+/// should be called and provided with all the transactions.
 pub struct TakeAllSelector {
     txs: Vec<Arc<Transaction>>,
 }
@@ -129,12 +168,17 @@ impl TakeAllSelector {
 
 impl TemplateTransactionSelector for TakeAllSelector {
     fn select_transactions(&mut self) -> Vec<Transaction> {
+        // Drain on the first call so that subsequent calls return nothing
         self.txs.drain(..).map(|tx| tx.as_ref().clone()).collect()
     }
 
-    fn reject_selection(&mut self, _tx_id: TransactionId) {}
+    fn reject_selection(&mut self, _tx_id: TransactionId) {
+        // No need to track rejections (for reduced mass), since there's nothing else to select
+    }
 
     fn is_successful(&self) -> bool {
+        // Considered successful because we provided all mempool transactions to this
+        // selector, so there's point in retries
         true
     }
 }

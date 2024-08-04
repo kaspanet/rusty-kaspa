@@ -10,15 +10,14 @@ use crate::{
         },
         tx::Priority,
     },
-    model::{candidate_tx::CandidateTransaction, topological_index::TopologicalIndex},
+    model::topological_index::TopologicalIndex,
     Policy,
 };
 use kaspa_consensus_core::{
-    tx::TransactionId,
-    tx::{MutableTransaction, TransactionOutpoint},
+    block::TemplateTransactionSelector,
+    tx::{MutableTransaction, TransactionId, TransactionOutpoint},
 };
 use kaspa_core::{time::unix_now, trace, warn};
-use rand::thread_rng;
 use std::{
     collections::{hash_map::Keys, hash_set::Iter},
     sync::Arc,
@@ -167,18 +166,9 @@ impl TransactionsPool {
         self.ready_transactions.len()
     }
 
-    /// all_ready_transactions returns a representative sample of fully populated
-    /// mempool transactions having no parents in the mempool.
-    /// These transactions are ready for being inserted in a block template.
-    pub(crate) fn all_ready_transactions(&self) -> Vec<CandidateTransaction> {
-        // The returned transactions are leaving the mempool so they are cloned
-        let mut rng = thread_rng();
-        // TODO: adapt to one-shot sampling
-        self.ready_transactions
-            .sample_inplace(&mut rng, &Policy::new(self.config.maximum_mass_per_block))
-            .into_iter()
-            .map(|(_, k)| CandidateTransaction::from_key(k))
-            .collect()
+    /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier
+    pub(crate) fn build_selector(&self) -> Box<dyn TemplateTransactionSelector> {
+        self.ready_transactions.build_selector(&Policy::new(self.config.maximum_mass_per_block))
     }
 
     /// Is the mempool transaction identified by `transaction_id` unchained, thus having no successor?

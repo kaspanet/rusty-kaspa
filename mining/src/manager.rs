@@ -12,7 +12,6 @@ use crate::{
         Mempool,
     },
     model::{
-        candidate_tx::CandidateTransaction,
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
         topological_sort::IntoIterTopologically,
         tx_insert::TransactionInsertion,
@@ -26,7 +25,7 @@ use kaspa_consensus_core::{
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         ConsensusApi,
     },
-    block::{BlockTemplate, TemplateBuildMode},
+    block::{BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     coinbase::MinerData,
     errors::{block::RuleError as BlockRuleError, tx::TxRuleError},
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
@@ -107,14 +106,14 @@ impl MiningManager {
         loop {
             attempts += 1;
 
-            let transactions = self.block_candidate_transactions();
-            let block_template_builder = BlockTemplateBuilder::new(self.config.maximum_mass_per_block);
+            let selector = self.build_selector();
+            let block_template_builder = BlockTemplateBuilder::new();
             let build_mode = if attempts < self.config.maximum_build_block_template_attempts {
                 TemplateBuildMode::Standard
             } else {
                 TemplateBuildMode::Infallible
             };
-            match block_template_builder.build_block_template(consensus, miner_data, transactions, build_mode) {
+            match block_template_builder.build_block_template(consensus, miner_data, selector, build_mode) {
                 Ok(block_template) => {
                     let block_template = cache_lock.set_immutable_cached_template(block_template);
                     match attempts {
@@ -197,8 +196,9 @@ impl MiningManager {
         }
     }
 
-    pub(crate) fn block_candidate_transactions(&self) -> Vec<CandidateTransaction> {
-        self.mempool.read().block_candidate_transactions()
+    /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier
+    pub(crate) fn build_selector(&self) -> Box<dyn TemplateTransactionSelector> {
+        self.mempool.read().build_selector()
     }
 
     /// Clears the block template cache, forcing the next call to get_block_template to build a new block template.
@@ -209,7 +209,7 @@ impl MiningManager {
 
     #[cfg(test)]
     pub(crate) fn block_template_builder(&self) -> BlockTemplateBuilder {
-        BlockTemplateBuilder::new(self.config.maximum_mass_per_block)
+        BlockTemplateBuilder::new()
     }
 
     /// validate_and_insert_transaction validates the given transaction, and

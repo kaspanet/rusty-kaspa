@@ -2,16 +2,19 @@ use crate::Policy;
 
 use feerate_key::FeerateTransactionKey;
 use feerate_weight::{FeerateWeight, PrefixWeightVisitor};
-use indexmap::IndexMap;
-use kaspa_consensus_core::{block::TemplateTransactionSelector, tx::TransactionId};
+use kaspa_consensus_core::block::TemplateTransactionSelector;
+use kaspa_core::trace;
 use rand::{distributions::Uniform, prelude::Distribution, Rng};
-use selectors::{SequenceSelector, TakeAllSelector, WeightTreeSelector};
+use selectors::{
+    SequenceSelector, SequenceSelectorPriorityIndex, SequenceSelectorPriorityMap, SequenceSelectorTransaction, TakeAllSelector,
+    WeightTreeSelector,
+};
 use std::collections::HashSet;
 use sweep_bptree::{BPlusTree, NodeStoreVec};
 
-pub mod feerate_key;
-pub mod feerate_weight;
-mod selectors;
+pub(crate) mod feerate_key;
+pub(crate) mod feerate_weight;
+pub(crate) mod selectors;
 
 pub type FrontierTree = BPlusTree<NodeStoreVec<FeerateTransactionKey, (), FeerateWeight>>;
 
@@ -61,7 +64,7 @@ impl Frontier {
         }
     }
 
-    pub fn sample_inplace<R>(&self, rng: &mut R, policy: &Policy) -> IndexMap<TransactionId, FeerateTransactionKey>
+    pub fn sample_inplace<R>(&self, rng: &mut R, policy: &Policy) -> SequenceSelectorPriorityMap
     where
         R: Rng + ?Sized,
     {
@@ -70,14 +73,23 @@ impl Frontier {
             return Default::default();
         }
 
+        // Sample 20% more than the hard limit in order to allow the SequenceSelector to
+        // compensate for consensus rejections.
+        // Note: this is a soft limit which is why the loop below might pass it if the
+        //       next sampled transaction happens to cross the bound
+        let extended_mass_limit = (policy.max_block_mass as f64 * 1.2) as u64;
+
         let mut distr = Uniform::new(0f64, self.total_weight());
         let mut down_iter = self.search_tree.iter().rev();
         let mut top = down_iter.next().unwrap().0;
         let mut cache = HashSet::new();
-        let mut res = IndexMap::new();
-        let mut total_mass: u64 = 0;
+        let mut res = SequenceSelectorPriorityMap::new();
+        let mut total_selected_mass: u64 = 0;
+        let mut priority_index: SequenceSelectorPriorityIndex = 0;
         let mut _collisions = 0;
-        while cache.len() < self.search_tree.len() {
+
+        // The sampling process is converging thus the cache will hold all entries eventually, which guarantees loop exit
+        'outer: while cache.len() < self.search_tree.len() && total_selected_mass <= extended_mass_limit {
             let query = distr.sample(rng);
             let item = {
                 let mut item = self.search_tree.get_by_argument(query).expect("clamped").0;
@@ -85,7 +97,10 @@ impl Frontier {
                     _collisions += 1;
                     if top == item {
                         // Narrow the search to reduce further sampling collisions
-                        top = down_iter.next().unwrap().0;
+                        match down_iter.next() {
+                            Some(next) => top = next.0,
+                            None => break 'outer,
+                        }
                         let remaining_weight = self.search_tree.descend_visit(PrefixWeightVisitor::new(top)).unwrap();
                         distr = Uniform::new(0f64, remaining_weight);
                     }
@@ -94,13 +109,11 @@ impl Frontier {
                 }
                 item
             };
-            if total_mass.saturating_add(item.mass) > policy.max_block_mass {
-                break; // TODO
-            }
-            res.insert(item.tx.id(), item.clone());
-            total_mass += item.mass;
+            res.insert(priority_index, SequenceSelectorTransaction::new(item.tx.clone(), item.mass));
+            priority_index += 1;
+            total_selected_mass += item.mass; // Max standard mass + Mempool capacity imply this will not overflow
         }
-        // println!("Collisions: {collisions}, cache: {}", cache.len());
+        trace!("[mempool frontier sample inplace] collisions: {_collisions}, cache: {}", cache.len());
         res
     }
 
