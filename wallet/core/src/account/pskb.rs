@@ -162,7 +162,6 @@ pub async fn pskb_signer_for_address(
     let addresses: Vec<Address> = match sign_for_address {
         Some(signer) => vec![signer.clone()],
         None => bundle
-            .inner_list
             .iter()
             .flat_map(|inner| {
                 inner.inputs
@@ -179,7 +178,7 @@ pub async fn pskb_signer_for_address(
     // Prepare the signer.
     signer.ingest(addresses.as_ref())?;
 
-    for pskt_inner in bundle.inner_list.clone() {
+    for pskt_inner in bundle.iter().cloned() {
         let pskt: PSKT<Signer> = PSKT::from(pskt_inner);
 
         let mut sign = |signer_pskt: PSKT<Signer>| {
@@ -272,7 +271,7 @@ pub fn finalize_pskt_no_sig_and_redeem_script(pskt: PSKT<Finalizer>) -> Result<P
 }
 
 pub fn bundle_to_finalizer_stream(bundle: &Bundle) -> impl Stream<Item = Result<PSKT<Finalizer>, Error>> + Send {
-    stream::iter(bundle.inner_list.clone()).map(move |pskt_inner| {
+    stream::iter(bundle.iter().cloned().collect::<Vec<_>>()).map(move |pskt_inner| {
         let pskt: PSKT<Creator> = PSKT::from(pskt_inner);
         let pskt_finalizer = pskt.constructor().updater().signer().finalizer();
         finalize_pskt_one_or_more_sig_and_redeem_script(pskt_finalizer)

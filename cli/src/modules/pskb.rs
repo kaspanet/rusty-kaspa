@@ -50,7 +50,7 @@ impl Pskb {
                         )
                         .await?;
 
-                    match signer.to_hex() {
+                    match signer.serialize() {
                         Ok(encoded) => tprintln!(ctx, "{encoded}"),
                         Err(e) => return Err(e.into()),
                     }
@@ -102,7 +102,7 @@ impl Pskb {
                             )
                             .await?;
 
-                        match signer.to_hex() {
+                        match signer.serialize() {
                             Ok(encoded) => tprintln!(ctx, "{encoded}"),
                             Err(e) => return Err(e.into()),
                         }
@@ -138,7 +138,7 @@ impl Pskb {
                         // Sweep UTXO set.
                         match unlock_utxos_as_pskb(references, &receive_address, script_sig, priority_fee_sompi as u64) {
                             Ok(pskb) => {
-                                let pskb_hex = pskb.to_hex()?;
+                                let pskb_hex = pskb.serialize()?;
                                 tprintln!(ctx, "{pskb_hex}");
                             }
                             Err(e) => tprintln!(ctx, "Error generating unlock PSKB: {}", e.to_string()),
@@ -199,7 +199,7 @@ impl Pskb {
                 // Debug bundle view.
                 tprintln!(ctx, "{:?}", pskb);
 
-                match pskb.inner_list.first() {
+                match pskb.as_ref().first() {
                     Some(bundle_inner) => {
                         let pskt: PSKT<Signer> = PSKT::<Signer>::from(bundle_inner.to_owned());
                         let mut fin = pskt.finalizer();

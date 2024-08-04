@@ -217,7 +217,6 @@ regex = "1.10.2"
 ripemd = { version = "0.1.3", default-features = false }
 rlimit = "0.10.1"
 rocksdb = "0.21.0"
-rmp-serde = "1.3.0"
 secp256k1 = { version = "0.28.2", features = [
     "global-context",
     "rand-std",

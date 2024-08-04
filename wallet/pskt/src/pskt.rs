@@ -17,6 +17,7 @@ use kaspa_consensus_core::{
 use kaspa_txscript::{caches::Cache, TxScriptEngine};
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Inner {
     /// The global map.
     pub global: Global,
@@ -44,6 +45,7 @@ impl Display for Version {
 /// Full information on the used extended public key: fingerprint of the
 /// master extended public key and a derivation path from it.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct KeySource {
     #[serde(with = "kaspa_utils::serde_bytes_fixed")]
     pub key_fingerprint: KeyFingerprint,
@@ -59,6 +61,7 @@ impl KeySource {
 pub type PartialSigs = BTreeMap<secp256k1::PublicKey, Signature>;
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Copy, Clone)]
+#[serde(rename_all = "camelCase")]
 pub enum Signature {
     ECDSA(secp256k1::ecdsa::Signature),
     Schnorr(secp256k1::schnorr::Signature),
@@ -74,6 +77,7 @@ impl Signature {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PSKT<ROLE> {
     #[serde(flatten)]
     inner_pskt: Inner,
@@ -136,6 +140,18 @@ impl<R> PSKT<R> {
 
     fn determine_lock_time(&self) -> u64 {
         self.inputs.iter().map(|input: &Input| input.min_time).max().unwrap_or(self.global.fallback_lock_time).unwrap_or(0)
+    }
+
+    pub fn to_hex(&self) -> Result<String, Error> {
+        Ok(format!("PSKT{}", hex::encode(serde_json::to_string(self)?)))
+    }
+
+    pub fn from_hex(hex_data: &str) -> Result<Self, Error> {
+        if let Some(hex_data) = hex_data.strip_prefix("PSKT") {
+            Ok(serde_json::from_slice(hex::decode(hex_data)?.as_slice())?)
+        } else {
+            Err(Error::PsktPrefixError)
+        }
     }
 }
 
@@ -278,6 +294,7 @@ impl PSKT<Signer> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SignInputOk {
     pub signature: Signature,
     pub pub_key: secp256k1::PublicKey,

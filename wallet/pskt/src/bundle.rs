@@ -12,116 +12,85 @@ use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Bundle {
-    pub inner_list: Vec<PSKTInner>,
-}
+#[serde(rename_all = "camelCase")]
+pub struct Bundle(pub Vec<PSKTInner>);
 
 impl<ROLE> From<PSKT<ROLE>> for Bundle {
     fn from(pskt: PSKT<ROLE>) -> Self {
-        Bundle { inner_list: vec![pskt.deref().clone()] }
+        Bundle(vec![pskt.deref().clone()])
     }
 }
 
 impl<ROLE> From<Vec<PSKT<ROLE>>> for Bundle {
     fn from(pskts: Vec<PSKT<ROLE>>) -> Self {
         let inner_list = pskts.into_iter().map(|pskt| pskt.deref().clone()).collect();
-        Bundle { inner_list }
+        Bundle(inner_list)
     }
 }
 
 impl Bundle {
     pub fn new() -> Self {
-        Self { inner_list: Vec::new() }
+        Self(Vec::new())
     }
 
     /// Adds an Inner instance to the bundle
     pub fn add_inner(&mut self, inner: PSKTInner) {
-        self.inner_list.push(inner);
+        self.0.push(inner);
     }
 
     /// Adds a PSKT instance to the bundle
     pub fn add_pskt<ROLE>(&mut self, pskt: PSKT<ROLE>) {
-        self.inner_list.push(pskt.deref().clone());
+        self.0.push(pskt.deref().clone());
     }
 
     /// Merges another bundle into the current bundle
     pub fn merge(&mut self, other: Bundle) {
-        for inner in other.inner_list {
-            self.inner_list.push(inner);
+        for inner in other.0 {
+            self.0.push(inner);
         }
     }
 
-    pub fn to_hex(&self) -> Result<String, Error> {
-        match TypeMarked::new(self, Marker::Pskb) {
-            Ok(type_marked) => match serde_json::to_string(&type_marked) {
-                Ok(result) => Ok(hex::encode(result)),
-                Err(e) => Err(Error::PskbSerializeToHexError(e.to_string())),
-            },
-            Err(e) => Err(Error::PskbSerializeToHexError(e.to_string())),
-        }
+    /// Iterator over the inner PSKT instances
+    pub fn iter(&self) -> std::slice::Iter<PSKTInner> {
+        self.0.iter()
     }
 
-    pub fn from_hex(hex_data: &str) -> Result<Self, Error> {
-        let bundle: TypeMarked<Bundle> = serde_json::from_slice(hex::decode(hex_data)?.as_slice())?;
-        Ok(bundle.data)
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, PartialEq)]
-enum Marker {
-    Pskb,
-}
-
-impl Marker {
-    fn as_str(&self) -> &str {
-        match self {
-            Marker::Pskb => "pskb",
-        }
+    pub fn serialize(&self) -> Result<String, Error> {
+        Ok(format!("PSKB{}", hex::encode(serde_json::to_string(self)?)))
     }
 
-    fn from_str(marker: &str) -> Result<Self, Error> {
-        match marker {
-            "pskb" => Ok(Marker::Pskb),
-            _ => Err("Invalid pskb type marker".into()),
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct TypeMarked<T> {
-    type_marker: String,
-    #[serde(flatten)]
-    data: T,
-}
-
-impl<T> TypeMarked<T> {
-    fn new(data: T, marker: Marker) -> Result<Self, Error> {
-        let type_marker = marker.as_str().to_string();
-        if Marker::from_str(&type_marker)? == marker {
-            Ok(Self { type_marker, data })
+    pub fn deserialize(hex_data: &str) -> Result<Self, Error> {
+        if let Some(hex_data) = hex_data.strip_prefix("PSKB") {
+            Ok(serde_json::from_slice(hex::decode(hex_data)?.as_slice())?)
         } else {
-            Err("Invalid pskb type marker".into())
+            Err(Error::PskbPrefixError)
         }
+    }
+}
+
+impl AsRef<[PSKTInner]> for Bundle {
+    fn as_ref(&self) -> &[PSKTInner] {
+        self.0.as_slice()
     }
 }
 
 impl TryFrom<String> for Bundle {
     type Error = Error;
     fn try_from(value: String) -> Result<Self, Error> {
-        Bundle::from_hex(&value)
+        Bundle::deserialize(&value)
     }
 }
 
 impl TryFrom<&str> for Bundle {
     type Error = Error;
     fn try_from(value: &str) -> Result<Self, Error> {
-        Bundle::from_hex(value)
+        Bundle::deserialize(value)
     }
 }
 impl TryFrom<Bundle> for String {
     type Error = Error;
     fn try_from(value: Bundle) -> Result<String, Error> {
-        match Bundle::to_hex(&value) {
+        match Bundle::serialize(&value) {
             Ok(output) => Ok(output.to_owned()),
             Err(e) => Err(Error::PskbSerializeError(e.to_string())),
         }
@@ -232,7 +201,6 @@ mod tests {
     use kaspa_consensus_core::tx::{TransactionId, TransactionOutpoint, UtxoEntry};
     use kaspa_txscript::{multisig_redeem_script, pay_to_script_hash_script};
     // use kaspa_txscript::{multisig_redeem_script, opcodes::codes::OpData65, pay_to_script_hash_script, script_builder::ScriptBuilder};
-    use rmp_serde::{decode, encode};
     use secp256k1::Secp256k1;
     use secp256k1::{rand::thread_rng, Keypair};
     use std::str::FromStr;
@@ -279,26 +247,27 @@ mod tests {
     }
 
     #[test]
-    fn test_serialization() {
+    fn test_pskb_serialization() {
         let constructor = mock_pskt_constructor();
         let bundle = Bundle::from(constructor.clone());
 
-        // Serialize to MessagePack
-        let mut buf = Vec::new();
-        encode::write(&mut buf, &bundle).expect("Serialize PSKB");
-        println!("Serialized: {:?}", buf);
+        println!("Bundle: {}", serde_json::to_string(&bundle).unwrap());
 
-        assert!(!bundle.inner_list.is_empty());
+        // Serialize Bundle
+        let serialized = bundle.serialize().map_err(|err| format!("Unable to serialize bundle: {err}")).unwrap();
+        println!("Serialized: {}", serialized);
+
+        assert!(!bundle.0.is_empty());
 
         // todo: discuss why deserializing from MessagePack errors
-        match decode::from_slice::<Bundle>(&buf) {
+        match Bundle::deserialize(&serialized) {
             Ok(bundle_constructor_deser) => {
                 println!("Deserialized: {:?}", bundle_constructor_deser);
                 let pskt_constructor_deser: Option<PSKT<Constructor>> =
-                    bundle_constructor_deser.inner_list.first().map(|inner| PSKT::from(inner.clone()));
+                    bundle_constructor_deser.0.first().map(|inner| PSKT::from(inner.clone()));
                 match pskt_constructor_deser {
                     Some(_) => println!("PSKT<Constructor> deserialized successfully"),
-                    None => println!("No elements in inner_list to deserialize"),
+                    None => println!("No elements in the inner list to deserialize"),
                 }
             }
             Err(e) => {
@@ -309,28 +278,28 @@ mod tests {
     }
 
     #[test]
-    fn test_bundle_creation() {
+    fn test_pskb_bundle_creation() {
         let bundle = Bundle::new();
-        assert!(bundle.inner_list.is_empty());
+        assert!(bundle.0.is_empty());
     }
 
     #[test]
-    fn test_new_with_pskt() {
+    fn test_pskb_new_with_pskt() {
         let pskt = PSKT::<Creator>::default();
         let bundle = Bundle::from(pskt);
-        assert_eq!(bundle.inner_list.len(), 1);
+        assert_eq!(bundle.0.len(), 1);
     }
 
     #[test]
-    fn test_add_pskt() {
+    fn test_pskb_add_pskt() {
         let mut bundle = Bundle::new();
         let pskt = PSKT::<Creator>::default();
         bundle.add_pskt(pskt);
-        assert_eq!(bundle.inner_list.len(), 1);
+        assert_eq!(bundle.0.len(), 1);
     }
 
     #[test]
-    fn test_merge_bundles() {
+    fn test_pskb_merge_bundles() {
         let mut bundle1 = Bundle::new();
         let mut bundle2 = Bundle::new();
 
@@ -342,6 +311,6 @@ mod tests {
 
         bundle1.merge(bundle2);
 
-        assert_eq!(bundle1.inner_list.len(), 2);
+        assert_eq!(bundle1.0.len(), 2);
     }
 }

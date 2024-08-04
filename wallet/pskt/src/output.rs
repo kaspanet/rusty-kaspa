@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, ops::Add};
 
 #[derive(Builder, Default, Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 #[builder(default)]
 pub struct Output {
     /// The output's amount (serialized as sompi).

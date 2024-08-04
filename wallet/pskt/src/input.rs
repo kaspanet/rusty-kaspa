@@ -10,6 +10,7 @@ use std::{collections::BTreeMap, marker::PhantomData, ops::Add};
 
 // todo add unknown field? combine them by deduplicating, if there are different values - return error?
 #[derive(Builder, Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 #[builder(default)]
 #[builder(setter(skip))]
 pub struct Input {

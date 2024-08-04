@@ -36,6 +36,10 @@ pub enum Error {
     P2SHExtractError(#[source] TxScriptError),
     #[error("PSKB hex serialization error: {0}")]
     PskbSerializeToHexError(String),
+    #[error("PSKB serialization requires 'PSKB' prefix")]
+    PskbPrefixError,
+    #[error("PSKT serialization requires 'PSKT' prefix")]
+    PsktPrefixError,
 }
 #[derive(thiserror::Error, Debug)]
 pub enum ConstructorError {

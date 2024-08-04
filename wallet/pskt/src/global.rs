@@ -11,6 +11,7 @@ use std::{
 type Xpub = kaspa_bip32::ExtendedPublicKey<secp256k1::PublicKey>;
 
 #[derive(Debug, Clone, Builder, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[builder(default)]
 pub struct Global {
     /// The version number of this PSKT.
