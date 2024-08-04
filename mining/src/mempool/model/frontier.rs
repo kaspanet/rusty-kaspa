@@ -215,13 +215,33 @@ mod tests {
         // The btree stores N=64 keys at each node/leaf, so we make sure the tree has more than
         // 64^2 keys in order to trigger at least a few intermediate tree nodes
         let fees = vec![[123, 113, 10_000, 1000, 2050, 2048]; 64 * (64 + 1)].into_iter().flatten().collect_vec();
-        let mut v = Vec::with_capacity(fees.len());
+
+        #[allow(clippy::mutable_key_type)]
+        let mut s = HashSet::with_capacity(fees.len());
         for (i, fee) in fees.iter().copied().enumerate() {
             let key = build_feerate_key(fee, mass, i as u64);
-            v.push(key.clone());
+            s.insert(key.clone());
             btree.insert(key, ());
         }
+
+        // Randomly remove 1/6 of the items
+        let remove = s.iter().take(fees.len() / 6).cloned().collect_vec();
+        for r in remove {
+            s.remove(&r);
+            btree.remove(&r);
+        }
+
+        // Collect to vec and sort for reference
+        let mut v = s.into_iter().collect_vec();
         v.sort();
+
+        // Test reverse iteration
+        for (expected, item) in v.iter().rev().zip(btree.iter().rev()) {
+            assert_eq!(&expected, &item.0);
+            assert!(expected.cmp(item.0).is_eq()); // Assert Ord equality as well
+        }
+
+        // Sweep through the tree and verify that weight search queries are handled correctly
         let eps: f64 = 0.001;
         let mut sum = 0.0;
         for expected in v {
