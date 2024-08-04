@@ -197,10 +197,8 @@ mod tests {
     use crate::prelude::*;
     use crate::role::Creator;
     use crate::role::*;
-    // hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
     use kaspa_consensus_core::tx::{TransactionId, TransactionOutpoint, UtxoEntry};
     use kaspa_txscript::{multisig_redeem_script, pay_to_script_hash_script};
-    // use kaspa_txscript::{multisig_redeem_script, opcodes::codes::OpData65, pay_to_script_hash_script, script_builder::ScriptBuilder};
     use secp256k1::Secp256k1;
     use secp256k1::{rand::thread_rng, Keypair};
     use std::str::FromStr;
@@ -259,7 +257,6 @@ mod tests {
 
         assert!(!bundle.0.is_empty());
 
-        // todo: discuss why deserializing from MessagePack errors
         match Bundle::deserialize(&serialized) {
             Ok(bundle_constructor_deser) => {
                 println!("Deserialized: {:?}", bundle_constructor_deser);

@@ -107,7 +107,7 @@ impl Stream for PSKTStream {
     type Item = Result<PSKT<Signer>, Error>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let this = self.as_ref(); // Access the mutable reference to self
+        let this = self.as_ref();
 
         let _prefix = this.prefix;
         let _signer = this.signer.clone();
@@ -192,8 +192,8 @@ pub async fn pskb_signer_for_address(
                             let hash = calc_schnorr_signature_hash(&tx.as_verifiable(), idx, sighash[idx], &mut reused_values);
                             let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice()).unwrap();
 
-                            // When address represents a lock utxo, no private key is available.
-                            // Instead, use the account receive address private key.
+                            // When address represents a locked UTXO, no private key is available.
+                            // Instead, use the account receive address' private key.
                             let address: &Address = match sign_for_address {
                                 Some(address) => address,
                                 None => addresses.get(idx).expect("Input indexed address"),
