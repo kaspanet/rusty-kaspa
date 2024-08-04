@@ -5,10 +5,7 @@ use kaspa_consensus_core::{
     tx::{Transaction, TransactionInput, TransactionOutpoint},
 };
 use kaspa_hashes::{HasherBase, TransactionID};
-use kaspa_mining::{
-    model::{candidate_tx::CandidateTransaction, topological_index::TopologicalIndex},
-    FeerateTransactionKey, Frontier, Policy, TransactionsSelector,
-};
+use kaspa_mining::{model::topological_index::TopologicalIndex, FeerateTransactionKey, Frontier};
 use rand::{thread_rng, Rng};
 use std::{
     collections::{hash_set::Iter, HashMap, HashSet},
@@ -88,14 +85,9 @@ fn generate_unique_tx(i: u64) -> Arc<Transaction> {
     Arc::new(Transaction::new(0, vec![input], vec![], 0, SUBNETWORK_ID_NATIVE, 0, vec![]))
 }
 
-#[allow(dead_code)]
-fn stage_two_sampling(container: impl IntoIterator<Item = FeerateTransactionKey>) -> Vec<Transaction> {
-    let set = container.into_iter().map(CandidateTransaction::from_key).collect_vec();
-    let mut selector = TransactionsSelector::new(Policy::new(500_000), set);
-    selector.select_transactions()
+fn build_feerate_key(fee: u64, mass: u64, id: u64) -> FeerateTransactionKey {
+    FeerateTransactionKey::new(fee, mass, generate_unique_tx(id))
 }
-
-// TODO: bench frontier insertions and removals
 
 pub fn bench_two_stage_sampling(c: &mut Criterion) {
     let mut rng = thread_rng();
@@ -105,16 +97,16 @@ pub fn bench_two_stage_sampling(c: &mut Criterion) {
     for i in 0..cap as u64 {
         let fee: u64 = if i % (cap as u64 / 100000) == 0 { 1000000 } else { rng.gen_range(1..10000) };
         let mass: u64 = 1650;
-        let tx = generate_unique_tx(i);
-        map.insert(tx.id(), FeerateTransactionKey::new(fee.max(mass), mass, tx));
+        let key = build_feerate_key(fee, mass, i);
+        map.insert(key.tx.id(), key);
     }
 
-    let len = cap; // / 10;
+    let len = cap;
     let mut frontier = Frontier::default();
     for item in map.values().take(len).cloned() {
         frontier.insert(item).then_some(()).unwrap();
     }
-    group.bench_function("mempool sample 2 blocks", |b| {
+    group.bench_function("mempool one-shot sample", |b| {
         b.iter(|| {
             black_box({
                 let stage_one = frontier.sample(&mut rng, 400).collect_vec();
@@ -122,14 +114,59 @@ pub fn bench_two_stage_sampling(c: &mut Criterion) {
             })
         })
     });
-    // group.bench_function("mempool sample 10k", |b| {
-    //     b.iter(|| {
-    //         black_box({
-    //             let stage_one = frontier.sample(&mut rng, 10_000);
-    //             stage_one.into_iter().map(|k| k.mass).sum::<u64>()
-    //         })
-    //     })
-    // });
+
+    // Benchmark frontier insertions and removals (see comparisons below)
+    let remove = map.values().take(map.len() / 10).cloned().collect_vec();
+    group.bench_function("frontier remove/add", |b| {
+        b.iter(|| {
+            black_box({
+                for r in remove.iter() {
+                    frontier.remove(r).then_some(()).unwrap();
+                }
+                for r in remove.iter().cloned() {
+                    frontier.insert(r).then_some(()).unwrap();
+                }
+                0
+            })
+        })
+    });
+
+    // Benchmark hashmap insertions and removals for comparison
+    let remove = map.iter().take(map.len() / 10).map(|(&k, v)| (k, v.clone())).collect_vec();
+    group.bench_function("map remove/add", |b| {
+        b.iter(|| {
+            black_box({
+                for r in remove.iter() {
+                    map.remove(&r.0).unwrap();
+                }
+                for r in remove.iter().cloned() {
+                    map.insert(r.0, r.1.clone());
+                }
+                0
+            })
+        })
+    });
+
+    // Benchmark std btree set insertions and removals for comparison
+    // Results show that frontier (sweep bptree) and std btree set are roughly the same.
+    // The slightly higher cost for sweep bptree should be attributed to subtree weight
+    // maintenance (see FeerateWeight)
+    #[allow(clippy::mutable_key_type)]
+    let mut std_btree = std::collections::BTreeSet::from_iter(map.values().cloned());
+    let remove = map.iter().take(map.len() / 10).map(|(&k, v)| (k, v.clone())).collect_vec();
+    group.bench_function("std btree remove/add", |b| {
+        b.iter(|| {
+            black_box({
+                for (_, key) in remove.iter() {
+                    std_btree.remove(key).then_some(()).unwrap();
+                }
+                for (_, key) in remove.iter() {
+                    std_btree.insert(key.clone());
+                }
+                0
+            })
+        })
+    });
     group.finish();
 }
 
