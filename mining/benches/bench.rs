@@ -188,10 +188,10 @@ pub fn bench_mempool_sampling_small(c: &mut Criterion) {
             frontier.insert(item).then_some(()).unwrap();
         }
 
-        group.bench_function(format!("legacy selector ({})", len), |b| {
+        group.bench_function(format!("rebalancing selector ({})", len), |b| {
             b.iter(|| {
                 black_box({
-                    let mut selector = frontier.build_selector_legacy();
+                    let mut selector = frontier.build_rebalancing_selector();
                     selector.select_transactions().iter().map(|k| k.gas).sum::<u64>()
                 })
             })

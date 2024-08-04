@@ -1,4 +1,4 @@
-use crate::Policy;
+use crate::{model::candidate_tx::CandidateTransaction, Policy, RebalancingWeightedTransactionSelector};
 
 use feerate_key::FeerateTransactionKey;
 use feerate_weight::{FeerateWeight, PrefixWeightVisitor};
@@ -15,6 +15,11 @@ use sweep_bptree::{BPlusTree, NodeStoreVec};
 pub(crate) mod feerate_key;
 pub(crate) mod feerate_weight;
 pub(crate) mod selectors;
+
+/// If the frontier contains less than 4x the block mass limit, we consider
+/// inplace sampling to be less efficient (due to collisions) and thus use
+/// the rebalancing selector
+const COLLISION_FACTOR: u64 = 4;
 
 pub type FrontierTree = BPlusTree<NodeStoreVec<FeerateTransactionKey, (), FeerateWeight>>;
 
@@ -68,10 +73,7 @@ impl Frontier {
     where
         R: Rng + ?Sized,
     {
-        // TEMP
-        if self.search_tree.is_empty() {
-            return Default::default();
-        }
+        debug_assert!(!self.search_tree.is_empty(), "expected to be called only if not empty");
 
         // Sample 20% more than the hard limit in order to allow the SequenceSelector to
         // compensate for consensus rejections.
@@ -119,21 +121,14 @@ impl Frontier {
 
     pub fn build_selector(&self, policy: &Policy) -> Box<dyn TemplateTransactionSelector> {
         if self.total_mass <= policy.max_block_mass {
-            // println!("take all");
-            self.build_selector_take_all()
-        } else if self.total_mass > policy.max_block_mass * 4 {
-            // println!("sample inplace");
+            Box::new(TakeAllSelector::new(self.search_tree.iter().map(|(k, _)| k.tx.clone()).collect()))
+        } else if self.total_mass > policy.max_block_mass * COLLISION_FACTOR {
             let mut rng = rand::thread_rng();
             Box::new(SequenceSelector::new(self.sample_inplace(&mut rng, policy), policy.clone()))
         } else {
-            // println!("legacy");
-            Box::new(crate::TransactionsSelector::new(
+            Box::new(RebalancingWeightedTransactionSelector::new(
                 policy.clone(),
-                self.search_tree
-                    .iter()
-                    .map(|(k, _)| k.clone())
-                    .map(crate::model::candidate_tx::CandidateTransaction::from_key)
-                    .collect(),
+                self.search_tree.iter().map(|(k, _)| k.clone()).map(CandidateTransaction::from_key).collect(),
             ))
         }
     }
@@ -156,10 +151,10 @@ impl Frontier {
         Box::new(TakeAllSelector::new(self.search_tree.iter().map(|(k, _)| k.tx.clone()).collect()))
     }
 
-    pub fn build_selector_legacy(&self) -> Box<dyn TemplateTransactionSelector> {
-        Box::new(crate::TransactionsSelector::new(
+    pub fn build_rebalancing_selector(&self) -> Box<dyn TemplateTransactionSelector> {
+        Box::new(RebalancingWeightedTransactionSelector::new(
             Policy::new(500_000),
-            self.search_tree.iter().map(|(k, _)| k.clone()).map(crate::model::candidate_tx::CandidateTransaction::from_key).collect(),
+            self.search_tree.iter().map(|(k, _)| k.clone()).map(CandidateTransaction::from_key).collect(),
         ))
     }
 
@@ -324,7 +319,7 @@ mod tests {
         let mut selector = frontier.build_selector(&Policy::new(500_000));
         selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
 
-        let mut selector = frontier.build_selector_legacy();
+        let mut selector = frontier.build_rebalancing_selector();
         selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
 
         let mut selector = frontier.build_selector_mutable_tree();

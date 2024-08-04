@@ -28,7 +28,7 @@ pub(crate) const ALPHA: i32 = 3;
 /// if REBALANCE_THRESHOLD is 0.95, there's a 1-in-20 chance of collision.
 const REBALANCE_THRESHOLD: f64 = 0.95;
 
-pub struct TransactionsSelector {
+pub struct RebalancingWeightedTransactionSelector {
     policy: Policy,
     /// Transaction store
     transactions: Vec<CandidateTransaction>,
@@ -52,7 +52,7 @@ pub struct TransactionsSelector {
     gas_usage_map: HashMap<SubnetworkId, u64>,
 }
 
-impl TransactionsSelector {
+impl RebalancingWeightedTransactionSelector {
     pub fn new(policy: Policy, mut transactions: Vec<CandidateTransaction>) -> Self {
         let _sw = Stopwatch::<100>::with_threshold("TransactionsSelector::new op");
         // Sort the transactions by subnetwork_id.
@@ -225,7 +225,7 @@ impl TransactionsSelector {
     }
 }
 
-impl TemplateTransactionSelector for TransactionsSelector {
+impl TemplateTransactionSelector for RebalancingWeightedTransactionSelector {
     fn select_transactions(&mut self) -> Vec<Transaction> {
         self.select_transactions()
     }
@@ -278,7 +278,7 @@ mod tests {
         // Create a vector of transactions differing by output value so they have unique ids
         let transactions = (0..TX_INITIAL_COUNT).map(|i| create_transaction(SOMPI_PER_KASPA * (i + 1) as u64)).collect_vec();
         let policy = Policy::new(100_000);
-        let mut selector = TransactionsSelector::new(policy, transactions);
+        let mut selector = RebalancingWeightedTransactionSelector::new(policy, transactions);
         let (mut kept, mut rejected) = (HashSet::new(), HashSet::new());
         let mut reject_count = 32;
         for i in 0..10 {
