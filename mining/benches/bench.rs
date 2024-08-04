@@ -110,7 +110,7 @@ pub fn bench_mempool_sampling(c: &mut Criterion) {
         b.iter(|| {
             black_box({
                 let selected = frontier.sample_inplace(&mut rng, &Policy::new(500_000));
-                selected.into_values().map(|k| k.mass).sum::<u64>()
+                selected.iter().map(|k| k.mass).sum::<u64>()
             })
         })
     });

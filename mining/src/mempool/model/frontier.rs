@@ -5,10 +5,7 @@ use feerate_weight::{FeerateWeight, PrefixWeightVisitor};
 use kaspa_consensus_core::block::TemplateTransactionSelector;
 use kaspa_core::trace;
 use rand::{distributions::Uniform, prelude::Distribution, Rng};
-use selectors::{
-    SequenceSelector, SequenceSelectorPriorityIndex, SequenceSelectorPriorityMap, SequenceSelectorTransaction, TakeAllSelector,
-    WeightTreeSelector,
-};
+use selectors::{SequenceSelector, SequenceSelectorPriorityMap, TakeAllSelector, WeightTreeSelector};
 use std::collections::HashSet;
 use sweep_bptree::{BPlusTree, NodeStoreVec};
 
@@ -85,9 +82,8 @@ impl Frontier {
         let mut down_iter = self.search_tree.iter().rev();
         let mut top = down_iter.next().unwrap().0;
         let mut cache = HashSet::new();
-        let mut res = SequenceSelectorPriorityMap::new();
+        let mut res = SequenceSelectorPriorityMap::default();
         let mut total_selected_mass: u64 = 0;
-        let mut priority_index: SequenceSelectorPriorityIndex = 0;
         let mut _collisions = 0;
 
         // The sampling process is converging thus the cache will hold all entries eventually, which guarantees loop exit
@@ -111,8 +107,7 @@ impl Frontier {
                 }
                 item
             };
-            res.insert(priority_index, SequenceSelectorTransaction::new(item.tx.clone(), item.mass));
-            priority_index += 1;
+            res.push(item.tx.clone(), item.mass);
             total_selected_mass += item.mass; // Max standard mass + Mempool capacity imply this will not overflow
         }
         trace!("[mempool frontier sample inplace] collisions: {_collisions}, cache: {}", cache.len());

@@ -87,9 +87,23 @@ impl SequenceSelectorTransaction {
     }
 }
 
-pub type SequenceSelectorPriorityIndex = u32;
+type SequenceSelectorPriorityIndex = u32;
 
-pub type SequenceSelectorPriorityMap = BTreeMap<SequenceSelectorPriorityIndex, SequenceSelectorTransaction>;
+#[derive(Default)]
+pub struct SequenceSelectorPriorityMap {
+    inner: BTreeMap<SequenceSelectorPriorityIndex, SequenceSelectorTransaction>,
+}
+
+impl SequenceSelectorPriorityMap {
+    pub fn push(&mut self, tx: Arc<Transaction>, mass: u64) {
+        let idx = self.inner.len() as SequenceSelectorPriorityIndex;
+        self.inner.insert(idx, SequenceSelectorTransaction::new(tx, mass));
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &SequenceSelectorTransaction> {
+        self.inner.values()
+    }
+}
 
 /// A selector which selects transactions in the order they are provided. The selector assumes
 /// that the transactions were already selected via weighted sampling and simply tries them one
@@ -106,7 +120,7 @@ pub struct SequenceSelector {
 impl SequenceSelector {
     pub fn new(priority_map: SequenceSelectorPriorityMap, policy: Policy) -> Self {
         Self {
-            overall_candidates: priority_map.len(),
+            overall_candidates: priority_map.inner.len(),
             priority_map,
             selected: Default::default(),
             total_selected_mass: Default::default(),
@@ -120,7 +134,7 @@ impl TemplateTransactionSelector for SequenceSelector {
     fn select_transactions(&mut self) -> Vec<Transaction> {
         self.selected.clear();
         let mut transactions = Vec::new();
-        for (&priority, tx) in self.priority_map.iter() {
+        for (&priority, tx) in self.priority_map.inner.iter() {
             if self.total_selected_mass.saturating_add(tx.mass) > self.policy.max_block_mass {
                 // We assume the sequence is relatively small, hence we keep on searching
                 // for transactions with lower mass which might fit into the remaining gap
@@ -131,7 +145,7 @@ impl TemplateTransactionSelector for SequenceSelector {
             transactions.push(tx.tx.as_ref().clone())
         }
         for (_, priority) in self.selected.values() {
-            self.priority_map.remove(priority);
+            self.priority_map.inner.remove(priority);
         }
         transactions
     }
