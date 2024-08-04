@@ -2504,6 +2504,7 @@ dependencies = [
  "downcast",
  "faster-hex 0.6.1",
  "futures",
+ "hex",
  "js-sys",
  "kaspa-addresses",
  "kaspa-bip32",
@@ -2515,6 +2516,7 @@ dependencies = [
  "kaspa-utils",
  "kaspa-wallet-core",
  "kaspa-wallet-keys",
+ "kaspa-wallet-pskt",
  "kaspa-wrpc-client",
  "nw-sys",
  "pad",
@@ -3490,6 +3492,7 @@ dependencies = [
  "kaspa-utils",
  "kaspa-wallet-keys",
  "kaspa-wallet-macros",
+ "kaspa-wallet-pskt",
  "kaspa-wasm-core",
  "kaspa-wrpc-client",
  "kaspa-wrpc-wasm",
@@ -3574,7 +3577,12 @@ dependencies = [
 name = "kaspa-wallet-pskt"
 version = "0.14.1"
 dependencies = [
+ "bincode",
  "derive_builder",
+ "futures",
+ "hex",
+ "js-sys",
+ "kaspa-addresses",
  "kaspa-bip32",
  "kaspa-consensus-client",
  "kaspa-consensus-core",
@@ -3584,9 +3592,12 @@ dependencies = [
  "secp256k1",
  "serde",
  "serde-value",
+ "serde-wasm-bindgen",
  "serde_json",
  "serde_repr",
  "thiserror",
+ "wasm-bindgen",
+ "workflow-wasm",
 ]
 
 [[package]]
