@@ -197,15 +197,6 @@ pub fn bench_mempool_sampling_small(c: &mut Criterion) {
             })
         });
 
-        group.bench_function(format!("mutable tree selector ({})", len), |b| {
-            b.iter(|| {
-                black_box({
-                    let mut selector = frontier.build_selector_mutable_tree();
-                    selector.select_transactions().iter().map(|k| k.gas).sum::<u64>()
-                })
-            })
-        });
-
         group.bench_function(format!("sample inplace selector ({})", len), |b| {
             b.iter(|| {
                 black_box({

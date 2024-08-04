@@ -5,7 +5,7 @@ use feerate_weight::{FeerateWeight, PrefixWeightVisitor};
 use kaspa_consensus_core::block::TemplateTransactionSelector;
 use kaspa_core::trace;
 use rand::{distributions::Uniform, prelude::Distribution, Rng};
-use selectors::{SequenceSelector, SequenceSelectorInput, TakeAllSelector, WeightTreeSelector};
+use selectors::{SequenceSelector, SequenceSelectorInput, TakeAllSelector};
 use std::collections::HashSet;
 use sweep_bptree::{BPlusTree, NodeStoreVec};
 
@@ -130,14 +130,6 @@ impl Frontier {
                 self.search_tree.iter().map(|(k, _)| k.clone()).map(CandidateTransaction::from_key).collect(),
             ))
         }
-    }
-
-    pub fn build_selector_mutable_tree(&self) -> Box<dyn TemplateTransactionSelector> {
-        let mut tree = FrontierTree::new(Default::default());
-        for (key, ()) in self.search_tree.iter() {
-            tree.insert(key.clone(), ());
-        }
-        Box::new(WeightTreeSelector::new(tree, Policy::new(500_000)))
     }
 
     pub fn build_selector_sample_inplace(&self) -> Box<dyn TemplateTransactionSelector> {
@@ -321,13 +313,13 @@ mod tests {
         let mut selector = frontier.build_rebalancing_selector();
         selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
 
-        let mut selector = frontier.build_selector_mutable_tree();
-        selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
-
         let mut selector = frontier.build_selector_sample_inplace();
         selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
 
         let mut selector = frontier.build_selector_take_all();
+        selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
+
+        let mut selector = frontier.build_selector(&Policy::new(500_000));
         selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
     }
 }
