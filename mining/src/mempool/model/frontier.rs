@@ -1,11 +1,12 @@
 use super::feerate_key::FeerateTransactionKey;
-use arg::FeerateWeight;
+use arg::{FeerateWeight, PrefixWeightVisitor};
 use itertools::Either;
 use rand::{distributions::Uniform, prelude::Distribution, Rng};
 use std::collections::HashSet;
 use sweep_bptree::{BPlusTree, NodeStoreVec};
 
 pub mod arg {
+    use sweep_bptree::tree::visit::{DescendVisit, DescendVisitResult};
     use sweep_bptree::tree::{Argument, SearchArgument};
 
     type FeerateKey = super::FeerateTransactionKey;
@@ -69,6 +70,53 @@ pub mod arg {
             }
         }
     }
+
+    pub struct PrefixWeightVisitor<'a> {
+        key: &'a FeerateKey,
+        accumulated_weight: f64,
+    }
+
+    impl<'a> PrefixWeightVisitor<'a> {
+        pub fn new(key: &'a FeerateKey) -> Self {
+            Self { key, accumulated_weight: Default::default() }
+        }
+
+        fn search_in_keys(&self, keys: &[FeerateKey]) -> usize {
+            match keys.binary_search(self.key) {
+                Err(idx) => {
+                    // The idx is the place where a matching element could be inserted while maintaining
+                    // sorted order, go to left child
+                    idx
+                }
+                Ok(idx) => {
+                    // Exact match, go to right child.
+                    idx + 1
+                }
+            }
+        }
+    }
+
+    impl<'a> DescendVisit<FeerateKey, (), FeerateWeight> for PrefixWeightVisitor<'a> {
+        type Result = f64;
+
+        fn visit_inner(&mut self, keys: &[FeerateKey], arguments: &[FeerateWeight]) -> DescendVisitResult<Self::Result> {
+            let idx = self.search_in_keys(keys);
+            // trace!("[visit_inner] {}, {}, {}", keys.len(), arguments.len(), idx);
+            for argument in arguments.iter().take(idx) {
+                self.accumulated_weight += argument.weight();
+            }
+            DescendVisitResult::GoDown(idx)
+        }
+
+        fn visit_leaf(&mut self, keys: &[FeerateKey], _values: &[()]) -> Option<Self::Result> {
+            let idx = self.search_in_keys(keys);
+            // trace!("[visit_leaf] {}, {}", keys.len(), idx);
+            for key in keys.iter().take(idx) {
+                self.accumulated_weight += key.weight();
+            }
+            Some(self.accumulated_weight)
+        }
+    }
 }
 
 pub type FrontierTree = BPlusTree<NodeStoreVec<FeerateTransactionKey, (), FeerateWeight>>;
@@ -80,24 +128,24 @@ pub struct Frontier {
     /// Frontier transactions sorted by feerate order and searchable for weight sampling
     search_tree: FrontierTree,
 
-    /// Total sampling weight: Σ_{tx in frontier}(tx.fee/tx.mass)^alpha
-    total_weight: f64,
-
     /// Total masses: Σ_{tx in frontier} tx.mass
     total_mass: u64,
 }
 
 impl Default for Frontier {
     fn default() -> Self {
-        Self { search_tree: FrontierTree::new(Default::default()), total_weight: Default::default(), total_mass: Default::default() }
+        Self { search_tree: FrontierTree::new(Default::default()), total_mass: Default::default() }
     }
 }
 
 impl Frontier {
+    pub fn total_weight(&self) -> f64 {
+        self.search_tree.root_argument().weight()
+    }
+
     pub fn insert(&mut self, key: FeerateTransactionKey) -> bool {
-        let (weight, mass) = (key.weight(), key.mass);
+        let mass = key.mass;
         if self.search_tree.insert(key, ()).is_none() {
-            self.total_weight += weight;
             self.total_mass += mass;
             true
         } else {
@@ -106,9 +154,8 @@ impl Frontier {
     }
 
     pub fn remove(&mut self, key: &FeerateTransactionKey) -> bool {
-        let (weight, mass) = (key.weight(), key.mass);
+        let mass = key.mass;
         if self.search_tree.remove(key).is_some() {
-            self.total_weight -= weight;
             self.total_mass -= mass;
             true
         } else {
@@ -124,8 +171,7 @@ impl Frontier {
         if length <= amount {
             return Either::Left(self.search_tree.iter().map(|(k, _)| k.clone()));
         }
-        let mut total_weight = self.total_weight;
-        let mut distr = Uniform::new(0f64, total_weight);
+        let mut distr = Uniform::new(0f64, self.total_weight());
         let mut down_iter = self.search_tree.iter().rev();
         let mut top = down_iter.next().expect("amount < length").0;
         let mut cache = HashSet::new();
@@ -135,9 +181,9 @@ impl Frontier {
             while !cache.insert(item.tx.id()) {
                 if top == item {
                     // Narrow the search to reduce further sampling collisions
-                    total_weight -= top.weight();
-                    distr = Uniform::new(0f64, total_weight);
                     top = down_iter.next().expect("amount < length").0;
+                    let remaining_weight = self.search_tree.descend_visit(PrefixWeightVisitor::new(top)).unwrap();
+                    distr = Uniform::new(0f64, remaining_weight);
                 }
                 let query = distr.sample(rng);
                 item = self.search_tree.get_by_argument(query).expect("clamped").0;
