@@ -1,6 +1,4 @@
-use crate::block_template::selector::ALPHA;
-
-use super::tx::MempoolTransaction;
+use crate::{block_template::selector::ALPHA, mempool::model::tx::MempoolTransaction};
 use kaspa_consensus_core::tx::Transaction;
 use std::sync::Arc;
 

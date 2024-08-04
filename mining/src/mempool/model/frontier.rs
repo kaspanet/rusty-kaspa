@@ -1,123 +1,17 @@
-use super::feerate_key::FeerateTransactionKey;
-use arg::{FeerateWeight, PrefixWeightVisitor};
-use itertools::Either;
+use crate::Policy;
+
+use feerate_key::FeerateTransactionKey;
+use feerate_weight::{FeerateWeight, PrefixWeightVisitor};
+use indexmap::IndexMap;
+use kaspa_consensus_core::{block::TemplateTransactionSelector, tx::TransactionId};
 use rand::{distributions::Uniform, prelude::Distribution, Rng};
+use selectors::{SequenceSelector, TakeAllSelector, WeightTreeSelector};
 use std::collections::HashSet;
 use sweep_bptree::{BPlusTree, NodeStoreVec};
 
-pub mod arg {
-    use sweep_bptree::tree::visit::{DescendVisit, DescendVisitResult};
-    use sweep_bptree::tree::{Argument, SearchArgument};
-
-    type FeerateKey = super::FeerateTransactionKey;
-
-    #[derive(Clone, Copy, Debug, Default)]
-    pub struct FeerateWeight(f64);
-
-    impl FeerateWeight {
-        /// Returns the weight value
-        pub fn weight(&self) -> f64 {
-            self.0
-        }
-    }
-
-    impl Argument<FeerateKey> for FeerateWeight {
-        fn from_leaf(keys: &[FeerateKey]) -> Self {
-            Self(keys.iter().map(|k| k.weight()).sum())
-        }
-
-        fn from_inner(_keys: &[FeerateKey], arguments: &[Self]) -> Self {
-            Self(arguments.iter().map(|a| a.0).sum())
-        }
-    }
-
-    impl SearchArgument<FeerateKey> for FeerateWeight {
-        type Query = f64;
-
-        fn locate_in_leaf(query: Self::Query, keys: &[FeerateKey]) -> Option<usize> {
-            let mut sum = 0.0;
-            for (i, k) in keys.iter().enumerate() {
-                let w = k.weight();
-                sum += w;
-                if query < sum {
-                    return Some(i);
-                }
-            }
-            // In order to avoid sensitivity to floating number arithmetics,
-            // we logically "clamp" the search, returning the last leaf if the query
-            // value is out of bounds
-            match keys.len() {
-                0 => None,
-                n => Some(n - 1),
-            }
-        }
-
-        fn locate_in_inner(mut query: Self::Query, _keys: &[FeerateKey], arguments: &[Self]) -> Option<(usize, Self::Query)> {
-            for (i, a) in arguments.iter().enumerate() {
-                if query >= a.0 {
-                    query -= a.0;
-                } else {
-                    return Some((i, query));
-                }
-            }
-            // In order to avoid sensitivity to floating number arithmetics,
-            // we logically "clamp" the search, returning the last subtree if the query
-            // value is out of bounds. Eventually this will lead to the return of the
-            // last leaf (see locate_in_leaf as well)
-            match arguments.len() {
-                0 => None,
-                n => Some((n - 1, arguments[n - 1].0)),
-            }
-        }
-    }
-
-    pub struct PrefixWeightVisitor<'a> {
-        key: &'a FeerateKey,
-        accumulated_weight: f64,
-    }
-
-    impl<'a> PrefixWeightVisitor<'a> {
-        pub fn new(key: &'a FeerateKey) -> Self {
-            Self { key, accumulated_weight: Default::default() }
-        }
-
-        fn search_in_keys(&self, keys: &[FeerateKey]) -> usize {
-            match keys.binary_search(self.key) {
-                Err(idx) => {
-                    // The idx is the place where a matching element could be inserted while maintaining
-                    // sorted order, go to left child
-                    idx
-                }
-                Ok(idx) => {
-                    // Exact match, go to right child.
-                    idx + 1
-                }
-            }
-        }
-    }
-
-    impl<'a> DescendVisit<FeerateKey, (), FeerateWeight> for PrefixWeightVisitor<'a> {
-        type Result = f64;
-
-        fn visit_inner(&mut self, keys: &[FeerateKey], arguments: &[FeerateWeight]) -> DescendVisitResult<Self::Result> {
-            let idx = self.search_in_keys(keys);
-            // trace!("[visit_inner] {}, {}, {}", keys.len(), arguments.len(), idx);
-            for argument in arguments.iter().take(idx) {
-                self.accumulated_weight += argument.weight();
-            }
-            DescendVisitResult::GoDown(idx)
-        }
-
-        fn visit_leaf(&mut self, keys: &[FeerateKey], _values: &[()]) -> Option<Self::Result> {
-            let idx = self.search_in_keys(keys);
-            // trace!("[visit_leaf] {}, {}", keys.len(), idx);
-            for key in keys.iter().take(idx) {
-                self.accumulated_weight += key.weight();
-            }
-            Some(self.accumulated_weight)
-        }
-    }
-}
+pub mod feerate_key;
+pub mod feerate_weight;
+mod selectors;
 
 pub type FrontierTree = BPlusTree<NodeStoreVec<FeerateTransactionKey, (), FeerateWeight>>;
 
@@ -143,6 +37,10 @@ impl Frontier {
         self.search_tree.root_argument().weight()
     }
 
+    pub fn total_mass(&self) -> u64 {
+        self.total_mass
+    }
+
     pub fn insert(&mut self, key: FeerateTransactionKey) -> bool {
         let mass = key.mass;
         if self.search_tree.insert(key, ()).is_none() {
@@ -163,33 +61,93 @@ impl Frontier {
         }
     }
 
-    pub fn sample<'a, R>(&'a self, rng: &'a mut R, amount: u32) -> impl Iterator<Item = FeerateTransactionKey> + 'a
+    pub fn sample_inplace<R>(&self, rng: &mut R, policy: &Policy) -> IndexMap<TransactionId, FeerateTransactionKey>
     where
         R: Rng + ?Sized,
     {
-        let length = self.search_tree.len() as u32;
-        if length <= amount {
-            return Either::Left(self.search_tree.iter().map(|(k, _)| k.clone()));
+        // TEMP
+        if self.search_tree.is_empty() {
+            return Default::default();
         }
+
         let mut distr = Uniform::new(0f64, self.total_weight());
         let mut down_iter = self.search_tree.iter().rev();
-        let mut top = down_iter.next().expect("amount < length").0;
+        let mut top = down_iter.next().unwrap().0;
         let mut cache = HashSet::new();
-        Either::Right((0..amount).map(move |_| {
+        let mut res = IndexMap::new();
+        let mut total_mass: u64 = 0;
+        let mut _collisions = 0;
+        while cache.len() < self.search_tree.len() {
             let query = distr.sample(rng);
-            let mut item = self.search_tree.get_by_argument(query).expect("clamped").0;
-            while !cache.insert(item.tx.id()) {
-                if top == item {
-                    // Narrow the search to reduce further sampling collisions
-                    top = down_iter.next().expect("amount < length").0;
-                    let remaining_weight = self.search_tree.descend_visit(PrefixWeightVisitor::new(top)).unwrap();
-                    distr = Uniform::new(0f64, remaining_weight);
+            let item = {
+                let mut item = self.search_tree.get_by_argument(query).expect("clamped").0;
+                while !cache.insert(item.tx.id()) {
+                    _collisions += 1;
+                    if top == item {
+                        // Narrow the search to reduce further sampling collisions
+                        top = down_iter.next().unwrap().0;
+                        let remaining_weight = self.search_tree.descend_visit(PrefixWeightVisitor::new(top)).unwrap();
+                        distr = Uniform::new(0f64, remaining_weight);
+                    }
+                    let query = distr.sample(rng);
+                    item = self.search_tree.get_by_argument(query).expect("clamped").0;
                 }
-                let query = distr.sample(rng);
-                item = self.search_tree.get_by_argument(query).expect("clamped").0;
+                item
+            };
+            if total_mass.saturating_add(item.mass) > policy.max_block_mass {
+                break; // TODO
             }
-            item.clone()
-        }))
+            res.insert(item.tx.id(), item.clone());
+            total_mass += item.mass;
+        }
+        // println!("Collisions: {collisions}, cache: {}", cache.len());
+        res
+    }
+
+    pub fn build_selector(&self, policy: &Policy) -> Box<dyn TemplateTransactionSelector> {
+        if self.total_mass <= policy.max_block_mass {
+            // println!("take all");
+            self.build_selector_take_all()
+        } else if self.total_mass > policy.max_block_mass * 4 {
+            // println!("sample inplace");
+            let mut rng = rand::thread_rng();
+            Box::new(SequenceSelector::new(self.sample_inplace(&mut rng, policy), policy.clone()))
+        } else {
+            // println!("legacy");
+            Box::new(crate::TransactionsSelector::new(
+                policy.clone(),
+                self.search_tree
+                    .iter()
+                    .map(|(k, _)| k.clone())
+                    .map(crate::model::candidate_tx::CandidateTransaction::from_key)
+                    .collect(),
+            ))
+        }
+    }
+
+    pub fn build_selector_mutable_tree(&self) -> Box<dyn TemplateTransactionSelector> {
+        let mut tree = FrontierTree::new(Default::default());
+        for (key, ()) in self.search_tree.iter() {
+            tree.insert(key.clone(), ());
+        }
+        Box::new(WeightTreeSelector::new(tree, Policy::new(500_000)))
+    }
+
+    pub fn build_selector_sample_inplace(&self) -> Box<dyn TemplateTransactionSelector> {
+        let mut rng = rand::thread_rng();
+        let policy = Policy::new(500_000);
+        Box::new(SequenceSelector::new(self.sample_inplace(&mut rng, &policy), policy))
+    }
+
+    pub fn build_selector_take_all(&self) -> Box<dyn TemplateTransactionSelector> {
+        Box::new(TakeAllSelector::new(self.search_tree.iter().map(|(k, _)| k.tx.clone()).collect()))
+    }
+
+    pub fn build_selector_legacy(&self) -> Box<dyn TemplateTransactionSelector> {
+        Box::new(crate::TransactionsSelector::new(
+            Policy::new(500_000),
+            self.search_tree.iter().map(|(k, _)| k.clone()).map(crate::model::candidate_tx::CandidateTransaction::from_key).collect(),
+        ))
     }
 
     pub fn len(&self) -> usize {
@@ -246,8 +204,8 @@ mod tests {
             frontier.insert(item).then_some(()).unwrap();
         }
 
-        let sample = frontier.sample(&mut rng, 100).collect_vec();
-        assert_eq!(100, sample.len());
+        let _sample = frontier.sample_inplace(&mut rng, &Policy::new(500_000));
+        // assert_eq!(100, sample.len());
     }
 
     #[test]
@@ -330,5 +288,39 @@ mod tests {
             assert_eq!(&expected, item.0);
             assert!(expected.cmp(item.0).is_eq()); // Assert Ord equality as well
         }
+    }
+
+    #[test]
+    pub fn test_mempool_sampling_small() {
+        let mut rng = thread_rng();
+        let cap = 2000;
+        let mut map = HashMap::with_capacity(cap);
+        for i in 0..cap as u64 {
+            let fee: u64 = rng.gen_range(1..1000000);
+            let mass: u64 = 1650;
+            let key = build_feerate_key(fee, mass, i);
+            map.insert(key.tx.id(), key);
+        }
+
+        let len = cap;
+        let mut frontier = Frontier::default();
+        for item in map.values().take(len).cloned() {
+            frontier.insert(item).then_some(()).unwrap();
+        }
+
+        let mut selector = frontier.build_selector(&Policy::new(500_000));
+        selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
+
+        let mut selector = frontier.build_selector_legacy();
+        selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
+
+        let mut selector = frontier.build_selector_mutable_tree();
+        selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
+
+        let mut selector = frontier.build_selector_sample_inplace();
+        selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
+
+        let mut selector = frontier.build_selector_take_all();
+        selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
     }
 }

@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
     tx::{Transaction, TransactionInput, TransactionOutpoint},
 };
 use kaspa_hashes::{HasherBase, TransactionID};
-use kaspa_mining::{model::topological_index::TopologicalIndex, FeerateTransactionKey, Frontier};
+use kaspa_mining::{model::topological_index::TopologicalIndex, FeerateTransactionKey, Frontier, Policy};
 use rand::{thread_rng, Rng};
 use std::{
     collections::{hash_set::Iter, HashMap, HashSet},
@@ -89,7 +89,7 @@ fn build_feerate_key(fee: u64, mass: u64, id: u64) -> FeerateTransactionKey {
     FeerateTransactionKey::new(fee, mass, generate_unique_tx(id))
 }
 
-pub fn bench_two_stage_sampling(c: &mut Criterion) {
+pub fn bench_mempool_sampling(c: &mut Criterion) {
     let mut rng = thread_rng();
     let mut group = c.benchmark_group("mempool sampling");
     let cap = 1_000_000;
@@ -109,8 +109,8 @@ pub fn bench_two_stage_sampling(c: &mut Criterion) {
     group.bench_function("mempool one-shot sample", |b| {
         b.iter(|| {
             black_box({
-                let stage_one = frontier.sample(&mut rng, 400).collect_vec();
-                stage_one.into_iter().map(|k| k.mass).sum::<u64>()
+                let selected = frontier.sample_inplace(&mut rng, &Policy::new(500_000));
+                selected.into_iter().map(|(_, k)| k.mass).sum::<u64>()
             })
         })
     });
@@ -170,5 +170,74 @@ pub fn bench_two_stage_sampling(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_two_stage_sampling, bench_compare_topological_index_fns);
+pub fn bench_mempool_sampling_small(c: &mut Criterion) {
+    let mut rng = thread_rng();
+    let mut group = c.benchmark_group("mempool sampling small");
+    let cap = 1_000_000;
+    let mut map = HashMap::with_capacity(cap);
+    for i in 0..cap as u64 {
+        let fee: u64 = rng.gen_range(1..1000000);
+        let mass: u64 = 1650;
+        let key = build_feerate_key(fee, mass, i);
+        map.insert(key.tx.id(), key);
+    }
+
+    for len in [100, 300, 350, 500, 1000, 2000, 5000, 10_000, 100_000, 500_000, 1_000_000] {
+        let mut frontier = Frontier::default();
+        for item in map.values().take(len).cloned() {
+            frontier.insert(item).then_some(()).unwrap();
+        }
+
+        group.bench_function(format!("legacy selector ({})", len), |b| {
+            b.iter(|| {
+                black_box({
+                    let mut selector = frontier.build_selector_legacy();
+                    selector.select_transactions().iter().map(|k| k.gas).sum::<u64>()
+                })
+            })
+        });
+
+        group.bench_function(format!("mutable tree selector ({})", len), |b| {
+            b.iter(|| {
+                black_box({
+                    let mut selector = frontier.build_selector_mutable_tree();
+                    selector.select_transactions().iter().map(|k| k.gas).sum::<u64>()
+                })
+            })
+        });
+
+        group.bench_function(format!("sample inplace selector ({})", len), |b| {
+            b.iter(|| {
+                black_box({
+                    let mut selector = frontier.build_selector_sample_inplace();
+                    selector.select_transactions().iter().map(|k| k.gas).sum::<u64>()
+                })
+            })
+        });
+
+        if frontier.total_mass() <= 500_000 {
+            group.bench_function(format!("take all selector ({})", len), |b| {
+                b.iter(|| {
+                    black_box({
+                        let mut selector = frontier.build_selector_take_all();
+                        selector.select_transactions().iter().map(|k| k.gas).sum::<u64>()
+                    })
+                })
+            });
+        }
+
+        group.bench_function(format!("dynamic selector ({})", len), |b| {
+            b.iter(|| {
+                black_box({
+                    let mut selector = frontier.build_selector(&Policy::new(500_000));
+                    selector.select_transactions().iter().map(|k| k.gas).sum::<u64>()
+                })
+            })
+        });
+    }
+
+    group.finish();
+}
+
+criterion_group!(benches, bench_mempool_sampling, bench_mempool_sampling_small, bench_compare_topological_index_fns);
 criterion_main!(benches);

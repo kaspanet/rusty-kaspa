@@ -11,6 +11,7 @@ use crate::{
         tx::Priority,
     },
     model::{candidate_tx::CandidateTransaction, topological_index::TopologicalIndex},
+    Policy,
 };
 use kaspa_consensus_core::{
     tx::TransactionId,
@@ -174,8 +175,9 @@ impl TransactionsPool {
         let mut rng = thread_rng();
         // TODO: adapt to one-shot sampling
         self.ready_transactions
-            .sample(&mut rng, 600) // self.config.maximum_ready_transaction_count)
-            .map(CandidateTransaction::from_key)
+            .sample_inplace(&mut rng, &Policy::new(self.config.maximum_mass_per_block))
+            .into_iter()
+            .map(|(_, k)| CandidateTransaction::from_key(k))
             .collect()
     }
 
