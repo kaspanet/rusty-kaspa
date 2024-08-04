@@ -40,7 +40,7 @@ pub fn pay_to_script_hash_signature_script(redeem_script: BinaryT, signature: Bi
 
 /// Returns the address encoded in a script public key.
 /// @param script_public_key - The script public key ({@link ScriptPublicKey}).
-/// @param prefix - The address prefix.
+/// @param network - The network type.
 /// @category Wallet SDK
 #[wasm_bindgen(js_name = addressFromScriptPublicKey)]
 pub fn address_from_script_public_key(script_public_key: ScriptPublicKeyT, network: &NetworkTypeT) -> Result<AddressOrUndefinedT> {

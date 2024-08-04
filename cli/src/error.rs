@@ -128,6 +128,12 @@ pub enum Error {
 
     #[error(transparent)]
     KaspaWalletKeys(#[from] kaspa_wallet_keys::error::Error),
+
+    #[error(transparent)]
+    PskbLockScriptSigError(#[from] kaspa_wallet_pskt::error::Error),
+
+    #[error("To hex serialization error")]
+    PskbSerializeToHexError,
 }
 
 impl Error {

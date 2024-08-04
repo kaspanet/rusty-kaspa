@@ -45,7 +45,7 @@ extern "C" {
 #[serde(rename_all = "camelCase")]
 pub struct TransactionInputInner {
     pub previous_outpoint: TransactionOutpoint,
-    pub signature_script: Vec<u8>,
+    pub signature_script: Option<Vec<u8>>,
     pub sequence: u64,
     pub sig_op_count: u8,
     pub utxo: Option<UtxoEntryReference>,
@@ -54,7 +54,7 @@ pub struct TransactionInputInner {
 impl TransactionInputInner {
     pub fn new(
         previous_outpoint: TransactionOutpoint,
-        signature_script: Vec<u8>,
+        signature_script: Option<Vec<u8>>,
         sequence: u64,
         sig_op_count: u8,
         utxo: Option<UtxoEntryReference>,
@@ -74,7 +74,7 @@ pub struct TransactionInput {
 impl TransactionInput {
     pub fn new(
         previous_outpoint: TransactionOutpoint,
-        signature_script: Vec<u8>,
+        signature_script: Option<Vec<u8>>,
         sequence: u64,
         sig_op_count: u8,
         utxo: Option<UtxoEntryReference>,
@@ -96,7 +96,7 @@ impl TransactionInput {
     }
 
     pub fn signature_script_length(&self) -> usize {
-        self.inner().signature_script.len()
+        self.inner().signature_script.as_ref().map(|signature_script| signature_script.len()).unwrap_or_default()
     }
 
     pub fn utxo(&self) -> Option<UtxoEntryReference> {
@@ -128,8 +128,8 @@ impl TransactionInput {
     }
 
     #[wasm_bindgen(getter = signatureScript)]
-    pub fn get_signature_script_as_hex(&self) -> String {
-        self.inner().signature_script.to_hex()
+    pub fn get_signature_script_as_hex(&self) -> Option<String> {
+        self.inner().signature_script.as_ref().map(|script| script.to_hex())
     }
 
     #[wasm_bindgen(setter = signatureScript)]
@@ -171,7 +171,7 @@ impl TransactionInput {
 
 impl TransactionInput {
     pub fn set_signature_script(&self, signature_script: Vec<u8>) {
-        self.inner().signature_script = signature_script;
+        self.inner().signature_script.replace(signature_script);
     }
 
     pub fn script_public_key(&self) -> Option<ScriptPublicKey> {
@@ -191,7 +191,7 @@ impl TryCastFromJs for TransactionInput {
         Self::resolve_cast(&value, || {
             if let Some(object) = Object::try_from(value.as_ref()) {
                 let previous_outpoint: TransactionOutpoint = object.get_value("previousOutpoint")?.as_ref().try_into()?;
-                let signature_script = object.get_vec_u8("signatureScript").unwrap_or_default();
+                let signature_script = object.get_vec_u8("signatureScript").ok();
                 let sequence = object.get_u64("sequence")?;
                 let sig_op_count = object.get_u8("sigOpCount")?;
                 let utxo = object.try_get_cast::<UtxoEntryReference>("utxo")?.map(Cast::into_owned);
@@ -207,7 +207,7 @@ impl From<cctx::TransactionInput> for TransactionInput {
     fn from(tx_input: cctx::TransactionInput) -> Self {
         TransactionInput::new(
             tx_input.previous_outpoint.into(),
-            tx_input.signature_script,
+            Some(tx_input.signature_script),
             tx_input.sequence,
             tx_input.sig_op_count,
             None,
@@ -220,7 +220,8 @@ impl From<&TransactionInput> for cctx::TransactionInput {
         let inner = tx_input.inner();
         cctx::TransactionInput::new(
             inner.previous_outpoint.clone().into(),
-            inner.signature_script.clone(),
+            // TODO - discuss: should this unwrap_or_default or return an error?
+            inner.signature_script.clone().unwrap_or_default(),
             inner.sequence,
             inner.sig_op_count,
         )
