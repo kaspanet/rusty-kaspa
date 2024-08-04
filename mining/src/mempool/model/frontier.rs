@@ -204,7 +204,6 @@ impl Frontier {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{model::candidate_tx::CandidateTransaction, Policy, TransactionsSelector};
     use itertools::Itertools;
     use kaspa_consensus_core::{
         subnets::SUBNETWORK_ID_NATIVE,
@@ -225,22 +224,20 @@ mod tests {
         FeerateTransactionKey::new(fee, mass, generate_unique_tx(id))
     }
 
-    fn stage_two_sampling(container: impl IntoIterator<Item = FeerateTransactionKey>) -> Vec<Transaction> {
-        let set = container.into_iter().map(CandidateTransaction::from_key).collect_vec();
-        let mut selector = TransactionsSelector::new(Policy::new(500_000), set);
-        selector.select_transactions()
-    }
-
     #[test]
-    pub fn test_two_stage_sampling() {
+    pub fn test_highly_irregular_sampling() {
         let mut rng = thread_rng();
         let cap = 1000;
         let mut map = HashMap::with_capacity(cap);
         for i in 0..cap as u64 {
-            let fee: u64 = if i % (cap as u64 / 100) == 0 { 1000000 } else { rng.gen_range(1..10000) };
+            let mut fee: u64 = if i % (cap as u64 / 100) == 0 { 1000000 } else { rng.gen_range(1..10000) };
+            if i == 0 {
+                // Add an extremely large fee in order to create extremely high variance
+                fee = 100_000_000 * 1_000_000; // 1M KAS
+            }
             let mass: u64 = 1650;
-            let tx = generate_unique_tx(i);
-            map.insert(tx.id(), FeerateTransactionKey::new(fee.max(mass), mass, tx));
+            let key = build_feerate_key(fee, mass, i);
+            map.insert(key.tx.id(), key);
         }
 
         let len = cap;
@@ -249,9 +246,8 @@ mod tests {
             frontier.insert(item).then_some(()).unwrap();
         }
 
-        let stage_one = frontier.sample(&mut rng, 10_000);
-        let stage_two = stage_two_sampling(stage_one);
-        stage_two.into_iter().map(|k| k.gas).sum::<u64>();
+        let sample = frontier.sample(&mut rng, 100).collect_vec();
+        assert_eq!(100, sample.len());
     }
 
     #[test]
@@ -301,6 +297,8 @@ mod tests {
             }
             sum += weight;
         }
+
+        println!("{}, {}", sum, btree.root_argument().weight());
 
         // Test clamped search bounds
         assert_eq!(btree.first(), btree.get_by_argument(f64::NEG_INFINITY));
