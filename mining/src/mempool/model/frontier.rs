@@ -25,6 +25,10 @@ const COLLISION_FACTOR: u64 = 4;
 /// hard limit in order to allow the SequenceSelector to compensate for consensus rejections.
 const MASS_LIMIT_FACTOR: f64 = 1.2;
 
+/// A rough estimation for the average transaction mass. The usage is a non-important edge case
+/// hence we just throw this here (as oppose to performing an accurate estimation)
+const TYPICAL_TX_MASS: f64 = 2000.0;
+
 /// Management of the transaction pool frontier, that is, the set of transactions in
 /// the transaction pool which have no mempool ancestors and are essentially ready
 /// to enter the next block template.
@@ -157,34 +161,44 @@ impl Frontier {
     }
 
     pub fn build_feerate_estimator(&self, args: FeerateEstimatorArgs) -> FeerateEstimator {
-        let mut total_mass = self.total_mass();
-        let mut mass_per_second = args.network_mass_per_second;
-        let mut count = self.len();
-        let mut average_transaction_mass = match self.len() {
-            // TODO (PR): remove consts
-            0 => 500_000.0 / 300.0,
-            n => total_mass as f64 / n as f64,
+        let average_transaction_mass = match self.len() {
+            0 => TYPICAL_TX_MASS,
+            n => self.total_mass() as f64 / n as f64,
         };
-        let mut inclusion_interval = average_transaction_mass / mass_per_second as f64;
+        let bps = args.network_blocks_per_second as f64;
+        let mut mass_per_block = args.maximum_mass_per_block as f64;
+        let mut inclusion_interval = average_transaction_mass / (mass_per_block * bps);
         let mut estimator = FeerateEstimator::new(self.total_weight(), inclusion_interval);
 
+        // Corresponds to the removal of the top item, hence the skip(1) below
+        mass_per_block -= average_transaction_mass;
+        inclusion_interval = average_transaction_mass / (mass_per_block * bps);
+
         // Search for better estimators by possibly removing extremely high outliers
-        for key in self.search_tree.descending_iter() {
-            // TODO (PR): explain the importance of this visitor for numerical stability
+        for key in self.search_tree.descending_iter().skip(1) {
+            // Compute the weight up to, and including, current key
             let prefix_weight = self.search_tree.prefix_weight(key);
             let pending_estimator = FeerateEstimator::new(prefix_weight, inclusion_interval);
 
-            // Test the pending estimator vs the current one
+            // Test the pending estimator vs. the current one
             if pending_estimator.feerate_to_time(1.0) < estimator.feerate_to_time(1.0) {
                 estimator = pending_estimator;
+            } else {
+                // The pending estimator is no better, break. Indicates that the reduction in
+                // network mass per second is more significant than the removed weight
+                break;
             }
 
-            // Update values for the next iteration
-            count -= 1;
-            total_mass -= key.mass;
-            mass_per_second -= key.mass; // TODO (PR): remove per block? lower bound?
-            average_transaction_mass = total_mass as f64 / count as f64;
-            inclusion_interval = average_transaction_mass / mass_per_second as f64
+            // Update values for the next iteration. In order to remove the outlier from the
+            // total weight, we must compensate by capturing a block slot.
+            mass_per_block -= average_transaction_mass;
+            if mass_per_block <= 0.0 {
+                // Out of block slots, break (this is rarely reachable code due to dynamics related to the above break)
+                break;
+            }
+
+            // Re-calc the inclusion interval based on the new block "capacity"
+            inclusion_interval = average_transaction_mass / (mass_per_block * bps);
         }
         estimator
     }
@@ -255,5 +269,36 @@ mod tests {
 
         let mut selector = frontier.build_selector(&Policy::new(500_000));
         selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
+    }
+
+    #[test]
+    fn test_feerate_estimator() {
+        let mut rng = thread_rng();
+        let cap = 2000;
+        let mut map = HashMap::with_capacity(cap);
+        for i in 0..cap as u64 {
+            let mut fee: u64 = rng.gen_range(1..1000000);
+            let mass: u64 = 1650;
+            // 304 (~500,000/1650) extreme outliers is an edge case where the build estimator logic should be tested at
+            if i <= 303 {
+                // Add an extremely large fee in order to create extremely high variance
+                fee = i * 10_000_000 * 1_000_000;
+            }
+            let key = build_feerate_key(fee, mass, i);
+            map.insert(key.tx.id(), key);
+        }
+
+        for len in [10, 100, 200, 300, 500, 750, cap / 2, (cap * 2) / 3, (cap * 4) / 5, (cap * 5) / 6, cap] {
+            let mut frontier = Frontier::default();
+            for item in map.values().take(len).cloned() {
+                frontier.insert(item).then_some(()).unwrap();
+            }
+
+            let args = FeerateEstimatorArgs { network_blocks_per_second: 1, maximum_mass_per_block: 500_000 };
+            // We are testing that the build function actually returns and is not looping indefinitely
+            let estimator = frontier.build_feerate_estimator(args);
+            let _estimations = estimator.calc_estimations();
+            // dbg!(_estimations);
+        }
     }
 }

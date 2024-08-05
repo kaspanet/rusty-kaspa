@@ -14,7 +14,14 @@ pub struct FeerateEstimations {
 }
 
 pub struct FeerateEstimatorArgs {
-    pub network_mass_per_second: u64,
+    pub network_blocks_per_second: u64,
+    pub maximum_mass_per_block: u64,
+}
+
+impl FeerateEstimatorArgs {
+    pub fn network_mass_per_second(&self) -> u64 {
+        self.network_blocks_per_second * self.maximum_mass_per_block
+    }
 }
 
 pub struct FeerateEstimator {
