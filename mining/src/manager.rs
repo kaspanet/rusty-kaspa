@@ -2,6 +2,7 @@ use crate::{
     block_template::{builder::BlockTemplateBuilder, errors::BuilderError},
     cache::BlockTemplateCache,
     errors::MiningManagerResult,
+    feerate::{FeerateEstimations, FeerateEstimatorArgs},
     mempool::{
         config::Config,
         model::tx::{MempoolTransaction, TransactionPostValidation, TransactionPreValidation, TxRemovalReason},
@@ -199,6 +200,13 @@ impl MiningManager {
     /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier
     pub(crate) fn build_selector(&self) -> Box<dyn TemplateTransactionSelector> {
         self.mempool.read().build_selector()
+    }
+
+    /// Returns realtime feerate estimations based on internal mempool state
+    pub(crate) fn get_realtime_feerate_estimations(&self) -> FeerateEstimations {
+        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.maximum_mass_per_block);
+        let estimator = self.mempool.read().build_feerate_estimator(args);
+        estimator.calc_estimations()
     }
 
     /// Clears the block template cache, forcing the next call to get_block_template to build a new block template.
@@ -797,6 +805,11 @@ impl MiningManagerProxy {
 
     pub async fn get_block_template(self, consensus: &ConsensusProxy, miner_data: MinerData) -> MiningManagerResult<BlockTemplate> {
         consensus.clone().spawn_blocking(move |c| self.inner.get_block_template(c, &miner_data)).await
+    }
+
+    /// Returns realtime feerate estimations based on internal mempool state
+    pub async fn get_realtime_feerate_estimations(self) -> FeerateEstimations {
+        spawn_blocking(move || self.inner.get_realtime_feerate_estimations()).await.unwrap()
     }
 
     /// Validates a transaction and adds it to the set of known transactions that have not yet been

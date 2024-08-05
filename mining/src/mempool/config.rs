@@ -45,6 +45,7 @@ pub struct Config {
     pub minimum_relay_transaction_fee: u64,
     pub minimum_standard_transaction_version: u16,
     pub maximum_standard_transaction_version: u16,
+    pub network_blocks_per_second: u64,
 }
 
 impl Config {
@@ -67,6 +68,7 @@ impl Config {
         minimum_relay_transaction_fee: u64,
         minimum_standard_transaction_version: u16,
         maximum_standard_transaction_version: u16,
+        network_blocks_per_second: u64,
     ) -> Self {
         Self {
             maximum_transaction_count,
@@ -86,6 +88,7 @@ impl Config {
             minimum_relay_transaction_fee,
             minimum_standard_transaction_version,
             maximum_standard_transaction_version,
+            network_blocks_per_second,
         }
     }
 
@@ -113,6 +116,7 @@ impl Config {
             minimum_relay_transaction_fee: DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
             minimum_standard_transaction_version: DEFAULT_MINIMUM_STANDARD_TRANSACTION_VERSION,
             maximum_standard_transaction_version: DEFAULT_MAXIMUM_STANDARD_TRANSACTION_VERSION,
+            network_blocks_per_second: 1000 / target_milliseconds_per_block,
         }
     }
 

@@ -1,4 +1,5 @@
 use crate::{
+    feerate::{FeerateEstimator, FeerateEstimatorArgs},
     mempool::{
         config::Config,
         errors::{RuleError, RuleResult},
@@ -169,6 +170,11 @@ impl TransactionsPool {
     /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier
     pub(crate) fn build_selector(&self) -> Box<dyn TemplateTransactionSelector> {
         self.ready_transactions.build_selector(&Policy::new(self.config.maximum_mass_per_block))
+    }
+
+    /// Builds a feerate estimator based on internal state of the ready transactions frontier
+    pub(crate) fn build_feerate_estimator(&self, args: FeerateEstimatorArgs) -> FeerateEstimator {
+        self.ready_transactions.build_feerate_estimator(args)
     }
 
     /// Is the mempool transaction identified by `transaction_id` unchained, thus having no successor?

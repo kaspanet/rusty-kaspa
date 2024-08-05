@@ -126,6 +126,20 @@ impl Frontier {
         sequence
     }
 
+    /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier.
+    ///
+    /// The logic is divided into three cases:
+    ///     1. The frontier is small and can fit entirely into a block: perform no sampling and return
+    ///        a TakeAllSelector
+    ///     2. The frontier has at least ~4x the capacity of a block: expected collision rate is low, perform
+    ///        in-place k*log(n) sampling and return a SequenceSelector
+    ///     3. The frontier has 1-4x capacity of a block. In this case we expect a high collision rate while
+    ///        the number of overall transactions is still low, so we take all of the transactions and use the
+    ///        rebalancing weighted selector (performing the actual sampling out of the mempool lock)
+    ///
+    /// The above thresholds were selected based on benchmarks. Overall, this dynamic selection provides
+    /// full transaction selection in less than 150 µs even if the frontier has 1M entries (!!). See mining/benches
+    /// for more details.  
     pub fn build_selector(&self, policy: &Policy) -> Box<dyn TemplateTransactionSelector> {
         if self.total_mass <= policy.max_block_mass {
             Box::new(TakeAllSelector::new(self.search_tree.ascending_iter().map(|k| k.tx.clone()).collect()))
@@ -160,6 +174,7 @@ impl Frontier {
         ))
     }
 
+    /// Builds a feerate estimator based on internal state of the ready transactions frontier
     pub fn build_feerate_estimator(&self, args: FeerateEstimatorArgs) -> FeerateEstimator {
         let average_transaction_mass = match self.len() {
             0 => TYPICAL_TX_MASS,

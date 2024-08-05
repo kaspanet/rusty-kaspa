@@ -43,6 +43,10 @@ pub struct FeerateEstimatorArgs {
 }
 
 impl FeerateEstimatorArgs {
+    pub fn new(network_blocks_per_second: u64, maximum_mass_per_block: u64) -> Self {
+        Self { network_blocks_per_second, maximum_mass_per_block }
+    }
+
     pub fn network_mass_per_second(&self) -> u64 {
         self.network_blocks_per_second * self.maximum_mass_per_block
     }
