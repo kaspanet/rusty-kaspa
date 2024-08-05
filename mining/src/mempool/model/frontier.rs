@@ -1,4 +1,8 @@
-use crate::{model::candidate_tx::CandidateTransaction, Policy, RebalancingWeightedTransactionSelector};
+use crate::{
+    feerate::{FeerateEstimator, FeerateEstimatorArgs},
+    model::candidate_tx::CandidateTransaction,
+    Policy, RebalancingWeightedTransactionSelector,
+};
 
 use feerate_key::FeerateTransactionKey;
 use feerate_weight::{FeerateWeight, PrefixWeightVisitor};
@@ -50,6 +54,14 @@ impl Frontier {
         self.total_mass
     }
 
+    pub fn len(&self) -> usize {
+        self.search_tree.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn insert(&mut self, key: FeerateTransactionKey) -> bool {
         let mass = key.mass;
         if self.search_tree.insert(key, ()).is_none() {
@@ -83,8 +95,8 @@ impl Frontier {
         let extended_mass_limit = (policy.max_block_mass as f64 * MASS_LIMIT_FACTOR) as u64;
 
         let mut distr = Uniform::new(0f64, self.total_weight());
-        let mut down_iter = self.search_tree.iter().rev();
-        let mut top = down_iter.next().unwrap().0;
+        let mut down_iter = self.search_tree.iter().rev().map(|(key, ())| key);
+        let mut top = down_iter.next().unwrap();
         let mut cache = HashSet::new();
         let mut sequence = SequenceSelectorInput::default();
         let mut total_selected_mass: u64 = 0;
@@ -100,7 +112,7 @@ impl Frontier {
                     if top == item {
                         // Narrow the search to reduce further sampling collisions
                         match down_iter.next() {
-                            Some(next) => top = next.0,
+                            Some(next) => top = next,
                             None => break 'outer,
                         }
                         let remaining_weight = self.search_tree.descend_visit(PrefixWeightVisitor::new(top)).unwrap();
@@ -132,16 +144,19 @@ impl Frontier {
         }
     }
 
+    /// Exposed for benchmarking purposes
     pub fn build_selector_sample_inplace(&self) -> Box<dyn TemplateTransactionSelector> {
         let mut rng = rand::thread_rng();
         let policy = Policy::new(500_000);
         Box::new(SequenceSelector::new(self.sample_inplace(&mut rng, &policy), policy))
     }
 
+    /// Exposed for benchmarking purposes
     pub fn build_selector_take_all(&self) -> Box<dyn TemplateTransactionSelector> {
         Box::new(TakeAllSelector::new(self.search_tree.iter().map(|(k, _)| k.tx.clone()).collect()))
     }
 
+    /// Exposed for benchmarking purposes
     pub fn build_rebalancing_selector(&self) -> Box<dyn TemplateTransactionSelector> {
         Box::new(RebalancingWeightedTransactionSelector::new(
             Policy::new(500_000),
@@ -149,12 +164,37 @@ impl Frontier {
         ))
     }
 
-    pub fn len(&self) -> usize {
-        self.search_tree.len()
-    }
+    pub fn build_feerate_estimator(&self, args: FeerateEstimatorArgs) -> FeerateEstimator {
+        let mut total_mass = self.total_mass();
+        let mut mass_per_second = args.network_mass_per_second;
+        let mut count = self.len();
+        let mut average_transaction_mass = match self.len() {
+            // TODO (PR): remove consts
+            0 => 500_000.0 / 300.0,
+            n => total_mass as f64 / n as f64,
+        };
+        let mut inclusion_interval = average_transaction_mass / mass_per_second as f64;
+        let mut estimator = FeerateEstimator::new(self.total_weight(), inclusion_interval);
 
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        // Search for better estimators by possibly removing extremely high outliers
+        for key in self.search_tree.iter().rev().map(|(key, ())| key) {
+            // TODO (PR): explain the importance of this visitor for numerical stability
+            let prefix_weight = self.search_tree.descend_visit(PrefixWeightVisitor::new(key)).unwrap();
+            let pending_estimator = FeerateEstimator::new(prefix_weight, inclusion_interval);
+
+            // Test the pending estimator vs the current one
+            if pending_estimator.feerate_to_time(1.0) < estimator.feerate_to_time(1.0) {
+                estimator = pending_estimator;
+            }
+
+            // Update values for the next iteration
+            count -= 1;
+            total_mass -= key.mass;
+            mass_per_second -= key.mass; // TODO (PR): remove per block? lower bound?
+            average_transaction_mass = total_mass as f64 / count as f64;
+            inclusion_interval = average_transaction_mass / mass_per_second as f64
+        }
+        estimator
     }
 }
 
