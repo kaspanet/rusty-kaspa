@@ -5,15 +5,15 @@ use crate::{
 };
 
 use feerate_key::FeerateTransactionKey;
-use feerate_weight::SearchTree;
 use kaspa_consensus_core::block::TemplateTransactionSelector;
 use kaspa_core::trace;
 use rand::{distributions::Uniform, prelude::Distribution, Rng};
+use search_tree::SearchTree;
 use selectors::{SequenceSelector, SequenceSelectorInput, TakeAllSelector};
 use std::collections::HashSet;
 
 pub(crate) mod feerate_key;
-pub(crate) mod feerate_weight;
+pub(crate) mod search_tree;
 pub(crate) mod selectors;
 
 /// If the frontier contains less than 4x the block mass limit, we consider

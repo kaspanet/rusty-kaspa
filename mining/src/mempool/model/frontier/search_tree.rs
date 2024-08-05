@@ -183,7 +183,7 @@ mod tests {
 
     #[test]
     fn test_feerate_weight_queries() {
-        let mut btree = SearchTree::new();
+        let mut tree = SearchTree::new();
         let mass = 2000;
         // The btree stores N=64 keys at each node/leaf, so we make sure the tree has more than
         // 64^2 keys in order to trigger at least a few intermediate tree nodes
@@ -194,14 +194,14 @@ mod tests {
         for (i, fee) in fees.iter().copied().enumerate() {
             let key = build_feerate_key(fee, mass, i as u64);
             s.insert(key.clone());
-            btree.insert(key);
+            tree.insert(key);
         }
 
         // Randomly remove 1/6 of the items
         let remove = s.iter().take(fees.len() / 6).cloned().collect_vec();
         for r in remove {
             s.remove(&r);
-            btree.remove(&r);
+            tree.remove(&r);
         }
 
         // Collect to vec and sort for reference
@@ -209,7 +209,7 @@ mod tests {
         v.sort();
 
         // Test reverse iteration
-        for (expected, item) in v.iter().rev().zip(btree.descending_iter()) {
+        for (expected, item) in v.iter().rev().zip(tree.descending_iter()) {
             assert_eq!(&expected, &item);
             assert!(expected.cmp(item).is_eq()); // Assert Ord equality as well
         }
@@ -222,42 +222,42 @@ mod tests {
             let eps = eps.min(weight / 3.0);
             let samples = [sum + eps, sum + weight / 2.0, sum + weight - eps];
             for sample in samples {
-                let key = btree.search(sample);
+                let key = tree.search(sample);
                 assert_eq!(&expected, key);
                 assert!(expected.cmp(key).is_eq()); // Assert Ord equality as well
             }
             sum += weight;
         }
 
-        println!("{}, {}", sum, btree.total_weight());
+        println!("{}, {}", sum, tree.total_weight());
 
         // Test clamped search bounds
-        assert_eq!(btree.first(), Some(btree.search(f64::NEG_INFINITY)));
-        assert_eq!(btree.first(), Some(btree.search(-1.0)));
-        assert_eq!(btree.first(), Some(btree.search(-eps)));
-        assert_eq!(btree.first(), Some(btree.search(0.0)));
-        assert_eq!(btree.last(), Some(btree.search(sum)));
-        assert_eq!(btree.last(), Some(btree.search(sum + eps)));
-        assert_eq!(btree.last(), Some(btree.search(sum + 1.0)));
-        assert_eq!(btree.last(), Some(btree.search(1.0 / 0.0)));
-        assert_eq!(btree.last(), Some(btree.search(f64::INFINITY)));
-        let _ = btree.search(f64::NAN);
+        assert_eq!(tree.first(), Some(tree.search(f64::NEG_INFINITY)));
+        assert_eq!(tree.first(), Some(tree.search(-1.0)));
+        assert_eq!(tree.first(), Some(tree.search(-eps)));
+        assert_eq!(tree.first(), Some(tree.search(0.0)));
+        assert_eq!(tree.last(), Some(tree.search(sum)));
+        assert_eq!(tree.last(), Some(tree.search(sum + eps)));
+        assert_eq!(tree.last(), Some(tree.search(sum + 1.0)));
+        assert_eq!(tree.last(), Some(tree.search(1.0 / 0.0)));
+        assert_eq!(tree.last(), Some(tree.search(f64::INFINITY)));
+        let _ = tree.search(f64::NAN);
     }
 
     #[test]
     fn test_btree_rev_iter() {
-        let mut btree = SearchTree::new();
+        let mut tree = SearchTree::new();
         let mass = 2000;
         let fees = vec![[123, 113, 10_000, 1000, 2050, 2048]; 64 * (64 + 1)].into_iter().flatten().collect_vec();
         let mut v = Vec::with_capacity(fees.len());
         for (i, fee) in fees.iter().copied().enumerate() {
             let key = build_feerate_key(fee, mass, i as u64);
             v.push(key.clone());
-            btree.insert(key);
+            tree.insert(key);
         }
         v.sort();
 
-        for (expected, item) in v.into_iter().rev().zip(btree.descending_iter()) {
+        for (expected, item) in v.into_iter().rev().zip(tree.descending_iter()) {
             assert_eq!(&expected, item);
             assert!(expected.cmp(item).is_eq()); // Assert Ord equality as well
         }
