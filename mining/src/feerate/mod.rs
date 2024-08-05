@@ -8,9 +8,9 @@ pub struct FeerateBucket {
 
 #[derive(Clone, Debug)]
 pub struct FeerateEstimations {
-    pub low_bucket: FeerateBucket,
-    pub normal_bucket: FeerateBucket,
-    pub priority_bucket: FeerateBucket,
+    pub priority_bucket: FeerateBucket, // TODO (PR): priority = sub-second and at least 1.0 feerate (standard)
+    pub normal_bucket: FeerateBucket,   // TODO (PR): change to a vec with sub-minute guarantee for first value
+    pub low_bucket: FeerateBucket,      // TODO (PR): change to a vec with sub-hour guarantee for first value
 }
 
 pub struct FeerateEstimatorArgs {
@@ -62,9 +62,9 @@ impl FeerateEstimator {
         let low = self.time_to_feerate(3600f64).max(self.quantile(1f64, high, 0.25));
         let mid = self.time_to_feerate(60f64).max(self.quantile(low, high, 0.5));
         FeerateEstimations {
-            low_bucket: FeerateBucket { feerate: low, estimated_seconds: self.feerate_to_time(low) },
-            normal_bucket: FeerateBucket { feerate: mid, estimated_seconds: self.feerate_to_time(mid) },
             priority_bucket: FeerateBucket { feerate: high, estimated_seconds: self.feerate_to_time(high) },
+            normal_bucket: FeerateBucket { feerate: mid, estimated_seconds: self.feerate_to_time(mid) },
+            low_bucket: FeerateBucket { feerate: low, estimated_seconds: self.feerate_to_time(low) },
         }
     }
 }
