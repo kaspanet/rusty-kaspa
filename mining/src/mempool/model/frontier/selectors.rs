@@ -148,7 +148,7 @@ impl TemplateTransactionSelector for TakeAllSelector {
 
     fn is_successful(&self) -> bool {
         // Considered successful because we provided all mempool transactions to this
-        // selector, so there's point in retries
+        // selector, so there's no point in retries
         true
     }
 }
