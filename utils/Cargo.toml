@@ -25,7 +25,6 @@ triggered.workspace = true
 uuid.workspace = true
 log.workspace = true
 wasm-bindgen.workspace = true
-rand.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 rlimit.workspace = true
@@ -37,6 +36,7 @@ async-trait.workspace = true
 futures-util.workspace = true
 tokio = { workspace = true, features = ["rt", "time", "macros"] }
 criterion.workspace = true
+rand.workspace = true
 
 [[bench]]
 name = "bench"
