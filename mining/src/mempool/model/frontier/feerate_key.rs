@@ -77,3 +77,26 @@ impl From<&MempoolTransaction> for FeerateTransactionKey {
         Self::new(tx.mtx.calculated_fee.expect("fee is expected to be populated"), mass, tx.mtx.tx.clone())
     }
 }
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use kaspa_consensus_core::{
+        subnets::SUBNETWORK_ID_NATIVE,
+        tx::{Transaction, TransactionInput, TransactionOutpoint},
+    };
+    use kaspa_hashes::{HasherBase, TransactionID};
+    use std::sync::Arc;
+
+    fn generate_unique_tx(i: u64) -> Arc<Transaction> {
+        let mut hasher = TransactionID::new();
+        let prev = hasher.update(i.to_le_bytes()).clone().finalize();
+        let input = TransactionInput::new(TransactionOutpoint::new(prev, 0), vec![], 0, 0);
+        Arc::new(Transaction::new(0, vec![input], vec![], 0, SUBNETWORK_ID_NATIVE, 0, vec![]))
+    }
+
+    /// Test helper for generating a feerate key with a unique tx (per u64 id)
+    pub(crate) fn build_feerate_key(fee: u64, mass: u64, id: u64) -> FeerateTransactionKey {
+        FeerateTransactionKey::new(fee, mass, generate_unique_tx(id))
+    }
+}

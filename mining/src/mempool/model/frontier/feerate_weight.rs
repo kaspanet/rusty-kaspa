@@ -1,11 +1,12 @@
 use super::feerate_key::FeerateTransactionKey;
 use sweep_bptree::tree::visit::{DescendVisit, DescendVisitResult};
 use sweep_bptree::tree::{Argument, SearchArgument};
+use sweep_bptree::{BPlusTree, NodeStoreVec};
 
 type FeerateKey = FeerateTransactionKey;
 
 #[derive(Clone, Copy, Debug, Default)]
-pub struct FeerateWeight(f64);
+struct FeerateWeight(f64);
 
 impl FeerateWeight {
     /// Returns the weight value
@@ -64,7 +65,7 @@ impl SearchArgument<FeerateKey> for FeerateWeight {
     }
 }
 
-pub struct PrefixWeightVisitor<'a> {
+struct PrefixWeightVisitor<'a> {
     key: &'a FeerateKey,
     accumulated_weight: f64,
 }
@@ -108,5 +109,157 @@ impl<'a> DescendVisit<FeerateKey, (), FeerateWeight> for PrefixWeightVisitor<'a>
             self.accumulated_weight += key.weight();
         }
         Some(self.accumulated_weight)
+    }
+}
+
+type InnerTree = BPlusTree<NodeStoreVec<FeerateKey, (), FeerateWeight>>;
+
+pub struct SearchTree {
+    tree: InnerTree,
+}
+
+impl Default for SearchTree {
+    fn default() -> Self {
+        Self { tree: InnerTree::new(Default::default()) }
+    }
+}
+
+impl SearchTree {
+    pub fn new() -> Self {
+        Self { tree: InnerTree::new(Default::default()) }
+    }
+
+    pub fn len(&self) -> usize {
+        self.tree.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn insert(&mut self, key: FeerateKey) -> bool {
+        self.tree.insert(key, ()).is_none()
+    }
+
+    pub fn remove(&mut self, key: &FeerateKey) -> bool {
+        self.tree.remove(key).is_some()
+    }
+
+    pub fn search(&self, query: f64) -> &FeerateKey {
+        self.tree.get_by_argument(query).expect("clamped").0
+    }
+
+    pub fn total_weight(&self) -> f64 {
+        self.tree.root_argument().weight()
+    }
+
+    pub fn prefix_weight(&self, key: &FeerateKey) -> f64 {
+        self.tree.descend_visit(PrefixWeightVisitor::new(key)).unwrap()
+    }
+
+    pub fn descending_iter(&self) -> impl DoubleEndedIterator<Item = &FeerateKey> + ExactSizeIterator {
+        self.tree.iter().rev().map(|(key, ())| key)
+    }
+
+    pub fn ascending_iter(&self) -> impl DoubleEndedIterator<Item = &FeerateKey> + ExactSizeIterator {
+        self.tree.iter().map(|(key, ())| key)
+    }
+
+    pub fn first(&self) -> Option<&FeerateKey> {
+        self.tree.first().map(|(k, ())| k)
+    }
+
+    pub fn last(&self) -> Option<&FeerateKey> {
+        self.tree.last().map(|(k, ())| k)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::feerate_key::tests::build_feerate_key;
+    use super::*;
+    use itertools::Itertools;
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_feerate_weight_queries() {
+        let mut btree = SearchTree::new();
+        let mass = 2000;
+        // The btree stores N=64 keys at each node/leaf, so we make sure the tree has more than
+        // 64^2 keys in order to trigger at least a few intermediate tree nodes
+        let fees = vec![[123, 113, 10_000, 1000, 2050, 2048]; 64 * (64 + 1)].into_iter().flatten().collect_vec();
+
+        #[allow(clippy::mutable_key_type)]
+        let mut s = HashSet::with_capacity(fees.len());
+        for (i, fee) in fees.iter().copied().enumerate() {
+            let key = build_feerate_key(fee, mass, i as u64);
+            s.insert(key.clone());
+            btree.insert(key);
+        }
+
+        // Randomly remove 1/6 of the items
+        let remove = s.iter().take(fees.len() / 6).cloned().collect_vec();
+        for r in remove {
+            s.remove(&r);
+            btree.remove(&r);
+        }
+
+        // Collect to vec and sort for reference
+        let mut v = s.into_iter().collect_vec();
+        v.sort();
+
+        // Test reverse iteration
+        for (expected, item) in v.iter().rev().zip(btree.descending_iter()) {
+            assert_eq!(&expected, &item);
+            assert!(expected.cmp(item).is_eq()); // Assert Ord equality as well
+        }
+
+        // Sweep through the tree and verify that weight search queries are handled correctly
+        let eps: f64 = 0.001;
+        let mut sum = 0.0;
+        for expected in v {
+            let weight = expected.weight();
+            let eps = eps.min(weight / 3.0);
+            let samples = [sum + eps, sum + weight / 2.0, sum + weight - eps];
+            for sample in samples {
+                let key = btree.search(sample);
+                assert_eq!(&expected, key);
+                assert!(expected.cmp(key).is_eq()); // Assert Ord equality as well
+            }
+            sum += weight;
+        }
+
+        println!("{}, {}", sum, btree.total_weight());
+
+        // Test clamped search bounds
+        assert_eq!(btree.first(), Some(btree.search(f64::NEG_INFINITY)));
+        assert_eq!(btree.first(), Some(btree.search(-1.0)));
+        assert_eq!(btree.first(), Some(btree.search(-eps)));
+        assert_eq!(btree.first(), Some(btree.search(0.0)));
+        assert_eq!(btree.last(), Some(btree.search(sum)));
+        assert_eq!(btree.last(), Some(btree.search(sum + eps)));
+        assert_eq!(btree.last(), Some(btree.search(sum + 1.0)));
+        assert_eq!(btree.last(), Some(btree.search(1.0 / 0.0)));
+        assert_eq!(btree.last(), Some(btree.search(f64::INFINITY)));
+        let _ = btree.search(f64::NAN);
+    }
+
+    #[test]
+    fn test_btree_rev_iter() {
+        let mut btree = SearchTree::new();
+        let mass = 2000;
+        let fees = vec![[123, 113, 10_000, 1000, 2050, 2048]; 64 * (64 + 1)].into_iter().flatten().collect_vec();
+        let mut v = Vec::with_capacity(fees.len());
+        for (i, fee) in fees.iter().copied().enumerate() {
+            let key = build_feerate_key(fee, mass, i as u64);
+            v.push(key.clone());
+            btree.insert(key);
+        }
+        v.sort();
+
+        for (expected, item) in v.into_iter().rev().zip(btree.descending_iter()) {
+            assert_eq!(&expected, item);
+            assert!(expected.cmp(item).is_eq()); // Assert Ord equality as well
+        }
     }
 }
