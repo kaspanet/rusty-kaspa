@@ -5,6 +5,17 @@ use sweep_bptree::{BPlusTree, NodeStoreVec};
 
 type FeerateKey = FeerateTransactionKey;
 
+/// A struct for implementing "weight space" search using the SearchArgument customization.
+/// The weight space is the range `[0, total_weight)` and each key has a "logical" interval allocation
+/// within this space according to its tree position and weight.
+///
+/// We implement the search efficiently by maintaining subtree weights which are updated with each
+/// element insertion/removal. Given a search query `p ∈ [0, total_weight)` we then find the corresponding
+/// element in log time by walking down from the root and adjusting the query according to subtree weights.
+/// For instance if the query point is `123.56` and the top 3 subtrees have weights `120, 10.5 ,100` then we
+/// query the middle subtree with the point `123.56 - 120 = 3.56`.
+///
+/// See SearchArgument implementation below for more details.
 #[derive(Clone, Copy, Debug, Default)]
 struct FeerateWeight(f64);
 
@@ -47,6 +58,8 @@ impl SearchArgument<FeerateKey> for FeerateWeight {
     }
 
     fn locate_in_inner(mut query: Self::Query, _keys: &[FeerateKey], arguments: &[Self]) -> Option<(usize, Self::Query)> {
+        // Search algorithm: Locate the next subtree to visit by iterating through `arguments`
+        // and subtracting the query until the correct range is found
         for (i, a) in arguments.iter().enumerate() {
             if query >= a.0 {
                 query -= a.0;
@@ -65,8 +78,14 @@ impl SearchArgument<FeerateKey> for FeerateWeight {
     }
 }
 
+/// Visitor struct which accumulates the prefix weight up to a provided key (inclusive) in log time.
+///
+/// The basic idea is to use the subtree weights stored in the tree for walking down from the root
+/// to the leaf (corresponding to the searched key), and accumulating all weights proceeding the walk-down path
 struct PrefixWeightVisitor<'a> {
+    /// The key to search up to
     key: &'a FeerateKey,
+    /// This field accumulates the prefix weight during the visit process
     accumulated_weight: f64,
 }
 
@@ -75,15 +94,16 @@ impl<'a> PrefixWeightVisitor<'a> {
         Self { key, accumulated_weight: Default::default() }
     }
 
+    /// Returns the index of the first `key ∈ keys` such that `key > self.key`. If no such key
+    /// exists, the returned index will be the length of `keys`.
     fn search_in_keys(&self, keys: &[FeerateKey]) -> usize {
         match keys.binary_search(self.key) {
             Err(idx) => {
-                // The idx is the place where a matching element could be inserted while maintaining
-                // sorted order, go to left child
+                // self.key is not in keys, idx is the index of the following key
                 idx
             }
             Ok(idx) => {
-                // Exact match, go to right child.
+                // Exact match, return the following index
                 idx + 1
             }
         }
@@ -95,25 +115,49 @@ impl<'a> DescendVisit<FeerateKey, (), FeerateWeight> for PrefixWeightVisitor<'a>
 
     fn visit_inner(&mut self, keys: &[FeerateKey], arguments: &[FeerateWeight]) -> DescendVisitResult<Self::Result> {
         let idx = self.search_in_keys(keys);
-        // trace!("[visit_inner] {}, {}, {}", keys.len(), arguments.len(), idx);
+        // Invariants:
+        //      a. arguments.len() == keys.len() + 1 (n inner node keys are the separators between n+1 subtrees)
+        //      b. idx <= keys.len() (hence idx < arguments.len())
+
+        // Based on the invariants, we first accumulate all the subtree weights up to idx
         for argument in arguments.iter().take(idx) {
             self.accumulated_weight += argument.weight();
         }
+
+        // ..and then go down to the idx'th subtree
         DescendVisitResult::GoDown(idx)
     }
 
     fn visit_leaf(&mut self, keys: &[FeerateKey], _values: &[()]) -> Option<Self::Result> {
+        // idx is the index of the key following self.key
         let idx = self.search_in_keys(keys);
-        // trace!("[visit_leaf] {}, {}", keys.len(), idx);
+        // Accumulate all key weights up to idx (which is inclusive if self.key ∈ tree)
         for key in keys.iter().take(idx) {
             self.accumulated_weight += key.weight();
         }
+        // ..and return the final result
         Some(self.accumulated_weight)
     }
 }
 
 type InnerTree = BPlusTree<NodeStoreVec<FeerateKey, (), FeerateWeight>>;
 
+/// A transaction search tree sorted by feerate order and searchable for probabilistic weighted sampling.
+///
+/// All `log(n)` expressions below are in base 64 (based on constants chosen within the sweep_bptree crate).
+///
+/// The tree has the following properties:
+///     1. Linear time ordered access (ascending / descending)
+///     2. Insertions/removals in log(n) time
+///     3. Search for a weight point `p ∈ [0, total_weight)` in log(n) time
+///     4. Compute the prefix weight of a key, i.e., the sum of weights up to that key (inclusive)
+///        according to key order, in log(n) time
+///     5. Access the total weight in O(1) time. The total weight has numerical stability since it
+///        is recomputed from subtree weights for each item insertion/removal
+///
+/// Computing the prefix weight is a crucial operation if the tree is used for random sampling and
+/// the tree is highly imbalanced in terms of weight variance. See [`Frontier::sample_inplace`] for
+/// more details.  
 pub struct SearchTree {
     tree: InnerTree,
 }
@@ -137,38 +181,50 @@ impl SearchTree {
         self.len() == 0
     }
 
+    /// Inserts a key into the tree in log(n) time. Returns `false` is the key was already in the tree.
     pub fn insert(&mut self, key: FeerateKey) -> bool {
         self.tree.insert(key, ()).is_none()
     }
 
+    /// Remove a key from the tree in log(n) time. Returns `false` is the key was not in the tree.
     pub fn remove(&mut self, key: &FeerateKey) -> bool {
         self.tree.remove(key).is_some()
     }
 
+    /// Search for a weight point `query ∈ [0, total_weight)` in log(n) time
     pub fn search(&self, query: f64) -> &FeerateKey {
         self.tree.get_by_argument(query).expect("clamped").0
     }
 
+    /// Access the total weight in O(1) time
     pub fn total_weight(&self) -> f64 {
         self.tree.root_argument().weight()
     }
 
+    /// Computes the prefix weight of a key, i.e., the sum of weights up to that key (inclusive)
+    /// according to key order, in log(n) time
     pub fn prefix_weight(&self, key: &FeerateKey) -> f64 {
         self.tree.descend_visit(PrefixWeightVisitor::new(key)).unwrap()
     }
 
+    /// Iterate the tree in descending key order (going down from the
+    /// highest key). Linear in the number of keys *actually* iterated.
     pub fn descending_iter(&self) -> impl DoubleEndedIterator<Item = &FeerateKey> + ExactSizeIterator {
         self.tree.iter().rev().map(|(key, ())| key)
     }
 
+    /// Iterate the tree in ascending key order (going up from the
+    /// lowest key). Linear in the number of keys *actually* iterated.
     pub fn ascending_iter(&self) -> impl DoubleEndedIterator<Item = &FeerateKey> + ExactSizeIterator {
         self.tree.iter().map(|(key, ())| key)
     }
 
+    /// The lowest key in the tree (by key order)
     pub fn first(&self) -> Option<&FeerateKey> {
         self.tree.first().map(|(k, ())| k)
     }
 
+    /// The highest key in the tree (by key order)
     pub fn last(&self) -> Option<&FeerateKey> {
         self.tree.last().map(|(k, ())| k)
     }
