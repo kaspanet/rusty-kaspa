@@ -51,7 +51,7 @@ struct SequenceSelectorSelection {
 /// that the transactions were already selected via weighted sampling and simply tries them one
 /// after the other until the block mass limit is reached.  
 pub struct SequenceSelector {
-    priority_map: SequenceSelectorInput,
+    input_sequence: SequenceSelectorInput,
     selected_vec: Vec<SequenceSelectorSelection>,
     selected_map: Option<HashMap<TransactionId, u64>>,
     total_selected_mass: u64,
@@ -61,11 +61,11 @@ pub struct SequenceSelector {
 }
 
 impl SequenceSelector {
-    pub fn new(priority_map: SequenceSelectorInput, policy: Policy) -> Self {
+    pub fn new(input_sequence: SequenceSelectorInput, policy: Policy) -> Self {
         Self {
-            overall_candidates: priority_map.inner.len(),
-            selected_vec: Vec::with_capacity(priority_map.inner.len()),
-            priority_map,
+            overall_candidates: input_sequence.inner.len(),
+            selected_vec: Vec::with_capacity(input_sequence.inner.len()),
+            input_sequence,
             selected_map: Default::default(),
             total_selected_mass: Default::default(),
             overall_rejections: Default::default(),
@@ -84,14 +84,14 @@ impl TemplateTransactionSelector for SequenceSelector {
     fn select_transactions(&mut self) -> Vec<Transaction> {
         // Remove selections from the previous round if any
         for selection in self.selected_vec.drain(..) {
-            self.priority_map.inner.remove(&selection.priority_index);
+            self.input_sequence.inner.remove(&selection.priority_index);
         }
         // Reset selection data structures
         self.reset_selection();
-        let mut transactions = Vec::with_capacity(self.priority_map.inner.len());
+        let mut transactions = Vec::with_capacity(self.input_sequence.inner.len());
 
         // Iterate the input sequence in order
-        for (&priority_index, tx) in self.priority_map.inner.iter() {
+        for (&priority_index, tx) in self.input_sequence.inner.iter() {
             if self.total_selected_mass.saturating_add(tx.mass) > self.policy.max_block_mass {
                 // We assume the sequence is relatively small, hence we keep on searching
                 // for transactions with lower mass which might fit into the remaining gap

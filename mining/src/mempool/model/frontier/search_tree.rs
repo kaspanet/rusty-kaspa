@@ -13,7 +13,7 @@ type FeerateKey = FeerateTransactionKey;
 /// element insertion/removal. Given a search query `p ∈ [0, total_weight)` we then find the corresponding
 /// element in log time by walking down from the root and adjusting the query according to subtree weights.
 /// For instance if the query point is `123.56` and the top 3 subtrees have weights `120, 10.5 ,100` then we
-/// query the middle subtree with the point `123.56 - 120 = 3.56`.
+/// recursively query the middle subtree with the point `123.56 - 120 = 3.56`.
 ///
 /// See SearchArgument implementation below for more details.
 #[derive(Clone, Copy, Debug, Default)]
@@ -181,12 +181,12 @@ impl SearchTree {
         self.len() == 0
     }
 
-    /// Inserts a key into the tree in log(n) time. Returns `false` is the key was already in the tree.
+    /// Inserts a key into the tree in log(n) time. Returns `false` if the key was already in the tree.
     pub fn insert(&mut self, key: FeerateKey) -> bool {
         self.tree.insert(key, ()).is_none()
     }
 
-    /// Remove a key from the tree in log(n) time. Returns `false` is the key was not in the tree.
+    /// Remove a key from the tree in log(n) time. Returns `false` if the key was not in the tree.
     pub fn remove(&mut self, key: &FeerateKey) -> bool {
         self.tree.remove(key).is_some()
     }
