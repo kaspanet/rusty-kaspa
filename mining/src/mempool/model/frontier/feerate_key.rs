@@ -47,13 +47,15 @@ impl PartialOrd for FeerateTransactionKey {
 
 impl Ord for FeerateTransactionKey {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // Our first priority is the feerate
-        match self.feerate().total_cmp(&other.feerate()) {
+        // Our first priority is the feerate.
+        // The weight function is monotonic in feerate so we prefer using it
+        // since it is cached
+        match self.weight().total_cmp(&other.weight()) {
             core::cmp::Ordering::Equal => {}
             ord => return ord,
         }
 
-        // If feerates are equal, prefer the higher fee in absolute value
+        // If feerates (and thus weights) are equal, prefer the higher fee in absolute value
         match self.fee.cmp(&other.fee) {
             core::cmp::Ordering::Equal => {}
             ord => return ord,
