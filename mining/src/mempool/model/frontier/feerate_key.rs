@@ -20,6 +20,9 @@ impl PartialEq for FeerateTransactionKey {
 
 impl FeerateTransactionKey {
     pub fn new(fee: u64, mass: u64, tx: Arc<Transaction>) -> Self {
+        // NOTE: any change to the way this weight is calculated (such as scaling by some factor)
+        // requires a reversed update to total_weight in `Frontier::build_feerate_estimator`. This
+        // is because the math methods in FeeEstimator assume this specific weight function.
         Self { fee, mass, weight: (fee as f64 / mass as f64).powi(ALPHA), tx }
     }
 

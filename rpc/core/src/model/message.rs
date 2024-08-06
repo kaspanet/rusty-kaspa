@@ -860,16 +860,29 @@ pub struct GetFeeEstimateRequest {}
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FeerateBucket {
+    /// The fee/mass ratio estimated to be required for inclusion time <= estimated_seconds
     pub feerate: f64,
-    pub estimated_seconds: u64,
+
+    /// The estimated inclusion time for a transaction with fee/mass = feerate
+    pub estimated_seconds: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetFeeEstimateResponse {
-    pub low_bucket: FeerateBucket,
-    pub normal_bucket: FeerateBucket,
+    /// *Top-priority* feerate bucket. Provides an estimation of the feerate required for sub-second DAG inclusion.
     pub priority_bucket: FeerateBucket,
+
+    /// A vector of *normal* priority feerate values. The first value of this vector is guaranteed to
+    /// provide an estimation for sub-*minute* DAG inclusion. All other values will have shorter estimation
+    /// times than all `low_bucket` values. Therefor by chaining `[priority] | normal | low` and interpolating
+    /// between them, one can compose a complete feerate function on the client side. The API makes an effort
+    /// to sample enough "interesting" points on the feerate-to-time curve, so that the interpolation is meaningful.
+    pub normal_buckets: Vec<FeerateBucket>,
+
+    /// A vector of *low* priority feerate values. The first value of this vector is guaranteed to
+    /// provide an estimation for sub-*hour* DAG inclusion.
+    pub low_buckets: Vec<FeerateBucket>,
 }
 
 // pub struct GetFeeEstimateExperimentalRequest {
@@ -877,10 +890,9 @@ pub struct GetFeeEstimateResponse {
 // }
 
 // pub struct GetFeeEstimateExperimentalResponse {
-//     // Same as the usual response
-//     pub low_bucket: FeerateBucket,
-//     pub normal_bucket: FeerateBucket,
 //     pub priority_bucket: FeerateBucket,
+//     pub normal_buckets: Vec<FeerateBucket>,
+//     pub low_buckets: Vec<FeerateBucket>,
 
 //     /// Experimental verbose data
 //     pub verbose: Option<FeeEstimateVerboseExperimentalData>,

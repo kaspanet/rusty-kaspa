@@ -17,7 +17,7 @@ pub struct FeerateEstimations {
     /// A vector of *normal* priority feerate values. The first value of this vector is guaranteed to
     /// provide an estimation for sub-*minute* DAG inclusion. All other values will have shorter estimation
     /// times than all `low_bucket` values. Therefor by chaining `[priority] | normal | low` and interpolating
-    /// between them, once can compose a complete feerate function on the client side. The API makes an effort
+    /// between them, one can compose a complete feerate function on the client side. The API makes an effort
     /// to sample enough "interesting" points on the feerate-to-time curve, so that the interpolation is meaningful.
     pub normal_buckets: Vec<FeerateBucket>,
 
