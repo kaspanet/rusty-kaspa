@@ -98,9 +98,9 @@ impl Frontier {
     ///        close or equal to zero. We fix this by implementing a `log(n)` prefix weight operation.
     ///     5. Q. Why not just use u64 weights?
     ///        A. The current weight calculation is `feerate^alpha` with `alpha=3`. Using u64 would mean that the feerate space
-    ///           is limited to `(2^64)^(1/3) = ~2^21 = ~2M` possibilities. Already with current usages, the feerate can vary from `~1/50` (2000 sompi
-    ///           for a transaction with 100K storage mass), to `5M` (100 KAS fee for a transaction with 2000 mass = 100·100_000_000/2000),
-    ///           resulting in a range of 250M points (`5M/(1/50)`).
+    ///           is limited to a range of size `(2^64)^(1/3) = ~2^21 = ~2M`. Already with current usages, the feerate can vary
+    ///           from `~1/50` (2000 sompi for a transaction with 100K storage mass), to `5M` (100 KAS fee for a transaction with
+    ///           2000 mass = 100·100_000_000/2000), resulting in a range of size 250M (`5M/(1/50)`).
     ///           By using floating point arithmetics we gain the adjustment of the probability space to the accuracy level required for
     ///           current samples. And if the space is highly biased, the repeated elimination of top items and the prefix weight computation
     ///           will readjust it.
@@ -249,6 +249,7 @@ impl Frontier {
 mod tests {
     use super::*;
     use feerate_key::tests::build_feerate_key;
+    use itertools::Itertools;
     use rand::thread_rng;
     use std::collections::HashMap;
 
@@ -310,6 +311,51 @@ mod tests {
 
         let mut selector = frontier.build_selector(&Policy::new(500_000));
         selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
+    }
+
+    #[test]
+    pub fn test_total_mass_tracking() {
+        let mut rng = thread_rng();
+        let cap = 10000;
+        let mut map = HashMap::with_capacity(cap);
+        for i in 0..cap as u64 {
+            let fee: u64 = if i % (cap as u64 / 100) == 0 { 1000000 } else { rng.gen_range(1..10000) };
+            let mass: u64 = rng.gen_range(1..100000); // Use distinct mass values to challenge the test
+            let key = build_feerate_key(fee, mass, i);
+            map.insert(key.tx.id(), key);
+        }
+
+        let len = cap / 2;
+        let mut frontier = Frontier::default();
+        for item in map.values().take(len).cloned() {
+            frontier.insert(item).then_some(()).unwrap();
+        }
+
+        let prev_total_mass = frontier.total_mass();
+        // Assert the total mass
+        assert_eq!(frontier.total_mass(), frontier.search_tree.ascending_iter().map(|k| k.mass).sum::<u64>());
+
+        // Add a bunch of duplicates and make sure the total mass remains the same
+        let mut dup_items = frontier.search_tree.ascending_iter().take(len / 2).cloned().collect_vec();
+        for dup in dup_items.iter().cloned() {
+            (!frontier.insert(dup)).then_some(()).unwrap();
+        }
+        assert_eq!(prev_total_mass, frontier.total_mass());
+        assert_eq!(frontier.total_mass(), frontier.search_tree.ascending_iter().map(|k| k.mass).sum::<u64>());
+
+        // Remove a few elements from the map in order to randomize the iterator
+        dup_items.iter().take(10).for_each(|k| {
+            map.remove(&k.tx.id());
+        });
+
+        // Add and remove random elements some of which will be duplicate insertions and some missing removals
+        for item in map.values().step_by(2) {
+            frontier.remove(item);
+            if let Some(item2) = dup_items.pop() {
+                frontier.insert(item2);
+            }
+        }
+        assert_eq!(frontier.total_mass(), frontier.search_tree.ascending_iter().map(|k| k.mass).sum::<u64>());
     }
 
     #[test]
