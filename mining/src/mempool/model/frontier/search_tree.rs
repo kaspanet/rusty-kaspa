@@ -236,6 +236,7 @@ mod tests {
     use super::*;
     use itertools::Itertools;
     use std::collections::HashSet;
+    use std::ops::Sub;
 
     #[test]
     fn test_feerate_weight_queries() {
@@ -273,13 +274,13 @@ mod tests {
         // Sweep through the tree and verify that weight search queries are handled correctly
         let eps: f64 = 0.001;
         let mut sum = 0.0;
-        for expected in v {
+        for expected in v.iter() {
             let weight = expected.weight();
             let eps = eps.min(weight / 3.0);
             let samples = [sum + eps, sum + weight / 2.0, sum + weight - eps];
             for sample in samples {
                 let key = tree.search(sample);
-                assert_eq!(&expected, key);
+                assert_eq!(expected, key);
                 assert!(expected.cmp(key).is_eq()); // Assert Ord equality as well
             }
             sum += weight;
@@ -298,6 +299,18 @@ mod tests {
         assert_eq!(tree.last(), Some(tree.search(1.0 / 0.0)));
         assert_eq!(tree.last(), Some(tree.search(f64::INFINITY)));
         let _ = tree.search(f64::NAN);
+
+        // Assert prefix weights
+        let mut prefix = Vec::with_capacity(v.len());
+        prefix.push(v[0].weight());
+        for i in 1..v.len() {
+            prefix.push(prefix[i - 1] + v[i].weight());
+        }
+        let eps = v.iter().map(|k| k.weight()).min_by(f64::total_cmp).unwrap() * 1e-4;
+        for (expected_prefix, key) in prefix.into_iter().zip(v) {
+            let prefix = tree.prefix_weight(&key);
+            assert!(expected_prefix.sub(prefix).abs() < eps);
+        }
     }
 
     #[test]
