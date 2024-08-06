@@ -301,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn test_btree_rev_iter() {
+    fn test_tree_rev_iter() {
         let mut tree = SearchTree::new();
         let mass = 2000;
         let fees = vec![[123, 113, 10_000, 1000, 2050, 2048]; 64 * (64 + 1)].into_iter().flatten().collect_vec();

@@ -78,6 +78,32 @@ impl Frontier {
         }
     }
 
+    /// Samples the frontier in-place based on the provided policy and returns a SequenceSelector.
+    ///
+    /// This sampling algorithm should be used when frontier total mass is high enough compared to
+    /// policy mass limit so that the probability of sampling collisions remains low.
+    ///
+    /// Convergence analysis:
+    ///     1. Based on the above we can safely assume that `k << n`, where `n` is the total number of frontier items
+    ///        and `k` is the number of actual samples (since `desired_mass << total_mass` and mass per item is bounded)
+    ///     2. Indeed, if the weight distribution is not too spread (i.e., `max(weights) = O(min(weights))`), `k << n` means
+    ///        that the probability of collisions is low enough and the sampling process will converge in `O(k log(n))` w.h.p.
+    ///     3. It remains to deal with the case where the weight distribution is highly biased. The process implemented below
+    ///        keeps track of the top-weight element. If the distribution is highly biased, this element will be sampled twice
+    ///        with sufficient probability (in constant time), in which case we narrow the sampling space to exclude it. We do
+    ///        this by computing the prefix weight up to this top item (exclusive) and then continue the sampling process over
+    ///        the narrowed space. This process is repeated until acquiring the desired mass.  
+    ///     4. Numerical stability. Naively, one would simply subtract `total_weight -= top.weight` in order to narrow the sampling
+    ///        space. However, if `top.weight` is much larger than the remaining weight, the above f64 subtraction will yield a number
+    ///        close or equal to zero. We fix this by implementing a `log(n)` prefix weight operation.
+    ///     5. Q. Why not just use u64 weights?
+    ///        A. The current weight calculation is `feerate^alpha` with `alpha=3`. Using u64 would mean that the feerate space
+    ///           is limited to `(2^64)^(1/3) = ~2^21 = ~2M` possibilities. Already with current usages, the feerate can vary from `~1/50` (2000 sompi
+    ///           for a transaction with 100K storage mass), to `5M` (100 KAS fee for a transaction with 2000 mass = 100·100_000_000/2000),
+    ///           resulting in a range of 250M points (`5M/(1/50)`).
+    ///           By using floating point arithmetics we gain the adjustment of the probability space to the accuracy level required for
+    ///           current samples. And if the space is highly biased, the repeated elimination of top items and the prefix weight computation
+    ///           will readjust it.
     pub fn sample_inplace<R>(&self, rng: &mut R, policy: &Policy) -> SequenceSelectorInput
     where
         R: Rng + ?Sized,
@@ -88,7 +114,7 @@ impl Frontier {
         // compensate for consensus rejections.
         // Note: this is a soft limit which is why the loop below might pass it if the
         //       next sampled transaction happens to cross the bound
-        let extended_mass_limit = (policy.max_block_mass as f64 * MASS_LIMIT_FACTOR) as u64;
+        let desired_mass = (policy.max_block_mass as f64 * MASS_LIMIT_FACTOR) as u64;
 
         let mut distr = Uniform::new(0f64, self.total_weight());
         let mut down_iter = self.search_tree.descending_iter();
@@ -98,8 +124,8 @@ impl Frontier {
         let mut total_selected_mass: u64 = 0;
         let mut _collisions = 0;
 
-        // The sampling process is converging thus the cache will hold all entries eventually, which guarantees loop exit
-        'outer: while cache.len() < self.search_tree.len() && total_selected_mass <= extended_mass_limit {
+        // The sampling process is converging so the cache will eventually hold all entries, which guarantees loop exit
+        'outer: while cache.len() < self.search_tree.len() && total_selected_mass <= desired_mass {
             let query = distr.sample(rng);
             let item = {
                 let mut item = self.search_tree.search(query);
