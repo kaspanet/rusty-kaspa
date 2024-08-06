@@ -3408,6 +3408,7 @@ dependencies = [
 name = "kaspa-utils"
 version = "0.14.1"
 dependencies = [
+ "arc-swap",
  "async-channel 2.2.1",
  "async-trait",
  "bincode",
