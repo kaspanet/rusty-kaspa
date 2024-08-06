@@ -269,7 +269,13 @@ mod tests {
     use kaspa_txscript::{pay_to_script_hash_signature_script, test_helpers::op_true_script};
     use std::{collections::HashSet, sync::Arc};
 
-    use crate::{mempool::config::DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE, model::candidate_tx::CandidateTransaction};
+    use crate::{
+        mempool::{
+            config::DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
+            model::frontier::selectors::{SequenceSelector, SequenceSelectorInput, SequenceSelectorTransaction},
+        },
+        model::candidate_tx::CandidateTransaction,
+    };
 
     #[test]
     fn test_reject_transaction() {
@@ -277,29 +283,43 @@ mod tests {
 
         // Create a vector of transactions differing by output value so they have unique ids
         let transactions = (0..TX_INITIAL_COUNT).map(|i| create_transaction(SOMPI_PER_KASPA * (i + 1) as u64)).collect_vec();
+        let masses: HashMap<_, _> = transactions.iter().map(|tx| (tx.tx.id(), tx.calculated_mass)).collect();
+        let sequence: SequenceSelectorInput =
+            transactions.iter().map(|tx| SequenceSelectorTransaction::new(tx.tx.clone(), tx.calculated_mass)).collect();
+
         let policy = Policy::new(100_000);
-        let mut selector = RebalancingWeightedTransactionSelector::new(policy, transactions);
-        let (mut kept, mut rejected) = (HashSet::new(), HashSet::new());
-        let mut reject_count = 32;
-        for i in 0..10 {
-            let selected_txs = selector.select_transactions();
-            if i > 0 {
-                assert_eq!(
-                    selected_txs.len(),
-                    reject_count,
-                    "subsequent select calls are expected to only refill the previous rejections"
-                );
-                reject_count /= 2;
+        let selectors: [Box<dyn TemplateTransactionSelector>; 2] = [
+            Box::new(RebalancingWeightedTransactionSelector::new(policy.clone(), transactions)),
+            Box::new(SequenceSelector::new(sequence, policy.clone())),
+        ];
+
+        for mut selector in selectors {
+            let (mut kept, mut rejected) = (HashSet::new(), HashSet::new());
+            let mut reject_count = 32;
+            let mut total_mass = 0;
+            for i in 0..10 {
+                let selected_txs = selector.select_transactions();
+                if i > 0 {
+                    assert_eq!(
+                        selected_txs.len(),
+                        reject_count,
+                        "subsequent select calls are expected to only refill the previous rejections"
+                    );
+                    reject_count /= 2;
+                }
+                for tx in selected_txs.iter() {
+                    total_mass += masses[&tx.id()];
+                    kept.insert(tx.id()).then_some(()).expect("selected txs should never repeat themselves");
+                    assert!(!rejected.contains(&tx.id()), "selected txs should never repeat themselves");
+                }
+                assert!(total_mass <= policy.max_block_mass);
+                selected_txs.iter().take(reject_count).for_each(|x| {
+                    total_mass -= masses[&x.id()];
+                    selector.reject_selection(x.id());
+                    kept.remove(&x.id()).then_some(()).expect("was just inserted");
+                    rejected.insert(x.id()).then_some(()).expect("was just verified");
+                });
             }
-            for tx in selected_txs.iter() {
-                kept.insert(tx.id()).then_some(()).expect("selected txs should never repeat themselves");
-                assert!(!rejected.contains(&tx.id()), "selected txs should never repeat themselves");
-            }
-            selected_txs.iter().take(reject_count).for_each(|x| {
-                selector.reject_selection(x.id());
-                kept.remove(&x.id()).then_some(()).expect("was just inserted");
-                rejected.insert(x.id()).then_some(()).expect("was just verified");
-            });
         }
     }
 

@@ -19,19 +19,25 @@ impl SequenceSelectorTransaction {
     }
 }
 
-type SequenceSelectorPriorityIndex = u32;
+type SequencePriorityIndex = u32;
 
 /// The input sequence for the [`SequenceSelector`] transaction selector
 #[derive(Default)]
 pub struct SequenceSelectorInput {
     /// We use the btree map ordered by insertion order in order to follow
     /// the initial sequence order while allowing for efficient removal of previous selections
-    inner: BTreeMap<SequenceSelectorPriorityIndex, SequenceSelectorTransaction>,
+    inner: BTreeMap<SequencePriorityIndex, SequenceSelectorTransaction>,
+}
+
+impl FromIterator<SequenceSelectorTransaction> for SequenceSelectorInput {
+    fn from_iter<T: IntoIterator<Item = SequenceSelectorTransaction>>(iter: T) -> Self {
+        Self { inner: BTreeMap::from_iter(iter.into_iter().enumerate().map(|(i, v)| (i as SequencePriorityIndex, v))) }
+    }
 }
 
 impl SequenceSelectorInput {
     pub fn push(&mut self, tx: Arc<Transaction>, mass: u64) {
-        let idx = self.inner.len() as SequenceSelectorPriorityIndex;
+        let idx = self.inner.len() as SequencePriorityIndex;
         self.inner.insert(idx, SequenceSelectorTransaction::new(tx, mass));
     }
 
@@ -44,7 +50,7 @@ impl SequenceSelectorInput {
 struct SequenceSelectorSelection {
     tx_id: TransactionId,
     mass: u64,
-    priority_index: SequenceSelectorPriorityIndex,
+    priority_index: SequencePriorityIndex,
 }
 
 /// A selector which selects transactions in the order they are provided. The selector assumes
