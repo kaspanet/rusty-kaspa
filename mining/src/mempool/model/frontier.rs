@@ -312,7 +312,7 @@ mod tests {
             let args = FeerateEstimatorArgs { network_blocks_per_second: 1, maximum_mass_per_block: 500_000 };
             // We are testing that the build function actually returns and is not looping indefinitely
             let estimator = frontier.build_feerate_estimator(args);
-            let _estimations = estimator.calc_estimations();
+            let _estimations = estimator.calc_estimations(1.0);
             // dbg!(_estimations);
         }
     }

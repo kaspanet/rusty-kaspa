@@ -206,7 +206,7 @@ impl MiningManager {
     pub(crate) fn get_realtime_feerate_estimations(&self) -> FeerateEstimations {
         let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.maximum_mass_per_block);
         let estimator = self.mempool.read().build_feerate_estimator(args);
-        estimator.calc_estimations()
+        estimator.calc_estimations(self.config.minimum_feerate())
     }
 
     /// Clears the block template cache, forcing the next call to get_block_template to build a new block template.

@@ -124,4 +124,10 @@ impl Config {
         self.maximum_transaction_count = (self.maximum_transaction_count as f64 * ram_scale.min(1.0)) as u32; // Allow only scaling down
         self
     }
+
+    /// Returns the minimum standard fee/mass ratio currently required by the mempool
+    pub(crate) fn minimum_feerate(&self) -> f64 {
+        // The parameter minimum_relay_transaction_fee is in sompi/kg units so divide by 1000 to get sompi/gram
+        self.minimum_relay_transaction_fee as f64 / 1000.0
+    }
 }

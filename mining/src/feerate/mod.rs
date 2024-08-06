@@ -2,11 +2,6 @@
 //! behind this fee estimator.
 
 use crate::block_template::selector::ALPHA;
-use kaspa_utils::vec::VecExtensions;
-
-/// The current standard minimum feerate (fee/mass = 1.0 is the current standard minimum).
-/// TODO: pass from config
-const MIN_FEERATE: f64 = 1.0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct FeerateBucket {
@@ -33,7 +28,10 @@ pub struct FeerateEstimations {
 
 impl FeerateEstimations {
     pub fn ordered_buckets(&self) -> Vec<FeerateBucket> {
-        vec![self.priority_bucket].merge(self.normal_buckets.clone()).merge(self.low_buckets.clone())
+        std::iter::once(self.priority_bucket)
+            .chain(self.normal_buckets.iter().copied())
+            .chain(self.low_buckets.iter().copied())
+            .collect()
     }
 }
 
@@ -92,10 +90,11 @@ impl FeerateEstimator {
         ((c1 * c2) / (-2f64 * z)).powf(1f64 / (ALPHA - 1) as f64)
     }
 
-    pub fn calc_estimations(&self) -> FeerateEstimations {
-        let high = self.time_to_feerate(1f64).max(MIN_FEERATE);
-        let low = self.time_to_feerate(3600f64).max(MIN_FEERATE).max(self.quantile(1f64, high, 0.25));
-        let mid = self.time_to_feerate(60f64).max(MIN_FEERATE).max(self.quantile(low, high, 0.5));
+    pub fn calc_estimations(&self, minimum_standard_feerate: f64) -> FeerateEstimations {
+        let min = minimum_standard_feerate;
+        let high = self.time_to_feerate(1f64).max(min);
+        let low = self.time_to_feerate(3600f64).max(self.quantile(min, high, 0.25));
+        let mid = self.time_to_feerate(60f64).max(self.quantile(low, high, 0.5));
         FeerateEstimations {
             priority_bucket: FeerateBucket { feerate: high, estimated_seconds: self.feerate_to_time(high) },
             normal_buckets: vec![FeerateBucket { feerate: mid, estimated_seconds: self.feerate_to_time(mid) }],
@@ -112,7 +111,7 @@ mod tests {
     #[test]
     fn test_feerate_estimations() {
         let estimator = FeerateEstimator { total_weight: 1002283.659, inclusion_interval: 0.004f64 };
-        let estimations = estimator.calc_estimations();
+        let estimations = estimator.calc_estimations(1.0);
         let buckets = estimations.ordered_buckets();
         for (i, j) in buckets.into_iter().tuple_windows() {
             assert!(i.feerate >= j.feerate);
@@ -123,9 +122,10 @@ mod tests {
     #[test]
     fn test_min_feerate_estimations() {
         let estimator = FeerateEstimator { total_weight: 0.00659, inclusion_interval: 0.004f64 };
-        let estimations = estimator.calc_estimations();
+        let minimum_feerate = 0.755;
+        let estimations = estimator.calc_estimations(minimum_feerate);
         let buckets = estimations.ordered_buckets();
-        assert!(buckets.last().unwrap().feerate >= MIN_FEERATE);
+        assert!(buckets.last().unwrap().feerate >= minimum_feerate);
         for (i, j) in buckets.into_iter().tuple_windows() {
             assert!(i.feerate >= j.feerate);
         }
