@@ -272,17 +272,8 @@ impl RpcApi for GrpcClient {
     route!(get_mempool_entries_by_addresses_call, GetMempoolEntriesByAddresses);
     route!(get_coin_supply_call, GetCoinSupply);
     route!(get_daa_score_timestamp_estimate_call, GetDaaScoreTimestampEstimate);
-
-    // TODO (PR)
-    async fn get_fee_estimate_call(&self, _request: GetFeeEstimateRequest) -> RpcResult<GetFeeEstimateResponse> {
-        Err(RpcError::NotImplemented)
-    }
-    async fn get_fee_estimate_experimental_call(
-        &self,
-        _request: GetFeeEstimateExperimentalRequest,
-    ) -> RpcResult<GetFeeEstimateExperimentalResponse> {
-        Err(RpcError::NotImplemented)
-    }
+    route!(get_fee_estimate_call, GetFeeEstimate);
+    route!(get_fee_estimate_experimental_call, GetFeeEstimateExperimental);
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API

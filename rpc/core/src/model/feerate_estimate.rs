@@ -29,6 +29,15 @@ pub struct FeeEstimate {
     pub low_buckets: Vec<FeerateBucket>,
 }
 
+impl FeeEstimate {
+    pub fn ordered_buckets(&self) -> Vec<FeerateBucket> {
+        std::iter::once(self.priority_bucket)
+            .chain(self.normal_buckets.iter().copied())
+            .chain(self.low_buckets.iter().copied())
+            .collect()
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FeeEstimateVerboseExperimentalData {
