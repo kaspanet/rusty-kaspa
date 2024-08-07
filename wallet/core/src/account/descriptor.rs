@@ -122,11 +122,12 @@ impl std::fmt::Display for AccountDescriptorValue {
             AccountDescriptorValue::Bool(value) => write!(f, "{}", value),
             AccountDescriptorValue::AddressDerivationMeta(value) => write!(f, "{}", value),
             AccountDescriptorValue::XPubKeys(value) => {
-                let mut s = String::new();
+                let mut s = vec![];
                 for xpub in value.iter() {
-                    s.push_str(&format!("{}\n", xpub));
+                    //s.push(xpub.to_string(None));
+                    s.push(format!("{}", xpub));
                 }
-                write!(f, "{}", s)
+                write!(f, "{}", s.join("\n"))
             }
             AccountDescriptorValue::Json(value) => write!(f, "{}", value),
         }
