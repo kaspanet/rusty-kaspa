@@ -23,12 +23,16 @@ pub struct ExpiringCache<T> {
 
 impl<T: Clone> ExpiringCache<T> {
     /// Constructs a new expiring cache where `fetch` is the amount of time required to trigger a data
-    /// refetch and `expire` is the time duration after which the stored item will never be returned.
+    /// refetch and `expire` is the time duration after which the stored item is guaranteed not to be returned.
+    ///
+    /// Panics if `refetch > expire`.
     pub fn new(refetch: Duration, expire: Duration) -> Self {
         assert!(refetch <= expire);
         Self { store: Default::default(), refetch, expire, fetching: Default::default() }
     }
 
+    /// Returns the cached item or possibly fetches a new one using the `refetch_future` task. The
+    /// decision whether to refetch depends on the configured expiration and refetch times for this cache.  
     pub async fn get<F>(&self, refetch_future: F) -> T
     where
         F: Future<Output = T> + Send + 'static,

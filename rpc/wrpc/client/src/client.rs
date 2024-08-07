@@ -619,6 +619,8 @@ impl RpcApi for KaspaRpcClient {
             SubmitTransaction,
             SubmitTransactionReplacement,
             Unban,
+            GetFeeEstimate,
+            GetFeeEstimateExperimental
         ]
     );
 

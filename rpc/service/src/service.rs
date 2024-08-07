@@ -1,6 +1,7 @@
 //! Core server implementation for ClientAPI
 
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
+use crate::converter::feerate_estimate::FeeEstimateConverter;
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
@@ -61,9 +62,11 @@ use kaspa_rpc_core::{
     Notification, RpcError, RpcResult,
 };
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
+use kaspa_utils::expiring_cache::ExpiringCache;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
+use std::time::Duration;
 use std::{
     collections::HashMap,
     iter::once,
@@ -109,6 +112,7 @@ pub struct RpcCoreService {
     perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
     p2p_tower_counters: Arc<TowerConnectionCounters>,
     grpc_tower_counters: Arc<TowerConnectionCounters>,
+    fee_estimate_cache: ExpiringCache<FeeEstimate>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -208,6 +212,7 @@ impl RpcCoreService {
             perf_monitor,
             p2p_tower_counters,
             grpc_tower_counters,
+            fee_estimate_cache: ExpiringCache::new(Duration::from_millis(500), Duration::from_millis(1000)),
         }
     }
 
@@ -661,6 +666,20 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let timestamps = request.daa_scores.iter().map(|curr_daa_score| daa_score_timestamp_map[curr_daa_score]).collect();
 
         Ok(GetDaaScoreTimestampEstimateResponse::new(timestamps))
+    }
+
+    async fn get_fee_estimate_call(&self, _request: GetFeeEstimateRequest) -> RpcResult<GetFeeEstimateResponse> {
+        let mining_manager = self.mining_manager.clone();
+        let estimate =
+            self.fee_estimate_cache.get(async move { mining_manager.get_realtime_feerate_estimations().await.into_rpc() }).await;
+        Ok(GetFeeEstimateResponse { estimate })
+    }
+
+    async fn get_fee_estimate_experimental_call(
+        &self,
+        _request: GetFeeEstimateExperimentalRequest,
+    ) -> RpcResult<GetFeeEstimateExperimentalResponse> {
+        todo!()
     }
 
     async fn ping_call(&self, _: PingRequest) -> RpcResult<PingResponse> {

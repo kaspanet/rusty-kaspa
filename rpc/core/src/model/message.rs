@@ -857,64 +857,27 @@ impl GetDaaScoreTimestampEstimateResponse {
 #[serde(rename_all = "camelCase")]
 pub struct GetFeeEstimateRequest {}
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FeerateBucket {
-    /// The fee/mass ratio estimated to be required for inclusion time <= estimated_seconds
-    pub feerate: f64,
-
-    /// The estimated inclusion time for a transaction with fee/mass = feerate
-    pub estimated_seconds: f64,
+pub struct GetFeeEstimateResponse {
+    pub estimate: FeeEstimate,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetFeeEstimateResponse {
-    /// *Top-priority* feerate bucket. Provides an estimation of the feerate required for sub-second DAG inclusion.
-    pub priority_bucket: FeerateBucket,
-
-    /// A vector of *normal* priority feerate values. The first value of this vector is guaranteed to
-    /// provide an estimation for sub-*minute* DAG inclusion. All other values will have shorter estimation
-    /// times than all `low_bucket` values. Therefor by chaining `[priority] | normal | low` and interpolating
-    /// between them, one can compose a complete feerate function on the client side. The API makes an effort
-    /// to sample enough "interesting" points on the feerate-to-time curve, so that the interpolation is meaningful.
-    pub normal_buckets: Vec<FeerateBucket>,
-
-    /// A vector of *low* priority feerate values. The first value of this vector is guaranteed to
-    /// provide an estimation for sub-*hour* DAG inclusion.
-    pub low_buckets: Vec<FeerateBucket>,
+pub struct GetFeeEstimateExperimentalRequest {
+    pub verbose: bool,
 }
 
-// pub struct GetFeeEstimateExperimentalRequest {
-//     pub verbose: bool,
-// }
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetFeeEstimateExperimentalResponse {
+    /// The usual feerate estimate response
+    pub estimate: FeeEstimate,
 
-// pub struct GetFeeEstimateExperimentalResponse {
-//     pub priority_bucket: FeerateBucket,
-//     pub normal_buckets: Vec<FeerateBucket>,
-//     pub low_buckets: Vec<FeerateBucket>,
-
-//     /// Experimental verbose data
-//     pub verbose: Option<FeeEstimateVerboseExperimentalData>,
-// }
-
-// pub struct FeeEstimateVerboseExperimentalData {
-//     // mempool load factor in relation to tx/s
-//     // processing capacity
-//     pub mempool_load_factor: f64,
-//     // temperature of the mempool water
-//     pub mempool_water_temperature_celsius: f64,
-//     // optional internal context data that
-//     // represents components used to calculate
-//     // fee estimates and time periods.
-//     // ...
-
-//     // total_mass, total_fee, etc
-//     /// Built from Maxim's implementation
-//     pub next_block_template_feerate_min: f64,
-//     pub next_block_template_feerate_median: f64,
-//     pub next_block_template_feerate_max: f64,
-// }
+    /// Experimental verbose data
+    pub verbose: Option<FeeEstimateVerboseExperimentalData>,
+}
 
 // ----------------------------------------------------------------------------
 // Subscriptions & notifications
