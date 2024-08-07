@@ -1,7 +1,7 @@
 //! Core server implementation for ClientAPI
 
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
-use crate::converter::feerate_estimate::FeeEstimateConverter;
+use crate::converter::feerate_estimate::{FeeEstimateConverter, FeeEstimateVerboseConverter};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
@@ -113,6 +113,7 @@ pub struct RpcCoreService {
     p2p_tower_counters: Arc<TowerConnectionCounters>,
     grpc_tower_counters: Arc<TowerConnectionCounters>,
     fee_estimate_cache: ExpiringCache<FeeEstimate>,
+    fee_estimate_verbose_cache: ExpiringCache<GetFeeEstimateExperimentalResponse>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -213,6 +214,7 @@ impl RpcCoreService {
             p2p_tower_counters,
             grpc_tower_counters,
             fee_estimate_cache: ExpiringCache::new(Duration::from_millis(500), Duration::from_millis(1000)),
+            fee_estimate_verbose_cache: ExpiringCache::new(Duration::from_millis(500), Duration::from_millis(1000)),
         }
     }
 
@@ -677,9 +679,19 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
     async fn get_fee_estimate_experimental_call(
         &self,
-        _request: GetFeeEstimateExperimentalRequest,
+        request: GetFeeEstimateExperimentalRequest,
     ) -> RpcResult<GetFeeEstimateExperimentalResponse> {
-        todo!()
+        if request.verbose {
+            let mining_manager = self.mining_manager.clone();
+            let response = self
+                .fee_estimate_verbose_cache
+                .get(async move { mining_manager.get_realtime_feerate_estimations_verbose().await.into_rpc() })
+                .await;
+            Ok(response)
+        } else {
+            let estimate = self.get_fee_estimate_call(GetFeeEstimateRequest {}).await?.estimate;
+            Ok(GetFeeEstimateExperimentalResponse { estimate, verbose: None })
+        }
     }
 
     async fn ping_call(&self, _: PingRequest) -> RpcResult<PingResponse> {

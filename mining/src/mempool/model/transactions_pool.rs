@@ -167,6 +167,10 @@ impl TransactionsPool {
         self.ready_transactions.len()
     }
 
+    pub(crate) fn ready_transaction_total_mass(&self) -> u64 {
+        self.ready_transactions.total_mass()
+    }
+
     /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier
     pub(crate) fn build_selector(&self) -> Box<dyn TemplateTransactionSelector> {
         self.ready_transactions.build_selector(&Policy::new(self.config.maximum_mass_per_block))

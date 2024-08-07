@@ -32,8 +32,8 @@ pub struct FeeEstimate {
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FeeEstimateVerboseExperimentalData {
-    pub total_mempool_mass: u64,
-    pub total_mempool_count: u64,
+    pub mempool_ready_transactions_count: u64,
+    pub mempool_ready_transactions_total_mass: u64,
     pub network_mass_per_second: u64,
 
     pub next_block_template_feerate_min: f64,

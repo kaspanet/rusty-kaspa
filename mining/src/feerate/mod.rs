@@ -103,6 +103,19 @@ impl FeerateEstimator {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct FeeEstimateVerbose {
+    pub estimations: FeerateEstimations,
+
+    pub mempool_ready_transactions_count: u64,
+    pub mempool_ready_transactions_total_mass: u64,
+    pub network_mass_per_second: u64,
+
+    pub next_block_template_feerate_min: f64,
+    pub next_block_template_feerate_median: f64,
+    pub next_block_template_feerate_max: f64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

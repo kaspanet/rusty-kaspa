@@ -115,6 +115,14 @@ impl Mempool {
         count
     }
 
+    pub(crate) fn ready_transaction_count(&self) -> usize {
+        self.transaction_pool.ready_transaction_count()
+    }
+
+    pub(crate) fn ready_transaction_total_mass(&self) -> u64 {
+        self.transaction_pool.ready_transaction_total_mass()
+    }
+
     /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier
     pub(crate) fn build_selector(&self) -> Box<dyn TemplateTransactionSelector> {
         let _sw = Stopwatch::<10>::with_threshold("build_selector op");

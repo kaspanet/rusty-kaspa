@@ -2,7 +2,7 @@ use crate::{
     block_template::{builder::BlockTemplateBuilder, errors::BuilderError},
     cache::BlockTemplateCache,
     errors::MiningManagerResult,
-    feerate::{FeerateEstimations, FeerateEstimatorArgs},
+    feerate::{FeeEstimateVerbose, FeerateEstimations, FeerateEstimatorArgs},
     mempool::{
         config::Config,
         model::tx::{MempoolTransaction, TransactionPostValidation, TransactionPreValidation, TxRemovalReason},
@@ -207,6 +207,27 @@ impl MiningManager {
         let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.maximum_mass_per_block);
         let estimator = self.mempool.read().build_feerate_estimator(args);
         estimator.calc_estimations(self.config.minimum_feerate())
+    }
+
+    /// Returns realtime feerate estimations based on internal mempool state with additional verbose data
+    pub(crate) fn get_realtime_feerate_estimations_verbose(&self) -> FeeEstimateVerbose {
+        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.maximum_mass_per_block);
+        let network_mass_per_second = args.network_mass_per_second();
+        let mempool_read = self.mempool.read();
+        let estimator = mempool_read.build_feerate_estimator(args);
+        let ready_transactions_count = mempool_read.ready_transaction_count();
+        let ready_transaction_total_mass = mempool_read.ready_transaction_total_mass();
+        drop(mempool_read);
+        FeeEstimateVerbose {
+            estimations: estimator.calc_estimations(self.config.minimum_feerate()),
+            network_mass_per_second,
+            mempool_ready_transactions_count: ready_transactions_count as u64,
+            mempool_ready_transactions_total_mass: ready_transaction_total_mass,
+            // TODO: Next PR
+            next_block_template_feerate_min: -1.0,
+            next_block_template_feerate_median: -1.0,
+            next_block_template_feerate_max: -1.0,
+        }
     }
 
     /// Clears the block template cache, forcing the next call to get_block_template to build a new block template.
@@ -810,6 +831,11 @@ impl MiningManagerProxy {
     /// Returns realtime feerate estimations based on internal mempool state
     pub async fn get_realtime_feerate_estimations(self) -> FeerateEstimations {
         spawn_blocking(move || self.inner.get_realtime_feerate_estimations()).await.unwrap()
+    }
+
+    /// Returns realtime feerate estimations based on internal mempool state with additional verbose data
+    pub async fn get_realtime_feerate_estimations_verbose(self) -> FeeEstimateVerbose {
+        spawn_blocking(move || self.inner.get_realtime_feerate_estimations_verbose()).await.unwrap()
     }
 
     /// Validates a transaction and adds it to the set of known transactions that have not yet been
