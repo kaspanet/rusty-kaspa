@@ -13,6 +13,7 @@ repository.workspace = true
 devnet-prealloc = []
 wasm32-sdk = []
 default = []
+py-sdk = ["pyo3"]
 
 [dependencies]
 async-trait.workspace = true
@@ -31,6 +32,7 @@ kaspa-merkle.workspace = true
 kaspa-muhash.workspace = true
 kaspa-txscript-errors.workspace = true
 kaspa-utils.workspace = true
+pyo3 = { workspace = true, optional = true }
 rand.workspace = true
 secp256k1.workspace = true
 serde_json.workspace = true

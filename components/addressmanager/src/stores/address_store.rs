@@ -21,6 +21,7 @@ pub struct Entry {
 impl MemSizeEstimator for Entry {}
 
 pub trait AddressesStoreReader {
+    #[allow(dead_code)]
     fn get(&self, key: AddressKey) -> Result<Entry, StoreError>;
 }
 

@@ -42,18 +42,18 @@
 //! A: There are a number of requirements that need to be handled:
 //!
 //!   1. UTXO entry consumption while creating inputs may results in
-//!   additional fees, requiring additional UTXO entries to cover
-//!   the fees. Goto 1. (this is a classic issue, can be solved using padding)
+//!      additional fees, requiring additional UTXO entries to cover
+//!      the fees. Goto 1. (this is a classic issue, can be solved using padding)
 //!
 //!   2. The overall design strategy for this processor is to allow
-//!   concurrent processing of a large number of transactions and UTXOs.
-//!   This implementation avoids in-memory aggregation of all
-//!   transactions that may result in OOM conditions.
+//!      concurrent processing of a large number of transactions and UTXOs.
+//!      This implementation avoids in-memory aggregation of all
+//!      transactions that may result in OOM conditions.
 //!
 //!   3. If used with a large UTXO set, the transaction generation process
-//!   needs to be asynchronous to avoid blocking the main thread. In the
-//!   context of WASM32 SDK, not doing that while working with large
-//!   UTXO sets will result in a browser UI freezing.
+//!      needs to be asynchronous to avoid blocking the main thread. In the
+//!      context of WASM32 SDK, not doing that while working with large
+//!      UTXO sets will result in a browser UI freezing.
 //!
 
 use crate::imports::*;
@@ -553,16 +553,18 @@ impl Generator {
     ///
     /// The general processing pattern can be described as follows:
     ///
-    /// loop {
-    ///   1. Obtain UTXO entry from [`Generator::get_utxo_entry()`]
-    ///   2. Check if UTXO entries have been depleted, if so, handle sweep processing.
-    ///   3. Create a new Input for the transaction from the UTXO entry.
-    ///   4. Check if the transaction mass threshold has been reached, if so, yield the transaction.
-    ///   5. Register input with the [`Data`] structures.
-    ///   6. Check if the final transaction amount has been reached, if so, yield the transaction.
-    /// }
-    ///
-    ///
+    /**
+    loop {
+       1. Obtain UTXO entry from [`Generator::get_utxo_entry()`]
+       2. Check if UTXO entries have been depleted, if so, handle sweep processing.
+       3. Create a new Input for the transaction from the UTXO entry.
+       4. Check if the transaction mass threshold has been reached, if so, yield the transaction.
+       5. Register input with the [`Data`] structures.
+       6. Check if the final transaction amount has been reached, if so, yield the transaction.
+
+    }
+    */
+
     fn generate_transaction_data(&self, context: &mut Context, stage: &mut Stage) -> Result<(DataKind, Data)> {
         let calc = &self.inner.mass_calculator;
         let mut data = Data::new(calc);

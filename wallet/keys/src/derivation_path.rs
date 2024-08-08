@@ -4,11 +4,13 @@ use workflow_wasm::prelude::*;
 /// Key derivation path
 /// @category Wallet SDK
 #[derive(Clone, CastFromJs)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen]
 pub struct DerivationPath {
     inner: kaspa_bip32::DerivationPath,
 }
 
+// PY-NOTE: methods exposed to only WASM
 #[wasm_bindgen]
 impl DerivationPath {
     #[wasm_bindgen(constructor)]
@@ -16,7 +18,12 @@ impl DerivationPath {
         let inner = kaspa_bip32::DerivationPath::from_str(path)?;
         Ok(Self { inner })
     }
+}
 
+// PY-NOTE: methods exposed to both WASM and Python
+#[wasm_bindgen]
+#[cfg_attr(feature = "py-sdk", pymethods)]
+impl DerivationPath {
     /// Is this derivation path empty? (i.e. the root)
     #[wasm_bindgen(js_name = isEmpty)]
     pub fn is_empty(&self) -> bool {
@@ -46,6 +53,17 @@ impl DerivationPath {
     #[wasm_bindgen(js_name = toString)]
     pub fn to_str(&self) -> String {
         self.inner.to_string()
+    }
+}
+
+// PY-NOTE: methods exposed to only Python
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl DerivationPath {
+    #[new]
+    pub fn new_py(path: &str) -> Result<DerivationPath> {
+        let inner = kaspa_bip32::DerivationPath::from_str(path)?;
+        Ok(Self { inner })
     }
 }
 

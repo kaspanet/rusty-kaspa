@@ -11,6 +11,12 @@ repository.workspace = true
 include = ["src/**/*.rs", "Cargo.toml", "src/**/*.txt"]
 # include.workspace = true
 
+[features]
+default = []
+py-sdk = [
+    "pyo3",
+]
+
 [dependencies]
 borsh.workspace = true
 bs58.workspace = true
@@ -20,6 +26,7 @@ js-sys.workspace = true
 kaspa-utils.workspace = true
 once_cell.workspace = true
 pbkdf2.workspace = true
+pyo3 = { workspace = true, optional = true } 
 rand_core.workspace = true
 rand.workspace = true
 ripemd.workspace = true

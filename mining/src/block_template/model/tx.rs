@@ -73,6 +73,7 @@ impl CandidateList {
     /// * tx1: start 0,   end 100
     /// * tx2: start 100, end 105
     /// * tx3: start 105, end 2000
+    ///
     /// And r=102, then find will return tx2.
     pub(crate) fn find(&self, r: f64) -> usize {
         let mut min = 0;

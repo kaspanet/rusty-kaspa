@@ -24,6 +24,7 @@ use serde_wasm_bindgen::to_value;
 /// Data structure that contains a secret and public keys.
 /// @category Wallet SDK
 #[derive(Debug, Clone, CastFromJs)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen(inspectable)]
 pub struct Keypair {
     secret_key: secp256k1::SecretKey,
@@ -31,13 +32,19 @@ pub struct Keypair {
     xonly_public_key: XOnlyPublicKey,
 }
 
+// PY-NOTE: WASM specific fn implementations
 #[wasm_bindgen]
 impl Keypair {
     fn new(secret_key: secp256k1::SecretKey, public_key: secp256k1::PublicKey, xonly_public_key: XOnlyPublicKey) -> Self {
         Self { secret_key, public_key, xonly_public_key }
     }
 
-    /// Get the [`PublicKey`] of this [`Keypair`].
+    /// Get the `XOnlyPublicKey` of this [`Keypair`].
+    #[wasm_bindgen(getter = xOnlyPublicKey)]
+    pub fn get_xonly_public_key(&self) -> JsValue {
+        to_value(&self.xonly_public_key).unwrap()
+    }
+
     #[wasm_bindgen(getter = publicKey)]
     pub fn get_public_key(&self) -> String {
         PublicKey::from(&self.public_key).to_string()
@@ -47,12 +54,6 @@ impl Keypair {
     #[wasm_bindgen(getter = privateKey)]
     pub fn get_private_key(&self) -> String {
         PrivateKey::from(&self.secret_key).to_hex()
-    }
-
-    /// Get the `XOnlyPublicKey` of this [`Keypair`].
-    #[wasm_bindgen(getter = xOnlyPublicKey)]
-    pub fn get_xonly_public_key(&self) -> JsValue {
-        to_value(&self.xonly_public_key).unwrap()
     }
 
     /// Get the [`Address`] of this Keypair's [`PublicKey`].
@@ -92,6 +93,60 @@ impl Keypair {
     pub fn from_private_key(secret_key: &PrivateKey) -> Result<Keypair, JsError> {
         let secp = Secp256k1::new();
         let secret_key = secp256k1::SecretKey::from_slice(&secret_key.secret_bytes())?;
+        let public_key = secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
+        let (xonly_public_key, _) = public_key.x_only_public_key();
+        Ok(Keypair::new(secret_key, public_key, xonly_public_key))
+    }
+}
+
+// PY-NOTE: Python specific fn implementations
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl Keypair {
+    #[pyo3(name = "xonly_public_key")]
+    pub fn get_xonly_public_key_py(&self) -> String {
+        self.xonly_public_key.to_string()
+    }
+
+    #[pyo3(name = "public_key")]
+    pub fn get_public_key_py(&self) -> String {
+        PublicKey::from(&self.public_key).to_string()
+    }
+
+    #[pyo3(name = "private_key")]
+    pub fn get_private_key_py(&self) -> String {
+        PrivateKey::from(&self.secret_key).to_hex()
+    }
+
+    #[pyo3(name = "to_address")]
+    pub fn to_address_py(&self, network: &str) -> PyResult<Address> {
+        let payload = &self.xonly_public_key.serialize();
+        let address = Address::new(network.try_into()?, AddressVersion::PubKey, payload);
+        Ok(address)
+    }
+
+    #[pyo3(name = "to_address_ecdsa")]
+    pub fn to_address_ecdsa_py(&self, network: &str) -> PyResult<Address> {
+        let payload = &self.public_key.serialize();
+        let address = Address::new(network.try_into()?, AddressVersion::PubKeyECDSA, payload);
+        Ok(address)
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "random")]
+    pub fn random_py() -> PyResult<Keypair> {
+        let secp = Secp256k1::new();
+        let (secret_key, public_key) = secp.generate_keypair(&mut rand::thread_rng());
+        let (xonly_public_key, _) = public_key.x_only_public_key();
+        Ok(Keypair::new(secret_key, public_key, xonly_public_key))
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "from_private_key")]
+    pub fn from_private_key_py(secret_key: &PrivateKey) -> PyResult<Keypair> {
+        let secp = Secp256k1::new();
+        let secret_key =
+            secp256k1::SecretKey::from_slice(&secret_key.secret_bytes()).map_err(|e| PyErr::new::<PyException, _>(format!("{e}")))?;
         let public_key = secp256k1::PublicKey::from_secret_key(&secp, &secret_key);
         let (xonly_public_key, _) = public_key.x_only_public_key();
         Ok(Keypair::new(secret_key, public_key, xonly_public_key))
