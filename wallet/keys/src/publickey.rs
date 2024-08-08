@@ -30,9 +30,9 @@ use sha2::Sha256;
 #[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen(js_name = PublicKey)]
 pub struct PublicKey {
-    #[wasm_bindgen(skip)] // PY-NOTE: not exposed to Python by default, nothing needed here
+    #[wasm_bindgen(skip)]
     pub xonly_public_key: secp256k1::XOnlyPublicKey,
-    #[wasm_bindgen(skip)] // PY-NOTE: not exposed to Python by default, nothing needed here
+    #[wasm_bindgen(skip)]
     pub public_key: Option<secp256k1::PublicKey>,
 }
 
@@ -46,6 +46,11 @@ impl PublicKey {
             Ok(public_key) => Ok((&public_key).into()),
             Err(_e) => Ok(Self { xonly_public_key: secp256k1::XOnlyPublicKey::from_str(key)?, public_key: None }),
         }
+    }
+
+    #[wasm_bindgen(js_name = "toString")]
+    pub fn to_string_impl(&self) -> String {
+        self.public_key.as_ref().map(|pk| pk.to_string()).unwrap_or_else(|| self.xonly_public_key.to_string())
     }
 
     /// Get the [`Address`] of this PublicKey.
@@ -69,12 +74,6 @@ impl PublicKey {
 #[cfg_attr(feature = "py-sdk", pymethods)]
 #[wasm_bindgen]
 impl PublicKey {
-    // PY-NOTE: would like to `#[pyo3(name = "to_string")]` for this fn. But cannot use #[pyo3())] inside of a block that has pymethods applied via cfg_attr
-    #[wasm_bindgen(js_name = "toString")]
-    pub fn to_string_impl(&self) -> String {
-        self.public_key.as_ref().map(|pk| pk.to_string()).unwrap_or_else(|| self.xonly_public_key.to_string())
-    }
-
     #[wasm_bindgen(js_name = toXOnlyPublicKey)]
     pub fn to_x_only_public_key(&self) -> XOnlyPublicKey {
         self.xonly_public_key.into()
@@ -96,7 +95,6 @@ impl PublicKey {
 #[cfg(feature = "py-sdk")]
 #[pymethods]
 impl PublicKey {
-    // PY-NOTE: #[new] has to be in block that has #[pymethods] applied directly. applying via #[cfg_attr()] does not work (PyO3 limitation).
     #[new]
     pub fn try_new_py(key: &str) -> Result<PublicKey> {
         match secp256k1::PublicKey::from_str(key) {
@@ -105,17 +103,18 @@ impl PublicKey {
         }
     }
 
-    // PY-NOTE: #[pyo3()] can only be used in block that has #[pymethods] applied directly. applying via #[cfg_attr()] does not work (PyO3 limitation).
+    #[pyo3(name = "to_string")]
+    pub fn to_string_impl_py(&self) -> String {
+        self.public_key.as_ref().map(|pk| pk.to_string()).unwrap_or_else(|| self.xonly_public_key.to_string())
+    }
+
     #[pyo3(name = "to_address")]
     pub fn to_address_py(&self, network: &str) -> Result<Address> {
-        // PY-NOTE: arg type of `network: &str` instead of `network: NetworkTypeT`
         self.to_address(NetworkType::from_str(network)?)
     }
 
-    // PY-NOTE: #[pyo3()] can only be used in block that has #[pymethods] applied directly. applying via #[cfg_attr()] does not work (PyO3 limitation).
     #[pyo3(name = "to_address_ecdsa")]
     pub fn to_address_ecdsa_py(&self, network: &str) -> Result<Address> {
-        // PY-NOTE: arg type of `network: &str` instead of `network: NetworkTypeT`
         self.to_address_ecdsa(NetworkType::from_str(network)?)
     }
 }
@@ -248,6 +247,11 @@ impl XOnlyPublicKey {
         Ok(secp256k1::XOnlyPublicKey::from_str(key)?.into())
     }
 
+    #[wasm_bindgen(js_name = "toString")]
+    pub fn to_string_impl(&self) -> String {
+        self.inner.to_string()
+    }
+
     /// Get the [`Address`] of this XOnlyPublicKey.
     /// Receives a [`NetworkType`] to determine the prefix of the address.
     /// JavaScript: `let address = xOnlyPublicKey.toAddress(NetworkType.MAINNET);`.
@@ -274,43 +278,34 @@ impl XOnlyPublicKey {
     }
 }
 
-// PY-NOTE: fns exposed to both WASM and Python
-#[cfg_attr(feature = "py-sdk", pymethods)]
-#[wasm_bindgen]
-impl XOnlyPublicKey {
-    // PY-NOTE: would like to `#[pyo3(name = "to_string")]` for this fn
-    // but cannot use that inside of a block that has pymethods applied via cfg_attr
-    #[wasm_bindgen(js_name = "toString")]
-    pub fn to_string_impl(&self) -> String {
-        self.inner.to_string()
-    }
-}
-
 // PY-NOTE: Python specific fn implementations
 #[cfg(feature = "py-sdk")]
 #[pymethods]
 impl XOnlyPublicKey {
-    // PY-NOTE: #[new] can only be used in block that has #[pymethods] applied directly. applying via #[cfg_attr()] does not work (PyO3 limitation).
     #[new]
     pub fn try_new_py(key: &str) -> Result<XOnlyPublicKey> {
         Ok(secp256k1::XOnlyPublicKey::from_str(key)?.into())
     }
 
+    #[pyo3(name = "to_string")]
+    pub fn to_string_impl_py(&self) -> String {
+        self.inner.to_string()
+    }
+
+    #[pyo3(name = "to_address")]
     pub fn to_address_py(&self, network: &str) -> PyResult<Address> {
-        // PY-NOTE: arg type of `network: &str` instead of `network: NetworkTypeT`
         let payload = &self.inner.serialize();
         let address = Address::new(network.try_into()?, AddressVersion::PubKey, payload);
         Ok(address)
     }
 
+    #[pyo3(name = "to_address_ecdsa")]
     pub fn to_address_ecdsa_py(&self, network: &str) -> PyResult<Address> {
-        // PY-NOTE: arg type of `network: &str` instead of `network: NetworkTypeT`
         let payload = &self.inner.serialize();
         let address = Address::new(network.try_into()?, AddressVersion::PubKeyECDSA, payload);
         Ok(address)
     }
 
-    // PY-NOTE: #[pyo3] and #[staticmethod] can only be used in block that has #[pymethods] applied directly. applying via #[cfg_attr()] does not work (PyO3 limitation).
     #[pyo3(name = "from_address")]
     #[staticmethod]
     pub fn from_address_py(address: &Address) -> Result<XOnlyPublicKey> {

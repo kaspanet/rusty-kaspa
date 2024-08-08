@@ -1,5 +1,7 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Prefix;
+#[cfg(feature = "py-sdk")]
+use pyo3::{exceptions::PyException, PyErr};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
@@ -96,6 +98,13 @@ impl FromStr for NetworkType {
             "devnet" => Ok(NetworkType::Devnet),
             _ => Err(NetworkTypeError::InvalidNetworkType(network_type.to_string())),
         }
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+impl From<NetworkTypeError> for PyErr {
+    fn from(value: NetworkTypeError) -> PyErr {
+        PyException::new_err(value.to_string())
     }
 }
 

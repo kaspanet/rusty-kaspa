@@ -13,6 +13,8 @@ repository.workspace = true
 default = []
 py-sdk = [
     "pyo3",
+    "kaspa-bip32/py-sdk",
+    "kaspa-consensus-core/py-sdk",
 ]
 
 [lib]
