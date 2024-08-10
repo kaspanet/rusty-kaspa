@@ -51,7 +51,7 @@ impl Wallet {
 
                 let wallet_name = wallet_name.as_deref();
                 let import_with_mnemonic = op.as_str() == "import";
-                wizards::wallet::create(&ctx, wallet_name, import_with_mnemonic).await?;
+                wizards::wallet::create(&ctx, guard.into(), wallet_name, import_with_mnemonic).await?;
             }
             "open" => {
                 let name = if let Some(name) = argv.first().cloned() {
