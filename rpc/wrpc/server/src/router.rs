@@ -68,6 +68,8 @@ impl Router {
                 SubmitTransaction,
                 SubmitTransactionReplacement,
                 Unban,
+                GetFeeEstimate,
+                GetFeeEstimateExperimental,
             ]
         );
 
