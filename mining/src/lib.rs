@@ -17,7 +17,7 @@ pub mod monitor;
 
 // Exposed for benchmarks
 pub use block_template::{policy::Policy, selector::RebalancingWeightedTransactionSelector};
-pub use mempool::model::frontier::{feerate_key::FeerateTransactionKey, Frontier};
+pub use mempool::model::frontier::{feerate_key::FeerateTransactionKey, search_tree::SearchTree, Frontier};
 
 #[cfg(test)]
 pub mod testutils;
