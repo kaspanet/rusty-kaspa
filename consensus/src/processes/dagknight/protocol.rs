@@ -1,5 +1,13 @@
+use std::sync::Arc;
+
 use kaspa_consensus_core::BlockHashMap;
 use kaspa_hashes::Hash;
+use parking_lot::RwLock;
+
+use crate::model::{
+    services::reachability::{MTReachabilityService, ReachabilityService},
+    stores::{headers::DbHeadersStore, reachability::DbReachabilityStore, relations::DbRelationsStore},
+};
 
 pub struct DagknightConflictEntry {
     // TODO: incremental colouring data for relevant k values
@@ -16,6 +24,12 @@ pub struct DagknightData {
 /// A struct encapsulating the logic and algorithms of the DAGKNIGHT protocol
 pub struct DagknightExecutor {
     // TODO: access to relevant stores and to the reachability service
+
+    // pub(super) k: KType,
+    genesis_hash: Hash,
+    pub(super) relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
+    pub(super) headers_store: Arc<DbHeadersStore>,
+    pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
 }
 
 impl DagknightExecutor {
@@ -41,7 +55,25 @@ impl DagknightExecutor {
         todo!()
     }
 
-    pub fn umc_cascade_voting(&self) {
+    fn common_chain_ancestor(&self, parents: &[Hash]) -> Hash {
+        /*
+           Notes:
+               - ignore parents not agreeing on the pruning point as a chain block
+               - optimize for shortest path
+               - optimize with index
+        */
+
+        let start = parents[0];
+        for cb in self.reachability_service.default_backward_chain_iterator(start).skip(1) {
+            if self.reachability_service.is_chain_ancestor_of_all(cb, &parents[1..]) {
+                return cb;
+            }
+        }
+
+        panic!("")
+    }
+
+    fn umc_cascade_voting(&self) {
         /*
             inputs: G, U, d
             output: does U have a subset U' s.t. U' is d-UMC of G
@@ -54,7 +86,7 @@ impl DagknightExecutor {
                 2. challenging to reason about blue blocks which can be treated as red (U / U')
                 3. plus does not benefit from the above
 
-             
+
         */
     }
 }
