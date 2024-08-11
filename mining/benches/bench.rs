@@ -109,7 +109,7 @@ pub fn bench_mempool_sampling(c: &mut Criterion) {
     group.bench_function("mempool one-shot sample", |b| {
         b.iter(|| {
             black_box({
-                let selected = frontier.sample_inplace(&mut rng, &Policy::new(500_000));
+                let selected = frontier.sample_inplace(&mut rng, &Policy::new(500_000), &mut 0);
                 selected.iter().map(|k| k.mass).sum::<u64>()
             })
         })
@@ -170,9 +170,9 @@ pub fn bench_mempool_sampling(c: &mut Criterion) {
     group.finish();
 }
 
-pub fn bench_mempool_sampling_small(c: &mut Criterion) {
+pub fn bench_mempool_selectors(c: &mut Criterion) {
     let mut rng = thread_rng();
-    let mut group = c.benchmark_group("mempool sampling small");
+    let mut group = c.benchmark_group("mempool selectors");
     let cap = 1_000_000;
     let mut map = HashMap::with_capacity(cap);
     for i in 0..cap as u64 {
@@ -182,7 +182,7 @@ pub fn bench_mempool_sampling_small(c: &mut Criterion) {
         map.insert(key.tx.id(), key);
     }
 
-    for len in [100, 300, 350, 500, 1000, 2000, 5000, 10_000, 100_000, 500_000, 1_000_000] {
+    for len in [100, 300, 350, 500, 1000, 2000, 5000, 10_000, 100_000, 500_000, 1_000_000].into_iter().rev() {
         let mut frontier = Frontier::default();
         for item in map.values().take(len).cloned() {
             frontier.insert(item).then_some(()).unwrap();
@@ -197,14 +197,22 @@ pub fn bench_mempool_sampling_small(c: &mut Criterion) {
             })
         });
 
+        let mut collisions = 0;
+        let mut n = 0;
+
         group.bench_function(format!("sample inplace selector ({})", len), |b| {
             b.iter(|| {
                 black_box({
-                    let mut selector = frontier.build_selector_sample_inplace();
+                    let mut selector = frontier.build_selector_sample_inplace(&mut collisions);
+                    n += 1;
                     selector.select_transactions().iter().map(|k| k.gas).sum::<u64>()
                 })
             })
         });
+
+        if n > 0 {
+            println!("---------------------- \n  Avg collisions: {}", collisions / n);
+        }
 
         if frontier.total_mass() <= 500_000 {
             group.bench_function(format!("take all selector ({})", len), |b| {
@@ -230,5 +238,51 @@ pub fn bench_mempool_sampling_small(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_mempool_sampling, bench_mempool_sampling_small, bench_compare_topological_index_fns);
+pub fn bench_inplace_sampling_worst_case(c: &mut Criterion) {
+    let mut group = c.benchmark_group("mempool inplace sampling");
+    let max_fee = u64::MAX;
+    let fee_steps = (0..10).map(|i| max_fee / 100u64.pow(i)).collect_vec();
+    for subgroup_size in [300, 200, 100, 80, 50, 30] {
+        let cap = 1_000_000;
+        let mut map = HashMap::with_capacity(cap);
+        for i in 0..cap as u64 {
+            let fee: u64 = if i < 300 { fee_steps[i as usize / subgroup_size] } else { 1 };
+            let mass: u64 = 1650;
+            let key = build_feerate_key(fee, mass, i);
+            map.insert(key.tx.id(), key);
+        }
+
+        let mut frontier = Frontier::default();
+        for item in map.values().cloned() {
+            frontier.insert(item).then_some(()).unwrap();
+        }
+
+        let mut collisions = 0;
+        let mut n = 0;
+
+        group.bench_function(format!("inplace sampling worst case (subgroup size: {})", subgroup_size), |b| {
+            b.iter(|| {
+                black_box({
+                    let mut selector = frontier.build_selector_sample_inplace(&mut collisions);
+                    n += 1;
+                    selector.select_transactions().iter().map(|k| k.gas).sum::<u64>()
+                })
+            })
+        });
+
+        if n > 0 {
+            println!("---------------------- \n  Avg collisions: {}", collisions / n);
+        }
+    }
+
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    bench_mempool_sampling,
+    bench_mempool_selectors,
+    bench_inplace_sampling_worst_case,
+    bench_compare_topological_index_fns
+);
 criterion_main!(benches);

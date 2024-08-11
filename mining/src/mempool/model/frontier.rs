@@ -104,7 +104,7 @@ impl Frontier {
     ///           By using floating point arithmetics we gain the adjustment of the probability space to the accuracy level required for
     ///           current samples. And if the space is highly biased, the repeated elimination of top items and the prefix weight computation
     ///           will readjust it.
-    pub fn sample_inplace<R>(&self, rng: &mut R, policy: &Policy) -> SequenceSelectorInput
+    pub fn sample_inplace<R>(&self, rng: &mut R, policy: &Policy, _collisions: &mut u64) -> SequenceSelectorInput
     where
         R: Rng + ?Sized,
     {
@@ -122,7 +122,7 @@ impl Frontier {
         let mut cache = HashSet::new();
         let mut sequence = SequenceSelectorInput::default();
         let mut total_selected_mass: u64 = 0;
-        let mut _collisions = 0;
+        let mut collisions = 0;
 
         // The sampling process is converging so the cache will eventually hold all entries, which guarantees loop exit
         'outer: while cache.len() < self.search_tree.len() && total_selected_mass <= desired_mass {
@@ -130,12 +130,18 @@ impl Frontier {
             let item = {
                 let mut item = self.search_tree.search(query);
                 while !cache.insert(item.tx.id()) {
-                    _collisions += 1;
-                    if top == item {
-                        // Narrow the search to reduce further sampling collisions
-                        match down_iter.next() {
-                            Some(next) => top = next,
-                            None => break 'outer,
+                    collisions += 1;
+                    // Try to narrow the sampling space in order to reduce further sampling collisions
+                    if cache.contains(&top.tx.id()) {
+                        loop {
+                            match down_iter.next() {
+                                Some(next) => top = next,
+                                None => break 'outer,
+                            }
+                            // Loop until finding a top item which was not sampled yet
+                            if !cache.contains(&top.tx.id()) {
+                                break;
+                            }
                         }
                         let remaining_weight = self.search_tree.prefix_weight(top);
                         distr = Uniform::new(0f64, remaining_weight);
@@ -148,7 +154,8 @@ impl Frontier {
             sequence.push(item.tx.clone(), item.mass);
             total_selected_mass += item.mass; // Max standard mass + Mempool capacity bound imply this will not overflow
         }
-        trace!("[mempool frontier sample inplace] collisions: {_collisions}, cache: {}", cache.len());
+        trace!("[mempool frontier sample inplace] collisions: {collisions}, cache: {}", cache.len());
+        *_collisions += collisions;
         sequence
     }
 
@@ -171,7 +178,7 @@ impl Frontier {
             Box::new(TakeAllSelector::new(self.search_tree.ascending_iter().map(|k| k.tx.clone()).collect()))
         } else if self.total_mass > policy.max_block_mass * COLLISION_FACTOR {
             let mut rng = rand::thread_rng();
-            Box::new(SequenceSelector::new(self.sample_inplace(&mut rng, policy), policy.clone()))
+            Box::new(SequenceSelector::new(self.sample_inplace(&mut rng, policy, &mut 0), policy.clone()))
         } else {
             Box::new(RebalancingWeightedTransactionSelector::new(
                 policy.clone(),
@@ -181,10 +188,10 @@ impl Frontier {
     }
 
     /// Exposed for benchmarking purposes
-    pub fn build_selector_sample_inplace(&self) -> Box<dyn TemplateTransactionSelector> {
+    pub fn build_selector_sample_inplace(&self, _collisions: &mut u64) -> Box<dyn TemplateTransactionSelector> {
         let mut rng = rand::thread_rng();
         let policy = Policy::new(500_000);
-        Box::new(SequenceSelector::new(self.sample_inplace(&mut rng, &policy), policy))
+        Box::new(SequenceSelector::new(self.sample_inplace(&mut rng, &policy, _collisions), policy))
     }
 
     /// Exposed for benchmarking purposes
@@ -275,7 +282,7 @@ mod tests {
             frontier.insert(item).then_some(()).unwrap();
         }
 
-        let _sample = frontier.sample_inplace(&mut rng, &Policy::new(500_000));
+        let _sample = frontier.sample_inplace(&mut rng, &Policy::new(500_000), &mut 0);
         // assert_eq!(100, sample.len());
     }
 
@@ -303,7 +310,7 @@ mod tests {
         let mut selector = frontier.build_rebalancing_selector();
         selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
 
-        let mut selector = frontier.build_selector_sample_inplace();
+        let mut selector = frontier.build_selector_sample_inplace(&mut 0);
         selector.select_transactions().iter().map(|k| k.gas).sum::<u64>();
 
         let mut selector = frontier.build_selector_take_all();

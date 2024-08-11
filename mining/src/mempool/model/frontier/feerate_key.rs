@@ -78,8 +78,9 @@ impl Ord for FeerateTransactionKey {
 impl From<&MempoolTransaction> for FeerateTransactionKey {
     fn from(tx: &MempoolTransaction) -> Self {
         let mass = tx.mtx.tx.mass();
+        let fee = tx.mtx.calculated_fee.expect("fee is expected to be populated");
         assert_ne!(mass, 0, "mass field is expected to be set when inserting to the mempool");
-        Self::new(tx.mtx.calculated_fee.expect("fee is expected to be populated"), mass, tx.mtx.tx.clone())
+        Self::new(fee, mass, tx.mtx.tx.clone())
     }
 }
 
