@@ -380,7 +380,7 @@ mod tests {
             map.insert(key.tx.id(), key);
         }
 
-        for len in [0, 10, 100, 200, 300, 500, 750, cap / 2, (cap * 2) / 3, (cap * 4) / 5, (cap * 5) / 6, cap] {
+        for len in [0, 1, 10, 100, 200, 300, 500, 750, cap / 2, (cap * 2) / 3, (cap * 4) / 5, (cap * 5) / 6, cap] {
             let mut frontier = Frontier::default();
             for item in map.values().take(len).cloned() {
                 frontier.insert(item).then_some(()).unwrap();
@@ -405,6 +405,47 @@ mod tests {
                     "bucket estimated seconds must be a finite number greater than zero"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn test_constant_feerate_estimator() {
+        const MIN_FEERATE: f64 = 1.0;
+        let cap = 20_000;
+        let mut map = HashMap::with_capacity(cap);
+        for i in 0..cap as u64 {
+            let mass: u64 = 1650;
+            let fee = (mass as f64 * MIN_FEERATE) as u64;
+            let key = build_feerate_key(fee, mass, i);
+            map.insert(key.tx.id(), key);
+        }
+
+        for len in [0, 1, 10, 100, 200, 300, 500, 750, cap / 2, (cap * 2) / 3, (cap * 4) / 5, (cap * 5) / 6, cap] {
+            println!();
+            println!("Testing a frontier with {} txs...", len.min(cap));
+            let mut frontier = Frontier::default();
+            for item in map.values().take(len).cloned() {
+                frontier.insert(item).then_some(()).unwrap();
+            }
+
+            let args = FeerateEstimatorArgs { network_blocks_per_second: 1, maximum_mass_per_block: 500_000 };
+            // We are testing that the build function actually returns and is not looping indefinitely
+            let estimator = frontier.build_feerate_estimator(args);
+            let estimations = estimator.calc_estimations(MIN_FEERATE);
+            let buckets = estimations.ordered_buckets();
+            // Test for the absence of NaN, infinite or zero values in buckets
+            for b in buckets.iter() {
+                assert!(
+                    b.feerate.is_normal() && b.feerate >= 1.0,
+                    "bucket feerate must be a finite number greater or equal to the minimum standard feerate"
+                );
+                assert!(
+                    b.estimated_seconds.is_normal() && b.estimated_seconds > 0.0,
+                    "bucket estimated seconds must be a finite number greater than zero"
+                );
+            }
+            // dbg!(estimations);
+            // dbg!(estimator);
         }
     }
 }
