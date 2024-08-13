@@ -50,11 +50,13 @@ impl FeerateEstimatorArgs {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct FeerateEstimator {
-    /// The total probability weight of all current mempool ready transactions, i.e., Σ_{tx in mempool}(tx.fee/tx.mass)^alpha
+    /// The total probability weight of current mempool ready transactions, i.e., `Σ_{tx in mempool}(tx.fee/tx.mass)^alpha`.
+    /// Note that some estimators might consider a reduced weight which excludes outliers. See [`Frontier::build_feerate_estimator`]
     total_weight: f64,
 
-    /// The amortized time between transactions given the current transaction masses present in the mempool. Or in
+    /// The amortized time **in seconds** between transactions, given the current transaction masses present in the mempool. Or in
     /// other words, the inverse of the transaction inclusion rate. For instance, if the average transaction mass is 2500 grams,
     /// the block mass limit is 500,000 and the network has 10 BPS, then this number would be 1/2000 seconds.
     inclusion_interval: f64,
@@ -62,6 +64,8 @@ pub struct FeerateEstimator {
 
 impl FeerateEstimator {
     pub fn new(total_weight: f64, inclusion_interval: f64) -> Self {
+        assert!(total_weight >= 0.0);
+        assert!((0f64..1f64).contains(&inclusion_interval));
         Self { total_weight, inclusion_interval }
     }
 
@@ -72,29 +76,48 @@ impl FeerateEstimator {
 
     fn time_to_feerate(&self, time: f64) -> f64 {
         let (c1, c2) = (self.inclusion_interval, self.total_weight);
+        assert!(c1 < time, "{c1}, {time}");
         ((c1 * c2 / time) / (1f64 - c1 / time)).powf(1f64 / ALPHA as f64)
     }
 
     /// The antiderivative function of [`feerate_to_time`] excluding the constant shift `+ c1`
+    #[inline]
     fn feerate_to_time_antiderivative(&self, feerate: f64) -> f64 {
         let (c1, c2) = (self.inclusion_interval, self.total_weight);
         c1 * c2 / (-2f64 * feerate.powi(ALPHA - 1))
     }
 
+    /// Returns the feerate value for which the integral area is `frac` of the total area between `lower` and `upper`.
     fn quantile(&self, lower: f64, upper: f64, frac: f64) -> f64 {
         assert!((0f64..=1f64).contains(&frac));
+        assert!(0.0 < lower && lower <= upper, "{lower}, {upper}");
         let (c1, c2) = (self.inclusion_interval, self.total_weight);
+        if c1 == 0.0 || c2 == 0.0 {
+            // if c1 · c2 == 0.0, the integral area is empty, so we simply return `lower`
+            return lower;
+        }
         let z1 = self.feerate_to_time_antiderivative(lower);
         let z2 = self.feerate_to_time_antiderivative(upper);
+        // Get the total area corresponding to `frac` of the integral area between `lower` and `upper`
+        // which can be expressed as z1 + frac * (z2 - z1)
         let z = frac * z2 + (1f64 - frac) * z1;
+        // Calc the x value (feerate) corresponding to said area
         ((c1 * c2) / (-2f64 * z)).powf(1f64 / (ALPHA - 1) as f64)
     }
 
     pub fn calc_estimations(&self, minimum_standard_feerate: f64) -> FeerateEstimations {
         let min = minimum_standard_feerate;
+        // Choose `high` such that it provides sub-second waiting time
         let high = self.time_to_feerate(1f64).max(min);
+        // Choose `low` feerate such that it provides sub-hour waiting time AND it covers (at least) the 0.25 quantile
         let low = self.time_to_feerate(3600f64).max(self.quantile(min, high, 0.25));
+        // Choose `mid` feerate such that it provides sub-minute waiting time AND it covers (at least) the 0.5 quantile between low and high.
         let mid = self.time_to_feerate(60f64).max(self.quantile(low, high, 0.5));
+        /* Intuition for the above:
+               1. The quantile calculations make sure that we return interesting points on the `feerate_to_time` curve.
+               2. They also ensure that the times don't diminish too high if small increments to feerate would suffice
+                  to cover large fractions of the integral area (reflecting the position within the waiting-time distribution)
+        */
         FeerateEstimations {
             priority_bucket: FeerateBucket { feerate: high, estimated_seconds: self.feerate_to_time(high) },
             normal_buckets: vec![FeerateBucket { feerate: mid, estimated_seconds: self.feerate_to_time(mid) }],
@@ -141,6 +164,37 @@ mod tests {
         assert!(buckets.last().unwrap().feerate >= minimum_feerate);
         for (i, j) in buckets.into_iter().tuple_windows() {
             assert!(i.feerate >= j.feerate);
+            assert!(i.estimated_seconds <= j.estimated_seconds);
+        }
+    }
+
+    #[test]
+    fn test_zero_values() {
+        let estimator = FeerateEstimator { total_weight: 0.0, inclusion_interval: 0.0 };
+        let minimum_feerate = 0.755;
+        let estimations = estimator.calc_estimations(minimum_feerate);
+        let buckets = estimations.ordered_buckets();
+        for bucket in buckets {
+            assert_eq!(minimum_feerate, bucket.feerate);
+            assert_eq!(0.0, bucket.estimated_seconds);
+        }
+
+        let estimator = FeerateEstimator { total_weight: 0.0, inclusion_interval: 0.1 };
+        let minimum_feerate = 0.755;
+        let estimations = estimator.calc_estimations(minimum_feerate);
+        let buckets = estimations.ordered_buckets();
+        for bucket in buckets {
+            assert_eq!(minimum_feerate, bucket.feerate);
+            assert_eq!(estimator.inclusion_interval, bucket.estimated_seconds);
+        }
+
+        let estimator = FeerateEstimator { total_weight: 0.1, inclusion_interval: 0.0 };
+        let minimum_feerate = 0.755;
+        let estimations = estimator.calc_estimations(minimum_feerate);
+        let buckets = estimations.ordered_buckets();
+        for bucket in buckets {
+            assert_eq!(minimum_feerate, bucket.feerate);
+            assert_eq!(0.0, bucket.estimated_seconds);
         }
     }
 }

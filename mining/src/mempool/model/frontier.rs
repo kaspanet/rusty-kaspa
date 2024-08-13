@@ -240,12 +240,13 @@ impl Frontier {
             // Update values for the next iteration. In order to remove the outlier from the
             // total weight, we must compensate by capturing a block slot.
             mass_per_block -= average_transaction_mass;
-            if mass_per_block <= 0.0 {
-                // Out of block slots, break (this is rarely reachable code due to dynamics related to the above break)
+            if mass_per_block <= average_transaction_mass {
+                // Out of block slots, break
                 break;
             }
 
-            // Re-calc the inclusion interval based on the new block "capacity"
+            // Re-calc the inclusion interval based on the new block "capacity".
+            // Note that inclusion_interval < 1.0 as required by the estimator, since mass_per_block > average_transaction_mass (by condition above) and bps >= 1
             inclusion_interval = average_transaction_mass / (mass_per_block * bps);
         }
         estimator
@@ -379,7 +380,7 @@ mod tests {
             map.insert(key.tx.id(), key);
         }
 
-        for len in [10, 100, 200, 300, 500, 750, cap / 2, (cap * 2) / 3, (cap * 4) / 5, (cap * 5) / 6, cap] {
+        for len in [0, 10, 100, 200, 300, 500, 750, cap / 2, (cap * 2) / 3, (cap * 4) / 5, (cap * 5) / 6, cap] {
             let mut frontier = Frontier::default();
             for item in map.values().take(len).cloned() {
                 frontier.insert(item).then_some(()).unwrap();
@@ -388,8 +389,22 @@ mod tests {
             let args = FeerateEstimatorArgs { network_blocks_per_second: 1, maximum_mass_per_block: 500_000 };
             // We are testing that the build function actually returns and is not looping indefinitely
             let estimator = frontier.build_feerate_estimator(args);
-            let _estimations = estimator.calc_estimations(1.0);
-            // dbg!(_estimations);
+            dbg!(len, estimator.clone());
+            let estimations = estimator.calc_estimations(1.0);
+            dbg!(estimations.clone());
+
+            let buckets = estimations.ordered_buckets();
+            // Test for the absence of NaN, infinite or zero values in buckets
+            for b in buckets.iter() {
+                assert!(
+                    b.feerate.is_normal() && b.feerate >= 1.0,
+                    "bucket feerate must be a finite number greater or equal to the minimum standard feerate"
+                );
+                assert!(
+                    b.estimated_seconds.is_normal() && b.estimated_seconds > 0.0,
+                    "bucket estimated seconds must be a finite number greater than zero"
+                );
+            }
         }
     }
 }
