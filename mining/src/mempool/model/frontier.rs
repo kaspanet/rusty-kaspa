@@ -276,14 +276,12 @@ mod tests {
             map.insert(key.tx.id(), key);
         }
 
-        let len = cap;
         let mut frontier = Frontier::default();
-        for item in map.values().take(len).cloned() {
+        for item in map.values().cloned() {
             frontier.insert(item).then_some(()).unwrap();
         }
 
         let _sample = frontier.sample_inplace(&mut rng, &Policy::new(500_000), &mut 0);
-        // assert_eq!(100, sample.len());
     }
 
     #[test]
@@ -298,9 +296,8 @@ mod tests {
             map.insert(key.tx.id(), key);
         }
 
-        let len = cap;
         let mut frontier = Frontier::default();
-        for item in map.values().take(len).cloned() {
+        for item in map.values().cloned() {
             frontier.insert(item).then_some(()).unwrap();
         }
 

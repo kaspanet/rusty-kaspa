@@ -59,6 +59,7 @@ struct SequenceSelectorSelection {
 pub struct SequenceSelector {
     input_sequence: SequenceSelectorInput,
     selected_vec: Vec<SequenceSelectorSelection>,
+    /// Maps from selected tx ids to tx mass so that the total used mass can be subtracted on tx reject
     selected_map: Option<HashMap<TransactionId, u64>>,
     total_selected_mass: u64,
     overall_candidates: usize,
@@ -114,6 +115,7 @@ impl TemplateTransactionSelector for SequenceSelector {
         // Lazy-create the map only when there are actual rejections
         let selected_map = self.selected_map.get_or_insert_with(|| self.selected_vec.iter().map(|tx| (tx.tx_id, tx.mass)).collect());
         let mass = selected_map.remove(&tx_id).expect("only previously selected txs can be rejected (and only once)");
+        // Selections must be counted in total selected mass, so this subtraction cannot underflow
         self.total_selected_mass -= mass;
         self.overall_rejections += 1;
     }
