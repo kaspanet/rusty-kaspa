@@ -69,30 +69,25 @@ impl Matrix {
         let mut rank = 0;
         let mut row_selected = [false; 64];
         for i in 0..64 {
-            if i >= 64 {
-                // Required for optimization, See https://github.com/rust-lang/rust/issues/90794
-                unreachable!()
-            }
             let mut j = 0;
             while j < 64 {
                 if !row_selected[j] && mat_float[j][i].abs() > EPS {
+                    rank += 1;
+                    row_selected[j] = true;
+                    for p in (i + 1)..64 {
+                        mat_float[j][p] /= mat_float[j][i];
+                    }
+                    for k in 0..64 {
+                        if k != j && mat_float[k][i].abs() > EPS {
+                            for p in (i + 1)..64 {
+                                mat_float[k][p] -= mat_float[j][p] * mat_float[k][i];
+                            }
+                        }
+                    }
+
                     break;
                 }
                 j += 1;
-            }
-            if j != 64 {
-                rank += 1;
-                row_selected[j] = true;
-                for p in (i + 1)..64 {
-                    mat_float[j][p] /= mat_float[j][i];
-                }
-                for k in 0..64 {
-                    if k != j && mat_float[k][i].abs() > EPS {
-                        for p in (i + 1)..64 {
-                            mat_float[k][p] -= mat_float[j][p] * mat_float[k][i];
-                        }
-                    }
-                }
             }
         }
         rank
