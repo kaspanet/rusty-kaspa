@@ -218,25 +218,9 @@ impl Frontier {
         let mut inclusion_interval = average_transaction_mass / (mass_per_block * bps);
         let mut estimator = FeerateEstimator::new(self.total_weight(), inclusion_interval);
 
-        // Corresponds to the removal of the top item, hence the skip(1) below
-        mass_per_block -= average_transaction_mass;
-        inclusion_interval = average_transaction_mass / (mass_per_block * bps);
-
         // Search for better estimators by possibly removing extremely high outliers
-        for key in self.search_tree.descending_iter().skip(1) {
-            // Compute the weight up to, and including, current key
-            let prefix_weight = self.search_tree.prefix_weight(key);
-            let pending_estimator = FeerateEstimator::new(prefix_weight, inclusion_interval);
-
-            // Test the pending estimator vs. the current one
-            if pending_estimator.feerate_to_time(1.0) < estimator.feerate_to_time(1.0) {
-                estimator = pending_estimator;
-            } else {
-                // The pending estimator is no better, break. Indicates that the reduction in
-                // network mass per second is more significant than the removed weight
-                break;
-            }
-
+        let mut down_iter = self.search_tree.descending_iter().skip(1);
+        loop {
             // Update values for the next iteration. In order to remove the outlier from the
             // total weight, we must compensate by capturing a block slot.
             mass_per_block -= average_transaction_mass;
@@ -248,6 +232,24 @@ impl Frontier {
             // Re-calc the inclusion interval based on the new block "capacity".
             // Note that inclusion_interval < 1.0 as required by the estimator, since mass_per_block > average_transaction_mass (by condition above) and bps >= 1
             inclusion_interval = average_transaction_mass / (mass_per_block * bps);
+
+            // Compute the weight up to, and including, current key (or use zero weight if next is none)
+            let next = down_iter.next();
+            let prefix_weight = next.map(|key| self.search_tree.prefix_weight(key)).unwrap_or_default();
+            let pending_estimator = FeerateEstimator::new(prefix_weight, inclusion_interval);
+
+            // Test the pending estimator vs. the current one
+            if pending_estimator.feerate_to_time(1.0) < estimator.feerate_to_time(1.0) {
+                estimator = pending_estimator;
+            } else {
+                // The pending estimator is no better, break. Indicates that the reduction in
+                // network mass per second is more significant than the removed weight
+                break;
+            }
+
+            if next.is_none() {
+                break;
+            }
         }
         estimator
     }
@@ -389,9 +391,7 @@ mod tests {
             let args = FeerateEstimatorArgs { network_blocks_per_second: 1, maximum_mass_per_block: 500_000 };
             // We are testing that the build function actually returns and is not looping indefinitely
             let estimator = frontier.build_feerate_estimator(args);
-            dbg!(len, estimator.clone());
             let estimations = estimator.calc_estimations(1.0);
-            dbg!(estimations.clone());
 
             let buckets = estimations.ordered_buckets();
             // Test for the absence of NaN, infinite or zero values in buckets
@@ -405,6 +405,8 @@ mod tests {
                     "bucket estimated seconds must be a finite number greater than zero"
                 );
             }
+            dbg!(len, estimator);
+            dbg!(estimations);
         }
     }
 
@@ -444,8 +446,8 @@ mod tests {
                     "bucket estimated seconds must be a finite number greater than zero"
                 );
             }
-            // dbg!(estimations);
-            // dbg!(estimator);
+            dbg!(len, estimator);
+            dbg!(estimations);
         }
     }
 }

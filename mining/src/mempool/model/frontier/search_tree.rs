@@ -1,4 +1,5 @@
 use super::feerate_key::FeerateTransactionKey;
+use std::iter::FusedIterator;
 use sweep_bptree::tree::visit::{DescendVisit, DescendVisitResult};
 use sweep_bptree::tree::{Argument, SearchArgument};
 use sweep_bptree::{BPlusTree, NodeStoreVec};
@@ -209,13 +210,13 @@ impl SearchTree {
 
     /// Iterate the tree in descending key order (going down from the
     /// highest key). Linear in the number of keys *actually* iterated.
-    pub fn descending_iter(&self) -> impl DoubleEndedIterator<Item = &FeerateKey> + ExactSizeIterator {
+    pub fn descending_iter(&self) -> impl DoubleEndedIterator<Item = &FeerateKey> + ExactSizeIterator + FusedIterator {
         self.tree.iter().rev().map(|(key, ())| key)
     }
 
     /// Iterate the tree in ascending key order (going up from the
     /// lowest key). Linear in the number of keys *actually* iterated.
-    pub fn ascending_iter(&self) -> impl DoubleEndedIterator<Item = &FeerateKey> + ExactSizeIterator {
+    pub fn ascending_iter(&self) -> impl DoubleEndedIterator<Item = &FeerateKey> + ExactSizeIterator + FusedIterator {
         self.tree.iter().map(|(key, ())| key)
     }
 
