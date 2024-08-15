@@ -6,14 +6,14 @@ use kaspa_rpc_core::RpcError;
 // rpc_core to protowire
 // ----------------------------------------------------------------------------
 
-from!(item: &kaspa_rpc_core::FeerateBucket, protowire::RpcFeerateBucket, {
+from!(item: &kaspa_rpc_core::RpcFeerateBucket, protowire::RpcFeerateBucket, {
     Self {
         feerate: item.feerate,
         estimated_seconds: item.estimated_seconds,
     }
 });
 
-from!(item: &kaspa_rpc_core::FeeEstimate, protowire::RpcFeeEstimate, {
+from!(item: &kaspa_rpc_core::RpcFeeEstimate, protowire::RpcFeeEstimate, {
     Self {
         priority_bucket: Some((&item.priority_bucket).into()),
         normal_buckets: item.normal_buckets.iter().map(|b| b.into()).collect(),
@@ -21,7 +21,7 @@ from!(item: &kaspa_rpc_core::FeeEstimate, protowire::RpcFeeEstimate, {
     }
 });
 
-from!(item: &kaspa_rpc_core::FeeEstimateVerboseExperimentalData, protowire::RpcFeeEstimateVerboseExperimentalData, {
+from!(item: &kaspa_rpc_core::RpcFeeEstimateVerboseExperimentalData, protowire::RpcFeeEstimateVerboseExperimentalData, {
     Self {
         network_mass_per_second: item.network_mass_per_second,
         mempool_ready_transactions_count: item.mempool_ready_transactions_count,
@@ -36,14 +36,14 @@ from!(item: &kaspa_rpc_core::FeeEstimateVerboseExperimentalData, protowire::RpcF
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
 
-try_from!(item: &protowire::RpcFeerateBucket, kaspa_rpc_core::FeerateBucket, {
+try_from!(item: &protowire::RpcFeerateBucket, kaspa_rpc_core::RpcFeerateBucket, {
     Self {
         feerate: item.feerate,
         estimated_seconds: item.estimated_seconds,
     }
 });
 
-try_from!(item: &protowire::RpcFeeEstimate, kaspa_rpc_core::FeeEstimate, {
+try_from!(item: &protowire::RpcFeeEstimate, kaspa_rpc_core::RpcFeeEstimate, {
     Self {
         priority_bucket: item.priority_bucket
             .as_ref()
@@ -54,7 +54,7 @@ try_from!(item: &protowire::RpcFeeEstimate, kaspa_rpc_core::FeeEstimate, {
     }
 });
 
-try_from!(item: &protowire::RpcFeeEstimateVerboseExperimentalData, kaspa_rpc_core::FeeEstimateVerboseExperimentalData, {
+try_from!(item: &protowire::RpcFeeEstimateVerboseExperimentalData, kaspa_rpc_core::RpcFeeEstimateVerboseExperimentalData, {
     Self {
         network_mass_per_second: item.network_mass_per_second,
         mempool_ready_transactions_count: item.mempool_ready_transactions_count,

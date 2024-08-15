@@ -860,7 +860,7 @@ pub struct GetFeeEstimateRequest {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetFeeEstimateResponse {
-    pub estimate: FeeEstimate,
+    pub estimate: RpcFeeEstimate,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -873,10 +873,10 @@ pub struct GetFeeEstimateExperimentalRequest {
 #[serde(rename_all = "camelCase")]
 pub struct GetFeeEstimateExperimentalResponse {
     /// The usual feerate estimate response
-    pub estimate: FeeEstimate,
+    pub estimate: RpcFeeEstimate,
 
     /// Experimental verbose data
-    pub verbose: Option<FeeEstimateVerboseExperimentalData>,
+    pub verbose: Option<RpcFeeEstimateVerboseExperimentalData>,
 }
 
 // ----------------------------------------------------------------------------

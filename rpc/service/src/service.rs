@@ -112,7 +112,7 @@ pub struct RpcCoreService {
     perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
     p2p_tower_counters: Arc<TowerConnectionCounters>,
     grpc_tower_counters: Arc<TowerConnectionCounters>,
-    fee_estimate_cache: ExpiringCache<FeeEstimate>,
+    fee_estimate_cache: ExpiringCache<RpcFeeEstimate>,
     fee_estimate_verbose_cache: ExpiringCache<GetFeeEstimateExperimentalResponse>,
 }
 

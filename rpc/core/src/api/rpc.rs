@@ -318,7 +318,7 @@ pub trait RpcApi: Sync + Send + AnySync {
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Fee estimation API
 
-    async fn get_fee_estimate(&self) -> RpcResult<FeeEstimate> {
+    async fn get_fee_estimate(&self) -> RpcResult<RpcFeeEstimate> {
         Ok(self.get_fee_estimate_call(GetFeeEstimateRequest {}).await?.estimate)
     }
     async fn get_fee_estimate_call(&self, request: GetFeeEstimateRequest) -> RpcResult<GetFeeEstimateResponse>;
