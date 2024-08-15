@@ -883,9 +883,9 @@ message RpcFeeEstimateVerboseExperimentalData {
   uint64 mempool_ready_transactions_total_mass = 2;
   uint64 network_mass_per_second = 3;
 
-  double next_block_template_feerate_min = 4;
-  double next_block_template_feerate_median = 5;
-  double next_block_template_feerate_max = 6;
+  double next_block_template_feerate_min = 11;
+  double next_block_template_feerate_median = 12;
+  double next_block_template_feerate_max = 13;
 }
 
 message GetFeeEstimateRequestMessage {
