@@ -136,8 +136,10 @@ impl FeerateEstimator {
         let high = self.time_to_feerate(1f64).max(min);
         // Choose `low` feerate such that it provides sub-hour waiting time AND it covers (at least) the 0.25 quantile
         let low = self.time_to_feerate(3600f64).max(self.quantile(min, high, 0.25));
-        // Choose `mid` feerate such that it provides sub-minute waiting time AND it covers (at least) the 0.5 quantile between low and high.
-        let mid = self.time_to_feerate(60f64).max(self.quantile(low, high, 0.5));
+        // Choose `normal` feerate such that it provides sub-minute waiting time AND it covers (at least) the 0.66 quantile between low and high.
+        let normal = self.time_to_feerate(60f64).max(self.quantile(low, high, 0.66));
+        // Choose an additional point between normal and low
+        let mid = self.time_to_feerate(1800f64).max(self.quantile(min, high, 0.5));
         /* Intuition for the above:
                1. The quantile calculations make sure that we return interesting points on the `feerate_to_time` curve.
                2. They also ensure that the times don't diminish too high if small increments to feerate would suffice
@@ -145,7 +147,10 @@ impl FeerateEstimator {
         */
         FeerateEstimations {
             priority_bucket: FeerateBucket { feerate: high, estimated_seconds: self.feerate_to_time(high) },
-            normal_buckets: vec![FeerateBucket { feerate: mid, estimated_seconds: self.feerate_to_time(mid) }],
+            normal_buckets: vec![
+                FeerateBucket { feerate: normal, estimated_seconds: self.feerate_to_time(normal) },
+                FeerateBucket { feerate: mid, estimated_seconds: self.feerate_to_time(mid) },
+            ],
             low_buckets: vec![FeerateBucket { feerate: low, estimated_seconds: self.feerate_to_time(low) }],
         }
     }
@@ -185,6 +190,7 @@ mod tests {
         let estimator = FeerateEstimator { total_weight: 0.00659, inclusion_interval: 0.004f64 };
         let minimum_feerate = 0.755;
         let estimations = estimator.calc_estimations(minimum_feerate);
+        println!("{estimations}");
         let buckets = estimations.ordered_buckets();
         assert!(buckets.last().unwrap().feerate >= minimum_feerate);
         for (i, j) in buckets.into_iter().tuple_windows() {
