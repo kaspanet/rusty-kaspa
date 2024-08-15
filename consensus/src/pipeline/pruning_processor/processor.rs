@@ -404,11 +404,11 @@ impl PruningProcessor {
                     }
 
                     // Delete level-0 relations for blocks which only belong to higher proof levels.
-                    // Note: We can also delete for higher than 0 levels blocks that only belong to higher
-                    // proof levels, but this is more complicated since we also need to verify they are not
-                    // used in lower levels. Since the main motivation of this deletion is to reduce the
+                    // Note: it is also possible to delete level relations for level x > 0 for any block that only belongs
+                    // to proof levels higher than x, but this requires maintaining such per level usage mapping.
+                    // Since the main motivation of this deletion step is to reduce the
                     // number of origin's children in level 0, and this is not a bottleneck in any other
-                    // level, we chose to only delete level-0 redundant relations.
+                    // level, we currently chose to only delete level-0 redundant relations.
                     if !keep_level_zero_relations.contains(&current) {
                         let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[0]);
                         relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
