@@ -5,6 +5,11 @@ use crate::block_template::selector::ALPHA;
 use itertools::Itertools;
 use std::fmt::Display;
 
+/// A type representing fee/mass of a transaction in `sompi/gram` units.
+/// Given a feerate value recommendation, calculate the required fee by
+/// taking the transaction mass and multiplying it by feerate: `fee = feerate * mass(tx)`
+pub type Feerate = f64;
+
 #[derive(Clone, Copy, Debug)]
 pub struct FeerateBucket {
     pub feerate: f64,
@@ -20,9 +25,13 @@ impl Display for FeerateBucket {
 #[derive(Clone, Debug)]
 pub struct FeerateEstimations {
     /// *Top-priority* feerate bucket. Provides an estimation of the feerate required for sub-second DAG inclusion.
+    ///
+    /// Note: for all buckets, feerate values represent fee/mass of a transaction in `sompi/gram` units.
+    /// Given a feerate value recommendation, calculate the required fee by
+    /// taking the transaction mass and multiplying it by feerate: `fee = feerate * mass(tx)`
     pub priority_bucket: FeerateBucket,
 
-    /// A vector of *normal* priority feerate values. The first value of this vector is guaranteed to
+    /// A vector of *normal* priority feerate values. The first value of this vector is guaranteed to exist and
     /// provide an estimation for sub-*minute* DAG inclusion. All other values will have shorter estimation
     /// times than all `low_bucket` values. Therefor by chaining `[priority] | normal | low` and interpolating
     /// between them, one can compose a complete feerate function on the client side. The API makes an effort
@@ -30,7 +39,7 @@ pub struct FeerateEstimations {
     pub normal_buckets: Vec<FeerateBucket>,
 
     /// A vector of *low* priority feerate values. The first value of this vector is guaranteed to
-    /// provide an estimation for sub-*hour* DAG inclusion.
+    /// exist and provide an estimation for sub-*hour* DAG inclusion.
     pub low_buckets: Vec<FeerateBucket>,
 }
 

@@ -15,6 +15,10 @@ pub struct RpcFeerateBucket {
 #[serde(rename_all = "camelCase")]
 pub struct RpcFeeEstimate {
     /// *Top-priority* feerate bucket. Provides an estimation of the feerate required for sub-second DAG inclusion.
+    ///
+    /// Note: for all buckets, feerate values represent fee/mass of a transaction in `sompi/gram` units.
+    /// Given a feerate value recommendation, calculate the required fee by
+    /// taking the transaction mass and multiplying it by feerate: `fee = feerate * mass(tx)`
     pub priority_bucket: RpcFeerateBucket,
 
     /// A vector of *normal* priority feerate values. The first value of this vector is guaranteed to exist and
