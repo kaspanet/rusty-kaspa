@@ -108,9 +108,14 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                     smallvec![parent]
                 } else {
                     let origin_children_headers = origin_children_headers.get_or_insert_with(|| {
-                        let origin_children =
-                            self.relations_service.get_children(ORIGIN).unwrap().read().iter().copied().collect_vec();
-                        origin_children.iter().copied().map(|parent| self.headers_store.get_header(parent).unwrap()).collect_vec()
+                        self.relations_service
+                            .get_children(ORIGIN)
+                            .unwrap()
+                            .read()
+                            .iter()
+                            .copied()
+                            .map(|parent| self.headers_store.get_header(parent).unwrap())
+                            .collect_vec()
                     });
                     let mut reference_blocks = SmallVec::with_capacity(origin_children_headers.len());
                     for child_header in origin_children_headers.iter() {
