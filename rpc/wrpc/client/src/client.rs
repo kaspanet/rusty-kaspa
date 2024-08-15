@@ -596,9 +596,11 @@ impl RpcApi for KaspaRpcClient {
             GetBlockTemplate,
             GetCoinSupply,
             GetConnectedPeerInfo,
+            GetCurrentNetwork,
             GetDaaScoreTimestampEstimate,
             GetServerInfo,
-            GetCurrentNetwork,
+            GetFeeEstimate,
+            GetFeeEstimateExperimental,
             GetHeaders,
             GetInfo,
             GetMempoolEntries,
@@ -619,8 +621,6 @@ impl RpcApi for KaspaRpcClient {
             SubmitTransaction,
             SubmitTransactionReplacement,
             Unban,
-            GetFeeEstimate,
-            GetFeeEstimateExperimental
         ]
     );
 
