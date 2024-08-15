@@ -2,11 +2,19 @@
 //! behind this fee estimator.
 
 use crate::block_template::selector::ALPHA;
+use itertools::Itertools;
+use std::fmt::Display;
 
 #[derive(Clone, Copy, Debug)]
 pub struct FeerateBucket {
     pub feerate: f64,
     pub estimated_seconds: f64,
+}
+
+impl Display for FeerateBucket {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({:.4}, {:.4}s)", self.feerate, self.estimated_seconds)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -32,6 +40,14 @@ impl FeerateEstimations {
             .chain(self.normal_buckets.iter().copied())
             .chain(self.low_buckets.iter().copied())
             .collect()
+    }
+}
+
+impl Display for FeerateEstimations {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "(fee/mass, secs) priority: {}, ", self.priority_bucket)?;
+        write!(f, "normal: {}, ", self.normal_buckets.iter().format(", "))?;
+        write!(f, "low: {}", self.low_buckets.iter().format(", "))
     }
 }
 
