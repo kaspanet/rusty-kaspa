@@ -44,9 +44,11 @@ impl Router {
                 GetBlockTemplate,
                 GetCoinSupply,
                 GetConnectedPeerInfo,
+                GetCurrentNetwork,
                 GetDaaScoreTimestampEstimate,
                 GetServerInfo,
-                GetCurrentNetwork,
+                GetFeeEstimate,
+                GetFeeEstimateExperimental,
                 GetHeaders,
                 GetInfo,
                 GetInfo,
@@ -68,8 +70,6 @@ impl Router {
                 SubmitTransaction,
                 SubmitTransactionReplacement,
                 Unban,
-                GetFeeEstimate,
-                GetFeeEstimateExperimental,
             ]
         );
 
