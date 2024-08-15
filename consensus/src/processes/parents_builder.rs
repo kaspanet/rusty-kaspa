@@ -101,13 +101,14 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                 // If we make sure to add a parent in the future of the pruning point first, we can
                 // know that any pruned candidate that is in the past of some blocks in the pruning
                 // point anticone should be a parent (in the relevant level) of one of
-                // the virtual genesis children in the pruning point anticone. So we can check which
-                // virtual genesis children have this block as parent and use those block as
+                // the origin children in the pruning point anticone. So we can check which
+                // origin children have this block as parent and use those block as
                 // reference blocks.
                 let reference_blocks = if has_reachability_data {
                     smallvec![parent]
                 } else {
-                    let origin_children_headers = origin_children_headers.get_or_insert_with(|| {
+                    // Here we explicitly declare the type because otherwise Rust would make it mutable.
+                    let origin_children_headers: &Vec<_> = origin_children_headers.get_or_insert_with(|| {
                         self.relations_service
                             .get_children(ORIGIN)
                             .unwrap()
