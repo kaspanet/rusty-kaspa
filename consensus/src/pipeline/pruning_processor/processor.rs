@@ -268,6 +268,12 @@ impl PruningProcessor {
             .chain(data.ghostdag_blocks.iter().map(|gd| gd.hash))
             .chain(proof.iter().flatten().map(|h| h.hash))
             .collect();
+        let keep_level_zero_relations: BlockHashSet = std::iter::empty()
+            .chain(data.anticone.iter().copied())
+            .chain(data.daa_window_blocks.iter().map(|th| th.header.hash))
+            .chain(data.ghostdag_blocks.iter().map(|gd| gd.hash))
+            .chain(proof[0].iter().map(|h| h.hash))
+            .collect();
         let keep_headers: BlockHashSet = self.past_pruning_points();
 
         info!("Header and Block pruning: waiting for consensus write permissions...");
@@ -281,16 +287,16 @@ impl PruningProcessor {
         {
             let mut counter = 0;
             let mut batch = WriteBatch::default();
-            for kept in keep_relations.iter().copied() {
+            for kept in keep_level_zero_relations.iter().copied() {
                 let Some(ghostdag) = self.ghostdag_primary_store.get_data(kept).unwrap_option() else {
                     continue;
                 };
-                if ghostdag.unordered_mergeset().any(|h| !keep_relations.contains(&h)) {
+                if ghostdag.unordered_mergeset().any(|h| !keep_level_zero_relations.contains(&h)) {
                     let mut mutable_ghostdag: ExternalGhostdagData = ghostdag.as_ref().into();
-                    mutable_ghostdag.mergeset_blues.retain(|h| keep_relations.contains(h));
-                    mutable_ghostdag.mergeset_reds.retain(|h| keep_relations.contains(h));
-                    mutable_ghostdag.blues_anticone_sizes.retain(|k, _| keep_relations.contains(k));
-                    if !keep_relations.contains(&mutable_ghostdag.selected_parent) {
+                    mutable_ghostdag.mergeset_blues.retain(|h| keep_level_zero_relations.contains(h));
+                    mutable_ghostdag.mergeset_reds.retain(|h| keep_level_zero_relations.contains(h));
+                    mutable_ghostdag.blues_anticone_sizes.retain(|k, _| keep_level_zero_relations.contains(k));
+                    if !keep_level_zero_relations.contains(&mutable_ghostdag.selected_parent) {
                         mutable_ghostdag.selected_parent = ORIGIN;
                     }
                     counter += 1;
@@ -395,6 +401,19 @@ impl PruningProcessor {
                         // and we would like to preserve this semantic (having a valid status implies that
                         // other parts of the code assume the existence of GD data etc.)
                         statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
+                    }
+
+                    // Delete level-0 relations for blocks which only belong to higher proof levels.
+                    // Note: it is also possible to delete level relations for level x > 0 for any block that only belongs
+                    // to proof levels higher than x, but this requires maintaining such per level usage mapping.
+                    // Since the main motivation of this deletion step is to reduce the
+                    // number of origin's children in level 0, and this is not a bottleneck in any other
+                    // level, we currently chose to only delete level-0 redundant relations.
+                    if !keep_level_zero_relations.contains(&current) {
+                        let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[0]);
+                        relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
+                        staging_level_relations.commit(&mut batch).unwrap();
+                        self.ghostdag_stores[0].delete_batch(&mut batch, current).unwrap_option();
                     }
                 } else {
                     // Count only blocks which get fully pruned including DAG relations
