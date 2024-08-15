@@ -10,8 +10,6 @@ use crate::model::{
     stores::{headers::HeaderStoreReader, reachability::ReachabilityStoreReader, relations::RelationsStoreReader},
 };
 
-use super::reachability::ReachabilityResultExtensions;
-
 #[derive(Clone)]
 pub struct ParentsManager<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> {
     max_block_level: BlockLevel,
@@ -52,10 +50,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
             .expect("at least one of the parents is expected to be in the future of the pruning point");
         direct_parent_headers.swap(0, first_parent_in_future_of_pruning_point);
 
-        let origin_children = self.relations_service.get_children(ORIGIN).unwrap().read().iter().copied().collect_vec();
-        let origin_children_headers =
-            origin_children.iter().copied().map(|parent| self.headers_store.get_header(parent).unwrap()).collect_vec();
-
+        let mut origin_children_headers = None;
         let mut parents = Vec::with_capacity(self.max_block_level as usize);
 
         for block_level in 0..self.max_block_level {
@@ -97,11 +92,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
             };
 
             for (i, parent) in grandparents.into_iter().enumerate() {
-                let is_in_origin_children_future = self
-                    .reachability_service
-                    .is_any_dag_ancestor_result(&mut origin_children.iter().copied(), parent)
-                    .unwrap_option()
-                    .is_some_and(|r| r);
+                let has_reachability_data = self.reachability_service.has_reachability_data(parent);
 
                 // Reference blocks are the blocks that are used in reachability queries to check if
                 // a candidate is in the future of another candidate. In most cases this is just the
@@ -113,10 +104,15 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                 // the virtual genesis children in the pruning point anticone. So we can check which
                 // virtual genesis children have this block as parent and use those block as
                 // reference blocks.
-                let reference_blocks = if is_in_origin_children_future {
+                let reference_blocks = if has_reachability_data {
                     smallvec![parent]
                 } else {
-                    let mut reference_blocks = SmallVec::with_capacity(origin_children.len());
+                    let origin_children_headers = origin_children_headers.get_or_insert_with(|| {
+                        let origin_children =
+                            self.relations_service.get_children(ORIGIN).unwrap().read().iter().copied().collect_vec();
+                        origin_children.iter().copied().map(|parent| self.headers_store.get_header(parent).unwrap()).collect_vec()
+                    });
+                    let mut reference_blocks = SmallVec::with_capacity(origin_children_headers.len());
                     for child_header in origin_children_headers.iter() {
                         if self.parents_at_level(child_header, block_level).contains(&parent) {
                             reference_blocks.push(child_header.hash);
@@ -133,7 +129,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                     continue;
                 }
 
-                if !is_in_origin_children_future {
+                if !has_reachability_data {
                     continue;
                 }
 
