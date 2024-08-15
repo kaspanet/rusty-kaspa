@@ -89,10 +89,11 @@ impl Frontier {
     ///     2. Indeed, if the weight distribution is not too spread (i.e., `max(weights) = O(min(weights))`), `k << n` means
     ///        that the probability of collisions is low enough and the sampling process will converge in `O(k log(n))` w.h.p.
     ///     3. It remains to deal with the case where the weight distribution is highly biased. The process implemented below
-    ///        keeps track of the top-weight element. If the distribution is highly biased, this element will be sampled twice
-    ///        with sufficient probability (in constant time), in which case we narrow the sampling space to exclude it. We do
-    ///        this by computing the prefix weight up to this top item (exclusive) and then continue the sampling process over
-    ///        the narrowed space. This process is repeated until acquiring the desired mass.  
+    ///        keeps track of the top-weight element. If the distribution is highly biased, this element will be sampled with
+    ///        sufficient probability (in constant time). Following each sampling collision we search for a consecutive range of
+    ///        top elements which were already sampled and narrow the sampling space to exclude them all . We do this by computing
+    ///        the prefix weight up to the top most item which wasn't sampled yet (inclusive) and then continue the sampling process
+    ///        over the narrowed space. This process is repeated until acquiring the desired mass.  
     ///     4. Numerical stability. Naively, one would simply subtract `total_weight -= top.weight` in order to narrow the sampling
     ///        space. However, if `top.weight` is much larger than the remaining weight, the above f64 subtraction will yield a number
     ///        close or equal to zero. We fix this by implementing a `log(n)` prefix weight operation.
