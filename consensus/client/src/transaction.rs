@@ -214,12 +214,12 @@ impl Transaction {
         self.inner().version = v;
     }
 
-    #[wasm_bindgen(getter, js_name = lock_time)]
+    #[wasm_bindgen(getter, js_name = lockTime)]
     pub fn get_lock_time(&self) -> u64 {
         self.inner().lock_time
     }
 
-    #[wasm_bindgen(setter, js_name = lock_time)]
+    #[wasm_bindgen(setter, js_name = lockTime)]
     pub fn set_lock_time(&self, v: u64) {
         self.inner().lock_time = v;
     }
