@@ -2,6 +2,7 @@ use crate::{
     block_template::{builder::BlockTemplateBuilder, errors::BuilderError},
     cache::BlockTemplateCache,
     errors::MiningManagerResult,
+    feerate::{FeeEstimateVerbose, FeerateEstimations, FeerateEstimatorArgs},
     mempool::{
         config::Config,
         model::tx::{MempoolTransaction, TransactionPostValidation, TransactionPreValidation, TxRemovalReason},
@@ -12,7 +13,6 @@ use crate::{
         Mempool,
     },
     model::{
-        candidate_tx::CandidateTransaction,
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
         topological_sort::IntoIterTopologically,
         tx_insert::TransactionInsertion,
@@ -26,7 +26,7 @@ use kaspa_consensus_core::{
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         ConsensusApi,
     },
-    block::{BlockTemplate, TemplateBuildMode},
+    block::{BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     coinbase::MinerData,
     errors::{block::RuleError as BlockRuleError, tx::TxRuleError},
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
@@ -107,14 +107,14 @@ impl MiningManager {
         loop {
             attempts += 1;
 
-            let transactions = self.block_candidate_transactions();
-            let block_template_builder = BlockTemplateBuilder::new(self.config.maximum_mass_per_block);
+            let selector = self.build_selector();
+            let block_template_builder = BlockTemplateBuilder::new();
             let build_mode = if attempts < self.config.maximum_build_block_template_attempts {
                 TemplateBuildMode::Standard
             } else {
                 TemplateBuildMode::Infallible
             };
-            match block_template_builder.build_block_template(consensus, miner_data, transactions, build_mode) {
+            match block_template_builder.build_block_template(consensus, miner_data, selector, build_mode) {
                 Ok(block_template) => {
                     let block_template = cache_lock.set_immutable_cached_template(block_template);
                     match attempts {
@@ -197,8 +197,37 @@ impl MiningManager {
         }
     }
 
-    pub(crate) fn block_candidate_transactions(&self) -> Vec<CandidateTransaction> {
-        self.mempool.read().block_candidate_transactions()
+    /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier
+    pub(crate) fn build_selector(&self) -> Box<dyn TemplateTransactionSelector> {
+        self.mempool.read().build_selector()
+    }
+
+    /// Returns realtime feerate estimations based on internal mempool state
+    pub(crate) fn get_realtime_feerate_estimations(&self) -> FeerateEstimations {
+        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.maximum_mass_per_block);
+        let estimator = self.mempool.read().build_feerate_estimator(args);
+        estimator.calc_estimations(self.config.minimum_feerate())
+    }
+
+    /// Returns realtime feerate estimations based on internal mempool state with additional verbose data
+    pub(crate) fn get_realtime_feerate_estimations_verbose(&self) -> FeeEstimateVerbose {
+        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.maximum_mass_per_block);
+        let network_mass_per_second = args.network_mass_per_second();
+        let mempool_read = self.mempool.read();
+        let estimator = mempool_read.build_feerate_estimator(args);
+        let ready_transactions_count = mempool_read.ready_transaction_count();
+        let ready_transaction_total_mass = mempool_read.ready_transaction_total_mass();
+        drop(mempool_read);
+        FeeEstimateVerbose {
+            estimations: estimator.calc_estimations(self.config.minimum_feerate()),
+            network_mass_per_second,
+            mempool_ready_transactions_count: ready_transactions_count as u64,
+            mempool_ready_transactions_total_mass: ready_transaction_total_mass,
+            // TODO: Next PR
+            next_block_template_feerate_min: -1.0,
+            next_block_template_feerate_median: -1.0,
+            next_block_template_feerate_max: -1.0,
+        }
     }
 
     /// Clears the block template cache, forcing the next call to get_block_template to build a new block template.
@@ -209,7 +238,7 @@ impl MiningManager {
 
     #[cfg(test)]
     pub(crate) fn block_template_builder(&self) -> BlockTemplateBuilder {
-        BlockTemplateBuilder::new(self.config.maximum_mass_per_block)
+        BlockTemplateBuilder::new()
     }
 
     /// validate_and_insert_transaction validates the given transaction, and
@@ -797,6 +826,16 @@ impl MiningManagerProxy {
 
     pub async fn get_block_template(self, consensus: &ConsensusProxy, miner_data: MinerData) -> MiningManagerResult<BlockTemplate> {
         consensus.clone().spawn_blocking(move |c| self.inner.get_block_template(c, &miner_data)).await
+    }
+
+    /// Returns realtime feerate estimations based on internal mempool state
+    pub async fn get_realtime_feerate_estimations(self) -> FeerateEstimations {
+        spawn_blocking(move || self.inner.get_realtime_feerate_estimations()).await.unwrap()
+    }
+
+    /// Returns realtime feerate estimations based on internal mempool state with additional verbose data
+    pub async fn get_realtime_feerate_estimations_verbose(self) -> FeeEstimateVerbose {
+        spawn_blocking(move || self.inner.get_realtime_feerate_estimations_verbose()).await.unwrap()
     }
 
     /// Validates a transaction and adds it to the set of known transactions that have not yet been

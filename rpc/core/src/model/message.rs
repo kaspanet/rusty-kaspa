@@ -850,6 +850,35 @@ impl GetDaaScoreTimestampEstimateResponse {
     }
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Fee rate estimations
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetFeeEstimateRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetFeeEstimateResponse {
+    pub estimate: RpcFeeEstimate,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetFeeEstimateExperimentalRequest {
+    pub verbose: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetFeeEstimateExperimentalResponse {
+    /// The usual feerate estimate response
+    pub estimate: RpcFeeEstimate,
+
+    /// Experimental verbose data
+    pub verbose: Option<RpcFeeEstimateVerboseExperimentalData>,
+}
+
 // ----------------------------------------------------------------------------
 // Subscriptions & notifications
 // ----------------------------------------------------------------------------
