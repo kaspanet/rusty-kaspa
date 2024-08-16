@@ -91,7 +91,7 @@ impl Frontier {
     ///     3. It remains to deal with the case where the weight distribution is highly biased. The process implemented below
     ///        keeps track of the top-weight element. If the distribution is highly biased, this element will be sampled with
     ///        sufficient probability (in constant time). Following each sampling collision we search for a consecutive range of
-    ///        top elements which were already sampled and narrow the sampling space to exclude them all . We do this by computing
+    ///        top elements which were already sampled and narrow the sampling space to exclude them all. We do this by computing
     ///        the prefix weight up to the top most item which wasn't sampled yet (inclusive) and then continue the sampling process
     ///        over the narrowed space. This process is repeated until acquiring the desired mass.  
     ///     4. Numerical stability. Naively, one would simply subtract `total_weight -= top.weight` in order to narrow the sampling
