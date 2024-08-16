@@ -1,4 +1,5 @@
 use crate::{
+    feerate::{FeerateEstimator, FeerateEstimatorArgs},
     mempool::{
         config::Config,
         errors::{RuleError, RuleResult},
@@ -10,17 +11,20 @@ use crate::{
         },
         tx::Priority,
     },
-    model::{candidate_tx::CandidateTransaction, topological_index::TopologicalIndex},
+    model::topological_index::TopologicalIndex,
+    Policy,
 };
 use kaspa_consensus_core::{
-    tx::TransactionId,
-    tx::{MutableTransaction, TransactionOutpoint},
+    block::TemplateTransactionSelector,
+    tx::{MutableTransaction, TransactionId, TransactionOutpoint},
 };
 use kaspa_core::{time::unix_now, trace, warn};
 use std::{
-    collections::{hash_map::Keys, hash_set::Iter, HashSet},
+    collections::{hash_map::Keys, hash_set::Iter},
     sync::Arc,
 };
+
+use super::frontier::Frontier;
 
 /// Pool of transactions to be included in a block template
 ///
@@ -54,7 +58,7 @@ pub(crate) struct TransactionsPool {
     /// Transactions dependencies formed by outputs present in pool - successor relations.
     chained_transactions: TransactionsEdges,
     /// Transactions with no parents in the mempool -- ready to be inserted into a block template
-    ready_transactions: HashSet<TransactionId>,
+    ready_transactions: Frontier,
 
     last_expire_scan_daa_score: u64,
     /// last expire scan time in milliseconds
@@ -105,7 +109,7 @@ impl TransactionsPool {
         let parents = self.get_parent_transaction_ids_in_pool(&transaction.mtx);
         self.parent_transactions.insert(id, parents.clone());
         if parents.is_empty() {
-            self.ready_transactions.insert(id);
+            self.ready_transactions.insert((&transaction).into());
         }
         for parent_id in parents {
             let entry = self.chained_transactions.entry(parent_id).or_default();
@@ -133,17 +137,19 @@ impl TransactionsPool {
                 if let Some(parents) = self.parent_transactions.get_mut(chain) {
                     parents.remove(transaction_id);
                     if parents.is_empty() {
-                        self.ready_transactions.insert(*chain);
+                        let tx = self.all_transactions.get(chain).unwrap();
+                        self.ready_transactions.insert(tx.into());
                     }
                 }
             }
         }
         self.parent_transactions.remove(transaction_id);
         self.chained_transactions.remove(transaction_id);
-        self.ready_transactions.remove(transaction_id);
 
         // Remove the transaction itself
         let removed_tx = self.all_transactions.remove(transaction_id).ok_or(RuleError::RejectMissingTransaction(*transaction_id))?;
+
+        self.ready_transactions.remove(&(&removed_tx).into());
 
         // TODO: consider using `self.parent_transactions.get(transaction_id)`
         // The tradeoff to consider is whether it might be possible that a parent tx exists in the pool
@@ -161,15 +167,18 @@ impl TransactionsPool {
         self.ready_transactions.len()
     }
 
-    /// all_ready_transactions returns all fully populated mempool transactions having no parents in the mempool.
-    /// These transactions are ready for being inserted in a block template.
-    pub(crate) fn all_ready_transactions(&self) -> Vec<CandidateTransaction> {
-        // The returned transactions are leaving the mempool so they are cloned
-        self.ready_transactions
-            .iter()
-            .take(self.config.maximum_ready_transaction_count as usize)
-            .map(|id| CandidateTransaction::from_mutable(&self.all_transactions.get(id).unwrap().mtx))
-            .collect()
+    pub(crate) fn ready_transaction_total_mass(&self) -> u64 {
+        self.ready_transactions.total_mass()
+    }
+
+    /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier
+    pub(crate) fn build_selector(&self) -> Box<dyn TemplateTransactionSelector> {
+        self.ready_transactions.build_selector(&Policy::new(self.config.maximum_mass_per_block))
+    }
+
+    /// Builds a feerate estimator based on internal state of the ready transactions frontier
+    pub(crate) fn build_feerate_estimator(&self, args: FeerateEstimatorArgs) -> FeerateEstimator {
+        self.ready_transactions.build_feerate_estimator(args)
     }
 
     /// Is the mempool transaction identified by `transaction_id` unchained, thus having no successor?
@@ -229,8 +238,8 @@ impl TransactionsPool {
 
         // An error is returned if the mempool is filled with high priority and other unremovable transactions.
         let tx_count = self.len() + free_slots - transactions_to_remove.len();
-        if tx_count as u64 > self.config.maximum_transaction_count {
-            let err = RuleError::RejectMempoolIsFull(tx_count - free_slots, self.config.maximum_transaction_count);
+        if tx_count as u64 > self.config.maximum_transaction_count as u64 {
+            let err = RuleError::RejectMempoolIsFull(tx_count - free_slots, self.config.maximum_transaction_count as u64);
             warn!("{}", err.to_string());
             return Err(err);
         }

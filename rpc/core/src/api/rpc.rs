@@ -316,6 +316,22 @@ pub trait RpcApi: Sync + Send + AnySync {
     ) -> RpcResult<GetDaaScoreTimestampEstimateResponse>;
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // Fee estimation API
+
+    async fn get_fee_estimate(&self) -> RpcResult<RpcFeeEstimate> {
+        Ok(self.get_fee_estimate_call(GetFeeEstimateRequest {}).await?.estimate)
+    }
+    async fn get_fee_estimate_call(&self, request: GetFeeEstimateRequest) -> RpcResult<GetFeeEstimateResponse>;
+
+    async fn get_fee_estimate_experimental(&self, verbose: bool) -> RpcResult<GetFeeEstimateExperimentalResponse> {
+        self.get_fee_estimate_experimental_call(GetFeeEstimateExperimentalRequest { verbose }).await
+    }
+    async fn get_fee_estimate_experimental_call(
+        &self,
+        request: GetFeeEstimateExperimentalRequest,
+    ) -> RpcResult<GetFeeEstimateExperimentalResponse>;
+
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 
     /// Register a new listener and returns an id identifying it.

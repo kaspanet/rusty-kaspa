@@ -114,7 +114,7 @@ impl Task for TransactionSenderTask {
                     break;
                 }
                 prev_mempool_size = mempool_size;
-                sleep(Duration::from_secs(1)).await;
+                sleep(Duration::from_secs(2)).await;
             }
             if stopper == Stopper::Signal {
                 warn!("Tx sender task signaling to stop");

@@ -1,4 +1,5 @@
 pub(crate) mod accepted_transactions;
+pub(crate) mod frontier;
 pub(crate) mod map;
 pub(crate) mod orphan_pool;
 pub(crate) mod pool;

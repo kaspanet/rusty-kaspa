@@ -2,6 +2,7 @@ pub mod any;
 pub mod arc;
 pub mod binary_heap;
 pub mod channel;
+pub mod expiring_cache;
 pub mod hashmap;
 pub mod hex;
 pub mod iter;

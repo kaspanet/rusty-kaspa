@@ -557,6 +557,33 @@ async fn sanity_test() {
                 })
             }
 
+            KaspadPayloadOps::GetFeeEstimate => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client.get_fee_estimate().await.unwrap();
+                    info!("{:?}", response.priority_bucket);
+                    assert!(!response.normal_buckets.is_empty());
+                    assert!(!response.low_buckets.is_empty());
+                    for bucket in response.ordered_buckets() {
+                        info!("{:?}", bucket);
+                    }
+                })
+            }
+
+            KaspadPayloadOps::GetFeeEstimateExperimental => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client.get_fee_estimate_experimental(true).await.unwrap();
+                    assert!(!response.estimate.normal_buckets.is_empty());
+                    assert!(!response.estimate.low_buckets.is_empty());
+                    for bucket in response.estimate.ordered_buckets() {
+                        info!("{:?}", bucket);
+                    }
+                    assert!(response.verbose.is_some());
+                    info!("{:?}", response.verbose);
+                })
+            }
+
             KaspadPayloadOps::NotifyBlockAdded => {
                 let rpc_client = client.clone();
                 let id = listener_id;
