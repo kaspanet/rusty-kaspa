@@ -3,7 +3,9 @@ use crate::prelude::*;
 use crate::pskt::{Inner as PSKTInner, PSKT};
 // use crate::wasm::result;
 
-use kaspa_addresses::Address;
+use kaspa_addresses::{Address, Prefix};
+// use kaspa_bip32::Prefix;
+use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
 
 use hex;
@@ -65,6 +67,44 @@ impl Bundle {
         } else {
             Err(Error::PskbPrefixError)
         }
+    }
+
+    pub fn display_format<F>(&self, network_id: NetworkId, sompi_formatter: F) -> String
+    where
+        F: Fn(u64, &NetworkType) -> String,
+    {
+        let mut result = "".to_string();
+
+        for (pskt_index, bundle_inner) in self.0.iter().enumerate() {
+            let pskt: PSKT<Signer> = PSKT::<Signer>::from(bundle_inner.to_owned());
+
+            result.push_str(&format!("\r\nPSKT #{:02}\r\n", pskt_index + 1));
+
+            for (key_inner, input) in pskt.clone().inputs.iter().enumerate() {
+                result.push_str(&format!("Input #{:02}\r\n", key_inner + 1));
+
+                if let Some(utxo_entry) = &input.utxo_entry {
+                    result.push_str(&format!("  amount: {}\r\n", sompi_formatter(utxo_entry.amount, &NetworkType::from(network_id))));
+                    result.push_str(&format!(
+                        "  address: {}\r\n",
+                        extract_script_pub_key_address(&utxo_entry.script_public_key, Prefix::from(network_id))
+                            .expect("Input address")
+                    ));
+                }
+            }
+
+            result.push_str("---\r\n");
+
+            for (key_inner, output) in pskt.clone().outputs.iter().enumerate() {
+                result.push_str(&format!("Output #{:02}\r\n", key_inner + 1));
+                result.push_str(&format!("  amount: {}\r\n", sompi_formatter(output.amount, &NetworkType::from(network_id))));
+                result.push_str(&format!(
+                    "  address: {}\r\n",
+                    extract_script_pub_key_address(&output.script_public_key, Prefix::from(network_id)).expect("Input address")
+                ));
+            }
+        }
+        result
     }
 }
 
