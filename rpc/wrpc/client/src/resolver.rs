@@ -58,6 +58,7 @@ fn try_parse_resolvers(toml: &str) -> Result<Vec<Arc<String>>> {
 struct Inner {
     pub urls: Vec<Arc<String>>,
     pub tls: bool,
+    public: bool,
 }
 
 impl Inner {
@@ -66,9 +67,13 @@ impl Inner {
             panic!("Resolver: Empty URL list supplied to the constructor.");
         }
 
-        let urls = urls.unwrap_or_else(|| try_parse_resolvers(RESOLVER_CONFIG).expect("TOML: Unable to parse RPC Resolver list"));
+        let mut public = false;
+        let urls = urls.unwrap_or_else(|| {
+            public = true;
+            try_parse_resolvers(RESOLVER_CONFIG).expect("TOML: Unable to parse RPC Resolver list")
+        });
 
-        Self { urls, tls }
+        Self { urls, tls, public }
     }
 }
 
@@ -91,8 +96,12 @@ impl Resolver {
         Self { inner: Arc::new(Inner::new(urls, tls)) }
     }
 
-    pub fn urls(&self) -> Vec<Arc<String>> {
-        self.inner.urls.clone()
+    pub fn urls(&self) -> Option<Vec<Arc<String>>> {
+        if self.inner.public {
+            None
+        } else {
+            Some(self.inner.urls.clone())
+        }
     }
 
     pub fn tls(&self) -> bool {
