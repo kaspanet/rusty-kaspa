@@ -144,8 +144,8 @@ impl Resolver {
 impl Resolver {
     /// List of public Kaspa Resolver URLs.
     #[wasm_bindgen(getter)]
-    pub fn urls(&self) -> ResolverArrayT {
-        Array::from_iter(self.resolver.urls().iter().map(|v| JsValue::from(v.as_str()))).unchecked_into()
+    pub fn urls(&self) -> Option<ResolverArrayT> {
+        self.resolver.urls().map(|urls| Array::from_iter(urls.iter().map(|v| JsValue::from(v.as_str()))).unchecked_into())
     }
 
     /// Fetches a public Kaspa wRPC endpoint for the given encoding and network identifier.
@@ -198,6 +198,16 @@ impl TryCastFromJs for Resolver {
         Ok(Self::try_ref_from_js_value_as_cast(value)?)
     }
 }
+
+// impl TryCastFromJs for Resolver {
+//     type Error = Error;
+//     fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>>
+//     where
+//         R: AsRef<JsValue> + 'a,
+//     {
+//         Ok(Self::try_ref_from_js_value_as_cast(value)?)
+//     }
+// }
 
 impl TryFrom<&JsValue> for Resolver {
     type Error = Error;
