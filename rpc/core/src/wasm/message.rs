@@ -1,5 +1,4 @@
 #![allow(non_snake_case)]
-
 use crate::error::RpcError as Error;
 use crate::error::RpcResult as Result;
 use crate::model::*;
@@ -1476,3 +1475,210 @@ declare! {
 try_from! ( args: UnbanResponse, IUnbanResponse, {
     Ok(to_value(&args)?.into())
 });
+
+// ---
+
+declare! {
+    IFeerateBucket,
+    r#"
+    /**
+     * 
+     * 
+     * @category Node RPC
+     */
+    export interface IFeerateBucket {
+        /**
+         * The fee/mass ratio estimated to be required for inclusion time <= estimated_seconds
+         */
+        feerate : number;
+        /**
+         * The estimated inclusion time for a transaction with fee/mass = feerate
+         */
+        estimatedSeconds : number;
+    }
+    "#,
+}
+
+declare! {
+    IFeeEstimate,
+    r#"
+    /**
+     * 
+     * 
+     * @category Node RPC
+     */
+    export interface IFeeEstimate {
+        /**
+         * *Top-priority* feerate bucket. Provides an estimation of the feerate required for sub-second DAG inclusion.
+         *
+         * Note: for all buckets, feerate values represent fee/mass of a transaction in `sompi/gram` units.
+         * Given a feerate value recommendation, calculate the required fee by
+         * taking the transaction mass and multiplying it by feerate: `fee = feerate * mass(tx)`
+         */
+
+        priorityBucket : IFeerateBucket;
+        /**
+         * A vector of *normal* priority feerate values. The first value of this vector is guaranteed to exist and
+         * provide an estimation for sub-*minute* DAG inclusion. All other values will have shorter estimation
+         * times than all `low_bucket` values. Therefor by chaining `[priority] | normal | low` and interpolating
+         * between them, one can compose a complete feerate function on the client side. The API makes an effort
+         * to sample enough "interesting" points on the feerate-to-time curve, so that the interpolation is meaningful.
+         */
+
+        normalBucket : IFeerateBucket[];
+        /**
+        * An array of *low* priority feerate values. The first value of this vector is guaranteed to
+        * exist and provide an estimation for sub-*hour* DAG inclusion.
+        */
+        lowBucket : IFeerateBucket[];
+    }
+    "#,
+}
+
+try_from!( estimate: RpcFeeEstimate, IFeeEstimate, {
+
+    let priority_bucket = IFeerateBucket::default();
+    priority_bucket.set("feerate", &estimate.priority_bucket.feerate.into())?;
+    priority_bucket.set("estimatedSeconds", &estimate.priority_bucket.estimated_seconds.into())?;
+
+    let normal_buckets = estimate.normal_buckets.into_iter().map(|normal_bucket| {
+        let bucket = IFeerateBucket::default();
+        bucket.set("feerate", &normal_bucket.feerate.into())?;
+        bucket.set("estimatedSeconds", &normal_bucket.estimated_seconds.into())?;
+        Ok(bucket)
+    }).collect::<Result<Vec<IFeerateBucket>>>()?;
+
+    let low_buckets = estimate.low_buckets.into_iter().map(|low_bucket| {
+        let bucket = IFeerateBucket::default();
+        bucket.set("feerate", &low_bucket.feerate.into())?;
+        bucket.set("estimatedSeconds", &low_bucket.estimated_seconds.into())?;
+        Ok(bucket)
+    }).collect::<Result<Vec<IFeerateBucket>>>()?;
+
+    let estimate = IFeeEstimate::default();
+    estimate.set("priorityBucket", &priority_bucket)?;
+    estimate.set("normalBuckets", &js_sys::Array::from_iter(normal_buckets))?;
+    estimate.set("lowBuckets", &js_sys::Array::from_iter(low_buckets))?;
+
+    Ok(estimate)
+});
+
+// ---
+
+declare! {
+    IGetFeeEstimateRequest,
+    r#"
+    /**
+     * Get fee estimate from the node.
+     * 
+     * @category Node RPC
+     */
+    export interface IGetFeeEstimateRequest { }
+    "#,
+}
+
+try_from! ( args: IGetFeeEstimateRequest, GetFeeEstimateRequest, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetFeeEstimateResponse,
+    r#"
+    /**
+     * 
+     * 
+     * @category Node RPC
+     */
+    export interface IGetFeeEstimateResponse {
+        estimate : IFeeEstimate;
+    }
+    "#,
+}
+
+try_from!( args: GetFeeEstimateResponse, IGetFeeEstimateResponse, {
+    let estimate = IFeeEstimate::try_from(args.estimate)?;
+    let response = IGetFeeEstimateResponse::default();
+    response.set("estimate", &estimate)?;
+    Ok(response)
+});
+
+// ---
+
+declare! {
+    IFeeEstimateVerboseExperimentalData,
+    r#"
+    /**
+     * 
+     * 
+     * @category Node RPC
+     */
+    export interface IFeeEstimateVerboseExperimentalData {
+        mempoolReadyTransactionsCount : bigint;
+        mempoolReadyTransactionsTotalMass : bigint;
+        networkMassPerSecond : bigint;
+        nextBlockTemplateFeerateMin : number;
+        nextBlockTemplateFeerateMedian : number;
+        nextBlockTemplateFeerateMax : number;
+    }
+    "#,
+}
+
+try_from!( data: RpcFeeEstimateVerboseExperimentalData, IFeeEstimateVerboseExperimentalData, {
+
+    let target = IFeeEstimateVerboseExperimentalData::default();
+    target.set("mempoolReadyTransactionsCount", &js_sys::BigInt::from(data.mempool_ready_transactions_count).into())?;
+    target.set("mempoolReadyTransactionsTotalMass", &js_sys::BigInt::from(data.mempool_ready_transactions_total_mass).into())?;
+    target.set("networkMassPerSecond", &js_sys::BigInt::from(data.network_mass_per_second).into())?;
+    target.set("nextBlockTemplateFeerateMin", &data.next_block_template_feerate_min.into())?;
+    target.set("nextBlockTemplateFeerateMedian", &data.next_block_template_feerate_median.into())?;
+    target.set("nextBlockTemplateFeerateMax", &data.next_block_template_feerate_max.into())?;
+
+    Ok(target)
+});
+
+declare! {
+    IGetFeeEstimateExperimentalRequest,
+    // "ISubmitTransactionRequest | Transaction",
+    r#"
+    /**
+     * Get fee estimate from the node.
+     * 
+     * @category Node RPC
+     */
+    export interface IGetFeeEstimateExperimentalRequest { }
+    "#,
+}
+
+try_from! ( args: IGetFeeEstimateExperimentalRequest, GetFeeEstimateExperimentalRequest, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetFeeEstimateExperimentalResponse,
+    r#"
+    /**
+     * 
+     * 
+     * @category Node RPC
+     */
+    export interface IGetFeeEstimateExperimentalResponse {
+        estimate : IFeeEstimate;
+        verbose? : IFeeEstimateVerboseExperimentalData
+    }
+    "#,
+}
+
+try_from!( args: GetFeeEstimateExperimentalResponse, IGetFeeEstimateExperimentalResponse, {
+    let estimate = IFeeEstimate::try_from(args.estimate)?;
+    let response = IGetFeeEstimateExperimentalResponse::default();
+    response.set("estimate", &estimate)?;
+
+    if let Some(verbose) = args.verbose {
+        let verbose = IFeeEstimateVerboseExperimentalData::try_from(verbose)?;
+        response.set("verbose", &verbose)?;
+    }
+
+    Ok(response)
+});
+
+// ---

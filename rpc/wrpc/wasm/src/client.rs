@@ -1000,6 +1000,10 @@ build_wrpc_wasm_bindgen_interface!(
         /// score timestamp estimate.
         /// Returned information: DAA score timestamp estimate.
         GetDaaScoreTimestampEstimate,
+        /// Feerate estimates
+        GetFeeEstimate,
+        /// Feerate estimates (experimental)
+        GetFeeEstimateExperimental,
         /// Retrieves the current network configuration.
         /// Returned information: Current network configuration.
         GetCurrentNetwork,
