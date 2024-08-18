@@ -21,7 +21,7 @@ pub struct PublicKeyGenerator {
 #[wasm_bindgen]
 impl PublicKeyGenerator {
     #[wasm_bindgen(js_name=fromXPub)]
-    pub fn from_xpub(kpub: XPubT, cosigner_index: Option<u32>) -> Result<PublicKeyGenerator> {
+    pub fn from_xpub(kpub: &XPubT, cosigner_index: Option<u32>) -> Result<PublicKeyGenerator> {
         let kpub = XPub::try_cast_from(kpub)?;
         let xpub = kpub.as_ref().inner();
         let hd_wallet = WalletDerivationManager::from_extended_public_key(xpub.clone(), cosigner_index)?;

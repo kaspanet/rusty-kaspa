@@ -85,11 +85,11 @@ impl Account {
         self.inner.clone().scan(None, None).await
     }
 
-    pub async fn send(&self, js_value: JsValue) -> Result<JsValue> {
-        let _args = AccountSendArgs::try_from(js_value)?;
+    // pub async fn send(&self, js_value: JsValue) -> Result<JsValue> {
+    //     let _args = AccountSendArgs::try_from(js_value)?;
 
-        todo!()
-    }
+    //     todo!()
+    // }
 }
 
 impl From<Account> for Arc<dyn native::Account> {
@@ -105,51 +105,51 @@ impl TryFrom<&JsValue> for Account {
     }
 }
 
-pub struct AccountSendArgs {
-    pub outputs: PaymentOutputs,
-    pub priority_fee_sompi: Option<u64>,
-    pub include_fees_in_amount: bool,
+// pub struct AccountSendArgs {
+//     pub outputs: PaymentOutputs,
+//     pub priority_fee_sompi: Option<u64>,
+//     pub include_fees_in_amount: bool,
 
-    pub wallet_secret: Secret,
-    pub payment_secret: Option<Secret>,
-    pub abortable: Abortable,
-}
+//     pub wallet_secret: Secret,
+//     pub payment_secret: Option<Secret>,
+//     pub abortable: Abortable,
+// }
 
-impl TryFrom<JsValue> for AccountSendArgs {
-    type Error = Error;
-    fn try_from(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Some(object) = Object::try_from(&js_value) {
-            let outputs = object.get_cast::<PaymentOutputs>("outputs")?.into_owned();
+// impl TryFrom<JsValue> for AccountSendArgs {
+//     type Error = Error;
+//     fn try_from<'a,R>(js_value: JsValue) -> std::result::Result<Self, Self::Error> {
+//         if let Some(object) = Object::try_from(&js_value) {
+//             let outputs = object.cast_into::<PaymentOutputs>("outputs")?.into_owned();
 
-            let priority_fee_sompi = object.get_u64("priorityFee").ok();
-            let include_fees_in_amount = object.get_bool("includeFeesInAmount").unwrap_or(false);
-            let abortable = object.get("abortable").ok().and_then(|v| Abortable::try_from(&v).ok()).unwrap_or_default();
+//             let priority_fee_sompi = object.get_u64("priorityFee").ok();
+//             let include_fees_in_amount = object.get_bool("includeFeesInAmount").unwrap_or(false);
+//             let abortable = object.get("abortable").ok().and_then(|v| Abortable::try_from(&v).ok()).unwrap_or_default();
 
-            let wallet_secret = object.get_string("walletSecret")?.into();
-            let payment_secret = object.get_value("paymentSecret")?.as_string().map(|s| s.into());
+//             let wallet_secret = object.get_string("walletSecret")?.into();
+//             let payment_secret = object.get_value("paymentSecret")?.as_string().map(|s| s.into());
 
-            let send_args =
-                AccountSendArgs { outputs, priority_fee_sompi, include_fees_in_amount, wallet_secret, payment_secret, abortable };
+//             let send_args =
+//                 AccountSendArgs { outputs, priority_fee_sompi, include_fees_in_amount, wallet_secret, payment_secret, abortable };
 
-            Ok(send_args)
-        } else {
-            Err("Argument to Account::send() must be an object".into())
-        }
-    }
-}
+//             Ok(send_args)
+//         } else {
+//             Err("Argument to Account::send() must be an object".into())
+//         }
+//     }
+// }
 
-pub struct AccountCreateArgs {}
+// pub struct AccountCreateArgs {}
 
-impl TryFrom<JsValue> for AccountCreateArgs {
-    type Error = Error;
-    fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
-        if let Some(object) = Object::try_from(&value) {
-            let _keypair = object.try_get_cast::<Keypair>("keypair")?;
-            let _public_key = object.try_get_cast::<Keypair>("keypair")?;
+// impl TryFrom<JsValue> for AccountCreateArgs {
+//     type Error = Error;
+//     fn try_from(value: JsValue) -> std::result::Result<Self, Self::Error> {
+//         if let Some(object) = Object::try_from(&value) {
+//             let _keypair = object.try_cast_into::<Keypair>("keypair")?;
+//             let _public_key = object.try_cast_into::<Keypair>("keypair")?;
 
-            Ok(AccountCreateArgs {})
-        } else {
-            Err(Error::custom("Account: supplied value must be an object"))
-        }
-    }
-}
+//             Ok(AccountCreateArgs {})
+//         } else {
+//             Err(Error::custom("Account: supplied value must be an object"))
+//         }
+//     }
+// }

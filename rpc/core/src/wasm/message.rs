@@ -820,7 +820,7 @@ declare! {
 }
 
 try_from! ( args: IGetBlockTemplateRequest, GetBlockTemplateRequest, {
-    let pay_address = args.get_cast::<Address>("payAddress")?.into_owned();
+    let pay_address = args.cast_into::<Address>("payAddress")?;
     let extra_data = if let Some(extra_data) = args.try_get_value("extraData")? {
         if let Some(text) = extra_data.as_string() {
             text.into_bytes()

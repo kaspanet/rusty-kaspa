@@ -374,8 +374,11 @@ impl BorshDeserialize for ScriptPublicKey {
 type CastError = workflow_wasm::error::Error;
 impl TryCastFromJs for ScriptPublicKey {
     type Error = workflow_wasm::error::Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             if let Some(hex_str) = value.as_ref().as_string() {
                 Ok(Self::from_str(&hex_str).map_err(CastError::custom)?)
             } else if let Some(object) = Object::try_from(value.as_ref()) {

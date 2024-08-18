@@ -19,7 +19,7 @@ pub fn create_transaction_js(
     sig_op_count: Option<u8>,
 ) -> crate::result::Result<Transaction> {
     let utxo_entries = if let Some(utxo_entries) = utxo_entry_source.dyn_ref::<js_sys::Array>() {
-        utxo_entries.to_vec().iter().map(UtxoEntryReference::try_cast_from).collect::<Result<Vec<_>, _>>()?
+        utxo_entries.to_vec().iter().map(UtxoEntryReference::try_owned_from).collect::<Result<Vec<_>, _>>()?
     } else {
         return Err(Error::custom("utxo_entries must be an array"));
     };
@@ -37,10 +37,10 @@ pub fn create_transaction_js(
         .into_iter()
         .enumerate()
         .map(|(sequence, reference)| {
-            let UtxoEntryReference { utxo } = reference.as_ref();
+            let UtxoEntryReference { utxo } = &reference;
             total_input_amount += utxo.amount();
-            entries.push(reference.as_ref().clone());
-            TransactionInput::new(utxo.outpoint.clone(), None, sequence as u64, sig_op_count, Some(reference.into_owned()))
+            entries.push(reference.clone());
+            TransactionInput::new(utxo.outpoint.clone(), None, sequence as u64, sig_op_count, Some(reference))
         })
         .collect::<Vec<TransactionInput>>();
 

@@ -112,8 +112,11 @@ extern "C" {
 
 impl TryCastFromJs for XPub {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             if let Some(xpub) = value.as_ref().as_string() {
                 Ok(XPub::try_new(xpub.as_str())?)
             } else {

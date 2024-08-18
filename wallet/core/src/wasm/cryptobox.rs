@@ -35,8 +35,11 @@ impl CryptoBoxPrivateKey {
 
 impl TryCastFromJs for CryptoBoxPrivateKey {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             let secret_key = value.as_ref().try_as_vec_u8()?;
             if secret_key.len() != KEY_SIZE {
                 return Err(Error::InvalidPrivateKeyLength);
@@ -63,8 +66,11 @@ pub struct CryptoBoxPublicKey {
 
 impl TryCastFromJs for CryptoBoxPublicKey {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             let public_key = value.as_ref().try_as_vec_u8()?;
             if public_key.len() != KEY_SIZE {
                 Err(Error::InvalidPublicKeyLength)
@@ -114,7 +120,7 @@ pub struct CryptoBox {
 impl CryptoBox {
     #[wasm_bindgen(constructor)]
     #[allow(non_snake_case)]
-    pub fn ctor(secretKey: CryptoBoxPrivateKeyT, peerPublicKey: CryptoBoxPublicKeyT) -> Result<CryptoBox> {
+    pub fn ctor(secretKey: &CryptoBoxPrivateKeyT, peerPublicKey: &CryptoBoxPublicKeyT) -> Result<CryptoBox> {
         let secret_key = CryptoBoxPrivateKey::try_cast_from(secretKey)?;
         let peer_public_key = CryptoBoxPublicKey::try_cast_from(peerPublicKey)?;
         Ok(Self { inner: Arc::new(NativeCryptoBox::new(&secret_key, &peer_public_key)) })

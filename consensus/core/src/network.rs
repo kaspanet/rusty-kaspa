@@ -400,8 +400,11 @@ impl TryFrom<JsValue> for NetworkId {
 
 impl TryCastFromJs for NetworkId {
     type Error = NetworkIdError;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             if let Some(network_id) = value.as_ref().as_string() {
                 Ok(NetworkId::from_str(&network_id)?)
             } else {

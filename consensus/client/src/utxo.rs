@@ -258,7 +258,10 @@ impl TryIntoUtxoEntryReferences for JsValue {
 
 impl TryCastFromJs for UtxoEntry {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
         Ok(Self::try_ref_from_js_value_as_cast(value)?)
     }
 }
@@ -378,12 +381,15 @@ impl TryFrom<JsValue> for UtxoEntries {
 
 impl TryCastFromJs for UtxoEntryReference {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             if let Ok(utxo_entry) = UtxoEntry::try_ref_from_js_value(&value) {
                 Ok(Self::from(utxo_entry.clone()))
             } else if let Some(object) = Object::try_from(value.as_ref()) {
-                let address = object.get_cast::<Address>("address")?.into_owned();
+                let address = object.try_cast_into::<Address>("address")?;
                 let outpoint = TransactionOutpoint::try_from(object.get_value("outpoint")?.as_ref())?;
                 let utxo_entry = Object::from(object.get_value("utxoEntry")?);
 
@@ -400,7 +406,7 @@ impl TryCastFromJs for UtxoEntryReference {
                     })?;
                     let is_coinbase = utxo_entry.get_bool("isCoinbase")?;
 
-                    UtxoEntry { address: Some(address), outpoint, amount, script_public_key, block_daa_score, is_coinbase }
+                    UtxoEntry { address, outpoint, amount, script_public_key, block_daa_score, is_coinbase }
                 } else {
                     let amount = object.get_u64("amount").map_err(|_| {
                         Error::custom("Supplied object does not contain `amount` property (or it is not a numerical value)")
@@ -412,7 +418,7 @@ impl TryCastFromJs for UtxoEntryReference {
                     })?;
                     let is_coinbase = object.try_get_bool("isCoinbase")?.unwrap_or(false);
 
-                    UtxoEntry { address: Some(address), outpoint, amount, script_public_key, block_daa_score, is_coinbase }
+                    UtxoEntry { address, outpoint, amount, script_public_key, block_daa_score, is_coinbase }
                 };
 
                 Ok(UtxoEntryReference::from(utxo_entry))

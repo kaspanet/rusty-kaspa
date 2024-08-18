@@ -496,8 +496,11 @@ impl<'de> Deserialize<'de> for Address {
 
 impl TryCastFromJs for Address {
     type Error = AddressError;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             if let Some(string) = value.as_ref().as_string() {
                 Address::try_from(string)
             } else if let Some(object) = js_sys::Object::try_from(value.as_ref()) {
