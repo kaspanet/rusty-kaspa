@@ -35,7 +35,7 @@ use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy};
 use kaspa_core::{debug, error, info, time::Stopwatch, warn};
 use kaspa_mining_errors::{manager::MiningManagerError, mempool::RuleError};
 use parking_lot::RwLock;
-use std::sync::Arc;
+use std::{ops::Mul, sync::Arc};
 use tokio::sync::mpsc::UnboundedSender;
 
 pub struct MiningManager {
@@ -210,7 +210,11 @@ impl MiningManager {
     }
 
     /// Returns realtime feerate estimations based on internal mempool state with additional verbose data
-    pub(crate) fn get_realtime_feerate_estimations_verbose(&self) -> FeeEstimateVerbose {
+    pub(crate) fn get_realtime_feerate_estimations_verbose(
+        &self,
+        consensus: &dyn ConsensusApi,
+        prefix: kaspa_addresses::Prefix,
+    ) -> MiningManagerResult<FeeEstimateVerbose> {
         let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.maximum_mass_per_block);
         let network_mass_per_second = args.network_mass_per_second();
         let mempool_read = self.mempool.read();
@@ -218,16 +222,54 @@ impl MiningManager {
         let ready_transactions_count = mempool_read.ready_transaction_count();
         let ready_transaction_total_mass = mempool_read.ready_transaction_total_mass();
         drop(mempool_read);
-        FeeEstimateVerbose {
+        let mut resp = FeeEstimateVerbose {
             estimations: estimator.calc_estimations(self.config.minimum_feerate()),
             network_mass_per_second,
             mempool_ready_transactions_count: ready_transactions_count as u64,
             mempool_ready_transactions_total_mass: ready_transaction_total_mass,
-            // TODO: Next PR
+
             next_block_template_feerate_min: -1.0,
             next_block_template_feerate_median: -1.0,
             next_block_template_feerate_max: -1.0,
+        };
+        // calculate next_block_template_feerate_xxx
+        {
+            let script_public_key = kaspa_txscript::pay_to_address_script(&kaspa_addresses::Address::new(
+                prefix,
+                kaspa_addresses::Version::PubKey,
+                &[0u8; 32],
+            ));
+            let miner_data: MinerData = MinerData::new(script_public_key, vec![]);
+
+            let BlockTemplate { block: kaspa_consensus_core::block::MutableBlock { transactions, .. }, calculated_fees, .. } =
+                self.get_block_template(consensus, &miner_data)?;
+            // don't consider coinbase tx
+            if transactions.len() < 2 {
+                return Ok(resp);
+            }
+            let mut fees_and_masses = transactions
+                .iter()
+                // skip coinbase tx
+                .skip(1)
+                .map(Transaction::mass)
+                .zip(calculated_fees)
+                .collect_vec();
+            fees_and_masses
+                .sort_unstable_by(|(lhs_fee, lhs_mass), (rhs_fee, rhs_mass)| lhs_fee.mul(rhs_mass).cmp(&rhs_fee.mul(lhs_mass)));
+            resp.next_block_template_feerate_max = {
+                let (fee, mass) = fees_and_masses.last().unwrap();
+                *fee as f64 / *mass as f64
+            };
+            resp.next_block_template_feerate_min = {
+                let (fee, mass) = fees_and_masses.first().unwrap();
+                *fee as f64 / *mass as f64
+            };
+            resp.next_block_template_feerate_median = {
+                let (fee, mass) = fees_and_masses[fees_and_masses.len() / 2];
+                fee as f64 / mass as f64
+            };
         }
+        Ok(resp)
     }
 
     /// Clears the block template cache, forcing the next call to get_block_template to build a new block template.
@@ -834,8 +876,12 @@ impl MiningManagerProxy {
     }
 
     /// Returns realtime feerate estimations based on internal mempool state with additional verbose data
-    pub async fn get_realtime_feerate_estimations_verbose(self) -> FeeEstimateVerbose {
-        spawn_blocking(move || self.inner.get_realtime_feerate_estimations_verbose()).await.unwrap()
+    pub async fn get_realtime_feerate_estimations_verbose(
+        self,
+        consensus: &ConsensusProxy,
+        prefix: kaspa_addresses::Prefix,
+    ) -> MiningManagerResult<FeeEstimateVerbose> {
+        consensus.clone().spawn_blocking(move |c| self.inner.get_realtime_feerate_estimations_verbose(c, prefix)).await
     }
 
     /// Validates a transaction and adds it to the set of known transactions that have not yet been
