@@ -61,6 +61,7 @@ pub enum KaspadPayloadOps {
     GetConnectedPeerInfo,
     AddPeer,
     SubmitTransaction,
+    SubmitTransactionReplacement,
     GetSubnetwork,
     GetVirtualChainFromBlock,
     GetBlockCount,
@@ -81,6 +82,8 @@ pub enum KaspadPayloadOps {
     GetServerInfo,
     GetSyncStatus,
     GetDaaScoreTimestampEstimate,
+    GetFeeEstimate,
+    GetFeeEstimateExperimental,
 
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,

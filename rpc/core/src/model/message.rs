@@ -301,6 +301,31 @@ impl SubmitTransactionResponse {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SubmitTransactionReplacementRequest {
+    pub transaction: RpcTransaction,
+}
+
+impl SubmitTransactionReplacementRequest {
+    pub fn new(transaction: RpcTransaction) -> Self {
+        Self { transaction }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmitTransactionReplacementResponse {
+    pub transaction_id: RpcTransactionId,
+    pub replaced_transaction: RpcTransaction,
+}
+
+impl SubmitTransactionReplacementResponse {
+    pub fn new(transaction_id: RpcTransactionId, replaced_transaction: RpcTransaction) -> Self {
+        Self { transaction_id, replaced_transaction }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GetSubnetworkRequest {
     pub subnetwork_id: RpcSubnetworkId,
 }
@@ -823,6 +848,35 @@ impl GetDaaScoreTimestampEstimateResponse {
     pub fn new(timestamps: Vec<u64>) -> Self {
         Self { timestamps }
     }
+}
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Fee rate estimations
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetFeeEstimateRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetFeeEstimateResponse {
+    pub estimate: RpcFeeEstimate,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetFeeEstimateExperimentalRequest {
+    pub verbose: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetFeeEstimateExperimentalResponse {
+    /// The usual feerate estimate response
+    pub estimate: RpcFeeEstimate,
+
+    /// Experimental verbose data
+    pub verbose: Option<RpcFeeEstimateVerboseExperimentalData>,
 }
 
 // ----------------------------------------------------------------------------

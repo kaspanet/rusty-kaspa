@@ -301,6 +301,17 @@ async fn sanity_test() {
                 })
             }
 
+            KaspadPayloadOps::SubmitTransactionReplacement => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    // Build an erroneous transaction...
+                    let transaction = Transaction::new(0, vec![], vec![], 0, SubnetworkId::default(), 0, vec![]);
+                    let result = rpc_client.submit_transaction_replacement((&transaction).into()).await;
+                    // ...that gets rejected by the consensus
+                    assert!(result.is_err());
+                })
+            }
+
             KaspadPayloadOps::GetSubnetwork => {
                 let rpc_client = client.clone();
                 tst!(op, {
@@ -543,6 +554,33 @@ async fn sanity_test() {
                     for timestamp in results.timestamps.iter() {
                         info!("Timestamp estimate is {}", timestamp);
                     }
+                })
+            }
+
+            KaspadPayloadOps::GetFeeEstimate => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client.get_fee_estimate().await.unwrap();
+                    info!("{:?}", response.priority_bucket);
+                    assert!(!response.normal_buckets.is_empty());
+                    assert!(!response.low_buckets.is_empty());
+                    for bucket in response.ordered_buckets() {
+                        info!("{:?}", bucket);
+                    }
+                })
+            }
+
+            KaspadPayloadOps::GetFeeEstimateExperimental => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client.get_fee_estimate_experimental(true).await.unwrap();
+                    assert!(!response.estimate.normal_buckets.is_empty());
+                    assert!(!response.estimate.low_buckets.is_empty());
+                    for bucket in response.estimate.ordered_buckets() {
+                        info!("{:?}", bucket);
+                    }
+                    assert!(response.verbose.is_some());
+                    info!("{:?}", response.verbose);
                 })
             }
 

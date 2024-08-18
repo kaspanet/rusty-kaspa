@@ -134,7 +134,7 @@ impl Default for Args {
             #[cfg(feature = "devnet-prealloc")]
             prealloc_address: None,
             #[cfg(feature = "devnet-prealloc")]
-            prealloc_amount: 1_000_000,
+            prealloc_amount: 10_000_000_000,
 
             disable_upnp: false,
             disable_dns_seeding: false,

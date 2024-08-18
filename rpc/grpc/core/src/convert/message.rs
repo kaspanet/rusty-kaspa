@@ -248,6 +248,13 @@ from!(item: RpcResult<&kaspa_rpc_core::SubmitTransactionResponse>, protowire::Su
     Self { transaction_id: item.transaction_id.to_string(), error: None }
 });
 
+from!(item: &kaspa_rpc_core::SubmitTransactionReplacementRequest, protowire::SubmitTransactionReplacementRequestMessage, {
+    Self { transaction: Some((&item.transaction).into()) }
+});
+from!(item: RpcResult<&kaspa_rpc_core::SubmitTransactionReplacementResponse>, protowire::SubmitTransactionReplacementResponseMessage, {
+    Self { transaction_id: item.transaction_id.to_string(), replaced_transaction: Some((&item.replaced_transaction).into()), error: None }
+});
+
 from!(item: &kaspa_rpc_core::GetSubnetworkRequest, protowire::GetSubnetworkRequestMessage, {
     Self { subnetwork_id: item.subnetwork_id.to_string() }
 });
@@ -392,6 +399,25 @@ from!(item: &kaspa_rpc_core::GetDaaScoreTimestampEstimateRequest, protowire::Get
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetDaaScoreTimestampEstimateResponse>, protowire::GetDaaScoreTimestampEstimateResponseMessage, {
     Self { timestamps: item.timestamps.clone(), error: None }
+});
+
+// Fee estimate API
+
+from!(&kaspa_rpc_core::GetFeeEstimateRequest, protowire::GetFeeEstimateRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetFeeEstimateResponse>, protowire::GetFeeEstimateResponseMessage, {
+    Self { estimate: Some((&item.estimate).into()), error: None }
+});
+from!(item: &kaspa_rpc_core::GetFeeEstimateExperimentalRequest, protowire::GetFeeEstimateExperimentalRequestMessage, {
+    Self {
+        verbose: item.verbose
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetFeeEstimateExperimentalResponse>, protowire::GetFeeEstimateExperimentalResponseMessage, {
+    Self {
+        estimate: Some((&item.estimate).into()),
+        verbose: item.verbose.as_ref().map(|x| x.into()),
+        error: None
+    }
 });
 
 from!(&kaspa_rpc_core::PingRequest, protowire::PingRequestMessage);
@@ -647,6 +673,26 @@ try_from!(item: &protowire::SubmitTransactionResponseMessage, RpcResult<kaspa_rp
     Self { transaction_id: RpcHash::from_str(&item.transaction_id)? }
 });
 
+try_from!(item: &protowire::SubmitTransactionReplacementRequestMessage, kaspa_rpc_core::SubmitTransactionReplacementRequest, {
+    Self {
+        transaction: item
+            .transaction
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("SubmitTransactionReplacementRequestMessage".to_string(), "transaction".to_string()))?
+            .try_into()?,
+    }
+});
+try_from!(item: &protowire::SubmitTransactionReplacementResponseMessage, RpcResult<kaspa_rpc_core::SubmitTransactionReplacementResponse>, {
+    Self {
+        transaction_id: RpcHash::from_str(&item.transaction_id)?,
+        replaced_transaction: item
+            .replaced_transaction
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("SubmitTransactionReplacementRequestMessage".to_string(), "replaced_transaction".to_string()))?
+            .try_into()?,
+    }
+});
+
 try_from!(item: &protowire::GetSubnetworkRequestMessage, kaspa_rpc_core::GetSubnetworkRequest, {
     Self { subnetwork_id: kaspa_rpc_core::RpcSubnetworkId::from_str(&item.subnetwork_id)? }
 });
@@ -789,6 +835,30 @@ try_from!(item: &protowire::GetDaaScoreTimestampEstimateRequestMessage, kaspa_rp
 });
 try_from!(item: &protowire::GetDaaScoreTimestampEstimateResponseMessage, RpcResult<kaspa_rpc_core::GetDaaScoreTimestampEstimateResponse>, {
     Self { timestamps: item.timestamps.clone() }
+});
+
+try_from!(&protowire::GetFeeEstimateRequestMessage, kaspa_rpc_core::GetFeeEstimateRequest);
+try_from!(item: &protowire::GetFeeEstimateResponseMessage, RpcResult<kaspa_rpc_core::GetFeeEstimateResponse>, {
+    Self {
+        estimate: item.estimate
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("GetFeeEstimateResponseMessage".to_string(), "estimate".to_string()))?
+            .try_into()?
+    }
+});
+try_from!(item: &protowire::GetFeeEstimateExperimentalRequestMessage, kaspa_rpc_core::GetFeeEstimateExperimentalRequest, {
+    Self {
+        verbose: item.verbose
+    }
+});
+try_from!(item: &protowire::GetFeeEstimateExperimentalResponseMessage, RpcResult<kaspa_rpc_core::GetFeeEstimateExperimentalResponse>, {
+    Self {
+        estimate: item.estimate
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("GetFeeEstimateExperimentalResponseMessage".to_string(), "estimate".to_string()))?
+            .try_into()?,
+        verbose: item.verbose.as_ref().map(|x| x.try_into()).transpose()?
+    }
 });
 
 try_from!(&protowire::PingRequestMessage, kaspa_rpc_core::PingRequest);
