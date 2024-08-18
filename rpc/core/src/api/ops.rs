@@ -126,6 +126,10 @@ pub enum RpcApiOps {
     GetDaaScoreTimestampEstimate = 145,
     /// Extracts a transaction out of the request message and attempts to replace a matching transaction in the mempool with it, applying a mandatory Replace by Fee policy
     SubmitTransactionReplacement = 146,
+    /// Fee estimation
+    GetFeeEstimate = 147,
+    /// Fee estimation (experimental)
+    GetFeeEstimateExperimental = 148,
 }
 
 impl RpcApiOps {

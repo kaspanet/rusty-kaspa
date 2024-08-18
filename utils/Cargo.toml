@@ -13,6 +13,7 @@ repository.workspace = true
 duct = "0.13.7"
 
 [dependencies]
+arc-swap.workspace = true
 async-channel.workspace = true
 borsh.workspace = true
 cfg-if.workspace = true
