@@ -142,14 +142,14 @@ impl UtxoEntryReference {
         self.as_ref().clone()
     }
 
-    #[wasm_bindgen(js_name = "getTransactionId")]
-    pub fn transaction_id_as_string(&self) -> String {
-        self.utxo.outpoint.get_transaction_id_as_string()
+    #[wasm_bindgen(getter)]
+    pub fn outpoint(&self) -> TransactionOutpoint {
+        self.utxo.outpoint.clone()
     }
 
-    #[wasm_bindgen(js_name = "getId")]
-    pub fn id_string(&self) -> String {
-        self.utxo.outpoint.id_string()
+    #[wasm_bindgen(getter)]
+    pub fn address(&self) -> Option<Address> {
+        self.utxo.address.clone()
     }
 
     #[wasm_bindgen(getter)]
@@ -165,6 +165,11 @@ impl UtxoEntryReference {
     #[wasm_bindgen(getter, js_name = "blockDaaScore")]
     pub fn block_daa_score(&self) -> u64 {
         self.utxo.block_daa_score
+    }
+
+    #[wasm_bindgen(getter, js_name = "scriptPublicKey")]
+    pub fn script_public_key(&self) -> ScriptPublicKey {
+        self.utxo.script_public_key.clone()
     }
 }
 

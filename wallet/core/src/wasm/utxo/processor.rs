@@ -63,14 +63,14 @@ cfg_if! {
             /**
             * @param {UtxoProcessorNotificationCallback} callback
             */
-            addEventListener(callback:UtxoProcessorNotificationCallback): void;
+            addEventListener(callback: UtxoProcessorNotificationCallback): void;
             /**
             * @param {UtxoProcessorEventType} event
             * @param {UtxoProcessorNotificationCallback} [callback]
             */
-            addEventListener<M extends keyof UtxoProcessorEventMap>(
-                event: M,
-                callback: (eventData: UtxoProcessorEventMap[M]) => void
+            addEventListener<E extends keyof UtxoProcessorEventMap>(
+                event: E,
+                callback: UtxoProcessorNotificationCallback<E>
             )
         }"#;
     }

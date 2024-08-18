@@ -1161,7 +1161,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetUtxosByAddressesResponse {
-        entries : IUtxoEntry[];
+        entries : UtxoEntryReference[];
     }
     "#,
 }
