@@ -7,6 +7,7 @@ use kaspa_addresses::Address;
 use kaspa_addresses::AddressOrStringArrayT;
 use kaspa_consensus_client::Transaction;
 use kaspa_consensus_client::UtxoEntryReference;
+use kaspa_consensus_core::tx as cctx;
 use kaspa_rpc_macros::declare_typescript_wasm_interface as declare;
 pub use serde_wasm_bindgen::from_value;
 use wasm_bindgen::prelude::*;
@@ -1320,6 +1321,66 @@ declare! {
 
 try_from! ( args: SubmitBlockResponse, ISubmitBlockResponse, {
     Ok(to_value(&args)?.into())
+});
+
+// ---
+
+declare! {
+    ISubmitTransactionReplacementRequest,
+    // "ISubmitTransactionRequest | Transaction",
+    r#"
+    /**
+     * Submit transaction replacement to the node.
+     * 
+     * @category Node RPC
+     */
+    export interface ISubmitTransactionReplacementRequest {
+        transaction : Transaction,
+    }
+    "#,
+}
+
+try_from! ( args: ISubmitTransactionReplacementRequest, SubmitTransactionReplacementRequest, {
+    let transaction = if let Some(transaction) = args.try_get_value("transaction")? {
+        transaction
+    } else {
+        args.into()
+    };
+
+    let request = if let Ok(transaction) = Transaction::try_owned_from(&transaction) {
+        SubmitTransactionReplacementRequest {
+            transaction : transaction.into(),
+        }
+    } else {
+        from_value(transaction)?
+    };
+    Ok(request)
+});
+
+declare! {
+    ISubmitTransactionReplacementResponse,
+    r#"
+    /**
+     * 
+     * 
+     * @category Node RPC
+     */
+    export interface ISubmitTransactionReplacementResponse {
+        transactionId : HexString;
+        replacedTransaction: Transaction;
+    }
+    "#,
+}
+
+try_from! ( args: SubmitTransactionReplacementResponse, ISubmitTransactionReplacementResponse, {
+    let transaction_id = args.transaction_id;
+    let replaced_transaction  = cctx::Transaction::try_from(&args.replaced_transaction)?;
+    let replaced_transaction = Transaction::from(replaced_transaction);
+
+    let response = ISubmitTransactionReplacementResponse::default();
+    response.set("transactionId", &transaction_id.into())?;
+    response.set("replacedTransaction", &replaced_transaction.into())?;
+    Ok(response)
 });
 
 // ---
