@@ -177,57 +177,39 @@ impl PendingTransaction {
 
     /// Submit the transaction on the supplied rpc
     pub async fn try_submit(&self, rpc: &Arc<DynRpcApi>) -> Result<RpcTransactionId> {
-        log_info!("try_submit called on inner pending...");
-
-        log_info!("-- sleeping");
-        
-        workflow_core::task::sleep(Duration::from_secs(5)).await;
-        log_info!("-- resuming...");
-log_info!("A");
         // sanity check to prevent multiple invocations (for API use)
         self.inner.is_submitted.load(Ordering::SeqCst).then(|| {
             panic!("PendingTransaction::try_submit() called multiple times");
         });
-log_info!("B");
         self.inner.is_submitted.store(true, Ordering::SeqCst);
-log_info!("C");
 
         let rpc_transaction: RpcTransaction = self.rpc_transaction();
-log_info!("D");
 
         // if we are running under UtxoProcessor
         if let Some(utxo_context) = self.inner.generator.source_utxo_context() {
-log_info!("E");
             // lock UtxoProcessor notification ingest
             let _lock = utxo_context.processor().notification_lock().await;
 
-log_info!("F");
             // register pending UTXOs with UtxoProcessor
             utxo_context.register_outgoing_transaction(self).await?;
-log_info!("G");
 
             // try to submit transaction
             match rpc.submit_transaction(rpc_transaction, false).await {
                 Ok(id) => {
-log_info!("H");
                     // on successful submit, create a notification
                     utxo_context.notify_outgoing_transaction(self).await?;
                     Ok(id)
                 }
                 Err(error) => {
-                    log_info!("I");
                     // in case of failure, remove transaction UTXOs from the consumed list
                     utxo_context.cancel_outgoing_transaction(self).await?;
                     Err(error.into())
                 }
             }
         } else {
-log_info!("X");
             // No UtxoProcessor present (API etc)
             Ok(rpc.submit_transaction(rpc_transaction, false).await?)
         }
-
-
     }
 
     pub async fn log(&self) -> Result<()> {
