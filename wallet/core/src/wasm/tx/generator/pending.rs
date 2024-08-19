@@ -123,8 +123,6 @@ impl PendingTransaction {
     /// and will return UTXOs back to {@link UtxoContext} in case of
     /// a failed submission.
     /// @see {@link RpcClient.submitTransaction}
-    // pub async fn submit(&self, js_value: &JsValue) -> Result<String> {
-
     pub async fn submit(&self, wasm_rpc_client: &RpcClient) -> Result<String> {
         let rpc: Arc<DynRpcApi> = wasm_rpc_client.client().clone();
         let txid = self.inner.try_submit(&rpc).await?;
