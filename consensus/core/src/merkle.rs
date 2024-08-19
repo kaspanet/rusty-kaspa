@@ -6,6 +6,7 @@ pub fn calc_hash_merkle_root_with_options<'a>(txs: impl ExactSizeIterator<Item =
     calc_merkle_root(txs.map(|tx| hashing::tx::hash(tx, include_mass_field)))
 }
 
+// #[cfg(test)]
 pub fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
     calc_merkle_root(txs.map(|tx| hashing::tx::hash(tx, false)))
 }

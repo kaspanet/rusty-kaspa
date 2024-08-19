@@ -19,7 +19,7 @@ use kaspa_consensus_core::{
     utxo::utxo_collection::UtxoCollection,
 };
 use kaspa_core::time::unix_now;
-use kaspa_hashes::ZERO_HASH;
+use kaspa_hashes::{Hash, ZERO_HASH};
 
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
@@ -176,5 +176,9 @@ impl ConsensusApi for ConsensusMock {
     fn modify_coinbase_payload(&self, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
         let coinbase_manager = CoinbaseManagerMock::new();
         Ok(coinbase_manager.modify_coinbase_payload(payload, miner_data))
+    }
+
+    fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction], _pov_daa_score: u64) -> Hash {
+        calc_hash_merkle_root(txs.iter())
     }
 }
