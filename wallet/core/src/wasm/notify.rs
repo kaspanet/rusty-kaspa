@@ -32,33 +32,12 @@ cfg_if! {
         }
 
         /**
-         * {@link UtxoProcessor} notification event data.
-         * @category Wallet SDK
-         */
-        export type UtxoProcessorEventData = IConnectEvent
-            | IDisconnectEvent
-            | IUtxoIndexNotEnabledEvent
-            | ISyncStateEvent
-            | IServerStatusEvent
-            | IUtxoProcErrorEvent
-            | IDaaScoreChangeEvent
-            | IPendingEvent
-            | IReorgEvent
-            | IStasisEvent
-            | IMaturityEvent
-            | IDiscoveryEvent
-            | IBalanceEvent
-            | IErrorEvent
-            | undefined
-            ;
-
-        /**
-         * UtxoProcessor notification event data map.
+         * {@link UtxoProcessor} notification event data map.
          * 
          * @category Wallet API
          */
         export type UtxoProcessorEventMap = {
-            "connect":IConnectEvent,
+            "connect": IConnectEvent,
             "disconnect": IDisconnectEvent,
             "utxo-index-not-enabled": IUtxoIndexNotEnabledEvent,
             "sync-state": ISyncStateEvent,
@@ -80,9 +59,12 @@ cfg_if! {
          * 
          * @category Wallet API
          */
-        export type IUtxoProcessorEvent = {
-            [K in keyof UtxoProcessorEventMap]: { event: K, data: UtxoProcessorEventMap[K] }
-        }[keyof UtxoProcessorEventMap];
+        export type UtxoProcessorEvent<T extends keyof UtxoProcessorEventMap> = {
+          [K in T]: {
+            type: K,
+            data: UtxoProcessorEventMap[K]
+          }
+        }[T];
 
         
         /**
@@ -95,7 +77,7 @@ cfg_if! {
          * 
          * @category Wallet SDK
          */
-        export type UtxoProcessorNotificationCallback = (event: IUtxoProcessorEvent) => void;
+        export type UtxoProcessorNotificationCallback<E extends keyof UtxoProcessorEventMap = keyof UtxoProcessorEventMap> = (event: UtxoProcessorEvent<E>) => void;
         "#;
 
         #[wasm_bindgen]

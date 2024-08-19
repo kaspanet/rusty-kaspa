@@ -240,6 +240,15 @@ impl Rpc {
                     }
                 }
             }
+            RpcApiOps::GetFeeEstimate => {
+                let result = rpc.get_fee_estimate_call(None, GetFeeEstimateRequest {}).await?;
+                self.println(&ctx, result);
+            }
+            RpcApiOps::GetFeeEstimateExperimental => {
+                let verbose = if argv.is_empty() { false } else { argv.remove(0).parse().unwrap_or(false) };
+                let result = rpc.get_fee_estimate_experimental_call(None, GetFeeEstimateExperimentalRequest { verbose }).await?;
+                self.println(&ctx, result);
+            }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");
                 return Ok(());

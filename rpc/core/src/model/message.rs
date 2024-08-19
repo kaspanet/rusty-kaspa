@@ -2488,6 +2488,99 @@ impl Deserializer for GetDaaScoreTimestampEstimateResponse {
     }
 }
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// Fee rate estimations
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetFeeEstimateRequest {}
+
+impl Serializer for GetFeeEstimateRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetFeeEstimateRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        Ok(Self {})
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetFeeEstimateResponse {
+    pub estimate: RpcFeeEstimate,
+}
+
+impl Serializer for GetFeeEstimateResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(RpcFeeEstimate, &self.estimate, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetFeeEstimateResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let estimate = deserialize!(RpcFeeEstimate, reader)?;
+        Ok(Self { estimate })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetFeeEstimateExperimentalRequest {
+    pub verbose: bool,
+}
+
+impl Serializer for GetFeeEstimateExperimentalRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(bool, &self.verbose, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetFeeEstimateExperimentalRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let verbose = load!(bool, reader)?;
+        Ok(Self { verbose })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetFeeEstimateExperimentalResponse {
+    /// The usual feerate estimate response
+    pub estimate: RpcFeeEstimate,
+
+    /// Experimental verbose data
+    pub verbose: Option<RpcFeeEstimateVerboseExperimentalData>,
+}
+
+impl Serializer for GetFeeEstimateExperimentalResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        serialize!(RpcFeeEstimate, &self.estimate, writer)?;
+        serialize!(Option<RpcFeeEstimateVerboseExperimentalData>, &self.verbose, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for GetFeeEstimateExperimentalResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let estimate = deserialize!(RpcFeeEstimate, reader)?;
+        let verbose = deserialize!(Option<RpcFeeEstimateVerboseExperimentalData>, reader)?;
+        Ok(Self { estimate, verbose })
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Subscriptions & notifications
 // ----------------------------------------------------------------------------

@@ -437,6 +437,27 @@ pub trait RpcApi: Sync + Send + AnySync {
     ) -> RpcResult<GetDaaScoreTimestampEstimateResponse>;
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    // Fee estimation API
+
+    async fn get_fee_estimate(&self) -> RpcResult<RpcFeeEstimate> {
+        Ok(self.get_fee_estimate_call(None, GetFeeEstimateRequest {}).await?.estimate)
+    }
+    async fn get_fee_estimate_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetFeeEstimateRequest,
+    ) -> RpcResult<GetFeeEstimateResponse>;
+
+    async fn get_fee_estimate_experimental(&self, verbose: bool) -> RpcResult<GetFeeEstimateExperimentalResponse> {
+        self.get_fee_estimate_experimental_call(None, GetFeeEstimateExperimentalRequest { verbose }).await
+    }
+    async fn get_fee_estimate_experimental_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetFeeEstimateExperimentalRequest,
+    ) -> RpcResult<GetFeeEstimateExperimentalResponse>;
+
+    // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 
     /// Register a new listener and returns an id identifying it.

@@ -1000,6 +1000,10 @@ build_wrpc_wasm_bindgen_interface!(
         /// score timestamp estimate.
         /// Returned information: DAA score timestamp estimate.
         GetDaaScoreTimestampEstimate,
+        /// Feerate estimates
+        GetFeeEstimate,
+        /// Feerate estimates (experimental)
+        GetFeeEstimateExperimental,
         /// Retrieves the current network configuration.
         /// Returned information: Current network configuration.
         GetCurrentNetwork,
@@ -1032,8 +1036,11 @@ build_wrpc_wasm_bindgen_interface!(
         /// Returned information: None.
         SubmitBlock,
         /// Submits a transaction to the Kaspa network.
-        /// Returned information: None.
+        /// Returned information: Submitted Transaction Id.
         SubmitTransaction,
+        /// Submits an RBF transaction to the Kaspa network.
+        /// Returned information: Submitted Transaction Id, Transaction that was replaced.
+        SubmitTransactionReplacement,
         /// Unbans a previously banned peer, allowing it to connect
         /// to the Kaspa node again.
         /// Returned information: None.

@@ -1,11 +1,14 @@
 use crate::fd_budget;
 use crate::git;
+use crate::hex::ToHex;
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::Read;
 use std::sync::OnceLock;
 
-#[derive(Debug, Clone)]
+static SYSTEM_INFO: OnceLock<SystemInfo> = OnceLock::new();
+
+#[derive(Clone)]
 pub struct SystemInfo {
     pub system_id: Option<Vec<u8>>,
     pub git_hash: Option<Vec<u8>>,
@@ -16,7 +19,20 @@ pub struct SystemInfo {
     pub fd_limit: u32,
 }
 
-static SYSTEM_INFO: OnceLock<SystemInfo> = OnceLock::new();
+// provide hex encoding for system_id, git_hash, and git_short_hash
+impl std::fmt::Debug for SystemInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SystemInfo")
+            .field("system_id", &self.system_id.as_ref().map(|id| id.to_hex()))
+            .field("git_hash", &self.git_hash.as_ref().map(|hash| hash.to_hex()))
+            .field("git_short_hash", &self.git_short_hash.as_ref().map(|hash| hash.to_hex()))
+            .field("version", &self.version)
+            .field("cpu_physical_cores", &self.cpu_physical_cores)
+            .field("total_memory", &self.total_memory)
+            .field("fd_limit", &self.fd_limit)
+            .finish()
+    }
+}
 
 impl Default for SystemInfo {
     fn default() -> Self {

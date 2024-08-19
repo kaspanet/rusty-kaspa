@@ -2,15 +2,25 @@ use crate::cli::KaspaCli;
 use crate::imports::*;
 use crate::result::Result;
 use kaspa_bip32::{Language, Mnemonic, WordCount};
-use kaspa_wallet_core::storage::{make_filename, Hint};
+use kaspa_wallet_core::{
+    storage::{make_filename, Hint},
+    wallet::WalletGuard,
+};
 
-pub(crate) async fn create(ctx: &Arc<KaspaCli>, name: Option<&str>, import_with_mnemonic: bool) -> Result<()> {
+pub(crate) async fn create(
+    ctx: &Arc<KaspaCli>,
+    wallet_guard: Option<WalletGuard<'_>>,
+    name: Option<&str>,
+    import_with_mnemonic: bool,
+) -> Result<()> {
     let term = ctx.term();
     let wallet = ctx.wallet();
+    let local_guard = ctx.wallet().guard();
 
-    let guard = ctx.wallet().guard();
-    let guard = guard.lock().await;
-
+    let guard = match wallet_guard {
+        Some(locked_guard) => locked_guard,
+        None => local_guard.lock().await,
+    };
     // TODO @aspect
     let word_count = WordCount::Words12;
 
