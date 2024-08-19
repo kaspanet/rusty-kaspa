@@ -8,7 +8,6 @@ use kaspa_consensus_core::hashing::wasm::SighashType;
 use kaspa_wallet_keys::privatekey::PrivateKey;
 use kaspa_wasm_core::types::{BinaryT, HexString};
 use kaspa_wrpc_wasm::RpcClient;
-use wasm_bindgen::convert::LongRefFromWasmAbi;
 
 /// @category Wallet SDK
 #[wasm_bindgen(inspectable)]
@@ -126,24 +125,10 @@ impl PendingTransaction {
     /// @see {@link RpcClient.submitTransaction}
     // pub async fn submit(&self, js_value: &JsValue) -> Result<String> {
 
-        // let wasm_rpc_client = unsafe { RpcClient::long_ref_from_abi(wasm_rpc_client)? };
     pub async fn submit(&self, wasm_rpc_client: &RpcClient) -> Result<String> {
-
-        // let wasm_rpc_client = RpcClient::try_ref_from_js_value(js_value)?;
-        // let rpc: Arc<DynRpcApi> = wasm_rpc_client.client().clone();
-        // let txid = self.inner.try_submit(&rpc).await?;
-
-        log_info!("### sleeping");
-        workflow_core::task::sleep(Duration::from_secs(10)).await;
-        log_info!("### returning...");
-        Ok("Hello World".to_string())
-        // log_info!("Submitting transaction: {}", self.id());
-        // log_info!("cloning rpc client");
-        // let rpc: Arc<DynRpcApi> = wasm_rpc_client.client().clone();
-        // log_info!("rpc client cloned");
-        // let txid = self.inner.try_submit(&rpc).await?;
-        // log_info!("Transaction submitted: {}", txid);
-        // Ok(txid.to_string())
+        let rpc: Arc<DynRpcApi> = wasm_rpc_client.client().clone();
+        let txid = self.inner.try_submit(&rpc).await?;
+        Ok(txid.to_string())
     }
 
     /// Returns encapsulated network [`Transaction`]
