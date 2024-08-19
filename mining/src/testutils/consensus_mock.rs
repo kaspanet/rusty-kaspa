@@ -86,7 +86,7 @@ impl ConsensusApi for ConsensusMock {
         let coinbase = coinbase_manager.expected_coinbase_transaction(miner_data.clone());
         txs.insert(0, coinbase.tx);
         let now = unix_now();
-        let hash_merkle_root = calc_hash_merkle_root(txs.iter());
+        let hash_merkle_root = self.calc_transaction_hash_merkle_root(&txs, 0);
         let header = Header::new_finalized(
             BLOCK_VERSION,
             vec![],
@@ -179,6 +179,6 @@ impl ConsensusApi for ConsensusMock {
     }
 
     fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction], _pov_daa_score: u64) -> Hash {
-        calc_hash_merkle_root(txs.iter())
+        calc_hash_merkle_root(txs.iter(), false)
     }
 }
