@@ -171,7 +171,7 @@ impl UtxoProcessor {
     /// @category Wallet SDK
     ///
     #[wasm_bindgen(js_name = "setCoinbaseTransactionMaturityDAA")]
-    pub fn set_coinbase_transaction_maturity_period_daa_js(network_id: NetworkIdT, value: u64) -> Result<()> {
+    pub fn set_coinbase_transaction_maturity_period_daa_js(network_id: &NetworkIdT, value: u64) -> Result<()> {
         let network_id = NetworkId::try_cast_from(network_id)?.into_owned();
         crate::utxo::set_coinbase_transaction_maturity_period_daa(&network_id, value);
         Ok(())
@@ -188,7 +188,7 @@ impl UtxoProcessor {
     /// @category Wallet SDK
     ///
     #[wasm_bindgen(js_name = "setUserTransactionMaturityDAA")]
-    pub fn set_user_transaction_maturity_period_daa_js(network_id: NetworkIdT, value: u64) -> Result<()> {
+    pub fn set_user_transaction_maturity_period_daa_js(network_id: &NetworkIdT, value: u64) -> Result<()> {
         let network_id = NetworkId::try_cast_from(network_id)?.into_owned();
         crate::utxo::set_user_transaction_maturity_period_daa(&network_id, value);
         Ok(())
@@ -197,7 +197,10 @@ impl UtxoProcessor {
 
 impl TryCastFromJs for UtxoProcessor {
     type Error = workflow_wasm::error::Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
         Self::try_ref_from_js_value_as_cast(value)
     }
 }

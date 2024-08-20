@@ -189,7 +189,7 @@ indexmap = "2.1.0"
 intertrait = "0.2.2"
 ipnet = "2.9.0"
 itertools = "0.11.0"
-js-sys = "0.3.67"
+js-sys = "0.3.70"
 keccak = "0.1.4"
 local-ip-address = "0.5.6"
 log = "0.4.20"
@@ -250,10 +250,10 @@ tonic = { version = "0.10.2", features = ["tls", "gzip", "transport"] }
 tonic-build = { version = "0.10.2", features = ["prost"] }
 triggered = "0.1.2"
 uuid = { version = "1.5.0", features = ["v4", "fast-rng", "serde"] }
-wasm-bindgen = { version = "0.2.92", features = ["serde-serialize"] }
-wasm-bindgen-futures = "0.4.40"
-wasm-bindgen-test = "0.3.37"
-web-sys = "0.3.67"
+wasm-bindgen = { version = "0.2.93", features = ["serde-serialize"] }
+wasm-bindgen-futures = "0.4.43"
+wasm-bindgen-test = "0.3.43"
+web-sys = "0.3.70"
 xxhash-rust = { version = "0.8.7", features = ["xxh3"] }
 zeroize = { version = "1.6.0", default-features = false, features = ["alloc"] }
 pin-project-lite = "0.2.13"
@@ -272,18 +272,18 @@ workflow-perf-monitor = "0.0.2"
 nw-sys = "0.1.6"
 
 # workflow dependencies
-workflow-core = { version = "0.15.0" }
-workflow-d3 = { version = "0.15.0" }
-workflow-dom = { version = "0.15.0" }
-workflow-http = { version = "0.15.0" }
-workflow-log = { version = "0.15.0" }
-workflow-node = { version = "0.15.0" }
-workflow-nw = { version = "0.15.0" }
-workflow-rpc = { version = "0.15.0" }
-workflow-serializer = { version = "0.15.0" }
-workflow-store = { version = "0.15.0" }
-workflow-terminal = { version = "0.15.0" }
-workflow-wasm = { version = "0.15.0" }
+workflow-core = { version = "0.17.0" }
+workflow-d3 = { version = "0.17.0" }
+workflow-dom = { version = "0.17.0" }
+workflow-http = { version = "0.17.0" }
+workflow-log = { version = "0.17.0" }
+workflow-node = { version = "0.17.0" }
+workflow-nw = { version = "0.17.0" }
+workflow-rpc = { version = "0.17.0" }
+workflow-serializer = { version = "0.17.0" }
+workflow-store = { version = "0.17.0" }
+workflow-terminal = { version = "0.17.0" }
+workflow-wasm = { version = "0.17.0" }
 
 # if below is enabled, this means that there is an ongoing work
 # on the workflow-rs crate. This requires that you clone workflow-rs

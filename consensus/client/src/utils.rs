@@ -12,7 +12,7 @@ use kaspa_wasm_core::types::{BinaryT, HexString};
 /// Creates a new script to pay a transaction output to the specified address.
 /// @category Wallet SDK
 #[wasm_bindgen(js_name = payToAddressScript)]
-pub fn pay_to_address_script(address: AddressT) -> Result<ScriptPublicKey> {
+pub fn pay_to_address_script(address: &AddressT) -> Result<ScriptPublicKey> {
     let address = Address::try_cast_from(address)?;
     Ok(standard::pay_to_address_script(address.as_ref()))
 }
@@ -43,7 +43,7 @@ pub fn pay_to_script_hash_signature_script(redeem_script: BinaryT, signature: Bi
 /// @param network - The network type.
 /// @category Wallet SDK
 #[wasm_bindgen(js_name = addressFromScriptPublicKey)]
-pub fn address_from_script_public_key(script_public_key: ScriptPublicKeyT, network: &NetworkTypeT) -> Result<AddressOrUndefinedT> {
+pub fn address_from_script_public_key(script_public_key: &ScriptPublicKeyT, network: &NetworkTypeT) -> Result<AddressOrUndefinedT> {
     let script_public_key = ScriptPublicKey::try_cast_from(script_public_key)?;
     let network_type = NetworkType::try_from(network)?;
 

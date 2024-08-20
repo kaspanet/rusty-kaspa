@@ -90,12 +90,15 @@ pub struct PSKT {
 
 impl TryCastFromJs for PSKT {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> std::result::Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> std::result::Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             if let Some(data) = value.as_ref().as_string() {
                 let pskt_inner: Inner = serde_json::from_str(&data).map_err(|_| Error::InvalidPayload)?;
                 Ok(PSKT::from(State::NoOp(Some(pskt_inner))))
-            } else if let Ok(transaction) = Transaction::try_owned_from(&value) {
+            } else if let Ok(transaction) = Transaction::try_owned_from(value) {
                 let pskt_inner: Inner = transaction.try_into()?;
                 Ok(PSKT::from(State::NoOp(Some(pskt_inner))))
             } else {

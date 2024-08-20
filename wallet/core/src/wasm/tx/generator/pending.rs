@@ -106,9 +106,9 @@ impl PendingTransaction {
         if let Ok(keys) = js_value.dyn_into::<Array>() {
             let keys = keys
                 .iter()
-                .map(PrivateKey::try_cast_from)
+                .map(PrivateKey::try_owned_from)
                 .collect::<std::result::Result<Vec<_>, kaspa_wallet_keys::error::Error>>()?;
-            let mut keys = keys.iter().map(|key| key.as_ref().secret_bytes()).collect::<Vec<_>>();
+            let mut keys = keys.iter().map(|key| key.secret_bytes()).collect::<Vec<_>>();
             self.inner.try_sign_with_keys(&keys, check_fully_signed)?;
             keys.zeroize();
             Ok(())
@@ -122,6 +122,14 @@ impl PendingTransaction {
     /// {@link UtxoContext} if one was used to create the transaction
     /// and will return UTXOs back to {@link UtxoContext} in case of
     /// a failed submission.
+    ///
+    /// # Important
+    ///
+    /// Make sure to consume the returned `txid` value. Always invoke this method
+    /// as follows `let txid = await pendingTransaction.submit(rpc);`. If you do not
+    /// consume the returned value and the rpc object is temporary, the GC will
+    /// collect the `rpc` object passed to submit() potentially causing a panic.
+    ///
     /// @see {@link RpcClient.submitTransaction}
     pub async fn submit(&self, wasm_rpc_client: &RpcClient) -> Result<String> {
         let rpc: Arc<DynRpcApi> = wasm_rpc_client.client().clone();

@@ -126,12 +126,15 @@ impl From<&TransactionOutput> for cctx::TransactionOutput {
 
 impl TryCastFromJs for TransactionOutput {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> std::result::Result<Cast<Self>, Self::Error> {
-        Self::resolve_cast(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> std::result::Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve_cast(value, || {
             if let Some(object) = Object::try_from(value.as_ref()) {
                 let value = object.get_u64("value")?;
-                let script_public_key = ScriptPublicKey::try_cast_from(object.get_value("scriptPublicKey")?)?;
-                Ok(TransactionOutput::new(value, script_public_key.into_owned()).into())
+                let script_public_key = ScriptPublicKey::try_owned_from(object.get_value("scriptPublicKey")?)?;
+                Ok(TransactionOutput::new(value, script_public_key).into())
             } else {
                 Err("TransactionInput must be an object".into())
             }

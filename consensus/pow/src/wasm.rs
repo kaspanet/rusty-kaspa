@@ -31,7 +31,7 @@ pub struct PoW {
 #[wasm_bindgen]
 impl PoW {
     #[wasm_bindgen(constructor)]
-    pub fn new(header: HeaderT, timestamp: Option<u64>) -> Result<PoW> {
+    pub fn new(header: &HeaderT, timestamp: Option<u64>) -> Result<PoW> {
         // this function replicates crate::State::new() but caches
         // the pre_pow_hash value internally, making it available
         // via the `pre_pow_hash` property getter.

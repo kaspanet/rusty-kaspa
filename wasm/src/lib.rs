@@ -208,6 +208,7 @@ cfg_if::cfg_if! {
 
         pub use kaspa_addresses::{Address, Version as AddressVersion};
         pub use kaspa_wallet_keys::prelude::*;
+        pub use kaspa_bip32::*;
         pub use kaspa_wasm_core::types::*;
 
     }

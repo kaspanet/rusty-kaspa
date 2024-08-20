@@ -458,7 +458,7 @@ pub fn create_multisig_address(
 /// @category Wallet SDK
 #[wasm_bindgen(js_name=createAddress)]
 pub fn create_address_js(
-    key: PublicKeyT,
+    key: &PublicKeyT,
     network: &NetworkTypeT,
     ecdsa: Option<bool>,
     account_kind: Option<AccountKind>,
@@ -477,7 +477,7 @@ pub fn create_address_js(
 #[wasm_bindgen(js_name=createMultisigAddress)]
 pub fn create_multisig_address_js(
     minimum_signatures: usize,
-    keys: PublicKeyArrayT,
+    keys: &PublicKeyArrayT,
     network_type: NetworkType,
     ecdsa: Option<bool>,
     account_kind: Option<AccountKind>,

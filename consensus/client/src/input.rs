@@ -187,14 +187,17 @@ impl AsRef<TransactionInput> for TransactionInput {
 
 impl TryCastFromJs for TransactionInput {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> std::result::Result<Cast<Self>, Self::Error> {
-        Self::resolve_cast(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> std::result::Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve_cast(value, || {
             if let Some(object) = Object::try_from(value.as_ref()) {
                 let previous_outpoint: TransactionOutpoint = object.get_value("previousOutpoint")?.as_ref().try_into()?;
                 let signature_script = object.get_vec_u8("signatureScript").ok();
                 let sequence = object.get_u64("sequence")?;
                 let sig_op_count = object.get_u8("sigOpCount")?;
-                let utxo = object.try_get_cast::<UtxoEntryReference>("utxo")?.map(Cast::into_owned);
+                let utxo = object.try_cast_into::<UtxoEntryReference>("utxo")?;
                 Ok(TransactionInput::new(previous_outpoint, signature_script, sequence, sig_op_count, utxo).into())
             } else {
                 Err("TransactionInput must be an object".into())

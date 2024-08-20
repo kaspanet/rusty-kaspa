@@ -258,13 +258,18 @@ impl Transaction {
 
 impl TryCastFromJs for Transaction {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> std::result::Result<Cast<Self>, Self::Error> {
-        Self::resolve_cast(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> std::result::Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve_cast(value, || {
             if let Some(object) = Object::try_from(value.as_ref()) {
                 if let Some(tx) = object.try_get_value("tx")? {
-                    Transaction::try_cast_from(&tx)
+                    // TODO - optimize to use ref anchor
+                    Transaction::try_captured_cast_from(tx)
+                    // Ok(Cast::value(Transaction::try_owned_from(tx)?))
                 } else {
-                    let id = object.try_get_cast::<TransactionId>("id")?.map(|id| id.into_owned());
+                    let id = object.try_cast_into::<TransactionId>("id")?;
                     let version = object.get_u16("version")?;
                     let lock_time = object.get_u64("lockTime")?;
                     let gas = object.get_u64("gas")?;
