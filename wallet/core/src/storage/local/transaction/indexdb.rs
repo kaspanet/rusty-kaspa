@@ -34,20 +34,22 @@ impl Inner {
                 let old_version = evt.old_version();
                 if old_version < 1.0 {
                     let object_store = evt.db().create_object_store(TRANSACTIONS_STORE_NAME)?;
+                    let db_index_params = IdbIndexParameters::new();
+                    db_index_params.set_unique(true);
                     object_store.create_index_with_params(
                         TRANSACTIONS_STORE_ID_INDEX,
                         &IdbKeyPath::str(TRANSACTIONS_STORE_ID_INDEX),
-                        IdbIndexParameters::new().unique(true),
+                        &db_index_params,
                     )?;
                     object_store.create_index_with_params(
                         TRANSACTIONS_STORE_TIMESTAMP_INDEX,
                         &IdbKeyPath::str(TRANSACTIONS_STORE_TIMESTAMP_INDEX),
-                        IdbIndexParameters::new().unique(false),
+                        &db_index_params,
                     )?;
                     object_store.create_index_with_params(
                         TRANSACTIONS_STORE_DATA_INDEX,
                         &IdbKeyPath::str(TRANSACTIONS_STORE_DATA_INDEX),
-                        IdbIndexParameters::new().unique(false),
+                        &db_index_params,
                     )?;
 
                 // these changes are not required for new db

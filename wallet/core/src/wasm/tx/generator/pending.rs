@@ -122,6 +122,14 @@ impl PendingTransaction {
     /// {@link UtxoContext} if one was used to create the transaction
     /// and will return UTXOs back to {@link UtxoContext} in case of
     /// a failed submission.
+    ///
+    /// # Important
+    ///
+    /// Make sure to consume the returned `txid` value. Always invoke this method
+    /// as follows `let txid = await pendingTransaction.submit(rpc);`. If you do not
+    /// consume the returned value and the rpc object is temporary, the GC will
+    /// collect the `rpc` object passed to submit() potentially causing a panic.
+    ///
     /// @see {@link RpcClient.submitTransaction}
     pub async fn submit(&self, wasm_rpc_client: &RpcClient) -> Result<String> {
         let rpc: Arc<DynRpcApi> = wasm_rpc_client.client().clone();
