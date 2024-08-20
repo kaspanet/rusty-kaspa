@@ -448,14 +448,16 @@ from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetric
     }
 });
 
-from!(_item: &kaspa_rpc_core::GetConnectionsRequest, protowire::GetConnectionsRequestMessage, {
+from!(item: &kaspa_rpc_core::GetConnectionsRequest, protowire::GetConnectionsRequestMessage, {
     Self {
+        include_profile_data : item.include_profile_data,
     }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetConnectionsResponse>, protowire::GetConnectionsResponseMessage, {
     Self {
         clients: item.clients,
         peers: item.peers as u32,
+        profile_data: item.profile_data.as_ref().map(|x| x.into()),
         error: None,
     }
 });
@@ -920,13 +922,14 @@ try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core:
     }
 });
 
-try_from!(_item: &protowire::GetConnectionsRequestMessage, kaspa_rpc_core::GetConnectionsRequest, {
-    Self { }
+try_from!(item: &protowire::GetConnectionsRequestMessage, kaspa_rpc_core::GetConnectionsRequest, {
+    Self { include_profile_data : item.include_profile_data }
 });
 try_from!(item: &protowire::GetConnectionsResponseMessage, RpcResult<kaspa_rpc_core::GetConnectionsResponse>, {
     Self {
         clients: item.clients,
         peers: item.peers as u16,
+        profile_data: item.profile_data.as_ref().map(|x| x.try_into()).transpose()?,
     }
 });
 

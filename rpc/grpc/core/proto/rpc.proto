@@ -826,11 +826,18 @@ message StorageMetrics{
 }
 
 message GetConnectionsRequestMessage{
+  bool includeProfileData = 1;
+}
+
+message ConnectionsProfileData {
+  double cpuUsage = 1;
+  uint64 memoryUsage = 2;
 }
 
 message GetConnectionsResponseMessage{
   uint32 clients = 1;
   uint32 peers = 2;
+  ConnectionsProfileData profileData = 3;
   RPCError error = 1000;
 }
 

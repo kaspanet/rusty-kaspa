@@ -1799,30 +1799,45 @@ impl Deserializer for PingRequest {
 pub struct PingResponse {}
 
 impl Serializer for PingResponse {
-    fn serialize<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?;
         Ok(())
     }
 }
 
 impl Deserializer for PingResponse {
-    fn deserialize<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u8, reader)?;
         Ok(Self {})
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionsProfileData {
+    pub cpu_usage: f32,
+    pub memory_usage: u64,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GetConnectionsRequest {}
+pub struct GetConnectionsRequest {
+    pub include_profile_data: bool,
+}
 
 impl Serializer for GetConnectionsRequest {
-    fn serialize<W: std::io::Write>(&self, _writer: &mut W) -> std::io::Result<()> {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u8, &1, writer)?;
+        store!(bool, &self.include_profile_data, writer)?;
         Ok(())
     }
 }
 
 impl Deserializer for GetConnectionsRequest {
-    fn deserialize<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
-        Ok(Self {})
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u8, reader)?;
+        let include_profile_data = load!(bool, reader)?;
+        Ok(Self { include_profile_data })
     }
 }
 
@@ -1831,6 +1846,7 @@ impl Deserializer for GetConnectionsRequest {
 pub struct GetConnectionsResponse {
     pub clients: u32,
     pub peers: u16,
+    pub profile_data: Option<ConnectionsProfileData>,
 }
 
 impl Serializer for GetConnectionsResponse {
@@ -1838,6 +1854,7 @@ impl Serializer for GetConnectionsResponse {
         store!(u16, &1, writer)?;
         store!(u32, &self.clients, writer)?;
         store!(u16, &self.peers, writer)?;
+        store!(Option<ConnectionsProfileData>, &self.profile_data, writer)?;
         Ok(())
     }
 }
@@ -1847,7 +1864,8 @@ impl Deserializer for GetConnectionsResponse {
         let _version = load!(u16, reader)?;
         let clients = load!(u32, reader)?;
         let peers = load!(u16, reader)?;
-        Ok(Self { clients, peers })
+        let extra = load!(Option<ConnectionsProfileData>, reader)?;
+        Ok(Self { clients, peers, profile_data: extra })
     }
 }
 

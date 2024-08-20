@@ -927,13 +927,19 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     async fn get_connections_call(
         &self,
         _connection: Option<&DynRpcConnection>,
-        _req: GetConnectionsRequest,
+        req: GetConnectionsRequest,
     ) -> RpcResult<GetConnectionsResponse> {
         let clients = (self.wrpc_borsh_counters.active_connections.load(Ordering::Relaxed)
             + self.wrpc_json_counters.active_connections.load(Ordering::Relaxed)) as u32;
         let peers = self.flow_context.hub().active_peers_len() as u16;
 
-        Ok(GetConnectionsResponse { clients, peers })
+        let profile_data = req.include_profile_data.then(|| {
+            let CountersSnapshot { resident_set_size: memory_usage, cpu_usage, .. } = self.perf_monitor.snapshot();
+
+            ConnectionsProfileData { cpu_usage: cpu_usage as f32, memory_usage }
+        });
+
+        Ok(GetConnectionsResponse { clients, peers, profile_data })
     }
 
     async fn get_metrics_call(&self, _connection: Option<&DynRpcConnection>, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
@@ -961,7 +967,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             disk_io_write_per_sec: disk_io_write_per_sec as f32,
         });
 
-        let connection_metrics = req.connection_metrics.then_some(ConnectionMetrics {
+        let connection_metrics = req.connection_metrics.then(|| ConnectionMetrics {
             borsh_live_connections: self.wrpc_borsh_counters.active_connections.load(Ordering::Relaxed) as u32,
             borsh_connection_attempts: self.wrpc_borsh_counters.total_connections.load(Ordering::Relaxed) as u64,
             borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed) as u64,
@@ -972,7 +978,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             active_peers: self.flow_context.hub().active_peers_len() as u32,
         });
 
-        let bandwidth_metrics = req.bandwidth_metrics.then_some(BandwidthMetrics {
+        let bandwidth_metrics = req.bandwidth_metrics.then(|| BandwidthMetrics {
             borsh_bytes_tx: self.wrpc_borsh_counters.tx_bytes.load(Ordering::Relaxed) as u64,
             borsh_bytes_rx: self.wrpc_borsh_counters.rx_bytes.load(Ordering::Relaxed) as u64,
             json_bytes_tx: self.wrpc_json_counters.tx_bytes.load(Ordering::Relaxed) as u64,

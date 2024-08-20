@@ -46,7 +46,7 @@ impl Rpc {
                 self.println(&ctx, result);
             }
             RpcApiOps::GetConnections => {
-                let result = rpc.get_connections().await?;
+                let result = rpc.get_connections(true).await?;
                 self.println(&ctx, result);
             }
             RpcApiOps::GetServerInfo => {

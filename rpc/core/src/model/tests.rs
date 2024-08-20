@@ -933,7 +933,7 @@ mod mockery {
 
     impl Mock for GetConnectionsRequest {
         fn mock() -> Self {
-            GetConnectionsRequest {}
+            GetConnectionsRequest { include_profile_data: false }
         }
     }
 
@@ -941,7 +941,7 @@ mod mockery {
 
     impl Mock for GetConnectionsResponse {
         fn mock() -> Self {
-            GetConnectionsResponse { clients: mock(), peers: mock() }
+            GetConnectionsResponse { clients: mock(), peers: mock(), profile_data: None }
         }
     }
 

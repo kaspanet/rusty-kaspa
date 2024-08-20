@@ -6,6 +6,14 @@ use kaspa_rpc_core::RpcError;
 // rpc_core to protowire
 // ----------------------------------------------------------------------------
 
+from!(item: &kaspa_rpc_core::ConnectionsProfileData, protowire::ConnectionsProfileData, {
+    Self {
+        cpu_usage: item.cpu_usage as f64,
+        memory_usage: item.memory_usage,
+
+    }
+});
+
 from!(item: &kaspa_rpc_core::ProcessMetrics, protowire::ProcessMetrics, {
     Self {
         resident_set_size: item.resident_set_size,
@@ -75,6 +83,10 @@ from!(item: &kaspa_rpc_core::StorageMetrics, protowire::StorageMetrics, {
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
+
+try_from!(item: &protowire::ConnectionsProfileData, kaspa_rpc_core::ConnectionsProfileData, {
+    Self { cpu_usage : item.cpu_usage as f32, memory_usage : item.memory_usage }
+});
 
 try_from!(item: &protowire::ProcessMetrics, kaspa_rpc_core::ProcessMetrics, {
     Self {

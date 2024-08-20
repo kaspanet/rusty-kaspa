@@ -485,7 +485,7 @@ async fn sanity_test() {
             KaspadPayloadOps::GetConnections => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let _ = rpc_client.get_connections_call(None, GetConnectionsRequest {}).await.unwrap();
+                    let _ = rpc_client.get_connections_call(None, GetConnectionsRequest { include_profile_data: true }).await.unwrap();
                 })
             }
 
