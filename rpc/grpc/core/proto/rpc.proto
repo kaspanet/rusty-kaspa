@@ -307,6 +307,21 @@ message SubmitTransactionResponseMessage{
   RPCError error = 1000;
 }
 
+// SubmitTransactionReplacementRequestMessage submits a transaction to the mempool, applying a mandatory Replace by Fee policy
+message SubmitTransactionReplacementRequestMessage{
+  RpcTransaction transaction = 1;
+}
+
+message SubmitTransactionReplacementResponseMessage{
+  // The transaction ID of the submitted transaction
+  string transactionId = 1;
+
+  // The previous transaction replaced in the mempool by the newly submitted one
+  RpcTransaction replacedTransaction = 2;
+
+  RPCError error = 1000;
+}
+
 // NotifyVirtualChainChangedRequestMessage registers this connection for virtualChainChanged notifications.
 //
 // See: VirtualChainChangedNotificationMessage
@@ -844,10 +859,66 @@ message GetSyncStatusResponseMessage{
 }
 
 message GetDaaScoreTimestampEstimateRequestMessage {
-        repeated uint64 daa_scores = 1;
+  repeated uint64 daa_scores = 1;
 }
 
 message GetDaaScoreTimestampEstimateResponseMessage{
-        repeated uint64 timestamps = 1;
-        RPCError error = 1000;
+  repeated uint64 timestamps = 1;
+  RPCError error = 1000;
+}
+
+message RpcFeerateBucket {
+  // Fee/mass of a transaction in `sompi/gram` units
+  double feerate = 1;
+  double estimated_seconds = 2;
+}
+
+// Data required for making fee estimates.
+// 
+// Feerate values represent fee/mass of a transaction in `sompi/gram` units.
+// Given a feerate value recommendation, calculate the required fee by
+// taking the transaction mass and multiplying it by feerate: `fee = feerate * mass(tx)`
+message RpcFeeEstimate {
+  // Top-priority feerate bucket. Provides an estimation of the feerate required for sub-second DAG inclusion.
+  RpcFeerateBucket priority_bucket = 1;
+
+  // A vector of *normal* priority feerate values. The first value of this vector is guaranteed to exist and
+  // provide an estimation for sub-*minute* DAG inclusion. All other values will have shorter estimation
+  // times than all `low_bucket` values. Therefor by chaining `[priority] | normal | low` and interpolating
+  // between them, one can compose a complete feerate function on the client side. The API makes an effort
+  // to sample enough "interesting" points on the feerate-to-time curve, so that the interpolation is meaningful.
+  repeated RpcFeerateBucket normal_buckets = 2;
+
+  // A vector of *low* priority feerate values. The first value of this vector is guaranteed to
+  // exist and provide an estimation for sub-*hour* DAG inclusion.
+  repeated RpcFeerateBucket low_buckets = 3;
+}
+
+message RpcFeeEstimateVerboseExperimentalData {
+  uint64 mempool_ready_transactions_count = 1;
+  uint64 mempool_ready_transactions_total_mass = 2;
+  uint64 network_mass_per_second = 3;
+
+  double next_block_template_feerate_min = 11;
+  double next_block_template_feerate_median = 12;
+  double next_block_template_feerate_max = 13;
+}
+
+message GetFeeEstimateRequestMessage {
+}
+
+message GetFeeEstimateResponseMessage {
+  RpcFeeEstimate estimate = 1;
+  RPCError error = 1000;
+}
+
+message GetFeeEstimateExperimentalRequestMessage {
+  bool verbose = 1;
+}
+
+message GetFeeEstimateExperimentalResponseMessage {
+  RpcFeeEstimate estimate = 1;
+  RpcFeeEstimateVerboseExperimentalData verbose = 2;
+
+  RPCError error = 1000;
 }

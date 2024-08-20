@@ -134,6 +134,13 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn submit_transaction_replacement_call(
+        &self,
+        _request: SubmitTransactionReplacementRequest,
+    ) -> RpcResult<SubmitTransactionReplacementResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     async fn get_block_call(&self, _request: GetBlockRequest) -> RpcResult<GetBlockResponse> {
         Err(RpcError::NotImplemented)
     }
@@ -225,6 +232,17 @@ impl RpcApi for RpcCoreMock {
         &self,
         _request: GetDaaScoreTimestampEstimateRequest,
     ) -> RpcResult<GetDaaScoreTimestampEstimateResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
+    async fn get_fee_estimate_call(&self, _request: GetFeeEstimateRequest) -> RpcResult<GetFeeEstimateResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
+    async fn get_fee_estimate_experimental_call(
+        &self,
+        _request: GetFeeEstimateExperimentalRequest,
+    ) -> RpcResult<GetFeeEstimateExperimentalResponse> {
         Err(RpcError::NotImplemented)
     }
 

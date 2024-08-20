@@ -10,6 +10,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+arc-swap.workspace = true
 parking_lot.workspace = true
 async-channel.workspace = true
 borsh.workspace = true

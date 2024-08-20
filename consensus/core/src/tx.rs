@@ -29,7 +29,7 @@ pub type TransactionId = kaspa_hashes::Hash;
 /// score of the block that accepts the tx, its public key script, and how
 /// much it pays.
 /// @category Consensus
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 #[wasm_bindgen(inspectable, js_name = TransactionUtxoEntry)]
 pub struct UtxoEntry {
@@ -53,7 +53,7 @@ impl MemSizeEstimator for UtxoEntry {}
 pub type TransactionIndexType = u32;
 
 /// Represents a Kaspa transaction outpoint
-#[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Eq, Default, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionOutpoint {
     #[serde(with = "serde_bytes_fixed_ref")]
@@ -404,6 +404,19 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
     pub fn clear_entries(&mut self) {
         for entry in self.entries.iter_mut() {
             *entry = None;
+        }
+    }
+
+    /// Returns the calculated feerate. The feerate is calculated as the amount of fee
+    /// this transactions pays per gram of the full contextual (compute & storage) mass. The
+    /// function returns a value when calculated fee exists and the contextual mass is greater
+    /// than zero, otherwise `None` is returned.
+    pub fn calculated_feerate(&self) -> Option<f64> {
+        let contextual_mass = self.tx.as_ref().mass();
+        if contextual_mass > 0 {
+            self.calculated_fee.map(|fee| fee as f64 / contextual_mass as f64)
+        } else {
+            None
         }
     }
 }
