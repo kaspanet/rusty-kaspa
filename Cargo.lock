@@ -395,15 +395,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "atomic-polyfill"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8cf2bce30dfe09ef0bfaef228b9d414faaf7e563035494d7fe092dba54b300f4"
-dependencies = [
- "critical-section",
-]
-
-[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -549,17 +540,16 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.65.1"
+version = "0.69.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfdf7b466f9a4903edc73f95d6d2bcd5baf8ae620638762244d3f60143643cc5"
+checksum = "a00dc851838a2120612785d195287475a3ac45514741da670b735818822129a0"
 dependencies = [
- "bitflags 1.3.2",
+ "bitflags 2.5.0",
  "cexpr",
  "clang-sys",
+ "itertools 0.12.1",
  "lazy_static",
  "lazycell",
- "peeking_take_while",
- "prettyplease",
  "proc-macro2",
  "quote",
  "regex",
@@ -1066,12 +1056,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "critical-section"
-version = "1.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7059fff8937831a9ae6f0fe4d658ffabf58f2ca96aa9dec1c889f936f705f216"
-
-[[package]]
 name = "crossbeam-channel"
 version = "0.5.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1252,11 +1236,12 @@ dependencies = [
 
 [[package]]
 name = "dashmap"
-version = "5.5.3"
+version = "6.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "978747c1d849a7d2ee5e8adc0159961c48fb7e5db2f06af6723b80123bb53856"
+checksum = "804c8821570c3f8b70230c2ba75ffa5c0f9a4189b9a432b6656c536712acae28"
 dependencies = [
  "cfg-if 1.0.0",
+ "crossbeam-utils",
  "hashbrown 0.14.5",
  "lock_api",
  "once_cell",
@@ -1335,15 +1320,15 @@ dependencies = [
 
 [[package]]
 name = "derive_more"
-version = "0.99.17"
+version = "0.99.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fb810d30a7c1953f91334de7244731fc3f3c10d7fe163338a35b9f640960321"
+checksum = "5f33878137e4dafd7fa914ad4e259e18a4e8e532b9617a2d0150262bf53abfce"
 dependencies = [
  "convert_case 0.4.0",
  "proc-macro2",
  "quote",
  "rustc_version",
- "syn 1.0.109",
+ "syn 2.0.60",
 ]
 
 [[package]]
@@ -1432,9 +1417,9 @@ dependencies = [
 
 [[package]]
 name = "duration-string"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fcc1d9ae294a15ed05aeae8e11ee5f2b3fe971c077d45a42fb20825fba6ee13"
+checksum = "2334658684d7c213e18602aa72ce37e94d1c9b535882ef6e30bc444b7514a1ee"
 
 [[package]]
 name = "either"
@@ -1459,13 +1444,13 @@ dependencies = [
 
 [[package]]
 name = "enum-primitive-derive"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c375b9c5eadb68d0a6efee2999fef292f45854c3444c86f09d8ab086ba942b0e"
+checksum = "ba7795da175654fe16979af73f81f26a8ea27638d8d9823d317016888a63dc4c"
 dependencies = [
  "num-traits",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.60",
 ]
 
 [[package]]
@@ -1565,12 +1550,6 @@ dependencies = [
  "quote",
  "syn 2.0.60",
 ]
-
-[[package]]
-name = "faster-hex"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51e2ce894d53b295cf97b05685aa077950ff3e8541af83217fc720a6437169f8"
 
 [[package]]
 name = "faster-hex"
@@ -1875,9 +1854,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.5"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa82e28a107a8cc405f0839610bdc9b15f1e25ec7d696aa5cf173edbcb1486ab"
+checksum = "524e8ac6999421f49a846c2d4411f337e53497d8ec55d67753beffa43c5d9205"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -1904,9 +1883,9 @@ dependencies = [
 
 [[package]]
 name = "hash32"
-version = "0.2.1"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0c35f58762feb77d74ebe43bdbc3210f09be9fe6742234d573bacc26ed92b67"
+checksum = "47d60b12902ba28e2730cd37e95b8c9223af2808df9e902d4df49588d1470606"
 dependencies = [
  "byteorder",
 ]
@@ -1928,14 +1907,11 @@ dependencies = [
 
 [[package]]
 name = "heapless"
-version = "0.7.17"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdc6457c0eb62c71aac4bc17216026d8410337c4126773b9c5daba343f17964f"
+checksum = "0bfb9eb618601c89945a70e254898da93b13be0388091d42117462b265bb3fad"
 dependencies = [
- "atomic-polyfill",
  "hash32",
- "rustc_version",
- "spin",
  "stable_deref_trait",
 ]
 
@@ -2116,7 +2092,7 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-util",
- "h2 0.4.5",
+ "h2 0.4.6",
  "http 1.1.0",
  "http-body 1.0.0",
  "httparse",
@@ -2203,7 +2179,7 @@ dependencies = [
  "iana-time-zone-haiku",
  "js-sys",
  "wasm-bindgen",
- "windows-core",
+ "windows-core 0.52.0",
 ]
 
 [[package]]
@@ -2252,16 +2228,16 @@ dependencies = [
 
 [[package]]
 name = "indexed_db_futures"
-version = "0.4.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cc2083760572ee02385ab8b7c02c20925d2dd1f97a1a25a8737a238608f1152"
+checksum = "43315957678a70eb21fb0d2384fe86dde0d6c859a01e24ce127eb65a0143d28c"
 dependencies = [
  "accessory",
  "cfg-if 1.0.0",
  "delegate-display",
  "fancy_constructor",
  "js-sys",
- "uuid 1.6.1",
+ "uuid 1.10.0",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -2395,6 +2371,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2441,7 +2426,7 @@ version = "0.14.1"
 dependencies = [
  "borsh",
  "igd-next",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-database",
@@ -2471,7 +2456,7 @@ version = "0.14.1"
 dependencies = [
  "borsh",
  "bs58",
- "faster-hex 0.6.1",
+ "faster-hex",
  "getrandom 0.2.14",
  "hmac",
  "js-sys",
@@ -2502,7 +2487,7 @@ dependencies = [
  "convert_case 0.6.0",
  "dashmap",
  "downcast",
- "faster-hex 0.6.1",
+ "faster-hex",
  "futures",
  "hex",
  "js-sys",
@@ -2545,7 +2530,7 @@ version = "0.14.1"
 dependencies = [
  "duration-string",
  "futures-util",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "kaspa-addressmanager",
  "kaspa-core",
  "kaspa-p2p-lib",
@@ -2565,11 +2550,11 @@ dependencies = [
  "bincode",
  "criterion",
  "crossbeam-channel",
- "faster-hex 0.6.1",
+ "faster-hex",
  "flate2",
  "futures-util",
  "indexmap 2.2.6",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
  "kaspa-consensusmanager",
@@ -2605,9 +2590,9 @@ version = "0.14.1"
 dependencies = [
  "ahash",
  "cfg-if 1.0.0",
- "faster-hex 0.6.1",
+ "faster-hex",
  "hex",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "js-sys",
  "kaspa-addresses",
  "kaspa-consensus-core",
@@ -2636,10 +2621,10 @@ dependencies = [
  "borsh",
  "cfg-if 1.0.0",
  "criterion",
- "faster-hex 0.6.1",
+ "faster-hex",
  "futures-util",
  "getrandom 0.2.14",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "js-sys",
  "kaspa-addresses",
  "kaspa-core",
@@ -2689,7 +2674,7 @@ name = "kaspa-consensus-wasm"
 version = "0.14.1"
 dependencies = [
  "cfg-if 1.0.0",
- "faster-hex 0.6.1",
+ "faster-hex",
  "js-sys",
  "kaspa-addresses",
  "kaspa-consensus-client",
@@ -2715,7 +2700,7 @@ dependencies = [
  "duration-string",
  "futures",
  "futures-util",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
  "kaspa-core",
@@ -2772,9 +2757,9 @@ version = "0.14.1"
 dependencies = [
  "bincode",
  "enum-primitive-derive",
- "faster-hex 0.6.1",
+ "faster-hex",
  "indexmap 2.2.6",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "kaspa-hashes",
  "kaspa-utils",
  "num-traits",
@@ -2795,11 +2780,11 @@ dependencies = [
  "async-channel 2.2.1",
  "async-stream",
  "async-trait",
- "faster-hex 0.6.1",
+ "faster-hex",
  "futures",
  "futures-util",
- "h2 0.3.26",
- "itertools 0.11.0",
+ "h2 0.4.6",
+ "itertools 0.13.0",
  "kaspa-core",
  "kaspa-grpc-core",
  "kaspa-notify",
@@ -2826,9 +2811,9 @@ dependencies = [
  "async-channel 2.2.1",
  "async-stream",
  "async-trait",
- "faster-hex 0.6.1",
+ "faster-hex",
  "futures",
- "h2 0.3.26",
+ "h2 0.4.6",
  "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-notify",
@@ -2855,10 +2840,10 @@ dependencies = [
  "async-channel 2.2.1",
  "async-stream",
  "async-trait",
- "faster-hex 0.6.1",
+ "faster-hex",
  "futures",
- "h2 0.3.26",
- "itertools 0.11.0",
+ "h2 0.4.6",
+ "itertools 0.13.0",
  "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-grpc-client",
@@ -2880,7 +2865,7 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "triggered",
- "uuid 1.6.1",
+ "uuid 1.10.0",
 ]
 
 [[package]]
@@ -2891,7 +2876,7 @@ dependencies = [
  "borsh",
  "cc",
  "criterion",
- "faster-hex 0.6.1",
+ "faster-hex",
  "js-sys",
  "kaspa-utils",
  "keccak",
@@ -2957,7 +2942,7 @@ version = "0.14.1"
 dependencies = [
  "borsh",
  "criterion",
- "faster-hex 0.6.1",
+ "faster-hex",
  "js-sys",
  "kaspa-utils",
  "malachite-base",
@@ -3001,7 +2986,7 @@ version = "0.14.1"
 dependencies = [
  "criterion",
  "futures-util",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-consensusmanager",
@@ -3055,7 +3040,7 @@ dependencies = [
  "futures",
  "futures-util",
  "indexmap 2.2.6",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "kaspa-addresses",
  "kaspa-alloc",
  "kaspa-consensus-core",
@@ -3087,7 +3072,7 @@ dependencies = [
  "chrono",
  "futures",
  "indexmap 2.2.6",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "kaspa-addressmanager",
  "kaspa-connectionmanager",
  "kaspa-consensus-core",
@@ -3107,7 +3092,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-stream",
- "uuid 1.6.1",
+ "uuid 1.10.0",
 ]
 
 [[package]]
@@ -3117,9 +3102,9 @@ dependencies = [
  "borsh",
  "ctrlc",
  "futures",
- "h2 0.3.26",
+ "h2 0.4.6",
  "hex",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "kaspa-consensus-core",
  "kaspa-core",
  "kaspa-hashes",
@@ -3138,7 +3123,7 @@ dependencies = [
  "tokio-stream",
  "tonic",
  "tonic-build",
- "uuid 1.6.1",
+ "uuid 1.10.0",
 ]
 
 [[package]]
@@ -3179,7 +3164,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "derive_more",
  "downcast",
- "faster-hex 0.6.1",
+ "faster-hex",
  "hex",
  "js-sys",
  "kaspa-addresses",
@@ -3204,7 +3189,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "thiserror",
- "uuid 1.6.1",
+ "uuid 1.10.0",
  "wasm-bindgen",
  "workflow-core",
  "workflow-serializer",
@@ -3264,11 +3249,11 @@ dependencies = [
  "criterion",
  "crossbeam-channel",
  "dhat",
- "faster-hex 0.6.1",
+ "faster-hex",
  "flate2",
  "futures-util",
  "indexmap 2.2.6",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "kaspa-addresses",
  "kaspa-alloc",
  "kaspa-bip32",
@@ -3323,7 +3308,7 @@ dependencies = [
  "hex",
  "hexplay",
  "indexmap 2.2.6",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-hashes",
@@ -3365,10 +3350,10 @@ dependencies = [
  "criterion",
  "duct",
  "event-listener 2.5.3",
- "faster-hex 0.6.1",
+ "faster-hex",
  "futures-util",
  "ipnet",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "log",
  "mac_address",
  "num_cpus",
@@ -3383,7 +3368,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "triggered",
- "uuid 1.6.1",
+ "uuid 1.10.0",
  "wasm-bindgen",
 ]
 
@@ -3458,7 +3443,7 @@ dependencies = [
  "async-channel 2.2.1",
  "async-std",
  "async-trait",
- "base64 0.21.7",
+ "base64 0.22.1",
  "borsh",
  "cfb-mode",
  "cfg-if 1.0.0",
@@ -3469,7 +3454,7 @@ dependencies = [
  "derivative",
  "downcast",
  "evpkdf",
- "faster-hex 0.6.1",
+ "faster-hex",
  "fixedstr",
  "futures",
  "heapless",
@@ -3477,7 +3462,7 @@ dependencies = [
  "hmac",
  "home",
  "indexed_db_futures",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "js-sys",
  "kaspa-addresses",
  "kaspa-bip32",
@@ -3536,7 +3521,7 @@ dependencies = [
  "async-trait",
  "borsh",
  "downcast",
- "faster-hex 0.6.1",
+ "faster-hex",
  "hmac",
  "js-sys",
  "kaspa-addresses",
@@ -3633,7 +3618,7 @@ dependencies = [
 name = "kaspa-wasm-core"
 version = "0.14.1"
 dependencies = [
- "faster-hex 0.6.1",
+ "faster-hex",
  "hexplay",
  "js-sys",
  "wasm-bindgen",
@@ -3885,11 +3870,11 @@ dependencies = [
 
 [[package]]
 name = "librocksdb-sys"
-version = "0.11.0+8.1.1"
+version = "0.16.0+8.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3386f101bcb4bd252d8e9d2fb41ec3b0862a15a62b478c355b2982efa469e3e"
+checksum = "ce3d60bc059831dc1c83903fb45c103f75db65c5a7bf22272764d9cc683e348c"
 dependencies = [
- "bindgen 0.65.1",
+ "bindgen 0.69.4",
  "bzip2-sys",
  "cc",
  "glob",
@@ -3944,9 +3929,9 @@ checksum = "01cda141df6706de531b6c46c3a33ecca755538219bd484262fa09410c13539c"
 
 [[package]]
 name = "local-ip-address"
-version = "0.5.7"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "612ed4ea9ce5acfb5d26339302528a5e1e59dfed95e9e11af3c083236ff1d15d"
+checksum = "136ef34e18462b17bf39a7826f8f3bbc223341f8e83822beb8b77db9a3d49696"
 dependencies = [
  "libc",
  "neli",
@@ -5116,7 +5101,7 @@ dependencies = [
  "encoding_rs",
  "futures-core",
  "futures-util",
- "h2 0.4.5",
+ "h2 0.4.6",
  "http 1.1.0",
  "http-body 1.0.0",
  "http-body-util",
@@ -5183,9 +5168,9 @@ dependencies = [
 
 [[package]]
 name = "rocksdb"
-version = "0.21.0"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb6f170a4041d50a0ce04b0d2e14916d6ca863ea2e422689a5b694395d299ffe"
+checksum = "6bd13e55d6d7b8cd0ea569161127567cd587676c99f4472f779a0279aa60a7a7"
 dependencies = [
  "libc",
  "librocksdb-sys",
@@ -5198,8 +5183,8 @@ dependencies = [
  "async-channel 2.2.1",
  "clap 4.5.4",
  "criterion",
- "faster-hex 0.6.1",
- "itertools 0.11.0",
+ "faster-hex",
+ "itertools 0.13.0",
  "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-core",
@@ -5397,9 +5382,9 @@ dependencies = [
 
 [[package]]
 name = "secp256k1"
-version = "0.28.2"
+version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d24b59d129cdadea20aea4fb2352fa053712e5d713eee47d700cd4b2bc002f10"
+checksum = "0e0cc0f1cf93f4969faf3ea1c7d8a9faed25918d96affa959720823dfe86d4f3"
 dependencies = [
  "rand 0.8.5",
  "secp256k1-sys",
@@ -5408,9 +5393,9 @@ dependencies = [
 
 [[package]]
 name = "secp256k1-sys"
-version = "0.9.2"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5d1746aae42c19d583c3c1a8c646bfad910498e2051c551a7f2e3c0c9fbb7eb"
+checksum = "1433bd67156263443f14d603720b082dd3121779323fce20cba2aa07b874bc1b"
 dependencies = [
  "cc",
 ]
@@ -5677,7 +5662,7 @@ dependencies = [
  "futures",
  "futures-util",
  "indexmap 2.2.6",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "kaspa-alloc",
  "kaspa-consensus",
  "kaspa-consensus-core",
@@ -5761,9 +5746,6 @@ name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
-dependencies = [
- "lock_api",
-]
 
 [[package]]
 name = "stable_deref_trait"
@@ -5870,15 +5852,14 @@ checksum = "a7065abeca94b6a8a577f9bd45aa0867a2238b74e8eb67cf10d492bc39351394"
 
 [[package]]
 name = "sysinfo"
-version = "0.30.13"
+version = "0.31.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a5b4ddaee55fb2bea2bf0e5000747e5f5c0de765e5a5ff87f4cd106439f4bb3"
+checksum = "d4115055da5f572fff541dd0c4e61b0262977f453cc9fe04be83aba25a89bdab"
 dependencies = [
- "cfg-if 1.0.0",
  "core-foundation-sys",
  "libc",
+ "memchr",
  "ntapi",
- "once_cell",
  "rayon",
  "windows",
 ]
@@ -6468,9 +6449,9 @@ dependencies = [
 
 [[package]]
 name = "uuid"
-version = "1.6.1"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e395fcf16a7a3d8127ec99782007af141946b4795001f876d54fb0d55978560"
+checksum = "81dfa00651efa65069b0b6b651f4aaa31ba9e3c3ce0137aaad053604ee7e0314"
 dependencies = [
  "getrandom 0.2.14",
  "rand 0.8.5",
@@ -6704,11 +6685,11 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "windows"
-version = "0.52.0"
+version = "0.57.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e48a53791691ab099e5e2ad123536d0fff50652600abaf43bbf952894110d0be"
+checksum = "12342cb4d8e3b046f3d80effd474a7a02447231330ef77d71daa6fbc40681143"
 dependencies = [
- "windows-core",
+ "windows-core 0.57.0",
  "windows-targets 0.52.5",
 ]
 
@@ -6717,6 +6698,49 @@ name = "windows-core"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33ab640c8d7e35bf8ba19b884ba838ceb4fba93a4e8c65a9059d08afcfc683d9"
+dependencies = [
+ "windows-targets 0.52.5",
+]
+
+[[package]]
+name = "windows-core"
+version = "0.57.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2ed2439a290666cd67ecce2b0ffaad89c2a56b976b736e6ece670297897832d"
+dependencies = [
+ "windows-implement",
+ "windows-interface",
+ "windows-result",
+ "windows-targets 0.52.5",
+]
+
+[[package]]
+name = "windows-implement"
+version = "0.57.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9107ddc059d5b6fbfbffdfa7a7fe3e22a226def0b2608f72e9d552763d3e1ad7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.60",
+]
+
+[[package]]
+name = "windows-interface"
+version = "0.57.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29bee4b38ea3cde66011baa44dba677c432a78593e202392d1e9070cf2a7fca7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.60",
+]
+
+[[package]]
+name = "windows-result"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5e383302e8ec8515204254685643de10811af0ed97ea37210dc26fb0032647f8"
 dependencies = [
  "windows-targets 0.52.5",
 ]
@@ -6916,7 +6940,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "chrono",
  "dirs",
- "faster-hex 0.9.0",
+ "faster-hex",
  "futures",
  "getrandom 0.2.14",
  "instant",
@@ -7150,7 +7174,7 @@ dependencies = [
  "base64 0.22.1",
  "cfg-if 1.0.0",
  "chrome-sys",
- "faster-hex 0.9.0",
+ "faster-hex",
  "filetime",
  "home",
  "js-sys",
@@ -7248,7 +7272,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a878ee79b2a117277ae24d87525686f50006b87f43cf2052401e12c330fddbbc"
 dependencies = [
  "cfg-if 1.0.0",
- "faster-hex 0.9.0",
+ "faster-hex",
  "futures",
  "js-sys",
  "serde",

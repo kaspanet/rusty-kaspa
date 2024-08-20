@@ -390,7 +390,7 @@ impl TransactionRecordStore for TransactionStore {
         let inner = inner_guard.lock().unwrap().clone();
 
         call_async_no_send!(async move {
-            for (db_name, items) in &items.into_iter().group_by(|item| item.db_name.clone()) {
+            for (db_name, items) in &items.into_iter().chunk_by(|item| item.db_name.clone()) {
                 let db = inner.open_db(db_name).await?;
 
                 let idb_tx = db
