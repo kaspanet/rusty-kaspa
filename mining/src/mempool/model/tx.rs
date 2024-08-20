@@ -32,6 +32,10 @@ impl MempoolTransaction {
         let parent_id = self.id();
         transaction.tx.inputs.iter().any(|x| x.previous_outpoint.transaction_id == parent_id)
     }
+
+    pub(crate) fn calculated_compute_mass(&self) -> Option<u64> {
+        self.mtx.calculated_compute_mass
+    }
 }
 
 impl RbfPolicy {

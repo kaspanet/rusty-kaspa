@@ -21,7 +21,7 @@ use kaspa_consensus_core::{
 use kaspa_core::{time::unix_now, trace, warn};
 use std::{
     collections::{hash_map::Keys, hash_set::Iter},
-    sync::Arc,
+    sync::{atomic::AtomicU64, Arc},
 };
 
 use super::frontier::Frontier;
@@ -64,6 +64,8 @@ pub(crate) struct TransactionsPool {
     /// last expire scan time in milliseconds
     last_expire_scan_time: u64,
 
+    total_compute_mass: u64,
+
     /// Store of UTXOs
     utxo_set: MempoolUtxoSet,
 }
@@ -79,6 +81,7 @@ impl TransactionsPool {
             last_expire_scan_daa_score: 0,
             last_expire_scan_time: unix_now(),
             utxo_set: MempoolUtxoSet::new(),
+            total_compute_mass: 0,
         }
     }
 
@@ -117,6 +120,7 @@ impl TransactionsPool {
         }
 
         self.utxo_set.add_transaction(&transaction.mtx);
+        self.total_compute_mass += transaction.calculated_compute_mass().expect("we expect this field to be already calculated");
         self.all_transactions.insert(id, transaction);
         trace!("Added transaction {}", id);
         Ok(())
