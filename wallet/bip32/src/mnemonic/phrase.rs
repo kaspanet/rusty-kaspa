@@ -85,8 +85,8 @@ impl Mnemonic {
     }
 
     #[wasm_bindgen(js_name = random)]
-    pub fn create_random_js(word_count: JsValue) -> Result<Mnemonic> {
-        let word_count = word_count.as_f64().unwrap_or(24.0) as usize;
+    pub fn create_random_js(word_count: Option<u32>) -> Result<Mnemonic> {
+        let word_count = word_count.unwrap_or(24) as usize;
         Mnemonic::random(word_count.try_into()?, Default::default())
     }
 
