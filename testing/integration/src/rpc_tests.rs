@@ -4,7 +4,7 @@ use crate::common::{client_notify::ChannelNotify, daemon::Daemon};
 use futures_util::future::try_join_all;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::params::SIMNET_GENESIS;
-use kaspa_consensus_core::{constants::MAX_SOMPI, subnets::SubnetworkId, tx::Transaction};
+use kaspa_consensus_core::{constants::MAX_SOMPI, header::Header, subnets::SubnetworkId, tx::Transaction};
 use kaspa_core::info;
 use kaspa_grpc_core::ops::KaspadPayloadOps;
 use kaspa_hashes::Hash;
@@ -115,6 +115,10 @@ async fn sanity_test() {
                         .unwrap();
                     assert!(!is_synced);
 
+                    // Compute the expected block hash for the received block
+                    let header: Header = (&block.header).into();
+                    let block_hash = header.hash;
+
                     // Submit the template (no mining, in simnet PoW is skipped)
                     let response = rpc_client.submit_block(block.clone(), false).await.unwrap();
                     assert_eq!(response.report, SubmitBlockReport::Success);
@@ -138,7 +142,7 @@ async fn sanity_test() {
 
                     // After submitting a first block, the sink is the submitted block,
                     let response = rpc_client.get_sink_call(None, GetSinkRequest {}).await.unwrap();
-                    assert_eq!(response.sink, block.header.hash);
+                    assert_eq!(response.sink, block_hash);
 
                     // the block count is 1
                     let response = rpc_client.get_block_count_call(None, GetBlockCountRequest {}).await.unwrap();
@@ -155,7 +159,7 @@ async fn sanity_test() {
                         )
                         .await
                         .unwrap();
-                    assert!(response.added_chain_block_hashes.contains(&block.header.hash));
+                    assert!(response.added_chain_block_hashes.contains(&block_hash));
                     assert!(response.removed_chain_block_hashes.is_empty());
                 })
             }

@@ -155,6 +155,25 @@ mod mockery {
         }
     }
 
+    impl Mock for RpcRawHeader {
+        fn mock() -> Self {
+            RpcRawHeader {
+                version: mock(),
+                timestamp: mock(),
+                bits: mock(),
+                nonce: mock(),
+                hash_merkle_root: mock(),
+                accepted_id_merkle_root: mock(),
+                utxo_commitment: mock(),
+                parents_by_level: vec![mock()],
+                daa_score: mock(),
+                blue_score: mock(),
+                blue_work: mock(),
+                pruning_point: mock(),
+            }
+        }
+    }
+
     impl Mock for RpcBlockVerboseData {
         fn mock() -> Self {
             RpcBlockVerboseData {
@@ -175,6 +194,12 @@ mod mockery {
     impl Mock for RpcBlock {
         fn mock() -> Self {
             RpcBlock { header: mock(), transactions: mock(), verbose_data: mock() }
+        }
+    }
+
+    impl Mock for RpcRawBlock {
+        fn mock() -> Self {
+            RpcRawBlock { header: mock(), transactions: mock() }
         }
     }
 

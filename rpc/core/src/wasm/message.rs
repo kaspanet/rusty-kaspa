@@ -1373,7 +1373,7 @@ declare! {
 
 try_from! ( args: SubmitTransactionReplacementResponse, ISubmitTransactionReplacementResponse, {
     let transaction_id = args.transaction_id;
-    let replaced_transaction  = cctx::Transaction::try_from(&args.replaced_transaction)?;
+    let replaced_transaction  = cctx::Transaction::try_from(args.replaced_transaction)?;
     let replaced_transaction = Transaction::from(replaced_transaction);
 
     let response = ISubmitTransactionReplacementResponse::default();

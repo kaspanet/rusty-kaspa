@@ -115,7 +115,7 @@ pub trait RpcApi: Sync + Send + AnySync {
     /// Submit a block into the DAG.
     ///
     /// Blocks are generally expected to have been generated using the get_block_template call.
-    async fn submit_block(&self, block: RpcBlock, allow_non_daa_blocks: bool) -> RpcResult<SubmitBlockResponse> {
+    async fn submit_block(&self, block: RpcRawBlock, allow_non_daa_blocks: bool) -> RpcResult<SubmitBlockResponse> {
         self.submit_block_call(None, SubmitBlockRequest::new(block, allow_non_daa_blocks)).await
     }
     async fn submit_block_call(
