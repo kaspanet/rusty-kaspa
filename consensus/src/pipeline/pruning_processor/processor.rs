@@ -276,7 +276,8 @@ impl PruningProcessor {
         // Get the headers of the roots of the pruning point anticone (including the pruning point).
         // These will be used to make sure we keep all multi-level parents of the roots set.
         let roots_headers = self
-            .reachability_service
+            .reachability_store
+            .read()
             .get_roots_of_set(&mut data.anticone.iter().copied())
             .into_iter()
             .map(|hash| self.headers_store.get_header_with_block_level(hash).expect("pruning point anticone is not pruned"))
@@ -285,8 +286,6 @@ impl PruningProcessor {
         info!("Header and Block pruning: waiting for consensus write permissions...");
 
         let mut prune_guard = self.pruning_lock.blocking_write();
-        let mut lock_acquire_time = Instant::now();
-        let mut reachability_read = self.reachability_store.upgradable_read();
 
         info!("Starting Header and Block pruning...");
 
@@ -313,8 +312,12 @@ impl PruningProcessor {
             info!("Header and Block pruning: updated ghostdag data for {} blocks", counter);
         }
 
+        // No need to hold the prune guard while we continue populating keep_relations
+        drop(prune_guard);
+
         // Add additional levels only after filtering GHOSTDAG data via level 0
         for (level, level_proof) in proof.iter().enumerate().skip(1) {
+            let level = level as BlockLevel;
             // Mark all parents of roots at level as not-to-be-deleted.
             // This optimizes multi-level parent validation (see ParentsManager)
             // by avoiding the deletion of high-level parents which might still be needed for future
@@ -325,15 +328,21 @@ impl PruningProcessor {
             // selected-tip-at-level)
             let roots_parents_at_level = roots_headers
                 .iter()
-                .filter(|root| level as BlockLevel > root.block_level) // If the root itself is at level, there's no need for its level-parents
-                .flat_map(|root| self.parents_manager.parents_at_level(&root.header, level as BlockLevel).iter().copied());
+                .filter(|root| level > root.block_level) // If the root itself is at level, there's no need for its level-parents
+                .flat_map(|root| self.parents_manager.parents_at_level(&root.header, level).iter().copied());
             for hash in level_proof.iter().map(|header| header.hash).chain(roots_parents_at_level) {
                 if let Vacant(e) = keep_relations.entry(hash) {
                     // This hash was not added by any lower level -- mark it as affiliated with proof level `level`
-                    e.insert(level as BlockLevel);
+                    e.insert(level);
                 }
             }
         }
+
+        drop(roots_headers);
+
+        prune_guard = self.pruning_lock.blocking_write();
+        let mut lock_acquire_time = Instant::now();
+        let mut reachability_read = self.reachability_store.upgradable_read();
 
         {
             // Start with a batch for pruning body tips and selected chain stores
