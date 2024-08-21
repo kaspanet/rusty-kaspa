@@ -105,6 +105,8 @@ pub struct BlockTemplate {
     pub selected_parent_timestamp: u64,
     pub selected_parent_daa_score: u64,
     pub selected_parent_hash: Hash,
+    /// Expected length is one less than txs length due to lack of coinbase transaction
+    pub calculated_fees: Vec<u64>,
 }
 
 impl BlockTemplate {
@@ -115,8 +117,17 @@ impl BlockTemplate {
         selected_parent_timestamp: u64,
         selected_parent_daa_score: u64,
         selected_parent_hash: Hash,
+        calculated_fees: Vec<u64>,
     ) -> Self {
-        Self { block, miner_data, coinbase_has_red_reward, selected_parent_timestamp, selected_parent_daa_score, selected_parent_hash }
+        Self {
+            block,
+            miner_data,
+            coinbase_has_red_reward,
+            selected_parent_timestamp,
+            selected_parent_daa_score,
+            selected_parent_hash,
+            calculated_fees,
+        }
     }
 
     pub fn to_virtual_state_approx_id(&self) -> VirtualStateApproxId {
