@@ -31,7 +31,7 @@ use kaspa_consensus_core::{
     muhash::MuHashExtensions,
     pruning::{PruningPointProof, PruningPointTrustedData},
     trusted::ExternalGhostdagData,
-    BlockHashSet,
+    BlockHashMap, BlockHashSet, BlockLevel,
 };
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, warn};
@@ -42,7 +42,7 @@ use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
-    collections::VecDeque,
+    collections::{hash_map::Entry::Vacant, VecDeque},
     ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -262,17 +262,12 @@ impl PruningProcessor {
         // We keep full data for pruning point and its anticone, relations for DAA/GD
         // windows and pruning proof, and only headers for past pruning points
         let keep_blocks: BlockHashSet = data.anticone.iter().copied().collect();
-        let keep_relations: BlockHashSet = std::iter::empty()
-            .chain(data.anticone.iter().copied())
-            .chain(data.daa_window_blocks.iter().map(|th| th.header.hash))
-            .chain(data.ghostdag_blocks.iter().map(|gd| gd.hash))
-            .chain(proof.iter().flatten().map(|h| h.hash))
-            .collect();
-        let keep_level_zero_relations: BlockHashSet = std::iter::empty()
+        let mut keep_relations: BlockHashMap<BlockLevel> = std::iter::empty()
             .chain(data.anticone.iter().copied())
             .chain(data.daa_window_blocks.iter().map(|th| th.header.hash))
             .chain(data.ghostdag_blocks.iter().map(|gd| gd.hash))
             .chain(proof[0].iter().map(|h| h.hash))
+            .map(|h| (h, 0)) // Mark block level 0 for all the above. Note that below we add the remaining levels
             .collect();
         let keep_headers: BlockHashSet = self.past_pruning_points();
 
@@ -287,16 +282,16 @@ impl PruningProcessor {
         {
             let mut counter = 0;
             let mut batch = WriteBatch::default();
-            for kept in keep_level_zero_relations.iter().copied() {
+            for kept in keep_relations.keys().copied() {
                 let Some(ghostdag) = self.ghostdag_primary_store.get_data(kept).unwrap_option() else {
                     continue;
                 };
-                if ghostdag.unordered_mergeset().any(|h| !keep_level_zero_relations.contains(&h)) {
+                if ghostdag.unordered_mergeset().any(|h| !keep_relations.contains_key(&h)) {
                     let mut mutable_ghostdag: ExternalGhostdagData = ghostdag.as_ref().into();
-                    mutable_ghostdag.mergeset_blues.retain(|h| keep_level_zero_relations.contains(h));
-                    mutable_ghostdag.mergeset_reds.retain(|h| keep_level_zero_relations.contains(h));
-                    mutable_ghostdag.blues_anticone_sizes.retain(|k, _| keep_level_zero_relations.contains(k));
-                    if !keep_level_zero_relations.contains(&mutable_ghostdag.selected_parent) {
+                    mutable_ghostdag.mergeset_blues.retain(|h| keep_relations.contains_key(h));
+                    mutable_ghostdag.mergeset_reds.retain(|h| keep_relations.contains_key(h));
+                    mutable_ghostdag.blues_anticone_sizes.retain(|k, _| keep_relations.contains_key(k));
+                    if !keep_relations.contains_key(&mutable_ghostdag.selected_parent) {
                         mutable_ghostdag.selected_parent = ORIGIN;
                     }
                     counter += 1;
@@ -305,6 +300,16 @@ impl PruningProcessor {
             }
             self.db.write(batch).unwrap();
             info!("Header and Block pruning: updated ghostdag data for {} blocks", counter);
+        }
+
+        // Add additional levels only after filtering GHOSTDAG data via level 0
+        for (level, level_proof) in proof.iter().enumerate().skip(1) {
+            for header in level_proof.iter() {
+                if let Vacant(e) = keep_relations.entry(header.hash) {
+                    // This header was not added by any lower level of the proof -- mark it as affiliated with proof level `level`
+                    e.insert(level as BlockLevel);
+                }
+            }
         }
 
         {
@@ -394,7 +399,7 @@ impl PruningProcessor {
                 self.acceptance_data_store.delete_batch(&mut batch, current).unwrap();
                 self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
 
-                if keep_relations.contains(&current) {
+                if let Some(&affiliated_proof_level) = keep_relations.get(&current) {
                     if statuses_write.get(current).unwrap_option().is_some_and(|s| s.is_valid()) {
                         // We set the status to header-only only if it was previously set to a valid
                         // status. This is important since some proof headers might not have their status set
@@ -403,17 +408,12 @@ impl PruningProcessor {
                         statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
                     }
 
-                    // Delete level-0 relations for blocks which only belong to higher proof levels.
-                    // Note: it is also possible to delete level relations for level x > 0 for any block that only belongs
-                    // to proof levels higher than x, but this requires maintaining such per level usage mapping.
-                    // Since the main motivation of this deletion step is to reduce the
-                    // number of origin's children in level 0, and this is not a bottleneck in any other
-                    // level, we currently chose to only delete level-0 redundant relations.
-                    if !keep_level_zero_relations.contains(&current) {
-                        let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[0]);
+                    // Delete level-x relations for blocks which only belong to higher-than-x proof levels.
+                    for lower_level in 0..affiliated_proof_level as usize {
+                        let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[lower_level]);
                         relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
                         staging_level_relations.commit(&mut batch).unwrap();
-                        self.ghostdag_stores[0].delete_batch(&mut batch, current).unwrap_option();
+                        self.ghostdag_stores[lower_level].delete_batch(&mut batch, current).unwrap_option();
                     }
                 } else {
                     // Count only blocks which get fully pruned including DAG relations
