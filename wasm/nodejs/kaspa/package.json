@@ -1,0 +1,20 @@
+{
+  "name": "kaspa-wasm",
+  "collaborators": [
+    "Kaspa developers"
+  ],
+  "description": "KASPA WASM bindings",
+  "version": "0.14.1",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kaspanet/rusty-kaspa"
+  },
+  "files": [
+    "kaspa_bg.wasm",
+    "kaspa.js",
+    "kaspa.d.ts"
+  ],
+  "main": "kaspa.js",
+  "types": "kaspa.d.ts"
+}
