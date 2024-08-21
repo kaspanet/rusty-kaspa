@@ -4,6 +4,29 @@ use std::{
     time::Duration,
 };
 
+#[cfg(feature = "semaphore-trace")]
+mod trace {
+    pub(super) use log::debug;
+    pub(super) use std::sync::atomic::AtomicU64;
+
+    use once_cell::sync::Lazy;
+    use std::time::SystemTime;
+
+    static SYS_START: Lazy<SystemTime> = Lazy::new(SystemTime::now);
+
+    #[inline]
+    pub(super) fn sys_now() -> u64 {
+        SystemTime::now().duration_since(*SYS_START).unwrap_or_default().as_micros() as u64
+    }
+}
+
+#[cfg(feature = "semaphore-trace")]
+use trace::*;
+
+pub(crate) fn get_module_path() -> &'static str {
+    module_path!()
+}
+
 /// A low-level non-fair semaphore. The semaphore is non-fair in the sense that clients acquiring
 /// a lower number of permits might get their allocation before earlier clients which requested more
 /// permits -- if the semaphore can provide the lower allocation but not the larger. This non-fairness
@@ -15,13 +38,40 @@ use std::{
 pub(crate) struct Semaphore {
     counter: AtomicUsize,
     signal: Event,
+    #[cfg(feature = "semaphore-trace")]
+    readers_start: AtomicU64,
+    #[cfg(feature = "semaphore-trace")]
+    readers_end: AtomicU64,
+    #[cfg(feature = "semaphore-trace")]
+    readers_time: AtomicU64,
+    #[cfg(feature = "semaphore-trace")]
+    log_time: AtomicU64,
+    #[cfg(feature = "semaphore-trace")]
+    log_value: AtomicU64,
 }
 
 impl Semaphore {
     pub const MAX_PERMITS: usize = usize::MAX;
 
     pub const fn new(available_permits: usize) -> Semaphore {
-        Semaphore { counter: AtomicUsize::new(available_permits), signal: Event::new() }
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "semaphore-trace")] {
+                Semaphore {
+                    counter: AtomicUsize::new(available_permits),
+                    signal: Event::new(),
+                    readers_start: AtomicU64::new(0),
+                    readers_end: AtomicU64::new(0),
+                    readers_time: AtomicU64::new(0),
+                    log_time: AtomicU64::new(0),
+                    log_value: AtomicU64::new(0),
+                }
+            } else {
+                Semaphore {
+                    counter: AtomicUsize::new(available_permits),
+                    signal: Event::new(),
+                }
+            }
+        }
     }
 
     /// Tries to acquire `permits` slots from the semaphore. Upon success, returns the acquired slot
@@ -33,7 +83,13 @@ impl Semaphore {
             }
 
             match self.counter.compare_exchange_weak(count, count - permits, Ordering::AcqRel, Ordering::Acquire) {
-                Ok(_) => return Some(count),
+                Ok(_) => {
+                    #[cfg(feature = "semaphore-trace")]
+                    if permits == 1 && count == Self::MAX_PERMITS {
+                        self.readers_start.store(sys_now(), Ordering::Relaxed);
+                    }
+                    return Some(count);
+                }
                 Err(c) => count = c,
             }
         }
@@ -75,6 +131,28 @@ impl Semaphore {
     /// Returns the released slot
     pub fn release(&self, permits: usize) -> usize {
         let slot = self.counter.fetch_add(permits, Ordering::AcqRel) + permits;
+
+        #[cfg(feature = "semaphore-trace")]
+        if permits == 1 && slot == Self::MAX_PERMITS {
+            let start = self.readers_start.load(Ordering::Relaxed);
+            let now = sys_now();
+            if start < now {
+                self.readers_end.store(now, Ordering::Relaxed);
+                let readers_time = self.readers_time.fetch_add(now - start, Ordering::Relaxed) + now - start;
+                let log_time = self.log_time.load(Ordering::Relaxed);
+                if log_time + (Duration::from_secs(10).as_micros() as u64) < now {
+                    let log_value = self.log_value.load(Ordering::Relaxed);
+                    debug!(
+                        "Semaphore: log interval: {:?}, readers time: {:?}, fraction: {:.2}",
+                        Duration::from_micros(now - log_time),
+                        Duration::from_micros(readers_time - log_value),
+                        (readers_time - log_value) as f64 / (now - log_time) as f64
+                    );
+                    self.log_value.store(readers_time, Ordering::Relaxed);
+                    self.log_time.store(now, Ordering::Relaxed);
+                }
+            }
+        }
         self.signal.notify(permits);
         slot
     }
