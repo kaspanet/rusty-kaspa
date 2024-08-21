@@ -1,7 +1,7 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
-use kaspa_consensus_core::blockhash;
+use kaspa_consensus_core::{blockhash, BlockHashSet};
 use parking_lot::RwLock;
 
 use crate::model::stores::reachability::ReachabilityStoreReader;
@@ -18,6 +18,18 @@ pub trait ReachabilityService {
     fn get_next_chain_ancestor(&self, descendant: Hash, ancestor: Hash) -> Hash;
     fn get_chain_parent(&self, this: Hash) -> Hash;
     fn has_reachability_data(&self, this: Hash) -> bool;
+
+    /// Returns the topological roots of this set, i.e., the minimal subset of blocks which has all
+    /// other blocks in its future
+    fn get_roots_of_set(&self, list: &mut impl Iterator<Item = Hash>) -> BlockHashSet {
+        let mut roots = BlockHashSet::default();
+        for hash in list {
+            if !self.is_any_dag_ancestor(&mut roots.iter().copied(), hash) {
+                roots.insert(hash);
+            }
+        }
+        roots
+    }
 }
 
 impl<T: ReachabilityStoreReader + ?Sized> ReachabilityService for T {

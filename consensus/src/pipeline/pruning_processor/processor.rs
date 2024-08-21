@@ -2,7 +2,7 @@
 
 use crate::{
     consensus::{
-        services::{ConsensusServices, DbGhostdagManager, DbPruningPointManager},
+        services::{ConsensusServices, DbGhostdagManager, DbParentsManager, DbPruningPointManager},
         storage::ConsensusStorage,
     },
     model::{
@@ -72,6 +72,7 @@ pub struct PruningProcessor {
     ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
     pruning_point_manager: DbPruningPointManager,
     pruning_proof_manager: Arc<PruningProofManager>,
+    parents_manager: DbParentsManager,
 
     // Pruning lock
     pruning_lock: SessionLock,
@@ -109,6 +110,7 @@ impl PruningProcessor {
             ghostdag_managers: services.ghostdag_managers.clone(),
             pruning_point_manager: services.pruning_point_manager.clone(),
             pruning_proof_manager: services.pruning_proof_manager.clone(),
+            parents_manager: services.parents_manager.clone(),
             pruning_lock,
             config,
             is_consensus_exiting,
@@ -271,6 +273,15 @@ impl PruningProcessor {
             .collect();
         let keep_headers: BlockHashSet = self.past_pruning_points();
 
+        // Get the headers of the roots of the pruning point anticone (including the pruning point).
+        // These will be used to make sure we keep all multi-level parents of the roots set.
+        let roots_headers = self
+            .reachability_service
+            .get_roots_of_set(&mut data.anticone.iter().copied())
+            .into_iter()
+            .map(|hash| self.headers_store.get_header_with_block_level(hash).expect("pruning point anticone is not pruned"))
+            .collect_vec();
+
         info!("Header and Block pruning: waiting for consensus write permissions...");
 
         let mut prune_guard = self.pruning_lock.blocking_write();
@@ -304,9 +315,21 @@ impl PruningProcessor {
 
         // Add additional levels only after filtering GHOSTDAG data via level 0
         for (level, level_proof) in proof.iter().enumerate().skip(1) {
-            for header in level_proof.iter() {
-                if let Vacant(e) = keep_relations.entry(header.hash) {
-                    // This header was not added by any lower level of the proof -- mark it as affiliated with proof level `level`
+            // Mark all parents of roots at level as not-to-be-deleted.
+            // This optimizes multi-level parent validation (see ParentsManager)
+            // by avoiding the deletion of high-level parents which might still be needed for future
+            // header validation (avoiding the need for reference blocks; see therein).
+            //
+            // Note: normally, such blocks would be part of the proof for this level, but here we address the rare case
+            // where there are a few such parallel blocks (since the proof only contains the past of the pruning point's
+            // selected-tip-at-level)
+            let roots_parents_at_level = roots_headers
+                .iter()
+                .filter(|root| level as BlockLevel > root.block_level) // If the root itself is at level, there's no need for its level-parents
+                .flat_map(|root| self.parents_manager.parents_at_level(&root.header, level as BlockLevel).iter().copied());
+            for hash in level_proof.iter().map(|header| header.hash).chain(roots_parents_at_level) {
+                if let Vacant(e) = keep_relations.entry(hash) {
+                    // This hash was not added by any lower level -- mark it as affiliated with proof level `level`
                     e.insert(level as BlockLevel);
                 }
             }
