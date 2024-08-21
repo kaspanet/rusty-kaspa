@@ -243,31 +243,14 @@ impl MiningManager {
 
             let BlockTemplate { block: kaspa_consensus_core::block::MutableBlock { transactions, .. }, calculated_fees, .. } =
                 self.get_block_template(consensus, &miner_data)?;
-            // don't consider coinbase tx
-            if transactions.len() < 2 {
+
+            let Some(Stats { max, median, min }) = feerate_stats(transactions, calculated_fees) else {
                 return Ok(resp);
-            }
-            let mut fees_and_masses = transactions
-                .iter()
-                // skip coinbase tx
-                .skip(1)
-                .map(Transaction::mass)
-                .zip(calculated_fees)
-                .collect_vec();
-            fees_and_masses
-                .sort_unstable_by(|(lhs_fee, lhs_mass), (rhs_fee, rhs_mass)| lhs_fee.mul(rhs_mass).cmp(&rhs_fee.mul(lhs_mass)));
-            resp.next_block_template_feerate_max = {
-                let (fee, mass) = fees_and_masses.last().unwrap();
-                *fee as f64 / *mass as f64
             };
-            resp.next_block_template_feerate_min = {
-                let (fee, mass) = fees_and_masses.first().unwrap();
-                *fee as f64 / *mass as f64
-            };
-            resp.next_block_template_feerate_median = {
-                let (fee, mass) = fees_and_masses[fees_and_masses.len() / 2];
-                fee as f64 / mass as f64
-            };
+
+            resp.next_block_template_feerate_max = max;
+            resp.next_block_template_feerate_min = min;
+            resp.next_block_template_feerate_median = median;
         }
         Ok(resp)
     }
@@ -1026,5 +1009,106 @@ impl MiningManagerProxy {
             count += self.inner.counters.orphans_sample.load(std::sync::atomic::Ordering::Relaxed)
         }
         count
+    }
+}
+
+/// Represents statistical information about fee rates of transactions.
+struct Stats {
+    /// The maximum fee rate observed.
+    max: f64,
+    /// The median fee rate observed.
+    median: f64,
+    /// The minimum fee rate observed.
+    min: f64,
+}
+/// Calculates the maximum, median, and minimum fee rates (fee per unit mass)
+/// for a set of transactions, excluding the first transaction which is assumed
+/// to be the coinbase transaction.
+///
+/// # Arguments
+///
+/// * `transactions` - A vector of `Transaction` objects. The first transaction
+///   is assumed to be the coinbase transaction and is excluded from fee rate
+///   calculations.
+/// * `calculated_fees` - A vector of fees associated with the transactions.
+///   This vector should have one less element than the `transactions` vector
+///   since the first transaction (coinbase) does not have a fee.
+///
+/// # Returns
+///
+/// Returns an `Option<Stats>` containing the maximum, median, and minimum fee
+/// rates if the input vectors are valid. Returns `None` if the vectors are
+/// empty or if the lengths are inconsistent.
+fn feerate_stats(transactions: Vec<Transaction>, calculated_fees: Vec<u64>) -> Option<Stats> {
+    if calculated_fees.is_empty() {
+        return None;
+    }
+    if transactions.len() != calculated_fees.len() + 1 {
+        error!("Transactions length must be one more than `calculated_fees` length");
+        return None;
+    }
+    debug_assert!(transactions[0].is_coinbase());
+    let mut fees_and_masses = calculated_fees
+        .into_iter()
+        .zip(transactions
+            .iter()
+            // skip coinbase tx
+            .skip(1)
+            .map(Transaction::mass))
+        .collect_vec();
+
+    // Sort by fee rate without performing division for each comparison.
+    // Using multiplication instead of division is faster and avoids the need
+    // to convert all values to floats. Division is only performed later when
+    // calculating the min, max, and median fee rates.
+    fees_and_masses.sort_unstable_by(|(lhs_fee, lhs_mass), (rhs_fee, rhs_mass)| lhs_fee.mul(rhs_mass).cmp(&rhs_fee.mul(lhs_mass)));
+
+    let div_as_f64 = |(fee, mass)| fee as f64 / mass as f64;
+    let max = div_as_f64(fees_and_masses[fees_and_masses.len() - 1]);
+    let min = div_as_f64(fees_and_masses[0]);
+    let median = div_as_f64(fees_and_masses[fees_and_masses.len() / 2]);
+
+    Some(Stats { max, median, min })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kaspa_consensus_core::subnets;
+    use std::iter::repeat;
+
+    fn transactions(length: usize) -> Vec<Transaction> {
+        let tx = || {
+            let tx = Transaction::new(0, vec![], vec![], 0, Default::default(), 0, vec![]);
+            tx.set_mass(2);
+            tx
+        };
+        let mut txs = repeat(tx()).take(length).collect_vec();
+        txs[0].subnetwork_id = subnets::SUBNETWORK_ID_COINBASE;
+        txs
+    }
+
+    #[test]
+    fn feerate_stats_test() {
+        let calculated_fees = vec![100u64, 200, 300, 400];
+        let txs = transactions(calculated_fees.len() + 1);
+        let Stats { max, median, min } = feerate_stats(txs, calculated_fees).unwrap();
+        assert_eq!(max, 200.0);
+        assert_eq!(median, 150.0);
+        assert_eq!(min, 50.0);
+    }
+
+    #[test]
+    fn feerate_stats_empty_test() {
+        let calculated_fees = vec![];
+        let txs = transactions(calculated_fees.len() + 1);
+        assert!(feerate_stats(txs, calculated_fees).is_none());
+    }
+
+    #[test]
+    fn feerate_stats_inconsistent_test() {
+        let calculated_fees = vec![100u64, 200, 300, 400];
+        let txs = transactions(calculated_fees.len());
+        assert!(feerate_stats(txs, calculated_fees).is_none());
     }
 }
