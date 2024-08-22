@@ -35,7 +35,7 @@ use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy};
 use kaspa_core::{debug, error, info, time::Stopwatch, warn};
 use kaspa_mining_errors::{manager::MiningManagerError, mempool::RuleError};
 use parking_lot::RwLock;
-use std::{ops::Mul, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedSender;
 
 pub struct MiningManager {
@@ -1044,29 +1044,28 @@ fn feerate_stats(transactions: Vec<Transaction>, calculated_fees: Vec<u64>) -> O
         return None;
     }
     if transactions.len() != calculated_fees.len() + 1 {
-        error!("Transactions length must be one more than `calculated_fees` length");
+        error!(
+            "[feerate_stats] block template transactions length ({}) is expected to be one more than `calculated_fees` length ({})",
+            transactions.len(),
+            calculated_fees.len()
+        );
         return None;
     }
     debug_assert!(transactions[0].is_coinbase());
-    let mut fees_and_masses = calculated_fees
+    let mut feerates = calculated_fees
         .into_iter()
         .zip(transactions
             .iter()
             // skip coinbase tx
             .skip(1)
             .map(Transaction::mass))
+        .map(|(fee, mass)| fee as f64 / mass as f64)
         .collect_vec();
+    feerates.sort_unstable_by(f64::total_cmp);
 
-    // Sort by fee rate without performing division for each comparison.
-    // Using multiplication instead of division is faster and avoids the need
-    // to convert all values to floats. Division is only performed later when
-    // calculating the min, max, and median fee rates.
-    fees_and_masses.sort_unstable_by(|(lhs_fee, lhs_mass), (rhs_fee, rhs_mass)| lhs_fee.mul(rhs_mass).cmp(&rhs_fee.mul(lhs_mass)));
-
-    let div_as_f64 = |(fee, mass)| fee as f64 / mass as f64;
-    let max = div_as_f64(fees_and_masses[fees_and_masses.len() - 1]);
-    let min = div_as_f64(fees_and_masses[0]);
-    let median = div_as_f64(fees_and_masses[fees_and_masses.len() / 2]);
+    let max = feerates[feerates.len() - 1];
+    let min = feerates[0];
+    let median = feerates[feerates.len() / 2];
 
     Some(Stats { max, median, min })
 }
