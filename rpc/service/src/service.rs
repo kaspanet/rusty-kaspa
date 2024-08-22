@@ -35,6 +35,7 @@ use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
     notifier::IndexNotifier,
 };
+use kaspa_mining::feerate::FeeEstimateVerbose;
 use kaspa_mining::model::tx_query::TransactionQuery;
 use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::Orphan};
 use kaspa_notify::listener::ListenerLifespan;
@@ -116,7 +117,7 @@ pub struct RpcCoreService {
     grpc_tower_counters: Arc<TowerConnectionCounters>,
     system_info: SystemInfo,
     fee_estimate_cache: ExpiringCache<RpcFeeEstimate>,
-    fee_estimate_verbose_cache: ExpiringCache<GetFeeEstimateExperimentalResponse>,
+    fee_estimate_verbose_cache: ExpiringCache<kaspa_mining::errors::MiningManagerResult<GetFeeEstimateExperimentalResponse>>,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -750,10 +751,16 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<GetFeeEstimateExperimentalResponse> {
         if request.verbose {
             let mining_manager = self.mining_manager.clone();
+            let consensus_manager = self.consensus_manager.clone();
+            let prefix = self.config.prefix();
+
             let response = self
                 .fee_estimate_verbose_cache
-                .get(async move { mining_manager.get_realtime_feerate_estimations_verbose().await.into_rpc() })
-                .await;
+                .get(async move {
+                    let session = consensus_manager.consensus().unguarded_session();
+                    mining_manager.get_realtime_feerate_estimations_verbose(&session, prefix).await.map(FeeEstimateVerbose::into_rpc)
+                })
+                .await?;
             Ok(response)
         } else {
             let estimate = self.get_fee_estimate_call(connection, GetFeeEstimateRequest {}).await?.estimate;

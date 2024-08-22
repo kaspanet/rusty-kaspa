@@ -23,6 +23,7 @@ ipnet.workspace = true
 itertools.workspace = true
 log.workspace = true
 num_cpus.workspace = true
+once_cell.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
 sha2.workspace = true
@@ -49,3 +50,6 @@ rand.workspace = true
 [[bench]]
 name = "bench"
 harness = false
+
+[features]
+semaphore-trace = []
