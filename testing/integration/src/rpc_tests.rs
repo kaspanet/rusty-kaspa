@@ -155,6 +155,14 @@ async fn sanity_test() {
                 tst!(op, "see SubmitBlock")
             }
 
+            KaspadPayloadOps::GetCurrentBlockColor => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let result = rpc_client.get_current_block_color_call(GetCurrentBlockColorRequest { hash: 0.into() }).await;
+                    assert!(result.is_err());
+                })
+            }
+
             KaspadPayloadOps::GetCurrentNetwork => {
                 let rpc_client = client.clone();
                 tst!(op, {

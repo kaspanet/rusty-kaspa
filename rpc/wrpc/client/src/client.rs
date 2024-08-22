@@ -594,6 +594,7 @@ impl RpcApi for KaspaRpcClient {
             GetBlockDagInfo,
             GetBlocks,
             GetBlockTemplate,
+            GetCurrentBlockColor,
             GetCoinSupply,
             GetConnectedPeerInfo,
             GetCurrentNetwork,

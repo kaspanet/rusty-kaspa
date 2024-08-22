@@ -160,6 +160,10 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn get_current_block_color_call(&self, _request: GetCurrentBlockColorRequest) -> RpcResult<GetCurrentBlockColorResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     async fn get_block_count_call(&self, _request: GetBlockCountRequest) -> RpcResult<GetBlockCountResponse> {
         Err(RpcError::NotImplemented)
     }

@@ -67,6 +67,7 @@ use kaspa_utils::expiring_cache::ExpiringCache;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
+use std::collections::{HashSet, VecDeque};
 use std::time::Duration;
 use std::{
     collections::HashMap,
@@ -371,6 +372,47 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             block: (&block_template.block).into(),
             is_synced: self.has_sufficient_peer_connectivity() && is_nearly_synced,
         })
+    }
+
+    async fn get_current_block_color_call(&self, _request: GetCurrentBlockColorRequest) -> RpcResult<GetCurrentBlockColorResponse> {
+        let session = self.consensus_manager.consensus().session().await;
+
+        let mut queue = VecDeque::new();
+        let mut visited = HashSet::new();
+
+        let initial_childrens = match session.async_get_block_children(_request.hash).await {
+            Some(children) => children,
+            None => return Err(RpcError::MergerNotFound(_request.hash)),
+        };
+
+        for child in initial_childrens {
+            if visited.insert(child) {
+                queue.push_back(child);
+            }
+        }
+
+        while let Some(current_block_hash) = queue.pop_front() {
+            let current_block = session.async_get_ghostdag_data(current_block_hash).await.unwrap();
+
+            if current_block.mergeset_blues.contains(&_request.hash) {
+                return Ok(GetCurrentBlockColorResponse::new(true));
+            } else if current_block.mergeset_reds.contains(&_request.hash) {
+                return Ok(GetCurrentBlockColorResponse::new(false));
+            }
+
+            let childrens = match session.async_get_block_children(current_block_hash).await {
+                Some(childrens) => childrens,
+                None => continue,
+            };
+
+            for child in childrens {
+                if visited.insert(child) {
+                    queue.push_back(child);
+                }
+            }
+        }
+
+        Err(RpcError::MergerNotFound(_request.hash))
     }
 
     async fn get_block_call(&self, request: GetBlockRequest) -> RpcResult<GetBlockResponse> {

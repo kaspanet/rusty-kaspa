@@ -62,6 +62,7 @@ message KaspadRequest {
     SubmitTransactionReplacementRequestMessage submitTransactionReplacementRequest = 2000;
     GetFeeEstimateRequestMessage getFeeEstimateRequest = 1106;
     GetFeeEstimateExperimentalRequestMessage getFeeEstimateExperimentalRequest = 1108;
+    GetCurrentBlockColorRequestMessage getCurrentBlockColorRequest = 1109;
   }
 }
 
@@ -124,6 +125,7 @@ message KaspadResponse {
     SubmitTransactionReplacementResponseMessage submitTransactionReplacementResponse = 2001;
     GetFeeEstimateResponseMessage getFeeEstimateResponse = 1107;
     GetFeeEstimateExperimentalResponseMessage getFeeEstimateExperimentalResponse = 1109;
+    GetCurrentBlockColorResponseMessage getCurrentBlockColorResponse = 1110;
   }
 }
 

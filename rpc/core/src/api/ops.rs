@@ -121,6 +121,9 @@ pub enum RpcApiOps {
     // Fee estimation related commands
     GetFeeEstimate,
     GetFeeEstimateExperimental,
+
+    // Block color can be used to determine if block will get paid in future or not.
+    GetCurrentBlockColor,
 }
 
 impl RpcApiOps {

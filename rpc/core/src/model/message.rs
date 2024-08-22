@@ -879,6 +879,31 @@ pub struct GetFeeEstimateExperimentalResponse {
     pub verbose: Option<RpcFeeEstimateVerboseExperimentalData>,
 }
 
+///
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetCurrentBlockColorRequest {
+    pub hash: RpcHash,
+}
+
+impl GetCurrentBlockColorRequest {
+    pub fn new(hash: RpcHash) -> Self {
+        Self { hash }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetCurrentBlockColorResponse {
+    pub blue: bool,
+}
+
+impl GetCurrentBlockColorResponse {
+    pub fn new(blue: bool) -> Self {
+        Self { blue }
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Subscriptions & notifications
 // ----------------------------------------------------------------------------

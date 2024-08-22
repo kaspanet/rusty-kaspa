@@ -420,6 +420,15 @@ from!(item: RpcResult<&kaspa_rpc_core::GetFeeEstimateExperimentalResponse>, prot
     }
 });
 
+from!(item: &kaspa_rpc_core::GetCurrentBlockColorRequest, protowire::GetCurrentBlockColorRequestMessage, {
+    Self {
+        hash: item.hash.to_string()
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetCurrentBlockColorResponse>, protowire::GetCurrentBlockColorResponseMessage, {
+    Self { blue: item.blue, error: None }
+});
+
 from!(&kaspa_rpc_core::PingRequest, protowire::PingRequestMessage);
 from!(RpcResult<&kaspa_rpc_core::PingResponse>, protowire::PingResponseMessage);
 
@@ -858,6 +867,17 @@ try_from!(item: &protowire::GetFeeEstimateExperimentalResponseMessage, RpcResult
             .ok_or_else(|| RpcError::MissingRpcFieldError("GetFeeEstimateExperimentalResponseMessage".to_string(), "estimate".to_string()))?
             .try_into()?,
         verbose: item.verbose.as_ref().map(|x| x.try_into()).transpose()?
+    }
+});
+
+try_from!(item: &protowire::GetCurrentBlockColorRequestMessage, kaspa_rpc_core::GetCurrentBlockColorRequest, {
+    Self {
+        hash: RpcHash::from_str(&item.hash)?
+    }
+});
+try_from!(item: &protowire::GetCurrentBlockColorResponseMessage, RpcResult<kaspa_rpc_core::GetCurrentBlockColorResponse>, {
+    Self {
+        blue: item.blue
     }
 });
 
