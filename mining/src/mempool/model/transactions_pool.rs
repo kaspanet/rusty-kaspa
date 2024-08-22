@@ -21,7 +21,7 @@ use kaspa_consensus_core::{
 use kaspa_core::{time::unix_now, trace, warn};
 use std::{
     collections::{hash_map::Keys, hash_set::Iter},
-    sync::{atomic::AtomicU64, Arc},
+    sync::Arc,
 };
 
 use super::frontier::Frontier;
@@ -185,70 +185,44 @@ impl TransactionsPool {
         self.ready_transactions.build_feerate_estimator(args)
     }
 
-    /// Is the mempool transaction identified by `transaction_id` unchained, thus having no successor?
-    pub(crate) fn transaction_is_unchained(&self, transaction_id: &TransactionId) -> bool {
-        if self.all_transactions.contains_key(transaction_id) {
-            if let Some(chains) = self.chained_transactions.get(transaction_id) {
-                return chains.is_empty();
-            }
-            return true;
-        }
-        false
-    }
-
     /// Returns the exceeding low-priority transactions having the lowest fee rates in order
-    /// to have room for at least `free_slots` new transactions. The returned transactions
+    /// to make room for `transaction`. The returned transactions
     /// are guaranteed to be unchained (no successor in mempool) and to not be parent of
     /// `transaction`.
     ///
-    /// An error is returned if the mempool is filled with high priority transactions.
-    pub(crate) fn limit_transaction_count(
-        &self,
-        free_slots: usize,
-        transaction: &MutableTransaction,
-    ) -> RuleResult<Vec<TransactionId>> {
-        assert!(free_slots > 0);
+    /// An error is returned if the mempool is filled with high priority transactions, or
+    /// at least one candidate for removal has a higher fee rate than `transaction`.
+    pub(crate) fn limit_transaction_count(&self, transaction: &MutableTransaction) -> RuleResult<Vec<TransactionId>> {
         // Returns a vector of transactions to be removed that the caller has to remove actually.
         // The caller is golang validateAndInsertTransaction equivalent.
         // This behavior differs from golang impl.
-        let trim_size = self.len() + free_slots - usize::min(self.len() + free_slots, self.config.maximum_transaction_count as usize);
-        let mut transactions_to_remove = Vec::with_capacity(trim_size);
-        if trim_size > 0 {
-            // TODO: consider introducing an index on all_transactions low-priority items instead.
-            //
-            // Sorting this vector here may be sub-optimal compared with maintaining a sorted
-            // index of all_transactions low-priority items if the proportion of low-priority txs
-            // in all_transactions is important.
-            let low_priority_txs = self
-                .all_transactions
-                .values()
-                .filter(|x| x.priority == Priority::Low && self.transaction_is_unchained(&x.id()) && !x.is_parent_of(transaction));
-
-            if trim_size == 1 {
-                // This is the most likely case. Here we just search the minimum, thus avoiding the need to sort altogether.
-                if let Some(tx) = low_priority_txs.min_by(|a, b| a.fee_rate().partial_cmp(&b.fee_rate()).unwrap()) {
-                    transactions_to_remove.push(tx);
-                }
-            } else {
-                let mut low_priority_txs = low_priority_txs.collect::<Vec<_>>();
-                if low_priority_txs.len() > trim_size {
-                    low_priority_txs.sort_by(|a, b| a.fee_rate().partial_cmp(&b.fee_rate()).unwrap());
-                    transactions_to_remove.extend_from_slice(&low_priority_txs[0..usize::min(trim_size, low_priority_txs.len())]);
+        self.ready_transactions
+            .ascending_iter()
+            .map(|tx| self.all_transactions.get(&tx.id()).unwrap())
+            .filter(|mtx| mtx.priority == Priority::Low && !mtx.is_parent_of(transaction))
+            .scan((self.len() + 1, self.total_compute_mass + transaction.calculated_compute_mass.unwrap()), |state, mtx| {
+                (*state).0 -= 1;
+                (*state).1 -= mtx.calculated_compute_mass().unwrap();
+                Some((mtx, *state))
+            })
+            .take_while(|(_, state)| {
+                self.len() - state.0 > self.config.maximum_transaction_count
+                    && self.total_compute_mass - state.1 > self.config.mempool_compute_mass_limit
+            })
+            .map(|(mtx, _)| {
+                if mtx.fee_rate() <= transaction.calculated_feerate().unwrap() {
+                    Ok(mtx.id())
                 } else {
-                    transactions_to_remove = low_priority_txs;
+                    let err = RuleError::RejectMempoolIsFull;
+                    warn!("{}", err);
+                    Err(err)
                 }
-            }
-        }
+            })
+            .collect()
+    }
 
-        // An error is returned if the mempool is filled with high priority and other unremovable transactions.
-        let tx_count = self.len() + free_slots - transactions_to_remove.len();
-        if tx_count as u64 > self.config.maximum_transaction_count as u64 {
-            let err = RuleError::RejectMempoolIsFull(tx_count - free_slots, self.config.maximum_transaction_count as u64);
-            warn!("{}", err.to_string());
-            return Err(err);
-        }
-
-        Ok(transactions_to_remove.iter().map(|x| x.id()).collect())
+    pub(crate) fn get_total_compute_mass(&self) -> u64 {
+        self.total_compute_mass
     }
 
     pub(crate) fn all_transaction_ids_with_priority(&self, priority: Priority) -> Vec<TransactionId> {

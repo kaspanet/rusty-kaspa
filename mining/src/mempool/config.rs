@@ -1,6 +1,7 @@
 use kaspa_consensus_core::constants::TX_VERSION;
 
-pub(crate) const DEFAULT_MAXIMUM_TRANSACTION_COUNT: u32 = 1_000_000;
+pub(crate) const DEFAULT_MAXIMUM_TRANSACTION_COUNT: usize = 1_000_000;
+pub(crate) const DEFAULT_MEMPOOL_COMPUTE_MASS_LIMIT: u64 = 500_000_000; // This limits the mempool to about 500 MB.
 pub(crate) const DEFAULT_MAXIMUM_BUILD_BLOCK_TEMPLATE_ATTEMPTS: u64 = 5;
 
 pub(crate) const DEFAULT_TRANSACTION_EXPIRE_INTERVAL_SECONDS: u64 = 24 * 60 * 60;
@@ -26,7 +27,8 @@ pub(crate) const DEFAULT_MAXIMUM_STANDARD_TRANSACTION_VERSION: u16 = TX_VERSION;
 
 #[derive(Clone, Debug)]
 pub struct Config {
-    pub maximum_transaction_count: u32,
+    pub maximum_transaction_count: usize,
+    pub mempool_compute_mass_limit: u64,
     pub maximum_build_block_template_attempts: u64,
     pub transaction_expire_interval_daa_score: u64,
     pub transaction_expire_scan_interval_daa_score: u64,
@@ -49,7 +51,8 @@ pub struct Config {
 impl Config {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        maximum_transaction_count: u32,
+        maximum_transaction_count: usize,
+        mempool_compute_mass_limit: u64,
         maximum_build_block_template_attempts: u64,
         transaction_expire_interval_daa_score: u64,
         transaction_expire_scan_interval_daa_score: u64,
@@ -70,6 +73,7 @@ impl Config {
     ) -> Self {
         Self {
             maximum_transaction_count,
+            mempool_compute_mass_limit,
             maximum_build_block_template_attempts,
             transaction_expire_interval_daa_score,
             transaction_expire_scan_interval_daa_score,
@@ -95,6 +99,7 @@ impl Config {
     pub const fn build_default(target_milliseconds_per_block: u64, relay_non_std_transactions: bool, max_block_mass: u64) -> Self {
         Self {
             maximum_transaction_count: DEFAULT_MAXIMUM_TRANSACTION_COUNT,
+            mempool_compute_mass_limit: DEFAULT_MEMPOOL_COMPUTE_MASS_LIMIT,
             maximum_build_block_template_attempts: DEFAULT_MAXIMUM_BUILD_BLOCK_TEMPLATE_ATTEMPTS,
             transaction_expire_interval_daa_score: DEFAULT_TRANSACTION_EXPIRE_INTERVAL_SECONDS * 1000 / target_milliseconds_per_block,
             transaction_expire_scan_interval_daa_score: DEFAULT_TRANSACTION_EXPIRE_SCAN_INTERVAL_SECONDS * 1000
@@ -119,7 +124,7 @@ impl Config {
     }
 
     pub fn apply_ram_scale(mut self, ram_scale: f64) -> Self {
-        self.maximum_transaction_count = (self.maximum_transaction_count as f64 * ram_scale.min(1.0)) as u32; // Allow only scaling down
+        self.maximum_transaction_count = (self.maximum_transaction_count as f64 * ram_scale.min(1.0)) as usize; // Allow only scaling down
         self
     }
 

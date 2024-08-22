@@ -73,9 +73,19 @@ impl Mempool {
         self.validate_transaction_in_context(&transaction)?;
 
         // Before adding the transaction, check if there is room in the pool
-        self.transaction_pool.limit_transaction_count(1, &transaction)?.iter().try_for_each(|x| {
-            self.remove_transaction(x, true, TxRemovalReason::MakingRoom, format!(" for {}", transaction_id).as_str())
-        })?;
+        for x in self.transaction_pool.limit_transaction_count(&transaction)?.iter() {
+            self.remove_transaction(x, true, TxRemovalReason::MakingRoom, format!(" for {}", transaction_id).as_str())?;
+            // self.transaction_pool.limit_transaction_count(&transaction) returns the
+            // smallest prefix of `ready_transactions` (sorted by ascending fee-rate)
+            // that makes enough room for `transaction`, but since each call to `self.remove_transaction`
+            // also removes all transactions dependant on `x` we might already have enough room.
+            if self.transaction_pool.len() + 1 <= self.config.maximum_transaction_count
+                && self.transaction_pool.get_total_compute_mass() + transaction.calculated_compute_mass.unwrap()
+                    <= self.config.mempool_compute_mass_limit
+            {
+                break;
+            }
+        }
 
         // Add the transaction to the mempool as a MempoolTransaction and return a clone of the embedded Arc<Transaction>
         let accepted_transaction =
