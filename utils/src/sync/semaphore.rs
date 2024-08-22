@@ -23,6 +23,7 @@ mod trace {
 #[cfg(feature = "semaphore-trace")]
 use trace::*;
 
+#[cfg(feature = "semaphore-trace")]
 pub(crate) fn get_module_path() -> &'static str {
     module_path!()
 }
@@ -86,6 +87,7 @@ impl Semaphore {
                 Ok(_) => {
                     #[cfg(feature = "semaphore-trace")]
                     if permits == 1 && count == Self::MAX_PERMITS {
+                        // permits == 1 indicates a reader, count == Self::MAX_PERMITS indicates it is the first reader
                         self.readers_start.store(sys_now(), Ordering::Relaxed);
                     }
                     return Some(count);
@@ -134,6 +136,7 @@ impl Semaphore {
 
         #[cfg(feature = "semaphore-trace")]
         if permits == 1 && slot == Self::MAX_PERMITS {
+            // permits == 1 indicates a reader, slot == Self::MAX_PERMITS indicates it is the last reader
             let start = self.readers_start.load(Ordering::Relaxed);
             let now = sys_now();
             if start < now {
