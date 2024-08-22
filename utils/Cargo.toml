@@ -11,7 +11,6 @@ repository.workspace = true
 
 [dependencies]
 arc-swap.workspace = true
-parking_lot.workspace = true
 async-channel.workspace = true
 borsh.workspace = true
 cfg-if.workspace = true
@@ -19,12 +18,14 @@ event-listener.workspace = true
 faster-hex.workspace = true
 ipnet.workspace = true
 itertools.workspace = true
+log.workspace = true
+once_cell.workspace = true
+parking_lot.workspace = true
 serde.workspace = true
 smallvec.workspace = true
 thiserror.workspace = true
 triggered.workspace = true
 uuid.workspace = true
-log.workspace = true
 wasm-bindgen.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -42,3 +43,6 @@ rand.workspace = true
 [[bench]]
 name = "bench"
 harness = false
+
+[features]
+semaphore-trace = []
