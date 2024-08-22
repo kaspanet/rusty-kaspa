@@ -6,12 +6,10 @@ use std::{
 
 #[cfg(feature = "semaphore-trace")]
 mod trace {
-    pub(super) use log::debug;
-    pub(super) use std::sync::atomic::AtomicU64;
-
-    use crate::sync::semaphore::Semaphore;
+    use super::*;
+    use log::debug;
     use once_cell::sync::Lazy;
-    use std::ops::Deref;
+    use std::sync::atomic::AtomicU64;
     use std::time::SystemTime;
 
     static SYS_START: Lazy<SystemTime> = Lazy::new(SystemTime::now);
@@ -21,20 +19,38 @@ mod trace {
         SystemTime::now().duration_since(*SYS_START).unwrap_or_default().as_micros() as u64
     }
 
-    impl Deref for Semaphore {
-        type Target = TraceInner;
-        fn deref(&self) -> &Self::Target {
-            &self.trace_inner
-        }
-    }
-
     #[derive(Debug, Default)]
     pub struct TraceInner {
-        pub(super) readers_start: AtomicU64,
-        pub(super) readers_end: AtomicU64,
-        pub(super) readers_time: AtomicU64,
-        pub(super) log_time: AtomicU64,
-        pub(super) log_value: AtomicU64,
+        readers_start: AtomicU64,
+        readers_time: AtomicU64,
+        log_time: AtomicU64,
+        log_value: AtomicU64,
+    }
+
+    impl TraceInner {
+        pub(super) fn mark_readers_start(&self) {
+            self.readers_start.store(sys_now(), Ordering::Relaxed);
+        }
+
+        pub(super) fn mark_readers_end(&self) {
+            let start = self.readers_start.load(Ordering::Relaxed);
+            let now = sys_now();
+            if start < now {
+                let readers_time = self.readers_time.fetch_add(now - start, Ordering::Relaxed) + now - start;
+                let log_time = self.log_time.load(Ordering::Relaxed);
+                if log_time + (Duration::from_secs(10).as_micros() as u64) < now {
+                    let log_value = self.log_value.load(Ordering::Relaxed);
+                    debug!(
+                        "Semaphore: log interval: {:?}, readers time: {:?}, fraction: {:.2}",
+                        Duration::from_micros(now - log_time),
+                        Duration::from_micros(readers_time - log_value),
+                        (readers_time - log_value) as f64 / (now - log_time) as f64
+                    );
+                    self.log_value.store(readers_time, Ordering::Relaxed);
+                    self.log_time.store(now, Ordering::Relaxed);
+                }
+            }
+        }
     }
 }
 
@@ -94,7 +110,7 @@ impl Semaphore {
                     #[cfg(feature = "semaphore-trace")]
                     if permits == 1 && count == Self::MAX_PERMITS {
                         // permits == 1 indicates a reader, count == Self::MAX_PERMITS indicates it is the first reader
-                        self.readers_start.store(sys_now(), Ordering::Relaxed);
+                        self.trace_inner.mark_readers_start();
                     }
                     return Some(count);
                 }
@@ -143,24 +159,7 @@ impl Semaphore {
         #[cfg(feature = "semaphore-trace")]
         if permits == 1 && slot == Self::MAX_PERMITS {
             // permits == 1 indicates a reader, slot == Self::MAX_PERMITS indicates it is the last reader
-            let start = self.readers_start.load(Ordering::Relaxed);
-            let now = sys_now();
-            if start < now {
-                self.readers_end.store(now, Ordering::Relaxed);
-                let readers_time = self.readers_time.fetch_add(now - start, Ordering::Relaxed) + now - start;
-                let log_time = self.log_time.load(Ordering::Relaxed);
-                if log_time + (Duration::from_secs(10).as_micros() as u64) < now {
-                    let log_value = self.log_value.load(Ordering::Relaxed);
-                    debug!(
-                        "Semaphore: log interval: {:?}, readers time: {:?}, fraction: {:.2}",
-                        Duration::from_micros(now - log_time),
-                        Duration::from_micros(readers_time - log_value),
-                        (readers_time - log_value) as f64 / (now - log_time) as f64
-                    );
-                    self.log_value.store(readers_time, Ordering::Relaxed);
-                    self.log_time.store(now, Ordering::Relaxed);
-                }
-            }
+            self.trace_inner.mark_readers_end();
         }
         self.signal.notify(permits);
         slot
