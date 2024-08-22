@@ -36,7 +36,10 @@ use crate::{
         virtual_processor::{errors::PruningImportResult, VirtualStateProcessor},
         ProcessingCounters,
     },
-    processes::window::{WindowManager, WindowType},
+    processes::{
+        ghostdag::ordering::SortableBlock,
+        window::{WindowManager, WindowType},
+    },
 };
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
@@ -63,7 +66,7 @@ use kaspa_consensus_core::{
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet, BlueWorkType, ChainPath,
+    BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 
@@ -79,6 +82,8 @@ use kaspa_muhash::MuHash;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 
 use std::{
+    cmp::Reverse,
+    collections::BinaryHeap,
     future::Future,
     iter::once,
     ops::Deref,
@@ -502,6 +507,52 @@ impl ConsensusApi for Consensus {
 
     fn get_sink_timestamp(&self) -> u64 {
         self.headers_store.get_timestamp(self.get_sink()).unwrap()
+    }
+
+    fn get_current_block_color(&self, hash: Hash) -> Option<bool> {
+        let mut queue: BinaryHeap<Reverse<SortableBlock>> = BinaryHeap::new();
+        let mut visited = BlockHashSet::new();
+
+        let initial_childrens = match self.get_block_children(hash) {
+            Some(children) => children,
+            None => return None,
+        };
+
+        for child in initial_childrens {
+            let block = self.get_block(child).unwrap();
+
+            if visited.insert(child) {
+                queue.push(Reverse(SortableBlock::new(child, block.header.blue_work)));
+            }
+        }
+
+        while let Some(Reverse(current_block)) = queue.pop() {
+            let current_block_hash = current_block.hash;
+            let current_block_data = self.get_ghostdag_data(current_block_hash).unwrap();
+
+            if self.services.reachability_service.is_chain_ancestor_of(current_block_hash, self.get_sink()) {
+                if current_block_data.mergeset_blues.contains(&hash) {
+                    return Some(true);
+                } else if current_block_data.mergeset_reds.contains(&hash) {
+                    return Some(false);
+                }
+            }
+
+            let childrens = match self.get_block_children(current_block_hash) {
+                Some(childrens) => childrens,
+                None => continue,
+            };
+
+            for child in childrens {
+                let block = self.get_block(child).unwrap();
+
+                if visited.insert(child) {
+                    queue.push(Reverse(SortableBlock::new(child, block.header.blue_work)));
+                }
+            }
+        }
+
+        None
     }
 
     fn get_virtual_state_approx_id(&self) -> VirtualStateApproxId {

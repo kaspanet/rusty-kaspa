@@ -159,7 +159,7 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let result = rpc_client.get_current_block_color_call(GetCurrentBlockColorRequest { hash: 0.into() }).await;
-                    // Since genesis(with one block) doesn't have a merging block, it would fail to find its color. 
+                    // Since genesis(with one block) doesn't have a merging block, it would fail to find its color.
                     assert!(result.is_err());
                 })
             }
