@@ -2,7 +2,7 @@ use std::{collections::HashSet, sync::Arc};
 
 use super::BlockBodyProcessor;
 use crate::errors::{BlockProcessResult, RuleError};
-use kaspa_consensus_core::{block::Block, merkle::calc_hash_merkle_root_with_options, tx::TransactionOutpoint};
+use kaspa_consensus_core::{block::Block, merkle::calc_hash_merkle_root, tx::TransactionOutpoint};
 
 impl BlockBodyProcessor {
     pub fn validate_body_in_isolation(self: &Arc<Self>, block: &Block) -> BlockProcessResult<u64> {
@@ -29,7 +29,7 @@ impl BlockBodyProcessor {
     }
 
     fn check_hash_merkle_root(block: &Block, storage_mass_activated: bool) -> BlockProcessResult<()> {
-        let calculated = calc_hash_merkle_root_with_options(block.transactions.iter(), storage_mass_activated);
+        let calculated = calc_hash_merkle_root(block.transactions.iter(), storage_mass_activated);
         if calculated != block.header.hash_merkle_root {
             return Err(RuleError::BadMerkleRoot(block.header.hash_merkle_root, calculated));
         }
@@ -137,12 +137,16 @@ mod tests {
         api::{BlockValidationFutures, ConsensusApi},
         block::MutableBlock,
         header::Header,
-        merkle::calc_hash_merkle_root,
+        merkle::calc_hash_merkle_root as calc_hash_merkle_root_with_options,
         subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
         tx::{scriptvec, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
     use kaspa_core::assert_match;
     use kaspa_hashes::Hash;
+
+    fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
+        calc_hash_merkle_root_with_options(txs, false)
+    }
 
     #[test]
     fn validate_body_in_isolation_test() {

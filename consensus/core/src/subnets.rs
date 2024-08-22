@@ -59,18 +59,21 @@ impl SubnetworkId {
         *self == SUBNETWORK_ID_COINBASE || *self == SUBNETWORK_ID_REGISTRY
     }
 
+    /// Returns true if the subnetwork is the native subnetwork
+    #[inline]
+    pub fn is_native(&self) -> bool {
+        *self == SUBNETWORK_ID_NATIVE
+    }
+
     /// Returns true if the subnetwork is the native or a built-in subnetwork
     #[inline]
     pub fn is_builtin_or_native(&self) -> bool {
-        *self == SUBNETWORK_ID_NATIVE || self.is_builtin()
+        self.is_native() || self.is_builtin()
     }
 }
 
 #[derive(Error, Debug, Clone)]
 pub enum SubnetworkConversionError {
-    #[error("Invalid bytes")]
-    InvalidBytes,
-
     #[error(transparent)]
     SliceError(#[from] std::array::TryFromSliceError),
 
@@ -83,11 +86,7 @@ impl TryFrom<&[u8]> for SubnetworkId {
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         let bytes = <[u8; SUBNETWORK_ID_SIZE]>::try_from(value)?;
-        if bytes != Self::from_byte(0).0 && bytes != Self::from_byte(1).0 {
-            Err(Self::Error::InvalidBytes)
-        } else {
-            Ok(Self(bytes))
-        }
+        Ok(Self(bytes))
     }
 }
 
@@ -115,11 +114,7 @@ impl FromStr for SubnetworkId {
     fn from_str(hex_str: &str) -> Result<Self, Self::Err> {
         let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
         faster_hex::hex_decode(hex_str.as_bytes(), &mut bytes)?;
-        if bytes != Self::from_byte(0).0 && bytes != Self::from_byte(1).0 {
-            Err(Self::Err::InvalidBytes)
-        } else {
-            Ok(Self(bytes))
-        }
+        Ok(Self(bytes))
     }
 }
 
@@ -128,11 +123,7 @@ impl FromHex for SubnetworkId {
     fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
         let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
         faster_hex::hex_decode(hex_str.as_bytes(), &mut bytes)?;
-        if bytes != Self::from_byte(0).0 && bytes != Self::from_byte(1).0 {
-            Err(Self::Error::InvalidBytes)
-        } else {
-            Ok(Self(bytes))
-        }
+        Ok(Self(bytes))
     }
 }
 

@@ -5,6 +5,7 @@ use crate::{
     BlueWorkType,
 };
 use kaspa_hashes::Hash;
+use kaspa_utils::mem_size::MemSizeEstimator;
 use std::sync::Arc;
 
 /// A mutable block structure where header and transactions within can still be mutated.
@@ -65,6 +66,20 @@ impl Block {
     /// WARNING: To be used for test purposes only
     pub fn from_precomputed_hash(hash: Hash, parents: Vec<Hash>) -> Block {
         Block::from_header(Header::from_precomputed_hash(hash, parents))
+    }
+
+    pub fn asses_for_cache(&self) -> Option<()> {
+        (self.estimate_mem_bytes() < 1_000_000).then_some(())
+    }
+}
+
+impl MemSizeEstimator for Block {
+    fn estimate_mem_bytes(&self) -> usize {
+        // Calculates mem bytes of the block (for cache tracking purposes)
+        size_of::<Self>()
+            + self.header.estimate_mem_bytes()
+            + size_of::<Vec<Transaction>>()
+            + self.transactions.iter().map(Transaction::estimate_mem_bytes).sum::<usize>()
     }
 }
 

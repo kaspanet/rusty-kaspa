@@ -54,7 +54,7 @@ use kaspa_consensus_core::{
     coinbase::MinerData,
     config::genesis::GenesisBlock,
     header::Header,
-    merkle::calc_hash_merkle_root_with_options,
+    merkle::calc_hash_merkle_root,
     pruning::PruningPointsList,
     tx::{MutableTransaction, Transaction},
     utxo::{
@@ -975,7 +975,7 @@ impl VirtualStateProcessor {
 
         // Hash according to hardfork activation
         let storage_mass_activated = virtual_state.daa_score > self.storage_mass_activation_daa_score;
-        let hash_merkle_root = calc_hash_merkle_root_with_options(txs.iter(), storage_mass_activated);
+        let hash_merkle_root = calc_hash_merkle_root(txs.iter(), storage_mass_activated);
 
         let accepted_id_merkle_root = kaspa_merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
         let utxo_commitment = virtual_state.multiset.clone().finalize();

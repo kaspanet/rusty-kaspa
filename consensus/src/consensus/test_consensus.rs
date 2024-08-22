@@ -176,7 +176,7 @@ impl TestConsensus {
 
         let cb = Transaction::new(TX_VERSION, vec![], vec![], 0, SUBNETWORK_ID_COINBASE, 0, cb_payload);
         txs.insert(0, cb);
-        header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
+        header.hash_merkle_root = calc_hash_merkle_root(txs.iter(), false);
         MutableBlock::new(header, txs)
     }
 

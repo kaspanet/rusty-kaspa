@@ -17,6 +17,7 @@ impl TransactionValidator {
         check_duplicate_transaction_inputs(tx)?;
         check_gas(tx)?;
         check_transaction_payload(tx)?;
+        check_transaction_subnetwork(tx)?;
         check_transaction_version(tx)
     }
 
@@ -146,10 +147,18 @@ fn check_transaction_output_value_ranges(tx: &Transaction) -> TxResult<()> {
     Ok(())
 }
 
+fn check_transaction_subnetwork(tx: &Transaction) -> TxResult<()> {
+    if tx.is_coinbase() || tx.subnetwork_id.is_native() {
+        Ok(())
+    } else {
+        Err(TxRuleError::SubnetworksDisabled(tx.subnetwork_id.clone()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use kaspa_consensus_core::{
-        subnets::{SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
+        subnets::{SubnetworkId, SUBNETWORK_ID_COINBASE, SUBNETWORK_ID_NATIVE},
         tx::{scriptvec, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint, TransactionOutput},
     };
     use kaspa_core::assert_match;
@@ -260,6 +269,10 @@ mod tests {
         );
 
         tv.validate_tx_in_isolation(&valid_tx).unwrap();
+
+        let mut tx: Transaction = valid_tx.clone();
+        tx.subnetwork_id = SubnetworkId::from_byte(3);
+        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::SubnetworksDisabled(_)));
 
         let mut tx = valid_tx.clone();
         tx.inputs = vec![];
