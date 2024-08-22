@@ -10,7 +10,7 @@ mod tests {
             model::frontier::selectors::TakeAllSelector,
             tx::{Orphan, Priority, RbfPolicy},
         },
-        model::tx_query::TransactionQuery,
+        model::{tx_insert::TransactionInsertion, tx_query::TransactionQuery},
         testutils::consensus_mock::ConsensusMock,
         MiningCounters,
     };
@@ -26,7 +26,7 @@ mod tests {
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{
             scriptvec, MutableTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionInput, TransactionOutpoint,
-            TransactionOutput, UtxoEntry,
+            TransactionOutput, UtxoEntry, VerifiableTransaction,
         },
     };
     use kaspa_hashes::Hash;
@@ -1115,6 +1115,49 @@ mod tests {
 
         // TODO: extend the test according to the golang scenario
     }
+
+    #[test]
+    fn test_evict() {
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        const TX_COUNT: u32 = 10;
+        const MASS_LIMIT: u64 = 1_000_000;
+        let mut config = Config::build_default(TARGET_TIME_PER_BLOCK, false, MASS_LIMIT);
+        config.mempool_compute_mass_limit = TX_COUNT as u64;
+        let mining_manager = MiningManager::with_config(config, None, counters);
+        let txs = (0..TX_COUNT)
+            .map(|i| {
+                let tx = create_transaction_with_utxo_entry(i, 0).as_verifiable().tx().clone();
+                tx
+            })
+            .collect_vec();
+
+        for tx in txs {
+            validate_and_insert_transaction(&mining_manager, consensus.as_ref(), tx.clone()).unwrap();
+        }
+
+        let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT, 0).as_verifiable().tx().clone();
+        heavy_tx.payload = vec![0u8; 5000];
+        validate_and_insert_transaction(&mining_manager, consensus.as_ref(), heavy_tx.clone()).unwrap();
+        assert!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len() != 0);
+        assert!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len() < TX_COUNT as usize);
+    }
+
+    fn validate_and_insert_transaction(
+        mining_manager: &MiningManager,
+        consensus: &dyn ConsensusApi,
+        tx: Transaction,
+    ) -> Result<TransactionInsertion, MiningManagerError> {
+        mining_manager.validate_and_insert_transaction(consensus, tx, Priority::Low, Orphan::Allowed, RbfPolicy::Forbidden)
+    }
+
+    // fn validate_and_insert_mutable_transaction(
+    //     mining_manager: &MiningManager,
+    //     consensus: &dyn ConsensusApi,
+    //     tx: MutableTransaction,
+    // ) -> Result<TransactionInsertion, MiningManagerError> {
+    //     mining_manager.validate_and_insert_mutable_transaction(consensus, tx, Priority::Low, Orphan::Allowed, RbfPolicy::Forbidden)
+    // }
 
     fn sweep_compare_modified_template_to_built(
         consensus: &dyn ConsensusApi,
