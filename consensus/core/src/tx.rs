@@ -230,6 +230,23 @@ impl Transaction {
     }
 }
 
+impl MemSizeEstimator for Transaction {
+    fn estimate_mem_bytes(&self) -> usize {
+        // Calculates mem bytes of the transaction (for cache tracking purposes)
+        size_of::<Self>()
+            + self.payload.len()
+            + self
+                .inputs
+                .iter()
+                .map(|i| i.signature_script.len() + size_of::<TransactionInput>())
+                .chain(self.outputs.iter().map(|o| {
+                    // size_of::<TransactionOutput>() already counts SCRIPT_VECTOR_SIZE bytes within, so we only add the delta
+                    o.script_public_key.script().len().saturating_sub(SCRIPT_VECTOR_SIZE) + size_of::<TransactionOutput>()
+                }))
+                .sum::<usize>()
+    }
+}
+
 /// Represents any kind of transaction which has populated UTXO entry data and can be verified/signed etc
 pub trait VerifiableTransaction {
     fn tx(&self) -> &Transaction;
