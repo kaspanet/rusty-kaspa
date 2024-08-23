@@ -19,7 +19,7 @@ use kaspa_consensus_core::{
     utxo::utxo_collection::UtxoCollection,
 };
 use kaspa_core::time::unix_now;
-use kaspa_hashes::ZERO_HASH;
+use kaspa_hashes::{Hash, ZERO_HASH};
 
 use parking_lot::RwLock;
 use std::{collections::HashMap, sync::Arc};
@@ -86,7 +86,7 @@ impl ConsensusApi for ConsensusMock {
         let coinbase = coinbase_manager.expected_coinbase_transaction(miner_data.clone());
         txs.insert(0, coinbase.tx);
         let now = unix_now();
-        let hash_merkle_root = calc_hash_merkle_root(txs.iter());
+        let hash_merkle_root = self.calc_transaction_hash_merkle_root(&txs, 0);
         let header = Header::new_finalized(
             BLOCK_VERSION,
             vec![],
@@ -103,7 +103,7 @@ impl ConsensusApi for ConsensusMock {
         );
         let mutable_block = MutableBlock::new(header, txs);
 
-        Ok(BlockTemplate::new(mutable_block, miner_data, coinbase.has_red_reward, now, 0, ZERO_HASH))
+        Ok(BlockTemplate::new(mutable_block, miner_data, coinbase.has_red_reward, now, 0, ZERO_HASH, vec![]))
     }
 
     fn validate_mempool_transaction(&self, mutable_tx: &mut MutableTransaction, _: &TransactionValidationArgs) -> TxResult<()> {
@@ -176,5 +176,9 @@ impl ConsensusApi for ConsensusMock {
     fn modify_coinbase_payload(&self, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
         let coinbase_manager = CoinbaseManagerMock::new();
         Ok(coinbase_manager.modify_coinbase_payload(payload, miner_data))
+    }
+
+    fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction], _pov_daa_score: u64) -> Hash {
+        calc_hash_merkle_root(txs.iter(), false)
     }
 }

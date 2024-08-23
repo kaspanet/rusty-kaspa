@@ -41,9 +41,9 @@ kaspa-utxoindex.workspace = true
 kaspa-wrpc-server.workspace = true
 
 async-channel.workspace = true
+cfg-if.workspace = true
 clap.workspace = true
 dhat = { workspace = true, optional = true }
-serde.workspace = true
 dirs.workspace = true
 futures-util.workspace = true
 itertools.workspace = true
@@ -52,13 +52,16 @@ num_cpus.workspace = true
 rand.workspace = true
 rayon.workspace = true
 rocksdb.workspace = true
+serde.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 workflow-log.workspace = true
+
 toml = "0.8.10"
 serde_with = "3.7.0"
 
 [features]
 heap = ["dhat", "kaspa-alloc/heap"]
 devnet-prealloc = ["kaspa-consensus/devnet-prealloc"]
+semaphore-trace = ["kaspa-utils/semaphore-trace"]
