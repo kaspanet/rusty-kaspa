@@ -544,7 +544,7 @@ impl ConsensusApi for Consensus {
             }
 
             let children = match self.get_block_children(current_block_hash) {
-                Some(childrens) => childrens,
+                Some(children) => children,
                 None => continue,
             };
 
