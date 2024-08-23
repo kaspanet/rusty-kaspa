@@ -512,6 +512,10 @@ impl ConsensusApi for Consensus {
     fn get_current_block_color(&self, hash: Hash) -> Option<bool> {
         let _guard = self.pruning_lock.blocking_read();
 
+        if self.validate_block_exists(hash).is_err() {
+            return None;
+        }
+
         let mut heap: BinaryHeap<Reverse<SortableBlock>> = BinaryHeap::new();
         let mut visited = BlockHashSet::new();
 
