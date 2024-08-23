@@ -515,14 +515,19 @@ impl ConsensusApi for Consensus {
         if self.validate_block_exists(hash).is_err() {
             return None;
         }
+        if self.services.reachability_service.is_dag_ancestor_of(hash, self.get_source()) {
+            return None;
+        }
+
+        let sink = self.get_sink();
+        if self.services.reachability_service.is_dag_ancestor_of(sink, hash) {
+            return None;
+        }
 
         let mut heap: BinaryHeap<Reverse<SortableBlock>> = BinaryHeap::new();
         let mut visited = BlockHashSet::new();
 
-        let initial_children = match self.get_block_children(hash) {
-            Some(children) => children,
-            None => return None,
-        };
+        let initial_children = self.get_block_children(hash).unwrap();
 
         for child in initial_children {
             let blue_work = self.ghostdag_primary_store.get_blue_work(hash).unwrap();
@@ -532,12 +537,10 @@ impl ConsensusApi for Consensus {
             }
         }
 
-        let current_sink = self.get_sink();
-
         while let Some(Reverse(current_block)) = heap.pop() {
             let current_block_hash = current_block.hash;
 
-            if self.services.reachability_service.is_chain_ancestor_of(current_block_hash, current_sink) {
+            if self.services.reachability_service.is_chain_ancestor_of(current_block_hash, sink) {
                 let current_block_data = self.get_ghostdag_data(current_block_hash).unwrap();
 
                 if current_block_data.mergeset_blues.contains(&hash) {
@@ -547,10 +550,7 @@ impl ConsensusApi for Consensus {
                 }
             }
 
-            let children = match self.get_block_children(current_block_hash) {
-                Some(children) => children,
-                None => continue,
-            };
+            let children = self.get_block_children(current_block_hash).unwrap();
 
             for child in children {
                 let blue_work = self.ghostdag_primary_store.get_blue_work(child).unwrap();
