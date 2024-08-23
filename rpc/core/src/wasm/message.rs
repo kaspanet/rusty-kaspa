@@ -1414,7 +1414,11 @@ try_from! ( args: ISubmitTransactionRequest, SubmitTransactionRequest, {
             allow_orphan,
         }
     } else {
-        from_value(transaction)?
+        let tx = Transaction::try_cast_from(&transaction)?;
+        SubmitTransactionRequest {
+          transaction : tx.as_ref().into(),
+          allow_orphan,
+        }
     };
     Ok(request)
 });
