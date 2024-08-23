@@ -3,6 +3,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_consensus_core::api::stats::BlockCount;
 use kaspa_core::debug;
 use kaspa_notify::subscription::{context::SubscriptionContext, single::UtxosChangedSubscription, Command};
+use kaspa_utils::hex::ToHex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::{
@@ -1889,7 +1890,7 @@ impl Deserializer for GetSystemInfoRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetSystemInfoResponse {
     pub version: String,
@@ -1898,6 +1899,19 @@ pub struct GetSystemInfoResponse {
     pub cpu_physical_cores: u16,
     pub total_memory: u64,
     pub fd_limit: u32,
+}
+
+impl std::fmt::Debug for GetSystemInfoResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GetSystemInfoResponse")
+            .field("version", &self.version)
+            .field("system_id", &self.system_id.as_ref().map(|id| id.to_hex()))
+            .field("git_hash", &self.git_hash.as_ref().map(|hash| hash.to_hex()))
+            .field("cpu_physical_cores", &self.cpu_physical_cores)
+            .field("total_memory", &self.total_memory)
+            .field("fd_limit", &self.fd_limit)
+            .finish()
+    }
 }
 
 impl Serializer for GetSystemInfoResponse {
