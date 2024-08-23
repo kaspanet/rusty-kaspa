@@ -225,18 +225,30 @@ impl PruningProofManager {
         let pruning_point_header = proof[0].last().unwrap().clone();
         let pruning_point = pruning_point_header.hash;
 
-        let proof_zero_set = BlockHashSet::from_iter(proof[0].iter().map(|header| header.hash));
+        // Create a copy of the proof, since we're going to be mutating the proof passed to us
+        let proof_sets: Vec<HashSet<Hash, kaspa_consensus_core::BlockHasher>> = (0..=self.max_block_level)
+            .map(|level| BlockHashSet::from_iter(proof[level as usize].iter().map(|header| header.hash)))
+            .collect();
+
         let mut trusted_gd_map: BlockHashMap<GhostdagData> = BlockHashMap::new();
         for tb in trusted_set.iter() {
             trusted_gd_map.insert(tb.block.hash(), tb.ghostdag.clone().into());
-            if proof_zero_set.contains(&tb.block.hash()) {
-                continue;
-            }
+            let tb_block_level = calc_block_level(&tb.block.header, self.max_block_level);
 
-            proof[0].push(tb.block.header.clone());
+            (0..=tb_block_level).for_each(|current_proof_level| {
+                // If this block was in the original proof, ignore it
+                if proof_sets[current_proof_level as usize].contains(&tb.block.hash()) {
+                    return;
+                }
+
+                proof[current_proof_level as usize].push(tb.block.header.clone());
+            });
         }
 
-        proof[0].sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
+        proof.iter_mut().for_each(|level_proof| {
+            level_proof.sort_by(|a, b| a.blue_work.cmp(&b.blue_work));
+        });
+
         self.populate_reachability_and_headers(&proof);
 
         {
