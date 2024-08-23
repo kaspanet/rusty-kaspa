@@ -368,8 +368,8 @@ impl TryCastFromJs for ScriptPublicKey {
     type Error = workflow_wasm::error::Error;
     fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
         Self::resolve(&value, || {
-            if let Some(hex_str) = value.as_ref().as_string() {
-                Ok(Self::from_str(&hex_str).map_err(CastError::custom)?)
+            if let Some(object) = js_sys::Object::try_from(value.as_ref()) {
+                Ok(ScriptPublicKey::from_vec(object.get_u16("version")?, object.get_vec_u8("script")?))
             } else {
                 Err(CastError::custom(format!("Unable to convert ScriptPublicKey from: {:?}", value.as_ref())))
             }

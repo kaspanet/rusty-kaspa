@@ -377,11 +377,12 @@ impl TryCastFromJs for UtxoEntryReference {
             if let Ok(utxo_entry) = UtxoEntry::try_ref_from_js_value(&value) {
                 Ok(Self::from(utxo_entry.clone()))
             } else if let Some(object) = Object::try_from(value.as_ref()) {
-                let address = object.get_cast::<Address>("address")?.into_owned();
-                let outpoint = TransactionOutpoint::try_from(object.get_value("outpoint")?.as_ref())?;
-                let utxo_entry = Object::from(object.get_value("utxoEntry")?);
+                let utxo_entry = Object::from(object.get_value("entry")?);
+                let address = utxo_entry.get_cast::<Address>("address")?.into_owned();
+                let outpoint = TransactionOutpoint::try_from(utxo_entry.get_value("outpoint")?.as_ref())?;
                 let amount = utxo_entry.get_u64("amount")?;
-                let script_public_key = ScriptPublicKey::try_owned_from(utxo_entry.get_value("scriptPublicKey")?)?;
+                let script_public_key_entry = Object::from(utxo_entry.get_value("scriptPublicKey")?);
+                let script_public_key = ScriptPublicKey::constructor(script_public_key_entry.get_u16("version")?, script_public_key_entry.get_value("script")?)?;
                 let block_daa_score = utxo_entry.get_u64("blockDaaScore")?;
                 let is_coinbase = utxo_entry.get_bool("isCoinbase")?;
 
