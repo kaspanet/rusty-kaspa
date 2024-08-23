@@ -9,7 +9,7 @@ const TS_TRANSACTION_OUTPUT: &'static str = r#"
  */
 export interface ITransactionOutput {
     value: bigint;
-    scriptPublicKey: IScriptPublicKey;
+    scriptPublicKey: IScriptPublicKey | HexString;
 
     /** Optional verbose data provided by RPC */
     verboseData?: ITransactionOutputVerboseData;
