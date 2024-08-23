@@ -510,27 +510,32 @@ impl ConsensusApi for Consensus {
     }
 
     fn get_current_block_color(&self, hash: Hash) -> Option<bool> {
-        let mut queue: BinaryHeap<Reverse<SortableBlock>> = BinaryHeap::new();
+        let _guard = self.pruning_lock.blocking_read();
+
+        let mut heap: BinaryHeap<Reverse<SortableBlock>> = BinaryHeap::new();
         let mut visited = BlockHashSet::new();
 
-        let initial_childrens = match self.get_block_children(hash) {
+        let initial_children = match self.get_block_children(hash) {
             Some(children) => children,
             None => return None,
         };
 
-        for child in initial_childrens {
-            let block = self.get_block(child).unwrap();
+        for child in initial_children {
+            let blue_work = self.ghostdag_primary_store.get_blue_work(hash).unwrap();
 
             if visited.insert(child) {
-                queue.push(Reverse(SortableBlock::new(child, block.header.blue_work)));
+                heap.push(Reverse(SortableBlock::new(child, blue_work)));
             }
         }
 
-        while let Some(Reverse(current_block)) = queue.pop() {
-            let current_block_hash = current_block.hash;
-            let current_block_data = self.get_ghostdag_data(current_block_hash).unwrap();
+        let current_sink = self.get_sink();
 
-            if self.services.reachability_service.is_chain_ancestor_of(current_block_hash, self.get_sink()) {
+        while let Some(Reverse(current_block)) = heap.pop() {
+            let current_block_hash = current_block.hash;
+            
+            if self.services.reachability_service.is_chain_ancestor_of(current_block_hash, current_sink) {
+                let current_block_data = self.get_ghostdag_data(current_block_hash).unwrap();
+
                 if current_block_data.mergeset_blues.contains(&hash) {
                     return Some(true);
                 } else if current_block_data.mergeset_reds.contains(&hash) {
@@ -538,16 +543,16 @@ impl ConsensusApi for Consensus {
                 }
             }
 
-            let childrens = match self.get_block_children(current_block_hash) {
+            let children = match self.get_block_children(current_block_hash) {
                 Some(childrens) => childrens,
                 None => continue,
             };
 
-            for child in childrens {
-                let block = self.get_block(child).unwrap();
+            for child in children {
+                let blue_work = self.ghostdag_primary_store.get_blue_work(child).unwrap();
 
                 if visited.insert(child) {
-                    queue.push(Reverse(SortableBlock::new(child, block.header.blue_work)));
+                    heap.push(Reverse(SortableBlock::new(child, blue_work)));
                 }
             }
         }
