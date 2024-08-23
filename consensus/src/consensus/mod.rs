@@ -532,7 +532,7 @@ impl ConsensusApi for Consensus {
 
         while let Some(Reverse(current_block)) = heap.pop() {
             let current_block_hash = current_block.hash;
-            
+
             if self.services.reachability_service.is_chain_ancestor_of(current_block_hash, current_sink) {
                 let current_block_data = self.get_ghostdag_data(current_block_hash).unwrap();
 

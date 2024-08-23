@@ -378,7 +378,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
         match session.async_get_current_block_color(_request.hash).await {
             Some(blue) => Ok(GetCurrentBlockColorResponse::new(blue)),
-            None => return Err(RpcError::MergerNotFound(_request.hash)),
+            None => Err(RpcError::MergerNotFound(_request.hash)),
         }
     }
 
