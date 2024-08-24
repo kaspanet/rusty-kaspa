@@ -943,8 +943,16 @@ impl PruningProofManager {
 
             tries += 1;
             if finished_headers {
-                warn!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_level_0_depth} are already pruned. Trying anyway.");
-                break Ok((ghostdag_store, selected_tip, root));
+                if has_required_block {
+                    // Normally this scenario doesn't occur when syncing with nodes that already have the safety margin change in place.
+                    // However, when syncing with an older node version that doesn't have a safety margin for the proof, it's possible to
+                    // try to find 2500 depth worth of headers at a level, but the proof only contains about 2000 headers. To be able to sync
+                    // with such an older node. As long as we found the required block, we can still proceed.
+                    warn!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_level_0_depth} are already pruned. Required block found so trying anyway.");
+                    break Ok((ghostdag_store, selected_tip, root));
+                } else {
+                    panic!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_level_0_depth} are already pruned");
+                }
             }
             required_level_0_depth <<= 1;
             warn!("Failed to find sufficient root for level {level} after {tries} tries. Retrying again to find with depth {required_level_0_depth}");
