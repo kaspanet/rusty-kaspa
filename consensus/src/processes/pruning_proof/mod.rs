@@ -424,8 +424,14 @@ impl PruningProofManager {
 
     fn init_validate_pruning_point_proof_stores_and_processes(
         &self,
-        headers_estimate: usize,
+        proof: &PruningPointProof,
     ) -> PruningImportResult<TempProofContext> {
+        if proof[0].is_empty() {
+            return Err(PruningImportError::PruningProofNotEnoughHeaders);
+        }
+
+        let headers_estimate = self.estimate_proof_unique_size(proof);
+
         let (db_lifetime, db) = kaspa_database::create_temp_db!(ConnBuilder::default().with_files_limit(10));
         let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize);
         let headers_store =
@@ -640,17 +646,11 @@ impl PruningProofManager {
             return Err(PruningImportError::ProofNotEnoughLevels(self.max_block_level as usize + 1));
         }
 
-        if proof[0].is_empty() {
-            return Err(PruningImportError::PruningProofNotEnoughHeaders);
-        }
-
-        let headers_estimate = self.estimate_proof_unique_size(proof);
-
         // Initialize the stores for the proof
+        let mut proof_stores_and_processes = self.init_validate_pruning_point_proof_stores_and_processes(proof)?;
         let proof_pp_header = proof[0].last().expect("checked if empty");
         let proof_pp = proof_pp_header.hash;
         let proof_pp_level = calc_block_level(proof_pp_header, self.max_block_level);
-        let mut proof_stores_and_processes = self.init_validate_pruning_point_proof_stores_and_processes(headers_estimate)?;
         let proof_selected_tip_by_level =
             self.populate_stores_for_validate_pruning_point_proof(proof, &mut proof_stores_and_processes, true)?;
         let proof_ghostdag_stores = proof_stores_and_processes.ghostdag_stores;
@@ -665,7 +665,7 @@ impl PruningProofManager {
             current_consensus_proof = Arc::new((0..=self.max_block_level).map(|_| vec![genesis_header.clone()]).collect_vec());
         }
         let mut current_consensus_stores_and_processes =
-            self.init_validate_pruning_point_proof_stores_and_processes(headers_estimate)?;
+            self.init_validate_pruning_point_proof_stores_and_processes(&current_consensus_proof)?;
         let _ = self.populate_stores_for_validate_pruning_point_proof(
             &current_consensus_proof,
             &mut current_consensus_stores_and_processes,
