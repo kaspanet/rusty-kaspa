@@ -691,8 +691,8 @@ impl PruningProofManager {
             }
 
             // Step 2 - if we can find a common ancestor between the proof and current consensus
-            // we can determine if the proof is better. The proof is better if the score difference between the
-            // old current consensus's tips and the common ancestor is less than the score difference between the
+            // we can determine if the proof is better. The proof is better if the blue work difference between the
+            // old current consensus's tips and the common ancestor is less than the blue work difference between the
             // proof's tip and the common ancestor
             if let Some((proof_common_ancestor_gd, common_ancestor_gd)) = self.find_proof_and_consensus_common_ancestor_ghostdag_data(
                 &proof_ghostdag_stores,
