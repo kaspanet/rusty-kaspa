@@ -537,20 +537,19 @@ impl ConsensusApi for Consensus {
             }
         }
 
-        while let Some(Reverse(current_block)) = heap.pop() {
-            let current_block_hash = current_block.hash;
+        while let Some(Reverse(SortableBlock { hash: decedent, .. })) = heap.pop() {
+            if self.services.reachability_service.is_chain_ancestor_of(decedent, sink) {
+                let decedent_data = self.get_ghostdag_data(decedent).unwrap();
 
-            if self.services.reachability_service.is_chain_ancestor_of(current_block_hash, sink) {
-                let current_block_data = self.get_ghostdag_data(current_block_hash).unwrap();
-
-                if current_block_data.mergeset_blues.contains(&hash) {
+                if decedent_data.mergeset_blues.contains(&hash) {
                     return Some(true);
-                } else if current_block_data.mergeset_reds.contains(&hash) {
+                } else if decedent_data.mergeset_reds.contains(&hash) {
                     return Some(false);
                 }
+
             }
 
-            let children = self.get_block_children(current_block_hash).unwrap();
+            let children = self.get_block_children(decedent).unwrap();
 
             for child in children {
                 if visited.insert(child) {
