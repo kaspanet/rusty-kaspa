@@ -531,9 +531,8 @@ impl ConsensusApi for Consensus {
         let initial_children = self.get_block_children(hash).unwrap();
 
         for child in initial_children {
-            let blue_work = self.ghostdag_primary_store.get_blue_work(hash).unwrap();
-
             if visited.insert(child) {
+                let blue_work = self.ghostdag_primary_store.get_blue_work(child).unwrap();
                 heap.push(Reverse(SortableBlock::new(child, blue_work)));
             }
         }
@@ -554,9 +553,8 @@ impl ConsensusApi for Consensus {
             let children = self.get_block_children(current_block_hash).unwrap();
 
             for child in children {
-                let blue_work = self.ghostdag_primary_store.get_blue_work(child).unwrap();
-
                 if visited.insert(child) {
+                    let blue_work = self.ghostdag_primary_store.get_blue_work(child).unwrap();
                     heap.push(Reverse(SortableBlock::new(child, blue_work)));
                 }
             }
