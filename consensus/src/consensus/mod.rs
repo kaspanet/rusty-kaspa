@@ -547,6 +547,12 @@ impl ConsensusApi for Consensus {
                     return Some(false);
                 }
 
+                // Note: because we are doing a topological BFS up (from `hash` towards virtual), the first chain block
+                // found must also be our merging block, so hash will be either in blues or in reds, rendering this line
+                // unreachable.
+                kaspa_core::warn!("DAG topology inconsistency: {decedent} is expected to be a merging block of {hash}");
+                // TODO: we should consider the option of returning Result<Option<bool>> from this method
+                return None;
             }
 
             let children = self.get_block_children(decedent).unwrap();
