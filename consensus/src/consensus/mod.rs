@@ -513,17 +513,17 @@ impl ConsensusApi for Consensus {
     fn get_current_block_color(&self, hash: Hash) -> Option<bool> {
         let _guard = self.pruning_lock.blocking_read();
 
-        if self.validate_block_exists(hash).is_err() {
-            return None;
-        }
-        if self.services.reachability_service.is_dag_ancestor_of(hash, self.get_source()) {
-            return None;
-        }
+        // Verify the block exists and can be assumed to have relations and reachability data
+        self.validate_block_exists(hash).ok()?;
+
+        // Verify that the block is in future(source), where Ghostdag data is complete
+        self.services.reachability_service.is_dag_ancestor_of(self.get_source(), hash).then_some(())?;
 
         let sink = self.get_sink();
-        if self.services.reachability_service.is_dag_ancestor_of(sink, hash) {
-            return None;
-        }
+
+        // Optimization: verify that the block is in past(sink), otherwise the search will fail anyway
+        // (means the block was not merged yet by a virtual chain block)
+        self.services.reachability_service.is_dag_ancestor_of(hash, sink).then_some(())?;
 
         let mut heap: BinaryHeap<Reverse<SortableBlock>> = BinaryHeap::new();
         let mut visited = BlockHashSet::new();
