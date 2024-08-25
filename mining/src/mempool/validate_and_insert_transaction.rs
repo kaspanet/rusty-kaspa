@@ -83,6 +83,7 @@ impl Mempool {
             // smallest prefix of `ready_transactions` (sorted by ascending fee-rate)
             // that makes enough room for `transaction`, but since each call to `self.remove_transaction`
             // also removes all transactions dependant on `x` we might already have enough room.
+            #[allow(clippy::int_plus_one)]
             if self.transaction_pool.len() + 1 <= self.config.maximum_transaction_count
                 && self.transaction_pool.get_total_compute_mass() + transaction.calculated_compute_mass.unwrap()
                     <= self.config.mempool_compute_mass_limit
@@ -91,11 +92,14 @@ impl Mempool {
             }
         }
 
-        assert!(
-            self.transaction_pool.len() + 1 <= self.config.maximum_transaction_count
-                && self.transaction_pool.get_total_compute_mass() + transaction.calculated_compute_mass.unwrap()
-                    <= self.config.mempool_compute_mass_limit
-        );
+        #[allow(clippy::int_plus_one)]
+        {
+            assert!(
+                self.transaction_pool.len() + 1 <= self.config.maximum_transaction_count
+                    && self.transaction_pool.get_total_compute_mass() + transaction.calculated_compute_mass.unwrap()
+                        <= self.config.mempool_compute_mass_limit
+            );
+        }
 
         // Add the transaction to the mempool as a MempoolTransaction and return a clone of the embedded Arc<Transaction>
         let accepted_transaction =

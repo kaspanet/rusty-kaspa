@@ -163,7 +163,7 @@ impl Mempool {
         self.accepted_transactions.unaccepted(&mut not_in_pools_txs)
     }
 
-    // For tests
+    #[cfg(test)]
     pub(crate) fn get_total_compute_mass(&self) -> u64 {
         self.transaction_pool.get_total_compute_mass()
     }

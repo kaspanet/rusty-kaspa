@@ -200,6 +200,7 @@ impl TransactionsPool {
         let mut txs_to_remove = Vec::with_capacity(1);
         let mut selected_mass = 0;
         let mut num_selected = 0;
+        #[allow(clippy::explicit_counter_loop)]
         for tx in self
             .ready_transactions
             .ascending_iter()

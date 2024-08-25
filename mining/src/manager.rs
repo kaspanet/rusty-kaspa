@@ -837,7 +837,7 @@ impl MiningManager {
         self.mempool.read().unknown_transactions(transactions)
     }
 
-    // For tests
+    #[cfg(test)]
     pub(crate) fn get_total_compute_mass(&self) -> u64 {
         self.mempool.read().get_total_compute_mass()
     }

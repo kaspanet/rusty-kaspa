@@ -1130,15 +1130,12 @@ mod tests {
                 let mut tx = create_transaction_with_utxo_entry(i, 0);
                 tx.calculated_compute_mass = Some(1000);
                 tx
-                // let tx = create_transaction_with_utxo_entry(i, 0).as_verifiable().tx().clone();
-                // tx
             })
             .collect_vec();
 
         for tx in txs {
             validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), tx).unwrap();
-            // validate_and_insert_transaction(&mining_manager, consensus.as_ref(), tx.clone()).unwrap();
-            assert!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len() != 0);
+            assert!(!mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.is_empty());
         }
         assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT as usize);
 
