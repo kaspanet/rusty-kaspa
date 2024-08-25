@@ -163,6 +163,7 @@ impl TransactionsPool {
 
         // Remove the transaction from the mempool UTXO set
         self.utxo_set.remove_transaction(&removed_tx.mtx, &parent_ids);
+        self.total_compute_mass -= removed_tx.calculated_compute_mass().unwrap();
 
         Ok(removed_tx)
     }
@@ -196,29 +197,34 @@ impl TransactionsPool {
         // Returns a vector of transactions to be removed that the caller has to remove actually.
         // The caller is golang validateAndInsertTransaction equivalent.
         // This behavior differs from golang impl.
-        self.ready_transactions
+        let mut txs_to_remove = Vec::with_capacity(1);
+        let mut selected_mass = 0;
+        let mut num_selected = 0;
+        for tx in self
+            .ready_transactions
             .ascending_iter()
             .map(|tx| self.all_transactions.get(&tx.id()).unwrap())
             .filter(|mtx| mtx.priority == Priority::Low && !mtx.is_parent_of(transaction))
-            .scan((self.len() + 1, self.total_compute_mass + transaction.calculated_compute_mass.unwrap()), |state, mtx| {
-                (*state).0 -= 1;
-                (*state).1 -= mtx.calculated_compute_mass().unwrap();
-                Some((mtx, *state))
-            })
-            .take_while(|(_, state)| {
-                self.len() - state.0 > self.config.maximum_transaction_count
-                    && self.total_compute_mass - state.1 > self.config.mempool_compute_mass_limit
-            })
-            .map(|(mtx, _)| {
-                if mtx.fee_rate() <= transaction.calculated_feerate().unwrap() {
-                    Ok(mtx.id())
-                } else {
-                    let err = RuleError::RejectMempoolIsFull;
-                    warn!("{}", err);
-                    Err(err)
-                }
-            })
-            .collect()
+        {
+            if self.len() + 1 - num_selected <= self.config.maximum_transaction_count
+                && self.total_compute_mass + transaction.calculated_compute_mass.unwrap() - selected_mass
+                    <= self.config.mempool_compute_mass_limit
+            {
+                break;
+            }
+
+            if tx.fee_rate() > transaction.calculated_feerate().unwrap() {
+                let err = RuleError::RejectMempoolIsFull;
+                warn!("{}", err);
+                return Err(err);
+            }
+
+            txs_to_remove.push(tx.id());
+            selected_mass += tx.calculated_compute_mass().unwrap();
+            num_selected += 1;
+        }
+
+        Ok(txs_to_remove)
     }
 
     pub(crate) fn get_total_compute_mass(&self) -> u64 {

@@ -836,6 +836,11 @@ impl MiningManager {
     pub fn unknown_transactions(&self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
         self.mempool.read().unknown_transactions(transactions)
     }
+
+    // For tests
+    pub(crate) fn get_total_compute_mass(&self) -> u64 {
+        self.mempool.read().get_total_compute_mass()
+    }
 }
 
 /// Async proxy for the mining manager

@@ -23,7 +23,10 @@ impl Mempool {
     ) -> RuleResult<TransactionPreValidation> {
         self.validate_transaction_unacceptance(&transaction)?;
         // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
-        transaction.calculated_compute_mass = Some(consensus.calculate_transaction_compute_mass(&transaction.tx));
+        // We only populate if it's `None` to allow tests set arbitrary values.
+        if transaction.calculated_compute_mass.is_none() {
+            transaction.calculated_compute_mass = Some(consensus.calculate_transaction_compute_mass(&transaction.tx));
+        }
         self.validate_transaction_in_isolation(&transaction)?;
         let feerate_threshold = self.get_replace_by_fee_constraint(&transaction, rbf_policy)?;
         self.populate_mempool_entries(&mut transaction);
@@ -73,7 +76,8 @@ impl Mempool {
         self.validate_transaction_in_context(&transaction)?;
 
         // Before adding the transaction, check if there is room in the pool
-        for x in self.transaction_pool.limit_transaction_count(&transaction)?.iter() {
+        let txs_to_remove = self.transaction_pool.limit_transaction_count(&transaction)?;
+        for x in txs_to_remove.iter() {
             self.remove_transaction(x, true, TxRemovalReason::MakingRoom, format!(" for {}", transaction_id).as_str())?;
             // self.transaction_pool.limit_transaction_count(&transaction) returns the
             // smallest prefix of `ready_transactions` (sorted by ascending fee-rate)
@@ -86,6 +90,12 @@ impl Mempool {
                 break;
             }
         }
+
+        assert!(
+            self.transaction_pool.len() + 1 <= self.config.maximum_transaction_count
+                && self.transaction_pool.get_total_compute_mass() + transaction.calculated_compute_mass.unwrap()
+                    <= self.config.mempool_compute_mass_limit
+        );
 
         // Add the transaction to the mempool as a MempoolTransaction and return a clone of the embedded Arc<Transaction>
         let accepted_transaction =
