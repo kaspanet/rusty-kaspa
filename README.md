@@ -414,5 +414,3 @@ Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.1
 
 </details>
 
-
-

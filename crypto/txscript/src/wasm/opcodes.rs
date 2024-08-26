@@ -1,20 +1,12 @@
-use std::cell::{Ref, RefCell, RefMut};
-use std::rc::Rc;
+pub use wasm_bindgen::prelude::*;
 
-use kaspa_wasm_core::types::{BinaryT, HexString};
+/// Kaspa Transaction Script Opcodes
+/// @see {@link ScriptBuilder}
+/// @category Consensus
+#[wasm_bindgen]
+pub enum Opcodes {
+    OpFalse = 0x00,
 
-use crate::imports::*;
-use crate::result::Result;
-use kaspa_txscript::script_builder as native;
-
-#[wasm_bindgen(typescript_custom_section)]
-const TS_SCRIPT_OPCODES: &'static str = r#"
-/**
- * Kaspa Transaction Script Opcodes
- * @see {@link ScriptBuilder}
- * @category Consensus
- */
-export enum Opcode {
     OpData1 = 0x01,
     OpData2 = 0x02,
     OpData3 = 0x03,
@@ -90,15 +82,17 @@ export enum Opcode {
     OpData73 = 0x49,
     OpData74 = 0x4a,
     OpData75 = 0x4b,
+
     OpPushData1 = 0x4c,
     OpPushData2 = 0x4d,
     OpPushData4 = 0x4e,
+
     Op1Negate = 0x4f,
-    /**
-     * Reserved
-     */
+
     OpReserved = 0x50,
-    Op1 = 0x51,
+
+    OpTrue = 0x51,
+
     Op2 = 0x52,
     Op3 = 0x53,
     Op4 = 0x54,
@@ -114,27 +108,21 @@ export enum Opcode {
     Op14 = 0x5e,
     Op15 = 0x5f,
     Op16 = 0x60,
+
     OpNop = 0x61,
-    /**
-     * Reserved
-     */
     OpVer = 0x62,
     OpIf = 0x63,
     OpNotIf = 0x64,
-    /**
-     * Reserved
-     */
     OpVerIf = 0x65,
-    /**
-     * Reserved
-     */
     OpVerNotIf = 0x66,
+
     OpElse = 0x67,
     OpEndIf = 0x68,
     OpVerify = 0x69,
     OpReturn = 0x6a,
     OpToAltStack = 0x6b,
     OpFromAltStack = 0x6c,
+
     Op2Drop = 0x6d,
     Op2Dup = 0x6e,
     Op3Dup = 0x6f,
@@ -148,88 +136,57 @@ export enum Opcode {
     OpNip = 0x77,
     OpOver = 0x78,
     OpPick = 0x79,
+
     OpRoll = 0x7a,
     OpRot = 0x7b,
     OpSwap = 0x7c,
     OpTuck = 0x7d,
-    /**
-     * Disabled
-     */
+
+    /// Splice opcodes.
     OpCat = 0x7e,
-    /**
-     * Disabled
-     */
     OpSubStr = 0x7f,
-    /**
-     * Disabled
-     */
     OpLeft = 0x80,
-    /**
-     * Disabled
-     */
     OpRight = 0x81,
+
     OpSize = 0x82,
-    /**
-     * Disabled
-     */
+
+    /// Bitwise logic opcodes.
     OpInvert = 0x83,
-    /**
-     * Disabled
-     */
     OpAnd = 0x84,
-    /**
-     * Disabled
-     */
     OpOr = 0x85,
-    /**
-     * Disabled
-     */
     OpXor = 0x86,
+
     OpEqual = 0x87,
     OpEqualVerify = 0x88,
+
     OpReserved1 = 0x89,
     OpReserved2 = 0x8a,
+
+    /// Numeric related opcodes.
     Op1Add = 0x8b,
     Op1Sub = 0x8c,
-    /**
-     * Disabled
-     */
     Op2Mul = 0x8d,
-    /**
-     * Disabled
-     */
     Op2Div = 0x8e,
     OpNegate = 0x8f,
     OpAbs = 0x90,
     OpNot = 0x91,
     Op0NotEqual = 0x92,
+
     OpAdd = 0x93,
     OpSub = 0x94,
-    /**
-     * Disabled
-     */
     OpMul = 0x95,
-    /**
-     * Disabled
-     */
     OpDiv = 0x96,
-    /**
-     * Disabled
-     */
     OpMod = 0x97,
-    /**
-     * Disabled
-     */
     OpLShift = 0x98,
-    /**
-     * Disabled
-     */
     OpRShift = 0x99,
+
     OpBoolAnd = 0x9a,
     OpBoolOr = 0x9b,
+
     OpNumEqual = 0x9c,
     OpNumEqualVerify = 0x9d,
     OpNumNotEqual = 0x9e,
+
     OpLessThan = 0x9f,
     OpGreaterThan = 0xa0,
     OpLessThanOrEqual = 0xa1,
@@ -237,10 +194,16 @@ export enum Opcode {
     OpMin = 0xa3,
     OpMax = 0xa4,
     OpWithin = 0xa5,
+
+    /// Undefined opcodes.
     OpUnknown166 = 0xa6,
     OpUnknown167 = 0xa7,
-    OpSha256 = 0xa8,
+
+    /// Crypto opcodes.
+    OpSHA256 = 0xa8,
+
     OpCheckMultiSigECDSA = 0xa9,
+
     OpBlake2b = 0xaa,
     OpCheckSigECDSA = 0xab,
     OpCheckSig = 0xac,
@@ -249,6 +212,8 @@ export enum Opcode {
     OpCheckMultiSigVerify = 0xaf,
     OpCheckLockTimeVerify = 0xb0,
     OpCheckSequenceVerify = 0xb1,
+
+    /// Undefined opcodes.
     OpUnknown178 = 0xb2,
     OpUnknown179 = 0xb3,
     OpUnknown180 = 0xb4,
@@ -321,137 +286,11 @@ export enum Opcode {
     OpUnknown247 = 0xf7,
     OpUnknown248 = 0xf8,
     OpUnknown249 = 0xf9,
+
     OpSmallInteger = 0xfa,
     OpPubKeys = 0xfb,
     OpUnknown252 = 0xfc,
     OpPubKeyHash = 0xfd,
     OpPubKey = 0xfe,
     OpInvalidOpCode = 0xff,
-}
-
-"#;
-
-///
-///  ScriptBuilder provides a facility for building custom scripts. It allows
-/// you to push opcodes, ints, and data while respecting canonical encoding. In
-/// general it does not ensure the script will execute correctly, however any
-/// data pushes which would exceed the maximum allowed script engine limits and
-/// are therefore guaranteed not to execute will not be pushed and will result in
-/// the Script function returning an error.
-///
-/// @see {@link Opcode}
-/// @category Consensus
-#[derive(Clone)]
-#[wasm_bindgen(inspectable)]
-pub struct ScriptBuilder {
-    script_builder: Rc<RefCell<native::ScriptBuilder>>,
-}
-
-impl ScriptBuilder {
-    #[inline]
-    pub fn inner(&self) -> Ref<'_, native::ScriptBuilder> {
-        self.script_builder.borrow()
-    }
-
-    #[inline]
-    pub fn inner_mut(&self) -> RefMut<'_, native::ScriptBuilder> {
-        self.script_builder.borrow_mut()
-    }
-}
-
-impl Default for ScriptBuilder {
-    fn default() -> Self {
-        Self { script_builder: Rc::new(RefCell::new(kaspa_txscript::script_builder::ScriptBuilder::new())) }
-    }
-}
-
-#[wasm_bindgen]
-impl ScriptBuilder {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn data(&self) -> HexString {
-        self.script()
-    }
-
-    /// Get script bytes represented by a hex string.
-    pub fn script(&self) -> HexString {
-        let inner = self.inner();
-        HexString::from(inner.script())
-    }
-
-    /// Drains (empties) the script builder, returning the
-    /// script bytes represented by a hex string.
-    pub fn drain(&self) -> HexString {
-        let mut inner = self.inner_mut();
-        HexString::from(inner.drain().as_slice())
-    }
-
-    #[wasm_bindgen(js_name = canonicalDataSize)]
-    pub fn canonical_data_size(data: BinaryT) -> Result<u32> {
-        let data = data.try_as_vec_u8()?;
-        let size = native::ScriptBuilder::canonical_data_size(&data) as u32;
-        Ok(size)
-    }
-
-    /// Pushes the passed opcode to the end of the script. The script will not
-    /// be modified if pushing the opcode would cause the script to exceed the
-    /// maximum allowed script engine size.
-    #[wasm_bindgen(js_name = addOp)]
-    pub fn add_op(&self, op: u8) -> Result<ScriptBuilder> {
-        let mut inner = self.inner_mut();
-        inner.add_op(op)?;
-        Ok(self.clone())
-    }
-
-    /// Adds the passed opcodes to the end of the script.
-    /// Supplied opcodes can be represented as a `Uint8Array` or a `HexString`.
-    #[wasm_bindgen(js_name = "addOps")]
-    pub fn add_ops(&self, opcodes: JsValue) -> Result<ScriptBuilder> {
-        let opcodes = opcodes.try_as_vec_u8()?;
-        self.inner_mut().add_ops(&opcodes)?;
-        Ok(self.clone())
-    }
-
-    /// AddData pushes the passed data to the end of the script. It automatically
-    /// chooses canonical opcodes depending on the length of the data.
-    ///
-    /// A zero length buffer will lead to a push of empty data onto the stack (Op0 = OpFalse)
-    /// and any push of data greater than [`MAX_SCRIPT_ELEMENT_SIZE`](kaspa_txscript::MAX_SCRIPT_ELEMENT_SIZE) will not modify
-    /// the script since that is not allowed by the script engine.
-    ///
-    /// Also, the script will not be modified if pushing the data would cause the script to
-    /// exceed the maximum allowed script engine size [`MAX_SCRIPTS_SIZE`](kaspa_txscript::MAX_SCRIPTS_SIZE).
-    #[wasm_bindgen(js_name = addData)]
-    pub fn add_data(&self, data: BinaryT) -> Result<ScriptBuilder> {
-        let data = data.try_as_vec_u8()?;
-
-        let mut inner = self.inner_mut();
-        inner.add_data(&data)?;
-        Ok(self.clone())
-    }
-
-    #[wasm_bindgen(js_name = addI64)]
-    pub fn add_i64(&self, value: i64) -> Result<ScriptBuilder> {
-        let mut inner = self.inner_mut();
-        inner.add_i64(value)?;
-        Ok(self.clone())
-    }
-
-    #[wasm_bindgen(js_name = addLockTime)]
-    pub fn add_lock_time(&self, lock_time: u64) -> Result<ScriptBuilder> {
-        let mut inner = self.inner_mut();
-        inner.add_lock_time(lock_time)?;
-        Ok(self.clone())
-    }
-
-    #[wasm_bindgen(js_name = addSequence)]
-    pub fn add_sequence(&self, sequence: u64) -> Result<ScriptBuilder> {
-        let mut inner = self.inner_mut();
-        inner.add_sequence(sequence)?;
-        Ok(self.clone())
-    }
 }

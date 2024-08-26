@@ -4,7 +4,7 @@
 
 use super::*;
 use crate::imports::*;
-use crate::storage::Binding;
+use crate::storage::{Binding, BindingT};
 use crate::tx::PendingTransactionInner;
 use workflow_core::time::{unixtime_as_millis_u64, unixtime_to_locale_string};
 use workflow_wasm::utils::try_get_js_value_prop;
@@ -289,7 +289,9 @@ export interface ITransactionRecord {
 extern "C" {
     #[wasm_bindgen(extends = Object, typescript_type = "ITransactionRecord")]
     #[derive(Clone, Debug, PartialEq, Eq)]
-    pub type ITransactionRecord;
+    pub type TransactionRecordT;
+    #[wasm_bindgen(extends = Object, typescript_type = "ITransactionData")]
+    pub type TransactionDataT;
 }
 
 #[wasm_bindgen(inspectable)]
@@ -318,11 +320,12 @@ pub struct TransactionRecord {
     #[serde(rename = "unixtimeMsec")]
     #[wasm_bindgen(js_name = unixtimeMsec)]
     pub unixtime_msec: Option<u64>,
+    #[wasm_bindgen(skip)]
     pub value: u64,
     #[wasm_bindgen(skip)]
     pub binding: Binding,
     #[serde(rename = "blockDaaScore")]
-    #[wasm_bindgen(js_name = blockDaaScore)]
+    #[wasm_bindgen(skip)]
     pub block_daa_score: u64,
     #[serde(rename = "network")]
     #[wasm_bindgen(js_name = network)]
@@ -378,9 +381,9 @@ impl TransactionRecord {
         let params = NetworkParams::from(self.network_id);
 
         let maturity = if self.is_coinbase() {
-            params.coinbase_transaction_maturity_period_daa
+            params.coinbase_transaction_maturity_period_daa()
         } else {
-            params.user_transaction_maturity_period_daa
+            params.user_transaction_maturity_period_daa()
         };
 
         if current_daa_score < self.block_daa_score() + maturity {
@@ -431,9 +434,9 @@ impl TransactionRecord {
     pub fn maturity_progress(&self, current_daa_score: u64) -> Option<f64> {
         let params = NetworkParams::from(self.network_id);
         let maturity = if self.is_coinbase() {
-            params.coinbase_transaction_maturity_period_daa
+            params.coinbase_transaction_maturity_period_daa()
         } else {
-            params.user_transaction_maturity_period_daa
+            params.user_transaction_maturity_period_daa()
         };
 
         if current_daa_score < self.block_daa_score + maturity {
@@ -784,14 +787,24 @@ impl TransactionRecord {
 
 #[wasm_bindgen]
 impl TransactionRecord {
+    #[wasm_bindgen(getter, js_name = "value")]
+    pub fn value_as_js_bigint(&self) -> BigInt {
+        self.value.into()
+    }
+
+    #[wasm_bindgen(getter, js_name = "blockDaaScore")]
+    pub fn block_daa_score_as_js_bigint(&self) -> BigInt {
+        self.block_daa_score.into()
+    }
+
     #[wasm_bindgen(getter, js_name = "binding")]
-    pub fn binding_as_js_value(&self) -> JsValue {
-        serde_wasm_bindgen::to_value(&self.binding).unwrap()
+    pub fn binding_as_js_value(&self) -> BindingT {
+        serde_wasm_bindgen::to_value(&self.binding).unwrap().unchecked_into()
     }
 
     #[wasm_bindgen(getter, js_name = "data")]
-    pub fn data_as_js_value(&self) -> JsValue {
-        try_get_js_value_prop(&serde_wasm_bindgen::to_value(&self.transaction_data).unwrap(), "data").unwrap()
+    pub fn data_as_js_value(&self) -> TransactionDataT {
+        try_get_js_value_prop(&serde_wasm_bindgen::to_value(&self.transaction_data).unwrap(), "data").unwrap().unchecked_into()
     }
 
     #[wasm_bindgen(getter, js_name = "type")]
@@ -837,19 +850,19 @@ impl BorshSerialize for TransactionRecord {
 }
 
 impl BorshDeserialize for TransactionRecord {
-    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
-            StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
+            StorageHeader::deserialize_reader(reader)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
 
-        let id = BorshDeserialize::deserialize(buf)?;
-        let unixtime = BorshDeserialize::deserialize(buf)?;
-        let value = BorshDeserialize::deserialize(buf)?;
-        let binding = BorshDeserialize::deserialize(buf)?;
-        let block_daa_score = BorshDeserialize::deserialize(buf)?;
-        let network_id = BorshDeserialize::deserialize(buf)?;
-        let transaction_data = BorshDeserialize::deserialize(buf)?;
-        let note = BorshDeserialize::deserialize(buf)?;
-        let metadata = BorshDeserialize::deserialize(buf)?;
+        let id = BorshDeserialize::deserialize_reader(reader)?;
+        let unixtime = BorshDeserialize::deserialize_reader(reader)?;
+        let value = BorshDeserialize::deserialize_reader(reader)?;
+        let binding = BorshDeserialize::deserialize_reader(reader)?;
+        let block_daa_score = BorshDeserialize::deserialize_reader(reader)?;
+        let network_id = BorshDeserialize::deserialize_reader(reader)?;
+        let transaction_data = BorshDeserialize::deserialize_reader(reader)?;
+        let note = BorshDeserialize::deserialize_reader(reader)?;
+        let metadata = BorshDeserialize::deserialize_reader(reader)?;
 
         Ok(Self { id, unixtime_msec: unixtime, value, binding, block_daa_score, network_id, transaction_data, note, metadata })
     }
@@ -861,7 +874,7 @@ impl BorshDeserialize for TransactionRecord {
 //     }
 // }
 
-impl From<TransactionRecord> for ITransactionRecord {
+impl From<TransactionRecord> for TransactionRecordT {
     fn from(record: TransactionRecord) -> Self {
         JsValue::from(record).unchecked_into()
     }

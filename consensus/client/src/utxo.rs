@@ -101,6 +101,12 @@ impl UtxoEntry {
     }
 }
 
+impl AsRef<UtxoEntry> for UtxoEntry {
+    fn as_ref(&self) -> &UtxoEntry {
+        self
+    }
+}
+
 impl From<&UtxoEntry> for cctx::UtxoEntry {
     fn from(utxo: &UtxoEntry) -> Self {
         cctx::UtxoEntry {
@@ -136,14 +142,14 @@ impl UtxoEntryReference {
         self.as_ref().clone()
     }
 
-    #[wasm_bindgen(js_name = "getTransactionId")]
-    pub fn transaction_id_as_string(&self) -> String {
-        self.utxo.outpoint.get_transaction_id_as_string()
+    #[wasm_bindgen(getter)]
+    pub fn outpoint(&self) -> TransactionOutpoint {
+        self.utxo.outpoint.clone()
     }
 
-    #[wasm_bindgen(js_name = "getId")]
-    pub fn id_string(&self) -> String {
-        self.utxo.outpoint.id_string()
+    #[wasm_bindgen(getter)]
+    pub fn address(&self) -> Option<Address> {
+        self.utxo.address.clone()
     }
 
     #[wasm_bindgen(getter)]
@@ -159,6 +165,11 @@ impl UtxoEntryReference {
     #[wasm_bindgen(getter, js_name = "blockDaaScore")]
     pub fn block_daa_score(&self) -> u64 {
         self.utxo.block_daa_score
+    }
+
+    #[wasm_bindgen(getter, js_name = "scriptPublicKey")]
+    pub fn script_public_key(&self) -> ScriptPublicKey {
+        self.utxo.script_public_key.clone()
     }
 }
 
@@ -252,7 +263,10 @@ impl TryIntoUtxoEntryReferences for JsValue {
 
 impl TryCastFromJs for UtxoEntry {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
         Ok(Self::try_ref_from_js_value_as_cast(value)?)
     }
 }
@@ -372,21 +386,45 @@ impl TryFrom<JsValue> for UtxoEntries {
 
 impl TryCastFromJs for UtxoEntryReference {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             if let Ok(utxo_entry) = UtxoEntry::try_ref_from_js_value(&value) {
                 Ok(Self::from(utxo_entry.clone()))
             } else if let Some(object) = Object::try_from(value.as_ref()) {
-                let address = object.get_cast::<Address>("address")?.into_owned();
+                let address = object.try_cast_into::<Address>("address")?;
                 let outpoint = TransactionOutpoint::try_from(object.get_value("outpoint")?.as_ref())?;
                 let utxo_entry = Object::from(object.get_value("utxoEntry")?);
-                let amount = utxo_entry.get_u64("amount")?;
-                let script_public_key = ScriptPublicKey::try_owned_from(utxo_entry.get_value("scriptPublicKey")?)?;
-                let block_daa_score = utxo_entry.get_u64("blockDaaScore")?;
-                let is_coinbase = utxo_entry.get_bool("isCoinbase")?;
 
-                let utxo_entry =
-                    UtxoEntry { address: Some(address), outpoint, amount, script_public_key, block_daa_score, is_coinbase };
+                let utxo_entry = if !utxo_entry.is_undefined() {
+                    let amount = utxo_entry.get_u64("amount").map_err(|_| {
+                        Error::custom("Supplied object does not contain `utxoEntry.amount` property (or it is not a numerical value)")
+                    })?;
+                    let script_public_key = ScriptPublicKey::try_owned_from(utxo_entry.get_value("scriptPublicKey")?)
+                        .map_err(|_|Error::custom("Supplied object does not contain `utxoEntry.scriptPublicKey` property (or it is not a hex string or a ScriptPublicKey class)"))?;
+                    let block_daa_score = utxo_entry.get_u64("blockDaaScore").map_err(|_| {
+                        Error::custom(
+                            "Supplied object does not contain `utxoEntry.blockDaaScore` property (or it is not a numerical value)",
+                        )
+                    })?;
+                    let is_coinbase = utxo_entry.get_bool("isCoinbase")?;
+
+                    UtxoEntry { address, outpoint, amount, script_public_key, block_daa_score, is_coinbase }
+                } else {
+                    let amount = object.get_u64("amount").map_err(|_| {
+                        Error::custom("Supplied object does not contain `amount` property (or it is not a numerical value)")
+                    })?;
+                    let script_public_key = ScriptPublicKey::try_owned_from(object.get_value("scriptPublicKey")?)
+                        .map_err(|_|Error::custom("Supplied object does not contain `scriptPublicKey` property (or it is not a hex string or a ScriptPublicKey class)"))?;
+                    let block_daa_score = object.get_u64("blockDaaScore").map_err(|_| {
+                        Error::custom("Supplied object does not contain `blockDaaScore` property (or it is not a numerical value)")
+                    })?;
+                    let is_coinbase = object.try_get_bool("isCoinbase")?.unwrap_or(false);
+
+                    UtxoEntry { address, outpoint, amount, script_public_key, block_daa_score, is_coinbase }
+                };
 
                 Ok(UtxoEntryReference::from(utxo_entry))
             } else {

@@ -1,6 +1,6 @@
+use crate::RpcUtxoEntry;
 use crate::RpcUtxosByAddressesEntry;
 use kaspa_addresses::Prefix;
-use kaspa_consensus_core::tx::UtxoEntry;
 use kaspa_index_core::indexed_utxos::UtxoSetByScriptPublicKey;
 use kaspa_txscript::extract_script_pub_key_address;
 
@@ -16,8 +16,8 @@ pub fn utxo_set_into_rpc(item: &UtxoSetByScriptPublicKey, prefix: Option<Prefix>
                 .iter()
                 .map(|(outpoint, entry)| RpcUtxosByAddressesEntry {
                     address: address.clone(),
-                    outpoint: *outpoint,
-                    utxo_entry: UtxoEntry::new(entry.amount, script_public_key.clone(), entry.block_daa_score, entry.is_coinbase),
+                    outpoint: (*outpoint).into(),
+                    utxo_entry: RpcUtxoEntry::new(entry.amount, script_public_key.clone(), entry.block_daa_score, entry.is_coinbase),
                 })
                 .collect::<Vec<_>>()
         })
