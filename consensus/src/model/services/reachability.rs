@@ -1,7 +1,7 @@
 use std::ops::Deref;
 use std::sync::Arc;
 
-use kaspa_consensus_core::{blockhash, BlockHashSet};
+use kaspa_consensus_core::blockhash;
 use parking_lot::RwLock;
 
 use crate::model::stores::reachability::ReachabilityStoreReader;
@@ -18,19 +18,6 @@ pub trait ReachabilityService {
     fn get_next_chain_ancestor(&self, descendant: Hash, ancestor: Hash) -> Hash;
     fn get_chain_parent(&self, this: Hash) -> Hash;
     fn has_reachability_data(&self, this: Hash) -> bool;
-
-    /// Returns the topological roots of this set, i.e., the minimal subset of blocks which has all
-    /// other blocks in its future
-    fn get_roots_of_set(&self, list: &mut impl Iterator<Item = Hash>) -> BlockHashSet {
-        let mut roots = BlockHashSet::default();
-        for hash in list {
-            if !self.is_any_dag_ancestor(&mut roots.iter().copied(), hash) {
-                roots.retain(|&h| !self.is_dag_ancestor_of(hash, h));
-                roots.insert(hash);
-            }
-        }
-        roots
-    }
 }
 
 impl<T: ReachabilityStoreReader + ?Sized> ReachabilityService for T {
@@ -247,13 +234,9 @@ impl<T: ReachabilityStoreReader + ?Sized> Iterator for ForwardChainIterator<T> {
 mod tests {
     use super::*;
     use crate::{
-        model::stores::{reachability::MemoryReachabilityStore, relations::MemoryRelationsStore},
-        processes::reachability::{
-            interval::Interval,
-            tests::{DagBlock, DagBuilder, TreeBuilder},
-        },
+        model::stores::reachability::MemoryReachabilityStore,
+        processes::reachability::{interval::Interval, tests::TreeBuilder},
     };
-    use blockhash::ORIGIN;
 
     #[test]
     fn test_forward_iterator() {
@@ -315,45 +298,5 @@ mod tests {
         assert!(std::iter::empty::<Hash>().eq(service.backward_chain_iterator(root, root, false)));
         assert!(std::iter::once(root).eq(service.forward_chain_iterator(root, root, true)));
         assert!(std::iter::empty::<Hash>().eq(service.forward_chain_iterator(root, root, false)));
-    }
-
-    #[test]
-    fn test_get_roots_of_set() {
-        let mut reachability = MemoryReachabilityStore::new();
-        let mut relations = MemoryRelationsStore::new();
-
-        DagBuilder::new(&mut reachability, &mut relations)
-            .init()
-            .add_block(DagBlock::new(1.into(), vec![ORIGIN]))
-            .add_block((2, [1].as_slice()).into())
-            .add_block((3, [1].as_slice()).into())
-            .add_block((4, [1].as_slice()).into())
-            .add_block((5, [1].as_slice()).into())
-            .add_block((6, [5].as_slice()).into())
-            .add_block((7, [6].as_slice()).into())
-            .add_block((8, [3, 4].as_slice()).into())
-            .add_block((9, [1].as_slice()).into())
-            .add_block((10, [8, 9].as_slice()).into())
-            .add_block((11, [9].as_slice()).into());
-
-        let service = MTReachabilityService::new(Arc::new(RwLock::new(reachability)));
-
-        let test_cases = vec![
-            // (set, expected roots)
-            (vec![6, 7, 5, 4, 3, 2], vec![5, 4, 3, 2]),
-            (vec![2, 3, 4, 5, 6, 7], vec![5, 4, 3, 2]),
-            (vec![2, 3, 4, 5], vec![5, 4, 3, 2]),
-            (vec![9, 8, 10, 11], vec![8, 9]),
-            (vec![9, 8, 3, 10, 11], vec![3, 9]),
-            ((1..=11).collect(), vec![1]),
-            ((2..=11).collect(), vec![9, 5, 4, 3, 2]),
-            ((2..=11).rev().collect(), vec![9, 5, 4, 3, 2]),
-        ];
-
-        for (i, tc) in test_cases.into_iter().enumerate() {
-            let actual_roots = service.get_roots_of_set(&mut tc.0.into_iter().map(|i| i.into()));
-            let expected_roots = BlockHashSet::from_iter(tc.1.into_iter().map(|i| i.into()));
-            assert_eq!(expected_roots, actual_roots, "{i: }");
-        }
     }
 }
