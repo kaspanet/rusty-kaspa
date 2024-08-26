@@ -233,7 +233,7 @@ impl ConnectionManager {
                 self.dns_seed_many(self.dns_seeders.len()).await;
             } else {
                 // Try to obtain at least twice the number of missing connections
-                self.dns_seed_sequential(2 * missing_connections).await;
+                self.dns_seed_with_address_target(2 * missing_connections).await;
             }
         }
     }
@@ -254,14 +254,15 @@ impl ConnectionManager {
     }
 
     /// Queries DNS seeders in random order, one after the other, until obtaining `min_addresses_to_fetch` addresses
-    async fn dns_seed_sequential(self: &Arc<Self>, min_addresses_to_fetch: usize) {
+    async fn dns_seed_with_address_target(self: &Arc<Self>, min_addresses_to_fetch: usize) {
         let cmgr = self.clone();
-        tokio::task::spawn_blocking(move || cmgr.dns_seed_sequential_blocking(min_addresses_to_fetch)).await.unwrap();
+        tokio::task::spawn_blocking(move || cmgr.dns_seed_with_address_target_blocking(min_addresses_to_fetch)).await.unwrap();
     }
 
-    fn dns_seed_sequential_blocking(self: &Arc<Self>, mut min_addresses_to_fetch: usize) {
+    fn dns_seed_with_address_target_blocking(self: &Arc<Self>, mut min_addresses_to_fetch: usize) {
         let shuffled_dns_seeders = self.dns_seeders.choose_multiple(&mut thread_rng(), self.dns_seeders.len());
         for &seeder in shuffled_dns_seeders {
+            // Query seeders sequentially until reaching the desired number of addresses
             let addrs_len = self.dns_seed_single(seeder);
             if addrs_len >= min_addresses_to_fetch {
                 break;
@@ -271,7 +272,7 @@ impl ConnectionManager {
         }
     }
 
-    /// Queries `num_seeders_to_query` DNS seeders in parallel
+    /// Queries `num_seeders_to_query` random DNS seeders in parallel
     async fn dns_seed_many(self: &Arc<Self>, num_seeders_to_query: usize) -> usize {
         info!("Querying {} DNS seeders", num_seeders_to_query);
         let shuffled_dns_seeders = self.dns_seeders.choose_multiple(&mut thread_rng(), num_seeders_to_query);
