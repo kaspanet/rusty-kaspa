@@ -129,7 +129,7 @@ message KaspadResponse {
     GetSystemInfoResponseMessage getSystemInfoResponse= 1105;
     GetFeeEstimateResponseMessage getFeeEstimateResponse = 1107;
     GetFeeEstimateExperimentalResponseMessage getFeeEstimateExperimentalResponse = 1109;
-    GetCurrentBlockColorResponseMessage getCurrentBlockColorResponse 1111;
+    GetCurrentBlockColorResponseMessage getCurrentBlockColorResponse = 1111;
   }
 }
 
