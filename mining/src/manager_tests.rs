@@ -1134,7 +1134,7 @@ mod tests {
             validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), tx).unwrap();
             assert!(!mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.is_empty());
         }
-        assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT as usize);
+        assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT);
 
         let heavy_tx = {
             let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT as u32, 0);
@@ -1144,9 +1144,9 @@ mod tests {
             heavy_tx.calculated_fee = Some(500_000);
             heavy_tx
         };
-        assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT as usize);
+        assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT);
         validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), heavy_tx.clone()).unwrap();
-        assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT as usize - 5);
+        assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT - 5);
         assert!(mining_manager.get_estimated_size() <= size_limit);
     }
 
