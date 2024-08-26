@@ -10,10 +10,10 @@ use crate::mempool::{
 use kaspa_consensus_core::{
     api::ConsensusApi,
     constants::UNACCEPTED_DAA_SCORE,
-    mass::transaction_estimated_serialized_size,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_core::{debug, info};
+use kaspa_utils::mem_size::MemSizeEstimator;
 
 impl Mempool {
     pub(crate) fn pre_validate_and_populate_transaction(
@@ -24,13 +24,7 @@ impl Mempool {
     ) -> RuleResult<TransactionPreValidation> {
         self.validate_transaction_unacceptance(&transaction)?;
         // Populate mass and estimated_size in the beginning, it will be used in multiple places throughout the validation and insertion.
-        // We only populate if it's `None` to allow tests set arbitrary values.
-        if transaction.calculated_compute_mass.is_none() {
-            transaction.calculated_compute_mass = Some(consensus.calculate_transaction_compute_mass(&transaction.tx));
-        }
-        if transaction.estimated_size.is_none() {
-            transaction.estimated_size = Some(transaction_estimated_serialized_size(&transaction.tx));
-        }
+        transaction.calculated_compute_mass = Some(consensus.calculate_transaction_compute_mass(&transaction.tx));
         self.validate_transaction_in_isolation(&transaction)?;
         let feerate_threshold = self.get_replace_by_fee_constraint(&transaction, rbf_policy)?;
         self.populate_mempool_entries(&mut transaction);
@@ -80,6 +74,7 @@ impl Mempool {
         self.validate_transaction_in_context(&transaction)?;
 
         // Before adding the transaction, check if there is room in the pool
+        let transaction_size = transaction.tx.estimate_mem_bytes();
         let txs_to_remove = self.transaction_pool.limit_transaction_count(&transaction)?;
         for x in txs_to_remove.iter() {
             self.remove_transaction(x, true, TxRemovalReason::MakingRoom, format!(" for {}", transaction_id).as_str())?;
@@ -89,7 +84,7 @@ impl Mempool {
             // also removes all transactions dependant on `x` we might already have enough room.
             #[allow(clippy::int_plus_one)]
             if self.transaction_pool.len() + 1 <= self.config.maximum_transaction_count
-                && self.transaction_pool.get_estimated_size() + transaction.estimated_size.unwrap() <= self.config.mempool_size_limit
+                && self.transaction_pool.get_estimated_size() + transaction_size <= self.config.mempool_size_limit
             {
                 break;
             }
@@ -99,8 +94,12 @@ impl Mempool {
         {
             assert!(
                 self.transaction_pool.len() + 1 <= self.config.maximum_transaction_count
-                    && self.transaction_pool.get_estimated_size() + transaction.estimated_size.unwrap()
-                        <= self.config.mempool_size_limit
+                    && self.transaction_pool.get_estimated_size() + transaction_size <= self.config.mempool_size_limit,
+                "Transactions in mempool: {}, max: {}, mempool size: {}, max: {}",
+                self.transaction_pool.len() + 1,
+                self.config.maximum_transaction_count,
+                self.transaction_pool.get_estimated_size() + transaction_size,
+                self.config.mempool_size_limit,
             );
         }
 
@@ -125,6 +124,12 @@ impl Mempool {
         if self.transaction_pool.has(&transaction_id) {
             return Err(RuleError::RejectDuplicate(transaction_id));
         }
+
+        let tx_size = transaction.tx.estimate_mem_bytes();
+        if tx_size > self.config.mempool_size_limit {
+            return Err(RuleError::RejectTxTooBig(transaction_id, tx_size, self.config.mempool_size_limit));
+        }
+
         if !self.config.accept_non_standard {
             self.check_transaction_standard_in_isolation(transaction)?;
         }

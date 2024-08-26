@@ -32,10 +32,6 @@ impl MempoolTransaction {
         let parent_id = self.id();
         transaction.tx.inputs.iter().any(|x| x.previous_outpoint.transaction_id == parent_id)
     }
-
-    pub(crate) fn estimated_size(&self) -> Option<u64> {
-        self.mtx.estimated_size
-    }
 }
 
 impl RbfPolicy {

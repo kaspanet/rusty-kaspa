@@ -19,6 +19,7 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, TransactionId, TransactionOutpoint},
 };
 use kaspa_core::{time::unix_now, trace, warn};
+use kaspa_utils::mem_size::MemSizeEstimator;
 use std::{
     collections::{hash_map::Keys, hash_set::Iter},
     sync::Arc,
@@ -64,7 +65,7 @@ pub(crate) struct TransactionsPool {
     /// last expire scan time in milliseconds
     last_expire_scan_time: u64,
 
-    estimated_size: u64,
+    estimated_size: usize,
 
     /// Store of UTXOs
     utxo_set: MempoolUtxoSet,
@@ -120,7 +121,7 @@ impl TransactionsPool {
         }
 
         self.utxo_set.add_transaction(&transaction.mtx);
-        self.estimated_size += transaction.estimated_size().expect("we expect this field to be already calculated");
+        self.estimated_size += transaction.mtx.tx.estimate_mem_bytes();
         self.all_transactions.insert(id, transaction);
         trace!("Added transaction {}", id);
         Ok(())
@@ -163,7 +164,7 @@ impl TransactionsPool {
 
         // Remove the transaction from the mempool UTXO set
         self.utxo_set.remove_transaction(&removed_tx.mtx, &parent_ids);
-        self.estimated_size -= removed_tx.estimated_size().unwrap();
+        self.estimated_size -= removed_tx.mtx.tx.estimate_mem_bytes();
 
         Ok(removed_tx)
     }
@@ -197,6 +198,7 @@ impl TransactionsPool {
         // Returns a vector of transactions to be removed that the caller has to remove actually.
         // The caller is golang validateAndInsertTransaction equivalent.
         // This behavior differs from golang impl.
+        let transaction_size = transaction.tx.estimate_mem_bytes();
         let mut txs_to_remove = Vec::with_capacity(1);
         let mut selected_size = 0;
         let mut num_selected = 0;
@@ -208,26 +210,27 @@ impl TransactionsPool {
             .filter(|mtx| mtx.priority == Priority::Low && !mtx.is_parent_of(transaction))
         {
             if self.len() + 1 - num_selected <= self.config.maximum_transaction_count
-                && self.estimated_size + transaction.estimated_size.unwrap() - selected_size <= self.config.mempool_size_limit
+                && self.estimated_size + transaction_size - selected_size <= self.config.mempool_size_limit
             {
                 break;
             }
 
             if tx.fee_rate() > transaction.calculated_feerate().unwrap() {
+                // panic!("{} {}", tx.fee_rate(), transaction.calculated_feerate().unwrap());
                 let err = RuleError::RejectMempoolIsFull;
                 warn!("{}", err);
                 return Err(err);
             }
 
             txs_to_remove.push(tx.id());
-            selected_size += tx.estimated_size().unwrap();
+            selected_size += tx.mtx.tx.estimate_mem_bytes();
             num_selected += 1;
         }
 
         Ok(txs_to_remove)
     }
 
-    pub(crate) fn get_estimated_size(&self) -> u64 {
+    pub(crate) fn get_estimated_size(&self) -> usize {
         self.estimated_size
     }
 

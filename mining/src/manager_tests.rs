@@ -35,6 +35,7 @@ mod tests {
         pay_to_address_script, pay_to_script_hash_signature_script,
         test_helpers::{create_transaction, create_transaction_with_change, op_true_script},
     };
+    use kaspa_utils::mem_size::MemSizeEstimator;
     use std::{iter::once, sync::Arc};
     use tokio::sync::mpsc::{error::TryRecvError, unbounded_channel};
 
@@ -1118,20 +1119,16 @@ mod tests {
 
     #[test]
     fn test_evict() {
+        const TX_COUNT: usize = 10;
+        let txs = (0..TX_COUNT).map(|i| create_transaction_with_utxo_entry(i as u32, 0)).collect_vec();
+
         let consensus = Arc::new(ConsensusMock::new());
         let counters = Arc::new(MiningCounters::default());
-        const TX_COUNT: u32 = 10;
-        const SIZE_LIMIT: u64 = 10_000;
         let mut config = Config::build_default(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS);
-        config.mempool_size_limit = SIZE_LIMIT;
+        let tx_size = txs[0].tx.estimate_mem_bytes();
+        let size_limit = TX_COUNT * tx_size;
+        config.mempool_size_limit = size_limit;
         let mining_manager = MiningManager::with_config(config, None, counters);
-        let txs = (0..TX_COUNT)
-            .map(|i| {
-                let mut tx = create_transaction_with_utxo_entry(i, 0);
-                tx.estimated_size = Some(1000);
-                tx
-            })
-            .collect_vec();
 
         for tx in txs {
             validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), tx).unwrap();
@@ -1139,13 +1136,18 @@ mod tests {
         }
         assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT as usize);
 
-        let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT, 0);
-        heavy_tx.estimated_size = Some(5000);
-        heavy_tx.calculated_fee = Some(5000);
+        let heavy_tx = {
+            let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT as u32, 0);
+            let mut inner_tx = (*(heavy_tx.tx)).clone();
+            inner_tx.payload = vec![0u8; TX_COUNT / 2 * tx_size - inner_tx.estimate_mem_bytes()];
+            heavy_tx.tx = inner_tx.into();
+            heavy_tx.calculated_fee = Some(500_000);
+            heavy_tx
+        };
         assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT as usize);
         validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), heavy_tx.clone()).unwrap();
-        assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT as usize - 4);
-        assert!(mining_manager.get_total_compute_mass() <= SIZE_LIMIT);
+        assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT as usize - 5);
+        assert!(mining_manager.get_estimated_size() <= size_limit);
     }
 
     fn validate_and_insert_mutable_transaction(
@@ -1323,7 +1325,6 @@ mod tests {
         mutable_tx.calculated_fee = Some(DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE);
         // Please note: this is the ConsensusMock version of the calculated_mass which differs from Consensus
         mutable_tx.calculated_compute_mass = Some(transaction_estimated_serialized_size(&mutable_tx.tx));
-        mutable_tx.estimated_size = Some(transaction_estimated_serialized_size(&mutable_tx.tx));
         mutable_tx.entries[0] = Some(entry);
 
         mutable_tx

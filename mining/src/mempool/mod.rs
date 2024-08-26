@@ -164,7 +164,7 @@ impl Mempool {
     }
 
     #[cfg(test)]
-    pub(crate) fn get_total_compute_mass(&self) -> u64 {
+    pub(crate) fn get_estimated_size(&self) -> usize {
         self.transaction_pool.get_estimated_size()
     }
 }

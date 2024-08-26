@@ -838,8 +838,8 @@ impl MiningManager {
     }
 
     #[cfg(test)]
-    pub(crate) fn get_total_compute_mass(&self) -> u64 {
-        self.mempool.read().get_total_compute_mass()
+    pub(crate) fn get_estimated_size(&self) -> usize {
+        self.mempool.read().get_estimated_size()
     }
 }
 
