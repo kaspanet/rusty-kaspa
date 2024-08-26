@@ -996,6 +996,9 @@ build_wrpc_wasm_bindgen_interface!(
         /// Generates a new block template for mining.
         /// Returned information: Block template information.
         GetBlockTemplate,
+        /// Checks if block is blue or not.
+        /// Returned information: Block blueness.
+        GetCurrentBlockColor,
         /// Retrieves the estimated DAA (Difficulty Adjustment Algorithm)
         /// score timestamp estimate.
         /// Returned information: DAA score timestamp estimate.

@@ -959,3 +959,13 @@ message GetFeeEstimateExperimentalResponseMessage {
 
   RPCError error = 1000;
 }
+
+message GetCurrentBlockColorRequestMessage {
+  string hash = 1;
+}
+
+message GetCurrentBlockColorResponseMessage {
+  bool blue = 1;
+
+  RPCError error = 1000;
+}
