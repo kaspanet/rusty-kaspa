@@ -255,7 +255,7 @@ impl Rpc {
                 }
                 let hash = argv.remove(0);
                 let hash = RpcHash::from_hex(hash.as_str())?;
-                let result = rpc.get_current_block_color_call(GetCurrentBlockColorRequest { hash }).await?;
+                let result = rpc.get_current_block_color_call(None, GetCurrentBlockColorRequest { hash }).await?;
                 self.println(&ctx, result);
             }
             _ => {

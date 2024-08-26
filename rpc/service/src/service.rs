@@ -389,12 +389,12 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     async fn get_current_block_color_call(
         &self,
         _connection: Option<&DynRpcConnection>,
-        request: GetCurrentBlockColorRequest
+        request: GetCurrentBlockColorRequest,
     ) -> RpcResult<GetCurrentBlockColorResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
 
         match session.async_get_current_block_color(request.hash).await {
-            Some(blue) => Ok(GetCurrentBlockColorResponse::new(blue)),
+            Some(blue) => Ok(GetCurrentBlockColorResponse { blue }),
             None => Err(RpcError::MergerNotFound(request.hash)),
         }
     }
