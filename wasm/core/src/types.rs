@@ -30,7 +30,7 @@ impl From<String> for HexString {
 impl TryFrom<HexString> for String {
     type Error = &'static str;
 
-    fn try_from(value: HexString) -> Result<String, Self::Error> {
+    fn try_from(value: HexString) -> std::result::Result<String, Self::Error> {
         value.as_string().ok_or("Supplied value is not a string")
     }
 }

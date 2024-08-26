@@ -73,6 +73,8 @@ impl Factory {
                 GetCoinSupply,
                 Ping,
                 GetMetrics,
+                GetConnections,
+                GetSystemInfo,
                 GetServerInfo,
                 GetSyncStatus,
                 GetDaaScoreTimestampEstimate,

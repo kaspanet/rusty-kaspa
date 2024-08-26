@@ -18,11 +18,13 @@ crate-type = ["cdylib"]
 cfg-if.workspace = true
 js-sys.workspace = true
 kaspa-addresses.workspace = true
+kaspa-bip32.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-wasm.workspace = true
 kaspa-core.workspace = true
 kaspa-math.workspace = true
 kaspa-pow.workspace = true
+kaspa-txscript.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-wasm-core.workspace = true
@@ -40,10 +42,12 @@ workflow-wasm.workspace = true
 wasm32-sdk = [
     "kaspa-wallet-core/wasm32-sdk",
     "kaspa-pow/wasm32-sdk",
+    "kaspa-txscript/wasm32-sdk",
 ]
 wasm32-core = [
     "kaspa-wallet-core/wasm32-core",
     "kaspa-pow/wasm32-sdk",
+    "kaspa-txscript/wasm32-sdk",
 ]
 wasm32-rpc = [
     "kaspa-consensus-core/wasm32-sdk",

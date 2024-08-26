@@ -42,8 +42,12 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// - `is_wrpc_client` - whether the wallet is connected to a node via wRPC
     async fn get_status_call(self: Arc<Self>, request: GetStatusRequest) -> Result<GetStatusResponse>;
 
-    async fn connect(self: Arc<Self>, url: Option<String>, network_id: NetworkId) -> Result<()> {
-        self.connect_call(ConnectRequest { url, network_id }).await?;
+    /// Synchronous connect call (blocking, single attempt, requires sync).
+    async fn connect(self: Arc<Self>, url: Option<String>, network_id: &NetworkId) -> Result<()> {
+        let retry_on_error = false;
+        let block_async_connect = true;
+        let require_sync = true;
+        self.connect_call(ConnectRequest { url, network_id: *network_id, retry_on_error, block_async_connect, require_sync }).await?;
         Ok(())
     }
 

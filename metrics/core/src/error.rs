@@ -6,6 +6,9 @@ pub enum Error {
     #[error("{0}")]
     Custom(String),
 
+    #[error("Missing metrics data `{0}`")]
+    MissingData(&'static str),
+
     #[error(transparent)]
     RpcError(#[from] RpcError),
 }

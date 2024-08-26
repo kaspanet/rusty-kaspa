@@ -30,7 +30,7 @@ export interface ISerializableTransactionInput {
     index: number;
     sequence: bigint;
     sigOpCount: number;
-    signatureScript: HexString;
+    signatureScript?: HexString;
     utxo: ISerializableUtxoEntry;
 }
 
@@ -77,3 +77,9 @@ export interface ISerializableTransaction {
 }
 
 "#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(extends = js_sys::Array, typescript_type = "ISerializableTransaction")]
+    pub type SerializableTransactionT;
+}

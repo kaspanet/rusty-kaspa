@@ -9,6 +9,9 @@ include.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[build-dependencies]
+duct = "0.13.7"
+
 [dependencies]
 arc-swap.workspace = true
 async-channel.workspace = true
@@ -19,16 +22,20 @@ faster-hex.workspace = true
 ipnet.workspace = true
 itertools.workspace = true
 log.workspace = true
+num_cpus.workspace = true
 once_cell.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
+sha2.workspace = true
 smallvec.workspace = true
+sysinfo.workspace = true
 thiserror.workspace = true
 triggered.workspace = true
 uuid.workspace = true
 wasm-bindgen.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+mac_address.workspace = true
 rlimit.workspace = true
 
 [dev-dependencies]

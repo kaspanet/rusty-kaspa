@@ -1,5 +1,4 @@
 use crate::imports::*;
-use kaspa_wrpc_client::Resolver;
 
 #[derive(Default, Handler)]
 #[help("Connect to a Kaspa network")]
@@ -29,8 +28,8 @@ impl Connect {
             if is_public {
                 tpara!(
                     ctx,
-                    "Please note that default public nodes are community-operated and \
-                    accessing them may expose your IP address to different node providers. \
+                    "Please note that public node infrastructure is community-operated and \
+                    accessing it may expose your IP address to different node providers. \
                     Consider running your own node for better privacy. \
                     ",
                 );

@@ -43,7 +43,6 @@ impl WrpcNetAddress {
         }
     }
 }
-
 impl FromStr for WrpcNetAddress {
     type Err = AddrParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {

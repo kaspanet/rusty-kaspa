@@ -31,6 +31,7 @@ thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
 zeroize.workspace = true
+kaspa-consensus-core.workspace = true
 
 [dev-dependencies]
 faster-hex.workspace = true

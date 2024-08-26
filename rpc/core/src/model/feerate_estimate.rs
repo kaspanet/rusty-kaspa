@@ -1,5 +1,6 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
+use workflow_serializer::prelude::*;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -11,7 +12,7 @@ pub struct RpcFeerateBucket {
     pub estimated_seconds: f64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcFeeEstimate {
     /// *Top-priority* feerate bucket. Provides an estimation of the feerate required for sub-second DAG inclusion.
@@ -42,7 +43,27 @@ impl RpcFeeEstimate {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+impl Serializer for RpcFeeEstimate {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcFeerateBucket, &self.priority_bucket, writer)?;
+        store!(Vec<RpcFeerateBucket>, &self.normal_buckets, writer)?;
+        store!(Vec<RpcFeerateBucket>, &self.low_buckets, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcFeeEstimate {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let priority_bucket = load!(RpcFeerateBucket, reader)?;
+        let normal_buckets = load!(Vec<RpcFeerateBucket>, reader)?;
+        let low_buckets = load!(Vec<RpcFeerateBucket>, reader)?;
+        Ok(Self { priority_bucket, normal_buckets, low_buckets })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcFeeEstimateVerboseExperimentalData {
     pub mempool_ready_transactions_count: u64,
@@ -52,4 +73,37 @@ pub struct RpcFeeEstimateVerboseExperimentalData {
     pub next_block_template_feerate_min: f64,
     pub next_block_template_feerate_median: f64,
     pub next_block_template_feerate_max: f64,
+}
+
+impl Serializer for RpcFeeEstimateVerboseExperimentalData {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(u64, &self.mempool_ready_transactions_count, writer)?;
+        store!(u64, &self.mempool_ready_transactions_total_mass, writer)?;
+        store!(u64, &self.network_mass_per_second, writer)?;
+        store!(f64, &self.next_block_template_feerate_min, writer)?;
+        store!(f64, &self.next_block_template_feerate_median, writer)?;
+        store!(f64, &self.next_block_template_feerate_max, writer)?;
+        Ok(())
+    }
+}
+
+impl Deserializer for RpcFeeEstimateVerboseExperimentalData {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let mempool_ready_transactions_count = load!(u64, reader)?;
+        let mempool_ready_transactions_total_mass = load!(u64, reader)?;
+        let network_mass_per_second = load!(u64, reader)?;
+        let next_block_template_feerate_min = load!(f64, reader)?;
+        let next_block_template_feerate_median = load!(f64, reader)?;
+        let next_block_template_feerate_max = load!(f64, reader)?;
+        Ok(Self {
+            mempool_ready_transactions_count,
+            mempool_ready_transactions_total_mass,
+            network_mass_per_second,
+            next_block_template_feerate_min,
+            next_block_template_feerate_median,
+            next_block_template_feerate_max,
+        })
+    }
 }

@@ -77,6 +77,7 @@ impl Account for Resident {
             RESIDENT_ACCOUNT_KIND.into(),
             *self.id(),
             self.name(),
+            self.balance(),
             AssocPrvKeyDataIds::None,
             self.receive_address().ok(),
             self.change_address().ok(),

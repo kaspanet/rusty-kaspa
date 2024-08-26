@@ -4,6 +4,17 @@ use crate::{
 };
 use kaspa_hashes::HASH_SIZE;
 
+/// Temp enum for the transition phases of KIP9
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Kip9Version {
+    /// Initial KIP9 mass calculation, w/o the relaxed formula and summing storage mass and compute mass
+    Alpha,
+
+    /// Currently proposed KIP9 mass calculation, with the relaxed formula (for the cases `|O| = 1 OR |O| <= |I| <= 2`),
+    /// and using a maximum operator over storage and compute mass
+    Beta,
+}
+
 // transaction_estimated_serialized_size is the estimated size of a transaction in some
 // serialization. This has to be deterministic, but not necessarily accurate, since
 // it's only used as the size component in the transaction and block mass limit

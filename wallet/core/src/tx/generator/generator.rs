@@ -66,6 +66,7 @@ use crate::tx::{
 use crate::utxo::{NetworkParams, UtxoContext, UtxoEntryReference};
 use kaspa_consensus_client::UtxoEntry;
 use kaspa_consensus_core::constants::UNACCEPTED_DAA_SCORE;
+use kaspa_consensus_core::mass::Kip9Version;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use kaspa_txscript::pay_to_address_script;
@@ -88,6 +89,11 @@ const TRANSACTION_MASS_BOUNDARY_FOR_STAGE_INPUT_ACCUMULATION: u64 = MAXIMUM_STAN
 struct Context {
     /// iterator containing UTXO entries available for transaction generation
     utxo_source_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
+    /// List of priority UTXO entries, that are consumed before polling the iterator
+    priority_utxo_entries: Option<VecDeque<UtxoEntryReference>>,
+    /// HashSet containing priority UTXO entries, used for filtering
+    /// for potential duplicates from the iterator
+    priority_utxo_entry_filter: Option<HashSet<UtxoEntryReference>>,
     /// total number of UTXOs consumed by the single generator instance
     aggregated_utxos: usize,
     /// total fees of all transactions issued by
@@ -210,7 +216,7 @@ struct Data {
 
 impl Data {
     fn new(calc: &MassCalculator) -> Self {
-        let aggregate_mass = calc.blank_transaction_mass();
+        let aggregate_mass = calc.blank_transaction_compute_mass();
 
         Data {
             inputs: vec![],
@@ -261,7 +267,7 @@ struct Inner {
     // Current network id
     network_id: NetworkId,
     // Current network params
-    network_params: NetworkParams,
+    network_params: &'static NetworkParams,
 
     // Source Utxo Context (Used for source UtxoEntry aggregation)
     source_utxo_context: Option<UtxoContext>,
@@ -340,6 +346,7 @@ impl Generator {
             multiplexer,
             utxo_iterator,
             source_utxo_context: utxo_context,
+            priority_utxo_entries,
             sig_op_count,
             minimum_signatures,
             change_address,
@@ -351,7 +358,7 @@ impl Generator {
 
         let network_type = NetworkType::from(network_id);
         let network_params = NetworkParams::from(network_id);
-        let mass_calculator = MassCalculator::new(&network_id.into(), &network_params);
+        let mass_calculator = MassCalculator::new(&network_id.into(), network_params);
 
         let (final_transaction_outputs, final_transaction_amount) = match final_transaction_destination {
             PaymentDestination::Change => {
@@ -396,11 +403,11 @@ impl Generator {
         }
 
         let standard_change_output_mass =
-            mass_calculator.calc_mass_for_output(&TransactionOutput::new(0, pay_to_address_script(&change_address)));
-        let signature_mass_per_input = mass_calculator.calc_signature_mass(minimum_signatures);
-        let final_transaction_outputs_compute_mass = mass_calculator.calc_mass_for_outputs(&final_transaction_outputs);
+            mass_calculator.calc_compute_mass_for_output(&TransactionOutput::new(0, pay_to_address_script(&change_address)));
+        let signature_mass_per_input = mass_calculator.calc_compute_mass_for_signature(minimum_signatures);
+        let final_transaction_outputs_compute_mass = mass_calculator.calc_compute_mass_for_outputs(&final_transaction_outputs);
         let final_transaction_payload = final_transaction_payload.unwrap_or_default();
-        let final_transaction_payload_mass = mass_calculator.calc_mass_for_payload(final_transaction_payload.len());
+        let final_transaction_payload_mass = mass_calculator.calc_compute_mass_for_payload(final_transaction_payload.len());
         let final_transaction_outputs_harmonic =
             mass_calculator.calc_storage_mass_output_harmonic(&final_transaction_outputs).ok_or(Error::MassCalculationError)?;
 
@@ -415,8 +422,14 @@ impl Generator {
             return Err(Error::GeneratorTransactionOutputsAreTooHeavy { mass: mass_sanity_check, kind: "compute mass" });
         }
 
+        let priority_utxo_entry_filter = priority_utxo_entries.as_ref().map(|entries| entries.iter().cloned().collect());
+        // remap to VecDeque as this list gets drained
+        let priority_utxo_entries = priority_utxo_entries.map(|entries| entries.into_iter().collect::<VecDeque<_>>());
+
         let context = Mutex::new(Context {
             utxo_source_iterator: utxo_iterator,
+            priority_utxo_entries,
+            priority_utxo_entry_filter,
             number_of_transactions: 0,
             aggregated_utxos: 0,
             aggregate_fees: 0,
@@ -465,7 +478,7 @@ impl Generator {
 
     /// Returns current [`NetworkParams`]
     pub fn network_params(&self) -> &NetworkParams {
-        &self.inner.network_params
+        self.inner.network_params
     }
 
     /// The underlying [`UtxoContext`] (if available).
@@ -528,15 +541,29 @@ impl Generator {
     }
 
     /// Get next UTXO entry. This function obtains UTXO in the following order:
-    /// 1. From the UTXO stash (used to store UTxOs that were not used in the previous transaction)
+    /// 1. From the UTXO stash (used to store UTxOs that were consumed during previous transaction generation but were rejected due to various conditions, such as mass overflow)
     /// 2. From the current stage
-    /// 3. From the UTXO source iterator
+    /// 3. From priority UTXO entries
+    /// 4. From the UTXO source iterator (while filtering against priority UTXO entries)
     fn get_utxo_entry(&self, context: &mut Context, stage: &mut Stage) -> Option<UtxoEntryReference> {
         context
             .utxo_stash
             .pop_front()
             .or_else(|| stage.utxo_iterator.as_mut().and_then(|utxo_stage_iterator| utxo_stage_iterator.next()))
-            .or_else(|| context.utxo_source_iterator.next())
+            .or_else(|| context.priority_utxo_entries.as_mut().and_then(|entries| entries.pop_front()))
+            .or_else(|| loop {
+                let utxo_entry = context.utxo_source_iterator.next()?;
+
+                if let Some(filter) = context.priority_utxo_entry_filter.as_ref() {
+                    if filter.contains(&utxo_entry) {
+                        // skip the entry from the iterator intake
+                        // if it has been supplied as a priority entry
+                        continue;
+                    }
+                }
+
+                break Some(utxo_entry);
+            })
     }
 
     /// Calculate relay transaction mass for the current transaction `data`
@@ -636,14 +663,14 @@ impl Generator {
 
         let input = TransactionInput::new(utxo.outpoint.clone().into(), vec![], 0, self.inner.sig_op_count);
         let input_amount = utxo.amount();
-        let input_compute_mass = calc.calc_mass_for_input(&input) + self.inner.signature_mass_per_input;
+        let input_compute_mass = calc.calc_compute_mass_for_input(&input) + self.inner.signature_mass_per_input;
 
         // NOTE: relay transactions have no storage mass
         // mass threshold reached, yield transaction
         if data.aggregate_mass
             + input_compute_mass
             + self.inner.standard_change_output_compute_mass
-            + self.inner.network_params.additional_compound_transaction_mass
+            + self.inner.network_params.additional_compound_transaction_mass()
             > MAXIMUM_STANDARD_TRANSACTION_MASS
         {
             // note, we've used input for mass boundary calc and now abandon it
@@ -651,7 +678,7 @@ impl Generator {
 
             context.utxo_stash.push_back(utxo_entry_reference);
             data.aggregate_mass +=
-                self.inner.standard_change_output_compute_mass + self.inner.network_params.additional_compound_transaction_mass;
+                self.inner.standard_change_output_compute_mass + self.inner.network_params.additional_compound_transaction_mass();
             data.transaction_fees = self.calc_relay_transaction_compute_fees(data);
             stage.aggregate_fees += data.transaction_fees;
             context.aggregate_fees += data.transaction_fees;
@@ -839,8 +866,11 @@ impl Generator {
                     calc.calc_storage_mass_output_harmonic_single(change_value) + self.inner.final_transaction_outputs_harmonic;
                 let storage_mass_with_change = self.calc_storage_mass(data, output_harmonic_with_change);
 
+                // TODO - review and potentially simplify:
+                // this profiles the storage mass with change and without change
+                // and decides which one to use based on the fees
                 if storage_mass_with_change == 0
-                    || (self.inner.network_params.mass_combination_strategy == MassCombinationStrategy::Max
+                    || (self.inner.network_params.kip9_version() == Kip9Version::Beta // max(compute vs storage)
                         && storage_mass_with_change < compute_mass_with_change)
                 {
                     0
@@ -881,7 +911,7 @@ impl Generator {
 
         let compute_mass = data.aggregate_mass
             + self.inner.standard_change_output_compute_mass
-            + self.inner.network_params.additional_compound_transaction_mass;
+            + self.inner.network_params.additional_compound_transaction_mass();
         let compute_fees = calc.calc_minimum_transaction_fee_from_mass(compute_mass);
 
         // TODO - consider removing this as calculated storage mass should produce `0` value

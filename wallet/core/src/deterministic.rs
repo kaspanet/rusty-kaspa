@@ -2,7 +2,7 @@
 //! Deterministic byte sequence generation (used by Account ids).
 //!
 
-pub use crate::account::{bip32, keypair, legacy, multisig};
+pub use crate::account::{bip32, bip32watch, keypair, legacy, multisig};
 use crate::encryption::sha256_hash;
 use crate::imports::*;
 use crate::storage::PrvKeyDataId;
@@ -101,7 +101,7 @@ where
     T: AsSlice<Element = PrvKeyDataId> + BorshSerialize,
 {
     let mut hashes: [Hash; N] = [Hash::default(); N];
-    let bytes = hashable.try_to_vec().unwrap();
+    let bytes = borsh::to_vec(&hashable).unwrap();
     hashes[0] = Hash::from_slice(sha256_hash(&bytes).as_ref());
     for i in 1..N {
         hashes[i] = Hash::from_slice(sha256_hash(&hashes[i - 1].as_bytes()).as_ref());
@@ -143,7 +143,23 @@ pub fn from_multisig<const N: usize>(prv_key_data_ids: &Option<Arc<Vec<PrvKeyDat
         ecdsa: Some(data.ecdsa),
         account_index: None,
         secp256k1_public_key: None,
-        data: Some(data.xpub_keys.try_to_vec().unwrap()),
+        data: Some(borsh::to_vec(&data.xpub_keys).unwrap()),
+    };
+    make_hashes(hashable)
+}
+
+/// Create deterministic hashes from bip32-watch multisig account data.
+pub fn from_bip32_watch_multisig<const N: usize>(
+    prv_key_data_ids: &Option<Arc<Vec<PrvKeyDataId>>>,
+    data: &bip32watch::Payload,
+) -> [Hash; N] {
+    let hashable = DeterministicHashData {
+        account_kind: &multisig::MULTISIG_ACCOUNT_KIND.into(),
+        prv_key_data_ids,
+        ecdsa: Some(data.ecdsa),
+        account_index: None,
+        secp256k1_public_key: None,
+        data: Some(borsh::to_vec(&data.xpub_keys).unwrap()),
     };
     make_hashes(hashable)
 }
@@ -168,6 +184,19 @@ pub fn from_public_key<const N: usize>(account_kind: &AccountKind, public_key: &
         prv_key_data_ids: &None,
         ecdsa: None,
         account_index: None,
+        secp256k1_public_key: Some(public_key.serialize().to_vec()),
+        data: None,
+    };
+    make_hashes(hashable)
+}
+
+/// Create deterministic hashes from bip32-watch.
+pub fn from_bip32_watch<const N: usize>(public_key: &PublicKey) -> [Hash; N] {
+    let hashable: DeterministicHashData<[PrvKeyDataId; 0]> = DeterministicHashData {
+        account_kind: &bip32watch::BIP32_WATCH_ACCOUNT_KIND.into(),
+        prv_key_data_ids: &None,
+        ecdsa: None,
+        account_index: Some(0),
         secp256k1_public_key: Some(public_key.serialize().to_vec()),
         data: None,
     };

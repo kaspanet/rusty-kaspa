@@ -139,7 +139,8 @@ impl TryFrom<&SerializableTransactionInput> for TransactionInput {
         let previous_outpoint = TransactionOutpoint::new(serializable_input.transaction_id, serializable_input.index);
         let inner = TransactionInputInner {
             previous_outpoint,
-            signature_script: serializable_input.signature_script.clone(),
+            // TODO - convert to Option<Vec<u8>> and use hex serialization over Option
+            signature_script: (!serializable_input.signature_script.is_empty()).then_some(serializable_input.signature_script.clone()),
             sequence: serializable_input.sequence.parse()?,
             sig_op_count: serializable_input.sig_op_count,
             utxo: Some(utxo),
@@ -158,7 +159,8 @@ impl TryFrom<&TransactionInput> for SerializableTransactionInput {
         Ok(Self {
             transaction_id: inner.previous_outpoint.transaction_id(),
             index: inner.previous_outpoint.index(),
-            signature_script: inner.signature_script.clone(),
+            // TODO - convert to Option<Vec<u8>> and use hex serialization over Option
+            signature_script: inner.signature_script.clone().unwrap_or_default(),
             sequence: inner.sequence.to_string(),
             sig_op_count: inner.sig_op_count,
             utxo,

@@ -26,35 +26,104 @@ pub struct Inner {
 impl Inner {
     async fn open_db(&self, db_name: String) -> Result<IdbDatabase> {
         call_async_no_send!(async move {
-            let mut db_req: OpenDbRequest = IdbDatabase::open_u32(&db_name, 1)
+            let mut db_req: OpenDbRequest = IdbDatabase::open_u32(&db_name, 2)
                 .map_err(|err| Error::Custom(format!("Failed to open indexdb database {:?}", err)))?;
-
-            fn on_upgrade_needed(evt: &IdbVersionChangeEvent) -> Result<(), JsValue> {
-                // Check if the object store exists; create it if it doesn't
-                if !evt.db().object_store_names().any(|n| n == TRANSACTIONS_STORE_NAME) {
+            let fix_timestamp = Arc::new(Mutex::new(false));
+            let fix_timestamp_clone = fix_timestamp.clone();
+            let on_upgrade_needed = move |evt: &IdbVersionChangeEvent| -> Result<(), JsValue> {
+                let old_version = evt.old_version();
+                if old_version < 1.0 {
                     let object_store = evt.db().create_object_store(TRANSACTIONS_STORE_NAME)?;
+                    let db_index_params = IdbIndexParameters::new();
+                    db_index_params.set_unique(true);
                     object_store.create_index_with_params(
                         TRANSACTIONS_STORE_ID_INDEX,
                         &IdbKeyPath::str(TRANSACTIONS_STORE_ID_INDEX),
-                        IdbIndexParameters::new().unique(true),
+                        &db_index_params,
                     )?;
                     object_store.create_index_with_params(
                         TRANSACTIONS_STORE_TIMESTAMP_INDEX,
                         &IdbKeyPath::str(TRANSACTIONS_STORE_TIMESTAMP_INDEX),
-                        IdbIndexParameters::new().unique(false),
+                        &db_index_params,
                     )?;
                     object_store.create_index_with_params(
                         TRANSACTIONS_STORE_DATA_INDEX,
                         &IdbKeyPath::str(TRANSACTIONS_STORE_DATA_INDEX),
-                        IdbIndexParameters::new().unique(false),
+                        &db_index_params,
                     )?;
+
+                // these changes are not required for new db
+                } else if old_version < 2.0 {
+                    *fix_timestamp_clone.lock().unwrap() = true;
                 }
+                // // Check if the object store exists; create it if it doesn't
+                // if !evt.db().object_store_names().any(|n| n == TRANSACTIONS_STORE_NAME) {
+
+                // }
                 Ok(())
-            }
+            };
 
             db_req.set_on_upgrade_needed(Some(on_upgrade_needed));
 
-            db_req.await.map_err(|err| Error::Custom(format!("Open database request failed for indexdb database {:?}", err)))
+            let db =
+                db_req.await.map_err(|err| Error::Custom(format!("Open database request failed for indexdb database {:?}", err)))?;
+
+            if *fix_timestamp.lock().unwrap() {
+                log_info!("DEBUG: fixing timestamp");
+                let idb_tx = db
+                    .transaction_on_one_with_mode(TRANSACTIONS_STORE_NAME, IdbTransactionMode::Readwrite)
+                    .map_err(|err| Error::Custom(format!("Failed to open indexdb transaction for reading {:?}", err)))?;
+                let store = idb_tx
+                    .object_store(TRANSACTIONS_STORE_NAME)
+                    .map_err(|err| Error::Custom(format!("Failed to open indexdb object store for reading {:?}", err)))?;
+                let binding = store
+                    .index(TRANSACTIONS_STORE_TIMESTAMP_INDEX)
+                    .map_err(|err| Error::Custom(format!("Failed to open indexdb indexed store cursor {:?}", err)))?;
+                let cursor = binding
+                    .open_cursor_with_range_and_direction(&JsValue::NULL, web_sys::IdbCursorDirection::Prev)
+                    .map_err(|err| Error::Custom(format!("Failed to open indexdb store cursor for reading {:?}", err)))?;
+                let cursor = cursor.await.map_err(|err| Error::Custom(format!("Failed to open indexdb store cursor {:?}", err)))?;
+
+                // let next_year_date = Date::new_0();
+                // next_year_date.set_full_year(next_year_date.get_full_year() + 1);
+                // let next_year_ts = next_year_date.get_time();
+
+                if let Some(cursor) = cursor {
+                    loop {
+                        let js_value = cursor.value();
+                        if let Ok(record) = transaction_record_from_js_value(&js_value, None) {
+                            if record.unixtime_msec.is_some() {
+                                let new_js_value = transaction_record_to_js_value(&record, None, ENCRYPTION_KIND)?;
+
+                                //log_info!("DEBUG: new_js_value: {:?}", new_js_value);
+
+                                cursor
+                                    .update(&new_js_value)
+                                    .map_err(|err| Error::Custom(format!("Failed to update record timestamp {:?}", err)))?
+                                    .await
+                                    .map_err(|err| Error::Custom(format!("Failed to update record timestamp {:?}", err)))?;
+                            }
+                        }
+                        if let Ok(b) = cursor.continue_cursor() {
+                            match b.await {
+                                Ok(b) => {
+                                    if !b {
+                                        break;
+                                    }
+                                }
+                                Err(err) => {
+                                    log_info!("DEBUG IDB: Loading transaction error,  cursor.continue_cursor() {:?}", err);
+                                    break;
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            Ok(db)
         })
     }
 }
@@ -218,36 +287,73 @@ impl TransactionRecordStore for TransactionStore {
         binding: &Binding,
         network_id: &NetworkId,
         _filter: Option<Vec<TransactionKind>>,
-        _range: std::ops::Range<usize>,
+        range: std::ops::Range<usize>,
     ) -> Result<TransactionRangeResult> {
-        // log_info!("DEBUG IDB: Loading transaction records for range {:?}", _range);
-
+        log_info!("DEBUG IDB: Loading transaction records for range {:?}", range);
         let binding_str = binding.to_hex();
         let network_id_str = network_id.to_string();
         let db_name = self.make_db_name(&binding_str, &network_id_str);
-
         let inner = self.inner().clone();
-
         call_async_no_send!(async move {
             let db = inner.open_db(db_name).await?;
-
             let idb_tx = db
                 .transaction_on_one_with_mode(TRANSACTIONS_STORE_NAME, IdbTransactionMode::Readonly)
                 .map_err(|err| Error::Custom(format!("Failed to open indexdb transaction for reading {:?}", err)))?;
-
             let store = idb_tx
                 .object_store(TRANSACTIONS_STORE_NAME)
                 .map_err(|err| Error::Custom(format!("Failed to open indexdb object store for reading {:?}", err)))?;
-
-            let array = store
-                .get_all()
-                .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?
+            let total = store
+                .count()
+                .map_err(|err| Error::Custom(format!("Failed to count indexdb records {:?}", err)))?
                 .await
-                .map_err(|err| Error::Custom(format!("Failed to get transaction record from indexdb {:?}", err)))?;
+                .map_err(|err| Error::Custom(format!("Failed to count indexdb records from future {:?}", err)))?;
 
-            let transactions = array
+            let binding = store
+                .index(TRANSACTIONS_STORE_TIMESTAMP_INDEX)
+                .map_err(|err| Error::Custom(format!("Failed to open indexdb indexed store cursor {:?}", err)))?;
+            let cursor = binding
+                .open_cursor_with_range_and_direction(&JsValue::NULL, web_sys::IdbCursorDirection::Prev)
+                .map_err(|err| Error::Custom(format!("Failed to open indexdb store cursor for reading {:?}", err)))?;
+            let mut records = vec![];
+            let cursor = cursor.await.map_err(|err| Error::Custom(format!("Failed to open indexdb store cursor {:?}", err)))?;
+            if let Some(cursor) = cursor {
+                if range.start > 0 {
+                    let res = cursor
+                        .advance(range.start as u32)
+                        .map_err(|err| Error::Custom(format!("Unable to advance indexdb cursor {:?}", err)))?
+                        .await;
+                    let _res = res.map_err(|err| Error::Custom(format!("Unable to advance indexdb cursor future {:?}", err)))?;
+                    // if !res {
+                    //     //return Err(Error::Custom(format!("Unable to advance indexdb cursor future {:?}", err)));
+                    // }
+                }
+                let count = range.end - range.start;
+                loop {
+                    if records.len() < count {
+                        records.push(cursor.value());
+                        if let Ok(b) = cursor.continue_cursor() {
+                            match b.await {
+                                Ok(b) => {
+                                    if !b {
+                                        break;
+                                    }
+                                }
+                                Err(err) => {
+                                    log_info!("DEBUG IDB: Loading transaction error,  cursor.continue_cursor() {:?}", err);
+                                    break;
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+            }
+            let transactions = records
                 .iter()
-                .filter_map(|js_value| match transaction_record_from_js_value(&js_value, None) {
+                .filter_map(|js_value| match transaction_record_from_js_value(js_value, None) {
                     Ok(transaction_record) => Some(Arc::new(transaction_record)),
                     Err(err) => {
                         log_error!("Failed to deserialize transaction record from indexdb {:?}", err);
@@ -256,8 +362,7 @@ impl TransactionRecordStore for TransactionStore {
                 })
                 .collect::<Vec<_>>();
 
-            let total = transactions.len() as u64;
-            Ok(TransactionRangeResult { transactions, total })
+            Ok(TransactionRangeResult { transactions, total: total.into() })
         })
     }
 
@@ -285,7 +390,7 @@ impl TransactionRecordStore for TransactionStore {
         let inner = inner_guard.lock().unwrap().clone();
 
         call_async_no_send!(async move {
-            for (db_name, items) in &items.into_iter().group_by(|item| item.db_name.clone()) {
+            for (db_name, items) in &items.into_iter().chunk_by(|item| item.db_name.clone()) {
                 let db = inner.open_db(db_name).await?;
 
                 let idb_tx = db
@@ -474,16 +579,14 @@ fn transaction_record_to_js_value(
 ) -> Result<JsValue, Error> {
     let id = transaction_record.id.to_string();
     let unixtime_msec = transaction_record.unixtime_msec;
-    let mut borsh_data = vec![];
-    <TransactionRecord as BorshSerialize>::serialize(transaction_record, &mut borsh_data)?;
 
     let id_js_value = JsValue::from_str(&id);
     let timestamp_js_value = match unixtime_msec {
         Some(unixtime_msec) => {
-            let unixtime_sec = (unixtime_msec / 1000) as u32;
+            //let unixtime_sec = (unixtime_msec / 1000) as u32;
 
             let date = Date::new_0();
-            date.set_utc_seconds(unixtime_sec);
+            date.set_time(unixtime_msec as f64);
             date.into()
         }
         None => JsValue::NULL,
@@ -494,7 +597,7 @@ fn transaction_record_to_js_value(
     } else {
         Encryptable::from(transaction_record.clone())
     };
-    let encryped_data_vec = encryped_data.try_to_vec()?;
+    let encryped_data_vec = borsh::to_vec(&encryped_data)?;
     let borsh_data_uint8_arr = Uint8Array::from(encryped_data_vec.as_slice());
     let borsh_data_js_value = borsh_data_uint8_arr.into();
 
@@ -519,6 +622,6 @@ fn transaction_record_from_js_value(js_value: &JsValue, secret: Option<&Secret>)
 
         Ok(transaction_record.0)
     } else {
-        Err(Error::Custom("supplied argument must be an object".to_string()))
+        Err(Error::Custom("supplied argument must be an object, found ({js_value:?})".to_string()))
     }
 }

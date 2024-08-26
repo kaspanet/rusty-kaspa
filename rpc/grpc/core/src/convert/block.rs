@@ -15,6 +15,14 @@ from!(item: &kaspa_rpc_core::RpcBlock, protowire::RpcBlock, {
     }
 });
 
+from!(item: &kaspa_rpc_core::RpcRawBlock, protowire::RpcBlock, {
+    Self {
+        header: Some(protowire::RpcBlockHeader::from(&item.header)),
+        transactions: item.transactions.iter().map(protowire::RpcTransaction::from).collect(),
+        verbose_data: None,
+    }
+});
+
 from!(item: &kaspa_rpc_core::RpcBlockVerboseData, protowire::RpcBlockVerboseData, {
     Self {
         hash: item.hash.to_string(),
@@ -43,6 +51,17 @@ try_from!(item: &protowire::RpcBlock, kaspa_rpc_core::RpcBlock, {
             .try_into()?,
         transactions: item.transactions.iter().map(kaspa_rpc_core::RpcTransaction::try_from).collect::<Result<Vec<_>, _>>()?,
         verbose_data: item.verbose_data.as_ref().map(kaspa_rpc_core::RpcBlockVerboseData::try_from).transpose()?,
+    }
+});
+
+try_from!(item: &protowire::RpcBlock, kaspa_rpc_core::RpcRawBlock, {
+    Self {
+        header: item
+            .header
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("RpcBlock".to_string(), "header".to_string()))?
+            .try_into()?,
+        transactions: item.transactions.iter().map(kaspa_rpc_core::RpcTransaction::try_from).collect::<Result<Vec<_>, _>>()?,
     }
 });
 

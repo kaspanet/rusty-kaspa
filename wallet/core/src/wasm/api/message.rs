@@ -153,8 +153,16 @@ declare! {
      * @category Wallet API
      */
     export interface IConnectRequest {
-        url : string;
+        // destination wRPC node URL (if omitted, the resolver is used)
+        url? : string;
+        // network identifier
         networkId : NetworkId | string;
+        // retry on error
+        retryOnError? : boolean;
+        // block async connect (method will not return until the connection is established)
+        block? : boolean;
+        // require node to be synced (fail otherwise)
+        requireSync? : boolean;
     }
     "#,
 }
@@ -162,7 +170,10 @@ declare! {
 try_from! ( args: IConnectRequest, ConnectRequest, {
     let url = args.try_get_string("url")?;
     let network_id = args.get_network_id("networkId")?;
-    Ok(ConnectRequest { url, network_id })
+    let retry_on_error = args.try_get_bool("retryOnError")?.unwrap_or(true);
+    let block_async_connect = args.try_get_bool("block")?.unwrap_or(false);
+    let require_sync = args.try_get_bool("requireSync")?.unwrap_or(true);
+    Ok(ConnectRequest { url, network_id, retry_on_error, block_async_connect, require_sync })
 });
 
 declare! {
@@ -971,7 +982,7 @@ try_from! (args: IAccountsDiscoveryRequest, AccountsDiscoveryRequest, {
     let discovery_kind = if let Some(discovery_kind) = discovery_kind.as_string() {
         discovery_kind.parse()?
     } else {
-        AccountsDiscoveryKind::try_cast_from(&discovery_kind)?
+        AccountsDiscoveryKind::try_enum_from(&discovery_kind)?
     };
     let account_scan_extent = args.get_u32("accountScanExtent")?;
     let address_scan_extent = args.get_u32("addressScanExtent")?;
@@ -1312,7 +1323,7 @@ try_from!(args: IAccountsCreateNewAddressRequest, AccountsCreateNewAddressReques
     let value = args.get_value("addressKind")?;
     let kind: NewAddressKind = if let Some(string) = value.as_string() {
         string.parse()?
-    } else if let Ok(kind) = NewAddressKind::try_cast_from(&value) {
+    } else if let Ok(kind) = NewAddressKind::try_enum_from(&value) {
         kind
     } else {
         NewAddressKind::Receive

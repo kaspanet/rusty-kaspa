@@ -5,6 +5,45 @@
 use crate::imports::*;
 use crate::utxo::{UtxoContextBinding as UtxoProcessorBinding, UtxoContextId};
 
+#[wasm_bindgen(typescript_custom_section)]
+const ITransactionRecord: &'static str = r#"
+
+/**
+ * Type of a binding record.
+ * @see {@link IBinding}, {@link ITransactionDataVariant}, {@link ITransactionRecord}
+ * @category Wallet SDK
+ */
+export enum BindingType {
+    /**
+     * The data structure is associated with a user-supplied id.
+     * @see {@link IBinding}
+     */
+    Custom = "custom",
+    /**
+     * The data structure is associated with a wallet account.
+     * @see {@link IBinding}, {@link Account}
+     */
+    Account = "account",
+}
+
+/**
+ * Internal transaction data contained within the transaction record.
+ * @see {@link ITransactionRecord}
+ * @category Wallet SDK
+ */
+export interface IBinding {
+    type : BindingType;
+    data : HexString;
+}
+"#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(extends = Object, typescript_type = "IBinding")]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub type BindingT;
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "kebab-case")]
 #[serde(tag = "type", content = "id")]

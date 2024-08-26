@@ -174,8 +174,8 @@ impl<K> BorshDeserialize for ExtendedPublicKey<K>
 where
     K: PublicKey,
 {
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let Header { version, magic } = Header::deserialize(buf)?;
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let Header { version, magic } = Header::deserialize_reader(reader)?;
         if magic != Self::STORAGE_MAGIC {
             return Err(std::io::Error::new(std::io::ErrorKind::Other, "Invalid extended public key magic value"));
         }
@@ -183,13 +183,11 @@ where
             return Err(std::io::Error::new(std::io::ErrorKind::Other, "Invalid extended public key version"));
         }
 
-        let public_key_bytes: [u8; KEY_SIZE + 1] = buf[..KEY_SIZE + 1]
-            .try_into()
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Invalid extended public key"))?;
+        let mut public_key_bytes: [u8; KEY_SIZE + 1] = [0; KEY_SIZE + 1];
+        reader.read_exact(&mut public_key_bytes)?;
         let public_key = K::from_bytes(public_key_bytes)
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Invalid extended public key"))?;
-        *buf = &buf[KEY_SIZE + 1..];
-        let attrs = ExtendedKeyAttrs::deserialize(buf)?;
+        let attrs = ExtendedKeyAttrs::deserialize_reader(reader)?;
         Ok(Self { public_key, attrs })
     }
 }

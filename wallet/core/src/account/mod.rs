@@ -5,8 +5,15 @@
 
 pub mod descriptor;
 pub mod kind;
+pub mod pskb;
 pub mod variants;
+use kaspa_hashes::Hash;
+use kaspa_wallet_pskt::bundle::Bundle;
 pub use kind::*;
+use pskb::{
+    bundle_from_pskt_generator, bundle_to_finalizer_stream, pskb_signer_for_address, pskt_to_pending_transaction, PSKBSigner,
+    PSKTGenerator,
+};
 pub use variants::*;
 
 use crate::derivation::build_derivate_paths;
@@ -114,6 +121,14 @@ pub trait Account: AnySync + Send + Sync + 'static {
 
     fn name(&self) -> Option<String> {
         self.context().settings.name.clone()
+    }
+
+    fn feature(&self) -> Option<String> {
+        None
+    }
+
+    fn xpub_keys(&self) -> Option<&ExtendedPublicKeys> {
+        None
     }
 
     fn name_or_id(&self) -> String {
@@ -348,6 +363,66 @@ pub trait Account: AnySync + Send + Sync + 'static {
         Ok((generator.summary(), ids))
     }
 
+    async fn pskb_from_send_generator(
+        self: Arc<Self>,
+        destination: PaymentDestination,
+        priority_fee_sompi: Fees,
+        payload: Option<Vec<u8>>,
+        wallet_secret: Secret,
+        payment_secret: Option<Secret>,
+        abortable: &Abortable,
+    ) -> Result<Bundle, Error> {
+        let settings = GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, priority_fee_sompi, payload)?;
+        let keydata = self.prv_key_data(wallet_secret).await?;
+        let signer = Arc::new(PSKBSigner::new(self.clone().as_dyn_arc(), keydata, payment_secret));
+        let generator = Generator::try_new(settings, None, Some(abortable))?;
+        let pskt_generator = PSKTGenerator::new(generator, signer, self.wallet().address_prefix()?);
+        bundle_from_pskt_generator(pskt_generator).await
+    }
+
+    async fn pskb_sign(
+        self: Arc<Self>,
+        bundle: &Bundle,
+        wallet_secret: Secret,
+        payment_secret: Option<Secret>,
+        sign_for_address: Option<&Address>,
+    ) -> Result<Bundle, Error> {
+        let keydata = self.prv_key_data(wallet_secret).await?;
+        let signer = Arc::new(PSKBSigner::new(self.clone().as_dyn_arc(), keydata.clone(), payment_secret.clone()));
+
+        let network_id = self.wallet().clone().network_id()?;
+        let derivation = self.as_derivation_capable()?;
+
+        let (derivation_path, _) =
+            build_derivate_paths(&derivation.account_kind(), derivation.account_index(), derivation.cosigner_index())?;
+
+        let key_fingerprint = keydata.get_xprv(payment_secret.clone().as_ref())?.public_key().fingerprint();
+
+        match pskb_signer_for_address(bundle, signer, network_id, sign_for_address, derivation_path, key_fingerprint).await {
+            Ok(signer) => Ok(signer),
+            Err(e) => Err(Error::from(e.to_string())),
+        }
+    }
+
+    async fn pskb_broadcast(self: Arc<Self>, bundle: &Bundle) -> Result<Vec<Hash>, Error> {
+        let mut ids = Vec::new();
+        let mut stream = bundle_to_finalizer_stream(bundle);
+
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(pskt) => {
+                    let change = self.wallet().account()?.change_address()?;
+                    let transaction = pskt_to_pending_transaction(pskt, self.wallet().network_id()?, change)?;
+                    ids.push(transaction.try_submit(&self.wallet().rpc_api()).await?);
+                }
+                Err(e) => {
+                    eprintln!("Error processing a PSKT from bundle: {:?}", e);
+                }
+            }
+        }
+        Ok(ids)
+    }
+
     /// Execute a transfer to another wallet account.
     async fn transfer(
         self: Arc<Self>,
@@ -358,13 +433,14 @@ pub trait Account: AnySync + Send + Sync + 'static {
         payment_secret: Option<Secret>,
         abortable: &Abortable,
         notifier: Option<GenerationNotifier>,
+        guard: &WalletGuard,
     ) -> Result<(GeneratorSummary, Vec<kaspa_hashes::Hash>)> {
         let keydata = self.prv_key_data(wallet_secret).await?;
         let signer = Arc::new(Signer::new(self.clone().as_dyn_arc(), keydata, payment_secret));
 
         let destination_account = self
             .wallet()
-            .get_account_by_id(&destination_account_id)
+            .get_account_by_id(&destination_account_id, guard)
             .await?
             .ok_or_else(|| Error::AccountNotFound(destination_account_id))?;
 
@@ -524,6 +600,7 @@ pub trait DerivationCapableAccount: Account {
                     let settings = GeneratorSettings::try_new_with_iterator(
                         self.wallet().network_id()?,
                         Box::new(utxos.into_iter()),
+                        None,
                         change_address.clone(),
                         1,
                         1,
@@ -537,7 +614,7 @@ pub trait DerivationCapableAccount: Account {
 
                     let mut stream = generator.stream();
                     while let Some(transaction) = stream.try_next().await? {
-                        transaction.try_sign_with_keys(&keys)?;
+                        transaction.try_sign_with_keys(&keys, None)?;
                         let id = transaction.try_submit(&rpc).await?;
                         if let Some(notifier) = notifier {
                             notifier(index, aggregate_utxo_count, balance, Some(id));

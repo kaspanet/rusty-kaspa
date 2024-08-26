@@ -131,7 +131,7 @@ impl LocalStoreInner {
 
     async fn try_export(&self, wallet_secret: &Secret, _options: WalletExportOptions) -> Result<Vec<u8>> {
         let wallet = self.cache.read().unwrap().to_wallet(None, wallet_secret)?;
-        Ok(wallet.try_to_vec()?)
+        Ok(borsh::to_vec(&wallet)?)
     }
 
     fn storage(&self) -> Arc<Store> {

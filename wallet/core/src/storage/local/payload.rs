@@ -67,13 +67,13 @@ impl BorshSerialize for Payload {
 }
 
 impl BorshDeserialize for Payload {
-    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
-            StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
-        let prv_key_data = BorshDeserialize::deserialize(buf)?;
-        let accounts = BorshDeserialize::deserialize(buf)?;
-        let address_book = BorshDeserialize::deserialize(buf)?;
-        let encrypt_transactions = BorshDeserialize::deserialize(buf)?;
+            StorageHeader::deserialize_reader(reader)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
+        let prv_key_data = BorshDeserialize::deserialize_reader(reader)?;
+        let accounts = BorshDeserialize::deserialize_reader(reader)?;
+        let address_book = BorshDeserialize::deserialize_reader(reader)?;
+        let encrypt_transactions = BorshDeserialize::deserialize_reader(reader)?;
 
         Ok(Self { prv_key_data, accounts, address_book, encrypt_transactions })
     }

@@ -9,7 +9,7 @@ const TS_TRANSACTION_OUTPUT: &'static str = r#"
  */
 export interface ITransactionOutput {
     value: bigint;
-    scriptPublicKey: IScriptPublicKey;
+    scriptPublicKey: IScriptPublicKey | HexString;
 
     /** Optional verbose data provided by RPC */
     verboseData?: ITransactionOutputVerboseData;
@@ -25,6 +25,16 @@ export interface ITransactionOutputVerboseData {
     scriptPublicKeyAddress : string;
 }
 "#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "ITransactionOutput | TransactionOutput")]
+    pub type TransactionOutputT;
+    #[wasm_bindgen(typescript_type = "(ITransactionOutput | TransactionOutput)[]")]
+    pub type TransactionOutputArrayAsArgT;
+    #[wasm_bindgen(typescript_type = "TransactionOutput[]")]
+    pub type TransactionOutputArrayAsResultT;
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,7 +65,7 @@ impl TransactionOutput {
         self.inner.lock().unwrap()
     }
 
-    pub fn script_length(&self) -> usize {
+    pub fn script_public_key_length(&self) -> usize {
         self.inner().script_public_key.script().len()
     }
 }
@@ -69,7 +79,7 @@ impl TransactionOutput {
     }
 
     #[wasm_bindgen(getter, js_name = value)]
-    pub fn get_value(&self) -> u64 {
+    pub fn value(&self) -> u64 {
         self.inner().value
     }
 
@@ -114,25 +124,20 @@ impl From<&TransactionOutput> for cctx::TransactionOutput {
     }
 }
 
-impl TryFrom<&JsValue> for TransactionOutput {
+impl TryCastFromJs for TransactionOutput {
     type Error = Error;
-    fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
-        // workflow_log::log_trace!("js_value->TransactionOutput: {js_value:?}");
-        if let Some(object) = Object::try_from(js_value) {
-            let has_address = Object::has_own(object, &JsValue::from("address"));
-            workflow_log::log_trace!("js_value->TransactionOutput: has_address:{has_address:?}");
-            let value = object.get_u64("value")?;
-            let script_public_key = ScriptPublicKey::try_cast_from(object.get_value("scriptPublicKey")?)?;
-            Ok(TransactionOutput::new(value, script_public_key.into_owned()))
-        } else {
-            Err("TransactionInput must be an object".into())
-        }
-    }
-}
-
-impl TryFrom<JsValue> for TransactionOutput {
-    type Error = Error;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        Self::try_from(&js_value)
+    fn try_cast_from<'a, R>(value: &'a R) -> std::result::Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve_cast(value, || {
+            if let Some(object) = Object::try_from(value.as_ref()) {
+                let value = object.get_u64("value")?;
+                let script_public_key = ScriptPublicKey::try_owned_from(object.get_value("scriptPublicKey")?)?;
+                Ok(TransactionOutput::new(value, script_public_key).into())
+            } else {
+                Err("TransactionInput must be an object".into())
+            }
+        })
     }
 }

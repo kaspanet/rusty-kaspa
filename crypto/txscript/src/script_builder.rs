@@ -5,6 +5,7 @@ use crate::{
     opcodes::{codes::*, OP_1_NEGATE_VAL, OP_DATA_MAX_VAL, OP_DATA_MIN_VAL, OP_SMALL_INT_MAX_VAL},
     MAX_SCRIPTS_SIZE, MAX_SCRIPT_ELEMENT_SIZE,
 };
+use hexplay::{HexView, HexViewBuilder};
 use thiserror::Error;
 
 /// DEFAULT_SCRIPT_ALLOC is the default size used for the backing array
@@ -69,7 +70,7 @@ impl ScriptBuilder {
         &self.script
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, target_arch = "wasm32"))]
     pub fn extend(&mut self, data: &[u8]) {
         self.script.extend(data);
     }
@@ -247,6 +248,16 @@ impl ScriptBuilder {
         let trimmed_size = 8 - buffer.iter().rev().position(|x| *x != 0u8).unwrap_or(8);
         let trimmed = &buffer[0..trimmed_size];
         self.add_data(trimmed)
+    }
+
+    /// Return [`HexViewBuilder`] for the script
+    pub fn hex_view_builder(&self) -> HexViewBuilder<'_> {
+        HexViewBuilder::new(&self.script)
+    }
+
+    /// Return ready to use [`HexView`] for the script
+    pub fn hex_view(&self, offset: usize, width: usize) -> HexView<'_> {
+        HexViewBuilder::new(&self.script).address_offset(offset).row_width(width).finish()
     }
 }
 

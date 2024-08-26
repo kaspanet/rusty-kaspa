@@ -65,6 +65,15 @@ interface IGeneratorSettingsObject {
      */
     entries: IUtxoEntry[] | UtxoEntryReference[] | UtxoContext;
     /**
+     * Optional UTXO entries that will be consumed before those available in `entries`.
+     * You can use this property to apply custom input selection logic.
+     * Please note that these inputs are consumed first, then `entries` are consumed
+     * to generate a desirable transaction output amount.  If transaction mass
+     * overflows, these inputs will be consumed into a batch/sweep transaction
+     * where the destination if the `changeAddress`.
+     */
+    priorityEntries?: IUtxoEntry[] | UtxoEntryReference[],
+    /**
      * Optional number of signature operations in the transaction.
      */
     sigOpCount?: number;
@@ -147,6 +156,7 @@ impl Generator {
         let GeneratorSettings {
             network_id,
             source,
+            priority_utxo_entries,
             multiplexer,
             final_transaction_destination,
             change_address,
@@ -167,6 +177,7 @@ impl Generator {
                 native::GeneratorSettings::try_new_with_iterator(
                     network_id,
                     Box::new(utxo_entries.into_iter()),
+                    priority_utxo_entries,
                     change_address,
                     sig_op_count,
                     minimum_signatures,
@@ -182,6 +193,7 @@ impl Generator {
 
                 native::GeneratorSettings::try_new_with_context(
                     utxo_context.into(),
+                    priority_utxo_entries,
                     change_address,
                     sig_op_count,
                     minimum_signatures,
@@ -244,6 +256,7 @@ enum GeneratorSource {
 struct GeneratorSettings {
     pub network_id: Option<NetworkId>,
     pub source: GeneratorSource,
+    pub priority_utxo_entries: Option<Vec<UtxoEntryReference>>,
     pub multiplexer: Option<Multiplexer<Box<Events>>>,
     pub final_transaction_destination: PaymentDestination,
     pub change_address: Option<Address>,
@@ -263,17 +276,19 @@ impl TryFrom<IGeneratorSettingsObject> for GeneratorSettings {
         let final_transaction_destination: PaymentDestination =
             if outputs.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_owned_from(outputs)?.into() };
 
-        let change_address = args.try_get_cast::<Address>("changeAddress")?.map(Cast::into_owned);
+        let change_address = args.try_cast_into::<Address>("changeAddress")?;
 
         let final_priority_fee = args.get::<IFees>("priorityFee")?.try_into()?;
 
-        let generator_source = if let Ok(Some(context)) = args.try_get_cast::<UtxoContext>("entries") {
-            GeneratorSource::UtxoContext(context.into_owned())
+        let generator_source = if let Ok(Some(context)) = args.try_cast_into::<UtxoContext>("entries") {
+            GeneratorSource::UtxoContext(context)
         } else if let Some(utxo_entries) = args.try_get_value("entries")? {
             GeneratorSource::UtxoEntries(utxo_entries.try_into_utxo_entry_references()?)
         } else {
-            return Err(Error::custom("'entries', 'context' or 'account' property is required for Generator"));
+            return Err(Error::custom("'entries' property is required for Generator"));
         };
+
+        let priority_utxo_entries = args.try_get_value("priorityEntries")?.map(|v| v.try_into_utxo_entry_references()).transpose()?;
 
         let sig_op_count = args.get_value("sigOpCount")?;
         let sig_op_count =
@@ -291,6 +306,7 @@ impl TryFrom<IGeneratorSettingsObject> for GeneratorSettings {
         let settings = GeneratorSettings {
             network_id,
             source: generator_source,
+            priority_utxo_entries,
             multiplexer: None,
             final_transaction_destination,
             change_address,

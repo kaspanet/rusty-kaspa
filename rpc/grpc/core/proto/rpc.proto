@@ -821,11 +821,46 @@ message ConsensusMetrics{
   uint64 virtualDaaScore = 18;
 }
 
+message StorageMetrics{
+  uint64 storageSizeBytes = 1;
+}
+
+message GetConnectionsRequestMessage{
+  bool includeProfileData = 1;
+}
+
+message ConnectionsProfileData {
+  double cpuUsage = 1;
+  uint64 memoryUsage = 2;
+}
+
+message GetConnectionsResponseMessage{
+  uint32 clients = 1;
+  uint32 peers = 2;
+  ConnectionsProfileData profileData = 3;
+  RPCError error = 1000;
+}
+
+message GetSystemInfoRequestMessage{
+}
+
+message GetSystemInfoResponseMessage{
+  string version = 1;
+  string systemId = 2;
+  string gitHash = 3;
+  uint32 coreNum = 4;
+  uint64 totalMemory = 5;
+  uint32 fdLimit = 6;
+  RPCError error = 1000;
+}
+
 message GetMetricsRequestMessage{
   bool processMetrics = 1;
   bool connectionMetrics = 2;
   bool bandwidthMetrics = 3;
   bool consensusMetrics = 4;
+  bool storageMetrics = 5;
+  bool customMetrics = 6;
 }
 
 message GetMetricsResponseMessage{
@@ -834,6 +869,7 @@ message GetMetricsResponseMessage{
   ConnectionMetrics connectionMetrics = 12;
   BandwidthMetrics bandwidthMetrics = 13;
   ConsensusMetrics consensusMetrics = 14;
+  StorageMetrics storageMetrics = 15;
   RPCError error = 1000;
 }
 
@@ -841,12 +877,13 @@ message GetServerInfoRequestMessage{
 }
 
 message GetServerInfoResponseMessage{
-  repeated uint32 rpcApiVersion = 1; // Expecting exactly 4 elements
-  string serverVersion = 2;
-  string networkId = 3;
-  bool hasUtxoIndex = 4;
-  bool isSynced = 5;
-  uint64 virtualDaaScore = 6;
+  uint32 rpcApiVersion = 1;
+  uint32 rpcApiRevision = 2;
+  string serverVersion = 3;
+  string networkId = 4;
+  bool hasUtxoIndex = 5;
+  bool isSynced = 6;
+  uint64 virtualDaaScore = 7;
   RPCError error = 1000;
 }
 

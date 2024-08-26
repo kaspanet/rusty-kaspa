@@ -6,6 +6,7 @@ use core::{
     fmt::{self, Debug, Display},
     str,
 };
+use kaspa_consensus_core::network::{NetworkId, NetworkType};
 
 /// BIP32 extended key prefixes a.k.a. "versions" (e.g. `xpub`, `xprv`)
 ///
@@ -230,6 +231,18 @@ impl TryFrom<&str> for Prefix {
             "zprv" => Ok(Prefix::ZPRV),
             "zpub" => Ok(Prefix::ZPUB),
             _ => Err(Error::String(format!("Invalid prefix: {value}"))),
+        }
+    }
+}
+
+impl From<NetworkId> for Prefix {
+    fn from(value: NetworkId) -> Self {
+        let network_type = value.network_type();
+        match network_type {
+            NetworkType::Mainnet => Prefix::KPUB,
+            NetworkType::Devnet => Prefix::KTUB,
+            NetworkType::Simnet => Prefix::KTUB,
+            NetworkType::Testnet => Prefix::KTUB,
         }
     }
 }

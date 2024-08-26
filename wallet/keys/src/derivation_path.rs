@@ -51,8 +51,11 @@ impl DerivationPath {
 
 impl TryCastFromJs for DerivationPath {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             let value = value.as_ref();
             if let Some(path) = value.as_string() {
                 Ok(DerivationPath::new(&path)?)
