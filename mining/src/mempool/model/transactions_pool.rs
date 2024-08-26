@@ -201,13 +201,12 @@ impl TransactionsPool {
         let transaction_size = transaction.tx.estimate_mem_bytes();
         let mut txs_to_remove = Vec::with_capacity(1);
         let mut selected_size = 0;
-        let mut num_selected = 0;
-        #[allow(clippy::explicit_counter_loop)]
-        for tx in self
+        for (num_selected, tx) in self
             .ready_transactions
             .ascending_iter()
             .map(|tx| self.all_transactions.get(&tx.id()).unwrap())
             .filter(|mtx| mtx.priority == Priority::Low && !mtx.is_parent_of(transaction))
+            .enumerate()
         {
             if self.len() + 1 - num_selected <= self.config.maximum_transaction_count
                 && self.estimated_size + transaction_size - selected_size <= self.config.mempool_size_limit
@@ -224,7 +223,6 @@ impl TransactionsPool {
 
             txs_to_remove.push(tx.id());
             selected_size += tx.mtx.tx.estimate_mem_bytes();
-            num_selected += 1;
         }
 
         Ok(txs_to_remove)
