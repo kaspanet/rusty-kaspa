@@ -254,29 +254,34 @@ impl ConnectionManager {
     fn dns_seed(self: &Arc<Self>, mut min_addresses_to_fetch: usize) {
         let shuffled_dns_seeders = self.dns_seeders.choose_multiple(&mut thread_rng(), self.dns_seeders.len());
         for &seeder in shuffled_dns_seeders {
-            info!("Querying DNS seeder {}", seeder);
-            // Since the DNS lookup protocol doesn't come with a port, we must assume that the default port is used.
-            let addrs = match (seeder, self.default_port).to_socket_addrs() {
-                Ok(addrs) => addrs,
-                Err(e) => {
-                    warn!("Error connecting to DNS seeder {}: {}", seeder, e);
-                    continue;
-                }
-            };
-
-            let addrs_len = addrs.len();
-            info!("Retrieved {} addresses from DNS seeder {}", addrs_len, seeder);
-            let mut amgr_lock = self.address_manager.lock();
-            for addr in addrs {
-                amgr_lock.add_address(NetAddress::new(addr.ip().into(), addr.port()));
-            }
-
+            let addrs_len = self.dns_seed_single(seeder);
             if addrs_len >= min_addresses_to_fetch {
                 break;
             } else {
                 min_addresses_to_fetch -= addrs_len;
             }
         }
+    }
+
+    fn dns_seed_single(self: &Arc<Self>, seeder: &str) -> usize {
+        info!("Querying DNS seeder {}", seeder);
+        // Since the DNS lookup protocol doesn't come with a port, we must assume that the default port is used.
+        let addrs = match (seeder, self.default_port).to_socket_addrs() {
+            Ok(addrs) => addrs,
+            Err(e) => {
+                warn!("Error connecting to DNS seeder {}: {}", seeder, e);
+                return 0;
+            }
+        };
+
+        let addrs_len = addrs.len();
+        info!("Retrieved {} addresses from DNS seeder {}", addrs_len, seeder);
+        let mut amgr_lock = self.address_manager.lock();
+        for addr in addrs {
+            amgr_lock.add_address(NetAddress::new(addr.ip().into(), addr.port()));
+        }
+
+        addrs_len
     }
 
     /// Bans the given IP and disconnects from all the peers with that IP.
