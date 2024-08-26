@@ -5,7 +5,7 @@ use futures_util::future::try_join_all;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::params::SIMNET_GENESIS;
 use kaspa_consensus_core::{constants::MAX_SOMPI, header::Header, subnets::SubnetworkId, tx::Transaction};
-use kaspa_core::info;
+use kaspa_core::{assert_match, info};
 use kaspa_grpc_core::ops::KaspadPayloadOps;
 use kaspa_hashes::Hash;
 use kaspa_notify::{
@@ -161,10 +161,28 @@ async fn sanity_test() {
                         .unwrap();
                     assert!(response.added_chain_block_hashes.contains(&block_hash));
                     assert!(response.removed_chain_block_hashes.is_empty());
+
+                    let result =
+                        rpc_client.get_current_block_color_call(None, GetCurrentBlockColorRequest { hash: SIMNET_GENESIS.hash }).await;
+
+                    // Genesis was merged by the new sink, so we're expecting a positive blueness response
+                    assert_match!(result, Ok(GetCurrentBlockColorResponse { blue: true }));
+
+                    // The new sink has no merging block yet, so we expect a MergerNotFound error
+                    let result = rpc_client.get_current_block_color_call(None, GetCurrentBlockColorRequest { hash: block_hash }).await;
+                    assert!(result.is_err());
+
+                    // Non-existing blocks should return an error
+                    let result = rpc_client.get_current_block_color_call(None, GetCurrentBlockColorRequest { hash: 999.into() }).await;
+                    assert!(result.is_err());
                 })
             }
 
             KaspadPayloadOps::GetBlockTemplate => {
+                tst!(op, "see SubmitBlock")
+            }
+
+            KaspadPayloadOps::GetCurrentBlockColor => {
                 tst!(op, "see SubmitBlock")
             }
 

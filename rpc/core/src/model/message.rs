@@ -2613,6 +2613,54 @@ impl Deserializer for GetFeeEstimateExperimentalResponse {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetCurrentBlockColorRequest {
+    pub hash: RpcHash,
+}
+
+impl Serializer for GetCurrentBlockColorRequest {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(RpcHash, &self.hash, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for GetCurrentBlockColorRequest {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let hash = load!(RpcHash, reader)?;
+
+        Ok(Self { hash })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetCurrentBlockColorResponse {
+    pub blue: bool,
+}
+
+impl Serializer for GetCurrentBlockColorResponse {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        store!(u16, &1, writer)?;
+        store!(bool, &self.blue, writer)?;
+
+        Ok(())
+    }
+}
+
+impl Deserializer for GetCurrentBlockColorResponse {
+    fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let _version = load!(u16, reader)?;
+        let blue = load!(bool, reader)?;
+
+        Ok(Self { blue })
+    }
+}
+
 // ----------------------------------------------------------------------------
 // Subscriptions & notifications
 // ----------------------------------------------------------------------------

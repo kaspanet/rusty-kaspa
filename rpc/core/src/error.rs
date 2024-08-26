@@ -77,6 +77,9 @@ pub enum RpcError {
     #[error("IP {0} is not registered as banned.")]
     IpIsNotBanned(IpAddress),
 
+    #[error("Block {0} doesn't have any merger block.")]
+    MergerNotFound(RpcHash),
+
     #[error("Block was not submitted: {0}")]
     SubmitBlockError(SubmitBlockRejectReason),
 

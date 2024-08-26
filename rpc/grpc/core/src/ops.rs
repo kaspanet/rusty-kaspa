@@ -86,6 +86,7 @@ pub enum KaspadPayloadOps {
     GetDaaScoreTimestampEstimate,
     GetFeeEstimate,
     GetFeeEstimateExperimental,
+    GetCurrentBlockColor,
 
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,

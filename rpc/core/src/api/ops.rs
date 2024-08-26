@@ -130,6 +130,8 @@ pub enum RpcApiOps {
     GetFeeEstimate = 147,
     /// Fee estimation (experimental)
     GetFeeEstimateExperimental = 148,
+    /// Block color determination by iterating DAG.
+    GetCurrentBlockColor = 149,
 }
 
 impl RpcApiOps {

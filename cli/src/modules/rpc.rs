@@ -249,6 +249,15 @@ impl Rpc {
                 let result = rpc.get_fee_estimate_experimental_call(None, GetFeeEstimateExperimentalRequest { verbose }).await?;
                 self.println(&ctx, result);
             }
+            RpcApiOps::GetCurrentBlockColor => {
+                if argv.is_empty() {
+                    return Err(Error::custom("Missing block hash argument"));
+                }
+                let hash = argv.remove(0);
+                let hash = RpcHash::from_hex(hash.as_str())?;
+                let result = rpc.get_current_block_color_call(None, GetCurrentBlockColorRequest { hash }).await?;
+                self.println(&ctx, result);
+            }
             _ => {
                 tprintln!(ctx, "rpc method exists but is not supported by the cli: '{op_str}'\r\n");
                 return Ok(());

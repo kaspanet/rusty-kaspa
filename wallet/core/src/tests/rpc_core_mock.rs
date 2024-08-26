@@ -371,6 +371,14 @@ impl RpcApi for RpcCoreMock {
         Err(RpcError::NotImplemented)
     }
 
+    async fn get_current_block_color_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetCurrentBlockColorRequest,
+    ) -> RpcResult<GetCurrentBlockColorResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 

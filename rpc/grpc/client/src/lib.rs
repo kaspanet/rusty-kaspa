@@ -276,6 +276,7 @@ impl RpcApi for GrpcClient {
     route!(get_daa_score_timestamp_estimate_call, GetDaaScoreTimestampEstimate);
     route!(get_fee_estimate_call, GetFeeEstimate);
     route!(get_fee_estimate_experimental_call, GetFeeEstimateExperimental);
+    route!(get_current_block_color_call, GetCurrentBlockColor);
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API

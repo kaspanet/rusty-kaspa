@@ -857,6 +857,44 @@ try_from! ( args: GetBlockTemplateResponse, IGetBlockTemplateResponse, {
 // ---
 
 declare! {
+    IGetCurrentBlockColorRequest,
+    r#"
+    /**
+     * 
+     * 
+     * @category Node RPC
+     */
+    export interface IGetCurrentBlockColorRequest {
+        hash: HexString;
+    }
+    "#,
+}
+
+try_from! ( args: IGetCurrentBlockColorRequest, GetCurrentBlockColorRequest, {
+    Ok(from_value(args.into())?)
+});
+
+declare! {
+    IGetCurrentBlockColorResponse,
+    r#"
+    /**
+     * 
+     * 
+     * @category Node RPC
+     */
+    export interface IGetCurrentBlockColorResponse {
+        blue: boolean;
+    }
+    "#,
+}
+
+try_from! ( args: GetCurrentBlockColorResponse, IGetCurrentBlockColorResponse, {
+    Ok(to_value(&args)?.into())
+});
+
+// ---
+
+declare! {
     IGetDaaScoreTimestampEstimateRequest,
     r#"
     /**

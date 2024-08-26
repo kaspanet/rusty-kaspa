@@ -457,6 +457,16 @@ pub trait RpcApi: Sync + Send + AnySync {
         request: GetFeeEstimateExperimentalRequest,
     ) -> RpcResult<GetFeeEstimateExperimentalResponse>;
 
+    ///
+    async fn get_current_block_color(&self, hash: RpcHash) -> RpcResult<GetCurrentBlockColorResponse> {
+        Ok(self.get_current_block_color_call(None, GetCurrentBlockColorRequest { hash }).await?)
+    }
+    async fn get_current_block_color_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetCurrentBlockColorRequest,
+    ) -> RpcResult<GetCurrentBlockColorResponse>;
+
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API
 
