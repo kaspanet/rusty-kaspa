@@ -64,7 +64,7 @@ pub(crate) struct TransactionsPool {
     /// last expire scan time in milliseconds
     last_expire_scan_time: u64,
 
-    total_compute_mass: u64,
+    estimated_size: u64,
 
     /// Store of UTXOs
     utxo_set: MempoolUtxoSet,
@@ -81,7 +81,7 @@ impl TransactionsPool {
             last_expire_scan_daa_score: 0,
             last_expire_scan_time: unix_now(),
             utxo_set: MempoolUtxoSet::new(),
-            total_compute_mass: 0,
+            estimated_size: 0,
         }
     }
 
@@ -120,7 +120,7 @@ impl TransactionsPool {
         }
 
         self.utxo_set.add_transaction(&transaction.mtx);
-        self.total_compute_mass += transaction.calculated_compute_mass().expect("we expect this field to be already calculated");
+        self.estimated_size += transaction.estimated_size().expect("we expect this field to be already calculated");
         self.all_transactions.insert(id, transaction);
         trace!("Added transaction {}", id);
         Ok(())
@@ -163,7 +163,7 @@ impl TransactionsPool {
 
         // Remove the transaction from the mempool UTXO set
         self.utxo_set.remove_transaction(&removed_tx.mtx, &parent_ids);
-        self.total_compute_mass -= removed_tx.calculated_compute_mass().unwrap();
+        self.estimated_size -= removed_tx.estimated_size().unwrap();
 
         Ok(removed_tx)
     }
@@ -198,7 +198,7 @@ impl TransactionsPool {
         // The caller is golang validateAndInsertTransaction equivalent.
         // This behavior differs from golang impl.
         let mut txs_to_remove = Vec::with_capacity(1);
-        let mut selected_mass = 0;
+        let mut selected_size = 0;
         let mut num_selected = 0;
         #[allow(clippy::explicit_counter_loop)]
         for tx in self
@@ -208,8 +208,7 @@ impl TransactionsPool {
             .filter(|mtx| mtx.priority == Priority::Low && !mtx.is_parent_of(transaction))
         {
             if self.len() + 1 - num_selected <= self.config.maximum_transaction_count
-                && self.total_compute_mass + transaction.calculated_compute_mass.unwrap() - selected_mass
-                    <= self.config.mempool_compute_mass_limit
+                && self.estimated_size + transaction.estimated_size.unwrap() - selected_size <= self.config.mempool_size_limit
             {
                 break;
             }
@@ -221,15 +220,15 @@ impl TransactionsPool {
             }
 
             txs_to_remove.push(tx.id());
-            selected_mass += tx.calculated_compute_mass().unwrap();
+            selected_size += tx.estimated_size().unwrap();
             num_selected += 1;
         }
 
         Ok(txs_to_remove)
     }
 
-    pub(crate) fn get_total_compute_mass(&self) -> u64 {
-        self.total_compute_mass
+    pub(crate) fn get_estimated_size(&self) -> u64 {
+        self.estimated_size
     }
 
     pub(crate) fn all_transaction_ids_with_priority(&self, priority: Priority) -> Vec<TransactionId> {

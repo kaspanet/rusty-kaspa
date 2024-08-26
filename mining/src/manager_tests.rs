@@ -1121,14 +1121,14 @@ mod tests {
         let consensus = Arc::new(ConsensusMock::new());
         let counters = Arc::new(MiningCounters::default());
         const TX_COUNT: u32 = 10;
-        const MASS_LIMIT: u64 = 10_000;
-        let mut config = Config::build_default(TARGET_TIME_PER_BLOCK, false, MASS_LIMIT);
-        config.mempool_compute_mass_limit = MASS_LIMIT;
+        const SIZE_LIMIT: u64 = 10_000;
+        let mut config = Config::build_default(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS);
+        config.mempool_size_limit = SIZE_LIMIT;
         let mining_manager = MiningManager::with_config(config, None, counters);
         let txs = (0..TX_COUNT)
             .map(|i| {
                 let mut tx = create_transaction_with_utxo_entry(i, 0);
-                tx.calculated_compute_mass = Some(1000);
+                tx.estimated_size = Some(1000);
                 tx
             })
             .collect_vec();
@@ -1140,12 +1140,12 @@ mod tests {
         assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT as usize);
 
         let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT, 0);
-        heavy_tx.calculated_compute_mass = Some(5000);
+        heavy_tx.estimated_size = Some(5000);
         heavy_tx.calculated_fee = Some(5000);
         assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT as usize);
         validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), heavy_tx.clone()).unwrap();
         assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT as usize - 4);
-        assert!(mining_manager.get_total_compute_mass() <= MASS_LIMIT);
+        assert!(mining_manager.get_total_compute_mass() <= SIZE_LIMIT);
     }
 
     fn validate_and_insert_mutable_transaction(
@@ -1323,6 +1323,7 @@ mod tests {
         mutable_tx.calculated_fee = Some(DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE);
         // Please note: this is the ConsensusMock version of the calculated_mass which differs from Consensus
         mutable_tx.calculated_compute_mass = Some(transaction_estimated_serialized_size(&mutable_tx.tx));
+        mutable_tx.estimated_size = Some(transaction_estimated_serialized_size(&mutable_tx.tx));
         mutable_tx.entries[0] = Some(entry);
 
         mutable_tx

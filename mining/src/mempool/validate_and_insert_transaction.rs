@@ -10,6 +10,7 @@ use crate::mempool::{
 use kaspa_consensus_core::{
     api::ConsensusApi,
     constants::UNACCEPTED_DAA_SCORE,
+    mass::transaction_estimated_serialized_size,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_core::{debug, info};
@@ -22,10 +23,13 @@ impl Mempool {
         rbf_policy: RbfPolicy,
     ) -> RuleResult<TransactionPreValidation> {
         self.validate_transaction_unacceptance(&transaction)?;
-        // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
+        // Populate mass and estimated_size in the beginning, it will be used in multiple places throughout the validation and insertion.
         // We only populate if it's `None` to allow tests set arbitrary values.
         if transaction.calculated_compute_mass.is_none() {
             transaction.calculated_compute_mass = Some(consensus.calculate_transaction_compute_mass(&transaction.tx));
+        }
+        if transaction.estimated_size.is_none() {
+            transaction.estimated_size = Some(transaction_estimated_serialized_size(&transaction.tx));
         }
         self.validate_transaction_in_isolation(&transaction)?;
         let feerate_threshold = self.get_replace_by_fee_constraint(&transaction, rbf_policy)?;
@@ -85,8 +89,7 @@ impl Mempool {
             // also removes all transactions dependant on `x` we might already have enough room.
             #[allow(clippy::int_plus_one)]
             if self.transaction_pool.len() + 1 <= self.config.maximum_transaction_count
-                && self.transaction_pool.get_total_compute_mass() + transaction.calculated_compute_mass.unwrap()
-                    <= self.config.mempool_compute_mass_limit
+                && self.transaction_pool.get_estimated_size() + transaction.estimated_size.unwrap() <= self.config.mempool_size_limit
             {
                 break;
             }
@@ -96,8 +99,8 @@ impl Mempool {
         {
             assert!(
                 self.transaction_pool.len() + 1 <= self.config.maximum_transaction_count
-                    && self.transaction_pool.get_total_compute_mass() + transaction.calculated_compute_mass.unwrap()
-                        <= self.config.mempool_compute_mass_limit
+                    && self.transaction_pool.get_estimated_size() + transaction.estimated_size.unwrap()
+                        <= self.config.mempool_size_limit
             );
         }
 

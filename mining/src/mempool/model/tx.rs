@@ -33,8 +33,8 @@ impl MempoolTransaction {
         transaction.tx.inputs.iter().any(|x| x.previous_outpoint.transaction_id == parent_id)
     }
 
-    pub(crate) fn calculated_compute_mass(&self) -> Option<u64> {
-        self.mtx.calculated_compute_mass
+    pub(crate) fn estimated_size(&self) -> Option<u64> {
+        self.mtx.estimated_size
     }
 }
 
