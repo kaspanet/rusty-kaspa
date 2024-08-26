@@ -64,7 +64,7 @@ message KaspadRequest {
     GetSystemInfoRequestMessage getSystemInfoRequest = 1104;
     GetFeeEstimateRequestMessage getFeeEstimateRequest = 1106;
     GetFeeEstimateExperimentalRequestMessage getFeeEstimateExperimentalRequest = 1108;
-    GetCurrentBlockColorRequestMessage getCurrentBlockColorRequest = 1109;
+    GetCurrentBlockColorRequestMessage getCurrentBlockColorRequest = 1110;
   }
 }
 
@@ -129,7 +129,7 @@ message KaspadResponse {
     GetSystemInfoResponseMessage getSystemInfoResponse= 1105;
     GetFeeEstimateResponseMessage getFeeEstimateResponse = 1107;
     GetFeeEstimateExperimentalResponseMessage getFeeEstimateExperimentalResponse = 1109;
-    GetCurrentBlockColorResponseMessage getCurrentBlockColorResponse = 1110;
+    GetCurrentBlockColorResponseMessage getCurrentBlockColorResponse 1111;
   }
 }
 
