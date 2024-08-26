@@ -80,6 +80,7 @@ impl Factory {
                 GetDaaScoreTimestampEstimate,
                 GetFeeEstimate,
                 GetFeeEstimateExperimental,
+                GetCurrentBlockColor,
                 NotifyBlockAdded,
                 NotifyNewBlockTemplate,
                 NotifyFinalityConflict,
