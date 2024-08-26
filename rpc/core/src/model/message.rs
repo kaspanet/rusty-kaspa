@@ -2613,7 +2613,7 @@ impl Deserializer for GetFeeEstimateExperimentalResponse {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetCurrentBlockColorRequest {
     pub hash: RpcHash,
@@ -2637,7 +2637,7 @@ impl Deserializer for GetCurrentBlockColorRequest {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetCurrentBlockColorResponse {
     pub blue: bool,
