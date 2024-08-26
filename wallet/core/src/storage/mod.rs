@@ -18,7 +18,7 @@ pub mod transaction;
 
 pub use account::{AccountSettings, AccountStorable, AccountStorage};
 pub use address::AddressBookEntry;
-pub use binding::Binding;
+pub use binding::{Binding, BindingT};
 pub use hint::Hint;
 pub use id::IdT;
 pub use interface::{

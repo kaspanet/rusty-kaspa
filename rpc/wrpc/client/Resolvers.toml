@@ -1,11 +1,41 @@
 [[resolver]]
-url = "https://beacon.kaspa-ng.org"
-enable = true
-
-[[resolver]]
-url = "https://beacon.kaspa-ng.io"
-enable = true
-
-[[resolver]]
-url = "http://127.0.0.1:8888"
 enable = false
+address = "http://127.0.0.1:8888"
+
+[[group]]
+template = "https://*.kaspa.stream"
+nodes = ["eric","maxim","sean","troy"]
+
+[[group]]
+template = "https://*.kaspa.red"
+nodes = ["john", "mike", "paul", "alex"]
+
+[[group]]
+template = "https://*.kaspa.green"
+nodes = ["jake", "mark", "adam", "liam"]
+
+[[group]]
+template = "https://*.kaspa.blue"
+nodes = ["noah", "ryan", "jack", "luke"]
+
+# [[group]]
+# enable = true
+# template = "https://*.kaspa-ng.org"
+# nodes = ["cole", "ivan", "oscar", "zane"]
+
+# [[group]]
+# enable = true
+# template = "https://*.kaspa-ng.io"
+# nodes = ["gary", "hugo", "finn", "evan"]
+
+# [[group]]
+# enable = true
+# template = "https://*.kaspa-ng.net"
+# nodes = ["neil", "dave", "kyle", "toby"]
+
+# ---
+
+# [[group]]
+# enable = false
+# template = "https://*."
+# nodes = ["rudy", "todd", "clay", "walt"]

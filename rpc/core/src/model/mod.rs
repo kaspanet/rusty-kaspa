@@ -11,6 +11,7 @@ pub mod network;
 pub mod peer;
 pub mod script_class;
 pub mod subnets;
+mod tests;
 pub mod tx;
 
 pub use address::*;
