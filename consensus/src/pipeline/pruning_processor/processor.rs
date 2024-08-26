@@ -273,16 +273,6 @@ impl PruningProcessor {
             .collect();
         let keep_headers: BlockHashSet = self.past_pruning_points();
 
-        // Get the headers of the roots of the pruning point anticone (including the pruning point).
-        // These will be used to make sure we keep all multi-level parents of the roots set.
-        let roots_headers = self
-            .reachability_store
-            .read()
-            .get_roots_of_set(&mut data.anticone.iter().copied())
-            .into_iter()
-            .map(|hash| self.headers_store.get_header_with_block_level(hash).expect("pruning point anticone is not pruned"))
-            .collect_vec();
-
         info!("Header and Block pruning: waiting for consensus write permissions...");
 
         let mut prune_guard = self.pruning_lock.blocking_write();
@@ -319,18 +309,27 @@ impl PruningProcessor {
         // Add additional levels only after filtering GHOSTDAG data via level 0
         for (level, level_proof) in proof.iter().enumerate().skip(1) {
             let level = level as BlockLevel;
-            // Mark all parents of roots at level as not-to-be-deleted.
+            // We obtain the headers of the pruning point anticone (including the pruning point)
+            // in order to mark all parents of anticone roots at level as not-to-be-deleted.
             // This optimizes multi-level parent validation (see ParentsManager)
             // by avoiding the deletion of high-level parents which might still be needed for future
             // header validation (avoiding the need for reference blocks; see therein).
             //
-            // Note: normally, such blocks would be part of the proof for this level, but here we address the rare case
-            // where there are a few such parallel blocks (since the proof only contains the past of the pruning point's
-            // selected-tip-at-level)
-            let roots_parents_at_level = roots_headers
+            // Notes:
+            //
+            // 1. Normally, such blocks would be part of the proof for this level, but here we address the rare case
+            //    where there are a few such parallel blocks (since the proof only contains the past of the pruning point's
+            //    selected-tip-at-level)
+            // 2. We refer to the pp anticone as roots even though technically it might contain blocks which are not a pure
+            //    antichain (i.e., some of them are in the past of others). These blocks only add redundant info which would
+            //    be included anyway.
+            let roots_parents_at_level = data
+                .anticone
                 .iter()
+                .copied()
+                .map(|hash| self.headers_store.get_header_with_block_level(hash).expect("pruning point anticone is not pruned"))
                 .filter(|root| level > root.block_level) // If the root itself is at level, there's no need for its level-parents
-                .flat_map(|root| self.parents_manager.parents_at_level(&root.header, level).iter().copied());
+                .flat_map(|root| self.parents_manager.parents_at_level(&root.header, level).iter().copied().collect_vec());
             for hash in level_proof.iter().map(|header| header.hash).chain(roots_parents_at_level) {
                 if let Vacant(e) = keep_relations.entry(hash) {
                     // This hash was not added by any lower level -- mark it as affiliated with proof level `level`
@@ -338,8 +337,6 @@ impl PruningProcessor {
                 }
             }
         }
-
-        drop(roots_headers);
 
         prune_guard = self.pruning_lock.blocking_write();
         let mut lock_acquire_time = Instant::now();
