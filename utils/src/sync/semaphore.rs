@@ -41,7 +41,7 @@ mod trace {
                 if log_time + (Duration::from_secs(10).as_micros() as u64) < now {
                     let log_value = self.log_value.load(Ordering::Relaxed);
                     debug!(
-                        "Semaphore: log interval: {:?}, readers time: {:?}, fraction: {:.2}",
+                        "Semaphore: log interval: {:?}, readers time: {:?}, fraction: {:.4}",
                         Duration::from_micros(now - log_time),
                         Duration::from_micros(readers_time - log_value),
                         (readers_time - log_value) as f64 / (now - log_time) as f64
