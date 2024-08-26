@@ -292,6 +292,7 @@ impl PruningProcessor {
         {
             let mut counter = 0;
             let mut batch = WriteBatch::default();
+            // At this point keep_relations only holds level-0 relations which is the correct filtering criteria for primary GHOSTDAG
             for kept in keep_relations.keys().copied() {
                 let Some(ghostdag) = self.ghostdag_primary_store.get_data(kept).unwrap_option() else {
                     continue;
@@ -441,6 +442,7 @@ impl PruningProcessor {
                     }
 
                     // Delete level-x relations for blocks which only belong to higher-than-x proof levels.
+                    // This preserves the semantic that for each level, relations represent a contiguous DAG area in that level
                     for lower_level in 0..affiliated_proof_level as usize {
                         let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[lower_level]);
                         relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
