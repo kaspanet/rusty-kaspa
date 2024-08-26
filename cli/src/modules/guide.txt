@@ -1,49 +1,23 @@
-Please note - this is an alpha version of the softeware, not all features are currently functional.
-
-If using a dekstop or a web version of this software, you can use Ctrl+'+' or Ctrl+'-' (Command on MacOS) to
-change the terminal font size.
-
-If using a desktop version, you can use Ctrl+M (Command on MacOS) to bring up metrics.
-
-Type `help` to see the complete list of commands. `exit` to exit this application.
-On Windows you can use `Alt+F4` and on MacOS `Command+Q` to exit.
-
----
-
 Before you start, you must configure the default network setting.  There are currently
-3 networks available.  `mainnet`, `testnet-10` and `testnet-11`.  While this software
-is in alpha stage, you should not use it on the mainnet.  If you wish to experiment,
-you should select `testnet-10` by entering `network testnet-10`
+3 networks available.  `mainnet`, `testnet-10` and `testnet-11`.  If you wish to experiment,
+you should select `testnet-11` by entering `network testnet-11`
 
 The `server` command configures the target server.  You can connect to any Rusty Kaspa
-node that has User RPC enabled with `--rpclisten-borsh=public`. If you are running the node
-from within KOS, it is locked to listen to a local IP address.
+node that has wRPC enabled with `--rpclisten-borsh=0.0.0.0`. If the server setting 
+is set to 'public' the node will connect to the public node infrastructure.
 
 Both network and server values are stored in the application settings and are 
 used when running a local node or connecting to a remote node.
 
 ---
 
-You can use `node start` to start the node.  Type `node` to see an overview of commands.
-`node mute` toggles node log output (you can also use `node logs`).  `node select` allows 
-you to choose between locally installed flavors (if running in the development environment).
-You can also specify an absolute path by typing `node select <path to rusty kaspa binary>`.
-
-For developers: `node select` scans 'target' folder for the debug and release builds
-so you can switch between builds at runtime using the `node select` command.
-
-Once you node is running, you can connect to it using the `connect` command.
-
-When starting the node and the `server` setting is configured to your local host, 
-the `connect` action will occure automatically.
-
-`wallet create [<name>]` Use theis command to create a local wallet. The <name> argument 
+`wallet create [<name>]` Use this command to create a local wallet. The <name> argument 
 is optional (the default wallet name is "kaspa") and allows you to create multiple 
 named wallets.  Only one wallet can be opened at a time. Keep in mind that a wallet can have multiple
 accounts, as such you only need one wallet, unless, for example, you want to separate wallets for 
 personal and business needs (but you can also create isolated accounts within a wallet).
 
-Make sure to record your mnemonic, even if working with a testnet, not to loose your
+Make sure to record your mnemonic, even if working with a testnet, not to lose your
 testnet KAS.
 
 `open <name>` - opens the wallet (the wallet is open automatically after creation).
@@ -55,9 +29,6 @@ testnet KAS.
 `account create bip32 [<name>]` - Allows you to create additional HD wallet accounts linked to the default private key of your wallet.
 
 `address` - shows your selected account address
-
-Note - you can click on the address to copy it to the clipboard.  (When on mainnet, Ctrl+Click on addresses, transactions and 
-block hashes will open a new browser window with an explorer.)
 
 Before you transact: `mute` option (enabled by default) toggles mute on/off. Mute enables terminal
 output of internal framework events.  Rust and JavaScript/TypeScript applications integrating with this platform 
@@ -77,11 +48,6 @@ the selected account to an account named 'pete' (starts with a 'p' letter)
 `history list` - Shows previous account transactions.
 
 `history details` - Show previous account transactions with extended information.
-
-Once your node is synced, you can start the CPU miner.
-
-`miner start` - Starts the miner. The miner will mine to your currently selected account. (So you need to have a wallet open and an 
-account selected to start the miner)
 
 `monitor` - A test screen environment that periodically updates account balances.
 

@@ -192,4 +192,9 @@ pub mod sync;
 pub mod triggers;
 pub mod vec;
 
+pub mod git;
+
+#[cfg(not(target_arch = "wasm32"))]
 pub mod fd_budget;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod sysinfo;

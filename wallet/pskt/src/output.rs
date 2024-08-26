@@ -1,11 +1,12 @@
+use crate::pskt::KeySource;
 use crate::utils::combine_if_no_conflicts;
-use crate::KeySource;
 use derive_builder::Builder;
 use kaspa_consensus_core::tx::ScriptPublicKey;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, ops::Add};
 
 #[derive(Builder, Default, Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 #[builder(default)]
 pub struct Output {
     /// The output's amount (serialized as sompi).

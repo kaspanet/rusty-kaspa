@@ -138,8 +138,11 @@ extern "C" {
 
 impl TryCastFromJs for PublicKey {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             let value = value.as_ref();
             if let Some(hex_str) = value.as_string() {
                 Ok(PublicKey::try_new(hex_str.as_str())?)
@@ -150,13 +153,13 @@ impl TryCastFromJs for PublicKey {
     }
 }
 
-impl TryFrom<PublicKeyArrayT> for Vec<secp256k1::PublicKey> {
+impl TryFrom<&PublicKeyArrayT> for Vec<secp256k1::PublicKey> {
     type Error = Error;
-    fn try_from(value: PublicKeyArrayT) -> Result<Self> {
+    fn try_from(value: &PublicKeyArrayT) -> Result<Self> {
         if value.is_array() {
-            let array = Array::from(&value);
-            let pubkeys = array.iter().map(PublicKey::try_cast_from).collect::<Result<Vec<_>>>()?;
-            Ok(pubkeys.iter().map(|pk| pk.as_ref().try_into()).collect::<Result<Vec<_>>>()?)
+            let array = Array::from(value);
+            let pubkeys = array.iter().map(PublicKey::try_owned_from).collect::<Result<Vec<_>>>()?;
+            Ok(pubkeys.iter().map(|pk| pk.try_into()).collect::<Result<Vec<_>>>()?)
         } else {
             Err(Error::InvalidPublicKeyArray)
         }
