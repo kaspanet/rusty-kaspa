@@ -79,6 +79,7 @@ impl Deserializer for RpcUtxoEntry {
 
 /// Represents a Kaspa transaction outpoint
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RpcTransactionOutpoint {
     #[serde(with = "serde_bytes_fixed_ref")]
     pub transaction_id: TransactionId,
@@ -100,13 +101,11 @@ impl From<RpcTransactionOutpoint> for TransactionOutpoint {
 impl From<kaspa_consensus_client::TransactionOutpoint> for RpcTransactionOutpoint {
     fn from(outpoint: kaspa_consensus_client::TransactionOutpoint) -> Self {
         TransactionOutpoint::from(outpoint).into()
-        // Self { transaction_id: outpoint.transaction_id, index: outpoint.index }
     }
 }
 
 impl From<RpcTransactionOutpoint> for kaspa_consensus_client::TransactionOutpoint {
     fn from(outpoint: RpcTransactionOutpoint) -> Self {
-        // Self { transaction_id: outpoint.transaction_id, index: outpoint.index }
         TransactionOutpoint::from(outpoint).into()
     }
 }
