@@ -137,11 +137,6 @@ impl Mempool {
             return Err(RuleError::RejectDuplicate(transaction_id));
         }
 
-        let tx_size = transaction.mempool_estimated_bytes();
-        if tx_size > self.config.mempool_size_limit {
-            return Err(RuleError::RejectTxTooBig(transaction_id, tx_size, self.config.mempool_size_limit));
-        }
-
         if !self.config.accept_non_standard {
             self.check_transaction_standard_in_isolation(transaction)?;
         }

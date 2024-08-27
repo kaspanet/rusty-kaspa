@@ -81,9 +81,6 @@ pub enum RuleError {
 
     #[error("Rejected tx {0} from mempool due to incomputable storage mass")]
     RejectStorageMassIncomputable(TransactionId),
-
-    #[error("Rejected tx {0} from mempool because its size ({1}) is greater than the mempool size limit ({2})")]
-    RejectTxTooBig(TransactionId, usize, usize),
 }
 
 impl From<NonStandardError> for RuleError {

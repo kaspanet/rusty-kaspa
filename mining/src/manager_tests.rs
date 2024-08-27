@@ -1152,7 +1152,7 @@ mod tests {
         assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT);
 
         let heavy_tx_high_fee = {
-            let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT as u32, 0);
+            let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT as u32 + 1, 0);
             let mut inner_tx = (*(heavy_tx.tx)).clone();
             inner_tx.payload = vec![0u8; TX_COUNT / 2 * tx_size - inner_tx.estimate_mem_bytes()];
             heavy_tx.tx = inner_tx.into();
@@ -1162,6 +1162,16 @@ mod tests {
         validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), heavy_tx_high_fee.clone()).unwrap();
         assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT - 5);
         assert!(mining_manager.get_estimated_size() <= size_limit);
+
+        let too_big_tx = {
+            let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT as u32 + 2, 0);
+            let mut inner_tx = (*(heavy_tx.tx)).clone();
+            inner_tx.payload = vec![0u8; size_limit];
+            heavy_tx.tx = inner_tx.into();
+            heavy_tx.calculated_fee = Some(500_000);
+            heavy_tx
+        };
+        assert!(validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), too_big_tx.clone()).is_err());
     }
 
     fn validate_and_insert_mutable_transaction(
