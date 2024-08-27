@@ -1117,6 +1117,11 @@ mod tests {
         // TODO: extend the test according to the golang scenario
     }
 
+    // This is a sanity test for the mempool eviction policy. We check that if the mempool reached to its maximum
+    // (in bytes) a high paying transaction will evict as much transactions as needed so it can enter the
+    // mempool.
+    // TODO: Add tests to the case where the transaction doesn't have enough fee rate. We need to check that the
+    // transaction is rejected and the mempool remains untouched.
     #[test]
     fn test_evict() {
         const TX_COUNT: usize = 10;
