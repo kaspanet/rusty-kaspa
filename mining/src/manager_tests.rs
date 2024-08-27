@@ -1120,8 +1120,8 @@ mod tests {
     // This is a sanity test for the mempool eviction policy. We check that if the mempool reached to its maximum
     // (in bytes) a high paying transaction will evict as much transactions as needed so it can enter the
     // mempool.
-    // TODO: Add tests to the case where the transaction doesn't have enough fee rate. We need to check that the
-    // transaction is rejected and the mempool remains untouched.
+    // TODO: Add a test where we try to add a heavy transaction with fee rate that's higher than some of the mempool
+    // transactions, but not enough, so the transaction will be rejected nonetheless.
     #[test]
     fn test_evict() {
         const TX_COUNT: usize = 10;
@@ -1137,11 +1137,21 @@ mod tests {
 
         for tx in txs {
             validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), tx).unwrap();
-            assert!(!mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.is_empty());
         }
         assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT);
 
-        let heavy_tx = {
+        let heavy_tx_low_fee = {
+            let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT as u32, 0);
+            let mut inner_tx = (*(heavy_tx.tx)).clone();
+            inner_tx.payload = vec![0u8; TX_COUNT / 2 * tx_size - inner_tx.estimate_mem_bytes()];
+            heavy_tx.tx = inner_tx.into();
+            heavy_tx.calculated_fee = Some(2081);
+            heavy_tx
+        };
+        assert!(validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), heavy_tx_low_fee.clone()).is_err());
+        assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT);
+
+        let heavy_tx_high_fee = {
             let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT as u32, 0);
             let mut inner_tx = (*(heavy_tx.tx)).clone();
             inner_tx.payload = vec![0u8; TX_COUNT / 2 * tx_size - inner_tx.estimate_mem_bytes()];
@@ -1149,8 +1159,7 @@ mod tests {
             heavy_tx.calculated_fee = Some(500_000);
             heavy_tx
         };
-        assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT);
-        validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), heavy_tx.clone()).unwrap();
+        validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), heavy_tx_high_fee.clone()).unwrap();
         assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT - 5);
         assert!(mining_manager.get_estimated_size() <= size_limit);
     }
