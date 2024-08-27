@@ -1,7 +1,7 @@
 use kaspa_consensus_core::constants::TX_VERSION;
 
 pub(crate) const DEFAULT_MAXIMUM_TRANSACTION_COUNT: usize = 1_000_000;
-pub(crate) const DEFAULT_MEMPOOL_SIZE_LIMIT: usize = 500_000_000;
+pub(crate) const DEFAULT_MEMPOOL_SIZE_LIMIT: usize = 1_000_000_000;
 pub(crate) const DEFAULT_MAXIMUM_BUILD_BLOCK_TEMPLATE_ATTEMPTS: u64 = 5;
 
 pub(crate) const DEFAULT_TRANSACTION_EXPIRE_INTERVAL_SECONDS: u64 = 24 * 60 * 60;
