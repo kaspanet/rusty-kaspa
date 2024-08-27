@@ -27,11 +27,6 @@ impl MempoolTransaction {
         assert!(contextual_mass > 0, "expected to be called for validated txs only");
         self.mtx.calculated_fee.unwrap() as f64 / contextual_mass as f64
     }
-
-    pub(crate) fn is_parent_of(&self, transaction: &MutableTransaction) -> bool {
-        let parent_id = self.id();
-        transaction.tx.inputs.iter().any(|x| x.previous_outpoint.transaction_id == parent_id)
-    }
 }
 
 impl RbfPolicy {
