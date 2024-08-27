@@ -3751,7 +3751,7 @@ dependencies = [
  "dhat",
  "dirs",
  "futures-util",
- "itertools 0.11.0",
+ "itertools 0.13.0",
  "kaspa-addresses",
  "kaspa-addressmanager",
  "kaspa-alloc",
