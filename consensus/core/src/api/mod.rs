@@ -133,6 +133,10 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_current_block_color(&self, hash: Hash) -> Option<bool> {
+        unimplemented!()
+    }
+
     fn get_virtual_state_approx_id(&self) -> VirtualStateApproxId {
         unimplemented!()
     }

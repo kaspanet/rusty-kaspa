@@ -2,7 +2,7 @@
 
 use crate::{
     consensus::{
-        services::{ConsensusServices, DbPruningPointManager},
+        services::{ConsensusServices, DbParentsManager, DbPruningPointManager},
         storage::ConsensusStorage,
     },
     model::{
@@ -31,7 +31,7 @@ use kaspa_consensus_core::{
     muhash::MuHashExtensions,
     pruning::{PruningPointProof, PruningPointTrustedData},
     trusted::ExternalGhostdagData,
-    BlockHashSet,
+    BlockHashMap, BlockHashSet, BlockLevel,
 };
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, warn};
@@ -42,7 +42,7 @@ use kaspa_utils::iter::IterExtensions;
 use parking_lot::RwLockUpgradableReadGuard;
 use rocksdb::WriteBatch;
 use std::{
-    collections::VecDeque,
+    collections::{hash_map::Entry::Vacant, VecDeque},
     ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -71,6 +71,7 @@ pub struct PruningProcessor {
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     pruning_point_manager: DbPruningPointManager,
     pruning_proof_manager: Arc<PruningProofManager>,
+    parents_manager: DbParentsManager,
 
     // Pruning lock
     pruning_lock: SessionLock,
@@ -107,6 +108,7 @@ impl PruningProcessor {
             reachability_service: services.reachability_service.clone(),
             pruning_point_manager: services.pruning_point_manager.clone(),
             pruning_proof_manager: services.pruning_proof_manager.clone(),
+            parents_manager: services.parents_manager.clone(),
             pruning_lock,
             config,
             is_consensus_exiting,
@@ -260,41 +262,35 @@ impl PruningProcessor {
         // We keep full data for pruning point and its anticone, relations for DAA/GD
         // windows and pruning proof, and only headers for past pruning points
         let keep_blocks: BlockHashSet = data.anticone.iter().copied().collect();
-        let keep_relations: BlockHashSet = std::iter::empty()
-            .chain(data.anticone.iter().copied())
-            .chain(data.daa_window_blocks.iter().map(|th| th.header.hash))
-            .chain(data.ghostdag_blocks.iter().map(|gd| gd.hash))
-            .chain(proof.iter().flatten().map(|h| h.hash))
-            .collect();
-        let keep_level_zero_relations: BlockHashSet = std::iter::empty()
+        let mut keep_relations: BlockHashMap<BlockLevel> = std::iter::empty()
             .chain(data.anticone.iter().copied())
             .chain(data.daa_window_blocks.iter().map(|th| th.header.hash))
             .chain(data.ghostdag_blocks.iter().map(|gd| gd.hash))
             .chain(proof[0].iter().map(|h| h.hash))
+            .map(|h| (h, 0)) // Mark block level 0 for all the above. Note that below we add the remaining levels
             .collect();
         let keep_headers: BlockHashSet = self.past_pruning_points();
 
         info!("Header and Block pruning: waiting for consensus write permissions...");
 
         let mut prune_guard = self.pruning_lock.blocking_write();
-        let mut lock_acquire_time = Instant::now();
-        let mut reachability_read = self.reachability_store.upgradable_read();
 
         info!("Starting Header and Block pruning...");
 
         {
             let mut counter = 0;
             let mut batch = WriteBatch::default();
-            for kept in keep_level_zero_relations.iter().copied() {
+            // At this point keep_relations only holds level-0 relations which is the correct filtering criteria for primary GHOSTDAG
+            for kept in keep_relations.keys().copied() {
                 let Some(ghostdag) = self.ghostdag_store.get_data(kept).unwrap_option() else {
                     continue;
                 };
-                if ghostdag.unordered_mergeset().any(|h| !keep_level_zero_relations.contains(&h)) {
+                if ghostdag.unordered_mergeset().any(|h| !keep_relations.contains_key(&h)) {
                     let mut mutable_ghostdag: ExternalGhostdagData = ghostdag.as_ref().into();
-                    mutable_ghostdag.mergeset_blues.retain(|h| keep_level_zero_relations.contains(h));
-                    mutable_ghostdag.mergeset_reds.retain(|h| keep_level_zero_relations.contains(h));
-                    mutable_ghostdag.blues_anticone_sizes.retain(|k, _| keep_level_zero_relations.contains(k));
-                    if !keep_level_zero_relations.contains(&mutable_ghostdag.selected_parent) {
+                    mutable_ghostdag.mergeset_blues.retain(|h| keep_relations.contains_key(h));
+                    mutable_ghostdag.mergeset_reds.retain(|h| keep_relations.contains_key(h));
+                    mutable_ghostdag.blues_anticone_sizes.retain(|k, _| keep_relations.contains_key(k));
+                    if !keep_relations.contains_key(&mutable_ghostdag.selected_parent) {
                         mutable_ghostdag.selected_parent = ORIGIN;
                     }
                     counter += 1;
@@ -304,6 +300,45 @@ impl PruningProcessor {
             self.db.write(batch).unwrap();
             info!("Header and Block pruning: updated ghostdag data for {} blocks", counter);
         }
+
+        // No need to hold the prune guard while we continue populating keep_relations
+        drop(prune_guard);
+
+        // Add additional levels only after filtering GHOSTDAG data via level 0
+        for (level, level_proof) in proof.iter().enumerate().skip(1) {
+            let level = level as BlockLevel;
+            // We obtain the headers of the pruning point anticone (including the pruning point)
+            // in order to mark all parents of anticone roots at level as not-to-be-deleted.
+            // This optimizes multi-level parent validation (see ParentsManager)
+            // by avoiding the deletion of high-level parents which might still be needed for future
+            // header validation (avoiding the need for reference blocks; see therein).
+            //
+            // Notes:
+            //
+            // 1. Normally, such blocks would be part of the proof for this level, but here we address the rare case
+            //    where there are a few such parallel blocks (since the proof only contains the past of the pruning point's
+            //    selected-tip-at-level)
+            // 2. We refer to the pp anticone as roots even though technically it might contain blocks which are not a pure
+            //    antichain (i.e., some of them are in the past of others). These blocks only add redundant info which would
+            //    be included anyway.
+            let roots_parents_at_level = data
+                .anticone
+                .iter()
+                .copied()
+                .map(|hash| self.headers_store.get_header_with_block_level(hash).expect("pruning point anticone is not pruned"))
+                .filter(|root| level > root.block_level) // If the root itself is at level, there's no need for its level-parents
+                .flat_map(|root| self.parents_manager.parents_at_level(&root.header, level).iter().copied().collect_vec());
+            for hash in level_proof.iter().map(|header| header.hash).chain(roots_parents_at_level) {
+                if let Vacant(e) = keep_relations.entry(hash) {
+                    // This hash was not added by any lower level -- mark it as affiliated with proof level `level`
+                    e.insert(level);
+                }
+            }
+        }
+
+        prune_guard = self.pruning_lock.blocking_write();
+        let mut lock_acquire_time = Instant::now();
+        let mut reachability_read = self.reachability_store.upgradable_read();
 
         {
             // Start with a batch for pruning body tips and selected chain stores
@@ -392,7 +427,7 @@ impl PruningProcessor {
                 self.acceptance_data_store.delete_batch(&mut batch, current).unwrap();
                 self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
 
-                if keep_relations.contains(&current) {
+                if let Some(&affiliated_proof_level) = keep_relations.get(&current) {
                     if statuses_write.get(current).unwrap_option().is_some_and(|s| s.is_valid()) {
                         // We set the status to header-only only if it was previously set to a valid
                         // status. This is important since some proof headers might not have their status set
@@ -401,17 +436,16 @@ impl PruningProcessor {
                         statuses_write.set_batch(&mut batch, current, StatusHeaderOnly).unwrap();
                     }
 
-                    // Delete level-0 relations for blocks which only belong to higher proof levels.
-                    // Note: it is also possible to delete level relations for level x > 0 for any block that only belongs
-                    // to proof levels higher than x, but this requires maintaining such per level usage mapping.
-                    // Since the main motivation of this deletion step is to reduce the
-                    // number of origin's children in level 0, and this is not a bottleneck in any other
-                    // level, we currently chose to only delete level-0 redundant relations.
-                    if !keep_level_zero_relations.contains(&current) {
-                        let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[0]);
+                    // Delete level-x relations for blocks which only belong to higher-than-x proof levels.
+                    // This preserves the semantic that for each level, relations represent a contiguous DAG area in that level
+                    for lower_level in 0..affiliated_proof_level as usize {
+                        let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[lower_level]);
                         relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
                         staging_level_relations.commit(&mut batch).unwrap();
-                        self.ghostdag_store.delete_batch(&mut batch, current).unwrap_option();
+
+                        if lower_level == 0 {
+                            self.ghostdag_store.delete_batch(&mut batch, current).unwrap_option();
+                        }
                     }
                 } else {
                     // Count only blocks which get fully pruned including DAG relations

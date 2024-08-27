@@ -71,6 +71,7 @@ kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 kaspa-wallet-keys.workspace = true
 kaspa-wallet-macros.workspace = true
+kaspa-wallet-pskt.workspace = true
 kaspa-wasm-core.workspace = true
 kaspa-wrpc-client.workspace = true
 kaspa-wrpc-wasm.workspace = true
@@ -125,5 +126,5 @@ serde_repr.workspace = true
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio.workspace = true
 
-[lints.clippy]
-empty_docs = "allow"
+[lints]
+workspace = true

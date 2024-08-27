@@ -1,9 +1,9 @@
 use crate::{
     hashing::{
         sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
-        sighash_type::SIG_HASH_ALL,
+        sighash_type::{SigHashType, SIG_HASH_ALL},
     },
-    tx::SignableTransaction,
+    tx::{SignableTransaction, VerifiableTransaction},
 };
 use itertools::Itertools;
 use std::collections::BTreeMap;
@@ -153,7 +153,20 @@ pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: &[[u
     }
 }
 
-pub fn verify(tx: &impl crate::tx::VerifiableTransaction) -> Result<(), Error> {
+/// Sign a transaction input with a sighash_type using schnorr
+pub fn sign_input(tx: &impl VerifiableTransaction, input_index: usize, private_key: &[u8; 32], hash_type: SigHashType) -> Vec<u8> {
+    let mut reused_values = SigHashReusedValues::new();
+
+    let hash = calc_schnorr_signature_hash(tx, input_index, hash_type, &mut reused_values);
+    let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice()).unwrap();
+    let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, private_key).unwrap();
+    let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
+
+    // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)
+    std::iter::once(65u8).chain(sig).chain([hash_type.to_u8()]).collect()
+}
+
+pub fn verify(tx: &impl VerifiableTransaction) -> Result<(), Error> {
     let mut reused_values = SigHashReusedValues::new();
     for (i, (input, entry)) in tx.populated_inputs().enumerate() {
         if input.signature_script.is_empty() {

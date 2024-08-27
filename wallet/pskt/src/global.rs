@@ -1,4 +1,5 @@
-use crate::{utils::combine_if_no_conflicts, KeySource, Version};
+use crate::pskt::{KeySource, Version};
+use crate::utils::combine_if_no_conflicts;
 use derive_builder::Builder;
 use kaspa_consensus_core::tx::TransactionId;
 use serde::{Deserialize, Serialize};
@@ -10,6 +11,7 @@ use std::{
 type Xpub = kaspa_bip32::ExtendedPublicKey<secp256k1::PublicKey>;
 
 #[derive(Debug, Clone, Builder, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 #[builder(default)]
 pub struct Global {
     /// The version number of this PSKT.
@@ -33,6 +35,7 @@ pub struct Global {
     /// Proprietary key-value pairs for this output.
     pub proprietaries: BTreeMap<String, serde_value::Value>,
     /// Unknown key-value pairs for this output.
+    #[serde(flatten)]
     pub unknowns: BTreeMap<String, serde_value::Value>,
 }
 

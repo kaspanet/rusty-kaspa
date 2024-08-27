@@ -165,6 +165,15 @@ impl From<TransactionOutpoint> for cctx::TransactionOutpoint {
     }
 }
 
+impl From<&TransactionOutpoint> for cctx::TransactionOutpoint {
+    fn from(outpoint: &TransactionOutpoint) -> Self {
+        let inner = outpoint.inner();
+        let transaction_id = inner.transaction_id;
+        let index = inner.index;
+        cctx::TransactionOutpoint::new(transaction_id, index)
+    }
+}
+
 impl TransactionOutpoint {
     pub fn simulated() -> Self {
         Self::new(TransactionId::from_slice(&rand::random::<[u8; kaspa_hashes::HASH_SIZE]>()), 0)

@@ -1,4 +1,3 @@
-pub mod account;
 pub mod keydata;
 #[allow(clippy::module_inception)]
 pub mod wallet;

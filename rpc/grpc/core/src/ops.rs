@@ -79,11 +79,14 @@ pub enum KaspadPayloadOps {
     GetCoinSupply,
     Ping,
     GetMetrics,
+    GetConnections,
+    GetSystemInfo,
     GetServerInfo,
     GetSyncStatus,
     GetDaaScoreTimestampEstimate,
     GetFeeEstimate,
     GetFeeEstimateExperimental,
+    GetCurrentBlockColor,
 
     // Subscription commands for starting/stopping notifications
     NotifyBlockAdded,
