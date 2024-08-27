@@ -124,7 +124,9 @@ impl Config {
     }
 
     pub fn apply_ram_scale(mut self, ram_scale: f64) -> Self {
-        self.maximum_transaction_count = (self.maximum_transaction_count as f64 * ram_scale.min(1.0)) as usize; // Allow only scaling down
+        // Allow only scaling down
+        self.maximum_transaction_count = (self.maximum_transaction_count as f64 * ram_scale.min(1.0)) as usize;
+        self.mempool_size_limit = (self.mempool_size_limit as f64 * ram_scale.min(1.0)) as usize;
         self
     }
 
