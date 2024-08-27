@@ -162,6 +162,11 @@ impl Mempool {
             .filter(|transaction_id| !(self.transaction_pool.has(transaction_id) || self.orphan_pool.has(transaction_id)));
         self.accepted_transactions.unaccepted(&mut not_in_pools_txs)
     }
+
+    #[cfg(test)]
+    pub(crate) fn get_estimated_size(&self) -> usize {
+        self.transaction_pool.get_estimated_size()
+    }
 }
 
 pub mod tx {

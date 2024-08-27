@@ -836,6 +836,11 @@ impl MiningManager {
     pub fn unknown_transactions(&self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
         self.mempool.read().unknown_transactions(transactions)
     }
+
+    #[cfg(test)]
+    pub(crate) fn get_estimated_size(&self) -> usize {
+        self.mempool.read().get_estimated_size()
+    }
 }
 
 /// Async proxy for the mining manager

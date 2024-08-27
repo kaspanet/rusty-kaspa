@@ -33,9 +33,9 @@ pub enum RuleError {
     #[error("replace by fee found more than one double spending transaction in the mempool")]
     RejectRbfTooManyDoubleSpendingTransactions,
 
-    /// New behavior: a transaction is rejected if the mempool is full
-    #[error("number of high-priority transactions in mempool ({0}) has reached the maximum allowed ({1})")]
-    RejectMempoolIsFull(usize, u64),
+    /// a transaction is rejected if the mempool is full
+    #[error("transaction could not be added to the mempool because it's full with transactions with higher priority")]
+    RejectMempoolIsFull,
 
     /// An error emitted by mining\src\mempool\check_transaction_standard.rs
     #[error("transaction {0} is not standard: {1}")]
