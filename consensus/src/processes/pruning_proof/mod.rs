@@ -29,7 +29,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::{debug, info, trace, warn};
 use kaspa_database::{
-    prelude::{CachePolicy, ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions},
+    prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultEmptyTuple, StoreResultExtensions},
     utils::DbLifetime,
 };
 use kaspa_hashes::Hash;
@@ -108,6 +108,39 @@ struct TempProofContext {
     ghostdag_managers:
         Vec<GhostdagManager<DbGhostdagStore, DbRelationsStore, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>>,
     db_lifetime: DbLifetime,
+}
+
+#[derive(Clone)]
+struct RelationsStoreInFutureOfRoot<T: RelationsStoreReader, U: ReachabilityService> {
+    relations_store: T,
+    reachability_service: U,
+    root: Hash,
+}
+
+impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for RelationsStoreInFutureOfRoot<T, U> {
+    fn get_parents(&self, hash: Hash) -> Result<BlockHashes, kaspa_database::prelude::StoreError> {
+        self.relations_store.get_parents(hash).map(|hashes| {
+            Arc::new(hashes.iter().copied().filter(|h| self.reachability_service.is_dag_ancestor_of(self.root, *h)).collect_vec())
+        })
+    }
+
+    fn get_children(&self, hash: Hash) -> StoreResult<kaspa_database::prelude::ReadLock<BlockHashSet>> {
+        // We assume hash is in future of root
+        assert!(self.reachability_service.is_dag_ancestor_of(self.root, hash));
+        self.relations_store.get_children(hash)
+    }
+
+    fn has(&self, hash: Hash) -> Result<bool, StoreError> {
+        if self.reachability_service.is_dag_ancestor_of(self.root, hash) {
+            Ok(false)
+        } else {
+            self.relations_store.has(hash)
+        }
+    }
+
+    fn counts(&self) -> Result<(usize, usize), kaspa_database::prelude::StoreError> {
+        panic!("unimplemented")
+    }
 }
 
 pub struct PruningProofManager {
@@ -1108,6 +1141,11 @@ impl PruningProofManager {
         required_block: Option<Hash>,
         initialize_store: bool,
     ) -> bool {
+        let relations_service = RelationsStoreInFutureOfRoot {
+            relations_store: relations_service.clone(),
+            reachability_service: self.reachability_service.clone(),
+            root: genesis_hash,
+        };
         let gd_manager = GhostdagManager::new(
             genesis_hash,
             self.ghostdag_k,
