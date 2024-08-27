@@ -1125,7 +1125,7 @@ mod tests {
         let consensus = Arc::new(ConsensusMock::new());
         let counters = Arc::new(MiningCounters::default());
         let mut config = Config::build_default(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS);
-        let tx_size = txs[0].tx.estimate_mem_bytes();
+        let tx_size = txs[0].mempool_estimated_bytes();
         let size_limit = TX_COUNT * tx_size;
         config.mempool_size_limit = size_limit;
         let mining_manager = MiningManager::with_config(config, None, counters);

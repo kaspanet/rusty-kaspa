@@ -8,6 +8,7 @@ pub use script_public_key::{
     scriptvec, ScriptPublicKey, ScriptPublicKeyT, ScriptPublicKeyVersion, ScriptPublicKeys, ScriptVec, SCRIPT_VECTOR_SIZE,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::SeqCst;
 use std::{
@@ -436,6 +437,37 @@ impl<T: AsRef<Transaction>> MutableTransaction<T> {
         } else {
             None
         }
+    }
+
+    /// A function for estimating the amount of memory bytes used by this transaction (dedicated to mempool usage).
+    /// We need consistency between estimation calls so only this function should be used for this purpose since
+    /// `estimate_mem_bytes` is sensitive to pointer wrappers such as Arc
+    pub fn mempool_estimated_bytes(&self) -> usize {
+        self.estimate_mem_bytes()
+    }
+
+    pub fn has_parent(&self, possible_parent: TransactionId) -> bool {
+        self.tx.as_ref().inputs.iter().any(|x| x.previous_outpoint.transaction_id == possible_parent)
+    }
+
+    pub fn has_parent_in_set(&self, possible_parents: &HashSet<TransactionId>) -> bool {
+        self.tx.as_ref().inputs.iter().any(|x| possible_parents.contains(&x.previous_outpoint.transaction_id))
+    }
+}
+
+impl<T: AsRef<Transaction>> MemSizeEstimator for MutableTransaction<T> {
+    fn estimate_mem_bytes(&self) -> usize {
+        size_of::<Self>()
+            + self
+                .entries
+                .iter()
+                .map(|op| {
+                    // size_of::<Option<UtxoEntry>>() already counts SCRIPT_VECTOR_SIZE bytes within, so we only add the delta
+                    size_of::<Option<UtxoEntry>>()
+                        + op.as_ref().map_or(0, |e| e.script_public_key.script().len().saturating_sub(SCRIPT_VECTOR_SIZE))
+                })
+                .sum::<usize>()
+            + self.tx.as_ref().estimate_mem_bytes()
     }
 }
 

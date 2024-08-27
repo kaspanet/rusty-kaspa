@@ -13,7 +13,6 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_core::{debug, info};
-use kaspa_utils::mem_size::MemSizeEstimator;
 
 impl Mempool {
     pub(crate) fn pre_validate_and_populate_transaction(
@@ -68,20 +67,33 @@ impl Mempool {
             }
         }
 
+        // Perform mempool in-context validations prior to possible RBF replacements
+        self.validate_transaction_in_context(&transaction)?;
+
         // Check double spends and try to remove them if the RBF policy requires it
         let removed_transaction = self.execute_replace_by_fee(&transaction, rbf_policy)?;
 
-        self.validate_transaction_in_context(&transaction)?;
+        //
+        // Note: there exists a case below where `limit_transaction_count` returns an error signaling that
+        //       this tx should be rejected due to mempool size limits (rather than evicting others). However,
+        //       if this tx happened to be an RBF tx, it might have already caused an eviction in the line
+        //       above. We choose to ignore this rare case for now, as it essentially means that even the increased
+        //       feerate of the replacement tx is very low relative to the mempool overall.
+        //
 
         // Before adding the transaction, check if there is room in the pool
-        let transaction_size = transaction.tx.estimate_mem_bytes();
-        let txs_to_remove = self.transaction_pool.limit_transaction_count(&transaction)?;
+        let transaction_size = transaction.mempool_estimated_bytes();
+        let txs_to_remove = self.transaction_pool.limit_transaction_count(&transaction, transaction_size)?;
         for x in txs_to_remove.iter() {
             self.remove_transaction(x, true, TxRemovalReason::MakingRoom, format!(" for {}", transaction_id).as_str())?;
             // self.transaction_pool.limit_transaction_count(&transaction) returns the
             // smallest prefix of `ready_transactions` (sorted by ascending fee-rate)
             // that makes enough room for `transaction`, but since each call to `self.remove_transaction`
-            // also removes all transactions dependant on `x` we might already have enough room.
+            // also removes all transactions dependant on `x` we might already have sufficient space, so
+            // we constantly check the break condition.
+            //
+            // Note that self.transaction_pool.len() < self.config.maximum_transaction_count means we have
+            // at least one available slot in terms of the count limit
             if self.transaction_pool.len() < self.config.maximum_transaction_count
                 && self.transaction_pool.get_estimated_size() + transaction_size <= self.config.mempool_size_limit
             {
@@ -92,7 +104,7 @@ impl Mempool {
         assert!(
             self.transaction_pool.len() < self.config.maximum_transaction_count
                 && self.transaction_pool.get_estimated_size() + transaction_size <= self.config.mempool_size_limit,
-            "Transactions in mempool: {}, max: {}, mempool size: {}, max: {}",
+            "Transactions in mempool: {}, max: {}, mempool bytes size: {}, max: {}",
             self.transaction_pool.len() + 1,
             self.config.maximum_transaction_count,
             self.transaction_pool.get_estimated_size() + transaction_size,
@@ -100,8 +112,12 @@ impl Mempool {
         );
 
         // Add the transaction to the mempool as a MempoolTransaction and return a clone of the embedded Arc<Transaction>
-        let accepted_transaction =
-            self.transaction_pool.add_transaction(transaction, consensus.get_virtual_daa_score(), priority)?.mtx.tx.clone();
+        let accepted_transaction = self
+            .transaction_pool
+            .add_transaction(transaction, consensus.get_virtual_daa_score(), priority, transaction_size)?
+            .mtx
+            .tx
+            .clone();
         Ok(TransactionPostValidation { removed: removed_transaction, accepted: Some(accepted_transaction) })
     }
 
@@ -121,7 +137,7 @@ impl Mempool {
             return Err(RuleError::RejectDuplicate(transaction_id));
         }
 
-        let tx_size = transaction.tx.estimate_mem_bytes();
+        let tx_size = transaction.mempool_estimated_bytes();
         if tx_size > self.config.mempool_size_limit {
             return Err(RuleError::RejectTxTooBig(transaction_id, tx_size, self.config.mempool_size_limit));
         }

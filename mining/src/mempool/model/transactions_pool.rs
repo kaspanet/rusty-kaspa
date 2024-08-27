@@ -11,17 +11,17 @@ use crate::{
         },
         tx::Priority,
     },
-    model::topological_index::TopologicalIndex,
+    model::{topological_index::TopologicalIndex, TransactionIdSet},
     Policy,
 };
 use kaspa_consensus_core::{
     block::TemplateTransactionSelector,
     tx::{MutableTransaction, TransactionId, TransactionOutpoint},
 };
-use kaspa_core::{time::unix_now, trace, warn};
-use kaspa_utils::mem_size::MemSizeEstimator;
+use kaspa_core::{debug, time::unix_now, trace};
 use std::{
     collections::{hash_map::Keys, hash_set::Iter},
+    iter::once,
     sync::Arc,
 };
 
@@ -92,15 +92,16 @@ impl TransactionsPool {
         transaction: MutableTransaction,
         virtual_daa_score: u64,
         priority: Priority,
+        transaction_size: usize,
     ) -> RuleResult<&MempoolTransaction> {
         let transaction = MempoolTransaction::new(transaction, priority, virtual_daa_score);
         let id = transaction.id();
-        self.add_mempool_transaction(transaction)?;
+        self.add_mempool_transaction(transaction, transaction_size)?;
         Ok(self.get(&id).unwrap())
     }
 
     /// Add a mempool transaction to the pool
-    pub(crate) fn add_mempool_transaction(&mut self, transaction: MempoolTransaction) -> RuleResult<()> {
+    pub(crate) fn add_mempool_transaction(&mut self, transaction: MempoolTransaction, transaction_size: usize) -> RuleResult<()> {
         let id = transaction.id();
 
         assert!(!self.all_transactions.contains_key(&id), "transaction {id} to be added already exists in the transactions pool");
@@ -121,7 +122,7 @@ impl TransactionsPool {
         }
 
         self.utxo_set.add_transaction(&transaction.mtx);
-        self.estimated_size += transaction.mtx.tx.estimate_mem_bytes();
+        self.estimated_size += transaction_size;
         self.all_transactions.insert(id, transaction);
         trace!("Added transaction {}", id);
         Ok(())
@@ -164,7 +165,7 @@ impl TransactionsPool {
 
         // Remove the transaction from the mempool UTXO set
         self.utxo_set.remove_transaction(&removed_tx.mtx, &parent_ids);
-        self.estimated_size -= removed_tx.mtx.tx.estimate_mem_bytes();
+        self.estimated_size -= removed_tx.mtx.mempool_estimated_bytes();
 
         Ok(removed_tx)
     }
@@ -193,39 +194,63 @@ impl TransactionsPool {
     /// `transaction`.
     ///
     /// An error is returned if the mempool is filled with high priority transactions, or
-    /// at least one candidate for removal has a higher fee rate than `transaction`.
-    pub(crate) fn limit_transaction_count(&self, transaction: &MutableTransaction) -> RuleResult<Vec<TransactionId>> {
-        // Returns a vector of transactions to be removed that the caller has to remove actually.
-        // The caller is golang validateAndInsertTransaction equivalent.
-        // This behavior differs from golang impl.
-        let transaction_size = transaction.tx.estimate_mem_bytes();
-        let mut txs_to_remove = Vec::with_capacity(1);
-        let mut selected_size = 0;
-        for (num_selected, tx) in self
+    /// there are not enough lower feerate transactions that can be removed to accommodate `transaction`
+    pub(crate) fn limit_transaction_count(
+        &self,
+        transaction: &MutableTransaction,
+        transaction_size: usize,
+    ) -> RuleResult<Vec<TransactionId>> {
+        // No eviction needed -- return
+        if self.len() < self.config.maximum_transaction_count
+            && self.estimated_size + transaction_size <= self.config.mempool_size_limit
+        {
+            return Ok(Default::default());
+        }
+
+        // Returns a vector of transactions to be removed (the caller has to actually remove)
+        let feerate_threshold = transaction.calculated_feerate().unwrap();
+        let mut txs_to_remove = Vec::with_capacity(1); // Normally we expect a single removal
+        let mut selection_overall_size = 0;
+        for tx in self
             .ready_transactions
             .ascending_iter()
             .map(|tx| self.all_transactions.get(&tx.id()).unwrap())
-            .filter(|mtx| mtx.priority == Priority::Low && !mtx.is_parent_of(transaction))
-            .enumerate()
+            .filter(|mtx| mtx.priority == Priority::Low)
         {
-            if self.len() + 1 - num_selected <= self.config.maximum_transaction_count
-                && self.estimated_size + transaction_size - selected_size <= self.config.mempool_size_limit
-            {
-                break;
+            // TODO (optimization): inline the `has_parent_in_set` check within the redeemer traversal and exit early if possible
+            let redeemers = self.get_redeemer_ids_in_pool(&tx.id()).into_iter().chain(once(tx.id())).collect::<TransactionIdSet>();
+            if transaction.has_parent_in_set(&redeemers) {
+                continue;
             }
 
-            if tx.fee_rate() > transaction.calculated_feerate().unwrap() {
-                // panic!("{} {}", tx.fee_rate(), transaction.calculated_feerate().unwrap());
+            // We are iterating ready txs by ascending feerate so the pending tx has lower feerate than all remaining txs
+            if tx.fee_rate() > feerate_threshold {
                 let err = RuleError::RejectMempoolIsFull;
-                warn!("{}", err);
+                debug!("Transaction {} with feerate {} has been rejected: {}", transaction.id(), feerate_threshold, err);
                 return Err(err);
             }
 
             txs_to_remove.push(tx.id());
-            selected_size += tx.mtx.tx.estimate_mem_bytes();
+            selection_overall_size += tx.mtx.mempool_estimated_bytes();
+
+            if self.len() + 1 - txs_to_remove.len() <= self.config.maximum_transaction_count
+                && self.estimated_size + transaction_size - selection_overall_size <= self.config.mempool_size_limit
+            {
+                return Ok(txs_to_remove);
+            }
         }
 
-        Ok(txs_to_remove)
+        // We could not find sufficient space for the pending transaction
+        debug!(
+            "Mempool is filled with high-priority/ancestor txs (count: {}, bytes: {}). Transaction {} with feerate {} and size {} has been rejected: {}",
+            self.len(),
+            self.estimated_size,
+            transaction.id(),
+            feerate_threshold,
+            transaction_size,
+            RuleError::RejectMempoolIsFull
+        );
+        Err(RuleError::RejectMempoolIsFull)
     }
 
     pub(crate) fn get_estimated_size(&self) -> usize {
