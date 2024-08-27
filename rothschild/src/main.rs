@@ -17,7 +17,7 @@ use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode};
 use kaspa_txscript::pay_to_address_script;
 use parking_lot::Mutex;
 use rayon::prelude::*;
-use secp256k1::{rand::thread_rng, Keypair};
+use secp256k1::{rand::thread_rng, rand::random, Keypair};
 use tokio::time::{interval, MissedTickBehavior};
 
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
@@ -493,11 +493,12 @@ fn select_utxos(
         selected.push((outpoint, entry));
 
         let fee = required_fee(selected.len(), num_outs);
+        let priority_fee = (random::<f32>() * SOMPI_PER_KASPA as f32) as u64;
 
         *next_available_utxo_index += 1;
 
-        if selected_amount >= min_amount + fee && (!maximize_utxos || selected.len() == MAX_UTXOS) {
-            return (selected, selected_amount - fee);
+        if selected_amount >= min_amount + fee + priority_fee && (!maximize_utxos || selected.len() == MAX_UTXOS) {
+            return (selected, selected_amount - fee - priority_fee);
         }
 
         if selected.len() > MAX_UTXOS {
