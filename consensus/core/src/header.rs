@@ -1,6 +1,7 @@
 use crate::{hashing, BlueWorkType};
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_hashes::Hash;
+use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 
 /// @category Consensus
@@ -89,6 +90,18 @@ impl Header {
             blue_score: 0,
             pruning_point: Default::default(),
         }
+    }
+}
+
+impl AsRef<Header> for Header {
+    fn as_ref(&self) -> &Header {
+        self
+    }
+}
+
+impl MemSizeEstimator for Header {
+    fn estimate_mem_bytes(&self) -> usize {
+        size_of::<Self>() + self.parents_by_level.iter().map(|l| l.len()).sum::<usize>() * size_of::<Hash>()
     }
 }
 

@@ -26,6 +26,7 @@ use kaspa_rpc_core::{
     RpcContextualPeerAddress, RpcError, RpcExtraData, RpcHash, RpcIpAddress, RpcNetworkType, RpcPeerAddress, RpcResult,
     SubmitBlockRejectReason, SubmitBlockReport,
 };
+use kaspa_utils::hex::*;
 use std::str::FromStr;
 
 macro_rules! from {
@@ -248,6 +249,13 @@ from!(item: RpcResult<&kaspa_rpc_core::SubmitTransactionResponse>, protowire::Su
     Self { transaction_id: item.transaction_id.to_string(), error: None }
 });
 
+from!(item: &kaspa_rpc_core::SubmitTransactionReplacementRequest, protowire::SubmitTransactionReplacementRequestMessage, {
+    Self { transaction: Some((&item.transaction).into()) }
+});
+from!(item: RpcResult<&kaspa_rpc_core::SubmitTransactionReplacementResponse>, protowire::SubmitTransactionReplacementResponseMessage, {
+    Self { transaction_id: item.transaction_id.to_string(), replaced_transaction: Some((&item.replaced_transaction).into()), error: None }
+});
+
 from!(item: &kaspa_rpc_core::GetSubnetworkRequest, protowire::GetSubnetworkRequestMessage, {
     Self { subnetwork_id: item.subnetwork_id.to_string() }
 });
@@ -394,6 +402,34 @@ from!(item: RpcResult<&kaspa_rpc_core::GetDaaScoreTimestampEstimateResponse>, pr
     Self { timestamps: item.timestamps.clone(), error: None }
 });
 
+// Fee estimate API
+
+from!(&kaspa_rpc_core::GetFeeEstimateRequest, protowire::GetFeeEstimateRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetFeeEstimateResponse>, protowire::GetFeeEstimateResponseMessage, {
+    Self { estimate: Some((&item.estimate).into()), error: None }
+});
+from!(item: &kaspa_rpc_core::GetFeeEstimateExperimentalRequest, protowire::GetFeeEstimateExperimentalRequestMessage, {
+    Self {
+        verbose: item.verbose
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetFeeEstimateExperimentalResponse>, protowire::GetFeeEstimateExperimentalResponseMessage, {
+    Self {
+        estimate: Some((&item.estimate).into()),
+        verbose: item.verbose.as_ref().map(|x| x.into()),
+        error: None
+    }
+});
+
+from!(item: &kaspa_rpc_core::GetCurrentBlockColorRequest, protowire::GetCurrentBlockColorRequestMessage, {
+    Self {
+        hash: item.hash.to_string()
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetCurrentBlockColorResponse>, protowire::GetCurrentBlockColorResponseMessage, {
+    Self { blue: item.blue, error: None }
+});
+
 from!(&kaspa_rpc_core::PingRequest, protowire::PingRequestMessage);
 from!(RpcResult<&kaspa_rpc_core::PingResponse>, protowire::PingResponseMessage);
 
@@ -403,6 +439,8 @@ from!(item: &kaspa_rpc_core::GetMetricsRequest, protowire::GetMetricsRequestMess
         connection_metrics: item.connection_metrics,
         bandwidth_metrics: item.bandwidth_metrics,
         consensus_metrics: item.consensus_metrics,
+        storage_metrics: item.storage_metrics,
+        custom_metrics: item.custom_metrics,
     }
 });
 from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetricsResponseMessage, {
@@ -412,13 +450,45 @@ from!(item: RpcResult<&kaspa_rpc_core::GetMetricsResponse>, protowire::GetMetric
         connection_metrics: item.connection_metrics.as_ref().map(|x| x.into()),
         bandwidth_metrics: item.bandwidth_metrics.as_ref().map(|x| x.into()),
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.into()),
+        storage_metrics: item.storage_metrics.as_ref().map(|x| x.into()),
+        // TODO
+        // custom_metrics : None,
         error: None,
     }
 });
+
+from!(item: &kaspa_rpc_core::GetConnectionsRequest, protowire::GetConnectionsRequestMessage, {
+    Self {
+        include_profile_data : item.include_profile_data,
+    }
+});
+from!(item: RpcResult<&kaspa_rpc_core::GetConnectionsResponse>, protowire::GetConnectionsResponseMessage, {
+    Self {
+        clients: item.clients,
+        peers: item.peers as u32,
+        profile_data: item.profile_data.as_ref().map(|x| x.into()),
+        error: None,
+    }
+});
+
+from!(&kaspa_rpc_core::GetSystemInfoRequest, protowire::GetSystemInfoRequestMessage);
+from!(item: RpcResult<&kaspa_rpc_core::GetSystemInfoResponse>, protowire::GetSystemInfoResponseMessage, {
+    Self {
+        version : item.version.clone(),
+        system_id : item.system_id.as_ref().map(|system_id|system_id.to_hex()).unwrap_or_default(),
+        git_hash : item.git_hash.as_ref().map(|git_hash|git_hash.to_hex()).unwrap_or_default(),
+        total_memory : item.total_memory,
+        core_num : item.cpu_physical_cores as u32,
+        fd_limit : item.fd_limit,
+        error: None,
+    }
+});
+
 from!(&kaspa_rpc_core::GetServerInfoRequest, protowire::GetServerInfoRequestMessage);
 from!(item: RpcResult<&kaspa_rpc_core::GetServerInfoResponse>, protowire::GetServerInfoResponseMessage, {
     Self {
-        rpc_api_version: item.rpc_api_version.iter().map(|x| *x as u32).collect(),
+        rpc_api_version: item.rpc_api_version as u32,
+        rpc_api_revision: item.rpc_api_revision as u32,
         server_version: item.server_version.clone(),
         network_id: item.network_id.to_string(),
         has_utxo_index: item.has_utxo_index,
@@ -647,6 +717,26 @@ try_from!(item: &protowire::SubmitTransactionResponseMessage, RpcResult<kaspa_rp
     Self { transaction_id: RpcHash::from_str(&item.transaction_id)? }
 });
 
+try_from!(item: &protowire::SubmitTransactionReplacementRequestMessage, kaspa_rpc_core::SubmitTransactionReplacementRequest, {
+    Self {
+        transaction: item
+            .transaction
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("SubmitTransactionReplacementRequestMessage".to_string(), "transaction".to_string()))?
+            .try_into()?,
+    }
+});
+try_from!(item: &protowire::SubmitTransactionReplacementResponseMessage, RpcResult<kaspa_rpc_core::SubmitTransactionReplacementResponse>, {
+    Self {
+        transaction_id: RpcHash::from_str(&item.transaction_id)?,
+        replaced_transaction: item
+            .replaced_transaction
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("SubmitTransactionReplacementRequestMessage".to_string(), "replaced_transaction".to_string()))?
+            .try_into()?,
+    }
+});
+
 try_from!(item: &protowire::GetSubnetworkRequestMessage, kaspa_rpc_core::GetSubnetworkRequest, {
     Self { subnetwork_id: kaspa_rpc_core::RpcSubnetworkId::from_str(&item.subnetwork_id)? }
 });
@@ -791,11 +881,53 @@ try_from!(item: &protowire::GetDaaScoreTimestampEstimateResponseMessage, RpcResu
     Self { timestamps: item.timestamps.clone() }
 });
 
+try_from!(&protowire::GetFeeEstimateRequestMessage, kaspa_rpc_core::GetFeeEstimateRequest);
+try_from!(item: &protowire::GetFeeEstimateResponseMessage, RpcResult<kaspa_rpc_core::GetFeeEstimateResponse>, {
+    Self {
+        estimate: item.estimate
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("GetFeeEstimateResponseMessage".to_string(), "estimate".to_string()))?
+            .try_into()?
+    }
+});
+try_from!(item: &protowire::GetFeeEstimateExperimentalRequestMessage, kaspa_rpc_core::GetFeeEstimateExperimentalRequest, {
+    Self {
+        verbose: item.verbose
+    }
+});
+try_from!(item: &protowire::GetFeeEstimateExperimentalResponseMessage, RpcResult<kaspa_rpc_core::GetFeeEstimateExperimentalResponse>, {
+    Self {
+        estimate: item.estimate
+            .as_ref()
+            .ok_or_else(|| RpcError::MissingRpcFieldError("GetFeeEstimateExperimentalResponseMessage".to_string(), "estimate".to_string()))?
+            .try_into()?,
+        verbose: item.verbose.as_ref().map(|x| x.try_into()).transpose()?
+    }
+});
+
+try_from!(item: &protowire::GetCurrentBlockColorRequestMessage, kaspa_rpc_core::GetCurrentBlockColorRequest, {
+    Self {
+        hash: RpcHash::from_str(&item.hash)?
+    }
+});
+try_from!(item: &protowire::GetCurrentBlockColorResponseMessage, RpcResult<kaspa_rpc_core::GetCurrentBlockColorResponse>, {
+    Self {
+        blue: item.blue
+    }
+});
+
 try_from!(&protowire::PingRequestMessage, kaspa_rpc_core::PingRequest);
 try_from!(&protowire::PingResponseMessage, RpcResult<kaspa_rpc_core::PingResponse>);
 
 try_from!(item: &protowire::GetMetricsRequestMessage, kaspa_rpc_core::GetMetricsRequest, {
-    Self { process_metrics: item.process_metrics, connection_metrics: item.connection_metrics, bandwidth_metrics:item.bandwidth_metrics, consensus_metrics: item.consensus_metrics }
+    Self {
+        process_metrics: item.process_metrics,
+        connection_metrics: item.connection_metrics,
+        bandwidth_metrics:item.bandwidth_metrics,
+        consensus_metrics: item.consensus_metrics,
+        storage_metrics: item.storage_metrics,
+        custom_metrics : item.custom_metrics,
+    }
 });
 try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core::GetMetricsResponse>, {
     Self {
@@ -804,13 +936,40 @@ try_from!(item: &protowire::GetMetricsResponseMessage, RpcResult<kaspa_rpc_core:
         connection_metrics: item.connection_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         bandwidth_metrics: item.bandwidth_metrics.as_ref().map(|x| x.try_into()).transpose()?,
         consensus_metrics: item.consensus_metrics.as_ref().map(|x| x.try_into()).transpose()?,
+        storage_metrics: item.storage_metrics.as_ref().map(|x| x.try_into()).transpose()?,
+        // TODO
+        custom_metrics: None,
+    }
+});
+
+try_from!(item: &protowire::GetConnectionsRequestMessage, kaspa_rpc_core::GetConnectionsRequest, {
+    Self { include_profile_data : item.include_profile_data }
+});
+try_from!(item: &protowire::GetConnectionsResponseMessage, RpcResult<kaspa_rpc_core::GetConnectionsResponse>, {
+    Self {
+        clients: item.clients,
+        peers: item.peers as u16,
+        profile_data: item.profile_data.as_ref().map(|x| x.try_into()).transpose()?,
+    }
+});
+
+try_from!(&protowire::GetSystemInfoRequestMessage, kaspa_rpc_core::GetSystemInfoRequest);
+try_from!(item: &protowire::GetSystemInfoResponseMessage, RpcResult<kaspa_rpc_core::GetSystemInfoResponse>, {
+    Self {
+        version: item.version.clone(),
+        system_id: (!item.system_id.is_empty()).then(|| FromHex::from_hex(&item.system_id)).transpose()?,
+        git_hash: (!item.git_hash.is_empty()).then(|| FromHex::from_hex(&item.git_hash)).transpose()?,
+        total_memory: item.total_memory,
+        cpu_physical_cores: item.core_num as u16,
+        fd_limit: item.fd_limit,
     }
 });
 
 try_from!(&protowire::GetServerInfoRequestMessage, kaspa_rpc_core::GetServerInfoRequest);
 try_from!(item: &protowire::GetServerInfoResponseMessage, RpcResult<kaspa_rpc_core::GetServerInfoResponse>, {
     Self {
-        rpc_api_version: item.rpc_api_version.iter().map(|x| *x as u16).collect::<Vec<_>>().as_slice().try_into().map_err(|_| RpcError::RpcApiVersionFormatError)?,
+        rpc_api_version: item.rpc_api_version as u16,
+        rpc_api_revision: item.rpc_api_revision as u16,
         server_version: item.server_version.clone(),
         network_id: NetworkId::from_str(&item.network_id)?,
         has_utxo_index: item.has_utxo_index,

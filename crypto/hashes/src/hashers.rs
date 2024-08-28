@@ -51,7 +51,7 @@ macro_rules! sha256_hasher {
                     // SHA256 doesn't natively support domain separation, so we hash it to make it constant size.
                     let mut tmp_state = Sha256::new();
                     tmp_state.update($domain_sep);
-                    let mut out = Self(Sha256::new());
+                    let mut out = $name(Sha256::new());
                     out.write(tmp_state.finalize());
 
                     out

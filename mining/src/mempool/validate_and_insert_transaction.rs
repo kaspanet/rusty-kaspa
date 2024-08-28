@@ -2,9 +2,9 @@ use crate::mempool::{
     errors::{RuleError, RuleResult},
     model::{
         pool::Pool,
-        tx::{MempoolTransaction, TxRemovalReason},
+        tx::{MempoolTransaction, TransactionPostValidation, TransactionPreValidation, TxRemovalReason},
     },
-    tx::{Orphan, Priority},
+    tx::{Orphan, Priority, RbfPolicy},
     Mempool,
 };
 use kaspa_consensus_core::{
@@ -13,21 +13,21 @@ use kaspa_consensus_core::{
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_core::{debug, info};
-use std::sync::Arc;
 
 impl Mempool {
     pub(crate) fn pre_validate_and_populate_transaction(
         &self,
         consensus: &dyn ConsensusApi,
         mut transaction: MutableTransaction,
-    ) -> RuleResult<MutableTransaction> {
+        rbf_policy: RbfPolicy,
+    ) -> RuleResult<TransactionPreValidation> {
         self.validate_transaction_unacceptance(&transaction)?;
-        // Populate mass in the beginning, it will be used in multiple places throughout the validation and insertion.
+        // Populate mass and estimated_size in the beginning, it will be used in multiple places throughout the validation and insertion.
         transaction.calculated_compute_mass = Some(consensus.calculate_transaction_compute_mass(&transaction.tx));
         self.validate_transaction_in_isolation(&transaction)?;
-        self.transaction_pool.check_double_spends(&transaction)?;
+        let feerate_threshold = self.get_replace_by_fee_constraint(&transaction, rbf_policy)?;
         self.populate_mempool_entries(&mut transaction);
-        Ok(transaction)
+        Ok(TransactionPreValidation { transaction, feerate_threshold })
     }
 
     pub(crate) fn post_validate_and_insert_transaction(
@@ -37,7 +37,8 @@ impl Mempool {
         transaction: MutableTransaction,
         priority: Priority,
         orphan: Orphan,
-    ) -> RuleResult<Option<Arc<Transaction>>> {
+        rbf_policy: RbfPolicy,
+    ) -> RuleResult<TransactionPostValidation> {
         let transaction_id = transaction.id();
 
         // First check if the transaction was not already added to the mempool.
@@ -46,13 +47,10 @@ impl Mempool {
         // concurrently.
         if self.transaction_pool.has(&transaction_id) {
             debug!("Transaction {0} is not post validated since already in the mempool", transaction_id);
-            return Ok(None);
+            return Err(RuleError::RejectDuplicate(transaction_id));
         }
 
         self.validate_transaction_unacceptance(&transaction)?;
-
-        // Re-check double spends since validate_and_insert_transaction is no longer atomic
-        self.transaction_pool.check_double_spends(&transaction)?;
 
         match validation_result {
             Ok(_) => {}
@@ -60,25 +58,67 @@ impl Mempool {
                 if orphan == Orphan::Forbidden {
                     return Err(RuleError::RejectDisallowedOrphan(transaction_id));
                 }
+                let _ = self.get_replace_by_fee_constraint(&transaction, rbf_policy)?;
                 self.orphan_pool.try_add_orphan(consensus.get_virtual_daa_score(), transaction, priority)?;
-                return Ok(None);
+                return Ok(TransactionPostValidation::default());
             }
             Err(err) => {
                 return Err(err);
             }
         }
 
+        // Perform mempool in-context validations prior to possible RBF replacements
         self.validate_transaction_in_context(&transaction)?;
 
+        // Check double spends and try to remove them if the RBF policy requires it
+        let removed_transaction = self.execute_replace_by_fee(&transaction, rbf_policy)?;
+
+        //
+        // Note: there exists a case below where `limit_transaction_count` returns an error signaling that
+        //       this tx should be rejected due to mempool size limits (rather than evicting others). However,
+        //       if this tx happened to be an RBF tx, it might have already caused an eviction in the line
+        //       above. We choose to ignore this rare case for now, as it essentially means that even the increased
+        //       feerate of the replacement tx is very low relative to the mempool overall.
+        //
+
         // Before adding the transaction, check if there is room in the pool
-        self.transaction_pool.limit_transaction_count(1, &transaction)?.iter().try_for_each(|x| {
-            self.remove_transaction(x, true, TxRemovalReason::MakingRoom, format!(" for {}", transaction_id).as_str())
-        })?;
+        let transaction_size = transaction.mempool_estimated_bytes();
+        let txs_to_remove = self.transaction_pool.limit_transaction_count(&transaction, transaction_size)?;
+        for x in txs_to_remove.iter() {
+            self.remove_transaction(x, true, TxRemovalReason::MakingRoom, format!(" for {}", transaction_id).as_str())?;
+            // self.transaction_pool.limit_transaction_count(&transaction) returns the
+            // smallest prefix of `ready_transactions` (sorted by ascending fee-rate)
+            // that makes enough room for `transaction`, but since each call to `self.remove_transaction`
+            // also removes all transactions dependant on `x` we might already have sufficient space, so
+            // we constantly check the break condition.
+            //
+            // Note that self.transaction_pool.len() < self.config.maximum_transaction_count means we have
+            // at least one available slot in terms of the count limit
+            if self.transaction_pool.len() < self.config.maximum_transaction_count
+                && self.transaction_pool.get_estimated_size() + transaction_size <= self.config.mempool_size_limit
+            {
+                break;
+            }
+        }
+
+        assert!(
+            self.transaction_pool.len() < self.config.maximum_transaction_count
+                && self.transaction_pool.get_estimated_size() + transaction_size <= self.config.mempool_size_limit,
+            "Transactions in mempool: {}, max: {}, mempool bytes size: {}, max: {}",
+            self.transaction_pool.len() + 1,
+            self.config.maximum_transaction_count,
+            self.transaction_pool.get_estimated_size() + transaction_size,
+            self.config.mempool_size_limit,
+        );
 
         // Add the transaction to the mempool as a MempoolTransaction and return a clone of the embedded Arc<Transaction>
-        let accepted_transaction =
-            self.transaction_pool.add_transaction(transaction, consensus.get_virtual_daa_score(), priority)?.mtx.tx.clone();
-        Ok(Some(accepted_transaction))
+        let accepted_transaction = self
+            .transaction_pool
+            .add_transaction(transaction, consensus.get_virtual_daa_score(), priority, transaction_size)?
+            .mtx
+            .tx
+            .clone();
+        Ok(TransactionPostValidation { removed: removed_transaction, accepted: Some(accepted_transaction) })
     }
 
     /// Validates that the transaction wasn't already accepted into the DAG
@@ -96,6 +136,7 @@ impl Mempool {
         if self.transaction_pool.has(&transaction_id) {
             return Err(RuleError::RejectDuplicate(transaction_id));
         }
+
         if !self.config.accept_non_standard {
             self.check_transaction_standard_in_isolation(transaction)?;
         }
@@ -184,9 +225,26 @@ impl Mempool {
         // The one we just removed from the orphan pool.
         assert_eq!(transactions.len(), 1, "the list returned by remove_orphan is expected to contain exactly one transaction");
         let transaction = transactions.pop().unwrap();
+        let rbf_policy = Self::get_orphan_transaction_rbf_policy(transaction.priority);
 
         self.validate_transaction_unacceptance(&transaction.mtx)?;
-        self.transaction_pool.check_double_spends(&transaction.mtx)?;
+        let _ = self.get_replace_by_fee_constraint(&transaction.mtx, rbf_policy)?;
         Ok(transaction)
+    }
+
+    /// Returns the RBF policy to apply to an orphan/unorphaned transaction by inferring it from the transaction priority.
+    pub(crate) fn get_orphan_transaction_rbf_policy(priority: Priority) -> RbfPolicy {
+        // The RBF policy applied to an orphaned transaction is not recorded in the orphan pool
+        // but we can infer it from the priority:
+        //
+        //  - high means a submitted tx via RPC which forbids RBF
+        //  - low means a tx arrived via P2P which allows RBF
+        //
+        // Note that the RPC submit transaction replacement case, implying a mandatory RBF, forbids orphans
+        // so is excluded here.
+        match priority {
+            Priority::High => RbfPolicy::Forbidden,
+            Priority::Low => RbfPolicy::Allowed,
+        }
     }
 }

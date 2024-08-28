@@ -13,7 +13,7 @@ use kaspa_consensus_core::{
 use kaspa_core::{info, kaspad_env::version, time::unix_now, warn};
 use kaspa_grpc_client::{ClientPool, GrpcClient};
 use kaspa_notify::subscription::context::SubscriptionContext;
-use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode};
+use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode, RpcUtxoEntry};
 use kaspa_txscript::pay_to_address_script;
 use parking_lot::Mutex;
 use rayon::prelude::*;
@@ -21,7 +21,7 @@ use secp256k1::{rand::thread_rng, Keypair};
 use tokio::time::{interval, MissedTickBehavior};
 
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
-const FEE_PER_MASS: u64 = 10;
+const FEE_RATE: u64 = 10;
 const MILLIS_PER_TICK: u64 = 10;
 const ADDRESS_PREFIX: Prefix = Prefix::Testnet;
 const ADDRESS_VERSION: Version = Version::PubKey;
@@ -323,7 +323,7 @@ async fn populate_pending_outpoints_from_mempool(
     for entry in entries {
         for entry in entry.sending {
             for input in entry.transaction.inputs {
-                pending_outpoints.insert(input.previous_outpoint, now);
+                pending_outpoints.insert(input.previous_outpoint.into(), now);
             }
         }
     }
@@ -337,20 +337,20 @@ async fn fetch_spendable_utxos(
 ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
     let resp = rpc_client.get_utxos_by_addresses(vec![kaspa_addr]).await.unwrap();
     let dag_info = rpc_client.get_block_dag_info().await.unwrap();
-    let mut utxos = Vec::with_capacity(resp.len());
-    for resp_entry in resp
-        .into_iter()
-        .filter(|resp_entry| is_utxo_spendable(&resp_entry.utxo_entry, dag_info.virtual_daa_score, coinbase_maturity))
+
+    let mut utxos = resp.into_iter()
+        .filter(|entry| {
+            is_utxo_spendable(&entry.utxo_entry, dag_info.virtual_daa_score, coinbase_maturity)
+        })
+        .map(|entry| (TransactionOutpoint::from(entry.outpoint), UtxoEntry::from(entry.utxo_entry)))
         // Eliminates UTXOs we already tried to spend so we don't try to spend them again in this period
-        .filter(|utxo| !pending.contains_key(&utxo.outpoint))
-    {
-        utxos.push((resp_entry.outpoint, resp_entry.utxo_entry));
-    }
+        .filter(|(outpoint,_)| !pending.contains_key(outpoint))
+        .collect::<Vec<_>>();
     utxos.sort_by(|a, b| b.1.amount.cmp(&a.1.amount));
     utxos
 }
 
-fn is_utxo_spendable(entry: &UtxoEntry, virtual_daa_score: u64, coinbase_maturity: u64) -> bool {
+fn is_utxo_spendable(entry: &RpcUtxoEntry, virtual_daa_score: u64, coinbase_maturity: u64) -> bool {
     let needed_confs = if !entry.is_coinbase {
         10
     } else {
@@ -438,7 +438,7 @@ fn clean_old_pending_outpoints(pending: &mut HashMap<TransactionOutpoint, u64>) 
 }
 
 fn required_fee(num_utxos: usize, num_outs: u64) -> u64 {
-    FEE_PER_MASS * estimated_mass(num_utxos, num_outs)
+    FEE_RATE * estimated_mass(num_utxos, num_outs)
 }
 
 fn estimated_mass(num_utxos: usize, num_outs: u64) -> u64 {

@@ -13,7 +13,9 @@ use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
+use kaspa_utils::git;
 use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 
 use kaspa_addressmanager::AddressManager;
@@ -161,7 +163,13 @@ impl Runtime {
         let log_dir = get_log_dir(args);
 
         // Initialize the logger
-        kaspa_core::log::init_logger(log_dir.as_deref(), &args.log_level);
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "semaphore-trace")] {
+                kaspa_core::log::init_logger(log_dir.as_deref(), &format!("{},{}=debug", args.log_level, kaspa_utils::sync::semaphore_module_path()));
+            } else {
+                kaspa_core::log::init_logger(log_dir.as_deref(), &args.log_level);
+            }
+        };
 
         // Configure the panic behavior
         // As we log the panic, we want to set it up after the logger
@@ -227,7 +235,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
     let db_dir = app_dir.join(network.to_prefixed()).join(DEFAULT_DATA_DIR);
 
     // Print package name and version
-    info!("{} v{}", env!("CARGO_PKG_NAME"), version());
+    info!("{} v{}", env!("CARGO_PKG_NAME"), git::with_short_hash(version()));
 
     assert!(!db_dir.to_str().unwrap().is_empty());
     info!("Application directory: {}", app_dir.display());
@@ -402,6 +410,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         Arc::new(perf_monitor_builder.build())
     };
 
+    let system_info = SystemInfo::default();
+
     let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv, subscription_context.clone()));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
@@ -419,15 +429,16 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     let (address_manager, port_mapping_extender_svc) = AddressManager::new(config.clone(), meta_db, tick_service.clone());
 
-    let mining_monitor = Arc::new(MiningMonitor::new(mining_counters.clone(), tx_script_cache_counters.clone(), tick_service.clone()));
     let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_extended_config(
         config.target_time_per_block,
         false,
         config.max_block_mass,
         config.ram_scale,
         config.block_template_cache_lifetime,
-        mining_counters,
+        mining_counters.clone(),
     )));
+    let mining_monitor =
+        Arc::new(MiningMonitor::new(mining_manager.clone(), mining_counters, tx_script_cache_counters.clone(), tick_service.clone()));
 
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),
@@ -465,6 +476,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         perf_monitor.clone(),
         p2p_tower_counters.clone(),
         grpc_tower_counters.clone(),
+        system_info,
     ));
     let grpc_service_broadcasters: usize = 3; // TODO: add a command line argument or derive from other arg/config/host-related fields
     let grpc_service = if !args.disable_grpc {

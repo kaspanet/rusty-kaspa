@@ -59,8 +59,8 @@ impl BorshSerialize for StorageHeader {
 }
 
 impl BorshDeserialize for StorageHeader {
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        let (magic, version): (u32, u32) = BorshDeserialize::deserialize(buf)?;
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let (magic, version): (u32, u32) = BorshDeserialize::deserialize_reader(reader)?;
         Ok(Self { magic, version })
     }
 }
