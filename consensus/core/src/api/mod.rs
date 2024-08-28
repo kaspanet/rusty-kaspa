@@ -160,8 +160,8 @@ pub trait ConsensusApi: Send + Sync {
     /// Gets the virtual chain paths from `low` to the `sink` hash, or until `limit`` is reached
     ///
     /// Note:   
-    /// 1) `limit` will populate removed and then the added chain path, up to the specified amount.
-    /// 1.1) use `usize::MAX` to impose no limit with optimized backward chain iteration, for better performance in cases where batching is not required.
+    ///     1) `limit` will populate removed and then the added chain path, up to the specified amount.
+    ///     1.1) use `usize::MAX` to impose no limit with optimized backward chain iteration, for better performance in cases where batching is not required.
     fn get_virtual_chain_from_block(&self, low: Hash, limit: usize) -> ConsensusResult<ChainPath> {
         unimplemented!()
     }
