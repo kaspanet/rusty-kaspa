@@ -8,7 +8,8 @@ use crate::result::Result;
 use crate::rpc::DynRpcApi;
 use crate::tx::{DataKind, Generator};
 use crate::utxo::{UtxoContext, UtxoEntryId, UtxoEntryReference};
-use kaspa_consensus_core::sign::sign_with_multiple_v2;
+use kaspa_consensus_core::hashing::sighash_type::SigHashType;
+use kaspa_consensus_core::sign::{sign_input, sign_with_multiple_v2, Signed};
 use kaspa_consensus_core::tx::{SignableTransaction, Transaction, TransactionId};
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionId};
 
@@ -223,9 +224,50 @@ impl PendingTransaction {
         Ok(())
     }
 
-    pub fn try_sign_with_keys(&self, privkeys: &[[u8; 32]]) -> Result<()> {
+    pub fn create_input_signature(&self, input_index: usize, private_key: &[u8; 32], hash_type: SigHashType) -> Result<Vec<u8>> {
         let mutable_tx = self.inner.signable_tx.lock()?.clone();
-        let signed_tx = sign_with_multiple_v2(mutable_tx, privkeys).fully_signed()?;
+        let verifiable_tx = mutable_tx.as_verifiable();
+
+        Ok(sign_input(&verifiable_tx, input_index, private_key, hash_type))
+    }
+
+    pub fn fill_input(&self, input_index: usize, signature_script: Vec<u8>) -> Result<()> {
+        let mut mutable_tx = self.inner.signable_tx.lock()?.clone();
+        mutable_tx.tx.inputs[input_index].signature_script = signature_script;
+        *self.inner.signable_tx.lock().unwrap() = mutable_tx;
+
+        Ok(())
+    }
+
+    pub fn sign_input(&self, input_index: usize, private_key: &[u8; 32], hash_type: SigHashType) -> Result<()> {
+        let mut mutable_tx = self.inner.signable_tx.lock()?.clone();
+
+        let signature_script = {
+            let verifiable_tx = &mutable_tx.as_verifiable();
+            sign_input(verifiable_tx, input_index, private_key, hash_type)
+        };
+
+        mutable_tx.tx.inputs[input_index].signature_script = signature_script;
+        *self.inner.signable_tx.lock().unwrap() = mutable_tx;
+
+        Ok(())
+    }
+
+    pub fn try_sign_with_keys(&self, privkeys: &[[u8; 32]], check_fully_signed: Option<bool>) -> Result<()> {
+        let mutable_tx = self.inner.signable_tx.lock()?.clone();
+        let signed = sign_with_multiple_v2(mutable_tx, privkeys);
+
+        let signed_tx = match signed {
+            Signed::Fully(tx) => tx,
+            Signed::Partially(_) => {
+                if check_fully_signed.unwrap_or(true) {
+                    signed.fully_signed()?
+                } else {
+                    signed.unwrap()
+                }
+            }
+        };
+
         *self.inner.signable_tx.lock().unwrap() = signed_tx;
         Ok(())
     }

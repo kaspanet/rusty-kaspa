@@ -61,6 +61,6 @@ impl TestBlockBuilder {
         let pov_virtual_utxo_view = (&virtual_read.utxo_set).compose(accumulated_diff);
         self.validate_block_template_transactions(&txs, &pov_virtual_state, &pov_virtual_utxo_view)?;
         drop(virtual_read);
-        self.build_block_template_from_virtual_state(pov_virtual_state, miner_data, txs)
+        self.build_block_template_from_virtual_state(pov_virtual_state, miner_data, txs, vec![])
     }
 }

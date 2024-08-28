@@ -1,4 +1,5 @@
 use super::MiningCounters;
+use crate::manager::MiningManagerProxy;
 use kaspa_core::{
     debug, info,
     task::{
@@ -13,6 +14,8 @@ use std::{sync::Arc, time::Duration};
 const MONITOR: &str = "mempool-monitor";
 
 pub struct MiningMonitor {
+    mining_manager: MiningManagerProxy,
+
     // Counters
     counters: Arc<MiningCounters>,
 
@@ -24,11 +27,12 @@ pub struct MiningMonitor {
 
 impl MiningMonitor {
     pub fn new(
+        mining_manager: MiningManagerProxy,
         counters: Arc<MiningCounters>,
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
         tick_service: Arc<TickService>,
     ) -> MiningMonitor {
-        MiningMonitor { counters, tx_script_cache_counters, tick_service }
+        MiningMonitor { mining_manager, counters, tx_script_cache_counters, tick_service }
     }
 
     pub async fn worker(self: &Arc<MiningMonitor>) {
@@ -62,6 +66,8 @@ impl MiningMonitor {
                     delta.low_priority_tx_counts,
                     delta.tx_accepted_counts,
                 );
+                let feerate_estimations = self.mining_manager.clone().get_realtime_feerate_estimations().await;
+                debug!("Realtime feerate estimations: {}", feerate_estimations);
             }
             if tx_script_cache_snapshot != last_tx_script_cache_snapshot {
                 debug!(

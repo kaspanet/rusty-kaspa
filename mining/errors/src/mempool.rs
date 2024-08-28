@@ -4,7 +4,7 @@ use kaspa_consensus_core::{
 };
 use thiserror::Error;
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum RuleError {
     /// A consensus transaction rule error
     ///
@@ -24,12 +24,18 @@ pub enum RuleError {
     #[error("transaction {0} is already in the mempool")]
     RejectDuplicate(TransactionId),
 
-    #[error("output {0} already spent by transaction {1} in the memory pool")]
+    #[error("output {0} already spent by transaction {1} in the mempool")]
     RejectDoubleSpendInMempool(TransactionOutpoint, TransactionId),
 
-    /// New behavior: a transaction is rejected if the mempool is full
-    #[error("number of high-priority transactions in mempool ({0}) has reached the maximum allowed ({1})")]
-    RejectMempoolIsFull(usize, u64),
+    #[error("replace by fee found no double spending transaction in the mempool")]
+    RejectRbfNoDoubleSpend,
+
+    #[error("replace by fee found more than one double spending transaction in the mempool")]
+    RejectRbfTooManyDoubleSpendingTransactions,
+
+    /// a transaction is rejected if the mempool is full
+    #[error("transaction could not be added to the mempool because it's full with transactions with higher priority")]
+    RejectMempoolIsFull,
 
     /// An error emitted by mining\src\mempool\check_transaction_standard.rs
     #[error("transaction {0} is not standard: {1}")]
@@ -95,7 +101,7 @@ impl From<TxRuleError> for RuleError {
 
 pub type RuleResult<T> = std::result::Result<T, RuleError>;
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum NonStandardError {
     #[error("transaction version {1} is not in the valid range of {2}-{3}")]
     RejectVersion(TransactionId, u16, u16, u16),

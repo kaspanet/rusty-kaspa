@@ -14,13 +14,13 @@ use kaspa_notify::{
 use kaspa_rpc_core::{
     api::{
         ctl::{RpcCtl, RpcState},
-        ops::RPC_API_VERSION,
+        ops::{RPC_API_REVISION, RPC_API_VERSION},
     },
     message::UtxosChangedNotification,
     GetServerInfoResponse,
 };
 use kaspa_wrpc_client::KaspaRpcClient;
-use workflow_core::channel::{Channel, DuplexChannel};
+use workflow_core::channel::{Channel, DuplexChannel, Sender};
 use workflow_core::task::spawn;
 
 use crate::events::Events;
@@ -62,6 +62,7 @@ pub struct Inner {
     connect_disconnect_guard: AsyncMutex<()>,
     metrics: Arc<Metrics>,
     metrics_kinds: Mutex<Vec<MetricsUpdateKind>>,
+    connection_signaler: Mutex<Option<Sender<std::result::Result<(), String>>>>,
 }
 
 impl Inner {
@@ -91,6 +92,7 @@ impl Inner {
             connect_disconnect_guard: Default::default(),
             metrics: Arc::new(Metrics::default()),
             metrics_kinds: Mutex::new(vec![]),
+            connection_signaler: Mutex::new(None),
         }
     }
 }
@@ -180,8 +182,10 @@ impl UtxoProcessor {
     }
 
     pub fn network_params(&self) -> Result<&'static NetworkParams> {
+        // pub fn network_params(&self) -> Result<NetworkParams> {
         let network_id = (*self.inner.network_id.lock().unwrap()).ok_or(Error::MissingNetworkId)?;
-        Ok(network_id.into())
+        Ok(NetworkParams::from(network_id))
+        // Ok(network_id.into())
     }
 
     pub fn pending(&self) -> &DashMap<UtxoEntryId, PendingUtxoEntryReference> {
@@ -264,6 +268,7 @@ impl UtxoProcessor {
         Ok(())
     }
 
+    #[allow(clippy::mutable_key_type)]
     pub async fn handle_pending(&self, current_daa_score: u64) -> Result<()> {
         let params = self.network_params()?;
 
@@ -329,7 +334,7 @@ impl UtxoProcessor {
     }
 
     async fn handle_outgoing(&self, current_daa_score: u64) -> Result<()> {
-        let longevity = self.network_params()?.user_transaction_maturity_period_daa;
+        let longevity = self.network_params()?.user_transaction_maturity_period_daa();
 
         self.inner.outgoing.retain(|_, outgoing| {
             if outgoing.acceptance_daa_score() != 0 && (outgoing.acceptance_daa_score() + longevity) < current_daa_score {
@@ -388,6 +393,7 @@ impl UtxoProcessor {
     pub async fn handle_utxo_changed(&self, utxos: UtxosChangedNotification) -> Result<()> {
         let current_daa_score = self.current_daa_score().expect("DAA score expected when handling UTXO Changed notifications");
 
+        #[allow(clippy::mutable_key_type)]
         let mut updated_contexts: HashSet<UtxoContext> = HashSet::default();
 
         let removed = (*utxos.removed).clone().into_iter().filter_map(|entry| entry.address.clone().map(|address| (address, entry)));
@@ -437,13 +443,20 @@ impl UtxoProcessor {
 
     pub async fn init_state_from_server(&self) -> Result<bool> {
         let GetServerInfoResponse {
+            rpc_api_version,
+            rpc_api_revision,
             server_version,
             network_id: server_network_id,
             has_utxo_index,
             is_synced,
             virtual_daa_score,
-            rpc_api_version,
         } = self.rpc_api().get_server_info().await?;
+
+        if rpc_api_version > RPC_API_VERSION {
+            let current = format!("{RPC_API_VERSION}.{RPC_API_REVISION}");
+            let connected = format!("{rpc_api_version}.{rpc_api_revision}");
+            return Err(Error::RpcApiVersion(current, connected));
+        }
 
         if !has_utxo_index {
             self.notify(Events::UtxoIndexNotEnabled { url: self.rpc_url() }).await?;
@@ -453,12 +466,6 @@ impl UtxoProcessor {
         let network_id = self.network_id()?;
         if network_id != server_network_id {
             return Err(Error::InvalidNetworkType(network_id.to_string(), server_network_id.to_string()));
-        }
-
-        if rpc_api_version[0] > RPC_API_VERSION[0] || rpc_api_version[1] > RPC_API_VERSION[1] {
-            let current = RPC_API_VERSION.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(".");
-            let connected = rpc_api_version.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(".");
-            return Err(Error::RpcApiVersion(current, connected));
         }
 
         self.inner.current_daa_score.store(virtual_daa_score, Ordering::SeqCst);
@@ -487,12 +494,30 @@ impl UtxoProcessor {
         Ok(())
     }
 
+    /// Allows use to supply a channel Sender that will
+    /// receive the result of the wRPC connection attempt.
+    pub fn set_connection_signaler(&self, signal: Sender<std::result::Result<(), String>>) {
+        *self.inner.connection_signaler.lock().unwrap() = Some(signal);
+    }
+
+    fn signal_connection(&self, result: std::result::Result<(), String>) -> bool {
+        let signal = self.inner.connection_signaler.lock().unwrap().take();
+        if let Some(signal) = signal.as_ref() {
+            let _ = signal.try_send(result);
+            true
+        } else {
+            false
+        }
+    }
+
     pub async fn handle_connect(&self) -> Result<()> {
         let _ = self.inner.connect_disconnect_guard.lock().await;
 
         match self.handle_connect_impl().await {
             Err(err) => {
-                log_error!("UtxoProcessor: error while connecting to node: {err}");
+                if !self.signal_connection(Err(err.to_string())) {
+                    log_error!("UtxoProcessor: error while connecting to node: {err}");
+                }
                 self.notify(Events::UtxoProcError { message: err.to_string() }).await?;
                 if let Some(client) = self.rpc_client() {
                     // try force disconnect the client if we have failed
@@ -501,7 +526,10 @@ impl UtxoProcessor {
                 }
                 Err(err)
             }
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                self.signal_connection(Ok(()));
+                Ok(())
+            }
         }
     }
 
@@ -631,15 +659,11 @@ impl UtxoProcessor {
                                 // handle RPC channel connection and disconnection events
                                 match msg {
                                     RpcState::Connected => {
-                                        if !this.is_connected() {
-                                            if let Err(err) = this.handle_connect().await {
-                                                log_error!("UtxoProcessor error: {err}");
-                                            } else {
-                                                this.inner.multiplexer.try_broadcast(Box::new(Events::Connect {
-                                                    network_id : this.network_id().expect("network id expected during connection"),
-                                                    url : this.rpc_url()
-                                                })).unwrap_or_else(|err| log_error!("{err}"));
-                                            }
+                                        if !this.is_connected() && this.handle_connect().await.is_ok() {
+                                            this.inner.multiplexer.try_broadcast(Box::new(Events::Connect {
+                                                network_id : this.network_id().expect("network id expected during connection"),
+                                                url : this.rpc_url()
+                                            })).unwrap_or_else(|err| log_error!("{err}"));
                                         }
                                     },
                                     RpcState::Disconnected => {

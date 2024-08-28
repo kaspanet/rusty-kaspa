@@ -241,6 +241,8 @@ impl RpcApi for GrpcClient {
     route!(get_sync_status_call, GetSyncStatus);
     route!(get_server_info_call, GetServerInfo);
     route!(get_metrics_call, GetMetrics);
+    route!(get_connections_call, GetConnections);
+    route!(get_system_info_call, GetSystemInfo);
     route!(submit_block_call, SubmitBlock);
     route!(get_block_template_call, GetBlockTemplate);
     route!(get_block_call, GetBlock);
@@ -253,6 +255,7 @@ impl RpcApi for GrpcClient {
     route!(get_connected_peer_info_call, GetConnectedPeerInfo);
     route!(add_peer_call, AddPeer);
     route!(submit_transaction_call, SubmitTransaction);
+    route!(submit_transaction_replacement_call, SubmitTransactionReplacement);
     route!(get_subnetwork_call, GetSubnetwork);
     route!(get_virtual_chain_from_block_call, GetVirtualChainFromBlock);
     route!(get_blocks_call, GetBlocks);
@@ -271,6 +274,9 @@ impl RpcApi for GrpcClient {
     route!(get_mempool_entries_by_addresses_call, GetMempoolEntriesByAddresses);
     route!(get_coin_supply_call, GetCoinSupply);
     route!(get_daa_score_timestamp_estimate_call, GetDaaScoreTimestampEstimate);
+    route!(get_fee_estimate_call, GetFeeEstimate);
+    route!(get_fee_estimate_experimental_call, GetFeeEstimateExperimental);
+    route!(get_current_block_color_call, GetCurrentBlockColor);
 
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     // Notification API

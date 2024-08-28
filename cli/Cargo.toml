@@ -33,6 +33,7 @@ downcast.workspace = true
 faster-hex.workspace = true
 futures.workspace = true
 js-sys.workspace = true
+hex.workspace = true
 kaspa-addresses.workspace = true
 kaspa-bip32.workspace = true
 kaspa-consensus-core.workspace = true
@@ -43,6 +44,7 @@ kaspa-rpc-core.workspace = true
 kaspa-utils.workspace = true
 kaspa-wallet-core.workspace = true
 kaspa-wallet-keys.workspace = true
+kaspa-wallet-pskt.workspace = true
 kaspa-wrpc-client.workspace = true
 nw-sys.workspace = true
 pad.workspace = true
@@ -80,5 +82,5 @@ features = [
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio.workspace = true
 
-[lints.clippy]
-empty_docs = "allow"
+[lints]
+workspace = true

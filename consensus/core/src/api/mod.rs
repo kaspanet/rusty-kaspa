@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::{
     acceptance_data::AcceptanceData,
+    api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     blockstatus::BlockStatus,
     coinbase::MinerData,
@@ -25,6 +26,7 @@ use kaspa_hashes::Hash;
 
 pub use self::stats::{BlockCount, ConsensusStats};
 
+pub mod args;
 pub mod counters;
 pub mod stats;
 
@@ -62,14 +64,18 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     /// Populates the mempool transaction with maximally found UTXO entry data and proceeds to full transaction
-    /// validation if all are found. If validation is successful, also [`transaction.calculated_fee`] is expected to be populated.
-    fn validate_mempool_transaction(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
+    /// validation if all are found. If validation is successful, also `transaction.calculated_fee` is expected to be populated.
+    fn validate_mempool_transaction(&self, transaction: &mut MutableTransaction, args: &TransactionValidationArgs) -> TxResult<()> {
         unimplemented!()
     }
 
     /// Populates the mempool transactions with maximally found UTXO entry data and proceeds to full transactions
-    /// validation if all are found. If validation is successful, also [`transaction.calculated_fee`] is expected to be populated.
-    fn validate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
+    /// validation if all are found. If validation is successful, also `transaction.calculated_fee` is expected to be populated.
+    fn validate_mempool_transactions_in_parallel(
+        &self,
+        transactions: &mut [MutableTransaction],
+        args: &TransactionValidationBatchArgs,
+    ) -> Vec<TxResult<()>> {
         unimplemented!()
     }
 
@@ -127,6 +133,10 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
+    fn get_current_block_color(&self, hash: Hash) -> Option<bool> {
+        unimplemented!()
+    }
+
     fn get_virtual_state_approx_id(&self) -> VirtualStateApproxId {
         unimplemented!()
     }
@@ -181,6 +191,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn modify_coinbase_payload(&self, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
+        unimplemented!()
+    }
+
+    fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction], pov_daa_score: u64) -> Hash {
         unimplemented!()
     }
 

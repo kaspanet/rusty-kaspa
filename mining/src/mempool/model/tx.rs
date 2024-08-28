@@ -1,8 +1,9 @@
-use crate::mempool::tx::Priority;
-use kaspa_consensus_core::{tx::MutableTransaction, tx::TransactionId};
+use crate::mempool::tx::{Priority, RbfPolicy};
+use kaspa_consensus_core::tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint};
+use kaspa_mining_errors::mempool::RuleError;
 use std::{
-    cmp::Ordering,
     fmt::{Display, Formatter},
+    sync::Arc,
 };
 
 pub(crate) struct MempoolTransaction {
@@ -26,31 +27,51 @@ impl MempoolTransaction {
         assert!(contextual_mass > 0, "expected to be called for validated txs only");
         self.mtx.calculated_fee.unwrap() as f64 / contextual_mass as f64
     }
+}
 
-    pub(crate) fn is_parent_of(&self, transaction: &MutableTransaction) -> bool {
-        let parent_id = self.id();
-        transaction.tx.inputs.iter().any(|x| x.previous_outpoint.transaction_id == parent_id)
+impl RbfPolicy {
+    #[cfg(test)]
+    /// Returns an alternate policy accepting a transaction insertion in case the policy requires a replacement
+    pub(crate) fn for_insert(&self) -> RbfPolicy {
+        match self {
+            RbfPolicy::Forbidden | RbfPolicy::Allowed => *self,
+            RbfPolicy::Mandatory => RbfPolicy::Allowed,
+        }
     }
 }
 
-impl Ord for MempoolTransaction {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.fee_rate().total_cmp(&other.fee_rate()).then(self.id().cmp(&other.id()))
+pub(crate) struct DoubleSpend {
+    pub outpoint: TransactionOutpoint,
+    pub owner_id: TransactionId,
+}
+
+impl DoubleSpend {
+    pub fn new(outpoint: TransactionOutpoint, owner_id: TransactionId) -> Self {
+        Self { outpoint, owner_id }
     }
 }
 
-impl Eq for MempoolTransaction {}
-
-impl PartialOrd for MempoolTransaction {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
+impl From<DoubleSpend> for RuleError {
+    fn from(value: DoubleSpend) -> Self {
+        RuleError::RejectDoubleSpendInMempool(value.outpoint, value.owner_id)
     }
 }
 
-impl PartialEq for MempoolTransaction {
-    fn eq(&self, other: &Self) -> bool {
-        self.fee_rate() == other.fee_rate()
+impl From<&DoubleSpend> for RuleError {
+    fn from(value: &DoubleSpend) -> Self {
+        RuleError::RejectDoubleSpendInMempool(value.outpoint, value.owner_id)
     }
+}
+
+pub(crate) struct TransactionPreValidation {
+    pub transaction: MutableTransaction,
+    pub feerate_threshold: Option<f64>,
+}
+
+#[derive(Default)]
+pub(crate) struct TransactionPostValidation {
+    pub removed: Option<Arc<Transaction>>,
+    pub accepted: Option<Arc<Transaction>>,
 }
 
 #[derive(PartialEq, Eq)]
@@ -63,6 +84,7 @@ pub(crate) enum TxRemovalReason {
     DoubleSpend,
     InvalidInBlockTemplate,
     RevalidationWithMissingOutpoints,
+    ReplacedByFee,
 }
 
 impl TxRemovalReason {
@@ -76,6 +98,7 @@ impl TxRemovalReason {
             TxRemovalReason::DoubleSpend => "double spend",
             TxRemovalReason::InvalidInBlockTemplate => "invalid in block template",
             TxRemovalReason::RevalidationWithMissingOutpoints => "revalidation with missing outpoints",
+            TxRemovalReason::ReplacedByFee => "replaced by fee",
         }
     }
 
