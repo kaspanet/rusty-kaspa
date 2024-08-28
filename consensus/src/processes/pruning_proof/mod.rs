@@ -152,6 +152,7 @@ pub struct PruningProofManager {
     reachability_service: MTReachabilityService<DbReachabilityStore>,
     ghostdag_store: Arc<DbGhostdagStore>,
     relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
+    level_relations_services: Vec<MTRelationsService<DbRelationsStore>>,
     pruning_point_store: Arc<RwLock<DbPruningStore>>,
     past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     virtual_stores: Arc<RwLock<VirtualStores>>,
@@ -225,6 +226,10 @@ impl PruningProofManager {
             ghostdag_manager,
 
             is_consensus_exiting,
+
+            level_relations_services: (0..=max_block_level)
+                .map(|level| MTRelationsService::new(storage.relations_stores.clone().clone(), level))
+                .collect_vec(),
         }
     }
 
@@ -824,7 +829,6 @@ impl PruningProofManager {
         &self,
         header: &Header,
         level: BlockLevel,
-        relations_service: &MTRelationsService<DbRelationsStore>,
     ) -> PruningProofManagerInternalResult<Arc<Header>> {
         // Parents manager parents_at_level may return parents that aren't in relations_service, so it's important
         // to filter to include only parents that are in relations_service.
@@ -833,7 +837,7 @@ impl PruningProofManager {
             .parents_at_level(header, level)
             .iter()
             .copied()
-            .filter(|parent| relations_service.has(*parent).unwrap())
+            .filter(|parent| self.level_relations_services[level as usize].has(*parent).unwrap())
             .collect_vec()
             .push_if_empty(ORIGIN);
 
@@ -869,11 +873,10 @@ impl PruningProofManager {
         required_block: Option<Hash>,
         temp_db: Arc<DB>,
     ) -> PruningProofManagerInternalResult<(Arc<DbGhostdagStore>, Hash, Hash)> {
-        let relations_service = MTRelationsService::new(self.relations_stores.clone(), level);
         let selected_tip_header = if pp_header.block_level >= level {
             pp_header.header.clone()
         } else {
-            self.find_selected_parent_header_at_level(&pp_header.header, level, &relations_service)?
+            self.find_selected_parent_header_at_level(&pp_header.header, level)?
         };
 
         let selected_tip = selected_tip_header.hash;
@@ -925,7 +928,7 @@ impl PruningProofManager {
                 {
                     break current_header;
                 }
-                current_header = match self.find_selected_parent_header_at_level(&current_header, level, &relations_service) {
+                current_header = match self.find_selected_parent_header_at_level(&current_header, level) {
                     Ok(header) => header,
                     Err(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(_)) => {
                         if !intersected_with_required_block_chain {
@@ -939,7 +942,7 @@ impl PruningProofManager {
 
                 if !finished_headers_for_required_block_chain && !intersected_with_required_block_chain {
                     current_required_chain_block =
-                        match self.find_selected_parent_header_at_level(&current_required_chain_block, level, &relations_service) {
+                        match self.find_selected_parent_header_at_level(&current_required_chain_block, level) {
                             Ok(header) => header,
                             Err(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(_)) => {
                                 finished_headers_for_required_block_chain = true;
@@ -956,16 +959,8 @@ impl PruningProofManager {
             }
 
             let ghostdag_store = Arc::new(DbGhostdagStore::new_temp(temp_db.clone(), level, cache_policy, cache_policy, tries));
-            let has_required_block = self.fill_proof_ghostdag_data(
-                root,
-                root,
-                pp,
-                &ghostdag_store,
-                &relations_service,
-                level != 0,
-                Some(required_block),
-                true,
-            );
+            let has_required_block =
+                self.fill_proof_ghostdag_data(root, root, pp, &ghostdag_store, level != 0, Some(required_block), true, level);
 
             // Need to ensure this does the same 2M+1 depth that block_at_depth does
             if has_required_block
@@ -1136,13 +1131,13 @@ impl PruningProofManager {
         starting_hash: Hash,
         selected_tip: Hash,
         ghostdag_store: &Arc<DbGhostdagStore>,
-        relations_service: &MTRelationsService<DbRelationsStore>,
         use_score_as_work: bool,
         required_block: Option<Hash>,
         initialize_store: bool,
+        level: BlockLevel,
     ) -> bool {
         let relations_service = RelationsStoreInFutureOfRoot {
-            relations_store: relations_service.clone(),
+            relations_store: self.level_relations_services[level as usize].clone(),
             reachability_service: self.reachability_service.clone(),
             root: genesis_hash,
         };
