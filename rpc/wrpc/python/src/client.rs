@@ -27,7 +27,7 @@ use std::{
 };
 use workflow_core::channel::{Channel, DuplexChannel};
 use workflow_log::*;
-use workflow_rpc::client::Ctl;
+use workflow_rpc::{client::Ctl, encoding::Encoding};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 enum NotificationEvent {
@@ -123,11 +123,11 @@ impl RpcClient {
     pub fn new(
         resolver: Option<Resolver>,
         url: Option<String>,
-        encoding: WrpcEncoding,
+        encoding: Option<WrpcEncoding>,
         network_id: Option<NetworkId>,
     ) -> Result<RpcClient> {
         let client = Arc::new(KaspaRpcClient::new(
-            encoding,
+            encoding.unwrap_or(Encoding::Borsh),
             url.as_deref(),
             Some(resolver.as_ref().unwrap().clone().into()),
             network_id,
@@ -160,21 +160,19 @@ impl RpcClient {
         network: Option<String>,
         network_suffix: Option<u32>,
     ) -> PyResult<RpcClient> {
-        // TODO expose args to Python similar to WASM wRPC Client IRpcConfig
-        let resolver = resolver.unwrap_or(Resolver::ctor(None)?);
-        let encoding = WrpcEncoding::from_str(encoding.unwrap_or(String::from("borsh")).as_str()).unwrap();
+        let encoding = WrpcEncoding::from_str(&encoding.unwrap_or("borsh".to_string())).unwrap();
         let network = network.unwrap_or(String::from("mainnet"));
-
-        // TODO find better way of accepting NetworkId type from Python
         let network_id = into_network_id(&network, network_suffix)?;
 
-        Ok(Self::new(Some(resolver), url, encoding, Some(network_id))?)
+        Ok(Self::new(resolver, url, Some(encoding), Some(network_id))?)
     }
 
+    #[getter]
     fn url(&self) -> Option<String> {
         self.inner.client.url()
     }
 
+    #[getter]
     fn resolver(&self) -> Option<Resolver> {
         self.inner.resolver.clone()
     }
@@ -190,24 +188,20 @@ impl RpcClient {
         Ok(())
     }
 
+    #[getter]
     fn is_connected(&self) -> bool {
         self.inner.client.is_connected()
     }
 
+    #[getter]
     fn encoding(&self) -> String {
         self.inner.client.encoding().to_string()
     }
 
+    #[getter]
+    #[pyo3(name = "node_id")]
     fn resolver_node_id(&self) -> Option<String> {
-        self.inner.client.node_descriptor().map(|node| node.id.clone())
-    }
-
-    fn resolver_node_provider_name(&self) -> Option<String> {
-        self.inner.client.node_descriptor().and_then(|node| node.provider_name.clone())
-    }
-
-    fn resolver_node_provider_url(&self) -> Option<String> {
-        self.inner.client.node_descriptor().and_then(|node| node.provider_url.clone())
+        self.inner.client.node_descriptor().map(|node| node.uid.clone())
     }
 
     pub fn connect(
@@ -216,7 +210,7 @@ impl RpcClient {
         block_async_connect: Option<bool>,
         strategy: Option<String>,
         url: Option<String>,
-        connect_timeout: Option<u64>,
+        timeout_duration: Option<u64>,
         retry_interval: Option<u64>,
     ) -> PyResult<Py<PyAny>> {
         // TODO expose args to Python similar to WASM wRPC Client IConnectOptions?
@@ -226,7 +220,7 @@ impl RpcClient {
             Some(strategy) => ConnectStrategy::from_str(&strategy).unwrap(),
             None => ConnectStrategy::Retry,
         };
-        let connect_timeout: Option<Duration> = connect_timeout.and_then(|ms| Some(Duration::from_millis(ms)));
+        let connect_timeout: Option<Duration> = timeout_duration.and_then(|ms| Some(Duration::from_millis(ms)));
         let retry_interval: Option<Duration> = retry_interval.and_then(|ms| Some(Duration::from_millis(ms)));
 
         let options = ConnectOptions { block_async_connect, strategy, url, connect_timeout, retry_interval };
@@ -250,9 +244,9 @@ impl RpcClient {
         }}
     }
 
-    // fn start() TODO
-    // fn stop() TODO
-    // fn trigger_abort() TODO
+    // fn start() PY-TODO
+    // fn stop() PY-TODO
+    // fn trigger_abort() PY-TODO
 
     #[pyo3(signature = (event, callback, *args, **kwargs))]
     fn add_event_listener(
@@ -311,7 +305,7 @@ impl RpcClient {
         Ok(())
     }
 
-    // fn clear_event_listener() TODO
+    // fn clear_event_listener() PY-TODO
 
     fn remove_all_event_listeners(&self) -> PyResult<()> {
         *self.inner.callbacks.lock().unwrap() = Default::default();
@@ -320,13 +314,15 @@ impl RpcClient {
 }
 
 impl RpcClient {
-    // fn new_with_rpc_client() TODO
+    // fn new_with_rpc_client() PY-TODO
 
     pub fn listener_id(&self) -> Option<ListenerId> {
         *self.inner.listener_id.lock().unwrap()
     }
 
-    // fn client() TODO
+    pub fn client(&self) -> &Arc<KaspaRpcClient> {
+        &self.inner.client
+    }
 
     async fn stop_notification_task(&self) -> Result<()> {
         if self.inner.notification_task.load(Ordering::SeqCst) {
@@ -456,29 +452,13 @@ impl RpcClient {
 
 #[pymethods]
 impl RpcClient {
-    fn get_server_info(&self, py: Python) -> PyResult<Py<PyAny>> {
-        let client = self.inner.client.clone();
-        py_async! {py, async move {
-            let response = client.get_server_info_call(GetServerInfoRequest { }).await?;
-            Python::with_gil(|py| {
-                Ok(serde_pyobject::to_pyobject(py, &response)?.to_object(py))
-            })
-        }}
-    }
-
-    fn get_block_dag_info(&self, py: Python) -> PyResult<Py<PyAny>> {
-        let client = self.inner.client.clone();
-        py_async! {py, async move {
-            let response = client.get_block_dag_info_call(GetBlockDagInfoRequest { }).await?;
-            Python::with_gil(|py| {
-                Ok(serde_pyobject::to_pyobject(py, &response)?.to_object(py))
-            })
-        }}
-    }
+    // PY-TODO default_port
+    // PY-TODO parse_url
 }
 
 #[pymethods]
 impl RpcClient {
+    // PY-TODO subscribe_daa_score and unsubscribe
     fn subscribe_utxos_changed(&self, py: Python, addresses: Vec<Address>) -> PyResult<Py<PyAny>> {
         if let Some(listener_id) = self.listener_id() {
             let client = self.inner.client.clone();
@@ -528,13 +508,6 @@ impl RpcClient {
     }
 }
 
-#[pymethods]
-impl RpcClient {
-    fn is_connected_test(&self) -> bool {
-        self.inner.client.is_connected()
-    }
-}
-
 build_wrpc_python_subscriptions!([
     // UtxosChanged - added above due to parameter `addresses: Vec<Address>``
     // VirtualChainChanged - added above due to paramter `include_accepted_transaction_ids: bool`
@@ -547,39 +520,48 @@ build_wrpc_python_subscriptions!([
     VirtualDaaScoreChanged,
 ]);
 
-build_wrpc_python_interface!([
-    AddPeer,
-    Ban,
-    EstimateNetworkHashesPerSecond,
-    GetBalanceByAddress,
-    GetBalancesByAddresses,
-    GetBlock,
-    GetBlockCount,
-    GetBlockDagInfo,
-    GetBlocks,
-    GetBlockTemplate,
-    GetCoinSupply,
-    GetConnectedPeerInfo,
-    GetDaaScoreTimestampEstimate,
-    GetServerInfo,
-    GetCurrentNetwork,
-    GetHeaders,
-    GetInfo,
-    GetMempoolEntries,
-    GetMempoolEntriesByAddresses,
-    GetMempoolEntry,
-    GetPeerAddresses,
-    GetMetrics,
-    GetSink,
-    GetSyncStatus,
-    GetSubnetwork,
-    GetUtxosByAddresses,
-    GetSinkBlueScore,
-    GetVirtualChainFromBlock,
-    Ping,
-    ResolveFinalityConflict,
-    Shutdown,
-    SubmitBlock,
-    SubmitTransaction,
-    Unban,
-]);
+build_wrpc_python_interface!(
+    [
+        GetBlockCount,
+        GetBlockDagInfo,
+        GetCoinSupply,
+        GetConnectedPeerInfo,
+        GetInfo,
+        GetPeerAddresses,
+        GetMetrics,
+        GetConnections,
+        GetSink,
+        GetSinkBlueScore,
+        Ping,
+        Shutdown,
+        GetServerInfo,
+        GetSyncStatus,
+    ],
+    [
+        AddPeer,
+        Ban,
+        EstimateNetworkHashesPerSecond,
+        GetBalanceByAddress,
+        GetBalancesByAddresses,
+        GetBlock,
+        GetBlocks,
+        GetBlockTemplate,
+        GetCurrentBlockColor,
+        GetDaaScoreTimestampEstimate,
+        GetFeeEstimate,
+        GetFeeEstimateExperimental,
+        GetCurrentNetwork,
+        GetHeaders,
+        GetMempoolEntries,
+        GetMempoolEntriesByAddresses,
+        GetMempoolEntry,
+        GetSubnetwork,
+        GetUtxosByAddresses,
+        GetVirtualChainFromBlock,
+        ResolveFinalityConflict,
+        SubmitBlock,
+        SubmitTransaction,
+        SubmitTransactionReplacement,
+        Unban,
+    ]
+);

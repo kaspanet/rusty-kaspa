@@ -12,33 +12,67 @@ use syn::{
 };
 
 #[derive(Debug)]
-struct RpcTable {
-    handlers: ExprArray,
+struct RpcHandlers {
+    handlers_no_args: ExprArray,
+    handlers_with_args: ExprArray,
 }
 
-impl Parse for RpcTable {
+impl Parse for RpcHandlers {
     fn parse(input: ParseStream) -> Result<Self> {
         let parsed = Punctuated::<Expr, Token![,]>::parse_terminated(input).unwrap();
-        if parsed.len() != 1 {
-            return Err(Error::new_spanned(parsed, "usage: build_wrpc_python_interface!([getInfo, ..])".to_string()));
+        if parsed.len() != 2 {
+            return Err(Error::new_spanned(
+                parsed,
+                "usage: build_wrpc_python_interface!([fn no args, ..],[fn with args, ..])".to_string(),
+            ));
         }
 
         let mut iter = parsed.iter();
-        // Intake enum variants as an array
-        let handlers = get_handlers(iter.next().unwrap().clone())?;
+        let handlers_no_args = get_handlers(iter.next().unwrap().clone())?;
+        let handlers_with_args = get_handlers(iter.next().unwrap().clone())?;
 
-        Ok(RpcTable { handlers })
+        let handlers = RpcHandlers { handlers_no_args, handlers_with_args };
+        Ok(handlers)
     }
 }
 
-impl ToTokens for RpcTable {
+impl ToTokens for RpcHandlers {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let mut targets = Vec::new();
+        let mut targets_no_args = Vec::new();
+        let mut targets_with_args = Vec::new();
 
-        for handler in self.handlers.elems.iter() {
+        for handler in self.handlers_no_args.elems.iter() {
             let Handler { fn_call, request_type, response_type, .. } = Handler::new(handler);
 
-            targets.push(quote! {
+            targets_no_args.push(quote! {
+
+                #[pymethods]
+                impl RpcClient {
+                    fn #fn_call(&self, py: Python, request: Option<Py<PyDict>>) -> PyResult<Py<PyAny>> {
+                        let client = self.inner.client.clone();
+
+                        let request: #request_type = serde_pyobject::from_pyobject(request
+                            .map(|req| req.into_bound(py))
+                            .unwrap_or_else(|| PyDict::new_bound(py).into())
+                        ).unwrap();
+
+                        let py_fut = pyo3_asyncio_0_21::tokio::future_into_py(py, async move {
+                            let response : #response_type = client.#fn_call(None, request).await?;
+                            Python::with_gil(|py| {
+                                Ok(serde_pyobject::to_pyobject(py, &response).unwrap().to_object(py))
+                            })
+                        })?;
+
+                        Python::with_gil(|py| Ok(py_fut.into_py(py)))
+                    }
+                }
+            });
+        }
+
+        for handler in self.handlers_with_args.elems.iter() {
+            let Handler { fn_call, request_type, response_type, .. } = Handler::new(handler);
+
+            targets_with_args.push(quote! {
 
                 #[pymethods]
                 impl RpcClient {
@@ -48,7 +82,7 @@ impl ToTokens for RpcTable {
                         let request : #request_type = serde_pyobject::from_pyobject(request.into_bound(py)).unwrap();
 
                         let py_fut = pyo3_asyncio_0_21::tokio::future_into_py(py, async move {
-                            let response : #response_type = client.#fn_call(request).await?;
+                            let response : #response_type = client.#fn_call(None, request).await?;
                             Python::with_gil(|py| {
                                 Ok(serde_pyobject::to_pyobject(py, &response).unwrap().to_object(py))
                             })
@@ -61,14 +95,15 @@ impl ToTokens for RpcTable {
         }
 
         quote! {
-            #(#targets)*
+            #(#targets_no_args)*
+            #(#targets_with_args)*
         }
         .to_tokens(tokens);
     }
 }
 
 pub fn build_wrpc_python_interface(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let rpc_table = parse_macro_input!(input as RpcTable);
+    let rpc_table = parse_macro_input!(input as RpcHandlers);
     let ts = rpc_table.to_token_stream();
     // println!("MACRO: {}", ts.to_string());
     ts.into()

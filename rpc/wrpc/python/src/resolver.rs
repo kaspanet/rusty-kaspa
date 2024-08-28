@@ -20,9 +20,10 @@ impl Resolver {
 #[pymethods]
 impl Resolver {
     #[new]
-    pub fn ctor(urls: Option<Vec<String>>) -> PyResult<Resolver> {
+    pub fn ctor(urls: Option<Vec<String>>, tls: Option<bool>) -> PyResult<Resolver> {
+        let tls = tls.unwrap_or(false);
         if let Some(urls) = urls {
-            Ok(Self { resolver: NativeResolver::new(urls.into_iter().map(|url| Arc::new(url)).collect::<Vec<_>>()) })
+            Ok(Self { resolver: NativeResolver::new(Some(urls.into_iter().map(|url| Arc::new(url)).collect::<Vec<_>>()), tls) })
         } else {
             Ok(Self { resolver: NativeResolver::default() })
         }
@@ -32,7 +33,11 @@ impl Resolver {
 #[pymethods]
 impl Resolver {
     fn urls(&self) -> Vec<String> {
-        self.resolver.urls().into_iter().map(|url| String::clone(&url)).collect::<Vec<_>>()
+        self.resolver.urls()
+            .unwrap_or_default() // Handle the Option by providing an empty Vec if it's None
+            .into_iter() // Convert the Vec<Arc<String>> into an iterator
+            .map(|url| (*url).clone()) // Dereference the Arc<String> and clone the String
+            .collect::<Vec<_>>() // Collect into a Vec<String>
     }
 
     fn get_node(&self, py: Python, encoding: String, network: String, network_suffix: Option<u32>) -> PyResult<Py<PyAny>> {
