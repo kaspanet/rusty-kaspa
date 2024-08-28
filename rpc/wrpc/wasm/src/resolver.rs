@@ -21,6 +21,20 @@ declare! {
          * Optional URLs for one or multiple resolvers.
          */
         urls?: string[];
+        /**
+         * Use strict TLS for RPC connections.
+         * If not set or `false` (default), the resolver will
+         * provide the best available connection regardless of
+         * whether this connection supports TLS or not.
+         * If set to `true`, the resolver will only provide
+         * TLS-enabled connections.
+         * 
+         * This setting is ignored in the browser environment
+         * when the browser navigator location is `https`.
+         * In which case the resolver will always use TLS-enabled
+         * connections.
+         */
+        tls?: boolean;
     }
     "#,
 }
@@ -130,8 +144,8 @@ impl Resolver {
 impl Resolver {
     /// List of public Kaspa Resolver URLs.
     #[wasm_bindgen(getter)]
-    pub fn urls(&self) -> ResolverArrayT {
-        Array::from_iter(self.resolver.urls().iter().map(|v| JsValue::from(v.as_str()))).unchecked_into()
+    pub fn urls(&self) -> Option<ResolverArrayT> {
+        self.resolver.urls().map(|urls| Array::from_iter(urls.iter().map(|v| JsValue::from(v.as_str()))).unchecked_into())
     }
 
     /// Fetches a public Kaspa wRPC endpoint for the given encoding and network identifier.
@@ -163,20 +177,27 @@ impl Resolver {
 impl TryFrom<IResolverConfig> for NativeResolver {
     type Error = Error;
     fn try_from(config: IResolverConfig) -> Result<Self> {
-        let resolver = config
+        let tls = config.get_bool("tls").unwrap_or(false);
+        let urls = config
             .get_vec("urls")
             .map(|urls| urls.into_iter().map(|v| v.as_string()).collect::<Option<Vec<_>>>())
             .or_else(|_| config.dyn_into::<Array>().map(|urls| urls.into_iter().map(|v| v.as_string()).collect::<Option<Vec<_>>>()))
-            .map_err(|_| Error::custom("Invalid or missing resolver URL"))?
-            .map(|urls| NativeResolver::new(urls.into_iter().map(Arc::new).collect()));
+            .map_err(|_| Error::custom("Invalid or missing resolver URL"))?;
 
-        Ok(resolver.unwrap_or_default())
+        if let Some(urls) = urls {
+            Ok(NativeResolver::new(Some(urls.into_iter().map(Arc::new).collect()), tls))
+        } else {
+            Ok(NativeResolver::new(None, tls))
+        }
     }
 }
 
 impl TryCastFromJs for Resolver {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>> {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
         Ok(Self::try_ref_from_js_value_as_cast(value)?)
     }
 }

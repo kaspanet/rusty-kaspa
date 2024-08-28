@@ -13,14 +13,14 @@ use std::collections::BTreeMap;
 
 /// A wrapper enum that represents the transaction signed state. A transaction
 /// contained by this enum can be either fully signed or partially signed.
-pub enum Signed {
-    Fully(Transaction),
-    Partially(Transaction),
+pub enum Signed<'a> {
+    Fully(&'a Transaction),
+    Partially(&'a Transaction),
 }
 
-impl Signed {
+impl<'a> Signed<'a> {
     /// Returns the transaction regardless of whether it is fully or partially signed
-    pub fn unwrap(self) -> Transaction {
+    pub fn unwrap(self) -> &'a Transaction {
         match self {
             Signed::Fully(tx) => tx,
             Signed::Partially(tx) => tx,
@@ -31,7 +31,7 @@ impl Signed {
 /// TODO (aspect) - merge this with `v1` fn above or refactor wallet core to use the script engine.
 /// Sign a transaction using schnorr
 #[allow(clippy::result_large_err)]
-pub fn sign_with_multiple_v3(tx: Transaction, privkeys: &[[u8; 32]]) -> crate::result::Result<Signed> {
+pub fn sign_with_multiple_v3<'a>(tx: &'a Transaction, privkeys: &[[u8; 32]]) -> crate::result::Result<Signed<'a>> {
     let mut map = BTreeMap::new();
     for privkey in privkeys {
         let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, privkey).unwrap();
@@ -44,7 +44,7 @@ pub fn sign_with_multiple_v3(tx: Transaction, privkeys: &[[u8; 32]]) -> crate::r
     let mut additional_signatures_required = false;
     {
         let input_len = tx.inner().inputs.len();
-        let (cctx, utxos) = tx.tx_and_utxos();
+        let (cctx, utxos) = tx.tx_and_utxos()?;
         let populated_transaction = PopulatedTransaction::new(&cctx, utxos);
         for i in 0..input_len {
             let script_pub_key = match tx.inner().inputs[i].script_public_key() {

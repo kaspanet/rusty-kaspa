@@ -29,9 +29,7 @@ pub struct HeaderWithBlockLevel {
 
 impl MemSizeEstimator for HeaderWithBlockLevel {
     fn estimate_mem_bytes(&self) -> usize {
-        size_of::<Header>()
-            + self.header.parents_by_level.iter().map(|l| l.len()).sum::<usize>() * size_of::<Hash>()
-            + size_of::<Self>()
+        self.header.as_ref().estimate_mem_bytes() + size_of::<Self>()
     }
 }
 
