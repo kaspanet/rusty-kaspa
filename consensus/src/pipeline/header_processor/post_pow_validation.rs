@@ -4,7 +4,6 @@ use crate::model::services::reachability::ReachabilityService;
 use crate::processes::window::WindowManager;
 use kaspa_consensus_core::header::Header;
 use kaspa_hashes::Hash;
-use std::collections::HashSet;
 
 impl HeaderProcessor {
     pub fn post_pow_validation(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
@@ -53,7 +52,7 @@ impl HeaderProcessor {
     }
 
     pub fn check_indirect_parents(&self, ctx: &mut HeaderProcessingContext, header: &Header) -> BlockProcessResult<()> {
-        let expected_block_parents = self.parents_manager.calc_block_parents(ctx.pruning_point(), header.direct_parents());
+        let expected_block_parents = self.parents_manager.calc_block_parents_hashset(ctx.pruning_point(), header.direct_parents());
         if header.parents_by_level.len() != expected_block_parents.len()
             || !expected_block_parents.iter().enumerate().all(|(block_level, expected_level_parents)| {
                 let header_level_parents = &header.parents_by_level[block_level];
@@ -61,12 +60,11 @@ impl HeaderProcessor {
                     return false;
                 }
 
-                let expected_set = HashSet::<&Hash>::from_iter(expected_level_parents);
-                header_level_parents.iter().all(|header_parent| expected_set.contains(header_parent))
+                header_level_parents.iter().all(|header_parent| expected_level_parents.contains(header_parent))
             })
         {
             return Err(RuleError::UnexpectedIndirectParents(
-                TwoDimVecDisplay(expected_block_parents),
+                TwoDimVecDisplay(expected_block_parents.into_iter().map(|bhs| bhs.into_iter().collect::<Vec<Hash>>()).collect()),
                 TwoDimVecDisplay(header.parents_by_level.clone()),
             ));
         };
