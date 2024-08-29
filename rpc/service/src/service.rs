@@ -270,8 +270,12 @@ impl RpcCoreService {
     }
 
     fn has_sufficient_peer_connectivity(&self) -> bool {
-        // Other network types can be used in an isolated environment without peers
-        !matches!(self.flow_context.config.net.network_type, Mainnet | Testnet) || self.flow_context.hub().has_peers()
+        if matches!(self.flow_context.config.net.network_type, Mainnet | Testnet) {
+            self.flow_context.hub().has_peers()
+        } else {
+            // Other network types can be used in an isolated environment without peers
+            true
+        }
     }
 
     fn extract_tx_query(&self, filter_transaction_pool: bool, include_orphan_pool: bool) -> RpcResult<TransactionQuery> {
