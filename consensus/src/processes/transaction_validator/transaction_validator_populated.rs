@@ -1,11 +1,16 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
+use kaspa_consensus_core::hashing::sighash::{SigHashReusedValues, SigHashReusedValuesSync};
 use kaspa_consensus_core::{
-    hashing::sighash::SigHashReusedValues,
+    hashing::sighash::SigHashReusedValuesUnsync,
     tx::{TransactionInput, VerifiableTransaction},
 };
 use kaspa_core::warn;
-use kaspa_txscript::{get_sig_op_count, TxScriptEngine};
+use kaspa_txscript::caches::Cache;
+use kaspa_txscript::{get_sig_op_count, SigCacheKey, TxScriptEngine};
 use kaspa_txscript_errors::TxScriptError;
+use rayon::iter::IntoParallelIterator;
+use rayon::ThreadPool;
+use std::sync::Arc;
 
 use super::{
     errors::{TxResult, TxRuleError},
@@ -28,7 +33,7 @@ pub enum TxValidationFlags {
 impl TransactionValidator {
     pub fn validate_populated_transaction_and_get_fee(
         &self,
-        tx: &impl VerifiableTransaction,
+        tx: &(impl VerifiableTransaction + std::marker::Sync),
         pov_daa_score: u64,
         flags: TxValidationFlags,
         mass_and_feerate_threshold: Option<(u64, f64)>,
@@ -53,7 +58,7 @@ impl TransactionValidator {
 
         match flags {
             TxValidationFlags::Full | TxValidationFlags::SkipMassCheck => {
-                Self::check_sig_op_counts(tx)?;
+                Self::check_sig_op_counts::<_, SigHashReusedValuesUnsync>(tx)?;
                 self.check_scripts(tx)?;
             }
             TxValidationFlags::SkipScriptChecks => {}
@@ -157,9 +162,9 @@ impl TransactionValidator {
         Ok(())
     }
 
-    fn check_sig_op_counts<T: VerifiableTransaction>(tx: &T) -> TxResult<()> {
+    fn check_sig_op_counts<T: VerifiableTransaction, Reused: SigHashReusedValues>(tx: &T) -> TxResult<()> {
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-            let calculated = get_sig_op_count::<T>(&input.signature_script, &entry.script_public_key);
+            let calculated = get_sig_op_count::<T, Reused>(&input.signature_script, &entry.script_public_key);
             if calculated != input.sig_op_count as u64 {
                 return Err(TxRuleError::WrongSigOpCount(i, input.sig_op_count as u64, calculated));
             }
@@ -167,16 +172,64 @@ impl TransactionValidator {
         Ok(())
     }
 
-    pub fn check_scripts(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
-        let mut reused_values = SigHashReusedValues::new();
-        for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-            let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &mut reused_values, &self.sig_cache)
-                .map_err(|err| map_script_err(err, input))?;
-            engine.execute().map_err(|err| map_script_err(err, input))?;
-        }
-
-        Ok(())
+    pub fn check_scripts(&self, tx: &(impl VerifiableTransaction + std::marker::Sync)) -> TxResult<()> {
+        check_scripts(&self.sig_cache, tx)
     }
+}
+
+pub fn check_scripts(sig_cache: &Cache<SigCacheKey, bool>, tx: &(impl VerifiableTransaction + Sync)) -> TxResult<()> {
+    if tx.inputs().len() > 1 {
+        check_scripts_par_iter(sig_cache, tx)
+    } else {
+        check_scripts_single_threaded(sig_cache, tx)
+    }
+}
+
+pub fn check_scripts_single_threaded(sig_cache: &Cache<SigCacheKey, bool>, tx: &impl VerifiableTransaction) -> TxResult<()> {
+    let reused_values = SigHashReusedValuesUnsync::new();
+    for (i, (input, entry)) in tx.populated_inputs().enumerate() {
+        let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &reused_values, sig_cache)
+            .map_err(|err| map_script_err(err, input))?;
+        engine.execute().map_err(|err| map_script_err(err, input))?;
+    }
+    Ok(())
+}
+
+pub fn check_scripts_par_iter(
+    sig_cache: &Cache<SigCacheKey, bool>,
+    tx: &(impl VerifiableTransaction + std::marker::Sync),
+) -> TxResult<()> {
+    use rayon::iter::ParallelIterator;
+    let reused_values = std::sync::Arc::new(SigHashReusedValuesSync::new());
+    (0..tx.inputs().len())
+        .into_par_iter()
+        .try_for_each(|idx| {
+            let reused_values = reused_values.clone(); // Clone the Arc to share ownership
+            let (input, utxo) = tx.populated_input(idx);
+            let mut engine = TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache)?;
+            engine.execute()
+        })
+        .map_err(TxRuleError::SignatureInvalid)
+}
+
+pub fn check_scripts_par_iter_thread(
+    sig_cache: &Cache<SigCacheKey, bool>,
+    tx: &(impl VerifiableTransaction + std::marker::Sync),
+    pool: &ThreadPool,
+) -> TxResult<()> {
+    use rayon::iter::ParallelIterator;
+    pool.install(|| {
+        let reused_values = Arc::new(SigHashReusedValuesSync::new());
+        (0..tx.inputs().len())
+            .into_par_iter()
+            .try_for_each(|idx| {
+                let reused_values = reused_values.clone(); // Clone the Arc to share ownership
+                let (input, utxo) = tx.populated_input(idx);
+                let mut engine = TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache)?;
+                engine.execute()
+            })
+            .map_err(TxRuleError::SignatureInvalid)
+    })
 }
 
 fn map_script_err(script_err: TxScriptError, input: &TransactionInput) -> TxRuleError {
@@ -192,6 +245,7 @@ mod tests {
     use super::super::errors::TxRuleError;
     use core::str::FromStr;
     use itertools::Itertools;
+    use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::sign::sign;
     use kaspa_consensus_core::subnets::SubnetworkId;
     use kaspa_consensus_core::tx::{MutableTransaction, PopulatedTransaction, ScriptVec, TransactionId, UtxoEntry};
@@ -710,6 +764,6 @@ mod tests {
         let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), schnorr_key);
         let populated_tx = signed_tx.as_verifiable();
         assert_eq!(tv.check_scripts(&populated_tx), Ok(()));
-        assert_eq!(TransactionValidator::check_sig_op_counts(&populated_tx), Ok(()));
+        assert_eq!(TransactionValidator::check_sig_op_counts::<_, SigHashReusedValuesUnsync>(&populated_tx), Ok(()));
     }
 }

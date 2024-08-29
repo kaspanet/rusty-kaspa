@@ -772,7 +772,20 @@ impl VirtualStateProcessor {
         let virtual_utxo_view = &virtual_read.utxo_set;
         let virtual_daa_score = virtual_state.daa_score;
         let virtual_past_median_time = virtual_state.past_median_time;
-        self.validate_mempool_transaction_impl(mutable_tx, virtual_utxo_view, virtual_daa_score, virtual_past_median_time, args)
+        if mutable_tx.tx.inputs.len() > 1 {
+            // use pool to apply par_iter to inputs
+            self.thread_pool.install(|| {
+                self.validate_mempool_transaction_impl(
+                    mutable_tx,
+                    virtual_utxo_view,
+                    virtual_daa_score,
+                    virtual_past_median_time,
+                    args,
+                )
+            })
+        } else {
+            self.validate_mempool_transaction_impl(mutable_tx, virtual_utxo_view, virtual_daa_score, virtual_past_median_time, args)
+        }
     }
 
     pub fn validate_mempool_transactions_in_parallel(
