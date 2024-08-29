@@ -179,6 +179,7 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
         parents
     }
 
+    /// same as `calc_block_parents`` but returns the parents as a Vec<BlockHashSet> for improved comparison performance. 
     pub fn calc_block_parents_hashset(&self, current_pruning_point: Hash, direct_parents: &[Hash]) -> Vec<BlockHashSet> {
         let mut direct_parent_headers =
             direct_parents.iter().copied().map(|parent| self.headers_store.get_header_with_block_level(parent).unwrap()).collect_vec();
