@@ -1,15 +1,16 @@
 use std::fmt::{Debug, Display, Formatter};
 use std::str::{self, FromStr};
 
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_utils::hex::{FromHex, ToHex};
 use kaspa_utils::{serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref};
+use thiserror::Error;
 
 /// The size of the array used to store subnetwork IDs.
 pub const SUBNETWORK_ID_SIZE: usize = 20;
 
 /// The domain representation of a Subnetwork ID
-#[derive(Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash, BorshSerialize, BorshDeserialize)]
 pub struct SubnetworkId([u8; SUBNETWORK_ID_SIZE]);
 
 impl Debug for SubnetworkId {
@@ -58,15 +59,30 @@ impl SubnetworkId {
         *self == SUBNETWORK_ID_COINBASE || *self == SUBNETWORK_ID_REGISTRY
     }
 
+    /// Returns true if the subnetwork is the native subnetwork
+    #[inline]
+    pub fn is_native(&self) -> bool {
+        *self == SUBNETWORK_ID_NATIVE
+    }
+
     /// Returns true if the subnetwork is the native or a built-in subnetwork
     #[inline]
     pub fn is_builtin_or_native(&self) -> bool {
-        *self == SUBNETWORK_ID_NATIVE || self.is_builtin()
+        self.is_native() || self.is_builtin()
     }
 }
 
+#[derive(Error, Debug, Clone)]
+pub enum SubnetworkConversionError {
+    #[error(transparent)]
+    SliceError(#[from] std::array::TryFromSliceError),
+
+    #[error(transparent)]
+    HexError(#[from] faster_hex::Error),
+}
+
 impl TryFrom<&[u8]> for SubnetworkId {
-    type Error = std::array::TryFromSliceError;
+    type Error = SubnetworkConversionError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
         let bytes = <[u8; SUBNETWORK_ID_SIZE]>::try_from(value)?;
@@ -92,22 +108,22 @@ impl ToHex for SubnetworkId {
 }
 
 impl FromStr for SubnetworkId {
-    type Err = faster_hex::Error;
+    type Err = SubnetworkConversionError;
 
     #[inline]
     fn from_str(hex_str: &str) -> Result<Self, Self::Err> {
         let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
         faster_hex::hex_decode(hex_str.as_bytes(), &mut bytes)?;
-        Ok(SubnetworkId(bytes))
+        Ok(Self(bytes))
     }
 }
 
 impl FromHex for SubnetworkId {
-    type Error = faster_hex::Error;
+    type Error = SubnetworkConversionError;
     fn from_hex(hex_str: &str) -> Result<Self, Self::Error> {
         let mut bytes = [0u8; SUBNETWORK_ID_SIZE];
         faster_hex::hex_decode(hex_str.as_bytes(), &mut bytes)?;
-        Ok(SubnetworkId(bytes))
+        Ok(Self(bytes))
     }
 }
 

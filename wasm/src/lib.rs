@@ -40,8 +40,8 @@ available NPM modules:
 The `kaspa-wasm` module is a pure WASM32 module that includes
 the entire wallet framework, but does not support RPC due to an absence
 of a native WebSocket in NodeJs environment, while
-the `kaspa` module includes `isomorphic-ws` dependency simulating
-the W3C WebSocket and thus supports RPC.
+the `kaspa` module includes `websocket` package dependency simulating
+the W3C WebSocket and due to this supports RPC.
 
 ## Examples
 
@@ -56,20 +56,18 @@ repository at <https://github.com/kaspanet/rusty-kaspa/releases>.
 
 ## Using RPC
 
-**NODEJS:** If you are building from source, to use WASM RPC client in the NodeJS environment,
-you need to introduce a W3C WebSocket object before loading the WASM32 library. You can use
-any Node.js module that exposes a W3C-compatible WebSocket implementation. Two of such modules
-are [WebSocket](https://www.npmjs.com/package/websocket) (provides a custom implementation)
-and [isomorphic-ws](https://www.npmjs.com/package/isomorphic-ws) (built on top of the ws
-WebSocket module).
+**NODEJS:** If you are building from source, to use WASM RPC client
+in the NodeJS environment, you need to introduce a global W3C WebSocket
+object before loading the WASM32 library (to simulate the browser behavior).
+You can the [WebSocket](https://www.npmjs.com/package/websocket)
+module that offers W3C WebSocket compatibility and is compatible
+with Kaspa RPC implementation.
 
 You can use the following shims:
 
 ```js
 // WebSocket
 globalThis.WebSocket = require('websocket').w3cwebsocket;
-// isomorphic-ws
-globalThis.WebSocket = require('isomorphic-ws');
 ```
 
 ## Loading in a Web App
@@ -107,6 +105,12 @@ let {RpcClient,Encoding,initConsolePanicHook} = require('./kaspa-rpc');
 
 // if port is not specified, it will use the default port for the specified network
 const rpc = new RpcClient("127.0.0.1", Encoding.Borsh, "testnet-10");
+const rpc = new RpcClient({
+    url : "127.0.0.1",
+    encoding : Encoding.Borsh,
+    networkId : "testnet-10"
+});
+
 
 (async () => {
     try {
@@ -125,25 +129,87 @@ For more details, please follow the [**integrating with Kaspa**](https://kaspa.a
 
 #![allow(unused_imports)]
 
-pub mod utils;
-pub use crate::utils::*;
+#[cfg(all(
+    any(feature = "wasm32-sdk", feature = "wasm32-rpc", feature = "wasm32-core", feature = "wasm32-keygen"),
+    not(target_arch = "wasm32")
+))]
+compile_error!("`kaspa-wasm` crate for WASM32 target must be built with `--features wasm32-sdk|wasm32-rpc|wasm32-core|wasm32-keygen`");
 
-pub use kaspa_addresses::{Address, Version as AddressVersion};
-pub use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
-pub use kaspa_pow::wasm::*;
+mod version;
+pub use version::*;
 
-pub mod rpc {
-    //! Kaspa RPC interface
-    //!
+cfg_if::cfg_if! {
 
-    pub mod messages {
-        //! Kaspa RPC messages
-        pub use kaspa_rpc_core::model::message::*;
+    if #[cfg(feature = "wasm32-sdk")] {
+
+        pub use kaspa_addresses::{Address, Version as AddressVersion};
+        pub use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
+        pub use kaspa_pow::wasm::*;
+        pub use kaspa_txscript::wasm::*;
+
+        pub mod rpc {
+            //! Kaspa RPC interface
+            //!
+
+            pub mod messages {
+                //! Kaspa RPC messages
+                pub use kaspa_rpc_core::model::message::*;
+            }
+            pub use kaspa_rpc_core::api::rpc::RpcApi;
+            pub use kaspa_rpc_core::wasm::message::*;
+
+            pub use kaspa_wrpc_wasm::client::*;
+            pub use kaspa_wrpc_wasm::resolver::*;
+            pub use kaspa_wrpc_wasm::notify::*;
+        }
+
+        pub use kaspa_consensus_wasm::*;
+        pub use kaspa_wallet_keys::prelude::*;
+        pub use kaspa_wallet_core::wasm::*;
+
+    } else if #[cfg(feature = "wasm32-core")] {
+
+        pub use kaspa_addresses::{Address, Version as AddressVersion};
+        pub use kaspa_consensus_core::tx::{ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
+        pub use kaspa_pow::wasm::*;
+        pub use kaspa_txscript::wasm::*;
+
+        pub mod rpc {
+            //! Kaspa RPC interface
+            //!
+
+            pub mod messages {
+                //! Kaspa RPC messages
+                pub use kaspa_rpc_core::model::message::*;
+            }
+            pub use kaspa_rpc_core::api::rpc::RpcApi;
+            pub use kaspa_rpc_core::wasm::message::*;
+
+            pub use kaspa_wrpc_wasm::client::*;
+            pub use kaspa_wrpc_wasm::resolver::*;
+            pub use kaspa_wrpc_wasm::notify::*;
+        }
+
+        pub use kaspa_consensus_wasm::*;
+        pub use kaspa_wallet_keys::prelude::*;
+        pub use kaspa_wallet_core::wasm::*;
+
+    } else if #[cfg(feature = "wasm32-rpc")] {
+
+        pub use kaspa_rpc_core::api::rpc::RpcApi;
+        pub use kaspa_rpc_core::wasm::message::*;
+        pub use kaspa_rpc_core::wasm::message::IPingRequest;
+        pub use kaspa_wrpc_wasm::client::*;
+        pub use kaspa_wrpc_wasm::resolver::*;
+        pub use kaspa_wrpc_wasm::notify::*;
+        pub use kaspa_wasm_core::types::*;
+
+    } else if #[cfg(feature = "wasm32-keygen")] {
+
+        pub use kaspa_addresses::{Address, Version as AddressVersion};
+        pub use kaspa_wallet_keys::prelude::*;
+        pub use kaspa_bip32::*;
+        pub use kaspa_wasm_core::types::*;
+
     }
-    pub use kaspa_rpc_core::api::rpc::RpcApi;
-    pub use kaspa_wrpc_client::wasm::RpcClient;
 }
-
-pub use kaspa_consensus_wasm::*;
-
-pub use kaspa_wallet_core::wasm::{tx::*, utils::*, utxo::*, wallet::*, xprivatekey::*, xpublickey::*};

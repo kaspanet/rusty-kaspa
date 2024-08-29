@@ -1,37 +1,62 @@
 [package]
 name = "kaspa-wasm"
 description = "KASPA WASM bindings"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 include.workspace = true
+repository.workspace = true
 # wasm-pack requires this value to be a string
 # (it can not be derived from the workspace)
-license = "MIT/Apache-2.0"
+license = "ISC"
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
+cfg-if.workspace = true
 js-sys.workspace = true
 kaspa-addresses.workspace = true
+kaspa-bip32.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-wasm.workspace = true
 kaspa-core.workspace = true
 kaspa-math.workspace = true
 kaspa-pow.workspace = true
+kaspa-txscript.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-utils.workspace = true
+kaspa-wasm-core.workspace = true
 kaspa-wallet-core.workspace = true
+kaspa-wallet-keys.workspace = true
 kaspa-wrpc-client.workspace = true
+kaspa-wrpc-wasm.workspace = true
 num.workspace = true
 wasm-bindgen.workspace = true
 workflow-log.workspace = true
+workflow-core.workspace = true
+workflow-wasm.workspace = true
 
 [features] 
-wallet = [] 
-full = ["wallet"] 
-default = [] 
+wasm32-sdk = [
+    "kaspa-wallet-core/wasm32-sdk",
+    "kaspa-pow/wasm32-sdk",
+    "kaspa-txscript/wasm32-sdk",
+]
+wasm32-core = [
+    "kaspa-wallet-core/wasm32-core",
+    "kaspa-pow/wasm32-sdk",
+    "kaspa-txscript/wasm32-sdk",
+]
+wasm32-rpc = [
+    "kaspa-consensus-core/wasm32-sdk",
+    "kaspa-consensus-wasm/wasm32-sdk",
+    "kaspa-wrpc-client/wasm32-sdk",
+    "kaspa-wrpc-wasm/wasm32-sdk",
+]
+wasm32-keygen = []
+default = []
 
 [package.metadata.docs.rs]
 targets = ["wasm32-unknown-unknown"]

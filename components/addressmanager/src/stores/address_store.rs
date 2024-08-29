@@ -21,11 +21,13 @@ pub struct Entry {
 impl MemSizeEstimator for Entry {}
 
 pub trait AddressesStoreReader {
+    #[allow(dead_code)]
     fn get(&self, key: AddressKey) -> Result<Entry, StoreError>;
 }
 
 pub trait AddressesStore: AddressesStoreReader {
     fn set(&mut self, key: AddressKey, entry: Entry) -> StoreResult<()>;
+    #[allow(dead_code)]
     fn set_failed_count(&mut self, key: AddressKey, connection_failed_count: u64) -> StoreResult<()>;
     fn remove(&mut self, key: AddressKey) -> StoreResult<()>;
 }

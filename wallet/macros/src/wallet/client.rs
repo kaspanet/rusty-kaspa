@@ -59,17 +59,17 @@ impl ToTokens for RpcTable {
                         let request = request;
                         let __ret: Result<#response_type> =
                             {
-                                match __self.transport {
-                                    Transport::Borsh(ref transport) => {
-                                        Ok(#response_type::try_from_slice(&transport.call(op, request.try_to_vec()?).await?)?)
+                                match __self.codec {
+                                    Codec::Borsh(ref codec) => {
+                                        Ok(#response_type::try_from_slice(&codec.call(op, borsh::to_vec(&request)?).await?)?)
                                     },
-                                    Transport::Serde(ref transport) => {
+                                    Codec::Serde(ref codec) => {
                                         let request = serde_json::to_string(&request)?;
-                                        let response = transport.call(#ident, request.as_str()).await?;
+                                        let response = codec.call(#ident, request.as_str()).await?;
                                         Ok(serde_json::from_str::<#response_type>(response.as_str())?)
                                     },
                                 }
-                                // Ok(#response_type::try_from_slice(&__self.transport.call(op, &request.try_to_vec()?).await?)?)
+                                // Ok(#response_type::try_from_slice(&__self.codec.call(op, &request.try_to_vec()?).await?)?)
                             };
                         #[allow(unreachable_code)]
                         __ret

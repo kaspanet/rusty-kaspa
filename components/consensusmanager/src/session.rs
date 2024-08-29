@@ -22,9 +22,11 @@ pub use tokio::task::spawn_blocking;
 
 use crate::BlockProcessingBatch;
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct SessionOwnedReadGuard(Arc<RfRwLockOwnedReadGuard>);
 
+#[allow(dead_code)]
 pub struct SessionReadGuard<'a>(RfRwLockReadGuard<'a>);
 
 pub struct SessionWriteGuard<'a>(RfRwLockWriteGuard<'a>);
@@ -87,6 +89,13 @@ impl ConsensusInstance {
         ConsensusSessionBlocking::new(g, self.consensus.clone())
     }
 
+    /// Returns an unguarded *blocking* consensus session. There's no guarantee that data will not be pruned between
+    /// two sequential consensus calls. This session doesn't hold the consensus pruning lock, so it should
+    /// be preferred upon [`session_blocking`] when data consistency is not important.
+    pub fn unguarded_session_blocking(&self) -> ConsensusSessionBlocking<'static> {
+        ConsensusSessionBlocking::new_without_session_guard(self.consensus.clone())
+    }
+
     /// Returns a consensus session for accessing consensus operations in a bulk. The user can safely assume
     /// that consensus state is consistent between operations, that is, no pruning was performed between the calls.
     /// The returned object is an *owned* consensus session type which can be cloned and shared across threads.
@@ -107,13 +116,17 @@ impl ConsensusInstance {
 }
 
 pub struct ConsensusSessionBlocking<'a> {
-    _session_guard: SessionReadGuard<'a>,
+    _session_guard: Option<SessionReadGuard<'a>>,
     consensus: DynConsensus,
 }
 
 impl<'a> ConsensusSessionBlocking<'a> {
     pub fn new(session_guard: SessionReadGuard<'a>, consensus: DynConsensus) -> Self {
-        Self { _session_guard: session_guard, consensus }
+        Self { _session_guard: Some(session_guard), consensus }
+    }
+
+    pub fn new_without_session_guard(consensus: DynConsensus) -> Self {
+        Self { _session_guard: None, consensus }
     }
 }
 
@@ -232,6 +245,10 @@ impl ConsensusSessionOwned {
 
     pub async fn async_get_sink_timestamp(&self) -> u64 {
         self.clone().spawn_blocking(|c| c.get_sink_timestamp()).await
+    }
+
+    pub async fn async_get_current_block_color(&self, hash: Hash) -> Option<bool> {
+        self.clone().spawn_blocking(move |c| c.get_current_block_color(hash)).await
     }
 
     /// source refers to the earliest block from which the current node has full header & block data  

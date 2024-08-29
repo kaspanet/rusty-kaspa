@@ -3,8 +3,6 @@
 //!
 
 use crate::imports::*;
-use crate::result::Result;
-use crate::secret::Secret;
 use async_trait::async_trait;
 use downcast::{downcast_sync, AnySync};
 
@@ -13,7 +11,21 @@ pub struct WalletExportOptions {
     pub include_transactions: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[wasm_bindgen(typescript_custom_section)]
+const TS_WALLET_DESCRIPTOR: &'static str = r#"
+/**
+ * Wallet storage information.
+ * 
+ * @category Wallet API
+ */
+export interface IWalletDescriptor {
+    title?: string;
+    filename: string;
+}
+"#;
+
+/// @category Wallet API
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[wasm_bindgen(inspectable)]
 pub struct WalletDescriptor {
     #[wasm_bindgen(getter_with_clone)]
@@ -28,9 +40,20 @@ impl WalletDescriptor {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[wasm_bindgen(typescript_custom_section)]
+const TS_STORAGE_DESCRIPTOR: &'static str = r#"
+/**
+ * Wallet storage information.
+ */
+export interface IStorageDescriptor {
+    kind: string;
+    data: string;
+}
+"#;
+
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-#[serde(tag = "kind", content = "meta")]
+#[serde(tag = "kind", content = "data")]
 pub enum StorageDescriptor {
     Resident,
     Internal(String),
@@ -51,6 +74,7 @@ pub type StorageStream<T> = Pin<Box<dyn Stream<Item = Result<T>> + Send>>;
 
 #[async_trait]
 pub trait PrvKeyDataStore: Send + Sync {
+    async fn is_empty(&self) -> Result<bool>;
     async fn iter(&self) -> Result<StorageStream<Arc<PrvKeyDataInfo>>>;
     async fn load_key_info(&self, id: &PrvKeyDataId) -> Result<Option<Arc<PrvKeyDataInfo>>>;
     async fn load_key_data(&self, wallet_secret: &Secret, id: &PrvKeyDataId) -> Result<Option<PrvKeyData>>;
@@ -60,6 +84,7 @@ pub trait PrvKeyDataStore: Send + Sync {
 
 #[async_trait]
 pub trait AccountStore: Send + Sync {
+    async fn is_empty(&self) -> Result<bool>;
     async fn iter(
         &self,
         prv_key_data_id_filter: Option<PrvKeyDataId>,
@@ -75,6 +100,9 @@ pub trait AccountStore: Send + Sync {
 
 #[async_trait]
 pub trait AddressBookStore: Send + Sync {
+    async fn is_empty(&self) -> Result<bool> {
+        Err(Error::NotImplemented)
+    }
     async fn iter(&self) -> Result<StorageStream<Arc<AddressBookEntry>>> {
         Err(Error::NotImplemented)
     }

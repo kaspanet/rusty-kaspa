@@ -3,10 +3,10 @@
 //!
 
 use crate::imports::*;
-use crate::secret::Secret;
+// use crate::secret::Secret;
 use crate::storage::interface::CreateArgs;
 use crate::storage::{Hint, PrvKeyDataId};
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use zeroize::Zeroize;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -37,7 +37,7 @@ impl From<WalletCreateArgs> for CreateArgs {
     }
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct WalletOpenArgs {
     /// Return account descriptors
     pub account_descriptors: bool,
@@ -59,15 +59,15 @@ impl WalletOpenArgs {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct PrvKeyDataCreateArgs {
     pub name: Option<String>,
     pub payment_secret: Option<Secret>,
-    pub mnemonic: String,
+    pub mnemonic: Secret,
 }
 
 impl PrvKeyDataCreateArgs {
-    pub fn new(name: Option<String>, payment_secret: Option<Secret>, mnemonic: String) -> Self {
+    pub fn new(name: Option<String>, payment_secret: Option<Secret>, mnemonic: Secret) -> Self {
         Self { name, payment_secret, mnemonic }
     }
 }
@@ -78,6 +78,29 @@ impl Zeroize for PrvKeyDataCreateArgs {
     }
 }
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_ACCOUNT_CREATE_ARGS: &'static str = r#"
+
+export interface IPrvKeyDataArgs {
+    prvKeyDataId: HexString;
+    paymentSecret?: string;
+}
+
+export interface IAccountCreateArgsBip32 {
+    accountName?: string;
+    accountIndex?: number;
+}
+
+/**
+ * @category Wallet API
+ */
+export interface IAccountCreateArgs {
+    type : "bip32";
+    args : IAccountCreateArgsBip32;
+    prvKeyDataArgs? : IPrvKeyDataArgs;
+}
+"#;
+
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AccountCreateArgsBip32 {
     pub account_name: Option<String>,
@@ -87,6 +110,18 @@ pub struct AccountCreateArgsBip32 {
 impl AccountCreateArgsBip32 {
     pub fn new(account_name: Option<String>, account_index: Option<u64>) -> Self {
         Self { account_name, account_index }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub struct AccountCreateArgsBip32Watch {
+    pub account_name: Option<String>,
+    pub xpub_keys: Vec<String>,
+}
+
+impl AccountCreateArgsBip32Watch {
+    pub fn new(account_name: Option<String>, xpub_keys: Vec<String>) -> Self {
+        Self { account_name, xpub_keys }
     }
 }
 
@@ -103,6 +138,7 @@ impl PrvKeyDataArgs {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(tag = "type", content = "args")]
 pub enum AccountCreateArgs {
     Bip32 {
         prv_key_data_args: PrvKeyDataArgs,
@@ -117,6 +153,9 @@ pub enum AccountCreateArgs {
         additional_xpub_keys: Vec<String>,
         name: Option<String>,
         minimum_signatures: u16,
+    },
+    Bip32Watch {
+        account_args: AccountCreateArgsBip32Watch,
     },
 }
 

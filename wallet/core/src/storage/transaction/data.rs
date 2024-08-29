@@ -8,10 +8,10 @@ use kaspa_consensus_core::tx::Transaction;
 pub use kaspa_consensus_core::tx::TransactionId;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", content = "transaction")]
+#[serde(tag = "type", content = "data")]
 // the reason the struct is renamed kebab-case and then
 // each field is renamed to camelCase is to force the
-// enum tags to be lower case.
+// enum tags to be lower-kebab-case.
 #[serde(rename_all = "kebab-case")]
 pub enum TransactionData {
     Reorg {
@@ -136,6 +136,24 @@ impl TransactionData {
             TransactionData::TransferIncoming { .. } => TransactionKind::TransferIncoming,
             TransactionData::TransferOutgoing { .. } => TransactionKind::TransferOutgoing,
             TransactionData::Change { .. } => TransactionKind::Change,
+        }
+    }
+
+    pub fn has_address(&self, address: &Address) -> bool {
+        match self {
+            TransactionData::Reorg { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::Stasis { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::Incoming { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::External { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::Outgoing { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::Batch { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
+            TransactionData::TransferIncoming { utxo_entries, .. } => {
+                utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address))
+            }
+            TransactionData::TransferOutgoing { utxo_entries, .. } => {
+                utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address))
+            }
+            TransactionData::Change { utxo_entries, .. } => utxo_entries.iter().any(|utxo| utxo.address.as_ref() == Some(address)),
         }
     }
 }
@@ -264,42 +282,42 @@ impl BorshSerialize for TransactionData {
 }
 
 impl BorshDeserialize for TransactionData {
-    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> IoResult<Self> {
         let StorageHeader { version: _, .. } =
-            StorageHeader::deserialize(buf)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
+            StorageHeader::deserialize_reader(reader)?.try_magic(Self::STORAGE_MAGIC)?.try_version(Self::STORAGE_VERSION)?;
 
-        let kind: TransactionKind = BorshDeserialize::deserialize(buf)?;
+        let kind: TransactionKind = BorshDeserialize::deserialize_reader(reader)?;
 
         match kind {
             TransactionKind::Reorg => {
-                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize(buf)?;
-                let aggregate_input_value: u64 = BorshDeserialize::deserialize(buf)?;
+                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize_reader(reader)?;
+                let aggregate_input_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
                 Ok(TransactionData::Reorg { utxo_entries, aggregate_input_value })
             }
             TransactionKind::Incoming => {
-                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize(buf)?;
-                let aggregate_input_value: u64 = BorshDeserialize::deserialize(buf)?;
+                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize_reader(reader)?;
+                let aggregate_input_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
                 Ok(TransactionData::Incoming { utxo_entries, aggregate_input_value })
             }
             TransactionKind::Stasis => {
-                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize(buf)?;
-                let aggregate_input_value: u64 = BorshDeserialize::deserialize(buf)?;
+                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize_reader(reader)?;
+                let aggregate_input_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
                 Ok(TransactionData::Stasis { utxo_entries, aggregate_input_value })
             }
             TransactionKind::External => {
-                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize(buf)?;
-                let aggregate_input_value: u64 = BorshDeserialize::deserialize(buf)?;
+                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize_reader(reader)?;
+                let aggregate_input_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
                 Ok(TransactionData::External { utxo_entries, aggregate_input_value })
             }
             TransactionKind::Batch => {
-                let fees: u64 = BorshDeserialize::deserialize(buf)?;
-                let aggregate_input_value: u64 = BorshDeserialize::deserialize(buf)?;
-                let aggregate_output_value: u64 = BorshDeserialize::deserialize(buf)?;
-                let transaction: Transaction = BorshDeserialize::deserialize(buf)?;
-                let payment_value: Option<u64> = BorshDeserialize::deserialize(buf)?;
-                let change_value: u64 = BorshDeserialize::deserialize(buf)?;
-                let accepted_daa_score: Option<u64> = BorshDeserialize::deserialize(buf)?;
-                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize(buf)?;
+                let fees: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let aggregate_input_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let aggregate_output_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let transaction: Transaction = BorshDeserialize::deserialize_reader(reader)?;
+                let payment_value: Option<u64> = BorshDeserialize::deserialize_reader(reader)?;
+                let change_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let accepted_daa_score: Option<u64> = BorshDeserialize::deserialize_reader(reader)?;
+                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize_reader(reader)?;
                 Ok(TransactionData::Batch {
                     fees,
                     aggregate_input_value,
@@ -312,14 +330,14 @@ impl BorshDeserialize for TransactionData {
                 })
             }
             TransactionKind::Outgoing => {
-                let fees: u64 = BorshDeserialize::deserialize(buf)?;
-                let aggregate_input_value: u64 = BorshDeserialize::deserialize(buf)?;
-                let aggregate_output_value: u64 = BorshDeserialize::deserialize(buf)?;
-                let transaction: Transaction = BorshDeserialize::deserialize(buf)?;
-                let payment_value: Option<u64> = BorshDeserialize::deserialize(buf)?;
-                let change_value: u64 = BorshDeserialize::deserialize(buf)?;
-                let accepted_daa_score: Option<u64> = BorshDeserialize::deserialize(buf)?;
-                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize(buf)?;
+                let fees: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let aggregate_input_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let aggregate_output_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let transaction: Transaction = BorshDeserialize::deserialize_reader(reader)?;
+                let payment_value: Option<u64> = BorshDeserialize::deserialize_reader(reader)?;
+                let change_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let accepted_daa_score: Option<u64> = BorshDeserialize::deserialize_reader(reader)?;
+                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize_reader(reader)?;
                 Ok(TransactionData::Outgoing {
                     fees,
                     aggregate_input_value,
@@ -332,14 +350,14 @@ impl BorshDeserialize for TransactionData {
                 })
             }
             TransactionKind::TransferIncoming => {
-                let fees: u64 = BorshDeserialize::deserialize(buf)?;
-                let aggregate_input_value: u64 = BorshDeserialize::deserialize(buf)?;
-                let aggregate_output_value: u64 = BorshDeserialize::deserialize(buf)?;
-                let transaction: Transaction = BorshDeserialize::deserialize(buf)?;
-                let payment_value: Option<u64> = BorshDeserialize::deserialize(buf)?;
-                let change_value: u64 = BorshDeserialize::deserialize(buf)?;
-                let accepted_daa_score: Option<u64> = BorshDeserialize::deserialize(buf)?;
-                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize(buf)?;
+                let fees: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let aggregate_input_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let aggregate_output_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let transaction: Transaction = BorshDeserialize::deserialize_reader(reader)?;
+                let payment_value: Option<u64> = BorshDeserialize::deserialize_reader(reader)?;
+                let change_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let accepted_daa_score: Option<u64> = BorshDeserialize::deserialize_reader(reader)?;
+                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize_reader(reader)?;
                 Ok(TransactionData::TransferIncoming {
                     fees,
                     aggregate_input_value,
@@ -352,14 +370,14 @@ impl BorshDeserialize for TransactionData {
                 })
             }
             TransactionKind::TransferOutgoing => {
-                let fees: u64 = BorshDeserialize::deserialize(buf)?;
-                let aggregate_input_value: u64 = BorshDeserialize::deserialize(buf)?;
-                let aggregate_output_value: u64 = BorshDeserialize::deserialize(buf)?;
-                let transaction: Transaction = BorshDeserialize::deserialize(buf)?;
-                let payment_value: Option<u64> = BorshDeserialize::deserialize(buf)?;
-                let change_value: u64 = BorshDeserialize::deserialize(buf)?;
-                let accepted_daa_score: Option<u64> = BorshDeserialize::deserialize(buf)?;
-                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize(buf)?;
+                let fees: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let aggregate_input_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let aggregate_output_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let transaction: Transaction = BorshDeserialize::deserialize_reader(reader)?;
+                let payment_value: Option<u64> = BorshDeserialize::deserialize_reader(reader)?;
+                let change_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let accepted_daa_score: Option<u64> = BorshDeserialize::deserialize_reader(reader)?;
+                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize_reader(reader)?;
                 Ok(TransactionData::TransferOutgoing {
                     fees,
                     aggregate_input_value,
@@ -372,13 +390,13 @@ impl BorshDeserialize for TransactionData {
                 })
             }
             TransactionKind::Change => {
-                let aggregate_input_value: u64 = BorshDeserialize::deserialize(buf)?;
-                let aggregate_output_value: u64 = BorshDeserialize::deserialize(buf)?;
-                let transaction: Transaction = BorshDeserialize::deserialize(buf)?;
-                let payment_value: Option<u64> = BorshDeserialize::deserialize(buf)?;
-                let change_value: u64 = BorshDeserialize::deserialize(buf)?;
-                let accepted_daa_score: Option<u64> = BorshDeserialize::deserialize(buf)?;
-                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize(buf)?;
+                let aggregate_input_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let aggregate_output_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let transaction: Transaction = BorshDeserialize::deserialize_reader(reader)?;
+                let payment_value: Option<u64> = BorshDeserialize::deserialize_reader(reader)?;
+                let change_value: u64 = BorshDeserialize::deserialize_reader(reader)?;
+                let accepted_daa_score: Option<u64> = BorshDeserialize::deserialize_reader(reader)?;
+                let utxo_entries: Vec<UtxoRecord> = BorshDeserialize::deserialize_reader(reader)?;
                 Ok(TransactionData::Change {
                     aggregate_input_value,
                     aggregate_output_value,

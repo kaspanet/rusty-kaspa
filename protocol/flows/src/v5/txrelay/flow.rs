@@ -10,7 +10,7 @@ use kaspa_mining::{
     errors::MiningManagerError,
     mempool::{
         errors::RuleError,
-        tx::{Orphan, Priority},
+        tx::{Orphan, Priority, RbfPolicy},
     },
     model::tx_query::TransactionQuery,
     P2pTxCountSample,
@@ -219,7 +219,7 @@ impl RelayTransactionsFlow {
             .ctx
             .mining_manager()
             .clone()
-            .validate_and_insert_transaction_batch(&consensus, transactions, Priority::Low, Orphan::Allowed)
+            .validate_and_insert_transaction_batch(&consensus, transactions, Priority::Low, Orphan::Allowed, RbfPolicy::Allowed)
             .await;
 
         for res in insert_results.iter() {
@@ -229,10 +229,11 @@ impl RelayTransactionsFlow {
                     // TODO: discuss a banning process
                     return Err(ProtocolError::MisbehavingPeer(format!("rejected invalid transaction {}", transaction_id)));
                 }
-                Err(MiningManagerError::MempoolError(RuleError::RejectSpamTransaction(_))) => {
+                Err(MiningManagerError::MempoolError(RuleError::RejectSpamTransaction(_)))
+                | Err(MiningManagerError::MempoolError(RuleError::RejectNonStandard(..))) => {
                     self.spam_counter += 1;
                     if self.spam_counter % 100 == 0 {
-                        kaspa_core::warn!("Peer {} has shared {} spam txs", self.router, self.spam_counter);
+                        kaspa_core::warn!("Peer {} has shared {} spam/non-standard txs ({:?})", self.router, self.spam_counter, res);
                     }
                 }
                 Err(_) => {}

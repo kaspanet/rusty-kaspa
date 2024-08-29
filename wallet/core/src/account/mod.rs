@@ -5,12 +5,18 @@
 
 pub mod descriptor;
 pub mod kind;
+pub mod pskb;
 pub mod variants;
+use kaspa_hashes::Hash;
+use kaspa_wallet_pskt::bundle::Bundle;
 pub use kind::*;
+use pskb::{
+    bundle_from_pskt_generator, bundle_to_finalizer_stream, pskb_signer_for_address, pskt_to_pending_transaction, PSKBSigner,
+    PSKTGenerator,
+};
 pub use variants::*;
 
 use crate::derivation::build_derivate_paths;
-use crate::derivation::gen0;
 use crate::derivation::AddressDerivationManagerTrait;
 use crate::imports::*;
 use crate::storage::account::AccountSettings;
@@ -21,7 +27,8 @@ use crate::tx::{Fees, Generator, GeneratorSettings, GeneratorSummary, PaymentDes
 use crate::utxo::balance::{AtomicBalance, BalanceStrings};
 use crate::utxo::UtxoContextBinding;
 use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, PrivateKey};
-use kaspa_consensus_wasm::UtxoEntryReference;
+use kaspa_consensus_client::UtxoEntryReference;
+use kaspa_wallet_keys::derivation::gen0::WalletDerivationManagerV0;
 use workflow_core::abortable::Abortable;
 
 /// Notification callback type used by [`Account::sweep`] and [`Account::send`].
@@ -109,11 +116,19 @@ pub trait Account: AnySync + Send + Sync + 'static {
     }
 
     fn balance_as_strings(&self, padding: Option<usize>) -> Result<BalanceStrings> {
-        Ok(BalanceStrings::from((&self.balance(), &self.wallet().network_id()?.into(), padding)))
+        Ok(BalanceStrings::from((self.balance().as_ref(), &self.wallet().network_id()?.into(), padding)))
     }
 
     fn name(&self) -> Option<String> {
         self.context().settings.name.clone()
+    }
+
+    fn feature(&self) -> Option<String> {
+        None
+    }
+
+    fn xpub_keys(&self) -> Option<&ExtendedPublicKeys> {
+        None
     }
 
     fn name_or_id(&self) -> String {
@@ -210,7 +225,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
                     None => ScanExtent::EmptyWindow,
                 };
 
-                let scans = vec![
+                let scans = [
                     Scan::new_with_address_manager(
                         derivation.receive_address_manager(),
                         &balance,
@@ -348,6 +363,66 @@ pub trait Account: AnySync + Send + Sync + 'static {
         Ok((generator.summary(), ids))
     }
 
+    async fn pskb_from_send_generator(
+        self: Arc<Self>,
+        destination: PaymentDestination,
+        priority_fee_sompi: Fees,
+        payload: Option<Vec<u8>>,
+        wallet_secret: Secret,
+        payment_secret: Option<Secret>,
+        abortable: &Abortable,
+    ) -> Result<Bundle, Error> {
+        let settings = GeneratorSettings::try_new_with_account(self.clone().as_dyn_arc(), destination, priority_fee_sompi, payload)?;
+        let keydata = self.prv_key_data(wallet_secret).await?;
+        let signer = Arc::new(PSKBSigner::new(self.clone().as_dyn_arc(), keydata, payment_secret));
+        let generator = Generator::try_new(settings, None, Some(abortable))?;
+        let pskt_generator = PSKTGenerator::new(generator, signer, self.wallet().address_prefix()?);
+        bundle_from_pskt_generator(pskt_generator).await
+    }
+
+    async fn pskb_sign(
+        self: Arc<Self>,
+        bundle: &Bundle,
+        wallet_secret: Secret,
+        payment_secret: Option<Secret>,
+        sign_for_address: Option<&Address>,
+    ) -> Result<Bundle, Error> {
+        let keydata = self.prv_key_data(wallet_secret).await?;
+        let signer = Arc::new(PSKBSigner::new(self.clone().as_dyn_arc(), keydata.clone(), payment_secret.clone()));
+
+        let network_id = self.wallet().clone().network_id()?;
+        let derivation = self.as_derivation_capable()?;
+
+        let (derivation_path, _) =
+            build_derivate_paths(&derivation.account_kind(), derivation.account_index(), derivation.cosigner_index())?;
+
+        let key_fingerprint = keydata.get_xprv(payment_secret.clone().as_ref())?.public_key().fingerprint();
+
+        match pskb_signer_for_address(bundle, signer, network_id, sign_for_address, derivation_path, key_fingerprint).await {
+            Ok(signer) => Ok(signer),
+            Err(e) => Err(Error::from(e.to_string())),
+        }
+    }
+
+    async fn pskb_broadcast(self: Arc<Self>, bundle: &Bundle) -> Result<Vec<Hash>, Error> {
+        let mut ids = Vec::new();
+        let mut stream = bundle_to_finalizer_stream(bundle);
+
+        while let Some(result) = stream.next().await {
+            match result {
+                Ok(pskt) => {
+                    let change = self.wallet().account()?.change_address()?;
+                    let transaction = pskt_to_pending_transaction(pskt, self.wallet().network_id()?, change)?;
+                    ids.push(transaction.try_submit(&self.wallet().rpc_api()).await?);
+                }
+                Err(e) => {
+                    eprintln!("Error processing a PSKT from bundle: {:?}", e);
+                }
+            }
+        }
+        Ok(ids)
+    }
+
     /// Execute a transfer to another wallet account.
     async fn transfer(
         self: Arc<Self>,
@@ -358,13 +433,14 @@ pub trait Account: AnySync + Send + Sync + 'static {
         payment_secret: Option<Secret>,
         abortable: &Abortable,
         notifier: Option<GenerationNotifier>,
+        guard: &WalletGuard,
     ) -> Result<(GeneratorSummary, Vec<kaspa_hashes::Hash>)> {
         let keydata = self.prv_key_data(wallet_secret).await?;
         let signer = Arc::new(Signer::new(self.clone().as_dyn_arc(), keydata, payment_secret));
 
         let destination_account = self
             .wallet()
-            .get_account_by_id(&destination_account_id)
+            .get_account_by_id(&destination_account_id, guard)
             .await?
             .ok_or_else(|| Error::AccountNotFound(destination_account_id))?;
 
@@ -490,7 +566,7 @@ pub trait DerivationCapableAccount: Account {
             let last = (index + window) as u32;
             index = last as usize;
 
-            let (keys, addresses) = if sweep {
+            let (mut keys, addresses) = if sweep {
                 let mut keypairs = derivation.get_range_with_keys(false, first..last, false, &xkey).await?;
                 let change_keypairs = derivation.get_range_with_keys(true, first..last, false, &xkey).await?;
                 keypairs.extend(change_keypairs);
@@ -524,6 +600,7 @@ pub trait DerivationCapableAccount: Account {
                     let settings = GeneratorSettings::try_new_with_iterator(
                         self.wallet().network_id()?,
                         Box::new(utxos.into_iter()),
+                        None,
                         change_address.clone(),
                         1,
                         1,
@@ -537,7 +614,7 @@ pub trait DerivationCapableAccount: Account {
 
                     let mut stream = generator.stream();
                     while let Some(transaction) = stream.try_next().await? {
-                        transaction.try_sign_with_keys(keys.clone())?;
+                        transaction.try_sign_with_keys(&keys, None)?;
                         let id = transaction.try_submit(&rpc).await?;
                         if let Some(notifier) = notifier {
                             notifier(index, aggregate_utxo_count, balance, Some(id));
@@ -559,6 +636,8 @@ pub trait DerivationCapableAccount: Account {
                 }
                 yield_executor().await;
             }
+
+            keys.zeroize();
         }
 
         if index > last_notification {
@@ -630,21 +709,21 @@ pub(crate) fn create_private_keys<'l>(
     let paths = build_derivate_paths(account_kind, account_index, cosigner_index)?;
     let mut private_keys = vec![];
     if matches!(account_kind.as_ref(), LEGACY_ACCOUNT_KIND) {
-        let (private_key, attrs) = gen0::WalletDerivationManagerV0::derive_key_by_path(xkey, paths.0)?;
+        let (private_key, attrs) = WalletDerivationManagerV0::derive_key_by_path(xkey, paths.0)?;
         for (address, index) in receive.iter() {
             let (private_key, _) =
-                gen0::WalletDerivationManagerV0::derive_private_key(&private_key, &attrs, ChildNumber::new(*index, true)?)?;
+                WalletDerivationManagerV0::derive_private_key(&private_key, &attrs, ChildNumber::new(*index, true)?)?;
             private_keys.push((*address, private_key));
         }
-        let (private_key, attrs) = gen0::WalletDerivationManagerV0::derive_key_by_path(xkey, paths.1)?;
+        let (private_key, attrs) = WalletDerivationManagerV0::derive_key_by_path(xkey, paths.1)?;
         for (address, index) in change.iter() {
             let (private_key, _) =
-                gen0::WalletDerivationManagerV0::derive_private_key(&private_key, &attrs, ChildNumber::new(*index, true)?)?;
+                WalletDerivationManagerV0::derive_private_key(&private_key, &attrs, ChildNumber::new(*index, true)?)?;
             private_keys.push((*address, private_key));
         }
     } else {
-        let receive_xkey = xkey.clone().derive_path(paths.0)?;
-        let change_xkey = xkey.clone().derive_path(paths.1)?;
+        let receive_xkey = xkey.clone().derive_path(&paths.0)?;
+        let change_xkey = xkey.clone().derive_path(&paths.1)?;
 
         for (address, index) in receive.iter() {
             private_keys.push((*address, *receive_xkey.derive_child(ChildNumber::new(*index, false)?)?.private_key()));
@@ -662,13 +741,13 @@ pub(crate) fn create_private_keys<'l>(
 mod tests {
     use super::create_private_keys;
     use super::ExtendedPrivateKey;
-    use crate::derivation::gen0::PubkeyDerivationManagerV0;
     use crate::imports::LEGACY_ACCOUNT_KIND;
     use kaspa_addresses::Address;
     use kaspa_addresses::Prefix;
     use kaspa_bip32::secp256k1::SecretKey;
     use kaspa_bip32::PrivateKey;
     use kaspa_bip32::SecretKeyExt;
+    use kaspa_wallet_keys::derivation::gen0::PubkeyDerivationManagerV0;
     use std::str::FromStr;
 
     fn gen0_receive_addresses() -> Vec<&'static str> {

@@ -1,6 +1,7 @@
 use alloc::borrow::Cow;
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt::Formatter;
+use js_sys::Object;
 use kaspa_utils::{
     hex::{FromHex, ToHex},
     serde_bytes::FromHexVisitor,
@@ -33,8 +34,22 @@ use wasm_bindgen::prelude::wasm_bindgen;
 //Represents a Set of [`ScriptPublicKey`]s
 pub type ScriptPublicKeys = HashSet<ScriptPublicKey>;
 
+#[wasm_bindgen(typescript_custom_section)]
+const TS_SCRIPT_PUBLIC_KEY: &'static str = r#"
+/**
+ * Interface defines the structure of a Script Public Key.
+ * 
+ * @category Consensus
+ */
+export interface IScriptPublicKey {
+    version : number;
+    script: HexString;
+}
+"#;
+
 /// Represents a Kaspad ScriptPublicKey
-#[derive(Default, PartialEq, Eq, Clone, Hash)]
+/// @category Consensus
+#[derive(Default, PartialEq, Eq, Clone, Hash, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct ScriptPublicKey {
     pub version: ScriptPublicKeyVersion,
@@ -316,6 +331,12 @@ impl ScriptPublicKey {
 }
 
 #[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "ScriptPublicKey | HexString")]
+    pub type ScriptPublicKeyT;
+}
+
+#[wasm_bindgen]
 impl ScriptPublicKey {
     #[wasm_bindgen(constructor)]
     pub fn constructor(version: u16, script: JsValue) -> Result<ScriptPublicKey, JsError> {
@@ -344,43 +365,40 @@ impl BorshSerialize for ScriptPublicKey {
 }
 
 impl BorshDeserialize for ScriptPublicKey {
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         // Deserialize into vec first since we have no custom smallvec support
-        Ok(Self::from_vec(borsh::BorshDeserialize::deserialize(buf)?, borsh::BorshDeserialize::deserialize(buf)?))
+        Ok(Self::from_vec(borsh::BorshDeserialize::deserialize_reader(reader)?, borsh::BorshDeserialize::deserialize_reader(reader)?))
     }
 }
 
-impl BorshSchema for ScriptPublicKey {
-    fn add_definitions_recursively(
-        definitions: &mut std::collections::HashMap<borsh::schema::Declaration, borsh::schema::Definition>,
-    ) {
-        let fields = borsh::schema::Fields::NamedFields(std::vec![
-            ("version".to_string(), <u16>::declaration()),
-            ("script".to_string(), <Vec<u8>>::declaration())
-        ]);
-        let definition = borsh::schema::Definition::Struct { fields };
-        Self::add_definition(Self::declaration(), definition, definitions);
-        <u16>::add_definitions_recursively(definitions);
-        // `<Vec<u8>>` can be safely used as scheme definition for smallvec. See comments above.
-        <Vec<u8>>::add_definitions_recursively(definitions);
-    }
+type CastError = workflow_wasm::error::Error;
+impl TryCastFromJs for ScriptPublicKey {
+    type Error = workflow_wasm::error::Error;
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
+            if let Some(hex_str) = value.as_ref().as_string() {
+                Ok(Self::from_str(&hex_str).map_err(CastError::custom)?)
+            } else if let Some(object) = Object::try_from(value.as_ref()) {
+                let version = object.try_get_value("version")?.ok_or(CastError::custom(
+                    "ScriptPublicKey must be a hex string or an object with 'version' and 'script' properties",
+                ))?;
 
-    fn declaration() -> borsh::schema::Declaration {
-        "ScriptPublicKey".to_string()
-    }
-}
+                let version = if let Ok(version) = version.try_as_u16() {
+                    version
+                } else {
+                    return Err(CastError::custom("Invalid version value '{version:?}'"));
+                };
 
-impl TryFrom<JsValue> for ScriptPublicKey {
-    type Error = JsValue;
+                let script = object.get_vec_u8("script")?;
 
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        if let Ok(script_public_key) = ref_from_abi!(ScriptPublicKey, &js_value) {
-            Ok(script_public_key)
-        } else if let Some(hex_str) = js_value.as_string() {
-            Self::from_str(&hex_str).map_err(|e| JsValue::from_str(&format!("{}", e)))
-        } else {
-            Err(JsValue::from_str(&format!("Unable to convert ScriptPublicKey from: {js_value:?}")))
-        }
+                Ok(ScriptPublicKey::from_vec(version, script))
+            } else {
+                Err(CastError::custom(format!("Unable to convert ScriptPublicKey from: {:?}", value.as_ref())))
+            }
+        })
     }
 }
 
@@ -410,18 +428,20 @@ mod tests {
     fn test_spk_borsh() {
         // Tests for ScriptPublicKey Borsh ser/deser since we manually implemented them
         let spk = ScriptPublicKey::from_vec(12, vec![32; 20]);
-        let bin = spk.try_to_vec().unwrap();
+        let bin = borsh::to_vec(&spk).unwrap();
         let spk2: ScriptPublicKey = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(spk, spk2);
 
         let spk = ScriptPublicKey::from_vec(55455, vec![11; 200]);
-        let bin = spk.try_to_vec().unwrap();
+        let bin = borsh::to_vec(&spk).unwrap();
         let spk2: ScriptPublicKey = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(spk, spk2);
     }
 
+    use wasm_bindgen::convert::IntoWasmAbi;
     use wasm_bindgen_test::wasm_bindgen_test;
     use workflow_wasm::serde::{from_value, to_value};
+
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_constructor() {
         let version = 0xc0de;
@@ -438,6 +458,7 @@ mod tests {
         assert_eq!(spk, from_value(spk_js.clone()).map_err(|_| ()).unwrap());
         assert_eq!(JsValue::from_str("string"), spk_js.js_typeof());
     }
+
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_js_spk_object() {
         let version = 0xc0de;
@@ -459,8 +480,6 @@ mod tests {
 
     #[wasm_bindgen_test]
     pub fn test_wasm_serde_spk_object() {
-        use wasm_bindgen::convert::IntoWasmAbi;
-
         let version = 0xc0de;
         let vec: Vec<u8> = (0..SCRIPT_VECTOR_SIZE as u8).collect();
         let spk = ScriptPublicKey::from_vec(version, vec.clone());

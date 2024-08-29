@@ -40,6 +40,10 @@ impl AsyncRuntime {
         self.services.lock().unwrap().push(service);
     }
 
+    pub fn find(&self, ident: &'static str) -> Option<Arc<dyn AsyncService>> {
+        self.services.lock().unwrap().iter().find(|s| (*s).clone().ident() == ident).cloned()
+    }
+
     pub fn init(self: Arc<AsyncRuntime>, core: Arc<Core>) -> Vec<ThreadJoinHandle<()>> {
         trace!("initializing async-runtime service");
         vec![thread::Builder::new().name(Self::IDENT.to_string()).spawn(move || self.worker(core)).unwrap()]

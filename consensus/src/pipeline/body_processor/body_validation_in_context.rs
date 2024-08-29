@@ -94,12 +94,16 @@ mod tests {
     };
     use kaspa_consensus_core::{
         api::ConsensusApi,
-        merkle::calc_hash_merkle_root,
+        merkle::calc_hash_merkle_root as calc_hash_merkle_root_with_options,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{Transaction, TransactionInput, TransactionOutpoint},
     };
     use kaspa_core::assert_match;
     use kaspa_hashes::Hash;
+
+    fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
+        calc_hash_merkle_root_with_options(txs, false)
+    }
 
     #[tokio::test]
     async fn validate_body_in_context_test() {

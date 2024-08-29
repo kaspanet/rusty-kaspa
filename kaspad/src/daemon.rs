@@ -10,9 +10,12 @@ use kaspa_core::{core::Core, info, trace};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
 use kaspa_database::prelude::CachePolicy;
 use kaspa_grpc_server::service::GrpcService;
+use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
 use kaspa_rpc_service::service::RpcCoreService;
 use kaspa_txscript::caches::TxScriptCacheCounters;
+use kaspa_utils::git;
 use kaspa_utils::networking::ContextualNetAddress;
+use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 
 use kaspa_addressmanager::AddressManager;
@@ -91,6 +94,9 @@ pub fn validate_args(args: &Args) -> ConfigResult<()> {
     if args.ram_scale > 10.0 {
         return Err(ConfigError::RamScaleTooHigh);
     }
+    if args.max_tracked_addresses > Tracker::MAX_ADDRESS_UPPER_BOUND {
+        return Err(ConfigError::MaxTrackedAddressesTooHigh(Tracker::MAX_ADDRESS_UPPER_BOUND));
+    }
     Ok(())
 }
 
@@ -154,13 +160,20 @@ pub fn get_log_dir(args: &Args) -> Option<String> {
 
 impl Runtime {
     pub fn from_args(args: &Args) -> Self {
-        // Configure the panic behavior
-        kaspa_core::panic::configure_panic();
-
         let log_dir = get_log_dir(args);
 
         // Initialize the logger
-        kaspa_core::log::init_logger(log_dir.as_deref(), &args.log_level);
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "semaphore-trace")] {
+                kaspa_core::log::init_logger(log_dir.as_deref(), &format!("{},{}=debug", args.log_level, kaspa_utils::sync::semaphore_module_path()));
+            } else {
+                kaspa_core::log::init_logger(log_dir.as_deref(), &args.log_level);
+            }
+        };
+
+        // Configure the panic behavior
+        // As we log the panic, we want to set it up after the logger
+        kaspa_core::panic::configure_panic();
 
         Self { log_dir: log_dir.map(|log_dir| log_dir.to_owned()) }
     }
@@ -222,7 +235,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
     let db_dir = app_dir.join(network.to_prefixed()).join(DEFAULT_DATA_DIR);
 
     // Print package name and version
-    info!("{} v{}", env!("CARGO_PKG_NAME"), version());
+    info!("{} v{}", env!("CARGO_PKG_NAME"), git::with_short_hash(version()));
 
     assert!(!db_dir.to_str().unwrap().is_empty());
     info!("Application directory: {}", app_dir.display());
@@ -244,7 +257,7 @@ pub fn create_core_with_runtime(runtime: &Runtime, args: &Args, fd_total_budget:
 
     // Reset Condition: User explicitly requested a reset
     if is_db_reset_needed && db_dir.exists() {
-        let msg = "Reset DB was requested -- this means the current databases will be fully deleted, 
+        let msg = "Reset DB was requested -- this means the current databases will be fully deleted,
 do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm all interactive questions)";
         get_user_approval_or_exit(msg, args.yes);
         info!("Deleting databases");
@@ -356,7 +369,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     let tick_service = Arc::new(TickService::new());
     let (notification_send, notification_recv) = unbounded();
-    let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_send));
+    let max_tracked_addresses = if args.utxoindex && args.max_tracked_addresses > 0 { Some(args.max_tracked_addresses) } else { None };
+    let subscription_context = SubscriptionContext::with_options(max_tracked_addresses);
+    let notification_root = Arc::new(ConsensusNotificationRoot::with_context(notification_send, subscription_context.clone()));
     let processing_counters = Arc::new(ProcessingCounters::default());
     let mining_counters = Arc::new(MiningCounters::default());
     let wrpc_borsh_counters = Arc::new(WrpcServerCounters::default());
@@ -395,7 +410,9 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         Arc::new(perf_monitor_builder.build())
     };
 
-    let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv));
+    let system_info = SystemInfo::default();
+
+    let notify_service = Arc::new(NotifyService::new(notification_root.clone(), notification_recv, subscription_context.clone()));
     let index_service: Option<Arc<IndexService>> = if args.utxoindex {
         // Use only a single thread for none-consensus databases
         let utxoindex_db = kaspa_database::prelude::ConnBuilder::default()
@@ -404,7 +421,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
             .build()
             .unwrap();
         let utxoindex = UtxoIndexProxy::new(UtxoIndex::new(consensus_manager.clone(), utxoindex_db).unwrap());
-        let index_service = Arc::new(IndexService::new(&notify_service.notifier(), Some(utxoindex)));
+        let index_service = Arc::new(IndexService::new(&notify_service.notifier(), subscription_context.clone(), Some(utxoindex)));
         Some(index_service)
     } else {
         None
@@ -412,15 +429,16 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
 
     let (address_manager, port_mapping_extender_svc) = AddressManager::new(config.clone(), meta_db, tick_service.clone());
 
-    let mining_monitor = Arc::new(MiningMonitor::new(mining_counters.clone(), tx_script_cache_counters.clone(), tick_service.clone()));
     let mining_manager = MiningManagerProxy::new(Arc::new(MiningManager::new_with_extended_config(
         config.target_time_per_block,
         false,
         config.max_block_mass,
         config.ram_scale,
         config.block_template_cache_lifetime,
-        mining_counters,
+        mining_counters.clone(),
     )));
+    let mining_monitor =
+        Arc::new(MiningMonitor::new(mining_manager.clone(), mining_counters, tx_script_cache_counters.clone(), tick_service.clone()));
 
     let flow_context = Arc::new(FlowContext::new(
         consensus_manager.clone(),
@@ -448,6 +466,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         index_service.as_ref().map(|x| x.notifier()),
         mining_manager,
         flow_context,
+        subscription_context,
         index_service.as_ref().map(|x| x.utxoindex().unwrap()),
         config.clone(),
         core.clone(),
@@ -457,7 +476,21 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         perf_monitor.clone(),
         p2p_tower_counters.clone(),
         grpc_tower_counters.clone(),
+        system_info,
     ));
+    let grpc_service_broadcasters: usize = 3; // TODO: add a command line argument or derive from other arg/config/host-related fields
+    let grpc_service = if !args.disable_grpc {
+        Some(Arc::new(GrpcService::new(
+            grpc_server_addr,
+            config,
+            rpc_core_service.clone(),
+            args.rpc_max_clients,
+            grpc_service_broadcasters,
+            grpc_tower_counters,
+        )))
+    } else {
+        None
+    };
 
     // Create an async runtime and register the top-level async services
     let async_runtime = Arc::new(AsyncRuntime::new(args.async_threads));
@@ -470,10 +503,8 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         async_runtime.register(Arc::new(port_mapping_extender_svc))
     };
     async_runtime.register(rpc_core_service.clone());
-    if !args.disable_grpc {
-        let grpc_service =
-            Arc::new(GrpcService::new(grpc_server_addr, config, rpc_core_service.clone(), args.rpc_max_clients, grpc_tower_counters));
-        async_runtime.register(grpc_service);
+    if let Some(grpc_service) = grpc_service {
+        async_runtime.register(grpc_service)
     }
     async_runtime.register(p2p_service);
     async_runtime.register(consensus_monitor);

@@ -13,6 +13,7 @@ use std::sync::PoisonError;
 use thiserror::Error;
 use wasm_bindgen::JsValue;
 use workflow_core::abortable::Aborted;
+use workflow_core::channel::{RecvError, SendError, TrySendError};
 use workflow_core::sendable::*;
 use workflow_rpc::client::error::Error as RpcError;
 use workflow_wasm::jserror::*;
@@ -23,6 +24,9 @@ use workflow_wasm::printable::*;
 pub enum Error {
     #[error("{0}")]
     Custom(String),
+
+    #[error(transparent)]
+    WalletKeys(#[from] kaspa_wallet_keys::error::Error),
 
     #[error("please select an account")]
     AccountSelection,
@@ -135,8 +139,11 @@ pub enum Error {
     #[error(transparent)]
     ParseFloatError(#[from] std::num::ParseFloatError),
 
-    #[error("Unable to decrypt this wallet")]
+    #[error("Unable to decrypt")]
     Chacha20poly1305(chacha20poly1305::Error),
+
+    #[error("Unable to decrypt this wallet")]
+    WalletDecrypt(chacha20poly1305::Error),
 
     #[error(transparent)]
     FromUtf8Error(#[from] std::string::FromUtf8Error),
@@ -171,13 +178,16 @@ pub enum Error {
     #[error("wallet secret is required")]
     WalletSecretRequired,
 
+    #[error("Supplied secret in key '{0}' is empty")]
+    SecretIsEmpty(String),
+
     #[error("task aborted")]
     Aborted,
 
     #[error("{0}")]
     TryFromEnum(#[from] workflow_core::enums::TryFromError),
 
-    #[error("Account factory found for type: {0}")]
+    #[error("Account factory not found for type: {0}")]
     AccountFactoryNotFound(AccountKind),
 
     #[error("Account not found: {0}")]
@@ -185,6 +195,12 @@ pub enum Error {
 
     #[error("Account not active: {0}")]
     AccountNotActive(AccountId),
+
+    #[error("Invalid account id: {0}")]
+    InvalidAccountId(String),
+
+    #[error("Invalid id: {0}")]
+    InvalidKeyDataId(String),
 
     #[error("Invalid account type (must be one of: bip32|multisig|legacy")]
     InvalidAccountKind,
@@ -216,6 +232,12 @@ pub enum Error {
     #[error("Not allowed on a resident account")]
     ResidentAccount,
 
+    #[error("Not allowed on an bip32-watch account")]
+    Bip32WatchAccount,
+
+    #[error("At least one xpub is required for a bip32-watch account")]
+    Bip32WatchXpubRequired,
+
     #[error("This feature is not supported by this account type")]
     AccountKindFeature,
 
@@ -226,10 +248,16 @@ pub enum Error {
     DowncastError(String),
 
     #[error(transparent)]
+    ConsensusClient(#[from] kaspa_consensus_client::error::Error),
+
+    #[error(transparent)]
     ConsensusWasm(#[from] kaspa_consensus_wasm::error::Error),
 
-    #[error("Fees::Include or Fees::Exclude are not allowed in sweep transactions")]
+    #[error("Fees::SenderPays or Fees::ReceiverPays are not allowed in sweep transactions")]
     GeneratorFeesInSweepTransaction,
+
+    #[error("Transactions with output must have Fees::SenderPays or Fees::ReceiverPays")]
+    GeneratorNoFeesForFinalTransaction,
 
     #[error("Change address does not match supplied network type")]
     GeneratorChangeAddressNetworkTypeMismatch,
@@ -281,6 +309,38 @@ pub enum Error {
 
     #[error("Mass calculation error")]
     MassCalculationError,
+
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
+
+    #[error("Unable to convert BigInt value {0}")]
+    BigInt(String),
+
+    #[error("Invalid mnemonic phrase")]
+    InvalidMnemonicPhrase,
+
+    #[error("Invalid transaction kind {0}")]
+    InvalidTransactionKind(String),
+
+    #[error("Cipher message is too short")]
+    CipherMessageTooShort,
+
+    #[error("Invalid secret key length")]
+    InvalidPrivateKeyLength,
+
+    #[error("Invalid public key length")]
+    InvalidPublicKeyLength,
+
+    #[error(transparent)]
+    Metrics(#[from] kaspa_metrics_core::error::Error),
+
+    #[error("Connected node is not synced")]
+    NotSynced,
+    #[error(transparent)]
+    Pskt(#[from] kaspa_wallet_pskt::error::Error),
+
+    #[error("Error generating pending transaction from PSKT: {0}")]
+    PendingTransactionFromPSKTError(String),
 }
 
 impl From<Aborted> for Error {
@@ -364,8 +424,20 @@ impl<T> From<DowncastError<T>> for Error {
     }
 }
 
-impl<T> From<workflow_core::channel::SendError<T>> for Error {
-    fn from(e: workflow_core::channel::SendError<T>) -> Self {
+impl<T> From<SendError<T>> for Error {
+    fn from(e: SendError<T>) -> Self {
+        Error::Custom(e.to_string())
+    }
+}
+
+impl From<RecvError> for Error {
+    fn from(e: RecvError) -> Self {
+        Error::Custom(e.to_string())
+    }
+}
+
+impl<T> From<TrySendError<T>> for Error {
+    fn from(e: TrySendError<T>) -> Self {
         Error::Custom(e.to_string())
     }
 }

@@ -6,7 +6,7 @@ use super::{
 };
 use crate::Result;
 use crate::{Error, KEY_SIZE};
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_utils::hex::*;
 use rand_core::{CryptoRng, RngCore};
 use serde::{Deserialize, Serialize};
@@ -23,7 +23,7 @@ pub type Entropy32 = [u8; KEY_SIZE];
 pub type Entropy16 = [u8; 16];
 
 /// Word count for a BIP39 mnemonic phrase. Identifies mnemonic as 12 or 24 word variants.
-#[derive(Default, Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WordCount {
     #[default]
@@ -43,6 +43,7 @@ impl TryFrom<usize> for WordCount {
 }
 
 /// BIP39 mnemonic phrases: sequences of words representing cryptographic keys.
+/// @category Wallet SDK
 #[derive(Clone)]
 #[wasm_bindgen(inspectable)]
 pub struct Mnemonic {
@@ -63,6 +64,11 @@ impl Mnemonic {
         Mnemonic::new(phrase, language.unwrap_or(Language::English))
     }
 
+    /// Validate mnemonic phrase. Returns `true` if the phrase is valid, `false` otherwise.
+    pub fn validate(phrase: &str, language: Option<Language>) -> bool {
+        Mnemonic::new(phrase, language.unwrap_or(Language::English)).is_ok()
+    }
+
     #[wasm_bindgen(getter, js_name = entropy)]
     pub fn get_entropy(&self) -> String {
         self.entropy.to_hex()
@@ -79,8 +85,8 @@ impl Mnemonic {
     }
 
     #[wasm_bindgen(js_name = random)]
-    pub fn create_random_js(word_count: JsValue) -> Result<Mnemonic> {
-        let word_count = word_count.as_f64().unwrap_or(24.0) as usize;
+    pub fn create_random_js(word_count: Option<u32>) -> Result<Mnemonic> {
+        let word_count = word_count.unwrap_or(24) as usize;
         Mnemonic::random(word_count.try_into()?, Default::default())
     }
 

@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-rpc-core"
 description = "Kaspa RPC core"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,9 +9,16 @@ include.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+wasm32-sdk = [
+    "kaspa-consensus-client/wasm32-sdk",
+    "kaspa-consensus-wasm/wasm32-sdk"
+]
+
 [dependencies]
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
+kaspa-consensus-client.workspace = true
 kaspa-consensus-notify.workspace = true
 kaspa-consensus-wasm.workspace = true
 kaspa-core.workspace = true
@@ -21,15 +29,20 @@ kaspa-mining-errors.workspace = true
 kaspa-notify.workspace = true
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
+kaspa-rpc-macros.workspace = true
 
 async-channel.workspace = true
 async-trait.workspace = true
 borsh.workspace = true
+cfg-if.workspace = true
 derive_more.workspace = true
 downcast.workspace = true
 faster-hex.workspace = true
+hex.workspace = true
+js-sys.workspace = true
 log.workspace = true
 paste.workspace = true
+rand.workspace = true
 serde-wasm-bindgen.workspace = true
 serde.workspace = true
 smallvec.workspace = true
@@ -37,7 +50,11 @@ thiserror.workspace = true
 uuid.workspace = true
 wasm-bindgen.workspace = true
 workflow-core.workspace = true
+workflow-serializer.workspace = true
 workflow-wasm.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
+
+[lints]
+workspace = true

@@ -38,14 +38,14 @@ impl ToTokens for RpcTable {
 
             targets_borsh.push(quote! {
                 #hash_64 => {
-                    Ok(self.wallet_api.clone().#fn_call(#request_type::try_from_slice(&request)?).await?.try_to_vec()?)
+                    Ok(borsh::to_vec(&self.wallet_api().#fn_call(#request_type::try_from_slice(&request)?).await?)?)
                 }
             });
 
             targets_serde.push(quote! {
                 #ident => {
                     let request: #request_type = serde_json::from_str(request)?;
-                    let response = self.wallet_api.clone().#fn_call(request).await?;
+                    let response = self.wallet_api().#fn_call(request).await?;
                     Ok(serde_json::to_string(&response)?)
                 }
             });

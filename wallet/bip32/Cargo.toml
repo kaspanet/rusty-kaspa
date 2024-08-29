@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-bip32"
 description = "BIP32 for Kaspa"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -30,6 +31,7 @@ thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-wasm.workspace = true
 zeroize.workspace = true
+kaspa-consensus-core.workspace = true
 
 [dev-dependencies]
 faster-hex.workspace = true

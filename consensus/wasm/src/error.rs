@@ -39,6 +39,9 @@ pub enum Error {
 
     #[error(transparent)]
     NetworkTypeError(#[from] kaspa_consensus_core::network::NetworkTypeError),
+
+    #[error(transparent)]
+    ConsensusClient(#[from] kaspa_consensus_client::error::Error),
 }
 
 // unsafe impl Send for Error {}

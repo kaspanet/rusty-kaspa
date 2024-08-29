@@ -18,7 +18,7 @@ pub mod transaction;
 
 pub use account::{AccountSettings, AccountStorable, AccountStorage};
 pub use address::AddressBookEntry;
-pub use binding::Binding;
+pub use binding::{Binding, BindingT};
 pub use hint::Hint;
 pub use id::IdT;
 pub use interface::{
@@ -36,8 +36,6 @@ mod tests {
     use super::*;
     use crate::account::variants::bip32::*;
     use crate::imports::*;
-    use crate::result::Result;
-    use crate::secret::Secret;
     use crate::storage::local::Payload;
     use crate::storage::local::WalletStorage;
     use kaspa_bip32::{Language, Mnemonic};

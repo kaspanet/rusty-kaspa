@@ -8,7 +8,7 @@ use kaspa_notify::{
 };
 use kaspa_rpc_core::{api::ops::RpcApiOps, notify::mode::NotificationMode, Notification};
 use std::{
-    fmt::Debug,
+    fmt::{Debug, Display},
     sync::{Arc, Mutex},
 };
 use workflow_log::log_trace;
@@ -16,6 +16,7 @@ use workflow_rpc::{
     server::{prelude::*, result::Result as WrpcResult},
     types::{MsgT, OpsT},
 };
+use workflow_serializer::prelude::*;
 
 //
 // FIXME: Use workflow_rpc::encoding::Encoding directly in the ConnectionT implementation by deriving Hash, Eq and PartialEq in situ
@@ -62,6 +63,12 @@ impl Notify<Notification> for ConnectionInner {
     fn notify(&self, notification: Notification) -> NotifyResult<()> {
         self.send(Connection::into_message(&notification, &self.messenger.encoding().into()))
             .map_err(|err| NotifyError::General(err.to_string()))
+    }
+}
+
+impl Display for ConnectionInner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}@{}", self.id, self.peer)
     }
 }
 
@@ -132,6 +139,12 @@ impl Connection {
     }
 }
 
+impl Display for Connection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.inner)
+    }
+}
+
 #[async_trait::async_trait]
 impl ConnectionT for Connection {
     type Notification = Notification;
@@ -145,7 +158,7 @@ impl ConnectionT for Connection {
 
     fn into_message(notification: &Self::Notification, encoding: &Self::Encoding) -> Self::Message {
         let op: RpcApiOps = notification.event_type().into();
-        Self::create_serialized_notification_message(encoding.clone().into(), op, notification.clone()).unwrap()
+        Self::create_serialized_notification_message(encoding.clone().into(), op, Serializable(notification.clone())).unwrap()
     }
 
     async fn send(&self, message: Self::Message) -> core::result::Result<(), Self::Error> {

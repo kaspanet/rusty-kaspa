@@ -20,6 +20,8 @@ pub struct GeneratorSettings {
     pub utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
     // Utxo Context
     pub source_utxo_context: Option<UtxoContext>,
+    // Priority utxo entries that are consumed before others
+    pub priority_utxo_entries: Option<Vec<UtxoEntryReference>>,
     // typically a number of keys required to sign the transaction
     pub sig_op_count: u8,
     // number of minimum signatures required to sign the transaction
@@ -35,6 +37,24 @@ pub struct GeneratorSettings {
     // transaction is a transfer between accounts
     pub destination_utxo_context: Option<UtxoContext>,
 }
+
+// impl std::fmt::Debug for GeneratorSettings {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         f.debug_struct("GeneratorSettings")
+//             .field("network_id", &self.network_id)
+//             // .field("multiplexer", &self.multiplexer)
+//             .field("utxo_iterator", &"Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>")
+//             // .field("source_utxo_context", &self.source_utxo_context)
+//             .field("sig_op_count", &self.sig_op_count)
+//             .field("minimum_signatures", &self.minimum_signatures)
+//             .field("change_address", &self.change_address)
+//             .field("final_transaction_priority_fee", &self.final_transaction_priority_fee)
+//             .field("final_transaction_destination", &self.final_transaction_destination)
+//             .field("final_transaction_payload", &self.final_transaction_payload)
+//             // .field("destination_utxo_context", &self.destination_utxo_context)
+//             .finish()
+//     }
+// }
 
 impl GeneratorSettings {
     pub fn try_new_with_account(
@@ -59,6 +79,7 @@ impl GeneratorSettings {
             change_address,
             utxo_iterator: Box::new(utxo_iterator),
             source_utxo_context: Some(account.utxo_context().clone()),
+            priority_utxo_entries: None,
 
             final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
@@ -71,6 +92,7 @@ impl GeneratorSettings {
 
     pub fn try_new_with_context(
         utxo_context: UtxoContext,
+        priority_utxo_entries: Option<Vec<UtxoEntryReference>>,
         change_address: Address,
         sig_op_count: u8,
         minimum_signatures: u16,
@@ -90,6 +112,7 @@ impl GeneratorSettings {
             change_address,
             utxo_iterator: Box::new(utxo_iterator),
             source_utxo_context: Some(utxo_context),
+            priority_utxo_entries,
 
             final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,
@@ -103,6 +126,7 @@ impl GeneratorSettings {
     pub fn try_new_with_iterator(
         network_id: NetworkId,
         utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
+        priority_utxo_entries: Option<Vec<UtxoEntryReference>>,
         change_address: Address,
         sig_op_count: u8,
         minimum_signatures: u16,
@@ -119,6 +143,7 @@ impl GeneratorSettings {
             change_address,
             utxo_iterator: Box::new(utxo_iterator),
             source_utxo_context: None,
+            priority_utxo_entries,
 
             final_transaction_priority_fee: final_priority_fee,
             final_transaction_destination,

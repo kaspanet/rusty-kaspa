@@ -3,10 +3,14 @@ extern crate core;
 
 pub mod caches;
 mod data_stack;
+pub mod error;
 pub mod opcodes;
+pub mod result;
 pub mod script_builder;
 pub mod script_class;
 pub mod standard;
+#[cfg(feature = "wasm32-sdk")]
+pub mod wasm;
 
 use crate::caches::Cache;
 use crate::data_stack::{DataStack, Stack};
@@ -310,7 +314,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
 
     // check_error_condition is called whenever we finish a chunk of the scripts
     // (all original scripts, all scripts including p2sh, and maybe future extensions)
-    // returns Ok(()) if the running script has ended and was successful, leaving a a true boolean
+    // returns Ok(()) if the running script has ended and was successful, leaving a true boolean
     // on the stack. An error otherwise.
     #[inline]
     fn check_error_condition(&mut self, final_script: bool) -> Result<(), TxScriptError> {
@@ -441,7 +445,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
                 let pk = secp256k1::XOnlyPublicKey::from_slice(key).map_err(TxScriptError::InvalidSignature)?;
                 let sig = secp256k1::schnorr::Signature::from_slice(sig).map_err(TxScriptError::InvalidSignature)?;
                 let sig_hash = calc_schnorr_signature_hash(tx, id, hash_type, self.reused_values);
-                let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
+                let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
                 let sig_cache_key =
                     SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Schnorr(pk), message: msg };
 
@@ -476,7 +480,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
                 let pk = secp256k1::PublicKey::from_slice(key).map_err(TxScriptError::InvalidSignature)?;
                 let sig = secp256k1::ecdsa::Signature::from_compact(sig).map_err(TxScriptError::InvalidSignature)?;
                 let sig_hash = calc_ecdsa_signature_hash(tx, id, hash_type, self.reused_values);
-                let msg = secp256k1::Message::from_slice(sig_hash.as_bytes().as_slice()).unwrap();
+                let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
                 let sig_cache_key = SigCacheKey { signature: Signature::Ecdsa(sig), pub_key: PublicKey::Ecdsa(pk), message: msg };
 
                 match self.sig_cache.get(&sig_cache_key) {
@@ -941,6 +945,7 @@ mod bitcoind_tests {
         result: Result<(), UnifiedError>,
     }
 
+    #[allow(dead_code)]
     #[derive(Deserialize, Debug, Clone)]
     #[serde(untagged)]
     enum JsonTestRow {

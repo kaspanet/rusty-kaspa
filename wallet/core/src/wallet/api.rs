@@ -19,15 +19,58 @@ impl WalletApi for super::Wallet {
         todo!()
     }
 
-    async fn get_status_call(self: Arc<Self>, _request: GetStatusRequest) -> Result<GetStatusResponse> {
+    async fn get_status_call(self: Arc<Self>, request: GetStatusRequest) -> Result<GetStatusResponse> {
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        let GetStatusRequest { name } = request;
+        let context = name.and_then(|name| self.inner.retained_contexts.lock().unwrap().get(&name).cloned());
+
         let is_connected = self.is_connected();
         let is_synced = self.is_synced();
         let is_open = self.is_open();
         let network_id = self.network_id().ok();
         let (url, is_wrpc_client) =
-            if let Some(wrpc_client) = self.wrpc_client() { (Some(wrpc_client.url()), true) } else { (None, false) };
+            if let Some(wrpc_client) = self.try_wrpc_client() { (wrpc_client.url(), true) } else { (None, false) };
 
-        Ok(GetStatusResponse { is_connected, is_synced, is_open, network_id, url, is_wrpc_client })
+        let selected_account_id = self.inner.selected_account.lock().unwrap().as_ref().map(|account| *account.id());
+
+        let (wallet_descriptor, account_descriptors) = if self.is_open() {
+            let wallet_descriptor = self.descriptor();
+            let account_descriptors = self.account_descriptors(&guard).await.ok();
+            (wallet_descriptor, account_descriptors)
+        } else {
+            (None, None)
+        };
+
+        Ok(GetStatusResponse {
+            is_connected,
+            is_synced,
+            is_open,
+            network_id,
+            url,
+            is_wrpc_client,
+            context,
+            selected_account_id,
+            wallet_descriptor,
+            account_descriptors,
+        })
+    }
+
+    async fn retain_context_call(self: Arc<Self>, request: RetainContextRequest) -> Result<RetainContextResponse> {
+        let RetainContextRequest { name, data } = request;
+
+        if let Some(data) = data {
+            self.inner.retained_contexts.lock().unwrap().insert(name, Arc::new(data));
+
+            Ok(RetainContextResponse {})
+        } else {
+            self.inner.retained_contexts.lock().unwrap().remove(&name);
+            // let data = self.inner.retained_contexts.lock().unwrap().get(&name).cloned();
+            Ok(RetainContextResponse {})
+        }
+
+        // self.retain_context(retain);
     }
 
     // -------------------------------------------------------------------------------------
@@ -35,38 +78,62 @@ impl WalletApi for super::Wallet {
     async fn connect_call(self: Arc<Self>, request: ConnectRequest) -> Result<ConnectResponse> {
         use workflow_rpc::client::{ConnectOptions, ConnectStrategy};
 
-        let ConnectRequest { url, network_id } = request;
+        let ConnectRequest { url, network_id, retry_on_error, block_async_connect, require_sync } = request;
 
-        if let Some(wrpc_client) = self.wrpc_client().as_ref() {
-            // let network_type = NetworkType::from(network_id);
-            let url = wrpc_client.parse_url_with_network_type(url, network_id.into()).map_err(|e| e.to_string())?;
-            let options = ConnectOptions {
-                block_async_connect: true,
-                strategy: ConnectStrategy::Fallback,
-                url: Some(url),
-                ..Default::default()
-            };
-            wrpc_client.connect(options).await.map_err(|e| e.to_string())?;
-            Ok(ConnectResponse {})
+        if let Some(wrpc_client) = self.try_wrpc_client().as_ref() {
+            let strategy = if retry_on_error { ConnectStrategy::Retry } else { ConnectStrategy::Fallback };
+
+            let url = url
+                .map(|url| wrpc_client.parse_url_with_network_type(url, network_id.into()).map_err(|e| e.to_string()))
+                .transpose()?;
+            let options = ConnectOptions { block_async_connect, strategy, url, ..Default::default() };
+            wrpc_client.disconnect().await?;
+
+            self.set_network_id(&network_id)?;
+
+            let processor = self.utxo_processor().clone();
+            let (sender, receiver) = oneshot();
+
+            // set connection signaler that gets triggered
+            // by utxo processor when connection occurs
+            processor.set_connection_signaler(sender);
+
+            // connect rpc
+            wrpc_client.connect(Some(options)).await.map_err(|e| e.to_string())?;
+
+            // wait for connection signal, cascade if error
+            receiver.recv().await?.map_err(Error::custom)?;
+
+            if require_sync && !self.is_synced() {
+                Err(Error::NotSynced)
+            } else {
+                Ok(ConnectResponse {})
+            }
         } else {
             Err(Error::NotWrpcClient)
         }
     }
 
     async fn disconnect_call(self: Arc<Self>, _request: DisconnectRequest) -> Result<DisconnectResponse> {
-        if let Some(wrpc_client) = self.wrpc_client().as_ref() {
-            wrpc_client.shutdown().await?;
+        if let Some(wrpc_client) = self.try_wrpc_client() {
+            wrpc_client.disconnect().await?;
             Ok(DisconnectResponse {})
         } else {
             Err(Error::NotWrpcClient)
         }
     }
 
+    async fn change_network_id_call(self: Arc<Self>, request: ChangeNetworkIdRequest) -> Result<ChangeNetworkIdResponse> {
+        let ChangeNetworkIdRequest { network_id } = &request;
+        self.set_network_id(network_id)?;
+        Ok(ChangeNetworkIdResponse {})
+    }
+
     // -------------------------------------------------------------------------------------
 
     async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse> {
-        log_info!("Wallet received ping request '{:?}' ...", request.payload);
-        Ok(PingResponse { payload: request.payload })
+        log_info!("Wallet received ping request '{:?}' ...", request.message);
+        Ok(PingResponse { message: request.message })
     }
 
     async fn batch_call(self: Arc<Self>, _request: BatchRequest) -> Result<BatchResponse> {
@@ -81,8 +148,8 @@ impl WalletApi for super::Wallet {
     }
 
     async fn wallet_enumerate_call(self: Arc<Self>, _request: WalletEnumerateRequest) -> Result<WalletEnumerateResponse> {
-        let wallet_list = self.store().wallet_list().await?;
-        Ok(WalletEnumerateResponse { wallet_list })
+        let wallet_descriptors = self.store().wallet_list().await?;
+        Ok(WalletEnumerateResponse { wallet_descriptors })
     }
 
     async fn wallet_create_call(self: Arc<Self>, request: WalletCreateRequest) -> Result<WalletCreateResponse> {
@@ -94,9 +161,12 @@ impl WalletApi for super::Wallet {
     }
 
     async fn wallet_open_call(self: Arc<Self>, request: WalletOpenRequest) -> Result<WalletOpenResponse> {
-        let WalletOpenRequest { wallet_secret, wallet_filename, account_descriptors, legacy_accounts } = request;
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        let WalletOpenRequest { wallet_secret, filename, account_descriptors, legacy_accounts } = request;
         let args = WalletOpenArgs { account_descriptors, legacy_accounts: legacy_accounts.unwrap_or_default() };
-        let account_descriptors = self.open(&wallet_secret, wallet_filename, args).await?;
+        let account_descriptors = self.open(&wallet_secret, filename, args, &guard).await?;
         Ok(WalletOpenResponse { account_descriptors })
     }
 
@@ -110,7 +180,11 @@ impl WalletApi for super::Wallet {
         if !self.is_open() {
             return Err(Error::WalletNotOpen);
         }
-        self.reload(reactivate).await?;
+
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        self.reload(reactivate, &guard).await?;
         Ok(WalletReloadResponse {})
     }
 
@@ -173,23 +247,47 @@ impl WalletApi for super::Wallet {
     async fn accounts_rename_call(self: Arc<Self>, request: AccountsRenameRequest) -> Result<AccountsRenameResponse> {
         let AccountsRenameRequest { account_id, name, wallet_secret } = request;
 
-        let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
         account.rename(&wallet_secret, name.as_deref()).await?;
 
         Ok(AccountsRenameResponse {})
     }
 
-    async fn accounts_enumerate_call(self: Arc<Self>, _request: AccountsEnumerateRequest) -> Result<AccountsEnumerateResponse> {
-        let account_list = self.accounts(None).await?.try_collect::<Vec<_>>().await?;
-        let descriptor_list = account_list.iter().map(|account| account.descriptor().unwrap()).collect::<Vec<_>>();
+    async fn accounts_select_call(self: Arc<Self>, request: AccountsSelectRequest) -> Result<AccountsSelectResponse> {
+        let AccountsSelectRequest { account_id } = request;
 
-        Ok(AccountsEnumerateResponse { descriptor_list })
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        if let Some(account_id) = account_id {
+            let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
+            self.select(Some(&account)).await?;
+        } else {
+            self.select(None).await?;
+        }
+        // self.inner.selected_account.lock().unwrap().replace(account);
+
+        Ok(AccountsSelectResponse {})
+    }
+
+    async fn accounts_enumerate_call(self: Arc<Self>, _request: AccountsEnumerateRequest) -> Result<AccountsEnumerateResponse> {
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        let account_descriptors = self.account_descriptors(&guard).await?;
+        Ok(AccountsEnumerateResponse { account_descriptors })
     }
 
     async fn accounts_activate_call(self: Arc<Self>, request: AccountsActivateRequest) -> Result<AccountsActivateResponse> {
         let AccountsActivateRequest { account_ids } = request;
 
-        self.activate_accounts(account_ids.as_deref()).await?;
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        self.activate_accounts(account_ids.as_deref(), &guard).await?;
 
         Ok(AccountsActivateResponse {})
     }
@@ -197,7 +295,10 @@ impl WalletApi for super::Wallet {
     async fn accounts_deactivate_call(self: Arc<Self>, request: AccountsDeactivateRequest) -> Result<AccountsDeactivateResponse> {
         let AccountsDeactivateRequest { account_ids } = request;
 
-        self.deactivate_accounts(account_ids.as_deref()).await?;
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        self.deactivate_accounts(account_ids.as_deref(), &guard).await?;
 
         Ok(AccountsDeactivateResponse {})
     }
@@ -215,10 +316,29 @@ impl WalletApi for super::Wallet {
     async fn accounts_create_call(self: Arc<Self>, request: AccountsCreateRequest) -> Result<AccountsCreateResponse> {
         let AccountsCreateRequest { wallet_secret, account_create_args } = request;
 
-        let account = self.create_account(&wallet_secret, account_create_args, true).await?;
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        let account = self.create_account(&wallet_secret, account_create_args, true, &guard).await?;
         let account_descriptor = account.descriptor()?;
 
         Ok(AccountsCreateResponse { account_descriptor })
+    }
+
+    async fn accounts_ensure_default_call(
+        self: Arc<Self>,
+        request: AccountsEnsureDefaultRequest,
+    ) -> Result<AccountsEnsureDefaultResponse> {
+        let AccountsEnsureDefaultRequest { wallet_secret, payment_secret, account_kind, mnemonic_phrase } = request;
+
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        let account_descriptor = self
+            .ensure_default_account_impl(&wallet_secret, payment_secret.as_ref(), account_kind, mnemonic_phrase.as_ref(), &guard)
+            .await?;
+
+        Ok(AccountsEnsureDefaultResponse { account_descriptor })
     }
 
     async fn accounts_import_call(self: Arc<Self>, _request: AccountsImportRequest) -> Result<AccountsImportResponse> {
@@ -228,9 +348,13 @@ impl WalletApi for super::Wallet {
 
     async fn accounts_get_call(self: Arc<Self>, request: AccountsGetRequest) -> Result<AccountsGetResponse> {
         let AccountsGetRequest { account_id } = request;
-        let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
-        let descriptor = account.descriptor().unwrap();
-        Ok(AccountsGetResponse { descriptor })
+
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
+        let account_descriptor = account.descriptor().unwrap();
+        Ok(AccountsGetResponse { account_descriptor })
     }
 
     async fn accounts_create_new_address_call(
@@ -239,7 +363,10 @@ impl WalletApi for super::Wallet {
     ) -> Result<AccountsCreateNewAddressResponse> {
         let AccountsCreateNewAddressRequest { account_id, kind } = request;
 
-        let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
 
         let address = match kind {
             NewAddressKind::Receive => account.as_derivation_capable()?.new_receive_address().await?,
@@ -252,7 +379,9 @@ impl WalletApi for super::Wallet {
     async fn accounts_send_call(self: Arc<Self>, request: AccountsSendRequest) -> Result<AccountsSendResponse> {
         let AccountsSendRequest { account_id, wallet_secret, payment_secret, destination, priority_fee_sompi, payload } = request;
 
-        let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
+        let guard = self.guard();
+        let guard = guard.lock().await;
+        let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
 
         let abortable = Abortable::new();
         let (generator_summary, transaction_ids) =
@@ -271,7 +400,11 @@ impl WalletApi for super::Wallet {
             transfer_amount_sompi,
         } = request;
 
-        let source_account = self.get_account_by_id(&source_account_id).await?.ok_or(Error::AccountNotFound(source_account_id))?;
+        let guard = self.guard();
+        let guard = guard.lock().await;
+
+        let source_account =
+            self.get_account_by_id(&source_account_id, &guard).await?.ok_or(Error::AccountNotFound(source_account_id))?;
 
         let abortable = Abortable::new();
         let (generator_summary, transaction_ids) = source_account
@@ -283,6 +416,7 @@ impl WalletApi for super::Wallet {
                 payment_secret,
                 &abortable,
                 None,
+                &guard,
             )
             .await?;
 
@@ -292,7 +426,9 @@ impl WalletApi for super::Wallet {
     async fn accounts_estimate_call(self: Arc<Self>, request: AccountsEstimateRequest) -> Result<AccountsEstimateResponse> {
         let AccountsEstimateRequest { account_id, destination, priority_fee_sompi, payload } = request;
 
-        let account = self.get_account_by_id(&account_id).await?.ok_or(Error::AccountNotFound(account_id))?;
+        let guard = self.guard();
+        let guard = guard.lock().await;
+        let account = self.get_account_by_id(&account_id, &guard).await?.ok_or(Error::AccountNotFound(account_id))?;
 
         // Abort currently running async estimate for the same account if present. The estimate
         // call can be invoked continuously by the client/UI. If the estimate call is

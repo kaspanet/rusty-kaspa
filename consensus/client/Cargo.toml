@@ -1,0 +1,42 @@
+[package]
+name = "kaspa-consensus-client"
+description = "Kaspa consensus client data structures"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+wasm32-sdk = []
+wasm32-types = []
+
+[dependencies]
+kaspa-addresses.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-hashes.workspace = true
+kaspa-math.workspace = true
+kaspa-txscript.workspace = true
+kaspa-utils.workspace = true
+kaspa-wasm-core.workspace = true
+
+ahash.workspace = true
+cfg-if.workspace = true
+faster-hex.workspace = true
+hex.workspace = true
+js-sys.workspace = true
+rand.workspace = true
+secp256k1.workspace = true
+serde_json.workspace = true
+serde-wasm-bindgen.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+wasm-bindgen.workspace = true
+itertools.workspace = true
+
+workflow-wasm.workspace = true
+workflow-log.workspace = true
+
+[lints]
+workspace = true

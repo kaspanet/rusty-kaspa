@@ -137,14 +137,12 @@ impl Miner {
         let virtual_state = virtual_read.state.get().unwrap();
         let virtual_utxo_view = &virtual_read.utxo_set;
         let multiple_outputs = self.possible_unspent_outpoints.len() < 5_000;
-        let schnorr_key = secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &self.secret_key.secret_bytes()).unwrap();
+        let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &self.secret_key.secret_bytes()).unwrap();
         let txs = self
             .possible_unspent_outpoints
             .iter()
             .filter_map(|&outpoint| {
-                let Some(entry) = self.get_spendable_entry(virtual_utxo_view, outpoint, virtual_state.daa_score) else {
-                    return None;
-                };
+                let entry = self.get_spendable_entry(virtual_utxo_view, outpoint, virtual_state.daa_score)?;
                 let unsigned_tx = self.create_unsigned_tx(outpoint, entry.amount, multiple_outputs);
                 Some(MutableTransaction::with_entries(unsigned_tx, vec![entry]))
             })
@@ -155,8 +153,7 @@ impl Miner {
                 let signed_tx = sign(mutable_tx, schnorr_key);
                 let mass = self
                     .mass_calculator
-                    .calc_tx_storage_mass(&signed_tx.as_verifiable())
-                    .and_then(|v| v.checked_add(self.mass_calculator.calc_tx_compute_mass(&signed_tx.tx)))
+                    .calc_tx_overall_mass(&signed_tx.as_verifiable(), None, kaspa_consensus::processes::mass::Kip9Version::Alpha)
                     .unwrap();
                 signed_tx.tx.set_mass(mass);
                 let mut signed_tx = signed_tx.tx;
@@ -177,9 +174,7 @@ impl Miner {
         outpoint: TransactionOutpoint,
         virtual_daa_score: u64,
     ) -> Option<UtxoEntry> {
-        let Some(entry) = utxo_view.get(&outpoint) else {
-            return None;
-        };
+        let entry = utxo_view.get(&outpoint)?;
         if entry.amount < 2
             || (entry.is_coinbase && (virtual_daa_score as i64 - entry.block_daa_score as i64) <= self.params.coinbase_maturity as i64)
         {

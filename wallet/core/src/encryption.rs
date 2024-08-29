@@ -4,9 +4,7 @@
 
 use crate::imports::*;
 use crate::result::Result;
-use crate::secret::Secret;
 use argon2::Argon2;
-use base64::{engine::general_purpose, Engine as _};
 use chacha20poly1305::{
     aead::{AeadCore, AeadInPlace, KeyInit, OsRng},
     Key, XChaCha20Poly1305,
@@ -16,8 +14,9 @@ use std::ops::{Deref, DerefMut};
 use zeroize::Zeroize;
 
 /// Encryption algorithms supported by the Wallet framework.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[derive(Default, Clone, Copy, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub enum EncryptionKind {
+    #[default]
     XChaCha20Poly1305,
 }
 
@@ -147,7 +146,7 @@ where
     }
 
     pub fn encrypt(&self, secret: &Secret, encryption_kind: EncryptionKind) -> Result<Encrypted> {
-        let bytes = self.0.try_to_vec()?;
+        let bytes = borsh::to_vec(&self.0)?;
         let encrypted = match encryption_kind {
             EncryptionKind::XChaCha20Poly1305 => encrypt_xchacha20poly1305(bytes.as_slice(), secret)?,
         };
@@ -204,31 +203,8 @@ impl Encrypted {
     }
 }
 
-/// WASM32 binding for `SHA256` hash function.
-#[wasm_bindgen(js_name = "sha256")]
-pub fn js_sha256_hash(data: JsValue) -> Result<String> {
-    let data = data.try_as_vec_u8()?;
-    let hash = sha256_hash(&data);
-    Ok(hash.as_ref().to_hex())
-}
-
-/// WASM32 binding for `SHA256d` hash function.
-#[wasm_bindgen(js_name = "sha256d")]
-pub fn js_sha256d_hash(data: JsValue) -> Result<String> {
-    let data = data.try_as_vec_u8()?;
-    let hash = sha256d_hash(&data);
-    Ok(hash.as_ref().to_hex())
-}
-
-/// WASM32 binding for `argon2sha256iv` hash function.
-#[wasm_bindgen(js_name = "argon2sha256iv")]
-pub fn js_argon2_sha256iv_phash(data: JsValue, byte_length: usize) -> Result<String> {
-    let data = data.try_as_vec_u8()?;
-    let hash = argon2_sha256iv_hash(&data, byte_length)?;
-    Ok(hash.as_ref().to_hex())
-}
-
 /// Produces `SHA256` hash of the given data.
+#[inline]
 pub fn sha256_hash(data: &[u8]) -> Secret {
     let mut sha256 = Sha256::default();
     sha256.update(data);
@@ -236,6 +212,7 @@ pub fn sha256_hash(data: &[u8]) -> Secret {
 }
 
 /// Produces `SHA256d` hash of the given data.
+#[inline]
 pub fn sha256d_hash(data: &[u8]) -> Secret {
     let mut sha256 = Sha256::default();
     sha256.update(data);
@@ -250,14 +227,6 @@ pub fn argon2_sha256iv_hash(data: &[u8], byte_length: usize) -> Result<Secret> {
     Ok(key.into())
 }
 
-/// WASM32 binding for `encryptXChaCha20Poly1305` function.
-#[wasm_bindgen(js_name = "encryptXChaCha20Poly1305")]
-pub fn js_encrypt_xchacha20poly1305(text: String, password: String) -> Result<String> {
-    let secret = sha256_hash(password.as_bytes());
-    let encrypted = encrypt_xchacha20poly1305(text.as_bytes(), &secret)?;
-    Ok(general_purpose::STANDARD.encode(encrypted))
-}
-
 /// Encrypts the given data using `XChaCha20Poly1305` algorithm.
 pub fn encrypt_xchacha20poly1305(data: &[u8], secret: &Secret) -> Result<Vec<u8>> {
     let private_key_bytes = argon2_sha256iv_hash(secret.as_ref(), 32)?;
@@ -269,15 +238,6 @@ pub fn encrypt_xchacha20poly1305(data: &[u8], secret: &Secret) -> Result<Vec<u8>
     cipher.encrypt_in_place(&nonce, &[], &mut buffer)?;
     buffer.splice(0..0, nonce.iter().cloned());
     Ok(buffer)
-}
-
-/// WASM32 binding for `decryptXChaCha20Poly1305` function.
-#[wasm_bindgen(js_name = "decryptXChaCha20Poly1305")]
-pub fn js_decrypt_xchacha20poly1305(text: String, password: String) -> Result<String> {
-    let secret = sha256_hash(password.as_bytes());
-    let bytes = general_purpose::STANDARD.decode(text)?;
-    let encrypted = decrypt_xchacha20poly1305(bytes.as_ref(), &secret)?;
-    Ok(String::from_utf8(encrypted.as_ref().to_vec())?)
 }
 
 /// Decrypts the given data using `XChaCha20Poly1305` algorithm.

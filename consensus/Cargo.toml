@@ -1,6 +1,7 @@
 [package]
 name = "kaspa-consensus"
 description = "Kaspa consensus library"
+rust-version.workspace = true
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -29,6 +30,7 @@ kaspa-muhash.workspace = true
 kaspa-notify.workspace = true
 kaspa-pow.workspace = true
 kaspa-txscript.workspace = true
+kaspa-txscript-errors.workspace = true
 kaspa-utils.workspace = true
 log.workspace = true
 once_cell.workspace = true

@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use clap::{Arg, ArgAction, Command};
 use itertools::Itertools;
-use kaspa_addresses::Address;
+use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus_core::{
     config::params::{TESTNET11_PARAMS, TESTNET_PARAMS},
     constants::{SOMPI_PER_KASPA, TX_VERSION},
@@ -12,16 +12,19 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::{info, kaspad_env::version, time::unix_now, warn};
 use kaspa_grpc_client::{ClientPool, GrpcClient};
-use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode};
+use kaspa_notify::subscription::context::SubscriptionContext;
+use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode, RpcUtxoEntry};
 use kaspa_txscript::pay_to_address_script;
 use parking_lot::Mutex;
 use rayon::prelude::*;
-use secp256k1::{rand::thread_rng, KeyPair};
+use secp256k1::{rand::thread_rng, Keypair};
 use tokio::time::{interval, MissedTickBehavior};
 
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
-const FEE_PER_MASS: u64 = 10;
+const FEE_RATE: u64 = 10;
 const MILLIS_PER_TICK: u64 = 10;
+const ADDRESS_PREFIX: Prefix = Prefix::Testnet;
+const ADDRESS_VERSION: Version = Version::PubKey;
 
 struct Stats {
     num_txs: usize,
@@ -84,10 +87,19 @@ pub fn cli() -> Command {
         .arg(Arg::new("unleashed").long("unleashed").action(ArgAction::SetTrue).hide(true).help("Allow higher TPS"))
 }
 
-async fn new_rpc_client(address: &str) -> GrpcClient {
-    GrpcClient::connect(NotificationMode::Direct, format!("grpc://{}", address), true, None, false, Some(500_000), Default::default())
-        .await
-        .unwrap()
+async fn new_rpc_client(subscription_context: &SubscriptionContext, address: &str) -> GrpcClient {
+    GrpcClient::connect_with_args(
+        NotificationMode::Direct,
+        format!("grpc://{}", address),
+        Some(subscription_context.clone()),
+        true,
+        None,
+        false,
+        Some(500_000),
+        Default::default(),
+    )
+    .await
+    .unwrap()
 }
 
 struct ClientPoolArg {
@@ -104,9 +116,11 @@ async fn main() {
     kaspa_core::log::init_logger(None, "");
     let args = Args::parse();
     let stats = Arc::new(Mutex::new(Stats { num_txs: 0, since: unix_now(), num_utxos: 0, utxos_amount: 0, num_outs: 0 }));
-    let rpc_client = GrpcClient::connect(
+    let subscription_context = SubscriptionContext::new();
+    let rpc_client = GrpcClient::connect_with_args(
         NotificationMode::Direct,
         format!("grpc://{}", args.rpc_server),
+        Some(subscription_context.clone()),
         true,
         None,
         false,
@@ -121,11 +135,10 @@ async fn main() {
     let schnorr_key = if let Some(private_key_hex) = args.private_key {
         let mut private_key_bytes = [0u8; 32];
         faster_hex::hex_decode(private_key_hex.as_bytes(), &mut private_key_bytes).unwrap();
-        secp256k1::KeyPair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap()
+        secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &private_key_bytes).unwrap()
     } else {
         let (sk, pk) = &secp256k1::generate_keypair(&mut thread_rng());
-        let kaspa_addr =
-            Address::new(kaspa_addresses::Prefix::Testnet, kaspa_addresses::Version::PubKey, &pk.x_only_public_key().0.serialize());
+        let kaspa_addr = Address::new(ADDRESS_PREFIX, ADDRESS_VERSION, &pk.x_only_public_key().0.serialize());
         info!(
             "Generated private key {} and address {}. Send some funds to this address and rerun rothschild with `--private-key {}`",
             sk.display_secret(),
@@ -135,11 +148,7 @@ async fn main() {
         return;
     };
 
-    let kaspa_addr = Address::new(
-        kaspa_addresses::Prefix::Testnet,
-        kaspa_addresses::Version::PubKey,
-        &schnorr_key.x_only_public_key().0.serialize(),
-    );
+    let kaspa_addr = Address::new(ADDRESS_PREFIX, ADDRESS_VERSION, &schnorr_key.x_only_public_key().0.serialize());
 
     rayon::ThreadPoolBuilder::new().num_threads(args.threads as usize).build_global().unwrap();
 
@@ -168,10 +177,11 @@ async fn main() {
     const CLIENT_POOL_SIZE: usize = 8;
     let mut rpc_clients = Vec::with_capacity(CLIENT_POOL_SIZE);
     for _ in 0..CLIENT_POOL_SIZE {
-        rpc_clients.push(Arc::new(new_rpc_client(&args.rpc_server).await));
+        rpc_clients.push(Arc::new(new_rpc_client(&subscription_context, &args.rpc_server).await));
     }
 
-    let submit_tx_pool = ClientPool::new(rpc_clients, 1000, |c, arg: ClientPoolArg| async move {
+    let submit_tx_pool = ClientPool::new(rpc_clients, 1000);
+    let _ = submit_tx_pool.start(|c, arg: ClientPoolArg| async move {
         let ClientPoolArg { tx, stats, selected_utxos_len, selected_utxos_amount, pending_len, utxos_len } = arg;
         match c.submit_transaction(tx.as_ref().into(), false).await {
             Ok(_) => {
@@ -313,7 +323,7 @@ async fn populate_pending_outpoints_from_mempool(
     for entry in entries {
         for entry in entry.sending {
             for input in entry.transaction.inputs {
-                pending_outpoints.insert(input.previous_outpoint, now);
+                pending_outpoints.insert(input.previous_outpoint.into(), now);
             }
         }
     }
@@ -327,20 +337,20 @@ async fn fetch_spendable_utxos(
 ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
     let resp = rpc_client.get_utxos_by_addresses(vec![kaspa_addr]).await.unwrap();
     let dag_info = rpc_client.get_block_dag_info().await.unwrap();
-    let mut utxos = Vec::with_capacity(resp.len());
-    for resp_entry in resp
-        .into_iter()
-        .filter(|resp_entry| is_utxo_spendable(&resp_entry.utxo_entry, dag_info.virtual_daa_score, coinbase_maturity))
+
+    let mut utxos = resp.into_iter()
+        .filter(|entry| {
+            is_utxo_spendable(&entry.utxo_entry, dag_info.virtual_daa_score, coinbase_maturity)
+        })
+        .map(|entry| (TransactionOutpoint::from(entry.outpoint), UtxoEntry::from(entry.utxo_entry)))
         // Eliminates UTXOs we already tried to spend so we don't try to spend them again in this period
-        .filter(|utxo| !pending.contains_key(&utxo.outpoint))
-    {
-        utxos.push((resp_entry.outpoint, resp_entry.utxo_entry));
-    }
+        .filter(|(outpoint,_)| !pending.contains_key(outpoint))
+        .collect::<Vec<_>>();
     utxos.sort_by(|a, b| b.1.amount.cmp(&a.1.amount));
     utxos
 }
 
-fn is_utxo_spendable(entry: &UtxoEntry, virtual_daa_score: u64, coinbase_maturity: u64) -> bool {
+fn is_utxo_spendable(entry: &RpcUtxoEntry, virtual_daa_score: u64, coinbase_maturity: u64) -> bool {
     let needed_confs = if !entry.is_coinbase {
         10
     } else {
@@ -355,7 +365,7 @@ async fn maybe_send_tx(
     kaspa_addr: Address,
     utxos: &mut [(TransactionOutpoint, UtxoEntry)],
     pending: &mut HashMap<TransactionOutpoint, u64>,
-    schnorr_key: KeyPair,
+    schnorr_key: Keypair,
     stats: Arc<Mutex<Stats>>,
     maximize_inputs: bool,
     next_available_utxo_index: &mut usize,
@@ -428,7 +438,7 @@ fn clean_old_pending_outpoints(pending: &mut HashMap<TransactionOutpoint, u64>) 
 }
 
 fn required_fee(num_utxos: usize, num_outs: u64) -> u64 {
-    FEE_PER_MASS * estimated_mass(num_utxos, num_outs)
+    FEE_RATE * estimated_mass(num_utxos, num_outs)
 }
 
 fn estimated_mass(num_utxos: usize, num_outs: u64) -> u64 {
@@ -436,7 +446,7 @@ fn estimated_mass(num_utxos: usize, num_outs: u64) -> u64 {
 }
 
 fn generate_tx(
-    schnorr_key: KeyPair,
+    schnorr_key: Keypair,
     utxos: &[(TransactionOutpoint, UtxoEntry)],
     send_amount: u64,
     num_outs: u64,

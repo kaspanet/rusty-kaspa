@@ -1,24 +1,11 @@
-pub mod error;
-mod imports;
-pub mod input;
-pub mod keypair;
-pub mod outpoint;
-pub mod output;
-pub mod result;
-pub mod signable;
-pub mod signer;
-pub mod transaction;
-pub mod txscript;
-pub mod utils;
-pub mod utxo;
+use cfg_if::cfg_if;
 
-pub use input::*;
-pub use keypair::*;
-pub use outpoint::*;
-pub use output::*;
-pub use signable::*;
-pub use signer::*;
-pub use transaction::*;
-pub use txscript::*;
-pub use utils::*;
-pub use utxo::*;
+pub mod error;
+
+cfg_if! {
+    if #[cfg(feature = "wasm32-sdk")] {
+        pub mod result;
+        mod utils;
+        pub use utils::*;
+    }
+}

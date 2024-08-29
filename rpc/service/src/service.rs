@@ -1,6 +1,7 @@
 //! Core server implementation for ClientAPI
 
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
+use crate::converter::feerate_estimate::{FeeEstimateConverter, FeeEstimateVerboseConverter};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
@@ -34,8 +35,12 @@ use kaspa_index_core::{
     connection::IndexChannelConnection, indexed_utxos::UtxoSetByScriptPublicKey, notification::Notification as IndexNotification,
     notifier::IndexNotifier,
 };
+use kaspa_mining::feerate::FeeEstimateVerbose;
 use kaspa_mining::model::tx_query::TransactionQuery;
 use kaspa_mining::{manager::MiningManagerProxy, mempool::tx::Orphan};
+use kaspa_notify::listener::ListenerLifespan;
+use kaspa_notify::subscription::context::SubscriptionContext;
+use kaspa_notify::subscription::{MutationPolicies, UtxosChangedMutationPolicy};
 use kaspa_notify::{
     collector::DynCollector,
     connection::ChannelType,
@@ -50,7 +55,8 @@ use kaspa_p2p_lib::common::ProtocolError;
 use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
 use kaspa_rpc_core::{
     api::{
-        ops::RPC_API_VERSION,
+        connection::DynRpcConnection,
+        ops::{RPC_API_REVISION, RPC_API_VERSION},
         rpc::{RpcApi, MAX_SAFE_WINDOW_SIZE},
     },
     model::*,
@@ -58,9 +64,12 @@ use kaspa_rpc_core::{
     Notification, RpcError, RpcResult,
 };
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
+use kaspa_utils::expiring_cache::ExpiringCache;
+use kaspa_utils::sysinfo::SystemInfo;
 use kaspa_utils::{channel::Channel, triggers::SingleTrigger};
 use kaspa_utils_tower::counters::TowerConnectionCounters;
 use kaspa_utxoindex::api::UtxoIndexProxy;
+use std::time::Duration;
 use std::{
     collections::HashMap,
     iter::once,
@@ -102,14 +111,20 @@ pub struct RpcCoreService {
     wrpc_borsh_counters: Arc<WrpcServerCounters>,
     wrpc_json_counters: Arc<WrpcServerCounters>,
     shutdown: SingleTrigger,
+    core_shutdown_request: SingleTrigger,
     perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
     p2p_tower_counters: Arc<TowerConnectionCounters>,
     grpc_tower_counters: Arc<TowerConnectionCounters>,
+    system_info: SystemInfo,
+    fee_estimate_cache: ExpiringCache<RpcFeeEstimate>,
+    fee_estimate_verbose_cache: ExpiringCache<kaspa_mining::errors::MiningManagerResult<GetFeeEstimateExperimentalResponse>>,
 }
 
 const RPC_CORE: &str = "rpc-core";
 
 impl RpcCoreService {
+    pub const IDENT: &'static str = "rpc-core-service";
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         consensus_manager: Arc<ConsensusManager>,
@@ -117,6 +132,7 @@ impl RpcCoreService {
         index_notifier: Option<Arc<IndexNotifier>>,
         mining_manager: MiningManagerProxy,
         flow_context: Arc<FlowContext>,
+        subscription_context: SubscriptionContext,
         utxoindex: Option<UtxoIndexProxy>,
         config: Arc<Config>,
         core: Arc<Core>,
@@ -126,11 +142,20 @@ impl RpcCoreService {
         perf_monitor: Arc<PerfMonitor<Arc<TickService>>>,
         p2p_tower_counters: Arc<TowerConnectionCounters>,
         grpc_tower_counters: Arc<TowerConnectionCounters>,
+        system_info: SystemInfo,
     ) -> Self {
+        // This notifier UTXOs subscription granularity to index-processor or consensus notifier
+        let policies = match index_notifier {
+            Some(_) => MutationPolicies::new(UtxosChangedMutationPolicy::AddressSet),
+            None => MutationPolicies::new(UtxosChangedMutationPolicy::Wildcard),
+        };
+
         // Prepare consensus-notify objects
         let consensus_notify_channel = Channel::<ConsensusNotification>::default();
-        let consensus_notify_listener_id = consensus_notifier
-            .register_new_listener(ConsensusChannelConnection::new(consensus_notify_channel.sender(), ChannelType::Closable));
+        let consensus_notify_listener_id = consensus_notifier.register_new_listener(
+            ConsensusChannelConnection::new(RPC_CORE, consensus_notify_channel.sender(), ChannelType::Closable),
+            ListenerLifespan::Static(Default::default()),
+        );
 
         // Prepare the rpc-core notifier objects
         let mut consensus_events: EventSwitches = EVENT_TYPE_ARRAY[..].into();
@@ -152,9 +177,10 @@ impl RpcCoreService {
         let index_converter = Arc::new(IndexConverter::new(config.clone()));
         if let Some(ref index_notifier) = index_notifier {
             let index_notify_channel = Channel::<IndexNotification>::default();
-            let index_notify_listener_id = index_notifier
-                .clone()
-                .register_new_listener(IndexChannelConnection::new(index_notify_channel.sender(), ChannelType::Closable));
+            let index_notify_listener_id = index_notifier.clone().register_new_listener(
+                IndexChannelConnection::new(RPC_CORE, index_notify_channel.sender(), ChannelType::Closable),
+                ListenerLifespan::Static(policies),
+            );
 
             let index_events: EventSwitches = [EventType::UtxosChanged, EventType::PruningPointUtxoSetOverride].as_ref().into();
             let index_collector =
@@ -170,7 +196,8 @@ impl RpcCoreService {
         let protocol_converter = Arc::new(ProtocolConverter::new(flow_context.clone()));
 
         // Create the rcp-core notifier
-        let notifier = Arc::new(Notifier::new(RPC_CORE, EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, 1));
+        let notifier =
+            Arc::new(Notifier::new(RPC_CORE, EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, subscription_context, 1, policies));
 
         Self {
             consensus_manager,
@@ -187,9 +214,13 @@ impl RpcCoreService {
             wrpc_borsh_counters,
             wrpc_json_counters,
             shutdown: SingleTrigger::default(),
+            core_shutdown_request: SingleTrigger::default(),
             perf_monitor,
             p2p_tower_counters,
             grpc_tower_counters,
+            system_info,
+            fee_estimate_cache: ExpiringCache::new(Duration::from_millis(500), Duration::from_millis(1000)),
+            fee_estimate_verbose_cache: ExpiringCache::new(Duration::from_millis(500), Duration::from_millis(1000)),
         }
     }
 
@@ -198,7 +229,7 @@ impl RpcCoreService {
     }
 
     pub async fn join(&self) -> RpcResult<()> {
-        trace!("{} joining notifier", RPC_CORE_SERVICE);
+        trace!("{} joining notifier", Self::IDENT);
         self.notifier().join().await?;
         Ok(())
     }
@@ -206,6 +237,15 @@ impl RpcCoreService {
     #[inline(always)]
     pub fn notifier(&self) -> Arc<Notifier<Notification, ChannelConnection>> {
         self.notifier.clone()
+    }
+
+    #[inline(always)]
+    pub fn subscription_context(&self) -> SubscriptionContext {
+        self.notifier.subscription_context().clone()
+    }
+
+    pub fn core_shutdown_request_listener(&self) -> triggered::Listener {
+        self.core_shutdown_request.listener.clone()
     }
 
     async fn get_utxo_set_by_script_public_key<'a>(
@@ -248,7 +288,11 @@ impl RpcCoreService {
 
 #[async_trait]
 impl RpcApi for RpcCoreService {
-    async fn submit_block_call(&self, request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
+    async fn submit_block_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: SubmitBlockRequest,
+    ) -> RpcResult<SubmitBlockResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
 
         // TODO: consider adding an error field to SubmitBlockReport to document both the report and error fields
@@ -259,7 +303,7 @@ impl RpcApi for RpcCoreService {
             return Ok(SubmitBlockResponse { report: SubmitBlockReport::Reject(SubmitBlockRejectReason::IsInIBD) });
         }
 
-        let try_block: RpcResult<Block> = (&request.block).try_into();
+        let try_block: RpcResult<Block> = request.block.try_into();
         if let Err(err) = &try_block {
             trace!("incoming SubmitBlockRequest with block conversion error: {}", err);
             // error = format!("Could not parse block: {0}", err)
@@ -306,7 +350,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         }
     }
 
-    async fn get_block_template_call(&self, request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
+    async fn get_block_template_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetBlockTemplateRequest,
+    ) -> RpcResult<GetBlockTemplateResponse> {
         trace!("incoming GetBlockTemplate request");
 
         if *self.config.net == NetworkType::Mainnet && !self.config.enable_mainnet_mining {
@@ -333,12 +381,25 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let is_nearly_synced =
             self.config.is_nearly_synced(block_template.selected_parent_timestamp, block_template.selected_parent_daa_score);
         Ok(GetBlockTemplateResponse {
-            block: (&block_template.block).into(),
+            block: block_template.block.into(),
             is_synced: self.has_sufficient_peer_connectivity() && is_nearly_synced,
         })
     }
 
-    async fn get_block_call(&self, request: GetBlockRequest) -> RpcResult<GetBlockResponse> {
+    async fn get_current_block_color_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetCurrentBlockColorRequest,
+    ) -> RpcResult<GetCurrentBlockColorResponse> {
+        let session = self.consensus_manager.consensus().unguarded_session();
+
+        match session.async_get_current_block_color(request.hash).await {
+            Some(blue) => Ok(GetCurrentBlockColorResponse { blue }),
+            None => Err(RpcError::MergerNotFound(request.hash)),
+        }
+    }
+
+    async fn get_block_call(&self, _connection: Option<&DynRpcConnection>, request: GetBlockRequest) -> RpcResult<GetBlockResponse> {
         // TODO: test
         let session = self.consensus_manager.consensus().session().await;
         let block = session.async_get_block_even_if_header_only(request.hash).await?;
@@ -350,7 +411,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         })
     }
 
-    async fn get_blocks_call(&self, request: GetBlocksRequest) -> RpcResult<GetBlocksResponse> {
+    async fn get_blocks_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetBlocksRequest,
+    ) -> RpcResult<GetBlocksResponse> {
         // Validate that user didn't set include_transactions without setting include_blocks
         if !request.include_blocks && request.include_transactions {
             return Err(RpcError::InvalidGetBlocksRequest);
@@ -399,7 +464,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetBlocksResponse { block_hashes, blocks })
     }
 
-    async fn get_info_call(&self, _request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
+    async fn get_info_call(&self, _connection: Option<&DynRpcConnection>, _request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
         let is_nearly_synced = self.consensus_manager.consensus().unguarded_session().async_is_nearly_synced().await;
         Ok(GetInfoResponse {
             p2p_id: self.flow_context.node_id.to_string(),
@@ -412,7 +477,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         })
     }
 
-    async fn get_mempool_entry_call(&self, request: GetMempoolEntryRequest) -> RpcResult<GetMempoolEntryResponse> {
+    async fn get_mempool_entry_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetMempoolEntryRequest,
+    ) -> RpcResult<GetMempoolEntryResponse> {
         let query = self.extract_tx_query(request.filter_transaction_pool, request.include_orphan_pool)?;
         let Some(transaction) = self.mining_manager.clone().get_transaction(request.transaction_id, query).await else {
             return Err(RpcError::TransactionNotFound(request.transaction_id));
@@ -421,7 +490,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetMempoolEntryResponse::new(self.consensus_converter.get_mempool_entry(&session, &transaction)))
     }
 
-    async fn get_mempool_entries_call(&self, request: GetMempoolEntriesRequest) -> RpcResult<GetMempoolEntriesResponse> {
+    async fn get_mempool_entries_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetMempoolEntriesRequest,
+    ) -> RpcResult<GetMempoolEntriesResponse> {
         let query = self.extract_tx_query(request.filter_transaction_pool, request.include_orphan_pool)?;
         let session = self.consensus_manager.consensus().unguarded_session();
         let (transactions, orphans) = self.mining_manager.clone().get_all_transactions(query).await;
@@ -435,6 +508,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
     async fn get_mempool_entries_by_addresses_call(
         &self,
+        _connection: Option<&DynRpcConnection>,
         request: GetMempoolEntriesByAddressesRequest,
     ) -> RpcResult<GetMempoolEntriesByAddressesResponse> {
         let query = self.extract_tx_query(request.filter_transaction_pool, request.include_orphan_pool)?;
@@ -458,13 +532,17 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetMempoolEntriesByAddressesResponse::new(mempool_entries))
     }
 
-    async fn submit_transaction_call(&self, request: SubmitTransactionRequest) -> RpcResult<SubmitTransactionResponse> {
+    async fn submit_transaction_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: SubmitTransactionRequest,
+    ) -> RpcResult<SubmitTransactionResponse> {
         let allow_orphan = self.config.unsafe_rpc && request.allow_orphan;
         if !self.config.unsafe_rpc && request.allow_orphan {
             warn!("SubmitTransaction RPC command called with AllowOrphan enabled while node in safe RPC mode -- switching to ForbidOrphan.");
         }
 
-        let transaction: Transaction = (&request.transaction).try_into()?;
+        let transaction: Transaction = request.transaction.try_into()?;
         let transaction_id = transaction.id();
         let session = self.consensus_manager.consensus().unguarded_session();
         let orphan = match allow_orphan {
@@ -479,25 +557,55 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(SubmitTransactionResponse::new(transaction_id))
     }
 
-    async fn get_current_network_call(&self, _: GetCurrentNetworkRequest) -> RpcResult<GetCurrentNetworkResponse> {
+    async fn submit_transaction_replacement_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: SubmitTransactionReplacementRequest,
+    ) -> RpcResult<SubmitTransactionReplacementResponse> {
+        let transaction: Transaction = request.transaction.try_into()?;
+        let transaction_id = transaction.id();
+        let session = self.consensus_manager.consensus().unguarded_session();
+        let replaced_transaction =
+            self.flow_context.submit_rpc_transaction_replacement(&session, transaction).await.map_err(|err| {
+                let err = RpcError::RejectedTransaction(transaction_id, err.to_string());
+                debug!("{err}");
+                err
+            })?;
+        Ok(SubmitTransactionReplacementResponse::new(transaction_id, (&*replaced_transaction).into()))
+    }
+
+    async fn get_current_network_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _: GetCurrentNetworkRequest,
+    ) -> RpcResult<GetCurrentNetworkResponse> {
         Ok(GetCurrentNetworkResponse::new(*self.config.net))
     }
 
-    async fn get_subnetwork_call(&self, _: GetSubnetworkRequest) -> RpcResult<GetSubnetworkResponse> {
+    async fn get_subnetwork_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _: GetSubnetworkRequest,
+    ) -> RpcResult<GetSubnetworkResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_sink_call(&self, _: GetSinkRequest) -> RpcResult<GetSinkResponse> {
+    async fn get_sink_call(&self, _connection: Option<&DynRpcConnection>, _: GetSinkRequest) -> RpcResult<GetSinkResponse> {
         Ok(GetSinkResponse::new(self.consensus_manager.consensus().unguarded_session().async_get_sink().await))
     }
 
-    async fn get_sink_blue_score_call(&self, _: GetSinkBlueScoreRequest) -> RpcResult<GetSinkBlueScoreResponse> {
+    async fn get_sink_blue_score_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _: GetSinkBlueScoreRequest,
+    ) -> RpcResult<GetSinkBlueScoreResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
         Ok(GetSinkBlueScoreResponse::new(session.async_get_ghostdag_data(session.async_get_sink().await).await?.blue_score))
     }
 
     async fn get_virtual_chain_from_block_call(
         &self,
+        _connection: Option<&DynRpcConnection>,
         request: GetVirtualChainFromBlockRequest,
     ) -> RpcResult<GetVirtualChainFromBlockResponse> {
         let session = self.consensus_manager.consensus().session().await;
@@ -510,11 +618,19 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetVirtualChainFromBlockResponse::new(virtual_chain.removed, virtual_chain.added, accepted_transaction_ids))
     }
 
-    async fn get_block_count_call(&self, _: GetBlockCountRequest) -> RpcResult<GetBlockCountResponse> {
+    async fn get_block_count_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _: GetBlockCountRequest,
+    ) -> RpcResult<GetBlockCountResponse> {
         Ok(self.consensus_manager.consensus().unguarded_session().async_estimate_block_count().await)
     }
 
-    async fn get_utxos_by_addresses_call(&self, request: GetUtxosByAddressesRequest) -> RpcResult<GetUtxosByAddressesResponse> {
+    async fn get_utxos_by_addresses_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetUtxosByAddressesRequest,
+    ) -> RpcResult<GetUtxosByAddressesResponse> {
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
@@ -524,7 +640,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetUtxosByAddressesResponse::new(self.index_converter.get_utxos_by_addresses_entries(&entry_map)))
     }
 
-    async fn get_balance_by_address_call(&self, request: GetBalanceByAddressRequest) -> RpcResult<GetBalanceByAddressResponse> {
+    async fn get_balance_by_address_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetBalanceByAddressRequest,
+    ) -> RpcResult<GetBalanceByAddressResponse> {
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
@@ -535,6 +655,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
     async fn get_balances_by_addresses_call(
         &self,
+        _connection: Option<&DynRpcConnection>,
         request: GetBalancesByAddressesRequest,
     ) -> RpcResult<GetBalancesByAddressesResponse> {
         if !self.config.utxoindex {
@@ -553,7 +674,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetBalancesByAddressesResponse::new(entries))
     }
 
-    async fn get_coin_supply_call(&self, _: GetCoinSupplyRequest) -> RpcResult<GetCoinSupplyResponse> {
+    async fn get_coin_supply_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _: GetCoinSupplyRequest,
+    ) -> RpcResult<GetCoinSupplyResponse> {
         if !self.config.utxoindex {
             return Err(RpcError::NoUtxoIndex);
         }
@@ -564,6 +689,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
     async fn get_daa_score_timestamp_estimate_call(
         &self,
+        _connection: Option<&DynRpcConnection>,
         request: GetDaaScoreTimestampEstimateRequest,
     ) -> RpcResult<GetDaaScoreTimestampEstimateResponse> {
         let session = self.consensus_manager.consensus().session().await;
@@ -620,15 +746,58 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetDaaScoreTimestampEstimateResponse::new(timestamps))
     }
 
-    async fn ping_call(&self, _: PingRequest) -> RpcResult<PingResponse> {
+    async fn get_fee_estimate_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetFeeEstimateRequest,
+    ) -> RpcResult<GetFeeEstimateResponse> {
+        let mining_manager = self.mining_manager.clone();
+        let estimate =
+            self.fee_estimate_cache.get(async move { mining_manager.get_realtime_feerate_estimations().await.into_rpc() }).await;
+        Ok(GetFeeEstimateResponse { estimate })
+    }
+
+    async fn get_fee_estimate_experimental_call(
+        &self,
+        connection: Option<&DynRpcConnection>,
+        request: GetFeeEstimateExperimentalRequest,
+    ) -> RpcResult<GetFeeEstimateExperimentalResponse> {
+        if request.verbose {
+            let mining_manager = self.mining_manager.clone();
+            let consensus_manager = self.consensus_manager.clone();
+            let prefix = self.config.prefix();
+
+            let response = self
+                .fee_estimate_verbose_cache
+                .get(async move {
+                    let session = consensus_manager.consensus().unguarded_session();
+                    mining_manager.get_realtime_feerate_estimations_verbose(&session, prefix).await.map(FeeEstimateVerbose::into_rpc)
+                })
+                .await?;
+            Ok(response)
+        } else {
+            let estimate = self.get_fee_estimate_call(connection, GetFeeEstimateRequest {}).await?.estimate;
+            Ok(GetFeeEstimateExperimentalResponse { estimate, verbose: None })
+        }
+    }
+
+    async fn ping_call(&self, _connection: Option<&DynRpcConnection>, _: PingRequest) -> RpcResult<PingResponse> {
         Ok(PingResponse {})
     }
 
-    async fn get_headers_call(&self, _request: GetHeadersRequest) -> RpcResult<GetHeadersResponse> {
+    async fn get_headers_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetHeadersRequest,
+    ) -> RpcResult<GetHeadersResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_block_dag_info_call(&self, _: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
+    async fn get_block_dag_info_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _: GetBlockDagInfoRequest,
+    ) -> RpcResult<GetBlockDagInfoResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
         let (consensus_stats, tips, pruning_point, sink) =
             join!(session.async_get_stats(), session.async_get_tips(), session.async_pruning_point(), session.async_get_sink());
@@ -648,6 +817,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
     async fn estimate_network_hashes_per_second_call(
         &self,
+        _connection: Option<&DynRpcConnection>,
         request: EstimateNetworkHashesPerSecondRequest,
     ) -> RpcResult<EstimateNetworkHashesPerSecondResponse> {
         if !self.config.unsafe_rpc && request.window_size > MAX_SAFE_WINDOW_SIZE {
@@ -677,7 +847,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         ))
     }
 
-    async fn add_peer_call(&self, request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
+    async fn add_peer_call(&self, _connection: Option<&DynRpcConnection>, request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
         if !self.config.unsafe_rpc {
             warn!("AddPeer RPC command called while node in safe RPC mode -- ignoring.");
             return Err(RpcError::UnavailableInSafeMode);
@@ -691,12 +861,16 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(AddPeerResponse {})
     }
 
-    async fn get_peer_addresses_call(&self, _: GetPeerAddressesRequest) -> RpcResult<GetPeerAddressesResponse> {
+    async fn get_peer_addresses_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _: GetPeerAddressesRequest,
+    ) -> RpcResult<GetPeerAddressesResponse> {
         let address_manager = self.flow_context.address_manager.lock();
         Ok(GetPeerAddressesResponse::new(address_manager.get_all_addresses(), address_manager.get_all_banned_addresses()))
     }
 
-    async fn ban_call(&self, request: BanRequest) -> RpcResult<BanResponse> {
+    async fn ban_call(&self, _connection: Option<&DynRpcConnection>, request: BanRequest) -> RpcResult<BanResponse> {
         if !self.config.unsafe_rpc {
             warn!("Ban RPC command called while node in safe RPC mode -- ignoring.");
             return Err(RpcError::UnavailableInSafeMode);
@@ -713,7 +887,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(BanResponse {})
     }
 
-    async fn unban_call(&self, request: UnbanRequest) -> RpcResult<UnbanResponse> {
+    async fn unban_call(&self, _connection: Option<&DynRpcConnection>, request: UnbanRequest) -> RpcResult<UnbanResponse> {
         if !self.config.unsafe_rpc {
             warn!("Unban RPC command called while node in safe RPC mode -- ignoring.");
             return Err(RpcError::UnavailableInSafeMode);
@@ -727,20 +901,28 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(UnbanResponse {})
     }
 
-    async fn get_connected_peer_info_call(&self, _: GetConnectedPeerInfoRequest) -> RpcResult<GetConnectedPeerInfoResponse> {
+    async fn get_connected_peer_info_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _: GetConnectedPeerInfoRequest,
+    ) -> RpcResult<GetConnectedPeerInfoResponse> {
         let peers = self.flow_context.hub().active_peers();
         let peer_info = self.protocol_converter.get_peers_info(&peers);
         Ok(GetConnectedPeerInfoResponse::new(peer_info))
     }
 
-    async fn shutdown_call(&self, _: ShutdownRequest) -> RpcResult<ShutdownResponse> {
+    async fn shutdown_call(&self, _connection: Option<&DynRpcConnection>, _: ShutdownRequest) -> RpcResult<ShutdownResponse> {
         if !self.config.unsafe_rpc {
             warn!("Shutdown RPC command called while node in safe RPC mode -- ignoring.");
             return Err(RpcError::UnavailableInSafeMode);
         }
         warn!("Shutdown RPC command was called, shutting down in 1 second...");
 
-        // Wait a second before shutting down, to allow time to return the response to the caller
+        // Signal the shutdown request
+        self.core_shutdown_request.trigger.trigger();
+
+        // Wait for a second before shutting down,
+        // giving time for the response to be sent to the caller.
         let core = self.core.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
@@ -752,6 +934,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
     async fn resolve_finality_conflict_call(
         &self,
+        _connection: Option<&DynRpcConnection>,
         _request: ResolveFinalityConflictRequest,
     ) -> RpcResult<ResolveFinalityConflictResponse> {
         if !self.config.unsafe_rpc {
@@ -761,7 +944,25 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_metrics_call(&self, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
+    async fn get_connections_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        req: GetConnectionsRequest,
+    ) -> RpcResult<GetConnectionsResponse> {
+        let clients = (self.wrpc_borsh_counters.active_connections.load(Ordering::Relaxed)
+            + self.wrpc_json_counters.active_connections.load(Ordering::Relaxed)) as u32;
+        let peers = self.flow_context.hub().active_peers_len() as u16;
+
+        let profile_data = req.include_profile_data.then(|| {
+            let CountersSnapshot { resident_set_size: memory_usage, cpu_usage, .. } = self.perf_monitor.snapshot();
+
+            ConnectionsProfileData { cpu_usage: cpu_usage as f32, memory_usage }
+        });
+
+        Ok(GetConnectionsResponse { clients, peers, profile_data })
+    }
+
+    async fn get_metrics_call(&self, _connection: Option<&DynRpcConnection>, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
         let CountersSnapshot {
             resident_set_size,
             virtual_memory_size,
@@ -786,7 +987,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             disk_io_write_per_sec: disk_io_write_per_sec as f32,
         });
 
-        let connection_metrics = req.connection_metrics.then_some(ConnectionMetrics {
+        let connection_metrics = req.connection_metrics.then(|| ConnectionMetrics {
             borsh_live_connections: self.wrpc_borsh_counters.active_connections.load(Ordering::Relaxed) as u32,
             borsh_connection_attempts: self.wrpc_borsh_counters.total_connections.load(Ordering::Relaxed) as u64,
             borsh_handshake_failures: self.wrpc_borsh_counters.handshake_failures.load(Ordering::Relaxed) as u64,
@@ -797,7 +998,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             active_peers: self.flow_context.hub().active_peers_len() as u32,
         });
 
-        let bandwidth_metrics = req.bandwidth_metrics.then_some(BandwidthMetrics {
+        let bandwidth_metrics = req.bandwidth_metrics.then(|| BandwidthMetrics {
             borsh_bytes_tx: self.wrpc_borsh_counters.tx_bytes.load(Ordering::Relaxed) as u64,
             borsh_bytes_rx: self.wrpc_borsh_counters.rx_bytes.load(Ordering::Relaxed) as u64,
             json_bytes_tx: self.wrpc_json_counters.tx_bytes.load(Ordering::Relaxed) as u64,
@@ -835,20 +1036,54 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             None
         };
 
+        let storage_metrics = req.storage_metrics.then_some(StorageMetrics { storage_size_bytes: 0 });
+
+        let custom_metrics: Option<HashMap<String, CustomMetricValue>> = None;
+
         let server_time = unix_now();
 
-        let response = GetMetricsResponse { server_time, process_metrics, connection_metrics, bandwidth_metrics, consensus_metrics };
+        let response = GetMetricsResponse {
+            server_time,
+            process_metrics,
+            connection_metrics,
+            bandwidth_metrics,
+            consensus_metrics,
+            storage_metrics,
+            custom_metrics,
+        };
 
         Ok(response)
     }
 
-    async fn get_server_info_call(&self, _request: GetServerInfoRequest) -> RpcResult<GetServerInfoResponse> {
+    async fn get_system_info_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetSystemInfoRequest,
+    ) -> RpcResult<GetSystemInfoResponse> {
+        let response = GetSystemInfoResponse {
+            version: self.system_info.version.clone(),
+            system_id: self.system_info.system_id.clone(),
+            git_hash: self.system_info.git_short_hash.clone(),
+            cpu_physical_cores: self.system_info.cpu_physical_cores,
+            total_memory: self.system_info.total_memory,
+            fd_limit: self.system_info.fd_limit,
+        };
+
+        Ok(response)
+    }
+
+    async fn get_server_info_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetServerInfoRequest,
+    ) -> RpcResult<GetServerInfoResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
         let is_synced: bool = self.has_sufficient_peer_connectivity() && session.async_is_nearly_synced().await;
         let virtual_daa_score = session.get_virtual_daa_score();
 
         Ok(GetServerInfoResponse {
             rpc_api_version: RPC_API_VERSION,
+            rpc_api_revision: RPC_API_REVISION,
             server_version: version().to_string(),
             network_id: self.config.net,
             has_utxo_index: self.config.utxoindex,
@@ -857,7 +1092,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         })
     }
 
-    async fn get_sync_status_call(&self, _request: GetSyncStatusRequest) -> RpcResult<GetSyncStatusResponse> {
+    async fn get_sync_status_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetSyncStatusRequest,
+    ) -> RpcResult<GetSyncStatusResponse> {
         let session = self.consensus_manager.consensus().unguarded_session();
         let is_synced: bool = self.has_sufficient_peer_connectivity() && session.async_is_nearly_synced().await;
         Ok(GetSyncStatusResponse { is_synced })
@@ -868,7 +1107,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
     /// Register a new listener and returns an id identifying it.
     fn register_new_listener(&self, connection: ChannelConnection) -> ListenerId {
-        self.notifier.register_new_listener(connection)
+        self.notifier.register_new_listener(connection, ListenerLifespan::Dynamic)
     }
 
     /// Unregister an existing listener.
@@ -906,17 +1145,15 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     }
 }
 
-const RPC_CORE_SERVICE: &str = "rpc-core-service";
-
 // It might be necessary to opt this out in the context of wasm32
 
 impl AsyncService for RpcCoreService {
     fn ident(self: Arc<Self>) -> &'static str {
-        RPC_CORE_SERVICE
+        Self::IDENT
     }
 
     fn start(self: Arc<Self>) -> AsyncServiceFuture {
-        trace!("{} starting", RPC_CORE_SERVICE);
+        trace!("{} starting", Self::IDENT);
         let service = self.clone();
 
         // Prepare a shutdown signal receiver
@@ -929,7 +1166,7 @@ impl AsyncService for RpcCoreService {
             match service.join().await {
                 Ok(_) => Ok(()),
                 Err(err) => {
-                    warn!("Error while stopping {}: {}", RPC_CORE_SERVICE, err);
+                    warn!("Error while stopping {}: {}", Self::IDENT, err);
                     Err(AsyncServiceError::Service(err.to_string()))
                 }
             }
@@ -937,13 +1174,13 @@ impl AsyncService for RpcCoreService {
     }
 
     fn signal_exit(self: Arc<Self>) {
-        trace!("sending an exit signal to {}", RPC_CORE_SERVICE);
+        trace!("sending an exit signal to {}", Self::IDENT);
         self.shutdown.trigger.trigger();
     }
 
     fn stop(self: Arc<Self>) -> AsyncServiceFuture {
         Box::pin(async move {
-            trace!("{} stopped", RPC_CORE_SERVICE);
+            trace!("{} stopped", Self::IDENT);
             Ok(())
         })
     }

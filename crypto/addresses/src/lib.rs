@@ -1,11 +1,13 @@
-use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
-use js_sys::Array;
+use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use smallvec::SmallVec;
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
 use wasm_bindgen::prelude::*;
-use workflow_wasm::extensions::object::*;
+use workflow_wasm::{
+    convert::{Cast, CastFromJs, TryCastFromJs},
+    extensions::object::*,
+};
 
 mod bech32;
 
@@ -26,11 +28,20 @@ pub enum AddressError {
     #[error("The address contains an invalid character {0}")]
     DecodingError(char),
 
+    #[error("The address checksum is invalid (must be exactly 8 bytes)")]
+    BadChecksumSize,
+
     #[error("The address checksum is invalid")]
     BadChecksum,
 
+    #[error("The address payload is invalid")]
+    BadPayload,
+
     #[error("The address is invalid")]
     InvalidAddress,
+
+    #[error("The address array is invalid")]
+    InvalidAddressArray,
 
     #[error("{0}")]
     WASM(String),
@@ -43,9 +54,8 @@ impl From<workflow_wasm::error::Error> for AddressError {
 }
 
 /// Address prefix identifying the network type this address belongs to (such as `kaspa`, `kaspatest`, `kaspasim`, `kaspadev`).
-#[derive(
-    PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
-)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[borsh(use_discriminant = true)]
 pub enum Prefix {
     #[serde(rename = "kaspa")]
     Mainnet,
@@ -111,10 +121,10 @@ impl TryFrom<&str> for Prefix {
 ///
 ///  Kaspa `Address` version (`PubKey`, `PubKey ECDSA`, `ScriptHash`)
 ///
-#[derive(
-    PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize, BorshSchema,
-)]
+/// @category Address
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Hash, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[repr(u8)]
+#[borsh(use_discriminant = true)]
 #[wasm_bindgen(js_name = "AddressVersion")]
 pub enum Version {
     /// PubKey addresses always have the version byte set to 0
@@ -181,7 +191,8 @@ pub const PAYLOAD_VECTOR_SIZE: usize = 36;
 pub type PayloadVec = SmallVec<[u8; PAYLOAD_VECTOR_SIZE]>;
 
 /// Kaspa `Address` struct that serializes to and from an address format string: `kaspa:qz0s...t8cv`.
-#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
+/// @category Address
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, CastFromJs)]
 #[wasm_bindgen(inspectable)]
 pub struct Address {
     #[wasm_bindgen(skip)]
@@ -216,6 +227,11 @@ impl Address {
     #[wasm_bindgen(constructor)]
     pub fn constructor(address: &str) -> Address {
         address.try_into().unwrap_or_else(|err| panic!("Address::constructor() - address error `{}`: {err}", address))
+    }
+
+    #[wasm_bindgen(js_name=validate)]
+    pub fn validate(address: &str) -> bool {
+        Self::try_from(address).is_ok()
     }
 
     /// Convert an address to a string.
@@ -273,34 +289,11 @@ impl BorshSerialize for Address {
 }
 
 impl BorshDeserialize for Address {
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
-        // Deserialize into vec first since we have no custom smallvec support
-        let prefix: Prefix = borsh::BorshDeserialize::deserialize(buf)?;
-        let version: Version = borsh::BorshDeserialize::deserialize(buf)?;
-        let payload: Vec<u8> = borsh::BorshDeserialize::deserialize(buf)?;
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let prefix: Prefix = borsh::BorshDeserialize::deserialize_reader(reader)?;
+        let version: Version = borsh::BorshDeserialize::deserialize_reader(reader)?;
+        let payload: Vec<u8> = borsh::BorshDeserialize::deserialize_reader(reader)?;
         Ok(Self::new(prefix, version, &payload))
-    }
-}
-
-impl BorshSchema for Address {
-    fn add_definitions_recursively(
-        definitions: &mut std::collections::HashMap<borsh::schema::Declaration, borsh::schema::Definition>,
-    ) {
-        let fields = borsh::schema::Fields::NamedFields(std::vec![
-            ("prefix".to_string(), <Prefix>::declaration()),
-            ("version".to_string(), <Version>::declaration()),
-            ("payload".to_string(), <Vec<u8>>::declaration())
-        ]);
-        let definition = borsh::schema::Definition::Struct { fields };
-        Self::add_definition(Self::declaration(), definition, definitions);
-        <Prefix>::add_definitions_recursively(definitions);
-        <Version>::add_definitions_recursively(definitions);
-        // `<Vec<u8>>` can be safely used as scheme definition for smallvec. See comments above.
-        <Vec<u8>>::add_definitions_recursively(definitions);
-    }
-
-    fn declaration() -> borsh::schema::Declaration {
-        "Address".to_string()
     }
 }
 
@@ -501,44 +494,45 @@ impl<'de> Deserialize<'de> for Address {
     }
 }
 
-impl TryFrom<JsValue> for Address {
+impl TryCastFromJs for Address {
     type Error = AddressError;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        if let Some(string) = js_value.as_string() {
-            Address::try_from(string)
-        } else if let Some(object) = js_sys::Object::try_from(&js_value) {
-            let prefix: Prefix = object.get_string("prefix")?.as_str().try_into()?;
-            let payload = object.get_string("payload")?; //.as_str();
-            Self::decode_payload(prefix, &payload)
-        } else {
-            Err(AddressError::InvalidAddress)
-        }
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
+            if let Some(string) = value.as_ref().as_string() {
+                Address::try_from(string)
+            } else if let Some(object) = js_sys::Object::try_from(value.as_ref()) {
+                let prefix: Prefix = object.get_string("prefix")?.as_str().try_into()?;
+                let payload = object.get_string("payload")?; //.as_str();
+                Address::decode_payload(prefix, &payload)
+            } else {
+                Err(AddressError::InvalidAddress)
+            }
+        })
     }
 }
 
 #[wasm_bindgen]
-pub struct AddressList(Vec<Address>);
-
-impl From<AddressList> for Vec<Address> {
-    fn from(address_list: AddressList) -> Self {
-        address_list.0
-    }
+extern "C" {
+    #[wasm_bindgen(extends = js_sys::Array, typescript_type = "Address | string")]
+    pub type AddressT;
+    #[wasm_bindgen(extends = js_sys::Array, typescript_type = "(Address | string)[]")]
+    pub type AddressOrStringArrayT;
+    #[wasm_bindgen(extends = js_sys::Array, typescript_type = "Address[]")]
+    pub type AddressArrayT;
+    #[wasm_bindgen(typescript_type = "Address | undefined")]
+    pub type AddressOrUndefinedT;
 }
 
-impl TryFrom<JsValue> for AddressList {
+impl TryFrom<AddressOrStringArrayT> for Vec<Address> {
     type Error = AddressError;
-    fn try_from(js_value: JsValue) -> Result<Self, Self::Error> {
-        js_value.as_ref().try_into()
-    }
-}
-
-impl TryFrom<&JsValue> for AddressList {
-    type Error = AddressError;
-    fn try_from(js_value: &JsValue) -> Result<Self, Self::Error> {
-        if let Ok(array) = js_value.clone().dyn_into::<Array>() {
-            Ok(Self(array.iter().map(|v| v.try_into()).collect::<Result<Vec<Address>, AddressError>>()?))
+    fn try_from(js_value: AddressOrStringArrayT) -> Result<Self, Self::Error> {
+        if js_value.is_array() {
+            js_value.iter().map(Address::try_owned_from).collect::<Result<Vec<Address>, AddressError>>()
         } else {
-            Err(AddressError::InvalidAddress)
+            Err(AddressError::InvalidAddressArray)
         }
     }
 }

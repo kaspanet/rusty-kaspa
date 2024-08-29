@@ -1,7 +1,0 @@
-{
-  "name": "kaspa-os",
-  "main": "index.js",
-  "description": "Kaspa OS",
-  "version": "0.1.0",
-  "chromium-args": "--disable-background-timer-throttling"
-}

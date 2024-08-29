@@ -1,4 +1,4 @@
-use kaspa_consensus_core::tx::TransactionId;
+use kaspa_consensus_core::{subnets::SubnetworkConversionError, tx::TransactionId};
 use kaspa_utils::networking::IpAddress;
 use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
@@ -68,7 +68,7 @@ pub enum RpcError {
     #[error("Requested window size {0} is larger than pruning point depth {1}.")]
     WindowSizeExceedingPruningDepth(u32, u64),
 
-    #[error("Method unavailable in safe mode. Run the node with --unsafe argument.")]
+    #[error("Method unavailable in safe mode. Run the node with --unsaferpc argument.")]
     UnavailableInSafeMode,
 
     #[error("Cannot ban IP {0} because it has some permanent connection.")]
@@ -76,6 +76,9 @@ pub enum RpcError {
 
     #[error("IP {0} is not registered as banned.")]
     IpIsNotBanned(IpAddress),
+
+    #[error("Block {0} doesn't have any merger block.")]
+    MergerNotFound(RpcHash),
 
     #[error("Block was not submitted: {0}")]
     SubmitBlockError(SubmitBlockRejectReason),
@@ -115,6 +118,18 @@ pub enum RpcError {
 
     #[error("transaction query must either not filter transactions or include orphans")]
     InconsistentMempoolTxQuery,
+
+    #[error(transparent)]
+    SubnetParsingError(#[from] SubnetworkConversionError),
+
+    #[error(transparent)]
+    WasmError(#[from] workflow_wasm::error::Error),
+
+    #[error("{0}")]
+    SerdeWasmBindgen(String),
+
+    #[error(transparent)]
+    ConsensusClient(#[from] kaspa_consensus_client::error::Error),
 }
 
 impl From<String> for RpcError {
@@ -132,6 +147,12 @@ impl From<&str> for RpcError {
 impl From<ChannelError<RpcState>> for RpcError {
     fn from(_: ChannelError<RpcState>) -> Self {
         RpcError::RpcCtlDispatchError
+    }
+}
+
+impl From<serde_wasm_bindgen::Error> for RpcError {
+    fn from(value: serde_wasm_bindgen::Error) -> Self {
+        RpcError::SerdeWasmBindgen(value.to_string())
     }
 }
 
