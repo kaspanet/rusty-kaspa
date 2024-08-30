@@ -264,9 +264,9 @@ impl PruningProofManager {
         let pruning_point = pruning_point_header.hash;
 
         // Create a copy of the proof, since we're going to be mutating the proof passed to us
-        let proof_sets: Vec<HashSet<Hash, kaspa_consensus_core::BlockHasher>> = (0..=self.max_block_level)
+        let proof_sets = (0..=self.max_block_level)
             .map(|level| BlockHashSet::from_iter(proof[level as usize].iter().map(|header| header.hash)))
-            .collect();
+            .collect_vec();
 
         let mut trusted_gd_map: BlockHashMap<GhostdagData> = BlockHashMap::new();
         for tb in trusted_set.iter() {
@@ -729,9 +729,10 @@ impl PruningProofManager {
             }
 
             // Step 2 - if we can find a common ancestor between the proof and current consensus
-            // we can determine if the proof is better. The proof is better if the blue work difference between the
+            // we can determine if the proof is better. The proof is better if the blue work* difference between the
             // old current consensus's tips and the common ancestor is less than the blue work difference between the
-            // proof's tip and the common ancestor
+            // proof's tip and the common ancestor.
+            // *Note: blue work is the same as blue score on levels higher than 0
             if let Some((proof_common_ancestor_gd, common_ancestor_gd)) = self.find_proof_and_consensus_common_ancestor_ghostdag_data(
                 &proof_ghostdag_stores,
                 &current_consensus_ghostdag_stores,
@@ -865,7 +866,6 @@ impl PruningProofManager {
         self.headers_store.get_header(sp.hash).unwrap_option().ok_or(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(
             format!("find_selected_parent_header_at_level (level {level}) couldn't find the header for block {}", sp.hash,),
         ))
-        // Ok(self.headers_store.get_header(sp.hash).unwrap_option().expect("already checked if compact header exists above"))
     }
 
     fn find_sufficient_root(
