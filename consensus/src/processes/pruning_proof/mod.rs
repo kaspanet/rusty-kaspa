@@ -841,18 +841,21 @@ impl PruningProofManager {
             .collect_vec()
             .push_if_empty(ORIGIN);
 
-        let mut sp = SortableBlock { hash: parents[0], blue_work: self.headers_store.get_blue_score(parents[0]).unwrap_or(0).into() };
+        let mut sp = SortableBlock {
+            hash: parents[0],
+            blue_work: if parents[0] == ORIGIN { 0.into() } else { self.headers_store.get_header(parents[0]).unwrap().blue_work },
+        };
         for parent in parents.iter().copied().skip(1) {
             let sblock = SortableBlock {
                 hash: parent,
                 blue_work: self
                     .headers_store
-                    .get_blue_score(parent)
+                    .get_header(parent)
                     .unwrap_option()
                     .ok_or(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(format!(
                         "find_selected_parent_header_at_level (level {level}) couldn't find the header for block {parent}"
                     )))?
-                    .into(),
+                    .blue_work,
             };
             if sblock > sp {
                 sp = sblock;
