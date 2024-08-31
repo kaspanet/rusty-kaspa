@@ -13,17 +13,29 @@ Your feedback, contributions, and issue reports will be integral to evolving thi
   
   1. Install general prerequisites
 
+      Debian/Ubuntu
       ```bash
       sudo apt install curl git build-essential libssl-dev pkg-config 
       ```
-
-  2. Install Protobuf (required for gRPC)
-  
+      Rocky Linux/RHEL/CentOS/Fedora
       ```bash
-      sudo apt install protobuf-compiler libprotobuf-dev #Required for gRPC
+      sudo dnf install curl git pkg-config zlib-devel make gcc perl openssl-devel
       ```
-  3. Install the clang toolchain (required for RocksDB and WASM secp256k1 builds)
 
+  3. Install Protobuf (required for gRPC)
+
+      Debian/Ubuntu
+      ```bash
+      sudo apt install protobuf-compiler libprotobuf-dev
+      ```
+      Rocky Linux/RHEL/CentOS
+      ```bash
+      sudo dnf install protobuf-compiler protobuf-devel
+      ```
+     
+  5. Install the clang toolchain (required for RocksDB and WASM secp256k1 builds)
+
+      Debian/Ubuntu
       ```bash
       sudo apt-get install clang-format clang-tidy \
       clang-tools clang clangd libc++-dev \
@@ -33,6 +45,11 @@ Your feedback, contributions, and issue reports will be integral to evolving thi
       lld lldb llvm-dev llvm-runtime \
       llvm python3-clang
       ```
+      Rocky Linux/RHEL/CentOS/Fedora
+     ```bash
+     sudo dnf install clang
+     ```
+      
   3. Install the [rust toolchain](https://rustup.rs/)
      
      If you already have rust installed, update it by running: `rustup update` 
