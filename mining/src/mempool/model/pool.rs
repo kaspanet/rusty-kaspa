@@ -27,8 +27,6 @@ pub(crate) trait Pool {
         self.all().get(transaction_id)
     }
 
-    fn get_mut(&mut self, transaction_id: &TransactionId) -> Option<&mut MempoolTransaction>;
-
     /// Returns the number of transactions in the pool
     fn len(&self) -> usize {
         self.all().len()
