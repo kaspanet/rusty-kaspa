@@ -11,7 +11,7 @@ use kaspa_txscript::{
     SigCacheKey,
 };
 
-use super::mass::MassCalculator;
+use kaspa_consensus_core::mass::MassCalculator;
 
 #[derive(Clone)]
 pub struct TransactionValidator {
