@@ -30,6 +30,7 @@ export interface ITransaction {
     subnetworkId: HexString;
     gas: bigint;
     payload: HexString;
+    mass: bigint;
 
     /** Optional verbose data provided by RPC */
     verboseData?: ITransactionVerboseData;
@@ -43,7 +44,7 @@ export interface ITransaction {
 export interface ITransactionVerboseData {
     transactionId : HexString;
     hash : HexString;
-    mass : bigint;
+    compute_mass : bigint;
     blockHash : HexString;
     blockTime : bigint;
 }
