@@ -738,15 +738,7 @@ impl MiningManager {
                             .entries
                             .iter()
                             .zip(transaction.tx.inputs.iter())
-                            .filter_map(
-                                |(entry, input)| {
-                                    if entry.is_none() {
-                                        Some(input.previous_outpoint.transaction_id)
-                                    } else {
-                                        None
-                                    }
-                                },
-                            )
+                            .filter_map(|(entry, input)| entry.is_none().then_some(input.previous_outpoint.transaction_id))
                             .collect::<Vec<_>>();
 
                         // A transaction may have missing outpoints for legitimate reasons related to concurrency, like a race condition between
@@ -762,15 +754,14 @@ impl MiningManager {
                         };
 
                         // This call cleanly removes the invalid transaction.
-                        let result = mempool.remove_transaction(
-                            &transaction_id,
-                            false,
-                            TxRemovalReason::RevalidationWithMissingOutpoints,
-                            extra_info.as_str(),
-                        );
-                        if let Err(err) = result {
-                            warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err);
-                        }
+                        _ = mempool
+                            .remove_transaction(
+                                &transaction_id,
+                                false,
+                                TxRemovalReason::RevalidationWithMissingOutpoints,
+                                extra_info.as_str(),
+                            )
+                            .inspect_err(|err| warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err));
                         missing_outpoint += 1;
                     }
                     Err(err) => {
@@ -782,10 +773,9 @@ impl MiningManager {
                             transaction_id, err
                         );
                         // This call cleanly removes the invalid transaction and its redeemers.
-                        let result = mempool.remove_transaction(&transaction_id, true, TxRemovalReason::Muted, "");
-                        if let Err(err) = result {
-                            warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err);
-                        }
+                        _ = mempool
+                            .remove_transaction(&transaction_id, true, TxRemovalReason::Muted, "")
+                            .inspect_err(|err| warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err));
                         invalid += 1;
                     }
                 }
