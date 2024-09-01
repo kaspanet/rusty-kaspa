@@ -44,7 +44,7 @@ export interface ITransaction {
 export interface ITransactionVerboseData {
     transactionId : HexString;
     hash : HexString;
-    compute_mass : bigint;
+    computeMass : bigint;
     blockHash : HexString;
     blockTime : bigint;
 }
