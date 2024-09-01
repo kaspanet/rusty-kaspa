@@ -717,10 +717,10 @@ impl MiningManager {
             let _swo = Stopwatch::<60>::with_threshold("revalidate update_revalidated_transaction op");
             for (transaction, validation_result) in chunk {
                 let transaction_id = transaction.id();
-                // Only consider transactions still being in the mempool since during the validation some might have been removed.
-                if mempool.update_revalidated_transaction(transaction) {
-                    match validation_result {
-                        Ok(()) => {
+                match validation_result {
+                    Ok(()) => {
+                        // Only consider transactions still being in the mempool since during the validation some might have been removed.
+                        if mempool.update_revalidated_transaction(transaction) {
                             // A following transaction should not remove this one from the pool since we process in a topological order.
                             // Still, considering the (very unlikely) scenario of two high priority txs sandwiching a low one, where
                             // in this case topological order is not guaranteed since we only considered chained dependencies of
@@ -729,66 +729,55 @@ impl MiningManager {
                             // provided upon request.
                             valid_ids.push(transaction_id);
                             valid += 1;
+                        } else {
+                            other += 1;
                         }
-                        Err(RuleError::RejectMissingOutpoint) => {
-                            let transaction = mempool.get_transaction(&transaction_id, TransactionQuery::TransactionsOnly).unwrap();
-                            let missing_txs = transaction
-                                .entries
-                                .iter()
-                                .zip(transaction.tx.inputs.iter())
-                                .flat_map(
-                                    |(entry, input)| {
-                                        if entry.is_none() {
-                                            Some(input.previous_outpoint.transaction_id)
-                                        } else {
-                                            None
-                                        }
-                                    },
-                                )
-                                .collect::<Vec<_>>();
+                    }
+                    Err(RuleError::RejectMissingOutpoint) => {
+                        let missing_txs = transaction
+                            .entries
+                            .iter()
+                            .zip(transaction.tx.inputs.iter())
+                            .filter_map(|(entry, input)| entry.is_none().then_some(input.previous_outpoint.transaction_id))
+                            .collect::<Vec<_>>();
 
-                            // A transaction may have missing outpoints for legitimate reasons related to concurrency, like a race condition between
-                            // an accepted block having not started yet or unfinished call to handle_new_block_transactions but already processed by
-                            // the consensus and this ongoing call to revalidate.
-                            //
-                            // So we only remove the transaction and keep its redeemers in the mempool because we cannot be sure they are invalid, in
-                            // fact in the race condition case they are valid regarding outpoints.
-                            let extra_info = match missing_txs.len() {
-                                0 => " but no missing tx!".to_string(), // this is never supposed to happen
-                                1 => format!(" missing tx {}", missing_txs[0]),
-                                n => format!(" with {} missing txs {}..{}", n, missing_txs[0], missing_txs.last().unwrap()),
-                            };
+                        // A transaction may have missing outpoints for legitimate reasons related to concurrency, like a race condition between
+                        // an accepted block having not started yet or unfinished call to handle_new_block_transactions but already processed by
+                        // the consensus and this ongoing call to revalidate.
+                        //
+                        // So we only remove the transaction and keep its redeemers in the mempool because we cannot be sure they are invalid, in
+                        // fact in the race condition case they are valid regarding outpoints.
+                        let extra_info = match missing_txs.len() {
+                            0 => " but no missing tx!".to_string(), // this is never supposed to happen
+                            1 => format!(" missing tx {}", missing_txs[0]),
+                            n => format!(" with {} missing txs {}..{}", n, missing_txs[0], missing_txs.last().unwrap()),
+                        };
 
-                            // This call cleanly removes the invalid transaction.
-                            let result = mempool.remove_transaction(
+                        // This call cleanly removes the invalid transaction.
+                        _ = mempool
+                            .remove_transaction(
                                 &transaction_id,
                                 false,
                                 TxRemovalReason::RevalidationWithMissingOutpoints,
                                 extra_info.as_str(),
-                            );
-                            if let Err(err) = result {
-                                warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err);
-                            }
-                            missing_outpoint += 1;
-                        }
-                        Err(err) => {
-                            // Rust rewrite note:
-                            // The behavior changes here compared to the golang version.
-                            // The failed revalidation is simply logged and the process continues.
-                            warn!(
-                                "Removing high priority transaction {0} and its redeemers, it failed revalidation with {1}",
-                                transaction_id, err
-                            );
-                            // This call cleanly removes the invalid transaction and its redeemers.
-                            let result = mempool.remove_transaction(&transaction_id, true, TxRemovalReason::Muted, "");
-                            if let Err(err) = result {
-                                warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err);
-                            }
-                            invalid += 1;
-                        }
+                            )
+                            .inspect_err(|err| warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err));
+                        missing_outpoint += 1;
                     }
-                } else {
-                    other += 1;
+                    Err(err) => {
+                        // Rust rewrite note:
+                        // The behavior changes here compared to the golang version.
+                        // The failed revalidation is simply logged and the process continues.
+                        warn!(
+                            "Removing high priority transaction {0} and its redeemers, it failed revalidation with {1}",
+                            transaction_id, err
+                        );
+                        // This call cleanly removes the invalid transaction and its redeemers.
+                        _ = mempool
+                            .remove_transaction(&transaction_id, true, TxRemovalReason::Muted, "")
+                            .inspect_err(|err| warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err));
+                        invalid += 1;
+                    }
                 }
             }
             if !valid_ids.is_empty() {
@@ -810,6 +799,12 @@ impl MiningManager {
                     missing_outpoint,
                     invalid,
                 );
+                if other > 0 {
+                    debug!(
+                        "During revalidation of high priority transactions {} txs were removed from the mempool by concurrent flows",
+                        other
+                    )
+                }
             }
         }
     }
