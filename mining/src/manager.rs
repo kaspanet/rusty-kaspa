@@ -799,6 +799,12 @@ impl MiningManager {
                     missing_outpoint,
                     invalid,
                 );
+                if other > 0 {
+                    debug!(
+                        "During revalidation of high priority transactions {} txs were removed from the mempool by concurrent flows",
+                        other
+                    )
+                }
             }
         }
     }
