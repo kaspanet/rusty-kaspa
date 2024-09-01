@@ -52,19 +52,27 @@ pub(crate) struct TransactionsPool {
     /// Mempool config
     config: Arc<Config>,
 
-    /// Store of transactions
+    /// Store of transactions.
+    /// Any mutable access to this map should be carefully reviewed for consistency with all other collections
+    /// and fields of this struct. In particular, `estimated_size` must reflect the exact sum of estimated size
+    /// for all current transactions in this collection.
     all_transactions: MempoolTransactionCollection,
+
     /// Transactions dependencies formed by inputs present in pool - ancestor relations.
     parent_transactions: TransactionsEdges,
+
     /// Transactions dependencies formed by outputs present in pool - successor relations.
     chained_transactions: TransactionsEdges,
+
     /// Transactions with no parents in the mempool -- ready to be inserted into a block template
     ready_transactions: Frontier,
 
     last_expire_scan_daa_score: u64,
+
     /// last expire scan time in milliseconds
     last_expire_scan_time: u64,
 
+    /// Sum of estimated size for all transactions currently held in `all_transactions`
     estimated_size: usize,
 
     /// Store of UTXOs
@@ -167,7 +175,23 @@ impl TransactionsPool {
         self.utxo_set.remove_transaction(&removed_tx.mtx, &parent_ids);
         self.estimated_size -= removed_tx.mtx.mempool_estimated_bytes();
 
+        if self.all_transactions.is_empty() {
+            assert_eq!(0, self.estimated_size, "Sanity test -- if tx pool is empty, estimated byte size should be zero");
+        }
+
         Ok(removed_tx)
+    }
+
+    pub(crate) fn update_revalidated_transaction(&mut self, transaction: MutableTransaction) -> bool {
+        if let Some(tx) = self.all_transactions.get_mut(&transaction.id()) {
+            // Make sure to update the overall estimated size since the updated transaction might have a different size
+            self.estimated_size -= tx.mtx.mempool_estimated_bytes();
+            tx.mtx = transaction;
+            self.estimated_size += tx.mtx.mempool_estimated_bytes();
+            true
+        } else {
+            false
+        }
     }
 
     pub(crate) fn ready_transaction_count(&self) -> usize {
@@ -338,9 +362,5 @@ impl Pool for TransactionsPool {
     #[inline]
     fn chained(&self) -> &TransactionsEdges {
         &self.chained_transactions
-    }
-
-    fn get_mut(&mut self, transaction_id: &TransactionId) -> Option<&mut MempoolTransaction> {
-        self.all_transactions.get_mut(transaction_id)
     }
 }
