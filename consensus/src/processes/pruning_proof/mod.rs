@@ -1048,8 +1048,8 @@ impl PruningProofManager {
                 let root = roots_by_level[level];
                 // (Old Logic) This is the root we can calculate given that the GD records are already filled
                 // The root calc logic below is the original logic before the on-demand higher level GD calculation
-                // We only need depth_based_root to sanity check the new logic
-                let depth_based_root = if level != self.max_block_level as usize {
+                // We only need old_root to sanity check the new logic
+                let old_root = if level != self.max_block_level as usize {
                     let block_at_depth_m_at_next_level = self
                         .block_at_depth(&*ghostdag_stores[level + 1], selected_tip_by_level[level + 1], self.pruning_proof_m)
                         .map_err(|err| format!("level + 1: {}, err: {}", level + 1, err))
@@ -1071,8 +1071,8 @@ impl PruningProofManager {
                     block_at_depth_2m
                 };
 
-                // new root is expected to be always an ancestor of depth_based_root because new root takes a safety margin
-                assert!(self.reachability_service.is_dag_ancestor_of(root, depth_based_root));
+                // new root is expected to be always an ancestor of old_root because new root takes a safety margin
+                assert!(self.reachability_service.is_dag_ancestor_of(root, old_root));
 
                 let mut headers = Vec::with_capacity(2 * self.pruning_proof_m as usize);
                 let mut queue = BinaryHeap::<Reverse<SortableBlock>>::new();
