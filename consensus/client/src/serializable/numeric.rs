@@ -223,6 +223,8 @@ pub struct SerializableTransaction {
     pub outputs: Vec<SerializableTransactionOutput>,
     pub lock_time: u64,
     pub gas: u64,
+    #[serde(default)]
+    pub mass: u64,
     pub subnetwork_id: SubnetworkId,
     #[serde(with = "hex::serde")]
     pub payload: Vec<u8>,
@@ -265,6 +267,7 @@ impl SerializableTransaction {
             lock_time: transaction.lock_time,
             subnetwork_id: transaction.subnetwork_id.clone(),
             gas: transaction.gas,
+            mass: transaction.mass(),
             payload: transaction.payload.clone(),
             id: transaction.id(),
         })
@@ -284,6 +287,7 @@ impl SerializableTransaction {
             subnetwork_id: inner.subnetwork_id.clone(),
             gas: inner.gas,
             payload: inner.payload.clone(),
+            mass: inner.mass,
             id: inner.id,
         })
     }
@@ -311,6 +315,7 @@ impl SerializableTransaction {
             lock_time: transaction.lock_time,
             subnetwork_id: transaction.subnetwork_id.clone(),
             gas: transaction.gas,
+            mass: transaction.mass(),
             payload: transaction.payload.clone(),
         })
     }
@@ -336,7 +341,8 @@ impl TryFrom<SerializableTransaction> for cctx::SignableTransaction {
             serializable.subnetwork_id,
             serializable.gas,
             serializable.payload,
-        );
+        )
+        .with_mass(serializable.mass);
 
         Ok(Self::with_entries(tx, entries))
     }
@@ -349,6 +355,6 @@ impl TryFrom<SerializableTransaction> for Transaction {
         let inputs: Vec<TransactionInput> = tx.inputs.iter().map(TryInto::try_into).collect::<Result<Vec<_>>>()?;
         let outputs: Vec<TransactionOutput> = tx.outputs.iter().map(TryInto::try_into).collect::<Result<Vec<_>>>()?;
 
-        Transaction::new(Some(id), tx.version, inputs, outputs, tx.lock_time, tx.subnetwork_id, tx.gas, tx.payload)
+        Transaction::new(Some(id), tx.version, inputs, outputs, tx.lock_time, tx.subnetwork_id, tx.gas, tx.payload, tx.mass)
     }
 }
