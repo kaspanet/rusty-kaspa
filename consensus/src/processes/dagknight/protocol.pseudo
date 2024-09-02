@@ -5,22 +5,22 @@ Assume arrays of accurate sizes past_blues, past_reds, anticone_blues for each b
 Assume an array L of lower bounds of red anticone sizes
 
 Invariant: 
-    L[i] <= |(G \ U) \cap anticone(i)| = |anticone_reds(i)|
+    L[i] ≤ |(G \ U) ⋂ anticone(i)| = |anticone_reds(i)|
 
 Definition:
 
-score_i =  |U \cap future(i)|                           - |(G \ U) \cap future(i)|
+score_i =  |U ⋂ future(i)|                              - |(G \ U) ⋂ future(i)|
         =  |future_blues(i)|                            - |future_reds(i)|
         =  |U| - past_blues[i] - anticone_blues[i] - 1  - (|(G \ U)| - past_reds[i] - |anticone_reds(i)| - 1)
         =  |U| - past_blues[i] - anticone_blues[i]      - (|(G \ U)| - past_reds[i] - |anticone_reds(i)|)
-        >= |U| - past_blues[i] - anticone_blues[i]      - (|(G \ U)| - past_reds[i] - L[i])
+        ≥  |U| - past_blues[i] - anticone_blues[i]      - (|(G \ U)| - past_reds[i] - L[i])
 
 Denote the score lower bound:
 
 floor_i := |U| - past_blues[i] - anticone_blues[i]      - (|(G \ U)| - past_reds[i] - L[i])
 
 So
-    floor_i <= score_i
+    floor_i ≤ score_i
 
 Observe that floor[i] is accessible via arrays
 
@@ -28,13 +28,13 @@ Observe that floor[i] is accessible via arrays
 
 Let vote_i be the result of the real vote algorithm
 
-Note that vote_i <= score_i (because blues can turn negative but not vice versa)
+Note that vote_i ≤ score_i (because blues can turn negative but not vice versa)
 
 
-Observation: if floor_i >= -d for all i, then we are done
+Observation: if floor_i ≥ -d for all i, then we are done
 
 Proof:
-    There are no negative blues so vote_i = score_i >= floor_i >= -d
+    There are no negative blues so vote_i = score_i ≥ floor_i ≥ -d
 
 
 ---------------------------------------------------
