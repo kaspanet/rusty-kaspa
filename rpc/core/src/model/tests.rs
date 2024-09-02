@@ -235,7 +235,13 @@ mod mockery {
 
     impl Mock for RpcTransactionVerboseData {
         fn mock() -> Self {
-            RpcTransactionVerboseData { transaction_id: mock(), hash: mock(), mass: mock(), block_hash: mock(), block_time: mock() }
+            RpcTransactionVerboseData {
+                transaction_id: mock(),
+                hash: mock(),
+                compute_mass: mock(),
+                block_hash: mock(),
+                block_time: mock(),
+            }
         }
     }
 

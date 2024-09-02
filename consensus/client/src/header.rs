@@ -32,11 +32,34 @@ export interface IHeader {
     blueScore: bigint;
     pruningPoint: HexString;
 }
+
+/**
+ * Interface defining the structure of a raw block header.
+ * 
+ * This interface is explicitly used by GetBlockTemplate and SubmitBlock RPCs
+ * and unlike `IHeader`, does not include a hash.
+ * 
+ * @category Consensus
+ */
+export interface IRawHeader {
+    version: number;
+    parentsByLevel: Array<Array<HexString>>;
+    hashMerkleRoot: HexString;
+    acceptedIdMerkleRoot: HexString;
+    utxoCommitment: HexString;
+    timestamp: bigint;
+    bits: number;
+    nonce: bigint;
+    daaScore: bigint;
+    blueWork: bigint | HexString;
+    blueScore: bigint;
+    pruningPoint: HexString;
+}
 "#;
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(typescript_type = "IHeader | Header")]
+    #[wasm_bindgen(typescript_type = "Header | IHeader | IRawHeader")]
     pub type HeaderT;
 }
 

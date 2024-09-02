@@ -158,6 +158,21 @@ cfg_if::cfg_if! {
             mergeSetRedsHashes: HexString[];
             isChainBlock: boolean;
         }
+
+        /**
+         * Interface defining the structure of a raw block.
+         * 
+         * Raw block is a structure used by GetBlockTemplate and SubmitBlock RPCs
+         * and differs from `IBlock` in that it does not include verbose data and carries
+         * `IRawHeader` that does not include a cached block hash.
+         * 
+         * @category Consensus
+         */
+        export interface IRawBlock {
+            header: IRawHeader;
+            transactions: ITransaction[];
+        }
+
         "#;
     }
 }

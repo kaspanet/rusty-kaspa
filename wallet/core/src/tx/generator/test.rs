@@ -170,11 +170,10 @@ fn validate(pt: &PendingTransaction) {
 
     let calc = MassCalculator::new(&pt.network_type().into(), network_params);
     let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass() };
-    let compute_mass = calc.calc_compute_mass_for_signed_transaction(&tx, 1);
+    let compute_mass = calc.calc_compute_mass_for_unsigned_consensus_transaction(&tx, pt.minimum_signatures());
 
     let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
     let storage_mass = calc.calc_storage_mass_for_transaction_parts(&utxo_entries, &tx.outputs).unwrap_or_default();
-
     let calculated_mass = calc.combine_mass(compute_mass, storage_mass) + additional_mass;
 
     assert_eq!(pt.inner.mass, calculated_mass, "pending transaction mass does not match calculated mass");
@@ -201,17 +200,12 @@ where
     let calc = MassCalculator::new(&pt.network_type().into(), network_params);
     let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass() };
 
-    let compute_mass = calc.calc_compute_mass_for_signed_transaction(&tx, 1);
+    let compute_mass = calc.calc_compute_mass_for_unsigned_consensus_transaction(&tx, pt.minimum_signatures());
 
     let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
     let storage_mass = calc.calc_storage_mass_for_transaction_parts(&utxo_entries, &tx.outputs).unwrap_or_default();
     if DISPLAY_LOGS && storage_mass != 0 {
-        println!(
-            "calculated storage mass: {} calculated_compute_mass: {} total: {}",
-            storage_mass,
-            compute_mass,
-            storage_mass + compute_mass
-        );
+        println!("calculated storage mass: {} calculated_compute_mass: {}", storage_mass, compute_mass,);
     }
 
     let calculated_mass = calc.combine_mass(compute_mass, storage_mass) + additional_mass;

@@ -28,12 +28,18 @@ pub(crate) struct PendingTransactionInner {
     pub(crate) is_submitted: AtomicBool,
     /// Payment value of the transaction (transaction destination amount)
     pub(crate) payment_value: Option<u64>,
+    /// The index (position) of the change output in the transaction
+    pub(crate) change_output_index: Option<usize>,
     /// Change value of the transaction (transaction change amount)
     pub(crate) change_output_value: u64,
     /// Total aggregate value of all inputs
     pub(crate) aggregate_input_value: u64,
     /// Total aggregate value of all outputs
     pub(crate) aggregate_output_value: u64,
+    /// Minimum number of signatures required for the transaction
+    /// (passed in during transaction creation). This value is used
+    /// to estimate the mass of the transaction.
+    pub(crate) minimum_signatures: u16,
     // Transaction mass
     pub(crate) mass: u64,
     /// Fees of the transaction
@@ -49,8 +55,10 @@ impl std::fmt::Debug for PendingTransaction {
             .field("utxo_entries", &self.inner.utxo_entries)
             .field("addresses", &self.inner.addresses)
             .field("payment_value", &self.inner.payment_value)
+            .field("change_output_index", &self.inner.change_output_index)
             .field("change_output_value", &self.inner.change_output_value)
             .field("aggregate_input_value", &self.inner.aggregate_input_value)
+            .field("minimum_signatures", &self.inner.minimum_signatures)
             .field("mass", &self.inner.mass)
             .field("fees", &self.inner.fees)
             .field("kind", &self.inner.kind)
@@ -75,9 +83,11 @@ impl PendingTransaction {
         utxo_entries: Vec<UtxoEntryReference>,
         addresses: Vec<Address>,
         payment_value: Option<u64>,
+        change_output_index: Option<usize>,
         change_output_value: u64,
         aggregate_input_value: u64,
         aggregate_output_value: u64,
+        minimum_signatures: u16,
         mass: u64,
         fees: u64,
         kind: DataKind,
@@ -95,9 +105,11 @@ impl PendingTransaction {
                 addresses,
                 is_submitted: AtomicBool::new(false),
                 payment_value,
+                change_output_index,
                 change_output_value,
                 aggregate_input_value,
                 aggregate_output_value,
+                minimum_signatures,
                 mass,
                 fees,
                 kind,
@@ -135,6 +147,14 @@ impl PendingTransaction {
         self.inner.fees
     }
 
+    pub fn mass(&self) -> u64 {
+        self.inner.mass
+    }
+
+    pub fn minimum_signatures(&self) -> u16 {
+        self.inner.minimum_signatures
+    }
+
     pub fn aggregate_input_value(&self) -> u64 {
         self.inner.aggregate_input_value
     }
@@ -145,6 +165,10 @@ impl PendingTransaction {
 
     pub fn payment_value(&self) -> Option<u64> {
         self.inner.payment_value
+    }
+
+    pub fn change_output_index(&self) -> Option<usize> {
+        self.inner.change_output_index
     }
 
     pub fn change_value(&self) -> u64 {

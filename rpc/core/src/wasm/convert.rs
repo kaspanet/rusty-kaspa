@@ -67,7 +67,7 @@ cfg_if::cfg_if! {
                     subnetwork_id: inner.subnetwork_id.clone(),
                     gas: inner.gas,
                     payload: inner.payload.clone(),
-                    mass: 0, // TODO: apply mass to all external APIs including wasm
+                    mass: tx.get_mass(),
                     verbose_data: None,
                 }
             }

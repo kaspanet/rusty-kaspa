@@ -332,7 +332,7 @@ impl Deserializer for RpcTransaction {
 pub struct RpcTransactionVerboseData {
     pub transaction_id: RpcTransactionId,
     pub hash: RpcHash,
-    pub mass: u64,
+    pub compute_mass: u64,
     pub block_hash: RpcHash,
     pub block_time: u64,
 }
@@ -342,7 +342,7 @@ impl Serializer for RpcTransactionVerboseData {
         store!(u8, &1, writer)?;
         store!(RpcTransactionId, &self.transaction_id, writer)?;
         store!(RpcHash, &self.hash, writer)?;
-        store!(u64, &self.mass, writer)?;
+        store!(u64, &self.compute_mass, writer)?;
         store!(RpcHash, &self.block_hash, writer)?;
         store!(u64, &self.block_time, writer)?;
 
@@ -355,11 +355,11 @@ impl Deserializer for RpcTransactionVerboseData {
         let _version = load!(u8, reader)?;
         let transaction_id = load!(RpcTransactionId, reader)?;
         let hash = load!(RpcHash, reader)?;
-        let mass = load!(u64, reader)?;
+        let compute_mass = load!(u64, reader)?;
         let block_hash = load!(RpcHash, reader)?;
         let block_time = load!(u64, reader)?;
 
-        Ok(Self { transaction_id, hash, mass, block_hash, block_time })
+        Ok(Self { transaction_id, hash, compute_mass, block_hash, block_time })
     }
 }
 

@@ -81,9 +81,13 @@ impl PublicKey {
 
     #[inline]
     pub fn to_address_ecdsa(&self, network_type: NetworkType) -> Result<Address> {
-        let payload = &self.xonly_public_key.serialize();
-        let address = Address::new(network_type.into(), AddressVersion::PubKeyECDSA, payload);
-        Ok(address)
+        if let Some(public_key) = self.public_key.as_ref() {
+            let payload = &public_key.serialize();
+            let address = Address::new(network_type.into(), AddressVersion::PubKeyECDSA, payload);
+            Ok(address)
+        } else {
+            Err(Error::InvalidXOnlyPublicKeyForECDSA)
+        }
     }
 }
 
