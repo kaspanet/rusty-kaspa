@@ -230,6 +230,11 @@ impl Transaction {
     pub fn mass(&self) -> u64 {
         self.mass.0.load(SeqCst)
     }
+
+    pub fn with_mass(self, mass: u64) -> Self {
+        self.set_mass(mass);
+        self
+    }
 }
 
 impl MemSizeEstimator for Transaction {
