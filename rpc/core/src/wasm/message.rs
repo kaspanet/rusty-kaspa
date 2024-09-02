@@ -845,7 +845,7 @@ declare! {
      * @category Node RPC
      */
     export interface IGetBlockTemplateResponse {
-        block : IBlock;
+        block : IRawBlock;
     }
     "#,
 }
@@ -1301,7 +1301,7 @@ declare! {
      * @category Node RPC
      */
     export interface ISubmitBlockRequest {
-        block : IBlock;
+        block : IRawBlock;
         allowNonDAABlocks: boolean;
     }
     "#,
