@@ -219,6 +219,8 @@ pub struct SerializableTransaction {
     pub subnetwork_id: SubnetworkId,
     pub lock_time: String,
     pub gas: String,
+    #[serde(default)]
+    pub mass: String,
     #[serde(with = "hex::serde")]
     pub payload: Vec<u8>,
 }
@@ -260,6 +262,7 @@ impl SerializableTransaction {
             lock_time: transaction.lock_time.to_string(),
             subnetwork_id: transaction.subnetwork_id.clone(),
             gas: transaction.gas.to_string(),
+            mass: transaction.mass().to_string(),
             payload: transaction.payload.clone(),
         })
     }
@@ -277,6 +280,7 @@ impl SerializableTransaction {
             lock_time: inner.lock_time.to_string(),
             subnetwork_id: inner.subnetwork_id.clone(),
             gas: inner.gas.to_string(),
+            mass: inner.mass.to_string(),
             payload: inner.payload.clone(),
             id: inner.id,
         })
@@ -305,6 +309,7 @@ impl SerializableTransaction {
             lock_time: transaction.lock_time.to_string(),
             subnetwork_id: transaction.subnetwork_id.clone(),
             gas: transaction.gas.to_string(),
+            mass: transaction.mass().to_string(),
             payload: transaction.payload.clone(),
         })
     }
@@ -330,7 +335,8 @@ impl TryFrom<SerializableTransaction> for cctx::SignableTransaction {
             signable.subnetwork_id,
             signable.gas.parse()?,
             signable.payload,
-        );
+        )
+        .with_mass(signable.mass.parse().unwrap_or_default());
 
         Ok(Self::with_entries(tx, entries))
     }
@@ -343,6 +349,16 @@ impl TryFrom<SerializableTransaction> for crate::Transaction {
         let inputs: Vec<TransactionInput> = tx.inputs.iter().map(TryInto::try_into).collect::<Result<Vec<_>>>()?;
         let outputs: Vec<TransactionOutput> = tx.outputs.iter().map(TryInto::try_into).collect::<Result<Vec<_>>>()?;
 
-        Transaction::new(Some(id), tx.version, inputs, outputs, tx.lock_time.parse()?, tx.subnetwork_id, tx.gas.parse()?, tx.payload)
+        Transaction::new(
+            Some(id),
+            tx.version,
+            inputs,
+            outputs,
+            tx.lock_time.parse()?,
+            tx.subnetwork_id,
+            tx.gas.parse()?,
+            tx.payload,
+            tx.mass.parse().unwrap_or_default(),
+        )
     }
 }

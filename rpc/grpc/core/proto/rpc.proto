@@ -101,7 +101,7 @@ message RpcUtxoEntry {
 message RpcTransactionVerboseData{
   string transactionId = 1;
   string hash = 2;
-  uint64 mass = 4;
+  uint64 computeMass = 4;
   string blockHash = 12;
   uint64 blockTime = 14;
 }
