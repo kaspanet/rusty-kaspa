@@ -28,12 +28,18 @@ pub(crate) struct PendingTransactionInner {
     pub(crate) is_submitted: AtomicBool,
     /// Payment value of the transaction (transaction destination amount)
     pub(crate) payment_value: Option<u64>,
+    /// The index (position) of the change output in the transaction
+    pub(crate) change_output_index: Option<usize>,
     /// Change value of the transaction (transaction change amount)
     pub(crate) change_output_value: u64,
     /// Total aggregate value of all inputs
     pub(crate) aggregate_input_value: u64,
     /// Total aggregate value of all outputs
     pub(crate) aggregate_output_value: u64,
+    /// Minimum number of signatures required for the transaction
+    /// (passed in during transaction creation). This value is used
+    /// to estimate the mass of the transaction.
+    pub(crate) minimum_signatures: u16,
     // Transaction mass
     pub(crate) mass: u64,
     /// Fees of the transaction
@@ -42,6 +48,29 @@ pub(crate) struct PendingTransactionInner {
     pub(crate) kind: DataKind,
 }
 
+
+// impl Clone for PendingTransactionInner {
+//     fn clone(&self) -> Self {
+//         Self {
+//             generator: self.generator.clone(),
+//             utxo_entries: self.utxo_entries.clone(),
+//             id: self.id,
+//             signable_tx: Mutex::new(self.signable_tx.lock().unwrap().clone()),
+//             addresses: self.addresses.clone(),
+//             is_submitted: AtomicBool::new(self.is_submitted.load(Ordering::SeqCst)),
+//             payment_value: self.payment_value,
+//             change_output_index: self.change_output_index,
+//             change_output_value: self.change_output_value,
+//             aggregate_input_value: self.aggregate_input_value,
+//             aggregate_output_value: self.aggregate_output_value,
+//             minimum_signatures: self.minimum_signatures,
+//             mass: self.mass,
+//             fees: self.fees,
+//             kind: self.kind,
+//         }
+//     }
+// }
+
 impl std::fmt::Debug for PendingTransaction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let transaction = self.transaction();
@@ -49,8 +78,10 @@ impl std::fmt::Debug for PendingTransaction {
             .field("utxo_entries", &self.inner.utxo_entries)
             .field("addresses", &self.inner.addresses)
             .field("payment_value", &self.inner.payment_value)
+            .field("change_output_index", &self.inner.change_output_index)
             .field("change_output_value", &self.inner.change_output_value)
             .field("aggregate_input_value", &self.inner.aggregate_input_value)
+            .field("minimum_signatures", &self.inner.minimum_signatures)
             .field("mass", &self.inner.mass)
             .field("fees", &self.inner.fees)
             .field("kind", &self.inner.kind)
@@ -75,9 +106,11 @@ impl PendingTransaction {
         utxo_entries: Vec<UtxoEntryReference>,
         addresses: Vec<Address>,
         payment_value: Option<u64>,
+        change_output_index: Option<usize>,
         change_output_value: u64,
         aggregate_input_value: u64,
         aggregate_output_value: u64,
+        minimum_signatures: u16,
         mass: u64,
         fees: u64,
         kind: DataKind,
@@ -95,9 +128,11 @@ impl PendingTransaction {
                 addresses,
                 is_submitted: AtomicBool::new(false),
                 payment_value,
+                change_output_index,
                 change_output_value,
                 aggregate_input_value,
                 aggregate_output_value,
+                minimum_signatures,
                 mass,
                 fees,
                 kind,
@@ -135,6 +170,14 @@ impl PendingTransaction {
         self.inner.fees
     }
 
+    pub fn mass(&self) -> u64 {
+        self.inner.mass
+    }
+
+    pub fn minimum_signatures(&self) -> u16 {
+        self.inner.minimum_signatures
+    }
+
     pub fn aggregate_input_value(&self) -> u64 {
         self.inner.aggregate_input_value
     }
@@ -145,6 +188,10 @@ impl PendingTransaction {
 
     pub fn payment_value(&self) -> Option<u64> {
         self.inner.payment_value
+    }
+
+    pub fn change_output_index(&self) -> Option<usize> {
+        self.inner.change_output_index
     }
 
     pub fn change_value(&self) -> u64 {
@@ -270,5 +317,101 @@ impl PendingTransaction {
 
         *self.inner.signable_tx.lock().unwrap() = signed_tx;
         Ok(())
+    }
+
+    pub fn increase_fees(&self, fee_increase: u64) -> Result<PendingTransaction> {
+        if self.is_batch() {
+
+            Err(Error::NotImplemented)
+        } else {
+
+            let PendingTransactionInner { 
+                generator,
+                utxo_entries,
+                id,
+                signable_tx,
+                addresses,
+                is_submitted,
+                payment_value,
+                change_output_index,
+                change_output_value,
+                aggregate_input_value,
+                aggregate_output_value,
+                minimum_signatures,
+                mass,
+                fees,
+                kind,
+            } = &*self.inner;
+
+            let generator = generator.clone();
+            let utxo_entries = utxo_entries.clone();
+            let id = *id;
+            let signable_tx = Mutex::new(signable_tx.lock()?.clone());
+            let addresses = addresses.clone();
+            let is_submitted = AtomicBool::new(is_submitted.load(Ordering::SeqCst));
+            let payment_value = *payment_value;
+            let change_output_index = *change_output_index;
+            let change_output_value = *change_output_value;
+            let aggregate_input_value = *aggregate_input_value;
+            let aggregate_output_value = *aggregate_output_value;
+            let minimum_signatures = *minimum_signatures;
+            let mass = *mass;
+            let fees = *fees;
+            let kind = *kind;
+
+            if change_output_value > fees {
+
+                // let mut inner = self.inner.deref().clone();
+                // Ok(PendingTransaction(Arc::new(inner)))
+
+                let inner = PendingTransactionInner { 
+                    generator,
+                    utxo_entries,
+                    id,
+                    signable_tx,
+                    addresses,
+                    is_submitted,
+                    payment_value,
+                    change_output_index,
+                    change_output_value,
+                    aggregate_input_value,
+                    aggregate_output_value,
+                    minimum_signatures,
+                    mass,
+                    fees,
+                    kind,
+                };
+
+                Ok(PendingTransaction { inner : Arc::new(inner) })
+
+            } else {
+
+                let inner = PendingTransactionInner { 
+                    generator,
+                    utxo_entries,
+                    id,
+                    signable_tx,
+                    addresses,
+                    is_submitted,
+                    payment_value,
+                    change_output_index,
+                    change_output_value,
+                    aggregate_input_value,
+                    aggregate_output_value,
+                    minimum_signatures,
+                    mass,
+                    fees,
+                    kind,
+                };
+
+                Ok(PendingTransaction { inner : Arc::new(inner) })
+            }
+
+
+        }
+        // let mut mutable_tx = self.inner.signable_tx.lock()?.clone();
+        // mutable_tx.tx.fee += fees;
+        // *self.inner.signable_tx.lock().unwrap() = mutable_tx;
+
     }
 }
