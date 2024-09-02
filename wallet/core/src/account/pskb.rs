@@ -341,7 +341,7 @@ pub fn pskt_to_pending_transaction(
     // Create the Generator
     let generator = Generator::try_new(settings, None, None)?;
 
-    // Create PendingTransaction
+    // Create PendingTransaction (WIP)
     let pending_tx = PendingTransaction::try_new(
         &generator,
         signed_tx.clone(),
@@ -351,6 +351,7 @@ pub fn pskt_to_pending_transaction(
         0,
         0,
         0,
+        1,
         0,
         0,
         kaspa_wallet_core::tx::DataKind::Final,

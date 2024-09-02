@@ -278,7 +278,6 @@ struct Inner {
     // typically a number of keys required to sign the transaction
     sig_op_count: u8,
     // number of minimum signatures required to sign the transaction
-    #[allow(dead_code)]
     minimum_signatures: u16,
     // change address
     change_address: Address,
@@ -402,10 +401,11 @@ impl Generator {
             return Err(Error::GeneratorChangeAddressNetworkTypeMismatch);
         }
 
-        let standard_change_output_mass =
-            mass_calculator.calc_compute_mass_for_output(&TransactionOutput::new(0, pay_to_address_script(&change_address)));
+        let standard_change_output_mass = mass_calculator
+            .calc_compute_mass_for_client_transaction_output(&TransactionOutput::new(0, pay_to_address_script(&change_address)));
         let signature_mass_per_input = mass_calculator.calc_compute_mass_for_signature(minimum_signatures);
-        let final_transaction_outputs_compute_mass = mass_calculator.calc_compute_mass_for_outputs(&final_transaction_outputs);
+        let final_transaction_outputs_compute_mass =
+            mass_calculator.calc_compute_mass_for_client_transaction_outputs(&final_transaction_outputs);
         let final_transaction_payload = final_transaction_payload.unwrap_or_default();
         let final_transaction_payload_mass = mass_calculator.calc_compute_mass_for_payload(final_transaction_payload.len());
         let final_transaction_outputs_harmonic =
@@ -663,7 +663,7 @@ impl Generator {
 
         let input = TransactionInput::new(utxo.outpoint.clone().into(), vec![], 0, self.inner.sig_op_count);
         let input_amount = utxo.amount();
-        let input_compute_mass = calc.calc_compute_mass_for_input(&input) + self.inner.signature_mass_per_input;
+        let input_compute_mass = calc.calc_compute_mass_for_client_transaction_input(&input) + self.inner.signature_mass_per_input;
 
         // NOTE: relay transactions have no storage mass
         // mass threshold reached, yield transaction
@@ -879,8 +879,8 @@ impl Generator {
                     if storage_mass_with_change < storage_mass_no_change {
                         storage_mass_with_change
                     } else {
-                        let fees_with_change = calc.calc_fee_for_storage_mass(storage_mass_with_change);
-                        let fees_no_change = calc.calc_fee_for_storage_mass(storage_mass_no_change);
+                        let fees_with_change = calc.calc_fee_for_mass(storage_mass_with_change);
+                        let fees_no_change = calc.calc_fee_for_mass(storage_mass_no_change);
                         let difference = fees_with_change.saturating_sub(fees_no_change);
 
                         if difference > change_value {
@@ -976,7 +976,7 @@ impl Generator {
                     addresses,
                     aggregate_input_value,
                     change_output_value,
-                    aggregate_mass,
+                    aggregate_mass: _,
                     transaction_fees,
                     ..
                 } = data;
@@ -984,7 +984,6 @@ impl Generator {
                 let change_output_value = change_output_value.unwrap_or(0);
 
                 let mut final_outputs = self.inner.final_transaction_outputs.clone();
-                // let mut final_outputs = context.final_transaction_outputs.clone();
 
                 if self.inner.final_transaction_priority_fee.receiver_pays() {
                     let output = final_outputs.get_mut(0).expect("include fees requires one output");
@@ -1020,6 +1019,17 @@ impl Generator {
                     self.inner.final_transaction_payload.clone(),
                 );
 
+                let transaction_mass = self.inner.mass_calculator.calc_overall_mass_for_unsigned_consensus_transaction(
+                    &tx,
+                    &utxo_entry_references,
+                    self.inner.minimum_signatures,
+                )?;
+                if transaction_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
+                    // this should never occur as we should not produce transactions higher than the mass limit
+                    return Err(Error::MassCalculationError);
+                }
+                tx.set_mass(transaction_mass);
+
                 context.final_transaction_id = Some(tx.id());
                 context.number_of_transactions += 1;
 
@@ -1032,7 +1042,8 @@ impl Generator {
                     change_output_value,
                     aggregate_input_value,
                     aggregate_output_value,
-                    aggregate_mass,
+                    self.inner.minimum_signatures,
+                    transaction_mass,
                     transaction_fees,
                     kind,
                 )?))
@@ -1043,7 +1054,7 @@ impl Generator {
                     utxo_entry_references,
                     addresses,
                     aggregate_input_value,
-                    aggregate_mass,
+                    aggregate_mass: _,
                     transaction_fees,
                     change_output_value,
                     ..
@@ -1055,22 +1066,35 @@ impl Generator {
                 let script_public_key = pay_to_address_script(&self.inner.change_address);
                 let output = TransactionOutput::new(output_value, script_public_key.clone());
                 let tx = Transaction::new(0, inputs, vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+
+                let mut transaction_mass = self.inner.mass_calculator.calc_overall_mass_for_unsigned_consensus_transaction(
+                    &tx,
+                    &utxo_entry_references,
+                    self.inner.minimum_signatures,
+                )?;
+                transaction_mass = transaction_mass.saturating_add(self.inner.network_params.additional_compound_transaction_mass());
+                if transaction_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
+                    // this should never occur as we should not produce transactions higher than the mass limit
+                    return Err(Error::MassCalculationError);
+                }
+                tx.set_mass(transaction_mass);
+
                 context.number_of_transactions += 1;
 
-                let utxo_entry_reference =
+                let previous_batch_utxo_entry_reference =
                     Self::create_batch_utxo_entry_reference(tx.id(), output_value, script_public_key, &self.inner.change_address);
 
                 match kind {
                     DataKind::Node => {
                         // store resulting UTXO in the current stage
                         let stage = context.stage.as_mut().unwrap();
-                        stage.utxo_accumulator.push(utxo_entry_reference);
+                        stage.utxo_accumulator.push(previous_batch_utxo_entry_reference);
                         stage.number_of_transactions += 1;
                     }
                     DataKind::Edge => {
                         // store resulting UTXO in the current stage and create a new stage
                         let mut stage = context.stage.take().unwrap();
-                        stage.utxo_accumulator.push(utxo_entry_reference);
+                        stage.utxo_accumulator.push(previous_batch_utxo_entry_reference);
                         stage.number_of_transactions += 1;
                         context.stage.replace(Box::new(Stage::new(*stage)));
                     }
@@ -1086,7 +1110,8 @@ impl Generator {
                     output_value,
                     aggregate_input_value,
                     output_value,
-                    aggregate_mass,
+                    self.inner.minimum_signatures,
+                    transaction_mass,
                     transaction_fees,
                     kind,
                 )?))

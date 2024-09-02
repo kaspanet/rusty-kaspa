@@ -1,4 +1,5 @@
 use crate::{
+    config::params::Params,
     subnets::SUBNETWORK_ID_SIZE,
     tx::{Transaction, TransactionInput, TransactionOutput, VerifiableTransaction},
 };
@@ -85,6 +86,15 @@ pub struct MassCalculator {
 impl MassCalculator {
     pub fn new(mass_per_tx_byte: u64, mass_per_script_pub_key_byte: u64, mass_per_sig_op: u64, storage_mass_parameter: u64) -> Self {
         Self { mass_per_tx_byte, mass_per_script_pub_key_byte, mass_per_sig_op, storage_mass_parameter }
+    }
+
+    pub fn new_with_consensus_params(consensus_params: &Params) -> Self {
+        Self {
+            mass_per_tx_byte: consensus_params.mass_per_tx_byte,
+            mass_per_script_pub_key_byte: consensus_params.mass_per_script_pub_key_byte,
+            mass_per_sig_op: consensus_params.mass_per_sig_op,
+            storage_mass_parameter: consensus_params.storage_mass_parameter,
+        }
     }
 
     /// Calculates the compute mass of this transaction. This does not include the storage mass calculation below which
