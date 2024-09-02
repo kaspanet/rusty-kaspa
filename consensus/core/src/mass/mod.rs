@@ -4,11 +4,6 @@ use crate::{
     tx::{Transaction, TransactionInput, TransactionOutput, VerifiableTransaction},
 };
 use kaspa_hashes::HASH_SIZE;
-// pub use crate::mass::Kip9Version;
-// use crate::{
-// mass::transaction_estimated_serialized_size,
-// tx::{Transaction, VerifiableTransaction},
-// };
 
 /// Temp enum for the transition phases of KIP9
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -73,8 +68,9 @@ pub fn transaction_output_estimated_serialized_size(output: &TransactionOutput) 
     size
 }
 
-// TODO (aspect) - review and potentially merge this with the new MassCalculator currently located in the wallet core
-// (i.e. migrate mass calculator from wallet core here or to consensus core)
+// Note: consensus mass calculator operates on signed transactions.
+// To calculate mass for unsigned transactions, please use
+// `kaspa_wallet_core::tx::mass::MassCalculator`
 #[derive(Clone)]
 pub struct MassCalculator {
     mass_per_tx_byte: u64,

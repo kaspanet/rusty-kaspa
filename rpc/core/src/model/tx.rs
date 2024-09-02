@@ -355,11 +355,11 @@ impl Deserializer for RpcTransactionVerboseData {
         let _version = load!(u8, reader)?;
         let transaction_id = load!(RpcTransactionId, reader)?;
         let hash = load!(RpcHash, reader)?;
-        let mass = load!(u64, reader)?;
+        let compute_mass = load!(u64, reader)?;
         let block_hash = load!(RpcHash, reader)?;
         let block_time = load!(u64, reader)?;
 
-        Ok(Self { transaction_id, hash, compute_mass: mass, block_hash, block_time })
+        Ok(Self { transaction_id, hash, compute_mass, block_hash, block_time })
     }
 }
 
