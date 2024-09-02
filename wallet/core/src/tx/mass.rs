@@ -7,7 +7,7 @@ use crate::result::Result;
 use crate::utxo::NetworkParams;
 use kaspa_consensus_client as kcc;
 use kaspa_consensus_client::UtxoEntryReference;
-use kaspa_consensus_core::mass::Kip9Version;
+use kaspa_consensus_core::mass::{calc_storage_mass as consensus_calc_storage_mass, Kip9Version};
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput, SCRIPT_VECTOR_SIZE};
 use kaspa_consensus_core::{config::params::Params, constants::*, subnets::SUBNETWORK_ID_SIZE};
 use kaspa_hashes::HASH_SIZE;
@@ -333,59 +333,13 @@ impl MassCalculator {
         inputs: &[UtxoEntryReference],
         outputs: &[TransactionOutput],
     ) -> Option<u64> {
-        /* The code below computes the following formula:
-
-            max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
-
-        where C is the mass storage parameter, O is the set of output values, I is the set of
-        input values, H(S) := |S|/sum_{s in S} 1 / s is the harmonic mean over the set S and
-        A(S) := sum_{s in S} / |S| is the arithmetic mean.
-
-        See KIP-0009 for more details
-        */
-
-        // Since we are doing integer division, we perform the multiplication with C over the inner
-        // fractions, otherwise we'll get a sum of zeros or ones.
-        //
-        // If sum of fractions overflowed (nearly impossible, requires 10^7 outputs for C = 10^12),
-        // we return `None` indicating mass is incomputable
-        //
-        // Note: in theory this can be tighten by subtracting input mass in the process (possibly avoiding the overflow),
-        // however the overflow case is so unpractical with current mass limits so we avoid the hassle
-
-        let harmonic_outs = outputs
-            .iter()
-            .map(|out| self.storage_mass_parameter / out.value)
-            .try_fold(0u64, |total, current| total.checked_add(current))?; // C·|O|/H(O)
-
-        let outs_len = outputs.len() as u64;
-        let ins_len = inputs.len() as u64;
-
-        /*
-            KIP-0009 relaxed formula for the cases |O| = 1 OR |O| <= |I| <= 2:
-                max( 0 , C·( |O|/H(O) - |I|/H(I) ) )
-
-            Note: in the case |I| = 1 both formulas are equal, yet the following code (harmonic_ins) is a bit more efficient.
-                Hence, we transform the condition to |O| = 1 OR |I| = 1 OR |O| = |I| = 2 which is equivalent (and faster).
-        */
-
-        if self.kip9_version == Kip9Version::Beta && (outs_len == 1 || ins_len == 1 || (outs_len == 2 && ins_len == 2)) {
-            let harmonic_ins = inputs
-                .iter()
-                .map(|entry| self.storage_mass_parameter / entry.amount())
-                .fold(0u64, |total, current| total.saturating_add(current)); // C·|I|/H(I)
-            return Some(harmonic_outs.saturating_sub(harmonic_ins)); // max( 0 , C·( |O|/H(O) - |I|/H(I) ) );
-        }
-
-        // Total supply is bounded, so a sum of existing UTXO entries cannot overflow (nor can it be zero)
-        let sum_ins = inputs.iter().map(|entry| entry.amount()).sum::<u64>(); // |I|·A(I)
-        let mean_ins = sum_ins / ins_len;
-
-        // Inner fraction must be with C and over the mean value, in order to maximize precision.
-        // We can saturate the overall expression at u64::MAX since we lower-bound the subtraction below by zero anyway
-        let arithmetic_ins = ins_len.saturating_mul(self.storage_mass_parameter / mean_ins); // C·|I|/A(I)
-
-        Some(harmonic_outs.saturating_sub(arithmetic_ins)) // max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
+        consensus_calc_storage_mass(
+            false,
+            inputs.iter().map(|entry| entry.amount()),
+            outputs.iter().map(|out| out.value),
+            self.kip9_version,
+            self.storage_mass_parameter,
+        )
     }
 
     pub fn calc_storage_mass_output_harmonic(&self, outputs: &[TransactionOutput]) -> Option<u64> {

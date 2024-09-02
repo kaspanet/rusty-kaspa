@@ -122,62 +122,13 @@ impl MassCalculator {
     ///
     /// Otherwise this function should never fail.
     pub fn calc_tx_storage_mass(&self, tx: &impl VerifiableTransaction, version: Kip9Version) -> Option<u64> {
-        if tx.is_coinbase() {
-            return Some(0);
-        }
-        /* The code below computes the following formula:
-
-                max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
-
-        where C is the mass storage parameter, O is the set of output values, I is the set of
-        input values, H(S) := |S|/sum_{s in S} 1 / s is the harmonic mean over the set S and
-        A(S) := sum_{s in S} / |S| is the arithmetic mean.
-
-        See KIP-0009 for more details
-        */
-
-        // Since we are doing integer division, we perform the multiplication with C over the inner
-        // fractions, otherwise we'll get a sum of zeros or ones.
-        //
-        // If sum of fractions overflowed (nearly impossible, requires 10^7 outputs for C = 10^12),
-        // we return `None` indicating mass is incomputable
-        //
-        // Note: in theory this can be tighten by subtracting input mass in the process (possibly avoiding the overflow),
-        // however the overflow case is so unpractical with current mass limits so we avoid the hassle
-        let harmonic_outs = tx
-            .tx()
-            .outputs
-            .iter()
-            .map(|out| self.storage_mass_parameter / out.value)
-            .try_fold(0u64, |total, current| total.checked_add(current))?; // C·|O|/H(O)
-
-        let outs_len = tx.tx().outputs.len() as u64;
-        let ins_len = tx.tx().inputs.len() as u64;
-
-        /*
-          KIP-0009 relaxed formula for the cases |O| = 1 OR |O| <= |I| <= 2:
-              max( 0 , C·( |O|/H(O) - |I|/H(I) ) )
-
-           Note: in the case |I| = 1 both formulas are equal, yet the following code (harmonic_ins) is a bit more efficient.
-                 Hence, we transform the condition to |O| = 1 OR |I| = 1 OR |O| = |I| = 2 which is equivalent (and faster).
-        */
-        if version == Kip9Version::Beta && (outs_len == 1 || ins_len == 1 || (outs_len == 2 && ins_len == 2)) {
-            let harmonic_ins = tx
-                .populated_inputs()
-                .map(|(_, entry)| self.storage_mass_parameter / entry.amount)
-                .fold(0u64, |total, current| total.saturating_add(current)); // C·|I|/H(I)
-            return Some(harmonic_outs.saturating_sub(harmonic_ins)); // max( 0 , C·( |O|/H(O) - |I|/H(I) ) );
-        }
-
-        // Total supply is bounded, so a sum of existing UTXO entries cannot overflow (nor can it be zero)
-        let sum_ins = tx.populated_inputs().map(|(_, entry)| entry.amount).sum::<u64>(); // |I|·A(I)
-        let mean_ins = sum_ins / ins_len;
-
-        // Inner fraction must be with C and over the mean value, in order to maximize precision.
-        // We can saturate the overall expression at u64::MAX since we lower-bound the subtraction below by zero anyway
-        let arithmetic_ins = ins_len.saturating_mul(self.storage_mass_parameter / mean_ins); // C·|I|/A(I)
-
-        Some(harmonic_outs.saturating_sub(arithmetic_ins)) // max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
+        calc_storage_mass(
+            tx.is_coinbase(),
+            tx.populated_inputs().map(|(_, entry)| entry.amount),
+            tx.outputs().iter().map(|out| out.value),
+            version,
+            self.storage_mass_parameter,
+        )
     }
 
     /// Calculates the overall mass of this transaction, combining both compute and storage masses.
@@ -197,6 +148,72 @@ impl MassCalculator {
                 .map(|mass| mass.max(cached_compute_mass.unwrap_or_else(|| self.calc_tx_compute_mass(tx.tx())))),
         }
     }
+}
+
+/// Calculates the storage mass for the provided input and output values.
+/// Assumptions which must be verified before this call:
+///     1. All output values are non-zero
+///     2. At least one input (unless coinbase)
+///
+/// Otherwise this function should never fail.
+pub fn calc_storage_mass(
+    is_coinbase: bool,
+    input_values: impl ExactSizeIterator<Item = u64>,
+    output_values: impl ExactSizeIterator<Item = u64>,
+    version: Kip9Version,
+    storage_mass_parameter: u64,
+) -> Option<u64> {
+    if is_coinbase {
+        return Some(0);
+    }
+
+    let outs_len = output_values.len() as u64;
+    let ins_len = input_values.len() as u64;
+
+    /* The code below computes the following formula:
+
+            max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
+
+    where C is the mass storage parameter, O is the set of output values, I is the set of
+    input values, H(S) := |S|/sum_{s in S} 1 / s is the harmonic mean over the set S and
+    A(S) := sum_{s in S} / |S| is the arithmetic mean.
+
+    See KIP-0009 for more details
+    */
+
+    // Since we are doing integer division, we perform the multiplication with C over the inner
+    // fractions, otherwise we'll get a sum of zeros or ones.
+    //
+    // If sum of fractions overflowed (nearly impossible, requires 10^7 outputs for C = 10^12),
+    // we return `None` indicating mass is incomputable
+    //
+    // Note: in theory this can be tighten by subtracting input mass in the process (possibly avoiding the overflow),
+    // however the overflow case is so unpractical with current mass limits so we avoid the hassle
+    let harmonic_outs =
+        output_values.map(|out| storage_mass_parameter / out).try_fold(0u64, |total, current| total.checked_add(current))?; // C·|O|/H(O)
+
+    /*
+      KIP-0009 relaxed formula for the cases |O| = 1 OR |O| <= |I| <= 2:
+          max( 0 , C·( |O|/H(O) - |I|/H(I) ) )
+
+       Note: in the case |I| = 1 both formulas are equal, yet the following code (harmonic_ins) is a bit more efficient.
+             Hence, we transform the condition to |O| = 1 OR |I| = 1 OR |O| = |I| = 2 which is equivalent (and faster).
+    */
+    if version == Kip9Version::Beta && (outs_len == 1 || ins_len == 1 || (outs_len == 2 && ins_len == 2)) {
+        let harmonic_ins =
+            input_values.map(|value| storage_mass_parameter / value).fold(0u64, |total, current| total.saturating_add(current)); // C·|I|/H(I)
+        return Some(harmonic_outs.saturating_sub(harmonic_ins)); // max( 0 , C·( |O|/H(O) - |I|/H(I) ) );
+    }
+
+    // Total supply is bounded, so a sum of existing UTXO entries cannot overflow (nor can it be zero)
+    let sum_ins = input_values.sum::<u64>(); // |I|·A(I)
+    let mean_ins = sum_ins / ins_len;
+
+    // Inner fraction must be with C and over the mean value, in order to maximize precision.
+    // We can saturate the overall expression at u64::MAX since we lower-bound the subtraction below by zero anyway
+    let arithmetic_ins = ins_len.saturating_mul(storage_mass_parameter / mean_ins); // C·|I|/A(I)
+
+    Some(harmonic_outs.saturating_sub(arithmetic_ins)) // max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
 }
 
 #[cfg(test)]
