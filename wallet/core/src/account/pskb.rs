@@ -348,6 +348,7 @@ pub fn pskt_to_pending_transaction(
         utxo_entries_ref.clone(),
         vec![],
         None,
+        None,
         0,
         0,
         0,

@@ -28,6 +28,8 @@ pub(crate) struct PendingTransactionInner {
     pub(crate) is_submitted: AtomicBool,
     /// Payment value of the transaction (transaction destination amount)
     pub(crate) payment_value: Option<u64>,
+    /// The index (position) of the change output in the transaction
+    pub(crate) change_output_index: Option<usize>,
     /// Change value of the transaction (transaction change amount)
     pub(crate) change_output_value: u64,
     /// Total aggregate value of all inputs
@@ -53,6 +55,7 @@ impl std::fmt::Debug for PendingTransaction {
             .field("utxo_entries", &self.inner.utxo_entries)
             .field("addresses", &self.inner.addresses)
             .field("payment_value", &self.inner.payment_value)
+            .field("change_output_index", &self.inner.change_output_index)
             .field("change_output_value", &self.inner.change_output_value)
             .field("aggregate_input_value", &self.inner.aggregate_input_value)
             .field("minimum_signatures", &self.inner.minimum_signatures)
@@ -80,6 +83,7 @@ impl PendingTransaction {
         utxo_entries: Vec<UtxoEntryReference>,
         addresses: Vec<Address>,
         payment_value: Option<u64>,
+        change_output_index: Option<usize>,
         change_output_value: u64,
         aggregate_input_value: u64,
         aggregate_output_value: u64,
@@ -101,6 +105,7 @@ impl PendingTransaction {
                 addresses,
                 is_submitted: AtomicBool::new(false),
                 payment_value,
+                change_output_index,
                 change_output_value,
                 aggregate_input_value,
                 aggregate_output_value,
@@ -160,6 +165,10 @@ impl PendingTransaction {
 
     pub fn payment_value(&self) -> Option<u64> {
         self.inner.payment_value
+    }
+
+    pub fn change_output_index(&self) -> Option<usize> {
+        self.inner.change_output_index
     }
 
     pub fn change_value(&self) -> u64 {

@@ -994,10 +994,13 @@ impl Generator {
                     }
                 }
 
-                if change_output_value > 0 {
-                    let output = TransactionOutput::new(change_output_value, pay_to_address_script(&self.inner.change_address));
-                    final_outputs.push(output);
-                }
+                let change_output_index = if change_output_value > 0 {
+                    let change_output_index = Some(final_outputs.len());
+                    final_outputs.push(TransactionOutput::new(change_output_value, pay_to_address_script(&self.inner.change_address)));
+                    change_output_index
+                } else {
+                    None
+                };
 
                 let aggregate_output_value = final_outputs.iter().map(|output| output.value).sum::<u64>();
                 // TODO - validate that this is still correct
@@ -1039,6 +1042,7 @@ impl Generator {
                     utxo_entry_references,
                     addresses.into_iter().collect(),
                     self.final_transaction_value_no_fees(),
+                    change_output_index,
                     change_output_value,
                     aggregate_input_value,
                     aggregate_output_value,
@@ -1107,6 +1111,7 @@ impl Generator {
                     utxo_entry_references,
                     addresses.into_iter().collect(),
                     self.final_transaction_value_no_fees(),
+                    None,
                     output_value,
                     aggregate_input_value,
                     output_value,
