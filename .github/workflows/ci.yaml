@@ -4,9 +4,6 @@ on: [push, pull_request]
 
 jobs:
   build-release:
-    variables:
-      RUSTFLAGS: "-C link-arg=-static -C link-arg=-L/home/starkbamse/rk-ctng/openssl/lib"
-
     name: Build Ubuntu Release
     runs-on: ubuntu-latest
     steps:
