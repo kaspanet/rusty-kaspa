@@ -31,20 +31,25 @@ impl BlockBodyProcessor {
             if tx.lock_time < LOCK_TIME_THRESHOLD {
                 // will only check daa score
                 if let Err(e) = self.transaction_validator.utxo_free_tx_validation(
-                    tx, 
-                    block.header.daa_score, 
-                    pmt // we don't need the past median time for this case
+                    tx,
+                    block.header.daa_score,
+                    pmt, // we don't need the past median time for this case
                 ) {
                     return Err(RuleError::TxInContextFailed(tx.id(), e));
-            } else if let Err(e) = self.transaction_validator.utxo_free_tx_validation(
-                tx, 
-                block.header.daa_score, 
-                // we most intialize the pmt value to the past median time of the block
-                if pmt > 0 { pmt } else { self.window_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap())?.0 }) {
-                return Err(RuleError::TxInContextFailed(tx.id(), e));
+                } else if let Err(e) = self.transaction_validator.utxo_free_tx_validation(
+                    tx,
+                    block.header.daa_score,
+                    // we most intialize the pmt value to the past median time of the block
+                    if pmt > 0 {
+                        pmt
+                    } else {
+                        self.window_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap())?.0
+                    },
+                ) {
+                    return Err(RuleError::TxInContextFailed(tx.id(), e));
+                }
             }
         }
-    }
 
         Ok(())
     }
