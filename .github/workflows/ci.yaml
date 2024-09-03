@@ -29,12 +29,20 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install zig
-        if: runner.os == 'Linux'
-        uses: goto-bus-stop/setup-zig@v2 # needed for cargo-zigbuild
-
-      - name: Build on Linux
+      - name: Install crosstools
         if: runner.os == 'Linux'
         run: |
-          cargo install cargo-zigbuild
-          cargo --verbose zigbuild --bin kaspad --bin simpa --bin rothschild --release --target x86_64-unknown-linux-gnu.2.27 # Use an older glibc version
+          git clone https://github.com/crosstool-ng/crosstool-ng
+          cd crosstool-ng
+          ./bootstrap
+          ./configure --prefix=$HOME/.local
+          make
+          make install
+          export PATH=$HOME/.local/bin:$PATH
+          ct-ng help
+
+#      - name: Build on Linux
+#        if: runner.os == 'Linux'
+#        run: |
+#          cargo install cargo-zigbuild
+#          cargo --verbose zigbuild --bin kaspad --bin simpa --bin rothschild --release --target x86_64-unknown-linux-gnu.2.27 # Use an older glibc version
