@@ -28,7 +28,8 @@ impl BlockBodyProcessor {
         // calculating the past median time for the block may be expensive here, so we try and avoid it if possible
         let pmt = 0u64; // we consider 0 to be an uninitialized default value
         for tx in block.transactions.iter().filter(|tx| tx.lock_time > 0) {
-            if tx.lock_time <= LOCK_TIME_THRESHOLD {
+            if tx.lock_time < LOCK_TIME_THRESHOLD {
+                // will only check daa score
                 if let Err(e) = self.transaction_validator.utxo_free_tx_validation(
                     tx, 
                     block.header.daa_score, 
@@ -39,7 +40,7 @@ impl BlockBodyProcessor {
                 tx, 
                 block.header.daa_score, 
                 // we most intialize the pmt value to the past median time of the block
-                if pmt != 0 { pmt } else { self.window_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap())?.0 }) {
+                if pmt > 0 { pmt } else { self.window_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap())?.0 }) {
                 return Err(RuleError::TxInContextFailed(tx.id(), e));
             }
         }
