@@ -6,15 +6,10 @@ jobs:
   build-release:
     name: Build Ubuntu Release
     runs-on: ubuntu-latest
-    env:
-      PATH: ~/.local/bin:$PATH
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y tar
-
+        
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
         with:
