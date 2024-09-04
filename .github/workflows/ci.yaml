@@ -57,15 +57,16 @@ jobs:
             make install
           fi
           cd $GITHUB_WORKSPACE
-          ct-ng build >build.log 2>&1
-
-          # Check if ct-ng build was successful
-          if [ $? -eq 0 ]; then
+          ct-ng build > build.log 2>&1
+          status=$?
+          echo "Build result:"
+          if [ $status -eq 0 ]; then
             echo "Build succeeded"
           else
             echo "Build failed, here's the log:"
             cat build.log
-          fid > build.log 2>&1
+          fi
+
 
       - name: Build OpenSSl against musl
         if: runner.os == 'Linux'
@@ -81,4 +82,3 @@ jobs:
           make depend
           make
           make install
-      
