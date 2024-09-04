@@ -36,9 +36,7 @@ impl BlockBodyProcessor {
     }
 
     fn check_parent_bodies_exist(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        // TODO: Skip this check for blocks in PP anticone that comes as part of the pruning proof.
-
-        if block.header.direct_parents().len() == 1 && block.header.direct_parents()[0] == self.genesis.hash {
+        if block.header.direct_parents() == std::slice::from_ref(&self.genesis.hash) {
             return Ok(());
         }
 

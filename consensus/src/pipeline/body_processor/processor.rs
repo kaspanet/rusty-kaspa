@@ -226,7 +226,6 @@ impl BlockBodyProcessor {
     fn validate_body(self: &Arc<BlockBodyProcessor>, block: &Block, is_trusted: bool) -> BlockProcessResult<u64> {
         let mass = self.validate_body_in_isolation(block)?;
         if !is_trusted {
-            // TODO: Check that it's safe to skip this check if the block is trusted.
             self.validate_body_in_context(block)?;
         }
         Ok(mass)

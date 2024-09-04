@@ -559,7 +559,7 @@ impl VirtualStateProcessor {
         finality_point: Hash,
         pruning_point: Hash,
     ) -> (Hash, VecDeque<Hash>) {
-        // TODO: tests
+        // TODO (relaxed): additional tests
 
         let mut heap = tips
             .into_iter()
@@ -621,7 +621,7 @@ impl VirtualStateProcessor {
         mut candidates: VecDeque<Hash>,
         pruning_point: Hash,
     ) -> (Vec<Hash>, GhostdagData) {
-        // TODO: tests
+        // TODO (relaxed): additional tests
 
         // Mergeset increasing might traverse DAG areas which are below the finality point and which theoretically
         // can borderline with pruned data, hence we acquire the prune lock to ensure data consistency. Note that
@@ -670,7 +670,7 @@ impl VirtualStateProcessor {
                 MergesetIncreaseResult::Rejected { new_candidate } => {
                     // If we already have a candidate in the past of new candidate then skip.
                     if self.reachability_service.is_any_dag_ancestor(&mut candidates.iter().copied(), new_candidate) {
-                        continue; // TODO: not sure this test is needed if candidates invariant as antichain is kept
+                        continue; // TODO (optimization): not sure this check is needed if candidates invariant as antichain is kept
                     }
                     // Remove all candidates which are in the future of the new candidate
                     candidates.retain(|&h| !self.reachability_service.is_dag_ancestor_of(new_candidate, h));
@@ -860,7 +860,7 @@ impl VirtualStateProcessor {
         build_mode: TemplateBuildMode,
     ) -> Result<BlockTemplate, RuleError> {
         //
-        // TODO: tests
+        // TODO (relaxed): additional tests
         //
 
         // We call for the initial tx batch before acquiring the virtual read lock,
@@ -1048,7 +1048,7 @@ impl VirtualStateProcessor {
         );
     }
 
-    // TODO: rename to reflect finalizing pruning point utxoset state and importing *to* virtual utxoset
+    /// Finalizes the pruning point utxoset state and imports the pruning point utxoset *to* virtual utxoset
     pub fn import_pruning_point_utxo_set(
         &self,
         new_pruning_point: Hash,
