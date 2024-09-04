@@ -45,6 +45,7 @@ jobs:
       - name: Install Crosstool-NG and build toolchain
         if: runner.os == 'Linux'
         run: |
+          echo $HOME
           export PATH=$HOME/.local/share/crosstool-ng/bin:$PATH
           export CT_PREFIX_DIR=$HOME/x-tools
           if ! command -v ct-ng; then
