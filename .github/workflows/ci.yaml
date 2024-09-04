@@ -35,11 +35,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            $HOME/.local/bin/ct-ng
+            $HOME/.local/share/crosstool-ng
             $HOME/x-tools
           key: ${{ runner.os }}-crosstool-ng-${{ hashFiles('**/.config') }}
           restore-keys: |
             ${{ runner.os }}-crosstool-ng-
+
 
       - name: Install Crosstool-NG
         if: runner.os == 'Linux'
@@ -53,5 +54,6 @@ jobs:
             ./configure --prefix=$HOME/.local
             make
             make install
-            export PATH=$HOME/.local/bin:$PATH
           fi
+          export PATH=$HOME/.local/share/crosstool-ng/bin:$PATH
+          ct-ng --version
