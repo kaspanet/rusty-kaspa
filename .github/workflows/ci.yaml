@@ -31,33 +31,47 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
         
-      - name: Cache Crosstool-NG Tools
+      - name: Cache Toolchain and OpenSSL
         uses: actions/cache@v4
         with:
           path: |
             ~/x-tools
             ~/openssl
-          key: ${{ runner.os }}-crosstool-ng-${{ hashFiles('**/.config') }}
+          key: ${{ runner.os }}-musl-${{ hashFiles('**/musl-toolchain/.config') }}
           restore-keys: |
-            ${{ runner.os }}-crosstool-ng-
+            ${{ runner.os }}-musl-
 
       
-      - name: Install Crosstool-NG and build toolchain
+      - name: Install CTNG and build toolchain
         if: runner.os == 'Linux'
         run: |
           if [ ! -d "$HOME/x-tools" ]; then
+            # Install dependencies
             sudo apt-get update
             sudo apt-get install -y autoconf automake libtool libtool-bin unzip help2man python3.10-dev gperf bison flex texinfo gawk libncurses5-dev
+            
+            # Clone crosstool-ng
             git clone https://github.com/crosstool-ng/crosstool-ng
+            
+            # Configure and build crosstool-ng
             cd crosstool-ng
             ./bootstrap
             ./configure --prefix=$HOME/ctng
             make
             make install
+
+            # Add crosstool-ng to PATH
             export PATH=$HOME/ctng/bin:$PATH
-            cd $GITHUB_WORKSPACE
+
+            # Configure and build the musl toolchain
+            cd $GITHUB_WORKSPACE/musl-toolchain
             ct-ng build > build.log 2>&1
+            
+            # Set status to the exit code of the build
             status=$?
+            
+            # We store the log in a file because it bloats the screen too much
+            # on GitHub Actions. We print it only if the build fails.
             echo "Build result:"
             if [ $status -eq 0 ]; then
               echo "Build succeeded"
@@ -68,25 +82,33 @@ jobs:
             fi
           fi
 
-      - name: Build Rusty Kaspa against musl
+      - name: Build OpenSSL and RK with musl toolchain
         if: runner.os == 'Linux'
         run: |
+          # Update toolchain variables: C compiler, C++ compiler, linker, and archiver
           export CC=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-gcc
           export CXX=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-g++
           export LD=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-ld
           export AR=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-ar        
-          # Check if "$HOME/openssl" directory exists, build if it does not
+          
+          # Check if "$HOME/openssl" directory exists from cache
           if [ ! -d "$HOME/openssl" ]; then
             wget https://www.openssl.org/source/openssl-1.1.1l.tar.gz
             tar xzf openssl-1.1.1l.tar.gz
             cd openssl-1.1.1l
+            # Configure OpenSSL for static linking
             ./Configure no-shared --static linux-x86_64 -fPIC --prefix=$HOME/openssl
             make depend
             make
             make install
+            # Check if OpenSSL was installed successfully
             ls -la $HOME/openssl
           fi
+          
+          # Set environment variables for static linking
           export OPENSSL_DIR=$HOME/openssl
           export OPENSSL_STATIC=true
           export RUSTFLAGS="-C link-arg=-static -C link-arg=-L$OPENSSL_DIR/lib"
+
+          # We specify the compiler that will invoke linker
           export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=$CC
