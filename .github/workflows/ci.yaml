@@ -45,8 +45,6 @@ jobs:
       - name: Install Crosstool-NG and build toolchain
         if: runner.os == 'Linux'
         run: |
-          cd $GITHUB_WORKSPACE
-          cat .config || echo "No .config file found. It is required to build the toolchain." 
           export PATH=$HOME/.local/share/crosstool-ng/bin:$PATH
           if ! command -v ct-ng; then
             sudo apt-get update
@@ -58,5 +56,5 @@ jobs:
             make
             make install
           fi
-          ct-ng --version
+          cd $GITHUB_WORKSPACE
           ct-ng build
