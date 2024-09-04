@@ -54,7 +54,7 @@ jobs:
             ./configure --prefix=$HOME/ctng
             make
             make install
-            export PATH=$HOME/ctng/crosstool-ng/bin:$PATH
+            export PATH=$HOME/ctng/bin:$PATH
             cd $GITHUB_WORKSPACE
             ct-ng build > build.log 2>&1
             status=$?
