@@ -44,14 +44,13 @@ jobs:
       - name: Install Crosstool-NG and build toolchain
         if: runner.os == 'Linux'
         run: |
-          if [ ! -d "$HOME/x-tools" ]; then
-            sudo apt-get update
-            sudo apt-get install -y autoconf automake libtool libtool-bin unzip help2man python3.10-dev gperf bison flex texinfo gawk libncurses5-dev
-            git clone https://github.com/crosstool-ng/crosstool-ng
-            cd crosstool-ng
-            ./bootstrap
-            ./configure --prefix=$HOME/ctng
-            make
-            make install
-            export PATH=$HOME/ctng/bin:$PATH
-     
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool libtool-bin unzip help2man python3.10-dev gperf bison flex texinfo gawk libncurses5-dev
+          git clone https://github.com/crosstool-ng/crosstool-ng
+          cd crosstool-ng
+          ./bootstrap
+          ./configure --prefix=$HOME/ctng
+          make
+          make install
+          export PATH=$HOME/ctng/bin:$PATH
+    
