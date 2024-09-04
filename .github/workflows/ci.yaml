@@ -35,8 +35,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            $HOME/x-tools
-            $HOME/openssl
+            ~/x-tools
+            ~/openssl
           key: ${{ runner.os }}-crosstool-ng-${{ hashFiles('**/.config') }}
           restore-keys: |
             ${{ runner.os }}-crosstool-ng-
