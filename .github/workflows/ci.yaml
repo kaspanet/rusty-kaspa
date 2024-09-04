@@ -82,7 +82,7 @@ jobs:
             fi
           fi
 
-      - name: Build OpenSSL and RK with musl toolchain
+      - name: Build RK and OpenSSL with musl toolchain
         if: runner.os == 'Linux'
         run: |
           # Update toolchain variables: C compiler, C++ compiler, linker, and archiver
@@ -112,3 +112,12 @@ jobs:
 
           # We specify the compiler that will invoke linker
           export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=$CC
+
+          # Install missing dependencies
+          cargo fetch --target x86_64-unknown-linux-musl
+
+          # Patch missing include in librocksdb-sys-0.16.0+8.10.0. Credit: @supertypo
+          sed -i '1i #include <cstdint>' $(find /usr/local/cargo/registry/src/ -path "*/librocksdb-sys-0.16.0+8.10.0/*/offpeak_time_info.h")
+          
+          # Build for musl
+          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --release --target x86_64-unknown-linux-musl
