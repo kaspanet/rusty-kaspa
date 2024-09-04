@@ -113,6 +113,9 @@ jobs:
           # We specify the compiler that will invoke linker
           export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=$CC
 
+          # Add target
+          rustup target add x86_64-unknown-linux-musl
+
           # Install missing dependencies
           cargo fetch --target x86_64-unknown-linux-musl
 
