@@ -4,10 +4,11 @@ use crate::{
     model::stores::{ghostdag::GhostdagStoreReader, statuses::StatusesStoreReader},
     processes::window::WindowManager,
 };
-use kaspa_consensus_core::{block::Block, constants::LOCK_TIME_THRESHOLD};
+use kaspa_consensus_core::{block::Block};
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_utils::option::OptionExtensions;
+use once_cell::unsync::Lazy;
 use std::sync::Arc;
 
 impl BlockBodyProcessor {
@@ -25,34 +26,23 @@ impl BlockBodyProcessor {
     }
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        // calculating the past median time for the block may be expensive here, so we try and avoid it if possible
-        let pmt = 0u64; // we consider 0 to be an uninitialized default value
-        for tx in block.transactions.iter().filter(|tx| tx.lock_time > 0) {
-            if tx.lock_time < LOCK_TIME_THRESHOLD {
-                // will only check daa score
-                if let Err(e) = self.transaction_validator.utxo_free_tx_validation(
-                    tx,
-                    block.header.daa_score,
-                    pmt, // we don't need the past median time for this case
-                ) {
-                    return Err(RuleError::TxInContextFailed(tx.id(), e));
-                } else if let Err(e) = self.transaction_validator.utxo_free_tx_validation(
-                    tx,
-                    block.header.daa_score,
-                    // we most intialize the pmt value to the past median time of the block
-                    if pmt > 0 {
-                        pmt
-                    } else {
-                        self.window_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap())?.0
-                    },
-                ) {
-                    return Err(RuleError::TxInContextFailed(tx.id(), e));
-                }
+
+        let pmt = Lazy::new(|| {
+            let (pmt, _) = self.window_manager.calc_past_median_time(
+                &self.ghostdag_store.get_data(block.hash()).unwrap()
+            ).expect("expected header processor to have checked error case"); 
+            pmt
+            }
+        );
+
+        for tx in block.transactions.iter() {
+            if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, &pmt) {
+                return Err(RuleError::TxInContextFailed(tx.id(), e));
             }
         }
-
         Ok(())
     }
+    
 
     fn check_parent_bodies_exist(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
         // TODO: Skip this check for blocks in PP anticone that comes as part of the pruning proof.

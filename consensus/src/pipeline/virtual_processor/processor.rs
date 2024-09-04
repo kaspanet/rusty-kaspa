@@ -14,24 +14,7 @@ use crate::{
             relations::MTRelationsService,
         },
         stores::{
-            acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
-            block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
-            daa::DbDaaStore,
-            depth::{DbDepthStore, DepthStoreReader},
-            ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
-            headers::{DbHeadersStore, HeaderStoreReader},
-            past_pruning_points::DbPastPruningPointsStore,
-            pruning::{DbPruningStore, PruningStoreReader},
-            pruning_utxoset::PruningUtxosetStores,
-            reachability::DbReachabilityStore,
-            relations::{DbRelationsStore, RelationsStoreReader},
-            selected_chain::{DbSelectedChainStore, SelectedChainStore},
-            statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
-            tips::{DbTipsStore, TipsStoreReader},
-            utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
-            utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
-            virtual_state::{LkgVirtualState, VirtualState, VirtualStateStoreReader, VirtualStores},
-            DB,
+            acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore}, block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore}, block_window_cache::{BlockWindowCacheStore, BlockWindowHeap}, daa::DbDaaStore, depth::{DbDepthStore, DepthStoreReader}, ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader}, headers::{DbHeadersStore, HeaderStoreReader}, past_pruning_points::DbPastPruningPointsStore, pruning::{DbPruningStore, PruningStoreReader}, pruning_utxoset::PruningUtxosetStores, reachability::DbReachabilityStore, relations::{DbRelationsStore, RelationsStoreReader}, selected_chain::{DbSelectedChainStore, SelectedChainStore}, statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader}, tips::{DbTipsStore, TipsStoreReader}, utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader}, utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader}, virtual_state::{LkgVirtualState, VirtualState, VirtualStateStoreReader, VirtualStores}, DB
         },
     },
     params::Params,
@@ -40,10 +23,7 @@ use crate::{
         virtual_processor::utxo_validation::UtxoProcessingContext, ProcessingCounters,
     },
     processes::{
-        coinbase::CoinbaseManager,
-        ghostdag::ordering::SortableBlock,
-        transaction_validator::{errors::TxResult, transaction_validator_populated::TxValidationFlags, TransactionValidator},
-        window::WindowManager,
+        coinbase::CoinbaseManager, ghostdag::ordering::SortableBlock, past_median_time, transaction_validator::{errors::TxResult, transaction_validator_populated::TxValidationFlags, TransactionValidator}, window::{DaaWindow, WindowManager}
     },
 };
 use kaspa_consensus_core::{
@@ -90,10 +70,7 @@ use rayon::{
 };
 use rocksdb::WriteBatch;
 use std::{
-    cmp::min,
-    collections::{BinaryHeap, HashMap, VecDeque},
-    ops::Deref,
-    sync::{atomic::Ordering, Arc},
+    cmp::min, collections::{BinaryHeap, HashMap, VecDeque}, io::Write, ops::Deref, sync::{atomic::Ordering, Arc}
 };
 
 pub struct VirtualStateProcessor {
@@ -148,6 +125,10 @@ pub struct VirtualStateProcessor {
     pub(super) pruning_point_manager: DbPruningPointManager,
     pub(super) parents_manager: DbParentsManager,
     pub(super) depth_manager: DbBlockDepthManager,
+
+    // block window caches 
+    pub(super) block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
+    pub(super) block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
 
     // Pruning lock
     pruning_lock: SessionLock,
@@ -205,6 +186,9 @@ impl VirtualStateProcessor {
             virtual_stores: storage.virtual_stores.clone(),
             pruning_utxoset_stores: storage.pruning_utxoset_stores.clone(),
             lkg_virtual_state: storage.lkg_virtual_state.clone(),
+
+            block_window_cache_for_difficulty: storage.block_window_cache_for_difficulty.clone(),
+            block_window_cache_for_past_median_time: storage.block_window_cache_for_past_median_time.clone(),
 
             ghostdag_manager: services.ghostdag_primary_manager.clone(),
             reachability_service: services.reachability_service.clone(),
@@ -483,7 +467,9 @@ impl VirtualStateProcessor {
         // Calc virtual DAA score, difficulty bits and past median time
         let virtual_daa_window = self.window_manager.block_daa_window(&virtual_ghostdag_data)?;
         let virtual_bits = self.window_manager.calculate_difficulty_bits(&virtual_ghostdag_data, &virtual_daa_window);
-        let virtual_past_median_time = self.window_manager.calc_past_median_time(&virtual_ghostdag_data)?.0;
+        let (virtual_past_median_time, past_median_time_window) = self.window_manager.calc_past_median_time(&virtual_ghostdag_data)?;
+
+        self.maybe_commit_windows(ctx.selected_parent(), virtual_daa_window.window, past_median_time_window);
 
         // Calc virtual UTXO state relative to selected parent
         self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_window.daa_score);
@@ -532,6 +518,23 @@ impl VirtualStateProcessor {
         // Calling the drops explicitly after the batch is written in order to avoid possible errors.
         drop(virtual_write);
         drop(selected_chain_write);
+    }
+
+    fn maybe_commit_windows(
+        &self,
+        selected_parent: Hash,
+        daa_window: Arc<BlockWindowHeap>,
+        past_median_time_window: Arc<BlockWindowHeap>,  
+    ) {
+        // TODO: this only important for ibd performance, as we incur cache misses otherwise.
+        // We could optimize this by only committing the windows if virtual processor where to have explict knowledge of being in ibd.
+        if !self.block_window_cache_for_difficulty.contains_key(&selected_parent) {
+            self.block_window_cache_for_difficulty.insert(selected_parent, daa_window);
+        }
+
+        if !self.block_window_cache_for_past_median_time.contains_key(&selected_parent) {
+            self.block_window_cache_for_past_median_time.insert(selected_parent, past_median_time_window);
+        }
     }
 
     /// Returns the max number of tips to consider as virtual parents in a single virtual resolve operation.
@@ -761,7 +764,7 @@ impl VirtualStateProcessor {
         args: &TransactionValidationArgs,
     ) -> TxResult<()> {
         self.transaction_validator.validate_tx_in_isolation(&mutable_tx.tx)?;
-        self.transaction_validator.utxo_free_tx_validation(&mutable_tx.tx, virtual_daa_score, virtual_past_median_time)?;
+        self.transaction_validator.utxo_free_tx_validation(&mutable_tx.tx, virtual_daa_score, &virtual_past_median_time)?;
         self.validate_mempool_transaction_in_utxo_context(mutable_tx, virtual_utxo_view, virtual_daa_score, args)?;
         Ok(())
     }
@@ -847,7 +850,7 @@ impl VirtualStateProcessor {
         // No need to validate the transaction in isolation since we rely on the mining manager to submit transactions
         // which were previously validated through `validate_mempool_transaction_and_populate`, hence we only perform
         // in-context validations
-        self.transaction_validator.utxo_free_tx_validation(tx, virtual_state.daa_score, virtual_state.past_median_time)?;
+        self.transaction_validator.utxo_free_tx_validation(tx, virtual_state.daa_score, &virtual_state.past_median_time)?;
         let ValidatedTransaction { calculated_fee, .. } =
             self.validate_transaction_in_utxo_context(tx, utxo_view, virtual_state.daa_score, TxValidationFlags::Full)?;
         Ok(calculated_fee)

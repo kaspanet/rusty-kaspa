@@ -15,7 +15,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_hashes::Hash;
 use kaspa_math::Uint256;
-use kaspa_utils::refs::Refs;
+use kaspa_utils::{arc::ArcExtensions, refs::Refs};
 use once_cell::unsync::Lazy;
 use std::{cmp::Reverse, iter::once, ops::Deref, sync::Arc};
 
@@ -332,33 +332,9 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             WindowType::FullDifficultyWindow | WindowType::VaryingWindow(_) => None,
         };
 
-        if let Some(cache) = cache {
-            if let Some(selected_parent_binary_heap) = cache.get(&ghostdag_data.selected_parent) {
-                // Only use the cached window if it originates from here
-                if let WindowOrigin::Sampled = selected_parent_binary_heap.origin() {
-                    let selected_parent_blue_work = self.ghostdag_store.get_blue_work(ghostdag_data.selected_parent).unwrap();
-
-                    let mut heap =
-                        Lazy::new(|| BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_binary_heap).clone()));
-                    for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
-                        match block {
-                            SampledBlock::Sampled(block) => {
-                                heap.try_push(block.hash, block.blue_work);
-                            }
-                            SampledBlock::NonDaa(hash) => {
-                                mergeset_non_daa_inserter(hash);
-                            }
-                        }
-                    }
-
-                    return if let Ok(heap) = Lazy::into_value(heap) {
-                        Ok(Arc::new(heap.binary_heap))
-                    } else {
-                        Ok(selected_parent_binary_heap.clone())
-                    };
-                }
-            }
-        }
+        if let Some(window)  = self.try_init_from_cache(cache, sample_rate, window_size,  ghostdag_data, &mut mergeset_non_daa_inserter) {
+            return Ok(window);
+        };
 
         let mut window_heap = BoundedSizeBlockHeap::new(WindowOrigin::Sampled, window_size);
         let parent_ghostdag = self.ghostdag_store.get_data(ghostdag_data.selected_parent).unwrap();
@@ -376,8 +352,9 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
 
         let mut current_ghostdag = parent_ghostdag;
 
-        // Walk down the chain until we cross the window boundaries
+        // Walk down the chain until we cross the window boundaries, or merge with an ancestor cache. 
         loop {
+
             if current_ghostdag.selected_parent.is_origin() {
                 // Reaching origin means there's no more data, so we expect the window to already be full, otherwise we err.
                 // This error can happen only during an IBD from pruning proof when processing the first headers in the pruning point's
@@ -385,7 +362,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
                 if window_heap.reached_size_bound() {
                     break;
                 } else {
-                    return Err(RuleError::InsufficientDaaWindowSize(window_heap.binary_heap.len()));
+                    return Err(RuleError::InsufficientDaaWindowSize(window_heap.len()));
                 }
             }
 
@@ -394,6 +371,12 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             }
 
             let parent_ghostdag = self.ghostdag_store.get_data(current_ghostdag.selected_parent).unwrap();
+            
+            // Try to extend the window from the cache
+            if self.try_merge_from_cache(cache, sample_rate, window_size, &parent_ghostdag, &mut window_heap, &mut mergeset_non_daa_inserter) {
+                return Ok(Arc::new(window_heap.binary_heap));
+            };
+            
             let selected_parent_blue_work_too_low =
                 self.try_push_mergeset(&mut window_heap, sample_rate, &current_ghostdag, parent_ghostdag.blue_work);
             // No need to further iterate since past of selected parent has even lower blue work
@@ -405,6 +388,84 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         }
 
         Ok(Arc::new(window_heap.binary_heap))
+    }
+
+    fn build_heap_from_selected_parent_binary_heap<'a>(
+        &'a self,
+        selected_parent_binary_heap: &'a Arc<BlockWindowHeap>,
+        current_ghostdag: &'a GhostdagData,
+        sample_rate: u64,
+        window_size: usize,
+        mut mergeset_non_daa_inserter: impl FnMut(Hash),
+    ) -> Option<Arc<BlockWindowHeap>> 
+    
+    {
+
+        if let WindowOrigin::Sampled = selected_parent_binary_heap.origin() {
+        let selected_parent_blue_work = self.ghostdag_store.get_blue_work(current_ghostdag.selected_parent).unwrap();
+
+        let mut heap =
+        Lazy::new(|| BoundedSizeBlockHeap::from_binary_heap(window_size, selected_parent_binary_heap.clone().unwrap_or_clone()));
+        for block in self.sampled_mergeset_iterator(sample_rate, &current_ghostdag, selected_parent_blue_work) {
+            match block {
+                SampledBlock::Sampled(block) => {
+                    heap.try_push(block.hash, block.blue_work);
+                }
+                SampledBlock::NonDaa(hash) => {
+                    mergeset_non_daa_inserter(hash);
+                }
+            }
+        };
+
+        return if let Ok(heap) = Lazy::into_value(heap) {
+                Some(Arc::new(heap.binary_heap))
+            } else {
+                Some(selected_parent_binary_heap.clone())
+            };
+    } else {
+        None
+    }
+}
+
+    fn get_from_cache(&self, cache: Option<&Arc<U>>, hash: Hash) -> Option<Arc<BlockWindowHeap>> {
+        cache.and_then(|cache| cache.get(&hash).and_then(|heap| Some(heap.clone())))
+    }
+
+    fn try_init_from_cache(
+        &self,
+        cache: Option<&Arc<U>>,
+        sample_rate: u64,
+        window_size: usize,
+        current_ghostdag: &GhostdagData,
+        mergeset_non_daa_inserter: &mut impl FnMut(Hash)
+    ) -> Option<Arc<BlockWindowHeap>> {
+        self.get_from_cache(cache, current_ghostdag.selected_parent).and_then(
+            |ref selected_parent_binary_heap| {
+                self.build_heap_from_selected_parent_binary_heap(selected_parent_binary_heap, current_ghostdag, sample_rate, window_size, mergeset_non_daa_inserter)
+            }
+        )
+    }
+
+    /// Tries to extend the given heap with the sampled mergeset from the cache and returns the new heap.
+    /// If no current window is given, it will return the new heap.
+    fn try_merge_from_cache<'a>(
+        &'a self,
+        cache: Option<&Arc<U>>,
+        sample_rate: u64,
+        window_size: usize,
+        current_ghostdag: &'a GhostdagData,
+        current_window: &'a mut BoundedSizeBlockHeap, // use None if there is `no-pre-existing BoundedSizeBlockHeap`
+        mergeset_non_daa_inserter: &mut impl FnMut(Hash),
+    ) -> bool {
+        if let Some(selected_parent_binary_heap) = cache.and_then(|cache| cache.get(&current_ghostdag.selected_parent)) {
+            if let Some(ancestor_heap) = self.build_heap_from_selected_parent_binary_heap(&selected_parent_binary_heap, current_ghostdag, sample_rate, window_size - current_window.len(), mergeset_non_daa_inserter) {
+                for block in ancestor_heap.iter() {
+                    current_window.try_push(block.0.hash, block.0.blue_work);
+                }
+                return true;
+            }
+        }
+        false
     }
 
     fn try_push_mergeset(
@@ -685,5 +746,9 @@ impl BoundedSizeBlockHeap {
         }
         self.binary_heap.push(r_sortable_block);
         true
+    }
+
+    fn len(&self) -> usize {
+        self.binary_heap.len()
     }
 }

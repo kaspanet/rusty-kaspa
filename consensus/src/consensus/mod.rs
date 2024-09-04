@@ -234,6 +234,7 @@ impl Consensus {
             &services,
             pruning_lock.clone(),
             counters.clone(),
+            
         ));
 
         let body_processor = Arc::new(BlockBodyProcessor::new(
