@@ -46,6 +46,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           export PATH=$HOME/.local/share/crosstool-ng/bin:$PATH
+          export CT_PREFIX_DIR=$HOME/x-tools
           if ! command -v ct-ng; then
             sudo apt-get update
             sudo apt-get install -y autoconf automake libtool libtool-bin unzip help2man python3.10-dev gperf bison flex texinfo gawk libncurses5-dev
@@ -55,6 +56,7 @@ jobs:
             ./configure --prefix=$HOME/.local
             make
             make install
+            ls -la $HOME/.local/share/crosstool-ng 
           fi
           cd $GITHUB_WORKSPACE
           ct-ng build > build.log 2>&1
@@ -62,23 +64,32 @@ jobs:
           echo "Build result:"
           if [ $status -eq 0 ]; then
             echo "Build succeeded"
+            ls -la $HOME/x-tools
           else
             echo "Build failed, here's the log:"
             cat build.log
           fi
 
 
-      - name: Build OpenSSl against musl
+      - name: Build Rusty Kaspa against musl
         if: runner.os == 'Linux'
         run: |
           export CC=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-gcc
           export CXX=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-g++
           export LD=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-ld
           export AR=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-ar        
-          wget https://www.openssl.org/source/openssl-1.1.1l.tar.gz
-          tar xzf openssl-1.1.1l.tar.gz
-          cd openssl-1.1.1l
-          ./Configure no-shared --static linux-x86_64 -fPIC --prefix=$HOME/.local/openssl
-          make depend
-          make
-          make install
+          # Check if "$HOME/.local/openssl" directory exists, build if it does not
+          if [ ! -d "$HOME/.local/openssl" ]; then
+            wget https://www.openssl.org/source/openssl-1.1.1l.tar.gz
+            tar xzf openssl-1.1.1l.tar.gz
+            cd openssl-1.1.1l
+            ./Configure no-shared --static linux-x86_64 -fPIC --prefix=$HOME/.local/openssl
+            make depend
+            make
+            make install
+            ls -la $HOME/.local/openssl
+          fi
+          export OPENSSL_DIR=$HOME/.local/openssl
+          export OPENSSL_STATIC=true
+          export RUSTFLAGS="-C link-arg=-static -C link-arg=-L$OPENSSL_DIR/lib"
+          export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=$CC
