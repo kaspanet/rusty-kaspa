@@ -3,7 +3,7 @@ name: Tests
 on: [push, pull_request]
 
 jobs:
- check:
+  check:
     name: Check
     runs-on: ubuntu-latest
     steps:
@@ -211,7 +211,7 @@ jobs:
 
 
   check-wasm32:
-    name: Check WASM32
+    name: Check Wasm32
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
@@ -274,15 +274,11 @@ jobs:
         run: cargo clippy -p kaspa-wasm --target wasm32-unknown-unknown
 
   build-wasm32:
-    name: Build WASM32 SDK
+    name: Build Wasm32
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
-
-      - name: Setup Environment
-        shell: bash
-        run: echo "SHORT_SHA=`git rev-parse --short HEAD`" >> $GITHUB_ENV
 
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
@@ -341,18 +337,8 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build wasm release
-        run: |
-          pushd .
-          cd wasm
-          bash build-release
-          popd
-          mv wasm/release/kaspa-wasm32-sdk.zip wasm/release/kaspa-wasm32-sdk-${{ env.SHORT_SHA }}.zip
+        run: cd wasm && bash build-release
 
-      - name: Upload WASM build to GitHub 
-        uses: actions/upload-artifact@v4
-        with: 
-          name: kaspa-wasm32-sdk-${{ env.SHORT_SHA }}.zip
-          path: wasm/release/kaspa-wasm32-sdk-${{ env.SHORT_SHA }}.zip
   build-release:
     name: Build Linux Release
     runs-on: ubuntu-latest
