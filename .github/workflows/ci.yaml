@@ -35,7 +35,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/ctng
+            ~/x-tools
+            ~/openssl
           key: ${{ runner.os }}-crosstool-ng-${{ hashFiles('**/.config') }}
           restore-keys: |
             ${{ runner.os }}-crosstool-ng-
@@ -44,13 +45,48 @@ jobs:
       - name: Install Crosstool-NG and build toolchain
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y autoconf automake libtool libtool-bin unzip help2man python3.10-dev gperf bison flex texinfo gawk libncurses5-dev
-          git clone https://github.com/crosstool-ng/crosstool-ng
-          cd crosstool-ng
-          ./bootstrap
-          ./configure --prefix=$HOME/ctng
-          make
-          make install
-          export PATH=$HOME/ctng/bin:$PATH
-    
+          if [ ! -d "$HOME/x-tools" ]; then
+            sudo apt-get update
+            sudo apt-get install -y autoconf automake libtool libtool-bin unzip help2man python3.10-dev gperf bison flex texinfo gawk libncurses5-dev
+            git clone https://github.com/crosstool-ng/crosstool-ng
+            cd crosstool-ng
+            ./bootstrap
+            ./configure --prefix=$HOME/ctng
+            make
+            make install
+            export PATH=$HOME/ctng/bin:$PATH
+            cd $GITHUB_WORKSPACE
+            ct-ng build > build.log 2>&1
+            status=$?
+            echo "Build result:"
+            if [ $status -eq 0 ]; then
+              echo "Build succeeded"
+              ls -la $HOME/x-tools
+            else
+              echo "Build failed, here's the log:"
+              cat build.log
+            fi
+          fi
+
+      - name: Build Rusty Kaspa against musl
+        if: runner.os == 'Linux'
+        run: |
+          export CC=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-gcc
+          export CXX=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-g++
+          export LD=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-ld
+          export AR=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-ar        
+          # Check if "$HOME/openssl" directory exists, build if it does not
+          if [ ! -d "$HOME/openssl" ]; then
+            wget https://www.openssl.org/source/openssl-1.1.1l.tar.gz
+            tar xzf openssl-1.1.1l.tar.gz
+            cd openssl-1.1.1l
+            ./Configure no-shared --static linux-x86_64 -fPIC --prefix=$HOME/openssl
+            make depend
+            make
+            make install
+            ls -la $HOME/openssl
+          fi
+          export OPENSSL_DIR=$HOME/openssl
+          export OPENSSL_STATIC=true
+          export RUSTFLAGS="-C link-arg=-static -C link-arg=-L$OPENSSL_DIR/lib"
+          export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=$CC
