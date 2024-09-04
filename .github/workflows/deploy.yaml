@@ -62,11 +62,12 @@ jobs:
             # Clone crosstool-ng
             git clone https://github.com/crosstool-ng/crosstool-ng
             
+            # Configure and build crosstool-ng
+            cd crosstool-ng
+            
             # Use version 1.26
             git checkout crosstool-ng-1.26.0
 
-            # Configure and build crosstool-ng
-            cd crosstool-ng
             ./bootstrap
             ./configure --prefix=$HOME/ctng
             make
