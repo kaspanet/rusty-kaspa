@@ -35,19 +35,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            $HOME/ctng
             $HOME/x-tools
             $HOME/openssl
           key: ${{ runner.os }}-crosstool-ng-${{ hashFiles('**/.config') }}
           restore-keys: |
             ${{ runner.os }}-crosstool-ng-
 
+      
       - name: Install Crosstool-NG and build toolchain
         if: runner.os == 'Linux'
         run: |
-          echo $HOME
-          export PATH=$HOME/ctng/crosstool-ng/bin:$PATH
-          if ! command -v ct-ng; then
+          if [ ! -d "$HOME/x-tools" ]; then
             sudo apt-get update
             sudo apt-get install -y autoconf automake libtool libtool-bin unzip help2man python3.10-dev gperf bison flex texinfo gawk libncurses5-dev
             git clone https://github.com/crosstool-ng/crosstool-ng
@@ -56,21 +54,19 @@ jobs:
             ./configure --prefix=$HOME/ctng
             make
             make install
-            ls -la $HOME/ctng
-            ls -la $HOME/crosstool-ng
+            export PATH=$HOME/ctng/crosstool-ng/bin:$PATH
+            cd $GITHUB_WORKSPACE
+            ct-ng build > build.log 2>&1
+            status=$?
+            echo "Build result:"
+            if [ $status -eq 0 ]; then
+              echo "Build succeeded"
+              ls -la $HOME/x-tools
+            else
+              echo "Build failed, here's the log:"
+              cat build.log
+            fi
           fi
-          cd $GITHUB_WORKSPACE
-          ct-ng build > build.log 2>&1
-          status=$?
-          echo "Build result:"
-          if [ $status -eq 0 ]; then
-            echo "Build succeeded"
-            ls -la $HOME/x-tools
-          else
-            echo "Build failed, here's the log:"
-            cat build.log
-          fi
-
 
       - name: Build Rusty Kaspa against musl
         if: runner.os == 'Linux'
