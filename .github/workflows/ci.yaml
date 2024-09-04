@@ -37,10 +37,10 @@ jobs:
           path: |
             $HOME/.local/share/crosstool-ng
             $HOME/x-tools
+            $HOME/.local/openssl
           key: ${{ runner.os }}-crosstool-ng-${{ hashFiles('**/.config') }}
           restore-keys: |
             ${{ runner.os }}-crosstool-ng-
-
 
       - name: Install Crosstool-NG and build toolchain
         if: runner.os == 'Linux'
@@ -57,4 +57,20 @@ jobs:
             make install
           fi
           cd $GITHUB_WORKSPACE
-          ct-ng build
+          ct-ng build --silent
+
+      - name: Build OpenSSl against musl
+        if: runner.os == 'Linux'
+        run: |
+          export CC=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-gcc
+          export CXX=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-g++
+          export LD=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-ld
+          export AR=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-ar        
+          wget https://www.openssl.org/source/openssl-1.1.1l.tar.gz
+          tar xzf openssl-1.1.1l.tar.gz
+          cd openssl-1.1.1l
+          ./Configure no-shared --static linux-x86_64 -fPIC --prefix=$HOME/.local/openssl
+          make depend
+          make
+          make install
+      
