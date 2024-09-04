@@ -6,6 +6,8 @@ jobs:
   build-release:
     name: Build Ubuntu Release
     runs-on: ubuntu-latest
+    env:
+      PATH: $HOME/.local/bin:$PATH
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -18,31 +20,40 @@ jobs:
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache
+      - name: Cache Cargo Build Outputs
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
+            $HOME/.cargo/bin/
+            $HOME/.cargo/registry/index/
+            $HOME/.cargo/registry/cache/
+            $HOME/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
-      - name: Install crosstools
+      - name: Cache Crosstool-NG Tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            $HOME/.local/bin/ct-ng
+            $HOME/x-tools
+          key: ${{ runner.os }}-crosstool-ng-${{ hashFiles('**/.config') }}
+          restore-keys: |
+            ${{ runner.os }}-crosstool-ng-
+
+      - name: Install Crosstool-NG
         if: runner.os == 'Linux'
         run: |
-          git clone https://github.com/crosstool-ng/crosstool-ng
-          cd crosstool-ng
-          ./bootstrap
-          ./configure --prefix=$HOME/.local
-          make
-          make install
-          export PATH=$HOME/.local/bin:$PATH
-          ct-ng help
-
-#      - name: Build on Linux
-#        if: runner.os == 'Linux'
-#        run: |
-#          cargo install cargo-zigbuild
-#          cargo --verbose zigbuild --bin kaspad --bin simpa --bin rothschild --release --target x86_64-unknown-linux-gnu.2.27 # Use an older glibc version
+          if ! command -v ct-ng; then
+            apt-get update
+            apt-get install -y autoconf automake libtool libtool-bin unzip help2man python3.10-dev gperf bison flex texinfo gawk libncurses5-dev
+            git clone https://github.com/crosstool-ng/crosstool-ng
+            cd crosstool-ng
+            ./bootstrap
+            ./configure --prefix=$HOME/.local
+            make
+            make install
+            export PATH=$HOME/.local/bin:$PATH
+          fi
