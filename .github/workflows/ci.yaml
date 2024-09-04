@@ -9,7 +9,7 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
-        
+
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
         with:
@@ -22,10 +22,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
+            $HOME/.cargo/bin/
+            $HOME/.cargo/registry/index/
+            $HOME/.cargo/registry/cache/
+            $HOME/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
@@ -35,8 +35,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            ~/.local/bin/ct-ng
-            ~/x-tools
+            $HOME/.local/bin/ct-ng
+            $HOME/x-tools
           key: ${{ runner.os }}-crosstool-ng-${{ hashFiles('**/.config') }}
           restore-keys: |
             ${{ runner.os }}-crosstool-ng-
@@ -50,8 +50,8 @@ jobs:
             git clone https://github.com/crosstool-ng/crosstool-ng
             cd crosstool-ng
             ./bootstrap
-            ./configure --prefix=~/.local
+            ./configure --prefix=$HOME/.local
             make
             make install
-            export PATH=~/.local/bin:$PATH
+            export PATH=$HOME/.local/bin:$PATH
           fi
