@@ -14,7 +14,25 @@ use crate::{
             relations::MTRelationsService,
         },
         stores::{
-            acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore}, block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore}, block_window_cache::{BlockWindowCacheStore, BlockWindowHeap}, daa::DbDaaStore, depth::{DbDepthStore, DepthStoreReader}, ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader}, headers::{DbHeadersStore, HeaderStoreReader}, past_pruning_points::DbPastPruningPointsStore, pruning::{DbPruningStore, PruningStoreReader}, pruning_utxoset::PruningUtxosetStores, reachability::DbReachabilityStore, relations::{DbRelationsStore, RelationsStoreReader}, selected_chain::{DbSelectedChainStore, SelectedChainStore}, statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader}, tips::{DbTipsStore, TipsStoreReader}, utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader}, utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader}, virtual_state::{LkgVirtualState, VirtualState, VirtualStateStoreReader, VirtualStores}, DB
+            acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
+            block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
+            block_window_cache::{BlockWindowCacheStore, BlockWindowHeap},
+            daa::DbDaaStore,
+            depth::{DbDepthStore, DepthStoreReader},
+            ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
+            headers::{DbHeadersStore, HeaderStoreReader},
+            past_pruning_points::DbPastPruningPointsStore,
+            pruning::{DbPruningStore, PruningStoreReader},
+            pruning_utxoset::PruningUtxosetStores,
+            reachability::DbReachabilityStore,
+            relations::{DbRelationsStore, RelationsStoreReader},
+            selected_chain::{DbSelectedChainStore, SelectedChainStore},
+            statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
+            tips::{DbTipsStore, TipsStoreReader},
+            utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
+            utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
+            virtual_state::{LkgVirtualState, VirtualState, VirtualStateStoreReader, VirtualStores},
+            DB,
         },
     },
     params::Params,
@@ -23,7 +41,10 @@ use crate::{
         virtual_processor::utxo_validation::UtxoProcessingContext, ProcessingCounters,
     },
     processes::{
-        coinbase::CoinbaseManager, ghostdag::ordering::SortableBlock, past_median_time, transaction_validator::{errors::TxResult, transaction_validator_populated::TxValidationFlags, TransactionValidator}, window::{DaaWindow, WindowManager}
+        coinbase::CoinbaseManager,
+        ghostdag::ordering::SortableBlock,
+        transaction_validator::{errors::TxResult, transaction_validator_populated::TxValidationFlags, TransactionValidator},
+        window::WindowManager,
     },
 };
 use kaspa_consensus_core::{
@@ -70,7 +91,10 @@ use rayon::{
 };
 use rocksdb::WriteBatch;
 use std::{
-    cmp::min, collections::{BinaryHeap, HashMap, VecDeque}, io::Write, ops::Deref, sync::{atomic::Ordering, Arc}
+    cmp::min,
+    collections::{BinaryHeap, HashMap, VecDeque},
+    ops::Deref,
+    sync::{atomic::Ordering, Arc},
 };
 
 pub struct VirtualStateProcessor {
@@ -126,7 +150,7 @@ pub struct VirtualStateProcessor {
     pub(super) parents_manager: DbParentsManager,
     pub(super) depth_manager: DbBlockDepthManager,
 
-    // block window caches 
+    // block window caches
     pub(super) block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
     pub(super) block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
 
@@ -524,7 +548,7 @@ impl VirtualStateProcessor {
         &self,
         selected_parent: Hash,
         daa_window: Arc<BlockWindowHeap>,
-        past_median_time_window: Arc<BlockWindowHeap>,  
+        past_median_time_window: Arc<BlockWindowHeap>,
     ) {
         // TODO: this only important for ibd performance, as we incur cache misses otherwise.
         // We could optimize this by only committing the windows if virtual processor where to have explict knowledge of being in ibd.

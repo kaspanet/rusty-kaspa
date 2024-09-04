@@ -4,7 +4,7 @@ use crate::{
     model::stores::{ghostdag::GhostdagStoreReader, statuses::StatusesStoreReader},
     processes::window::WindowManager,
 };
-use kaspa_consensus_core::{block::Block};
+use kaspa_consensus_core::block::Block;
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_utils::option::OptionExtensions;
@@ -26,14 +26,13 @@ impl BlockBodyProcessor {
     }
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-
         let pmt = Lazy::new(|| {
-            let (pmt, _) = self.window_manager.calc_past_median_time(
-                &self.ghostdag_store.get_data(block.hash()).unwrap()
-            ).expect("expected header processor to have checked error case"); 
+            let (pmt, _) = self
+                .window_manager
+                .calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap())
+                .expect("expected header processor to have checked error case");
             pmt
-            }
-        );
+        });
 
         for tx in block.transactions.iter() {
             if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, &pmt) {
@@ -42,7 +41,6 @@ impl BlockBodyProcessor {
         }
         Ok(())
     }
-    
 
     fn check_parent_bodies_exist(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
         // TODO: Skip this check for blocks in PP anticone that comes as part of the pruning proof.
