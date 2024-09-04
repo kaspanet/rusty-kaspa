@@ -42,9 +42,10 @@ jobs:
             ${{ runner.os }}-crosstool-ng-
 
 
-      - name: Install Crosstool-NG
+      - name: Install Crosstool-NG and build toolchain
         if: runner.os == 'Linux'
         run: |
+          export PATH=$HOME/.local/share/crosstool-ng/bin:$PATH
           if ! command -v ct-ng; then
             sudo apt-get update
             sudo apt-get install -y autoconf automake libtool libtool-bin unzip help2man python3.10-dev gperf bison flex texinfo gawk libncurses5-dev
@@ -55,5 +56,8 @@ jobs:
             make
             make install
           fi
-          export PATH=$HOME/.local/share/crosstool-ng/bin:$PATH
           ct-ng --version
+          cat .config || true
+          ct-ng build
+
+      - name: Build
