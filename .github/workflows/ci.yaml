@@ -340,7 +340,7 @@ jobs:
         run: cd wasm && bash build-release
 
   build-release:
-    name: Build Ubuntu Release
+    name: Build Linux Release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
