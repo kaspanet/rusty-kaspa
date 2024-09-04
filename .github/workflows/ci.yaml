@@ -57,7 +57,7 @@ jobs:
             make install
           fi
           cd $GITHUB_WORKSPACE
-          ct-ng build --silent
+          ct-ng build --silent --quiet
 
       - name: Build OpenSSl against musl
         if: runner.os == 'Linux'
