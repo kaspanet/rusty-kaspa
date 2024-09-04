@@ -7,7 +7,7 @@ jobs:
     name: Build Ubuntu Release
     runs-on: ubuntu-latest
     env:
-      PATH: $HOME/.local/bin:$PATH
+      PATH: ~/.local/bin:$PATH
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -24,10 +24,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            $HOME/.cargo/bin/
-            $HOME/.cargo/registry/index/
-            $HOME/.cargo/registry/cache/
-            $HOME/.cargo/git/db/
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
@@ -37,8 +37,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-            $HOME/.local/bin/ct-ng
-            $HOME/x-tools
+            ~/.local/bin/ct-ng
+            ~/x-tools
           key: ${{ runner.os }}-crosstool-ng-${{ hashFiles('**/.config') }}
           restore-keys: |
             ${{ runner.os }}-crosstool-ng-
@@ -52,8 +52,8 @@ jobs:
             git clone https://github.com/crosstool-ng/crosstool-ng
             cd crosstool-ng
             ./bootstrap
-            ./configure --prefix=$HOME/.local
+            ./configure --prefix=~/.local
             make
             make install
-            export PATH=$HOME/.local/bin:$PATH
+            export PATH=~/.local/bin:$PATH
           fi
