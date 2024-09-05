@@ -480,6 +480,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetSystemInfoResponse>, protowire::GetSys
         total_memory : item.total_memory,
         core_num : item.cpu_physical_cores as u32,
         fd_limit : item.fd_limit,
+        proxy_socket_limit_per_cpu_core : item.proxy_socket_limit_per_cpu_core.unwrap_or_default(),
         error: None,
     }
 });
@@ -962,6 +963,7 @@ try_from!(item: &protowire::GetSystemInfoResponseMessage, RpcResult<kaspa_rpc_co
         total_memory: item.total_memory,
         cpu_physical_cores: item.core_num as u16,
         fd_limit: item.fd_limit,
+        proxy_socket_limit_per_cpu_core : (item.proxy_socket_limit_per_cpu_core > 0).then_some(item.proxy_socket_limit_per_cpu_core),
     }
 });
 
