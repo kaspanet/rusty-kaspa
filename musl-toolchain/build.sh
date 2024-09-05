@@ -7,6 +7,9 @@ CURRENT_PRESET_HASH=$(sha256sum $GITHUB_WORKSPACE/musl-toolchain/preset.sh | awk
 
 echo "Current preset hash: $CURRENT_PRESET_HASH"
 
+# Set the preset
+source preset.sh
+
 # If the toolchain is not installed or the preset has changed or the preset hash file does not exist
 if [ ! -d "$HOME/x-tools" ] || [ ! -f "$PRESET_HASH_FILE" ] || [ "$(cat $PRESET_HASH_FILE)" != "$CURRENT_PRESET_HASH" ]; then
   # Install dependencies
@@ -29,9 +32,6 @@ if [ ! -d "$HOME/x-tools" ] || [ ! -f "$PRESET_HASH_FILE" ] || [ "$(cat $PRESET_
 
   # Configure and build the musl toolchain
   cd $GITHUB_WORKSPACE/musl-toolchain
-
-  # Set the preset
-  source preset.sh
 
   # Load toolchainc configuration
   ct-ng $CTNG_PRESET
