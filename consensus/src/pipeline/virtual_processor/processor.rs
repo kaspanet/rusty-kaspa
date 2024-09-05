@@ -383,10 +383,12 @@ impl VirtualStateProcessor {
 
         // Walk back up to the new virtual selected parent candidate
         let mut chain_block_counter = 0;
+        let mut chain_disqualified_counter = 0;
         for (selected_parent, current) in self.reachability_service.forward_chain_iterator(split_point, to, true).tuple_windows() {
             if selected_parent != diff_point {
                 // This indicates that the selected parent is disqualified, propagate up and continue
                 self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
+                chain_disqualified_counter += 1;
                 continue;
             }
 
@@ -416,6 +418,7 @@ impl VirtualStateProcessor {
                     if let Err(rule_error) = res {
                         info!("Block {} is disqualified from virtual chain: {}", current, rule_error);
                         self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
+                        chain_disqualified_counter += 1;
                     } else {
                         debug!("VIRTUAL PROCESSOR, UTXO validated for {current}");
 
@@ -434,6 +437,9 @@ impl VirtualStateProcessor {
         }
         // Report counters
         self.counters.chain_block_counts.fetch_add(chain_block_counter, Ordering::Relaxed);
+        if chain_disqualified_counter > 0 {
+            self.counters.chain_disqualified_counts.fetch_add(chain_disqualified_counter, Ordering::Relaxed);
+        }
 
         diff_point
     }
