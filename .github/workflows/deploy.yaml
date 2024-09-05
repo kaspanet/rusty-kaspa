@@ -45,7 +45,6 @@ jobs:
         with:
           path: |
             ~/x-tools
-            ~/openssl
           key: ${{ runner.os }}-musl-${{ hashFiles('**/musl-toolchain/preset.sh') }}
           restore-keys: |
             ${{ runner.os }}-musl-
@@ -54,6 +53,7 @@ jobs:
         if: runner.os == 'Linux'
         # We're using musl to make the binaries statically linked and portable
         run: |
+          # Run build script for musl toolchain
           source musl-toolchain/build.sh
 
           # Build for musl
