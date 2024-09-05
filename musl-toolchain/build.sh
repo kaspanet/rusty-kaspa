@@ -23,6 +23,8 @@ if [ ! -d "$HOME/x-tools" ]; then
   # Expand mini config
   ct-ng defconfig
 
+  cat .config
+
   # Build the toolchain
   ct-ng build
   
