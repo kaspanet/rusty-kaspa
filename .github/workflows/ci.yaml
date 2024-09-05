@@ -381,7 +381,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
         
-      - name: Cache Toolchain and OpenSSL
+      - name: Cache Toolchain
         uses: actions/cache@v4
         with:
           path: |

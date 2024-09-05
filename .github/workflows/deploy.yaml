@@ -40,7 +40,7 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Cache Toolchain and OpenSSL
+      - name: Cache Toolchain
         uses: actions/cache@v4
         with:
           path: |
