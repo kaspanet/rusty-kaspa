@@ -42,10 +42,10 @@ if [ ! -d "$HOME/x-tools" ]; then
 fi
 
 # Update toolchain variables: C compiler, C++ compiler, linker, and archiver
-export CC="$HOME/x-tools/x86_64-rk-linux-musl/bin/x86_64-rk-linux-musl-gcc"
-export CXX="$HOME/x-tools/x86_64-rk-linux-musl/bin/x86_64-rk-linux-musl-g++"
-export LD="$HOME/x-tools/x86_64-rk-linux-musl/bin/x86_64-rk-linux-musl-ld"
-export AR="$HOME/x-tools/x86_64-rk-linux-musl/bin/x86_64-rk-linux-musl-ar"       
+export CC=$HOME/x-tools/x86_64-rk-linux-musl/bin/x86_64-rk-linux-musl-gcc
+export CXX=$HOME/x-tools/x86_64-rk-linux-musl/bin/x86_64-rk-linux-musl-g++
+export LD=$HOME/x-tools/x86_64-rk-linux-musl/bin/x86_64-rk-linux-musl-ld
+export AR=$HOME/x-tools/x86_64-rk-linux-musl/bin/x86_64-rk-linux-musl-ar       
 
 # Check if "$HOME/openssl" directory exists from cache
 if [ ! -d "$HOME/openssl" ]; then
