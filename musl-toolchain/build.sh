@@ -7,6 +7,9 @@ CURRENT_PRESET_HASH=$(sha256sum $GITHUB_WORKSPACE/musl-toolchain/preset.sh | awk
 
 echo "Current preset hash: $CURRENT_PRESET_HASH"
 
+# Traverse to working directory
+cd $GITHUB_WORKSPACE/musl-toolchain
+
 # Set the preset
 source preset.sh
 
@@ -30,8 +33,7 @@ if [ ! -d "$HOME/x-tools" ] || [ ! -f "$PRESET_HASH_FILE" ] || [ "$(cat $PRESET_
   # Add crosstool-ng to PATH
   export PATH=$HOME/ctng/bin:$PATH
 
-  # Configure and build the musl toolchain
-  cd $GITHUB_WORKSPACE/musl-toolchain
+ 
 
   # Load toolchainc configuration
   ct-ng $CTNG_PRESET
