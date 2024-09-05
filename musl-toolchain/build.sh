@@ -45,8 +45,6 @@ if [ ! -d "$HOME/x-tools" ] || [ ! -f "$PRESET_HASH_FILE" ] || [ "$(cat $PRESET_
   if [ $status -eq 0 ]; then
     echo "Build succeeded"
     ls -la $HOME/x-tools
-    # Store the current hash of preset.sh after successful build
-    echo "$CURRENT_PRESET_HASH" > "$PRESET_HASH_FILE"
   else
     echo "Build failed, here's the log:"
     cat .config
@@ -61,7 +59,7 @@ export LD=$HOME/x-tools/$CTNG_PRESET/bin/$CTNG_PRESET-ld
 export AR=$HOME/x-tools/$CTNG_PRESET/bin/$CTNG_PRESET-ar       
 
 # Check if "$HOME/openssl" directory exists from cache
-if [ ! -d "$HOME/openssl" ]; then
+if [ ! -d "$HOME/x-tools" ] || [ ! -f "$PRESET_HASH_FILE" ] || [ "$(cat $PRESET_HASH_FILE)" != "$CURRENT_PRESET_HASH" ]; then
   wget https://www.openssl.org/source/openssl-1.1.1l.tar.gz
   tar xzf openssl-1.1.1l.tar.gz
   cd openssl-1.1.1l
@@ -72,6 +70,9 @@ if [ ! -d "$HOME/openssl" ]; then
   make install
   # Check if OpenSSL was installed successfully
   ls -la $HOME/openssl
+
+  # Store the current hash of preset.sh after successful build
+  echo "$CURRENT_PRESET_HASH" > "$PRESET_HASH_FILE"
 fi
 
 # Set environment variables for static linking
