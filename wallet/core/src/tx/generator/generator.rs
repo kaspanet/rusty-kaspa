@@ -103,6 +103,10 @@ struct Context {
     number_of_transactions: usize,
     /// current tree stage
     stage: Option<Box<Stage>>,
+    /// stage during the final transaction generation
+    /// preserved in case we need to increase priority fees
+    /// after the final transaction has been generated.
+    final_stage: Option<Box<Stage>>,
     /// Rejected or "stashed" UTXO entries that are consumed before polling
     /// the iterator. This store is used in edge cases when UTXO entry from the
     /// iterator has been consumed but was rejected due to mass constraints or
@@ -434,6 +438,7 @@ impl Generator {
             aggregated_utxos: 0,
             aggregate_fees: 0,
             stage: Some(Box::default()),
+            final_stage: None,
             utxo_stash: VecDeque::default(),
             final_transaction_id: None,
             is_done: false,
@@ -467,61 +472,84 @@ impl Generator {
     }
 
     /// Returns the current [`NetworkType`]
+    #[inline(always)]
     pub fn network_type(&self) -> NetworkType {
         self.inner.network_id.into()
     }
-
+    
     /// Returns the current [`NetworkId`]
+    #[inline(always)]
     pub fn network_id(&self) -> NetworkId {
         self.inner.network_id
     }
-
+    
     /// Returns current [`NetworkParams`]
+    #[inline(always)]
     pub fn network_params(&self) -> &NetworkParams {
         self.inner.network_params
     }
-
+    
+    /// Returns owned mass calculator instance (bound to [`NetworkParams`] of the [`Generator`])
+    #[inline(always)]
+    pub fn mass_calculator(&self) -> &MassCalculator {
+        &self.inner.mass_calculator
+    }
+    
+    #[inline(always)]
+    pub fn sig_op_count(&self) -> u8 {
+        &self.inner.sig_op_count
+    }
+    
     /// The underlying [`UtxoContext`] (if available).
+    #[inline(always)]
     pub fn source_utxo_context(&self) -> &Option<UtxoContext> {
         &self.inner.source_utxo_context
     }
-
+    
     /// Signifies that the transaction is a transfer between accounts
+    #[inline(always)]
     pub fn destination_utxo_context(&self) -> &Option<UtxoContext> {
         &self.inner.destination_utxo_context
     }
-
+    
     /// Core [`Multiplexer<Events>`] (if available)
+    #[inline(always)]
     pub fn multiplexer(&self) -> &Option<Multiplexer<Box<Events>>> {
         &self.inner.multiplexer
     }
-
+    
     /// Mutable context used by the generator to track state
+    #[inline(always)]
     fn context(&self) -> MutexGuard<Context> {
         self.inner.context.lock().unwrap()
     }
-
+    
     /// Returns the underlying instance of the [Signer](SignerT)
+    #[inline(always)]
     pub(crate) fn signer(&self) -> &Option<Arc<dyn SignerT>> {
         &self.inner.signer
     }
-
+    
     /// The total amount of fees in SOMPI consumed during the transaction generation process.
+    #[inline(always)]
     pub fn aggregate_fees(&self) -> u64 {
         self.context().aggregate_fees
     }
-
+    
     /// The total number of UTXOs consumed during the transaction generation process.
+    #[inline(always)]
     pub fn aggregate_utxos(&self) -> usize {
         self.context().aggregated_utxos
     }
-
+    
     /// The final transaction amount (if available).
+    #[inline(always)]
     pub fn final_transaction_value_no_fees(&self) -> Option<u64> {
         self.inner.final_transaction.as_ref().map(|final_transaction| final_transaction.value_no_fees)
     }
-
+    
     /// Returns the final transaction id if the generator has finished successfully.
+    #[inline(always)]
     pub fn final_transaction_id(&self) -> Option<TransactionId> {
         self.context().final_transaction_id
     }
@@ -529,17 +557,19 @@ impl Generator {
     /// Returns an async Stream causes the [Generator] to produce
     /// transaction for each stream item request. NOTE: transactions
     /// are generated only when each stream item is polled.
+    #[inline(always)]
     pub fn stream(&self) -> impl Stream<Item = Result<PendingTransaction>> {
         Box::pin(PendingTransactionStream::new(self))
     }
-
+    
     /// Returns an iterator that causes the [Generator] to produce
     /// transaction for each iterator poll request. NOTE: transactions
     /// are generated only when the returned iterator is iterated.
+    #[inline(always)]
     pub fn iter(&self) -> impl Iterator<Item = Result<PendingTransaction>> {
         PendingTransactionIterator::new(self)
     }
-
+    
     /// Get next UTXO entry. This function obtains UTXO in the following order:
     /// 1. From the UTXO stash (used to store UTxOs that were consumed during previous transaction generation but were rejected due to various conditions, such as mass overflow)
     /// 2. From the current stage
@@ -566,12 +596,46 @@ impl Generator {
             })
     }
 
+    // pub(crate) fn get_utxo_entry_for_rbf(&self) -> Result<Option<UtxoEntryReference>> {
+    //     let mut context = &mut self.context();
+    //     let utxo_entry = if let Some(mut stage) = context.stage.take() {
+    //         let utxo_entry = self.get_utxo_entry(&mut context, &mut stage);
+    //         context.stage.replace(stage);
+    //         utxo_entry
+    //     } else if let Some(mut stage) = context.final_stage.take() {
+    //         let utxo_entry = self.get_utxo_entry(&mut context, &mut stage);
+    //         context.final_stage.replace(stage);
+    //         utxo_entry
+    //     } else {
+    //         return Err(Error::GeneratorNoStage);
+    //     };
+
+    //     Ok(utxo_entry)
+    // }
+
+    /// Adds a [`UtxoEntryReference`] to the UTXO stash. UTXO stash 
+    /// is the first source of UTXO entries.
+    pub fn stash(&self, into_iter: impl IntoIterator<Item = UtxoEntryReference>) {
+        // let iter = iter.into_iterator();
+        // let mut context = self.context();
+        // context.utxo_stash.extend(iter);
+        self.context().utxo_stash.extend(into_iter.into_iter());
+    }
+
+    // /// Adds multiple [`UtxoEntryReference`] structs to the UTXO stash. UTXO stash 
+    // /// is the first source of UTXO entries.
+    // pub fn stash_multiple(&self, utxo_entries: Vec<UtxoEntryReference>) {
+    //     self.context().utxo_stash.extend(utxo_entries);
+    // }
+
     /// Calculate relay transaction mass for the current transaction `data`
+    #[inline(always)]
     fn calc_relay_transaction_mass(&self, data: &Data) -> u64 {
         data.aggregate_mass + self.inner.standard_change_output_compute_mass
     }
 
     /// Calculate relay transaction fees for the current transaction `data`
+    #[inline(always)]
     fn calc_relay_transaction_compute_fees(&self, data: &Data) -> u64 {
         self.inner.mass_calculator.calc_minimum_transaction_fee_from_mass(self.calc_relay_transaction_mass(data))
     }

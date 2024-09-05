@@ -198,6 +198,7 @@ impl UtxoEntryReference {
     pub fn transaction_id_as_ref(&self) -> &TransactionId {
         self.utxo.outpoint.transaction_id_as_ref()
     }
+
 }
 
 impl std::hash::Hash for UtxoEntryReference {

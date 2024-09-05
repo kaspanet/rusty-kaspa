@@ -6,11 +6,11 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::rpc::DynRpcApi;
-use crate::tx::{DataKind, Generator};
-use crate::utxo::{UtxoContext, UtxoEntryId, UtxoEntryReference};
+use crate::tx::{DataKind, Generator, MAXIMUM_STANDARD_TRANSACTION_MASS};
+use crate::utxo::{UtxoContext, UtxoEntryId, UtxoEntryReference, UtxoIterator};
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::sign::{sign_input, sign_with_multiple_v2, Signed};
-use kaspa_consensus_core::tx::{SignableTransaction, Transaction, TransactionId};
+use kaspa_consensus_core::tx::{SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput};
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionId};
 
 pub(crate) struct PendingTransactionInner {
@@ -47,7 +47,6 @@ pub(crate) struct PendingTransactionInner {
     /// Indicates the type of the transaction
     pub(crate) kind: DataKind,
 }
-
 
 // impl Clone for PendingTransactionInner {
 //     fn clone(&self) -> Self {
@@ -319,99 +318,142 @@ impl PendingTransaction {
         Ok(())
     }
 
-    pub fn increase_fees(&self, fee_increase: u64) -> Result<PendingTransaction> {
-        if self.is_batch() {
+    pub fn increase_fees_for_rbf(&self, additional_fees: u64) -> Result<PendingTransaction> {
+        let PendingTransactionInner {
+            generator,
+            utxo_entries,
+            id,
+            signable_tx,
+            addresses,
+            is_submitted,
+            payment_value,
+            change_output_index,
+            change_output_value,
+            aggregate_input_value,
+            aggregate_output_value,
+            minimum_signatures,
+            mass,
+            fees,
+            kind,
+        } = &*self.inner;
 
-            Err(Error::NotImplemented)
-        } else {
+        let generator = generator.clone();
+        let utxo_entries = utxo_entries.clone();
+        let id = *id;
+        // let signable_tx = Mutex::new(signable_tx.lock()?.clone());
+        let mut signable_tx = signable_tx.lock()?.clone();
+        let addresses = addresses.clone();
+        let is_submitted = AtomicBool::new(false);
+        let payment_value = *payment_value;
+        let mut change_output_index = *change_output_index;
+        let mut change_output_value = *change_output_value;
+        let mut aggregate_input_value = *aggregate_input_value;
+        let mut aggregate_output_value = *aggregate_output_value;
+        let minimum_signatures = *minimum_signatures;
+        let mass = *mass;
+        let fees = *fees;
+        let kind = *kind;
 
-            let PendingTransactionInner { 
-                generator,
-                utxo_entries,
-                id,
-                signable_tx,
-                addresses,
-                is_submitted,
-                payment_value,
-                change_output_index,
-                change_output_value,
-                aggregate_input_value,
-                aggregate_output_value,
-                minimum_signatures,
-                mass,
-                fees,
-                kind,
-            } = &*self.inner;
+        match kind {
+            DataKind::Final => {
+                // change output has sufficient amount to cover fee increase
+                // if change_output_value > fee_increase && change_output_index.is_some() {
+                if let (Some(index), true) =  (change_output_index,change_output_value >= additional_fees) {
+                    change_output_value -= additional_fees;
+                    if generator.mass_calculator().is_dust(change_output_value) {
+                        aggregate_output_value -= change_output_value;
+                        signable_tx.tx.outputs.remove(index);
+                        change_output_index = None;
+                        change_output_value = 0;
+                    } else {
+                        signable_tx.tx.outputs[index].value = change_output_value;
+                    }
+                } else {
+                    // we need more utxos...
+                    let mut utxo_entries_rbf = vec![];
+                    let mut available = change_output_value;
 
-            let generator = generator.clone();
-            let utxo_entries = utxo_entries.clone();
-            let id = *id;
-            let signable_tx = Mutex::new(signable_tx.lock()?.clone());
-            let addresses = addresses.clone();
-            let is_submitted = AtomicBool::new(is_submitted.load(Ordering::SeqCst));
-            let payment_value = *payment_value;
-            let change_output_index = *change_output_index;
-            let change_output_value = *change_output_value;
-            let aggregate_input_value = *aggregate_input_value;
-            let aggregate_output_value = *aggregate_output_value;
-            let minimum_signatures = *minimum_signatures;
-            let mass = *mass;
-            let fees = *fees;
-            let kind = *kind;
+                    let utxo_context = generator.source_utxo_context().as_ref().ok_or(Error::custom("No utxo context"))?;
+                    let mut context_utxo_entries = UtxoIterator::new(utxo_context);
+                    while available < additional_fees {
+                        // let utxo_entry = utxo_entries.next().ok_or(Error::InsufficientFunds { additional_needed: additional_fees - available, origin: "increase_fees_for_rbf" })?;
+                        // let utxo_entry = generator.get_utxo_entry_for_rbf()?;
+                        if let Some(utxo_entry) = context_utxo_entries.next() {
+                            // let utxo = utxo_entry.utxo.as_ref();
+                            let value = utxo_entry.amount();
+                            available += value;
+                            // aggregate_input_value += value;
 
-            if change_output_value > fees {
 
-                // let mut inner = self.inner.deref().clone();
-                // Ok(PendingTransaction(Arc::new(inner)))
+                            utxo_entries_rbf.push(utxo_entry);
+                            // signable_tx.lock().unwrap().tx.inputs.push(utxo.as_input());
+                        } else {
+                            // generator.stash(utxo_entries_rbf);
+                            // utxo_entries_rbf.into_iter().for_each(|utxo_entry|generator.stash(utxo_entry));
+                            return Err(Error::InsufficientFunds {  additional_needed : additional_fees - available, origin : "increase_fees_for_rbf" });
+                        }
+                    }
 
-                let inner = PendingTransactionInner { 
-                    generator,
-                    utxo_entries,
-                    id,
-                    signable_tx,
-                    addresses,
-                    is_submitted,
-                    payment_value,
-                    change_output_index,
-                    change_output_value,
-                    aggregate_input_value,
-                    aggregate_output_value,
-                    minimum_signatures,
-                    mass,
-                    fees,
-                    kind,
-                };
+                    let utxo_entries_vec = utxo_entries
+                        .iter()
+                        .map(|(_,utxo_entry)| utxo_entry.as_ref().clone())
+                        .chain(utxo_entries_rbf.iter().map(|utxo_entry|utxo_entry.as_ref().clone()))
+                        .collect::<Vec<_>>();
 
-                Ok(PendingTransaction { inner : Arc::new(inner) })
+                    let inputs = utxo_entries_rbf.into_iter().map(|utxo| {
+                        TransactionInput::new(utxo.outpoint().clone().into(), vec![], 0, generator.sig_op_count())
+                    });
 
-            } else {
+                    signable_tx.tx.inputs.extend(inputs);
 
-                let inner = PendingTransactionInner { 
-                    generator,
-                    utxo_entries,
-                    id,
-                    signable_tx,
-                    addresses,
-                    is_submitted,
-                    payment_value,
-                    change_output_index,
-                    change_output_value,
-                    aggregate_input_value,
-                    aggregate_output_value,
-                    minimum_signatures,
-                    mass,
-                    fees,
-                    kind,
-                };
+                    let transaction_mass = generator.mass_calculator().calc_overall_mass_for_unsigned_consensus_transaction(
+                        &signable_tx.tx,
+                        &utxo_entries_vec,
+                        self.inner.minimum_signatures,
+                    )?;
+                    if transaction_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
+                        // this should never occur as we should not produce transactions higher than the mass limit
+                        return Err(Error::MassCalculationError);
+                    }
+                    signable_tx.tx.set_mass(transaction_mass);
+    
+                    // utxo
 
-                Ok(PendingTransaction { inner : Arc::new(inner) })
+                    // let input = ;
+
+        
+                }
+        
             }
+            _ => {
 
-
+            }
         }
+
+        let inner = PendingTransactionInner {
+            generator,
+            utxo_entries,
+            id,
+            signable_tx : Mutex::new(signable_tx),
+            addresses,
+            is_submitted,
+            payment_value,
+            change_output_index,
+            change_output_value,
+            aggregate_input_value,
+            aggregate_output_value,
+            minimum_signatures,
+            mass,
+            fees,
+            kind,
+        };
+
+        Ok(PendingTransaction { inner: Arc::new(inner) })
+
+
+
         // let mut mutable_tx = self.inner.signable_tx.lock()?.clone();
         // mutable_tx.tx.fee += fees;
         // *self.inner.signable_tx.lock().unwrap() = mutable_tx;
-
     }
 }
