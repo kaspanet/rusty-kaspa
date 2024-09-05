@@ -36,10 +36,6 @@ impl BlockBodyProcessor {
     }
 
     fn check_parent_bodies_exist(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        if block.header.direct_parents() == std::slice::from_ref(&self.genesis.hash) {
-            return Ok(());
-        }
-
         let statuses_read_guard = self.statuses_store.read();
         let missing: Vec<Hash> = block
             .header
