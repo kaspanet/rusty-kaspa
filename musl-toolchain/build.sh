@@ -20,11 +20,11 @@ if [ ! -d "$HOME/x-tools" ]; then
   # Configure and build the musl toolchain
   cd $GITHUB_WORKSPACE/musl-toolchain
 
-  # Expand mini config
-  ct-ng x86_64-multilib-linux-musl
-  
-  cat .config
+  source preset.sh
 
+  # Expand mini config
+  ct-ng $CTNG_PRESET
+  
   # Build the toolchain
   ct-ng build > build.log 2>&1
   
@@ -39,15 +39,16 @@ if [ ! -d "$HOME/x-tools" ]; then
     ls -la $HOME/x-tools
   else
     echo "Build failed, here's the log:"
+    cat .config
     cat build.log
   fi
 fi
 
 # Update toolchain variables: C compiler, C++ compiler, linker, and archiver
-export CC=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-gcc
-export CXX=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-g++
-export LD=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-ld
-export AR=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-ar       
+export CC=$HOME/x-tools/$CTNG_PRESET/bin/$CTNG_PRESET-gcc
+export CXX=$HOME/x-tools/$CTNG_PRESET/bin/$CTNG_PRESET-g++
+export LD=$HOME/x-tools/$CTNG_PRESET/bin/$CTNG_PRESET-ld
+export AR=$HOME/x-tools/$CTNG_PRESET/bin/$CTNG_PRESET-ar       
 
 # Check if "$HOME/openssl" directory exists from cache
 if [ ! -d "$HOME/openssl" ]; then

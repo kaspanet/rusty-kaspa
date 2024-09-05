@@ -387,7 +387,7 @@ jobs:
           path: |
             ~/x-tools
             ~/openssl
-          key: ${{ runner.os }}-musl-${{ hashFiles('**/musl-toolchain/defconfig') }}
+          key: ${{ runner.os }}-musl-${{ hashFiles('**/musl-toolchain/preset.sh') }}
           restore-keys: |
             ${{ runner.os }}-musl-
 
