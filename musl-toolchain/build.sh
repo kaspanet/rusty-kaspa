@@ -2,7 +2,7 @@
 if [ ! -d "$HOME/x-tools" ]; then
   # Install dependencies
   sudo apt-get update
-  sudo apt-get install -y autoconf automake libtool libtool-bin unzip help2man python3.10-dev gperf bison flex texinfo gawk libncurses5-dev
+  sudo apt-get install -y autoconf automake musl-dev musl-tools libtool  libtool-bin unzip help2man python3.10-dev gperf bison flex texinfo gawk libncurses5-dev
   
   # Clone crosstool-ng
   git clone https://github.com/crosstool-ng/crosstool-ng
