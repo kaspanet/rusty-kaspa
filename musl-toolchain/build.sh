@@ -2,7 +2,7 @@
 if [ ! -d "$HOME/x-tools" ]; then
   # Install dependencies
   sudo apt-get update
-  sudo apt-get install -y autoconf automake musl-dev musl-tools libtool  libtool-bin unzip help2man python3.10-dev gperf bison flex texinfo gawk libncurses5-dev
+  sudo apt-get install -y autoconf automake libtool  libtool-bin unzip help2man python3.10-dev gperf bison flex texinfo gawk libncurses5-dev
   
   # Clone crosstool-ng
   git clone https://github.com/crosstool-ng/crosstool-ng
@@ -20,10 +20,8 @@ if [ ! -d "$HOME/x-tools" ]; then
   # Configure and build the musl toolchain
   cd $GITHUB_WORKSPACE/musl-toolchain
 
-  cat defconfig
-
   # Expand mini config
-  ct-ng defconfig
+  ct-ng x86_64-multilib-linux-musl
   
   cat .config
 
@@ -44,9 +42,6 @@ if [ ! -d "$HOME/x-tools" ]; then
     cat build.log
   fi
 fi
-
-#FILE_PATH=$(find $HOME/x-tools/** -path "*-gcc")
-
 
 # Update toolchain variables: C compiler, C++ compiler, linker, and archiver
 export CC=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-gcc
