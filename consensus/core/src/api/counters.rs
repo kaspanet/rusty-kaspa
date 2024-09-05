@@ -9,6 +9,7 @@ pub struct ProcessingCounters {
     pub body_counts: AtomicU64,
     pub txs_counts: AtomicU64,
     pub chain_block_counts: AtomicU64,
+    pub chain_disqualified_counts: AtomicU64,
     pub mass_counts: AtomicU64,
 }
 
@@ -22,6 +23,7 @@ impl ProcessingCounters {
             body_counts: self.body_counts.load(Ordering::Relaxed),
             txs_counts: self.txs_counts.load(Ordering::Relaxed),
             chain_block_counts: self.chain_block_counts.load(Ordering::Relaxed),
+            chain_disqualified_counts: self.chain_disqualified_counts.load(Ordering::Relaxed),
             mass_counts: self.mass_counts.load(Ordering::Relaxed),
         }
     }
@@ -36,6 +38,7 @@ pub struct ProcessingCountersSnapshot {
     pub body_counts: u64,
     pub txs_counts: u64,
     pub chain_block_counts: u64,
+    pub chain_disqualified_counts: u64,
     pub mass_counts: u64,
 }
 
@@ -51,6 +54,7 @@ impl core::ops::Sub for &ProcessingCountersSnapshot {
             body_counts: self.body_counts.saturating_sub(rhs.body_counts),
             txs_counts: self.txs_counts.saturating_sub(rhs.txs_counts),
             chain_block_counts: self.chain_block_counts.saturating_sub(rhs.chain_block_counts),
+            chain_disqualified_counts: self.chain_disqualified_counts.saturating_sub(rhs.chain_disqualified_counts),
             mass_counts: self.mass_counts.saturating_sub(rhs.mass_counts),
         }
     }
