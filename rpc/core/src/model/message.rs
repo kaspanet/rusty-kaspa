@@ -1899,6 +1899,7 @@ pub struct GetSystemInfoResponse {
     pub cpu_physical_cores: u16,
     pub total_memory: u64,
     pub fd_limit: u32,
+    pub proxy_socket_limit_per_cpu_core: Option<u32>,
 }
 
 impl std::fmt::Debug for GetSystemInfoResponse {
@@ -1910,19 +1911,21 @@ impl std::fmt::Debug for GetSystemInfoResponse {
             .field("cpu_physical_cores", &self.cpu_physical_cores)
             .field("total_memory", &self.total_memory)
             .field("fd_limit", &self.fd_limit)
+            .field("proxy_socket_limit_per_cpu_core", &self.proxy_socket_limit_per_cpu_core)
             .finish()
     }
 }
 
 impl Serializer for GetSystemInfoResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &2, writer)?;
         store!(String, &self.version, writer)?;
         store!(Option<Vec<u8>>, &self.system_id, writer)?;
         store!(Option<Vec<u8>>, &self.git_hash, writer)?;
         store!(u16, &self.cpu_physical_cores, writer)?;
         store!(u64, &self.total_memory, writer)?;
         store!(u32, &self.fd_limit, writer)?;
+        store!(Option<u32>, &self.proxy_socket_limit_per_cpu_core, writer)?;
 
         Ok(())
     }
@@ -1930,7 +1933,7 @@ impl Serializer for GetSystemInfoResponse {
 
 impl Deserializer for GetSystemInfoResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        let _version = load!(u16, reader)?;
+        let payload_version = load!(u16, reader)?;
         let version = load!(String, reader)?;
         let system_id = load!(Option<Vec<u8>>, reader)?;
         let git_hash = load!(Option<Vec<u8>>, reader)?;
@@ -1938,7 +1941,9 @@ impl Deserializer for GetSystemInfoResponse {
         let total_memory = load!(u64, reader)?;
         let fd_limit = load!(u32, reader)?;
 
-        Ok(Self { version, system_id, git_hash, cpu_physical_cores, total_memory, fd_limit })
+        let proxy_socket_limit_per_cpu_core = if payload_version > 1 { load!(Option<u32>, reader)? } else { None };
+
+        Ok(Self { version, system_id, git_hash, cpu_physical_cores, total_memory, fd_limit, proxy_socket_limit_per_cpu_core })
     }
 }
 
