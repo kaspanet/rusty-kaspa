@@ -20,6 +20,8 @@ if [ ! -d "$HOME/x-tools" ]; then
   # Configure and build the musl toolchain
   cd $GITHUB_WORKSPACE/musl-toolchain
 
+  cat defconfig
+
   # Expand mini config
   ct-ng defconfig
   
@@ -42,6 +44,9 @@ if [ ! -d "$HOME/x-tools" ]; then
     cat build.log
   fi
 fi
+
+#FILE_PATH=$(find $HOME/x-tools/** -path "*-gcc")
+
 
 # Update toolchain variables: C compiler, C++ compiler, linker, and archiver
 export CC=$HOME/x-tools/x86_64-multilib-linux-musl/bin/x86_64-multilib-linux-musl-gcc
