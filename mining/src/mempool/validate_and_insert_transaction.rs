@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use crate::mempool::{
     errors::{RuleError, RuleResult},
     model::{
@@ -84,21 +86,27 @@ impl Mempool {
         // Before adding the transaction, check if there is room in the pool
         let transaction_size = transaction.mempool_estimated_bytes();
         let txs_to_remove = self.transaction_pool.limit_transaction_count(&transaction, transaction_size)?;
-        for x in txs_to_remove.iter() {
-            self.remove_transaction(x, true, TxRemovalReason::MakingRoom, format!(" for {}", transaction_id).as_str())?;
-            // self.transaction_pool.limit_transaction_count(&transaction) returns the
-            // smallest prefix of `ready_transactions` (sorted by ascending fee-rate)
-            // that makes enough room for `transaction`, but since each call to `self.remove_transaction`
-            // also removes all transactions dependant on `x` we might already have sufficient space, so
-            // we constantly check the break condition.
-            //
-            // Note that self.transaction_pool.len() < self.config.maximum_transaction_count means we have
-            // at least one available slot in terms of the count limit
-            if self.transaction_pool.len() < self.config.maximum_transaction_count
-                && self.transaction_pool.get_estimated_size() + transaction_size <= self.config.mempool_size_limit
-            {
-                break;
+        if !txs_to_remove.is_empty() {
+            let transaction_pool_len_before = self.transaction_pool.len();
+            for x in txs_to_remove.iter() {
+                self.remove_transaction(x, true, TxRemovalReason::MakingRoom, format!(" for {}", transaction_id).as_str())?;
+                // self.transaction_pool.limit_transaction_count(&transaction) returns the
+                // smallest prefix of `ready_transactions` (sorted by ascending fee-rate)
+                // that makes enough room for `transaction`, but since each call to `self.remove_transaction`
+                // also removes all transactions dependant on `x` we might already have sufficient space, so
+                // we constantly check the break condition.
+                //
+                // Note that self.transaction_pool.len() < self.config.maximum_transaction_count means we have
+                // at least one available slot in terms of the count limit
+                if self.transaction_pool.len() < self.config.maximum_transaction_count
+                    && self.transaction_pool.get_estimated_size() + transaction_size <= self.config.mempool_size_limit
+                {
+                    break;
+                }
             }
+            self.counters
+                .tx_evicted_counts
+                .fetch_add(transaction_pool_len_before.saturating_sub(self.transaction_pool.len()) as u64, Ordering::Relaxed);
         }
 
         assert!(

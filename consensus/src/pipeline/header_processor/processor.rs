@@ -308,8 +308,6 @@ impl HeaderProcessor {
 
     // Runs partial header validation for trusted blocks (currently validates only header-in-isolation and computes GHOSTDAG).
     fn validate_trusted_header(&self, header: &Arc<Header>) -> BlockProcessResult<HeaderProcessingContext> {
-        // TODO: For now we skip most validations for trusted blocks, but in the future we should
-        // employ some validations to avoid spam etc.
         let block_level = self.validate_header_in_isolation(header)?;
         let mut ctx = self.build_processing_context(header, block_level);
         self.ghostdag(&mut ctx);
@@ -407,7 +405,6 @@ impl HeaderProcessor {
             && reachability::is_chain_ancestor_of(&staging, pp, ctx.hash).unwrap()
         {
             // Hint reachability about the new tip.
-            // TODO: identify a disqualified hst and make sure to use sink instead
             reachability::hint_virtual_selected_parent(&mut staging, ctx.hash).unwrap();
             hst_write.set_batch(&mut batch, SortableBlock::new(ctx.hash, header.blue_work)).unwrap();
         }
