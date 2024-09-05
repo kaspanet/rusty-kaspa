@@ -65,11 +65,11 @@ export AR=$HOME/x-tools/$CTNG_PRESET/bin/$CTNG_PRESET-ar
 
 # Exports for cc crate
 # https://docs.rs/cc/latest/cc/#external-configuration-via-environment-variables
-export RANLIB_x86_64_unknown_linux_musl = x86_64-multilib-linux-musl-ranlib
-export CC_x86_64_unknown_linux_musl = $CC
-export CXX_x86_64_unknown_linux_musl = $CXX
-export AR_x86_64_unknown_linux_musl = $AR
-export LD_x86_64_unknown_linux_musl = $LD
+export RANLIB_x86_64_unknown_linux_musl=$HOME/x-tools/$CTNG_PRESET/bin/$CTNG_PRESET-ranlib     
+export CC_x86_64_unknown_linux_musl=$CC
+export CXX_x86_64_unknown_linux_musl=$CXX
+export AR_x86_64_unknown_linux_musl=$AR
+export LD_x86_64_unknown_linux_musl=$LD
 
 # Set environment variables for static linking
 export OPENSSL_STATIC=true
