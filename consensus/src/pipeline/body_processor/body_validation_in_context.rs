@@ -14,14 +14,7 @@ impl BlockBodyProcessor {
     pub fn validate_body_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
         self.check_parent_bodies_exist(block)?;
         self.check_coinbase_blue_score_and_subsidy(block)?;
-        self.check_block_transactions_in_context(block)?;
-        self.check_block_is_not_pruned(block)
-    }
-
-    fn check_block_is_not_pruned(self: &Arc<Self>, _block: &Block) -> BlockProcessResult<()> {
-        // TODO: In kaspad code it checks that the block is not in the past of the current tips.
-        // We should decide what's the best indication that a block was pruned.
-        Ok(())
+        self.check_block_transactions_in_context(block)
     }
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
