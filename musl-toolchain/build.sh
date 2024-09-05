@@ -19,6 +19,11 @@ if [ ! -d "$HOME/x-tools" ]; then
   export PATH=$HOME/ctng/bin:$PATH
   # Configure and build the musl toolchain
   cd $GITHUB_WORKSPACE/musl-toolchain
+
+  # Expand mini config
+  ct-ng defconfig
+
+  # Build the toolchain
   ct-ng build > build.log 2>&1
   
   # Set status to the exit code of the build
