@@ -1,5 +1,13 @@
 #!/bin/bash
-if [ ! -d "$HOME/x-tools" ]; then
+
+PRESET_HASH_FILE="$HOME/x-tools/preset_hash"
+# Calculate the hash of the preset file
+CURRENT_PRESET_HASH=$(sha256sum $GITHUB_WORKSPACE/musl-toolchain/preset.sh | awk '{print $1}')
+
+echo "Current preset hash: $CURRENT_PRESET_HASH"
+
+# If the toolchain is not installed or the preset has changed or the preset hash file does not exist
+if [ ! -d "$HOME/x-tools" ] || [ ! -f "$PRESET_HASH_FILE" ] || [ "$(cat $PRESET_HASH_FILE)" != "$CURRENT_PRESET_HASH" ]; then
   # Install dependencies
   sudo apt-get update
   sudo apt-get install -y autoconf automake libtool  libtool-bin unzip help2man python3.10-dev gperf bison flex texinfo gawk libncurses5-dev
@@ -37,6 +45,8 @@ if [ ! -d "$HOME/x-tools" ]; then
   if [ $status -eq 0 ]; then
     echo "Build succeeded"
     ls -la $HOME/x-tools
+    # Store the current hash of preset.sh after successful build
+    echo "$CURRENT_PRESET_HASH" > "$PRESET_HASH_FILE"
   else
     echo "Build failed, here's the log:"
     cat .config
