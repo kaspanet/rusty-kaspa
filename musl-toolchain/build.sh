@@ -22,11 +22,11 @@ if [ ! -d "$HOME/x-tools" ]; then
 
   # Expand mini config
   ct-ng defconfig
-
+  
   cat .config
 
   # Build the toolchain
-  ct-ng build
+  ct-ng build > build.log 2>&1
   
   # Set status to the exit code of the build
   status=$?
