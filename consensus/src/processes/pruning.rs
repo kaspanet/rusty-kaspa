@@ -213,7 +213,7 @@ impl<
         let mut expected_pps_queue = VecDeque::new();
         for current in self.reachability_service.backward_chain_iterator(hst, pruning_info.pruning_point, false) {
             let current_header = self.headers_store.get_header(current).unwrap();
-            if expected_pps_queue.back().is_none_or(|&&h| h != current_header.pruning_point) {
+            if expected_pps_queue.back().is_none_or_ex(|&&h| h != current_header.pruning_point) {
                 expected_pps_queue.push_back(current_header.pruning_point);
             }
         }

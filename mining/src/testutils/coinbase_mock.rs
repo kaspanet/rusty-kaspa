@@ -4,7 +4,6 @@ use kaspa_consensus_core::{
     subnets::SUBNETWORK_ID_COINBASE,
     tx::{Transaction, TransactionOutput},
 };
-use std::mem::size_of;
 
 const LENGTH_OF_BLUE_SCORE: usize = size_of::<u64>();
 const LENGTH_OF_SUBSIDY: usize = size_of::<u64>();

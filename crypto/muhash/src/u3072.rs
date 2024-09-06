@@ -15,8 +15,8 @@ pub(crate) type DoubleLimb = u128;
 //#[cfg(target_pointer_width = "32")]
 //pub(crate) type DoubleLimb = u64;
 
-const LIMB_SIZE_BYTES: usize = std::mem::size_of::<Limb>();
-const LIMB_SIZE: usize = std::mem::size_of::<Limb>() * 8;
+const LIMB_SIZE_BYTES: usize = size_of::<Limb>();
+const LIMB_SIZE: usize = Limb::BITS as usize;
 pub const LIMBS: usize = crate::ELEMENT_BYTE_SIZE / LIMB_SIZE_BYTES;
 
 pub const PRIME_DIFF: Limb = 1103717;

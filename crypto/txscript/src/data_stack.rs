@@ -1,7 +1,6 @@
 use crate::TxScriptError;
 use core::fmt::Debug;
 use core::iter;
-use core::mem::size_of;
 
 const DEFAULT_SCRIPT_NUM_LEN: usize = 4;
 

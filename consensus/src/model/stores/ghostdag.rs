@@ -14,7 +14,6 @@ use kaspa_utils::mem_size::MemSizeEstimator;
 use rocksdb::WriteBatch;
 use serde::{Deserialize, Serialize};
 use std::iter::once;
-use std::mem::size_of;
 use std::{cell::RefCell, sync::Arc};
 
 /// Re-export for convenience

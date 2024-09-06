@@ -12,7 +12,6 @@ use kaspa_utils::mem_size::MemSizeEstimator;
 use rocksdb::WriteBatch;
 use serde::Deserialize;
 use serde::Serialize;
-use std::mem::size_of;
 use std::sync::Arc;
 
 pub trait AcceptanceDataStoreReader {

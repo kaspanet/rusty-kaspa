@@ -15,7 +15,7 @@ macro_rules! construct_uint {
             pub const MIN: Self = Self::ZERO;
             pub const MAX: Self = $name([u64::MAX; $n_words]);
             pub const BITS: u32 = $n_words * u64::BITS;
-            pub const BYTES: usize = $n_words * core::mem::size_of::<u64>();
+            pub const BYTES: usize = $n_words * size_of::<u64>();
             pub const LIMBS: usize = $n_words;
 
             #[inline]
