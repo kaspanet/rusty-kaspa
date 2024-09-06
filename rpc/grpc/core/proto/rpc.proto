@@ -851,6 +851,7 @@ message GetSystemInfoResponseMessage{
   uint32 coreNum = 4;
   uint64 totalMemory = 5;
   uint32 fdLimit = 6;
+  uint32 proxySocketLimitPerCpuCore = 7;
   RPCError error = 1000;
 }
 
