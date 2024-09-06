@@ -2,21 +2,32 @@ use crate::fd_budget;
 use crate::git;
 use crate::hex::ToHex;
 use sha2::{Digest, Sha256};
-use std::fs::File;
+use std::fs::{read_to_string, File};
 use std::io::Read;
+use std::path::PathBuf;
+// use std::fs::read_to_string;
 use std::sync::OnceLock;
 
 static SYSTEM_INFO: OnceLock<SystemInfo> = OnceLock::new();
 
 #[derive(Clone)]
 pub struct SystemInfo {
+    /// unique system (machine) identifier
     pub system_id: Option<Vec<u8>>,
+    /// full git commit hash
     pub git_hash: Option<Vec<u8>>,
+    /// short git commit hash
     pub git_short_hash: Option<Vec<u8>>,
+    /// crate (workspace) version
     pub version: String,
+    /// number of physical CPU cores
     pub cpu_physical_cores: u16,
+    /// total system memory in bytes
     pub total_memory: u64,
+    /// file descriptor limit of the current process
     pub fd_limit: u32,
+    /// maximum number of sockets per CPU core
+    pub proxy_socket_limit_per_cpu_core: Option<u32>,
 }
 
 // provide hex encoding for system_id, git_hash, and git_short_hash
@@ -30,6 +41,7 @@ impl std::fmt::Debug for SystemInfo {
             .field("cpu_physical_cores", &self.cpu_physical_cores)
             .field("total_memory", &self.total_memory)
             .field("fd_limit", &self.fd_limit)
+            .field("proxy_socket_limit_per_cpu_core", &self.proxy_socket_limit_per_cpu_core)
             .finish()
     }
 }
@@ -46,8 +58,18 @@ impl Default for SystemInfo {
             let git_hash = git::hash();
             let git_short_hash = git::short_hash();
             let version = git::version();
+            let proxy_socket_limit_per_cpu_core = Self::try_proxy_socket_limit_per_cpu_core();
 
-            SystemInfo { system_id, git_hash, git_short_hash, version, cpu_physical_cores, total_memory, fd_limit }
+            SystemInfo {
+                system_id,
+                git_hash,
+                git_short_hash,
+                version,
+                cpu_physical_cores,
+                total_memory,
+                fd_limit,
+                proxy_socket_limit_per_cpu_core,
+            }
         });
         (*system_info).clone()
     }
@@ -72,6 +94,19 @@ impl SystemInfo {
         sha256.update(some_id.as_bytes());
         Some(sha256.finalize().to_vec())
     }
+
+    fn try_proxy_socket_limit_per_cpu_core() -> Option<u32> {
+        let nginx_config_path = PathBuf::from("/etc/nginx/nginx.conf");
+        if nginx_config_path.exists() {
+            read_to_string(nginx_config_path)
+                .ok()
+                .and_then(|content| content.lines().find(|line| line.trim().starts_with("worker_connections")).map(String::from))
+                .and_then(|line| line.split_whitespace().nth(1).map(|v| v.replace(";", "")))
+                .and_then(|value| value.parse::<u32>().ok())
+        } else {
+            None
+        }
+    }
 }
 
 impl AsRef<SystemInfo> for SystemInfo {
@@ -79,3 +114,14 @@ impl AsRef<SystemInfo> for SystemInfo {
         self
     }
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+
+//     #[test]
+//     fn test_system_info() {
+//         let system_info = SystemInfo::default();
+//         println!("{:#?}", system_info);
+//     }
+// }

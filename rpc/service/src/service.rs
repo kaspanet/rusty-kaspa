@@ -1067,6 +1067,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             cpu_physical_cores: self.system_info.cpu_physical_cores,
             total_memory: self.system_info.total_memory,
             fd_limit: self.system_info.fd_limit,
+            proxy_socket_limit_per_cpu_core: self.system_info.proxy_socket_limit_per_cpu_core,
         };
 
         Ok(response)

@@ -970,6 +970,7 @@ mod mockery {
                 cpu_physical_cores: mock(),
                 total_memory: mock(),
                 fd_limit: mock(),
+                proxy_socket_limit_per_cpu_core: mock(),
             }
         }
     }
