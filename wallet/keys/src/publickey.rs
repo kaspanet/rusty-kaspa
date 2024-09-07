@@ -72,8 +72,7 @@ impl PublicKey {
         self.xonly_public_key.into()
     }
 
-    /// Compute a 4-byte key fingerprint for this public key.
-    ///
+    /// Compute a 4-byte key fingerprint for this public key as a hex string.
     /// Default implementation uses `RIPEMD160(SHA256(public_key))`.
     pub fn fingerprint(&self) -> Option<HexString> {
         if let Some(public_key) = self.public_key.as_ref() {
