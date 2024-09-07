@@ -22,6 +22,8 @@ pub fn main() {
 
     init_allocator_with_default_settings();
 
+    rustls::crypto::ring::default_provider().install_default().unwrap();
+
     let args = parse_args();
 
     match fd_budget::try_set_fd_limit(DESIRED_DAEMON_SOFT_FD_LIMIT) {

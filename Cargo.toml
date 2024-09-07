@@ -250,7 +250,7 @@ thiserror = "1.0.50"
 tokio = { version = "1.33.0", features = ["sync", "rt-multi-thread"] }
 tokio-stream = "0.1.14"
 toml = "0.8.8"
-tonic = { version = "0.10.2", features = ["tls", "gzip", "transport"] }
+tonic = { version = "0.10.2", features = ["tls-webpki-roots", "gzip", "transport"] }
 tonic-build = { version = "0.10.2", features = ["prost"] }
 triggered = "0.1.2"
 uuid = { version = "1.5.0", features = ["v4", "fast-rng", "serde"] }
@@ -274,20 +274,21 @@ indexed_db_futures = "0.5.0"
 # workflow-perf-monitor = { path = "../../../workflow-perf-monitor-rs" }
 workflow-perf-monitor = "0.0.2"
 nw-sys = "0.1.6"
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 # workflow dependencies
-workflow-core = { version = "0.17.0" }
-workflow-d3 = { version = "0.17.0" }
-workflow-dom = { version = "0.17.0" }
-workflow-http = { version = "0.17.0" }
-workflow-log = { version = "0.17.0" }
-workflow-node = { version = "0.17.0" }
-workflow-nw = { version = "0.17.0" }
-workflow-rpc = { version = "0.17.0" }
-workflow-serializer = { version = "0.17.0" }
-workflow-store = { version = "0.17.0" }
-workflow-terminal = { version = "0.17.0" }
-workflow-wasm = { version = "0.17.0" }
+workflow-core = { version = "0.18.0" }
+workflow-d3 = { version = "0.18.0" }
+workflow-dom = { version = "0.18.0" }
+workflow-http = { version = "0.18.0", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "charset", "macos-system-configuration"] }
+workflow-log = { version = "0.18.0" }
+workflow-node = { version = "0.18.0" }
+workflow-nw = { version = "0.18.0" }
+workflow-rpc = { version = "0.18.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
+workflow-serializer = { version = "0.18.0" }
+workflow-store = { version = "0.18.0" }
+workflow-terminal = { version = "0.18.0" }
+workflow-wasm = { version = "0.18.0" }
 
 # if below is enabled, this means that there is an ongoing work
 # on the workflow-rs crate. This requires that you clone workflow-rs
@@ -295,25 +296,27 @@ workflow-wasm = { version = "0.17.0" }
 # workflow-core = { path = "../workflow-rs/core" }
 # workflow-d3 = { path = "../workflow-rs/d3" }
 # workflow-dom = { path = "../workflow-rs/dom" }
-# workflow-http = { path = "../workflow-rs/http" }
+# # Same features as default but with rustls-tls-webpki-roots instead of native-tls
+# workflow-http = { path = "../workflow-rs/http", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "charset", "macos-system-configuration"] }
 # workflow-log = { path = "../workflow-rs/log" }
 # workflow-node = { path = "../workflow-rs/node" }
 # workflow-nw = { path = "../workflow-rs/nw" }
-# workflow-rpc = { path = "../workflow-rs/rpc" }
+# workflow-rpc = { path = "../workflow-rs/rpc", default-features = false, features = ["rustls-tls-webpki-roots"] }
 # workflow-serializer = { path = "../workflow-rs/serializer" }
 # workflow-store = { path = "../workflow-rs/store" }
 # workflow-terminal = { path = "../workflow-rs/terminal" }
 # workflow-wasm = { path = "../workflow-rs/wasm" }
 
+
 # ---
 # workflow-core = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-d3 = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-dom = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
-# workflow-http = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-http = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "charset", "macos-system-configuration"] }
 # workflow-log = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-node = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-nw = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
-# workflow-rpc = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-rpc = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master", default-features = false, features = ["rustls-tls-webpki-roots"]  }
 # workflow-serializer = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-store = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-terminal = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }

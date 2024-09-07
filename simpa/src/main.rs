@@ -134,6 +134,8 @@ fn main() {
 
     init_allocator_with_default_settings();
 
+    rustls::crypto::ring::default_provider().install_default().unwrap();
+
     // Get CLI arguments
     let args = Args::parse();
 

@@ -99,6 +99,8 @@ impl KaspaCli {
             }
         }
 
+        rustls::crypto::ring::default_provider().install_default().unwrap();
+
         workflow_log::set_colors_enabled(true);
     }
 

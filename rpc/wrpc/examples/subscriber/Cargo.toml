@@ -20,3 +20,4 @@ tokio.workspace = true
 workflow-core.workspace = true
 workflow-log.workspace = true
 ctrlc.workspace = true
+rustls.workspace = true

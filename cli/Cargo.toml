@@ -63,6 +63,7 @@ workflow-nw.workspace = true
 workflow-store.workspace = true
 workflow-terminal.workspace = true
 workflow-wasm.workspace = true
+rustls.workspace = true
 
 [dependencies.web-sys]
 workspace = true

@@ -23,6 +23,7 @@ tokio.workspace = true
 workflow-core.workspace = true
 workflow-log.workspace = true
 workflow-rpc.workspace = true
+rustls.workspace = true
 
 [package.metadata.emanate.build]
 folder = "setup"
