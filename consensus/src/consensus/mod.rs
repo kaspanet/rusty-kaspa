@@ -759,7 +759,7 @@ impl ConsensusApi for Consensus {
         };
         let (index, containing_acceptance) = match acceptance_data.iter().find_map(|mbad| {
             let tx_arr_index =
-                mbad.accepted_transactions.iter().enumerate().find_map(|(index, tx)| (tx.transaction_id == txid).then_some(index));
+                mbad.accepted_transactions.iter().find_map(|tx| (tx.transaction_id == txid).then_some(tx.index_within_block as usize));
             tx_arr_index.map(|index| (index, mbad.clone()))
         }) {
             Some((index, containing_acceptance)) => (index, containing_acceptance),
