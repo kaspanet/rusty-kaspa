@@ -694,19 +694,19 @@ impl ConsensusApi for Consensus {
 
         let sc_read = self.selected_chain_store.read();
 
-        let pp_hash = self.pruning_point_store.read().get().unwrap().pruning_point;
+        let source_hash = self.get_source();
 
         // Pruning Point hash is always expected to be in get_compact_header_data so unwrap should never fail
-        if target_daa_score < self.headers_store.get_compact_header_data(pp_hash).unwrap().daa_score {
+        if target_daa_score < self.headers_store.get_compact_header_data(source_hash).unwrap().daa_score {
             // Early exit if target daa score is lower than that of pruning point's daa score:
             return ReturnAddress::AlreadyPruned;
         }
 
-        let pp_index = sc_read.get_by_hash(pp_hash).unwrap();
+        let source_index = sc_read.get_by_hash(source_hash).unwrap();
         let (tip_index, tip_hash) = sc_read.get_tip().unwrap();
         let tip_daa_score = self.headers_store.get_compact_header_data(tip_hash).unwrap().daa_score;
 
-        let mut low_index = tip_index.saturating_sub(tip_daa_score.saturating_sub(target_daa_score)).max(pp_index);
+        let mut low_index = tip_index.saturating_sub(tip_daa_score.saturating_sub(target_daa_score)).max(source_index);
         let mut high_index = tip_index;
 
         let matching_chain_block_hash = loop {
