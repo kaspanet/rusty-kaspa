@@ -16,7 +16,7 @@ use workflow_log::style;
 
 use super::*;
 
-const DISPLAY_LOGS: bool = true;
+const DISPLAY_LOGS: bool = false;
 const DISPLAY_EXPECTED: bool = true;
 
 #[derive(Clone, Copy, Debug)]
@@ -323,6 +323,21 @@ impl Harness {
         self.clone()
     }
 
+    pub fn accumulate(self: &Rc<Self>, count: usize) -> Rc<Self> {
+        for _n in 0..count {
+            if DISPLAY_LOGS {
+                println!(
+                    "{}",
+                    style(format!("accumulate gathering transaction: {} ({})", _n, self.accumulator.borrow().list.len())).magenta()
+                );
+            }
+            let ptx = self.generator.generate_transaction().unwrap().unwrap();
+            ptx.accumulate(&mut self.accumulator.borrow_mut());
+        }
+        // println!("accumulated `{}` transactions", self.accumulator.borrow().list.len());
+        self.clone()
+    }
+
     pub fn validate(self: &Rc<Self>) -> Rc<Self> {
         while let Some(pt) = self.generator.generate_transaction().unwrap() {
             pt.accumulate(&mut self.accumulator.borrow_mut()).validate();
@@ -332,7 +347,16 @@ impl Harness {
 
     pub fn finalize(self: Rc<Self>) {
         let pt = self.generator.generate_transaction().unwrap();
-        assert!(pt.is_none(), "expected no more transactions");
+        if pt.is_some() {
+            let mut pending = self.generator.generate_transaction().unwrap();
+            let mut count = 1;
+            while pending.is_some() {
+                count += 1;
+                pending = self.generator.generate_transaction().unwrap();
+            }
+
+            panic!("received extra `{}` unexpected transactions", count);
+        }
         let summary = self.generator.summary();
         if DISPLAY_LOGS {
             println!("{:#?}", summary);
@@ -644,7 +668,7 @@ fn test_generator_inputs_100_outputs_1_fees_exclude_insufficient_funds() -> Resu
 }
 
 #[test]
-fn test_generator_inputs_903_outputs_2_fees_exclude() -> Result<()> {
+fn test_generator_inputs_1k_outputs_2_fees_exclude() -> Result<()> {
     generator(test_network_id(), &[10.0; 1_000], &[], Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(9_000.0))].as_slice())
         .unwrap()
         .harness()
@@ -674,5 +698,30 @@ fn test_generator_inputs_903_outputs_2_fees_exclude() -> Result<()> {
         })
         .finalize();
 
+    Ok(())
+}
+
+#[test]
+fn test_generator_inputs_32k_outputs_2_fees_exclude() -> Result<()> {
+    let f = 130.0;
+    generator(
+        test_network_id(),
+        &[f; 32_747],
+        &[],
+        Fees::sender(Kaspa(10_000.0)),
+        [(output_address, Kaspa(f * 32_747.0 - 10_001.0))].as_slice(),
+    )
+    .unwrap()
+    .harness()
+    .accumulate(379)
+    .finalize();
+    Ok(())
+}
+
+#[test]
+fn test_generator_inputs_250k_outputs_2_sweep() -> Result<()> {
+    let f = 130.0;
+    let generator = make_generator(test_network_id(), &[f; 250_000], &[], Fees::None, change_address, PaymentDestination::Change);
+    generator.unwrap().harness().accumulate(2875).finalize();
     Ok(())
 }
