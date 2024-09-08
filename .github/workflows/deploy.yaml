@@ -83,16 +83,10 @@ jobs:
         run: |
           if [ "${{ github.event.release.prerelease }}" = "true" ]; then
             echo "This is a pre-release"
-            cargo build --bin kaspad --profile=heap
-            cargo build --bin simpa --profile=heap
-            cargo build --bin rothschild --profile=heap
-            cargo build --bin kaspa-wallet --profile=heap
+            cargo build --bin kaspad --bin simpa --bin rothschild --bin kaspa-wallet --profile=heap
           else
             echo "This is a full release"
-            cargo build --bin kaspad --release
-            cargo build --bin simpa --release
-            cargo build --bin rothschild --release
-            cargo build --bin kaspa-wallet --release
+            cargo build --bin kaspad --bin simpa --bin rothschild --bin kaspa-wallet --release
           fi           
           mkdir bin || true
           cp target/release/kaspad.exe bin/
@@ -110,17 +104,11 @@ jobs:
         run: |
           if [ "${{ github.event.release.prerelease }}" = "true" ]; then
             echo "This is a pre-release"
-            cargo build --bin kaspad --profile=heap
-            cargo build --bin simpa --profile=heap
-            cargo build --bin rothschild --profile=heap
-            cargo build --bin kaspa-wallet --profile=heap
+            cargo build --bin kaspad --bin simpa --bin rothschild --bin kaspa-wallet --profile=heap
           else
             echo "This is a full release"
-            cargo build --bin kaspad --release
-            cargo build --bin simpa --release
-            cargo build --bin rothschild --release
-            cargo build --bin kaspa-wallet --release
-          fi   
+            cargo build --bin kaspad --bin simpa --bin rothschild --bin kaspa-wallet --release
+          fi    
           mkdir bin || true
           cp target/release/kaspad bin/
           cp target/release/simpa bin/
