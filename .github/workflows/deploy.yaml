@@ -60,7 +60,13 @@ jobs:
           cd $GITHUB_WORKSPACE
           
           # Build for musl
-          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --release --target x86_64-unknown-linux-musl
+          if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+            echo "This is a pre-release"
+            cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --profile=heap --target x86_64-unknown-linux-musl
+          else
+            echo "This is a full release"
+            cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --release --target x86_64-unknown-linux-musl
+          fi          
           mkdir bin || true
           cp target/x86_64-unknown-linux-musl/release/kaspad bin/
           cp target/x86_64-unknown-linux-musl/release/rothschild bin/
@@ -75,10 +81,19 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          cargo build --bin kaspad --release
-          cargo build --bin simpa --release
-          cargo build --bin rothschild --release
-          cargo build --bin kaspa-wallet --release
+          if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+            echo "This is a pre-release"
+            cargo build --bin kaspad --profile=heap
+            cargo build --bin simpa --profile=heap
+            cargo build --bin rothschild --profile=heap
+            cargo build --bin kaspa-wallet --profile=heap
+          else
+            echo "This is a full release"
+            cargo build --bin kaspad --release
+            cargo build --bin simpa --release
+            cargo build --bin rothschild --release
+            cargo build --bin kaspa-wallet --release
+          fi           
           mkdir bin || true
           cp target/release/kaspad.exe bin/
           cp target/release/simpa.exe bin/
@@ -93,10 +108,19 @@ jobs:
       - name: Build on MacOS
         if: runner.os == 'macOS'
         run: |
-          cargo build --bin kaspad --release
-          cargo build --bin simpa --release
-          cargo build --bin rothschild --release
-          cargo build --bin kaspa-wallet --release
+          if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+            echo "This is a pre-release"
+            cargo build --bin kaspad --profile=heap
+            cargo build --bin simpa --profile=heap
+            cargo build --bin rothschild --profile=heap
+            cargo build --bin kaspa-wallet --profile=heap
+          else
+            echo "This is a full release"
+            cargo build --bin kaspad --release
+            cargo build --bin simpa --release
+            cargo build --bin rothschild --release
+            cargo build --bin kaspa-wallet --release
+          fi   
           mkdir bin || true
           cp target/release/kaspad bin/
           cp target/release/simpa bin/
