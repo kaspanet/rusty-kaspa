@@ -16,7 +16,7 @@ use workflow_log::style;
 
 use super::*;
 
-const DISPLAY_LOGS: bool = false;
+const DISPLAY_LOGS: bool = true;
 const DISPLAY_EXPECTED: bool = true;
 
 #[derive(Clone, Copy, Debug)]
@@ -519,6 +519,24 @@ fn test_generator_compound_200k_10kas_transactions() -> Result<()> {
         &[],
         None,
         Fees::sender(Kaspa(5.0)),
+        [(output_address, Kaspa(190_000.0))].as_slice(),
+    )
+    .unwrap()
+    .harness()
+    .validate()
+    .finalize();
+
+    Ok(())
+}
+
+#[test]
+fn test_generator_fee_rate_compound_200k_10kas_transactions() -> Result<()> {
+    generator(
+        test_network_id(),
+        &[10.0; 200_000],
+        &[],
+        Some(100.0),
+        Fees::sender(Sompi(0)),
         [(output_address, Kaspa(190_000.0))].as_slice(),
     )
     .unwrap()

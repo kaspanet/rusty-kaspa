@@ -1140,7 +1140,11 @@ impl Generator {
 
                 assert_eq!(change_output_value, None);
 
-                let output_value = aggregate_input_value - transaction_fees;
+                if aggregate_input_value <= transaction_fees {
+                    return Err(Error::TransactionFeesAreTooHigh);
+                }
+
+                let output_value = aggregate_input_value.saturating_sub(transaction_fees);
                 let script_public_key = pay_to_address_script(&self.inner.change_address);
                 let output = TransactionOutput::new(output_value, script_public_key.clone());
                 let tx = Transaction::new(0, inputs, vec![output], 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
