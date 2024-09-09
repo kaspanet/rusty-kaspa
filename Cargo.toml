@@ -41,6 +41,7 @@ members = [
     "rpc/wrpc/proxy",
     "rpc/wrpc/wasm",
     "rpc/wrpc/examples/subscriber",
+    "rpc/wrpc/examples/simple_client",
     "mining",
     "mining/errors",
     "protocol/p2p",
