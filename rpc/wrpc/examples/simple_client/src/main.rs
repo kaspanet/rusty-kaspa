@@ -15,7 +15,6 @@ use std::time::Duration;
 async fn main() -> ExitCode {
     match check_node_status().await {
         Ok(_) => {
-            println!("");
             println!("Well done! You successfully completed your first client connection to Kaspa node!");
             ExitCode::SUCCESS
         }
@@ -66,7 +65,6 @@ async fn check_node_status() -> Result<()> {
     println!("Network: {network_id}");
     println!("Node is synced: {is_synced}");
     println!("Node is indexing UTXOs: {has_utxo_index}");
-    println!("");
 
     // Retrieve and show Kaspa network information
     let GetBlockDagInfoResponse {

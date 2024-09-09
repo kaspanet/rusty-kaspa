@@ -3714,7 +3714,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wrpc-simple-client-example"
-version = "0.14.1"
+version = "0.14.5"
 dependencies = [
  "futures",
  "kaspa-rpc-core",
