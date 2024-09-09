@@ -1,3 +1,5 @@
+use kaspa_bip32::{ChainCode, KeyFingerprint};
+
 use crate::imports::*;
 
 ///
@@ -13,7 +15,7 @@ use crate::imports::*;
 ///
 
 #[derive(Clone, CastFromJs)]
-#[wasm_bindgen]
+#[wasm_bindgen(inspectable)]
 pub struct XPrv {
     inner: ExtendedPrivateKey<SecretKey>,
 }
@@ -41,9 +43,9 @@ impl XPrv {
     }
 
     #[wasm_bindgen(js_name=deriveChild)]
-    pub fn derive_child(&self, chile_number: u32, hardened: Option<bool>) -> Result<XPrv> {
-        let chile_number = ChildNumber::new(chile_number, hardened.unwrap_or(false))?;
-        let inner = self.inner.derive_child(chile_number)?;
+    pub fn derive_child(&self, child_number: u32, hardened: Option<bool>) -> Result<XPrv> {
+        let child_number = ChildNumber::new(child_number, hardened.unwrap_or(false))?;
+        let inner = self.inner.derive_child(child_number)?;
         Ok(Self { inner })
     }
 
@@ -70,6 +72,60 @@ impl XPrv {
         let public_key = self.inner.public_key();
         Ok(public_key.into())
     }
+
+    #[wasm_bindgen(js_name = toPrivateKey)]
+    pub fn to_private_key(&self) -> Result<PrivateKey> {
+        let private_key = self.inner.private_key();
+        Ok(private_key.into())
+    }
+
+    // ~~~~ Getters ~~~~
+
+    #[wasm_bindgen(getter)]
+    pub fn xprv(&self) -> Result<String> {
+        let str = self.inner.to_extended_key("kprv".try_into()?).to_string();
+        Ok(str)
+    }
+
+    #[wasm_bindgen(getter, js_name = "privateKey")]
+    pub fn private_key_as_hex_string(&self) -> String {
+        use kaspa_bip32::PrivateKey;
+        self.inner.private_key().to_bytes().to_vec().to_hex()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn depth(&self) -> u8 {
+        self.inner.attrs().depth
+    }
+
+    #[wasm_bindgen(getter, js_name = parentFingerprint)]
+    pub fn parent_fingerprint_as_hex_string(&self) -> String {
+        self.inner.attrs().parent_fingerprint.to_vec().to_hex()
+    }
+
+    #[wasm_bindgen(getter, js_name = childNumber)]
+    pub fn child_number(&self) -> u32 {
+        self.inner.attrs().child_number.into()
+    }
+
+    #[wasm_bindgen(getter, js_name = chainCode)]
+    pub fn chain_code_as_hex_string(&self) -> String {
+        self.inner.attrs().chain_code.to_vec().to_hex()
+    }
+}
+
+impl XPrv {
+    pub fn private_key(&self) -> &SecretKey {
+        self.inner.private_key()
+    }
+
+    pub fn parent_fingerprint(&self) -> KeyFingerprint {
+        self.inner.attrs().parent_fingerprint
+    }
+
+    pub fn chain_code(&self) -> ChainCode {
+        self.inner.attrs().chain_code
+    }
 }
 
 impl<'a> From<&'a XPrv> for &'a ExtendedPrivateKey<SecretKey> {
@@ -86,8 +142,11 @@ extern "C" {
 
 impl TryCastFromJs for XPrv {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             if let Some(xprv) = value.as_ref().as_string() {
                 Ok(XPrv::from_xprv_str(xprv)?)
             } else {

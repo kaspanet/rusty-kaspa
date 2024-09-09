@@ -62,8 +62,11 @@ pub struct PaymentOutput {
 
 impl TryCastFromJs for PaymentOutput {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             if let Some(array) = value.as_ref().dyn_ref::<Array>() {
                 let length = array.length();
                 if length != 2 {
@@ -74,7 +77,7 @@ impl TryCastFromJs for PaymentOutput {
                     Ok(Self { address, amount })
                 }
             } else if let Some(object) = Object::try_from(value.as_ref()) {
-                let address = object.get_cast::<Address>("address")?.into_owned();
+                let address = object.cast_into::<Address>("address")?;
                 let amount = object.get_u64("amount")?;
                 Ok(Self { address, amount })
             } else {
@@ -145,8 +148,11 @@ impl PaymentOutputs {
 
 impl TryCastFromJs for PaymentOutputs {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             let outputs = if let Some(output_array) = value.as_ref().dyn_ref::<js_sys::Array>() {
                 let vec = output_array.to_vec();
                 vec.into_iter().map(PaymentOutput::try_owned_from).collect::<Result<Vec<_>, _>>()?

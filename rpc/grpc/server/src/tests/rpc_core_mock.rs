@@ -6,7 +6,7 @@ use kaspa_notify::notifier::{Notifier, Notify};
 use kaspa_notify::scope::Scope;
 use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_notify::subscription::{MutationPolicies, UtxosChangedMutationPolicy};
-use kaspa_rpc_core::{api::rpc::RpcApi, *};
+use kaspa_rpc_core::{api::connection::DynRpcConnection, api::rpc::RpcApi, *};
 use kaspa_rpc_core::{notify::connection::ChannelConnection, RpcResult};
 use std::sync::Arc;
 
@@ -66,7 +66,7 @@ impl RpcCoreMock {
 #[async_trait]
 impl RpcApi for RpcCoreMock {
     // This fn needs to succeed while the client connects
-    async fn get_info_call(&self, _request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
+    async fn get_info_call(&self, _connection: Option<&DynRpcConnection>, _request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
         Ok(GetInfoResponse {
             p2p_id: "p2p-mock".to_string(),
             mempool_size: 1234,
@@ -78,133 +78,245 @@ impl RpcApi for RpcCoreMock {
         })
     }
 
-    async fn ping_call(&self, _request: PingRequest) -> RpcResult<PingResponse> {
+    async fn ping_call(&self, _connection: Option<&DynRpcConnection>, _request: PingRequest) -> RpcResult<PingResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_metrics_call(&self, _request: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
+    async fn get_metrics_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetMetricsRequest,
+    ) -> RpcResult<GetMetricsResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_server_info_call(&self, _request: GetServerInfoRequest) -> RpcResult<GetServerInfoResponse> {
+    async fn get_connections_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetConnectionsRequest,
+    ) -> RpcResult<GetConnectionsResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_sync_status_call(&self, _request: GetSyncStatusRequest) -> RpcResult<GetSyncStatusResponse> {
+    async fn get_system_info_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetSystemInfoRequest,
+    ) -> RpcResult<GetSystemInfoResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_current_network_call(&self, _request: GetCurrentNetworkRequest) -> RpcResult<GetCurrentNetworkResponse> {
+    async fn get_server_info_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetServerInfoRequest,
+    ) -> RpcResult<GetServerInfoResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn submit_block_call(&self, _request: SubmitBlockRequest) -> RpcResult<SubmitBlockResponse> {
+    async fn get_sync_status_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetSyncStatusRequest,
+    ) -> RpcResult<GetSyncStatusResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_block_template_call(&self, _request: GetBlockTemplateRequest) -> RpcResult<GetBlockTemplateResponse> {
+    async fn get_current_network_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetCurrentNetworkRequest,
+    ) -> RpcResult<GetCurrentNetworkResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_peer_addresses_call(&self, _request: GetPeerAddressesRequest) -> RpcResult<GetPeerAddressesResponse> {
+    async fn submit_block_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: SubmitBlockRequest,
+    ) -> RpcResult<SubmitBlockResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_sink_call(&self, _request: GetSinkRequest) -> RpcResult<GetSinkResponse> {
+    async fn get_block_template_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetBlockTemplateRequest,
+    ) -> RpcResult<GetBlockTemplateResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_mempool_entry_call(&self, _request: GetMempoolEntryRequest) -> RpcResult<GetMempoolEntryResponse> {
+    async fn get_peer_addresses_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetPeerAddressesRequest,
+    ) -> RpcResult<GetPeerAddressesResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_mempool_entries_call(&self, _request: GetMempoolEntriesRequest) -> RpcResult<GetMempoolEntriesResponse> {
+    async fn get_sink_call(&self, _connection: Option<&DynRpcConnection>, _request: GetSinkRequest) -> RpcResult<GetSinkResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_connected_peer_info_call(&self, _request: GetConnectedPeerInfoRequest) -> RpcResult<GetConnectedPeerInfoResponse> {
+    async fn get_mempool_entry_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetMempoolEntryRequest,
+    ) -> RpcResult<GetMempoolEntryResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn add_peer_call(&self, _request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
+    async fn get_mempool_entries_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetMempoolEntriesRequest,
+    ) -> RpcResult<GetMempoolEntriesResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn submit_transaction_call(&self, _request: SubmitTransactionRequest) -> RpcResult<SubmitTransactionResponse> {
+    async fn get_connected_peer_info_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetConnectedPeerInfoRequest,
+    ) -> RpcResult<GetConnectedPeerInfoResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_block_call(&self, _request: GetBlockRequest) -> RpcResult<GetBlockResponse> {
+    async fn submit_transaction_replacement_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: SubmitTransactionReplacementRequest,
+    ) -> RpcResult<SubmitTransactionReplacementResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_subnetwork_call(&self, _request: GetSubnetworkRequest) -> RpcResult<GetSubnetworkResponse> {
+    async fn add_peer_call(&self, _connection: Option<&DynRpcConnection>, _request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
+    async fn submit_transaction_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: SubmitTransactionRequest,
+    ) -> RpcResult<SubmitTransactionResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
+    async fn get_block_call(&self, _connection: Option<&DynRpcConnection>, _request: GetBlockRequest) -> RpcResult<GetBlockResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
+    async fn get_subnetwork_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetSubnetworkRequest,
+    ) -> RpcResult<GetSubnetworkResponse> {
         Err(RpcError::NotImplemented)
     }
 
     async fn get_virtual_chain_from_block_call(
         &self,
+        _connection: Option<&DynRpcConnection>,
         _request: GetVirtualChainFromBlockRequest,
     ) -> RpcResult<GetVirtualChainFromBlockResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_blocks_call(&self, _request: GetBlocksRequest) -> RpcResult<GetBlocksResponse> {
+    async fn get_blocks_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetBlocksRequest,
+    ) -> RpcResult<GetBlocksResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_block_count_call(&self, _request: GetBlockCountRequest) -> RpcResult<GetBlockCountResponse> {
+    async fn get_current_block_color_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetCurrentBlockColorRequest,
+    ) -> RpcResult<GetCurrentBlockColorResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_block_dag_info_call(&self, _request: GetBlockDagInfoRequest) -> RpcResult<GetBlockDagInfoResponse> {
+    async fn get_block_count_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetBlockCountRequest,
+    ) -> RpcResult<GetBlockCountResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
+    async fn get_block_dag_info_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetBlockDagInfoRequest,
+    ) -> RpcResult<GetBlockDagInfoResponse> {
         Err(RpcError::NotImplemented)
     }
 
     async fn resolve_finality_conflict_call(
         &self,
+        _connection: Option<&DynRpcConnection>,
         _request: ResolveFinalityConflictRequest,
     ) -> RpcResult<ResolveFinalityConflictResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn shutdown_call(&self, _request: ShutdownRequest) -> RpcResult<ShutdownResponse> {
+    async fn shutdown_call(&self, _connection: Option<&DynRpcConnection>, _request: ShutdownRequest) -> RpcResult<ShutdownResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_headers_call(&self, _request: GetHeadersRequest) -> RpcResult<GetHeadersResponse> {
+    async fn get_headers_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetHeadersRequest,
+    ) -> RpcResult<GetHeadersResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_balance_by_address_call(&self, _request: GetBalanceByAddressRequest) -> RpcResult<GetBalanceByAddressResponse> {
+    async fn get_balance_by_address_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetBalanceByAddressRequest,
+    ) -> RpcResult<GetBalanceByAddressResponse> {
         Err(RpcError::NotImplemented)
     }
 
     async fn get_balances_by_addresses_call(
         &self,
+        _connection: Option<&DynRpcConnection>,
         _request: GetBalancesByAddressesRequest,
     ) -> RpcResult<GetBalancesByAddressesResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_utxos_by_addresses_call(&self, _request: GetUtxosByAddressesRequest) -> RpcResult<GetUtxosByAddressesResponse> {
+    async fn get_utxos_by_addresses_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetUtxosByAddressesRequest,
+    ) -> RpcResult<GetUtxosByAddressesResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_sink_blue_score_call(&self, _request: GetSinkBlueScoreRequest) -> RpcResult<GetSinkBlueScoreResponse> {
+    async fn get_sink_blue_score_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetSinkBlueScoreRequest,
+    ) -> RpcResult<GetSinkBlueScoreResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn ban_call(&self, _request: BanRequest) -> RpcResult<BanResponse> {
+    async fn ban_call(&self, _connection: Option<&DynRpcConnection>, _request: BanRequest) -> RpcResult<BanResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn unban_call(&self, _request: UnbanRequest) -> RpcResult<UnbanResponse> {
+    async fn unban_call(&self, _connection: Option<&DynRpcConnection>, _request: UnbanRequest) -> RpcResult<UnbanResponse> {
         Err(RpcError::NotImplemented)
     }
 
     async fn estimate_network_hashes_per_second_call(
         &self,
+        _connection: Option<&DynRpcConnection>,
         _request: EstimateNetworkHashesPerSecondRequest,
     ) -> RpcResult<EstimateNetworkHashesPerSecondResponse> {
         Err(RpcError::NotImplemented)
@@ -212,19 +324,41 @@ impl RpcApi for RpcCoreMock {
 
     async fn get_mempool_entries_by_addresses_call(
         &self,
+        _connection: Option<&DynRpcConnection>,
         _request: GetMempoolEntriesByAddressesRequest,
     ) -> RpcResult<GetMempoolEntriesByAddressesResponse> {
         Err(RpcError::NotImplemented)
     }
 
-    async fn get_coin_supply_call(&self, _request: GetCoinSupplyRequest) -> RpcResult<GetCoinSupplyResponse> {
+    async fn get_coin_supply_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetCoinSupplyRequest,
+    ) -> RpcResult<GetCoinSupplyResponse> {
         Err(RpcError::NotImplemented)
     }
 
     async fn get_daa_score_timestamp_estimate_call(
         &self,
+        _connection: Option<&DynRpcConnection>,
         _request: GetDaaScoreTimestampEstimateRequest,
     ) -> RpcResult<GetDaaScoreTimestampEstimateResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
+    async fn get_fee_estimate_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetFeeEstimateRequest,
+    ) -> RpcResult<GetFeeEstimateResponse> {
+        Err(RpcError::NotImplemented)
+    }
+
+    async fn get_fee_estimate_experimental_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        _request: GetFeeEstimateExperimentalRequest,
+    ) -> RpcResult<GetFeeEstimateExperimentalResponse> {
         Err(RpcError::NotImplemented)
     }
 

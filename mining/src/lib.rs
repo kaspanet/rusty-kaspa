@@ -8,11 +8,16 @@ use mempool::tx::Priority;
 mod block_template;
 pub(crate) mod cache;
 pub mod errors;
+pub mod feerate;
 pub mod manager;
 mod manager_tests;
 pub mod mempool;
 pub mod model;
 pub mod monitor;
+
+// Exposed for benchmarks
+pub use block_template::{policy::Policy, selector::RebalancingWeightedTransactionSelector};
+pub use mempool::model::frontier::{feerate_key::FeerateTransactionKey, search_tree::SearchTree, Frontier};
 
 #[cfg(test)]
 pub mod testutils;
@@ -25,6 +30,7 @@ pub struct MiningCounters {
     pub low_priority_tx_counts: AtomicU64,
     pub block_tx_counts: AtomicU64,
     pub tx_accepted_counts: AtomicU64,
+    pub tx_evicted_counts: AtomicU64,
     pub input_counts: AtomicU64,
     pub output_counts: AtomicU64,
 
@@ -43,6 +49,7 @@ impl Default for MiningCounters {
             low_priority_tx_counts: Default::default(),
             block_tx_counts: Default::default(),
             tx_accepted_counts: Default::default(),
+            tx_evicted_counts: Default::default(),
             input_counts: Default::default(),
             output_counts: Default::default(),
             ready_txs_sample: Default::default(),
@@ -61,6 +68,7 @@ impl MiningCounters {
             low_priority_tx_counts: self.low_priority_tx_counts.load(Ordering::Relaxed),
             block_tx_counts: self.block_tx_counts.load(Ordering::Relaxed),
             tx_accepted_counts: self.tx_accepted_counts.load(Ordering::Relaxed),
+            tx_evicted_counts: self.tx_evicted_counts.load(Ordering::Relaxed),
             input_counts: self.input_counts.load(Ordering::Relaxed),
             output_counts: self.output_counts.load(Ordering::Relaxed),
             ready_txs_sample: self.ready_txs_sample.load(Ordering::Relaxed),
@@ -96,6 +104,7 @@ pub struct MempoolCountersSnapshot {
     pub low_priority_tx_counts: u64,
     pub block_tx_counts: u64,
     pub tx_accepted_counts: u64,
+    pub tx_evicted_counts: u64,
     pub input_counts: u64,
     pub output_counts: u64,
     pub ready_txs_sample: u64,
@@ -146,13 +155,14 @@ impl core::ops::Sub for &MempoolCountersSnapshot {
 
     fn sub(self, rhs: Self) -> Self::Output {
         Self::Output {
-            elapsed_time: self.elapsed_time.checked_sub(rhs.elapsed_time).unwrap_or_default(),
-            high_priority_tx_counts: self.high_priority_tx_counts.checked_sub(rhs.high_priority_tx_counts).unwrap_or_default(),
-            low_priority_tx_counts: self.low_priority_tx_counts.checked_sub(rhs.low_priority_tx_counts).unwrap_or_default(),
-            block_tx_counts: self.block_tx_counts.checked_sub(rhs.block_tx_counts).unwrap_or_default(),
-            tx_accepted_counts: self.tx_accepted_counts.checked_sub(rhs.tx_accepted_counts).unwrap_or_default(),
-            input_counts: self.input_counts.checked_sub(rhs.input_counts).unwrap_or_default(),
-            output_counts: self.output_counts.checked_sub(rhs.output_counts).unwrap_or_default(),
+            elapsed_time: self.elapsed_time.saturating_sub(rhs.elapsed_time),
+            high_priority_tx_counts: self.high_priority_tx_counts.saturating_sub(rhs.high_priority_tx_counts),
+            low_priority_tx_counts: self.low_priority_tx_counts.saturating_sub(rhs.low_priority_tx_counts),
+            block_tx_counts: self.block_tx_counts.saturating_sub(rhs.block_tx_counts),
+            tx_accepted_counts: self.tx_accepted_counts.saturating_sub(rhs.tx_accepted_counts),
+            tx_evicted_counts: self.tx_evicted_counts.saturating_sub(rhs.tx_evicted_counts),
+            input_counts: self.input_counts.saturating_sub(rhs.input_counts),
+            output_counts: self.output_counts.saturating_sub(rhs.output_counts),
             ready_txs_sample: (self.ready_txs_sample + rhs.ready_txs_sample) / 2,
             txs_sample: (self.txs_sample + rhs.txs_sample) / 2,
             orphans_sample: (self.orphans_sample + rhs.orphans_sample) / 2,
@@ -172,8 +182,8 @@ impl core::ops::Sub for &P2pTxCountSample {
 
     fn sub(self, rhs: Self) -> Self::Output {
         Self::Output {
-            elapsed_time: self.elapsed_time.checked_sub(rhs.elapsed_time).unwrap_or_default(),
-            low_priority_tx_counts: self.low_priority_tx_counts.checked_sub(rhs.low_priority_tx_counts).unwrap_or_default(),
+            elapsed_time: self.elapsed_time.saturating_sub(rhs.elapsed_time),
+            low_priority_tx_counts: self.low_priority_tx_counts.saturating_sub(rhs.low_priority_tx_counts),
         }
     }
 }

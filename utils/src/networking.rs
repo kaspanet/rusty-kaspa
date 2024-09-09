@@ -179,7 +179,7 @@ impl Deref for IpAddress {
 //
 
 impl BorshSerialize for IpAddress {
-    fn serialize<W: borsh::maybestd::io::Write>(&self, writer: &mut W) -> ::core::result::Result<(), borsh::maybestd::io::Error> {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> ::core::result::Result<(), std::io::Error> {
         let variant_idx: u8 = match self.0 {
             IpAddr::V4(..) => 0u8,
             IpAddr::V6(..) => 1u8,
@@ -198,20 +198,20 @@ impl BorshSerialize for IpAddress {
 }
 
 impl BorshDeserialize for IpAddress {
-    fn deserialize(buf: &mut &[u8]) -> ::core::result::Result<Self, borsh::maybestd::io::Error> {
-        let variant_idx: u8 = BorshDeserialize::deserialize(buf)?;
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> ::core::result::Result<Self, borsh::io::Error> {
+        let variant_idx: u8 = BorshDeserialize::deserialize_reader(reader)?;
         let ip = match variant_idx {
             0u8 => {
-                let octets: [u8; 4] = BorshDeserialize::deserialize(buf)?;
+                let octets: [u8; 4] = BorshDeserialize::deserialize_reader(reader)?;
                 IpAddr::V4(Ipv4Addr::from(octets))
             }
             1u8 => {
-                let octets: [u8; 16] = BorshDeserialize::deserialize(buf)?;
+                let octets: [u8; 16] = BorshDeserialize::deserialize_reader(reader)?;
                 IpAddr::V6(Ipv6Addr::from(octets))
             }
             _ => {
-                let msg = borsh::maybestd::format!("Unexpected variant index: {:?}", variant_idx);
-                return Err(borsh::maybestd::io::Error::new(borsh::maybestd::io::ErrorKind::InvalidInput, msg));
+                let msg = format!("Unexpected variant index: {:?}", variant_idx);
+                return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, msg));
             }
         };
         Ok(Self(ip))
@@ -273,6 +273,10 @@ pub struct ContextualNetAddress {
 impl ContextualNetAddress {
     pub fn new(ip: IpAddress, port: Option<u16>) -> Self {
         Self { ip, port }
+    }
+
+    pub fn has_port(&self) -> bool {
+        self.port.is_some()
     }
 
     pub fn normalize(&self, default_port: u16) -> NetAddress {
@@ -389,15 +393,15 @@ impl Deref for PeerId {
 //
 
 impl BorshSerialize for PeerId {
-    fn serialize<W: borsh::maybestd::io::Write>(&self, writer: &mut W) -> ::core::result::Result<(), borsh::maybestd::io::Error> {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> ::core::result::Result<(), std::io::Error> {
         borsh::BorshSerialize::serialize(&self.0.as_bytes(), writer)?;
         Ok(())
     }
 }
 
 impl BorshDeserialize for PeerId {
-    fn deserialize(buf: &mut &[u8]) -> ::core::result::Result<Self, borsh::maybestd::io::Error> {
-        let bytes: uuid::Bytes = BorshDeserialize::deserialize(buf)?;
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> ::core::result::Result<Self, std::io::Error> {
+        let bytes: uuid::Bytes = BorshDeserialize::deserialize_reader(reader)?;
         Ok(Self::new(Uuid::from_bytes(bytes)))
     }
 }
@@ -411,12 +415,12 @@ mod tests {
     fn test_ip_address_borsh() {
         // Tests for IpAddress Borsh ser/deser since we manually implemented them
         let ip: IpAddress = Ipv4Addr::from([44u8; 4]).into();
-        let bin = ip.try_to_vec().unwrap();
+        let bin = borsh::to_vec(&ip).unwrap();
         let ip2: IpAddress = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(ip, ip2);
 
         let ip: IpAddress = Ipv6Addr::from([66u8; 16]).into();
-        let bin = ip.try_to_vec().unwrap();
+        let bin = borsh::to_vec(&ip).unwrap();
         let ip2: IpAddress = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(ip, ip2);
     }
@@ -425,12 +429,12 @@ mod tests {
     fn test_peer_id_borsh() {
         // Tests for PeerId Borsh ser/deser since we manually implemented them
         let id: PeerId = Uuid::new_v4().into();
-        let bin = id.try_to_vec().unwrap();
+        let bin = borsh::to_vec(&id).unwrap();
         let id2: PeerId = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(id, id2);
 
         let id: PeerId = Uuid::from_bytes([123u8; 16]).into();
-        let bin = id.try_to_vec().unwrap();
+        let bin = borsh::to_vec(&id).unwrap();
         let id2: PeerId = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(id, id2);
     }

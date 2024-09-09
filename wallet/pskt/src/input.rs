@@ -1,7 +1,5 @@
-use crate::{
-    utils::{combine_if_no_conflicts, Error as CombineMapErr},
-    KeySource, PartialSigs,
-};
+use crate::pskt::{KeySource, PartialSigs};
+use crate::utils::{combine_if_no_conflicts, Error as CombineMapErr};
 use derive_builder::Builder;
 use kaspa_consensus_core::{
     hashing::sighash_type::{SigHashType, SIG_HASH_ALL},
@@ -12,6 +10,7 @@ use std::{collections::BTreeMap, marker::PhantomData, ops::Add};
 
 // todo add unknown field? combine them by deduplicating, if there are different values - return error?
 #[derive(Builder, Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
 #[builder(default)]
 #[builder(setter(skip))]
 pub struct Input {
@@ -47,7 +46,7 @@ pub struct Input {
     /// scripts necessary for this input to pass validation.
     pub final_script_sig: Option<Vec<u8>>,
     #[serde(skip_serializing, default)]
-    hidden: PhantomData<()>, // prevents manual filling of fields
+    pub(crate) hidden: PhantomData<()>, // prevents manual filling of fields
     #[builder(setter)]
     /// Proprietary key-value pairs for this output.
     pub proprietaries: BTreeMap<String, serde_value::Value>,

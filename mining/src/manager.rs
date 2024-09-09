@@ -2,27 +2,31 @@ use crate::{
     block_template::{builder::BlockTemplateBuilder, errors::BuilderError},
     cache::BlockTemplateCache,
     errors::MiningManagerResult,
+    feerate::{FeeEstimateVerbose, FeerateEstimations, FeerateEstimatorArgs},
     mempool::{
         config::Config,
-        model::tx::{MempoolTransaction, TxRemovalReason},
+        model::tx::{MempoolTransaction, TransactionPostValidation, TransactionPreValidation, TxRemovalReason},
         populate_entries_and_try_validate::{
             populate_mempool_transactions_in_parallel, validate_mempool_transaction, validate_mempool_transactions_in_parallel,
         },
-        tx::{Orphan, Priority},
+        tx::{Orphan, Priority, RbfPolicy},
         Mempool,
     },
     model::{
-        candidate_tx::CandidateTransaction,
         owner_txs::{GroupedOwnerTransactions, ScriptPublicKeySet},
         topological_sort::IntoIterTopologically,
+        tx_insert::TransactionInsertion,
         tx_query::TransactionQuery,
     },
     MempoolCountersSnapshot, MiningCounters, P2pTxCountSample,
 };
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    api::ConsensusApi,
-    block::{BlockTemplate, TemplateBuildMode},
+    api::{
+        args::{TransactionValidationArgs, TransactionValidationBatchArgs},
+        ConsensusApi,
+    },
+    block::{BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     coinbase::MinerData,
     errors::{block::RuleError as BlockRuleError, tx::TxRuleError},
     tx::{MutableTransaction, Transaction, TransactionId, TransactionOutput},
@@ -103,14 +107,14 @@ impl MiningManager {
         loop {
             attempts += 1;
 
-            let transactions = self.block_candidate_transactions();
-            let block_template_builder = BlockTemplateBuilder::new(self.config.maximum_mass_per_block);
+            let selector = self.build_selector();
+            let block_template_builder = BlockTemplateBuilder::new();
             let build_mode = if attempts < self.config.maximum_build_block_template_attempts {
                 TemplateBuildMode::Standard
             } else {
                 TemplateBuildMode::Infallible
             };
-            match block_template_builder.build_block_template(consensus, miner_data, transactions, build_mode) {
+            match block_template_builder.build_block_template(consensus, miner_data, selector, build_mode) {
                 Ok(block_template) => {
                     let block_template = cache_lock.set_immutable_cached_template(block_template);
                     match attempts {
@@ -193,8 +197,62 @@ impl MiningManager {
         }
     }
 
-    pub(crate) fn block_candidate_transactions(&self) -> Vec<CandidateTransaction> {
-        self.mempool.read().block_candidate_transactions()
+    /// Dynamically builds a transaction selector based on the specific state of the ready transactions frontier
+    pub(crate) fn build_selector(&self) -> Box<dyn TemplateTransactionSelector> {
+        self.mempool.read().build_selector()
+    }
+
+    /// Returns realtime feerate estimations based on internal mempool state
+    pub(crate) fn get_realtime_feerate_estimations(&self) -> FeerateEstimations {
+        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.maximum_mass_per_block);
+        let estimator = self.mempool.read().build_feerate_estimator(args);
+        estimator.calc_estimations(self.config.minimum_feerate())
+    }
+
+    /// Returns realtime feerate estimations based on internal mempool state with additional verbose data
+    pub(crate) fn get_realtime_feerate_estimations_verbose(
+        &self,
+        consensus: &dyn ConsensusApi,
+        prefix: kaspa_addresses::Prefix,
+    ) -> MiningManagerResult<FeeEstimateVerbose> {
+        let args = FeerateEstimatorArgs::new(self.config.network_blocks_per_second, self.config.maximum_mass_per_block);
+        let network_mass_per_second = args.network_mass_per_second();
+        let mempool_read = self.mempool.read();
+        let estimator = mempool_read.build_feerate_estimator(args);
+        let ready_transactions_count = mempool_read.ready_transaction_count();
+        let ready_transaction_total_mass = mempool_read.ready_transaction_total_mass();
+        drop(mempool_read);
+        let mut resp = FeeEstimateVerbose {
+            estimations: estimator.calc_estimations(self.config.minimum_feerate()),
+            network_mass_per_second,
+            mempool_ready_transactions_count: ready_transactions_count as u64,
+            mempool_ready_transactions_total_mass: ready_transaction_total_mass,
+
+            next_block_template_feerate_min: -1.0,
+            next_block_template_feerate_median: -1.0,
+            next_block_template_feerate_max: -1.0,
+        };
+        // calculate next_block_template_feerate_xxx
+        {
+            let script_public_key = kaspa_txscript::pay_to_address_script(&kaspa_addresses::Address::new(
+                prefix,
+                kaspa_addresses::Version::PubKey,
+                &[0u8; 32],
+            ));
+            let miner_data: MinerData = MinerData::new(script_public_key, vec![]);
+
+            let BlockTemplate { block: kaspa_consensus_core::block::MutableBlock { transactions, .. }, calculated_fees, .. } =
+                self.get_block_template(consensus, &miner_data)?;
+
+            let Some(Stats { max, median, min }) = feerate_stats(transactions, calculated_fees) else {
+                return Ok(resp);
+            };
+
+            resp.next_block_template_feerate_max = max;
+            resp.next_block_template_feerate_min = min;
+            resp.next_block_template_feerate_median = median;
+        }
+        Ok(resp)
     }
 
     /// Clears the block template cache, forcing the next call to get_block_template to build a new block template.
@@ -205,54 +263,65 @@ impl MiningManager {
 
     #[cfg(test)]
     pub(crate) fn block_template_builder(&self) -> BlockTemplateBuilder {
-        BlockTemplateBuilder::new(self.config.maximum_mass_per_block)
+        BlockTemplateBuilder::new()
     }
 
     /// validate_and_insert_transaction validates the given transaction, and
     /// adds it to the set of known transactions that have not yet been
     /// added to any block.
     ///
-    /// The returned transactions are clones of objects owned by the mempool.
+    /// The validation is constrained by a Replace by fee policy applied
+    /// to double spends in the mempool. For more information, see [`RbfPolicy`].
+    ///
+    /// On success, returns transactions that where unorphaned following the insertion
+    /// of the provided transaction.
+    ///
+    /// The returned transactions are references of objects owned by the mempool.
     pub fn validate_and_insert_transaction(
         &self,
         consensus: &dyn ConsensusApi,
         transaction: Transaction,
         priority: Priority,
         orphan: Orphan,
-    ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
-        self.validate_and_insert_mutable_transaction(consensus, MutableTransaction::from_tx(transaction), priority, orphan)
+        rbf_policy: RbfPolicy,
+    ) -> MiningManagerResult<TransactionInsertion> {
+        self.validate_and_insert_mutable_transaction(consensus, MutableTransaction::from_tx(transaction), priority, orphan, rbf_policy)
     }
 
-    /// Exposed only for tests. Ordinary users should call `validate_and_insert_transaction` instead
-    pub fn validate_and_insert_mutable_transaction(
+    /// Exposed for tests only
+    ///
+    /// See `validate_and_insert_transaction`
+    pub(crate) fn validate_and_insert_mutable_transaction(
         &self,
         consensus: &dyn ConsensusApi,
         transaction: MutableTransaction,
         priority: Priority,
         orphan: Orphan,
-    ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
+        rbf_policy: RbfPolicy,
+    ) -> MiningManagerResult<TransactionInsertion> {
         // read lock on mempool
-        let mut transaction = self.mempool.read().pre_validate_and_populate_transaction(consensus, transaction)?;
+        let TransactionPreValidation { mut transaction, feerate_threshold } =
+            self.mempool.read().pre_validate_and_populate_transaction(consensus, transaction, rbf_policy)?;
+        let args = TransactionValidationArgs::new(feerate_threshold);
         // no lock on mempool
-        let validation_result = validate_mempool_transaction(consensus, &mut transaction);
+        let validation_result = validate_mempool_transaction(consensus, &mut transaction, &args);
         // write lock on mempool
         let mut mempool = self.mempool.write();
-        if let Some(accepted_transaction) =
-            mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan)?
-        {
-            let unorphaned_transactions = mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction);
-            drop(mempool);
+        match mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan, rbf_policy)? {
+            TransactionPostValidation { removed, accepted: Some(accepted_transaction) } => {
+                let unorphaned_transactions = mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction);
+                drop(mempool);
 
-            // The capacity used here may be exceeded since accepted unorphaned transaction may themselves unorphan other transactions.
-            let mut accepted_transactions = Vec::with_capacity(unorphaned_transactions.len() + 1);
-            // We include the original accepted transaction as well
-            accepted_transactions.push(accepted_transaction);
-            accepted_transactions.extend(self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions));
-            self.counters.increase_tx_counts(1, priority);
+                // The capacity used here may be exceeded since accepted unorphaned transaction may themselves unorphan other transactions.
+                let mut accepted_transactions = Vec::with_capacity(unorphaned_transactions.len() + 1);
+                // We include the original accepted transaction as well
+                accepted_transactions.push(accepted_transaction);
+                accepted_transactions.extend(self.validate_and_insert_unorphaned_transactions(consensus, unorphaned_transactions));
+                self.counters.increase_tx_counts(1, priority);
 
-            Ok(accepted_transactions)
-        } else {
-            Ok(vec![])
+                Ok(TransactionInsertion::new(removed, accepted_transactions))
+            }
+            TransactionPostValidation { removed, accepted: None } => Ok(TransactionInsertion::new(removed, vec![])),
         }
     }
 
@@ -263,6 +332,9 @@ impl MiningManager {
     ) -> Vec<Arc<Transaction>> {
         // The capacity used here may be exceeded (see next comment).
         let mut accepted_transactions = Vec::with_capacity(incoming_transactions.len());
+        // The validation args map is immutably empty since unorphaned transactions do not require pre processing so there
+        // are no feerate thresholds to use. Instead, we rely on this being checked during post processing.
+        let args = TransactionValidationBatchArgs::new();
         // We loop as long as incoming unorphaned transactions do unorphan other transactions when they
         // get validated and inserted into the mempool.
         while !incoming_transactions.is_empty() {
@@ -277,8 +349,11 @@ impl MiningManager {
             let mut validation_results = Vec::with_capacity(transactions.len());
             while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
                 assert!(lower_bound < upper_bound, "the chunk is never empty");
-                validation_results
-                    .extend(validate_mempool_transactions_in_parallel(consensus, &mut transactions[lower_bound..upper_bound]));
+                validation_results.extend(validate_mempool_transactions_in_parallel(
+                    consensus,
+                    &mut transactions[lower_bound..upper_bound],
+                    &args,
+                ));
                 lower_bound = upper_bound;
             }
             assert_eq!(transactions.len(), validation_results.len(), "every transaction should have a matching validation result");
@@ -291,19 +366,21 @@ impl MiningManager {
                 .zip(validation_results)
                 .flat_map(|((transaction, priority), validation_result)| {
                     let orphan_id = transaction.id();
+                    let rbf_policy = Mempool::get_orphan_transaction_rbf_policy(priority);
                     match mempool.post_validate_and_insert_transaction(
                         consensus,
                         validation_result,
                         transaction,
                         priority,
                         Orphan::Forbidden,
+                        rbf_policy,
                     ) {
-                        Ok(Some(accepted_transaction)) => {
+                        Ok(TransactionPostValidation { removed: _, accepted: Some(accepted_transaction) }) => {
                             accepted_transactions.push(accepted_transaction.clone());
                             self.counters.increase_tx_counts(1, priority);
                             mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction)
                         }
-                        Ok(None) => vec![],
+                        Ok(TransactionPostValidation { removed: _, accepted: None }) => vec![],
                         Err(err) => {
                             debug!("Failed to unorphan transaction {0} due to rule error: {1}", orphan_id, err);
                             vec![]
@@ -319,14 +396,18 @@ impl MiningManager {
     /// Validates a batch of transactions, handling iteratively only the independent ones, and
     /// adds those to the set of known transactions that have not yet been added to any block.
     ///
+    /// The validation is constrained by a Replace by fee policy applied
+    /// to double spends in the mempool. For more information, see [`RbfPolicy`].
+    ///
     /// Returns transactions that where unorphaned following the insertion of the provided
-    /// transactions. The returned transactions are clones of objects owned by the mempool.
+    /// transactions. The returned transactions are references of objects owned by the mempool.
     pub fn validate_and_insert_transaction_batch(
         &self,
         consensus: &dyn ConsensusApi,
         transactions: Vec<Transaction>,
         priority: Priority,
         orphan: Orphan,
+        rbf_policy: RbfPolicy,
     ) -> Vec<MiningManagerResult<Arc<Transaction>>> {
         const TRANSACTION_CHUNK_SIZE: usize = 250;
 
@@ -340,12 +421,18 @@ impl MiningManager {
         // read lock on mempool
         // Here, we simply log and drop all erroneous transactions since the caller doesn't care about those anyway
         let mut transactions = Vec::with_capacity(sorted_transactions.len());
+        let mut args = TransactionValidationBatchArgs::new();
         for chunk in &sorted_transactions.chunks(TRANSACTION_CHUNK_SIZE) {
             let mempool = self.mempool.read();
             let txs = chunk.filter_map(|tx| {
                 let transaction_id = tx.id();
-                match mempool.pre_validate_and_populate_transaction(consensus, tx) {
-                    Ok(tx) => Some(tx),
+                match mempool.pre_validate_and_populate_transaction(consensus, tx, rbf_policy) {
+                    Ok(TransactionPreValidation { transaction, feerate_threshold }) => {
+                        if let Some(threshold) = feerate_threshold {
+                            args.set_feerate_threshold(transaction.id(), threshold);
+                        }
+                        Some(transaction)
+                    }
                     Err(RuleError::RejectAlreadyAccepted(transaction_id)) => {
                         debug!("Ignoring already accepted transaction {}", transaction_id);
                         None
@@ -374,8 +461,11 @@ impl MiningManager {
         let mut validation_results = Vec::with_capacity(transactions.len());
         while let Some(upper_bound) = self.next_transaction_chunk_upper_bound(&transactions, lower_bound) {
             assert!(lower_bound < upper_bound, "the chunk is never empty");
-            validation_results
-                .extend(validate_mempool_transactions_in_parallel(consensus, &mut transactions[lower_bound..upper_bound]));
+            validation_results.extend(validate_mempool_transactions_in_parallel(
+                consensus,
+                &mut transactions[lower_bound..upper_bound],
+                &args,
+            ));
             lower_bound = upper_bound;
         }
         assert_eq!(transactions.len(), validation_results.len(), "every transaction should have a matching validation result");
@@ -386,13 +476,20 @@ impl MiningManager {
             let mut mempool = self.mempool.write();
             let txs = chunk.flat_map(|(transaction, validation_result)| {
                 let transaction_id = transaction.id();
-                match mempool.post_validate_and_insert_transaction(consensus, validation_result, transaction, priority, orphan) {
-                    Ok(Some(accepted_transaction)) => {
+                match mempool.post_validate_and_insert_transaction(
+                    consensus,
+                    validation_result,
+                    transaction,
+                    priority,
+                    orphan,
+                    rbf_policy,
+                ) {
+                    Ok(TransactionPostValidation { removed: _, accepted: Some(accepted_transaction) }) => {
                         insert_results.push(Ok(accepted_transaction.clone()));
                         self.counters.increase_tx_counts(1, priority);
                         mempool.get_unorphaned_transactions_after_accepted_transaction(&accepted_transaction)
                     }
-                    Ok(None) => {
+                    Ok(TransactionPostValidation { removed: _, accepted: None }) | Err(RuleError::RejectDuplicate(_)) => {
                         // Either orphaned or already existing in the mempool
                         vec![]
                     }
@@ -620,10 +717,10 @@ impl MiningManager {
             let _swo = Stopwatch::<60>::with_threshold("revalidate update_revalidated_transaction op");
             for (transaction, validation_result) in chunk {
                 let transaction_id = transaction.id();
-                // Only consider transactions still being in the mempool since during the validation some might have been removed.
-                if mempool.update_revalidated_transaction(transaction) {
-                    match validation_result {
-                        Ok(()) => {
+                match validation_result {
+                    Ok(()) => {
+                        // Only consider transactions still being in the mempool since during the validation some might have been removed.
+                        if mempool.update_revalidated_transaction(transaction) {
                             // A following transaction should not remove this one from the pool since we process in a topological order.
                             // Still, considering the (very unlikely) scenario of two high priority txs sandwiching a low one, where
                             // in this case topological order is not guaranteed since we only considered chained dependencies of
@@ -632,66 +729,55 @@ impl MiningManager {
                             // provided upon request.
                             valid_ids.push(transaction_id);
                             valid += 1;
+                        } else {
+                            other += 1;
                         }
-                        Err(RuleError::RejectMissingOutpoint) => {
-                            let transaction = mempool.get_transaction(&transaction_id, TransactionQuery::TransactionsOnly).unwrap();
-                            let missing_txs = transaction
-                                .entries
-                                .iter()
-                                .zip(transaction.tx.inputs.iter())
-                                .flat_map(
-                                    |(entry, input)| {
-                                        if entry.is_none() {
-                                            Some(input.previous_outpoint.transaction_id)
-                                        } else {
-                                            None
-                                        }
-                                    },
-                                )
-                                .collect::<Vec<_>>();
+                    }
+                    Err(RuleError::RejectMissingOutpoint) => {
+                        let missing_txs = transaction
+                            .entries
+                            .iter()
+                            .zip(transaction.tx.inputs.iter())
+                            .filter_map(|(entry, input)| entry.is_none().then_some(input.previous_outpoint.transaction_id))
+                            .collect::<Vec<_>>();
 
-                            // A transaction may have missing outpoints for legitimate reasons related to concurrency, like a race condition between
-                            // an accepted block having not started yet or unfinished call to handle_new_block_transactions but already processed by
-                            // the consensus and this ongoing call to revalidate.
-                            //
-                            // So we only remove the transaction and keep its redeemers in the mempool because we cannot be sure they are invalid, in
-                            // fact in the race condition case they are valid regarding outpoints.
-                            let extra_info = match missing_txs.len() {
-                                0 => " but no missing tx!".to_string(), // this is never supposed to happen
-                                1 => format!(" missing tx {}", missing_txs[0]),
-                                n => format!(" with {} missing txs {}..{}", n, missing_txs[0], missing_txs.last().unwrap()),
-                            };
+                        // A transaction may have missing outpoints for legitimate reasons related to concurrency, like a race condition between
+                        // an accepted block having not started yet or unfinished call to handle_new_block_transactions but already processed by
+                        // the consensus and this ongoing call to revalidate.
+                        //
+                        // So we only remove the transaction and keep its redeemers in the mempool because we cannot be sure they are invalid, in
+                        // fact in the race condition case they are valid regarding outpoints.
+                        let extra_info = match missing_txs.len() {
+                            0 => " but no missing tx!".to_string(), // this is never supposed to happen
+                            1 => format!(" missing tx {}", missing_txs[0]),
+                            n => format!(" with {} missing txs {}..{}", n, missing_txs[0], missing_txs.last().unwrap()),
+                        };
 
-                            // This call cleanly removes the invalid transaction.
-                            let result = mempool.remove_transaction(
+                        // This call cleanly removes the invalid transaction.
+                        _ = mempool
+                            .remove_transaction(
                                 &transaction_id,
                                 false,
                                 TxRemovalReason::RevalidationWithMissingOutpoints,
                                 extra_info.as_str(),
-                            );
-                            if let Err(err) = result {
-                                warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err);
-                            }
-                            missing_outpoint += 1;
-                        }
-                        Err(err) => {
-                            // Rust rewrite note:
-                            // The behavior changes here compared to the golang version.
-                            // The failed revalidation is simply logged and the process continues.
-                            warn!(
-                                "Removing high priority transaction {0} and its redeemers, it failed revalidation with {1}",
-                                transaction_id, err
-                            );
-                            // This call cleanly removes the invalid transaction and its redeemers.
-                            let result = mempool.remove_transaction(&transaction_id, true, TxRemovalReason::Muted, "");
-                            if let Err(err) = result {
-                                warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err);
-                            }
-                            invalid += 1;
-                        }
+                            )
+                            .inspect_err(|err| warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err));
+                        missing_outpoint += 1;
                     }
-                } else {
-                    other += 1;
+                    Err(err) => {
+                        // Rust rewrite note:
+                        // The behavior changes here compared to the golang version.
+                        // The failed revalidation is simply logged and the process continues.
+                        warn!(
+                            "Removing high priority transaction {0} and its redeemers, it failed revalidation with {1}",
+                            transaction_id, err
+                        );
+                        // This call cleanly removes the invalid transaction and its redeemers.
+                        _ = mempool
+                            .remove_transaction(&transaction_id, true, TxRemovalReason::Muted, "")
+                            .inspect_err(|err| warn!("Failed to remove transaction {} from mempool: {}", transaction_id, err));
+                        invalid += 1;
+                    }
                 }
             }
             if !valid_ids.is_empty() {
@@ -713,6 +799,12 @@ impl MiningManager {
                     missing_outpoint,
                     invalid,
                 );
+                if other > 0 {
+                    debug!(
+                        "During revalidation of high priority transactions {} txs were removed from the mempool by concurrent flows",
+                        other
+                    )
+                }
             }
         }
     }
@@ -739,6 +831,11 @@ impl MiningManager {
     pub fn unknown_transactions(&self, transactions: Vec<TransactionId>) -> Vec<TransactionId> {
         self.mempool.read().unknown_transactions(transactions)
     }
+
+    #[cfg(test)]
+    pub(crate) fn get_estimated_size(&self) -> usize {
+        self.mempool.read().get_estimated_size()
+    }
 }
 
 /// Async proxy for the mining manager
@@ -756,35 +853,60 @@ impl MiningManagerProxy {
         consensus.clone().spawn_blocking(move |c| self.inner.get_block_template(c, &miner_data)).await
     }
 
+    /// Returns realtime feerate estimations based on internal mempool state
+    pub async fn get_realtime_feerate_estimations(self) -> FeerateEstimations {
+        spawn_blocking(move || self.inner.get_realtime_feerate_estimations()).await.unwrap()
+    }
+
+    /// Returns realtime feerate estimations based on internal mempool state with additional verbose data
+    pub async fn get_realtime_feerate_estimations_verbose(
+        self,
+        consensus: &ConsensusProxy,
+        prefix: kaspa_addresses::Prefix,
+    ) -> MiningManagerResult<FeeEstimateVerbose> {
+        consensus.clone().spawn_blocking(move |c| self.inner.get_realtime_feerate_estimations_verbose(c, prefix)).await
+    }
+
     /// Validates a transaction and adds it to the set of known transactions that have not yet been
     /// added to any block.
     ///
-    /// The returned transactions are clones of objects owned by the mempool.
+    /// The validation is constrained by a Replace by fee policy applied
+    /// to double spends in the mempool. For more information, see [`RbfPolicy`].
+    ///
+    /// The returned transactions are references of objects owned by the mempool.
     pub async fn validate_and_insert_transaction(
         self,
         consensus: &ConsensusProxy,
         transaction: Transaction,
         priority: Priority,
         orphan: Orphan,
-    ) -> MiningManagerResult<Vec<Arc<Transaction>>> {
-        consensus.clone().spawn_blocking(move |c| self.inner.validate_and_insert_transaction(c, transaction, priority, orphan)).await
+        rbf_policy: RbfPolicy,
+    ) -> MiningManagerResult<TransactionInsertion> {
+        consensus
+            .clone()
+            .spawn_blocking(move |c| self.inner.validate_and_insert_transaction(c, transaction, priority, orphan, rbf_policy))
+            .await
     }
 
     /// Validates a batch of transactions, handling iteratively only the independent ones, and
     /// adds those to the set of known transactions that have not yet been added to any block.
     ///
+    /// The validation is constrained by a Replace by fee policy applied
+    /// to double spends in the mempool. For more information, see [`RbfPolicy`].
+    ///
     /// Returns transactions that where unorphaned following the insertion of the provided
-    /// transactions. The returned transactions are clones of objects owned by the mempool.
+    /// transactions. The returned transactions are references of objects owned by the mempool.
     pub async fn validate_and_insert_transaction_batch(
         self,
         consensus: &ConsensusProxy,
         transactions: Vec<Transaction>,
         priority: Priority,
         orphan: Orphan,
+        rbf_policy: RbfPolicy,
     ) -> Vec<MiningManagerResult<Arc<Transaction>>> {
         consensus
             .clone()
-            .spawn_blocking(move |c| self.inner.validate_and_insert_transaction_batch(c, transactions, priority, orphan))
+            .spawn_blocking(move |c| self.inner.validate_and_insert_transaction_batch(c, transactions, priority, orphan, rbf_policy))
             .await
     }
 
@@ -887,5 +1009,105 @@ impl MiningManagerProxy {
             count += self.inner.counters.orphans_sample.load(std::sync::atomic::Ordering::Relaxed)
         }
         count
+    }
+}
+
+/// Represents statistical information about fee rates of transactions.
+struct Stats {
+    /// The maximum fee rate observed.
+    max: f64,
+    /// The median fee rate observed.
+    median: f64,
+    /// The minimum fee rate observed.
+    min: f64,
+}
+/// Calculates the maximum, median, and minimum fee rates (fee per unit mass)
+/// for a set of transactions, excluding the first transaction which is assumed
+/// to be the coinbase transaction.
+///
+/// # Arguments
+///
+/// * `transactions` - A vector of `Transaction` objects. The first transaction
+///   is assumed to be the coinbase transaction and is excluded from fee rate
+///   calculations.
+/// * `calculated_fees` - A vector of fees associated with the transactions.
+///   This vector should have one less element than the `transactions` vector
+///   since the first transaction (coinbase) does not have a fee.
+///
+/// # Returns
+///
+/// Returns an `Option<Stats>` containing the maximum, median, and minimum fee
+/// rates if the input vectors are valid. Returns `None` if the vectors are
+/// empty or if the lengths are inconsistent.
+fn feerate_stats(transactions: Vec<Transaction>, calculated_fees: Vec<u64>) -> Option<Stats> {
+    if calculated_fees.is_empty() {
+        return None;
+    }
+    if transactions.len() != calculated_fees.len() + 1 {
+        error!(
+            "[feerate_stats] block template transactions length ({}) is expected to be one more than `calculated_fees` length ({})",
+            transactions.len(),
+            calculated_fees.len()
+        );
+        return None;
+    }
+    debug_assert!(transactions[0].is_coinbase());
+    let mut feerates = calculated_fees
+        .into_iter()
+        .zip(transactions
+            .iter()
+            // skip coinbase tx
+            .skip(1)
+            .map(Transaction::mass))
+        .map(|(fee, mass)| fee as f64 / mass as f64)
+        .collect_vec();
+    feerates.sort_unstable_by(f64::total_cmp);
+
+    let max = feerates[feerates.len() - 1];
+    let min = feerates[0];
+    let median = feerates[feerates.len() / 2];
+
+    Some(Stats { max, median, min })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kaspa_consensus_core::subnets;
+    use std::iter::repeat;
+
+    fn transactions(length: usize) -> Vec<Transaction> {
+        let tx = || {
+            let tx = Transaction::new(0, vec![], vec![], 0, Default::default(), 0, vec![]);
+            tx.set_mass(2);
+            tx
+        };
+        let mut txs = repeat(tx()).take(length).collect_vec();
+        txs[0].subnetwork_id = subnets::SUBNETWORK_ID_COINBASE;
+        txs
+    }
+
+    #[test]
+    fn feerate_stats_test() {
+        let calculated_fees = vec![100u64, 200, 300, 400];
+        let txs = transactions(calculated_fees.len() + 1);
+        let Stats { max, median, min } = feerate_stats(txs, calculated_fees).unwrap();
+        assert_eq!(max, 200.0);
+        assert_eq!(median, 150.0);
+        assert_eq!(min, 50.0);
+    }
+
+    #[test]
+    fn feerate_stats_empty_test() {
+        let calculated_fees = vec![];
+        let txs = transactions(calculated_fees.len() + 1);
+        assert!(feerate_stats(txs, calculated_fees).is_none());
+    }
+
+    #[test]
+    fn feerate_stats_inconsistent_test() {
+        let calculated_fees = vec![100u64, 200, 300, 400];
+        let txs = transactions(calculated_fees.len());
+        assert!(feerate_stats(txs, calculated_fees).is_none());
     }
 }

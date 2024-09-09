@@ -95,8 +95,8 @@ mod tests {
         let prefix = DatabaseStorePrefixes::AcceptanceData;
         assert_eq!(&[prefix as u8], prefix.as_ref());
         assert_eq!(
-            std::mem::size_of::<u8>(),
-            std::mem::size_of::<DatabaseStorePrefixes>(),
+            size_of::<u8>(),
+            size_of::<DatabaseStorePrefixes>(),
             "DatabaseStorePrefixes is expected to have the same memory layout of u8"
         );
     }
