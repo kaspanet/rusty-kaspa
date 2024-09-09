@@ -3707,20 +3707,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wrpc-example-simple_client"
-version = "0.14.1"
-dependencies = [
- "futures",
- "kaspa-consensus-core",
- "kaspa-core",
- "kaspa-rpc-core",
- "kaspa-wrpc-client",
- "tokio",
- "workflow-core",
- "workflow-log",
-]
-
-[[package]]
 name = "kaspa-wrpc-example-subscriber"
 version = "0.14.1"
 dependencies = [
@@ -3779,6 +3765,16 @@ dependencies = [
  "workflow-core",
  "workflow-log",
  "workflow-rpc",
+]
+
+[[package]]
+name = "kaspa-wrpc-simple-client-example"
+version = "0.14.1"
+dependencies = [
+ "futures",
+ "kaspa-rpc-core",
+ "kaspa-wrpc-client",
+ "tokio",
 ]
 
 [[package]]

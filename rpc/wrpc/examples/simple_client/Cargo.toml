@@ -1,5 +1,5 @@
 [package]
-name = "kaspa-wrpc-example-simple_client"
+name = "kaspa-wrpc-simple-client-example"
 description = "Kaspa wRPC simple client example"
 publish = false
 rust-version.workspace = true
@@ -12,12 +12,7 @@ repository.workspace = true
 
 [dependencies]
 futures.workspace = true
-kaspa-consensus-core.workspace = true
-kaspa-core.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-wrpc-client.workspace = true
 tokio.workspace = true
-workflow-core.workspace = true
-workflow-log.workspace = true
-
 

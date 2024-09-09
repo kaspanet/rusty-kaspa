@@ -1,3 +1,6 @@
+//Example of simple client to connect with Kaspa node using wRPC connection and collect some node and network basic data 
+//Verify your Kaspa node is runnning with --rpclisten-borsh=0.0.0.0:17110 parameter
+
 use std::time::Duration;
 use kaspa_wrpc_client::{prelude::NetworkId, prelude::NetworkType, KaspaRpcClient, WrpcEncoding, result::Result, client::{ConnectOptions,ConnectStrategy}};
 use kaspa_rpc_core::{api::rpc::RpcApi, GetServerInfoResponse, GetBlockDagInfoResponse};
@@ -7,7 +10,8 @@ use std::process::ExitCode;
 async fn main() -> ExitCode {
     match check_node_status().await {
         Ok(_) => {
-            println!("Client connection correctly worked!");
+            println!("");
+            println!("Well done! You successfully completed your first client connection to Kaspa node!");
             ExitCode::SUCCESS
         }
         Err(error) => {
@@ -18,15 +22,25 @@ async fn main() -> ExitCode {
 }
 
 async fn check_node_status() -> Result<()> {
-
+    //Select encoding method to use, depending on your node settings
     let encoding = WrpcEncoding::Borsh;
-    let url = Some("ws://192.168.1.250:17110");
+    
+    //Define your node address and wRPC port (see previous note)
+    let url = Some("ws://0.0.0.0:17110");
+    
+    //Define the network your Kaspa node is connected to
+    //You can select NetworkType::Mainnet, NetworkType::Testnet, NetworkType::Devnet, NetworkType::Simnet
+    let network_type = NetworkType::Mainnet;
+    let selected_network = Some(NetworkId::new(network_type));
+    
+    //Advanced options
     let resolver = None;
-    let network_id = Some(NetworkId::new(NetworkType::Mainnet));
     let subscription_context = None;
     
-    let client = KaspaRpcClient::new(encoding, url, resolver, network_id, subscription_context)?;
+    //Create new wRPC client with parameters defined above
+    let client = KaspaRpcClient::new(encoding, url, resolver, selected_network, subscription_context)?;
     
+    //Advanced connection options 
     let timeout = 5_000;
     let options = ConnectOptions {
         block_async_connect: true,
@@ -35,8 +49,10 @@ async fn check_node_status() -> Result<()> {
         ..Default::default()
     };
 
+    //Connect to selected Kaspa node
     client.connect(Some(options)).await?;
 
+    //Retrieve and show Kaspa node information
     let GetServerInfoResponse {
         is_synced,
         server_version,
@@ -49,7 +65,9 @@ async fn check_node_status() -> Result<()> {
     println!("Network: {}", network_id);
     println!("Node is synced: {}", is_synced);
     println!("Node is indexing UTXOs: {}", has_utxo_index);
+    println!("");
 
+    //Retrieve and show Kaspa network information
     let GetBlockDagInfoResponse {
         block_count,
         header_count,
@@ -63,10 +81,9 @@ async fn check_node_status() -> Result<()> {
         ..
     } = client.get_block_dag_info().await?;
 
-    println!("");
     println!("Block count: {}", block_count);
     println!("Header count: {}", header_count);
-    println!("Tip hash:");
+    println!("Tip hashes:");
     for tip_hash in tip_hashes{
         println!("{}", tip_hash);
     };
@@ -79,8 +96,11 @@ async fn check_node_status() -> Result<()> {
     println!("Pruning point hash: {}", pruning_point_hash);
     println!("Virtual DAA score: {}", virtual_daa_score);
     println!("Sink: {}", sink);
-
+    
+    //Disconnect client from Kaspa node
     client.disconnect().await?;
+    
+    //Return function result
     Ok(())
 
 }
