@@ -229,7 +229,6 @@ impl VirtualStateProcessor {
             notification_root,
             counters,
             storage_mass_activation_daa_score: params.storage_mass_activation_daa_score,
-            // bool: todo!(),
         }
     }
 
