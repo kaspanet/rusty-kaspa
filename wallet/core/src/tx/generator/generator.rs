@@ -915,7 +915,7 @@ impl Generator {
             // calculate for edge transaction boundaries
             // we know that stage.number_of_transactions > 0 will trigger stage generation
             let edge_compute_mass = data.aggregate_mass + self.inner.standard_change_output_compute_mass; //self.inner.final_transaction_outputs_compute_mass + self.inner.final_transaction_payload_mass;
-            let edge_fees = calc.calc_minimum_transaction_fee_from_mass(edge_compute_mass);
+            let edge_fees = self.calc_fees_from_mass(edge_compute_mass);
             let edge_output_value = data.aggregate_input_value.saturating_sub(edge_fees);
             if edge_output_value != 0 {
                 let edge_output_harmonic = calc.calc_storage_mass_output_harmonic_single(edge_output_value);
@@ -1004,8 +1004,7 @@ impl Generator {
             }
         } else {
             data.aggregate_mass = transaction_mass;
-            data.transaction_fees =
-                calc.calc_minimum_transaction_fee_from_mass(transaction_mass) + self.calc_fee_rate(transaction_mass);
+            data.transaction_fees = self.calc_fees_from_mass(transaction_mass);
             stage.aggregate_fees += data.transaction_fees;
             context.aggregate_fees += data.transaction_fees;
             Ok(Some(DataKind::Edge))
