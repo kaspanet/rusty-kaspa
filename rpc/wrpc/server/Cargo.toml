@@ -34,9 +34,4 @@ workflow-core.workspace = true
 workflow-log.workspace = true
 workflow-rpc.workspace = true
 workflow-serializer.workspace = true
-
-[target.x86_64-unknown-linux-gnu.dependencies]
-# Adding explicitely the openssl dependency here is needed for a successful build with zigbuild
-# as used in the release deployment in GitHub CI
-# see: https://github.com/rust-cross/cargo-zigbuild/issues/127
-openssl = { version = "0.10", features = ["vendored"] }
+rustls.workspace = true

@@ -31,7 +31,7 @@ use kaspa_consensus_core::{blockstatus::BlockStatus, BlockHashSet};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
-use std::{mem::size_of, ops::DerefMut, sync::Arc};
+use std::{ops::DerefMut, sync::Arc};
 
 pub struct ConsensusStorage {
     // DB
