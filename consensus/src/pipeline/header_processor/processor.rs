@@ -25,10 +25,7 @@ use crate::{
     },
     params::Params,
     pipeline::deps_manager::{BlockProcessingMessage, BlockTask, BlockTaskDependencyManager, TaskId},
-    processes::{
-        ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations::RelationsStoreExtensions,
-        window::WindowManager,
-    },
+    processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations::RelationsStoreExtensions},
 };
 use crossbeam_channel::{Receiver, Sender};
 use itertools::Itertools;
@@ -46,10 +43,7 @@ use kaspa_utils::vec::VecExtensions;
 use parking_lot::RwLock;
 use rayon::ThreadPool;
 use rocksdb::WriteBatch;
-use std::{
-    sync::{atomic::Ordering, Arc},
-    time::Instant,
-};
+use std::sync::{atomic::Ordering, Arc};
 
 use super::super::ProcessingCounters;
 
@@ -160,8 +154,6 @@ pub struct HeaderProcessor {
 
     // Counters
     counters: Arc<ProcessingCounters>,
-
-    time: Arc<RwLock<Instant>>,
 }
 
 impl HeaderProcessor {
@@ -214,8 +206,6 @@ impl HeaderProcessor {
             mergeset_size_limit: params.mergeset_size_limit,
             skip_proof_of_work: params.skip_proof_of_work,
             max_block_level: params.max_block_level,
-
-            time: Arc::new(RwLock::new(Instant::now())),
         }
     }
 
@@ -372,14 +362,6 @@ impl HeaderProcessor {
     }
 
     fn commit_header(&self, ctx: HeaderProcessingContext, header: &Header) {
-        let mut time_guard = self.time.write();
-
-        if time_guard.elapsed().as_secs() > 10 {
-            self.window_manager.maybe_log();
-            *time_guard = Instant::now();
-        }
-        drop(time_guard);
-
         let ghostdag_data = ctx.ghostdag_data.as_ref().unwrap();
         let pp = ctx.pruning_point();
 
