@@ -40,7 +40,7 @@ impl Connect {
                         ",
                     );
                     tprintln!(ctx);
-                    tprintln!(ctx, "Please do not connect to public nodes directly.");
+                    tpara!(ctx, "Please do not connect to public nodes directly as they are load-balanced.");
                     tprintln!(ctx);
                 }
             }
