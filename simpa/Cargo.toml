@@ -36,7 +36,6 @@ rand.workspace = true
 rayon.workspace = true
 secp256k1.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
-rustls.workspace = true
 
 [features]
 heap = ["dhat", "kaspa-alloc/heap"]

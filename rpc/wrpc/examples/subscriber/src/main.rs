@@ -268,7 +268,7 @@ impl Listener {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    rustls::crypto::ring::default_provider().install_default().unwrap();
+    //rustls::crypto::ring::default_provider().install_default().unwrap();
     let listener = Listener::try_new(NetworkId::new(NetworkType::Mainnet), None)?;
 
     let (shutdown_sender, shutdown_receiver) = oneshot::<()>();

@@ -51,8 +51,6 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    rustls::crypto::ring::default_provider().install_default().unwrap();
-
     let Args { testnet, simnet, devnet, grpc_proxy_address, interface, verbose, threads, encoding } = Args::parse();
 
     let network_type = if testnet {

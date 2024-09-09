@@ -55,7 +55,6 @@ tempfile.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 workflow-log.workspace = true
-rustls.workspace = true
 
 toml = "0.8.10"
 serde_with = "3.7.0"
