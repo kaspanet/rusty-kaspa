@@ -289,6 +289,8 @@ struct Inner {
     standard_change_output_compute_mass: u64,
     // signature mass per input
     signature_mass_per_input: u64,
+    // fee rate
+    fee_rate : Option<f64>,
     // final transaction amount and fees
     // `None` is used for sweep transactions
     final_transaction: Option<FinalTransaction>,
@@ -322,6 +324,7 @@ impl std::fmt::Debug for Inner {
             .field("standard_change_output_compute_mass", &self.standard_change_output_compute_mass)
             .field("signature_mass_per_input", &self.signature_mass_per_input)
             // .field("final_transaction", &self.final_transaction)
+            .field("fee_rate", &self.fee_rate)
             .field("final_transaction_priority_fee", &self.final_transaction_priority_fee)
             .field("final_transaction_outputs", &self.final_transaction_outputs)
             .field("final_transaction_outputs_harmonic", &self.final_transaction_outputs_harmonic)
@@ -353,6 +356,7 @@ impl Generator {
             sig_op_count,
             minimum_signatures,
             change_address,
+            fee_rate,
             final_transaction_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
@@ -458,6 +462,7 @@ impl Generator {
             change_address,
             standard_change_output_compute_mass: standard_change_output_mass,
             signature_mass_per_input,
+            fee_rate,
             final_transaction,
             final_transaction_priority_fee,
             final_transaction_outputs,
@@ -637,7 +642,12 @@ impl Generator {
     /// Calculate relay transaction fees for the current transaction `data`
     #[inline(always)]
     fn calc_relay_transaction_compute_fees(&self, data: &Data) -> u64 {
-        self.inner.mass_calculator.calc_minimum_transaction_fee_from_mass(self.calc_relay_transaction_mass(data))
+        let mass = self.calc_relay_transaction_mass(data);
+        self.inner.mass_calculator.calc_minimum_transaction_fee_from_mass(mass) + self.calc_fee_rate(mass)
+    }
+
+    fn calc_fees_from_mass(&self, mass : u64) -> u64 {
+        self.inner.mass_calculator.calc_minimum_transaction_fee_from_mass(mass) + self.calc_fee_rate(mass)
     }
 
     /// Main UTXO entry processing loop. This function sources UTXOs from [`Generator::get_utxo_entry()`] and
@@ -792,6 +802,10 @@ impl Generator {
     fn calc_storage_mass(&self, data: &Data, output_harmonics: u64) -> u64 {
         let calc = &self.inner.mass_calculator;
         calc.calc_storage_mass(output_harmonics, data.aggregate_input_value, data.inputs.len() as u64)
+    }
+
+    fn calc_fee_rate(&self, mass : u64) -> u64 {
+        self.inner.fee_rate.map(|fee_rate| (fee_rate * mass as f64) as u64).unwrap_or(0)
     }
 
     /// Check if the current state has sufficient funds for the final transaction,
@@ -962,7 +976,7 @@ impl Generator {
             Err(Error::StorageMassExceedsMaximumTransactionMass { storage_mass })
         } else {
             let transaction_mass = calc.combine_mass(compute_mass_with_change, storage_mass);
-            let transaction_fees = calc.calc_minimum_transaction_fee_from_mass(transaction_mass);
+            let transaction_fees = self.calc_fees_from_mass(transaction_mass);//calc.calc_minimum_transaction_fee_from_mass(transaction_mass) + self.calc_fee_rate(transaction_mass);
 
             Ok(MassDisposition { transaction_mass, transaction_fees, storage_mass, absorb_change_to_fees })
         }
@@ -976,7 +990,8 @@ impl Generator {
         let compute_mass = data.aggregate_mass
             + self.inner.standard_change_output_compute_mass
             + self.inner.network_params.additional_compound_transaction_mass();
-        let compute_fees = calc.calc_minimum_transaction_fee_from_mass(compute_mass);
+        let compute_fees = calc.calc_minimum_transaction_fee_from_mass(compute_mass) + self.calc_fee_rate(compute_mass);
+        // let compute_fees = self.calc_fees_from_mass(compute_mass);
 
         // TODO - consider removing this as calculated storage mass should produce `0` value
         let edge_output_harmonic =
