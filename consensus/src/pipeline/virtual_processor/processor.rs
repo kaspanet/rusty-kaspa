@@ -16,10 +16,10 @@ use crate::{
         stores::{
             acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
-            block_window_cache::{BlockWindowCacheStore, BlockWindowHeap},
+            block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
             depth::{DbDepthStore, DepthStoreReader},
-            ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
+            ghostdag::{CompactGhostdagData, DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             past_pruning_points::DbPastPruningPointsStore,
             pruning::{DbPruningStore, PruningStoreReader},
@@ -229,6 +229,7 @@ impl VirtualStateProcessor {
             notification_root,
             counters,
             storage_mass_activation_daa_score: params.storage_mass_activation_daa_score,
+            // bool: todo!(),
         }
     }
 
@@ -311,11 +312,18 @@ impl VirtualStateProcessor {
             .expect("all possible rule errors are unexpected here");
 
         // Update the pruning processor about the virtual state change
-        let sink_ghostdag_data = self.ghostdag_primary_store.get_compact_data(new_sink).unwrap();
+        let sink_ghostdag_data = self.ghostdag_primary_store.get_data(new_sink).unwrap();
+
+        // update window caches - for ibd performance. see method comment for more details.
+        if prev_sink != new_sink {
+            self.maybe_commit_windows(new_sink, &sink_ghostdag_data);
+        };
+
+        let compact_sink_ghostdag_data = CompactGhostdagData::from(sink_ghostdag_data.as_ref());
         // Empty the channel before sending the new message. If pruning processor is busy, this step makes sure
         // the internal channel does not grow with no need (since we only care about the most recent message)
         let _consume = self.pruning_receiver.try_iter().count();
-        self.pruning_sender.send(PruningProcessingMessage::Process { sink_ghostdag_data }).unwrap();
+        self.pruning_sender.send(PruningProcessingMessage::Process { sink_ghostdag_data: compact_sink_ghostdag_data }).unwrap();
 
         // Emit notifications
         let accumulated_diff = Arc::new(accumulated_diff);
@@ -327,7 +335,7 @@ impl VirtualStateProcessor {
             .notify(Notification::UtxosChanged(UtxosChangedNotification::new(accumulated_diff, virtual_parents)))
             .expect("expecting an open unbounded channel");
         self.notification_root
-            .notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(sink_ghostdag_data.blue_score)))
+            .notify(Notification::SinkBlueScoreChanged(SinkBlueScoreChangedNotification::new(compact_sink_ghostdag_data.blue_score)))
             .expect("expecting an open unbounded channel");
         self.notification_root
             .notify(Notification::VirtualDaaScoreChanged(VirtualDaaScoreChangedNotification::new(new_virtual_state.daa_score)))
@@ -491,9 +499,7 @@ impl VirtualStateProcessor {
         // Calc virtual DAA score, difficulty bits and past median time
         let virtual_daa_window = self.window_manager.block_daa_window(&virtual_ghostdag_data)?;
         let virtual_bits = self.window_manager.calculate_difficulty_bits(&virtual_ghostdag_data, &virtual_daa_window);
-        let (virtual_past_median_time, past_median_time_window) = self.window_manager.calc_past_median_time(&virtual_ghostdag_data)?;
-
-        self.maybe_commit_windows(ctx.selected_parent(), virtual_daa_window.window, past_median_time_window);
+        let (virtual_past_median_time, _) = self.window_manager.calc_past_median_time(&virtual_ghostdag_data)?;
 
         // Calc virtual UTXO state relative to selected parent
         self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_window.daa_score);
@@ -544,21 +550,22 @@ impl VirtualStateProcessor {
         drop(selected_chain_write);
     }
 
-    fn maybe_commit_windows(
-        &self,
-        selected_parent: Hash,
-        daa_window: Arc<BlockWindowHeap>,
-        past_median_time_window: Arc<BlockWindowHeap>,
-    ) {
-        // TODO: this only important for ibd performance, as we incur cache misses otherwise.
-        // We could optimize this by only committing the windows if virtual processor where to have explict knowledge of being in ibd.
-        if !self.block_window_cache_for_difficulty.contains_key(&selected_parent) {
-            self.block_window_cache_for_difficulty.insert(selected_parent, daa_window);
-        }
+    fn maybe_commit_windows(&self, new_sink: Hash, sink_ghostdag_data: &GhostdagData) {
+        // this is only important for ibd performance, as we incur expensive cache misses otherwise.
+        // this occurs because we cannot rely on header processing to pre-cache in this scenario.
 
-        if !self.block_window_cache_for_past_median_time.contains_key(&selected_parent) {
-            self.block_window_cache_for_past_median_time.insert(selected_parent, past_median_time_window);
-        }
+        // TODO: We could optimize this by only committing the windows if virtual processor where to have explicit knowledge of being in ibd.
+        // above may be possible with access to the `is_ibd_running` AtomicBool, or `is_nearly_synced()` method.
+
+        if !self.block_window_cache_for_difficulty.contains_key(&new_sink) {
+            self.block_window_cache_for_difficulty
+                .insert(new_sink, self.window_manager.block_daa_window(sink_ghostdag_data).unwrap().window);
+        };
+
+        if !self.block_window_cache_for_past_median_time.contains_key(&new_sink) {
+            self.block_window_cache_for_past_median_time
+                .insert(new_sink, self.window_manager.calc_past_median_time(sink_ghostdag_data).unwrap().1);
+        };
     }
 
     /// Returns the max number of tips to consider as virtual parents in a single virtual resolve operation.

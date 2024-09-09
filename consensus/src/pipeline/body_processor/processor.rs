@@ -17,7 +17,7 @@ use crate::{
         deps_manager::{BlockProcessingMessage, BlockTaskDependencyManager, TaskId, VirtualStateProcessingMessage},
         ProcessingCounters,
     },
-    processes::{coinbase::CoinbaseManager, transaction_validator::TransactionValidator},
+    processes::{coinbase::CoinbaseManager, transaction_validator::TransactionValidator, window::WindowManager},
 };
 use crossbeam_channel::{Receiver, Sender};
 use kaspa_consensus_core::{
@@ -82,6 +82,8 @@ pub struct BlockBodyProcessor {
 
     /// Storage mass hardfork DAA score
     pub(crate) storage_mass_activation_daa_score: u64,
+
+    time: Arc<RwLock<std::time::Instant>>,
 }
 
 impl BlockBodyProcessor {
@@ -132,6 +134,7 @@ impl BlockBodyProcessor {
             notification_root,
             counters,
             storage_mass_activation_daa_score,
+            time: Arc::new(RwLock::new(std::time::Instant::now())),
         }
     }
 
@@ -233,6 +236,14 @@ impl BlockBodyProcessor {
     }
 
     fn commit_body(self: &Arc<BlockBodyProcessor>, hash: Hash, parents: &[Hash], transactions: Arc<Vec<Transaction>>) {
+        let mut time_guard = self.time.write();
+
+        if time_guard.elapsed().as_secs() > 10 {
+            self.window_manager.maybe_log();
+            *time_guard = std::time::Instant::now();
+        }
+        drop(time_guard);
+
         let mut batch = WriteBatch::default();
 
         // This is an append only store so it requires no lock.
