@@ -28,7 +28,7 @@ impl Connect {
             if is_public {
                 tpara!(
                     ctx,
-                    "Please note that public node infrastructure is community-operated and \
+                    "Please note that public node infrastructure is operated by contributors and \
                     accessing it may expose your IP address to different node providers. \
                     Consider running your own node for better privacy. \
                     ",
