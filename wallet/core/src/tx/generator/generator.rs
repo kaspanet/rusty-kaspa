@@ -705,7 +705,6 @@ impl Generator {
             Ok((DataKind::NoOp, data))
         } else if stage.number_of_transactions > 0 {
             data.aggregate_mass += self.inner.standard_change_output_compute_mass;
-            data.change_output_value = Some(data.aggregate_input_value - data.transaction_fees);
             Ok((DataKind::Edge, data))
         } else if data.aggregate_input_value < data.transaction_fees {
             Err(Error::InsufficientFunds { additional_needed: data.transaction_fees - data.aggregate_input_value, origin: "relay" })

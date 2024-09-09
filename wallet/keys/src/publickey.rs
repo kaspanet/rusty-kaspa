@@ -17,9 +17,11 @@
 //! ```
 //!
 
-use kaspa_consensus_core::network::NetworkType;
-
 use crate::imports::*;
+
+use kaspa_consensus_core::network::NetworkType;
+use ripemd::{Digest, Ripemd160};
+use sha2::Sha256;
 
 /// Data structure that envelopes a PublicKey.
 /// Only supports Schnorr-based addresses.
@@ -68,6 +70,17 @@ impl PublicKey {
     #[wasm_bindgen(js_name = toXOnlyPublicKey)]
     pub fn to_x_only_public_key(&self) -> XOnlyPublicKey {
         self.xonly_public_key.into()
+    }
+
+    /// Compute a 4-byte key fingerprint for this public key as a hex string.
+    /// Default implementation uses `RIPEMD160(SHA256(public_key))`.
+    pub fn fingerprint(&self) -> Option<HexString> {
+        if let Some(public_key) = self.public_key.as_ref() {
+            let digest = Ripemd160::digest(Sha256::digest(public_key.serialize().as_slice()));
+            Some(digest[..4].as_ref().to_hex().into())
+        } else {
+            None
+        }
     }
 }
 
