@@ -59,7 +59,7 @@ members = [
     "rothschild",
     "metrics/core",
     "metrics/perf_monitor",
-    "utils/alloc"
+    "utils/alloc",
 ]
 
 [workspace.package]
