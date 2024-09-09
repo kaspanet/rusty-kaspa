@@ -358,7 +358,7 @@ impl PendingTransaction {
             DataKind::Final => {
                 // change output has sufficient amount to cover fee increase
                 // if change_output_value > fee_increase && change_output_index.is_some() {
-                if let (Some(index), true) =  (change_output_index,change_output_value >= additional_fees) {
+                if let (Some(index), true) = (change_output_index, change_output_value >= additional_fees) {
                     change_output_value -= additional_fees;
                     if generator.mass_calculator().is_dust(change_output_value) {
                         aggregate_output_value -= change_output_value;
@@ -384,25 +384,27 @@ impl PendingTransaction {
                             available += value;
                             // aggregate_input_value += value;
 
-
                             utxo_entries_rbf.push(utxo_entry);
                             // signable_tx.lock().unwrap().tx.inputs.push(utxo.as_input());
                         } else {
                             // generator.stash(utxo_entries_rbf);
                             // utxo_entries_rbf.into_iter().for_each(|utxo_entry|generator.stash(utxo_entry));
-                            return Err(Error::InsufficientFunds {  additional_needed : additional_fees - available, origin : "increase_fees_for_rbf" });
+                            return Err(Error::InsufficientFunds {
+                                additional_needed: additional_fees - available,
+                                origin: "increase_fees_for_rbf",
+                            });
                         }
                     }
 
                     let utxo_entries_vec = utxo_entries
                         .iter()
-                        .map(|(_,utxo_entry)| utxo_entry.as_ref().clone())
-                        .chain(utxo_entries_rbf.iter().map(|utxo_entry|utxo_entry.as_ref().clone()))
+                        .map(|(_, utxo_entry)| utxo_entry.as_ref().clone())
+                        .chain(utxo_entries_rbf.iter().map(|utxo_entry| utxo_entry.as_ref().clone()))
                         .collect::<Vec<_>>();
 
-                    let inputs = utxo_entries_rbf.into_iter().map(|utxo| {
-                        TransactionInput::new(utxo.outpoint().clone().into(), vec![], 0, generator.sig_op_count())
-                    });
+                    let inputs = utxo_entries_rbf
+                        .into_iter()
+                        .map(|utxo| TransactionInput::new(utxo.outpoint().clone().into(), vec![], 0, generator.sig_op_count()));
 
                     signable_tx.tx.inputs.extend(inputs);
 
@@ -416,25 +418,20 @@ impl PendingTransaction {
                         return Err(Error::MassCalculationError);
                     }
                     signable_tx.tx.set_mass(transaction_mass);
-    
+
                     // utxo
 
                     // let input = ;
-
-        
                 }
-        
             }
-            _ => {
-
-            }
+            _ => {}
         }
 
         let inner = PendingTransactionInner {
             generator,
             utxo_entries,
             id,
-            signable_tx : Mutex::new(signable_tx),
+            signable_tx: Mutex::new(signable_tx),
             addresses,
             is_submitted,
             payment_value,
@@ -449,8 +446,6 @@ impl PendingTransaction {
         };
 
         Ok(PendingTransaction { inner: Arc::new(inner) })
-
-
 
         // let mut mutable_tx = self.inner.signable_tx.lock()?.clone();
         // mutable_tx.tx.fee += fees;

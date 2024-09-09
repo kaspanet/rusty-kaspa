@@ -136,7 +136,7 @@ impl GeneratorSettings {
         change_address: Address,
         sig_op_count: u8,
         minimum_signatures: u16,
-        fee_rate : Option<f64>,
+        fee_rate: Option<f64>,
         final_transaction_destination: PaymentDestination,
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,

@@ -290,7 +290,7 @@ struct Inner {
     // signature mass per input
     signature_mass_per_input: u64,
     // fee rate
-    fee_rate : Option<f64>,
+    fee_rate: Option<f64>,
     // final transaction amount and fees
     // `None` is used for sweep transactions
     final_transaction: Option<FinalTransaction>,
@@ -481,78 +481,78 @@ impl Generator {
     pub fn network_type(&self) -> NetworkType {
         self.inner.network_id.into()
     }
-    
+
     /// Returns the current [`NetworkId`]
     #[inline(always)]
     pub fn network_id(&self) -> NetworkId {
         self.inner.network_id
     }
-    
+
     /// Returns current [`NetworkParams`]
     #[inline(always)]
     pub fn network_params(&self) -> &NetworkParams {
         self.inner.network_params
     }
-    
+
     /// Returns owned mass calculator instance (bound to [`NetworkParams`] of the [`Generator`])
     #[inline(always)]
     pub fn mass_calculator(&self) -> &MassCalculator {
         &self.inner.mass_calculator
     }
-    
+
     #[inline(always)]
     pub fn sig_op_count(&self) -> u8 {
         &self.inner.sig_op_count
     }
-    
+
     /// The underlying [`UtxoContext`] (if available).
     #[inline(always)]
     pub fn source_utxo_context(&self) -> &Option<UtxoContext> {
         &self.inner.source_utxo_context
     }
-    
+
     /// Signifies that the transaction is a transfer between accounts
     #[inline(always)]
     pub fn destination_utxo_context(&self) -> &Option<UtxoContext> {
         &self.inner.destination_utxo_context
     }
-    
+
     /// Core [`Multiplexer<Events>`] (if available)
     #[inline(always)]
     pub fn multiplexer(&self) -> &Option<Multiplexer<Box<Events>>> {
         &self.inner.multiplexer
     }
-    
+
     /// Mutable context used by the generator to track state
     #[inline(always)]
     fn context(&self) -> MutexGuard<Context> {
         self.inner.context.lock().unwrap()
     }
-    
+
     /// Returns the underlying instance of the [Signer](SignerT)
     #[inline(always)]
     pub(crate) fn signer(&self) -> &Option<Arc<dyn SignerT>> {
         &self.inner.signer
     }
-    
+
     /// The total amount of fees in SOMPI consumed during the transaction generation process.
     #[inline(always)]
     pub fn aggregate_fees(&self) -> u64 {
         self.context().aggregate_fees
     }
-    
+
     /// The total number of UTXOs consumed during the transaction generation process.
     #[inline(always)]
     pub fn aggregate_utxos(&self) -> usize {
         self.context().aggregated_utxos
     }
-    
+
     /// The final transaction amount (if available).
     #[inline(always)]
     pub fn final_transaction_value_no_fees(&self) -> Option<u64> {
         self.inner.final_transaction.as_ref().map(|final_transaction| final_transaction.value_no_fees)
     }
-    
+
     /// Returns the final transaction id if the generator has finished successfully.
     #[inline(always)]
     pub fn final_transaction_id(&self) -> Option<TransactionId> {
@@ -566,7 +566,7 @@ impl Generator {
     pub fn stream(&self) -> impl Stream<Item = Result<PendingTransaction>> {
         Box::pin(PendingTransactionStream::new(self))
     }
-    
+
     /// Returns an iterator that causes the [Generator] to produce
     /// transaction for each iterator poll request. NOTE: transactions
     /// are generated only when the returned iterator is iterated.
@@ -574,7 +574,7 @@ impl Generator {
     pub fn iter(&self) -> impl Iterator<Item = Result<PendingTransaction>> {
         PendingTransactionIterator::new(self)
     }
-    
+
     /// Get next UTXO entry. This function obtains UTXO in the following order:
     /// 1. From the UTXO stash (used to store UTxOs that were consumed during previous transaction generation but were rejected due to various conditions, such as mass overflow)
     /// 2. From the current stage
@@ -618,7 +618,7 @@ impl Generator {
     //     Ok(utxo_entry)
     // }
 
-    /// Adds a [`UtxoEntryReference`] to the UTXO stash. UTXO stash 
+    /// Adds a [`UtxoEntryReference`] to the UTXO stash. UTXO stash
     /// is the first source of UTXO entries.
     pub fn stash(&self, into_iter: impl IntoIterator<Item = UtxoEntryReference>) {
         // let iter = iter.into_iterator();
@@ -627,7 +627,7 @@ impl Generator {
         self.context().utxo_stash.extend(into_iter.into_iter());
     }
 
-    // /// Adds multiple [`UtxoEntryReference`] structs to the UTXO stash. UTXO stash 
+    // /// Adds multiple [`UtxoEntryReference`] structs to the UTXO stash. UTXO stash
     // /// is the first source of UTXO entries.
     // pub fn stash_multiple(&self, utxo_entries: Vec<UtxoEntryReference>) {
     //     self.context().utxo_stash.extend(utxo_entries);
@@ -646,7 +646,7 @@ impl Generator {
         self.inner.mass_calculator.calc_minimum_transaction_fee_from_mass(mass) + self.calc_fee_rate(mass)
     }
 
-    fn calc_fees_from_mass(&self, mass : u64) -> u64 {
+    fn calc_fees_from_mass(&self, mass: u64) -> u64 {
         self.inner.mass_calculator.calc_minimum_transaction_fee_from_mass(mass) + self.calc_fee_rate(mass)
     }
 
@@ -804,7 +804,7 @@ impl Generator {
         calc.calc_storage_mass(output_harmonics, data.aggregate_input_value, data.inputs.len() as u64)
     }
 
-    fn calc_fee_rate(&self, mass : u64) -> u64 {
+    fn calc_fee_rate(&self, mass: u64) -> u64 {
         self.inner.fee_rate.map(|fee_rate| (fee_rate * mass as f64) as u64).unwrap_or(0)
     }
 
@@ -976,7 +976,7 @@ impl Generator {
             Err(Error::StorageMassExceedsMaximumTransactionMass { storage_mass })
         } else {
             let transaction_mass = calc.combine_mass(compute_mass_with_change, storage_mass);
-            let transaction_fees = self.calc_fees_from_mass(transaction_mass);//calc.calc_minimum_transaction_fee_from_mass(transaction_mass) + self.calc_fee_rate(transaction_mass);
+            let transaction_fees = self.calc_fees_from_mass(transaction_mass); //calc.calc_minimum_transaction_fee_from_mass(transaction_mass) + self.calc_fee_rate(transaction_mass);
 
             Ok(MassDisposition { transaction_mass, transaction_fees, storage_mass, absorb_change_to_fees })
         }
@@ -990,8 +990,8 @@ impl Generator {
         let compute_mass = data.aggregate_mass
             + self.inner.standard_change_output_compute_mass
             + self.inner.network_params.additional_compound_transaction_mass();
-        let compute_fees = calc.calc_minimum_transaction_fee_from_mass(compute_mass) + self.calc_fee_rate(compute_mass);
-        // let compute_fees = self.calc_fees_from_mass(compute_mass);
+        // let compute_fees = calc.calc_minimum_transaction_fee_from_mass(compute_mass) + self.calc_fee_rate(compute_mass);
+        let compute_fees = self.calc_fees_from_mass(compute_mass);
 
         // TODO - consider removing this as calculated storage mass should produce `0` value
         let edge_output_harmonic =
@@ -1010,7 +1010,8 @@ impl Generator {
             }
         } else {
             data.aggregate_mass = transaction_mass;
-            data.transaction_fees = calc.calc_minimum_transaction_fee_from_mass(transaction_mass);
+            data.transaction_fees =
+                calc.calc_minimum_transaction_fee_from_mass(transaction_mass) + self.calc_fee_rate(transaction_mass);
             stage.aggregate_fees += data.transaction_fees;
             context.aggregate_fees += data.transaction_fees;
             Ok(Some(DataKind::Edge))

@@ -404,7 +404,7 @@ where
         priority_utxo_entries,
         destination_utxo_context,
         // TODO
-        fee_rate : None,
+        fee_rate: None,
         final_transaction_priority_fee: final_priority_fee,
         final_transaction_destination,
         final_transaction_payload,
