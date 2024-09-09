@@ -638,11 +638,11 @@ impl Generator {
     #[inline(always)]
     fn calc_relay_transaction_compute_fees(&self, data: &Data) -> u64 {
         let mass = self.calc_relay_transaction_mass(data);
-        self.inner.mass_calculator.calc_minimum_transaction_fee_from_mass(mass) + self.calc_fee_rate(mass)
+        self.inner.mass_calculator.calc_minimum_transaction_fee_from_mass(mass).max(self.calc_fee_rate(mass))
     }
 
     fn calc_fees_from_mass(&self, mass: u64) -> u64 {
-        self.inner.mass_calculator.calc_minimum_transaction_fee_from_mass(mass) + self.calc_fee_rate(mass)
+        self.inner.mass_calculator.calc_minimum_transaction_fee_from_mass(mass).max(self.calc_fee_rate(mass))
     }
 
     /// Main UTXO entry processing loop. This function sources UTXOs from [`Generator::get_utxo_entry()`] and
