@@ -129,6 +129,7 @@ impl GeneratorSettings {
         Ok(settings)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn try_new_with_iterator(
         network_id: NetworkId,
         utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
@@ -136,8 +137,8 @@ impl GeneratorSettings {
         change_address: Address,
         sig_op_count: u8,
         minimum_signatures: u16,
-        fee_rate: Option<f64>,
         final_transaction_destination: PaymentDestination,
+        fee_rate: Option<f64>,
         final_priority_fee: Fees,
         final_transaction_payload: Option<Vec<u8>>,
         multiplexer: Option<Multiplexer<Box<Events>>>,

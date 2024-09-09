@@ -103,10 +103,6 @@ struct Context {
     number_of_transactions: usize,
     /// current tree stage
     stage: Option<Box<Stage>>,
-    /// stage during the final transaction generation
-    /// preserved in case we need to increase priority fees
-    /// after the final transaction has been generated.
-    final_stage: Option<Box<Stage>>,
     /// Rejected or "stashed" UTXO entries that are consumed before polling
     /// the iterator. This store is used in edge cases when UTXO entry from the
     /// iterator has been consumed but was rejected due to mass constraints or
@@ -442,7 +438,6 @@ impl Generator {
             aggregated_utxos: 0,
             aggregate_fees: 0,
             stage: Some(Box::default()),
-            final_stage: None,
             utxo_stash: VecDeque::default(),
             final_transaction_id: None,
             is_done: false,
@@ -502,7 +497,7 @@ impl Generator {
 
     #[inline(always)]
     pub fn sig_op_count(&self) -> u8 {
-        &self.inner.sig_op_count
+        self.inner.sig_op_count
     }
 
     /// The underlying [`UtxoContext`] (if available).
@@ -624,7 +619,7 @@ impl Generator {
         // let iter = iter.into_iterator();
         // let mut context = self.context();
         // context.utxo_stash.extend(iter);
-        self.context().utxo_stash.extend(into_iter.into_iter());
+        self.context().utxo_stash.extend(into_iter);
     }
 
     // /// Adds multiple [`UtxoEntryReference`] structs to the UTXO stash. UTXO stash
