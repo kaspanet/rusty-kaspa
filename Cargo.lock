@@ -3686,6 +3686,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-wrpc-simple-client-example"
+version = "0.14.5"
+dependencies = [
+ "futures",
+ "kaspa-rpc-core",
+ "kaspa-wrpc-client",
+ "tokio",
+]
+
+[[package]]
 name = "kaspa-wrpc-wasm"
 version = "0.14.7"
 dependencies = [
