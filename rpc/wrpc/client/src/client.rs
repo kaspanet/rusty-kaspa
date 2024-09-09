@@ -422,12 +422,16 @@ impl KaspaRpcClient {
     /// This method starts background RPC services if they are not running and
     /// attempts to connect to the RPC endpoint.
     pub async fn connect(&self, options: Option<ConnectOptions>) -> ConnectResult<Error> {
+        // this has no effect if not currently connected
+        self.disconnect().await?;
+
         let _guard = self.inner.connect_guard.lock().await;
 
         let options = options.unwrap_or_default();
         let strategy = options.strategy;
 
         self.inner.set_default_url(options.url.as_deref());
+        self.inner.rpc_ctl.set_descriptor(options.url.clone());
 
         // 1Gb message and frame size limits (on native and NodeJs platforms)
         let ws_config = WebSocketConfig {

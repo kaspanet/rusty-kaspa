@@ -26,13 +26,23 @@ impl Connect {
             };
 
             if is_public {
-                tpara!(
-                    ctx,
-                    "Please note that public node infrastructure is community-operated and \
-                    accessing it may expose your IP address to different node providers. \
-                    Consider running your own node for better privacy. \
-                    ",
-                );
+                static WARNING: AtomicBool = AtomicBool::new(false);
+                if !WARNING.load(Ordering::Relaxed) {
+                    WARNING.store(true, Ordering::Relaxed);
+
+                    tprintln!(ctx);
+
+                    tpara!(
+                        ctx,
+                        "Please note that public node infrastructure is operated by contributors and \
+                        accessing it may expose your IP address to different node providers. \
+                        Consider running your own node for better privacy. \
+                        ",
+                    );
+                    tprintln!(ctx);
+                    tpara!(ctx, "Please do not connect to public nodes directly as they are load-balanced.");
+                    tprintln!(ctx);
+                }
             }
 
             let options = ConnectOptions {
