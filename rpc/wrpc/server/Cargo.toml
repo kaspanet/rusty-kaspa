@@ -34,3 +34,4 @@ workflow-core.workspace = true
 workflow-log.workspace = true
 workflow-rpc.workspace = true
 workflow-serializer.workspace = true
+rustls.workspace = true
