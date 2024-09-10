@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use http_body::{Body, Frame, SizeHint};
-use log::debug;
+use log::trace;
 use pin_project_lite::pin_project;
 use std::{
     convert::Infallible,
@@ -43,9 +43,9 @@ where
         match ready!(this.inner.poll_frame(cx)) {
             Some(Ok(frame)) => {
                 if let Some(chunk) = frame.data_ref() {
-                    debug!("[SIZE MW] response body chunk size = {}", chunk.len());
+                    trace!("[SIZE MW] response body chunk size = {}", chunk.len());
                     let _previous = counter.fetch_add(chunk.len(), Ordering::Relaxed);
-                    debug!("[SIZE MW] total count: {}", _previous);
+                    trace!("[SIZE MW] total count: {}", _previous);
                 }
 
                 Poll::Ready(Some(Ok(frame)))
@@ -123,11 +123,11 @@ where
             async move {
                 while let Some(Ok(frame)) = body.frame().await {
                     let len = frame_data_length(&frame);
-                    debug!("[SIZE MW] request body chunk size = {len}");
+                    trace!("[SIZE MW] request body chunk size = {len}");
                     let _previous = bytes_sent_counter.fetch_add(len, Ordering::Relaxed);
-                    debug!("[SIZE MW] total count: {}", _previous);
-                    // error can occurs only if the channel is already closed
-                    _ = tx.send(frame).inspect_err(|err| debug!("[SIZE MW] error sending frame: {}", err));
+                    trace!("[SIZE MW] total count: {}", _previous);
+                    // error can occur only if the channel is already closed
+                    _ = tx.send(frame).inspect_err(|err| trace!("[SIZE MW] error sending frame: {}", err));
                 }
             }
         });
