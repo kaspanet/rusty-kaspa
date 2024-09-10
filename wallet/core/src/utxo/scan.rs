@@ -55,6 +55,9 @@ impl Scan {
     }
 
     pub async fn scan(&self, utxo_context: &UtxoContext) -> Result<()> {
+        // block notifications while scanning...
+        let _lock = utxo_context.processor().notification_lock().await;
+
         match &self.provider {
             Provider::AddressManager(address_manager) => self.scan_with_address_manager(address_manager, utxo_context).await,
             Provider::AddressSet(addresses) => self.scan_with_address_set(addresses, utxo_context).await,
@@ -86,14 +89,17 @@ impl Scan {
 
             let ts = Instant::now();
             let resp = utxo_context.processor().rpc_api().get_utxos_by_addresses(addresses).await?;
-            let elapsed_msec = ts.elapsed().as_secs_f32();
-            if elapsed_msec > 1.0 {
-                log_warn!("get_utxos_by_address() fetched {} entries in: {} msec", resp.len(), elapsed_msec);
+            let elapsed_sec = ts.elapsed().as_secs_f32();
+            if elapsed_sec > 1.0 {
+                log_warn!("get_utxos_by_address() fetched {} entries in: {} msec", resp.len(), elapsed_sec);
             }
             yield_executor().await;
 
             if !resp.is_empty() {
+                println!("Generating UTXO references...");
+
                 let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
+                println!("Processing UTXO reference indexes...");
                 for utxo_ref in refs.iter() {
                     if let Some(address) = utxo_ref.utxo.address.as_ref() {
                         if let Some(utxo_address_index) = address_manager.inner().address_to_index_map.get(address) {
@@ -106,6 +112,7 @@ impl Scan {
                     }
                 }
 
+                println!("Calculating balance...");
                 let balance: Balance = refs.iter().fold(Balance::default(), |mut balance, r| {
                     let entry_balance = r.balance(params, self.current_daa_score);
                     balance.mature += entry_balance.mature;
@@ -116,8 +123,10 @@ impl Scan {
                     balance
                 });
 
+                println!("Extending from scan...");
                 utxo_context.extend_from_scan(refs, self.current_daa_score).await?;
 
+                println!("Adding balance...");
                 self.balance.add(balance);
             } else {
                 match &extent {
@@ -138,6 +147,7 @@ impl Scan {
 
         // update address manager with the last used index
         address_manager.set_index(last_address_index)?;
+        println!("Scan complete...");
 
         Ok(())
     }
