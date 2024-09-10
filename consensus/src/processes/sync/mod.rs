@@ -191,7 +191,7 @@ impl<
             }
         }
 
-        if highest_with_body.is_none_or(|&h| h == high) {
+        if highest_with_body.is_none_or_ex(|&h| h == high) {
             return Ok(vec![]);
         };
 

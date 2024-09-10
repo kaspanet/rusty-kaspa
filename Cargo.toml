@@ -41,6 +41,7 @@ members = [
     "rpc/wrpc/proxy",
     "rpc/wrpc/wasm",
     "rpc/wrpc/examples/subscriber",
+    "rpc/wrpc/examples/simple_client",
     "mining",
     "mining/errors",
     "protocol/p2p",
@@ -61,8 +62,8 @@ members = [
 ]
 
 [workspace.package]
-rust-version = "1.80.0"
-version = "0.14.3"
+rust-version = "1.81.0"
+version = "0.14.7"
 authors = ["Kaspa developers"]
 license = "ISC"
 repository = "https://github.com/kaspanet/rusty-kaspa"
@@ -79,61 +80,61 @@ include = [
 ]
 
 [workspace.dependencies]
-# kaspa-testing-integration = { version = "0.14.3", path = "testing/integration" }
-kaspa-addresses = { version = "0.14.3", path = "crypto/addresses" }
-kaspa-addressmanager = { version = "0.14.3", path = "components/addressmanager" }
-kaspa-bip32 = { version = "0.14.3", path = "wallet/bip32" }
-kaspa-cli = { version = "0.14.3", path = "cli" }
-kaspa-connectionmanager = { version = "0.14.3", path = "components/connectionmanager" }
-kaspa-consensus = { version = "0.14.3", path = "consensus" }
-kaspa-consensus-core = { version = "0.14.3", path = "consensus/core" }
-kaspa-consensus-client = { version = "0.14.3", path = "consensus/client" }
-kaspa-consensus-notify = { version = "0.14.3", path = "consensus/notify" }
-kaspa-consensus-wasm = { version = "0.14.3", path = "consensus/wasm" }
-kaspa-consensusmanager = { version = "0.14.3", path = "components/consensusmanager" }
-kaspa-core = { version = "0.14.3", path = "core" }
-kaspa-daemon = { version = "0.14.3", path = "daemon" }
-kaspa-database = { version = "0.14.3", path = "database" }
-kaspa-grpc-client = { version = "0.14.3", path = "rpc/grpc/client" }
-kaspa-grpc-core = { version = "0.14.3", path = "rpc/grpc/core" }
-kaspa-grpc-server = { version = "0.14.3", path = "rpc/grpc/server" }
-kaspa-hashes = { version = "0.14.3", path = "crypto/hashes" }
-kaspa-index-core = { version = "0.14.3", path = "indexes/core" }
-kaspa-index-processor = { version = "0.14.3", path = "indexes/processor" }
-kaspa-math = { version = "0.14.3", path = "math" }
-kaspa-merkle = { version = "0.14.3", path = "crypto/merkle" }
-kaspa-metrics-core = { version = "0.14.3", path = "metrics/core" }
-kaspa-mining = { version = "0.14.3", path = "mining" }
-kaspa-mining-errors = { version = "0.14.3", path = "mining/errors" }
-kaspa-muhash = { version = "0.14.3", path = "crypto/muhash" }
-kaspa-notify = { version = "0.14.3", path = "notify" }
-kaspa-p2p-flows = { version = "0.14.3", path = "protocol/flows" }
-kaspa-p2p-lib = { version = "0.14.3", path = "protocol/p2p" }
-kaspa-perf-monitor = { version = "0.14.3", path = "metrics/perf_monitor" }
-kaspa-pow = { version = "0.14.3", path = "consensus/pow" }
-kaspa-rpc-core = { version = "0.14.3", path = "rpc/core" }
-kaspa-rpc-macros = { version = "0.14.3", path = "rpc/macros" }
-kaspa-rpc-service = { version = "0.14.3", path = "rpc/service" }
-kaspa-txscript = { version = "0.14.3", path = "crypto/txscript" }
-kaspa-txscript-errors = { version = "0.14.3", path = "crypto/txscript/errors" }
-kaspa-utils = { version = "0.14.3", path = "utils" }
-kaspa-utils-tower = { version = "0.14.3", path = "utils/tower" }
-kaspa-utxoindex = { version = "0.14.3", path = "indexes/utxoindex" }
-kaspa-wallet = { version = "0.14.3", path = "wallet/native" }
-kaspa-wallet-cli-wasm = { version = "0.14.3", path = "wallet/wasm" }
-kaspa-wallet-keys = { version = "0.14.3", path = "wallet/keys" }
-kaspa-wallet-pskt = { version = "0.14.3", path = "wallet/pskt" }
-kaspa-wallet-core = { version = "0.14.3", path = "wallet/core" }
-kaspa-wallet-macros = { version = "0.14.3", path = "wallet/macros" }
-kaspa-wasm = { version = "0.14.3", path = "wasm" }
-kaspa-wasm-core = { version = "0.14.3", path = "wasm/core" }
-kaspa-wrpc-client = { version = "0.14.3", path = "rpc/wrpc/client" }
-kaspa-wrpc-proxy = { version = "0.14.3", path = "rpc/wrpc/proxy" }
-kaspa-wrpc-server = { version = "0.14.3", path = "rpc/wrpc/server" }
-kaspa-wrpc-wasm = { version = "0.14.3", path = "rpc/wrpc/wasm" }
-kaspa-wrpc-example-subscriber = { version = "0.14.3", path = "rpc/wrpc/examples/subscriber" }
-kaspad = { version = "0.14.3", path = "kaspad" }
-kaspa-alloc = { version = "0.14.3", path = "utils/alloc" }
+# kaspa-testing-integration = { version = "0.14.7", path = "testing/integration" }
+kaspa-addresses = { version = "0.14.7", path = "crypto/addresses" }
+kaspa-addressmanager = { version = "0.14.7", path = "components/addressmanager" }
+kaspa-bip32 = { version = "0.14.7", path = "wallet/bip32" }
+kaspa-cli = { version = "0.14.7", path = "cli" }
+kaspa-connectionmanager = { version = "0.14.7", path = "components/connectionmanager" }
+kaspa-consensus = { version = "0.14.7", path = "consensus" }
+kaspa-consensus-core = { version = "0.14.7", path = "consensus/core" }
+kaspa-consensus-client = { version = "0.14.7", path = "consensus/client" }
+kaspa-consensus-notify = { version = "0.14.7", path = "consensus/notify" }
+kaspa-consensus-wasm = { version = "0.14.7", path = "consensus/wasm" }
+kaspa-consensusmanager = { version = "0.14.7", path = "components/consensusmanager" }
+kaspa-core = { version = "0.14.7", path = "core" }
+kaspa-daemon = { version = "0.14.7", path = "daemon" }
+kaspa-database = { version = "0.14.7", path = "database" }
+kaspa-grpc-client = { version = "0.14.7", path = "rpc/grpc/client" }
+kaspa-grpc-core = { version = "0.14.7", path = "rpc/grpc/core" }
+kaspa-grpc-server = { version = "0.14.7", path = "rpc/grpc/server" }
+kaspa-hashes = { version = "0.14.7", path = "crypto/hashes" }
+kaspa-index-core = { version = "0.14.7", path = "indexes/core" }
+kaspa-index-processor = { version = "0.14.7", path = "indexes/processor" }
+kaspa-math = { version = "0.14.7", path = "math" }
+kaspa-merkle = { version = "0.14.7", path = "crypto/merkle" }
+kaspa-metrics-core = { version = "0.14.7", path = "metrics/core" }
+kaspa-mining = { version = "0.14.7", path = "mining" }
+kaspa-mining-errors = { version = "0.14.7", path = "mining/errors" }
+kaspa-muhash = { version = "0.14.7", path = "crypto/muhash" }
+kaspa-notify = { version = "0.14.7", path = "notify" }
+kaspa-p2p-flows = { version = "0.14.7", path = "protocol/flows" }
+kaspa-p2p-lib = { version = "0.14.7", path = "protocol/p2p" }
+kaspa-perf-monitor = { version = "0.14.7", path = "metrics/perf_monitor" }
+kaspa-pow = { version = "0.14.7", path = "consensus/pow" }
+kaspa-rpc-core = { version = "0.14.7", path = "rpc/core" }
+kaspa-rpc-macros = { version = "0.14.7", path = "rpc/macros" }
+kaspa-rpc-service = { version = "0.14.7", path = "rpc/service" }
+kaspa-txscript = { version = "0.14.7", path = "crypto/txscript" }
+kaspa-txscript-errors = { version = "0.14.7", path = "crypto/txscript/errors" }
+kaspa-utils = { version = "0.14.7", path = "utils" }
+kaspa-utils-tower = { version = "0.14.7", path = "utils/tower" }
+kaspa-utxoindex = { version = "0.14.7", path = "indexes/utxoindex" }
+kaspa-wallet = { version = "0.14.7", path = "wallet/native" }
+kaspa-wallet-cli-wasm = { version = "0.14.7", path = "wallet/wasm" }
+kaspa-wallet-keys = { version = "0.14.7", path = "wallet/keys" }
+kaspa-wallet-pskt = { version = "0.14.7", path = "wallet/pskt" }
+kaspa-wallet-core = { version = "0.14.7", path = "wallet/core" }
+kaspa-wallet-macros = { version = "0.14.7", path = "wallet/macros" }
+kaspa-wasm = { version = "0.14.7", path = "wasm" }
+kaspa-wasm-core = { version = "0.14.7", path = "wasm/core" }
+kaspa-wrpc-client = { version = "0.14.7", path = "rpc/wrpc/client" }
+kaspa-wrpc-proxy = { version = "0.14.7", path = "rpc/wrpc/proxy" }
+kaspa-wrpc-server = { version = "0.14.7", path = "rpc/wrpc/server" }
+kaspa-wrpc-wasm = { version = "0.14.7", path = "rpc/wrpc/wasm" }
+kaspa-wrpc-example-subscriber = { version = "0.14.7", path = "rpc/wrpc/examples/subscriber" }
+kaspad = { version = "0.14.7", path = "kaspad" }
+kaspa-alloc = { version = "0.14.7", path = "utils/alloc" }
 
 # external
 aes = "0.8.3"
@@ -250,7 +251,7 @@ thiserror = "1.0.50"
 tokio = { version = "1.33.0", features = ["sync", "rt-multi-thread"] }
 tokio-stream = "0.1.14"
 toml = "0.8.8"
-tonic = { version = "0.10.2", features = ["tls", "gzip", "transport"] }
+tonic = { version = "0.10.2", features = ["tls-webpki-roots", "gzip", "transport"] }
 tonic-build = { version = "0.10.2", features = ["prost"] }
 triggered = "0.1.2"
 uuid = { version = "1.5.0", features = ["v4", "fast-rng", "serde"] }
@@ -274,20 +275,21 @@ indexed_db_futures = "0.5.0"
 # workflow-perf-monitor = { path = "../../../workflow-perf-monitor-rs" }
 workflow-perf-monitor = "0.0.2"
 nw-sys = "0.1.6"
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
 # workflow dependencies
-workflow-core = { version = "0.17.0" }
-workflow-d3 = { version = "0.17.0" }
-workflow-dom = { version = "0.17.0" }
-workflow-http = { version = "0.17.0" }
-workflow-log = { version = "0.17.0" }
-workflow-node = { version = "0.17.0" }
-workflow-nw = { version = "0.17.0" }
-workflow-rpc = { version = "0.17.0" }
-workflow-serializer = { version = "0.17.0" }
-workflow-store = { version = "0.17.0" }
-workflow-terminal = { version = "0.17.0" }
-workflow-wasm = { version = "0.17.0" }
+workflow-core = { version = "0.18.0" }
+workflow-d3 = { version = "0.18.0" }
+workflow-dom = { version = "0.18.0" }
+workflow-http = { version = "0.18.0", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "charset", "macos-system-configuration"] }
+workflow-log = { version = "0.18.0" }
+workflow-node = { version = "0.18.0" }
+workflow-nw = { version = "0.18.0" }
+workflow-rpc = { version = "0.18.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
+workflow-serializer = { version = "0.18.0" }
+workflow-store = { version = "0.18.0" }
+workflow-terminal = { version = "0.18.0" }
+workflow-wasm = { version = "0.18.0" }
 
 # if below is enabled, this means that there is an ongoing work
 # on the workflow-rs crate. This requires that you clone workflow-rs
@@ -295,25 +297,27 @@ workflow-wasm = { version = "0.17.0" }
 # workflow-core = { path = "../workflow-rs/core" }
 # workflow-d3 = { path = "../workflow-rs/d3" }
 # workflow-dom = { path = "../workflow-rs/dom" }
-# workflow-http = { path = "../workflow-rs/http" }
+# # Same features as default but with rustls-tls-webpki-roots instead of native-tls
+# workflow-http = { path = "../workflow-rs/http", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "charset", "macos-system-configuration"] }
 # workflow-log = { path = "../workflow-rs/log" }
 # workflow-node = { path = "../workflow-rs/node" }
 # workflow-nw = { path = "../workflow-rs/nw" }
-# workflow-rpc = { path = "../workflow-rs/rpc" }
+# workflow-rpc = { path = "../workflow-rs/rpc", default-features = false, features = ["rustls-tls-webpki-roots"] }
 # workflow-serializer = { path = "../workflow-rs/serializer" }
 # workflow-store = { path = "../workflow-rs/store" }
 # workflow-terminal = { path = "../workflow-rs/terminal" }
 # workflow-wasm = { path = "../workflow-rs/wasm" }
 
+
 # ---
 # workflow-core = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-d3 = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-dom = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
-# workflow-http = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-http = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master", default-features = false, features = ["rustls-tls-webpki-roots", "http2", "charset", "macos-system-configuration"] }
 # workflow-log = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-node = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-nw = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
-# workflow-rpc = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
+# workflow-rpc = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master", default-features = false, features = ["rustls-tls-webpki-roots"]  }
 # workflow-serializer = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-store = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
 # workflow-terminal = { git = "https://github.com/workflow-rs/workflow-rs.git", branch = "master" }
