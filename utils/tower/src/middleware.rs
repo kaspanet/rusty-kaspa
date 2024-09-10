@@ -1,21 +1,20 @@
-use futures::ready;
-use hyper::{
-    body::{Bytes, HttpBody, SizeHint},
-    HeaderMap,
-};
-use log::*;
+use bytes::Bytes;
+use http_body::{Body, Frame, SizeHint};
+use log::debug;
 use pin_project_lite::pin_project;
 use std::{
+    convert::Infallible,
     pin::Pin,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
-    task::{Context, Poll},
+    task::{ready, Context, Poll},
 };
+
+pub use http_body_util::BodyExt;
 pub use tower::ServiceBuilder;
-pub use tower_http::map_request_body::MapRequestBodyLayer;
-pub use tower_http::map_response_body::MapResponseBodyLayer;
+pub use tower_http::{map_request_body::MapRequestBodyLayer, map_response_body::MapResponseBodyLayer};
 
 pin_project! {
     pub struct CountBytesBody<B> {
@@ -31,30 +30,28 @@ impl<B> CountBytesBody<B> {
     }
 }
 
-impl<B> HttpBody for CountBytesBody<B>
+impl<B> Body for CountBytesBody<B>
 where
-    B: HttpBody<Data = Bytes> + Default,
+    B: Body<Data = Bytes> + Default,
 {
     type Data = B::Data;
     type Error = B::Error;
 
-    fn poll_data(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<Self::Data, Self::Error>>> {
+    fn poll_frame(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
         let this = self.project();
         let counter: Arc<AtomicUsize> = this.counter.clone();
-        match ready!(this.inner.poll_data(cx)) {
-            Some(Ok(chunk)) => {
-                debug!("[SIZE MW] response body chunk size = {}", chunk.len());
-                let _previous = counter.fetch_add(chunk.len(), Ordering::Relaxed);
-                debug!("[SIZE MW] total count: {}", _previous);
+        match ready!(this.inner.poll_frame(cx)) {
+            Some(Ok(frame)) => {
+                if let Some(chunk) = frame.data_ref() {
+                    debug!("[SIZE MW] response body chunk size = {}", chunk.len());
+                    let _previous = counter.fetch_add(chunk.len(), Ordering::Relaxed);
+                    debug!("[SIZE MW] total count: {}", _previous);
+                }
 
-                Poll::Ready(Some(Ok(chunk)))
+                Poll::Ready(Some(Ok(frame)))
             }
             x => Poll::Ready(x),
         }
-    }
-
-    fn poll_trailers(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<Option<HeaderMap>, Self::Error>> {
-        self.project().inner.poll_trailers(cx)
     }
 
     fn is_end_stream(&self) -> bool {
@@ -68,10 +65,45 @@ where
 
 impl<B> Default for CountBytesBody<B>
 where
-    B: HttpBody<Data = Bytes> + Default,
+    B: Body<Data = Bytes> + Default,
 {
     fn default() -> Self {
         Self { inner: Default::default(), counter: Default::default() }
+    }
+}
+
+pin_project! {
+    pub struct ChannelBody<T> {
+        #[pin]
+        rx: tokio::sync::mpsc::Receiver<Frame<T>>,
+    }
+}
+
+impl<T> ChannelBody<T> {
+    pub fn new() -> (tokio::sync::mpsc::Sender<Frame<T>>, Self) {
+        let (tx, rx) = tokio::sync::mpsc::channel(32);
+        (tx, Self { rx })
+    }
+}
+
+impl<T> Body for ChannelBody<T>
+where
+    T: bytes::Buf,
+{
+    type Data = T;
+    type Error = Infallible;
+
+    fn poll_frame(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        let frame = ready!(self.project().rx.poll_recv(cx));
+        Poll::Ready(frame.map(Ok))
+    }
+}
+
+fn frame_data_length(frame: &Frame<Bytes>) -> usize {
+    if let Some(data) = frame.data_ref() {
+        data.len()
+    } else {
+        0
     }
 }
 
@@ -80,28 +112,22 @@ pub fn measure_request_body_size_layer<B1, B2, F>(
     f: F,
 ) -> MapRequestBodyLayer<impl Fn(B1) -> B2 + Clone>
 where
-    B1: HttpBody<Data = Bytes> + Unpin + Send + 'static,
-    <B1 as HttpBody>::Error: Send,
-    F: Fn(hyper::body::Body) -> B2 + Clone,
+    B1: Body<Data = Bytes> + Unpin + Send + 'static,
+    <B1 as Body>::Error: Send,
+    F: Fn(ChannelBody<Bytes>) -> B2 + Clone,
 {
     MapRequestBodyLayer::new(move |mut body: B1| {
-        let (mut tx, new_body) = hyper::Body::channel();
+        let (tx, new_body) = ChannelBody::new();
         let bytes_sent_counter = bytes_sent_counter.clone();
-        tokio::spawn(async move {
-            while let Some(Ok(chunk)) = body.data().await {
-                debug!("[SIZE MW] request body chunk size = {}", chunk.len());
-                let _previous = bytes_sent_counter.fetch_add(chunk.len(), Ordering::Relaxed);
-                debug!("[SIZE MW] total count: {}", _previous);
-                if let Err(_err) = tx.send_data(chunk).await {
+        tokio::spawn({
+            async move {
+                while let Some(Ok(frame)) = body.frame().await {
+                    let len = frame_data_length(&frame);
+                    debug!("[SIZE MW] request body chunk size = {len}");
+                    let _previous = bytes_sent_counter.fetch_add(len, Ordering::Relaxed);
+                    debug!("[SIZE MW] total count: {}", _previous);
                     // error can occurs only if the channel is already closed
-                    debug!("[SIZE MW] error sending data: {}", _err)
-                }
-            }
-
-            if let Ok(Some(trailers)) = body.trailers().await {
-                if let Err(_err) = tx.send_trailers(trailers).await {
-                    // error can occurs only if the channel is already closed
-                    debug!("[SIZE MW] error sending trailers: {}", _err)
+                    _ = tx.send(frame).await.inspect_err(|err| debug!("[SIZE MW] error sending frame: {}", err));
                 }
             }
         });

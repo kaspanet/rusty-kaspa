@@ -38,7 +38,7 @@ use kaspa_rpc_core::{
 use kaspa_utils::{channel::Channel, triggers::DuplexTrigger};
 use kaspa_utils_tower::{
     counters::TowerConnectionCounters,
-    middleware::{measure_request_body_size_layer, CountBytesBody, MapResponseBodyLayer, ServiceBuilder},
+    middleware::{measure_request_body_size_layer, BodyExt, CountBytesBody, MapResponseBodyLayer, ServiceBuilder},
 };
 use regex::Regex;
 use std::{
@@ -50,7 +50,6 @@ use std::{
 };
 use tokio::sync::Mutex;
 use tonic::codec::CompressionEncoding;
-use tonic::codegen::Body;
 use tonic::Streaming;
 
 mod connection_event;
