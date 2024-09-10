@@ -30,7 +30,7 @@ pub trait UtxoSetStore: UtxoSetStoreReader {
     fn write_many(&mut self, utxos: &[(TransactionOutpoint, UtxoEntry)]) -> Result<(), StoreError>;
 }
 
-pub const UTXO_KEY_SIZE: usize = kaspa_hashes::HASH_SIZE + std::mem::size_of::<TransactionIndexType>();
+pub const UTXO_KEY_SIZE: usize = kaspa_hashes::HASH_SIZE + size_of::<TransactionIndexType>();
 
 #[derive(Eq, Hash, PartialEq, Debug, Copy, Clone)]
 struct UtxoKey([u8; UTXO_KEY_SIZE]);
@@ -83,8 +83,7 @@ impl From<UtxoKey> for TransactionOutpoint {
     fn from(k: UtxoKey) -> Self {
         let transaction_id = Hash::from_slice(&k.0[..kaspa_hashes::HASH_SIZE]);
         let index = TransactionIndexType::from_le_bytes(
-            <[u8; std::mem::size_of::<TransactionIndexType>()]>::try_from(&k.0[kaspa_hashes::HASH_SIZE..])
-                .expect("expecting index size"),
+            <[u8; size_of::<TransactionIndexType>()]>::try_from(&k.0[kaspa_hashes::HASH_SIZE..]).expect("expecting index size"),
         );
         Self::new(transaction_id, index)
     }

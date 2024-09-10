@@ -69,6 +69,12 @@ impl MiningMonitor {
                 let feerate_estimations = self.mining_manager.clone().get_realtime_feerate_estimations().await;
                 debug!("Realtime feerate estimations: {}", feerate_estimations);
             }
+            if delta.tx_evicted_counts > 0 {
+                info!(
+                    "Mempool stats: {} transactions were evicted from the mempool in favor of incoming higher feerate transactions",
+                    delta.tx_evicted_counts
+                );
+            }
             if tx_script_cache_snapshot != last_tx_script_cache_snapshot {
                 debug!(
                     "UTXO set stats: {} spent, {} created ({} signatures validated, {} cache hits, {:.2} hit ratio)",
