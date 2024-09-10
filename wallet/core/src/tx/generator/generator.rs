@@ -99,6 +99,9 @@ struct Context {
     /// total fees of all transactions issued by
     /// the single generator instance
     aggregate_fees: u64,
+    /// total mass of all transactions issued by
+    /// the single generator instance
+    aggregate_mass: u64,
     /// number of generated transactions
     number_of_transactions: usize,
     /// current tree stage
@@ -437,6 +440,7 @@ impl Generator {
             number_of_transactions: 0,
             aggregated_utxos: 0,
             aggregate_fees: 0,
+            aggregate_mass: 0,
             stage: Some(Box::default()),
             utxo_stash: VecDeque::default(),
             final_transaction_id: None,
@@ -751,6 +755,7 @@ impl Generator {
             data.transaction_fees = self.calc_relay_transaction_compute_fees(data);
             stage.aggregate_fees += data.transaction_fees;
             context.aggregate_fees += data.transaction_fees;
+            // context.aggregate_mass += data.aggregate_mass;
             Some(DataKind::Node)
         } else {
             context.aggregated_utxos += 1;
@@ -774,6 +779,7 @@ impl Generator {
             Ok((DataKind::NoOp, data))
         } else if stage.number_of_transactions > 0 {
             data.aggregate_mass += self.inner.standard_change_output_compute_mass;
+            // context.aggregate_mass += data.aggregate_mass;
             Ok((DataKind::Edge, data))
         } else if data.aggregate_input_value < data.transaction_fees {
             Err(Error::InsufficientFunds { additional_needed: data.transaction_fees - data.aggregate_input_value, origin: "relay" })
@@ -1106,6 +1112,7 @@ impl Generator {
                 }
                 tx.set_mass(transaction_mass);
 
+                context.aggregate_mass += transaction_mass;
                 context.final_transaction_id = Some(tx.id());
                 context.number_of_transactions += 1;
 
@@ -1160,6 +1167,7 @@ impl Generator {
                 }
                 tx.set_mass(transaction_mass);
 
+                context.aggregate_mass += transaction_mass;
                 context.number_of_transactions += 1;
 
                 let previous_batch_utxo_entry_reference =
@@ -1227,7 +1235,8 @@ impl Generator {
         GeneratorSummary {
             network_id: self.inner.network_id,
             aggregated_utxos: context.aggregated_utxos,
-            aggregated_fees: context.aggregate_fees,
+            aggregate_fees: context.aggregate_fees,
+            aggregate_mass: context.aggregate_mass,
             final_transaction_amount: self.final_transaction_value_no_fees(),
             final_transaction_id: context.final_transaction_id,
             number_of_generated_transactions: context.number_of_transactions,

@@ -16,7 +16,8 @@ use std::fmt;
 pub struct GeneratorSummary {
     pub network_id: NetworkId,
     pub aggregated_utxos: usize,
-    pub aggregated_fees: u64,
+    pub aggregate_fees: u64,
+    pub aggregate_mass: u64,
     pub number_of_generated_transactions: usize,
     pub final_transaction_amount: Option<u64>,
     pub final_transaction_id: Option<TransactionId>,
@@ -35,8 +36,12 @@ impl GeneratorSummary {
         self.aggregated_utxos
     }
 
-    pub fn aggregated_fees(&self) -> u64 {
-        self.aggregated_fees
+    pub fn aggregate_mass(&self) -> u64 {
+        self.aggregate_mass
+    }
+
+    pub fn aggregate_fees(&self) -> u64 {
+        self.aggregate_fees
     }
 
     pub fn number_of_generated_transactions(&self) -> usize {
@@ -61,12 +66,12 @@ impl fmt::Display for GeneratorSummary {
         };
 
         if let Some(final_transaction_amount) = self.final_transaction_amount {
-            let total = final_transaction_amount + self.aggregated_fees;
+            let total = final_transaction_amount + self.aggregate_fees;
             write!(
                 f,
                 "Amount: {}  Fees: {}  Total: {}  UTXOs: {}  {}",
                 sompi_to_kaspa_string_with_suffix(final_transaction_amount, &self.network_id),
-                sompi_to_kaspa_string_with_suffix(self.aggregated_fees, &self.network_id),
+                sompi_to_kaspa_string_with_suffix(self.aggregate_fees, &self.network_id),
                 sompi_to_kaspa_string_with_suffix(total, &self.network_id),
                 self.aggregated_utxos,
                 transactions
@@ -75,7 +80,7 @@ impl fmt::Display for GeneratorSummary {
             write!(
                 f,
                 "Fees: {}  UTXOs: {}  {}",
-                sompi_to_kaspa_string_with_suffix(self.aggregated_fees, &self.network_id),
+                sompi_to_kaspa_string_with_suffix(self.aggregate_fees, &self.network_id),
                 self.aggregated_utxos,
                 transactions
             )?;

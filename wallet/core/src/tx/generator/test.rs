@@ -107,7 +107,7 @@ impl GeneratorSummaryExtension for GeneratorSummary {
             "number of utxo entries"
         );
         let aggregated_fees = accumulator.list.iter().map(|pt| pt.fees()).sum::<u64>();
-        assert_eq!(self.aggregated_fees, aggregated_fees, "aggregated fees");
+        assert_eq!(self.aggregate_fees, aggregated_fees, "aggregated fees");
         self
     }
 }
