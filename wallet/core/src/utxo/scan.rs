@@ -55,6 +55,9 @@ impl Scan {
     }
 
     pub async fn scan(&self, utxo_context: &UtxoContext) -> Result<()> {
+        // block notifications while scanning...
+        let _lock = utxo_context.processor().notification_lock().await;
+
         match &self.provider {
             Provider::AddressManager(address_manager) => self.scan_with_address_manager(address_manager, utxo_context).await,
             Provider::AddressSet(addresses) => self.scan_with_address_set(addresses, utxo_context).await,
@@ -86,9 +89,9 @@ impl Scan {
 
             let ts = Instant::now();
             let resp = utxo_context.processor().rpc_api().get_utxos_by_addresses(addresses).await?;
-            let elapsed_msec = ts.elapsed().as_secs_f32();
-            if elapsed_msec > 1.0 {
-                log_warn!("get_utxos_by_address() fetched {} entries in: {} msec", resp.len(), elapsed_msec);
+            let elapsed_sec = ts.elapsed().as_secs_f32();
+            if elapsed_sec > 1.0 {
+                log_warn!("get_utxos_by_address() fetched {} entries in: {} msec", resp.len(), elapsed_sec);
             }
             yield_executor().await;
 
