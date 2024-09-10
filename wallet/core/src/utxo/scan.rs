@@ -96,10 +96,7 @@ impl Scan {
             yield_executor().await;
 
             if !resp.is_empty() {
-                println!("Generating UTXO references...");
-
                 let refs: Vec<UtxoEntryReference> = resp.into_iter().map(UtxoEntryReference::from).collect();
-                println!("Processing UTXO reference indexes...");
                 for utxo_ref in refs.iter() {
                     if let Some(address) = utxo_ref.utxo.address.as_ref() {
                         if let Some(utxo_address_index) = address_manager.inner().address_to_index_map.get(address) {
@@ -112,7 +109,6 @@ impl Scan {
                     }
                 }
 
-                println!("Calculating balance...");
                 let balance: Balance = refs.iter().fold(Balance::default(), |mut balance, r| {
                     let entry_balance = r.balance(params, self.current_daa_score);
                     balance.mature += entry_balance.mature;
@@ -123,10 +119,8 @@ impl Scan {
                     balance
                 });
 
-                println!("Extending from scan...");
                 utxo_context.extend_from_scan(refs, self.current_daa_score).await?;
 
-                println!("Adding balance...");
                 self.balance.add(balance);
             } else {
                 match &extent {
@@ -147,7 +141,6 @@ impl Scan {
 
         // update address manager with the last used index
         address_manager.set_index(last_address_index)?;
-        println!("Scan complete...");
 
         Ok(())
     }
