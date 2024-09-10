@@ -6,7 +6,7 @@ use kaspa_consensus_core::{
     errors::config::{ConfigError, ConfigResult},
 };
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
-use kaspa_core::{core::Core, info, trace};
+use kaspa_core::{core::Core, debug, info};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
 use kaspa_database::prelude::CachePolicy;
 use kaspa_grpc_server::service::GrpcService;
@@ -400,10 +400,10 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         .with_tick_service(tick_service.clone());
     let perf_monitor = if args.perf_metrics {
         let cb = move |counters: CountersSnapshot| {
-            trace!("[{}] {}", kaspa_perf_monitor::SERVICE_NAME, counters.to_process_metrics_display());
-            trace!("[{}] {}", kaspa_perf_monitor::SERVICE_NAME, counters.to_io_metrics_display());
+            debug!("[{}] {}", kaspa_perf_monitor::SERVICE_NAME, counters.to_process_metrics_display());
+            debug!("[{}] {}", kaspa_perf_monitor::SERVICE_NAME, counters.to_io_metrics_display());
             #[cfg(feature = "heap")]
-            trace!("[{}] heap stats: {:?}", kaspa_perf_monitor::SERVICE_NAME, dhat::HeapStats::get());
+            debug!("[{}] heap stats: {:?}", kaspa_perf_monitor::SERVICE_NAME, dhat::HeapStats::get());
         };
         Arc::new(perf_monitor_builder.with_fetch_cb(cb).build())
     } else {

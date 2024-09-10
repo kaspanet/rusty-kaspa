@@ -11,7 +11,6 @@ use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt::Display;
-use std::mem::size_of;
 use std::sync::Arc;
 
 pub const VERSION_TYPE_SIZE: usize = size_of::<ScriptPublicKeyVersion>(); // Const since we need to re-use this a few times.
@@ -67,8 +66,7 @@ impl From<TransactionOutpointKey> for TransactionOutpoint {
     fn from(key: TransactionOutpointKey) -> Self {
         let transaction_id = Hash::from_slice(&key.0[..kaspa_hashes::HASH_SIZE]);
         let index = TransactionIndexType::from_le_bytes(
-            <[u8; std::mem::size_of::<TransactionIndexType>()]>::try_from(&key.0[kaspa_hashes::HASH_SIZE..])
-                .expect("expected index size"),
+            <[u8; size_of::<TransactionIndexType>()]>::try_from(&key.0[kaspa_hashes::HASH_SIZE..]).expect("expected index size"),
         );
         Self::new(transaction_id, index)
     }
