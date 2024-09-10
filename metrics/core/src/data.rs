@@ -922,7 +922,7 @@ pub fn as_data_size(bytes: f64, si: bool) -> String {
 }
 
 /// Format supplied value as a float with 2 decimal places.
-fn format_as_float(f: f64, short: bool) -> String {
+pub fn format_as_float(f: f64, short: bool) -> String {
     if short {
         if f < 1000.0 {
             format_with_precision(f)
