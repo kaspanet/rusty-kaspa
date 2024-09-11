@@ -19,6 +19,7 @@ pub struct GeneratorSummary {
     pub aggregate_fees: u64,
     pub aggregate_mass: u64,
     pub number_of_generated_transactions: usize,
+    pub number_of_generated_stages: usize,
     pub final_transaction_amount: Option<u64>,
     pub final_transaction_id: Option<TransactionId>,
 }
@@ -46,6 +47,10 @@ impl GeneratorSummary {
 
     pub fn number_of_generated_transactions(&self) -> usize {
         self.number_of_generated_transactions
+    }
+
+    pub fn number_of_generated_stages(&self) -> usize {
+        self.number_of_generated_stages
     }
 
     pub fn final_transaction_amount(&self) -> Option<u64> {
