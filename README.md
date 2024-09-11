@@ -3,9 +3,11 @@
 
 Welcome to the Rust-based implementation of the Kaspa full-node and its ancillary libraries. The contained node release serves as a drop-in replacement to the established <a href="https://github.com/kaspanet/kaspad">Golang node</a> and to date is the recommended node software for the Kaspa network, introducing developers to the possibilities of Rust in the Kaspa network's context.
 
-We invite developers and blockchain enthusiasts to collaborate, test, and optimize our Rust implementation. Each line of code here is an opportunity to contribute to the open-source blockchain movement, shaping a platform designed for scalability and speed without compromising on decentralization.
+We invite developers and blockchain enthusiasts to collaborate, test, and optimize our Rust implementation. Each line of code here is an opportunity to contribute to the open-source blockchain movement, shaping a platform designed for scalability and speed without compromising on security and decentralization.
 
 Your feedback, contributions, and issue reports will be integral to evolving this codebase and continuing its maturity as a reliable node in the Kaspa network.
+
+The default branch of this repository is `master` and new contributions are constantly merged into it. For a stable branch corresponding to the latest stable release please pull and compile the `stable` branch. 
 
 ## Installation
   <details>
