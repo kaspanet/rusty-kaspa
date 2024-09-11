@@ -319,7 +319,7 @@ impl UtxoContext {
             }
             Ok(())
         } else {
-            log_warn!("ignoring duplicate utxo entry");
+            // log_warn!("Warning: Ignoring duplicate UTXO entry");
             Ok(())
         }
     }
@@ -347,7 +347,7 @@ impl UtxoContext {
                     remove_mature_ids.push(id);
                 }
             } else if context.outgoing.get(&utxo.transaction_id()).is_none() {
-                log_error!("Error: UTXO not found in UtxoContext map!");
+                // log_warm!("Warning: UTXO not found in UtxoContext map!");
             }
         }
 
@@ -374,10 +374,10 @@ impl UtxoContext {
                     context.mature.sorted_insert_binary_asc_by_key(utxo_entry.clone(), |entry| entry.amount_as_ref());
                 } else {
                     log_error!("Error: non-pending utxo promotion!");
-                    unreachable!("Error: non-pending utxo promotion!");
                 }
             }
 
+            // sanity check
             if self.context().outgoing.get(&txid).is_some() {
                 unreachable!("Error: promotion of the outgoing transaction!");
             }
@@ -421,7 +421,7 @@ impl UtxoContext {
             let mut context = self.context();
 
             let mut pending = vec![];
-            let mut mature = vec![];
+            let mut mature = Vec::with_capacity(utxo_entries.len());
 
             let params = NetworkParams::from(self.processor().network_id()?);
 
@@ -444,13 +444,15 @@ impl UtxoContext {
                         }
                         Maturity::Confirmed => {
                             mature.push(utxo_entry.clone());
-                            context.mature.sorted_insert_binary_asc_by_key(utxo_entry.clone(), |entry| entry.amount_as_ref());
                         }
                     }
                 } else {
                     log_warn!("ignoring duplicate utxo entry");
                 }
             }
+
+            context.mature.extend(mature.iter().cloned());
+            context.mature.sort_by_key(|entry| entry.amount());
 
             (pending, mature)
         };
