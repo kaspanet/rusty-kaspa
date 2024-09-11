@@ -55,7 +55,7 @@ impl<T: Borrow<RocksDB>> DbAccess for T {
     }
 
     fn read(&self, db_key: &DbKey) -> Result<Option<impl AsRef<[u8]>>, StoreError> {
-        Ok(self.borrow().get_pinned(&db_key)?)
+        Ok(self.borrow().get_pinned(db_key)?)
     }
 
     fn iterator(

@@ -217,6 +217,7 @@ rand_chacha = "0.3.1"
 rand_core = { version = "0.6.4", features = ["std"] }
 rand_distr = "0.4.3"
 rayon = "1.8.0"
+redb = "2.1.2"
 regex = "1.10.2"
 ripemd = { version = "0.1.3", default-features = false }
 rlimit = "0.10.1"

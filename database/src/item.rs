@@ -1,5 +1,5 @@
 use crate::{
-    db::RocksDB,
+    rocksdb::RocksDB,
     errors::StoreError,
     prelude::{DbSetAccess, ReadLock},
 };

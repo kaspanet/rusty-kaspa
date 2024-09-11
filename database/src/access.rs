@@ -7,7 +7,7 @@ use std::{collections::hash_map::RandomState, error::Error, hash::BuildHasher, s
 
 /// A concurrent DB store access with typed caching.
 #[derive(Clone)]
-pub struct CachedDbAccess<TKey, TData, S = RandomState, DB = Arc<crate::db::RocksDB>>
+pub struct CachedDbAccess<TKey, TData, S = RandomState, DB = Arc<crate::rocksdb::RocksDB>>
 where
     TKey: Clone + std::hash::Hash + Eq + Send + Sync,
     TData: Clone + Send + Sync + MemSizeEstimator,
@@ -84,12 +84,11 @@ where
         TKey: Clone + AsRef<[u8]>,
         TData: DeserializeOwned, // We need `DeserializeOwned` since the slice coming from `db.get_pinned` has short lifetime
     {
-        self.db.iterator(self.prefix.to_vec(), None).map(move |iter_result| match iter_result {
-            Ok((key, data_bytes)) => match bincode::deserialize(data_bytes.as_ref()) {
+        self.db.iterator(self.prefix.to_vec(), None).map(move |iter_result| {
+            iter_result.and_then(|(key, data_bytes)| match bincode::deserialize(data_bytes.as_ref()) {
                 Ok(data) => Ok((key.as_ref()[self.prefix.len()..].into(), data)),
                 Err(e) => Err(e.into()),
-            },
-            Err(e) => Err(e.into()),
+            })
         })
     }
 
@@ -201,12 +200,11 @@ where
             db_iterator.next();
         }
 
-        db_iterator.take(limit).map(move |item| match item {
-            Ok((key_bytes, value_bytes)) => match bincode::deserialize::<TData>(value_bytes.as_ref()) {
+        db_iterator.take(limit).map(move |item| {
+            item.and_then(|(key_bytes, value_bytes)| match bincode::deserialize::<TData>(value_bytes.as_ref()) {
                 Ok(value) => Ok((key_bytes.as_ref()[db_key_prefix_len..].into(), value)),
                 Err(err) => Err(err.into()),
-            },
-            Err(err) => Err(err.into()),
+            })
         })
     }
 

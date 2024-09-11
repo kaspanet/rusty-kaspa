@@ -1,6 +1,6 @@
 mod access;
 mod cache;
-mod db;
+mod rocksdb;
 mod errors;
 mod item;
 mod key;
@@ -11,7 +11,7 @@ mod set_access;
 pub mod utils;
 
 pub mod prelude {
-    use crate::{db, errors};
+    use crate::{rocksdb, errors};
 
     pub use super::access::CachedDbAccess;
     pub use super::cache::{Cache, CachePolicy};
@@ -19,6 +19,6 @@ pub mod prelude {
     pub use super::key::DbKey;
     pub use super::set_access::{CachedDbSetAccess, DbSetAccess, ReadLock};
     pub use super::writer::{BatchDbWriter, DbWriter, DirectDbWriter, DirectWriter, MemoryWriter};
-    pub use db::{delete_db, ConnBuilder, RocksDB};
+    pub use rocksdb::{delete_db, ConnBuilder, RocksDB};
     pub use errors::{StoreError, StoreResult, StoreResultEmptyTuple, StoreResultExtensions};
 }

@@ -1,4 +1,4 @@
-use crate::db::RocksDB;
+use crate::rocksdb::RocksDB;
 use rocksdb::{DBWithThreadMode, MultiThreaded};
 use std::{path::PathBuf, sync::Arc};
 
