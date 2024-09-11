@@ -59,7 +59,7 @@ use crate::{
             selected_chain::{DbSelectedChainStore, SelectedChainStore},
             tips::DbTipsStore,
             virtual_state::{VirtualState, VirtualStateStore, VirtualStateStoreReader, VirtualStores},
-            DB,
+            RocksDB,
         },
     },
     processes::{
@@ -144,7 +144,7 @@ impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for R
 }
 
 pub struct PruningProofManager {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
 
     headers_store: Arc<DbHeadersStore>,
     reachability_store: Arc<RwLock<DbReachabilityStore>>,
@@ -181,7 +181,7 @@ pub struct PruningProofManager {
 impl PruningProofManager {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        db: Arc<DB>,
+        db: Arc<RocksDB>,
         storage: &Arc<ConsensusStorage>,
         parents_manager: DbParentsManager,
         reachability_service: MTReachabilityService<DbReachabilityStore>,
@@ -874,7 +874,7 @@ impl PruningProofManager {
         level: BlockLevel,
         current_dag_level: BlockLevel,
         required_block: Option<Hash>,
-        temp_db: Arc<DB>,
+        temp_db: Arc<RocksDB>,
     ) -> PruningProofManagerInternalResult<(Arc<DbGhostdagStore>, Hash, Hash)> {
         let selected_tip_header = if pp_header.block_level >= level {
             pp_header.header.clone()
@@ -993,7 +993,7 @@ impl PruningProofManager {
     fn calc_gd_for_all_levels(
         &self,
         pp_header: &HeaderWithBlockLevel,
-        temp_db: Arc<DB>,
+        temp_db: Arc<RocksDB>,
     ) -> (Vec<Arc<DbGhostdagStore>>, Vec<Hash>, Vec<Hash>) {
         let current_dag_level = self.find_current_dag_level(&pp_header.header);
         let mut ghostdag_stores: Vec<Option<Arc<DbGhostdagStore>>> = vec![None; self.max_block_level as usize + 1];

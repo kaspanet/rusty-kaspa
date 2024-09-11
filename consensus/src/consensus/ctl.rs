@@ -1,6 +1,6 @@
 use super::{factory::MultiConsensusManagementStore, Consensus};
 use kaspa_consensusmanager::ConsensusCtl;
-use kaspa_database::prelude::DB;
+use kaspa_database::prelude::RocksDB;
 use parking_lot::RwLock;
 use std::{
     path::PathBuf,
@@ -10,7 +10,7 @@ use std::{
 
 pub struct Ctl {
     management_store: Arc<RwLock<MultiConsensusManagementStore>>,
-    consensus_db_ref: Weak<DB>,
+    consensus_db_ref: Weak<RocksDB>,
     consensus_db_path: PathBuf,
     consensus: Arc<Consensus>,
 }
@@ -18,7 +18,7 @@ pub struct Ctl {
 impl Ctl {
     pub fn new(
         management_store: Arc<RwLock<MultiConsensusManagementStore>>,
-        consensus_db: Arc<DB>,
+        consensus_db: Arc<RocksDB>,
         consensus: Arc<Consensus>,
     ) -> Self {
         let consensus_db_path = consensus_db.path().to_owned();

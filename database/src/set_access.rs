@@ -1,4 +1,4 @@
-use crate::{cache::CachePolicy, db::DB, errors::StoreError};
+use crate::{cache::CachePolicy, db::RocksDB, errors::StoreError};
 
 use super::prelude::{Cache, DbKey, DbWriter};
 use parking_lot::{RwLock, RwLockReadGuard};
@@ -54,7 +54,7 @@ where
     S: BuildHasher + Default,
     W: BuildHasher + Default + Send + Sync,
 {
-    pub fn new(db: Arc<DB>, cache_policy: CachePolicy, prefix: Vec<u8>) -> Self {
+    pub fn new(db: Arc<RocksDB>, cache_policy: CachePolicy, prefix: Vec<u8>) -> Self {
         Self { inner: DbSetAccess::new(db, prefix), cache: Cache::new(cache_policy) }
     }
 
@@ -112,7 +112,7 @@ where
     TKey: Clone + std::hash::Hash + Eq + Send + Sync,
     TData: Clone + Send + Sync,
 {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
 
     // DB bucket/path
     prefix: Vec<u8>,
@@ -125,7 +125,7 @@ where
     TKey: Clone + std::hash::Hash + Eq + Send + Sync + AsRef<[u8]>,
     TData: Clone + std::hash::Hash + Eq + Send + Sync + DeserializeOwned + Serialize,
 {
-    pub fn new(db: Arc<DB>, prefix: Vec<u8>) -> Self {
+    pub fn new(db: Arc<RocksDB>, prefix: Vec<u8>) -> Self {
         Self { db, prefix, _phantom: Default::default() }
     }
 

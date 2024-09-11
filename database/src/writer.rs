@@ -1,7 +1,7 @@
 use kaspa_utils::refs::Refs;
 use rocksdb::WriteBatch;
 
-use crate::prelude::DB;
+use crate::prelude::RocksDB;
 
 /// Abstraction over direct/batched DB writing
 pub trait DbWriter {
@@ -20,15 +20,15 @@ pub trait DbWriter {
 pub trait DirectWriter: DbWriter {}
 
 pub struct DirectDbWriter<'a> {
-    db: Refs<'a, DB>,
+    db: Refs<'a, RocksDB>,
 }
 
 impl<'a> DirectDbWriter<'a> {
-    pub fn new(db: &'a DB) -> Self {
+    pub fn new(db: &'a RocksDB) -> Self {
         Self { db: db.into() }
     }
 
-    pub fn from_arc(db: std::sync::Arc<DB>) -> Self {
+    pub fn from_arc(db: std::sync::Arc<RocksDB>) -> Self {
         Self { db: db.into() }
     }
 }

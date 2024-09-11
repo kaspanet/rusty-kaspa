@@ -25,7 +25,7 @@ use crate::{
             statuses::StatusesStoreReader,
             tips::TipsStoreReader,
             utxo_set::{UtxoSetStore, UtxoSetStoreReader},
-            DB,
+            RocksDB,
         },
     },
     pipeline::{
@@ -104,7 +104,7 @@ use std::cmp;
 
 pub struct Consensus {
     // DB
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
 
     // Channels
     block_sender: CrossbeamSender<BlockProcessingMessage>,
@@ -150,7 +150,7 @@ impl Deref for Consensus {
 
 impl Consensus {
     pub fn new(
-        db: Arc<DB>,
+        db: Arc<RocksDB>,
         config: Arc<Config>,
         pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,

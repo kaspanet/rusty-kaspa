@@ -31,7 +31,7 @@ use crate::{
             utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
             utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
             virtual_state::{LkgVirtualState, VirtualState, VirtualStateStoreReader, VirtualStores},
-            DB,
+            RocksDB,
         },
     },
     params::Params,
@@ -106,7 +106,7 @@ pub struct VirtualStateProcessor {
     pub(super) thread_pool: Arc<ThreadPool>,
 
     // DB
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
 
     // Config
     pub(super) genesis: GenesisBlock,
@@ -170,7 +170,7 @@ impl VirtualStateProcessor {
         pruning_receiver: CrossbeamReceiver<PruningProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
         params: &Params,
-        db: Arc<DB>,
+        db: Arc<RocksDB>,
         storage: &Arc<ConsensusStorage>,
         services: &Arc<ConsensusServices>,
         pruning_lock: SessionLock,

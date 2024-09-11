@@ -28,7 +28,7 @@ use crate::{
         services::reachability::MTReachabilityService,
         stores::{
             ghostdag::DbGhostdagStore, headers::HeaderStoreReader, pruning::PruningStoreReader, reachability::DbReachabilityStore,
-            virtual_state::VirtualStores, DB,
+            virtual_state::VirtualStores, RocksDB,
         },
     },
     params::Params,
@@ -48,7 +48,7 @@ pub struct TestConsensus {
 
 impl TestConsensus {
     /// Creates a test consensus instance based on `config` with the provided `db` and `notification_sender`
-    pub fn with_db(db: Arc<DB>, config: &Config, notification_sender: Sender<Notification>) -> Self {
+    pub fn with_db(db: Arc<RocksDB>, config: &Config, notification_sender: Sender<Notification>) -> Self {
         let notification_root = Arc::new(ConsensusNotificationRoot::new(notification_sender));
         let counters = Default::default();
         let tx_script_cache_counters = Default::default();

@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use kaspa_consensus_core::{BlockHashSet, BlockHasher};
 use kaspa_database::prelude::CachePolicy;
+use kaspa_database::prelude::RocksDB;
 use kaspa_database::prelude::StoreError;
-use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
@@ -22,12 +22,12 @@ pub trait DaaStore: DaaStoreReader {
 /// A DB + cache implementation of `DaaStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbDaaStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     access: CachedDbAccess<Hash, Arc<BlockHashSet>, BlockHasher>,
 }
 
 impl DbDaaStore {
-    pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
+    pub fn new(db: Arc<RocksDB>, cache_policy: CachePolicy) -> Self {
         Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::NonDaaMergeset.into()) }
     }
 

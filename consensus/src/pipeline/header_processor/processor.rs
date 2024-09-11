@@ -20,7 +20,7 @@ use crate::{
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreReader},
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
-            DB,
+            RocksDB,
         },
     },
     params::Params,
@@ -121,7 +121,7 @@ pub struct HeaderProcessor {
     pub(super) max_block_level: BlockLevel,
 
     // DB
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
 
     // Stores
     pub(super) relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
@@ -162,7 +162,7 @@ impl HeaderProcessor {
         body_sender: Sender<BlockProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
         params: &Params,
-        db: Arc<DB>,
+        db: Arc<RocksDB>,
         storage: &Arc<ConsensusStorage>,
         services: &Arc<ConsensusServices>,
         pruning_lock: SessionLock,

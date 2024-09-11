@@ -2,7 +2,7 @@ use crate::processes::ghostdag::ordering::SortableBlock;
 use kaspa_consensus_core::trusted::ExternalGhostdagData;
 use kaspa_consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use kaspa_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
-use kaspa_database::prelude::DB;
+use kaspa_database::prelude::RocksDB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey};
 use kaspa_database::prelude::{CachePolicy, StoreError};
 use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
@@ -250,14 +250,14 @@ pub trait GhostdagStore: GhostdagStoreReader {
 /// A DB + cache implementation of `GhostdagStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbGhostdagStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     level: BlockLevel,
     access: CachedDbAccess<Hash, Arc<GhostdagData>, BlockHasher>,
     compact_access: CachedDbAccess<Hash, CompactGhostdagData, BlockHasher>,
 }
 
 impl DbGhostdagStore {
-    pub fn new(db: Arc<DB>, level: BlockLevel, cache_policy: CachePolicy, compact_cache_policy: CachePolicy) -> Self {
+    pub fn new(db: Arc<RocksDB>, level: BlockLevel, cache_policy: CachePolicy, compact_cache_policy: CachePolicy) -> Self {
         assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
         let lvl_bytes = level.to_le_bytes();
         let prefix = DatabaseStorePrefixes::Ghostdag.into_iter().chain(lvl_bytes).collect_vec();
@@ -271,7 +271,7 @@ impl DbGhostdagStore {
     }
 
     pub fn new_temp(
-        db: Arc<DB>,
+        db: Arc<RocksDB>,
         level: BlockLevel,
         cache_policy: CachePolicy,
         compact_cache_policy: CachePolicy,

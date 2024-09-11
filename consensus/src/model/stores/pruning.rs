@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
+use kaspa_database::prelude::RocksDB;
 use kaspa_database::prelude::StoreResult;
-use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
@@ -51,13 +51,13 @@ pub trait PruningStore: PruningStoreReader {
 /// A DB + cache implementation of `PruningStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbPruningStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     access: CachedDbItem<PruningPointInfo>,
     history_root_access: CachedDbItem<Hash>,
 }
 
 impl DbPruningStore {
-    pub fn new(db: Arc<DB>) -> Self {
+    pub fn new(db: Arc<RocksDB>) -> Self {
         Self {
             db: Arc::clone(&db),
             access: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::PruningPoint.into()),

@@ -7,7 +7,7 @@ use crate::{
             block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
             headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore,
             pruning::DbPruningStore, reachability::DbReachabilityStore, relations::DbRelationsStore,
-            selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB,
+            selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, RocksDB,
         },
     },
     processes::{
@@ -66,7 +66,7 @@ pub struct ConsensusServices {
 
 impl ConsensusServices {
     pub fn new(
-        db: Arc<DB>,
+        db: Arc<RocksDB>,
         storage: Arc<ConsensusStorage>,
         config: Arc<Config>,
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,

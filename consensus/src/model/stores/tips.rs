@@ -5,9 +5,9 @@ use kaspa_consensus_core::BlockHasher;
 use kaspa_database::prelude::CachedDbSetItem;
 use kaspa_database::prelude::DbWriter;
 use kaspa_database::prelude::ReadLock;
+use kaspa_database::prelude::RocksDB;
 use kaspa_database::prelude::StoreResult;
 use kaspa_database::prelude::StoreResultExtensions;
-use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, DirectDbWriter};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
@@ -43,12 +43,12 @@ pub trait TipsStore: TipsStoreReader {
 /// A DB + cache implementation of `TipsStore` trait
 #[derive(Clone)]
 pub struct DbTipsStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     access: CachedDbSetItem<Hash, BlockHasher>,
 }
 
 impl DbTipsStore {
-    pub fn new(db: Arc<DB>) -> Self {
+    pub fn new(db: Arc<RocksDB>) -> Self {
         Self { db: Arc::clone(&db), access: CachedDbSetItem::new(db, DatabaseStorePrefixes::Tips.into()) }
     }
 

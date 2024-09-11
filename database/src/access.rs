@@ -1,19 +1,19 @@
-use crate::{cache::CachePolicy, db::DB, errors::StoreError};
+use crate::{cache::CachePolicy, errors::StoreError};
 
 use super::prelude::{Cache, DbKey, DbWriter};
 use kaspa_utils::mem_size::MemSizeEstimator;
-use rocksdb::{Direction, IterateBounds, IteratorMode, ReadOptions};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{collections::hash_map::RandomState, error::Error, hash::BuildHasher, sync::Arc};
 
 /// A concurrent DB store access with typed caching.
 #[derive(Clone)]
-pub struct CachedDbAccess<TKey, TData, S = RandomState>
+pub struct CachedDbAccess<TKey, TData, S = RandomState, DB = Arc<crate::db::RocksDB>>
 where
     TKey: Clone + std::hash::Hash + Eq + Send + Sync,
     TData: Clone + Send + Sync + MemSizeEstimator,
+    DB: DbAccess,
 {
-    db: Arc<DB>,
+    db: DB,
 
     // Cache
     cache: Cache<TKey, TData, S>,
@@ -22,13 +22,27 @@ where
     prefix: Vec<u8>,
 }
 
-impl<TKey, TData, S> CachedDbAccess<TKey, TData, S>
+pub trait DbAccess {
+    fn has(&self, db_key: DbKey) -> Result<bool, StoreError>;
+    fn read(&self, db_key: &DbKey) -> Result<Option<impl AsRef<[u8]>>, StoreError>;
+    fn iterator(
+        &self,
+        prefix: impl Into<Vec<u8>>,
+        seek_from: Option<DbKey>,
+    ) -> impl Iterator<Item = Result<(impl AsRef<[u8]>, impl AsRef<[u8]>), Box<dyn Error>>> + '_;
+    fn write(&self, writer: &mut impl DbWriter, db_key: DbKey, data: Vec<u8>) -> Result<(), StoreError>;
+    fn delete(&self, writer: &mut impl DbWriter, db_key: DbKey) -> Result<(), StoreError>;
+    fn delete_range_by_prefix(&self, writer: &mut impl DbWriter, prefix: &[u8]) -> Result<(), StoreError>;
+}
+
+impl<TKey, TData, S, DB> CachedDbAccess<TKey, TData, S, DB>
 where
     TKey: Clone + std::hash::Hash + Eq + Send + Sync,
     TData: Clone + Send + Sync + MemSizeEstimator,
     S: BuildHasher + Default,
+    DB: DbAccess,
 {
-    pub fn new(db: Arc<DB>, cache_policy: CachePolicy, prefix: Vec<u8>) -> Self {
+    pub fn new(db: DB, cache_policy: CachePolicy, prefix: Vec<u8>) -> Self {
         Self { db, cache: Cache::new(cache_policy), prefix }
     }
 
@@ -43,7 +57,7 @@ where
     where
         TKey: Clone + AsRef<[u8]>,
     {
-        Ok(self.cache.contains_key(&key) || self.db.get_pinned(DbKey::new(&self.prefix, key))?.is_some())
+        Ok(self.cache.contains_key(&key) || self.db.has(DbKey::new(&self.prefix, key))?)
     }
 
     pub fn read(&self, key: TKey) -> Result<TData, StoreError>
@@ -55,8 +69,8 @@ where
             Ok(data)
         } else {
             let db_key = DbKey::new(&self.prefix, key.clone());
-            if let Some(slice) = self.db.get_pinned(&db_key)? {
-                let data: TData = bincode::deserialize(&slice)?;
+            if let Some(slice) = self.db.read(&db_key.clone())? {
+                let data: TData = bincode::deserialize(slice.as_ref())?;
                 self.cache.insert(key, data.clone());
                 Ok(data)
             } else {
@@ -70,17 +84,12 @@ where
         TKey: Clone + AsRef<[u8]>,
         TData: DeserializeOwned, // We need `DeserializeOwned` since the slice coming from `db.get_pinned` has short lifetime
     {
-        let prefix_key = DbKey::prefix_only(&self.prefix);
-        let mut read_opts = ReadOptions::default();
-        read_opts.set_iterate_range(rocksdb::PrefixRange(prefix_key.as_ref()));
-        self.db.iterator_opt(IteratorMode::From(prefix_key.as_ref(), Direction::Forward), read_opts).map(move |iter_result| {
-            match iter_result {
-                Ok((key, data_bytes)) => match bincode::deserialize(&data_bytes) {
-                    Ok(data) => Ok((key[prefix_key.prefix_len()..].into(), data)),
-                    Err(e) => Err(e.into()),
-                },
+        self.db.iterator(self.prefix.to_vec(), None).map(move |iter_result| match iter_result {
+            Ok((key, data_bytes)) => match bincode::deserialize(data_bytes.as_ref()) {
+                Ok(data) => Ok((key.as_ref()[self.prefix.len()..].into(), data)),
                 Err(e) => Err(e.into()),
-            }
+            },
+            Err(e) => Err(e.into()),
         })
     }
 
@@ -91,7 +100,7 @@ where
     {
         let bin_data = bincode::serialize(&data)?;
         self.cache.insert(key.clone(), data);
-        writer.put(DbKey::new(&self.prefix, key), bin_data)?;
+        self.db.write(&mut writer, DbKey::new(&self.prefix, key), bin_data)?;
         Ok(())
     }
 
@@ -108,7 +117,7 @@ where
         self.cache.insert_many(iter);
         for (key, data) in iter_clone {
             let bin_data = bincode::serialize(&data)?;
-            writer.put(DbKey::new(&self.prefix, key.clone()), bin_data)?;
+            self.db.write(&mut writer, DbKey::new(&self.prefix, key), bin_data)?;
         }
         Ok(())
     }
@@ -125,7 +134,7 @@ where
     {
         for (key, data) in iter {
             let bin_data = bincode::serialize(&data)?;
-            writer.put(DbKey::new(&self.prefix, key), bin_data)?;
+            self.db.write(&mut writer, DbKey::new(&self.prefix, key), bin_data)?;
         }
         // We must clear the cache in order to avoid invalidated entries
         self.cache.remove_all();
@@ -137,7 +146,7 @@ where
         TKey: Clone + AsRef<[u8]>,
     {
         self.cache.remove(&key);
-        writer.delete(DbKey::new(&self.prefix, key))?;
+        self.db.delete(&mut writer, DbKey::new(&self.prefix, key))?;
         Ok(())
     }
 
@@ -148,7 +157,7 @@ where
         let key_iter_clone = key_iter.clone();
         self.cache.remove_many(key_iter);
         for key in key_iter_clone {
-            writer.delete(DbKey::new(&self.prefix, key.clone()))?;
+            self.db.delete(&mut writer, DbKey::new(&self.prefix, key.clone()))?;
         }
         Ok(())
     }
@@ -160,8 +169,7 @@ where
     {
         self.cache.remove_all();
         let db_key = DbKey::prefix_only(&self.prefix);
-        let (from, to) = rocksdb::PrefixRange(db_key.as_ref()).into_bounds();
-        writer.delete_range(from.unwrap(), to.unwrap())?;
+        self.db.delete_range_by_prefix(&mut writer, db_key.as_ref())?;
         Ok(())
     }
 
@@ -186,16 +194,8 @@ where
                 key
             },
         );
-
-        let mut read_opts = ReadOptions::default();
-        read_opts.set_iterate_range(rocksdb::PrefixRange(db_key.as_ref()));
-
-        let mut db_iterator = match seek_from {
-            Some(seek_key) => {
-                self.db.iterator_opt(IteratorMode::From(DbKey::new(&self.prefix, seek_key).as_ref(), Direction::Forward), read_opts)
-            }
-            None => self.db.iterator_opt(IteratorMode::Start, read_opts),
-        };
+        let db_key_prefix_len = db_key.prefix_len();
+        let mut db_iterator = self.db.iterator(db_key, seek_from.map(|seek_key| DbKey::new(&self.prefix, seek_key)));
 
         if skip_first {
             db_iterator.next();
@@ -203,7 +203,7 @@ where
 
         db_iterator.take(limit).map(move |item| match item {
             Ok((key_bytes, value_bytes)) => match bincode::deserialize::<TData>(value_bytes.as_ref()) {
-                Ok(value) => Ok((key_bytes[db_key.prefix_len()..].into(), value)),
+                Ok(value) => Ok((key_bytes.as_ref()[db_key_prefix_len..].into(), value)),
                 Err(err) => Err(err.into()),
             },
             Err(err) => Err(err.into()),
@@ -217,7 +217,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // use super::*;
+    use crate::access::CachedDbAccess;
+    use crate::cache::CachePolicy;
     use crate::{
         create_temp_db,
         prelude::{BatchDbWriter, ConnBuilder, DirectDbWriter},

@@ -5,7 +5,8 @@ use kaspa_consensus_core::{
 };
 use kaspa_database::{
     prelude::{
-        BatchDbWriter, Cache, CachePolicy, CachedDbAccess, CachedDbItem, DbKey, DbSetAccess, DbWriter, DirectDbWriter, StoreError, DB,
+        BatchDbWriter, Cache, CachePolicy, CachedDbAccess, CachedDbItem, DbKey, DbSetAccess, DbWriter, DirectDbWriter, RocksDB,
+        StoreError,
     },
     registry::{DatabaseStorePrefixes, SEPARATOR},
 };
@@ -171,7 +172,7 @@ impl DbReachabilitySet {
 /// A DB + cache implementation of `ReachabilityStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbReachabilityStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     access: CachedDbAccess<Hash, ReachabilityData, BlockHasher>, // Main access
     children_access: DbReachabilitySet,                          // Tree children
     fcs_access: DbReachabilitySet,                               // Future Covering Set
@@ -180,16 +181,16 @@ pub struct DbReachabilityStore {
 }
 
 impl DbReachabilityStore {
-    pub fn new(db: Arc<DB>, cache_policy: CachePolicy, sets_cache_policy: CachePolicy) -> Self {
+    pub fn new(db: Arc<RocksDB>, cache_policy: CachePolicy, sets_cache_policy: CachePolicy) -> Self {
         Self::with_prefix_end(db, cache_policy, sets_cache_policy, DatabaseStorePrefixes::Separator.into())
     }
 
-    pub fn with_block_level(db: Arc<DB>, cache_policy: CachePolicy, sets_cache_policy: CachePolicy, level: BlockLevel) -> Self {
+    pub fn with_block_level(db: Arc<RocksDB>, cache_policy: CachePolicy, sets_cache_policy: CachePolicy, level: BlockLevel) -> Self {
         assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
         Self::with_prefix_end(db, cache_policy, sets_cache_policy, level)
     }
 
-    fn with_prefix_end(db: Arc<DB>, cache_policy: CachePolicy, sets_cache_policy: CachePolicy, prefix_end: u8) -> Self {
+    fn with_prefix_end(db: Arc<RocksDB>, cache_policy: CachePolicy, sets_cache_policy: CachePolicy, prefix_end: u8) -> Self {
         let store_prefix = DatabaseStorePrefixes::Reachability.into_iter().chain(once(prefix_end)).collect_vec();
         let children_prefix = DatabaseStorePrefixes::ReachabilityTreeChildren.into_iter().chain(once(prefix_end)).collect_vec();
         let fcs_prefix = DatabaseStorePrefixes::ReachabilityFutureCoveringSet.into_iter().chain(once(prefix_end)).collect_vec();

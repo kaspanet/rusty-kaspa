@@ -10,7 +10,7 @@ use crate::{
             reachability::DbReachabilityStore,
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
             tips::{DbTipsStore, TipsStore},
-            DB,
+            RocksDB,
         },
     },
     pipeline::{
@@ -48,7 +48,7 @@ pub struct BlockBodyProcessor {
     pub(super) thread_pool: Arc<ThreadPool>,
 
     // DB
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
 
     // Config
     pub(super) max_block_mass: u64,
@@ -91,7 +91,7 @@ impl BlockBodyProcessor {
         sender: Sender<VirtualStateProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
 
-        db: Arc<DB>,
+        db: Arc<RocksDB>,
         statuses_store: Arc<RwLock<DbStatusesStore>>,
         ghostdag_store: Arc<DbGhostdagStore>,
         headers_store: Arc<DbHeadersStore>,

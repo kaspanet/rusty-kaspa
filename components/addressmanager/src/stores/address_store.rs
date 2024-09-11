@@ -1,5 +1,5 @@
 use kaspa_database::{
-    prelude::DB,
+    prelude::RocksDB,
     prelude::{CachePolicy, StoreError, StoreResult},
     prelude::{CachedDbAccess, DirectDbWriter},
     registry::DatabaseStorePrefixes,
@@ -74,12 +74,12 @@ impl From<DbAddressKey> for AddressKey {
 
 #[derive(Clone)]
 pub struct DbAddressesStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     access: CachedDbAccess<DbAddressKey, Entry>,
 }
 
 impl DbAddressesStore {
-    pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
+    pub fn new(db: Arc<RocksDB>, cache_policy: CachePolicy) -> Self {
         Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::Addresses.into()) }
     }
 

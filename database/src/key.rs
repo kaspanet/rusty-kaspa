@@ -8,6 +8,12 @@ pub struct DbKey {
     prefix_len: usize,
 }
 
+impl From<DbKey> for Vec<u8> {
+    fn from(value: DbKey) -> Self {
+        value.path.to_vec()
+    }
+}
+
 impl DbKey {
     pub fn new<TKey>(prefix: &[u8], key: TKey) -> Self
     where

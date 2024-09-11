@@ -9,7 +9,8 @@ use kaspa_consensusmanager::{ConsensusFactory, ConsensusInstance, DynConsensusCt
 use kaspa_core::{debug, time::unix_now, warn};
 use kaspa_database::{
     prelude::{
-        BatchDbWriter, CachePolicy, CachedDbAccess, CachedDbItem, DirectDbWriter, StoreError, StoreResult, StoreResultExtensions, DB,
+        BatchDbWriter, CachePolicy, CachedDbAccess, CachedDbItem, DirectDbWriter, RocksDB, StoreError, StoreResult,
+        StoreResultExtensions,
     },
     registry::DatabaseStorePrefixes,
 };
@@ -75,13 +76,13 @@ impl Default for MultiConsensusMetadata {
 
 #[derive(Clone)]
 pub struct MultiConsensusManagementStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     entries: CachedDbAccess<U64Key, ConsensusEntry>,
     metadata: CachedDbItem<MultiConsensusMetadata>,
 }
 
 impl MultiConsensusManagementStore {
-    pub fn new(db: Arc<DB>) -> Self {
+    pub fn new(db: Arc<RocksDB>) -> Self {
         let mut store = Self {
             db: db.clone(),
             entries: CachedDbAccess::new(db.clone(), CachePolicy::Count(16), DatabaseStorePrefixes::ConsensusEntries.into()),
@@ -258,7 +259,7 @@ pub struct Factory {
 
 impl Factory {
     pub fn new(
-        management_db: Arc<DB>,
+        management_db: Arc<RocksDB>,
         config: &Config,
         db_root_dir: PathBuf,
         db_parallelism: usize,

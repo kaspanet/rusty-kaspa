@@ -1,6 +1,6 @@
 use kaspa_database::{
     prelude::{CachePolicy, StoreError, StoreResult},
-    prelude::{CachedDbAccess, DirectDbWriter, DB},
+    prelude::{CachedDbAccess, DirectDbWriter, RocksDB},
     registry::DatabaseStorePrefixes,
 };
 use kaspa_utils::mem_size::MemSizeEstimator;
@@ -68,12 +68,12 @@ impl From<AddressKey> for IpAddr {
 
 #[derive(Clone)]
 pub struct DbBannedAddressesStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     access: CachedDbAccess<AddressKey, ConnectionBanTimestamp>,
 }
 
 impl DbBannedAddressesStore {
-    pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
+    pub fn new(db: Arc<RocksDB>, cache_policy: CachePolicy) -> Self {
         Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::BannedAddresses.into()) }
     }
 

@@ -35,7 +35,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_consensusmanager::SessionLock;
 use kaspa_core::{debug, info, warn};
-use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, StoreResultExtensions, DB};
+use kaspa_database::prelude::{BatchDbWriter, MemoryWriter, RocksDB, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_utils::iter::IterExtensions;
@@ -62,7 +62,7 @@ pub struct PruningProcessor {
     receiver: CrossbeamReceiver<PruningProcessingMessage>,
 
     // DB
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
 
     // Storage
     storage: Arc<ConsensusStorage>,
@@ -94,7 +94,7 @@ impl Deref for PruningProcessor {
 impl PruningProcessor {
     pub fn new(
         receiver: CrossbeamReceiver<PruningProcessingMessage>,
-        db: Arc<DB>,
+        db: Arc<RocksDB>,
         storage: &Arc<ConsensusStorage>,
         services: &Arc<ConsensusServices>,
         pruning_lock: SessionLock,

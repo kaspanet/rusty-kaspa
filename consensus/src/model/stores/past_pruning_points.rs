@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
-use kaspa_database::prelude::{CachePolicy, DB};
+use kaspa_database::prelude::{CachePolicy, RocksDB};
 use kaspa_database::prelude::{StoreError, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
@@ -22,12 +22,12 @@ pub trait PastPruningPointsStore: PastPruningPointsStoreReader {
 /// A DB + cache implementation of `PastPruningPointsStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbPastPruningPointsStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     access: CachedDbAccess<U64Key, Hash>,
 }
 
 impl DbPastPruningPointsStore {
-    pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
+    pub fn new(db: Arc<RocksDB>, cache_policy: CachePolicy) -> Self {
         Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::PastPruningPoints.into()) }
     }
 

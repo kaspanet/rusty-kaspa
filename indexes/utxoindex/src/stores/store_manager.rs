@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
     BlockHashSet,
 };
 use kaspa_core::trace;
-use kaspa_database::prelude::{CachePolicy, StoreResult, DB};
+use kaspa_database::prelude::{CachePolicy, RocksDB, StoreResult};
 use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
 
 use crate::{
@@ -26,7 +26,7 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn new(db: Arc<DB>) -> Self {
+    pub fn new(db: Arc<RocksDB>) -> Self {
         Self {
             utxoindex_tips_store: DbUtxoIndexTipsStore::new(db.clone()),
             circulating_supply_store: DbCirculatingSupplyStore::new(db.clone()),

@@ -20,7 +20,7 @@ use crate::{
         utxo_diffs::DbUtxoDiffsStore,
         utxo_multisets::DbUtxoMultisetsStore,
         virtual_state::{LkgVirtualState, VirtualStores},
-        DB,
+        RocksDB,
     },
     processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations},
 };
@@ -35,7 +35,7 @@ use std::{ops::DerefMut, sync::Arc};
 
 pub struct ConsensusStorage {
     // DB
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
 
     // Locked stores
     pub statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -73,7 +73,7 @@ pub struct ConsensusStorage {
 }
 
 impl ConsensusStorage {
-    pub fn new(db: Arc<DB>, config: Arc<Config>) -> Arc<Self> {
+    pub fn new(db: Arc<RocksDB>, config: Arc<Config>) -> Arc<Self> {
         let scale_factor = config.ram_scale;
         let scaled = |s| (s as f64 * scale_factor) as usize;
 

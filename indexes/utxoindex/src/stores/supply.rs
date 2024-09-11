@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use kaspa_database::{
-    prelude::{CachedDbItem, DirectDbWriter, StoreResult, DB},
+    prelude::{CachedDbItem, DirectDbWriter, RocksDB, StoreResult},
     registry::DatabaseStorePrefixes,
 };
 
@@ -21,12 +21,12 @@ pub trait CirculatingSupplyStore: CirculatingSupplyStoreReader {
 /// A DB + cache implementation of `UtxoIndexTipsStore` trait
 #[derive(Clone)]
 pub struct DbCirculatingSupplyStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     access: CachedDbItem<u64>,
 }
 
 impl DbCirculatingSupplyStore {
-    pub fn new(db: Arc<DB>) -> Self {
+    pub fn new(db: Arc<RocksDB>) -> Self {
         Self { db: Arc::clone(&db), access: CachedDbItem::new(db, DatabaseStorePrefixes::CirculatingSupply.into()) }
     }
 }

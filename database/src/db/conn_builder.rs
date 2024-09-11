@@ -1,4 +1,4 @@
-use crate::db::DB;
+use crate::db::RocksDB;
 use rocksdb::{DBWithThreadMode, MultiThreaded};
 use std::{path::PathBuf, sync::Arc};
 
@@ -112,29 +112,32 @@ macro_rules! default_opts {
 }
 
 impl ConnBuilder<PathBuf, false, Unspecified, i32> {
-    pub fn build(self) -> Result<Arc<DB>, kaspa_utils::fd_budget::Error> {
+    pub fn build(self) -> Result<Arc<RocksDB>, kaspa_utils::fd_budget::Error> {
         let (opts, guard) = default_opts!(self)?;
-        let db = Arc::new(DB::new(<DBWithThreadMode<MultiThreaded>>::open(&opts, self.db_path.to_str().unwrap()).unwrap(), guard));
+        let db =
+            Arc::new(RocksDB::new(<DBWithThreadMode<MultiThreaded>>::open(&opts, self.db_path.to_str().unwrap()).unwrap(), guard));
         Ok(db)
     }
 }
 
 impl ConnBuilder<PathBuf, true, Unspecified, i32> {
-    pub fn build(self) -> Result<Arc<DB>, kaspa_utils::fd_budget::Error> {
+    pub fn build(self) -> Result<Arc<RocksDB>, kaspa_utils::fd_budget::Error> {
         let (mut opts, guard) = default_opts!(self)?;
         opts.enable_statistics();
-        let db = Arc::new(DB::new(<DBWithThreadMode<MultiThreaded>>::open(&opts, self.db_path.to_str().unwrap()).unwrap(), guard));
+        let db =
+            Arc::new(RocksDB::new(<DBWithThreadMode<MultiThreaded>>::open(&opts, self.db_path.to_str().unwrap()).unwrap(), guard));
         Ok(db)
     }
 }
 
 impl ConnBuilder<PathBuf, true, u32, i32> {
-    pub fn build(self) -> Result<Arc<DB>, kaspa_utils::fd_budget::Error> {
+    pub fn build(self) -> Result<Arc<RocksDB>, kaspa_utils::fd_budget::Error> {
         let (mut opts, guard) = default_opts!(self)?;
         opts.enable_statistics();
         opts.set_report_bg_io_stats(true);
         opts.set_stats_dump_period_sec(self.stats_period);
-        let db = Arc::new(DB::new(<DBWithThreadMode<MultiThreaded>>::open(&opts, self.db_path.to_str().unwrap()).unwrap(), guard));
+        let db =
+            Arc::new(RocksDB::new(<DBWithThreadMode<MultiThreaded>>::open(&opts, self.db_path.to_str().unwrap()).unwrap(), guard));
         Ok(db)
     }
 }
