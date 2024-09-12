@@ -25,6 +25,19 @@ pub struct GeneratorSummary {
 }
 
 impl GeneratorSummary {
+    pub fn new(network_id: NetworkId) -> Self {
+        Self {
+            network_id,
+            aggregated_utxos: 0,
+            aggregate_fees: 0,
+            aggregate_mass: 0,
+            number_of_generated_transactions: 0,
+            number_of_generated_stages: 0,
+            final_transaction_amount: None,
+            final_transaction_id: None,
+        }
+    }
+
     pub fn network_type(&self) -> NetworkType {
         self.network_id.into()
     }
