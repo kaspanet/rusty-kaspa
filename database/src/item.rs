@@ -1,7 +1,7 @@
 use crate::{
-    rocksdb::RocksDB,
     errors::StoreError,
     prelude::{DbSetAccess, ReadLock},
+    rocksdb::RocksDB,
 };
 
 use super::prelude::{DbKey, DbWriter};

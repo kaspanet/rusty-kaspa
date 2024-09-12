@@ -2756,6 +2756,7 @@ dependencies = [
  "num_cpus",
  "parking_lot",
  "rand 0.8.5",
+ "redb",
  "rocksdb",
  "serde",
  "smallvec",
@@ -5053,6 +5054,15 @@ checksum = "1465873a3dfdaa8ae7cb14b4383657caab0b3e8a0aa9ae8e04b044854c8dfce2"
 dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
+]
+
+[[package]]
+name = "redb"
+version = "2.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "58323dc32ea52a8ae105ff94bc0460c5d906307533ba3401aa63db3cbe491fe5"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

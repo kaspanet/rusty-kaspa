@@ -1,4 +1,4 @@
-use crate::{cache::CachePolicy, rocksdb::RocksDB, errors::StoreError};
+use crate::{cache::CachePolicy, errors::StoreError, rocksdb::RocksDB};
 
 use super::prelude::{Cache, DbKey, DbWriter};
 use parking_lot::{RwLock, RwLockReadGuard};

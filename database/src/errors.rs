@@ -1,5 +1,6 @@
 use crate::prelude::DbKey;
 use kaspa_hashes::Hash;
+use rocksdb::Transaction;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -23,6 +24,9 @@ pub enum StoreError {
 
     #[error("bincode error {0}")]
     DeserializationError(#[from] Box<bincode::ErrorKind>),
+
+    #[error("redb error {0}")]
+    RedbError(#[from] redb::Error),
 }
 
 pub type StoreResult<T> = std::result::Result<T, StoreError>;
