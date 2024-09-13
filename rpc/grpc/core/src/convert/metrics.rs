@@ -6,6 +6,14 @@ use kaspa_rpc_core::RpcError;
 // rpc_core to protowire
 // ----------------------------------------------------------------------------
 
+from!(item: &kaspa_rpc_core::ConnectionsProfileData, protowire::ConnectionsProfileData, {
+    Self {
+        cpu_usage: item.cpu_usage as f64,
+        memory_usage: item.memory_usage,
+
+    }
+});
+
 from!(item: &kaspa_rpc_core::ProcessMetrics, protowire::ProcessMetrics, {
     Self {
         resident_set_size: item.resident_set_size,
@@ -66,9 +74,19 @@ from!(item: &kaspa_rpc_core::ConsensusMetrics, protowire::ConsensusMetrics, {
     }
 });
 
+from!(item: &kaspa_rpc_core::StorageMetrics, protowire::StorageMetrics, {
+    Self {
+        storage_size_bytes: item.storage_size_bytes,
+    }
+});
+
 // ----------------------------------------------------------------------------
 // protowire to rpc_core
 // ----------------------------------------------------------------------------
+
+try_from!(item: &protowire::ConnectionsProfileData, kaspa_rpc_core::ConnectionsProfileData, {
+    Self { cpu_usage : item.cpu_usage as f32, memory_usage : item.memory_usage }
+});
 
 try_from!(item: &protowire::ProcessMetrics, kaspa_rpc_core::ProcessMetrics, {
     Self {
@@ -127,5 +145,11 @@ try_from!(item: &protowire::ConsensusMetrics, kaspa_rpc_core::ConsensusMetrics, 
         network_past_median_time: item.past_median_time,
         network_virtual_parent_hashes_count: item.virtual_parent_hashes_count,
         network_virtual_daa_score: item.virtual_daa_score,
+    }
+});
+
+try_from!(item: &protowire::StorageMetrics, kaspa_rpc_core::StorageMetrics, {
+    Self {
+        storage_size_bytes: item.storage_size_bytes,
     }
 });

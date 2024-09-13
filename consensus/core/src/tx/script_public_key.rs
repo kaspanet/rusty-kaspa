@@ -1,6 +1,7 @@
 use alloc::borrow::Cow;
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt::Formatter;
+use js_sys::Object;
 use kaspa_utils::{
     hex::{FromHex, ToHex},
     serde_bytes::FromHexVisitor,
@@ -41,6 +42,7 @@ const TS_SCRIPT_PUBLIC_KEY: &'static str = r#"
  * @category Consensus
  */
 export interface IScriptPublicKey {
+    version : number;
     script: HexString;
 }
 "#;
@@ -329,6 +331,12 @@ impl ScriptPublicKey {
 }
 
 #[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(typescript_type = "ScriptPublicKey | HexString")]
+    pub type ScriptPublicKeyT;
+}
+
+#[wasm_bindgen]
 impl ScriptPublicKey {
     #[wasm_bindgen(constructor)]
     pub fn constructor(version: u16, script: JsValue) -> Result<ScriptPublicKey, JsError> {
@@ -357,19 +365,36 @@ impl BorshSerialize for ScriptPublicKey {
 }
 
 impl BorshDeserialize for ScriptPublicKey {
-    fn deserialize(buf: &mut &[u8]) -> std::io::Result<Self> {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         // Deserialize into vec first since we have no custom smallvec support
-        Ok(Self::from_vec(borsh::BorshDeserialize::deserialize(buf)?, borsh::BorshDeserialize::deserialize(buf)?))
+        Ok(Self::from_vec(borsh::BorshDeserialize::deserialize_reader(reader)?, borsh::BorshDeserialize::deserialize_reader(reader)?))
     }
 }
 
 type CastError = workflow_wasm::error::Error;
 impl TryCastFromJs for ScriptPublicKey {
     type Error = workflow_wasm::error::Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             if let Some(hex_str) = value.as_ref().as_string() {
                 Ok(Self::from_str(&hex_str).map_err(CastError::custom)?)
+            } else if let Some(object) = Object::try_from(value.as_ref()) {
+                let version = object.try_get_value("version")?.ok_or(CastError::custom(
+                    "ScriptPublicKey must be a hex string or an object with 'version' and 'script' properties",
+                ))?;
+
+                let version = if let Ok(version) = version.try_as_u16() {
+                    version
+                } else {
+                    return Err(CastError::custom("Invalid version value '{version:?}'"));
+                };
+
+                let script = object.get_vec_u8("script")?;
+
+                Ok(ScriptPublicKey::from_vec(version, script))
             } else {
                 Err(CastError::custom(format!("Unable to convert ScriptPublicKey from: {:?}", value.as_ref())))
             }
@@ -403,12 +428,12 @@ mod tests {
     fn test_spk_borsh() {
         // Tests for ScriptPublicKey Borsh ser/deser since we manually implemented them
         let spk = ScriptPublicKey::from_vec(12, vec![32; 20]);
-        let bin = spk.try_to_vec().unwrap();
+        let bin = borsh::to_vec(&spk).unwrap();
         let spk2: ScriptPublicKey = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(spk, spk2);
 
         let spk = ScriptPublicKey::from_vec(55455, vec![11; 200]);
-        let bin = spk.try_to_vec().unwrap();
+        let bin = borsh::to_vec(&spk).unwrap();
         let spk2: ScriptPublicKey = BorshDeserialize::try_from_slice(&bin).unwrap();
         assert_eq!(spk, spk2);
     }

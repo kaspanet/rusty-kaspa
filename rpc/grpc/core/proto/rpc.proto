@@ -101,7 +101,7 @@ message RpcUtxoEntry {
 message RpcTransactionVerboseData{
   string transactionId = 1;
   string hash = 2;
-  uint64 mass = 4;
+  uint64 computeMass = 4;
   string blockHash = 12;
   uint64 blockTime = 14;
 }
@@ -821,11 +821,47 @@ message ConsensusMetrics{
   uint64 virtualDaaScore = 18;
 }
 
+message StorageMetrics{
+  uint64 storageSizeBytes = 1;
+}
+
+message GetConnectionsRequestMessage{
+  bool includeProfileData = 1;
+}
+
+message ConnectionsProfileData {
+  double cpuUsage = 1;
+  uint64 memoryUsage = 2;
+}
+
+message GetConnectionsResponseMessage{
+  uint32 clients = 1;
+  uint32 peers = 2;
+  ConnectionsProfileData profileData = 3;
+  RPCError error = 1000;
+}
+
+message GetSystemInfoRequestMessage{
+}
+
+message GetSystemInfoResponseMessage{
+  string version = 1;
+  string systemId = 2;
+  string gitHash = 3;
+  uint32 coreNum = 4;
+  uint64 totalMemory = 5;
+  uint32 fdLimit = 6;
+  uint32 proxySocketLimitPerCpuCore = 7;
+  RPCError error = 1000;
+}
+
 message GetMetricsRequestMessage{
   bool processMetrics = 1;
   bool connectionMetrics = 2;
   bool bandwidthMetrics = 3;
   bool consensusMetrics = 4;
+  bool storageMetrics = 5;
+  bool customMetrics = 6;
 }
 
 message GetMetricsResponseMessage{
@@ -834,6 +870,7 @@ message GetMetricsResponseMessage{
   ConnectionMetrics connectionMetrics = 12;
   BandwidthMetrics bandwidthMetrics = 13;
   ConsensusMetrics consensusMetrics = 14;
+  StorageMetrics storageMetrics = 15;
   RPCError error = 1000;
 }
 
@@ -841,12 +878,13 @@ message GetServerInfoRequestMessage{
 }
 
 message GetServerInfoResponseMessage{
-  repeated uint32 rpcApiVersion = 1; // Expecting exactly 4 elements
-  string serverVersion = 2;
-  string networkId = 3;
-  bool hasUtxoIndex = 4;
-  bool isSynced = 5;
-  uint64 virtualDaaScore = 6;
+  uint32 rpcApiVersion = 1;
+  uint32 rpcApiRevision = 2;
+  string serverVersion = 3;
+  string networkId = 4;
+  bool hasUtxoIndex = 5;
+  bool isSynced = 6;
+  uint64 virtualDaaScore = 7;
   RPCError error = 1000;
 }
 
@@ -864,5 +902,71 @@ message GetDaaScoreTimestampEstimateRequestMessage {
 
 message GetDaaScoreTimestampEstimateResponseMessage{
   repeated uint64 timestamps = 1;
+  RPCError error = 1000;
+}
+
+message RpcFeerateBucket {
+  // Fee/mass of a transaction in `sompi/gram` units
+  double feerate = 1;
+  double estimated_seconds = 2;
+}
+
+// Data required for making fee estimates.
+// 
+// Feerate values represent fee/mass of a transaction in `sompi/gram` units.
+// Given a feerate value recommendation, calculate the required fee by
+// taking the transaction mass and multiplying it by feerate: `fee = feerate * mass(tx)`
+message RpcFeeEstimate {
+  // Top-priority feerate bucket. Provides an estimation of the feerate required for sub-second DAG inclusion.
+  RpcFeerateBucket priority_bucket = 1;
+
+  // A vector of *normal* priority feerate values. The first value of this vector is guaranteed to exist and
+  // provide an estimation for sub-*minute* DAG inclusion. All other values will have shorter estimation
+  // times than all `low_bucket` values. Therefor by chaining `[priority] | normal | low` and interpolating
+  // between them, one can compose a complete feerate function on the client side. The API makes an effort
+  // to sample enough "interesting" points on the feerate-to-time curve, so that the interpolation is meaningful.
+  repeated RpcFeerateBucket normal_buckets = 2;
+
+  // A vector of *low* priority feerate values. The first value of this vector is guaranteed to
+  // exist and provide an estimation for sub-*hour* DAG inclusion.
+  repeated RpcFeerateBucket low_buckets = 3;
+}
+
+message RpcFeeEstimateVerboseExperimentalData {
+  uint64 mempool_ready_transactions_count = 1;
+  uint64 mempool_ready_transactions_total_mass = 2;
+  uint64 network_mass_per_second = 3;
+
+  double next_block_template_feerate_min = 11;
+  double next_block_template_feerate_median = 12;
+  double next_block_template_feerate_max = 13;
+}
+
+message GetFeeEstimateRequestMessage {
+}
+
+message GetFeeEstimateResponseMessage {
+  RpcFeeEstimate estimate = 1;
+  RPCError error = 1000;
+}
+
+message GetFeeEstimateExperimentalRequestMessage {
+  bool verbose = 1;
+}
+
+message GetFeeEstimateExperimentalResponseMessage {
+  RpcFeeEstimate estimate = 1;
+  RpcFeeEstimateVerboseExperimentalData verbose = 2;
+
+  RPCError error = 1000;
+}
+
+message GetCurrentBlockColorRequestMessage {
+  string hash = 1;
+}
+
+message GetCurrentBlockColorResponseMessage {
+  bool blue = 1;
+
   RPCError error = 1000;
 }

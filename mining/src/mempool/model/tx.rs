@@ -2,7 +2,6 @@ use crate::mempool::tx::{Priority, RbfPolicy};
 use kaspa_consensus_core::tx::{MutableTransaction, Transaction, TransactionId, TransactionOutpoint};
 use kaspa_mining_errors::mempool::RuleError;
 use std::{
-    cmp::Ordering,
     fmt::{Display, Formatter},
     sync::Arc,
 };
@@ -27,31 +26,6 @@ impl MempoolTransaction {
         let contextual_mass = self.mtx.tx.mass();
         assert!(contextual_mass > 0, "expected to be called for validated txs only");
         self.mtx.calculated_fee.unwrap() as f64 / contextual_mass as f64
-    }
-
-    pub(crate) fn is_parent_of(&self, transaction: &MutableTransaction) -> bool {
-        let parent_id = self.id();
-        transaction.tx.inputs.iter().any(|x| x.previous_outpoint.transaction_id == parent_id)
-    }
-}
-
-impl Ord for MempoolTransaction {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.fee_rate().total_cmp(&other.fee_rate()).then(self.id().cmp(&other.id()))
-    }
-}
-
-impl Eq for MempoolTransaction {}
-
-impl PartialOrd for MempoolTransaction {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for MempoolTransaction {
-    fn eq(&self, other: &Self) -> bool {
-        self.fee_rate() == other.fee_rate()
     }
 }
 

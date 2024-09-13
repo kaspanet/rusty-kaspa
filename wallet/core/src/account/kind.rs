@@ -66,6 +66,7 @@ impl FromStr for AccountKind {
                 "bip32" => Ok(BIP32_ACCOUNT_KIND.into()),
                 "multisig" => Ok(MULTISIG_ACCOUNT_KIND.into()),
                 "keypair" => Ok(KEYPAIR_ACCOUNT_KIND.into()),
+                "bip32watch" => Ok(BIP32_WATCH_ACCOUNT_KIND.into()),
                 _ => Err(Error::InvalidAccountKind),
             }
         }
@@ -95,22 +96,17 @@ impl BorshSerialize for AccountKind {
 }
 
 impl BorshDeserialize for AccountKind {
-    fn deserialize(buf: &mut &[u8]) -> IoResult<Self> {
-        if buf.is_empty() {
-            Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid AccountKind length"))
-        } else {
-            let len = buf[0];
-            if buf.len() < (len as usize + 1) {
-                Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid AccountKind length"))
-            } else {
-                let s = str64::make(
-                    std::str::from_utf8(&buf[1..(len as usize + 1)])
-                        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8 sequence"))?,
-                );
-                *buf = &buf[(len as usize + 1)..];
-                Ok(Self(s))
-            }
-        }
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> IoResult<Self> {
+        let len = <u8 as BorshDeserialize>::deserialize_reader(reader)? as usize;
+        let mut buf = [0; 64];
+        reader
+            .read_exact(&mut buf[0..len])
+            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("Invalid AccountKind length ({err:?})")))?;
+        let s = str64::make(
+            std::str::from_utf8(&buf[..len])
+                .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidData, "Invalid UTF-8 sequence"))?,
+        );
+        Ok(Self(s))
     }
 }
 

@@ -16,7 +16,7 @@ use workflow_log::style;
 
 use super::*;
 
-const DISPLAY_LOGS: bool = true;
+const DISPLAY_LOGS: bool = false;
 const DISPLAY_EXPECTED: bool = true;
 
 #[derive(Clone, Copy, Debug)]
@@ -169,12 +169,11 @@ fn validate(pt: &PendingTransaction) {
     );
 
     let calc = MassCalculator::new(&pt.network_type().into(), network_params);
-    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass };
-    let compute_mass = calc.calc_mass_for_signed_transaction(&tx, 1);
+    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass() };
+    let compute_mass = calc.calc_compute_mass_for_unsigned_consensus_transaction(&tx, pt.minimum_signatures());
 
     let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
-    let storage_mass = calc.calc_storage_mass_for_transaction(false, &utxo_entries, &tx.outputs).unwrap_or_default();
-
+    let storage_mass = calc.calc_storage_mass_for_transaction_parts(&utxo_entries, &tx.outputs).unwrap_or(u64::MAX);
     let calculated_mass = calc.combine_mass(compute_mass, storage_mass) + additional_mass;
 
     assert_eq!(pt.inner.mass, calculated_mass, "pending transaction mass does not match calculated mass");
@@ -199,19 +198,14 @@ where
 
     let pt_fees = pt.fees();
     let calc = MassCalculator::new(&pt.network_type().into(), network_params);
-    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass };
+    let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass() };
 
-    let compute_mass = calc.calc_mass_for_signed_transaction(&tx, 1);
+    let compute_mass = calc.calc_compute_mass_for_unsigned_consensus_transaction(&tx, pt.minimum_signatures());
 
     let utxo_entries = pt.utxo_entries().values().cloned().collect::<Vec<_>>();
-    let storage_mass = calc.calc_storage_mass_for_transaction(false, &utxo_entries, &tx.outputs).unwrap_or_default();
+    let storage_mass = calc.calc_storage_mass_for_transaction_parts(&utxo_entries, &tx.outputs).unwrap_or(u64::MAX);
     if DISPLAY_LOGS && storage_mass != 0 {
-        println!(
-            "calculated storage mass: {} calculated_compute_mass: {} total: {}",
-            storage_mass,
-            compute_mass,
-            storage_mass + compute_mass
-        );
+        println!("calculated storage mass: {} calculated_compute_mass: {}", storage_mass, compute_mass,);
     }
 
     let calculated_mass = calc.combine_mass(compute_mass, storage_mass) + additional_mass;
@@ -329,6 +323,21 @@ impl Harness {
         self.clone()
     }
 
+    pub fn accumulate(self: &Rc<Self>, count: usize) -> Rc<Self> {
+        for _n in 0..count {
+            if DISPLAY_LOGS {
+                println!(
+                    "{}",
+                    style(format!("accumulate gathering transaction: {} ({})", _n, self.accumulator.borrow().list.len())).magenta()
+                );
+            }
+            let ptx = self.generator.generate_transaction().unwrap().unwrap();
+            ptx.accumulate(&mut self.accumulator.borrow_mut());
+        }
+        // println!("accumulated `{}` transactions", self.accumulator.borrow().list.len());
+        self.clone()
+    }
+
     pub fn validate(self: &Rc<Self>) -> Rc<Self> {
         while let Some(pt) = self.generator.generate_transaction().unwrap() {
             pt.accumulate(&mut self.accumulator.borrow_mut()).validate();
@@ -338,7 +347,16 @@ impl Harness {
 
     pub fn finalize(self: Rc<Self>) {
         let pt = self.generator.generate_transaction().unwrap();
-        assert!(pt.is_none(), "expected no more transactions");
+        if pt.is_some() {
+            let mut pending = self.generator.generate_transaction().unwrap();
+            let mut count = 1;
+            while pending.is_some() {
+                count += 1;
+                pending = self.generator.generate_transaction().unwrap();
+            }
+
+            panic!("received extra `{}` unexpected transactions", count);
+        }
         let summary = self.generator.summary();
         if DISPLAY_LOGS {
             println!("{:#?}", summary);
@@ -392,6 +410,7 @@ where
     let sig_op_count = 1;
     let minimum_signatures = 1;
     let utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static> = Box::new(utxo_entries.into_iter());
+    let priority_utxo_entries = None;
     let source_utxo_context = None;
     let destination_utxo_context = None;
     let final_priority_fee = fees;
@@ -406,6 +425,7 @@ where
         change_address,
         utxo_iterator,
         source_utxo_context,
+        priority_utxo_entries,
         destination_utxo_context,
         final_transaction_priority_fee: final_priority_fee,
         final_transaction_destination,
@@ -648,7 +668,7 @@ fn test_generator_inputs_100_outputs_1_fees_exclude_insufficient_funds() -> Resu
 }
 
 #[test]
-fn test_generator_inputs_903_outputs_2_fees_exclude() -> Result<()> {
+fn test_generator_inputs_1k_outputs_2_fees_exclude() -> Result<()> {
     generator(test_network_id(), &[10.0; 1_000], &[], Fees::sender(Kaspa(5.0)), [(output_address, Kaspa(9_000.0))].as_slice())
         .unwrap()
         .harness()
@@ -678,5 +698,30 @@ fn test_generator_inputs_903_outputs_2_fees_exclude() -> Result<()> {
         })
         .finalize();
 
+    Ok(())
+}
+
+#[test]
+fn test_generator_inputs_32k_outputs_2_fees_exclude() -> Result<()> {
+    let f = 130.0;
+    generator(
+        test_network_id(),
+        &[f; 32_747],
+        &[],
+        Fees::sender(Kaspa(10_000.0)),
+        [(output_address, Kaspa(f * 32_747.0 - 10_001.0))].as_slice(),
+    )
+    .unwrap()
+    .harness()
+    .accumulate(379)
+    .finalize();
+    Ok(())
+}
+
+#[test]
+fn test_generator_inputs_250k_outputs_2_sweep() -> Result<()> {
+    let f = 130.0;
+    let generator = make_generator(test_network_id(), &[f; 250_000], &[], Fees::None, change_address, PaymentDestination::Change);
+    generator.unwrap().harness().accumulate(2875).finalize();
     Ok(())
 }

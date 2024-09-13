@@ -7,9 +7,10 @@ mod tests {
         mempool::{
             config::{Config, DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE},
             errors::RuleError,
+            model::frontier::selectors::TakeAllSelector,
             tx::{Orphan, Priority, RbfPolicy},
         },
-        model::{candidate_tx::CandidateTransaction, tx_query::TransactionQuery},
+        model::{tx_insert::TransactionInsertion, tx_query::TransactionQuery},
         testutils::consensus_mock::ConsensusMock,
         MiningCounters,
     };
@@ -34,6 +35,7 @@ mod tests {
         pay_to_address_script, pay_to_script_hash_signature_script,
         test_helpers::{create_transaction, create_transaction_with_change, op_true_script},
     };
+    use kaspa_utils::mem_size::MemSizeEstimator;
     use std::{iter::once, sync::Arc};
     use tokio::sync::mpsc::{error::TryRecvError, unbounded_channel};
 
@@ -1095,7 +1097,7 @@ mod tests {
 
         // Collect all parent transactions for the next block template.
         // They are ready since they have no parents in the mempool.
-        let transactions = mining_manager.block_candidate_transactions();
+        let transactions = mining_manager.build_selector().select_transactions();
         assert_eq!(
             TX_PAIRS_COUNT,
             transactions.len(),
@@ -1103,7 +1105,7 @@ mod tests {
         );
         parent_txs.iter().for_each(|x| {
             assert!(
-                transactions.iter().any(|tx| tx.tx.id() == x.id()),
+                transactions.iter().any(|tx| tx.id() == x.id()),
                 "the parent transaction {} should be candidate for the next block template",
                 x.id()
             );
@@ -1115,12 +1117,78 @@ mod tests {
         // TODO: extend the test according to the golang scenario
     }
 
+    // This is a sanity test for the mempool eviction policy. We check that if the mempool reached to its maximum
+    // (in bytes) a high paying transaction will evict as much transactions as needed so it can enter the
+    // mempool.
+    // TODO: Add a test where we try to add a heavy transaction with fee rate that's higher than some of the mempool
+    // transactions, but not enough, so the transaction will be rejected nonetheless.
+    #[test]
+    fn test_evict() {
+        const TX_COUNT: usize = 10;
+        let txs = (0..TX_COUNT).map(|i| create_transaction_with_utxo_entry(i as u32, 0)).collect_vec();
+
+        let consensus = Arc::new(ConsensusMock::new());
+        let counters = Arc::new(MiningCounters::default());
+        let mut config = Config::build_default(TARGET_TIME_PER_BLOCK, false, MAX_BLOCK_MASS);
+        let tx_size = txs[0].mempool_estimated_bytes();
+        let size_limit = TX_COUNT * tx_size;
+        config.mempool_size_limit = size_limit;
+        let mining_manager = MiningManager::with_config(config, None, counters);
+
+        for tx in txs {
+            validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), tx).unwrap();
+        }
+        assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT);
+
+        let heavy_tx_low_fee = {
+            let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT as u32, 0);
+            let mut inner_tx = (*(heavy_tx.tx)).clone();
+            inner_tx.payload = vec![0u8; TX_COUNT / 2 * tx_size - inner_tx.estimate_mem_bytes()];
+            heavy_tx.tx = inner_tx.into();
+            heavy_tx.calculated_fee = Some(2081);
+            heavy_tx
+        };
+        assert!(validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), heavy_tx_low_fee.clone()).is_err());
+        assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT);
+
+        let heavy_tx_high_fee = {
+            let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT as u32 + 1, 0);
+            let mut inner_tx = (*(heavy_tx.tx)).clone();
+            inner_tx.payload = vec![0u8; TX_COUNT / 2 * tx_size - inner_tx.estimate_mem_bytes()];
+            heavy_tx.tx = inner_tx.into();
+            heavy_tx.calculated_fee = Some(500_000);
+            heavy_tx
+        };
+        validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), heavy_tx_high_fee.clone()).unwrap();
+        assert_eq!(mining_manager.get_all_transactions(TransactionQuery::TransactionsOnly).0.len(), TX_COUNT - 5);
+        assert!(mining_manager.get_estimated_size() <= size_limit);
+
+        let too_big_tx = {
+            let mut heavy_tx = create_transaction_with_utxo_entry(TX_COUNT as u32 + 2, 0);
+            let mut inner_tx = (*(heavy_tx.tx)).clone();
+            inner_tx.payload = vec![0u8; size_limit];
+            heavy_tx.tx = inner_tx.into();
+            heavy_tx.calculated_fee = Some(500_000);
+            heavy_tx
+        };
+        assert!(validate_and_insert_mutable_transaction(&mining_manager, consensus.as_ref(), too_big_tx.clone()).is_err());
+    }
+
+    fn validate_and_insert_mutable_transaction(
+        mining_manager: &MiningManager,
+        consensus: &dyn ConsensusApi,
+        tx: MutableTransaction,
+    ) -> Result<TransactionInsertion, MiningManagerError> {
+        mining_manager.validate_and_insert_mutable_transaction(consensus, tx, Priority::Low, Orphan::Allowed, RbfPolicy::Forbidden)
+    }
+
     fn sweep_compare_modified_template_to_built(
         consensus: &dyn ConsensusApi,
         address_prefix: Prefix,
         mining_manager: &MiningManager,
-        transactions: Vec<CandidateTransaction>,
+        transactions: Vec<Transaction>,
     ) {
+        let transactions = transactions.into_iter().map(Arc::new).collect::<Vec<_>>();
         for _ in 0..4 {
             // Run a few times to get more randomness
             compare_modified_template_to_built(
@@ -1187,7 +1255,7 @@ mod tests {
         consensus: &dyn ConsensusApi,
         address_prefix: Prefix,
         mining_manager: &MiningManager,
-        transactions: Vec<CandidateTransaction>,
+        transactions: Vec<Arc<Transaction>>,
         first_op: OpType,
         second_op: OpType,
     ) {
@@ -1196,7 +1264,12 @@ mod tests {
 
         // Build a fresh template for coinbase2 as a reference
         let builder = mining_manager.block_template_builder();
-        let result = builder.build_block_template(consensus, &miner_data_2, transactions, TemplateBuildMode::Standard);
+        let result = builder.build_block_template(
+            consensus,
+            &miner_data_2,
+            Box::new(TakeAllSelector::new(transactions)),
+            TemplateBuildMode::Standard,
+        );
         assert!(result.is_ok(), "build block template failed for miner data 2");
         let expected_template = result.unwrap();
 

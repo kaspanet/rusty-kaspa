@@ -5,12 +5,9 @@ use crate::{
         RuleError::{BadAcceptedIDMerkleRoot, BadCoinbaseTransaction, BadUTXOCommitment, InvalidTransactionsInUtxoContext},
     },
     model::stores::{block_transactions::BlockTransactionsStoreReader, daa::DaaStoreReader, ghostdag::GhostdagData},
-    processes::{
-        mass::Kip9Version,
-        transaction_validator::{
-            errors::{TxResult, TxRuleError},
-            transaction_validator_populated::TxValidationFlags,
-        },
+    processes::transaction_validator::{
+        errors::{TxResult, TxRuleError},
+        transaction_validator_populated::TxValidationFlags,
     },
 };
 use kaspa_consensus_core::{
@@ -19,6 +16,7 @@ use kaspa_consensus_core::{
     coinbase::*,
     hashing,
     header::Header,
+    mass::Kip9Version,
     muhash::MuHashExtensions,
     tx::{MutableTransaction, PopulatedTransaction, Transaction, TransactionId, ValidatedTransaction, VerifiableTransaction},
     utxo::{
@@ -269,7 +267,6 @@ impl VirtualStateProcessor {
         for i in 0..mutable_tx.tx.inputs.len() {
             if mutable_tx.entries[i].is_some() {
                 // We prefer a previously populated entry if such exists
-                // TODO: consider re-checking the utxo view to get the most up-to-date entry (since DAA score can change)
                 continue;
             }
             if let Some(entry) = utxo_view.get(&mutable_tx.tx.inputs[i].previous_outpoint) {

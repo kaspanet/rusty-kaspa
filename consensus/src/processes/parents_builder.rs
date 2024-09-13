@@ -10,8 +10,6 @@ use crate::model::{
     stores::{headers::HeaderStoreReader, reachability::ReachabilityStoreReader, relations::RelationsStoreReader},
 };
 
-use super::reachability::ReachabilityResultExtensions;
-
 #[derive(Clone)]
 pub struct ParentsManager<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> {
     max_block_level: BlockLevel,
@@ -52,13 +50,10 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
             .expect("at least one of the parents is expected to be in the future of the pruning point");
         direct_parent_headers.swap(0, first_parent_in_future_of_pruning_point);
 
-        let origin_children = self.relations_service.get_children(ORIGIN).unwrap().read().iter().copied().collect_vec();
-        let origin_children_headers =
-            origin_children.iter().copied().map(|parent| self.headers_store.get_header(parent).unwrap()).collect_vec();
-
+        let mut origin_children_headers = None;
         let mut parents = Vec::with_capacity(self.max_block_level as usize);
 
-        for block_level in 0..self.max_block_level {
+        for block_level in 0..=self.max_block_level {
             // Direct parents are guaranteed to be in one another's anticones so add them all to
             // all the block levels they occupy.
             let mut level_candidates_to_reference_blocks = direct_parent_headers
@@ -96,71 +91,89 @@ impl<T: HeaderStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader> 
                     .collect::<IndexSet<Hash, BlockHasher>>()
             };
 
-            for (i, parent) in grandparents.into_iter().enumerate() {
-                let is_in_origin_children_future = self
-                    .reachability_service
-                    .is_any_dag_ancestor_result(&mut origin_children.iter().copied(), parent)
-                    .unwrap_option()
-                    .is_some_and(|r| r);
+            let parents_at_level = if level_candidates_to_reference_blocks.is_empty() && first_parent_marker == grandparents.len() {
+                // Optimization: this is a common case for high levels where none of the direct parents is on the level
+                // and all direct parents have the same level parents. The condition captures this case because all grandparents
+                // will be below the first parent marker and there will be no additional grandparents. Bcs all grandparents come
+                // from a single, already validated parent, there's no need to run any additional antichain checks and we can return
+                // this set.
+                grandparents.into_iter().collect()
+            } else {
+                //
+                // Iterate through grandparents in order to find an antichain
+                for (i, parent) in grandparents.into_iter().enumerate() {
+                    let has_reachability_data = self.reachability_service.has_reachability_data(parent);
 
-                // Reference blocks are the blocks that are used in reachability queries to check if
-                // a candidate is in the future of another candidate. In most cases this is just the
-                // block itself, but in the case where a block doesn't have reachability data we need
-                // to use some blocks in its future as reference instead.
-                // If we make sure to add a parent in the future of the pruning point first, we can
-                // know that any pruned candidate that is in the past of some blocks in the pruning
-                // point anticone should be a parent (in the relevant level) of one of
-                // the virtual genesis children in the pruning point anticone. So we can check which
-                // virtual genesis children have this block as parent and use those block as
-                // reference blocks.
-                let reference_blocks = if is_in_origin_children_future {
-                    smallvec![parent]
-                } else {
-                    let mut reference_blocks = SmallVec::with_capacity(origin_children.len());
-                    for child_header in origin_children_headers.iter() {
-                        if self.parents_at_level(child_header, block_level).contains(&parent) {
-                            reference_blocks.push(child_header.hash);
+                    // Reference blocks are the blocks that are used in reachability queries to check if
+                    // a candidate is in the future of another candidate. In most cases this is just the
+                    // block itself, but in the case where a block doesn't have reachability data we need
+                    // to use some blocks in its future as reference instead.
+                    // If we make sure to add a parent in the future of the pruning point first, we can
+                    // know that any pruned candidate that is in the past of some blocks in the pruning
+                    // point anticone should be a parent (in the relevant level) of one of
+                    // the origin children in the pruning point anticone. So we can check which
+                    // origin children have this block as parent and use those block as
+                    // reference blocks.
+                    let reference_blocks = if has_reachability_data {
+                        smallvec![parent]
+                    } else {
+                        // Here we explicitly declare the type because otherwise Rust would make it mutable.
+                        let origin_children_headers: &Vec<_> = origin_children_headers.get_or_insert_with(|| {
+                            self.relations_service
+                                .get_children(ORIGIN)
+                                .unwrap()
+                                .read()
+                                .iter()
+                                .copied()
+                                .map(|parent| self.headers_store.get_header(parent).unwrap())
+                                .collect_vec()
+                        });
+                        let mut reference_blocks = SmallVec::with_capacity(origin_children_headers.len());
+                        for child_header in origin_children_headers.iter() {
+                            if self.parents_at_level(child_header, block_level).contains(&parent) {
+                                reference_blocks.push(child_header.hash);
+                            }
                         }
+                        reference_blocks
+                    };
+
+                    // Make sure we process and insert all first parent's parents. See comments above.
+                    // Note that as parents of an already validated block, they all form an antichain,
+                    // hence no need for reachability queries yet.
+                    if i < first_parent_marker {
+                        level_candidates_to_reference_blocks.insert(parent, reference_blocks);
+                        continue;
                     }
-                    reference_blocks
-                };
 
-                // Make sure we process and insert all first parent's parents. See comments above.
-                // Note that as parents of an already validated block, they all form an antichain,
-                // hence no need for reachability queries yet.
-                if i < first_parent_marker {
-                    level_candidates_to_reference_blocks.insert(parent, reference_blocks);
-                    continue;
+                    if !has_reachability_data {
+                        continue;
+                    }
+
+                    let len_before_retain = level_candidates_to_reference_blocks.len();
+                    level_candidates_to_reference_blocks
+                        .retain(|_, refs| !self.reachability_service.is_any_dag_ancestor(&mut refs.iter().copied(), parent));
+                    let is_any_candidate_ancestor_of = level_candidates_to_reference_blocks.len() < len_before_retain;
+
+                    // We should add the block as a candidate if it's in the future of another candidate
+                    // or in the anticone of all candidates.
+                    if is_any_candidate_ancestor_of
+                        || !level_candidates_to_reference_blocks.iter().any(|(_, candidate_references)| {
+                            self.reachability_service.is_dag_ancestor_of_any(parent, &mut candidate_references.iter().copied())
+                        })
+                    {
+                        level_candidates_to_reference_blocks.insert(parent, reference_blocks);
+                    }
                 }
 
-                if !is_in_origin_children_future {
-                    continue;
-                }
+                // After processing all grandparents, collect the successful level candidates
+                level_candidates_to_reference_blocks.keys().copied().collect_vec()
+            };
 
-                let len_before_retain = level_candidates_to_reference_blocks.len();
-                level_candidates_to_reference_blocks
-                    .retain(|_, refs| !self.reachability_service.is_any_dag_ancestor(&mut refs.iter().copied(), parent));
-                let is_any_candidate_ancestor_of = level_candidates_to_reference_blocks.len() < len_before_retain;
-
-                // We should add the block as a candidate if it's in the future of another candidate
-                // or in the anticone of all candidates.
-                if is_any_candidate_ancestor_of
-                    || !level_candidates_to_reference_blocks.iter().any(|(_, candidate_references)| {
-                        self.reachability_service.is_dag_ancestor_of_any(parent, &mut candidate_references.iter().copied())
-                    })
-                {
-                    level_candidates_to_reference_blocks.insert(parent, reference_blocks);
-                }
-            }
-
-            if block_level > 0
-                && level_candidates_to_reference_blocks.len() == 1
-                && level_candidates_to_reference_blocks.contains_key(&self.genesis_hash)
-            {
+            if block_level > 0 && parents_at_level.as_slice() == std::slice::from_ref(&self.genesis_hash) {
                 break;
             }
 
-            parents.push(level_candidates_to_reference_blocks.keys().copied().collect_vec());
+            parents.push(parents_at_level);
         }
 
         parents

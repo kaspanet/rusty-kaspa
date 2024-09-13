@@ -72,6 +72,9 @@ pub enum Error {
     #[error("wallet secret is required")]
     WalletSecretRequired,
 
+    #[error("watch-only wallet kpub is required")]
+    WalletBip32WatchXpubRequired,
+
     #[error("wallet secrets do not match")]
     WalletSecretMatch,
 
@@ -83,6 +86,9 @@ pub enum Error {
 
     #[error("key data not found")]
     KeyDataNotFound,
+
+    #[error("no key data to export for watch-only account")]
+    WatchOnlyAccountNoKeyData,
 
     #[error("no accounts found, please create an account to continue")]
     NoAccounts,
@@ -122,6 +128,12 @@ pub enum Error {
 
     #[error(transparent)]
     KaspaWalletKeys(#[from] kaspa_wallet_keys::error::Error),
+
+    #[error(transparent)]
+    PskbLockScriptSigError(#[from] kaspa_wallet_pskt::error::Error),
+
+    #[error("To hex serialization error")]
+    PskbSerializeToHexError,
 }
 
 impl Error {
