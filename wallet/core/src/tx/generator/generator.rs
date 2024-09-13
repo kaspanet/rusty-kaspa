@@ -104,6 +104,12 @@ struct Context {
     aggregate_mass: u64,
     /// number of generated transactions
     number_of_transactions: usize,
+    /// Number of generated stages. Stage represents multiple transactions
+    /// executed in parallel. Each stage is a tree level in the transaction
+    /// tree. When calculating time for submission of transactions, the estimated
+    /// time per transaction (either as DAA score or a fee-rate based estimate)
+    /// should be multiplied by the number of stages.
+    number_of_stages: usize,
     /// current tree stage
     stage: Option<Box<Stage>>,
     /// Rejected or "stashed" UTXO entries that are consumed before polling
@@ -437,6 +443,7 @@ impl Generator {
             utxo_source_iterator: utxo_iterator,
             priority_utxo_entries,
             priority_utxo_entry_filter,
+            number_of_stages: 0,
             number_of_transactions: 0,
             aggregated_utxos: 0,
             aggregate_fees: 0,
@@ -1114,6 +1121,7 @@ impl Generator {
 
                 context.aggregate_mass += transaction_mass;
                 context.final_transaction_id = Some(tx.id());
+                context.number_of_stages += 1;
                 context.number_of_transactions += 1;
 
                 Ok(Some(PendingTransaction::try_new(
@@ -1185,6 +1193,7 @@ impl Generator {
                         let mut stage = context.stage.take().unwrap();
                         stage.utxo_accumulator.push(previous_batch_utxo_entry_reference);
                         stage.number_of_transactions += 1;
+                        context.number_of_stages += 1;
                         context.stage.replace(Box::new(Stage::new(*stage)));
                     }
                     _ => unreachable!(),
@@ -1240,6 +1249,7 @@ impl Generator {
             final_transaction_amount: self.final_transaction_value_no_fees(),
             final_transaction_id: context.final_transaction_id,
             number_of_generated_transactions: context.number_of_transactions,
+            number_of_generated_stages: context.number_of_stages,
         }
     }
 }
