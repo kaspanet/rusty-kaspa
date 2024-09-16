@@ -539,7 +539,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<SubmitTransactionResponse> {
         let allow_orphan = self.config.unsafe_rpc && request.allow_orphan;
         if !self.config.unsafe_rpc && request.allow_orphan {
-            warn!("SubmitTransaction RPC command called with AllowOrphan enabled while node in safe RPC mode -- switching to ForbidOrphan.");
+            debug!("SubmitTransaction RPC command called with AllowOrphan enabled while node in safe RPC mode -- switching to ForbidOrphan.");
         }
 
         let transaction: Transaction = request.transaction.try_into()?;
