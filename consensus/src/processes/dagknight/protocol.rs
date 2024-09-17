@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 
 use kaspa_consensus_core::{BlockHashMap, BlockHashSet};
 use kaspa_hashes::Hash;
@@ -52,7 +52,7 @@ impl DagknightExecutor {
                 2. Iterating through conflicts -- requires finding the common chain-ancestor which
                    is a simple operation, though it might require optimizing with an indexed chain
                    (and using logarithmic step searches)
-                3. Representatives
+                3. Representatives (alternatively: gray blocks)
                 4. Tie-breaking rule
                 5. Cascade voting -- requires most thought for making incremental
         */
@@ -153,16 +153,23 @@ mod ct {
 
     impl CascadeTree {
         /// Insert a new block.
-        pub fn insert(&mut self, hash: Hash, past_blues: u64, past_reds: u64, anticone_blues: u64, arlb: u64) -> bool {
+        pub fn insert(
+            &mut self,
+            hash: Hash,
+            past_blues: u64,
+            past_reds: u64,
+            anticone_blues: u64,
+            anticone_reds_lower_bound: u64,
+        ) -> bool {
             match self.past_blues.entry(hash) {
                 Occupied(_) => return false,
                 Vacant(e) => e.insert(past_blues),
             };
             self.past_reds.insert(hash, past_reds).is_none().then_some(()).unwrap();
             self.anticone_blues.insert(hash, anticone_blues).is_none().then_some(()).unwrap();
-            self.arlb.insert(hash, arlb).is_none().then_some(()).unwrap();
+            self.arlb.insert(hash, anticone_reds_lower_bound).is_none().then_some(()).unwrap();
 
-            let floor = past_reds as i64 + arlb as i64 - past_blues as i64 - anticone_blues as i64;
+            let floor = past_reds as i64 + anticone_reds_lower_bound as i64 - past_blues as i64 - anticone_blues as i64;
             self.btree.insert(CascadeTreeEntry::new(hash, floor)).then_some(()).unwrap();
             self.rev_index.insert(hash, floor).is_none().then_some(()).unwrap();
 
@@ -219,7 +226,7 @@ pub struct CascadeDast {
 pub struct TraversalContext<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ChildrenStore + ?Sized> {
     /// The reachability oracle
     oracle: &'a T,
-    /// Local relations oracle
+    /// The relations oracle (local DAG area)
     relations: &'a S,
 }
 
@@ -231,17 +238,63 @@ impl<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ChildrenStore + ?Siz
 
 pub type MemTraversalContext<'a> = TraversalContext<'a, MemoryReachabilityStore, MemoryRelationsStore>;
 
+pub enum BlockColouring {
+    Blue { anticone_blues: u64, past: u64 },
+    Red,
+}
+
 pub struct CascadeContext<'a> {
     /// Traversal ctx
     ctx: MemTraversalContext<'a>,
 
     /// Cascade data structure
     dast: CascadeDast,
+
+    /// The allowed deficit
+    /// TODO: should this be measured by work units?
+    deficit_parameter: i64,
+
+    /// Cached result of cascade voting
+    cached_vote: bool,
 }
 
 impl<'a> CascadeContext<'a> {
-    pub fn new(ctx: MemTraversalContext<'a>) -> Self {
-        Self { ctx, dast: Default::default() }
+    pub fn new(ctx: MemTraversalContext<'a>, deficit_parameter: i64) -> Self {
+        let cached_vote = true; // The empty set is a d-UMC by definition
+        Self { ctx, dast: Default::default(), deficit_parameter, cached_vote }
+    }
+
+    /// Insert a new block `hash` where `blue` indicates whether the block is blue or not.
+    /// Returns whether the resulting blue cluster *contains* a subset of blocks which is
+    /// a d-UMC (via incremental cascade voting)
+    pub fn insert(&mut self, hash: Hash, colouring: BlockColouring) -> bool {
+        self.dast.g.insert(hash).then_some(()).unwrap();
+        if let BlockColouring::Blue { anticone_blues, past } = colouring {
+            self.dast.blueset.insert(hash).then_some(()).unwrap();
+
+            let total_blues = self.dast.blueset.len() as u64;
+            let total_reds = self.dast.g.len() as u64 - total_blues;
+            let past_blues = total_blues - 1 - anticone_blues; // -1 for this block; future is empty
+            let past_reds = past - past_blues;
+            let anticone_reds = total_reds - past_reds; // this block is not red, so there is no need to subtract 1; future is empty
+
+            self.dast.tree.insert(hash, past_blues, past_reds, anticone_blues, anticone_reds).then_some(()).unwrap();
+
+            if self.cached_vote {
+                // A blue block preserves the positive vote
+                return true;
+            }
+        } else if !self.cached_vote {
+            // A red block preserves the negative votes
+            return true;
+        }
+
+        self.cached_vote = self.vote();
+        self.cached_vote
+    }
+
+    pub fn vote(&mut self) -> bool {
+        todo!()
     }
 }
 
