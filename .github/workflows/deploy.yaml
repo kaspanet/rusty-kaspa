@@ -60,11 +60,20 @@ jobs:
           cd $GITHUB_WORKSPACE
           
           # Build for musl
-          cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --release --target x86_64-unknown-linux-musl
+          if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+            echo "This is a pre-release"
+            cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --profile=heap --target x86_64-unknown-linux-musl
+            export BUILD_DIR="heap"
+          else
+            echo "This is a full release"
+            cargo --verbose build --bin kaspad --bin rothschild --bin kaspa-wallet --release --target x86_64-unknown-linux-musl
+            export BUILD_DIR="release"
+          fi
+          
           mkdir bin || true
-          cp target/x86_64-unknown-linux-musl/release/kaspad bin/
-          cp target/x86_64-unknown-linux-musl/release/rothschild bin/
-          cp target/x86_64-unknown-linux-musl/release/kaspa-wallet bin/
+          cp target/x86_64-unknown-linux-musl/$BUILD_DIR/kaspad bin/
+          cp target/x86_64-unknown-linux-musl/$BUILD_DIR/rothschild bin/
+          cp target/x86_64-unknown-linux-musl/$BUILD_DIR/kaspa-wallet bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux-musl-amd64.zip"
           asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-linux-musl-amd64.zip"
           zip -r "${archive}" ./bin/*
@@ -75,15 +84,20 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          cargo build --bin kaspad --release
-          cargo build --bin simpa --release
-          cargo build --bin rothschild --release
-          cargo build --bin kaspa-wallet --release
+          if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+            echo "This is a pre-release"
+            cargo build --bin kaspad --bin simpa --bin rothschild --bin kaspa-wallet --profile=heap
+            export BUILD_DIR="heap"
+          else
+            echo "This is a full release"
+            cargo build --bin kaspad --bin simpa --bin rothschild --bin kaspa-wallet --release
+            export BUILD_DIR="release"
+          fi           
           mkdir bin || true
-          cp target/release/kaspad.exe bin/
-          cp target/release/simpa.exe bin/
-          cp target/release/rothschild.exe bin/
-          cp target/release/kaspa-wallet.exe bin/
+          cp target/$BUILD_DIR/kaspad.exe bin/
+          cp target/$BUILD_DIR/simpa.exe bin/
+          cp target/$BUILD_DIR/rothschild.exe bin/
+          cp target/$BUILD_DIR/kaspa-wallet.exe bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
           asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
           powershell "Compress-Archive bin/* \"${archive}\""
@@ -93,15 +107,20 @@ jobs:
       - name: Build on MacOS
         if: runner.os == 'macOS'
         run: |
-          cargo build --bin kaspad --release
-          cargo build --bin simpa --release
-          cargo build --bin rothschild --release
-          cargo build --bin kaspa-wallet --release
+          if [ "${{ github.event.release.prerelease }}" = "true" ]; then
+            echo "This is a pre-release"
+            cargo build --bin kaspad --bin simpa --bin rothschild --bin kaspa-wallet --profile=heap
+            export BUILD_DIR="heap"
+          else
+            echo "This is a full release"
+            cargo build --bin kaspad --bin simpa --bin rothschild --bin kaspa-wallet --release
+            export BUILD_DIR="release"
+          fi    
           mkdir bin || true
-          cp target/release/kaspad bin/
-          cp target/release/simpa bin/
-          cp target/release/rothschild bin/
-          cp target/release/kaspa-wallet bin/
+          cp target/$BUILD_DIR/kaspad bin/
+          cp target/$BUILD_DIR/simpa bin/
+          cp target/$BUILD_DIR/rothschild bin/
+          cp target/$BUILD_DIR/kaspa-wallet bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
           asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
           zip -r "${archive}" ./bin/*
