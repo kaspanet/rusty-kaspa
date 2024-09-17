@@ -208,7 +208,7 @@ mod ct {
     }
 }
 
-use ct::CascadeTree;
+use ct::{CascadeTree, CascadeTreeEntry};
 
 /// Cascade related data structures
 #[derive(Default)]
@@ -291,6 +291,10 @@ impl<'a> CascadeContext<'a> {
 
         self.cached_vote = self.vote();
         self.cached_vote
+    }
+
+    fn peek_min(&self) -> CascadeTreeEntry {
+        self.dast.tree.peek_min()
     }
 
     pub fn vote(&mut self) -> bool {
