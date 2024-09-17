@@ -103,6 +103,10 @@ impl DagBlock {
     pub fn new(hash: Hash, parents: Vec<Hash>) -> Self {
         Self { hash, parents }
     }
+
+    pub fn genesis(hash: Hash) -> Self {
+        Self { hash, parents: Default::default() }
+    }
 }
 
 impl From<(u64, &[u64])> for DagBlock {
@@ -138,7 +142,10 @@ impl<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ChildrenStore + ?Siz
         self
     }
 
-    pub fn add_block(&mut self, block: DagBlock) -> &mut Self {
+    pub fn add_block(&mut self, mut block: DagBlock) -> &mut Self {
+        if block.parents.is_empty() {
+            block.parents.push(ORIGIN);
+        }
         // Select by height (longest chain) just for the sake of internal isolated tests
         let selected_parent = block.parents.iter().cloned().max_by_key(|p| self.reachability.get_height(*p).unwrap()).unwrap();
         let mergeset = unordered_mergeset_without_selected_parent(self.relations, self.reachability, selected_parent, &block.parents);

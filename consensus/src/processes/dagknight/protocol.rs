@@ -1,12 +1,17 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
-use kaspa_consensus_core::BlockHashMap;
+use kaspa_consensus_core::{BlockHashMap, BlockHashSet};
 use kaspa_hashes::Hash;
 use parking_lot::RwLock;
 
 use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
-    stores::{headers::DbHeadersStore, reachability::DbReachabilityStore, relations::DbRelationsStore},
+    stores::{
+        children::ChildrenStore,
+        headers::DbHeadersStore,
+        reachability::{DbReachabilityStore, MemoryReachabilityStore, ReachabilityStore},
+        relations::{DbRelationsStore, MemoryRelationsStore, RelationsStore},
+    },
 };
 
 pub struct DagknightConflictEntry {
@@ -88,5 +93,207 @@ impl DagknightExecutor {
 
 
         */
+    }
+}
+
+mod ct {
+    use super::*;
+    use std::{
+        cmp::Ordering,
+        collections::{
+            hash_map::Entry::{Occupied, Vacant},
+            BTreeSet,
+        },
+    };
+
+    /// BTree entry
+    #[derive(Eq, Clone)]
+    pub struct CascadeTreeEntry {
+        pub hash: Hash,
+        pub floor: i64,
+    }
+
+    impl CascadeTreeEntry {
+        pub fn new(hash: Hash, floor: i64) -> Self {
+            Self { hash, floor }
+        }
+    }
+
+    impl PartialEq for CascadeTreeEntry {
+        fn eq(&self, other: &Self) -> bool {
+            self.floor == other.floor && self.hash == other.hash
+        }
+    }
+
+    impl PartialOrd for CascadeTreeEntry {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl Ord for CascadeTreeEntry {
+        fn cmp(&self, other: &Self) -> Ordering {
+            self.floor.cmp(&other.floor).then_with(|| self.hash.cmp(&other.hash))
+        }
+    }
+
+    #[derive(Default)]
+    pub struct CascadeTree {
+        btree: BTreeSet<CascadeTreeEntry>,
+        rev_index: BlockHashMap<i64>,
+
+        // Exact counters
+        past_blues: BlockHashMap<u64>,
+        past_reds: BlockHashMap<u64>,
+        anticone_blues: BlockHashMap<u64>,
+
+        /// Anticone reds lower bound
+        arlb: BlockHashMap<u64>,
+    }
+
+    impl CascadeTree {
+        /// Insert a new block.
+        pub fn insert(&mut self, hash: Hash, past_blues: u64, past_reds: u64, anticone_blues: u64, arlb: u64) -> bool {
+            match self.past_blues.entry(hash) {
+                Occupied(_) => return false,
+                Vacant(e) => e.insert(past_blues),
+            };
+            self.past_reds.insert(hash, past_reds).is_none().then_some(()).unwrap();
+            self.anticone_blues.insert(hash, anticone_blues).is_none().then_some(()).unwrap();
+            self.arlb.insert(hash, arlb).is_none().then_some(()).unwrap();
+
+            let floor = past_reds as i64 + arlb as i64 - past_blues as i64 - anticone_blues as i64;
+            self.btree.insert(CascadeTreeEntry::new(hash, floor)).then_some(()).unwrap();
+            self.rev_index.insert(hash, floor).is_none().then_some(()).unwrap();
+
+            true
+        }
+
+        /// Update `anticone_blues` of an existing block.
+        ///
+        /// TODO: Result
+        pub fn update_anticone_blues(&mut self, hash: Hash, anticone_blues: u64) {
+            let prev_floor = self.rev_index[&hash];
+            let prev_anticone_blues = self.anticone_blues.insert(hash, anticone_blues).unwrap();
+            let new_floor = prev_floor - (anticone_blues as i64 - prev_anticone_blues as i64);
+            self.btree.remove(&CascadeTreeEntry::new(hash, prev_floor)).then_some(()).unwrap();
+            self.btree.insert(CascadeTreeEntry::new(hash, new_floor)).then_some(()).unwrap();
+            self.rev_index.insert(hash, new_floor);
+            assert!(anticone_blues > prev_anticone_blues);
+        }
+
+        /// Update `anticone_reds_lower_bound` of an existing block.
+        ///
+        /// TODO: Result
+        pub fn update_anticone_reds_lower_bound(&mut self, hash: Hash, anticone_reds_lower_bound: u64) {
+            let prev_floor = self.rev_index[&hash];
+            let prev_arlb = self.arlb.insert(hash, anticone_reds_lower_bound).unwrap();
+            let new_floor = prev_floor + (anticone_reds_lower_bound as i64 - prev_arlb as i64);
+            self.btree.remove(&CascadeTreeEntry::new(hash, prev_floor)).then_some(()).unwrap();
+            self.btree.insert(CascadeTreeEntry::new(hash, new_floor)).then_some(()).unwrap();
+            self.rev_index.insert(hash, new_floor);
+            assert!(anticone_reds_lower_bound > prev_arlb);
+        }
+
+        pub fn peek_min(&self) -> CascadeTreeEntry {
+            self.btree.first().cloned().unwrap()
+        }
+    }
+}
+
+use ct::CascadeTree;
+
+/// Cascade related data structures
+#[derive(Default)]
+pub struct CascadeDast {
+    /// TEMP: the full DAG (as of this processing point)
+    g: BlockHashSet,
+
+    /// Blue set
+    blueset: BlockHashSet,
+
+    // B tree ordered by floor values
+    tree: CascadeTree,
+}
+
+pub struct TraversalContext<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ChildrenStore + ?Sized> {
+    /// The reachability oracle
+    oracle: &'a T,
+    /// Local relations oracle
+    relations: &'a S,
+}
+
+impl<'a, T: ReachabilityStore + ?Sized, S: RelationsStore + ChildrenStore + ?Sized> TraversalContext<'a, T, S> {
+    pub fn new(reachability: &'a T, relations: &'a S) -> Self {
+        Self { oracle: reachability, relations }
+    }
+}
+
+pub type MemTraversalContext<'a> = TraversalContext<'a, MemoryReachabilityStore, MemoryRelationsStore>;
+
+pub struct CascadeContext<'a> {
+    /// Traversal ctx
+    ctx: MemTraversalContext<'a>,
+
+    /// Cascade data structure
+    dast: CascadeDast,
+}
+
+impl<'a> CascadeContext<'a> {
+    pub fn new(ctx: MemTraversalContext<'a>) -> Self {
+        Self { ctx, dast: Default::default() }
+    }
+}
+
+#[derive(Clone)]
+pub struct DagPlan {
+    genesis: u64,
+    blocks: Vec<(u64, Vec<u64>)>, // All blocks other than genesis
+}
+
+impl DagPlan {
+    /// Returns all block ids other than genesis
+    pub fn ids(&self) -> impl Iterator<Item = u64> + '_ {
+        self.blocks.iter().map(|(i, _)| *i)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        model::stores::{reachability::MemoryReachabilityStore, relations::MemoryRelationsStore},
+        processes::reachability::tests::{DagBlock, DagBuilder},
+    };
+
+    #[test]
+    fn test_cascade() {
+        let mut reachability = MemoryReachabilityStore::new();
+        let mut relations = MemoryRelationsStore::new();
+
+        // Build the DAG
+        {
+            let plan = DagPlan {
+                genesis: 1,
+                blocks: vec![
+                    (2, vec![1]),
+                    (3, vec![1]),
+                    (4, vec![2, 3]),
+                    (5, vec![4]),
+                    (6, vec![1]),
+                    (7, vec![5, 6]),
+                    (8, vec![1]),
+                    (9, vec![1]),
+                    (10, vec![7, 8, 9]),
+                    (11, vec![1]),
+                    (12, vec![11, 10]),
+                ],
+            };
+            let mut builder = DagBuilder::new(&mut reachability, &mut relations);
+            builder.init().add_block(DagBlock::genesis(plan.genesis.into()));
+            for (block, parents) in plan.blocks.iter() {
+                builder.add_block(DagBlock::new((*block).into(), parents.iter().map(|&i| i.into()).collect()));
+            }
+        }
     }
 }
