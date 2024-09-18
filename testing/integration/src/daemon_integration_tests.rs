@@ -11,6 +11,7 @@ use kaspa_consensus_core::header::Header;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{task::runtime::AsyncRuntime, trace};
 use kaspa_grpc_client::GrpcClient;
+use kaspa_hashes::ZERO_HASH;
 use kaspa_notify::scope::{BlockAddedScope, UtxosChangedScope, VirtualDaaScoreChangedScope};
 use kaspa_rpc_core::{api::rpc::RpcApi, Notification, RpcTransactionId};
 use kaspa_txscript::pay_to_address_script;
@@ -108,7 +109,7 @@ async fn daemon_mining_test() {
     // Check that acceptance data contains the expected coinbase tx ids
     let vc = rpc_client2
         .get_virtual_chain_from_block(
-            None, // `None` defaults to genesis i.e. the node's source hash.
+            ZERO_HASH, // `ZERO_HASH` defaults to genesis i.e. the node's pp hash.
             true,
         )
         .await
@@ -231,7 +232,7 @@ async fn daemon_utxos_propagation_test() {
     assert_eq!(dag_info.sink, last_block_hash.unwrap());
 
     // Check that acceptance data contains the expected coinbase tx ids
-    let vc = rpc_client2.get_virtual_chain_from_block(Some(kaspa_consensus::params::SIMNET_GENESIS.hash), true).await.unwrap();
+    let vc = rpc_client2.get_virtual_chain_from_block(kaspa_consensus::params::SIMNET_GENESIS.hash, true).await.unwrap();
     assert_eq!(vc.removed_chain_block_hashes.len(), 0);
     assert_eq!(vc.added_chain_block_hashes.len() as u64, initial_blocks);
     assert_eq!(vc.accepted_transaction_ids.len() as u64, initial_blocks);
