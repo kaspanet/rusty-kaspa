@@ -93,7 +93,7 @@ async fn sanity_test() {
                         .get_virtual_chain_from_block_call(
                             None,
                             GetVirtualChainFromBlockRequest {
-                                start_hash: Some(SIMNET_GENESIS.hash),
+                                start_hash: SIMNET_GENESIS.hash,
                                 include_accepted_transaction_ids: false,
                             },
                         )
@@ -153,7 +153,7 @@ async fn sanity_test() {
                         .get_virtual_chain_from_block_call(
                             None,
                             GetVirtualChainFromBlockRequest {
-                                start_hash: Some(SIMNET_GENESIS.hash),
+                                start_hash: SIMNET_GENESIS.hash,
                                 include_accepted_transaction_ids: false,
                             },
                         )

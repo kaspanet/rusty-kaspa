@@ -243,7 +243,7 @@ pub trait RpcApi: Sync + Send + AnySync {
     /// Requests the virtual selected parent chain from some `start_hash` to this node's current virtual.
     async fn get_virtual_chain_from_block(
         &self,
-        start_hash: Option<RpcHash>,
+        start_hash: RpcHash,
         include_accepted_transaction_ids: bool,
     ) -> RpcResult<GetVirtualChainFromBlockResponse> {
         self.get_virtual_chain_from_block_call(
