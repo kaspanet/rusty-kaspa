@@ -11,7 +11,6 @@ use kaspa_consensus_core::header::Header;
 use kaspa_consensusmanager::ConsensusManager;
 use kaspa_core::{task::runtime::AsyncRuntime, trace};
 use kaspa_grpc_client::GrpcClient;
-use kaspa_hashes::ZERO_HASH;
 use kaspa_notify::scope::{BlockAddedScope, UtxosChangedScope, VirtualDaaScoreChangedScope};
 use kaspa_rpc_core::{api::rpc::RpcApi, Notification, RpcTransactionId};
 use kaspa_txscript::pay_to_address_script;
@@ -109,7 +108,7 @@ async fn daemon_mining_test() {
     // Check that acceptance data contains the expected coinbase tx ids
     let vc = rpc_client2
         .get_virtual_chain_from_block(
-            ZERO_HASH, // `ZERO_HASH` defaults to genesis i.e. the node's pp hash.
+            kaspa_consensus::params::SIMNET_GENESIS.hash, //
             true,
         )
         .await

@@ -6,7 +6,6 @@ use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, pro
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
-use kaspa_consensus_core::blockhash::BlockHashExtensions;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::{
     block::Block,
@@ -611,20 +610,12 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
     ) -> RpcResult<GetVirtualChainFromBlockResponse> {
         let session = self.consensus_manager.consensus().session().await;
 
-        // If start_hash is empty - use source instead.
-        let start_hash = if request.start_hash.is_none() {
-            // we default to the pruning point if the start hash is not provided
-            session.async_pruning_point().await
-        } else {
-            request.start_hash
-        };
-
         // limit is set to 10 times the mergeset_size_limit.
         // this means limit is 2480 on 10 bps, and 1800 on mainnet.
         // this bounds by number of merged blocks, if include_accepted_transactions = true
         // else it returns the limit amount on pure chain blocks.
         let limit = (self.config.mergeset_size_limit * 10) as usize;
-        let mut virtual_chain_batch = session.async_get_virtual_chain_from_block(start_hash, limit).await?;
+        let mut virtual_chain_batch = session.async_get_virtual_chain_from_block(request.start_hash, limit).await?;
         let accepted_transaction_ids = if request.include_accepted_transaction_ids {
             let accepted_transaction_ids =
                 self.consensus_converter.get_virtual_chain_accepted_transaction_ids(&session, &virtual_chain_batch, limit).await?;
