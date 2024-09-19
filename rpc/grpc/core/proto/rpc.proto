@@ -374,8 +374,13 @@ message GetSubnetworkResponseMessage{
   RPCError error = 1000;
 }
 
-// GetVirtualChainFromBlockRequestMessage requests the virtual selected
-// parent chain from some startHash to this kaspad's current virtual
+/// GetVirtualChainFromBlockRequestMessage requests the virtual selected
+/// parent chain from some startHash to this kaspad's current virtual
+/// Note:
+///     this call batches the response to:
+///         a. the network's `mergeset size limit * 10` amount of added chain blocks, if `includeAcceptedTransactionIds = false`
+///         b. or `mergeset size limit * 10` amount of merged blocks, if `includeAcceptedTransactionIds = true`
+///         c. it does not batch the removed chain blocks, only the added ones.
 message GetVirtualChainFromBlockRequestMessage{
   string startHash = 1;
   bool includeAcceptedTransactionIds = 2;
