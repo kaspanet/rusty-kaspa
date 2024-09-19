@@ -619,7 +619,7 @@ impl ConsensusApi for Consensus {
         // Verify that the block exists
         self.validate_block_exists(low)?;
 
-        // Verify that source is on chain(block)        self.services
+        // Verify that source is on chain(block)
         self.services
             .reachability_service
             .is_chain_ancestor_of(self.get_source(), low)
