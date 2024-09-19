@@ -96,7 +96,7 @@ fn build_dummy_version_message() -> VersionMessage {
         services: 0,
         timestamp: unix_now() as i64,
         address: None,
-        id: Vec::from(Uuid::new_v4().as_ref()),
+        id: Vec::from(Uuid::new_v4().as_bytes()),
         user_agent: String::new(),
         disable_relay_tx: false,
         subnetwork_id: None,

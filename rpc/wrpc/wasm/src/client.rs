@@ -364,19 +364,7 @@ impl RpcClient {
     /// Optional: Resolver node id.
     #[wasm_bindgen(getter, js_name = "nodeId")]
     pub fn resolver_node_id(&self) -> Option<String> {
-        self.inner.client.node_descriptor().map(|node| node.id.clone())
-    }
-
-    /// Optional: public node provider name.
-    #[wasm_bindgen(getter, js_name = "providerName")]
-    pub fn resolver_node_provider_name(&self) -> Option<String> {
-        self.inner.client.node_descriptor().and_then(|node| node.provider_name.clone())
-    }
-
-    /// Optional: public node provider URL.
-    #[wasm_bindgen(getter, js_name = "providerUrl")]
-    pub fn resolver_node_provider_url(&self) -> Option<String> {
-        self.inner.client.node_descriptor().and_then(|node| node.provider_url.clone())
+        self.inner.client.node_descriptor().map(|node| node.uid.clone())
     }
 
     /// Connect to the Kaspa RPC server. This function starts a background
@@ -796,7 +784,7 @@ impl RpcClient {
     #[wasm_bindgen(js_name = subscribeVirtualDaaScoreChanged)]
     pub async fn subscribe_daa_score(&self) -> Result<()> {
         if let Some(listener_id) = self.listener_id() {
-            self.inner.client.stop_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
+            self.inner.client.start_notify(listener_id, Scope::VirtualDaaScoreChanged(VirtualDaaScoreChangedScope {})).await?;
         } else {
             log_error!("RPC unsubscribe on a closed connection");
         }
@@ -957,6 +945,8 @@ build_wrpc_wasm_bindgen_interface!(
         /// performance and status of the Kaspa node.
         /// Returned information: Memory usage, CPU usage, network activity.
         GetMetrics,
+        /// Retrieves current number of network connections
+        GetConnections,
         /// Retrieves the current sink block, which is the block with
         /// the highest cumulative difficulty in the Kaspa BlockDAG.
         /// Returned information: Sink block hash, sink block height.
@@ -1006,10 +996,17 @@ build_wrpc_wasm_bindgen_interface!(
         /// Generates a new block template for mining.
         /// Returned information: Block template information.
         GetBlockTemplate,
+        /// Checks if block is blue or not.
+        /// Returned information: Block blueness.
+        GetCurrentBlockColor,
         /// Retrieves the estimated DAA (Difficulty Adjustment Algorithm)
         /// score timestamp estimate.
         /// Returned information: DAA score timestamp estimate.
         GetDaaScoreTimestampEstimate,
+        /// Feerate estimates
+        GetFeeEstimate,
+        /// Feerate estimates (experimental)
+        GetFeeEstimateExperimental,
         /// Retrieves the current network configuration.
         /// Returned information: Current network configuration.
         GetCurrentNetwork,
@@ -1042,8 +1039,11 @@ build_wrpc_wasm_bindgen_interface!(
         /// Returned information: None.
         SubmitBlock,
         /// Submits a transaction to the Kaspa network.
-        /// Returned information: None.
+        /// Returned information: Submitted Transaction Id.
         SubmitTransaction,
+        /// Submits an RBF transaction to the Kaspa network.
+        /// Returned information: Submitted Transaction Id, Transaction that was replaced.
+        SubmitTransactionReplacement,
         /// Unbans a previously banned peer, allowing it to connect
         /// to the Kaspa node again.
         /// Returned information: None.

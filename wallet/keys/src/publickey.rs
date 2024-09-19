@@ -17,9 +17,11 @@
 //! ```
 //!
 
-use kaspa_consensus_core::network::NetworkType;
-
 use crate::imports::*;
+
+use kaspa_consensus_core::network::NetworkType;
+use ripemd::{Digest, Ripemd160};
+use sha2::Sha256;
 
 /// Data structure that envelopes a PublicKey.
 /// Only supports Schnorr-based addresses.
@@ -69,6 +71,17 @@ impl PublicKey {
     pub fn to_x_only_public_key(&self) -> XOnlyPublicKey {
         self.xonly_public_key.into()
     }
+
+    /// Compute a 4-byte key fingerprint for this public key as a hex string.
+    /// Default implementation uses `RIPEMD160(SHA256(public_key))`.
+    pub fn fingerprint(&self) -> Option<HexString> {
+        if let Some(public_key) = self.public_key.as_ref() {
+            let digest = Ripemd160::digest(Sha256::digest(public_key.serialize().as_slice()));
+            Some(digest[..4].as_ref().to_hex().into())
+        } else {
+            None
+        }
+    }
 }
 
 impl PublicKey {
@@ -81,9 +94,13 @@ impl PublicKey {
 
     #[inline]
     pub fn to_address_ecdsa(&self, network_type: NetworkType) -> Result<Address> {
-        let payload = &self.xonly_public_key.serialize();
-        let address = Address::new(network_type.into(), AddressVersion::PubKeyECDSA, payload);
-        Ok(address)
+        if let Some(public_key) = self.public_key.as_ref() {
+            let payload = &public_key.serialize();
+            let address = Address::new(network_type.into(), AddressVersion::PubKeyECDSA, payload);
+            Ok(address)
+        } else {
+            Err(Error::InvalidXOnlyPublicKeyForECDSA)
+        }
     }
 }
 
@@ -138,8 +155,11 @@ extern "C" {
 
 impl TryCastFromJs for PublicKey {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             let value = value.as_ref();
             if let Some(hex_str) = value.as_string() {
                 Ok(PublicKey::try_new(hex_str.as_str())?)
@@ -150,13 +170,13 @@ impl TryCastFromJs for PublicKey {
     }
 }
 
-impl TryFrom<PublicKeyArrayT> for Vec<secp256k1::PublicKey> {
+impl TryFrom<&PublicKeyArrayT> for Vec<secp256k1::PublicKey> {
     type Error = Error;
-    fn try_from(value: PublicKeyArrayT) -> Result<Self> {
+    fn try_from(value: &PublicKeyArrayT) -> Result<Self> {
         if value.is_array() {
-            let array = Array::from(&value);
-            let pubkeys = array.iter().map(PublicKey::try_cast_from).collect::<Result<Vec<_>>>()?;
-            Ok(pubkeys.iter().map(|pk| pk.as_ref().try_into()).collect::<Result<Vec<_>>>()?)
+            let array = Array::from(value);
+            let pubkeys = array.iter().map(PublicKey::try_owned_from).collect::<Result<Vec<_>>>()?;
+            Ok(pubkeys.iter().map(|pk| pk.try_into()).collect::<Result<Vec<_>>>()?)
         } else {
             Err(Error::InvalidPublicKeyArray)
         }

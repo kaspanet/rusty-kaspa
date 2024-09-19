@@ -2,7 +2,7 @@
 //! estimate sizes of run-time objects in memory, including deep heap allocations. See
 //! struct-level docs for more details.
 
-use std::{collections::HashSet, mem::size_of, sync::Arc};
+use std::{collections::HashSet, sync::Arc};
 
 use parking_lot::RwLock;
 

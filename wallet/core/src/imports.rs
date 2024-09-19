@@ -17,7 +17,6 @@ pub use crate::rpc::Rpc;
 pub use crate::rpc::{DynRpcApi, RpcCtl};
 pub use crate::serializer::*;
 pub use crate::storage::*;
-pub use crate::tx::MassCombinationStrategy;
 pub use crate::utxo::balance::Balance;
 pub use crate::utxo::scan::{Scan, ScanExtent};
 pub use crate::utxo::{Maturity, NetworkParams, OutgoingTransaction, UtxoContext, UtxoEntryReference, UtxoProcessor};
@@ -25,7 +24,9 @@ pub use crate::wallet::*;
 pub use crate::{storage, utils};
 
 pub use ahash::{AHashMap, AHashSet};
-pub use async_std::sync::{Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard};
+pub use async_std::sync::{
+    Mutex as AsyncMutex, MutexGuard as AsyncMutexGuard, RwLock as AsyncRwLock, RwLockReadGuard as AsyncRwLockReadGuard,
+};
 pub use async_trait::async_trait;
 pub use borsh::{BorshDeserialize, BorshSerialize};
 pub use cfg_if::cfg_if;
@@ -49,6 +50,7 @@ pub use std::collections::{HashMap, HashSet};
 pub use std::pin::Pin;
 pub use std::str::FromStr;
 pub use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+pub use std::sync::LazyLock;
 pub use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 pub use std::task::{Context, Poll};
 pub use wasm_bindgen::prelude::*;

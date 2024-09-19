@@ -18,7 +18,7 @@ use kaspa_consensus_core::{
 /// candidate transactions should be. A smaller alpha makes the distribution
 /// more uniform. ALPHA is used when determining a candidate transaction's
 /// initial p value.
-const ALPHA: i32 = 3;
+pub(crate) const ALPHA: i32 = 3;
 
 /// REBALANCE_THRESHOLD is the percentage of candidate transactions under which
 /// we don't rebalance. Rebalancing is a heavy operation so we prefer to avoid
@@ -28,7 +28,7 @@ const ALPHA: i32 = 3;
 /// if REBALANCE_THRESHOLD is 0.95, there's a 1-in-20 chance of collision.
 const REBALANCE_THRESHOLD: f64 = 0.95;
 
-pub(crate) struct TransactionsSelector {
+pub struct RebalancingWeightedTransactionSelector {
     policy: Policy,
     /// Transaction store
     transactions: Vec<CandidateTransaction>,
@@ -52,8 +52,8 @@ pub(crate) struct TransactionsSelector {
     gas_usage_map: HashMap<SubnetworkId, u64>,
 }
 
-impl TransactionsSelector {
-    pub(crate) fn new(policy: Policy, mut transactions: Vec<CandidateTransaction>) -> Self {
+impl RebalancingWeightedTransactionSelector {
+    pub fn new(policy: Policy, mut transactions: Vec<CandidateTransaction>) -> Self {
         let _sw = Stopwatch::<100>::with_threshold("TransactionsSelector::new op");
         // Sort the transactions by subnetwork_id.
         transactions.sort_by(|a, b| a.tx.subnetwork_id.cmp(&b.tx.subnetwork_id));
@@ -103,7 +103,7 @@ impl TransactionsSelector {
     /// select_transactions loops over the candidate transactions
     /// and appends the ones that will be included in the next block into
     /// selected_txs.
-    pub(crate) fn select_transactions(&mut self) -> Vec<Transaction> {
+    pub fn select_transactions(&mut self) -> Vec<Transaction> {
         let _sw = Stopwatch::<15>::with_threshold("select_transaction op");
         let mut rng = rand::thread_rng();
 
@@ -182,11 +182,7 @@ impl TransactionsSelector {
             self.total_mass += selected_tx.calculated_mass;
             self.total_fees += selected_tx.calculated_fee;
 
-            trace!(
-                "Adding tx {0} (fee per megagram: {1})",
-                selected_tx.tx.id(),
-                selected_tx.calculated_fee * 1_000_000 / selected_tx.calculated_mass
-            );
+            trace!("Adding tx {0} (fee per gram: {1})", selected_tx.tx.id(), selected_tx.calculated_fee / selected_tx.calculated_mass);
 
             // Mark for deletion
             selected_candidate.is_marked_for_deletion = true;
@@ -229,7 +225,7 @@ impl TransactionsSelector {
     }
 }
 
-impl TemplateTransactionSelector for TransactionsSelector {
+impl TemplateTransactionSelector for RebalancingWeightedTransactionSelector {
     fn select_transactions(&mut self) -> Vec<Transaction> {
         self.select_transactions()
     }
@@ -273,7 +269,13 @@ mod tests {
     use kaspa_txscript::{pay_to_script_hash_signature_script, test_helpers::op_true_script};
     use std::{collections::HashSet, sync::Arc};
 
-    use crate::{mempool::config::DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE, model::candidate_tx::CandidateTransaction};
+    use crate::{
+        mempool::{
+            config::DEFAULT_MINIMUM_RELAY_TRANSACTION_FEE,
+            model::frontier::selectors::{SequenceSelector, SequenceSelectorInput, SequenceSelectorTransaction},
+        },
+        model::candidate_tx::CandidateTransaction,
+    };
 
     #[test]
     fn test_reject_transaction() {
@@ -281,29 +283,43 @@ mod tests {
 
         // Create a vector of transactions differing by output value so they have unique ids
         let transactions = (0..TX_INITIAL_COUNT).map(|i| create_transaction(SOMPI_PER_KASPA * (i + 1) as u64)).collect_vec();
+        let masses: HashMap<_, _> = transactions.iter().map(|tx| (tx.tx.id(), tx.calculated_mass)).collect();
+        let sequence: SequenceSelectorInput =
+            transactions.iter().map(|tx| SequenceSelectorTransaction::new(tx.tx.clone(), tx.calculated_mass)).collect();
+
         let policy = Policy::new(100_000);
-        let mut selector = TransactionsSelector::new(policy, transactions);
-        let (mut kept, mut rejected) = (HashSet::new(), HashSet::new());
-        let mut reject_count = 32;
-        for i in 0..10 {
-            let selected_txs = selector.select_transactions();
-            if i > 0 {
-                assert_eq!(
-                    selected_txs.len(),
-                    reject_count,
-                    "subsequent select calls are expected to only refill the previous rejections"
-                );
-                reject_count /= 2;
+        let selectors: [Box<dyn TemplateTransactionSelector>; 2] = [
+            Box::new(RebalancingWeightedTransactionSelector::new(policy.clone(), transactions)),
+            Box::new(SequenceSelector::new(sequence, policy.clone())),
+        ];
+
+        for mut selector in selectors {
+            let (mut kept, mut rejected) = (HashSet::new(), HashSet::new());
+            let mut reject_count = 32;
+            let mut total_mass = 0;
+            for i in 0..10 {
+                let selected_txs = selector.select_transactions();
+                if i > 0 {
+                    assert_eq!(
+                        selected_txs.len(),
+                        reject_count,
+                        "subsequent select calls are expected to only refill the previous rejections"
+                    );
+                    reject_count /= 2;
+                }
+                for tx in selected_txs.iter() {
+                    total_mass += masses[&tx.id()];
+                    kept.insert(tx.id()).then_some(()).expect("selected txs should never repeat themselves");
+                    assert!(!rejected.contains(&tx.id()), "selected txs should never repeat themselves");
+                }
+                assert!(total_mass <= policy.max_block_mass);
+                selected_txs.iter().take(reject_count).for_each(|x| {
+                    total_mass -= masses[&x.id()];
+                    selector.reject_selection(x.id());
+                    kept.remove(&x.id()).then_some(()).expect("was just inserted");
+                    rejected.insert(x.id()).then_some(()).expect("was just verified");
+                });
             }
-            for tx in selected_txs.iter() {
-                kept.insert(tx.id()).then_some(()).expect("selected txs should never repeat themselves");
-                assert!(!rejected.contains(&tx.id()), "selected txs should never repeat themselves");
-            }
-            selected_txs.iter().take(reject_count).for_each(|x| {
-                selector.reject_selection(x.id());
-                kept.remove(&x.id()).then_some(()).expect("was just inserted");
-                rejected.insert(x.id()).then_some(()).expect("was just verified");
-            });
         }
     }
 

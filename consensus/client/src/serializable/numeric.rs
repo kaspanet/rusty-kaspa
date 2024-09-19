@@ -80,6 +80,7 @@ pub struct SerializableTransactionInput {
     pub sequence: u64,
     pub sig_op_count: u8,
     #[serde(with = "hex::serde")]
+    // TODO - convert to Option<Vec<u8>> and use hex serialization over Option
     pub signature_script: Vec<u8>,
     pub utxo: SerializableUtxoEntry,
 }
@@ -91,6 +92,8 @@ impl SerializableTransactionInput {
         Self {
             transaction_id: input.previous_outpoint.transaction_id,
             index: input.previous_outpoint.index,
+            // TODO - convert signature_script to Option<Vec<u8>>
+            // signature_script: (!input.signature_script.is_empty()).then_some(input.signature_script.clone()),
             signature_script: input.signature_script.clone(),
             sequence: input.sequence,
             sig_op_count: input.sig_op_count,
@@ -134,15 +137,16 @@ impl TryFrom<SerializableTransactionInput> for cctx::TransactionInput {
 
 impl TryFrom<&SerializableTransactionInput> for TransactionInput {
     type Error = Error;
-    fn try_from(signable_input: &SerializableTransactionInput) -> Result<Self> {
-        let utxo = UtxoEntryReference::try_from(signable_input)?;
+    fn try_from(serializable_input: &SerializableTransactionInput) -> Result<Self> {
+        let utxo = UtxoEntryReference::try_from(serializable_input)?;
 
-        let previous_outpoint = TransactionOutpoint::new(signable_input.transaction_id, signable_input.index);
+        let previous_outpoint = TransactionOutpoint::new(serializable_input.transaction_id, serializable_input.index);
         let inner = TransactionInputInner {
             previous_outpoint,
-            signature_script: signable_input.signature_script.clone(),
-            sequence: signable_input.sequence,
-            sig_op_count: signable_input.sig_op_count,
+            // TODO - convert to Option<Vec<u8>> and use hex serialization over Option
+            signature_script: (!serializable_input.signature_script.is_empty()).then_some(serializable_input.signature_script.clone()),
+            sequence: serializable_input.sequence,
+            sig_op_count: serializable_input.sig_op_count,
             utxo: Some(utxo),
         };
 
@@ -159,7 +163,8 @@ impl TryFrom<&TransactionInput> for SerializableTransactionInput {
         Ok(Self {
             transaction_id: inner.previous_outpoint.transaction_id(),
             index: inner.previous_outpoint.index(),
-            signature_script: inner.signature_script.clone(),
+            // TODO - convert to Option<Vec<u8>> and use hex serialization over Option
+            signature_script: inner.signature_script.clone().unwrap_or_default(),
             sequence: inner.sequence,
             sig_op_count: inner.sig_op_count,
             utxo,
@@ -218,6 +223,8 @@ pub struct SerializableTransaction {
     pub outputs: Vec<SerializableTransactionOutput>,
     pub lock_time: u64,
     pub gas: u64,
+    #[serde(default)]
+    pub mass: u64,
     pub subnetwork_id: SubnetworkId,
     #[serde(with = "hex::serde")]
     pub payload: Vec<u8>,
@@ -260,6 +267,7 @@ impl SerializableTransaction {
             lock_time: transaction.lock_time,
             subnetwork_id: transaction.subnetwork_id.clone(),
             gas: transaction.gas,
+            mass: transaction.mass(),
             payload: transaction.payload.clone(),
             id: transaction.id(),
         })
@@ -279,6 +287,7 @@ impl SerializableTransaction {
             subnetwork_id: inner.subnetwork_id.clone(),
             gas: inner.gas,
             payload: inner.payload.clone(),
+            mass: inner.mass,
             id: inner.id,
         })
     }
@@ -306,6 +315,7 @@ impl SerializableTransaction {
             lock_time: transaction.lock_time,
             subnetwork_id: transaction.subnetwork_id.clone(),
             gas: transaction.gas,
+            mass: transaction.mass(),
             payload: transaction.payload.clone(),
         })
     }
@@ -331,7 +341,8 @@ impl TryFrom<SerializableTransaction> for cctx::SignableTransaction {
             serializable.subnetwork_id,
             serializable.gas,
             serializable.payload,
-        );
+        )
+        .with_mass(serializable.mass);
 
         Ok(Self::with_entries(tx, entries))
     }
@@ -344,6 +355,6 @@ impl TryFrom<SerializableTransaction> for Transaction {
         let inputs: Vec<TransactionInput> = tx.inputs.iter().map(TryInto::try_into).collect::<Result<Vec<_>>>()?;
         let outputs: Vec<TransactionOutput> = tx.outputs.iter().map(TryInto::try_into).collect::<Result<Vec<_>>>()?;
 
-        Transaction::new(Some(id), tx.version, inputs, outputs, tx.lock_time, tx.subnetwork_id, tx.gas, tx.payload)
+        Transaction::new(Some(id), tx.version, inputs, outputs, tx.lock_time, tx.subnetwork_id, tx.gas, tx.payload, tx.mass)
     }
 }

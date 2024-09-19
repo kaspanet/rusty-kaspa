@@ -81,7 +81,7 @@ impl ConsensusConverter {
             vec![]
         };
 
-        Ok(RpcBlock { header: (*block.header).clone(), transactions, verbose_data })
+        Ok(RpcBlock { header: block.header.as_ref().into(), transactions, verbose_data })
     }
 
     pub fn get_mempool_entry(&self, consensus: &ConsensusProxy, transaction: &MutableTransaction) -> RpcMempoolEntry {
@@ -125,7 +125,7 @@ impl ConsensusConverter {
             let verbose_data = Some(RpcTransactionVerboseData {
                 transaction_id: transaction.id(),
                 hash: hash(transaction, false),
-                mass: consensus.calculate_transaction_compute_mass(transaction),
+                compute_mass: consensus.calculate_transaction_compute_mass(transaction),
                 // TODO: make block_hash an option
                 block_hash: header.map_or_else(RpcHash::default, |x| x.hash),
                 block_time: header.map_or(0, |x| x.timestamp),

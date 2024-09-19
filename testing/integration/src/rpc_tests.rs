@@ -4,8 +4,8 @@ use crate::common::{client_notify::ChannelNotify, daemon::Daemon};
 use futures_util::future::try_join_all;
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::params::SIMNET_GENESIS;
-use kaspa_consensus_core::{constants::MAX_SOMPI, subnets::SubnetworkId, tx::Transaction};
-use kaspa_core::info;
+use kaspa_consensus_core::{constants::MAX_SOMPI, header::Header, subnets::SubnetworkId, tx::Transaction};
+use kaspa_core::{assert_match, info};
 use kaspa_grpc_core::ops::KaspadPayloadOps;
 use kaspa_hashes::Hash;
 use kaspa_notify::{
@@ -64,7 +64,7 @@ async fn sanity_test() {
     // The intent of this for/match design (emphasizing the absence of an arm with fallback pattern in the match)
     // is to force any implementor of a new RpcApi method to add a matching arm here and to strongly incentivize
     // the adding of an actual sanity test of said new method.
-    for op in KaspadPayloadOps::list() {
+    for op in KaspadPayloadOps::iter() {
         let network_id = daemon.network;
         let task: JoinHandle<()> = match op {
             KaspadPayloadOps::SubmitBlock => {
@@ -79,21 +79,24 @@ async fn sanity_test() {
                         .unwrap();
 
                     // Before submitting a first block, the sink is the genesis,
-                    let response = rpc_client.get_sink_call(GetSinkRequest {}).await.unwrap();
+                    let response = rpc_client.get_sink_call(None, GetSinkRequest {}).await.unwrap();
                     assert_eq!(response.sink, SIMNET_GENESIS.hash);
-                    let response = rpc_client.get_sink_blue_score_call(GetSinkBlueScoreRequest {}).await.unwrap();
+                    let response = rpc_client.get_sink_blue_score_call(None, GetSinkBlueScoreRequest {}).await.unwrap();
                     assert_eq!(response.blue_score, 0);
 
                     // the block count is 0
-                    let response = rpc_client.get_block_count_call(GetBlockCountRequest {}).await.unwrap();
+                    let response = rpc_client.get_block_count_call(None, GetBlockCountRequest {}).await.unwrap();
                     assert_eq!(response.block_count, 0);
 
                     // and the virtual chain is the genesis only
                     let response = rpc_client
-                        .get_virtual_chain_from_block_call(GetVirtualChainFromBlockRequest {
-                            start_hash: SIMNET_GENESIS.hash,
-                            include_accepted_transaction_ids: false,
-                        })
+                        .get_virtual_chain_from_block_call(
+                            None,
+                            GetVirtualChainFromBlockRequest {
+                                start_hash: SIMNET_GENESIS.hash,
+                                include_accepted_transaction_ids: false,
+                            },
+                        )
                         .await
                         .unwrap();
                     assert!(response.added_chain_block_hashes.is_empty());
@@ -101,13 +104,20 @@ async fn sanity_test() {
 
                     // Get a block template
                     let GetBlockTemplateResponse { block, is_synced } = rpc_client
-                        .get_block_template_call(GetBlockTemplateRequest {
-                            pay_address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]),
-                            extra_data: Vec::new(),
-                        })
+                        .get_block_template_call(
+                            None,
+                            GetBlockTemplateRequest {
+                                pay_address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]),
+                                extra_data: Vec::new(),
+                            },
+                        )
                         .await
                         .unwrap();
                     assert!(!is_synced);
+
+                    // Compute the expected block hash for the received block
+                    let header: Header = (&block.header).into();
+                    let block_hash = header.hash;
 
                     // Submit the template (no mining, in simnet PoW is skipped)
                     let response = rpc_client.submit_block(block.clone(), false).await.unwrap();
@@ -131,23 +141,40 @@ async fn sanity_test() {
                     }
 
                     // After submitting a first block, the sink is the submitted block,
-                    let response = rpc_client.get_sink_call(GetSinkRequest {}).await.unwrap();
-                    assert_eq!(response.sink, block.header.hash);
+                    let response = rpc_client.get_sink_call(None, GetSinkRequest {}).await.unwrap();
+                    assert_eq!(response.sink, block_hash);
 
                     // the block count is 1
-                    let response = rpc_client.get_block_count_call(GetBlockCountRequest {}).await.unwrap();
+                    let response = rpc_client.get_block_count_call(None, GetBlockCountRequest {}).await.unwrap();
                     assert_eq!(response.block_count, 1);
 
                     // and the virtual chain from genesis contains the added block
                     let response = rpc_client
-                        .get_virtual_chain_from_block_call(GetVirtualChainFromBlockRequest {
-                            start_hash: SIMNET_GENESIS.hash,
-                            include_accepted_transaction_ids: false,
-                        })
+                        .get_virtual_chain_from_block_call(
+                            None,
+                            GetVirtualChainFromBlockRequest {
+                                start_hash: SIMNET_GENESIS.hash,
+                                include_accepted_transaction_ids: false,
+                            },
+                        )
                         .await
                         .unwrap();
-                    assert!(response.added_chain_block_hashes.contains(&block.header.hash));
+                    assert!(response.added_chain_block_hashes.contains(&block_hash));
                     assert!(response.removed_chain_block_hashes.is_empty());
+
+                    let result =
+                        rpc_client.get_current_block_color_call(None, GetCurrentBlockColorRequest { hash: SIMNET_GENESIS.hash }).await;
+
+                    // Genesis was merged by the new sink, so we're expecting a positive blueness response
+                    assert_match!(result, Ok(GetCurrentBlockColorResponse { blue: true }));
+
+                    // The new sink has no merging block yet, so we expect a MergerNotFound error
+                    let result = rpc_client.get_current_block_color_call(None, GetCurrentBlockColorRequest { hash: block_hash }).await;
+                    assert!(result.is_err());
+
+                    // Non-existing blocks should return an error
+                    let result = rpc_client.get_current_block_color_call(None, GetCurrentBlockColorRequest { hash: 999.into() }).await;
+                    assert!(result.is_err());
                 })
             }
 
@@ -155,10 +182,14 @@ async fn sanity_test() {
                 tst!(op, "see SubmitBlock")
             }
 
+            KaspadPayloadOps::GetCurrentBlockColor => {
+                tst!(op, "see SubmitBlock")
+            }
+
             KaspadPayloadOps::GetCurrentNetwork => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let response = rpc_client.get_current_network_call(GetCurrentNetworkRequest {}).await.unwrap();
+                    let response = rpc_client.get_current_network_call(None, GetCurrentNetworkRequest {}).await.unwrap();
                     assert_eq!(response.network, network_id.network_type);
                 })
             }
@@ -166,11 +197,12 @@ async fn sanity_test() {
             KaspadPayloadOps::GetBlock => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let result = rpc_client.get_block_call(GetBlockRequest { hash: 0.into(), include_transactions: false }).await;
+                    let result =
+                        rpc_client.get_block_call(None, GetBlockRequest { hash: 0.into(), include_transactions: false }).await;
                     assert!(result.is_err());
 
                     let response = rpc_client
-                        .get_block_call(GetBlockRequest { hash: SIMNET_GENESIS.hash, include_transactions: false })
+                        .get_block_call(None, GetBlockRequest { hash: SIMNET_GENESIS.hash, include_transactions: false })
                         .await
                         .unwrap();
                     assert_eq!(response.block.header.hash, SIMNET_GENESIS.hash);
@@ -181,7 +213,7 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let response = rpc_client
-                        .get_blocks_call(GetBlocksRequest { include_blocks: true, include_transactions: false, low_hash: None })
+                        .get_blocks_call(None, GetBlocksRequest { include_blocks: true, include_transactions: false, low_hash: None })
                         .await
                         .unwrap();
                     assert_eq!(response.blocks.len(), 1, "genesis block should be returned");
@@ -193,7 +225,7 @@ async fn sanity_test() {
             KaspadPayloadOps::GetInfo => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let response = rpc_client.get_info_call(GetInfoRequest {}).await.unwrap();
+                    let response = rpc_client.get_info_call(None, GetInfoRequest {}).await.unwrap();
                     assert_eq!(response.server_version, kaspa_core::kaspad_env::version().to_string());
                     assert_eq!(response.mempool_size, 0);
                     assert!(response.is_utxo_indexed);
@@ -220,11 +252,14 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let response_result = rpc_client
-                        .get_mempool_entry_call(GetMempoolEntryRequest {
-                            transaction_id: 0.into(),
-                            include_orphan_pool: true,
-                            filter_transaction_pool: false,
-                        })
+                        .get_mempool_entry_call(
+                            None,
+                            GetMempoolEntryRequest {
+                                transaction_id: 0.into(),
+                                include_orphan_pool: true,
+                                filter_transaction_pool: false,
+                            },
+                        )
                         .await;
                     // Test Get Mempool Entry:
                     // TODO: Fix by adding actual mempool entries this can get because otherwise it errors out
@@ -236,10 +271,10 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let response = rpc_client
-                        .get_mempool_entries_call(GetMempoolEntriesRequest {
-                            include_orphan_pool: true,
-                            filter_transaction_pool: false,
-                        })
+                        .get_mempool_entries_call(
+                            None,
+                            GetMempoolEntriesRequest { include_orphan_pool: true, filter_transaction_pool: false },
+                        )
                         .await
                         .unwrap();
                     assert!(response.mempool_entries.is_empty());
@@ -249,7 +284,7 @@ async fn sanity_test() {
             KaspadPayloadOps::GetConnectedPeerInfo => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let response = rpc_client.get_connected_peer_info_call(GetConnectedPeerInfoRequest {}).await.unwrap();
+                    let response = rpc_client.get_connected_peer_info_call(None, GetConnectedPeerInfoRequest {}).await.unwrap();
                     assert!(response.peer_info.is_empty());
                 })
             }
@@ -258,12 +293,12 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let peer_address = ContextualNetAddress::from_str("1.2.3.4").unwrap();
-                    let _ = rpc_client.add_peer_call(AddPeerRequest { peer_address, is_permanent: true }).await.unwrap();
+                    let _ = rpc_client.add_peer_call(None, AddPeerRequest { peer_address, is_permanent: true }).await.unwrap();
 
                     // Add peer only adds the IP to a connection request. It will only be added to known_addresses if it
                     // actually can be connected to. So in this test we can't expect it to be added unless we set up an
                     // actual peer.
-                    let response = rpc_client.get_peer_addresses_call(GetPeerAddressesRequest {}).await.unwrap();
+                    let response = rpc_client.get_peer_addresses_call(None, GetPeerAddressesRequest {}).await.unwrap();
                     assert!(response.known_addresses.is_empty());
                 })
             }
@@ -274,14 +309,14 @@ async fn sanity_test() {
                     let peer_address = ContextualNetAddress::from_str("5.6.7.8").unwrap();
                     let ip = peer_address.normalize(1).ip;
 
-                    let _ = rpc_client.add_peer_call(AddPeerRequest { peer_address, is_permanent: false }).await.unwrap();
-                    let _ = rpc_client.ban_call(BanRequest { ip }).await.unwrap();
+                    let _ = rpc_client.add_peer_call(None, AddPeerRequest { peer_address, is_permanent: false }).await.unwrap();
+                    let _ = rpc_client.ban_call(None, BanRequest { ip }).await.unwrap();
 
-                    let response = rpc_client.get_peer_addresses_call(GetPeerAddressesRequest {}).await.unwrap();
+                    let response = rpc_client.get_peer_addresses_call(None, GetPeerAddressesRequest {}).await.unwrap();
                     assert!(response.banned_addresses.contains(&ip));
 
-                    let _ = rpc_client.unban_call(UnbanRequest { ip }).await.unwrap();
-                    let response = rpc_client.get_peer_addresses_call(GetPeerAddressesRequest {}).await.unwrap();
+                    let _ = rpc_client.unban_call(None, UnbanRequest { ip }).await.unwrap();
+                    let response = rpc_client.get_peer_addresses_call(None, GetPeerAddressesRequest {}).await.unwrap();
                     assert!(!response.banned_addresses.contains(&ip));
                 })
             }
@@ -301,11 +336,22 @@ async fn sanity_test() {
                 })
             }
 
+            KaspadPayloadOps::SubmitTransactionReplacement => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    // Build an erroneous transaction...
+                    let transaction = Transaction::new(0, vec![], vec![], 0, SubnetworkId::default(), 0, vec![]);
+                    let result = rpc_client.submit_transaction_replacement((&transaction).into()).await;
+                    // ...that gets rejected by the consensus
+                    assert!(result.is_err());
+                })
+            }
+
             KaspadPayloadOps::GetSubnetwork => {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let result =
-                        rpc_client.get_subnetwork_call(GetSubnetworkRequest { subnetwork_id: SubnetworkId::from_byte(0) }).await;
+                        rpc_client.get_subnetwork_call(None, GetSubnetworkRequest { subnetwork_id: SubnetworkId::from_byte(0) }).await;
 
                     // Err because it's currently unimplemented
                     assert!(result.is_err());
@@ -323,7 +369,7 @@ async fn sanity_test() {
             KaspadPayloadOps::GetBlockDagInfo => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let response = rpc_client.get_block_dag_info_call(GetBlockDagInfoRequest {}).await.unwrap();
+                    let response = rpc_client.get_block_dag_info_call(None, GetBlockDagInfoRequest {}).await.unwrap();
                     assert_eq!(response.network, network_id);
                 })
             }
@@ -332,9 +378,10 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let response_result = rpc_client
-                        .resolve_finality_conflict_call(ResolveFinalityConflictRequest {
-                            finality_block_hash: Hash::from_bytes([0; 32]),
-                        })
+                        .resolve_finality_conflict_call(
+                            None,
+                            ResolveFinalityConflictRequest { finality_block_hash: Hash::from_bytes([0; 32]) },
+                        )
                         .await;
 
                     // Err because it's currently unimplemented
@@ -346,7 +393,7 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let response_result = rpc_client
-                        .get_headers_call(GetHeadersRequest { start_hash: SIMNET_GENESIS.hash, limit: 1, is_ascending: true })
+                        .get_headers_call(None, GetHeadersRequest { start_hash: SIMNET_GENESIS.hash, limit: 1, is_ascending: true })
                         .await;
 
                     // Err because it's currently unimplemented
@@ -358,7 +405,8 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let addresses = vec![Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32])];
-                    let response = rpc_client.get_utxos_by_addresses_call(GetUtxosByAddressesRequest { addresses }).await.unwrap();
+                    let response =
+                        rpc_client.get_utxos_by_addresses_call(None, GetUtxosByAddressesRequest { addresses }).await.unwrap();
                     assert!(response.entries.is_empty());
                 })
             }
@@ -367,9 +415,10 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let response = rpc_client
-                        .get_balance_by_address_call(GetBalanceByAddressRequest {
-                            address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]),
-                        })
+                        .get_balance_by_address_call(
+                            None,
+                            GetBalanceByAddressRequest { address: Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32]) },
+                        )
                         .await
                         .unwrap();
                     assert_eq!(response.balance, 0);
@@ -381,7 +430,7 @@ async fn sanity_test() {
                 tst!(op, {
                     let addresses = vec![Address::new(Prefix::Simnet, Version::PubKey, &[1u8; 32])];
                     let response = rpc_client
-                        .get_balances_by_addresses_call(GetBalancesByAddressesRequest::new(addresses.clone()))
+                        .get_balances_by_addresses_call(None, GetBalancesByAddressesRequest::new(addresses.clone()))
                         .await
                         .unwrap();
                     assert_eq!(response.entries.len(), 1);
@@ -389,7 +438,7 @@ async fn sanity_test() {
                     assert_eq!(response.entries[0].balance, Some(0));
 
                     let response =
-                        rpc_client.get_balances_by_addresses_call(GetBalancesByAddressesRequest::new(vec![])).await.unwrap();
+                        rpc_client.get_balances_by_addresses_call(None, GetBalancesByAddressesRequest::new(vec![])).await.unwrap();
                     assert!(response.entries.is_empty());
                 })
             }
@@ -397,7 +446,7 @@ async fn sanity_test() {
             KaspadPayloadOps::GetSinkBlueScore => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let response = rpc_client.get_sink_blue_score_call(GetSinkBlueScoreRequest {}).await.unwrap();
+                    let response = rpc_client.get_sink_blue_score_call(None, GetSinkBlueScoreRequest {}).await.unwrap();
                     // A concurrent test may have added a single block so the blue score can be either 0 or 1
                     assert!(response.blue_score < 2);
                 })
@@ -407,10 +456,10 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let response_result = rpc_client
-                        .estimate_network_hashes_per_second_call(EstimateNetworkHashesPerSecondRequest {
-                            window_size: 1000,
-                            start_hash: None,
-                        })
+                        .estimate_network_hashes_per_second_call(
+                            None,
+                            EstimateNetworkHashesPerSecondRequest { window_size: 1000, start_hash: None },
+                        )
                         .await;
                     // The current DAA window is almost empty so an error is expected
                     assert!(response_result.is_err());
@@ -422,11 +471,10 @@ async fn sanity_test() {
                 tst!(op, {
                     let addresses = vec![Address::new(Prefix::Simnet, Version::PubKey, &[0u8; 32])];
                     let response = rpc_client
-                        .get_mempool_entries_by_addresses_call(GetMempoolEntriesByAddressesRequest::new(
-                            addresses.clone(),
-                            true,
-                            false,
-                        ))
+                        .get_mempool_entries_by_addresses_call(
+                            None,
+                            GetMempoolEntriesByAddressesRequest::new(addresses.clone(), true, false),
+                        )
                         .await
                         .unwrap();
                     assert_eq!(response.entries.len(), 1);
@@ -439,7 +487,7 @@ async fn sanity_test() {
             KaspadPayloadOps::GetCoinSupply => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let response = rpc_client.get_coin_supply_call(GetCoinSupplyRequest {}).await.unwrap();
+                    let response = rpc_client.get_coin_supply_call(None, GetCoinSupplyRequest {}).await.unwrap();
                     assert_eq!(response.circulating_sompi, 0);
                     assert_eq!(response.max_sompi, MAX_SOMPI);
                 })
@@ -448,7 +496,14 @@ async fn sanity_test() {
             KaspadPayloadOps::Ping => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let _ = rpc_client.ping_call(PingRequest {}).await.unwrap();
+                    let _ = rpc_client.ping_call(None, PingRequest {}).await.unwrap();
+                })
+            }
+
+            KaspadPayloadOps::GetConnections => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let _ = rpc_client.get_connections_call(None, GetConnectionsRequest { include_profile_data: true }).await.unwrap();
                 })
             }
 
@@ -456,48 +511,68 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let get_metrics_call_response = rpc_client
-                        .get_metrics_call(GetMetricsRequest {
-                            consensus_metrics: true,
-                            connection_metrics: true,
-                            bandwidth_metrics: true,
-                            process_metrics: true,
-                        })
+                        .get_metrics_call(
+                            None,
+                            GetMetricsRequest {
+                                consensus_metrics: true,
+                                connection_metrics: true,
+                                bandwidth_metrics: true,
+                                process_metrics: true,
+                                storage_metrics: true,
+                                custom_metrics: true,
+                            },
+                        )
                         .await
                         .unwrap();
                     assert!(get_metrics_call_response.process_metrics.is_some());
                     assert!(get_metrics_call_response.consensus_metrics.is_some());
 
                     let get_metrics_call_response = rpc_client
-                        .get_metrics_call(GetMetricsRequest {
-                            consensus_metrics: false,
-                            connection_metrics: true,
-                            bandwidth_metrics: true,
-                            process_metrics: true,
-                        })
+                        .get_metrics_call(
+                            None,
+                            GetMetricsRequest {
+                                consensus_metrics: false,
+                                connection_metrics: true,
+                                bandwidth_metrics: true,
+                                process_metrics: true,
+                                storage_metrics: true,
+                                custom_metrics: true,
+                            },
+                        )
                         .await
                         .unwrap();
                     assert!(get_metrics_call_response.process_metrics.is_some());
                     assert!(get_metrics_call_response.consensus_metrics.is_none());
 
                     let get_metrics_call_response = rpc_client
-                        .get_metrics_call(GetMetricsRequest {
-                            consensus_metrics: true,
-                            connection_metrics: true,
-                            bandwidth_metrics: false,
-                            process_metrics: false,
-                        })
+                        .get_metrics_call(
+                            None,
+                            GetMetricsRequest {
+                                consensus_metrics: true,
+                                connection_metrics: true,
+                                bandwidth_metrics: false,
+                                process_metrics: false,
+                                storage_metrics: false,
+                                custom_metrics: true,
+                            },
+                        )
                         .await
                         .unwrap();
                     assert!(get_metrics_call_response.process_metrics.is_none());
                     assert!(get_metrics_call_response.consensus_metrics.is_some());
 
                     let get_metrics_call_response = rpc_client
-                        .get_metrics_call(GetMetricsRequest {
-                            consensus_metrics: false,
-                            connection_metrics: true,
-                            bandwidth_metrics: false,
-                            process_metrics: false,
-                        })
+                        .get_metrics_call(
+                            None,
+                            GetMetricsRequest {
+                                consensus_metrics: false,
+                                connection_metrics: true,
+                                bandwidth_metrics: false,
+                                process_metrics: false,
+                                storage_metrics: false,
+                                custom_metrics: true,
+                            },
+                        )
                         .await
                         .unwrap();
                     assert!(get_metrics_call_response.process_metrics.is_none());
@@ -505,10 +580,17 @@ async fn sanity_test() {
                 })
             }
 
+            KaspadPayloadOps::GetSystemInfo => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let _response = rpc_client.get_system_info_call(None, GetSystemInfoRequest {}).await.unwrap();
+                })
+            }
+
             KaspadPayloadOps::GetServerInfo => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let response = rpc_client.get_server_info_call(GetServerInfoRequest {}).await.unwrap();
+                    let response = rpc_client.get_server_info_call(None, GetServerInfoRequest {}).await.unwrap();
                     assert!(response.has_utxo_index); // we set utxoindex above
                     assert_eq!(response.network_id, network_id);
                 })
@@ -517,7 +599,7 @@ async fn sanity_test() {
             KaspadPayloadOps::GetSyncStatus => {
                 let rpc_client = client.clone();
                 tst!(op, {
-                    let _ = rpc_client.get_sync_status_call(GetSyncStatusRequest {}).await.unwrap();
+                    let _ = rpc_client.get_sync_status_call(None, GetSyncStatusRequest {}).await.unwrap();
                 })
             }
 
@@ -525,9 +607,10 @@ async fn sanity_test() {
                 let rpc_client = client.clone();
                 tst!(op, {
                     let results = rpc_client
-                        .get_daa_score_timestamp_estimate_call(GetDaaScoreTimestampEstimateRequest {
-                            daa_scores: vec![0, 500, 2000, u64::MAX],
-                        })
+                        .get_daa_score_timestamp_estimate_call(
+                            None,
+                            GetDaaScoreTimestampEstimateRequest { daa_scores: vec![0, 500, 2000, u64::MAX] },
+                        )
                         .await
                         .unwrap();
 
@@ -536,13 +619,40 @@ async fn sanity_test() {
                     }
 
                     let results = rpc_client
-                        .get_daa_score_timestamp_estimate_call(GetDaaScoreTimestampEstimateRequest { daa_scores: vec![] })
+                        .get_daa_score_timestamp_estimate_call(None, GetDaaScoreTimestampEstimateRequest { daa_scores: vec![] })
                         .await
                         .unwrap();
 
                     for timestamp in results.timestamps.iter() {
                         info!("Timestamp estimate is {}", timestamp);
                     }
+                })
+            }
+
+            KaspadPayloadOps::GetFeeEstimate => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client.get_fee_estimate().await.unwrap();
+                    info!("{:?}", response.priority_bucket);
+                    assert!(!response.normal_buckets.is_empty());
+                    assert!(!response.low_buckets.is_empty());
+                    for bucket in response.ordered_buckets() {
+                        info!("{:?}", bucket);
+                    }
+                })
+            }
+
+            KaspadPayloadOps::GetFeeEstimateExperimental => {
+                let rpc_client = client.clone();
+                tst!(op, {
+                    let response = rpc_client.get_fee_estimate_experimental(true).await.unwrap();
+                    assert!(!response.estimate.normal_buckets.is_empty());
+                    assert!(!response.estimate.low_buckets.is_empty());
+                    for bucket in response.estimate.ordered_buckets() {
+                        info!("{:?}", bucket);
+                    }
+                    assert!(response.verbose.is_some());
+                    info!("{:?}", response.verbose);
                 })
             }
 
@@ -632,7 +742,7 @@ async fn sanity_test() {
 
     // Shutdown should only be tested after everything
     let rpc_client = client.clone();
-    let _ = rpc_client.shutdown_call(ShutdownRequest {}).await.unwrap();
+    let _ = rpc_client.shutdown_call(None, ShutdownRequest {}).await.unwrap();
 
     //
     // Fold-up
