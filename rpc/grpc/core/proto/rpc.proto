@@ -377,10 +377,9 @@ message GetSubnetworkResponseMessage{
 /// GetVirtualChainFromBlockRequestMessage requests the virtual selected
 /// parent chain from some startHash to this kaspad's current virtual
 /// Note:
-///     1) this call batches the response to:
+///     this call batches the response to:
 ///         a. the network's `mergeset size limit * 10` amount of chain blocks, if `includeAcceptedTransactionIds = false`
 ///         b. when the acceptance data queried exceeds the network's `mergeset size limit * 10` amount of merged blocks, if `includeAcceptedTransactionIds = true`
-///     2) if startHash is not supplied it will default to the node's source hash
 message GetVirtualChainFromBlockRequestMessage{
   string startHash = 1;
   bool includeAcceptedTransactionIds = 2;
