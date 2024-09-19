@@ -31,7 +31,7 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
         Self { genesis_hash, ghostdag_store, relations_store, reachability_service }
     }
 
-    pub fn calculate_chain_path(&self, from: Hash, to: Hash, chain_path_added_limit: usize) -> ChainPath {
+    pub fn calculate_chain_path(&self, from: Hash, to: Hash, chain_path_added_limit: Option<usize>) -> ChainPath {
         let mut removed = Vec::new();
         let mut common_ancestor = from;
         for current in self.reachability_service.default_backward_chain_iterator(from) {
@@ -42,7 +42,7 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
                 break;
             }
         }
-        if chain_path_added_limit == usize::MAX {
+        if chain_path_added_limit.is_none() {
             // Use backward chain iterator
             // It is more intuitive to use forward iterator here, but going downwards the selected chain is faster.
             let mut added = self.reachability_service.backward_chain_iterator(to, common_ancestor, false).collect_vec();
@@ -54,7 +54,7 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
             .reachability_service
             .forward_chain_iterator(common_ancestor, to, true)
             .skip(1)
-            .take(chain_path_added_limit)
+            .take(chain_path_added_limit.unwrap()) // we handle is_none so we may unwrap. 
             .collect_vec();
         ChainPath { added, removed }
     }

@@ -607,13 +607,13 @@ impl ConsensusApi for Consensus {
         self.config.is_nearly_synced(compact.timestamp, compact.daa_score)
     }
 
-    fn get_virtual_chain_from_block(&self, low: Hash, chain_path_added_limit: usize) -> ConsensusResult<ChainPath> {
+    fn get_virtual_chain_from_block(&self, low: Hash, chain_path_added_limit: Option<usize>) -> ConsensusResult<ChainPath> {
         // Calculate chain changes between the given `low` and the current sink hash (up to `limit` amount of block hashes).
         // Note:
         // 1) that we explicitly don't
         // do the calculation against the virtual itself so that we
         // won't later need to remove it from the result.
-        // 2) supplying `usize::MAX` as `chain_path_added_limit` will result in the full chain path, with optimized performance.
+        // 2) supplying `None` as `chain_path_added_limit` will result in the full chain path, with optimized performance.
         let _guard = self.pruning_lock.blocking_read();
 
         // Verify that the block exists
@@ -926,17 +926,23 @@ impl ConsensusApi for Consensus {
         self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))
     }
 
-    fn get_blocks_acceptance_data(&self, hashes: &[Hash], merged_blocks_limit: usize) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
+    fn get_blocks_acceptance_data(
+        &self,
+        hashes: &[Hash],
+        merged_blocks_limit: Option<usize>,
+    ) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
         // Note: merged_blocks_limit will limit after the sum of merged blocks is breached along the supplied hash's acceptance data
         // and not limit the acceptance data within a queried hash. i.e. It has mergeset_size_limit granularity, this is to guarantee full acceptance data coverage.
-        if merged_blocks_limit == usize::MAX {
+        if merged_blocks_limit.is_none() {
             return hashes
                 .iter()
                 .copied()
                 .map(|hash| self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash)))
                 .collect::<ConsensusResult<Vec<_>>>();
         }
+        let merged_blocks_limit = merged_blocks_limit.unwrap(); // we handle `is_none`, so may unwrap.
         let mut num_of_merged_blocks = 0usize;
+
         hashes
             .iter()
             .copied()

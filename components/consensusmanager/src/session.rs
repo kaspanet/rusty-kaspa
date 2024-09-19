@@ -267,7 +267,11 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.is_nearly_synced()).await
     }
 
-    pub async fn async_get_virtual_chain_from_block(&self, low: Hash, chain_path_added_limit: usize) -> ConsensusResult<ChainPath> {
+    pub async fn async_get_virtual_chain_from_block(
+        &self,
+        low: Hash,
+        chain_path_added_limit: Option<usize>,
+    ) -> ConsensusResult<ChainPath> {
         self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(low, chain_path_added_limit)).await
     }
 
@@ -383,7 +387,7 @@ impl ConsensusSessionOwned {
     pub async fn async_get_blocks_acceptance_data(
         &self,
         hashes: Vec<Hash>,
-        merged_blocks_limit: usize,
+        merged_blocks_limit: Option<usize>,
     ) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
         self.clone().spawn_blocking(move |c| c.get_blocks_acceptance_data(&hashes, merged_blocks_limit)).await
     }
