@@ -114,7 +114,8 @@ impl Rpc {
                 }
                 let hash = argv.remove(0);
                 let hash = RpcHash::from_hex(hash.as_str())?;
-                let result = rpc.get_block_call(None, GetBlockRequest { hash, include_transactions: true }).await?;
+                let include_transactions = argv.first().and_then(|x| x.parse::<bool>().ok()).unwrap_or(true);
+                let result = rpc.get_block_call(None, GetBlockRequest { hash, include_transactions }).await?;
                 self.println(&ctx, result);
             }
             // RpcApiOps::GetSubnetwork => {
@@ -126,7 +127,7 @@ impl Rpc {
                     return Err(Error::custom("Missing startHash argument"));
                 };
                 let start_hash = RpcHash::from_hex(argv.remove(0).as_str())?;
-                let include_accepted_transaction_ids = argv.remove(0).parse::<bool>().unwrap_or_default();
+                let include_accepted_transaction_ids = argv.first().and_then(|x| x.parse::<bool>().ok()).unwrap_or_default();
                 let result = rpc
                     .get_virtual_chain_from_block_call(
                         None,
