@@ -162,7 +162,7 @@ impl ConsensusConverter {
         &self,
         consensus: &ConsensusProxy,
         chain_path: &ChainPath,
-        merged_blocks_limit: usize, // limit by number of transactions
+        merged_blocks_limit: usize,
     ) -> RpcResult<Vec<RpcAcceptedTransactionIds>> {
         let acceptance_data = consensus.async_get_blocks_acceptance_data(chain_path.added.clone(), merged_blocks_limit).await.unwrap();
         Ok(chain_path
