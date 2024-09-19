@@ -607,18 +607,26 @@ impl ConsensusApi for Consensus {
         self.config.is_nearly_synced(compact.timestamp, compact.daa_score)
     }
 
-    fn get_virtual_chain_from_block(&self, low: Hash, limit: usize) -> ConsensusResult<ChainPath> {
+    fn get_virtual_chain_from_block(&self, low: Hash, chain_path_added_limit: usize) -> ConsensusResult<ChainPath> {
         // Calculate chain changes between the given `low` and the current sink hash (up to `limit` amount of block hashes).
         // Note:
         // 1) that we explicitly don't
         // do the calculation against the virtual itself so that we
         // won't later need to remove it from the result.
-        // 2) supplying `usize::MAX` as `limit` will result in the full chain path, with optimized performance.
+        // 2) supplying `usize::MAX` as `chain_path_added_limit` will result in the full chain path, with optimized performance.
         let _guard = self.pruning_lock.blocking_read();
 
+        // Verify that the block exists
         self.validate_block_exists(low)?;
 
-        Ok(self.services.dag_traversal_manager.calculate_chain_path(low, self.get_sink(), limit))
+        // Verify that source is on chain(block)        self.services
+        self.services
+            .reachability_service
+            .is_chain_ancestor_of(self.get_source(), low)
+            .then_some(())
+            .ok_or(ConsensusError::General("the queried hash does not have source on its chain"))?;
+
+        Ok(self.services.dag_traversal_manager.calculate_chain_path(low, self.get_sink(), chain_path_added_limit))
     }
 
     /// Returns a Vec of header samples since genesis
