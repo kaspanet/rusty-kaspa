@@ -76,12 +76,10 @@ jobs:
         shell: bash
         run: |
           cargo build --bin kaspad --release
-          cargo build --bin simpa --release
           cargo build --bin rothschild --release
           cargo build --bin kaspa-wallet --release
           mkdir bin || true
           cp target/release/kaspad.exe bin/
-          cp target/release/simpa.exe bin/
           cp target/release/rothschild.exe bin/
           cp target/release/kaspa-wallet.exe bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-win64.zip"
@@ -94,12 +92,10 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           cargo build --bin kaspad --release
-          cargo build --bin simpa --release
           cargo build --bin rothschild --release
           cargo build --bin kaspa-wallet --release
           mkdir bin || true
           cp target/release/kaspad bin/
-          cp target/release/simpa bin/
           cp target/release/rothschild bin/
           cp target/release/kaspa-wallet bin/
           archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-osx.zip"
