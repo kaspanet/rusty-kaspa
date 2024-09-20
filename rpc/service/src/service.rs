@@ -623,7 +623,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
                 .get_virtual_chain_accepted_transaction_ids(&session, &virtual_chain_batch, Some(batch_size))
                 .await?;
             // bound added to the length of the accepted transaction ids, which is bounded by merged blocks
-            virtual_chain_batch.added = virtual_chain_batch.added[..accepted_transaction_ids.len()].to_vec();
+            virtual_chain_batch.added.truncate(accepted_transaction_ids.len());
             accepted_transaction_ids
         } else {
             vec![]
