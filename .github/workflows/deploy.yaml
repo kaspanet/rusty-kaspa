@@ -65,8 +65,8 @@ jobs:
           cp target/x86_64-unknown-linux-musl/release/kaspad bin/
           cp target/x86_64-unknown-linux-musl/release/rothschild bin/
           cp target/x86_64-unknown-linux-musl/release/kaspa-wallet bin/
-          archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux-musl-amd64.zip"
-          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-linux-musl-amd64.zip"
+          archive="bin/rusty-kaspa-${{ github.event.release.tag_name }}-linux-amd64.zip"
+          asset_name="rusty-kaspa-${{ github.event.release.tag_name }}-linux-amd64.zip"
           zip -r "${archive}" ./bin/*
           echo "archive=${archive}" >> $GITHUB_ENV
           echo "asset_name=${asset_name}" >> $GITHUB_ENV
