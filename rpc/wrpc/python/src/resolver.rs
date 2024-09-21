@@ -33,11 +33,7 @@ impl Resolver {
 #[pymethods]
 impl Resolver {
     fn urls(&self) -> Vec<String> {
-        self.resolver.urls()
-            .unwrap_or_default()
-            .into_iter()
-            .map(|url| (*url).clone())
-            .collect::<Vec<_>>()
+        self.resolver.urls().unwrap_or_default().into_iter().map(|url| (*url).clone()).collect::<Vec<_>>()
     }
 
     fn get_node(&self, py: Python, encoding: String, network: String, network_suffix: Option<u32>) -> PyResult<Py<PyAny>> {
