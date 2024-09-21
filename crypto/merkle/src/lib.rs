@@ -169,7 +169,6 @@ mod tests {
             hash_vec.push(hash);
         }
         for j in 1..TREE_LENGTH{// disregard the 0 edge case as it is tested separately
-        // let j=TREE_LENGTH-1;
             for leaf_index in 0..j{
                 let witness=create_merkle_witness(hash_vec.clone().into_iter().take(j),leaf_index).unwrap();
                 let merkle_root=calc_merkle_root(hash_vec.clone().into_iter().take(j));
