@@ -21,12 +21,28 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn register_notifications(self: Arc<Self>, channel: Receiver<WalletNotification>) -> Result<u64>;
     async fn unregister_notifications(self: Arc<Self>, channel_id: u64) -> Result<()>;
 
+    /// Wrapper around [`retain_context_call()`](Self::retain_context_call).
     async fn retain_context(self: Arc<Self>, name: &str, data: Option<Vec<u8>>) -> Result<()> {
         self.retain_context_call(RetainContextRequest { name: name.to_string(), data }).await?;
         Ok(())
     }
 
+    /// Obtain earlier retained context data using the context `name` as a key.
+    async fn get_context(self: Arc<Self>, name: &str) -> Result<Option<Vec<u8>>> {
+        Ok(self.get_context_call(GetContextRequest { name: name.to_string() }).await?.data)
+    }
+
+    /// Allows user to store string key-associated context data in the wallet subsystem runtime.
+    /// The context data persists only during the wallet instance runtime.
+    /// This can be useful if you have a front-end that connects to a
+    /// persistent wallet instance operating in the backend (such as a browser
+    /// extension popup connecting to the background page) and you need to store
+    /// any type of runtime data in the backend (but are limited to using only
+    /// the wallet interface).
     async fn retain_context_call(self: Arc<Self>, request: RetainContextRequest) -> Result<RetainContextResponse>;
+
+    /// Obtain context data stored using [`retain_context()`](Self::retain_context).
+    async fn get_context_call(self: Arc<Self>, request: GetContextRequest) -> Result<GetContextResponse>;
 
     /// Wrapper around [`get_status_call()`](Self::get_status_call).
     async fn get_status(self: Arc<Self>, name: Option<&str>) -> Result<GetStatusResponse> {

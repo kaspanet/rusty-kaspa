@@ -1,3 +1,7 @@
+//!
+//! [`PublicKeyGenerator`] helper for generating public key derivations from an extended public key (XPub).
+//!
+
 use crate::derivation::gen1::WalletDerivationManager;
 use crate::derivation::traits::WalletDerivationManagerTrait;
 use crate::imports::*;

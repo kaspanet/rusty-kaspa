@@ -59,6 +59,7 @@ pub struct MultisigWalletFileV0<'a, T: AsRef<[u8]>> {
     pub encrypted_mnemonics: Vec<EncryptedMnemonic<T>>,
     pub xpublic_keys: Vec<&'a str>, // includes pub keys from encrypted
     pub required_signatures: u16,
+    #[allow(dead_code)]
     pub cosigner_index: u8,
     pub ecdsa: bool,
 }
@@ -68,6 +69,7 @@ pub struct MultisigWalletFileV1<'a, T: AsRef<[u8]>> {
     pub encrypted_mnemonics: Vec<EncryptedMnemonic<T>>,
     pub xpublic_keys: Vec<&'a str>, // includes pub keys from encrypted
     pub required_signatures: u16,
+    #[allow(dead_code)]
     pub cosigner_index: u8,
     pub ecdsa: bool,
 }
@@ -81,7 +83,8 @@ pub enum WalletBusMessage {
     Discovery { record: TransactionRecord },
 }
 
-pub struct Inner {
+/// Internal wallet state.
+struct Inner {
     active_accounts: ActiveAccountMap,
     legacy_accounts: ActiveAccountMap,
     listener_id: Mutex<Option<ListenerId>>,
@@ -187,10 +190,6 @@ impl Wallet {
     pub fn with_url(self, url: Option<&str>) -> Self {
         self.wrpc_client().set_url(url).expect("Unable to set url");
         self
-    }
-
-    pub fn inner(&self) -> &Arc<Inner> {
-        &self.inner
     }
 
     //

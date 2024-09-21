@@ -119,6 +119,8 @@ impl From<&UtxoEntry> for cctx::UtxoEntry {
     }
 }
 
+/// [`Arc`] reference to a [`UtxoEntry`] used by the wallet subsystems.
+///
 /// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[wasm_bindgen(inspectable)]
