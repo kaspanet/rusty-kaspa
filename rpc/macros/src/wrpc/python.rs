@@ -42,19 +42,16 @@ impl ToTokens for RpcHandlers {
         let mut targets_with_args = Vec::new();
 
         for handler in self.handlers_no_args.elems.iter() {
-            let Handler { fn_call, request_type, response_type, .. } = Handler::new(handler);
+            let Handler { fn_call, fn_no_suffix, request_type, response_type, .. } = Handler::new(handler);
 
             targets_no_args.push(quote! {
 
                 #[pymethods]
                 impl RpcClient {
-                    fn #fn_call(&self, py: Python, request: Option<Py<PyDict>>) -> PyResult<Py<PyAny>> {
+                    fn #fn_no_suffix(&self, py: Python, request: Option<Bound<'_, PyDict>>) -> PyResult<Py<PyAny>> {
                         let client = self.inner.client.clone();
 
-                        let request: #request_type = serde_pyobject::from_pyobject(request
-                            .map(|req| req.into_bound(py))
-                            .unwrap_or_else(|| PyDict::new_bound(py).into())
-                        ).unwrap();
+                        let request: #request_type = request.unwrap_or_else(|| PyDict::new_bound(py)).try_into()?;
 
                         let py_fut = pyo3_asyncio_0_21::tokio::future_into_py(py, async move {
                             let response : #response_type = client.#fn_call(None, request).await?;
@@ -70,16 +67,16 @@ impl ToTokens for RpcHandlers {
         }
 
         for handler in self.handlers_with_args.elems.iter() {
-            let Handler { fn_call, request_type, response_type, .. } = Handler::new(handler);
+            let Handler { fn_call, fn_no_suffix, request_type, response_type, .. } = Handler::new(handler);
 
             targets_with_args.push(quote! {
 
                 #[pymethods]
                 impl RpcClient {
-                    fn #fn_call(&self, py: Python, request: Py<PyDict>) -> PyResult<Py<PyAny>> {
+                    fn #fn_no_suffix(&self, py: Python, request: Bound<'_, PyDict>) -> PyResult<Py<PyAny>> {
                         let client = self.inner.client.clone();
 
-                        let request : #request_type = serde_pyobject::from_pyobject(request.into_bound(py)).unwrap();
+                        let request : #request_type = request.try_into()?;
 
                         let py_fut = pyo3_asyncio_0_21::tokio::future_into_py(py, async move {
                             let response : #response_type = client.#fn_call(None, request).await?;

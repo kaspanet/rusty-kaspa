@@ -66,6 +66,7 @@ impl TransactionInputInner {
 /// Represents a Kaspa transaction input
 /// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen(inspectable)]
 pub struct TransactionInput {
     inner: Arc<Mutex<TransactionInputInner>>,
@@ -165,6 +166,80 @@ impl TransactionInput {
 
     #[wasm_bindgen(getter = utxo)]
     pub fn get_utxo(&self) -> Option<UtxoEntryReference> {
+        self.inner().utxo.clone()
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl TransactionInput {
+    #[new]
+    pub fn constructor_py(
+        previous_outpoint: TransactionOutpoint,
+        signature_script: String,
+        sequence: u64,
+        sig_op_count: u8,
+        utxo: Option<UtxoEntryReference>,
+    ) -> PyResult<Self> {
+        let signature_script = Vec::from_hex(&signature_script).map_err(|err| PyException::new_err(format!("{}", err)))?;
+        Ok(Self::new(previous_outpoint, Some(signature_script), sequence, sig_op_count, utxo))
+    }
+
+    #[getter]
+    #[pyo3(name = "previous_outpoint")]
+    pub fn get_previous_outpoint_py(&self) -> TransactionOutpoint {
+        self.inner().previous_outpoint.clone()
+    }
+
+    #[setter]
+    #[pyo3(name = "previous_outpoint")]
+    pub fn set_previous_outpoint_py(&mut self, outpoint: TransactionOutpoint) -> PyResult<()> {
+        self.inner().previous_outpoint = outpoint;
+        Ok(())
+    }
+
+    #[getter]
+    #[pyo3(name = "signature_script")]
+    pub fn get_signature_script_as_hex_py(&self) -> Option<String> {
+        // self.inner().signature_script.to_hex()
+        self.inner().signature_script.as_ref().map(|script| script.to_hex())
+    }
+
+    #[setter]
+    #[pyo3(name = "signature_script")]
+    pub fn set_signature_script_as_hex_py(&mut self, signature_script: String) -> PyResult<()> {
+        let signature_script = Vec::from_hex(&signature_script).map_err(|err| PyException::new_err(format!("{}", err)))?;
+        self.set_signature_script(signature_script);
+        Ok(())
+    }
+
+    #[getter]
+    #[pyo3(name = "sequence")]
+    pub fn get_sequence_py(&self) -> u64 {
+        self.inner().sequence
+    }
+
+    #[setter]
+    #[pyo3(name = "sequence")]
+    pub fn set_sequence_py(&mut self, sequence: u64) {
+        self.inner().sequence = sequence;
+    }
+
+    #[getter]
+    #[pyo3(name = "sig_op_count")]
+    pub fn get_sig_op_count_py(&self) -> u8 {
+        self.inner().sig_op_count
+    }
+
+    #[setter]
+    #[pyo3(name = "sig_op_count")]
+    pub fn set_sig_op_count_py(&mut self, sig_op_count: u8) {
+        self.inner().sig_op_count = sig_op_count;
+    }
+
+    #[getter]
+    #[pyo3(name = "utxo")]
+    pub fn get_utxo_py(&self) -> Option<UtxoEntryReference> {
         self.inner().utxo.clone()
     }
 }

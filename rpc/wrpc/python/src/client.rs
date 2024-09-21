@@ -244,7 +244,15 @@ impl RpcClient {
         }}
     }
 
-    // fn start() PY-TODO
+    fn start(&self, py: Python) -> PyResult<Py<PyAny>> {
+        self.start_notification_task(py)?;
+        let inner = self.inner.clone();
+        py_async! {py, async move {
+            inner.client.start().await?;
+            Ok(())
+        }}
+    }
+
     // fn stop() PY-TODO
     // fn trigger_abort() PY-TODO
 
@@ -458,7 +466,6 @@ impl RpcClient {
 
 #[pymethods]
 impl RpcClient {
-    // PY-TODO subscribe_daa_score and unsubscribe
     fn subscribe_utxos_changed(&self, py: Python, addresses: Vec<Address>) -> PyResult<Py<PyAny>> {
         if let Some(listener_id) = self.listener_id() {
             let client = self.inner.client.clone();
@@ -528,14 +535,14 @@ build_wrpc_python_interface!(
         GetConnectedPeerInfo,
         GetInfo,
         GetPeerAddresses,
-        GetMetrics,
-        GetConnections,
         GetSink,
         GetSinkBlueScore,
         Ping,
         Shutdown,
         GetServerInfo,
         GetSyncStatus,
+        GetFeeEstimate,
+        GetCurrentNetwork,
     ],
     [
         AddPeer,
@@ -546,20 +553,20 @@ build_wrpc_python_interface!(
         GetBlock,
         GetBlocks,
         GetBlockTemplate,
+        GetConnections,
         GetCurrentBlockColor,
         GetDaaScoreTimestampEstimate,
-        GetFeeEstimate,
         GetFeeEstimateExperimental,
-        GetCurrentNetwork,
         GetHeaders,
         GetMempoolEntries,
         GetMempoolEntriesByAddresses,
         GetMempoolEntry,
+        GetMetrics,
         GetSubnetwork,
         GetUtxosByAddresses,
         GetVirtualChainFromBlock,
         ResolveFinalityConflict,
-        SubmitBlock,
+        // SubmitBlock, PY-TODO
         SubmitTransaction,
         SubmitTransactionReplacement,
         Unban,

@@ -42,6 +42,7 @@ pub type UtxoEntryId = TransactionOutpointInner;
 /// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen(inspectable)]
 pub struct UtxoEntry {
     #[wasm_bindgen(getter_with_clone)]
@@ -63,6 +64,46 @@ impl UtxoEntry {
     pub fn js_to_string(&self) -> Result<js_sys::JsString> {
         //SerializableUtxoEntry::from(self).serialize_to_json()
         Ok(js_sys::JSON::stringify(&self.to_js_object()?.into())?)
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl UtxoEntry {
+    #[getter]
+    #[pyo3(name = "address")]
+    pub fn address_py(&self) -> Option<Address> {
+        self.address.clone()
+    }
+
+    #[getter]
+    #[pyo3(name = "outpoint")]
+    pub fn outpoint_py(&self) -> TransactionOutpoint {
+        self.outpoint.clone()
+    }
+
+    #[getter]
+    #[pyo3(name = "amount")]
+    pub fn amount_py(&self) -> u64 {
+        self.amount.clone()
+    }
+
+    #[getter]
+    #[pyo3(name = "script_public_key")]
+    pub fn script_public_key_py(&self) -> ScriptPublicKey {
+        self.script_public_key.clone()
+    }
+
+    #[getter]
+    #[pyo3(name = "block_daa_score")]
+    pub fn block_daa_score_py(&self) -> u64 {
+        self.block_daa_score.clone()
+    }
+
+    #[getter]
+    #[pyo3(name = "block_daa_score")]
+    pub fn is_coinbase_py(&self) -> bool {
+        self.is_coinbase.clone()
     }
 }
 
@@ -121,6 +162,7 @@ impl From<&UtxoEntry> for cctx::UtxoEntry {
 
 /// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen(inspectable)]
 pub struct UtxoEntryReference {
     #[wasm_bindgen(skip)]
@@ -169,6 +211,55 @@ impl UtxoEntryReference {
 
     #[wasm_bindgen(getter, js_name = "scriptPublicKey")]
     pub fn script_public_key(&self) -> ScriptPublicKey {
+        self.utxo.script_public_key.clone()
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl UtxoEntryReference {
+    // PY-TODO
+    // fn py_to_string
+
+    #[getter]
+    #[pyo3(name = "entry")]
+    pub fn entry_py(&self) -> UtxoEntry {
+        self.as_ref().clone()
+    }
+
+    #[getter]
+    #[pyo3(name = "outpoint")]
+    pub fn outpoint_py(&self) -> TransactionOutpoint {
+        self.utxo.outpoint.clone()
+    }
+
+    #[getter]
+    #[pyo3(name = "address")]
+    pub fn address_py(&self) -> Option<Address> {
+        self.utxo.address.clone()
+    }
+
+    #[getter]
+    #[pyo3(name = "amount")]
+    pub fn amount_py(&self) -> u64 {
+        self.utxo.amount
+    }
+
+    #[getter]
+    #[pyo3(name = "is_coinbase")]
+    pub fn is_coinbase_py(&self) -> bool {
+        self.utxo.is_coinbase
+    }
+
+    #[getter]
+    #[pyo3(name = "block_daa_score")]
+    pub fn block_daa_score_py(&self) -> u64 {
+        self.utxo.block_daa_score
+    }
+
+    #[getter]
+    #[pyo3(name = "script_public_key")]
+    pub fn script_public_key_py(&self) -> ScriptPublicKey {
         self.utxo.script_public_key.clone()
     }
 }
@@ -279,6 +370,7 @@ impl TryCastFromJs for UtxoEntry {
 /// Please consider using `UtxoContext` instead.
 /// @category Wallet SDK
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen(inspectable)]
 pub struct UtxoEntries(Arc<Vec<UtxoEntryReference>>);
 
@@ -327,6 +419,38 @@ impl UtxoEntries {
     }
 
     pub fn amount(&self) -> u64 {
+        self.0.iter().map(|e| e.amount()).sum()
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl UtxoEntries {
+    // PY-TODO
+    // #[new]
+    // pub fn py_ctor()
+
+    #[getter]
+    #[pyo3(name = "items")]
+    pub fn get_items_as_py_list(&self) -> Vec<UtxoEntryReference> {
+        self.0.as_ref().clone().into_iter().collect()
+    }
+
+    #[setter]
+    #[pyo3(name = "items")]
+    pub fn set_items_from_py_list(&mut self, v: Vec<UtxoEntryReference>) {
+        self.0 = Arc::new(v);
+    }
+
+    #[pyo3(name = "sort")]
+    pub fn sort_py(&mut self) {
+        let mut items = (*self.0).clone();
+        items.sort_by_key(|e| e.amount());
+        self.0 = Arc::new(items);
+    }
+
+    #[pyo3(name = "amount")]
+    pub fn amount_py(&self) -> u64 {
         self.0.iter().map(|e| e.amount()).sum()
     }
 }
@@ -431,6 +555,42 @@ impl TryCastFromJs for UtxoEntryReference {
                 Err("Data type supplied to UtxoEntryReference must be an object".into())
             }
         })
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+impl TryFrom<&PyDict> for UtxoEntryReference {
+    type Error = PyErr;
+    fn try_from(dict: &PyDict) -> PyResult<Self> {
+        let address = Address::try_from(
+            dict.get_item("address")?.ok_or_else(|| PyException::new_err("Key `address` not present"))?.extract::<String>()?,
+        )?;
+
+        let outpoint: &PyDict =
+            dict.get_item("outpoint")?.ok_or_else(|| PyException::new_err("Key `outpoint` not present"))?.downcast()?;
+        let outpoint = TransactionOutpoint::try_from(outpoint)?;
+
+        let utxo_entry: &PyDict =
+            dict.get_item("utxoEntry")?.ok_or_else(|| PyException::new_err("Key `utxoEntry` not present"))?.extract()?;
+
+        let amount: u64 = utxo_entry.get_item("amount")?.ok_or_else(|| PyException::new_err("Key `amount` not present"))?.extract()?;
+
+        let script_public_key = ScriptPublicKey::from_hex(
+            utxo_entry
+                .get_item("scriptPublicKey")?
+                .ok_or_else(|| PyException::new_err("Key `scriptPublicKey` not present"))?
+                .extract::<&str>()?,
+        )
+        .map_err(|err| PyException::new_err(format!("{}", err)))?;
+
+        let block_daa_score: u64 =
+            utxo_entry.get_item("blockDaaScore")?.ok_or_else(|| PyException::new_err("Key `blockDaaScore` not present"))?.extract()?;
+
+        let is_coinbase: bool =
+            utxo_entry.get_item("isCoinbase")?.ok_or_else(|| PyException::new_err("Key `is_coinbase` not present"))?.extract()?;
+
+        let utxo = UtxoEntry { address: Some(address), outpoint, amount, script_public_key, block_daa_score, is_coinbase };
+        Ok(UtxoEntryReference { utxo: Arc::new(utxo) })
     }
 }
 

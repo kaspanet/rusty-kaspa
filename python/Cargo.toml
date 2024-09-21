@@ -13,6 +13,10 @@ crate-type = ["cdylib"]
 [dependencies]
 cfg-if.workspace = true
 kaspa-addresses.workspace = true
+kaspa-consensus-core.workspace = true
+kaspa-consensus-client.workspace = true
+kaspa-hashes.workspace = true
+kaspa-wallet-core.workspace = true
 kaspa-wallet-keys.workspace = true
 kaspa-wrpc-python.workspace = true
 pyo3.workspace = true
@@ -22,6 +26,8 @@ default = []
 py-sdk = [
     "pyo3/extension-module",
     "kaspa-addresses/py-sdk",
+    "kaspa-consensus-client/py-sdk",
     "kaspa-wallet-keys/py-sdk",
+    "kaspa-wallet-core/py-sdk",
     "kaspa-wrpc-python/py-sdk",
 ]

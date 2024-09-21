@@ -47,6 +47,7 @@ pub struct TransactionOutputInner {
 /// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen(inspectable)]
 pub struct TransactionOutput {
     inner: Arc<Mutex<TransactionOutputInner>>,
@@ -95,6 +96,39 @@ impl TransactionOutput {
 
     #[wasm_bindgen(setter, js_name = scriptPublicKey)]
     pub fn set_script_public_key(&self, v: &ScriptPublicKey) {
+        self.inner().script_public_key = v.clone();
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl TransactionOutput {
+    #[new]
+    pub fn ctor_py(value: u64, script_public_key: ScriptPublicKey) -> TransactionOutput {
+        Self { inner: Arc::new(Mutex::new(TransactionOutputInner { value, script_public_key: script_public_key.clone() })) }
+    }
+
+    #[getter]
+    #[pyo3(name = "value")]
+    pub fn get_value_py(&self) -> u64 {
+        self.inner().value
+    }
+
+    #[setter]
+    #[pyo3(name = "value")]
+    pub fn set_value_py(&self, v: u64) {
+        self.inner().value = v;
+    }
+
+    #[getter]
+    #[pyo3(name = "script_public_key")]
+    pub fn get_script_public_key_py(&self) -> ScriptPublicKey {
+        self.inner().script_public_key.clone()
+    }
+
+    #[setter]
+    #[pyo3(name = "script_public_key")]
+    pub fn set_script_public_key_py(&self, v: ScriptPublicKey) {
         self.inner().script_public_key = v.clone();
     }
 }

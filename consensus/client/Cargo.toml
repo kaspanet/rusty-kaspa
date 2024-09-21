@@ -11,6 +11,11 @@ repository.workspace = true
 [features]
 wasm32-sdk = []
 wasm32-types = []
+py-sdk = [
+    "pyo3",
+    "kaspa-hashes/py-sdk",
+    "serde-pyobject",
+]
 
 [dependencies]
 kaspa-addresses.workspace = true
@@ -26,9 +31,11 @@ cfg-if.workspace = true
 faster-hex.workspace = true
 hex.workspace = true
 js-sys.workspace = true
+pyo3 = { workspace = true, optional = true }
 rand.workspace = true
 secp256k1.workspace = true
 serde_json.workspace = true
+serde-pyobject = { workspace = true, optional = true }
 serde-wasm-bindgen.workspace = true
 serde.workspace = true
 thiserror.workspace = true

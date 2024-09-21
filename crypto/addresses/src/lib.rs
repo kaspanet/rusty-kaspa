@@ -280,8 +280,8 @@ impl Address {
         address.try_into().unwrap_or_else(|err| panic!("Address::constructor() - address error `{}`: {err}", address))
     }
 
-    #[pyo3(name = "validate")]
     #[staticmethod]
+    #[pyo3(name = "validate")]
     pub fn validate_py(address: &str) -> bool {
         Self::try_from(address).is_ok()
     }
@@ -291,17 +291,20 @@ impl Address {
         self.into()
     }
 
+    #[getter]
     #[pyo3(name = "version")]
     pub fn version_to_string_py(&self) -> String {
         self.version.to_string()
     }
 
+    #[getter]
     #[pyo3(name = "prefix")]
     pub fn prefix_to_string_py(&self) -> String {
         self.prefix.to_string()
     }
 
-    #[pyo3(name = "set_prefix")]
+    #[setter]
+    #[pyo3(name = "prefix")]
     pub fn set_prefix_from_str_py(&mut self, prefix: &str) {
         self.prefix = Prefix::try_from(prefix).unwrap_or_else(|err| panic!("Address::prefix() - invalid prefix `{prefix}`: {err}"));
     }

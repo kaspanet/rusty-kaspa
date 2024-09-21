@@ -6,6 +6,8 @@ pub mod convert;
 pub mod error;
 pub mod model;
 pub mod notify;
+#[cfg(feature = "py-sdk")]
+pub mod python;
 pub mod wasm;
 
 pub mod prelude {

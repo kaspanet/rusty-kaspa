@@ -18,7 +18,6 @@ pub struct PrivateKeyGenerator {
     change: ExtendedPrivateKey<SecretKey>,
 }
 
-// PY-NOTE: WASM specific fn implementations
 #[wasm_bindgen]
 impl PrivateKeyGenerator {
     #[wasm_bindgen(constructor)]
@@ -42,7 +41,6 @@ impl PrivateKeyGenerator {
     }
 }
 
-// PY-NOTE: fns exposed to both WASM and Python
 #[cfg_attr(feature = "py-sdk", pymethods)]
 #[wasm_bindgen]
 impl PrivateKeyGenerator {
@@ -59,7 +57,6 @@ impl PrivateKeyGenerator {
     }
 }
 
-// PY-NOTE: Python specific fn implementations
 #[cfg(feature = "py-sdk")]
 #[pymethods]
 impl PrivateKeyGenerator {

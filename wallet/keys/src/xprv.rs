@@ -147,9 +147,9 @@ impl XPrv {
     }
 
     #[pyo3(name = "derive_child")]
-    pub fn derive_child_py(&self, chile_number: u32, hardened: Option<bool>) -> PyResult<XPrv> {
-        let chile_number = ChildNumber::new(chile_number, hardened.unwrap_or(false))?;
-        let inner = self.inner.derive_child(chile_number)?;
+    pub fn derive_child_py(&self, child_number: u32, hardened: Option<bool>) -> PyResult<XPrv> {
+        let child_number = ChildNumber::new(child_number, hardened.unwrap_or(false))?;
+        let inner = self.inner.derive_child(child_number)?;
         Ok(Self { inner })
     }
 
@@ -177,55 +177,49 @@ impl XPrv {
         let public_key = self.inner.public_key();
         Ok(public_key.into())
     }
-}
 
-#[cfg(feature = "py-sdk")]
-#[pymethods]
-impl XPrv {
-    #[new]
-    fn try_new_py(seed: String) -> PyResult<XPrv> {
-        let seed_bytes = Vec::<u8>::from_hex(&seed).map_err(|e| PyErr::new::<PyException, _>(format!("{}", e)))?;
-
-        let inner = ExtendedPrivateKey::<SecretKey>::new(seed_bytes)?;
-        Ok(Self { inner })
+    #[pyo3(name = "to_private_key")]
+    pub fn to_private_key_py(&self) -> PyResult<PrivateKey> {
+        let private_key = self.inner.private_key();
+        Ok(private_key.into())
     }
 
-    #[staticmethod]
-    #[pyo3(name = "from_xprv_str")]
-    pub fn from_xprv_str_py(xprv: String) -> PyResult<XPrv> {
-        Ok(Self { inner: ExtendedPrivateKey::<SecretKey>::from_str(&xprv)? })
-    }
-
-    #[pyo3(name = "derive_child")]
-    pub fn derive_child_py(&self, chile_number: u32, hardened: Option<bool>) -> PyResult<XPrv> {
-        let chile_number = ChildNumber::new(chile_number, hardened.unwrap_or(false))?;
-        let inner = self.inner.derive_child(chile_number)?;
-        Ok(Self { inner })
-    }
-
-    #[pyo3(name = "derive_path")]
-    pub fn derive_path_py(&self, path: String) -> PyResult<XPrv> {
-        let path = DerivationPath::new(path.as_str())?;
-        let inner = self.inner.clone().derive_path((&path).into())?;
-        Ok(Self { inner })
-    }
-
-    #[pyo3(name = "into_string")]
-    pub fn into_string_py(&self, prefix: &str) -> PyResult<String> {
-        let str = self.inner.to_extended_key(prefix.try_into()?).to_string();
-        Ok(str)
-    }
-
-    #[pyo3(name = "to_string")]
-    pub fn to_string_py(&self) -> PyResult<String> {
+    #[getter]
+    #[pyo3(name = "xprv")]
+    pub fn xprv_py(&self) -> PyResult<String> {
         let str = self.inner.to_extended_key("kprv".try_into()?).to_string();
         Ok(str)
     }
 
-    #[pyo3(name = "to_xpub")]
-    pub fn to_xpub_py(&self) -> PyResult<XPub> {
-        let public_key = self.inner.public_key();
-        Ok(public_key.into())
+    #[getter]
+    #[pyo3(name = "private_key")]
+    pub fn private_key_as_hex_string_py(&self) -> String {
+        use kaspa_bip32::PrivateKey;
+        self.inner.private_key().to_bytes().to_vec().to_hex()
+    }
+
+    #[getter]
+    #[pyo3(name = "depth")]
+    pub fn depth_py(&self) -> u8 {
+        self.inner.attrs().depth
+    }
+
+    #[getter]
+    #[pyo3(name = "parent_fingerprint")]
+    pub fn parent_fingerprint_as_hex_string_py(&self) -> String {
+        self.inner.attrs().parent_fingerprint.to_vec().to_hex()
+    }
+
+    #[getter]
+    #[pyo3(name = "child_number")]
+    pub fn child_number_py(&self) -> u32 {
+        self.inner.attrs().child_number.into()
+    }
+
+    #[getter]
+    #[pyo3(name = "chain_code")]
+    pub fn chain_code_as_hex_string_py(&self) -> String {
+        self.inner.attrs().chain_code.to_vec().to_hex()
     }
 }
 

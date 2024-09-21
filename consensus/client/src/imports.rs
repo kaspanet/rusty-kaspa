@@ -6,3 +6,17 @@ pub use serde::{Deserialize, Serialize};
 pub use std::sync::{Arc, Mutex, MutexGuard};
 pub use wasm_bindgen::prelude::*;
 pub use workflow_wasm::prelude::*;
+
+cfg_if::cfg_if! {
+    if #[cfg(feature = "py-sdk")] {
+        pub use kaspa_addresses::Address;
+        pub use kaspa_utils::hex::FromHex;
+        pub use pyo3::{
+            exceptions::PyException,
+            prelude::*,
+            types::{IntoPyDict, PyDict},
+        };
+        pub use serde_pyobject;
+        pub use std::str::FromStr;
+    }
+}

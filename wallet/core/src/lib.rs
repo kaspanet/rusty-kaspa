@@ -114,6 +114,9 @@ pub mod wallet;
 #[cfg(any(feature = "wasm32-sdk", feature = "wasm32-core"))]
 pub mod wasm;
 
+#[cfg(feature = "py-sdk")]
+pub mod python;
+
 /// Returns the version of the Wallet framework.
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()

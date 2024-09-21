@@ -7,6 +7,8 @@ use kaspa_utils::{
     mem_size::MemSizeEstimator,
     serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref,
 };
+#[cfg(feature = "py-sdk")]
+use pyo3::prelude::*;
 use std::{
     array::TryFromSliceError,
     fmt::{Debug, Display, Formatter},
@@ -23,6 +25,7 @@ pub use hashers::*;
 // TODO: Check if we use hash more as an array of u64 or of bytes and change the default accordingly
 /// @category General
 #[derive(Eq, Clone, Copy, Default, PartialOrd, Ord, BorshSerialize, BorshDeserialize, CastFromJs)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen]
 pub struct Hash([u8; HASH_SIZE]);
 
@@ -180,6 +183,20 @@ impl Hash {
 
     #[wasm_bindgen(js_name = toString)]
     pub fn js_to_string(&self) -> String {
+        self.to_string()
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl Hash {
+    #[new]
+    pub fn constructor_py(hex_str: &str) -> Self {
+        Hash::from_str(hex_str).expect("invalid hash value")
+    }
+
+    #[pyo3(name = "to_string")]
+    pub fn py_to_string(&self) -> String {
         self.to_string()
     }
 }

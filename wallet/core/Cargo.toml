@@ -26,6 +26,10 @@ wasm32-sdk = [
     "wasm32-core"
 ]
 default = ["wasm32-sdk"]
+py-sdk = [
+    "pyo3",
+    "serde-pyobject",
+]
 # default = []
 
 [lib]
@@ -78,12 +82,14 @@ kaspa-wrpc-wasm.workspace = true
 md-5.workspace = true
 pad.workspace = true
 pbkdf2.workspace = true
+pyo3 = { workspace = true, optional = true }
 rand.workspace = true
 regex.workspace = true
 ripemd.workspace = true
 secp256k1.workspace = true
 separator.workspace = true
 serde_json.workspace = true
+serde-pyobject = { workspace = true, optional = true }
 serde-wasm-bindgen.workspace = true
 serde.workspace = true
 sha1.workspace = true

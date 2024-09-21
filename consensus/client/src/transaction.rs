@@ -80,6 +80,7 @@ pub struct TransactionInner {
 /// used by transaction inputs.
 /// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen(inspectable)]
 pub struct Transaction {
     inner: Arc<Mutex<TransactionInner>>,
@@ -268,6 +269,157 @@ impl Transaction {
     #[wasm_bindgen(setter = mass)]
     pub fn set_mass(&self, v: u64) {
         self.inner().mass = v;
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl Transaction {
+    #[pyo3(name = "is_coinbase")]
+    pub fn is_coinbase_py(&self) -> bool {
+        self.inner().subnetwork_id == subnets::SUBNETWORK_ID_COINBASE
+    }
+
+    #[pyo3(name = "finalize")]
+    pub fn finalize_py(&self) -> PyResult<TransactionId> {
+        let tx: cctx::Transaction = self.into();
+        self.inner().id = tx.id();
+        Ok(self.inner().id)
+    }
+
+    #[getter]
+    #[pyo3(name = "id")]
+    pub fn id_string_py(&self) -> String {
+        self.inner().id.to_string()
+    }
+
+    #[new]
+    pub fn constructor_py(
+        version: u16,
+        inputs: Vec<TransactionInput>,
+        outputs: Vec<TransactionOutput>,
+        lock_time: u64,
+        subnetwork_id: String,
+        gas: u64,
+        payload: Vec<u8>,
+        mass: u64,
+    ) -> PyResult<Self> {
+        let subnetwork_id = Vec::from_hex(&subnetwork_id)
+            .map_err(|err| PyException::new_err(format!("subnetwork_id decode error: {}", err)))?
+            .as_slice()
+            .try_into()
+            .map_err(|err| PyException::new_err(format!("subnetwork_id conversion error: {}", err)))?;
+
+        Ok(Transaction::new(None, version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass)
+            .map_err(|err| PyException::new_err(format!("{}", err)))?)
+    }
+
+    #[getter]
+    #[pyo3(name = "inputs")]
+    pub fn get_inputs_as_py_list(&self) -> PyResult<Vec<TransactionInput>> {
+        Ok(self.inner.lock().unwrap().inputs.clone())
+    }
+
+    #[setter]
+    #[pyo3(name = "inputs")]
+    pub fn set_inputs_from_py_list(&mut self, v: Vec<TransactionInput>) {
+        self.inner().inputs = v;
+    }
+
+    #[pyo3(name = "addresses")]
+    pub fn addresses_py(&self, network_type: String) -> PyResult<Vec<Address>> {
+        let network_type = NetworkType::from_str(&network_type)?;
+        let mut list = std::collections::HashSet::new();
+        for input in &self.inner.lock().unwrap().inputs {
+            if let Some(utxo) = input.get_utxo() {
+                if let Some(address) = &utxo.utxo.address {
+                    list.insert(address.clone());
+                } else if let Ok(address) =
+                    extract_script_pub_key_address(&utxo.utxo.script_public_key, NetworkType::try_from(network_type)?.into())
+                {
+                    list.insert(address);
+                }
+            }
+        }
+        Ok(list.into_iter().collect())
+    }
+
+    #[getter]
+    #[pyo3(name = "outputs")]
+    pub fn get_outputs_as_py_list(&self) -> PyResult<Vec<TransactionOutput>> {
+        Ok(self.inner.lock().unwrap().outputs.clone())
+    }
+
+    #[setter]
+    #[pyo3(name = "outputs")]
+    pub fn set_outputs_from_py_list(&mut self, v: Vec<TransactionOutput>) {
+        self.inner().outputs = v;
+    }
+
+    #[getter]
+    #[pyo3(name = "version")]
+    pub fn get_version_py(&self) -> u16 {
+        self.inner().version
+    }
+
+    #[setter]
+    #[pyo3(name = "version")]
+    pub fn set_version_py(&mut self, v: u16) {
+        self.inner().version = v;
+    }
+
+    #[getter]
+    #[pyo3(name = "lock_time")]
+    pub fn get_lock_time_py(&self) -> u64 {
+        self.inner().lock_time
+    }
+
+    #[setter]
+    #[pyo3(name = "lock_time")]
+    pub fn set_lock_time_py(&mut self, v: u64) {
+        self.inner().lock_time = v;
+    }
+
+    #[getter]
+    #[pyo3(name = "gas")]
+    pub fn get_gas_py(&self) -> u64 {
+        self.inner().gas
+    }
+
+    #[setter]
+    #[pyo3(name = "gas")]
+    pub fn set_gas_py(&mut self, v: u64) {
+        self.inner().gas = v;
+    }
+
+    #[getter]
+    #[pyo3(name = "subnetwork_id")]
+    pub fn get_subnetwork_id_as_hex_py(&self) -> String {
+        self.inner().subnetwork_id.to_hex()
+    }
+
+    #[setter]
+    #[pyo3(name = "subnetwork_id")]
+    pub fn set_subnetwork_id_from_py_value(&mut self, v: String) {
+        let subnetwork_id = Vec::from_hex(&v)
+            .unwrap_or_else(|err| panic!("subnetwork_id decode error {}", err))
+            .as_slice()
+            .try_into()
+            .unwrap_or_else(|err| panic!("subnetwork_id conversion error {}", err));
+        self.inner().subnetwork_id = subnetwork_id
+    }
+
+    #[getter]
+    #[pyo3(name = "payload")]
+    pub fn get_payload_as_hex_string_py(&self) -> String {
+        self.inner().payload.to_hex()
+    }
+
+    #[setter]
+    #[pyo3(name = "payload")]
+    pub fn set_payload_from_py_value(&mut self, v: String) {
+        let payload = Vec::from_hex(&v).unwrap_or_else(|err| panic!("Hex decode error {}", err));
+        self.inner.lock().unwrap().payload = payload;
     }
 }
 
@@ -503,5 +655,15 @@ impl Transaction {
     #[wasm_bindgen(js_name = "deserializeFromSafeJSON")]
     pub fn deserialize_from_safe_json(json: &str) -> Result<Transaction> {
         string::SerializableTransaction::deserialize_from_json(json)?.try_into()
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl Transaction {
+    #[pyo3(name = "serialize_to_dict")]
+    pub fn serialize_to_dict_py(&self, py: Python) -> PyResult<Py<PyAny>> {
+        let tx = numeric::SerializableTransaction::from_client_transaction(self)?;
+        Ok(serde_pyobject::to_pyobject(py, &tx).unwrap().to_object(py))
     }
 }

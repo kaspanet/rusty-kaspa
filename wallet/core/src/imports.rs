@@ -65,3 +65,13 @@ cfg_if! {
         pub use workflow_wasm::convert::CastFromJs;
     }
 }
+
+cfg_if! {
+    if #[cfg(feature = "py-sdk")] {
+        pub use pyo3::{
+            exceptions::PyException,
+            prelude::*,
+            types::PyDict,
+        };
+    }
+}

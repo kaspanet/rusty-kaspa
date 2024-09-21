@@ -32,7 +32,6 @@ pub struct Keypair {
     xonly_public_key: XOnlyPublicKey,
 }
 
-// PY-NOTE: WASM specific fn implementations
 #[wasm_bindgen]
 impl Keypair {
     fn new(secret_key: secp256k1::SecretKey, public_key: secp256k1::PublicKey, xonly_public_key: XOnlyPublicKey) -> Self {
@@ -99,20 +98,22 @@ impl Keypair {
     }
 }
 
-// PY-NOTE: Python specific fn implementations
 #[cfg(feature = "py-sdk")]
 #[pymethods]
 impl Keypair {
+    #[getter]
     #[pyo3(name = "xonly_public_key")]
     pub fn get_xonly_public_key_py(&self) -> String {
         self.xonly_public_key.to_string()
     }
 
+    #[getter]
     #[pyo3(name = "public_key")]
     pub fn get_public_key_py(&self) -> String {
         PublicKey::from(&self.public_key).to_string()
     }
 
+    #[getter]
     #[pyo3(name = "private_key")]
     pub fn get_private_key_py(&self) -> String {
         PrivateKey::from(&self.secret_key).to_hex()

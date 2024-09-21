@@ -44,8 +44,10 @@ impl Resolver {
 
         let resolver = self.resolver.clone();
         py_async! {py, async move {
-            resolver.get_node(encoding, network_id).await?;
-            Ok(())
+            let node = resolver.get_node(encoding, network_id).await?;
+            Python::with_gil(|py| {
+                Ok(serde_pyobject::to_pyobject(py, &node).unwrap().to_object(py))
+            })
         }}
     }
 
@@ -57,8 +59,8 @@ impl Resolver {
 
         let resolver = self.resolver.clone();
         py_async! {py, async move {
-            resolver.get_node(encoding, network_id).await?;
-            Ok(())
+            let url = resolver.get_url(encoding, network_id).await?;
+            Ok(url)
         }}
     }
 
