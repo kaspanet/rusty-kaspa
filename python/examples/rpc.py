@@ -32,10 +32,10 @@ async def rpc_subscriptions(client):
 
 
 async def rpc_calls(client):
-    get_server_info_response = await client.get_server_info()
+    get_server_info_response = await client.get_server_info_call()
     print(get_server_info_response)
 
-    block_dag_info_response = await client.get_block_dag_info()
+    block_dag_info_response = await client.get_block_dag_info_call()
     print(block_dag_info_response)
 
     tip_hash = block_dag_info_response["tipHashes"][0]
@@ -52,7 +52,7 @@ async def main():
     # client = RpcClient(url=f"ws://{rpc_host}:17210")
     client = RpcClient(resolver=Resolver(), network="testnet", network_suffix=11)
     await client.connect()
-    print(f"Client is connected: {client.is_connected()}")
+    print(f"Client is connected: {client.is_connected}")
 
     await rpc_calls(client)
     await rpc_subscriptions(client)

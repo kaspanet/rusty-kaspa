@@ -5,7 +5,7 @@ use kaspa_core::{
         service::{AsyncService, AsyncServiceFuture},
         tick::{TickReason, TickService},
     },
-    trace,
+    trace, warn,
 };
 use std::{
     sync::Arc,
@@ -61,6 +61,13 @@ impl ConsensusMonitor {
                 if delta.body_counts != 0 { delta.txs_counts as f64 / delta.body_counts as f64 } else{ 0f64 },
                 if delta.body_counts != 0 { delta.mass_counts as f64 / delta.body_counts as f64 } else{ 0f64 },
             );
+
+            if delta.chain_disqualified_counts > 0 {
+                warn!(
+                    "Consensus detected UTXO-invalid blocks which are disqualified from the virtual selected chain (possibly due to inheritance): {} disqualified vs. {} valid chain blocks",
+                    delta.chain_disqualified_counts, delta.chain_block_counts
+                );
+            }
 
             last_snapshot = snapshot;
             last_log_time = now;

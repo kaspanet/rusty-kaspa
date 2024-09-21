@@ -46,6 +46,7 @@ hex.workspace = true
 js-sys.workspace = true
 log.workspace = true
 paste.workspace = true
+rand.workspace = true
 pyo3 = { workspace = true, optional = true }
 serde-wasm-bindgen.workspace = true
 serde-pyobject = { workspace = true, optional = true }
@@ -55,10 +56,11 @@ thiserror.workspace = true
 uuid.workspace = true
 wasm-bindgen.workspace = true
 workflow-core.workspace = true
+workflow-serializer.workspace = true
 workflow-wasm.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
 
-[lints.clippy]
-empty_docs = "allow"
+[lints]
+workspace = true

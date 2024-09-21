@@ -139,7 +139,8 @@ impl TryFrom<&SerializableTransactionInput> for TransactionInput {
         let previous_outpoint = TransactionOutpoint::new(serializable_input.transaction_id, serializable_input.index);
         let inner = TransactionInputInner {
             previous_outpoint,
-            signature_script: serializable_input.signature_script.clone(),
+            // TODO - convert to Option<Vec<u8>> and use hex serialization over Option
+            signature_script: (!serializable_input.signature_script.is_empty()).then_some(serializable_input.signature_script.clone()),
             sequence: serializable_input.sequence.parse()?,
             sig_op_count: serializable_input.sig_op_count,
             utxo: Some(utxo),
@@ -158,7 +159,8 @@ impl TryFrom<&TransactionInput> for SerializableTransactionInput {
         Ok(Self {
             transaction_id: inner.previous_outpoint.transaction_id(),
             index: inner.previous_outpoint.index(),
-            signature_script: inner.signature_script.clone(),
+            // TODO - convert to Option<Vec<u8>> and use hex serialization over Option
+            signature_script: inner.signature_script.clone().unwrap_or_default(),
             sequence: inner.sequence.to_string(),
             sig_op_count: inner.sig_op_count,
             utxo,
@@ -217,6 +219,8 @@ pub struct SerializableTransaction {
     pub subnetwork_id: SubnetworkId,
     pub lock_time: String,
     pub gas: String,
+    #[serde(default)]
+    pub mass: String,
     #[serde(with = "hex::serde")]
     pub payload: Vec<u8>,
 }
@@ -258,6 +262,7 @@ impl SerializableTransaction {
             lock_time: transaction.lock_time.to_string(),
             subnetwork_id: transaction.subnetwork_id.clone(),
             gas: transaction.gas.to_string(),
+            mass: transaction.mass().to_string(),
             payload: transaction.payload.clone(),
         })
     }
@@ -275,6 +280,7 @@ impl SerializableTransaction {
             lock_time: inner.lock_time.to_string(),
             subnetwork_id: inner.subnetwork_id.clone(),
             gas: inner.gas.to_string(),
+            mass: inner.mass.to_string(),
             payload: inner.payload.clone(),
             id: inner.id,
         })
@@ -303,6 +309,7 @@ impl SerializableTransaction {
             lock_time: transaction.lock_time.to_string(),
             subnetwork_id: transaction.subnetwork_id.clone(),
             gas: transaction.gas.to_string(),
+            mass: transaction.mass().to_string(),
             payload: transaction.payload.clone(),
         })
     }
@@ -328,7 +335,8 @@ impl TryFrom<SerializableTransaction> for cctx::SignableTransaction {
             signable.subnetwork_id,
             signable.gas.parse()?,
             signable.payload,
-        );
+        )
+        .with_mass(signable.mass.parse().unwrap_or_default());
 
         Ok(Self::with_entries(tx, entries))
     }
@@ -341,6 +349,16 @@ impl TryFrom<SerializableTransaction> for crate::Transaction {
         let inputs: Vec<TransactionInput> = tx.inputs.iter().map(TryInto::try_into).collect::<Result<Vec<_>>>()?;
         let outputs: Vec<TransactionOutput> = tx.outputs.iter().map(TryInto::try_into).collect::<Result<Vec<_>>>()?;
 
-        Transaction::new(Some(id), tx.version, inputs, outputs, tx.lock_time.parse()?, tx.subnetwork_id, tx.gas.parse()?, tx.payload)
+        Transaction::new(
+            Some(id),
+            tx.version,
+            inputs,
+            outputs,
+            tx.lock_time.parse()?,
+            tx.subnetwork_id,
+            tx.gas.parse()?,
+            tx.payload,
+            tx.mass.parse().unwrap_or_default(),
+        )
     }
 }

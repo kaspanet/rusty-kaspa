@@ -1,3 +1,6 @@
+use kaspa_bip32::{ChainCode, KeyFingerprint, Prefix};
+use std::{fmt, str::FromStr};
+
 use crate::imports::*;
 
 ///
@@ -13,7 +16,7 @@ use crate::imports::*;
 ///
 #[derive(Clone, CastFromJs)]
 #[cfg_attr(feature = "py-sdk", pyclass)]
-#[wasm_bindgen]
+#[wasm_bindgen(inspectable)]
 pub struct XPub {
     inner: ExtendedPublicKey<secp256k1::PublicKey>,
 }
@@ -33,9 +36,9 @@ impl XPub {
     }
 
     #[wasm_bindgen(js_name=deriveChild)]
-    pub fn derive_child(&self, chile_number: u32, hardened: Option<bool>) -> Result<XPub> {
-        let chile_number = ChildNumber::new(chile_number, hardened.unwrap_or(false))?;
-        let inner = self.inner.derive_child(chile_number)?;
+    pub fn derive_child(&self, child_number: u32, hardened: Option<bool>) -> Result<XPub> {
+        let child_number = ChildNumber::new(child_number, hardened.unwrap_or(false))?;
+        let inner = self.inner.derive_child(child_number)?;
         Ok(Self { inner })
     }
 
@@ -54,6 +57,78 @@ impl XPub {
 
     #[wasm_bindgen(js_name = toPublicKey)]
     pub fn public_key(&self) -> PublicKey {
+        self.inner.public_key().into()
+    }
+
+    // ~~~~ Getters ~~~~
+
+    #[wasm_bindgen(getter)]
+    pub fn xpub(&self) -> Result<String> {
+        let str = self.inner.to_extended_key("kpub".try_into()?).to_string();
+        Ok(str)
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn depth(&self) -> u8 {
+        self.inner.attrs().depth
+    }
+
+    #[wasm_bindgen(getter, js_name = parentFingerprint)]
+    pub fn parent_fingerprint_as_hex_string(&self) -> String {
+        self.inner.attrs().parent_fingerprint.to_vec().to_hex()
+    }
+
+    #[wasm_bindgen(getter, js_name = childNumber)]
+    pub fn child_number(&self) -> u32 {
+        self.inner.attrs().child_number.into()
+    }
+
+    #[wasm_bindgen(getter, js_name = chainCode)]
+    pub fn chain_code_as_hex_string(&self) -> String {
+        self.inner.attrs().chain_code.to_vec().to_hex()
+    }
+}
+
+impl XPub {
+    pub fn parent_fingerprint(&self) -> KeyFingerprint {
+        self.inner.attrs().parent_fingerprint
+    }
+
+    pub fn chain_code(&self) -> ChainCode {
+        self.inner.attrs().chain_code
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl XPub {
+    #[new]
+    pub fn try_new_py(xpub: String) -> PyResult<XPub> {
+        let inner = ExtendedPublicKey::<secp256k1::PublicKey>::from_str(&xpub)?;
+        Ok(Self { inner })
+    }
+
+    #[pyo3(name = "derive_child")]
+    pub fn derive_child_py(&self, chile_number: u32, hardened: Option<bool>) -> PyResult<XPub> {
+        let chile_number = ChildNumber::new(chile_number, hardened.unwrap_or(false))?;
+        let inner = self.inner.derive_child(chile_number)?;
+        Ok(Self { inner })
+    }
+
+    #[pyo3(name = "derive_path")]
+    pub fn derive_path_py(&self, path: String) -> PyResult<XPub> {
+        let path = DerivationPath::new(path.as_str())?;
+        let inner = self.inner.clone().derive_path((&path).into())?;
+        Ok(Self { inner })
+    }
+
+    #[pyo3(name = "to_str")]
+    pub fn to_str_py(&self, prefix: &str) -> Result<String> {
+        Ok(self.inner.to_string(Some(prefix.try_into()?)))
+    }
+
+    #[pyo3(name = "public_key")]
+    pub fn public_key_py(&self) -> PublicKey {
         self.inner.public_key().into()
     }
 }
@@ -106,13 +181,39 @@ extern "C" {
 
 impl TryCastFromJs for XPub {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             if let Some(xpub) = value.as_ref().as_string() {
                 Ok(XPub::try_new(xpub.as_str())?)
             } else {
                 Err(Error::InvalidXPub)
             }
         })
+    }
+}
+
+pub struct NetworkTaggedXpub {
+    pub xpub: ExtendedPublicKey<secp256k1::PublicKey>,
+    pub network_id: NetworkId,
+}
+// impl NetworkTaggedXpub {
+
+// }
+
+impl fmt::Display for NetworkTaggedXpub {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let obj: XPub = self.xpub.clone().into();
+        write!(f, "{}", obj.inner.to_string(Some(Prefix::from(self.network_id))))
+    }
+}
+
+type TaggedXpub = (ExtendedPublicKey<secp256k1::PublicKey>, NetworkId);
+
+impl From<TaggedXpub> for NetworkTaggedXpub {
+    fn from(value: TaggedXpub) -> Self {
+        Self { xpub: value.0, network_id: value.1 }
     }
 }

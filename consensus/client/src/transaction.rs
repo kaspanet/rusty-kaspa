@@ -1,11 +1,11 @@
 #![allow(non_snake_case)]
 
 use crate::imports::*;
-use crate::input::TransactionInput;
+use crate::input::{TransactionInput, TransactionInputArrayAsArgT, TransactionInputArrayAsResultT};
 use crate::outpoint::TransactionOutpoint;
-use crate::output::TransactionOutput;
+use crate::output::{TransactionOutput, TransactionOutputArrayAsArgT, TransactionOutputArrayAsResultT};
 use crate::result::Result;
-use crate::serializable::{numeric, string};
+use crate::serializable::{numeric, string, SerializableTransactionT};
 use crate::utxo::{UtxoEntryId, UtxoEntryReference};
 use ahash::AHashMap;
 use kaspa_consensus_core::network::NetworkType;
@@ -30,6 +30,8 @@ export interface ITransaction {
     subnetworkId: HexString;
     gas: bigint;
     payload: HexString;
+    /** The mass of the transaction (the mass is undefined or zero unless explicitly set or obtained from the node) */
+    mass?: bigint;
 
     /** Optional verbose data provided by RPC */
     verboseData?: ITransactionVerboseData;
@@ -43,7 +45,7 @@ export interface ITransaction {
 export interface ITransactionVerboseData {
     transactionId : HexString;
     hash : HexString;
-    mass : bigint;
+    computeMass : bigint;
     blockHash : HexString;
     blockTime : bigint;
 }
@@ -51,8 +53,8 @@ export interface ITransactionVerboseData {
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(typescript_type = "ITransaction")]
-    pub type ITransaction;
+    #[wasm_bindgen(typescript_type = "ITransaction | Transaction")]
+    pub type TransactionT;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +67,7 @@ pub struct TransactionInner {
     pub subnetwork_id: SubnetworkId,
     pub gas: u64,
     pub payload: Vec<u8>,
+    pub mass: u64,
 
     // A field that is used to cache the transaction ID.
     // Always use the corresponding self.id() instead of accessing this field directly
@@ -92,6 +95,7 @@ impl Transaction {
         subnetwork_id: SubnetworkId,
         gas: u64,
         payload: Vec<u8>,
+        mass: u64,
     ) -> Result<Self> {
         let finalize = id.is_none();
         let tx = Self {
@@ -104,6 +108,7 @@ impl Transaction {
                 subnetwork_id,
                 gas,
                 payload,
+                mass,
             })),
         };
         if finalize {
@@ -149,14 +154,14 @@ impl Transaction {
     }
 
     #[wasm_bindgen(constructor)]
-    pub fn constructor(js_value: &ITransaction) -> std::result::Result<Transaction, JsError> {
+    pub fn constructor(js_value: &TransactionT) -> std::result::Result<Transaction, JsError> {
         Ok(js_value.try_into_owned()?)
     }
 
     #[wasm_bindgen(getter = inputs)]
-    pub fn get_inputs_as_js_array(&self) -> Array {
+    pub fn get_inputs_as_js_array(&self) -> TransactionInputArrayAsResultT {
         let inputs = self.inner.lock().unwrap().inputs.clone().into_iter().map(JsValue::from);
-        Array::from_iter(inputs)
+        Array::from_iter(inputs).unchecked_into()
     }
 
     /// Returns a list of unique addresses used by transaction inputs.
@@ -179,7 +184,7 @@ impl Transaction {
     }
 
     #[wasm_bindgen(setter = inputs)]
-    pub fn set_inputs_from_js_array(&mut self, js_value: &JsValue) {
+    pub fn set_inputs_from_js_array(&mut self, js_value: &TransactionInputArrayAsArgT) {
         let inputs = Array::from(js_value)
             .iter()
             .map(|js_value| {
@@ -190,16 +195,16 @@ impl Transaction {
     }
 
     #[wasm_bindgen(getter = outputs)]
-    pub fn get_outputs_as_js_array(&self) -> Array {
+    pub fn get_outputs_as_js_array(&self) -> TransactionOutputArrayAsResultT {
         let outputs = self.inner.lock().unwrap().outputs.clone().into_iter().map(JsValue::from);
-        Array::from_iter(outputs)
+        Array::from_iter(outputs).unchecked_into()
     }
 
     #[wasm_bindgen(setter = outputs)]
-    pub fn set_outputs_from_js_array(&mut self, js_value: &JsValue) {
+    pub fn set_outputs_from_js_array(&mut self, js_value: &TransactionOutputArrayAsArgT) {
         let outputs = Array::from(js_value)
             .iter()
-            .map(|js_value| TransactionOutput::try_from(&js_value).unwrap_or_else(|err| panic!("invalid transaction output: {err}")))
+            .map(|js_value| TryCastFromJs::try_owned_from(&js_value).unwrap_or_else(|err| panic!("invalid transaction output: {err}")))
             .collect::<Vec<_>>();
         self.inner().outputs = outputs;
     }
@@ -214,12 +219,12 @@ impl Transaction {
         self.inner().version = v;
     }
 
-    #[wasm_bindgen(getter, js_name = lock_time)]
+    #[wasm_bindgen(getter, js_name = lockTime)]
     pub fn get_lock_time(&self) -> u64 {
         self.inner().lock_time
     }
 
-    #[wasm_bindgen(setter, js_name = lock_time)]
+    #[wasm_bindgen(setter, js_name = lockTime)]
     pub fn set_lock_time(&self, v: u64) {
         self.inner().lock_time = v;
     }
@@ -254,21 +259,36 @@ impl Transaction {
     pub fn set_payload_from_js_value(&mut self, js_value: JsValue) {
         self.inner.lock().unwrap().payload = js_value.try_as_vec_u8().unwrap_or_else(|err| panic!("payload value error: {err}"));
     }
+
+    #[wasm_bindgen(getter = mass)]
+    pub fn get_mass(&self) -> u64 {
+        self.inner().mass
+    }
+
+    #[wasm_bindgen(setter = mass)]
+    pub fn set_mass(&self, v: u64) {
+        self.inner().mass = v;
+    }
 }
 
 impl TryCastFromJs for Transaction {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> std::result::Result<Cast<Self>, Self::Error> {
-        Self::resolve_cast(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> std::result::Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve_cast(value, || {
             if let Some(object) = Object::try_from(value.as_ref()) {
                 if let Some(tx) = object.try_get_value("tx")? {
-                    Transaction::try_cast_from(&tx)
+                    Transaction::try_captured_cast_from(tx)
                 } else {
-                    let id = object.try_get_cast::<TransactionId>("id")?.map(|id| id.into_owned());
+                    let id = object.try_cast_into::<TransactionId>("id")?;
                     let version = object.get_u16("version")?;
                     let lock_time = object.get_u64("lockTime")?;
                     let gas = object.get_u64("gas")?;
                     let payload = object.get_vec_u8("payload")?;
+                    // mass field is optional
+                    let mass = object.get_u64("mass").unwrap_or_default();
                     let subnetwork_id = object.get_vec_u8("subnetworkId")?;
                     if subnetwork_id.len() != subnets::SUBNETWORK_ID_SIZE {
                         return Err(Error::Custom("subnetworkId must be 20 bytes long".into()));
@@ -285,9 +305,9 @@ impl TryCastFromJs for Transaction {
                     let outputs: Vec<TransactionOutput> = object
                         .get_vec("outputs")?
                         .iter()
-                        .map(|jsv| jsv.try_into())
+                        .map(TryCastFromJs::try_owned_from)
                         .collect::<std::result::Result<Vec<TransactionOutput>, Error>>()?;
-                    Transaction::new(id, version, inputs, outputs, lock_time, subnetwork_id, gas, payload).map(Into::into)
+                    Transaction::new(id, version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass).map(Into::into)
                 }
             } else {
                 Err("Transaction must be an object".into())
@@ -300,6 +320,7 @@ impl TryCastFromJs for Transaction {
 impl From<cctx::Transaction> for Transaction {
     fn from(tx: cctx::Transaction) -> Self {
         let id = tx.id();
+        let mass = tx.mass();
         let inputs: Vec<TransactionInput> = tx.inputs.into_iter().map(|input| input.into()).collect::<Vec<TransactionInput>>();
         let outputs: Vec<TransactionOutput> = tx.outputs.into_iter().map(|output| output.into()).collect::<Vec<TransactionOutput>>();
         Self::new_with_inner(TransactionInner {
@@ -309,6 +330,7 @@ impl From<cctx::Transaction> for Transaction {
             lock_time: tx.lock_time,
             gas: tx.gas,
             payload: tx.payload,
+            mass,
             subnetwork_id: tx.subnetwork_id,
             id,
         })
@@ -331,6 +353,7 @@ impl From<&Transaction> for cctx::Transaction {
             inner.gas,
             inner.payload.clone(),
         )
+        .with_mass(inner.mass)
     }
 }
 
@@ -342,7 +365,13 @@ impl Transaction {
             .map(|input| {
                 let previous_outpoint: TransactionOutpoint = input.previous_outpoint.into();
                 let utxo = utxos.get(previous_outpoint.id()).cloned();
-                TransactionInput::new(previous_outpoint, input.signature_script.clone(), input.sequence, input.sig_op_count, utxo)
+                TransactionInput::new(
+                    previous_outpoint,
+                    Some(input.signature_script.clone()),
+                    input.sequence,
+                    input.sig_op_count,
+                    utxo,
+                )
             })
             .collect::<Vec<TransactionInput>>();
         let outputs: Vec<TransactionOutput> = tx.outputs.iter().map(|output| output.into()).collect::<Vec<TransactionOutput>>();
@@ -355,22 +384,23 @@ impl Transaction {
             lock_time: tx.lock_time,
             gas: tx.gas,
             payload: tx.payload.clone(),
+            mass: tx.mass(),
             subnetwork_id: tx.subnetwork_id.clone(),
         })
     }
 
-    pub fn tx_and_utxos(&self) -> (cctx::Transaction, Vec<UtxoEntry>) {
-        let mut utxos = vec![];
+    pub fn tx_and_utxos(&self) -> Result<(cctx::Transaction, Vec<UtxoEntry>)> {
+        let mut inputs = vec![];
         let inner = self.inner();
-        let inputs: Vec<cctx::TransactionInput> = inner
+        let utxos: Vec<cctx::UtxoEntry> = inner
             .inputs
             .clone()
             .into_iter()
             .map(|input| {
-                utxos.push((&input.get_utxo().unwrap().entry()).into());
-                input.as_ref().into()
+                inputs.push(input.as_ref().into());
+                Ok(input.get_utxo().ok_or(Error::MissingUtxoEntry)?.entry().as_ref().into())
             })
-            .collect::<Vec<cctx::TransactionInput>>();
+            .collect::<Result<Vec<_>>>()?;
         let outputs: Vec<cctx::TransactionOutput> =
             inner.outputs.clone().into_iter().map(|output| output.as_ref().into()).collect::<Vec<cctx::TransactionOutput>>();
         let tx = cctx::Transaction::new(
@@ -381,9 +411,40 @@ impl Transaction {
             inner.subnetwork_id.clone(),
             inner.gas,
             inner.payload.clone(),
-        );
+        )
+        .with_mass(inner.mass);
 
-        (tx, utxos)
+        Ok((tx, utxos))
+    }
+
+    pub fn utxo_entry_references(&self) -> Result<Vec<UtxoEntryReference>> {
+        let inner = self.inner();
+        let utxo_entry_references = inner
+            .inputs
+            .clone()
+            .into_iter()
+            .map(|input| input.get_utxo().ok_or(Error::MissingUtxoEntry))
+            .collect::<Result<Vec<UtxoEntryReference>>>()?;
+        Ok(utxo_entry_references)
+    }
+
+    pub fn outputs(&self) -> Vec<cctx::TransactionOutput> {
+        let inner = self.inner();
+        let outputs = inner.outputs.iter().map(|output| output.into()).collect::<Vec<cctx::TransactionOutput>>();
+        outputs
+    }
+
+    pub fn inputs(&self) -> Vec<cctx::TransactionInput> {
+        let inner = self.inner();
+        let inputs = inner.inputs.iter().map(Into::into).collect::<Vec<cctx::TransactionInput>>();
+        inputs
+    }
+
+    pub fn inputs_outputs(&self) -> (Vec<cctx::TransactionInput>, Vec<cctx::TransactionOutput>) {
+        let inner = self.inner();
+        let inputs = inner.inputs.iter().map(Into::into).collect::<Vec<cctx::TransactionInput>>();
+        let outputs = inner.outputs.iter().map(Into::into).collect::<Vec<cctx::TransactionOutput>>();
+        (inputs, outputs)
     }
 
     pub fn set_signature_script(&self, input_index: usize, signature_script: Vec<u8>) -> Result<()> {
@@ -393,6 +454,14 @@ impl Transaction {
         self.inner().inputs[input_index].set_signature_script(signature_script);
         Ok(())
     }
+
+    pub fn payload(&self) -> Vec<u8> {
+        self.inner().payload.clone()
+    }
+
+    pub fn payload_len(&self) -> usize {
+        self.inner().payload.len()
+    }
 }
 
 #[wasm_bindgen]
@@ -401,7 +470,7 @@ impl Transaction {
     /// The schema of the JavaScript object is defined by {@link ISerializableTransaction}.
     /// @see {@link ISerializableTransaction}
     #[wasm_bindgen(js_name = "serializeToObject")]
-    pub fn serialize_to_object(&self) -> Result<ITransaction> {
+    pub fn serialize_to_object(&self) -> Result<SerializableTransactionT> {
         Ok(numeric::SerializableTransaction::from_client_transaction(self)?.serialize_to_object()?.into())
     }
 

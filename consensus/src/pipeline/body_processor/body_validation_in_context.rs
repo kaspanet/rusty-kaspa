@@ -14,14 +14,7 @@ impl BlockBodyProcessor {
     pub fn validate_body_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
         self.check_parent_bodies_exist(block)?;
         self.check_coinbase_blue_score_and_subsidy(block)?;
-        self.check_block_transactions_in_context(block)?;
-        self.check_block_is_not_pruned(block)
-    }
-
-    fn check_block_is_not_pruned(self: &Arc<Self>, _block: &Block) -> BlockProcessResult<()> {
-        // TODO: In kaspad code it checks that the block is not in the past of the current tips.
-        // We should decide what's the best indication that a block was pruned.
-        Ok(())
+        self.check_block_transactions_in_context(block)
     }
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
@@ -36,12 +29,6 @@ impl BlockBodyProcessor {
     }
 
     fn check_parent_bodies_exist(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        // TODO: Skip this check for blocks in PP anticone that comes as part of the pruning proof.
-
-        if block.header.direct_parents().len() == 1 && block.header.direct_parents()[0] == self.genesis.hash {
-            return Ok(());
-        }
-
         let statuses_read_guard = self.statuses_store.read();
         let missing: Vec<Hash> = block
             .header
@@ -50,7 +37,7 @@ impl BlockBodyProcessor {
             .copied()
             .filter(|parent| {
                 let status_option = statuses_read_guard.get(*parent).unwrap_option();
-                status_option.is_none_or(|s| !s.has_block_body())
+                status_option.is_none_or_ex(|s| !s.has_block_body())
             })
             .collect();
         if !missing.is_empty() {
@@ -94,12 +81,16 @@ mod tests {
     };
     use kaspa_consensus_core::{
         api::ConsensusApi,
-        merkle::calc_hash_merkle_root,
+        merkle::calc_hash_merkle_root as calc_hash_merkle_root_with_options,
         subnets::SUBNETWORK_ID_NATIVE,
         tx::{Transaction, TransactionInput, TransactionOutpoint},
     };
     use kaspa_core::assert_match;
     use kaspa_hashes::Hash;
+
+    fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>) -> Hash {
+        calc_hash_merkle_root_with_options(txs, false)
+    }
 
     #[tokio::test]
     async fn validate_body_in_context_test() {

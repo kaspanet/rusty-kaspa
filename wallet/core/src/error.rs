@@ -13,6 +13,7 @@ use std::sync::PoisonError;
 use thiserror::Error;
 use wasm_bindgen::JsValue;
 use workflow_core::abortable::Aborted;
+use workflow_core::channel::{RecvError, SendError, TrySendError};
 use workflow_core::sendable::*;
 use workflow_rpc::client::error::Error as RpcError;
 use workflow_wasm::jserror::*;
@@ -186,7 +187,7 @@ pub enum Error {
     #[error("{0}")]
     TryFromEnum(#[from] workflow_core::enums::TryFromError),
 
-    #[error("Account factory found for type: {0}")]
+    #[error("Account factory not found for type: {0}")]
     AccountFactoryNotFound(AccountKind),
 
     #[error("Account not found: {0}")]
@@ -230,6 +231,12 @@ pub enum Error {
 
     #[error("Not allowed on a resident account")]
     ResidentAccount,
+
+    #[error("Not allowed on an bip32-watch account")]
+    Bip32WatchAccount,
+
+    #[error("At least one xpub is required for a bip32-watch account")]
+    Bip32WatchXpubRequired,
 
     #[error("This feature is not supported by this account type")]
     AccountKindFeature,
@@ -326,6 +333,14 @@ pub enum Error {
 
     #[error(transparent)]
     Metrics(#[from] kaspa_metrics_core::error::Error),
+
+    #[error("Connected node is not synced")]
+    NotSynced,
+    #[error(transparent)]
+    Pskt(#[from] kaspa_wallet_pskt::error::Error),
+
+    #[error("Error generating pending transaction from PSKT: {0}")]
+    PendingTransactionFromPSKTError(String),
 }
 
 impl From<Aborted> for Error {
@@ -409,8 +424,20 @@ impl<T> From<DowncastError<T>> for Error {
     }
 }
 
-impl<T> From<workflow_core::channel::SendError<T>> for Error {
-    fn from(e: workflow_core::channel::SendError<T>) -> Self {
+impl<T> From<SendError<T>> for Error {
+    fn from(e: SendError<T>) -> Self {
+        Error::Custom(e.to_string())
+    }
+}
+
+impl From<RecvError> for Error {
+    fn from(e: RecvError) -> Self {
+        Error::Custom(e.to_string())
+    }
+}
+
+impl<T> From<TrySendError<T>> for Error {
+    fn from(e: TrySendError<T>) -> Self {
         Error::Custom(e.to_string())
     }
 }

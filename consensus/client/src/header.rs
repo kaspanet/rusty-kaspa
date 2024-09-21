@@ -32,12 +32,35 @@ export interface IHeader {
     blueScore: bigint;
     pruningPoint: HexString;
 }
+
+/**
+ * Interface defining the structure of a raw block header.
+ * 
+ * This interface is explicitly used by GetBlockTemplate and SubmitBlock RPCs
+ * and unlike `IHeader`, does not include a hash.
+ * 
+ * @category Consensus
+ */
+export interface IRawHeader {
+    version: number;
+    parentsByLevel: Array<Array<HexString>>;
+    hashMerkleRoot: HexString;
+    acceptedIdMerkleRoot: HexString;
+    utxoCommitment: HexString;
+    timestamp: bigint;
+    bits: number;
+    nonce: bigint;
+    daaScore: bigint;
+    blueWork: bigint | HexString;
+    blueScore: bigint;
+    pruningPoint: HexString;
+}
 "#;
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(typescript_type = "IHeader | Header")]
-    pub type IHeader;
+    #[wasm_bindgen(typescript_type = "Header | IHeader | IRawHeader")]
+    pub type HeaderT;
 }
 
 /// @category Consensus
@@ -64,7 +87,7 @@ impl Header {
 #[wasm_bindgen]
 impl Header {
     #[wasm_bindgen(constructor)]
-    pub fn constructor(js_value: IHeader) -> std::result::Result<Header, JsError> {
+    pub fn constructor(js_value: HeaderT) -> std::result::Result<Header, JsError> {
         Ok(js_value.try_into_owned()?)
     }
 
@@ -232,8 +255,11 @@ impl Header {
 
 impl TryCastFromJs for Header {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             if let Some(object) = Object::try_from(value.as_ref()) {
                 let parents_by_level = object
                     .get_vec("parentsByLevel")?

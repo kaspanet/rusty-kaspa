@@ -17,9 +17,11 @@
 //! ```
 //!
 
-use kaspa_consensus_core::network::NetworkType;
-
 use crate::imports::*;
+
+use kaspa_consensus_core::network::NetworkType;
+use ripemd::{Digest, Ripemd160};
+use sha2::Sha256;
 
 /// Data structure that envelopes a PublicKey.
 /// Only supports Schnorr-based addresses.
@@ -76,6 +78,60 @@ impl PublicKey {
     pub fn to_x_only_public_key(&self) -> XOnlyPublicKey {
         self.xonly_public_key.into()
     }
+
+    /// Compute a 4-byte key fingerprint for this public key as a hex string.
+    /// Default implementation uses `RIPEMD160(SHA256(public_key))`.
+    pub fn fingerprint(&self) -> Option<HexString> {
+        if let Some(public_key) = self.public_key.as_ref() {
+            let digest = Ripemd160::digest(Sha256::digest(public_key.serialize().as_slice()));
+            Some(digest[..4].as_ref().to_hex().into())
+        } else {
+            None
+        }
+    }
+}
+
+// PY-NOTE: Python specific fn implementations
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl PublicKey {
+    #[new]
+    pub fn try_new_py(key: &str) -> Result<PublicKey> {
+        match secp256k1::PublicKey::from_str(key) {
+            Ok(public_key) => Ok((&public_key).into()),
+            Err(_e) => Ok(Self { xonly_public_key: secp256k1::XOnlyPublicKey::from_str(key)?, public_key: None }),
+        }
+    }
+
+    #[pyo3(name = "to_string")]
+    pub fn to_string_impl_py(&self) -> String {
+        self.public_key.as_ref().map(|pk| pk.to_string()).unwrap_or_else(|| self.xonly_public_key.to_string())
+    }
+
+    #[pyo3(name = "to_address")]
+    pub fn to_address_py(&self, network: &str) -> Result<Address> {
+        self.to_address(NetworkType::from_str(network)?)
+    }
+
+    #[pyo3(name = "to_address_ecdsa")]
+    pub fn to_address_ecdsa_py(&self, network: &str) -> Result<Address> {
+        self.to_address_ecdsa(NetworkType::from_str(network)?)
+    }
+
+    #[pyo3(name = "to_x_only_public_key")]
+    pub fn to_x_only_public_key_py(&self) -> XOnlyPublicKey {
+        self.xonly_public_key.into()
+    }
+
+    #[pyo3(name = "fingerprint")]
+    pub fn fingerprint_py(&self) -> Option<String> {
+        if let Some(public_key) = self.public_key.as_ref() {
+            let digest = Ripemd160::digest(Sha256::digest(public_key.serialize().as_slice()));
+            Some(digest[..4].as_ref().to_hex().into())
+        } else {
+            None
+        }
+    }
 }
 
 // PY-NOTE: Python specific fn implementations
@@ -116,9 +172,13 @@ impl PublicKey {
 
     #[inline]
     pub fn to_address_ecdsa(&self, network_type: NetworkType) -> Result<Address> {
-        let payload = &self.xonly_public_key.serialize();
-        let address = Address::new(network_type.into(), AddressVersion::PubKeyECDSA, payload);
-        Ok(address)
+        if let Some(public_key) = self.public_key.as_ref() {
+            let payload = &public_key.serialize();
+            let address = Address::new(network_type.into(), AddressVersion::PubKeyECDSA, payload);
+            Ok(address)
+        } else {
+            Err(Error::InvalidXOnlyPublicKeyForECDSA)
+        }
     }
 }
 
@@ -173,8 +233,11 @@ extern "C" {
 
 impl TryCastFromJs for PublicKey {
     type Error = Error;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             let value = value.as_ref();
             if let Some(hex_str) = value.as_string() {
                 Ok(PublicKey::try_new(hex_str.as_str())?)
@@ -185,13 +248,13 @@ impl TryCastFromJs for PublicKey {
     }
 }
 
-impl TryFrom<PublicKeyArrayT> for Vec<secp256k1::PublicKey> {
+impl TryFrom<&PublicKeyArrayT> for Vec<secp256k1::PublicKey> {
     type Error = Error;
-    fn try_from(value: PublicKeyArrayT) -> Result<Self> {
+    fn try_from(value: &PublicKeyArrayT) -> Result<Self> {
         if value.is_array() {
-            let array = Array::from(&value);
-            let pubkeys = array.iter().map(PublicKey::try_cast_from).collect::<Result<Vec<_>>>()?;
-            Ok(pubkeys.iter().map(|pk| pk.as_ref().try_into()).collect::<Result<Vec<_>>>()?)
+            let array = Array::from(value);
+            let pubkeys = array.iter().map(PublicKey::try_owned_from).collect::<Result<Vec<_>>>()?;
+            Ok(pubkeys.iter().map(|pk| pk.try_into()).collect::<Result<Vec<_>>>()?)
         } else {
             Err(Error::InvalidPublicKeyArray)
         }
