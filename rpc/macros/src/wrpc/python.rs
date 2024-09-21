@@ -83,6 +83,7 @@ impl ToTokens for RpcHandlers {
 
                         let py_fut = pyo3_asyncio_0_21::tokio::future_into_py(py, async move {
                             let response : #response_type = client.#fn_call(None, request).await?;
+
                             Python::with_gil(|py| {
                                 Ok(serde_pyobject::to_pyobject(py, &response).unwrap().to_object(py))
                             })
@@ -104,6 +105,7 @@ impl ToTokens for RpcHandlers {
 
 pub fn build_wrpc_python_interface(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let rpc_table = parse_macro_input!(input as RpcHandlers);
+
     let ts = rpc_table.to_token_stream();
     // println!("MACRO: {}", ts.to_string());
     ts.into()

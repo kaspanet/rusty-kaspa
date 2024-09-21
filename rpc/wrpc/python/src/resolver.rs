@@ -34,10 +34,10 @@ impl Resolver {
 impl Resolver {
     fn urls(&self) -> Vec<String> {
         self.resolver.urls()
-            .unwrap_or_default() // Handle the Option by providing an empty Vec if it's None
-            .into_iter() // Convert the Vec<Arc<String>> into an iterator
-            .map(|url| (*url).clone()) // Dereference the Arc<String> and clone the String
-            .collect::<Vec<_>>() // Collect into a Vec<String>
+            .unwrap_or_default()
+            .into_iter()
+            .map(|url| (*url).clone())
+            .collect::<Vec<_>>()
     }
 
     fn get_node(&self, py: Python, encoding: String, network: String, network_suffix: Option<u32>) -> PyResult<Py<PyAny>> {

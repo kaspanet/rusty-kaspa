@@ -179,6 +179,56 @@ impl XPrv {
     }
 }
 
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl XPrv {
+    #[new]
+    fn try_new_py(seed: String) -> PyResult<XPrv> {
+        let seed_bytes = Vec::<u8>::from_hex(&seed).map_err(|e| PyErr::new::<PyException, _>(format!("{}", e)))?;
+
+        let inner = ExtendedPrivateKey::<SecretKey>::new(seed_bytes)?;
+        Ok(Self { inner })
+    }
+
+    #[staticmethod]
+    #[pyo3(name = "from_xprv_str")]
+    pub fn from_xprv_str_py(xprv: String) -> PyResult<XPrv> {
+        Ok(Self { inner: ExtendedPrivateKey::<SecretKey>::from_str(&xprv)? })
+    }
+
+    #[pyo3(name = "derive_child")]
+    pub fn derive_child_py(&self, chile_number: u32, hardened: Option<bool>) -> PyResult<XPrv> {
+        let chile_number = ChildNumber::new(chile_number, hardened.unwrap_or(false))?;
+        let inner = self.inner.derive_child(chile_number)?;
+        Ok(Self { inner })
+    }
+
+    #[pyo3(name = "derive_path")]
+    pub fn derive_path_py(&self, path: String) -> PyResult<XPrv> {
+        let path = DerivationPath::new(path.as_str())?;
+        let inner = self.inner.clone().derive_path((&path).into())?;
+        Ok(Self { inner })
+    }
+
+    #[pyo3(name = "into_string")]
+    pub fn into_string_py(&self, prefix: &str) -> PyResult<String> {
+        let str = self.inner.to_extended_key(prefix.try_into()?).to_string();
+        Ok(str)
+    }
+
+    #[pyo3(name = "to_string")]
+    pub fn to_string_py(&self) -> PyResult<String> {
+        let str = self.inner.to_extended_key("kprv".try_into()?).to_string();
+        Ok(str)
+    }
+
+    #[pyo3(name = "to_xpub")]
+    pub fn to_xpub_py(&self) -> PyResult<XPub> {
+        let public_key = self.inner.public_key();
+        Ok(public_key.into())
+    }
+}
+
 impl<'a> From<&'a XPrv> for &'a ExtendedPrivateKey<SecretKey> {
     fn from(xprv: &'a XPrv) -> Self {
         &xprv.inner
