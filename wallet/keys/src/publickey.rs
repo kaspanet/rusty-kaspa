@@ -68,12 +68,7 @@ impl PublicKey {
     pub fn to_address_ecdsa_js(&self, network: &NetworkTypeT) -> Result<Address> {
         self.to_address_ecdsa(network.try_into()?)
     }
-}
 
-// PY-NOTE: fns exposed to both WASM and Python
-#[cfg_attr(feature = "py-sdk", pymethods)]
-#[wasm_bindgen]
-impl PublicKey {
     #[wasm_bindgen(js_name = toXOnlyPublicKey)]
     pub fn to_x_only_public_key(&self) -> XOnlyPublicKey {
         self.xonly_public_key.into()
@@ -116,6 +111,21 @@ impl PublicKey {
     #[pyo3(name = "to_address_ecdsa")]
     pub fn to_address_ecdsa_py(&self, network: &str) -> Result<Address> {
         self.to_address_ecdsa(NetworkType::from_str(network)?)
+    }
+
+    #[pyo3(name = "to_x_only_public_key")]
+    pub fn to_x_only_public_key_py(&self) -> XOnlyPublicKey {
+        self.xonly_public_key.into()
+    }
+
+    #[pyo3(name = "fingerprint")]
+    pub fn fingerprint_py(&self) -> Option<String> {
+        if let Some(public_key) = self.public_key.as_ref() {
+            let digest = Ripemd160::digest(Sha256::digest(public_key.serialize().as_slice()));
+            Some(digest[..4].as_ref().to_hex().into())
+        } else {
+            None
+        }
     }
 }
 
