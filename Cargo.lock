@@ -3148,36 +3148,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-resolver"
-version = "0.14.1"
-dependencies = [
- "ahash 0.8.11",
- "axum 0.7.5",
- "cfg-if 1.0.0",
- "clap 4.5.4",
- "console",
- "convert_case 0.6.0",
- "futures",
- "kaspa-consensus-core",
- "kaspa-rpc-core",
- "kaspa-utils",
- "kaspa-wrpc-client",
- "mime",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "toml 0.8.12",
- "tower",
- "tower-http 0.5.2",
- "tracing-subscriber",
- "workflow-core",
- "workflow-http",
- "workflow-log",
- "xxhash-rust",
-]
-
-[[package]]
 name = "kaspa-rpc-core"
 version = "0.15.2"
 dependencies = [
@@ -3729,23 +3699,7 @@ dependencies = [
 name = "kaspa-wrpc-python"
 version = "0.15.2"
 dependencies = [
- "cfg-if 1.0.0",
- "kaspa-consensus-core",
- "kaspa-rpc-core",
- "kaspa-wrpc-client",
- "pyo3",
- "pyo3-asyncio-0-21",
- "serde_json",
- "thiserror",
- "workflow-core",
- "workflow-rpc",
-]
-
-[[package]]
-name = "kaspa-wrpc-python"
-version = "0.14.1"
-dependencies = [
- "ahash 0.8.11",
+ "ahash",
  "cfg-if 1.0.0",
  "futures",
  "kaspa-addresses",
@@ -5020,7 +4974,7 @@ dependencies = [
  "proc-macro2",
  "pyo3-macros-backend",
  "quote",
- "syn 2.0.60",
+ "syn 2.0.75",
 ]
 
 [[package]]
@@ -5033,12 +4987,12 @@ dependencies = [
  "proc-macro2",
  "pyo3-build-config",
  "quote",
- "syn 2.0.60",
+ "syn 2.0.75",
 ]
 
 [[package]]
 name = "python"
-version = "0.14.1"
+version = "0.15.2"
 dependencies = [
  "cfg-if 1.0.0",
  "kaspa-addresses",
