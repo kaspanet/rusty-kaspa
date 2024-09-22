@@ -13,6 +13,7 @@ crate-type = ["cdylib"]
 [dependencies]
 cfg-if.workspace = true
 kaspa-addresses.workspace = true
+kaspa-bip32.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-client.workspace = true
 kaspa-hashes.workspace = true

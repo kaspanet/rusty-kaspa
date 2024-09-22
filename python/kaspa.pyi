@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Any, Callable, Optional
 
 class Address:
@@ -204,9 +205,34 @@ class UtxoEntryReference:
     def script_public_key(self) -> ScriptPublicKey: ...
 
 
-class PaymentOutput:
+class Language(Enum):
+    English: 1
 
-    def __init__(self, address: Address, amount: int) -> None: ...
+
+class Mnemonic:
+
+    def __init__(self, phrase: str, language: Optional[Language]) -> None: ...    
+
+    @staticmethod
+    def validate(phrase: str, language: Optional[Language]) -> bool: ...
+
+    @property
+    def entropy(self) -> str: ...
+
+    @entropy.setter
+    def entropy(self, entropy: str) -> None: ...
+
+    @staticmethod
+    def random(word_count: Optional[int]) -> Mnemonic: ...
+
+    @property
+    def phrase(self) -> str: ...
+
+    @phrase.setter
+    def phrase(self, phrase: str) -> None: ...
+
+    def to_seed(self, password: Optional[str]) -> str: ...
+
 
 
 def create_transaction(
@@ -218,6 +244,11 @@ def create_transaction(
 ) -> Transaction: ...
 
 def sign_transaction(tx: Transaction, signer: list[PrivateKey], verify_sig: bool) -> Transaction: ...
+
+
+class PaymentOutput:
+
+    def __init__(self, address: Address, amount: int) -> None: ...
 
 
 class DerivationPath:

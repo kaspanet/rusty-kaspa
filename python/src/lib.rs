@@ -18,6 +18,9 @@ cfg_if::cfg_if! {
 
             m.add_class::<kaspa_hashes::Hash>()?;
 
+            m.add_class::<kaspa_bip32::Language>()?;
+            m.add_class::<kaspa_bip32::Mnemonic>()?;
+
             m.add_class::<kaspa_wallet_core::tx::payment::PaymentOutput>()?;
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::python::tx::utils::create_transaction_py, m)?)?;
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::python::signer::py_sign_transaction, m)?)?;

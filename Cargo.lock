@@ -5001,6 +5001,7 @@ version = "0.15.2"
 dependencies = [
  "cfg-if 1.0.0",
  "kaspa-addresses",
+ "kaspa-bip32",
  "kaspa-consensus-client",
  "kaspa-consensus-core",
  "kaspa-hashes",
