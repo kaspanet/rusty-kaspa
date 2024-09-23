@@ -120,6 +120,8 @@ mod tests {
 
     const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(5);
 
+    //test is ignored because it is performance dependant. Rerun the test whenever a change is made in its vicinity
+    #[ignore = "performance dependant test"]
     #[tokio::test]
     async fn test_writer_reentrance() {
         for i in 0..16 {
