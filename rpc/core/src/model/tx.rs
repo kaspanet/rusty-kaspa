@@ -4,7 +4,7 @@ use kaspa_consensus_core::tx::{
     ScriptPublicKey, ScriptVec, TransactionId, TransactionIndexType, TransactionInput, TransactionOutpoint, TransactionOutput,
     UtxoEntry,
 };
-use kaspa_utils::serde_bytes_fixed_ref;
+use kaspa_utils::{hex::ToHex, serde_bytes_fixed_ref};
 use serde::{Deserialize, Serialize};
 use workflow_serializer::prelude::*;
 
@@ -131,7 +131,7 @@ impl Deserializer for RpcTransactionOutpoint {
 }
 
 /// Represents a Kaspa transaction input
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransactionInput {
     pub previous_outpoint: RpcTransactionOutpoint,
@@ -140,6 +140,18 @@ pub struct RpcTransactionInput {
     pub sequence: u64,
     pub sig_op_count: u8,
     pub verbose_data: Option<RpcTransactionInputVerboseData>,
+}
+
+impl std::fmt::Debug for RpcTransactionInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RpcTransactionInput")
+            .field("previous_outpoint", &self.previous_outpoint)
+            .field("signature_script", &self.signature_script.to_hex())
+            .field("sequence", &self.sequence)
+            .field("sig_op_count", &self.sig_op_count)
+            .field("verbose_data", &self.verbose_data)
+            .finish()
+    }
 }
 
 impl From<TransactionInput> for RpcTransactionInput {
@@ -277,7 +289,7 @@ impl Deserializer for RpcTransactionOutputVerboseData {
 }
 
 /// Represents a Kaspa transaction
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RpcTransaction {
     pub version: u16,
@@ -290,6 +302,22 @@ pub struct RpcTransaction {
     pub payload: Vec<u8>,
     pub mass: u64,
     pub verbose_data: Option<RpcTransactionVerboseData>,
+}
+
+impl std::fmt::Debug for RpcTransaction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RpcTransaction")
+            .field("version", &self.version)
+            .field("lock_time", &self.lock_time)
+            .field("subnetwork_id", &self.subnetwork_id)
+            .field("gas", &self.gas)
+            .field("payload", &self.payload.to_hex())
+            .field("mass", &self.mass)
+            .field("inputs", &self.inputs) // Inputs and outputs are placed purposely at the end for better debug visibility 
+            .field("outputs", &self.outputs)
+            .field("verbose_data", &self.verbose_data)
+            .finish()
+    }
 }
 
 impl Serializer for RpcTransaction {

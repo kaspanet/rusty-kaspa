@@ -39,6 +39,7 @@ tokio-stream.workspace = true
 tonic = { workspace = true, features = ["gzip"] }
 triggered.workspace = true
 uuid.workspace = true
+rustls.workspace = true
 
 [dev-dependencies]
 kaspa-grpc-client.workspace = true

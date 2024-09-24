@@ -1454,8 +1454,8 @@ try_from! ( args: ISubmitTransactionRequest, SubmitTransactionRequest, {
     } else {
         let tx = Transaction::try_cast_from(&transaction)?;
         SubmitTransactionRequest {
-          transaction : tx.as_ref().into(),
-          allow_orphan,
+            transaction : tx.as_ref().into(),
+            allow_orphan,
         }
     };
     Ok(request)
@@ -1567,12 +1567,12 @@ declare! {
          * to sample enough "interesting" points on the feerate-to-time curve, so that the interpolation is meaningful.
          */
 
-        normalBucket : IFeerateBucket[];
+        normalBuckets : IFeerateBucket[];
         /**
         * An array of *low* priority feerate values. The first value of this vector is guaranteed to
         * exist and provide an estimation for sub-*hour* DAG inclusion.
         */
-        lowBucket : IFeerateBucket[];
+        lowBuckets : IFeerateBucket[];
     }
     "#,
 }

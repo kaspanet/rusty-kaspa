@@ -67,7 +67,7 @@ cfg_if::cfg_if! {
                     subnetwork_id: inner.subnetwork_id.clone(),
                     gas: inner.gas,
                     payload: inner.payload.clone(),
-                    mass: tx.get_mass(),
+                    mass: inner.mass,
                     verbose_data: None,
                 }
             }

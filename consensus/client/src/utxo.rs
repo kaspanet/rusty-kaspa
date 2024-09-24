@@ -445,7 +445,7 @@ impl UtxoEntryReference {
         let outpoint = TransactionOutpoint::simulated();
         let script_public_key = kaspa_txscript::pay_to_address_script(address);
         let block_daa_score = 0;
-        let is_coinbase = true;
+        let is_coinbase = false;
 
         let utxo_entry =
             UtxoEntry { address: Some(address.clone()), outpoint, amount, script_public_key, block_daa_score, is_coinbase };
