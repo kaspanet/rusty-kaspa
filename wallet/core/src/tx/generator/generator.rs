@@ -70,6 +70,8 @@ use kaspa_consensus_core::mass::Kip9Version;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutpoint, TransactionOutput};
 use kaspa_txscript::pay_to_address_script;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use std::collections::VecDeque;
 
 use super::SignerT;
@@ -296,6 +298,8 @@ struct Inner {
     signature_mass_per_input: u64,
     // fee rate
     fee_rate: Option<f64>,
+    // shuffle outputs of final transaction
+    shuffle_outputs: Option<bool>,
     // final transaction amount and fees
     // `None` is used for sweep transactions
     final_transaction: Option<FinalTransaction>,
@@ -362,6 +366,7 @@ impl Generator {
             minimum_signatures,
             change_address,
             fee_rate,
+            shuffle_outputs,
             final_transaction_priority_fee,
             final_transaction_destination,
             final_transaction_payload,
@@ -469,6 +474,7 @@ impl Generator {
             standard_change_output_compute_mass: standard_change_output_mass,
             signature_mass_per_input,
             fee_rate,
+            shuffle_outputs,
             final_transaction,
             final_transaction_priority_fee,
             final_transaction_outputs,
@@ -1069,7 +1075,7 @@ impl Generator {
 
                 let change_output_value = change_output_value.unwrap_or(0);
 
-                let mut final_outputs = self.inner.final_transaction_outputs.clone();
+                let mut final_outputs: Vec<TransactionOutput> = self.inner.final_transaction_outputs.clone();
 
                 if self.inner.final_transaction_priority_fee.receiver_pays() {
                     let output = final_outputs.get_mut(0).expect("include fees requires one output");
@@ -1080,10 +1086,23 @@ impl Generator {
                     }
                 }
 
-                let change_output_index = if change_output_value > 0 {
-                    let change_output_index = Some(final_outputs.len());
-                    final_outputs.push(TransactionOutput::new(change_output_value, pay_to_address_script(&self.inner.change_address)));
-                    change_output_index
+                // Cache the change output (if any) before shuffling so we can find its index.
+                let change_output = if change_output_value > 0 {
+                    let change_output = TransactionOutput::new(change_output_value, pay_to_address_script(&self.inner.change_address));
+                    final_outputs.push(change_output.clone());
+                    Some(change_output)
+                } else {
+                    None
+                };
+
+                // Shuffle the outputs if required for extra privacy.
+                if self.inner.shuffle_outputs.unwrap_or(true) {
+                    final_outputs.shuffle(&mut thread_rng());
+                }
+
+                // Find the new change_output_index after shuffling if there was a change output.
+                let change_output_index = if let Some(change_output) = change_output {
+                    final_outputs.iter().position(|output| output == &change_output)
                 } else {
                     None
                 };

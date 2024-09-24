@@ -436,6 +436,7 @@ where
         priority_utxo_entries,
         destination_utxo_context,
         fee_rate,
+        shuffle_outputs: None,
         final_transaction_priority_fee: final_priority_fee,
         final_transaction_destination,
         final_transaction_payload,

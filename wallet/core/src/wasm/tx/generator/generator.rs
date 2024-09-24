@@ -169,6 +169,7 @@ impl Generator {
             final_transaction_destination,
             change_address,
             fee_rate,
+            shuffle_outputs,
             final_priority_fee,
             sig_op_count,
             minimum_signatures,
@@ -192,6 +193,7 @@ impl Generator {
                     minimum_signatures,
                     final_transaction_destination,
                     fee_rate,
+                    shuffle_outputs,
                     final_priority_fee,
                     payload,
                     multiplexer,
@@ -209,6 +211,7 @@ impl Generator {
                     minimum_signatures,
                     final_transaction_destination,
                     fee_rate,
+                    shuffle_outputs,
                     final_priority_fee,
                     payload,
                     multiplexer,
@@ -272,6 +275,7 @@ struct GeneratorSettings {
     pub final_transaction_destination: PaymentDestination,
     pub change_address: Option<Address>,
     pub fee_rate: Option<f64>,
+    pub shuffle_outputs: Option<bool>,
     pub final_priority_fee: Fees,
     pub sig_op_count: u8,
     pub minimum_signatures: u16,
@@ -291,6 +295,8 @@ impl TryFrom<IGeneratorSettingsObject> for GeneratorSettings {
         let change_address = args.try_cast_into::<Address>("changeAddress")?;
 
         let fee_rate = args.get_f64("feeRate").ok().and_then(|v| (v.is_finite() && !v.is_nan() && v >= 1e-8).then_some(v));
+
+        let shuffle_outputs = args.get_bool("shuffleOutputs").ok();
 
         let final_priority_fee = args.get::<IFees>("priorityFee")?.try_into()?;
 
@@ -325,6 +331,7 @@ impl TryFrom<IGeneratorSettingsObject> for GeneratorSettings {
             final_transaction_destination,
             change_address,
             fee_rate,
+            shuffle_outputs,
             final_priority_fee,
             sig_op_count,
             minimum_signatures,
