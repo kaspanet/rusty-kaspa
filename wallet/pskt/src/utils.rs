@@ -6,7 +6,7 @@ where
     V: Eq + Clone,
     K: Ord + Clone,
 {
-    if lhs.len() > rhs.len() {
+    if lhs.len() >= rhs.len() {
         if let Some((field, rhs, lhs)) =
             rhs.iter().map(|(k, v)| (k, v, lhs.get(k))).find(|(_, v, rhs_v)| rhs_v.is_some_and(|rv| rv != *v))
         {
