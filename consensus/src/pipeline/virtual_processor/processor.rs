@@ -47,6 +47,8 @@ use crate::{
         window::WindowManager,
     },
 };
+use kaspa_merkle::{calc_merkle_root, create_merkle_witness, verify_merkle_witness, WitnessSegment};
+
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
@@ -1034,7 +1036,7 @@ impl VirtualStateProcessor {
         let storage_mass_activated = self.storage_mass_activation.is_active(virtual_state.daa_score);
         let hash_merkle_root = calc_hash_merkle_root(txs.iter(), storage_mass_activated);
 
-        let accepted_id_merkle_root = kaspa_merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
+        let accepted_id_merkle_root = calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = virtual_state.past_median_time + 1;

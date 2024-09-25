@@ -1,9 +1,27 @@
 use crate::{hashing, tx::Transaction};
 use kaspa_hashes::Hash;
-use kaspa_merkle::calc_merkle_root;
-
+pub use kaspa_merkle::WitnessSegment;
+use kaspa_merkle::{calc_merkle_root, create_merkle_witness, verify_merkle_witness};
 pub fn calc_hash_merkle_root<'a>(txs: impl ExactSizeIterator<Item = &'a Transaction>, include_mass_field: bool) -> Hash {
     calc_merkle_root(txs.map(|tx| hashing::tx::hash(tx, include_mass_field)))
+}
+
+//rethink if function is necessary
+pub fn create_hash_merkle_witness<'a>(
+    txs: impl ExactSizeIterator<Item = &'a Transaction>,
+    tracked_tx: &Transaction,
+    include_mass_field: bool,
+) -> Option<Vec<WitnessSegment>> {
+    create_merkle_witness(txs.map(|tx| hashing::tx::hash(tx, include_mass_field)), hashing::tx::hash(tracked_tx, include_mass_field))
+}
+//rethink if function is necessary
+pub fn verify_hash_merkle_witness(
+    witness_vec: &[WitnessSegment],
+    tracked_tx: &Transaction,
+    merkle_root_hash: Hash,
+    include_mass_field: bool,
+) -> bool {
+    verify_merkle_witness(witness_vec, hashing::tx::hash(tracked_tx, include_mass_field), merkle_root_hash)
 }
 
 #[cfg(test)]
