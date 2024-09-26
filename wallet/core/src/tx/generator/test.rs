@@ -3,9 +3,10 @@
 use crate::error::Error;
 use crate::result::Result;
 use crate::tx::{Fees, MassCalculator, PaymentDestination};
-use crate::utxo::UtxoEntryReference;
+use crate::utxo::{NetworkParams, UtxoEntryReference};
 use crate::{tx::PaymentOutputs, utils::kaspa_to_sompi};
 use kaspa_addresses::Address;
+use kaspa_consensus_core::config::params::Params;
 use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::tx::Transaction;
 use rand::prelude::*;
@@ -723,5 +724,62 @@ fn test_generator_inputs_250k_outputs_2_sweep() -> Result<()> {
     let f = 130.0;
     let generator = make_generator(test_network_id(), &[f; 250_000], &[], Fees::None, change_address, PaymentDestination::Change);
     generator.unwrap().harness().accumulate(2875).finalize();
+    Ok(())
+}
+
+
+#[test]
+fn test_generator_fan_out_1() -> Result<()> {
+    use kaspa_consensus_core::mass::calc_storage_mass;
+
+    let network_id = test_network_id();
+    let network_params = NetworkParams::from(network_id);
+    let consensus_params = Params::from(network_id);
+
+    let storage_mass = calc_storage_mass(
+        false,
+        [
+            100000000, 
+            8723579967,
+        ].into_iter(),
+        [
+            20000000,
+            25000000,
+            31000000,
+        ].into_iter(),
+        network_params.kip9_version,
+        consensus_params.storage_mass_parameter,
+    );
+
+    println!("storage_mass: {:?}", storage_mass);
+
+    generator(test_network_id(), &[
+        // 10000000.0 * 1e-8, 
+        // 10000000.0 * 1e-8, 
+        // 100000000.0 * 1e-8, 
+        // ---
+        1.00000000, 
+        87.23579967,
+    ], &[], Fees::sender(Kaspa(1.0)), [
+        (output_address, Kaspa(0.20000000)),
+        (output_address, Kaspa(0.25000000)),
+        (output_address, Kaspa(0.21000000)),
+        // (output_address, Sompi(20000000)),
+        // (output_address, Sompi(25000000)),
+        // (output_address, Sompi(31000000)),
+    ].as_slice())
+        .unwrap()
+        .harness()
+        // .accumulate(1)
+        .fetch(&Expected {
+            is_final: true,
+            input_count: 2,
+            aggregate_input_value: Kaspa(1.00000000 + 87.23579967),
+            output_count: 4,
+            priority_fees: FeesExpected::receiver(Kaspa(1.0)),
+            // priority_fees: FeesExpected::None,
+        })
+        .finalize();
+
     Ok(())
 }
