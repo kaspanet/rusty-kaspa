@@ -777,7 +777,6 @@ fn test_generator_inputs_250k_outputs_2_sweep() -> Result<()> {
     Ok(())
 }
 
-
 #[test]
 fn test_generator_fan_out_1() -> Result<()> {
     use kaspa_consensus_core::mass::calc_storage_mass;
@@ -788,15 +787,8 @@ fn test_generator_fan_out_1() -> Result<()> {
 
     let storage_mass = calc_storage_mass(
         false,
-        [
-            100000000, 
-            8723579967,
-        ].into_iter(),
-        [
-            20000000,
-            25000000,
-            31000000,
-        ].into_iter(),
+        [100000000, 8723579967].into_iter(),
+        [20000000, 25000000, 31000000].into_iter(),
         network_params.kip9_version,
         consensus_params.storage_mass_parameter,
     );
@@ -804,19 +796,12 @@ fn test_generator_fan_out_1() -> Result<()> {
     println!("storage_mass: {:?}", storage_mass);
 
     generator(test_network_id(), &[
-        // 10000000.0 * 1e-8, 
-        // 10000000.0 * 1e-8, 
-        // 100000000.0 * 1e-8, 
-        // ---
-        1.00000000, 
+        1.00000000,
         87.23579967,
-    ], &[], Fees::sender(Kaspa(1.0)), [
+    ], &[], None, Fees::sender(Kaspa(1.0)), [
         (output_address, Kaspa(0.20000000)),
         (output_address, Kaspa(0.25000000)),
         (output_address, Kaspa(0.21000000)),
-        // (output_address, Sompi(20000000)),
-        // (output_address, Sompi(25000000)),
-        // (output_address, Sompi(31000000)),
     ].as_slice())
         .unwrap()
         .harness()

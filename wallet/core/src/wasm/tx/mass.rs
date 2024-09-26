@@ -6,7 +6,6 @@ use kaspa_consensus_client::*;
 use kaspa_consensus_core::config::params::Params;
 use kaspa_consensus_core::mass::calc_storage_mass;
 use kaspa_consensus_core::network::{NetworkId, NetworkIdT};
-use kaspa_wallet_pskt::input;
 use kaspa_wasm_core::types::NumberArray;
 use wasm_bindgen::prelude::*;
 use workflow_wasm::convert::*;
@@ -101,25 +100,19 @@ pub fn calculate_unsigned_transaction_fee(
     }
 }
 
-
 /// `calculateStorageMass()` is a helper function to compute the storage mass of inputs and outputs.
 /// This function can be use to calculate the storage mass of transaction inputs and outputs.
 /// Note that the storage mass is only a component of the total transaction mass. You are not
 /// meant to use this function by itself and should use `calculateTransactionMass()` instead.
 /// This function purely exists for diagnostic purposes and to help with complex algorithms that
 /// may require a manual UTXO selection for identifying UTXOs and outputs needed for low storage mass.
-/// 
+///
 /// @category Wallet SDK
 /// @see {@link maximumStandardTransactionMass}
 /// @see {@link calculateTransactionMass}
-/// 
+///
 #[wasm_bindgen(js_name = calculateStorageMass)]
-pub fn calculate_storage_mass(
-    network_id: NetworkIdT,
-    input_values : &NumberArray,
-    output_values : &NumberArray,
-) -> Result<Option<u64>> {
-
+pub fn calculate_storage_mass(network_id: NetworkIdT, input_values: &NumberArray, output_values: &NumberArray) -> Result<Option<u64>> {
     let network_id = NetworkId::try_owned_from(network_id)?;
     let consensus_params = Params::from(network_id);
     let network_params = NetworkParams::from(network_id);
