@@ -134,7 +134,7 @@ impl Connection {
     {
         match encoding {
             Encoding::Borsh => workflow_rpc::server::protocol::borsh::create_serialized_notification_message(op, msg),
-            Encoding::SerdeJson => workflow_rpc::server::protocol::borsh::create_serialized_notification_message(op, msg),
+            Encoding::SerdeJson => workflow_rpc::server::protocol::serde_json::create_serialized_notification_message(op, msg),
         }
     }
 }
