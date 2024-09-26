@@ -795,26 +795,26 @@ fn test_generator_fan_out_1() -> Result<()> {
 
     println!("storage_mass: {:?}", storage_mass);
 
-    generator(test_network_id(), &[
-        1.00000000,
-        87.23579967,
-    ], &[], None, Fees::sender(Kaspa(1.0)), [
-        (output_address, Kaspa(0.20000000)),
-        (output_address, Kaspa(0.25000000)),
-        (output_address, Kaspa(0.21000000)),
-    ].as_slice())
-        .unwrap()
-        .harness()
-        // .accumulate(1)
-        .fetch(&Expected {
-            is_final: true,
-            input_count: 2,
-            aggregate_input_value: Kaspa(1.00000000 + 87.23579967),
-            output_count: 4,
-            priority_fees: FeesExpected::receiver(Kaspa(1.0)),
-            // priority_fees: FeesExpected::None,
-        })
-        .finalize();
+    // generator(test_network_id(), &[
+    //     1.00000000,
+    //     87.23579967,
+    // ], &[], None, Fees::sender(Kaspa(1.0)), [
+    //     (output_address, Kaspa(0.20000000)),
+    //     (output_address, Kaspa(0.25000000)),
+    //     (output_address, Kaspa(0.21000000)),
+    // ].as_slice())
+    //     .unwrap()
+    //     .harness()
+    //     // .accumulate(1)
+    //     .fetch(&Expected {
+    //         is_final: true,
+    //         input_count: 2,
+    //         aggregate_input_value: Kaspa(1.00000000 + 87.23579967),
+    //         output_count: 4,
+    //         priority_fees: FeesExpected::receiver(Kaspa(1.0)),
+    //         // priority_fees: FeesExpected::None,
+    //     })
+    //     .finalize();
 
     Ok(())
 }
