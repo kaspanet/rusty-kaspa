@@ -10,6 +10,7 @@ mod session;
 pub use batch::BlockProcessingBatch;
 pub use session::{
     spawn_blocking, ConsensusInstance, ConsensusProxy, ConsensusSessionBlocking, SessionLock, SessionReadGuard, SessionWriteGuard,
+    ConsensusSessionOwned,
 };
 
 /// Consensus controller trait. Includes methods required to start/stop/control consensus, but which should not
