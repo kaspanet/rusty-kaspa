@@ -1,6 +1,6 @@
-//! 
+//!
 //! Module implementing [`Resolver`] client for obtaining public Kaspa wRPC endpoints.
-//! 
+//!
 
 use std::sync::OnceLock;
 
@@ -83,11 +83,11 @@ impl Inner {
 
 ///
 /// # Resolver - a client for obtaining public Kaspa wRPC endpoints.
-/// 
+///
 /// This client operates against [Kaspa Resolver](https://github.com/aspectron/kaspa-resolver) service
 /// that provides load-balancing and failover capabilities for Kaspa wRPC endpoints. The default
 /// configuration allows access to public Kaspa nodes, while custom configurations can be supplied
-/// if you are running your own custom Kaspa node cluster. 
+/// if you are running your own custom Kaspa node cluster.
 ///
 #[derive(Debug, Clone)]
 pub struct Resolver {
@@ -107,8 +107,8 @@ impl Resolver {
         Self { inner: Arc::new(Inner::new(urls, tls)) }
     }
 
-    /// Obtain a list of URLs in the resolver client. (This function 
-    /// returns `None` if the resolver is configured to use public 
+    /// Obtain a list of URLs in the resolver client. (This function
+    /// returns `None` if the resolver is configured to use public
     /// node endpoints.)
     pub fn urls(&self) -> Option<Vec<Arc<String>>> {
         if self.inner.public {
@@ -178,7 +178,7 @@ impl Resolver {
         Err(Error::Custom(format!("Failed to connect: {:?}", errors)))
     }
 
-    /// Obtain a Kaspa p2p [`NodeDescriptor`] from the resolver based on the supplied [`Encoding`] and [`NetworkId`]. 
+    /// Obtain a Kaspa p2p [`NodeDescriptor`] from the resolver based on the supplied [`Encoding`] and [`NetworkId`].
     pub async fn get_node(&self, encoding: Encoding, network_id: NetworkId) -> Result<NodeDescriptor> {
         self.fetch(encoding, network_id).await
     }

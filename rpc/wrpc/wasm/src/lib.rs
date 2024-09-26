@@ -1,6 +1,6 @@
 //!
 //! WASM bindings for the [Rusty Kaspa p2p Node wRPC Client](kaspa-wrpc-client)
-//! 
+//!
 
 #![allow(unused_imports)]
 

@@ -1,6 +1,6 @@
 //!
 //! Client-side utility functions and their WASM bindings.
-//! 
+//!
 
 #![allow(non_snake_case)]
 

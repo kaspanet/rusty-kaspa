@@ -1,6 +1,6 @@
 //!
 //! # Wallet API
-//! 
+//!
 //! Wallet API module that provides a unified interface for all wallet operations.
 //!
 

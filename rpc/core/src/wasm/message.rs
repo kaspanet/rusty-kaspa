@@ -1,6 +1,6 @@
 //!
 //! WASM interfaces and conversion to and from RPC messages.
-//! 
+//!
 
 #![allow(non_snake_case)]
 use crate::error::RpcError as Error;

@@ -1,6 +1,6 @@
 //!
 //! Implementation of the Block [`Header`] struct.
-//! 
+//!
 
 #![allow(non_snake_case)]
 
@@ -66,14 +66,14 @@ export interface IRawHeader {
 #[wasm_bindgen]
 extern "C" {
     /// WASM (TypeScript) type definition for the Header-like struct: `Header | IHeader | IRawHeader`.
-    /// 
+    ///
     /// @category Consensus
     #[wasm_bindgen(typescript_type = "Header | IHeader | IRawHeader")]
     pub type HeaderT;
 }
 
 /// Kaspa Block Header
-/// 
+///
 /// @category Consensus
 #[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]

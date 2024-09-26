@@ -1,10 +1,10 @@
 //!
 //! # UTXO client-side data structures.
-//! 
+//!
 //! This module provides client-side data structures for UTXO management.
 //! In particular, the [`UtxoEntry`] and [`UtxoEntryReference`] structs
 //! are used to represent UTXO entries in the wallet subsystem and WASM bindings.
-//! 
+//!
 
 #![allow(non_snake_case)]
 
@@ -54,7 +54,7 @@ extern "C" {
 pub type UtxoEntryId = TransactionOutpointInner;
 
 /// [`UtxoEntry`] struct represents a client-side UTXO entry.
-/// 
+///
 /// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]

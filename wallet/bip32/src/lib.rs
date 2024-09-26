@@ -32,7 +32,7 @@ pub use xkey::ExtendedKey;
 pub use xprivate_key::ExtendedPrivateKey;
 pub use xpublic_key::ExtendedPublicKey;
 
-/// Extension for [`secp256k1::SecretKey`] that provides access 
+/// Extension for [`secp256k1::SecretKey`] that provides access
 /// to [`secp256k1::PublicKey`] and the public key string representation.
 pub trait SecretKeyExt {
     fn get_public_key(&self) -> secp256k1::PublicKey;

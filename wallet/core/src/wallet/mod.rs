@@ -1,11 +1,11 @@
 //!
 //! # Kaspa wallet runtime implementation.
-//! 
+//!
 //! This module contains a Rust implementation of the Kaspa wallet that
-//! can be used in native Rust as well as WASM32 (Browser, NodeJs, Bun) 
+//! can be used in native Rust as well as WASM32 (Browser, NodeJs, Bun)
 //! environments.
-//! 
-//! This wallet is not meant to be used directly, but rather through the 
+//!
+//! This wallet is not meant to be used directly, but rather through the
 //! use of the [`WalletApi`] trait.
 //!
 

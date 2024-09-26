@@ -157,7 +157,7 @@ type InnerTree = BPlusTree<NodeStoreVec<FeerateKey, (), FeerateWeight>>;
 ///        is recomputed from subtree weights for each item insertion/removal
 ///
 /// Computing the prefix weight is a crucial operation if the tree is used for random sampling and
-/// the tree is highly imbalanced in terms of weight variance. 
+/// the tree is highly imbalanced in terms of weight variance.
 /// See [`Frontier::sample_inplace()`](crate::mempool::model::frontier::Frontier::sample_inplace)
 /// for more details.  
 pub struct SearchTree {

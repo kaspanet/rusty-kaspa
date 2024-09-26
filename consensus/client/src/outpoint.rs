@@ -1,6 +1,6 @@
 //!
 //! Implementation of the client-side [`TransactionOutpoint`] used by the [`TransactionInput`] struct.
-//! 
+//!
 
 #![allow(non_snake_case)]
 
@@ -128,17 +128,17 @@ cfg_if! {
             pub fn ctor(transaction_id: TransactionId, index: u32) -> TransactionOutpoint {
                 Self { inner: Arc::new(TransactionOutpointInner { transaction_id, index }) }
             }
-        
+
             #[wasm_bindgen(js_name = "getId")]
             pub fn id_string(&self) -> String {
                 format!("{}-{}", self.get_transaction_id_as_string(), self.get_index())
             }
-        
+
             #[wasm_bindgen(getter, js_name = transactionId)]
             pub fn get_transaction_id_as_string(&self) -> String {
                 self.inner().transaction_id.to_string()
             }
-        
+
             #[wasm_bindgen(getter, js_name = index)]
             pub fn get_index(&self) -> TransactionIndexType {
                 self.inner().index
@@ -146,7 +146,6 @@ cfg_if! {
         }
     }
 }
-
 
 impl std::fmt::Display for TransactionOutpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

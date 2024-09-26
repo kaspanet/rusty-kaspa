@@ -58,9 +58,9 @@ impl PaymentDestination {
     }
 }
 
-/// A Rust data structure representing a single payment 
+/// A Rust data structure representing a single payment
 /// output containing a destination address and amount.
-/// 
+///
 /// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, CastFromJs)]
 #[wasm_bindgen(inspectable)]

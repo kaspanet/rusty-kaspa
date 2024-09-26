@@ -1,6 +1,6 @@
 //!
 //! Data conversion utilities and structs for the RPC layer.
-//! 
+//!
 
 pub mod block;
 pub mod notification;

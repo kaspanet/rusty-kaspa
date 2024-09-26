@@ -1,8 +1,8 @@
 //!
 //! # Transaction
-//! 
+//!
 //! This module implements consensus [`Transaction`] structure and related types.
-//! 
+//!
 
 #![allow(non_snake_case)]
 

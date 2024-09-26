@@ -1,6 +1,6 @@
 //!
 //! Implementation of the client-side [`TransactionInput`] struct used by the client-side [`Transaction`] struct.
-//! 
+//!
 
 #![allow(non_snake_case)]
 

@@ -1,6 +1,6 @@
 //!
 //! Implementation of the client-side [`TransactionOutput`] used by the [`Transaction`] struct.
-//! 
+//!
 
 #![allow(non_snake_case)]
 

@@ -1,10 +1,10 @@
-//! 
+//!
 //! The main [`RpcApi`] trait that defines all RPC methods available in the Rusty Kaspa p2p node.
 //!
 //! Rpc = External RPC Service
 //! All data provided by the RPC server can be trusted by the client
 //! No data submitted by the client to the node can be trusted
-//! 
+//!
 
 use crate::api::connection::DynRpcConnection;
 use crate::{model::*, notify::connection::ChannelConnection, RpcResult};

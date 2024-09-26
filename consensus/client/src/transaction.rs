@@ -1,6 +1,6 @@
 //!
 //! Declares the client-side [`Transaction`] type, which represents a Kaspa transaction.
-//! 
+//!
 
 #![allow(non_snake_case)]
 

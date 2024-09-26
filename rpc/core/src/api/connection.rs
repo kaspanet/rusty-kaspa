@@ -1,6 +1,6 @@
 //!
 //! Generic connection trait representing a connection to a client (where available).
-//! 
+//!
 
 use std::sync::Arc;
 
