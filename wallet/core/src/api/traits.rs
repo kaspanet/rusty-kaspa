@@ -58,7 +58,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// - `is_wrpc_client` - whether the wallet is connected to a node via wRPC
     async fn get_status_call(self: Arc<Self>, request: GetStatusRequest) -> Result<GetStatusResponse>;
 
-    /// Synchronous connect call (blocking, single attempt, requires sync).
+    /// Synchronous connect call (blocking, single attempt, requires node sync).
     async fn connect(self: Arc<Self>, url: Option<String>, network_id: &NetworkId) -> Result<()> {
         let retry_on_error = false;
         let block_async_connect = true;
@@ -71,6 +71,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// comprised of the `url` and a `network_id`.
     async fn connect_call(self: Arc<Self>, request: ConnectRequest) -> Result<ConnectResponse>;
 
+    /// Request the wallet RPC subsystem to disconnect from the node.
     async fn disconnect(self: Arc<Self>) -> Result<()> {
         self.disconnect_call(DisconnectRequest {}).await?;
         Ok(())
@@ -96,6 +97,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// Ping the wallet service. Accepts an optional `u64` value that is returned in the response.
     async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse>;
 
+    /// Wrapper around [`batch_call()`](Self::batch_call).
     async fn batch(self: Arc<Self>) -> Result<()> {
         self.batch_call(BatchRequest {}).await?;
         Ok(())
@@ -110,6 +112,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     ///
     async fn batch_call(self: Arc<Self>, request: BatchRequest) -> Result<BatchResponse>;
 
+    /// Wrapper around [`flush_call()`](Self::flush_call).
     async fn flush(self: Arc<Self>, wallet_secret: Secret) -> Result<()> {
         self.flush_call(FlushRequest { wallet_secret }).await?;
         Ok(())
@@ -284,6 +287,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// around this call.
     async fn accounts_rename_call(self: Arc<Self>, request: AccountsRenameRequest) -> Result<AccountsRenameResponse>;
 
+    /// Wrapper around [`accounts_select_call()`](Self::accounts_select_call)
     async fn accounts_select(self: Arc<Self>, account_id: Option<AccountId>) -> Result<()> {
         self.accounts_select_call(AccountsSelectRequest { account_id }).await?;
         Ok(())
@@ -420,6 +424,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn accounts_estimate_call(self: Arc<Self>, request: AccountsEstimateRequest) -> Result<AccountsEstimateResponse>;
 
     /// Get a range of transaction records for a specific account id.
+    /// Wrapper around [`transactions_data_get_call()`](Self::transactions_data_get_call).
     async fn transactions_data_get_range(
         self: Arc<Self>,
         account_id: AccountId,
@@ -429,8 +434,8 @@ pub trait WalletApi: Send + Sync + AnySync {
         self.transactions_data_get_call(TransactionsDataGetRequest::with_range(account_id, network_id, range)).await
     }
 
+    /// Get a range of transaction records for a specific account id.
     async fn transactions_data_get_call(self: Arc<Self>, request: TransactionsDataGetRequest) -> Result<TransactionsDataGetResponse>;
-    // async fn transaction_get_call(self: Arc<Self>, request: TransactionGetRequest) -> Result<TransactionGetResponse>;
 
     /// Replaces the note of a transaction with a new note. Note is meant
     /// to explicitly store a user-supplied string. The note is treated
@@ -455,6 +460,7 @@ pub trait WalletApi: Send + Sync + AnySync {
         request: TransactionsReplaceMetadataRequest,
     ) -> Result<TransactionsReplaceMetadataResponse>;
 
+    // TODO
     async fn address_book_enumerate_call(
         self: Arc<Self>,
         request: AddressBookEnumerateRequest,

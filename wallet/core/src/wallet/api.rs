@@ -1,5 +1,5 @@
 //!
-//! [`WalletApi`] trait implementation for [`Wallet`].
+//! [`WalletApi`] trait implementation for the [`Wallet`] struct.
 //!
 
 use crate::api::{message::*, traits::WalletApi};

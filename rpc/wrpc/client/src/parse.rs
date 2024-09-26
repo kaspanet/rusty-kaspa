@@ -1,3 +1,5 @@
+//! wRPC URL parsing and validation utilities.
+
 use std::fmt::Display;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::num::ParseIntError;
