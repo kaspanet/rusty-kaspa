@@ -13,6 +13,11 @@ use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script, pay_
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
 
+///
+/// Bundle is a [`PSKT`] bundle - a sequence of PSKT transactions
+/// meant for batch processing and transport as a
+/// single serialized payload.
+///
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Bundle(pub Vec<PSKTInner>);

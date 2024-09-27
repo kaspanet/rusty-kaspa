@@ -3,7 +3,7 @@
 //! Response payloads in protowire do always contain an error field and generally a set of
 //! fields providing the requested data.
 //!
-//! Responses in rpc core are expressed as RpcResult<XxxResponse>, where Xxx is the called
+//! Responses in rpc core are expressed as `RpcResult<XxxResponse>`, where `Xxx` is the called
 //! RPC method.
 //!
 //! The general conversion convention from protowire to rpc core is to consider the error

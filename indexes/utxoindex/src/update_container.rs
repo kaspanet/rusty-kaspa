@@ -25,7 +25,7 @@ impl UtxoIndexChanges {
         }
     }
 
-    /// Add a [`UtxoDiff`] the the [`UtxoIndexChanges`] struct.
+    /// Add a [`UtxoDiff`] the [`UtxoIndexChanges`] struct.
     pub fn update_utxo_diff(&mut self, utxo_diff: UtxoDiff) {
         let (to_add, mut to_remove) = (utxo_diff.add, utxo_diff.remove);
 
@@ -53,7 +53,7 @@ impl UtxoIndexChanges {
         }
     }
 
-    /// Add a [`Vec<(TransactionOutpoint, UtxoEntry)>`] the the [`UtxoIndexChanges`] struct
+    /// Add a [`Vec<(TransactionOutpoint, UtxoEntry)>`] the [`UtxoIndexChanges`] struct
     ///
     /// Note: This is meant to be used when resyncing.
     pub fn add_utxos_from_vector(&mut self, utxo_vector: Vec<(TransactionOutpoint, UtxoEntry)>) {
