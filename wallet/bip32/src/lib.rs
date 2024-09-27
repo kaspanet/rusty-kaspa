@@ -19,6 +19,11 @@ mod prefix;
 mod result;
 pub mod types;
 
+pub mod wasm {
+    //! WASM bindings for the `bip32` module.
+    pub use crate::mnemonic::{Language, Mnemonic, WordCount};
+}
+
 pub use address_type::AddressType;
 pub use attrs::ExtendedKeyAttrs;
 pub use child_number::ChildNumber;

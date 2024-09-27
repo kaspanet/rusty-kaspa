@@ -164,8 +164,9 @@ cfg_if::cfg_if! {
         }
 
         pub use kaspa_consensus_wasm::*;
-        pub use kaspa_wallet_keys::prelude::*;
         pub use kaspa_wallet_core::wasm::*;
+        pub use kaspa_wallet_keys::prelude::*;
+        pub use kaspa_bip32::wasm::*;
 
     } else if #[cfg(feature = "wasm32-core")] {
 
@@ -193,6 +194,7 @@ cfg_if::cfg_if! {
         pub use kaspa_consensus_wasm::*;
         pub use kaspa_wallet_keys::prelude::*;
         pub use kaspa_wallet_core::wasm::*;
+        pub use kaspa_bip32::wasm::*;
 
     } else if #[cfg(feature = "wasm32-rpc")] {
 
@@ -208,8 +210,8 @@ cfg_if::cfg_if! {
 
         pub use kaspa_addresses::{Address, Version as AddressVersion};
         pub use kaspa_wallet_keys::prelude::*;
-        pub use kaspa_bip32::*;
         pub use kaspa_wasm_core::types::*;
+        pub use kaspa_bip32::wasm::*;
 
     }
 }
