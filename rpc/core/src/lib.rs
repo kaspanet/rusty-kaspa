@@ -22,7 +22,7 @@ pub mod notify;
 pub mod wasm;
 
 pub mod prelude {
-    //! Glob imports of the most commonly used types and traits in this crate.
+    //! Re-exports of the most commonly used types and traits in this crate.
     pub use super::api::notifications::*;
     pub use super::model::script_class::*;
     pub use super::model::*;

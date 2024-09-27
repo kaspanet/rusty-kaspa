@@ -1,5 +1,5 @@
 //!
-//! Glob imports for the `kaspa_wallet_keys` crate.
+//! Re-exports of the most commonly used types and traits in this crate.
 //!
 
 pub use crate::derivation_path::*;
