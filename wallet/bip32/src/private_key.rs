@@ -4,6 +4,7 @@ use crate::Result;
 pub use secp256k1::SecretKey;
 use secp256k1::{scalar::Scalar, Secp256k1, SignOnly};
 
+/// Trait for private key types which can be derived using BIP32.
 pub trait PrivateKey: Sized {
     /// Public key type which corresponds to this private key.
     type PublicKey: PublicKey;

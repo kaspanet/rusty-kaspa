@@ -8,6 +8,11 @@ use std::hash::Hash;
 use std::str::FromStr;
 use workflow_wasm::convert::CastFromJs;
 
+///
+/// Account kind is a string signature that represents an account type.
+/// Account kind is used to identify the account type during
+/// serialization, deserialization and various API calls.
+///
 /// @category Wallet SDK
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Hash, CastFromJs)]
 #[wasm_bindgen]

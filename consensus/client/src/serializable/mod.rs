@@ -1,3 +1,24 @@
+//!
+//! # Standardized JSON serialization and deserialization of Kaspa transactions.
+//!
+//! This module provides standardized JSON serialization and deserialization of
+//! Kaspa transactions. There are two sub-modules: `numeric` and `string`.
+//!
+//! The `numeric` module provides serialization and deserialization of transactions
+//! with all large integer values as `bigint` types in WASM or numerical values that
+//! exceed the largest integer that can be represented by the JavaScript `number` type.
+//!
+//! The `string` module provides serialization and deserialization of transactions
+//! with all large integer values as `string` types. This allows deserialization
+//! via JSON in JavaScript environments and later conversion to `bigint` types.
+//!
+//! These data structures can be used for manual transport of transactions using JSON.
+//! For more advanced use cases, please refer to `PSKT` in the [`kaspa_wallet_pskt`](https://docs.rs/kaspa_wallet_pskt)
+//! crate.
+//!
+
+#![allow(non_snake_case)]
+
 pub mod numeric;
 pub mod string;
 
@@ -80,6 +101,7 @@ export interface ISerializableTransaction {
 
 #[wasm_bindgen]
 extern "C" {
+    /// WASM (TypeScript) representation of the `ISerializableTransaction` interface.
     #[wasm_bindgen(extends = js_sys::Array, typescript_type = "ISerializableTransaction")]
     pub type SerializableTransactionT;
 }

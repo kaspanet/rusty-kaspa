@@ -1,3 +1,7 @@
+//!
+//! Re-exports of the most commonly used types and traits in this crate.
+//!
+
 pub use crate::derivation_path::*;
 pub use crate::keypair::*;
 pub use crate::privatekey::*;

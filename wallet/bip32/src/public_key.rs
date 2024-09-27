@@ -3,7 +3,7 @@ use ripemd::{Digest, Ripemd160};
 use secp256k1::{scalar::Scalar, Secp256k1, VerifyOnly};
 use sha2::Sha256;
 
-/// Trait for key types which can be derived using BIP32.
+/// Trait for public key types which can be derived using BIP32.
 pub trait PublicKey: Sized {
     /// Initialize this key from bytes.
     fn from_bytes(bytes: PublicKeyBytes) -> Result<Self>;

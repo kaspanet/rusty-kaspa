@@ -11,6 +11,11 @@ use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+///
+/// Structure that represents a wallet account. This structure contains
+/// properties that are common to all wallet accounts as well as
+/// account-specific properties stored in a BTreeMap by each account.
+///
 /// @category Wallet API
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AccountDescriptor {

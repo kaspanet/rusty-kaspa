@@ -83,7 +83,7 @@ struct Args {
     ram_scale: f64,
 
     /// Logging level for all subsystems {off, error, warn, info, debug, trace}
-    ///  -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems
+    ///  -- You may also specify `<subsystem>=<level>,<subsystem2>=<level>,...` to set the log level for individual subsystems
     #[arg(long = "loglevel", default_value = format!("info,{}=trace", env!("CARGO_PKG_NAME")))]
     log_level: String,
 

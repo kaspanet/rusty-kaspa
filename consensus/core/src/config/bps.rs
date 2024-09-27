@@ -33,7 +33,7 @@ impl<const BPS: u64> Bps<BPS> {
     }
 
     /// Returns the GHOSTDAG K value which was pre-computed for this BPS
-    /// (see [`calculate_ghostdag_k`] and [`gen_ghostdag_table`] for the full calculation)
+    /// (see [`calculate_ghostdag_k`] and `gen_ghostdag_table` for the full calculation)
     #[rustfmt::skip]
     pub const fn ghostdag_k() -> KType {
         match BPS {

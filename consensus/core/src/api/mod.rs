@@ -39,7 +39,7 @@ pub struct BlockValidationFutures {
 
     /// A future triggered when DAG state which included this block has been processed by the virtual processor
     /// (exceptions are header-only blocks and trusted blocks which have the future completed before virtual
-    /// processing along with the [`block_task`])
+    /// processing along with the `block_task`)
     pub virtual_state_task: BlockValidationFuture,
 }
 

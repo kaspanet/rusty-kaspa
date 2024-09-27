@@ -1,3 +1,9 @@
+//!
+//! # Kaspa Utilities
+//!
+//! General purpose utilities and various type extensions used across the Rusty Kaspa codebase.
+//!
+
 pub mod any;
 pub mod arc;
 pub mod binary_heap;

@@ -2,6 +2,8 @@
 //! [`keypair`](mod@self) module encapsulates [`Keypair`] and [`PrivateKey`].
 //! The [`Keypair`] provides access to the secret and public keys.
 //!
+//! # JavaScript Example
+//!
 //! ```javascript
 //!
 //! let keypair = Keypair.random();
@@ -56,7 +58,8 @@ impl Keypair {
     }
 
     /// Get the [`Address`] of this Keypair's [`PublicKey`].
-    /// Receives a [`NetworkType`] to determine the prefix of the address.
+    /// Receives a [`NetworkType`](kaspa_consensus_core::network::NetworkType)
+    /// to determine the prefix of the address.
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
     // pub fn to_address(&self, network_type: NetworkType) -> Result<Address> {
@@ -67,7 +70,8 @@ impl Keypair {
     }
 
     /// Get `ECDSA` [`Address`] of this Keypair's [`PublicKey`].
-    /// Receives a [`NetworkType`] to determine the prefix of the address.
+    /// Receives a [`NetworkType`](kaspa_consensus_core::network::NetworkType)
+    /// to determine the prefix of the address.
     /// JavaScript: `let address = keypair.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddressECDSA)]
     pub fn to_address_ecdsa(&self, network: &NetworkTypeT) -> Result<Address> {

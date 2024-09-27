@@ -91,7 +91,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
     ///    the selected parent chain of the new block until we find an existing entry in
     ///    blues_anticone_sizes.
     ///
-    /// For further details see the article https://eprint.iacr.org/2018/104.pdf
+    /// For further details see the article <https://eprint.iacr.org/2018/104.pdf>
     pub fn ghostdag(&self, parents: &[Hash]) -> GhostdagData {
         assert!(!parents.is_empty(), "genesis must be added via a call to init");
 

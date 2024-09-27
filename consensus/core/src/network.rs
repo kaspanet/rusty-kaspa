@@ -1,3 +1,16 @@
+//!
+//! # Network Types
+//!
+//! This module implements [`NetworkType`] (such as `mainnet`, `testnet`, `devnet`, and `simnet`)
+//! and [`NetworkId`] that combines a network type with an optional numerical suffix.
+//!
+//! The suffix is used to differentiate between multiple networks of the same type and is used
+//! explicitly with `testnet` networks, allowing declaration of testnet versions such as
+//! `testnet-10`, `testnet-11`, etc.
+//!
+
+#![allow(non_snake_case)]
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Prefix;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};

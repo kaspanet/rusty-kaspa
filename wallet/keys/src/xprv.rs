@@ -1,3 +1,7 @@
+//!
+//! Extended private key ([`XPrv`]).
+//!
+
 use kaspa_bip32::{ChainCode, KeyFingerprint};
 
 use crate::imports::*;

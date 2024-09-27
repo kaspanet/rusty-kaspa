@@ -1,3 +1,5 @@
+//! Conversion of Transaction related types
+
 use crate::{RpcError, RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionOutput};
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput};
 

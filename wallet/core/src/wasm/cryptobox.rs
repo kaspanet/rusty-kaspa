@@ -106,7 +106,7 @@ impl std::ops::Deref for CryptoBoxPublicKey {
 ///
 /// CryptoBox allows for encrypting and decrypting messages using the `crypto_box` crate.
 ///
-/// https://docs.rs/crypto_box/0.9.1/crypto_box/
+/// <https://docs.rs/crypto_box/0.9.1/crypto_box/>
 ///
 ///  @category Wallet SDK
 ///

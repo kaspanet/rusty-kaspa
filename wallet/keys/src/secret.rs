@@ -1,10 +1,10 @@
 //!
-//! Secret container for sensitive data. Performs zeroization on drop.
+//! Secret container for sensitive data. Performs data erasure (zeroization) on drop.
 //!
 
 use crate::imports::*;
 
-/// Secret container for sensitive data. Performs memory zeroization on drop.
+/// Secret container for sensitive data. Performs memory erasure (zeroization) on drop.
 #[derive(Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct Secret(Vec<u8>);
 

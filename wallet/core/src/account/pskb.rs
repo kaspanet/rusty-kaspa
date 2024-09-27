@@ -1,3 +1,8 @@
+//!
+//! Tools for interfacing wallet accounts with PSKBs.
+//! (Partial Signed Kaspa Transaction Bundles).
+//!
+
 pub use crate::error::Error;
 use crate::imports::*;
 use crate::tx::PaymentOutputs;

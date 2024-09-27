@@ -1,3 +1,5 @@
+//! Kaspa wRPC client implementation.
+
 use crate::imports::*;
 use crate::parse::parse_host;
 use crate::{error::Error, node::NodeDescriptor};
@@ -246,14 +248,17 @@ impl RpcResolver for Inner {
 
 const WRPC_CLIENT: &str = "wrpc-client";
 
-/// [`KaspaRpcClient`] allows connection to the Kaspa wRPC Server via
-/// binary Borsh or JSON protocols.
+/// # [`KaspaRpcClient`] connects to Kaspa wRPC endpoint via binary Borsh or JSON protocols.
 ///
 /// RpcClient has two ways to interface with the underlying RPC subsystem:
 /// [`Interface`] that has a [`notification()`](Interface::notification)
 /// method to register closures that will be invoked on server-side
-/// notifications and the [`RpcClient::call`] method that allows async
-/// method invocation server-side.
+/// notifications and the [`RpcClient::call`] method that allows server-side
+/// async method invocation.
+///
+/// The node address can be supplied via a URL or a [`Resolver`] that
+/// can be used to resolve a public node address dynamically. [`Resolver`] can also
+/// be configured to operate against custom node clusters.
 ///
 #[derive(Clone)]
 pub struct KaspaRpcClient {

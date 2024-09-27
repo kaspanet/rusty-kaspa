@@ -1,3 +1,7 @@
+//!
+//! Utilities for signing transactions.
+//!
+
 use crate::transaction::Transaction;
 use core::iter::once;
 use itertools::Itertools;

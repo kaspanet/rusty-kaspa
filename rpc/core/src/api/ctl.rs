@@ -1,3 +1,7 @@
+//!
+//! Client-side RPC helper for handling connection and disconnection events.
+//!
+
 use crate::error::RpcResult;
 use std::sync::{Arc, Mutex};
 use workflow_core::channel::Multiplexer;

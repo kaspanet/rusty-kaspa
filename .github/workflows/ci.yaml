@@ -126,6 +126,9 @@ jobs:
       - name: Run cargo doc tests with features=no-asm on kaspa-hashes
         run: cargo test --doc --release -p kaspa-hashes --features=no-asm
 
+      - name: Run cargo doc
+        run: cargo doc --release --no-deps --workspace
+
   # test-release:
   #   name: Test Suite Release
   #   runs-on: ${{ matrix.os }}

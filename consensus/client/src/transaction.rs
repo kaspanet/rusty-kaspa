@@ -1,3 +1,7 @@
+//!
+//! Declares the client-side [`Transaction`] type, which represents a Kaspa transaction.
+//!
+
 #![allow(non_snake_case)]
 
 use crate::imports::*;
@@ -53,10 +57,13 @@ export interface ITransactionVerboseData {
 
 #[wasm_bindgen]
 extern "C" {
+    /// WASM (TypeScript) type representing `ITransaction | Transaction`
+    /// @category Consensus
     #[wasm_bindgen(typescript_type = "ITransaction | Transaction")]
     pub type TransactionT;
 }
 
+/// Inner type used by [`Transaction`]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionInner {
