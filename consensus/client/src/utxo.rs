@@ -1,3 +1,13 @@
+//!
+//! # UTXO client-side data structures.
+//!
+//! This module provides client-side data structures for UTXO management.
+//! In particular, the [`UtxoEntry`] and [`UtxoEntryReference`] structs
+//! are used to represent UTXO entries in the wallet subsystem and WASM bindings.
+//!
+
+#![allow(non_snake_case)]
+
 use crate::imports::*;
 use crate::outpoint::{TransactionOutpoint, TransactionOutpointInner};
 use crate::result::Result;
@@ -29,16 +39,22 @@ export interface IUtxoEntry {
 
 #[wasm_bindgen]
 extern "C" {
+    /// WASM type representing an array of [`UtxoEntryReference`] objects (i.e. `UtxoEntryReference[]`)
     #[wasm_bindgen(extends = Array, typescript_type = "UtxoEntryReference[]")]
     pub type UtxoEntryReferenceArrayT;
+    /// WASM type representing a UTXO entry interface (a UTXO-like object)
     #[wasm_bindgen(typescript_type = "IUtxoEntry")]
     pub type IUtxoEntry;
+    /// WASM type representing an array of UTXO entries (i.e. `IUtxoEntry[]`)
     #[wasm_bindgen(typescript_type = "IUtxoEntry[]")]
     pub type IUtxoEntryArray;
 }
 
+/// A UTXO entry Id is a unique identifier for a UTXO entry defined by the `txid+output_index`.
 pub type UtxoEntryId = TransactionOutpointInner;
 
+/// [`UtxoEntry`] struct represents a client-side UTXO entry.
+///
 /// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[serde(rename_all = "camelCase")]
@@ -119,6 +135,8 @@ impl From<&UtxoEntry> for cctx::UtxoEntry {
     }
 }
 
+/// [`Arc`] reference to a [`UtxoEntry`] used by the wallet subsystems.
+///
 /// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize, CastFromJs)]
 #[wasm_bindgen(inspectable)]
@@ -251,6 +269,7 @@ impl PartialOrd for UtxoEntryReference {
     }
 }
 
+/// An extension trait to convert a JS value into a vec of UTXO entry references.
 pub trait TryIntoUtxoEntryReferences {
     fn try_into_utxo_entry_references(&self) -> Result<Vec<UtxoEntryReference>>;
 }

@@ -1,16 +1,21 @@
 //!
-//! Kaspa Wallet Core - Multi-platform Rust framework for Kaspa Wallet.
+//! # Kaspa Wallet Core
+//!
+//! Multi-platform Rust framework for Kaspa Wallet.
 //!
 //! This framework provides a series of APIs and primitives
 //! to simplify building applications that interface with
 //! the Kaspa p2p network.
 //!
-//! Included are low-level primitives
+//! For key generation and derivation, please see the
+//! [`kaspa_wallet_keys`] crate.
+//!
+//! This crate included are low-level primitives
 //! such as [`UtxoProcessor`](crate::utxo::UtxoProcessor)
 //! and [`UtxoContext`](crate::utxo::UtxoContext) that provide
 //! various levels of automation as well as higher-level
 //! APIs such as [`Wallet`](crate::wallet::Wallet),
-//! [`Account`](crate::account::Account) (managed via
+//! [`Account`](crate::account::Account) (managed via the
 //! [`WalletApi`](crate::api::WalletApi) trait)
 //! that offer a fully-featured wallet implementation
 //! backed by a multi-platform data storage layer capable of
@@ -28,14 +33,27 @@
 //! to satisfy the requested amount exceeds the maximum
 //! allowed transaction mass.
 //!
-//! The framework can operate
-//! within native Rust applications as well as within the NodeJS
-//! and browser environments via WASM32.
+//! Key generation and derivation is available in the
+//! [`kaspa_wallet_keys`] crate.
 //!
-//! For JavaScript / TypeScript environments, there are two
+//! The framework can operate
+//! within native Rust applications as well as within NodeJS, Bun
+//! and browser environments via the WASM32 SDK.
+//!
+//! WASM32 SDK documentation is available at:
+//! <https://kaspa.aspectron.org/docs/>
+//!
+//! For NodeJS JavaScript and TypeScript environments, there are two
 //! available NPM modules:
 //! - <https://www.npmjs.com/package/kaspa>
 //! - <https://www.npmjs.com/package/kaspa-wasm>
+//!
+//! NOTE: for security reasons (to mitigate potential upstream vendor
+//! attacks) it is always recommended to build WASM SDK from source or
+//! download pre-built redistributables.
+//!
+//! Latest development builds of the WASM32 SDK can be found at:
+//! <https://aspectron.org/en/projects/kaspa-wasm.html>
 //!
 //! The `kaspa-wasm` module is a pure WASM32 module that includes
 //! the entire wallet framework, but does not support RPC due to an absence
@@ -54,36 +72,6 @@
 extern crate alloc;
 extern crate self as kaspa_wallet_core;
 
-// use cfg_if::cfg_if;
-
-// cfg_if! {
-//     if #[cfg(feature = "wasm32-core")] {
-//         // pub mod wasm;
-//         // pub use wasm::*;
-
-//         pub mod account;
-//         pub mod api;
-//         pub mod compat;
-//         pub mod derivation;
-//         pub mod deterministic;
-//         pub mod encryption;
-//         pub mod error;
-//         pub mod events;
-//         pub mod factory;
-//         mod imports;
-//         pub mod message;
-//         pub mod prelude;
-//         pub mod result;
-//         pub mod rpc;
-//         pub mod serializer;
-//         pub mod settings;
-//         pub mod storage;
-//         pub mod tx;
-//         pub mod utils;
-//         pub mod utxo;
-//         pub mod wallet;
-
-//     } else if #[cfg(any(feature = "wasm32-sdk", not(target_arch = "wasm32")))] {
 pub mod account;
 pub mod api;
 pub mod compat;
@@ -107,9 +95,6 @@ pub mod tx;
 pub mod utils;
 pub mod utxo;
 pub mod wallet;
-//     }
-
-// }
 
 #[cfg(any(feature = "wasm32-sdk", feature = "wasm32-core"))]
 pub mod wasm;

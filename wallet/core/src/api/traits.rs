@@ -21,12 +21,28 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn register_notifications(self: Arc<Self>, channel: Receiver<WalletNotification>) -> Result<u64>;
     async fn unregister_notifications(self: Arc<Self>, channel_id: u64) -> Result<()>;
 
+    /// Wrapper around [`retain_context_call()`](Self::retain_context_call).
     async fn retain_context(self: Arc<Self>, name: &str, data: Option<Vec<u8>>) -> Result<()> {
         self.retain_context_call(RetainContextRequest { name: name.to_string(), data }).await?;
         Ok(())
     }
 
+    /// Obtain earlier retained context data using the context `name` as a key.
+    async fn get_context(self: Arc<Self>, name: &str) -> Result<Option<Vec<u8>>> {
+        Ok(self.get_context_call(GetContextRequest { name: name.to_string() }).await?.data)
+    }
+
+    /// Allows user to store string key-associated context data in the wallet subsystem runtime.
+    /// The context data persists only during the wallet instance runtime.
+    /// This can be useful if you have a front-end that connects to a
+    /// persistent wallet instance operating in the backend (such as a browser
+    /// extension popup connecting to the background page) and you need to store
+    /// any type of runtime data in the backend (but are limited to using only
+    /// the wallet interface).
     async fn retain_context_call(self: Arc<Self>, request: RetainContextRequest) -> Result<RetainContextResponse>;
+
+    /// Obtain context data stored using [`retain_context()`](Self::retain_context).
+    async fn get_context_call(self: Arc<Self>, request: GetContextRequest) -> Result<GetContextResponse>;
 
     /// Wrapper around [`get_status_call()`](Self::get_status_call).
     async fn get_status(self: Arc<Self>, name: Option<&str>) -> Result<GetStatusResponse> {
@@ -42,7 +58,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// - `is_wrpc_client` - whether the wallet is connected to a node via wRPC
     async fn get_status_call(self: Arc<Self>, request: GetStatusRequest) -> Result<GetStatusResponse>;
 
-    /// Synchronous connect call (blocking, single attempt, requires sync).
+    /// Synchronous connect call (blocking, single attempt, requires node sync).
     async fn connect(self: Arc<Self>, url: Option<String>, network_id: &NetworkId) -> Result<()> {
         let retry_on_error = false;
         let block_async_connect = true;
@@ -55,6 +71,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// comprised of the `url` and a `network_id`.
     async fn connect_call(self: Arc<Self>, request: ConnectRequest) -> Result<ConnectResponse>;
 
+    /// Request the wallet RPC subsystem to disconnect from the node.
     async fn disconnect(self: Arc<Self>) -> Result<()> {
         self.disconnect_call(DisconnectRequest {}).await?;
         Ok(())
@@ -80,6 +97,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// Ping the wallet service. Accepts an optional `u64` value that is returned in the response.
     async fn ping_call(self: Arc<Self>, request: PingRequest) -> Result<PingResponse>;
 
+    /// Wrapper around [`batch_call()`](Self::batch_call).
     async fn batch(self: Arc<Self>) -> Result<()> {
         self.batch_call(BatchRequest {}).await?;
         Ok(())
@@ -94,6 +112,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     ///
     async fn batch_call(self: Arc<Self>, request: BatchRequest) -> Result<BatchResponse>;
 
+    /// Wrapper around [`flush_call()`](Self::flush_call).
     async fn flush(self: Arc<Self>, wallet_secret: Secret) -> Result<()> {
         self.flush_call(FlushRequest { wallet_secret }).await?;
         Ok(())
@@ -268,6 +287,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// around this call.
     async fn accounts_rename_call(self: Arc<Self>, request: AccountsRenameRequest) -> Result<AccountsRenameResponse>;
 
+    /// Wrapper around [`accounts_select_call()`](Self::accounts_select_call)
     async fn accounts_select(self: Arc<Self>, account_id: Option<AccountId>) -> Result<()> {
         self.accounts_select_call(AccountsSelectRequest { account_id }).await?;
         Ok(())
@@ -404,6 +424,7 @@ pub trait WalletApi: Send + Sync + AnySync {
     async fn accounts_estimate_call(self: Arc<Self>, request: AccountsEstimateRequest) -> Result<AccountsEstimateResponse>;
 
     /// Get a range of transaction records for a specific account id.
+    /// Wrapper around [`transactions_data_get_call()`](Self::transactions_data_get_call).
     async fn transactions_data_get_range(
         self: Arc<Self>,
         account_id: AccountId,
@@ -413,8 +434,8 @@ pub trait WalletApi: Send + Sync + AnySync {
         self.transactions_data_get_call(TransactionsDataGetRequest::with_range(account_id, network_id, range)).await
     }
 
+    /// Get a range of transaction records for a specific account id.
     async fn transactions_data_get_call(self: Arc<Self>, request: TransactionsDataGetRequest) -> Result<TransactionsDataGetResponse>;
-    // async fn transaction_get_call(self: Arc<Self>, request: TransactionGetRequest) -> Result<TransactionGetResponse>;
 
     /// Replaces the note of a transaction with a new note. Note is meant
     /// to explicitly store a user-supplied string. The note is treated
@@ -439,6 +460,7 @@ pub trait WalletApi: Send + Sync + AnySync {
         request: TransactionsReplaceMetadataRequest,
     ) -> Result<TransactionsReplaceMetadataResponse>;
 
+    // TODO
     async fn address_book_enumerate_call(
         self: Arc<Self>,
         request: AddressBookEnumerateRequest,

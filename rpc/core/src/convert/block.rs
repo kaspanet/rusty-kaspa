@@ -1,3 +1,5 @@
+//! Conversion of Block related types
+
 use std::sync::Arc;
 
 use crate::{RpcBlock, RpcError, RpcRawBlock, RpcResult, RpcTransaction};

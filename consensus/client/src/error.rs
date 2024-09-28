@@ -1,3 +1,5 @@
+//! The [`Error`](enum@Error) enum used by this crate
+
 use thiserror::Error;
 use wasm_bindgen::{JsError, JsValue};
 use workflow_wasm::jserror::JsErrorData;

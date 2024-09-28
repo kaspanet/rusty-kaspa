@@ -1,3 +1,10 @@
+//!
+//! WASM bindings for transaction hashers: [`TransactionSigningHash`](native::TransactionSigningHash)
+//! and [`TransactionSigningHashECDSA`](native::TransactionSigningHashECDSA).
+//!
+
+#![allow(non_snake_case)]
+
 use crate::imports::*;
 use crate::result::Result;
 use kaspa_hashes as native;

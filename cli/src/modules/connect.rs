@@ -14,11 +14,11 @@ impl Connect {
             let (is_public, url) = match arg_or_server_address.as_deref() {
                 Some("public") => {
                     tprintln!(ctx, "Connecting to a public node");
-                    (true, Resolver::default().fetch(WrpcEncoding::Borsh, network_id).await.map_err(|e| e.to_string())?.url)
+                    (true, Resolver::default().get_url(WrpcEncoding::Borsh, network_id).await.map_err(|e| e.to_string())?)
                 }
                 None => {
                     tprintln!(ctx, "No server set, connecting to a public node");
-                    (true, Resolver::default().fetch(WrpcEncoding::Borsh, network_id).await.map_err(|e| e.to_string())?.url)
+                    (true, Resolver::default().get_url(WrpcEncoding::Borsh, network_id).await.map_err(|e| e.to_string())?)
                 }
                 Some(url) => {
                     (false, wrpc_client.parse_url_with_network_type(url.to_string(), network_id.into()).map_err(|e| e.to_string())?)

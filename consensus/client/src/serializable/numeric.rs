@@ -1,4 +1,10 @@
-//! This module implements the primitives for external transaction signing.
+//!
+//! This module implements transaction-related primitives for JSON serialization
+//! where all large integer values (`u64`) are serialized to JSON using `serde` and
+//! can exceed the largest integer value representable by the JavaScript `number` type.
+//! (i.e. transactions serialized using this module can not be deserialized in JavaScript
+//! but may be deserialized in other JSON-capable environments that support large integers)
+//!
 
 use crate::error::Error;
 use crate::imports::*;

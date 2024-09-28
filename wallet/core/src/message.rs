@@ -5,6 +5,7 @@
 use kaspa_hashes::{Hash, PersonalMessageSigningHash};
 use secp256k1::{Error, XOnlyPublicKey};
 
+/// A personal message (text) that can be signed.
 #[derive(Clone)]
 pub struct PersonalMessage<'a>(pub &'a str);
 

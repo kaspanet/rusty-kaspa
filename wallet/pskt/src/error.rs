@@ -1,3 +1,5 @@
+//! Error types for the PSKT crate.
+
 use kaspa_txscript_errors::TxScriptError;
 
 use crate::input::InputBuilderError;

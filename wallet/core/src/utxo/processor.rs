@@ -604,9 +604,7 @@ impl UtxoProcessor {
             match kind {
                 MetricsUpdateKind::WalletMetrics => {
                     let mempool_size = snapshot.get(&Metric::NetworkMempoolSize) as u64;
-                    let node_peers = snapshot.get(&Metric::NodeActivePeers) as u32;
-                    let network_tps = snapshot.get(&Metric::NetworkTransactionsPerSecond);
-                    let metrics = MetricsUpdate::WalletMetrics { mempool_size, node_peers, network_tps };
+                    let metrics = MetricsUpdate::WalletMetrics { mempool_size };
                     self.try_notify(Events::Metrics { network_id: self.network_id()?, metrics })?;
                 }
             }

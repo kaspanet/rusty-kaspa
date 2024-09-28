@@ -1,3 +1,7 @@
+//! [`Resolver`](NativeResolver) bindings for obtaining public Kaspa wRPC URL endpoints.
+
+#![allow(non_snake_case)]
+
 use crate::client::{RpcClient, RpcConfig};
 use crate::imports::*;
 use js_sys::Array;

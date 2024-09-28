@@ -1,3 +1,7 @@
+//!
+//! WASM specific conversion functions
+//!
+
 use crate::model::*;
 use kaspa_consensus_client::*;
 use std::sync::Arc;

@@ -1,3 +1,9 @@
+//!
+//! Client-side utility functions and their WASM bindings.
+//!
+
+#![allow(non_snake_case)]
+
 use crate::imports::*;
 use crate::result::Result;
 use kaspa_addresses::*;

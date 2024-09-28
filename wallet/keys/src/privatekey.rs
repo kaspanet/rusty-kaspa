@@ -68,7 +68,8 @@ impl PrivateKey {
     }
 
     /// Get the [`Address`] of the PublicKey generated from this PrivateKey.
-    /// Receives a [`NetworkType`] to determine the prefix of the address.
+    /// Receives a [`NetworkType`](kaspa_consensus_core::network::NetworkType)
+    /// to determine the prefix of the address.
     /// JavaScript: `let address = privateKey.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddress)]
     pub fn to_address(&self, network: &NetworkTypeT) -> Result<Address> {
@@ -80,7 +81,8 @@ impl PrivateKey {
     }
 
     /// Get `ECDSA` [`Address`] of the PublicKey generated from this PrivateKey.
-    /// Receives a [`NetworkType`] to determine the prefix of the address.
+    /// Receives a [`NetworkType`](kaspa_consensus_core::network::NetworkType)
+    /// to determine the prefix of the address.
     /// JavaScript: `let address = privateKey.toAddress(NetworkType.MAINNET);`.
     #[wasm_bindgen(js_name = toAddressECDSA)]
     pub fn to_address_ecdsa(&self, network: &NetworkTypeT) -> Result<Address> {

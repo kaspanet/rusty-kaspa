@@ -1,3 +1,7 @@
+//!
+//! RPC Operations used to identify RPC methods during transport and in various RPC-related macros.
+//!
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_notify::events::EventType;
 use serde::{Deserialize, Serialize};

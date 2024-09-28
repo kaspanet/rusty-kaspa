@@ -1,3 +1,5 @@
+//! Utility functions for the PSKT module.
+
 use std::collections::BTreeMap;
 
 // todo optimize without cloning

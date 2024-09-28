@@ -21,7 +21,8 @@ use std::{
 
 const RESYNC_CHUNK_SIZE: usize = 2048; //Increased from 1k (used in go-kaspad), for quicker resets, while still having a low memory footprint.
 
-/// UtxoIndex indexes [`CompactUtxoEntryCollections`] by [`ScriptPublicKey`], commits them to its owns store, and emits changes.
+/// UtxoIndex indexes `CompactUtxoEntryCollections` by [`ScriptPublicKey`](kaspa_consensus_core::tx::ScriptPublicKey),
+/// commits them to its owns store, and emits changes.
 /// Note: The UtxoIndex struct by itself is not thread save, only correct usage of the supplied RwLock via `new` makes it so.
 /// please follow guidelines found in the comments under `utxoindex::core::api::UtxoIndexApi` for proper thread safety.
 pub struct UtxoIndex {
@@ -131,7 +132,7 @@ impl UtxoIndexApi for UtxoIndex {
     /// Deletes and reinstates the utxoindex database, syncing it from scratch via the consensus database.
     ///
     /// **Notes:**
-    /// 1) There is an implicit expectation that the consensus store must have [VirtualParent] tips. i.e. consensus database must be initiated.
+    /// 1) There is an implicit expectation that the consensus store must have VirtualParent tips. i.e. consensus database must be initiated.
     /// 2) resyncing while consensus notifies of utxo differences, may result in a corrupted db.
     fn resync(&mut self) -> UtxoIndexResult<()> {
         info!("Resyncing the utxoindex...");

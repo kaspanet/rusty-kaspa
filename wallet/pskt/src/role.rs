@@ -1,3 +1,5 @@
+//! PSKT roles.
+
 /// Initializes the PSKT with 0 inputs and 0 outputs.
 /// Reference: [BIP-370: Creator](https://github.com/bitcoin/bips/blob/master/bip-0370.mediawiki#creator)
 pub enum Creator {}
