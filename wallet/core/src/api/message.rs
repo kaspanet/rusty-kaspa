@@ -118,15 +118,18 @@ pub struct RetainContextRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RetainContextResponse {
-    // pub name : String,
-    // pub data: Option<Arc<Vec<u8>>>,
-    // pub is_connected: bool,
-    // pub is_synced: bool,
-    // pub is_open: bool,
-    // pub url: Option<String>,
-    // pub is_wrpc_client: bool,
-    // pub network_id: Option<NetworkId>,
+pub struct RetainContextResponse {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetContextRequest {
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetContextResponse {
+    pub data: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
