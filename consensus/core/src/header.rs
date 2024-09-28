@@ -1,6 +1,6 @@
 use crate::{hashing, BlueWorkType};
 use borsh::{BorshDeserialize, BorshSerialize};
-use kaspa_hashes::Hash;
+use kaspa_hashes::{Hash, ZERO_HASH};
 use kaspa_utils::mem_size::MemSizeEstimator;
 use serde::{Deserialize, Serialize};
 
@@ -90,6 +90,10 @@ impl Header {
             blue_score: 0,
             pruning_point: Default::default(),
         }
+    }
+    pub fn pochm_merkle_root(&self) -> Hash {
+        //placeholder as to not interrupt other functions
+        ZERO_HASH
     }
 }
 

@@ -47,7 +47,9 @@ use crate::{
         window::WindowManager,
     },
 };
-use kaspa_merkle::{calc_merkle_root, create_merkle_witness, verify_merkle_witness, WitnessSegment};
+use kaspa_merkle::{
+    calc_merkle_root, create_merkle_witness_from_sorted, create_merkle_witness_from_unsorted, verify_merkle_witness, WitnessSegment,
+};
 
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
