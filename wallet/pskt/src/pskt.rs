@@ -435,7 +435,7 @@ impl PSKT<Extractor> {
             let mut reused_values = SigHashReusedValues::new();
 
             tx.populated_inputs().enumerate().try_for_each(|(idx, (input, entry))| {
-                TxScriptEngine::from_transaction_input(&tx, input, idx, entry, &mut reused_values, &cache)?.execute()?;
+                TxScriptEngine::from_transaction_input(&tx, input, idx, entry, &mut reused_values, &cache, false)?.execute()?;
                 <Result<(), ExtractError>>::Ok(())
             })?;
         }
