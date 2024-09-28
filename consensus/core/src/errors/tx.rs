@@ -1,4 +1,5 @@
 use crate::constants::MAX_SOMPI;
+use crate::subnets::SubnetworkId;
 use crate::tx::TransactionOutpoint;
 use kaspa_txscript_errors::TxScriptError;
 use thiserror::Error;
@@ -80,6 +81,9 @@ pub enum TxRuleError {
     #[error("failed to verify the signature script: {0}")]
     SignatureInvalid(TxScriptError),
 
+    #[error("failed to verify empty signature script. Inner error: {0}")]
+    SignatureEmpty(TxScriptError),
+
     #[error("input {0} sig op count is {1}, but the calculated value is {2}")]
     WrongSigOpCount(usize, u64, u64),
 
@@ -88,6 +92,14 @@ pub enum TxRuleError {
 
     #[error("calculated contextual mass (including storage mass) {0} is not equal to the committed mass field {1}")]
     WrongMass(u64, u64),
+
+    #[error("transaction subnetwork id {0} is neither native nor coinbase")]
+    SubnetworksDisabled(SubnetworkId),
+
+    /// [`TxRuleError::FeerateTooLow`] is not a consensus error but a mempool error triggered by the
+    /// fee/mass RBF validation rule
+    #[error("fee rate per contextual mass gram is not greater than the fee rate of the replaced transaction")]
+    FeerateTooLow,
 }
 
 pub type TxResult<T> = std::result::Result<T, TxRuleError>;

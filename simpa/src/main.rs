@@ -20,7 +20,12 @@ use kaspa_consensus_core::{
     BlockHashSet, BlockLevel, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
-use kaspa_core::{info, task::service::AsyncService, task::tick::TickService, time::unix_now, trace, warn};
+use kaspa_core::{
+    info,
+    task::{service::AsyncService, tick::TickService},
+    time::unix_now,
+    trace, warn,
+};
 use kaspa_database::prelude::ConnBuilder;
 use kaspa_database::{create_temp_db, load_existing_db};
 use kaspa_hashes::Hash;
@@ -78,7 +83,7 @@ struct Args {
     ram_scale: f64,
 
     /// Logging level for all subsystems {off, error, warn, info, debug, trace}
-    ///  -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems
+    ///  -- You may also specify `<subsystem>=<level>,<subsystem2>=<level>,...` to set the log level for individual subsystems
     #[arg(long = "loglevel", default_value = format!("info,{}=trace", env!("CARGO_PKG_NAME")))]
     log_level: String,
 
@@ -133,7 +138,13 @@ fn main() {
     let args = Args::parse();
 
     // Initialize the logger
-    kaspa_core::log::init_logger(None, &args.log_level);
+    cfg_if::cfg_if! {
+        if #[cfg(feature = "semaphore-trace")] {
+            kaspa_core::log::init_logger(None, &format!("{},{}=debug", args.log_level, kaspa_utils::sync::semaphore_module_path()));
+        } else {
+            kaspa_core::log::init_logger(None, &args.log_level);
+        }
+    };
 
     // Configure the panic behavior
     // As we log the panic, we want to set it up after the logger

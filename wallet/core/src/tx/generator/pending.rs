@@ -8,7 +8,8 @@ use crate::result::Result;
 use crate::rpc::DynRpcApi;
 use crate::tx::{DataKind, Generator};
 use crate::utxo::{UtxoContext, UtxoEntryId, UtxoEntryReference};
-use kaspa_consensus_core::sign::sign_with_multiple_v2;
+use kaspa_consensus_core::hashing::sighash_type::SigHashType;
+use kaspa_consensus_core::sign::{sign_input, sign_with_multiple_v2, Signed};
 use kaspa_consensus_core::tx::{SignableTransaction, Transaction, TransactionId};
 use kaspa_rpc_core::{RpcTransaction, RpcTransactionId};
 
@@ -27,12 +28,18 @@ pub(crate) struct PendingTransactionInner {
     pub(crate) is_submitted: AtomicBool,
     /// Payment value of the transaction (transaction destination amount)
     pub(crate) payment_value: Option<u64>,
+    /// The index (position) of the change output in the transaction
+    pub(crate) change_output_index: Option<usize>,
     /// Change value of the transaction (transaction change amount)
     pub(crate) change_output_value: u64,
     /// Total aggregate value of all inputs
     pub(crate) aggregate_input_value: u64,
     /// Total aggregate value of all outputs
     pub(crate) aggregate_output_value: u64,
+    /// Minimum number of signatures required for the transaction
+    /// (passed in during transaction creation). This value is used
+    /// to estimate the mass of the transaction.
+    pub(crate) minimum_signatures: u16,
     // Transaction mass
     pub(crate) mass: u64,
     /// Fees of the transaction
@@ -48,8 +55,10 @@ impl std::fmt::Debug for PendingTransaction {
             .field("utxo_entries", &self.inner.utxo_entries)
             .field("addresses", &self.inner.addresses)
             .field("payment_value", &self.inner.payment_value)
+            .field("change_output_index", &self.inner.change_output_index)
             .field("change_output_value", &self.inner.change_output_value)
             .field("aggregate_input_value", &self.inner.aggregate_input_value)
+            .field("minimum_signatures", &self.inner.minimum_signatures)
             .field("mass", &self.inner.mass)
             .field("fees", &self.inner.fees)
             .field("kind", &self.inner.kind)
@@ -74,9 +83,11 @@ impl PendingTransaction {
         utxo_entries: Vec<UtxoEntryReference>,
         addresses: Vec<Address>,
         payment_value: Option<u64>,
+        change_output_index: Option<usize>,
         change_output_value: u64,
         aggregate_input_value: u64,
         aggregate_output_value: u64,
+        minimum_signatures: u16,
         mass: u64,
         fees: u64,
         kind: DataKind,
@@ -94,9 +105,11 @@ impl PendingTransaction {
                 addresses,
                 is_submitted: AtomicBool::new(false),
                 payment_value,
+                change_output_index,
                 change_output_value,
                 aggregate_input_value,
                 aggregate_output_value,
+                minimum_signatures,
                 mass,
                 fees,
                 kind,
@@ -134,6 +147,14 @@ impl PendingTransaction {
         self.inner.fees
     }
 
+    pub fn mass(&self) -> u64 {
+        self.inner.mass
+    }
+
+    pub fn minimum_signatures(&self) -> u16 {
+        self.inner.minimum_signatures
+    }
+
     pub fn aggregate_input_value(&self) -> u64 {
         self.inner.aggregate_input_value
     }
@@ -144,6 +165,10 @@ impl PendingTransaction {
 
     pub fn payment_value(&self) -> Option<u64> {
         self.inner.payment_value
+    }
+
+    pub fn change_output_index(&self) -> Option<usize> {
+        self.inner.change_output_index
     }
 
     pub fn change_value(&self) -> u64 {
@@ -223,9 +248,50 @@ impl PendingTransaction {
         Ok(())
     }
 
-    pub fn try_sign_with_keys(&self, privkeys: &[[u8; 32]]) -> Result<()> {
+    pub fn create_input_signature(&self, input_index: usize, private_key: &[u8; 32], hash_type: SigHashType) -> Result<Vec<u8>> {
         let mutable_tx = self.inner.signable_tx.lock()?.clone();
-        let signed_tx = sign_with_multiple_v2(mutable_tx, privkeys).fully_signed()?;
+        let verifiable_tx = mutable_tx.as_verifiable();
+
+        Ok(sign_input(&verifiable_tx, input_index, private_key, hash_type))
+    }
+
+    pub fn fill_input(&self, input_index: usize, signature_script: Vec<u8>) -> Result<()> {
+        let mut mutable_tx = self.inner.signable_tx.lock()?.clone();
+        mutable_tx.tx.inputs[input_index].signature_script = signature_script;
+        *self.inner.signable_tx.lock().unwrap() = mutable_tx;
+
+        Ok(())
+    }
+
+    pub fn sign_input(&self, input_index: usize, private_key: &[u8; 32], hash_type: SigHashType) -> Result<()> {
+        let mut mutable_tx = self.inner.signable_tx.lock()?.clone();
+
+        let signature_script = {
+            let verifiable_tx = &mutable_tx.as_verifiable();
+            sign_input(verifiable_tx, input_index, private_key, hash_type)
+        };
+
+        mutable_tx.tx.inputs[input_index].signature_script = signature_script;
+        *self.inner.signable_tx.lock().unwrap() = mutable_tx;
+
+        Ok(())
+    }
+
+    pub fn try_sign_with_keys(&self, privkeys: &[[u8; 32]], check_fully_signed: Option<bool>) -> Result<()> {
+        let mutable_tx = self.inner.signable_tx.lock()?.clone();
+        let signed = sign_with_multiple_v2(mutable_tx, privkeys);
+
+        let signed_tx = match signed {
+            Signed::Fully(tx) => tx,
+            Signed::Partially(_) => {
+                if check_fully_signed.unwrap_or(true) {
+                    signed.fully_signed()?
+                } else {
+                    signed.unwrap()
+                }
+            }
+        };
+
         *self.inner.signable_tx.lock().unwrap() = signed_tx;
         Ok(())
     }

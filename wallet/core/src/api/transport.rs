@@ -18,7 +18,7 @@ use crate::imports::*;
 use crate::result::Result;
 use crate::wallet::Wallet;
 use async_trait::async_trait;
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::BorshDeserialize;
 use kaspa_wallet_macros::{build_wallet_client_transport_interface, build_wallet_server_transport_interface};
 use workflow_core::task::spawn;
 
@@ -71,6 +71,7 @@ impl WalletApi for WalletClient {
         Disconnect,
         ChangeNetworkId,
         RetainContext,
+        GetContext,
         Batch,
         Flush,
         WalletEnumerate,
@@ -118,7 +119,7 @@ pub trait EventHandler: Send + Sync {
 
 /// [`WalletServer`] is a server-side transport interface that declares
 /// API methods that can be invoked via Borsh or Serde messages containing
-/// serializations created using the [`Transport`] interface. The [`WalletServer`]
+/// serializations created using the [`Codec`] interface. The [`WalletServer`]
 /// is a counter-part to [`WalletClient`].
 pub struct WalletServer {
     // pub wallet_api: Arc<dyn WalletApi>,
@@ -147,6 +148,7 @@ impl WalletServer {
         Disconnect,
         ChangeNetworkId,
         RetainContext,
+        GetContext,
         Batch,
         Flush,
         WalletEnumerate,

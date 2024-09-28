@@ -1,3 +1,16 @@
+//!
+//! # Network Types
+//!
+//! This module implements [`NetworkType`] (such as `mainnet`, `testnet`, `devnet`, and `simnet`)
+//! and [`NetworkId`] that combines a network type with an optional numerical suffix.
+//!
+//! The suffix is used to differentiate between multiple networks of the same type and is used
+//! explicitly with `testnet` networks, allowing declaration of testnet versions such as
+//! `testnet-10`, `testnet-11`, etc.
+//!
+
+#![allow(non_snake_case)]
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Prefix;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
@@ -400,8 +413,11 @@ impl TryFrom<JsValue> for NetworkId {
 
 impl TryCastFromJs for NetworkId {
     type Error = NetworkIdError;
-    fn try_cast_from(value: impl AsRef<JsValue>) -> Result<Cast<Self>, Self::Error> {
-        Self::resolve(&value, || {
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    where
+        R: AsRef<JsValue> + 'a,
+    {
+        Self::resolve(value, || {
             if let Some(network_id) = value.as_ref().as_string() {
                 Ok(NetworkId::from_str(&network_id)?)
             } else {

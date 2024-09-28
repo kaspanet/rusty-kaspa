@@ -1,25 +1,17 @@
-use super::{errors::BuilderResult, policy::Policy};
-use crate::{block_template::selector::TransactionsSelector, model::candidate_tx::CandidateTransaction};
+use super::errors::BuilderResult;
 use kaspa_consensus_core::{
     api::ConsensusApi,
-    block::{BlockTemplate, TemplateBuildMode},
+    block::{BlockTemplate, TemplateBuildMode, TemplateTransactionSelector},
     coinbase::MinerData,
-    merkle::calc_hash_merkle_root,
     tx::COINBASE_TRANSACTION_INDEX,
 };
-use kaspa_core::{
-    debug,
-    time::{unix_now, Stopwatch},
-};
+use kaspa_core::time::{unix_now, Stopwatch};
 
-pub(crate) struct BlockTemplateBuilder {
-    policy: Policy,
-}
+pub(crate) struct BlockTemplateBuilder {}
 
 impl BlockTemplateBuilder {
-    pub(crate) fn new(max_block_mass: u64) -> Self {
-        let policy = Policy::new(max_block_mass);
-        Self { policy }
+    pub(crate) fn new() -> Self {
+        Self {}
     }
 
     /// BuildBlockTemplate creates a block template for a miner to consume
@@ -89,12 +81,10 @@ impl BlockTemplateBuilder {
         &self,
         consensus: &dyn ConsensusApi,
         miner_data: &MinerData,
-        transactions: Vec<CandidateTransaction>,
+        selector: Box<dyn TemplateTransactionSelector>,
         build_mode: TemplateBuildMode,
     ) -> BuilderResult<BlockTemplate> {
         let _sw = Stopwatch::<20>::with_threshold("build_block_template op");
-        debug!("Considering {} transactions for a new block template", transactions.len());
-        let selector = Box::new(TransactionsSelector::new(self.policy.clone(), transactions));
         Ok(consensus.build_block_template(miner_data.clone(), selector, build_mode)?)
     }
 
@@ -115,7 +105,8 @@ impl BlockTemplateBuilder {
             coinbase_tx.outputs.last_mut().unwrap().script_public_key = new_miner_data.script_public_key.clone();
         }
         // Update the hash merkle root according to the modified transactions
-        block_template.block.header.hash_merkle_root = calc_hash_merkle_root(block_template.block.transactions.iter());
+        block_template.block.header.hash_merkle_root =
+            consensus.calc_transaction_hash_merkle_root(&block_template.block.transactions, block_template.block.header.daa_score);
         let new_timestamp = unix_now();
         if new_timestamp > block_template.block.header.timestamp {
             // Only if new time stamp is later than current, update the header. Otherwise,

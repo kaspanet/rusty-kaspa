@@ -91,7 +91,7 @@ impl ConsensusInstance {
 
     /// Returns an unguarded *blocking* consensus session. There's no guarantee that data will not be pruned between
     /// two sequential consensus calls. This session doesn't hold the consensus pruning lock, so it should
-    /// be preferred upon [`session_blocking`] when data consistency is not important.
+    /// be preferred upon [`session_blocking()`](Self::session_blocking) when data consistency is not important.
     pub fn unguarded_session_blocking(&self) -> ConsensusSessionBlocking<'static> {
         ConsensusSessionBlocking::new_without_session_guard(self.consensus.clone())
     }
@@ -100,7 +100,7 @@ impl ConsensusInstance {
     /// that consensus state is consistent between operations, that is, no pruning was performed between the calls.
     /// The returned object is an *owned* consensus session type which can be cloned and shared across threads.
     /// The sharing ability is useful for spawning blocking operations on a different thread using the same
-    /// session object, see [`ConsensusSessionOwned::spawn_blocking`]. The caller is responsible to make sure
+    /// session object, see [`ConsensusSessionOwned::spawn_blocking()`](ConsensusSessionOwned::spawn_blocking). The caller is responsible to make sure
     /// that the overall lifetime of this session is not too long (~2 seconds max)
     pub async fn session(&self) -> ConsensusSessionOwned {
         let g = self.session_lock.read_owned().await;
@@ -109,7 +109,7 @@ impl ConsensusInstance {
 
     /// Returns an unguarded consensus session. There's no guarantee that data will not be pruned between
     /// two sequential consensus calls. This session doesn't hold the consensus pruning lock, so it should
-    /// be preferred upon [`session`] when data consistency is not important.
+    /// be preferred upon [`session()`](Self::session) when data consistency is not important.
     pub fn unguarded_session(&self) -> ConsensusSessionOwned {
         ConsensusSessionOwned::new_without_session_guard(self.consensus.clone())
     }
@@ -139,7 +139,8 @@ impl Deref for ConsensusSessionBlocking<'_> {
 }
 
 /// An *owned* consensus session type which can be cloned and shared across threads.
-/// See method `spawn_blocking` within for context on the usefulness of this type
+/// See method `spawn_blocking` within for context on the usefulness of this type.
+/// Please note - you must use [`ConsensusProxy`] type alias instead of this struct.
 #[derive(Clone)]
 pub struct ConsensusSessionOwned {
     _session_guard: Option<SessionOwnedReadGuard>,
@@ -247,6 +248,10 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_sink_timestamp()).await
     }
 
+    pub async fn async_get_current_block_color(&self, hash: Hash) -> Option<bool> {
+        self.clone().spawn_blocking(move |c| c.get_current_block_color(hash)).await
+    }
+
     /// source refers to the earliest block from which the current node has full header & block data  
     pub async fn async_get_source(&self) -> Hash {
         self.clone().spawn_blocking(|c| c.get_source()).await
@@ -263,8 +268,12 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.is_nearly_synced()).await
     }
 
-    pub async fn async_get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
-        self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(hash)).await
+    pub async fn async_get_virtual_chain_from_block(
+        &self,
+        low: Hash,
+        chain_path_added_limit: Option<usize>,
+    ) -> ConsensusResult<ChainPath> {
+        self.clone().spawn_blocking(move |c| c.get_virtual_chain_from_block(low, chain_path_added_limit)).await
     }
 
     pub async fn async_get_virtual_utxos(
@@ -376,8 +385,12 @@ impl ConsensusSessionOwned {
     /// Returns acceptance data for a set of blocks belonging to the selected parent chain.
     ///
     /// See `self::get_virtual_chain`
-    pub async fn async_get_blocks_acceptance_data(&self, hashes: Vec<Hash>) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
-        self.clone().spawn_blocking(move |c| c.get_blocks_acceptance_data(&hashes)).await
+    pub async fn async_get_blocks_acceptance_data(
+        &self,
+        hashes: Vec<Hash>,
+        merged_blocks_limit: Option<usize>,
+    ) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
+        self.clone().spawn_blocking(move |c| c.get_blocks_acceptance_data(&hashes, merged_blocks_limit)).await
     }
 
     pub async fn async_is_chain_block(&self, hash: Hash) -> ConsensusResult<bool> {

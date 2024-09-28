@@ -32,33 +32,12 @@ cfg_if! {
         }
 
         /**
-         * {@link UtxoProcessor} notification event data.
-         * @category Wallet SDK
-         */
-        export type UtxoProcessorEventData = IConnectEvent
-            | IDisconnectEvent
-            | IUtxoIndexNotEnabledEvent
-            | ISyncStateEvent
-            | IServerStatusEvent
-            | IUtxoProcErrorEvent
-            | IDaaScoreChangeEvent
-            | IPendingEvent
-            | IReorgEvent
-            | IStasisEvent
-            | IMaturityEvent
-            | IDiscoveryEvent
-            | IBalanceEvent
-            | IErrorEvent
-            | undefined
-            ;
-
-        /**
-         * UtxoProcessor notification event data map.
+         * {@link UtxoProcessor} notification event data map.
          * 
          * @category Wallet API
          */
         export type UtxoProcessorEventMap = {
-            "connect":IConnectEvent,
+            "connect": IConnectEvent,
             "disconnect": IDisconnectEvent,
             "utxo-index-not-enabled": IUtxoIndexNotEnabledEvent,
             "sync-state": ISyncStateEvent,
@@ -80,10 +59,13 @@ cfg_if! {
          * 
          * @category Wallet API
          */
-        export type IUtxoProcessorEvent = {
-            [K in keyof UtxoProcessorEventMap]: { event: K, data: UtxoProcessorEventMap[K] }
-        }[keyof UtxoProcessorEventMap];
 
+        export type UtxoProcessorEvent<T extends keyof UtxoProcessorEventMap> = {
+          [K in T]: {
+            type: K,
+            data: UtxoProcessorEventMap[K]
+          }
+        }[T];
         
         /**
          * {@link UtxoProcessor} notification callback type.
@@ -95,7 +77,8 @@ cfg_if! {
          * 
          * @category Wallet SDK
          */
-        export type UtxoProcessorNotificationCallback = (event: IUtxoProcessorEvent) => void;
+
+        export type UtxoProcessorNotificationCallback<E extends keyof UtxoProcessorEventMap = keyof UtxoProcessorEventMap> = (event: UtxoProcessorEvent<E>) => void;
         "#;
 
         #[wasm_bindgen]
@@ -150,85 +133,53 @@ cfg_if! {
             Error = "error",
         }
 
-
-        /**
-         * {@link Wallet} notification event data payload.
-         * @category Wallet API
-         */
-        export type WalletEventData = IConnectEvent
-            | IDisconnectEvent
-            | IUtxoIndexNotEnabledEvent
-            | ISyncStateEvent
-            | IWalletHintEvent
-            | IWalletOpenEvent
-            | IWalletCreateEvent
-            | IWalletReloadEvent
-            | IWalletErrorEvent
-            // | IWalletCloseEvent
-            | IPrvKeyDataCreateEvent
-            | IAccountActivationEvent
-            | IAccountDeactivationEvent
-            | IAccountSelectionEvent
-            | IAccountCreateEvent
-        | IAccountUpdateEvent
-            | IServerStatusEvent
-            // | IUtxoProcStartEvent
-            // | IUtxoProcStopEvent
-            | IUtxoProcErrorEvent
-            | IDaaScoreChangeEvent
-            | IPendingEvent
-            | IReorgEvent
-            | IStasisEvent
-            | IMaturityEvent
-            | IDiscoveryEvent
-            | IBalanceEvent
-            | IErrorEvent
-            | undefined
-            ;
-
         /**
          * Wallet notification event data map.
          * @see {@link Wallet.addEventListener}
          * @category Wallet API
          */
         export type WalletEventMap = {
-             "connect": IConnectEvent,
-             "disconnect": IDisconnectEvent,
-             "utxo-index-not-enabled": IUtxoIndexNotEnabledEvent,
-             "sync-state": ISyncStateEvent,
-             "wallet-hint": IWalletHintEvent,
-             "wallet-open": IWalletOpenEvent,
-             "wallet-create": IWalletCreateEvent,
-             "wallet-reload": IWalletReloadEvent,
-             "wallet-error": IWalletErrorEvent,
-             "wallet-close": undefined,
-             "prv-key-data-create": IPrvKeyDataCreateEvent,
-             "account-activation": IAccountActivationEvent,
-             "account-deactivation": IAccountDeactivationEvent,
-             "account-selection": IAccountSelectionEvent,
-             "account-create": IAccountCreateEvent,
-             "account-update": IAccountUpdateEvent,
-             "server-status": IServerStatusEvent,
-             "utxo-proc-start": undefined,
-             "utxo-proc-stop": undefined,
-             "utxo-proc-error": IUtxoProcErrorEvent,
-             "daa-score-change": IDaaScoreChangeEvent,
-             "pending": IPendingEvent,
-             "reorg": IReorgEvent,
-             "stasis": IStasisEvent,
-             "maturity": IMaturityEvent,
-             "discovery": IDiscoveryEvent,
-             "balance": IBalanceEvent,
-             "error": IErrorEvent,
+            "connect": IConnectEvent,
+            "disconnect": IDisconnectEvent,
+            "utxo-index-not-enabled": IUtxoIndexNotEnabledEvent,
+            "sync-state": ISyncStateEvent,
+            "wallet-hint": IWalletHintEvent,
+            "wallet-open": IWalletOpenEvent,
+            "wallet-create": IWalletCreateEvent,
+            "wallet-reload": IWalletReloadEvent,
+            "wallet-error": IWalletErrorEvent,
+            "wallet-close": undefined,
+            "prv-key-data-create": IPrvKeyDataCreateEvent,
+            "account-activation": IAccountActivationEvent,
+            "account-deactivation": IAccountDeactivationEvent,
+            "account-selection": IAccountSelectionEvent,
+            "account-create": IAccountCreateEvent,
+            "account-update": IAccountUpdateEvent,
+            "server-status": IServerStatusEvent,
+            "utxo-proc-start": undefined,
+            "utxo-proc-stop": undefined,
+            "utxo-proc-error": IUtxoProcErrorEvent,
+            "daa-score-change": IDaaScoreChangeEvent,
+            "pending": IPendingEvent,
+            "reorg": IReorgEvent,
+            "stasis": IStasisEvent,
+            "maturity": IMaturityEvent,
+            "discovery": IDiscoveryEvent,
+            "balance": IBalanceEvent,
+            "error": IErrorEvent,
         }
         
         /**
          * {@link Wallet} notification event interface.
          * @category Wallet API
          */
-        export type IWalletEvent = {
-            [K in keyof WalletEventMap]: { type: K, data: WalletEventMap[K] }
-        }[keyof WalletEventMap];
+        export type IWalletEvent<T extends keyof WalletEventMap> = {
+            [K in T]: {
+                type: K,
+                data: WalletEventMap[K]
+            }
+        }[T];
+
 
         /**
          * Wallet notification callback type.
@@ -240,7 +191,7 @@ cfg_if! {
          * 
          * @category Wallet API
          */
-        export type WalletNotificationCallback = (event: IWalletEvent) => void;
+        export type WalletNotificationCallback<E extends keyof WalletEventMap = keyof WalletEventMap> = (event: IWalletEvent<E>) => void;
         "#;
 
         #[wasm_bindgen]

@@ -36,11 +36,18 @@ use crate::{
         virtual_processor::{errors::PruningImportResult, VirtualStateProcessor},
         ProcessingCounters,
     },
-    processes::window::{WindowManager, WindowType},
+    processes::{
+        ghostdag::ordering::SortableBlock,
+        window::{WindowManager, WindowType},
+    },
 };
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
-    api::{stats::BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats},
+    api::{
+        args::{TransactionValidationArgs, TransactionValidationBatchArgs},
+        stats::BlockCount,
+        BlockValidationFutures, ConsensusApi, ConsensusStats,
+    },
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     blockhash::BlockHashExtensions,
     blockstatus::BlockStatus,
@@ -49,16 +56,18 @@ use kaspa_consensus_core::{
     errors::{
         coinbase::CoinbaseResult,
         consensus::{ConsensusError, ConsensusResult},
+        difficulty::DifficultyError,
+        pruning::PruningImportError,
         tx::TxResult,
     },
-    errors::{difficulty::DifficultyError, pruning::PruningImportError},
     header::Header,
+    merkle::calc_hash_merkle_root,
     muhash::MuHashExtensions,
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet, BlueWorkType, ChainPath,
+    BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 
@@ -74,6 +83,8 @@ use kaspa_muhash::MuHash;
 use kaspa_txscript::caches::TxScriptCacheCounters;
 
 use std::{
+    cmp::Reverse,
+    collections::BinaryHeap,
     future::Future,
     iter::once,
     ops::Deref,
@@ -418,13 +429,17 @@ impl ConsensusApi for Consensus {
         BlockValidationFutures { block_task: Box::pin(block_task), virtual_state_task: Box::pin(virtual_state_task) }
     }
 
-    fn validate_mempool_transaction(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
-        self.virtual_processor.validate_mempool_transaction(transaction)?;
+    fn validate_mempool_transaction(&self, transaction: &mut MutableTransaction, args: &TransactionValidationArgs) -> TxResult<()> {
+        self.virtual_processor.validate_mempool_transaction(transaction, args)?;
         Ok(())
     }
 
-    fn validate_mempool_transactions_in_parallel(&self, transactions: &mut [MutableTransaction]) -> Vec<TxResult<()>> {
-        self.virtual_processor.validate_mempool_transactions_in_parallel(transactions)
+    fn validate_mempool_transactions_in_parallel(
+        &self,
+        transactions: &mut [MutableTransaction],
+        args: &TransactionValidationBatchArgs,
+    ) -> Vec<TxResult<()>> {
+        self.virtual_processor.validate_mempool_transactions_in_parallel(transactions, args)
     }
 
     fn populate_mempool_transaction(&self, transaction: &mut MutableTransaction) -> TxResult<()> {
@@ -495,6 +510,64 @@ impl ConsensusApi for Consensus {
         self.headers_store.get_timestamp(self.get_sink()).unwrap()
     }
 
+    fn get_current_block_color(&self, hash: Hash) -> Option<bool> {
+        let _guard = self.pruning_lock.blocking_read();
+
+        // Verify the block exists and can be assumed to have relations and reachability data
+        self.validate_block_exists(hash).ok()?;
+
+        // Verify that the block is in future(source), where Ghostdag data is complete
+        self.services.reachability_service.is_dag_ancestor_of(self.get_source(), hash).then_some(())?;
+
+        let sink = self.get_sink();
+
+        // Optimization: verify that the block is in past(sink), otherwise the search will fail anyway
+        // (means the block was not merged yet by a virtual chain block)
+        self.services.reachability_service.is_dag_ancestor_of(hash, sink).then_some(())?;
+
+        let mut heap: BinaryHeap<Reverse<SortableBlock>> = BinaryHeap::new();
+        let mut visited = BlockHashSet::new();
+
+        let initial_children = self.get_block_children(hash).unwrap();
+
+        for child in initial_children {
+            if visited.insert(child) {
+                let blue_work = self.ghostdag_primary_store.get_blue_work(child).unwrap();
+                heap.push(Reverse(SortableBlock::new(child, blue_work)));
+            }
+        }
+
+        while let Some(Reverse(SortableBlock { hash: decedent, .. })) = heap.pop() {
+            if self.services.reachability_service.is_chain_ancestor_of(decedent, sink) {
+                let decedent_data = self.get_ghostdag_data(decedent).unwrap();
+
+                if decedent_data.mergeset_blues.contains(&hash) {
+                    return Some(true);
+                } else if decedent_data.mergeset_reds.contains(&hash) {
+                    return Some(false);
+                }
+
+                // Note: because we are doing a topological BFS up (from `hash` towards virtual), the first chain block
+                // found must also be our merging block, so hash will be either in blues or in reds, rendering this line
+                // unreachable.
+                kaspa_core::warn!("DAG topology inconsistency: {decedent} is expected to be a merging block of {hash}");
+                // TODO: we should consider the option of returning Result<Option<bool>> from this method
+                return None;
+            }
+
+            let children = self.get_block_children(decedent).unwrap();
+
+            for child in children {
+                if visited.insert(child) {
+                    let blue_work = self.ghostdag_primary_store.get_blue_work(child).unwrap();
+                    heap.push(Reverse(SortableBlock::new(child, blue_work)));
+                }
+            }
+        }
+
+        None
+    }
+
     fn get_virtual_state_approx_id(&self) -> VirtualStateApproxId {
         self.lkg_virtual_state.load().to_virtual_state_approx_id()
     }
@@ -534,14 +607,26 @@ impl ConsensusApi for Consensus {
         self.config.is_nearly_synced(compact.timestamp, compact.daa_score)
     }
 
-    fn get_virtual_chain_from_block(&self, hash: Hash) -> ConsensusResult<ChainPath> {
-        // Calculate chain changes between the given hash and the
-        // sink. Note that we explicitly don't
+    fn get_virtual_chain_from_block(&self, low: Hash, chain_path_added_limit: Option<usize>) -> ConsensusResult<ChainPath> {
+        // Calculate chain changes between the given `low` and the current sink hash (up to `limit` amount of block hashes).
+        // Note:
+        // 1) that we explicitly don't
         // do the calculation against the virtual itself so that we
         // won't later need to remove it from the result.
+        // 2) supplying `None` as `chain_path_added_limit` will result in the full chain path, with optimized performance.
         let _guard = self.pruning_lock.blocking_read();
-        self.validate_block_exists(hash)?;
-        Ok(self.services.dag_traversal_manager.calculate_chain_path(hash, self.get_sink()))
+
+        // Verify that the block exists
+        self.validate_block_exists(low)?;
+
+        // Verify that source is on chain(block)
+        self.services
+            .reachability_service
+            .is_chain_ancestor_of(self.get_source(), low)
+            .then_some(())
+            .ok_or(ConsensusError::General("the queried hash does not have source on its chain"))?;
+
+        Ok(self.services.dag_traversal_manager.calculate_chain_path(low, self.get_sink(), chain_path_added_limit))
     }
 
     /// Returns a Vec of header samples since genesis
@@ -664,6 +749,11 @@ impl ConsensusApi for Consensus {
 
     fn modify_coinbase_payload(&self, payload: Vec<u8>, miner_data: &MinerData) -> CoinbaseResult<Vec<u8>> {
         self.services.coinbase_manager.modify_coinbase_payload(payload, miner_data)
+    }
+
+    fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction], pov_daa_score: u64) -> Hash {
+        let storage_mass_activated = pov_daa_score > self.config.storage_mass_activation_daa_score;
+        calc_hash_merkle_root(txs.iter(), storage_mass_activated)
     }
 
     fn validate_pruning_proof(&self, proof: &PruningPointProof) -> Result<(), PruningImportError> {
@@ -836,11 +926,35 @@ impl ConsensusApi for Consensus {
         self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))
     }
 
-    fn get_blocks_acceptance_data(&self, hashes: &[Hash]) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
+    fn get_blocks_acceptance_data(
+        &self,
+        hashes: &[Hash],
+        merged_blocks_limit: Option<usize>,
+    ) -> ConsensusResult<Vec<Arc<AcceptanceData>>> {
+        // Note: merged_blocks_limit will limit after the sum of merged blocks is breached along the supplied hash's acceptance data
+        // and not limit the acceptance data within a queried hash. i.e. It has mergeset_size_limit granularity, this is to guarantee full acceptance data coverage.
+        if merged_blocks_limit.is_none() {
+            return hashes
+                .iter()
+                .copied()
+                .map(|hash| self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash)))
+                .collect::<ConsensusResult<Vec<_>>>();
+        }
+        let merged_blocks_limit = merged_blocks_limit.unwrap(); // we handle `is_none`, so may unwrap.
+        let mut num_of_merged_blocks = 0usize;
+
         hashes
             .iter()
             .copied()
-            .map(|hash| self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash)))
+            .map_while(|hash| {
+                let entry = self.acceptance_data_store.get(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash));
+                num_of_merged_blocks += entry.as_ref().map_or(0, |entry| entry.len());
+                if num_of_merged_blocks > merged_blocks_limit {
+                    None
+                } else {
+                    Some(entry)
+                }
+            })
             .collect::<ConsensusResult<Vec<_>>>()
     }
 
