@@ -1,3 +1,7 @@
+//!
+//! Module implementing [`Resolver`] client for obtaining public Kaspa wRPC endpoints.
+//!
+
 use std::sync::OnceLock;
 
 use crate::error::Error;
@@ -78,7 +82,12 @@ impl Inner {
 }
 
 ///
-/// Resolver is a client for obtaining public Kaspa wRPC endpoints.
+/// # Resolver - a client for obtaining public Kaspa wRPC endpoints.
+///
+/// This client operates against [Kaspa Resolver](https://github.com/aspectron/kaspa-resolver) service
+/// that provides load-balancing and failover capabilities for Kaspa wRPC endpoints. The default
+/// configuration allows access to public Kaspa nodes, while custom configurations can be supplied
+/// if you are running your own custom Kaspa node cluster.
 ///
 #[derive(Debug, Clone)]
 pub struct Resolver {
@@ -92,10 +101,15 @@ impl Default for Resolver {
 }
 
 impl Resolver {
+    /// Create a new [`Resolver`] client with the specified list of resolver URLs and an optional `tls` flag.
+    /// The `tls` flag can be used to enforce secure connection to the node.
     pub fn new(urls: Option<Vec<Arc<String>>>, tls: bool) -> Self {
         Self { inner: Arc::new(Inner::new(urls, tls)) }
     }
 
+    /// Obtain a list of URLs in the resolver client. (This function
+    /// returns `None` if the resolver is configured to use public
+    /// node endpoints.)
     pub fn urls(&self) -> Option<Vec<Arc<String>>> {
         if self.inner.public {
             None
@@ -104,11 +118,12 @@ impl Resolver {
         }
     }
 
+    /// Obtain the `tls` flag in the resolver client.
     pub fn tls(&self) -> bool {
         self.inner.tls
     }
 
-    pub fn tls_as_str(&self) -> &'static str {
+    fn tls_as_str(&self) -> &'static str {
         if self.inner.tls {
             "tls"
         } else {
@@ -140,6 +155,7 @@ impl Resolver {
         format!("{url}/v{CURRENT_VERSION}/kaspa/{network_id}/{tls}/wrpc/{encoding}")
     }
 
+    // query a single resolver service
     async fn fetch_node_info(&self, url: &str, encoding: Encoding, network_id: NetworkId) -> Result<NodeDescriptor> {
         let url = self.make_url(url, encoding, network_id);
         let node =
@@ -147,7 +163,8 @@ impl Resolver {
         Ok(node)
     }
 
-    pub async fn fetch(&self, encoding: Encoding, network_id: NetworkId) -> Result<NodeDescriptor> {
+    // query multiple resolver services in random order
+    async fn fetch(&self, encoding: Encoding, network_id: NetworkId) -> Result<NodeDescriptor> {
         let mut urls = self.inner.urls.clone();
         urls.shuffle(&mut thread_rng());
 
@@ -161,10 +178,12 @@ impl Resolver {
         Err(Error::Custom(format!("Failed to connect: {:?}", errors)))
     }
 
+    /// Obtain a Kaspa p2p [`NodeDescriptor`] from the resolver based on the supplied [`Encoding`] and [`NetworkId`].
     pub async fn get_node(&self, encoding: Encoding, network_id: NetworkId) -> Result<NodeDescriptor> {
         self.fetch(encoding, network_id).await
     }
 
+    /// Returns a Kaspa wRPC URL from the resolver based on the supplied [`Encoding`] and [`NetworkId`].
     pub async fn get_url(&self, encoding: Encoding, network_id: NetworkId) -> Result<String> {
         let nodes = self.fetch(encoding, network_id).await?;
         Ok(nodes.url.clone())

@@ -1,3 +1,9 @@
+//!
+//! Implementation of the client-side [`TransactionInput`] struct used by the client-side [`Transaction`] struct.
+//!
+
+#![allow(non_snake_case)]
+
 use crate::imports::*;
 use crate::result::Result;
 use crate::TransactionOutpoint;
@@ -33,14 +39,21 @@ export interface ITransactionInputVerboseData { }
 
 #[wasm_bindgen]
 extern "C" {
+    /// WASM (TypeScript) type representing `ITransactionInput | TransactionInput`
+    /// @category Consensus
     #[wasm_bindgen(typescript_type = "ITransactionInput | TransactionInput")]
     pub type TransactionInputT;
+    /// WASM (TypeScript) type representing `ITransactionInput[] | TransactionInput[]`
+    /// @category Consensus
     #[wasm_bindgen(typescript_type = "(ITransactionInput | TransactionInput)[]")]
     pub type TransactionInputArrayAsArgT;
+    /// WASM (TypeScript) type representing `TransactionInput[]`
+    /// @category Consensus
     #[wasm_bindgen(typescript_type = "TransactionInput[]")]
     pub type TransactionInputArrayAsResultT;
 }
 
+/// Inner type used by [`TransactionInput`]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransactionInputInner {

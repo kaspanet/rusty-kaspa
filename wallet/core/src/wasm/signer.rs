@@ -50,7 +50,7 @@ pub fn js_sign_transaction(tx: &Transaction, signer: &PrivateKeyArrayT, verify_s
     }
 }
 
-pub fn sign_transaction<'a>(tx: &'a Transaction, private_keys: &[[u8; 32]], verify_sig: bool) -> Result<&'a Transaction> {
+fn sign_transaction<'a>(tx: &'a Transaction, private_keys: &[[u8; 32]], verify_sig: bool) -> Result<&'a Transaction> {
     let tx = sign(tx, private_keys)?;
     if verify_sig {
         let (cctx, utxos) = tx.tx_and_utxos()?;
@@ -97,7 +97,7 @@ pub fn sign_script_hash(script_hash: JsValue, privkey: &PrivateKey) -> Result<St
     Ok(result.to_hex())
 }
 
-pub fn sign_hash(sig_hash: Hash, privkey: &[u8; 32]) -> Result<Vec<u8>> {
+fn sign_hash(sig_hash: Hash, privkey: &[u8; 32]) -> Result<Vec<u8>> {
     let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice())?;
     let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, privkey)?;
     let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
