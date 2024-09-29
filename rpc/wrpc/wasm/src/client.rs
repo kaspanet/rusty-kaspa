@@ -976,6 +976,11 @@ build_wrpc_wasm_bindgen_interface!(
         /// Obtains basic information about the synchronization status of the Kaspa node.
         /// Returned information: Syncing status.
         GetSyncStatus,
+        /// Feerate estimates
+        GetFeeEstimate,
+        /// Retrieves the current network configuration.
+        /// Returned information: Current network configuration.
+        GetCurrentNetwork,
     ],
     [
         // functions with `request` argument
@@ -1010,13 +1015,8 @@ build_wrpc_wasm_bindgen_interface!(
         /// score timestamp estimate.
         /// Returned information: DAA score timestamp estimate.
         GetDaaScoreTimestampEstimate,
-        /// Feerate estimates
-        GetFeeEstimate,
         /// Feerate estimates (experimental)
         GetFeeEstimateExperimental,
-        /// Retrieves the current network configuration.
-        /// Returned information: Current network configuration.
-        GetCurrentNetwork,
         /// Retrieves block headers from the Kaspa BlockDAG.
         /// Returned information: List of block headers.
         GetHeaders,
