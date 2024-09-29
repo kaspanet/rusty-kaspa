@@ -229,8 +229,6 @@ impl Mnemonic {
     }
 
     /// Convert this mnemonic phrase into the BIP39 seed value.
-    //#[cfg(feature = "bip39")]
-    //#[cfg_attr(docsrs, doc(cfg(feature = "bip39")))]
     pub fn to_seed(&self, password: &str) -> Seed {
         let salt = Zeroizing::new(format!("mnemonic{password}"));
         let mut seed = [0u8; Seed::SIZE];
