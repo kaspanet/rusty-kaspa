@@ -38,12 +38,11 @@ where
 
     fn poll_frame(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
         let this = self.project();
-        let counter: Arc<AtomicUsize> = this.counter.clone();
         match ready!(this.inner.poll_frame(cx)) {
             Some(Ok(frame)) => {
                 if let Some(chunk) = frame.data_ref() {
                     trace!("[SIZE MW] body chunk size = {}", chunk.len());
-                    let _previous = counter.fetch_add(chunk.len(), Ordering::Relaxed);
+                    let _previous = this.counter.fetch_add(chunk.len(), Ordering::Relaxed);
                     trace!("[SIZE MW] total count: {}", _previous);
                 }
 
