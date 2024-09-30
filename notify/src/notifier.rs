@@ -75,8 +75,8 @@ pub type DynNotify<N> = Arc<dyn Notify<N>>;
 ///
 /// - a vector of [`DynCollector`]
 /// - a vector of [`Subscriber`]
-/// - a pool of [`Broadcaster`]
-/// - a map of [`Listener`]
+/// - a pool of `Broadcaster`
+/// - a map of `Listener`
 ///
 /// Collectors and subscribers form the scaffold. They are provided to the ctor, are immutable and share its
 /// lifespan. Both do materialize a connection to the notifier _parents_, collectors for incoming notifications
