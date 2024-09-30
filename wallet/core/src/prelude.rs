@@ -1,6 +1,5 @@
 //!
-//! A module which is typically glob imported.
-//! Contains most commonly used imports.
+//! Re-exports of the most commonly used types and traits in this crate.
 //!
 
 pub use crate::account::descriptor::AccountDescriptor;

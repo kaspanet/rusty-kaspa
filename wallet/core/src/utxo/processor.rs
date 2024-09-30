@@ -33,8 +33,6 @@ use kaspa_rpc_core::{
     notify::connection::{ChannelConnection, ChannelType},
     Notification,
 };
-// use workflow_core::task;
-// use kaspa_metrics_core::{Metrics,Metric};
 
 pub struct Inner {
     /// Coinbase UTXOs in stasis
@@ -58,7 +56,7 @@ pub struct Inner {
     sync_proc: SyncMonitor,
     multiplexer: Multiplexer<Box<Events>>,
     wallet_bus: Option<Channel<WalletBusMessage>>,
-    notification_guard: AsyncMutex<()>,
+    notification_guard: AsyncRwLock<()>,
     connect_disconnect_guard: AsyncMutex<()>,
     metrics: Arc<Metrics>,
     metrics_kinds: Mutex<Vec<MetricsUpdateKind>>,
@@ -161,8 +159,8 @@ impl UtxoProcessor {
         &self.inner.multiplexer
     }
 
-    pub async fn notification_lock(&self) -> AsyncMutexGuard<()> {
-        self.inner.notification_guard.lock().await
+    pub async fn notification_lock(&self) -> AsyncRwLockReadGuard<()> {
+        self.inner.notification_guard.read().await
     }
 
     pub fn sync_proc(&self) -> &SyncMonitor {
@@ -577,7 +575,7 @@ impl UtxoProcessor {
     }
 
     async fn handle_notification(&self, notification: Notification) -> Result<()> {
-        let _lock = self.notification_lock().await;
+        let _lock = self.inner.notification_guard.write().await;
 
         match notification {
             Notification::VirtualDaaScoreChanged(virtual_daa_score_changed_notification) => {
@@ -606,9 +604,7 @@ impl UtxoProcessor {
             match kind {
                 MetricsUpdateKind::WalletMetrics => {
                     let mempool_size = snapshot.get(&Metric::NetworkMempoolSize) as u64;
-                    let node_peers = snapshot.get(&Metric::NodeActivePeers) as u32;
-                    let network_tps = snapshot.get(&Metric::NetworkTransactionsPerSecond);
-                    let metrics = MetricsUpdate::WalletMetrics { mempool_size, node_peers, network_tps };
+                    let metrics = MetricsUpdate::WalletMetrics { mempool_size };
                     self.try_notify(Events::Metrics { network_id: self.network_id()?, metrics })?;
                 }
             }

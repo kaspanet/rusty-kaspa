@@ -101,7 +101,7 @@ impl GrpcClient {
     /// `url`: the server to connect to
     ///
     /// `subscription_context`: it is advised to provide a clone of the same instance if multiple clients dealing with
-    /// [`UtxosChangedNotifications`] are connected concurrently in order to optimize the memory footprint.
+    /// `UtxosChangedNotifications` are connected concurrently in order to optimize the memory footprint.
     ///
     /// `reconnect`: features an automatic reconnection to the server, reactivating all subscriptions on success.
     ///
