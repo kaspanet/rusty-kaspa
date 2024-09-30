@@ -75,13 +75,13 @@ where
 pin_project! {
     pub struct ChannelBody<T> {
         #[pin]
-        rx: tokio::sync::mpsc::UnboundedReceiver<Frame<T>>,
+        rx: tokio::sync::mpsc::Receiver<Frame<T>>,
     }
 }
 
 impl<T> ChannelBody<T> {
-    pub fn new() -> (tokio::sync::mpsc::UnboundedSender<Frame<T>>, Self) {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    pub fn new() -> (tokio::sync::mpsc::Sender<Frame<T>>, Self) {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
         (tx, Self { rx })
     }
 }
@@ -127,7 +127,7 @@ where
                     let _previous = bytes_sent_counter.fetch_add(len, Ordering::Relaxed);
                     trace!("[SIZE MW] total count: {}", _previous);
                     // error can occur only if the channel is already closed
-                    _ = tx.send(frame).inspect_err(|err| trace!("[SIZE MW] error sending frame: {}", err));
+                    _ = tx.send(frame).await.inspect_err(|err| trace!("[SIZE MW] error sending frame: {}", err));
                 }
             }
         });
