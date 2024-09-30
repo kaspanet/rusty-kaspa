@@ -1,3 +1,9 @@
+//!
+//! # Consensus Core
+//!
+//! This crate implements primitives used in the Kaspa node consensus processing.
+//!
+
 extern crate alloc;
 extern crate core;
 extern crate self as consensus_core;

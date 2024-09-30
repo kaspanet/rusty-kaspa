@@ -1,7 +1,13 @@
+//!
+//! Implementation of the [`DerivationPath`] manager for arbitrary derivation paths.
+//!
+
 use crate::imports::*;
 use workflow_wasm::prelude::*;
 
+///
 /// Key derivation path
+///
 /// @category Wallet SDK
 #[derive(Clone, CastFromJs)]
 #[wasm_bindgen]
