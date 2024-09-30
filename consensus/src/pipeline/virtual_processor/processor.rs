@@ -19,6 +19,7 @@ use crate::{
             daa::DbDaaStore,
             depth::{DbDepthStore, DepthStoreReader},
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
+            good_finality_point::{DbGoodFinalityPointStore, GoodFinalityPointStore, GoodFinalityPointStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             past_pruning_points::DbPastPruningPointsStore,
             pruning::{DbPruningStore, PruningStoreReader},
@@ -113,6 +114,8 @@ pub struct VirtualStateProcessor {
     pub(super) max_block_parents: u8,
     pub(super) mergeset_size_limit: u64,
     pub(super) pruning_depth: u64,
+    consensus_creation_time: u64,
+    finality_duration: u64,
 
     // Stores
     pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -132,6 +135,8 @@ pub struct VirtualStateProcessor {
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
     pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
     pub(super) pruning_utxoset_stores: Arc<RwLock<PruningUtxosetStores>>,
+
+    pub(super) good_finality_point_store: Arc<RwLock<DbGoodFinalityPointStore>>,
 
     /// The "last known good" virtual state. To be used by any logic which does not want to wait
     /// for a possible virtual state write to complete but can rather settle with the last known state
@@ -176,6 +181,7 @@ impl VirtualStateProcessor {
         pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
+        consensus_creation_time: u64,
     ) -> Self {
         Self {
             receiver,
@@ -205,6 +211,7 @@ impl VirtualStateProcessor {
             virtual_stores: storage.virtual_stores.clone(),
             pruning_utxoset_stores: storage.pruning_utxoset_stores.clone(),
             lkg_virtual_state: storage.lkg_virtual_state.clone(),
+            good_finality_point_store: storage.good_finality_point_store.clone(),
 
             ghostdag_manager: services.ghostdag_primary_manager.clone(),
             reachability_service: services.reachability_service.clone(),
@@ -221,6 +228,8 @@ impl VirtualStateProcessor {
             notification_root,
             counters,
             storage_mass_activation_daa_score: params.storage_mass_activation_daa_score,
+            consensus_creation_time,
+            finality_duration: params.finality_duration(),
         }
     }
 
@@ -1027,6 +1036,7 @@ impl VirtualStateProcessor {
             pruning_point_write.set_history_root(&mut batch, self.genesis.hash).unwrap();
             pruning_utxoset_write.set_utxoset_position(&mut batch, self.genesis.hash).unwrap();
             self.db.write(batch).unwrap();
+            self.good_finality_point_store.write().set(self.genesis.hash).unwrap(); // TODO: Wrong lock behavior?
             drop(pruning_point_write);
             drop(pruning_utxoset_write);
         }
@@ -1132,32 +1142,45 @@ impl VirtualStateProcessor {
         Ok(())
     }
 
-    pub fn are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {
-        // Ideally we would want to check if the last known pruning point has the finality point
-        // in its chain, but in some cases it's impossible: let `lkp` be the last known pruning
-        // point from the list, and `fup` be the first unknown pruning point (the one following `lkp`).
-        // fup.blue_score - lkp.blue_score ≈ finality_depth (±k), so it's possible for `lkp` not to
-        // have the finality point in its past. So we have no choice but to check if `lkp`
-        // has `finality_point.finality_point` in its chain (in the worst case `fup` is one block
-        // above the current finality point, and in this case `lkp` will be a few blocks above the
-        // finality_point.finality_point), meaning this function can only detect finality violations
-        // in depth of 2*finality_depth, and can give false negatives for smaller finality violations.
-        let current_pp = self.pruning_point_store.read().pruning_point().unwrap();
-        let vf = self.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, current_pp);
-        let vff = self.depth_manager.calc_finality_point(&self.ghostdag_primary_store.get_data(vf).unwrap(), current_pp);
+    pub fn next_good_finality_point(&self, pp_list: PruningPointsList) -> PruningImportResult<Hash> {
+        if self.is_consensus_mature() {
+            // TODO: Fix comment
+            // Ideally we would want to check if the last known pruning point has the finality point
+            // in its chain, but in some cases it's impossible: let `lkp` be the last known pruning
+            // point from the list, and `fup` be the first unknown pruning point (the one following `lkp`).
+            // fup.blue_score - lkp.blue_score ≈ finality_depth (±k), so it's possible for `lkp` not to
+            // have the finality point in its past. So we have no choice but to check if `lkp`
+            // has `finality_point.finality_point` in its chain (in the worst case `fup` is one block
+            // above the current finality point, and in this case `lkp` will be a few blocks above the
+            // finality_point.finality_point), meaning this function can only detect finality violations
+            // in depth of 2*finality_depth, and can give false negatives for smaller finality violations.
+            let current_pp = self.pruning_point_store.read().pruning_point().unwrap();
+            let vf = self.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, current_pp);
+            let vff = self.depth_manager.calc_finality_point(&self.ghostdag_primary_store.get_data(vf).unwrap(), current_pp);
 
-        let last_known_pp = pp_list.iter().rev().find(|pp| match self.statuses_store.read().get(pp.hash).unwrap_option() {
-            Some(status) => status.is_valid(),
-            None => false,
-        });
+            let first_pp_in_future_of_vff = pp_list
+                .iter()
+                .map(|pp| pp.hash)
+                .filter(|pp| match self.statuses_store.read().get(*pp).unwrap_option() {
+                    Some(status) => status.is_valid(),
+                    None => false,
+                })
+                .find(|pp| self.reachability_service.is_chain_ancestor_of(vff, *pp));
 
-        if let Some(last_known_pp) = last_known_pp {
-            !self.reachability_service.is_chain_ancestor_of(vff, last_known_pp.hash)
+            first_pp_in_future_of_vff.ok_or(PruningImportError::PruningPointListViolatesFinality)
         } else {
-            // If no pruning point is known, there's definitely a finality violation
-            // (normally at least genesis should be known).
-            true
+            let good_finality_point = self.good_finality_point_store.read().get().unwrap();
+            if pp_list.iter().map(|h| h.hash).contains(&good_finality_point) {
+                Ok(good_finality_point)
+            } else {
+                Err(PruningImportError::PruningPointListViolatesFinality)
+            }
         }
+    }
+
+    pub fn is_consensus_mature(&self) -> bool {
+        // TODO: Maybe we should replace creation time with staging commitment time
+        unix_now() - self.consensus_creation_time > self.finality_duration
     }
 }
 
