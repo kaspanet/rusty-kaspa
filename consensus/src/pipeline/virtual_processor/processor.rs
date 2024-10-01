@@ -1179,7 +1179,7 @@ impl VirtualStateProcessor {
 
             first_pp_in_future_of_vff.ok_or(PruningImportError::PruningPointListViolatesFinality)
         } else {
-            // If consensus is not mature yet, we ignore all finality checks and fallback to the last known mature finality point.
+            // If consensus is not mature yet, we fallback to checking finality violations against the last known mature finality point.
             let mature_finality_point = self.mature_finality_point_store.read().get().unwrap();
             if pp_list.iter().map(|h| h.hash).contains(&mature_finality_point) {
                 Ok(mature_finality_point)
