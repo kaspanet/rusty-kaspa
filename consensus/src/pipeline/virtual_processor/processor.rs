@@ -1143,17 +1143,27 @@ impl VirtualStateProcessor {
     }
 
     pub fn next_mature_finality_point(&self, pp_list: PruningPointsList) -> PruningImportResult<Hash> {
+        // This function achieves two things:
+        // 1) It checks if the pruning point list violates finality.
+        // 2) It returns the next mature finality point to be applied to the next staging consensus.
+        //
+        // To achieve the first goal, we would ideally want to check if the last known pruning point
+        // has the finality point in its chain, but in some cases it's impossible: let `lkp` be the
+        // last known pruning point from the list, and `fup` be the first unknown pruning point (the one following `lkp`).
+        // fup.blue_score - lkp.blue_score ≈ finality_depth (±k), so it's possible for `lkp` not to
+        // have the finality point in its past. So we have no choice but to check if `lkp`
+        // has `virtual_finality_point.finality_point` (`vff` in short) in its chain (in the worst case
+        // `fup` is one block above the current finality point, and in this case `lkp` will be a few blocks
+        // above the finality_point.finality_point), meaning this function can only detect finality violations
+        // in depth of 2*finality_depth, and can give false negatives for smaller finality violations.
+        // Note that we can equivalently check if any known block has `vff` in its chain.
+        //
+        // To achieve the second goal, we return the latest pruning point (`l`) in the chain of `vf`. Note that
+        // iff goal #1 is achieved, then `l` is the first pruning point that has `vff` in its chain
+        // (since we can assume `vff` is in its chain `vf.blue_score - vff.blue_score >= finality_depth`), so
+        // we can redefine `l` to be be the first pruning point that has `vff` in its chain, and return error
+        // if it doesn't exist in order to achieve both goals simultaneously.
         if self.is_consensus_mature() {
-            // TODO: Fix comment
-            // Ideally we would want to check if the last known pruning point has the finality point
-            // in its chain, but in some cases it's impossible: let `lkp` be the last known pruning
-            // point from the list, and `fup` be the first unknown pruning point (the one following `lkp`).
-            // fup.blue_score - lkp.blue_score ≈ finality_depth (±k), so it's possible for `lkp` not to
-            // have the finality point in its past. So we have no choice but to check if `lkp`
-            // has `finality_point.finality_point` in its chain (in the worst case `fup` is one block
-            // above the current finality point, and in this case `lkp` will be a few blocks above the
-            // finality_point.finality_point), meaning this function can only detect finality violations
-            // in depth of 2*finality_depth, and can give false negatives for smaller finality violations.
             let current_pp = self.pruning_point_store.read().pruning_point().unwrap();
             let vf = self.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, current_pp);
             let vff = self.depth_manager.calc_finality_point(&self.ghostdag_primary_store.get_data(vf).unwrap(), current_pp);
@@ -1169,6 +1179,7 @@ impl VirtualStateProcessor {
 
             first_pp_in_future_of_vff.ok_or(PruningImportError::PruningPointListViolatesFinality)
         } else {
+            // If consensus is not mature yet, we ignore all finality checks and fallback to the last known mature finality point.
             let mature_finality_point = self.mature_finality_point_store.read().get().unwrap();
             if pp_list.iter().map(|h| h.hash).contains(&mature_finality_point) {
                 Ok(mature_finality_point)
