@@ -41,7 +41,7 @@ pub enum DatabaseStorePrefixes {
     ReachabilityTreeChildren = 30,
     ReachabilityFutureCoveringSet = 31,
 
-    GoodFinalityPoint = 32,
+    MatureFinalityPoint = 32,
 
     // ---- Metadata ----
     MultiConsensusMetadata = 124,

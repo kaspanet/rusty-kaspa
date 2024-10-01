@@ -17,9 +17,9 @@ use crate::{
             acceptance_data::AcceptanceDataStoreReader,
             block_transactions::BlockTransactionsStoreReader,
             ghostdag::{GhostdagData, GhostdagStoreReader},
-            good_finality_point::GoodFinalityPointStoreReader,
             headers::{CompactHeaderData, HeaderStoreReader},
             headers_selected_tip::HeadersSelectedTipStoreReader,
+            mature_finality_point::MatureFinalityPointStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::PruningStoreReader,
             relations::RelationsStoreReader,
@@ -766,9 +766,9 @@ impl ConsensusApi for Consensus {
         &self,
         proof: PruningPointProof,
         trusted_set: &[TrustedBlock],
-        good_finality_point: Hash,
+        mature_finality_point: Hash,
     ) -> PruningImportResult<()> {
-        self.services.pruning_proof_manager.apply_proof(proof, trusted_set, good_finality_point)
+        self.services.pruning_proof_manager.apply_proof(proof, trusted_set, mature_finality_point)
     }
 
     fn import_pruning_points(&self, pruning_points: PruningPointsList) {
@@ -1038,8 +1038,8 @@ impl ConsensusApi for Consensus {
         }
     }
 
-    fn next_good_finality_point(&self, pp_list: PruningPointsList) -> PruningImportResult<Hash> {
-        self.virtual_processor.next_good_finality_point(pp_list)
+    fn next_mature_finality_point(&self, pp_list: PruningPointsList) -> PruningImportResult<Hash> {
+        self.virtual_processor.next_mature_finality_point(pp_list)
     }
 
     fn creation_timestamp(&self) -> u64 {
@@ -1050,11 +1050,11 @@ impl ConsensusApi for Consensus {
         self.virtual_processor.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, self.pruning_point())
     }
 
-    fn get_good_finality_point(&self) -> Hash {
+    fn get_mature_finality_point(&self) -> Hash {
         if self.virtual_processor.is_consensus_mature() {
             self.pruning_point()
         } else {
-            self.storage.good_finality_point_store.read().get().unwrap()
+            self.storage.mature_finality_point_store.read().get().unwrap()
         }
     }
 }

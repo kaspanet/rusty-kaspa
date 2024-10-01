@@ -19,8 +19,8 @@ use crate::{
             daa::DbDaaStore,
             depth::{DbDepthStore, DepthStoreReader},
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
-            good_finality_point::{DbGoodFinalityPointStore, GoodFinalityPointStore, GoodFinalityPointStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
+            mature_finality_point::{DbMatureFinalityPointStore, MatureFinalityPointStore, MatureFinalityPointStoreReader},
             past_pruning_points::DbPastPruningPointsStore,
             pruning::{DbPruningStore, PruningStoreReader},
             pruning_utxoset::PruningUtxosetStores,
@@ -136,7 +136,7 @@ pub struct VirtualStateProcessor {
     pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
     pub(super) pruning_utxoset_stores: Arc<RwLock<PruningUtxosetStores>>,
 
-    pub(super) good_finality_point_store: Arc<RwLock<DbGoodFinalityPointStore>>,
+    pub(super) mature_finality_point_store: Arc<RwLock<DbMatureFinalityPointStore>>,
 
     /// The "last known good" virtual state. To be used by any logic which does not want to wait
     /// for a possible virtual state write to complete but can rather settle with the last known state
@@ -211,7 +211,7 @@ impl VirtualStateProcessor {
             virtual_stores: storage.virtual_stores.clone(),
             pruning_utxoset_stores: storage.pruning_utxoset_stores.clone(),
             lkg_virtual_state: storage.lkg_virtual_state.clone(),
-            good_finality_point_store: storage.good_finality_point_store.clone(),
+            mature_finality_point_store: storage.mature_finality_point_store.clone(),
 
             ghostdag_manager: services.ghostdag_primary_manager.clone(),
             reachability_service: services.reachability_service.clone(),
@@ -1036,7 +1036,7 @@ impl VirtualStateProcessor {
             pruning_point_write.set_history_root(&mut batch, self.genesis.hash).unwrap();
             pruning_utxoset_write.set_utxoset_position(&mut batch, self.genesis.hash).unwrap();
             self.db.write(batch).unwrap();
-            self.good_finality_point_store.write().set(self.genesis.hash).unwrap(); // TODO: Wrong lock behavior?
+            self.mature_finality_point_store.write().set(self.genesis.hash).unwrap(); // TODO: Wrong lock behavior?
             drop(pruning_point_write);
             drop(pruning_utxoset_write);
         }
@@ -1142,7 +1142,7 @@ impl VirtualStateProcessor {
         Ok(())
     }
 
-    pub fn next_good_finality_point(&self, pp_list: PruningPointsList) -> PruningImportResult<Hash> {
+    pub fn next_mature_finality_point(&self, pp_list: PruningPointsList) -> PruningImportResult<Hash> {
         if self.is_consensus_mature() {
             // TODO: Fix comment
             // Ideally we would want to check if the last known pruning point has the finality point
@@ -1169,9 +1169,9 @@ impl VirtualStateProcessor {
 
             first_pp_in_future_of_vff.ok_or(PruningImportError::PruningPointListViolatesFinality)
         } else {
-            let good_finality_point = self.good_finality_point_store.read().get().unwrap();
-            if pp_list.iter().map(|h| h.hash).contains(&good_finality_point) {
-                Ok(good_finality_point)
+            let mature_finality_point = self.mature_finality_point_store.read().get().unwrap();
+            if pp_list.iter().map(|h| h.hash).contains(&mature_finality_point) {
+                Ok(mature_finality_point)
             } else {
                 Err(PruningImportError::PruningPointListViolatesFinality)
             }

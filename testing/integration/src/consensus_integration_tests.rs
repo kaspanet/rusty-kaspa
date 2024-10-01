@@ -984,7 +984,7 @@ async fn json_test(file_path: &str, concurrency: bool) {
         tc.apply_pruning_proof(
             proof,
             &trusted_blocks,
-            pruning_point, // TODO: Better test good_finality_point behavior
+            pruning_point, // TODO: Better test mature_finality_point behavior
         )
         .unwrap();
 

@@ -437,8 +437,8 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.validate_pruning_points()).await
     }
 
-    pub async fn async_next_good_finality_point(&self, pp_list: PruningPointsList) -> PruningImportResult<Hash> {
-        self.clone().spawn_blocking(move |c| c.next_good_finality_point(pp_list)).await
+    pub async fn async_next_mature_finality_point(&self, pp_list: PruningPointsList) -> PruningImportResult<Hash> {
+        self.clone().spawn_blocking(move |c| c.next_mature_finality_point(pp_list)).await
     }
 
     pub async fn async_creation_timestamp(&self) -> u64 {

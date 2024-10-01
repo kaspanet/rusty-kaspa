@@ -42,9 +42,9 @@ use crate::{
         stores::{
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
-            good_finality_point::{DbGoodFinalityPointStore, GoodFinalityPointStore},
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
             headers_selected_tip::DbHeadersSelectedTipStore,
+            mature_finality_point::{DbMatureFinalityPointStore, MatureFinalityPointStore},
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
             pruning::{DbPruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
@@ -105,7 +105,7 @@ pub struct PruningProofManager {
     headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
     depth_store: Arc<DbDepthStore>,
     selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
-    good_finality_point_store: Arc<RwLock<DbGoodFinalityPointStore>>,
+    mature_finality_point_store: Arc<RwLock<DbMatureFinalityPointStore>>,
 
     ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
     traversal_manager: DbDagTraversalManager,
@@ -156,7 +156,7 @@ impl PruningProofManager {
             headers_selected_tip_store: storage.headers_selected_tip_store.clone(),
             selected_chain_store: storage.selected_chain_store.clone(),
             depth_store: storage.depth_store.clone(),
-            good_finality_point_store: storage.good_finality_point_store.clone(),
+            mature_finality_point_store: storage.mature_finality_point_store.clone(),
 
             ghostdag_managers,
             traversal_manager,
@@ -206,9 +206,9 @@ impl PruningProofManager {
         &self,
         mut proof: PruningPointProof,
         trusted_set: &[TrustedBlock],
-        good_finality_point: Hash,
+        mature_finality_point: Hash,
     ) -> PruningImportResult<()> {
-        self.good_finality_point_store.write().set(good_finality_point).unwrap();
+        self.mature_finality_point_store.write().set(mature_finality_point).unwrap();
         let pruning_point_header = proof[0].last().unwrap().clone();
         let pruning_point = pruning_point_header.hash;
 

@@ -5,7 +5,7 @@ pub mod children;
 pub mod daa;
 pub mod depth;
 pub mod ghostdag;
-pub mod good_finality_point;
+pub mod mature_finality_point;
 pub mod headers;
 pub mod headers_selected_tip;
 pub mod past_pruning_points;

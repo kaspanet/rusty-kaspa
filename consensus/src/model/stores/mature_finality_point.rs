@@ -6,25 +6,26 @@ use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
 use std::sync::Arc;
 
-/// Reader API for `SelectedTipStore`.
-pub trait GoodFinalityPointStoreReader {
+/// Reader API for `MatureFinalityPointStore`.
+pub trait MatureFinalityPointStoreReader {
     fn get(&self) -> StoreResult<Hash>;
 }
 
-pub trait GoodFinalityPointStore: GoodFinalityPointStoreReader {
+pub trait MatureFinalityPointStore: MatureFinalityPointStoreReader {
     fn set(&mut self, hash: Hash) -> StoreResult<()>;
 }
 
-/// A DB + cache implementation of `GoodFinalityPointStore` trait
+/// A DB + cache implementation of `MatureFinalityPointStore` trait
 #[derive(Clone)]
-pub struct DbGoodFinalityPointStore {
+pub struct DbMatureFinalityPointStore {
     db: Arc<DB>,
     access: CachedDbItem<Hash>,
 }
 
-impl DbGoodFinalityPointStore {
+// This store saves the last known mature finality point.
+impl DbMatureFinalityPointStore {
     pub fn new(db: Arc<DB>) -> Self {
-        Self { db: Arc::clone(&db), access: CachedDbItem::new(db, DatabaseStorePrefixes::GoodFinalityPoint.into()) }
+        Self { db: Arc::clone(&db), access: CachedDbItem::new(db, DatabaseStorePrefixes::MatureFinalityPoint.into()) }
     }
 
     pub fn clone_with_new_cache(&self) -> Self {
@@ -36,13 +37,13 @@ impl DbGoodFinalityPointStore {
     }
 }
 
-impl GoodFinalityPointStoreReader for DbGoodFinalityPointStore {
+impl MatureFinalityPointStoreReader for DbMatureFinalityPointStore {
     fn get(&self) -> StoreResult<Hash> {
         self.access.read()
     }
 }
 
-impl GoodFinalityPointStore for DbGoodFinalityPointStore {
+impl MatureFinalityPointStore for DbMatureFinalityPointStore {
     fn set(&mut self, hash: Hash) -> StoreResult<()> {
         self.access.write(DirectDbWriter::new(&self.db), &hash)
     }
