@@ -95,12 +95,14 @@ impl VirtualStateProcessor {
             // No need to fully validate selected parent transactions since selected parent txs were already validated
             // as part of selected parent UTXO state verification with the exact same UTXO context.
             let validation_flags = if is_selected_parent { TxValidationFlags::SkipScriptChecks } else { TxValidationFlags::Full };
-            let validated_transactions = self.validate_transactions_in_parallel(&txs, &composed_view, pov_daa_score, validation_flags);
+            let (validated_transactions, inner_multiset) =
+                self.validate_transactions_in_parallel(&txs, &composed_view, pov_daa_score, validation_flags);
+
+            ctx.multiset_hash.combine(&inner_multiset);
 
             let mut block_fee = 0u64;
             for (validated_tx, _) in validated_transactions.iter() {
                 ctx.mergeset_diff.add_transaction(validated_tx, pov_daa_score).unwrap();
-                ctx.multiset_hash.add_transaction(validated_tx, pov_daa_score);
                 ctx.accepted_tx_ids.push(validated_tx.id());
                 block_fee += validated_tx.calculated_fee;
             }
@@ -177,7 +179,7 @@ impl VirtualStateProcessor {
 
         // Verify all transactions are valid in context
         let current_utxo_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);
-        let validated_transactions =
+        let (validated_transactions, _) =
             self.validate_transactions_in_parallel(&txs, &current_utxo_view, header.daa_score, TxValidationFlags::Full);
         if validated_transactions.len() < txs.len() - 1 {
             // Some non-coinbase transactions are invalid
@@ -217,15 +219,27 @@ impl VirtualStateProcessor {
         utxo_view: &V,
         pov_daa_score: u64,
         flags: TxValidationFlags,
-    ) -> Vec<(ValidatedTransaction<'a>, u32)> {
+    ) -> (Vec<(ValidatedTransaction<'a>, u32)>, MuHash) {
         self.thread_pool.install(|| {
             txs
                 .par_iter() // We can do this in parallel without complications since block body validation already ensured
                             // that all txs within each block are independent
                 .enumerate()
                 .skip(1) // Skip the coinbase tx.
-                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score, flags).ok().map(|vtx| (vtx, i as u32)))
-                .collect()
+                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score, flags).ok().map(|vtx| {
+                    let mut mh = MuHash::new();
+                    mh.add_transaction(&vtx, pov_daa_score);
+                    (vec![(vtx, i as u32)], mh)
+                }
+                ))
+                .reduce(
+                    || (vec![], MuHash::new()),
+                    |mut a, b| {
+                        a.0.extend(b.0);
+                        a.1.combine(&b.1);
+                        a
+                    },
+                )
         })
     }
 
