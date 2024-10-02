@@ -14,8 +14,10 @@ cfg-if.workspace = true
 log.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+bytes.workspace = true
 futures.workspace = true
-hyper.workspace = true
+http-body.workspace = true
+http-body-util.workspace = true
 pin-project-lite.workspace = true
 tokio.workspace = true
 tower-http.workspace = true
