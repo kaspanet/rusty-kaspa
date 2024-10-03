@@ -39,7 +39,7 @@ impl TryFrom<IFees> for Fees {
         } else if let Ok(object) = args.dyn_into::<Object>() {
             let amount = object.get_u64("amount")?;
             if let Some(source) = object.try_get_value("source")? {
-                let source = FeeSource::try_cast_from(&source)?;
+                let source = FeeSource::try_enum_from(&source)?;
                 match source {
                     FeeSource::SenderPays => Ok(Fees::SenderPays(amount)),
                     FeeSource::ReceiverPays => Ok(Fees::ReceiverPays(amount)),

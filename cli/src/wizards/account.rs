@@ -85,3 +85,62 @@ async fn create_multisig(ctx: &Arc<KaspaCli>, account_name: Option<String>, mnem
     wallet.select(Some(&account)).await?;
     Ok(())
 }
+
+pub(crate) async fn bip32_watch(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Result<()> {
+    let term = ctx.term();
+    let wallet = ctx.wallet();
+
+    let name = if let Some(name) = name {
+        Some(name.to_string())
+    } else {
+        Some(term.ask(false, "Please enter account name (optional, press <enter> to skip): ").await?.trim().to_string())
+    };
+
+    let mut xpub_keys = Vec::with_capacity(1);
+    let xpub_key = term.ask(false, "Enter extended public key: ").await?;
+    xpub_keys.push(xpub_key.trim().to_owned());
+
+    let wallet_secret = Secret::new(term.ask(true, "Enter wallet password: ").await?.trim().as_bytes().to_vec());
+    if wallet_secret.as_ref().is_empty() {
+        return Err(Error::WalletSecretRequired);
+    }
+
+    let account_create_args_bip32_watch = AccountCreateArgsBip32Watch::new(name, xpub_keys);
+    let account = wallet.create_account_bip32_watch(&wallet_secret, account_create_args_bip32_watch).await?;
+
+    tprintln!(ctx, "\naccount created: {}\n", account.get_list_string()?);
+    wallet.select(Some(&account)).await?;
+    Ok(())
+}
+
+pub(crate) async fn multisig_watch(ctx: &Arc<KaspaCli>, name: Option<&str>) -> Result<()> {
+    let term = ctx.term();
+
+    let account_name = if let Some(name) = name {
+        Some(name.to_string())
+    } else {
+        Some(term.ask(false, "Please enter account name (optional, press <enter> to skip): ").await?.trim().to_string())
+    };
+
+    let term = ctx.term();
+    let wallet = ctx.wallet();
+    let (wallet_secret, _) = ctx.ask_wallet_secret(None).await?;
+    let minimum_signatures: u16 = term.ask(false, "Enter the minimum number of signatures required: ").await?.parse()?;
+
+    let prv_key_data_args = Vec::with_capacity(0);
+
+    let answer = term.ask(false, "Enter the number of extended public keys: ").await?.trim().to_string(); //.parse()?;
+    let xpub_keys_len: usize = if answer.is_empty() { 0 } else { answer.parse()? };
+
+    let mut xpub_keys = Vec::with_capacity(xpub_keys_len);
+    for i in 1..=xpub_keys_len {
+        let xpub_key = term.ask(false, &format!("Enter extended public {i} key: ")).await?;
+        xpub_keys.push(xpub_key.trim().to_owned());
+    }
+    let account =
+        wallet.create_account_multisig(&wallet_secret, prv_key_data_args, xpub_keys, account_name, minimum_signatures).await?;
+
+    tprintln!(ctx, "\naccount created: {}\n", account.get_list_string()?);
+    wallet.select(Some(&account)).await?;
+    Ok(())
+}

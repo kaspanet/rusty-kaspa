@@ -44,6 +44,47 @@ pub struct FlushResponse {}
 pub struct ConnectRequest {
     pub url: Option<String>,
     pub network_id: NetworkId,
+    // retry on error, otherwise give up
+    pub retry_on_error: bool,
+    // block async call until connected, otherwise return immediately
+    // and continue attempting to connect in the background
+    pub block_async_connect: bool,
+    // require node to be synced, fail otherwise
+    pub require_sync: bool,
+}
+
+impl Default for ConnectRequest {
+    fn default() -> Self {
+        Self {
+            url: None,
+            network_id: NetworkId::new(NetworkType::Mainnet),
+            retry_on_error: true,
+            block_async_connect: true,
+            require_sync: true,
+        }
+    }
+}
+
+impl ConnectRequest {
+    pub fn with_url(self, url: Option<String>) -> Self {
+        ConnectRequest { url, ..self }
+    }
+
+    pub fn with_network_id(self, network_id: &NetworkId) -> Self {
+        ConnectRequest { network_id: *network_id, ..self }
+    }
+
+    pub fn with_retry_on_error(self, retry_on_error: bool) -> Self {
+        ConnectRequest { retry_on_error, ..self }
+    }
+
+    pub fn with_block_async_connect(self, block_async_connect: bool) -> Self {
+        ConnectRequest { block_async_connect, ..self }
+    }
+
+    pub fn with_require_sync(self, require_sync: bool) -> Self {
+        ConnectRequest { require_sync, ..self }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
@@ -77,15 +118,18 @@ pub struct RetainContextRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RetainContextResponse {
-    // pub name : String,
-    // pub data: Option<Arc<Vec<u8>>>,
-    // pub is_connected: bool,
-    // pub is_synced: bool,
-    // pub is_open: bool,
-    // pub url: Option<String>,
-    // pub is_wrpc_client: bool,
-    // pub network_id: Option<NetworkId>,
+pub struct RetainContextResponse {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetContextRequest {
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GetContextResponse {
+    pub data: Option<Vec<u8>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
