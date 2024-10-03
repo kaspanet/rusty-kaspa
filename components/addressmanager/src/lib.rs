@@ -590,7 +590,7 @@ mod address_store_with_cache {
             assert!(num_of_buckets >= 12);
 
             // Run multiple Kolmogorov–Smirnov tests to offset random noise of the random weighted iterator
-            let num_of_trials = 1024;
+            let num_of_trials = 2048; // Number of trials to run the test, chosen to reduce random noise.
             let mut cul_p = 0.;
             // The target uniform distribution
             let target_uniform_dist = Uniform::new(1.0, num_of_buckets as f64).unwrap();
@@ -607,6 +607,7 @@ mod address_store_with_cache {
             }
 
             // Normalize and adjust p to test for uniformity, over average of all trials.
+            // we do this to reduce the effect of random noise failing this test.
             let adjusted_p = ((cul_p / num_of_trials as f64) - 0.5).abs();
             // Define the significance threshold.
             let significance = 0.10;
@@ -617,7 +618,7 @@ mod address_store_with_cache {
                 adjusted_p,
                 significance
             );
-            assert!(adjusted_p <= significance)
+            assert!(adjusted_p <= significance);
         }
     }
 }
