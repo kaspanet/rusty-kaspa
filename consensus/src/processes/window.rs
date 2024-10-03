@@ -489,8 +489,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
     for SampledWindowManager<T, U, V, W>
 {
     fn block_window(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<Arc<BlockWindowHeap>, RuleError> {
-        let new_window = self.build_block_window(ghostdag_data, window_type, &|_| {})?;
-        Ok(new_window)
+        self.build_block_window(ghostdag_data, window_type, &|_| {})
     }
 
     fn calc_daa_window(&self, ghostdag_data: &GhostdagData, window: Arc<BlockWindowHeap>) -> DaaWindow {
@@ -513,9 +512,9 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
     }
 
     fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError> {
-        let new_window = self.block_window(ghostdag_data, WindowType::SampledMedianTimeWindow)?;
-        let past_median_time = self.past_median_time_manager.calc_past_median_time(&new_window)?;
-        Ok((past_median_time, new_window))
+        let window = self.block_window(ghostdag_data, WindowType::SampledMedianTimeWindow)?;
+        let past_median_time = self.past_median_time_manager.calc_past_median_time(&window)?;
+        Ok((past_median_time, window))
     }
 
     fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64> {
@@ -716,13 +715,12 @@ impl BoundedSizeBlockHeap {
     // It is expected that any ancestor heap will have lower blue work blocks than the current heap.
     fn merge_ancestor_heap(&mut self, ancestor_heap: &mut BlockWindowHeap) {
         // because popping has O(log(n)) complexity, we pop the excess amount first, then append the two.
-        let overflow_amount = (self.len() + ancestor_heap.len()) - self.size_bound;
-        if overflow_amount > 0 {
-            for _ in 0..overflow_amount {
-                // we expect all lower blue work blocks to be in the ancestor heap!!!
-                ancestor_heap.pop();
-            }
-        };
+        let overflow_amount = (self.len() + ancestor_heap.len()).saturating_sub(self.size_bound); // we saturate for cases where ancestor may be close to, the origin, or genesis.
+        for _ in 0..overflow_amount {
+            // note: this is a no-op if overflow_amount is 0, i.e. the sum of the two heaps is equal or less than the size bound.
+            // we expect all lower blue work blocks to be in the ancestor heap!!!
+            ancestor_heap.pop();
+        }
 
         self.binary_heap.blocks.append(&mut ancestor_heap.blocks);
     }
