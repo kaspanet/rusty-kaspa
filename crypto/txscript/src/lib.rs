@@ -272,7 +272,6 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
             ScriptSource::StandAloneScripts(scripts) => (scripts.clone(), false),
         };
 
-        // TODO: run all in same iterator?
         // When both the signature script and public key script are empty the
         // result is necessarily an error since the stack would end up being
         // empty which is equivalent to a false top element. Thus, just return
@@ -281,12 +280,16 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
             return Err(TxScriptError::NoScripts);
         }
 
-        if scripts.iter().all(|e| e.is_empty()) {
-            return Err(TxScriptError::EvalFalse);
-        }
-        if let Some(s) = scripts.iter().find(|e| e.len() > MAX_SCRIPTS_SIZE) {
-            return Err(TxScriptError::ScriptSize(s.len(), MAX_SCRIPTS_SIZE));
-        }
+        scripts.iter().try_for_each(|script| {
+            if script.is_empty() {
+                return Err(TxScriptError::EvalFalse);
+            }
+            if script.len() > MAX_SCRIPTS_SIZE {
+                return Err(TxScriptError::ScriptSize(script.len(), MAX_SCRIPTS_SIZE));
+            }
+            Ok(())
+        })?;
+        
 
         let mut saved_stack: Option<Vec<Vec<u8>>> = None;
         // try_for_each quits only if an error occurred. So, we always run over all scripts if
