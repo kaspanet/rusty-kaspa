@@ -3,7 +3,7 @@
 //! Response payloads in protowire do always contain an error field and generally a set of
 //! fields providing the requested data.
 //!
-//! Responses in rpc core are expressed as RpcResult<XxxResponse>, where Xxx is the called
+//! Responses in rpc core are expressed as `RpcResult<XxxResponse>`, where `Xxx` is the called
 //! RPC method.
 //!
 //! The general conversion convention from protowire to rpc core is to consider the error
@@ -480,6 +480,7 @@ from!(item: RpcResult<&kaspa_rpc_core::GetSystemInfoResponse>, protowire::GetSys
         total_memory : item.total_memory,
         core_num : item.cpu_physical_cores as u32,
         fd_limit : item.fd_limit,
+        proxy_socket_limit_per_cpu_core : item.proxy_socket_limit_per_cpu_core.unwrap_or_default(),
         error: None,
     }
 });
@@ -962,6 +963,7 @@ try_from!(item: &protowire::GetSystemInfoResponseMessage, RpcResult<kaspa_rpc_co
         total_memory: item.total_memory,
         cpu_physical_cores: item.core_num as u16,
         fd_limit: item.fd_limit,
+        proxy_socket_limit_per_cpu_core : (item.proxy_socket_limit_per_cpu_core > 0).then_some(item.proxy_socket_limit_per_cpu_core),
     }
 });
 

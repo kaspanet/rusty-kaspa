@@ -252,65 +252,6 @@ pub enum Metric {
 }
 
 impl Metric {
-    // TODO - this will be refactored at a later date
-    // as this requires changes and testing in /kos
-    // pub fn group(&self) -> &'static str {
-    //     match self {
-    //         Metric::NodeCpuUsage
-    //         | Metric::NodeResidentSetSizeBytes
-    //         | Metric::NodeVirtualMemorySizeBytes
-    //         | Metric::NodeFileHandlesCount
-    //         | Metric::NodeDiskIoReadBytes
-    //         | Metric::NodeDiskIoWriteBytes
-    //         | Metric::NodeDiskIoReadPerSec
-    //         | Metric::NodeDiskIoWritePerSec
-    //         | Metric::NodeBorshLiveConnections
-    //         | Metric::NodeBorshConnectionAttempts
-    //         | Metric::NodeBorshHandshakeFailures
-    //         | Metric::NodeJsonLiveConnections
-    //         | Metric::NodeJsonConnectionAttempts
-    //         | Metric::NodeJsonHandshakeFailures
-    //         | Metric::NodeBorshBytesTx
-    //         | Metric::NodeBorshBytesRx
-    //         | Metric::NodeJsonBytesTx
-    //         | Metric::NodeJsonBytesRx
-    //         | Metric::NodeP2pBytesTx
-    //         | Metric::NodeP2pBytesRx
-    //         | Metric::NodeGrpcUserBytesTx
-    //         | Metric::NodeGrpcUserBytesRx
-    //         | Metric::NodeTotalBytesTx
-    //         | Metric::NodeTotalBytesRx
-    //         | Metric::NodeBorshBytesTxPerSecond
-    //         | Metric::NodeBorshBytesRxPerSecond
-    //         | Metric::NodeJsonBytesTxPerSecond
-    //         | Metric::NodeJsonBytesRxPerSecond
-    //         | Metric::NodeP2pBytesTxPerSecond
-    //         | Metric::NodeP2pBytesRxPerSecond
-    //         | Metric::NodeGrpcUserBytesTxPerSecond
-    //         | Metric::NodeGrpcUserBytesRxPerSecond
-    //         | Metric::NodeTotalBytesTxPerSecond
-    //         | Metric::NodeTotalBytesRxPerSecond
-    //         | Metric::NodeActivePeers => "system",
-    //         // --
-    //         Metric::NodeBlocksSubmittedCount
-    //         | Metric::NodeHeadersProcessedCount
-    //         | Metric::NodeDependenciesProcessedCount
-    //         | Metric::NodeBodiesProcessedCount
-    //         | Metric::NodeTransactionsProcessedCount
-    //         | Metric::NodeChainBlocksProcessedCount
-    //         | Metric::NodeMassProcessedCount
-    //         | Metric::NodeDatabaseBlocksCount
-    //         | Metric::NodeDatabaseHeadersCount
-    //         | Metric::NetworkMempoolSize
-    //         | Metric::NetworkTransactionsPerSecond
-    //         | Metric::NetworkTipHashesCount
-    //         | Metric::NetworkDifficulty
-    //         | Metric::NetworkPastMedianTime
-    //         | Metric::NetworkVirtualParentHashesCount
-    //         | Metric::NetworkVirtualDaaScore => "kaspa",
-    //     }
-    // }
-
     pub fn is_key_performance_metric(&self) -> bool {
         matches!(
             self,
@@ -922,7 +863,7 @@ pub fn as_data_size(bytes: f64, si: bool) -> String {
 }
 
 /// Format supplied value as a float with 2 decimal places.
-fn format_as_float(f: f64, short: bool) -> String {
+pub fn format_as_float(f: f64, short: bool) -> String {
     if short {
         if f < 1000.0 {
             format_with_precision(f)

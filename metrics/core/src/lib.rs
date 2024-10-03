@@ -74,6 +74,8 @@ impl Metrics {
             let interval = interval(Duration::from_secs(1));
             pin_mut!(interval);
 
+            let mut first = true;
+
             loop {
                 select! {
                     _ = task_ctl_receiver.recv().fuse() => {
@@ -81,17 +83,16 @@ impl Metrics {
                     },
                     _ = interval.next().fuse() => {
 
-                        // current_metrics_data = MetricsData::new(unixtime_as_millis_f64());
-
                         if let Some(rpc) = this.rpc() {
-                            // if let Err(err) = this.sample_metrics(rpc.clone(), &mut current_metrics_data).await {
                                 match this.sample_metrics(rpc.clone()).await {
                                     Ok(incoming_data) => {
                                     let last_metrics_data = current_metrics_data;
                                     current_metrics_data = incoming_data;
                                     this.data.lock().unwrap().replace(current_metrics_data.clone());
 
-                                    if let Some(sink) = this.sink() {
+                                    if first {
+                                        first = false;
+                                    } else if let Some(sink) = this.sink() {
                                         let snapshot = MetricsSnapshot::from((&last_metrics_data, &current_metrics_data));
                                         if let Some(future) = sink(snapshot) {
                                             future.await.ok();
@@ -100,7 +101,6 @@ impl Metrics {
 
                                 }
                                 Err(err) => {
-                                    // current_metrics_data = last_metrics_data.clone();
                                     log_trace!("Metrics::sample_metrics() error: {}", err);
                                 }
                             }
@@ -120,87 +120,7 @@ impl Metrics {
         Ok(())
     }
 
-    // --- samplers
-
     async fn sample_metrics(self: &Arc<Self>, rpc: Arc<dyn RpcApi>) -> Result<MetricsData> {
-        // let GetMetricsResponse {
-        //     server_time: _,
-        //     consensus_metrics,
-        //     connection_metrics,
-        //     bandwidth_metrics,
-        //     process_metrics,
-        //     storage_metrics,
-        //     custom_metrics: _,
-        // } =
-        let response = rpc.get_metrics(true, true, true, true, true, false).await?;
-
-        MetricsData::try_from(response)
-
-        // if let Some(consensus_metrics) = consensus_metrics {
-        //     data.node_blocks_submitted_count = consensus_metrics.node_blocks_submitted_count;
-        //     data.node_headers_processed_count = consensus_metrics.node_headers_processed_count;
-        //     data.node_dependencies_processed_count = consensus_metrics.node_dependencies_processed_count;
-        //     data.node_bodies_processed_count = consensus_metrics.node_bodies_processed_count;
-        //     data.node_transactions_processed_count = consensus_metrics.node_transactions_processed_count;
-        //     data.node_chain_blocks_processed_count = consensus_metrics.node_chain_blocks_processed_count;
-        //     data.node_mass_processed_count = consensus_metrics.node_mass_processed_count;
-        //     // --
-        //     data.node_database_blocks_count = consensus_metrics.node_database_blocks_count;
-        //     data.node_database_headers_count = consensus_metrics.node_database_headers_count;
-        //     data.network_mempool_size = consensus_metrics.network_mempool_size;
-        //     data.network_tip_hashes_count = consensus_metrics.network_tip_hashes_count;
-        //     data.network_difficulty = consensus_metrics.network_difficulty;
-        //     data.network_past_median_time = consensus_metrics.network_past_median_time;
-        //     data.network_virtual_parent_hashes_count = consensus_metrics.network_virtual_parent_hashes_count;
-        //     data.network_virtual_daa_score = consensus_metrics.network_virtual_daa_score;
-        // }
-
-        // if let Some(connection_metrics) = connection_metrics {
-        //     data.node_borsh_live_connections = connection_metrics.borsh_live_connections;
-        //     data.node_borsh_connection_attempts = connection_metrics.borsh_connection_attempts;
-        //     data.node_borsh_handshake_failures = connection_metrics.borsh_handshake_failures;
-        //     data.node_json_live_connections = connection_metrics.json_live_connections;
-        //     data.node_json_connection_attempts = connection_metrics.json_connection_attempts;
-        //     data.node_json_handshake_failures = connection_metrics.json_handshake_failures;
-        //     data.node_active_peers = connection_metrics.active_peers;
-        // }
-
-        // if let Some(bandwidth_metrics) = bandwidth_metrics {
-        //     data.node_borsh_bytes_tx = bandwidth_metrics.borsh_bytes_tx;
-        //     data.node_borsh_bytes_rx = bandwidth_metrics.borsh_bytes_rx;
-        //     data.node_json_bytes_tx = bandwidth_metrics.json_bytes_tx;
-        //     data.node_json_bytes_rx = bandwidth_metrics.json_bytes_rx;
-        //     data.node_p2p_bytes_tx = bandwidth_metrics.p2p_bytes_tx;
-        //     data.node_p2p_bytes_rx = bandwidth_metrics.p2p_bytes_rx;
-        //     data.node_grpc_user_bytes_tx = bandwidth_metrics.grpc_bytes_tx;
-        //     data.node_grpc_user_bytes_rx = bandwidth_metrics.grpc_bytes_rx;
-
-        //     data.node_total_bytes_tx = bandwidth_metrics.borsh_bytes_tx
-        //         + bandwidth_metrics.json_bytes_tx
-        //         + bandwidth_metrics.p2p_bytes_tx
-        //         + bandwidth_metrics.grpc_bytes_tx;
-
-        //     data.node_total_bytes_rx = bandwidth_metrics.borsh_bytes_rx
-        //         + bandwidth_metrics.json_bytes_rx
-        //         + bandwidth_metrics.p2p_bytes_rx
-        //         + bandwidth_metrics.grpc_bytes_rx;
-        // }
-
-        // if let Some(process_metrics) = process_metrics {
-        //     data.node_resident_set_size_bytes = process_metrics.resident_set_size;
-        //     data.node_virtual_memory_size_bytes = process_metrics.virtual_memory_size;
-        //     data.node_cpu_cores = process_metrics.core_num;
-        //     data.node_cpu_usage = process_metrics.cpu_usage;
-        //     data.node_file_handles = process_metrics.fd_num;
-        //     data.node_disk_io_read_bytes = process_metrics.disk_io_read_bytes;
-        //     data.node_disk_io_write_bytes = process_metrics.disk_io_write_bytes;
-        //     data.node_disk_io_read_per_sec = process_metrics.disk_io_read_per_sec;
-        //     data.node_disk_io_write_per_sec = process_metrics.disk_io_write_per_sec;
-        // }
-
-        // if let Some(storage_metrics) = storage_metrics {
-        //     data.node_storage_size_bytes = storage_metrics.storage_size_bytes;
-        // }
-        // Ok(())
+        MetricsData::try_from(rpc.get_metrics(true, true, true, true, true, false).await?)
     }
 }
