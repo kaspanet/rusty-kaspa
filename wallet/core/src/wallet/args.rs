@@ -3,7 +3,6 @@
 //!
 
 use crate::imports::*;
-// use crate::secret::Secret;
 use crate::storage::interface::CreateArgs;
 use crate::storage::{Hint, PrvKeyDataId};
 use borsh::{BorshDeserialize, BorshSerialize};

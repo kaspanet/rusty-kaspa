@@ -73,7 +73,7 @@ impl TransactionsSpread {
     /// within transaction Inv messages.
     ///
     /// The broadcast itself may happen only during a subsequent call to this function since it is done at most
-    /// every [`BROADCAST_INTERVAL`] milliseconds or when the queue length is larger than the Inv message
+    /// every `BROADCAST_INTERVAL` milliseconds or when the queue length is larger than the Inv message
     /// capacity.
     ///
     /// _GO-KASPAD: EnqueueTransactionIDsForPropagation_
