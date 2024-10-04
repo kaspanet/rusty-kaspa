@@ -804,10 +804,32 @@ impl ConsensusApi for Consensus {
         let utxo_diff = self.utxo_diffs_store.get(matching_chain_block_hash).unwrap();
         let removed_diffs = utxo_diff.removed();
 
-        if let Ok(address) = extract_script_pub_key_address(
-            &removed_diffs.get(first_input_prev_outpoint).unwrap().script_public_key,
-            self.config.prefix(),
-        ) {
+        let spk = if let Some(utxo_entry) = removed_diffs.get(first_input_prev_outpoint) {
+            utxo_entry.script_public_key.clone()
+        } else {
+            // This handles this rare scenario:
+            // - UTXO0 is spent by TX1 and creates UTXO1
+            // - UTXO1 is spent by TX2 and creates UTXO2
+            // - A chain block happens to accept both of these
+            // In this case, removed_diff wouldn't contain the outpoint of the created-and-immediately-spent UTXO
+            // so we use the transaction (which also has acceptance data in this block) and look at its outputs
+            let other_txid = first_input_prev_outpoint.transaction_id;
+            let (other_index, other_containing_acceptance) = acceptance_data
+                .iter()
+                .find_map(|ombad| {
+                    let otx_arr_index = ombad
+                        .accepted_transactions
+                        .iter()
+                        .find_map(|otx| (otx.transaction_id == other_txid).then_some(otx.index_within_block as usize));
+                    otx_arr_index.map(|index| (index, ombad.clone()))
+                })
+                .expect("The other transaction's acceptance data must also be in the same block in this case");
+            let other_tx = &self.block_transactions_store.get(other_containing_acceptance.block_hash).unwrap()[other_index];
+
+            other_tx.outputs[first_input_prev_outpoint.index as usize].script_public_key.clone()
+        };
+
+        if let Ok(address) = extract_script_pub_key_address(&spk, self.config.prefix()) {
             ReturnAddress::Found(address)
         } else {
             ReturnAddress::NonStandard
