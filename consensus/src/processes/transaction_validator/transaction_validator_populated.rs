@@ -55,7 +55,7 @@ impl TransactionValidator {
         match flags {
             TxValidationFlags::Full | TxValidationFlags::SkipMassCheck => {
                 Self::check_sig_op_counts(tx)?;
-                self.check_scripts(tx)?;
+                self.check_scripts(tx, pov_daa_score)?;
             }
             TxValidationFlags::SkipScriptChecks => {}
         }
@@ -166,11 +166,19 @@ impl TransactionValidator {
         Ok(())
     }
 
-    pub fn check_scripts(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
+    pub fn check_scripts(&self, tx: &impl VerifiableTransaction, pov_daa_score: u64) -> TxResult<()> {
         let mut reused_values = SigHashReusedValues::new();
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-            let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &mut reused_values, &self.sig_cache)
-                .map_err(|err| map_script_err(err, input))?;
+            let mut engine = TxScriptEngine::from_transaction_input(
+                tx,
+                input,
+                i,
+                entry,
+                &mut reused_values,
+                &self.sig_cache,
+                pov_daa_score > self.kip10_activation_daa_score,
+            )
+            .map_err(|err| map_script_err(err, input))?;
             engine.execute().map_err(|err| map_script_err(err, input))?;
         }
 
@@ -260,7 +268,7 @@ mod tests {
             }],
         );
 
-        tv.check_scripts(&populated_tx).expect("Signature check failed");
+        tv.check_scripts(&populated_tx, u64::MAX).expect("Signature check failed");
     }
 
     #[test]
@@ -322,7 +330,7 @@ mod tests {
             }],
         );
 
-        assert!(tv.check_scripts(&populated_tx).is_err(), "Failing Signature Test Failed");
+        assert!(tv.check_scripts(&populated_tx, u64::MAX).is_err(), "Failing Signature Test Failed");
     }
 
     #[test]
@@ -384,7 +392,7 @@ mod tests {
                 is_coinbase: false,
             }],
         );
-        tv.check_scripts(&populated_tx).expect("Signature check failed");
+        tv.check_scripts(&populated_tx, u64::MAX).expect("Signature check failed");
     }
 
     #[test]
@@ -447,7 +455,7 @@ mod tests {
             }],
         );
 
-        assert!(tv.check_scripts(&populated_tx) == Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail)));
+        assert!(tv.check_scripts(&populated_tx, u64::MAX) == Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail)));
     }
 
     #[test]
@@ -510,7 +518,7 @@ mod tests {
             }],
         );
 
-        assert!(tv.check_scripts(&populated_tx) == Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail)));
+        assert!(tv.check_scripts(&populated_tx, u64::MAX) == Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail)));
     }
 
     #[test]
@@ -573,7 +581,7 @@ mod tests {
             }],
         );
 
-        let result = tv.check_scripts(&populated_tx);
+        let result = tv.check_scripts(&populated_tx, u64::MAX);
         assert!(result == Err(TxRuleError::SignatureInvalid(TxScriptError::EvalFalse)));
     }
 
@@ -628,7 +636,7 @@ mod tests {
             }],
         );
 
-        let result = tv.check_scripts(&populated_tx);
+        let result = tv.check_scripts(&populated_tx, u64::MAX);
         assert!(result == Err(TxRuleError::SignatureInvalid(TxScriptError::SignatureScriptNotPushOnly)));
     }
 
@@ -708,7 +716,7 @@ mod tests {
         let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, &secret_key.secret_bytes()).unwrap();
         let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), schnorr_key);
         let populated_tx = signed_tx.as_verifiable();
-        assert_eq!(tv.check_scripts(&populated_tx), Ok(()));
+        assert_eq!(tv.check_scripts(&populated_tx, u64::MAX), Ok(()));
         assert_eq!(TransactionValidator::check_sig_op_counts(&populated_tx), Ok(()));
     }
 }

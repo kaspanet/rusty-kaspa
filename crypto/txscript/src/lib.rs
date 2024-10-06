@@ -84,6 +84,7 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction> {
     cond_stack: Vec<OpCond>, // Following if stacks, and whether it is running
 
     num_ops: i32,
+    kip10_enabled: bool,
 }
 
 fn parse_script<T: VerifiableTransaction>(
@@ -156,6 +157,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
             sig_cache,
             cond_stack: vec![],
             num_ops: 0,
+            kip10_enabled: false,
         }
     }
 
@@ -166,6 +168,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         utxo_entry: &'a UtxoEntry,
         reused_values: &'a mut SigHashReusedValues,
         sig_cache: &'a Cache<SigCacheKey, bool>,
+        kip10_enabled: bool,
     ) -> Result<Self, TxScriptError> {
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
@@ -180,6 +183,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
                 sig_cache,
                 cond_stack: Default::default(),
                 num_ops: 0,
+                kip10_enabled,
             }),
             false => Err(TxScriptError::InvalidIndex(input_idx, tx.tx().inputs.len())),
         }
@@ -194,6 +198,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
             sig_cache,
             cond_stack: Default::default(),
             num_ops: 0,
+            kip10_enabled: false,
         }
     }
 
@@ -565,8 +570,9 @@ mod tests {
 
             let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
 
-            let mut vm = TxScriptEngine::from_transaction_input(&populated_tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache)
-                .expect("Script creation failed");
+            let mut vm =
+                TxScriptEngine::from_transaction_input(&populated_tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache, false)
+                    .expect("Script creation failed");
             assert_eq!(vm.execute(), test.expected_result);
         }
     }
@@ -916,6 +922,52 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn output_gt_input_test() {
+        use crate::opcodes::codes::{
+            OpEqualVerify, OpGreaterThanOrEqual, OpInputAmount, OpInputSpk, OpOutputAmount, OpOutputSpk, OpSub,
+        };
+
+        use super::*;
+        use crate::script_builder::ScriptBuilder;
+
+        let threshold: i64 = 100;
+        let sig_cache = Cache::new(10_000);
+        let mut reused_values = SigHashReusedValues::new();
+        let script = ScriptBuilder::new()
+            .add_ops(&[OpInputSpk, OpOutputSpk, OpEqualVerify, OpOutputAmount])
+            .unwrap()
+            .add_i64(threshold)
+            .unwrap()
+            .add_ops(&[OpSub, OpInputAmount, OpGreaterThanOrEqual])
+            .unwrap()
+            .drain();
+        let spk = pay_to_script_hash_script(&script);
+        let input = TransactionInput {
+            previous_outpoint: TransactionOutpoint {
+                transaction_id: TransactionId::from_bytes([
+                    0xc9, 0x97, 0xa5, 0xe5, 0x6e, 0x10, 0x41, 0x02, 0xfa, 0x20, 0x9c, 0x6a, 0x85, 0x2d, 0xd9, 0x06, 0x60, 0xa2, 0x0b,
+                    0x2d, 0x9c, 0x35, 0x24, 0x23, 0xed, 0xce, 0x25, 0x85, 0x7f, 0xcd, 0x37, 0x04,
+                ]),
+                index: 0,
+            },
+            signature_script: ScriptBuilder::new().add_data(&script).unwrap().drain(),
+            sequence: 4294967295,
+            sig_op_count: 0,
+        };
+        let input_value = 1000000000;
+        let output = TransactionOutput { value: 1000000000 + threshold as u64, script_public_key: spk.clone() };
+
+        let tx = Transaction::new(1, vec![input.clone()], vec![output.clone()], 0, Default::default(), 0, vec![]);
+        let utxo_entry = UtxoEntry::new(input_value, spk, 0, tx.is_coinbase());
+
+        let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
+
+        let mut vm =
+            TxScriptEngine::from_transaction_input(&populated_tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache, true)
+                .expect("Script creation failed");
+        assert_eq!(vm.execute(), Ok(()));
+    }
 }
 
 #[cfg(test)]
@@ -987,7 +1039,7 @@ mod bitcoind_tests {
     }
 
     impl JsonTestRow {
-        fn test_row(&self) -> Result<(), TestError> {
+        fn test_row(&self, kip10_enabled: bool) -> Result<(), TestError> {
             // Parse test to objects
             let (sig_script, script_pub_key, expected_result) = match self.clone() {
                 JsonTestRow::Test(sig_script, sig_pub_key, _, expected_result) => (sig_script, sig_pub_key, expected_result),
@@ -999,7 +1051,7 @@ mod bitcoind_tests {
                 }
             };
 
-            let result = Self::run_test(sig_script, script_pub_key);
+            let result = Self::run_test(sig_script, script_pub_key, kip10_enabled);
 
             match Self::result_name(result.clone()).contains(&expected_result.as_str()) {
                 true => Ok(()),
@@ -1007,7 +1059,7 @@ mod bitcoind_tests {
             }
         }
 
-        fn run_test(sig_script: String, script_pub_key: String) -> Result<(), UnifiedError> {
+        fn run_test(sig_script: String, script_pub_key: String, kip10_enabled: bool) -> Result<(), UnifiedError> {
             let script_sig = opcodes::parse_short_form(sig_script).map_err(UnifiedError::ScriptBuilderError)?;
             let script_pub_key =
                 ScriptPublicKey::from_vec(0, opcodes::parse_short_form(script_pub_key).map_err(UnifiedError::ScriptBuilderError)?);
@@ -1027,6 +1079,7 @@ mod bitcoind_tests {
                 &populated_tx.entries[0],
                 &mut reused_values,
                 &sig_cache,
+                kip10_enabled,
             )
             .map_err(UnifiedError::TxScriptError)?;
             vm.execute().map_err(UnifiedError::TxScriptError)
@@ -1107,22 +1160,24 @@ mod bitcoind_tests {
 
     #[test]
     fn test_bitcoind_tests() {
-        let file = File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join("script_tests.json"))
-            .expect("Could not find test file");
-        let reader = BufReader::new(file);
+        for (file_name, kip10_enabled) in [("script_tests.json", false), ("script_tests-kip10.json", true)] {
+            let file =
+                File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join(file_name)).expect("Could not find test file");
+            let reader = BufReader::new(file);
 
-        // Read the JSON contents of the file as an instance of `User`.
-        let tests: Vec<JsonTestRow> = serde_json::from_reader(reader).expect("Failed Parsing {:?}");
-        let mut had_errors = 0;
-        let total_tests = tests.len();
-        for row in tests {
-            if let Err(error) = row.test_row() {
-                println!("Test: {:?} failed: {:?}", row.clone(), error);
-                had_errors += 1;
+            // Read the JSON contents of the file as an instance of `User`.
+            let tests: Vec<JsonTestRow> = serde_json::from_reader(reader).expect("Failed Parsing {:?}");
+            let mut had_errors = 0;
+            let total_tests = tests.len();
+            for row in tests {
+                if let Err(error) = row.test_row(kip10_enabled) {
+                    println!("Test: {:?} failed: {:?}", row.clone(), error);
+                    had_errors += 1;
+                }
             }
-        }
-        if had_errors > 0 {
-            panic!("{}/{} json tests failed", had_errors, total_tests)
+            if had_errors > 0 {
+                panic!("{}/{} json tests failed", had_errors, total_tests)
+            }
         }
     }
 }
