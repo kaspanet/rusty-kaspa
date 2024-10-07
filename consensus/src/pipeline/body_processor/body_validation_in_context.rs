@@ -20,23 +20,20 @@ impl BlockBodyProcessor {
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
         // TODO: this is somewhat expensive during ibd, as it incurs cache misses.
-        let pmt = Lazy::new(|| {
-            let (pmt, _) = self
-                .window_manager
-                .calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap())
-                .expect("expected header processor to have checked error case");
-            pmt
-        });
+        let pmt_res =
+            Lazy::new(|| match self.window_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap()) {
+                Ok((pmt, _)) => Ok(pmt),
+                Err(e) => Err(e),
+            });
 
         for tx in block.transactions.iter() {
-            // quick check to avoid the expensive Lazy eval (in most cases).
-            if tx.lock_time == 0 {
-                continue;
+            if !tx.lock_time == 0 {
+                // quick check to avoid the expensive Lazy eval during ibd (in most cases).
+                //(*pmt_res)?;
+                if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, pmt_res.clone()?) {
+                    return Err(RuleError::TxInContextFailed(tx.id(), e));
+                };
             };
-
-            if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, &pmt) {
-                return Err(RuleError::TxInContextFailed(tx.id(), e));
-            }
         }
         Ok(())
     }

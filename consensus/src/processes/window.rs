@@ -422,6 +422,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         cache.and_then(|cache| {
             cache.get(&ghostdag_data.selected_parent).map(|selected_parent_window| {
                 let mut heap = Lazy::new(|| BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_window).clone()));
+                //Note: calling self.push_mergeset here voids the lazy evaluation optimization of the heap. so we don't do that.
                 for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
                     match block {
                         SampledBlock::Sampled(block) => {
