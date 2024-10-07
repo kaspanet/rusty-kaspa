@@ -12,15 +12,15 @@ The default branch of this repository is `master` and new contributions are cons
 ## Installation
   <details>
   <summary>Building on Linux</summary>
-  
+
   1. Install general prerequisites
 
       ```bash
-      sudo apt install curl git build-essential libssl-dev pkg-config 
+      sudo apt install curl git build-essential libssl-dev pkg-config
       ```
 
   2. Install Protobuf (required for gRPC)
-  
+
       ```bash
       sudo apt install protobuf-compiler libprotobuf-dev #Required for gRPC
       ```
@@ -36,8 +36,8 @@ The default branch of this repository is `master` and new contributions are cons
       llvm python3-clang
       ```
   3. Install the [rust toolchain](https://rustup.rs/)
-     
-     If you already have rust installed, update it by running: `rustup update` 
+
+     If you already have rust installed, update it by running: `rustup update`
   4. Install wasm-pack
       ```bash
       cargo install wasm-pack
@@ -45,7 +45,7 @@ The default branch of this repository is `master` and new contributions are cons
   4. Install wasm32 target
       ```bash
       rustup target add wasm32-unknown-unknown
-      ```      
+      ```
   5. Clone the repo
       ```bash
       git clone https://github.com/kaspanet/rusty-kaspa
@@ -55,7 +55,7 @@ The default branch of this repository is `master` and new contributions are cons
 
 
 
-  <details>  
+  <details>
   <summary>Building on Windows</summary>
 
 
@@ -63,18 +63,18 @@ The default branch of this repository is `master` and new contributions are cons
 
   2. Install [Protocol Buffers](https://github.com/protocolbuffers/protobuf/releases/download/v21.10/protoc-21.10-win64.zip) and add the `bin` directory to your `Path`
 
-  
+
 3. Install [LLVM-15.0.6-win64.exe](https://github.com/llvm/llvm-project/releases/download/llvmorg-15.0.6/LLVM-15.0.6-win64.exe)
 
     Add the `bin` directory of the LLVM installation (`C:\Program Files\LLVM\bin`) to PATH
-    
+
     set `LIBCLANG_PATH` environment variable to point to the `bin` directory as well
 
     **IMPORTANT:** Due to C++ dependency configuration issues, LLVM `AR` installation on Windows may not function correctly when switching between WASM and native C++ code compilation (native `RocksDB+secp256k1` vs WASM32 builds of `secp256k1`). Unfortunately, manually setting `AR` environment variable also confuses C++ build toolchain (it should not be set for native but should be set for WASM32 targets). Currently, the best way to address this, is as follows: after installing LLVM on Windows, go to the target `bin` installation directory and copy or rename `LLVM_AR.exe` to `AR.exe`.
-  
+
   4. Install the [rust toolchain](https://rustup.rs/)
-     
-     If you already have rust installed, update it by running: `rustup update` 
+
+     If you already have rust installed, update it by running: `rustup update`
   5. Install wasm-pack
       ```bash
       cargo install wasm-pack
@@ -82,16 +82,16 @@ The default branch of this repository is `master` and new contributions are cons
   6. Install wasm32 target
       ```bash
       rustup target add wasm32-unknown-unknown
-      ```      
+      ```
   7. Clone the repo
       ```bash
       git clone https://github.com/kaspanet/rusty-kaspa
       cd rusty-kaspa
       ```
- </details>      
+ </details>
 
 
-  <details>  
+  <details>
   <summary>Building on Mac OS</summary>
 
 
@@ -99,8 +99,8 @@ The default branch of this repository is `master` and new contributions are cons
       ```bash
       brew install protobuf
       ```
-  2. Install llvm. 
-  
+  2. Install llvm.
+
       The default XCode installation of `llvm` does not support WASM build targets.
 To build WASM on MacOS you need to install `llvm` from homebrew (at the time of writing, the llvm version for MacOS is 16.0.1).
       ```bash
@@ -133,8 +133,8 @@ To build WASM on MacOS you need to install `llvm` from homebrew (at the time of 
       source ~/.zshrc
       ```
   3. Install the [rust toolchain](https://rustup.rs/)
-     
-     If you already have rust installed, update it by running: `rustup update` 
+
+     If you already have rust installed, update it by running: `rustup update`
   4. Install wasm-pack
       ```bash
       cargo install wasm-pack
@@ -142,14 +142,14 @@ To build WASM on MacOS you need to install `llvm` from homebrew (at the time of 
   4. Install wasm32 target
       ```bash
       rustup target add wasm32-unknown-unknown
-      ```      
+      ```
   5. Clone the repo
       ```bash
       git clone https://github.com/kaspanet/rusty-kaspa
       cd rusty-kaspa
       ```
 
- </details>   
+ </details>
 
   <details>
 
@@ -184,7 +184,8 @@ To build WASM on MacOS you need to install `llvm` from homebrew (at the time of 
 <summary>
 Kaspa CLI + Wallet
 </summary>
-`kaspa-cli` crate provides cli-driven RPC interface to the node and a
+
+`kaspa-cli` crate provides a cli-driven RPC interface to the node and a
 terminal interface to the Rusty Kaspa Wallet runtime. These wallets are
 compatible with WASM SDK Wallet API and Kaspa NG projects.
 
@@ -235,7 +236,7 @@ cargo run --release --bin kaspad -- --testnet
   ```
 
   **Testnet 11**
-  
+
   For participation in the 10BPS test network (TN11), see the following detailed [guide](docs/testnet11.md).
 
 <details>
@@ -249,7 +250,7 @@ cargo run --release --bin kaspad -- --configfile /path/to/configfile.toml
 # or
 cargo run --release --bin kaspad -- -C /path/to/configfile.toml
   ```
-  - The config file should be a list of \<CLI argument\> = \<value\> separated by newlines. 
+  - The config file should be a list of \<CLI argument\> = \<value\> separated by newlines.
   - Whitespace around the `=` is fine, `arg=value` and `arg = value` are both parsed correctly.
   - Values with special characters like `.` or `=` will require quoting the value i.e \<CLI argument\> = "\<value\>".
   - Arguments with multiple values should be surrounded with brackets like `addpeer = ["10.0.0.1", "1.2.3.4"]`.
@@ -297,17 +298,17 @@ wRPC
   **Sidenote:**
 
   Rusty Kaspa integrates an optional wRPC
-  subsystem. wRPC is a high-performance, platform-neutral, Rust-centric, WebSocket-framed RPC 
+  subsystem. wRPC is a high-performance, platform-neutral, Rust-centric, WebSocket-framed RPC
   implementation that can use [Borsh](https://borsh.io/) and JSON protocol encoding.
 
-  JSON protocol messaging 
-  is similar to JSON-RPC 1.0, but differs from the specification due to server-side 
+  JSON protocol messaging
+  is similar to JSON-RPC 1.0, but differs from the specification due to server-side
   notifications.
 
   [Borsh](https://borsh.io/) encoding is meant for inter-process communication. When using [Borsh](https://borsh.io/)
-  both client and server should be built from the same codebase.  
+  both client and server should be built from the same codebase.
 
-  JSON protocol is based on 
+  JSON protocol is based on
   Kaspa data structures and is data-structure-version agnostic. You can connect to the
   JSON endpoint using any WebSocket library. Built-in RPC clients for JavaScript and
   TypeScript capable of running in web browsers and Node.js are available as a part of
@@ -316,27 +317,21 @@ wRPC
 </details>
 
 
-
-<details>
-
-
 ## Benchmarking & Testing
 
 
-<details> 
+<details>
 
 <summary>Simulation framework (Simpa)</summary>
 
-Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) by either:
-
-The current codebase supports a full in-process network simulation, building an actual DAG over virtual time with virtual delay and benchmarking validation time (following the simulation generation). 
+The current codebase supports a full in-process network simulation, building an actual DAG over virtual time with virtual delay and benchmarking validation time (following the simulation generation).
 
 To see the available commands
-```bash 
+```bash
 cargo run --release --bin simpa -- --help
-``` 
+```
 
-The following command will run a simulation to produce 1000 blocks with communication delay of 2 seconds and 8 BPS (blocks per second) while attempting to fill each block with up to 200 transactions.   
+The following command will run a simulation to produce 1000 blocks with communication delay of 2 seconds and 8 BPS (blocks per second) while attempting to fill each block with up to 200 transactions.
 
 ```bash
 cargo run --release --bin simpa -- -t=200 -d=2 -b=8 -n=1000
@@ -347,7 +342,7 @@ cargo run --release --bin simpa -- -t=200 -d=2 -b=8 -n=1000
 
 
 
-<details> 
+<details>
 
 <summary>Heap Profiling</summary>
 
@@ -362,7 +357,7 @@ It will produce `{bin-name}-heap.json` file in the root of the workdir, that can
 </details>
 
 
-<details> 
+<details>
 
 <summary>Tests</summary>
 
@@ -384,12 +379,21 @@ cd rusty-kaspa
 cargo nextest run --release
 ```
 
+</details>
 
+<details>
+
+<summary>Lints</summary>
+
+```bash
+cd rusty-kaspa
+./check
+```
 
 </details>
 
 
-<details> 
+<details>
 
 <summary>Benchmarks</summary>
 
@@ -400,7 +404,7 @@ cargo bench
 
 </details>
 
-<details> 
+<details>
 
 <summary>Logging</summary>
 
@@ -415,4 +419,3 @@ Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.1
     In this command we set the `loglevel` to `INFO`.
 
 </details>
-
