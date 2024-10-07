@@ -16,6 +16,7 @@ use workflow_rpc::{
     server::{prelude::*, result::Result as WrpcResult},
     types::{MsgT, OpsT},
 };
+use workflow_serializer::prelude::*;
 
 //
 // FIXME: Use workflow_rpc::encoding::Encoding directly in the ConnectionT implementation by deriving Hash, Eq and PartialEq in situ
@@ -133,7 +134,7 @@ impl Connection {
     {
         match encoding {
             Encoding::Borsh => workflow_rpc::server::protocol::borsh::create_serialized_notification_message(op, msg),
-            Encoding::SerdeJson => workflow_rpc::server::protocol::borsh::create_serialized_notification_message(op, msg),
+            Encoding::SerdeJson => workflow_rpc::server::protocol::serde_json::create_serialized_notification_message(op, msg),
         }
     }
 }
@@ -157,7 +158,7 @@ impl ConnectionT for Connection {
 
     fn into_message(notification: &Self::Notification, encoding: &Self::Encoding) -> Self::Message {
         let op: RpcApiOps = notification.event_type().into();
-        Self::create_serialized_notification_message(encoding.clone().into(), op, notification.clone()).unwrap()
+        Self::create_serialized_notification_message(encoding.clone().into(), op, Serializable(notification.clone())).unwrap()
     }
 
     async fn send(&self, message: Self::Message) -> core::result::Result<(), Self::Error> {

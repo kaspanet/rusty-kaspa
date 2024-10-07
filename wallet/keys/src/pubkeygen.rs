@@ -1,3 +1,7 @@
+//!
+//! [`PublicKeyGenerator`] helper for generating public key derivations from an extended public key (XPub).
+//!
+
 use crate::derivation::gen1::WalletDerivationManager;
 use crate::derivation::traits::WalletDerivationManagerTrait;
 use crate::imports::*;
@@ -21,7 +25,7 @@ pub struct PublicKeyGenerator {
 #[wasm_bindgen]
 impl PublicKeyGenerator {
     #[wasm_bindgen(js_name=fromXPub)]
-    pub fn from_xpub(kpub: XPubT, cosigner_index: Option<u32>) -> Result<PublicKeyGenerator> {
+    pub fn from_xpub(kpub: &XPubT, cosigner_index: Option<u32>) -> Result<PublicKeyGenerator> {
         let kpub = XPub::try_cast_from(kpub)?;
         let xpub = kpub.as_ref().inner();
         let hd_wallet = WalletDerivationManager::from_extended_public_key(xpub.clone(), cosigner_index)?;
@@ -193,7 +197,7 @@ impl PublicKeyGenerator {
     #[wasm_bindgen(js_name=changeAddressAsString)]
     #[allow(non_snake_case)]
     pub fn change_address_as_string(&self, networkType: &NetworkTypeT, index: u32) -> Result<String> {
-        Ok(PublicKey::from(self.hd_wallet.receive_pubkey_manager().derive_pubkey(index)?)
+        Ok(PublicKey::from(self.hd_wallet.change_pubkey_manager().derive_pubkey(index)?)
             .to_address(networkType.try_into()?)?
             .to_string())
     }

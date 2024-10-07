@@ -78,7 +78,7 @@ impl OrphanBlocksPool {
         if self.orphans.contains_key(&orphan_hash) {
             return None;
         }
-
+        orphan_block.asses_for_cache()?;
         let (roots, orphan_ancestors) =
             match self.get_orphan_roots(consensus, orphan_block.header.direct_parents().iter().copied().collect()).await {
                 FindRootsOutput::Roots(roots, orphan_ancestors) => (roots, orphan_ancestors),
@@ -166,7 +166,7 @@ impl OrphanBlocksPool {
                 }
             } else {
                 let status = consensus.async_get_block_status(current).await;
-                if status.is_none_or(|s| s.is_header_only()) {
+                if status.is_none_or_ex(|s| s.is_header_only()) {
                     // Block is not in the orphan pool nor does its body exist consensus-wise, so it is a root
                     roots.push(current);
                 }
@@ -193,7 +193,8 @@ impl OrphanBlocksPool {
             if let Occupied(entry) = self.orphans.entry(orphan_hash) {
                 let mut processable = true;
                 for p in entry.get().block.header.direct_parents().iter().copied() {
-                    if !processing.contains_key(&p) && consensus.async_get_block_status(p).await.is_none_or(|s| s.is_header_only()) {
+                    if !processing.contains_key(&p) && consensus.async_get_block_status(p).await.is_none_or_ex(|s| s.is_header_only())
+                    {
                         processable = false;
                         break;
                     }
@@ -249,7 +250,7 @@ impl OrphanBlocksPool {
             let mut processable = true;
             for parent in block.block.header.direct_parents().iter().copied() {
                 if self.orphans.contains_key(&parent)
-                    || consensus.async_get_block_status(parent).await.is_none_or(|status| status.is_header_only())
+                    || consensus.async_get_block_status(parent).await.is_none_or_ex(|status| status.is_header_only())
                 {
                     processable = false;
                     break;

@@ -99,7 +99,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
 
             for i in (2..=available_parallelism().unwrap().get()).step_by(2) {
                 if inputs_count >= i {
-                    group.bench_function(&format!("rayon, custom threadpool, thread count {i}"), |b| {
+                    group.bench_function(format!("rayon, custom threadpool, thread count {i}"), |b| {
                         let tx = MutableTransaction::with_entries(tx.clone(), utxos.clone());
                         let cache = Cache::new(inputs_count as u64);
                         let pool = rayon::ThreadPoolBuilder::new().num_threads(i).build().unwrap();
