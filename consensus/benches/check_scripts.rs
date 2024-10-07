@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, SamplingMode};
 use kaspa_addresses::{Address, Prefix, Version};
 use kaspa_consensus::processes::transaction_validator::transaction_validator_populated::{
-    check_scripts_par_iter, check_scripts_par_iter_thread, check_scripts_single_threaded,
+    check_scripts_par_iter, check_scripts_par_iter_pool, check_scripts_sequential,
 };
 use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync};
 use kaspa_consensus_core::hashing::sighash_type::SIG_HASH_ALL;
@@ -84,7 +84,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                 let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
                     cache.map.write().clear();
-                    check_scripts_single_threaded(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
+                    check_scripts_sequential(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
                 })
             });
 
@@ -99,15 +99,14 @@ fn benchmark_check_scripts(c: &mut Criterion) {
 
             for i in (2..=available_parallelism().unwrap().get()).step_by(2) {
                 if inputs_count >= i {
-                    group.bench_function(&format!("rayon, custom threadpool, thread count {i}"), |b| {
+                    group.bench_function(format!("rayon, custom thread pool, thread count {i}"), |b| {
                         let tx = MutableTransaction::with_entries(tx.clone(), utxos.clone());
                         let cache = Cache::new(inputs_count as u64);
                         let pool = rayon::ThreadPoolBuilder::new().num_threads(i).build().unwrap();
                         b.iter(|| {
                             // Create a custom thread pool with the specified number of threads
                             cache.map.write().clear();
-                            check_scripts_par_iter_thread(black_box(&cache), black_box(&tx.as_verifiable()), black_box(&pool))
-                                .unwrap();
+                            check_scripts_par_iter_pool(black_box(&cache), black_box(&tx.as_verifiable()), black_box(&pool)).unwrap();
                         })
                     });
                 }

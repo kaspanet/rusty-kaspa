@@ -155,9 +155,9 @@ pub fn sign_with_multiple_v2(mut mutable_tx: SignableTransaction, privkeys: &[[u
 
 /// Sign a transaction input with a sighash_type using schnorr
 pub fn sign_input(tx: &impl VerifiableTransaction, input_index: usize, private_key: &[u8; 32], hash_type: SigHashType) -> Vec<u8> {
-    let mut reused_values = SigHashReusedValues::new();
+    let reused_values = SigHashReusedValuesUnsync::new();
 
-    let hash = calc_schnorr_signature_hash(tx, input_index, hash_type, &mut reused_values);
+    let hash = calc_schnorr_signature_hash(tx, input_index, hash_type, &reused_values);
     let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice()).unwrap();
     let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, private_key).unwrap();
     let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
