@@ -27,9 +27,8 @@ impl BlockBodyProcessor {
             });
 
         for tx in block.transactions.iter() {
+            // quick check to avoid the expensive Lazy eval during ibd (in most cases).
             if !tx.lock_time == 0 {
-                // quick check to avoid the expensive Lazy eval during ibd (in most cases).
-                //(*pmt_res)?;
                 if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, pmt_res.clone()?) {
                     return Err(RuleError::TxInContextFailed(tx.id(), e));
                 };
