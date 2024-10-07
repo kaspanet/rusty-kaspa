@@ -6,9 +6,10 @@ use crate::modules::node::Node;
 use crate::notifier::{Notification, Notifier};
 use crate::result::Result;
 use kaspa_daemon::{DaemonEvent, DaemonKind, Daemons};
+use kaspa_wallet_core::account::Account;
 use kaspa_wallet_core::rpc::DynRpcApi;
 use kaspa_wallet_core::storage::{IdT, PrvKeyDataInfo};
-use kaspa_wrpc_client::KaspaRpcClient;
+use kaspa_wrpc_client::{KaspaRpcClient, Resolver};
 use workflow_core::channel::*;
 use workflow_core::time::Instant;
 use workflow_log::*;
@@ -102,7 +103,7 @@ impl KaspaCli {
     }
 
     pub async fn try_new_arc(options: Options) -> Result<Arc<Self>> {
-        let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, None, None)?);
+        let wallet = Arc::new(Wallet::try_new(Wallet::local_store()?, Some(Resolver::default()), None)?);
 
         let kaspa_cli = Arc::new(KaspaCli {
             term: Arc::new(Mutex::new(None)),
@@ -311,7 +312,9 @@ impl KaspaCli {
                                 Events::SyncState { sync_state } => {
 
                                     if sync_state.is_synced() && this.wallet().is_open() {
-                                        if let Err(error) = this.wallet().reload(false).await {
+                                        let guard = this.wallet().guard();
+                                        let guard = guard.lock().await;
+                                        if let Err(error) = this.wallet().reload(false, &guard).await {
                                             terrorln!(this, "Unable to reload wallet: {error}");
                                         }
                                     }
@@ -383,8 +386,11 @@ impl KaspaCli {
                                     record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
+                                        let guard = this.wallet.guard();
+                                        let guard = guard.lock().await;
+
                                         let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_transaction_with_state(&this.wallet,Some("reorg"),include_utxos).await;
+                                        let tx = record.format_transaction_with_state(&this.wallet,Some("reorg"),include_utxos, &guard).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
@@ -393,8 +399,11 @@ impl KaspaCli {
                                 } => {
                                     // Pending and coinbase stasis fall under the same `Track` category
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
+                                        let guard = this.wallet.guard();
+                                        let guard = guard.lock().await;
+
                                         let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_transaction_with_state(&this.wallet,Some("stasis"),include_utxos).await;
+                                        let tx = record.format_transaction_with_state(&this.wallet,Some("stasis"),include_utxos, &guard).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
@@ -411,8 +420,11 @@ impl KaspaCli {
                                     record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Pending)) {
+                                        let guard = this.wallet.guard();
+                                        let guard = guard.lock().await;
+
                                         let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_transaction_with_state(&this.wallet,Some("pending"),include_utxos).await;
+                                        let tx = record.format_transaction_with_state(&this.wallet,Some("pending"),include_utxos, &guard).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
@@ -420,8 +432,11 @@ impl KaspaCli {
                                     record
                                 } => {
                                     if !this.is_mutted() || (this.is_mutted() && this.flags.get(Track::Tx)) {
+                                        let guard = this.wallet.guard();
+                                        let guard = guard.lock().await;
+
                                         let include_utxos = this.flags.get(Track::Utxo);
-                                        let tx = record.format_transaction_with_state(&this.wallet,Some("confirmed"),include_utxos).await;
+                                        let tx = record.format_transaction_with_state(&this.wallet,Some("confirmed"),include_utxos, &guard).await;
                                         tx.iter().for_each(|line|tprintln!(this,"{NOTIFY} {line}"));
                                     }
                                 },
@@ -532,6 +547,9 @@ impl KaspaCli {
     }
 
     async fn select_account_with_args(&self, autoselect: bool) -> Result<Arc<dyn Account>> {
+        let guard = self.wallet.guard();
+        let guard = guard.lock().await;
+
         let mut selection = None;
 
         let mut list_by_key = Vec::<(Arc<PrvKeyDataInfo>, Vec<(usize, Arc<dyn Account>)>)>::new();
@@ -540,7 +558,7 @@ impl KaspaCli {
         let mut keys = self.wallet.keys().await?;
         while let Some(key) = keys.try_next().await? {
             let mut prv_key_accounts = Vec::new();
-            let mut accounts = self.wallet.accounts(Some(key.id)).await?;
+            let mut accounts = self.wallet.accounts(Some(key.id), &guard).await?;
             while let Some(account) = accounts.next().await {
                 let account = account?;
                 prv_key_accounts.push((flat_list.len(), account.clone()));
@@ -548,6 +566,16 @@ impl KaspaCli {
             }
 
             list_by_key.push((key.clone(), prv_key_accounts));
+        }
+
+        let mut watch_accounts = Vec::<(usize, Arc<dyn Account>)>::new();
+        let mut unfiltered_accounts = self.wallet.accounts(None, &guard).await?;
+
+        while let Some(account) = unfiltered_accounts.try_next().await? {
+            if account.feature().is_some() {
+                watch_accounts.push((flat_list.len(), account.clone()));
+                flat_list.push(account.clone());
+            }
         }
 
         if flat_list.is_empty() {
@@ -567,6 +595,16 @@ impl KaspaCli {
                     let ls_string = account.get_list_string().unwrap_or_else(|err| panic!("{err}"));
                     tprintln!(self, "    {seq}: {ls_string}");
                 })
+            });
+
+            if !watch_accounts.is_empty() {
+                tprintln!(self, "• watch-only");
+            }
+
+            watch_accounts.iter().for_each(|(seq, account)| {
+                let seq = style(seq.to_string()).cyan();
+                let ls_string = account.get_list_string().unwrap_or_else(|err| panic!("{err}"));
+                tprintln!(self, "    {seq}: {ls_string}");
             });
 
             tprintln!(self);
@@ -643,16 +681,33 @@ impl KaspaCli {
     }
 
     pub async fn list(&self) -> Result<()> {
+        let guard = self.wallet.guard();
+        let guard = guard.lock().await;
+
         let mut keys = self.wallet.keys().await?;
 
         tprintln!(self);
         while let Some(key) = keys.try_next().await? {
             tprintln!(self, "• {}", style(&key).dim());
-            let mut accounts = self.wallet.accounts(Some(key.id)).await?;
+
+            let mut accounts = self.wallet.accounts(Some(key.id), &guard).await?;
             while let Some(account) = accounts.try_next().await? {
                 let receive_address = account.receive_address()?;
                 tprintln!(self, "    • {}", account.get_list_string()?);
                 tprintln!(self, "      {}", style(receive_address.to_string()).blue());
+            }
+        }
+
+        let mut unfiltered_accounts = self.wallet.accounts(None, &guard).await?;
+        let mut feature_header_printed = false;
+        while let Some(account) = unfiltered_accounts.try_next().await? {
+            if let Some(feature) = account.feature() {
+                if !feature_header_printed {
+                    tprintln!(self, "{}", style("• watch-only").dim());
+                    feature_header_printed = true;
+                }
+                tprintln!(self, "  • {}", account.get_list_string().unwrap());
+                tprintln!(self, "      • {}", style(feature).cyan());
             }
         }
         tprintln!(self);

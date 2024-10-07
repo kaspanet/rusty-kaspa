@@ -1,14 +1,11 @@
 use crate::imports::*;
 use crate::result::Result;
 use crate::tx::{IPaymentOutputArray, PaymentOutputs};
-use crate::wasm::tx::consensus::get_consensus_params_by_address;
 use crate::wasm::tx::generator::*;
-use crate::wasm::tx::mass::MassCalculator;
-use kaspa_addresses::{Address, AddressT};
 use kaspa_consensus_client::*;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
-//use kaspa_consensus_wasm::*;
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
+use kaspa_wasm_core::types::BinaryT;
 use workflow_core::runtime::is_web;
 
 /// Create a basic transaction without any mass limit checks.
@@ -17,32 +14,19 @@ use workflow_core::runtime::is_web;
 pub fn create_transaction_js(
     utxo_entry_source: IUtxoEntryArray,
     outputs: IPaymentOutputArray,
-    change_address: AddressT,
     priority_fee: BigInt,
-    payload: JsValue,
-    sig_op_count: JsValue,
-    minimum_signatures: JsValue,
+    payload: Option<BinaryT>,
+    sig_op_count: Option<u8>,
 ) -> crate::result::Result<Transaction> {
-    let change_address = Address::try_cast_from(change_address)?;
-    let params = get_consensus_params_by_address(change_address.as_ref());
-    let mc = MassCalculator::new(params);
-
     let utxo_entries = if let Some(utxo_entries) = utxo_entry_source.dyn_ref::<js_sys::Array>() {
-        utxo_entries.to_vec().iter().map(UtxoEntryReference::try_cast_from).collect::<Result<Vec<_>, _>>()?
+        utxo_entries.to_vec().iter().map(UtxoEntryReference::try_owned_from).collect::<Result<Vec<_>, _>>()?
     } else {
         return Err(Error::custom("utxo_entries must be an array"));
     };
     let priority_fee: u64 = priority_fee.try_into().map_err(|err| Error::custom(format!("invalid fee value: {err}")))?;
-    let payload = payload.try_as_vec_u8().ok().unwrap_or_default();
+    let payload = payload.and_then(|payload| payload.try_as_vec_u8().ok()).unwrap_or_default();
     let outputs = PaymentOutputs::try_owned_from(outputs)?;
-    let sig_op_count =
-        if !sig_op_count.is_undefined() { sig_op_count.as_f64().expect("sigOpCount should be a number") as u8 } else { 1 };
-
-    let minimum_signatures = if !minimum_signatures.is_undefined() {
-        minimum_signatures.as_f64().expect("minimumSignatures should be a number") as u16
-    } else {
-        1
-    };
+    let sig_op_count = sig_op_count.unwrap_or(1);
 
     // ---
 
@@ -53,10 +37,10 @@ pub fn create_transaction_js(
         .into_iter()
         .enumerate()
         .map(|(sequence, reference)| {
-            let UtxoEntryReference { utxo } = reference.as_ref();
+            let UtxoEntryReference { utxo } = &reference;
             total_input_amount += utxo.amount();
-            entries.push(reference.as_ref().clone());
-            TransactionInput::new(utxo.outpoint.clone(), vec![], sequence as u64, sig_op_count, Some(reference.into_owned()))
+            entries.push(reference.clone());
+            TransactionInput::new(utxo.outpoint.clone(), None, sequence as u64, sig_op_count, Some(reference))
         })
         .collect::<Vec<TransactionInput>>();
 
@@ -64,12 +48,8 @@ pub fn create_transaction_js(
         return Err(format!("priority fee({priority_fee}) > amount({total_input_amount})").into());
     }
 
-    // TODO - Calculate mass and fees
-
     let outputs: Vec<TransactionOutput> = outputs.into();
-    let transaction = Transaction::new(None, 0, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload)?;
-    let _fee = mc.calc_minimum_transaction_relay_fee(&transaction, minimum_signatures);
-    //let mtx = SignableTransaction::new(transaction, entries.into());
+    let transaction = Transaction::new(None, 0, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload, 0)?;
 
     Ok(transaction)
 }

@@ -42,6 +42,7 @@ thiserror.workspace = true
 wasm-bindgen.workspace = true
 workflow-core.workspace = true
 workflow-log.workspace = true
+workflow-serializer.workspace = true
 workflow-wasm.workspace = true
 
 [dev-dependencies]
@@ -54,5 +55,5 @@ web-sys.workspace = true
 name = "serde_benchmark"
 harness = false
 
-[lints.clippy]
-empty_docs = "allow"
+[lints]
+workspace = true

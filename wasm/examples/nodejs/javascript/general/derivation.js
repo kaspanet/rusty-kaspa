@@ -21,6 +21,7 @@ kaspa.initConsolePanicHook();
     let xPrv = new XPrv(seed);
     // derive full path upto second address of receive wallet
     let pubkey1 = xPrv.derivePath("m/44'/111111'/0'/0/1").toXPub().toPublicKey();
+    console.log("publickey", pubkey1.toString())
     console.log("address", pubkey1.toAddress(NetworkType.Mainnet));
 
     // create receive wallet
@@ -28,17 +29,25 @@ kaspa.initConsolePanicHook();
     // derive receive wallet for second address
     let pubkey2 = receiveWalletXPub.deriveChild(1, false).toPublicKey();
     console.log("address", pubkey2.toAddress(NetworkType.Mainnet));
+    if (pubkey1.toString() != pubkey2.toString()){
+        throw new Error("pubkey2 dont match")
+    }
 
     // create change wallet
     let changeWalletXPub = xPrv.derivePath("m/44'/111111'/0'/1").toXPub();
     // derive change wallet for first address
     let pubkey3 = changeWalletXPub.deriveChild(0, false).toPublicKey();
-    console.log("address", pubkey2.toAddress(NetworkType.Mainnet));
-
-    if (pubkey1.toString() != pubkey2.toString()){
-        throw new Error("pubkeyes dont match")
-    }
+    console.log("change address", pubkey3.toAddress(NetworkType.Mainnet));
     // ---
+
+    //drive address via private key
+    let privateKey = xPrv.derivePath("m/44'/111111'/0'/0/1").toPrivateKey();
+    console.log("address via private key", privateKey.toAddress(NetworkType.Mainnet))
+    console.log("privatekey", privateKey.toString());
+    let pubkey4 = privateKey.toPublicKey();
+    if (pubkey1.toString() != pubkey4.toString()){
+        throw new Error("pubkey4 dont match")
+    }
 
     // xprv with ktrv prefix
     const ktrv = xPrv.intoString("ktrv");

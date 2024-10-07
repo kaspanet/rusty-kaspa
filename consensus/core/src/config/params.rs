@@ -309,6 +309,10 @@ pub const MAINNET_PARAMS: Params = Params {
         "kaspadns.kaspacalc.net",
         // This DNS seeder is run by supertypo
         "n-mainnet.kaspa.ws",
+        // This DNS seeder is run by -gerri-
+        "dnsseeder-kaspa-mainnet.x-con.at",
+        // This DNS seeder is run by H@H
+        "ns-mainnet.kaspa-dnsseeder.net",
     ],
     net: NetworkId::new(NetworkType::Mainnet),
     genesis: GENESIS,
@@ -368,6 +372,10 @@ pub const TESTNET_PARAMS: Params = Params {
     dns_seeders: &[
         // This DNS seeder is run by Tiram
         "seeder1-testnet.kaspad.net",
+        // This DNS seeder is run by -gerri-
+        "dnsseeder-kaspa-testnet.x-con.at",
+        // This DNS seeder is run by H@H
+        "ns-testnet10.kaspa-dnsseeder.net",
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 10),
     genesis: TESTNET_GENESIS,
@@ -429,6 +437,10 @@ pub const TESTNET11_PARAMS: Params = Params {
         "seeder1-testnet-11.kaspad.net",
         // This DNS seeder is run by supertypo
         "n-testnet-11.kaspa.ws",
+        // This DNS seeder is run by -gerri-
+        "dnsseeder-kaspa-testnet11.x-con.at",
+        // This DNS seeder is run by H@H
+        "ns-testnet11.kaspa-dnsseeder.net",
     ],
     net: NetworkId::with_suffix(NetworkType::Testnet, 11),
     genesis: TESTNET11_GENESIS,
@@ -501,7 +513,8 @@ pub const SIMNET_PARAMS: Params = Params {
     target_time_per_block: Testnet11Bps::target_time_per_block(),
     past_median_time_sample_rate: Testnet11Bps::past_median_time_sample_rate(),
     difficulty_sample_rate: Testnet11Bps::difficulty_adjustment_sample_rate(),
-    max_block_parents: Testnet11Bps::max_block_parents(),
+    // For simnet, we deviate from TN11 configuration and allow at least 64 parents in order to support mempool benchmarks out of the box
+    max_block_parents: if Testnet11Bps::max_block_parents() > 64 { Testnet11Bps::max_block_parents() } else { 64 },
     mergeset_size_limit: Testnet11Bps::mergeset_size_limit(),
     merge_depth: Testnet11Bps::merge_depth_bound(),
     finality_depth: Testnet11Bps::finality_depth(),

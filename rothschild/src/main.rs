@@ -13,15 +13,18 @@ use kaspa_consensus_core::{
 use kaspa_core::{info, kaspad_env::version, time::unix_now, warn};
 use kaspa_grpc_client::{ClientPool, GrpcClient};
 use kaspa_notify::subscription::context::SubscriptionContext;
-use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode};
+use kaspa_rpc_core::{api::rpc::RpcApi, notify::mode::NotificationMode, RpcUtxoEntry};
 use kaspa_txscript::pay_to_address_script;
 use parking_lot::Mutex;
 use rayon::prelude::*;
-use secp256k1::{rand::thread_rng, Keypair};
+use secp256k1::{
+    rand::{thread_rng, Rng},
+    Keypair,
+};
 use tokio::time::{interval, MissedTickBehavior};
 
 const DEFAULT_SEND_AMOUNT: u64 = 10 * SOMPI_PER_KASPA;
-const FEE_PER_MASS: u64 = 10;
+const FEE_RATE: u64 = 10;
 const MILLIS_PER_TICK: u64 = 10;
 const ADDRESS_PREFIX: Prefix = Prefix::Testnet;
 const ADDRESS_VERSION: Version = Version::PubKey;
@@ -40,6 +43,9 @@ pub struct Args {
     pub rpc_server: String,
     pub threads: u8,
     pub unleashed: bool,
+    pub addr: Option<String>,
+    pub priority_fee: u64,
+    pub randomize_fee: bool,
 }
 
 impl Args {
@@ -51,6 +57,9 @@ impl Args {
             rpc_server: m.get_one::<String>("rpcserver").cloned().unwrap_or("localhost:16210".to_owned()),
             threads: m.get_one::<u8>("threads").cloned().unwrap(),
             unleashed: m.get_one::<bool>("unleashed").cloned().unwrap_or(false),
+            addr: m.get_one::<String>("addr").cloned(),
+            priority_fee: m.get_one::<u64>("priority-fee").cloned().unwrap_or(0),
+            randomize_fee: m.get_one::<bool>("randomize-fee").cloned().unwrap_or(false),
         }
     }
 }
@@ -85,6 +94,25 @@ pub fn cli() -> Command {
                 .help("The number of threads to use for TX generation. Set to 0 to use 1 thread per core. Default is 2."),
         )
         .arg(Arg::new("unleashed").long("unleashed").action(ArgAction::SetTrue).hide(true).help("Allow higher TPS"))
+        .arg(Arg::new("addr").long("to-addr").short('a').value_name("addr").help("address to send to"))
+        .arg(
+            Arg::new("priority-fee")
+                .long("priority-fee")
+                .short('f')
+                .value_name("priority-fee")
+                .default_value("0")
+                .value_parser(clap::value_parser!(u64))
+                .help("Transaction priority fee"),
+        )
+        .arg(
+            Arg::new("randomize-fee")
+                .long("randomize-fee")
+                .short('r')
+                .value_name("randomize-fee")
+                .action(ArgAction::SetTrue)
+                .default_value("false")
+                .help("Randomize transaction priority fee"),
+        )
 }
 
 async fn new_rpc_client(subscription_context: &SubscriptionContext, address: &str) -> GrpcClient {
@@ -109,6 +137,11 @@ struct ClientPoolArg {
     selected_utxos_amount: u64,
     pending_len: usize,
     utxos_len: usize,
+}
+
+struct TxsFeeConfig {
+    priority_fee: u64,
+    randomize_fee: bool,
 }
 
 #[tokio::main]
@@ -150,9 +183,31 @@ async fn main() {
 
     let kaspa_addr = Address::new(ADDRESS_PREFIX, ADDRESS_VERSION, &schnorr_key.x_only_public_key().0.serialize());
 
+    let kaspa_to_addr = args.addr.as_ref().map_or_else(|| kaspa_addr.clone(), |addr_str| Address::try_from(addr_str.clone()).unwrap());
+
+    let fee_config = TxsFeeConfig { priority_fee: args.priority_fee, randomize_fee: args.randomize_fee };
+
     rayon::ThreadPoolBuilder::new().num_threads(args.threads as usize).build_global().unwrap();
 
-    info!("Using Rothschild with private key {} and address {}", schnorr_key.display_secret(), String::from(&kaspa_addr));
+    let mut log_message = format!(
+        "Using Rothschild with:\n\
+        \tprivate key: {}\n\
+        \tfrom address: {}",
+        schnorr_key.display_secret(),
+        String::from(&kaspa_addr)
+    );
+    if args.addr.is_some() {
+        log_message.push_str(&format!("\n\tto address: {}", String::from(&kaspa_to_addr)));
+    }
+    if args.priority_fee != 0 {
+        log_message.push_str(&format!(
+            "\n\tpriority fee: {} SOMPS {}",
+            fee_config.priority_fee,
+            if fee_config.randomize_fee { "[randomize]" } else { "" }
+        ));
+    }
+    info!("{}", log_message);
+
     let info = rpc_client.get_block_dag_info().await.unwrap();
     let coinbase_maturity = match info.network.suffix {
         Some(11) => TESTNET11_PARAMS.coinbase_maturity,
@@ -249,13 +304,14 @@ async fn main() {
         let has_funds = maybe_send_tx(
             txs_to_send,
             &tx_sender,
-            kaspa_addr.clone(),
+            kaspa_to_addr.clone(),
             &mut utxos,
             &mut pending,
             schnorr_key,
             stats.clone(),
             maximize_inputs,
             &mut next_available_utxo_index,
+            &fee_config,
         )
         .await;
         if !has_funds {
@@ -323,7 +379,7 @@ async fn populate_pending_outpoints_from_mempool(
     for entry in entries {
         for entry in entry.sending {
             for input in entry.transaction.inputs {
-                pending_outpoints.insert(input.previous_outpoint, now);
+                pending_outpoints.insert(input.previous_outpoint.into(), now);
             }
         }
     }
@@ -337,20 +393,20 @@ async fn fetch_spendable_utxos(
 ) -> Vec<(TransactionOutpoint, UtxoEntry)> {
     let resp = rpc_client.get_utxos_by_addresses(vec![kaspa_addr]).await.unwrap();
     let dag_info = rpc_client.get_block_dag_info().await.unwrap();
-    let mut utxos = Vec::with_capacity(resp.len());
-    for resp_entry in resp
-        .into_iter()
-        .filter(|resp_entry| is_utxo_spendable(&resp_entry.utxo_entry, dag_info.virtual_daa_score, coinbase_maturity))
+
+    let mut utxos = resp.into_iter()
+        .filter(|entry| {
+            is_utxo_spendable(&entry.utxo_entry, dag_info.virtual_daa_score, coinbase_maturity)
+        })
+        .map(|entry| (TransactionOutpoint::from(entry.outpoint), UtxoEntry::from(entry.utxo_entry)))
         // Eliminates UTXOs we already tried to spend so we don't try to spend them again in this period
-        .filter(|utxo| !pending.contains_key(&utxo.outpoint))
-    {
-        utxos.push((resp_entry.outpoint, resp_entry.utxo_entry));
-    }
+        .filter(|(outpoint,_)| !pending.contains_key(outpoint))
+        .collect::<Vec<_>>();
     utxos.sort_by(|a, b| b.1.amount.cmp(&a.1.amount));
     utxos
 }
 
-fn is_utxo_spendable(entry: &UtxoEntry, virtual_daa_score: u64, coinbase_maturity: u64) -> bool {
+fn is_utxo_spendable(entry: &RpcUtxoEntry, virtual_daa_score: u64, coinbase_maturity: u64) -> bool {
     let needed_confs = if !entry.is_coinbase {
         10
     } else {
@@ -369,6 +425,7 @@ async fn maybe_send_tx(
     stats: Arc<Mutex<Stats>>,
     maximize_inputs: bool,
     next_available_utxo_index: &mut usize,
+    fee_config: &TxsFeeConfig,
 ) -> bool {
     let num_outs = if maximize_inputs { 1 } else { 2 };
 
@@ -377,7 +434,7 @@ async fn maybe_send_tx(
     let selected_utxos_groups = (0..txs_to_send)
         .map(|_| {
             let (selected_utxos, selected_amount) =
-                select_utxos(utxos, DEFAULT_SEND_AMOUNT, num_outs, maximize_inputs, next_available_utxo_index);
+                select_utxos(utxos, DEFAULT_SEND_AMOUNT, num_outs, maximize_inputs, next_available_utxo_index, fee_config);
             if selected_amount == 0 {
                 return None;
             }
@@ -438,7 +495,7 @@ fn clean_old_pending_outpoints(pending: &mut HashMap<TransactionOutpoint, u64>) 
 }
 
 fn required_fee(num_utxos: usize, num_outs: u64) -> u64 {
-    FEE_PER_MASS * estimated_mass(num_utxos, num_outs)
+    FEE_RATE * estimated_mass(num_utxos, num_outs)
 }
 
 fn estimated_mass(num_utxos: usize, num_outs: u64) -> u64 {
@@ -473,10 +530,12 @@ fn select_utxos(
     num_outs: u64,
     maximize_utxos: bool,
     next_available_utxo_index: &mut usize,
+    fee_config: &TxsFeeConfig,
 ) -> (Vec<(TransactionOutpoint, UtxoEntry)>, u64) {
     const MAX_UTXOS: usize = 84;
     let mut selected_amount: u64 = 0;
     let mut selected = Vec::new();
+    let mut rng = thread_rng();
 
     while next_available_utxo_index < &mut utxos.len() {
         let (outpoint, entry) = utxos[*next_available_utxo_index].clone();
@@ -484,11 +543,16 @@ fn select_utxos(
         selected.push((outpoint, entry));
 
         let fee = required_fee(selected.len(), num_outs);
+        let priority_fee = if fee_config.randomize_fee && fee_config.priority_fee > 0 {
+            rng.gen_range(0..fee_config.priority_fee)
+        } else {
+            fee_config.priority_fee
+        };
 
         *next_available_utxo_index += 1;
 
-        if selected_amount >= min_amount + fee && (!maximize_utxos || selected.len() == MAX_UTXOS) {
-            return (selected, selected_amount - fee);
+        if selected_amount >= min_amount + fee + priority_fee && (!maximize_utxos || selected.len() == MAX_UTXOS) {
+            return (selected, selected_amount - fee - priority_fee);
         }
 
         if selected.len() > MAX_UTXOS {
