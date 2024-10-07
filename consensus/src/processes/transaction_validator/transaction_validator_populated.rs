@@ -180,11 +180,11 @@ pub fn check_scripts(sig_cache: &Cache<SigCacheKey, bool>, tx: &(impl Verifiable
     if tx.inputs().len() > 1 {
         check_scripts_par_iter(sig_cache, tx)
     } else {
-        check_scripts_single_threaded(sig_cache, tx)
+        check_scripts_sequential(sig_cache, tx)
     }
 }
 
-pub fn check_scripts_single_threaded(sig_cache: &Cache<SigCacheKey, bool>, tx: &impl VerifiableTransaction) -> TxResult<()> {
+pub fn check_scripts_sequential(sig_cache: &Cache<SigCacheKey, bool>, tx: &impl VerifiableTransaction) -> TxResult<()> {
     let reused_values = SigHashReusedValuesUnsync::new();
     for (i, (input, entry)) in tx.populated_inputs().enumerate() {
         let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &reused_values, sig_cache)
@@ -200,18 +200,16 @@ pub fn check_scripts_par_iter(
 ) -> TxResult<()> {
     use rayon::iter::ParallelIterator;
     let reused_values = std::sync::Arc::new(SigHashReusedValuesSync::new());
-    (0..tx.inputs().len())
-        .into_par_iter()
-        .try_for_each(|idx| {
-            let reused_values = reused_values.clone(); // Clone the Arc to share ownership
-            let (input, utxo) = tx.populated_input(idx);
-            let mut engine = TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache)?;
-            engine.execute()
-        })
-        .map_err(TxRuleError::SignatureInvalid)
+    (0..tx.inputs().len()).into_par_iter().try_for_each(|idx| {
+        let reused_values = reused_values.clone(); // Clone the Arc to share ownership
+        let (input, utxo) = tx.populated_input(idx);
+        let mut engine = TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache)
+            .map_err(|err| map_script_err(err, input))?;
+        engine.execute().map_err(|err| map_script_err(err, input))
+    })
 }
 
-pub fn check_scripts_par_iter_thread(
+pub fn check_scripts_par_iter_pool(
     sig_cache: &Cache<SigCacheKey, bool>,
     tx: &(impl VerifiableTransaction + std::marker::Sync),
     pool: &ThreadPool,
@@ -219,15 +217,13 @@ pub fn check_scripts_par_iter_thread(
     use rayon::iter::ParallelIterator;
     pool.install(|| {
         let reused_values = Arc::new(SigHashReusedValuesSync::new());
-        (0..tx.inputs().len())
-            .into_par_iter()
-            .try_for_each(|idx| {
-                let reused_values = reused_values.clone(); // Clone the Arc to share ownership
-                let (input, utxo) = tx.populated_input(idx);
-                let mut engine = TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache)?;
-                engine.execute()
-            })
-            .map_err(TxRuleError::SignatureInvalid)
+        (0..tx.inputs().len()).into_par_iter().try_for_each(|idx| {
+            let reused_values = reused_values.clone(); // Clone the Arc to share ownership
+            let (input, utxo) = tx.populated_input(idx);
+            let mut engine = TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache)
+                .map_err(|err| map_script_err(err, input))?;
+            engine.execute().map_err(|err| map_script_err(err, input))
+        })
     })
 }
 
