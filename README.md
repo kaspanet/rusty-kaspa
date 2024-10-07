@@ -184,7 +184,8 @@ To build WASM on MacOS you need to install `llvm` from homebrew (at the time of 
 <summary>
 Kaspa CLI + Wallet
 </summary>
-`kaspa-cli` crate provides cli-driven RPC interface to the node and a
+
+`kaspa-cli` crate provides a cli-driven RPC interface to the node and a
 terminal interface to the Rusty Kaspa Wallet runtime. These wallets are
 compatible with WASM SDK Wallet API and Kaspa NG projects.
 
@@ -322,8 +323,6 @@ wRPC
 <details>
 
 <summary>Simulation framework (Simpa)</summary>
-
-Logging in `kaspad` and `simpa` can be [filtered](https://docs.rs/env_logger/0.10.0/env_logger/#filtering-results) by either:
 
 The current codebase supports a full in-process network simulation, building an actual DAG over virtual time with virtual delay and benchmarking validation time (following the simulation generation).
 
