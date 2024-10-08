@@ -15,6 +15,7 @@ wasm32-sdk = []
 default = []
 
 [dependencies]
+arc-swap.workspace = true
 async-trait.workspace = true
 borsh.workspace = true
 cfg-if.workspace = true

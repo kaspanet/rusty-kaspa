@@ -3,6 +3,7 @@
 //!
 
 use kaspa_bip32::{secp256k1, DerivationPath, KeyFingerprint};
+use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{collections::BTreeMap, fmt::Display, fmt::Formatter, future::Future, marker::PhantomData, ops::Deref};
@@ -14,7 +15,7 @@ pub use crate::output::{Output, OutputBuilder};
 pub use crate::role::{Combiner, Constructor, Creator, Extractor, Finalizer, Signer, Updater};
 use kaspa_consensus_core::tx::UtxoEntry;
 use kaspa_consensus_core::{
-    hashing::{sighash::SigHashReusedValues, sighash_type::SigHashType},
+    hashing::sighash_type::SigHashType,
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput},
 };
@@ -432,10 +433,10 @@ impl PSKT<Extractor> {
         {
             let tx = tx.as_verifiable();
             let cache = Cache::new(10_000);
-            let mut reused_values = SigHashReusedValues::new();
+            let reused_values = SigHashReusedValuesUnsync::new();
 
             tx.populated_inputs().enumerate().try_for_each(|(idx, (input, entry))| {
-                TxScriptEngine::from_transaction_input(&tx, input, idx, entry, &mut reused_values, &cache)?.execute()?;
+                TxScriptEngine::from_transaction_input(&tx, input, idx, entry, &reused_values, &cache)?.execute()?;
                 <Result<(), ExtractError>>::Ok(())
             })?;
         }

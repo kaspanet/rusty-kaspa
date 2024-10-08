@@ -2414,6 +2414,7 @@ dependencies = [
  "futures-util",
  "indexmap 2.6.0",
  "itertools 0.13.0",
+ "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-consensus-notify",
  "kaspa-consensusmanager",
@@ -2475,6 +2476,7 @@ dependencies = [
 name = "kaspa-consensus-core"
 version = "0.15.2"
 dependencies = [
+ "arc-swap",
  "async-trait",
  "bincode",
  "borsh",

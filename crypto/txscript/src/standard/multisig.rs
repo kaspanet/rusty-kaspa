@@ -74,7 +74,7 @@ mod tests {
     use core::str::FromStr;
     use kaspa_consensus_core::{
         hashing::{
-            sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValues},
+            sighash::{calc_ecdsa_signature_hash, calc_schnorr_signature_hash, SigHashReusedValuesUnsync},
             sighash_type::SIG_HASH_ALL,
         },
         subnets::SubnetworkId,
@@ -154,11 +154,11 @@ mod tests {
         }];
         let mut tx = MutableTransaction::with_entries(tx, entries);
 
-        let mut reused_values = SigHashReusedValues::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
         let sig_hash = if !is_ecdsa {
-            calc_schnorr_signature_hash(&tx.as_verifiable(), 0, SIG_HASH_ALL, &mut reused_values)
+            calc_schnorr_signature_hash(&tx.as_verifiable(), 0, SIG_HASH_ALL, &reused_values)
         } else {
-            calc_ecdsa_signature_hash(&tx.as_verifiable(), 0, SIG_HASH_ALL, &mut reused_values)
+            calc_ecdsa_signature_hash(&tx.as_verifiable(), 0, SIG_HASH_ALL, &reused_values)
         };
         let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
         let signatures: Vec<_> = inputs
@@ -184,7 +184,7 @@ mod tests {
         let (input, entry) = tx.populated_inputs().next().unwrap();
 
         let cache = Cache::new(10_000);
-        let mut engine = TxScriptEngine::from_transaction_input(&tx, input, 0, entry, &mut reused_values, &cache).unwrap();
+        let mut engine = TxScriptEngine::from_transaction_input(&tx, input, 0, entry, &reused_values, &cache).unwrap();
         assert_eq!(engine.execute().is_ok(), is_ok);
     }
     #[test]
