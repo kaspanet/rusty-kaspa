@@ -81,31 +81,29 @@ fn benchmark_check_scripts(c: &mut Criterion) {
 
             group.bench_function("single_thread", |b| {
                 let tx = MutableTransaction::with_entries(&tx, utxos.clone());
-                let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
-                    cache.map.write().clear();
+                    let cache = Cache::new(inputs_count as u64);
                     check_scripts_sequential(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
                 })
             });
 
             group.bench_function("rayon par iter", |b| {
                 let tx = MutableTransaction::with_entries(tx.clone(), utxos.clone());
-                let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
-                    cache.map.write().clear();
+                    let cache = Cache::new(inputs_count as u64);
                     check_scripts_par_iter(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
                 })
             });
 
-            for i in (2..=available_parallelism().unwrap().get()).step_by(2) {
+            // Iterate powers of two up to available parallelism
+            for i in (1..=(available_parallelism().unwrap().get() as f64).log2().ceil() as u32).map(|x| 2u32.pow(x) as usize) {
                 if inputs_count >= i {
                     group.bench_function(format!("rayon, custom thread pool, thread count {i}"), |b| {
                         let tx = MutableTransaction::with_entries(tx.clone(), utxos.clone());
-                        let cache = Cache::new(inputs_count as u64);
+                        // Create a custom thread pool with the specified number of threads
                         let pool = rayon::ThreadPoolBuilder::new().num_threads(i).build().unwrap();
                         b.iter(|| {
-                            // Create a custom thread pool with the specified number of threads
-                            cache.map.write().clear();
+                            let cache = Cache::new(inputs_count as u64);
                             check_scripts_par_iter_pool(black_box(&cache), black_box(&tx.as_verifiable()), black_box(&pool)).unwrap();
                         })
                     });
