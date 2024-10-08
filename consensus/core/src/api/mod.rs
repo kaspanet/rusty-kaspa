@@ -1,6 +1,10 @@
 use futures_util::future::BoxFuture;
+use kaspa_addresses::Address;
 use kaspa_muhash::MuHash;
-use std::sync::Arc;
+use std::{
+    fmt::{Display, Formatter},
+    sync::Arc,
+};
 
 use crate::{
     acceptance_data::AcceptanceData,
@@ -41,6 +45,31 @@ pub struct BlockValidationFutures {
     /// (exceptions are header-only blocks and trusted blocks which have the future completed before virtual
     /// processing along with the `block_task`)
     pub virtual_state_task: BlockValidationFuture,
+}
+
+#[derive(Debug, Clone)]
+pub enum ReturnAddress {
+    Found(Address),
+    AlreadyPruned,
+    TxFromCoinbase,
+    NoTxAtScore,
+    NonStandard,
+    NotFound(String),
+}
+
+impl Display for ReturnAddress {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            ReturnAddress::AlreadyPruned => "Transaction is already pruned".to_string(),
+            ReturnAddress::NoTxAtScore => "Transaction not found at given accepting daa score".to_string(),
+            ReturnAddress::NonStandard => "Transaction was found but not standard".to_string(),
+            ReturnAddress::TxFromCoinbase => "Transaction return address is coinbase".to_string(),
+            ReturnAddress::NotFound(reason) => format!("Transaction return address not found: {}", reason),
+            ReturnAddress::Found(address) => address.to_string(),
+        };
+        f.write_str(&s)
+    }
 }
 
 /// Abstracts the consensus external API
@@ -167,6 +196,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
+        unimplemented!()
+    }
+
+    fn get_utxo_return_address(&self, txid: Hash, daa_score: u64) -> ReturnAddress {
         unimplemented!()
     }
 

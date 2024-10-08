@@ -46,7 +46,7 @@ use kaspa_consensus_core::{
     api::{
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         stats::BlockCount,
-        BlockValidationFutures, ConsensusApi, ConsensusStats,
+        BlockValidationFutures, ConsensusApi, ConsensusStats, ReturnAddress,
     },
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     blockhash::BlockHashExtensions,
@@ -77,10 +77,11 @@ use crossbeam_channel::{
 use itertools::Itertools;
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 
+use kaspa_core::{trace, warn};
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
-use kaspa_txscript::caches::TxScriptCacheCounters;
+use kaspa_txscript::{caches::TxScriptCacheCounters, extract_script_pub_key_address};
 
 use std::{
     cmp::Reverse,
@@ -101,6 +102,9 @@ use self::{services::ConsensusServices, storage::ConsensusStorage};
 use crate::model::stores::selected_chain::SelectedChainStoreReader;
 
 use std::cmp;
+
+use crate::model::stores::utxo_diffs::UtxoDiffsStoreReader;
+use kaspa_consensus_core::utxo::utxo_diff::ImmutableUtxoDiff;
 
 pub struct Consensus {
     // DB
@@ -694,6 +698,120 @@ impl ConsensusApi for Consensus {
         }
 
         sample_headers
+    }
+
+    fn get_utxo_return_address(&self, txid: Hash, target_daa_score: u64) -> ReturnAddress {
+        // We need consistency between the past pruning points, selected chain and header store reads
+        let _guard = self.pruning_lock.blocking_read();
+
+        let sc_read = self.selected_chain_store.read();
+
+        let source_hash = self.get_source();
+
+        // Pruning Point hash is always expected to be in get_compact_header_data so unwrap should never fail
+        if target_daa_score < self.headers_store.get_compact_header_data(source_hash).unwrap().daa_score {
+            // Early exit if target daa score is lower than that of pruning point's daa score:
+            return ReturnAddress::AlreadyPruned;
+        }
+
+        let source_index = sc_read.get_by_hash(source_hash).unwrap();
+        let (tip_index, tip_hash) = sc_read.get_tip().unwrap();
+        let tip_daa_score = self.headers_store.get_compact_header_data(tip_hash).unwrap().daa_score;
+
+        let mut low_index = tip_index.saturating_sub(tip_daa_score.saturating_sub(target_daa_score)).max(source_index);
+        let mut high_index = tip_index;
+
+        let matching_chain_block_hash = loop {
+            // Binary search for the chain block that matches the target_daa_score
+            // 0. Get the mid point index
+            let mid = low_index + (high_index - low_index) / 2;
+
+            // 1. Get the chain block hash at that index. Error if we don't find a hash at an index
+            let hash = match sc_read.get_by_index(mid) {
+                Ok(hash) => hash,
+                Err(_) => {
+                    trace!("Did not find a hash at index {}", mid);
+                    return ReturnAddress::NotFound(format!("Did not find a hash at index {}", mid));
+                }
+            };
+
+            // 2. Get the compact header so we have access to the daa_score. Error if we
+            let compact_header = match self.headers_store.get_compact_header_data(hash) {
+                Ok(compact_header) => compact_header,
+                Err(_) => {
+                    trace!("Did not find a compact header with hash {}", hash);
+                    return ReturnAddress::NotFound(format!("Did not find a compact header with hash {}", hash));
+                }
+            };
+
+            // 3. Compare block daa score to our target
+            match compact_header.daa_score.cmp(&target_daa_score) {
+                cmp::Ordering::Equal => {
+                    // We found the chain block we need
+                    break hash;
+                }
+                cmp::Ordering::Greater => {
+                    high_index = mid - 1;
+                }
+                cmp::Ordering::Less => {
+                    low_index = mid + 1;
+                }
+            }
+
+            if low_index > high_index {
+                return ReturnAddress::NoTxAtScore;
+            }
+        };
+
+        let acceptance_data = match self.acceptance_data_store.get(matching_chain_block_hash) {
+            Ok(acceptance_data) => acceptance_data,
+            Err(_) => {
+                return ReturnAddress::NotFound("Did not find acceptance data".to_string());
+            }
+        };
+        let (index, containing_acceptance) = match acceptance_data.iter().find_map(|mbad| {
+            let tx_arr_index =
+                mbad.accepted_transactions.iter().find_map(|tx| (tx.transaction_id == txid).then_some(tx.index_within_block as usize));
+            tx_arr_index.map(|index| (index, mbad.clone()))
+        }) {
+            Some((index, containing_acceptance)) => (index, containing_acceptance),
+            None => {
+                return ReturnAddress::NotFound("Did not find containing_acceptance".to_string());
+            }
+        };
+
+        // Found Merged block containing the TXID
+        let tx = &self.block_transactions_store.get(containing_acceptance.block_hash).unwrap()[index];
+
+        if tx.id() != txid {
+            // Should never happen, but do a sanity check. This would mean something went wrong with storing block transactions
+            // Sanity check is necessary to guarantee that this function will never give back a wrong address (err on the side of NotFound)
+            warn!("Expected {} to match {} when checking block_transaction_store using array index of transaction", tx.id(), txid);
+            return ReturnAddress::NotFound(format!(
+                "Expected {} to match {} when checking block_transaction_store using array index of transaction",
+                tx.id(),
+                txid
+            ));
+        }
+
+        if tx.inputs.is_empty() {
+            // A transaction may have no inputs (like a coinbase transaction)
+            return ReturnAddress::TxFromCoinbase;
+        }
+
+        let first_input_prev_outpoint = &tx.inputs[0].previous_outpoint;
+        // Expected to never fail, since we found the acceptance data and therefore there must be matching diff
+        let utxo_diff = self.utxo_diffs_store.get(matching_chain_block_hash).unwrap();
+        let removed_diffs = utxo_diff.removed();
+
+        if let Ok(address) = extract_script_pub_key_address(
+            &removed_diffs.get(first_input_prev_outpoint).unwrap().script_public_key,
+            self.config.prefix(),
+        ) {
+            ReturnAddress::Found(address)
+        } else {
+            ReturnAddress::NonStandard
+        }
     }
 
     fn get_virtual_parents(&self) -> BlockHashSet {

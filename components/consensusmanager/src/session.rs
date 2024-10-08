@@ -4,7 +4,7 @@
 
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
-    api::{BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus},
+    api::{BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus, ReturnAddress},
     block::Block,
     blockstatus::BlockStatus,
     daa_score_timestamp::DaaScoreTimestamp,
@@ -311,6 +311,10 @@ impl ConsensusSessionOwned {
 
     pub async fn async_get_chain_block_samples(&self) -> Vec<DaaScoreTimestamp> {
         self.clone().spawn_blocking(|c| c.get_chain_block_samples()).await
+    }
+
+    pub async fn async_get_utxo_return_script_public_key(&self, txid: Hash, accepting_block_daa_score: u64) -> ReturnAddress {
+        self.clone().spawn_blocking(move |c| c.get_utxo_return_address(txid, accepting_block_daa_score)).await
     }
 
     /// Returns the antipast of block `hash` from the POV of `context`, i.e. `antipast(hash) ∩ past(context)`.

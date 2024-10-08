@@ -6,6 +6,7 @@ use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, pro
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
+use kaspa_consensus_core::api::ReturnAddress;
 use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_consensus_core::{
     block::Block,
@@ -792,6 +793,23 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             let estimate = self.get_fee_estimate_call(connection, GetFeeEstimateRequest {}).await?.estimate;
             Ok(GetFeeEstimateExperimentalResponse { estimate, verbose: None })
         }
+    }
+
+    async fn get_utxo_return_address_call(
+        &self,
+        _connection: Option<&DynRpcConnection>,
+        request: GetUtxoReturnAddressRequest,
+    ) -> RpcResult<GetUtxoReturnAddressResponse> {
+        let session = self.consensus_manager.consensus().session().await;
+
+        // Convert a SPK to an Address
+        let return_address =
+            match session.async_get_utxo_return_script_public_key(request.txid, request.accepting_block_daa_score).await {
+                ReturnAddress::Found(address) => Some(address),
+                other => return Err(RpcError::UtxoReturnAddressNotFound(other)),
+            };
+
+        Ok(GetUtxoReturnAddressResponse { return_address })
     }
 
     async fn ping_call(&self, _connection: Option<&DynRpcConnection>, _: PingRequest) -> RpcResult<PingResponse> {
