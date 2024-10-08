@@ -1,6 +1,6 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use kaspa_consensus_core::{
-    hashing::sighash::{SigHashReusedValues, SigHashReusedValuesSync, SigHashReusedValuesUnsync},
+    hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
     mass::Kip9Version,
     tx::{TransactionInput, VerifiableTransaction},
 };
@@ -57,7 +57,7 @@ impl TransactionValidator {
 
         match flags {
             TxValidationFlags::Full | TxValidationFlags::SkipMassCheck => {
-                Self::check_sig_op_counts::<_, SigHashReusedValuesUnsync>(tx)?;
+                Self::check_sig_op_counts(tx)?;
                 self.check_scripts(tx)?;
             }
             TxValidationFlags::SkipScriptChecks => {}
@@ -159,9 +159,9 @@ impl TransactionValidator {
         Ok(())
     }
 
-    fn check_sig_op_counts<T: VerifiableTransaction, Reused: SigHashReusedValues>(tx: &T) -> TxResult<()> {
+    fn check_sig_op_counts<T: VerifiableTransaction>(tx: &T) -> TxResult<()> {
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-            let calculated = get_sig_op_count::<T, Reused>(&input.signature_script, &entry.script_public_key);
+            let calculated = get_sig_op_count::<T, SigHashReusedValuesUnsync>(&input.signature_script, &entry.script_public_key);
             if calculated != input.sig_op_count as u64 {
                 return Err(TxRuleError::WrongSigOpCount(i, input.sig_op_count as u64, calculated));
             }
@@ -223,7 +223,6 @@ mod tests {
     use super::super::errors::TxRuleError;
     use core::str::FromStr;
     use itertools::Itertools;
-    use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::sign::sign;
     use kaspa_consensus_core::subnets::SubnetworkId;
     use kaspa_consensus_core::tx::{MutableTransaction, PopulatedTransaction, ScriptVec, TransactionId, UtxoEntry};
@@ -742,6 +741,6 @@ mod tests {
         let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), schnorr_key);
         let populated_tx = signed_tx.as_verifiable();
         assert_eq!(tv.check_scripts(&populated_tx), Ok(()));
-        assert_eq!(TransactionValidator::check_sig_op_counts::<_, SigHashReusedValuesUnsync>(&populated_tx), Ok(()));
+        assert_eq!(TransactionValidator::check_sig_op_counts(&populated_tx), Ok(()));
     }
 }
