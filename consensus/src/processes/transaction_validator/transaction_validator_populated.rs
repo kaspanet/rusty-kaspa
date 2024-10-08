@@ -185,9 +185,9 @@ pub fn check_scripts(sig_cache: &Cache<SigCacheKey, bool>, tx: &(impl Verifiable
 pub fn check_scripts_sequential(sig_cache: &Cache<SigCacheKey, bool>, tx: &impl VerifiableTransaction) -> TxResult<()> {
     let reused_values = SigHashReusedValuesUnsync::new();
     for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-        let mut engine = TxScriptEngine::from_transaction_input(tx, input, i, entry, &reused_values, sig_cache)
+        TxScriptEngine::from_transaction_input(tx, input, i, entry, &reused_values, sig_cache)
+            .and_then(|mut e| e.execute())
             .map_err(|err| map_script_err(err, input))?;
-        engine.execute().map_err(|err| map_script_err(err, input))?;
     }
     Ok(())
 }
@@ -196,9 +196,9 @@ pub fn check_scripts_par_iter(sig_cache: &Cache<SigCacheKey, bool>, tx: &(impl V
     let reused_values = SigHashReusedValuesSync::new();
     (0..tx.inputs().len()).into_par_iter().try_for_each(|idx| {
         let (input, utxo) = tx.populated_input(idx);
-        let mut engine = TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache)
-            .map_err(|err| map_script_err(err, input))?;
-        engine.execute().map_err(|err| map_script_err(err, input))
+        TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache)
+            .and_then(|mut e| e.execute())
+            .map_err(|err| map_script_err(err, input))
     })
 }
 
