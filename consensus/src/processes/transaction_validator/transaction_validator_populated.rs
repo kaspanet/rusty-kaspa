@@ -16,6 +16,9 @@ use super::{
     TransactionValidator,
 };
 
+/// The threshold above which we apply parallelism to input script processing
+const CHECK_SCRIPTS_PARALLELISM_THRESHOLD: usize = 1;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TxValidationFlags {
     /// Perform full validation including script verification
@@ -175,7 +178,7 @@ impl TransactionValidator {
 }
 
 pub fn check_scripts(sig_cache: &Cache<SigCacheKey, bool>, tx: &(impl VerifiableTransaction + Sync)) -> TxResult<()> {
-    if tx.inputs().len() > 1 {
+    if tx.inputs().len() > CHECK_SCRIPTS_PARALLELISM_THRESHOLD {
         check_scripts_par_iter(sig_cache, tx)
     } else {
         check_scripts_sequential(sig_cache, tx)
@@ -221,6 +224,7 @@ fn map_script_err(script_err: TxScriptError, input: &TransactionInput) -> TxRule
 #[cfg(test)]
 mod tests {
     use super::super::errors::TxRuleError;
+    use super::CHECK_SCRIPTS_PARALLELISM_THRESHOLD;
     use core::str::FromStr;
     use itertools::Itertools;
     use kaspa_consensus_core::sign::sign;
@@ -233,6 +237,15 @@ mod tests {
     use std::iter::once;
 
     use crate::{params::MAINNET_PARAMS, processes::transaction_validator::TransactionValidator};
+
+    /// Helper function to duplicate the last input
+    fn duplicate_input(tx: &Transaction, entries: &[UtxoEntry]) -> (Transaction, Vec<UtxoEntry>) {
+        let mut tx2 = tx.clone();
+        let mut entries2 = entries.to_owned();
+        tx2.inputs.push(tx2.inputs.last().unwrap().clone());
+        entries2.push(entries2.last().unwrap().clone());
+        (tx2, entries2)
+    }
 
     #[test]
     fn check_signature_test() {
@@ -293,6 +306,14 @@ mod tests {
         );
 
         tv.check_scripts(&populated_tx).expect("Signature check failed");
+
+        // Test a tx with 2 inputs to cover parallelism split points in inner script checking code
+        let (tx2, entries2) = duplicate_input(&tx, &populated_tx.entries);
+        // Duplicated sigs should fail due to wrong sighash
+        assert_eq!(
+            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2)),
+            Err(TxRuleError::SignatureInvalid(TxScriptError::EvalFalse))
+        );
     }
 
     #[test]
@@ -354,7 +375,18 @@ mod tests {
             }],
         );
 
-        assert!(tv.check_scripts(&populated_tx).is_err(), "Failing Signature Test Failed");
+        assert!(tv.check_scripts(&populated_tx).is_err(), "Expecting signature check to fail");
+
+        // Test a tx with 2 inputs to cover parallelism split points in inner script checking code
+        let (tx2, entries2) = duplicate_input(&tx, &populated_tx.entries);
+        tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2)).expect_err("Expecting signature check to fail");
+
+        // Verify we are correctly testing the parallelism case (applied here as sanity for all tests)
+        assert!(
+            tx2.inputs.len() > CHECK_SCRIPTS_PARALLELISM_THRESHOLD,
+            "The script tests must cover the case of a tx with inputs.len() > {}",
+            CHECK_SCRIPTS_PARALLELISM_THRESHOLD
+        );
     }
 
     #[test]
@@ -417,6 +449,14 @@ mod tests {
             }],
         );
         tv.check_scripts(&populated_tx).expect("Signature check failed");
+
+        // Test a tx with 2 inputs to cover parallelism split points in inner script checking code
+        let (tx2, entries2) = duplicate_input(&tx, &populated_tx.entries);
+        // Duplicated sigs should fail due to wrong sighash
+        assert_eq!(
+            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2)),
+            Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail))
+        );
     }
 
     #[test]
@@ -479,7 +519,14 @@ mod tests {
             }],
         );
 
-        assert!(tv.check_scripts(&populated_tx) == Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail)));
+        assert_eq!(tv.check_scripts(&populated_tx), Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail)));
+
+        // Test a tx with 2 inputs to cover parallelism split points in inner script checking code
+        let (tx2, entries2) = duplicate_input(&tx, &populated_tx.entries);
+        assert_eq!(
+            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2)),
+            Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail))
+        );
     }
 
     #[test]
@@ -542,7 +589,14 @@ mod tests {
             }],
         );
 
-        assert!(tv.check_scripts(&populated_tx) == Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail)));
+        assert_eq!(tv.check_scripts(&populated_tx), Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail)));
+
+        // Test a tx with 2 inputs to cover parallelism split points in inner script checking code
+        let (tx2, entries2) = duplicate_input(&tx, &populated_tx.entries);
+        assert_eq!(
+            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2)),
+            Err(TxRuleError::SignatureInvalid(TxScriptError::NullFail))
+        );
     }
 
     #[test]
@@ -605,8 +659,14 @@ mod tests {
             }],
         );
 
-        let result = tv.check_scripts(&populated_tx);
-        assert!(result == Err(TxRuleError::SignatureInvalid(TxScriptError::EvalFalse)));
+        assert_eq!(tv.check_scripts(&populated_tx), Err(TxRuleError::SignatureInvalid(TxScriptError::EvalFalse)));
+
+        // Test a tx with 2 inputs to cover parallelism split points in inner script checking code
+        let (tx2, entries2) = duplicate_input(&tx, &populated_tx.entries);
+        assert_eq!(
+            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2)),
+            Err(TxRuleError::SignatureInvalid(TxScriptError::EvalFalse))
+        );
     }
 
     #[test]
@@ -660,8 +720,14 @@ mod tests {
             }],
         );
 
-        let result = tv.check_scripts(&populated_tx);
-        assert!(result == Err(TxRuleError::SignatureInvalid(TxScriptError::SignatureScriptNotPushOnly)));
+        assert_eq!(tv.check_scripts(&populated_tx), Err(TxRuleError::SignatureInvalid(TxScriptError::SignatureScriptNotPushOnly)));
+
+        // Test a tx with 2 inputs to cover parallelism split points in inner script checking code
+        let (tx2, entries2) = duplicate_input(&tx, &populated_tx.entries);
+        assert_eq!(
+            tv.check_scripts(&PopulatedTransaction::new(&tx2, entries2)),
+            Err(TxRuleError::SignatureInvalid(TxScriptError::SignatureScriptNotPushOnly))
+        );
     }
 
     #[test]
