@@ -44,9 +44,7 @@ impl SigHashReusedValuesSync {
 pub trait SigHashReusedValues {
     fn previous_outputs_hash(&self, set: impl Fn() -> Hash) -> Hash;
     fn sequences_hash(&self, set: impl Fn() -> Hash) -> Hash;
-
     fn sig_op_counts_hash(&self, set: impl Fn() -> Hash) -> Hash;
-
     fn outputs_hash(&self, set: impl Fn() -> Hash) -> Hash;
 }
 

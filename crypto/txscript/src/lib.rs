@@ -79,7 +79,6 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedVal
     script_source: ScriptSource<'a, T>,
 
     // Outer caches for quicker calculation
-    // TODO:: make it compatible with threading
     reused_values: &'a Reused,
     sig_cache: &'a Cache<SigCacheKey, bool>,
 
