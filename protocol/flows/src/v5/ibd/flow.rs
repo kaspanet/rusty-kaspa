@@ -268,10 +268,8 @@ impl IbdFlow {
         }
 
         // Check if past pruning points violate finality of current consensus
-        if self.ctx.consensus().session().await.async_are_pruning_points_violating_finality(pruning_points.clone()).await {
-            // TODO: consider performing additional actions on finality conflicts in addition to disconnecting from the peer (e.g., banning, rpc notification)
-            return Err(ProtocolError::Other("pruning points are violating finality"));
-        }
+        let next_mature_finality_point =
+            self.ctx.consensus().session().await.async_next_mature_finality_point(pruning_points.clone()).await?;
 
         let msg = dequeue_with_timeout!(self.incoming_route, Payload::TrustedData)?;
         let pkg: TrustedDataPackage = msg.try_into()?;
@@ -299,7 +297,7 @@ impl IbdFlow {
                 .clone()
                 .spawn_blocking(move |c| {
                     let ref_proof = proof.clone();
-                    c.apply_pruning_proof(proof, &trusted_set)?;
+                    c.apply_pruning_proof(proof, &trusted_set, next_mature_finality_point)?;
                     c.import_pruning_points(pruning_points);
 
                     info!("Building the proof which was just applied (sanity test)");
@@ -330,7 +328,7 @@ impl IbdFlow {
             trusted_set = staging
                 .clone()
                 .spawn_blocking(move |c| {
-                    c.apply_pruning_proof(proof, &trusted_set)?;
+                    c.apply_pruning_proof(proof, &trusted_set, next_mature_finality_point)?;
                     c.import_pruning_points(pruning_points);
                     Result::<_, ProtocolError>::Ok(trusted_set)
                 })
