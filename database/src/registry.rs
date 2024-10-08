@@ -36,10 +36,13 @@ pub enum DatabaseStorePrefixes {
     UtxoMultisets = 26,
     VirtualUtxoset = 27,
     VirtualState = 28,
+    VirtualUtxosetCount = 29, //TODO: move this beside `VirtualUtxoset` whenever we get a chance to break the Db
 
     // ---- Decomposed reachability stores ----
     ReachabilityTreeChildren = 30,
     ReachabilityFutureCoveringSet = 31,
+
+    PruningUtxosetCount = 32, //TODO: move this beside `PruningUtxoset` whenever we get a chance to break the Db
 
     // ---- Metadata ----
     MultiConsensusMetadata = 124,

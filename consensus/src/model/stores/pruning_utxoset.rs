@@ -19,7 +19,12 @@ pub struct PruningUtxosetStores {
 impl PruningUtxosetStores {
     pub fn new(db: Arc<DB>, utxoset_cache_policy: CachePolicy) -> Self {
         Self {
-            utxo_set: DbUtxoSetStore::new(db.clone(), utxoset_cache_policy, DatabaseStorePrefixes::PruningUtxoset.into()),
+            utxo_set: DbUtxoSetStore::new(
+                db.clone(),
+                utxoset_cache_policy,
+                DatabaseStorePrefixes::PruningUtxoset.into(),
+                DatabaseStorePrefixes::PruningUtxosetCount.into(),
+            ),
             utxoset_position_access: CachedDbItem::new(db, DatabaseStorePrefixes::PruningUtxosetPosition.into()),
         }
     }
