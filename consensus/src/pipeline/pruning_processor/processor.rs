@@ -2,7 +2,7 @@
 
 use crate::{
     consensus::{
-        services::{ConsensusServices, DbGhostdagManager, DbParentsManager, DbPruningPointManager},
+        services::{ConsensusServices, DbParentsManager, DbPruningPointManager},
         storage::ConsensusStorage,
     },
     model::{
@@ -69,7 +69,6 @@ pub struct PruningProcessor {
 
     // Managers and Services
     reachability_service: MTReachabilityService<DbReachabilityStore>,
-    ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
     pruning_point_manager: DbPruningPointManager,
     pruning_proof_manager: Arc<PruningProofManager>,
     parents_manager: DbParentsManager,
@@ -107,7 +106,6 @@ impl PruningProcessor {
             db,
             storage: storage.clone(),
             reachability_service: services.reachability_service.clone(),
-            ghostdag_managers: services.ghostdag_managers.clone(),
             pruning_point_manager: services.pruning_point_manager.clone(),
             pruning_proof_manager: services.pruning_proof_manager.clone(),
             parents_manager: services.parents_manager.clone(),
@@ -284,7 +282,7 @@ impl PruningProcessor {
             let mut batch = WriteBatch::default();
             // At this point keep_relations only holds level-0 relations which is the correct filtering criteria for primary GHOSTDAG
             for kept in keep_relations.keys().copied() {
-                let Some(ghostdag) = self.ghostdag_primary_store.get_data(kept).unwrap_option() else {
+                let Some(ghostdag) = self.ghostdag_store.get_data(kept).unwrap_option() else {
                     continue;
                 };
                 if ghostdag.unordered_mergeset().any(|h| !keep_relations.contains_key(&h)) {
@@ -296,7 +294,7 @@ impl PruningProcessor {
                         mutable_ghostdag.selected_parent = ORIGIN;
                     }
                     counter += 1;
-                    self.ghostdag_primary_store.update_batch(&mut batch, kept, &Arc::new(mutable_ghostdag.into())).unwrap();
+                    self.ghostdag_store.update_batch(&mut batch, kept, &Arc::new(mutable_ghostdag.into())).unwrap();
                 }
             }
             self.db.write(batch).unwrap();
@@ -444,7 +442,10 @@ impl PruningProcessor {
                         let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[lower_level]);
                         relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
                         staging_level_relations.commit(&mut batch).unwrap();
-                        self.ghostdag_stores[lower_level].delete_batch(&mut batch, current).unwrap_option();
+
+                        if lower_level == 0 {
+                            self.ghostdag_store.delete_batch(&mut batch, current).unwrap_option();
+                        }
                     }
                 } else {
                     // Count only blocks which get fully pruned including DAG relations
@@ -463,8 +464,9 @@ impl PruningProcessor {
                         let mut staging_level_relations = StagingRelationsStore::new(&mut level_relations_write[level]);
                         relations::delete_level_relations(MemoryWriter, &mut staging_level_relations, current).unwrap_option();
                         staging_level_relations.commit(&mut batch).unwrap();
-                        self.ghostdag_stores[level].delete_batch(&mut batch, current).unwrap_option();
                     });
+
+                    self.ghostdag_store.delete_batch(&mut batch, current).unwrap_option();
 
                     // Remove additional header related data
                     self.daa_excluded_store.delete_batch(&mut batch, current).unwrap();
