@@ -81,16 +81,18 @@ fn benchmark_check_scripts(c: &mut Criterion) {
 
             group.bench_function("single_thread", |b| {
                 let tx = MutableTransaction::with_entries(&tx, utxos.clone());
+                let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
-                    let cache = Cache::new(inputs_count as u64);
+                    cache.clear();
                     check_scripts_sequential(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
                 })
             });
 
             group.bench_function("rayon par iter", |b| {
                 let tx = MutableTransaction::with_entries(tx.clone(), utxos.clone());
+                let cache = Cache::new(inputs_count as u64);
                 b.iter(|| {
-                    let cache = Cache::new(inputs_count as u64);
+                    cache.clear();
                     check_scripts_par_iter(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
                 })
             });
@@ -102,8 +104,9 @@ fn benchmark_check_scripts(c: &mut Criterion) {
                         let tx = MutableTransaction::with_entries(tx.clone(), utxos.clone());
                         // Create a custom thread pool with the specified number of threads
                         let pool = rayon::ThreadPoolBuilder::new().num_threads(i).build().unwrap();
+                        let cache = Cache::new(inputs_count as u64);
                         b.iter(|| {
-                            let cache = Cache::new(inputs_count as u64);
+                            cache.clear();
                             check_scripts_par_iter_pool(black_box(&cache), black_box(&tx.as_verifiable()), black_box(&pool)).unwrap();
                         })
                     });
