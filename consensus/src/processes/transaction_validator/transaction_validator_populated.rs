@@ -7,9 +7,9 @@ use kaspa_consensus_core::{
 use kaspa_core::warn;
 use kaspa_txscript::{caches::Cache, get_sig_op_count, SigCacheKey, TxScriptEngine};
 use kaspa_txscript_errors::TxScriptError;
-use rayon::iter::IntoParallelIterator;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon::ThreadPool;
-use std::sync::Arc;
+use std::marker::Sync;
 
 use super::{
     errors::{TxResult, TxRuleError},
@@ -32,7 +32,7 @@ pub enum TxValidationFlags {
 impl TransactionValidator {
     pub fn validate_populated_transaction_and_get_fee(
         &self,
-        tx: &(impl VerifiableTransaction + std::marker::Sync),
+        tx: &(impl VerifiableTransaction + Sync),
         pov_daa_score: u64,
         flags: TxValidationFlags,
         mass_and_feerate_threshold: Option<(u64, f64)>,
@@ -51,8 +51,8 @@ impl TransactionValidator {
         }
         Self::check_sequence_lock(tx, pov_daa_score)?;
 
-        // The following call is not a consensus check (it could not be one in the first place since it uses floating number)
-        // but rather a mempool Replace by Fee validation rule. It was placed here purposely for avoiding unneeded script checks.
+        // The following call is not a consensus check (it could not be one in the first place since it uses a floating number)
+        // but rather a mempool Replace by Fee validation rule. It is placed here purposely for avoiding unneeded script checks.
         Self::check_feerate_threshold(fee, mass_and_feerate_threshold)?;
 
         match flags {
@@ -169,7 +169,7 @@ impl TransactionValidator {
         Ok(())
     }
 
-    pub fn check_scripts(&self, tx: &(impl VerifiableTransaction + std::marker::Sync)) -> TxResult<()> {
+    pub fn check_scripts(&self, tx: &(impl VerifiableTransaction + Sync)) -> TxResult<()> {
         check_scripts(&self.sig_cache, tx)
     }
 }
@@ -192,14 +192,9 @@ pub fn check_scripts_sequential(sig_cache: &Cache<SigCacheKey, bool>, tx: &impl 
     Ok(())
 }
 
-pub fn check_scripts_par_iter(
-    sig_cache: &Cache<SigCacheKey, bool>,
-    tx: &(impl VerifiableTransaction + std::marker::Sync),
-) -> TxResult<()> {
-    use rayon::iter::ParallelIterator;
-    let reused_values = std::sync::Arc::new(SigHashReusedValuesSync::new());
+pub fn check_scripts_par_iter(sig_cache: &Cache<SigCacheKey, bool>, tx: &(impl VerifiableTransaction + Sync)) -> TxResult<()> {
+    let reused_values = SigHashReusedValuesSync::new();
     (0..tx.inputs().len()).into_par_iter().try_for_each(|idx| {
-        let reused_values = reused_values.clone(); // Clone the Arc to share ownership
         let (input, utxo) = tx.populated_input(idx);
         let mut engine = TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache)
             .map_err(|err| map_script_err(err, input))?;
@@ -209,20 +204,10 @@ pub fn check_scripts_par_iter(
 
 pub fn check_scripts_par_iter_pool(
     sig_cache: &Cache<SigCacheKey, bool>,
-    tx: &(impl VerifiableTransaction + std::marker::Sync),
+    tx: &(impl VerifiableTransaction + Sync),
     pool: &ThreadPool,
 ) -> TxResult<()> {
-    use rayon::iter::ParallelIterator;
-    pool.install(|| {
-        let reused_values = Arc::new(SigHashReusedValuesSync::new());
-        (0..tx.inputs().len()).into_par_iter().try_for_each(|idx| {
-            let reused_values = reused_values.clone(); // Clone the Arc to share ownership
-            let (input, utxo) = tx.populated_input(idx);
-            let mut engine = TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache)
-                .map_err(|err| map_script_err(err, input))?;
-            engine.execute().map_err(|err| map_script_err(err, input))
-        })
-    })
+    pool.install(|| check_scripts_par_iter(sig_cache, tx))
 }
 
 fn map_script_err(script_err: TxScriptError, input: &TransactionInput) -> TxRuleError {
