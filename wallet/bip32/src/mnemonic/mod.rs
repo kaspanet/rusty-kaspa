@@ -7,7 +7,6 @@ mod bits;
 mod language;
 mod phrase;
 
-//#[cfg(feature = "bip39")]
 pub(crate) mod seed;
 
 pub use self::{language::Language, phrase::Mnemonic, phrase::WordCount};
