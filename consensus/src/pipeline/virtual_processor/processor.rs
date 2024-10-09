@@ -1097,7 +1097,7 @@ impl VirtualStateProcessor {
 
         // Validate transactions of the pruning point itself
         let new_pruning_point_transactions = self.block_transactions_store.get(new_pruning_point).unwrap();
-        let (validated_transactions, _) = self.validate_transactions_in_parallel(
+        let validated_transactions = self.validate_transactions_in_parallel(
             &new_pruning_point_transactions,
             &virtual_read.utxo_set,
             new_pruning_point_header.daa_score,

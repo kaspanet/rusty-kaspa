@@ -96,7 +96,7 @@ impl VirtualStateProcessor {
             // as part of selected parent UTXO state verification with the exact same UTXO context.
             let validation_flags = if is_selected_parent { TxValidationFlags::SkipScriptChecks } else { TxValidationFlags::Full };
             let (validated_transactions, inner_multiset) =
-                self.validate_transactions_in_parallel(&txs, &composed_view, pov_daa_score, validation_flags);
+                self.validate_transactions_with_muhash_in_parallel(&txs, &composed_view, pov_daa_score, validation_flags);
 
             ctx.multiset_hash.combine(&inner_multiset);
 
@@ -179,7 +179,7 @@ impl VirtualStateProcessor {
 
         // Verify all transactions are valid in context
         let current_utxo_view = selected_parent_utxo_view.compose(&ctx.mergeset_diff);
-        let (validated_transactions, _) =
+        let validated_transactions =
             self.validate_transactions_in_parallel(&txs, &current_utxo_view, header.daa_score, TxValidationFlags::Full);
         if validated_transactions.len() < txs.len() - 1 {
             // Some non-coinbase transactions are invalid
@@ -214,6 +214,26 @@ impl VirtualStateProcessor {
     /// Validates transactions against the provided `utxo_view` and returns a vector with all transactions
     /// which passed the validation along with their original index within the containing block
     pub(crate) fn validate_transactions_in_parallel<'a, V: UtxoView + Sync>(
+        &self,
+        txs: &'a Vec<Transaction>,
+        utxo_view: &V,
+        pov_daa_score: u64,
+        flags: TxValidationFlags,
+    ) -> Vec<(ValidatedTransaction<'a>, u32)> {
+        self.thread_pool.install(|| {
+            txs
+                .par_iter() // We can do this in parallel without complications since block body validation already ensured
+                            // that all txs within each block are independent
+                .enumerate()
+                .skip(1) // Skip the coinbase tx.
+                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score, flags).ok().map(|vtx| (vtx, i as u32)))
+                .collect()
+        })
+    }
+
+    /// Same as validate_transactions_in_parallel except during the iteration this will also
+    /// calculate the muhash in parallel for valid transactions
+    pub(crate) fn validate_transactions_with_muhash_in_parallel<'a, V: UtxoView + Sync>(
         &self,
         txs: &'a Vec<Transaction>,
         utxo_view: &V,
