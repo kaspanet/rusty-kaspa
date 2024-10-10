@@ -31,6 +31,7 @@ use kaspa_muhash::MuHash;
 use kaspa_utils::refs::Refs;
 
 use rayon::prelude::*;
+use smallvec::{smallvec, SmallVec};
 use std::{iter::once, ops::Deref};
 
 /// A context for processing the UTXO state of a block with respect to its selected parent.
@@ -239,7 +240,7 @@ impl VirtualStateProcessor {
         utxo_view: &V,
         pov_daa_score: u64,
         flags: TxValidationFlags,
-    ) -> (Vec<(ValidatedTransaction<'a>, u32)>, MuHash) {
+    ) -> (SmallVec<[(ValidatedTransaction<'a>, u32); 2]>, MuHash) {
         self.thread_pool.install(|| {
             txs
                 .par_iter() // We can do this in parallel without complications since block body validation already ensured
@@ -249,13 +250,13 @@ impl VirtualStateProcessor {
                 .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score, flags).ok().map(|vtx| {
                     let mut mh = MuHash::new();
                     mh.add_transaction(&vtx, pov_daa_score);
-                    (vec![(vtx, i as u32)], mh)
+                    (smallvec![(vtx, i as u32)], mh)
                 }
                 ))
                 .reduce(
-                    || (vec![], MuHash::new()),
-                    |mut a, b| {
-                        a.0.extend(b.0);
+                    || (smallvec![], MuHash::new()),
+                    |mut a, mut b| {
+                        a.0.append(&mut b.0);
                         a.1.combine(&b.1);
                         a
                     },
