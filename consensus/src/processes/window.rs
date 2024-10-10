@@ -717,7 +717,7 @@ impl BoundedSizeBlockHeap {
         let overflow_amount = (self.len() + ancestor_heap.len()).saturating_sub(self.size_bound); // we saturate for cases where ancestor may be close to, the origin, or genesis.
         self.binary_heap.blocks.append(&mut ancestor_heap.blocks);
         for _ in 0..overflow_amount {
-            // note: this is a no-op if overflow_amount is 0, i.e. the sum of the two heaps is less then the size bound.
+            // note: this is a no-op if overflow_amount is 0, i.e. because of the saturating sub, the sum of the two heaps is less or equal to the size bound.
             self.binary_heap.blocks.pop();
         }
     }
