@@ -365,22 +365,46 @@ mod tests {
         // and assert that the order of data is retained when doing par_iter
         let data: Vec<u16> = (1..=1000).collect();
 
-        let collected: Vec<u16> = data.par_iter().filter_map(|a| Some(*a)).collect();
+        let collected: Vec<u16> = data
+            .par_iter()
+            .filter_map(|a| {
+                let chance: f64 = rand::random();
+                if chance < 0.05 {
+                    return None;
+                }
+                Some(*a)
+            })
+            .collect();
 
-        data.iter().enumerate().for_each(|(idx, curr_data)| {
-            assert_eq!(collected[idx], *curr_data);
+        println!("collected len: {}", collected.len());
+
+        collected.iter().enumerate().skip(1).for_each(|(idx, curr_data)| {
+            // Data was originally sorted, so we check if they remain sorted after filtering
+            assert!(collected[idx - 1] < *curr_data);
         });
 
-        let reduced: SmallVec<[u16; 2]> = data.par_iter().filter_map(|a: &u16| Some(smallvec![*a])).reduce(
-            || smallvec![],
-            |mut arr, mut curr_data| {
-                arr.append(&mut curr_data);
-                arr
-            },
-        );
+        let reduced: SmallVec<[u16; 2]> = data
+            .par_iter()
+            .filter_map(|a: &u16| {
+                let chance: f64 = rand::random();
+                if chance < 0.05 {
+                    return None;
+                }
+                Some(smallvec![*a])
+            })
+            .reduce(
+                || smallvec![],
+                |mut arr, mut curr_data| {
+                    arr.append(&mut curr_data);
+                    arr
+                },
+            );
 
-        data.iter().enumerate().for_each(|(idx, curr_data)| {
-            assert_eq!(reduced[idx], *curr_data);
+        println!("reduced len: {}", reduced.len());
+
+        reduced.iter().enumerate().skip(1).for_each(|(idx, curr_data)| {
+            // Data was originally sorted, so we check if they remain sorted after filtering
+            assert!(reduced[idx - 1] < *curr_data);
         });
     }
 }
