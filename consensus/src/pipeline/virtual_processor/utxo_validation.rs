@@ -353,3 +353,34 @@ impl VirtualStateProcessor {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_rayon_reduce_retains_order() {
+        // this is an independent test to replicate the behavior of
+        // validate_txs_in_parallel and validate_txs_with_muhash_in_parallel
+        // and assert that the order of data is retained when doing par_iter
+        let data: Vec<u16> = (1..=1000).collect();
+
+        let collected: Vec<u16> = data.par_iter().filter_map(|a| Some(*a)).collect();
+
+        data.iter().enumerate().for_each(|(idx, curr_data)| {
+            assert_eq!(collected[idx], *curr_data);
+        });
+
+        let reduced: SmallVec<[u16; 2]> = data.par_iter().filter_map(|a: &u16| Some(smallvec![*a])).reduce(
+            || smallvec![],
+            |mut arr, mut curr_data| {
+                arr.append(&mut curr_data);
+                arr
+            },
+        );
+
+        data.iter().enumerate().for_each(|(idx, curr_data)| {
+            assert_eq!(reduced[idx], *curr_data);
+        });
+    }
+}
