@@ -490,7 +490,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
     for SampledWindowManager<T, U, V, W>
 {
     fn block_window(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<Arc<BlockWindowHeap>, RuleError> {
-        self.build_block_window(ghostdag_data, window_type, &|_| {})
+        self.build_block_window(ghostdag_data, window_type, |_| {})
     }
 
     fn calc_daa_window(&self, ghostdag_data: &GhostdagData, window: Arc<BlockWindowHeap>) -> DaaWindow {
@@ -720,10 +720,5 @@ impl BoundedSizeBlockHeap {
         for _ in 0..self.binary_heap.len().saturating_sub(self.size_bound) {
             self.binary_heap.blocks.pop();
         }
-    }
-
-    #[inline(always)]
-    fn len(&self) -> usize {
-        self.binary_heap.len()
     }
 }

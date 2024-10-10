@@ -311,14 +311,16 @@ impl VirtualStateProcessor {
             .expect("all possible rule errors are unexpected here");
 
         // Update the pruning processor about the virtual state change
-        let sink_ghostdag_data = self.ghostdag_primary_store.get_data(new_sink).unwrap();
 
-        // update window caches - for ibd performance. see method comment for more details.
-        if prev_sink != new_sink {
+        let compact_sink_ghostdag_data = if prev_sink != new_sink {
+            // we need to check with full data here, since we may need to update the window caches
+            let sink_ghostdag_data = self.ghostdag_primary_store.get_data(new_sink).unwrap();
+            // update window caches - for ibd performance. see method comment for more details.
             self.maybe_commit_windows(new_sink, &sink_ghostdag_data);
+            CompactGhostdagData::from(sink_ghostdag_data.as_ref())
+        } else {
+            self.ghostdag_primary_store.get_compact_data(new_sink).unwrap()
         };
-
-        let compact_sink_ghostdag_data = CompactGhostdagData::from(sink_ghostdag_data.as_ref());
         // Empty the channel before sending the new message. If pruning processor is busy, this step makes sure
         // the internal channel does not grow with no need (since we only care about the most recent message)
         let _consume = self.pruning_receiver.try_iter().count();
@@ -504,7 +506,7 @@ impl VirtualStateProcessor {
         // Calc virtual DAA score, difficulty bits and past median time
         let virtual_daa_window = self.window_manager.block_daa_window(&virtual_ghostdag_data)?;
         let virtual_bits = self.window_manager.calculate_difficulty_bits(&virtual_ghostdag_data, &virtual_daa_window);
-        let (virtual_past_median_time, _) = self.window_manager.calc_past_median_time(&virtual_ghostdag_data)?;
+        let virtual_past_median_time = self.window_manager.calc_past_median_time(&virtual_ghostdag_data)?.0;
 
         // Calc virtual UTXO state relative to selected parent
         self.calculate_utxo_state(&mut ctx, &selected_parent_utxo_view, virtual_daa_window.daa_score);
