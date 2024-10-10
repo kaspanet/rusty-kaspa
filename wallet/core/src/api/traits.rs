@@ -375,7 +375,15 @@ pub trait WalletApi: Send + Sync + AnySync {
         request: AccountsEnsureDefaultRequest,
     ) -> Result<AccountsEnsureDefaultResponse>;
 
-    // TODO
+    /// Wrapper around [`accounts_import_call()`](Self::accounts_import_call)
+    async fn accounts_import(
+        self: Arc<Self>,
+        wallet_secret: Secret,
+        account_create_args: AccountCreateArgs,
+    ) -> Result<AccountDescriptor> {
+        Ok(self.accounts_import_call(AccountsImportRequest { wallet_secret, account_create_args }).await?.account_descriptor)
+    }
+
     async fn accounts_import_call(self: Arc<Self>, request: AccountsImportRequest) -> Result<AccountsImportResponse>;
 
     /// Get an [`AccountDescriptor`] for a specific account id.

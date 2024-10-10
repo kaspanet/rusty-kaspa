@@ -1474,7 +1474,6 @@ impl Wallet {
 
         let legacy_account = account.clone().as_legacy_account()?;
         legacy_account.create_private_context(wallet_secret, payment_secret, None).await?;
-        // account.clone().initialize_private_data(wallet_secret, payment_secret, None).await?;
 
         if self.is_connected() {
             if let Some(notifier) = notifier {
@@ -1482,13 +1481,6 @@ impl Wallet {
             }
             account.clone().scan(Some(100), Some(5000)).await?;
         }
-
-        // let derivation = account.clone().as_derivation_capable()?.derivation();
-        // let m = derivation.receive_address_manager();
-        // m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
-        // let m = derivation.change_address_manager();
-        // m.get_range(0..(m.index() + CACHE_ADDRESS_OFFSET))?;
-        // account.clone().clear_private_data().await?;
 
         legacy_account.clear_private_context().await?;
 

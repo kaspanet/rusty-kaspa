@@ -401,11 +401,16 @@ pub struct AccountsEnsureDefaultResponse {
 // TODO
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountsImportRequest {}
+pub struct AccountsImportRequest {
+    pub wallet_secret: Secret,
+    pub account_create_args: AccountCreateArgs,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountsImportResponse {}
+pub struct AccountsImportResponse {
+    pub account_descriptor: AccountDescriptor,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
