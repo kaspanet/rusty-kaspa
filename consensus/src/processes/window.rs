@@ -714,10 +714,10 @@ impl BoundedSizeBlockHeap {
 
     // This method is intended to be used to merge the ancestor heap with the current heap.
     fn merge_ancestor_heap(&mut self, ancestor_heap: &mut BlockWindowHeap) {
-        let overflow_amount = (self.len() + ancestor_heap.len()).saturating_sub(self.size_bound); // we saturate for cases where ancestor may be close to, the origin, or genesis.
         self.binary_heap.blocks.append(&mut ancestor_heap.blocks);
-        for _ in 0..overflow_amount {
-            // note: this is a no-op if overflow_amount is 0, i.e. because of the saturating sub, the sum of the two heaps is less or equal to the size bound.
+        // below we saturate for cases where ancestor may be close to, the origin, or genesis.
+        // note: this is a no-op if overflow_amount is 0, i.e. because of the saturating sub, the sum of the two heaps is less or equal to the size bound.
+        for _ in 0..self.binary_heap.len().saturating_sub(self.size_bound) {
             self.binary_heap.blocks.pop();
         }
     }
