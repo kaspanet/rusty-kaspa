@@ -713,17 +713,13 @@ impl BoundedSizeBlockHeap {
     }
 
     // This method is intended to be used to merge the ancestor heap with the current heap.
-    // It is expected that any ancestor heap will have lower blue work blocks than the current heap.
     fn merge_ancestor_heap(&mut self, ancestor_heap: &mut BlockWindowHeap) {
-        // because popping has O(log(n)) complexity, we pop the excess amount first, then append the two.
         let overflow_amount = (self.len() + ancestor_heap.len()).saturating_sub(self.size_bound); // we saturate for cases where ancestor may be close to, the origin, or genesis.
-        for _ in 0..overflow_amount {
-            // note: this is a no-op if overflow_amount is 0, i.e. the sum of the two heaps is equal or less than the size bound.
-            // we expect all lower blue work blocks to be in the ancestor heap!!!
-            ancestor_heap.pop();
-        }
-
         self.binary_heap.blocks.append(&mut ancestor_heap.blocks);
+        for _ in 0..overflow_amount {
+            // note: this is a no-op if overflow_amount is 0, i.e. the sum of the two heaps is less then the size bound.
+            self.binary_heap.blocks.pop();
+        }
     }
 
     #[inline(always)]
