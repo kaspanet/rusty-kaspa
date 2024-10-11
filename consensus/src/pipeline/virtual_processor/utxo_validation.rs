@@ -356,6 +356,8 @@ impl VirtualStateProcessor {
 
 #[cfg(test)]
 mod tests {
+    use itertools::Itertools;
+
     use super::*;
 
     #[test]
@@ -378,9 +380,9 @@ mod tests {
 
         println!("collected len: {}", collected.len());
 
-        collected.iter().enumerate().skip(1).for_each(|(idx, curr_data)| {
+        collected.iter().tuple_windows().for_each(|(prev, curr)| {
             // Data was originally sorted, so we check if they remain sorted after filtering
-            assert!(collected[idx - 1] < *curr_data);
+            assert!(prev < curr, "expected {} < {} if original sort was preserved", prev, curr);
         });
 
         let reduced: SmallVec<[u16; 2]> = data
@@ -402,9 +404,9 @@ mod tests {
 
         println!("reduced len: {}", reduced.len());
 
-        reduced.iter().enumerate().skip(1).for_each(|(idx, curr_data)| {
+        reduced.iter().tuple_windows().for_each(|(prev, curr)| {
             // Data was originally sorted, so we check if they remain sorted after filtering
-            assert!(reduced[idx - 1] < *curr_data);
+            assert!(prev < curr, "expected {} < {} if original sort was preserved", prev, curr);
         });
     }
 }
