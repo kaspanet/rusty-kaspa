@@ -60,9 +60,7 @@ fn threshold_scenario() -> ScriptBuilderResult<()> {
     let script = builder
         // Owner branch
         .add_op(OpIf)?
-        .add_op(OpDup)?
         .add_data(owner.x_only_public_key().0.serialize().as_slice())?
-        .add_op(OpEqualVerify)?
         .add_op(OpCheckSig)?
         // Borrower branch
         .add_op(OpElse)?
@@ -115,7 +113,6 @@ fn threshold_scenario() -> ScriptBuilderResult<()> {
 
         let mut builder = ScriptBuilder::new();
         builder.add_data(&signature)?;
-        builder.add_data(owner.x_only_public_key().0.serialize().as_slice())?;
         builder.add_op(OpTrue)?;
         builder.add_data(&script)?;
         {
@@ -183,9 +180,7 @@ fn shared_secret_scenario() -> ScriptBuilderResult<()> {
     let script = builder
         // Owner branch
         .add_op(OpIf)?
-        .add_op(OpDup)?
         .add_data(owner.x_only_public_key().0.serialize().as_slice())?
-        .add_op(OpEqualVerify)?
         .add_op(OpCheckSig)?
         // Borrower branch
         .add_op(OpElse)?
@@ -245,7 +240,6 @@ fn shared_secret_scenario() -> ScriptBuilderResult<()> {
         let (mut tx, signature, mut reused_values) = sign(owner);
         let mut builder = ScriptBuilder::new();
         builder.add_data(&signature)?;
-        builder.add_data(owner.x_only_public_key().0.serialize().as_slice())?;
         builder.add_op(OpTrue)?;
         builder.add_data(&script)?;
         {
