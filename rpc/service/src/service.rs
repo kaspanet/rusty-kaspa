@@ -6,8 +6,8 @@ use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, pro
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
-use kaspa_consensus_core::api::ReturnAddress;
 use kaspa_consensus_core::errors::block::RuleError;
+use kaspa_consensus_core::return_address::ReturnAddress;
 use kaspa_consensus_core::{
     block::Block,
     coinbase::MinerData,

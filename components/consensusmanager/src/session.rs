@@ -4,13 +4,14 @@
 
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
-    api::{BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus, ReturnAddress},
+    api::{BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus},
     block::Block,
     blockstatus::BlockStatus,
     daa_score_timestamp::DaaScoreTimestamp,
     errors::consensus::ConsensusResult,
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
+    return_address::ReturnAddress,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath, Hash,

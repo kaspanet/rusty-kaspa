@@ -46,7 +46,7 @@ use kaspa_consensus_core::{
     api::{
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         stats::BlockCount,
-        BlockValidationFutures, ConsensusApi, ConsensusStats, ReturnAddress,
+        BlockValidationFutures, ConsensusApi, ConsensusStats,
     },
     block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
     blockhash::BlockHashExtensions,
@@ -65,6 +65,7 @@ use kaspa_consensus_core::{
     muhash::MuHashExtensions,
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
+    return_address::ReturnAddress,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,

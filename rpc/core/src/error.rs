@@ -2,7 +2,7 @@
 //! [`RpcError`] enum used by RPC primitives.
 //!
 
-use kaspa_consensus_core::{api::ReturnAddress, subnets::SubnetworkConversionError, tx::TransactionId};
+use kaspa_consensus_core::{return_address::ReturnAddress, subnets::SubnetworkConversionError, tx::TransactionId};
 use kaspa_utils::networking::IpAddress;
 use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
