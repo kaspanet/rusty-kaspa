@@ -88,6 +88,10 @@ impl U3072 {
     }
 
     fn mul(&mut self, other: &U3072) {
+        if *self == Self::one() {
+            *self = *other;
+            return;
+        }
         let (mut carry_low, mut carry_high, mut carry_highest) = (0, 0, 0);
         let mut tmp = Self::one();
 
