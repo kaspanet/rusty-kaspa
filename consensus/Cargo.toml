@@ -57,7 +57,7 @@ kaspa-txscript-errors.workspace = true
 kaspa-addresses.workspace = true
 
 [[bench]]
-name = "hash_benchmarks"
+name = "parallel_muhash"
 harness = false
 
 [[bench]]
