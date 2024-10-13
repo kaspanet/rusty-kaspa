@@ -22,6 +22,7 @@ use crate::{
         virtual_state::{LkgVirtualState, VirtualStores},
         DB,
     },
+    pipeline::kip_6_processor::rep_parents_store::DbRepParentsStore,
     processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations},
 };
 
@@ -49,6 +50,8 @@ pub struct ConsensusStorage {
     pub virtual_stores: Arc<RwLock<VirtualStores>>,
     pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
 
+    // temporary
+    pub rep_parents_store: Arc<DbRepParentsStore>,
     // Append-only stores
     pub ghostdag_store: Arc<DbGhostdagStore>,
     pub headers_store: Arc<DbHeadersStore>,
@@ -213,6 +216,7 @@ impl ConsensusStorage {
         let utxo_diffs_store = Arc::new(DbUtxoDiffsStore::new(db.clone(), utxo_diffs_builder.build()));
         let utxo_multisets_store = Arc::new(DbUtxoMultisetsStore::new(db.clone(), block_data_builder.build()));
         let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), acceptance_data_builder.build()));
+        let rep_parents_store = Arc::new(DbRepParentsStore::new(db.clone(), acceptance_data_builder.build()));
 
         // Tips
         let headers_selected_tip_store = Arc::new(RwLock::new(DbHeadersSelectedTipStore::new(db.clone())));
@@ -255,6 +259,7 @@ impl ConsensusStorage {
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             lkg_virtual_state,
+            rep_parents_store,
         })
     }
 }

@@ -48,6 +48,8 @@ pub enum DatabaseStorePrefixes {
     // ---- Metadata ----
     MultiConsensusMetadata = 124,
     ConsensusEntries = 125,
+    //---- Temporary ----
+    RepParentsList = 126,
 
     // ---- Components ----
     Addresses = 128,
@@ -58,6 +60,8 @@ pub enum DatabaseStorePrefixes {
     UtxoIndexTips = 193,
     CirculatingSupply = 194,
 
+    // ---- Dummy ----
+    PochmMerkleRoots = 200, //TODO: remove when added as field
     // ---- Separator ----
     /// Reserved as a separator
     Separator = SEPARATOR,

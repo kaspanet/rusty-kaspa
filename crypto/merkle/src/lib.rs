@@ -1,19 +1,14 @@
 use kaspa_hashes::{Hash, HasherBase, MerkleBranchHash, ZERO_HASH};
+#[derive(Clone)]
 pub enum LeafRoute {
     Left,
     Right,
 }
+pub type MerkleWitness = Vec<WitnessSegment>;
+#[derive(Clone)]
 pub struct WitnessSegment {
     companion_hash: Hash,
     leaf_route: LeafRoute,
-}
-impl WitnessSegment {
-    fn leaf_route(&self) -> &LeafRoute {
-        &self.leaf_route
-    }
-    fn companion_hash(&self) -> Hash {
-        self.companion_hash
-    }
 }
 
 fn derive_merkle_tree(hashes: impl ExactSizeIterator<Item = Hash>) -> Vec<Option<Hash>> {
@@ -46,22 +41,15 @@ pub fn calc_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
     let merkles = derive_merkle_tree(hashes);
     merkles.last().unwrap().unwrap()
 }
-pub fn create_merkle_witness_from_unsorted(
-    hashes: impl ExactSizeIterator<Item = Hash>,
-    leaf_hash: Hash,
-) -> Option<Vec<WitnessSegment>> {
+pub fn create_merkle_witness_from_unsorted(hashes: impl ExactSizeIterator<Item = Hash>, leaf_hash: Hash) -> Option<MerkleWitness> {
     let is_sorted = false;
     create_merkle_witness(hashes, leaf_hash, is_sorted)
 }
-pub fn create_merkle_witness_from_sorted(hashes: impl ExactSizeIterator<Item = Hash>, leaf_hash: Hash) -> Option<Vec<WitnessSegment>> {
+pub fn create_merkle_witness_from_sorted(hashes: impl ExactSizeIterator<Item = Hash>, leaf_hash: Hash) -> Option<MerkleWitness> {
     let is_sorted = true;
     create_merkle_witness(hashes, leaf_hash, is_sorted)
 }
-pub fn create_merkle_witness(
-    hashes: impl ExactSizeIterator<Item = Hash>,
-    leaf_hash: Hash,
-    is_sorted: bool,
-) -> Option<Vec<WitnessSegment>> {
+pub fn create_merkle_witness(hashes: impl ExactSizeIterator<Item = Hash>, leaf_hash: Hash, is_sorted: bool) -> Option<MerkleWitness> {
     let vec_len = hashes.len();
     if vec_len == 0 && leaf_hash == ZERO_HASH {
         //edge case, return empty witness and not None
@@ -104,16 +92,16 @@ pub fn create_merkle_witness(
     Some(witness_vec)
 }
 
-pub fn verify_merkle_witness(witness_vec: &[WitnessSegment], leaf_value: Hash, merkle_root_hash: Hash) -> bool {
+pub fn verify_merkle_witness(witness_vec: &MerkleWitness, leaf_value: Hash, merkle_root_hash: Hash) -> bool {
     let mut current_hash = leaf_value;
     for witness_segment in witness_vec.iter() {
         //the LeafRoute describes which branch the leaf is at from bottom to top
-        match witness_segment.leaf_route() {
+        match witness_segment.leaf_route {
             LeafRoute::Right => {
-                current_hash = merkle_hash(witness_segment.companion_hash(), current_hash);
+                current_hash = merkle_hash(witness_segment.companion_hash, current_hash);
             }
             LeafRoute::Left => {
-                current_hash = merkle_hash(current_hash, witness_segment.companion_hash());
+                current_hash = merkle_hash(current_hash, witness_segment.companion_hash);
             }
         }
     }

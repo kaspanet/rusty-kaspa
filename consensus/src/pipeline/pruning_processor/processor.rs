@@ -20,6 +20,7 @@ use crate::{
             utxo_diffs::UtxoDiffsStoreReader,
         },
     },
+    pipeline::kip_6_processor::rep_parents_store::RepParentsStore,
     processes::{pruning_proof::PruningProofManager, reachability::inquirer as reachability, relations},
 };
 use crossbeam_channel::Receiver as CrossbeamReceiver;
@@ -426,6 +427,8 @@ impl PruningProcessor {
                 self.utxo_diffs_store.delete_batch(&mut batch, current).unwrap();
                 self.acceptance_data_store.delete_batch(&mut batch, current).unwrap();
                 self.block_transactions_store.delete_batch(&mut batch, current).unwrap();
+                //remove representative parents storage
+                self.rep_parents_store.delete(current).unwrap();
 
                 if let Some(&affiliated_proof_level) = keep_relations.get(&current) {
                     if statuses_write.get(current).unwrap_option().is_some_and(|s| s.is_valid()) {
