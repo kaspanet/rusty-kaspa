@@ -81,6 +81,7 @@ use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_txscript::caches::TxScriptCacheCounters;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use std::{
     cmp::Reverse,
@@ -771,9 +772,15 @@ impl ConsensusApi for Consensus {
     fn append_imported_pruning_point_utxos(&self, utxoset_chunk: &[(TransactionOutpoint, UtxoEntry)], current_multiset: &mut MuHash) {
         let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
         pruning_utxoset_write.utxo_set.write_many(utxoset_chunk).unwrap();
-        for (outpoint, entry) in utxoset_chunk {
-            current_multiset.add_utxo(outpoint, entry);
-        }
+
+        // Parallelize processing
+        let inner_multiset =
+            utxoset_chunk.par_iter().map(|(outpoint, entry)| MuHash::from_utxo(outpoint, entry)).reduce(MuHash::new, |mut a, b| {
+                a.combine(&b);
+                a
+            });
+
+        current_multiset.combine(&inner_multiset);
     }
 
     fn import_pruning_point_utxo_set(&self, new_pruning_point: Hash, imported_utxo_multiset: MuHash) -> PruningImportResult<()> {
