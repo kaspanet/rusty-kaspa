@@ -7,6 +7,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_hashes::TransactionID;
 use kaspa_muhash::MuHash;
+use kaspa_utils::iter::parallelism_in_power_steps;
 use rayon::prelude::*;
 
 fn generate_transaction(ins: usize, outs: usize, randomness: u64) -> SignableTransaction {
@@ -25,13 +26,14 @@ fn generate_transaction(ins: usize, outs: usize, randomness: u64) -> SignableTra
         let output = TransactionOutput::new(23456, ScriptPublicKey::from_vec(0, vec![101; 34]));
         tx.outputs.push(output);
     }
+    tx.finalize();
     SignableTransaction::with_entries(tx, entries)
 }
 
 pub fn parallel_muhash_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("muhash txs");
-    let txs = (0..200).map(|i| generate_transaction(2, 2, i)).collect_vec();
-    group.bench_function("muhash seq", |b| {
+    let txs = (0..256).map(|i| generate_transaction(2, 2, i)).collect_vec();
+    group.bench_function("seq", |b| {
         b.iter(|| {
             let mut mh = MuHash::new();
             for tx in txs.iter() {
@@ -41,8 +43,8 @@ pub fn parallel_muhash_benchmark(c: &mut Criterion) {
         })
     });
 
-    for threads in [8, 16, 32] {
-        group.bench_function(format!("muhash par {threads}"), |b| {
+    for threads in parallelism_in_power_steps() {
+        group.bench_function(format!("par {threads}"), |b| {
             let pool = rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap();
             b.iter(|| {
                 pool.install(|| {
