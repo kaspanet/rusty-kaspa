@@ -248,8 +248,7 @@ impl VirtualStateProcessor {
                 .enumerate()
                 .skip(1) // Skip the coinbase tx.
                 .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score, flags).ok().map(|vtx| {
-                    let mut mh = MuHash::new();
-                    mh.add_transaction(&vtx, pov_daa_score);
+                    let mh = MuHash::from_transaction(&vtx, pov_daa_score);
                     (smallvec![(vtx, i as u32)], mh)
                 }
                 ))
