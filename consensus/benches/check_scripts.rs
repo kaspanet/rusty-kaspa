@@ -9,9 +9,9 @@ use kaspa_consensus_core::subnets::SubnetworkId;
 use kaspa_consensus_core::tx::{MutableTransaction, Transaction, TransactionInput, TransactionOutpoint, UtxoEntry};
 use kaspa_txscript::caches::Cache;
 use kaspa_txscript::pay_to_address_script;
+use kaspa_utils::iter::parallelism_in_power_steps;
 use rand::{thread_rng, Rng};
 use secp256k1::Keypair;
-use std::thread::available_parallelism;
 
 // You may need to add more detailed mocks depending on your actual code.
 fn mock_tx(inputs_count: usize, non_uniq_signatures: usize) -> (Transaction, Vec<UtxoEntry>) {
@@ -98,7 +98,7 @@ fn benchmark_check_scripts(c: &mut Criterion) {
             });
 
             // Iterate powers of two up to available parallelism
-            for i in (1..=(available_parallelism().unwrap().get() as f64).log2().ceil() as u32).map(|x| 2u32.pow(x) as usize) {
+            for i in parallelism_in_power_steps() {
                 if inputs_count >= i {
                     group.bench_function(format!("rayon, custom thread pool, thread count {i}"), |b| {
                         let tx = MutableTransaction::with_entries(tx.clone(), utxos.clone());
