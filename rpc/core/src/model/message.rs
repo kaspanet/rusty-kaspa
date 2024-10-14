@@ -2702,11 +2702,11 @@ impl Deserializer for GetUtxoReturnAddressRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetUtxoReturnAddressResponse {
-    pub return_address: Option<RpcAddress>,
+    pub return_address: RpcAddress,
 }
 
 impl GetUtxoReturnAddressResponse {
-    pub fn new(return_address: Option<RpcAddress>) -> Self {
+    pub fn new(return_address: RpcAddress) -> Self {
         Self { return_address }
     }
 }
@@ -2714,7 +2714,7 @@ impl GetUtxoReturnAddressResponse {
 impl Serializer for GetUtxoReturnAddressResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
         store!(u16, &1, writer)?;
-        store!(Option<RpcAddress>, &self.return_address, writer)?;
+        store!(RpcAddress, &self.return_address, writer)?;
 
         Ok(())
     }
@@ -2723,7 +2723,7 @@ impl Serializer for GetUtxoReturnAddressResponse {
 impl Deserializer for GetUtxoReturnAddressResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
-        let return_address = load!(Option<RpcAddress>, reader)?;
+        let return_address = load!(RpcAddress, reader)?;
 
         Ok(Self { return_address })
     }

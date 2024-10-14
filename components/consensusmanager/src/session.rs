@@ -2,6 +2,7 @@
 //!
 //! We use newtypes in order to simplify changing the underlying lock in the future
 
+use kaspa_addresses::Address;
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::{BlockCount, BlockValidationFutures, ConsensusApi, ConsensusStats, DynConsensus},
@@ -11,7 +12,7 @@ use kaspa_consensus_core::{
     errors::consensus::ConsensusResult,
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
-    return_address::ReturnAddress,
+    return_address::ReturnAddressError,
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath, Hash,
@@ -314,7 +315,11 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_chain_block_samples()).await
     }
 
-    pub async fn async_get_utxo_return_script_public_key(&self, txid: Hash, accepting_block_daa_score: u64) -> ReturnAddress {
+    pub async fn async_get_utxo_return_script_public_key(
+        &self,
+        txid: Hash,
+        accepting_block_daa_score: u64,
+    ) -> Result<Address, ReturnAddressError> {
         self.clone().spawn_blocking(move |c| c.get_utxo_return_address(txid, accepting_block_daa_score)).await
     }
 
