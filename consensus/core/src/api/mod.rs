@@ -207,7 +207,12 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
+    fn apply_pruning_proof(
+        &self,
+        proof: PruningPointProof,
+        trusted_set: &[TrustedBlock],
+        mature_finality_point: Hash,
+    ) -> PruningImportResult<()> {
         unimplemented!()
     }
 
@@ -351,7 +356,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {
+    fn next_mature_finality_point(&self, pp_list: PruningPointsList) -> PruningImportResult<Hash> {
         unimplemented!()
     }
 
@@ -360,6 +365,10 @@ pub trait ConsensusApi: Send + Sync {
     }
 
     fn finality_point(&self) -> Hash {
+        unimplemented!()
+    }
+
+    fn get_mature_finality_point(&self) -> Hash {
         unimplemented!()
     }
 }
