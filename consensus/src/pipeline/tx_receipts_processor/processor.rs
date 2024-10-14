@@ -1,5 +1,5 @@
 use super::{
-    pchmr_store::{DbPchmrStore, PchmrStore, PchmrStoreReader},
+    pchmr_store::{DbPchmrStore, PchmrStoreReader},
     rep_parents_store::{DbRepParentsStore, RepParentsStoreReader},
 };
 use crate::model::stores::selected_chain::SelectedChainStoreReader;
@@ -29,7 +29,7 @@ use crate::{
             past_pruning_points::DbPastPruningPointsStore,
             pruning::{DbPruningStore, PruningStoreReader},
             pruning_utxoset::PruningUtxosetStores,
-            reachability::DbReachabilityStore,
+            reachability::{DbReachabilityStore, ReachabilityStoreReader},
             relations::{DbRelationsStore, RelationsStoreReader},
             selected_chain::{DbSelectedChainStore, SelectedChainStore},
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
@@ -51,7 +51,6 @@ use crate::{
         window::WindowManager,
     },
 };
-use kaspa_consensus_core::blockhash::ORIGIN;
 #[allow(unused_imports)]
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
@@ -122,18 +121,18 @@ use std::{
     ops::Deref,
     sync::{atomic::Ordering, Arc},
 };
-
-pub struct Kip6Processor {
+#[derive(Clone)]
+pub struct MerkleProofsManager {
     // Channels
-    receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
-    pruning_sender: CrossbeamSender<PruningProcessingMessage>,
-    pruning_receiver: CrossbeamReceiver<PruningProcessingMessage>,
+    // receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
+    // pruning_sender: CrossbeamSender<PruningProcessingMessage>,
+    // pruning_receiver: CrossbeamReceiver<PruningProcessingMessage>,
 
     // Thread pool
-    pub(super) thread_pool: Arc<ThreadPool>,
+    // pub(super) thread_pool: Arc<ThreadPool>,
 
     // DB
-    db: Arc<DB>,
+    // db: Arc<DB>,
 
     // Config
     pub(super) genesis: GenesisBlock,
@@ -141,81 +140,78 @@ pub struct Kip6Processor {
     pub(super) mergeset_size_limit: u64,
     pub(super) pruning_depth: u64,
     pub(super) posterity_depth: u64,
-    pub(super) average_width: u64,
+    pub(super) average_width: u8,
 
     // Stores
-    pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
-    pub(super) ghostdag_primary_store: Arc<DbGhostdagStore>,
+    // pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
+    // pub(super) ghostdag_primary_store: Arc<DbGhostdagStore>,
     pub(super) headers_store: Arc<DbHeadersStore>,
-    pub(super) daa_excluded_store: Arc<DbDaaStore>,
-    pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
+    // pub(super) daa_excluded_store: Arc<DbDaaStore>,
+    // pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub(super) pruning_point_store: Arc<RwLock<DbPruningStore>>,
-    pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
-    pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
-    pub(super) depth_store: Arc<DbDepthStore>,
+    // pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
+    // pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
+    // pub(super) depth_store: Arc<DbDepthStore>,
     pub(super) selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
     pub(super) hash_to_pchmr_store: Arc<DbPchmrStore>,
     pub(super) rep_parents_store: Arc<DbRepParentsStore>,
 
-    // Utxo-related stores
-    pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
-    pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
+    // // Utxo-related stores
+    // pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
+    // pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
     pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
-    pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
-    pub(super) pruning_utxoset_stores: Arc<RwLock<PruningUtxosetStores>>,
+    // pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
+    // pub(super) pruning_utxoset_stores: Arc<RwLock<PruningUtxosetStores>>,
 
-    /// The "last known good" virtual state. To be used by any logic which does not want to wait
-    /// for a possible virtual state write to complete but can rather settle with the last known state
-    pub lkg_virtual_state: LkgVirtualState,
+    // /// The "last known good" virtual state. To be used by any logic which does not want to wait
+    // /// for a possible virtual state write to complete but can rather settle with the last known state
+    // pub lkg_virtual_state: LkgVirtualState,
 
-    // Managers and services
-    pub(super) ghostdag_manager: DbGhostdagManager,
+    // // Managers and services
+    // pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
-    pub(super) relations_service: MTRelationsService<DbRelationsStore>,
-    pub(super) dag_traversal_manager: DbDagTraversalManager,
-    pub(super) window_manager: DbWindowManager,
-    pub(super) coinbase_manager: CoinbaseManager,
-    pub(super) transaction_validator: TransactionValidator,
-    pub(super) pruning_point_manager: DbPruningPointManager,
-    pub(super) parents_manager: DbParentsManager,
-    pub(super) depth_manager: DbBlockDepthManager,
+    // pub(super) relations_service: MTRelationsService<DbRelationsStore>,
+    // pub(super) dag_traversal_manager: DbDagTraversalManager,
+    // pub(super) window_manager: DbWindowManager,
+    // pub(super) coinbase_manager: CoinbaseManager,
+    // pub(super) transaction_validator: TransactionValidator,
+    // pub(super) pruning_point_manager: DbPruningPointManager,
+    // pub(super) parents_manager: DbParentsManager,
+    // pub(super) depth_manager: DbBlockDepthManager,
 
-    // Pruning lock
-    pruning_lock: SessionLock,
+    // // Pruning lock
+    // pruning_lock: SessionLock,
 
-    // Notifier
-    notification_root: Arc<ConsensusNotificationRoot>,
+    // // Notifier
+    // notification_root: Arc<ConsensusNotificationRoot>,
 
     // Counters
-    counters: Arc<ProcessingCounters>,
+    // counters: Arc<ProcessingCounters>,
 
     // Storage mass hardfork DAA score
     pub(crate) storage_mass_activation_daa_score: u64,
 }
 
-impl Kip6Processor {
+impl MerkleProofsManager {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
-        pruning_sender: CrossbeamSender<PruningProcessingMessage>,
-        pruning_receiver: CrossbeamReceiver<PruningProcessingMessage>,
-        thread_pool: Arc<ThreadPool>,
+        // receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
+        // pruning_sender: CrossbeamSender<PruningProcessingMessage>,
+        // pruning_receiver: CrossbeamReceiver<PruningProcessingMessage>,
+        // thread_pool: Arc<ThreadPool>,
         params: &Params,
-        db: Arc<DB>,
+        // db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
-        services: &Arc<ConsensusServices>,
-        pruning_lock: SessionLock,
-        notification_root: Arc<ConsensusNotificationRoot>,
-        counters: Arc<ProcessingCounters>,
-        hash_to_pchmr_store: Arc<DbPchmrStore>,
-        rep_parents_store: Arc<DbRepParentsStore>,
+        reachability_service: MTReachabilityService<DbReachabilityStore>,
+        // pruning_lock: SessionLock,
+        // notification_root: Arc<ConsensusNotificationRoot>,
+        // counters: Arc<ProcessingCounters>,
     ) -> Self {
         Self {
-            receiver,
-            pruning_sender,
-            pruning_receiver,
-            thread_pool,
-
+            // receiver,
+            // pruning_sender,
+            // pruning_receiver,
+            // thread_pool,
             genesis: params.genesis.clone(),
             max_block_parents: params.max_block_parents,
             mergeset_size_limit: params.mergeset_size_limit,
@@ -223,41 +219,41 @@ impl Kip6Processor {
             posterity_depth: params.pruning_depth,
             average_width: 2, //hardcoded, should advise with others if this is the correct solution
 
-            db,
-            statuses_store: storage.statuses_store.clone(),
+            // db,
+            // statuses_store: storage.statuses_store.clone(),
             headers_store: storage.headers_store.clone(),
-            ghostdag_primary_store: storage.ghostdag_primary_store.clone(),
-            daa_excluded_store: storage.daa_excluded_store.clone(),
-            block_transactions_store: storage.block_transactions_store.clone(),
+            // ghostdag_primary_store: storage.ghostdag_primary_store.clone(),
+            // daa_excluded_store: storage.daa_excluded_store.clone(),
+            // block_transactions_store: storage.block_transactions_store.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
-            past_pruning_points_store: storage.past_pruning_points_store.clone(),
-            body_tips_store: storage.body_tips_store.clone(),
-            depth_store: storage.depth_store.clone(),
+            // past_pruning_points_store: storage.past_pruning_points_store.clone(),
+            // body_tips_store: storage.body_tips_store.clone(),
+            // depth_store: storage.depth_store.clone(),
             selected_chain_store: storage.selected_chain_store.clone(),
-            utxo_diffs_store: storage.utxo_diffs_store.clone(),
-            utxo_multisets_store: storage.utxo_multisets_store.clone(),
+            // utxo_diffs_store: storage.utxo_diffs_store.clone(),
+            // utxo_multisets_store: storage.utxo_multisets_store.clone(),
             acceptance_data_store: storage.acceptance_data_store.clone(),
-            virtual_stores: storage.virtual_stores.clone(),
-            pruning_utxoset_stores: storage.pruning_utxoset_stores.clone(),
-            lkg_virtual_state: storage.lkg_virtual_state.clone(),
+            // virtual_stores: storage.virtual_stores.clone(),
+            // pruning_utxoset_stores: storage.pruning_utxoset_stores.clone(),
+            // lkg_virtual_state: storage.lkg_virtual_state.clone(),
 
-            ghostdag_manager: services.ghostdag_primary_manager.clone(),
-            reachability_service: services.reachability_service.clone(),
-            relations_service: services.relations_service.clone(),
-            dag_traversal_manager: services.dag_traversal_manager.clone(),
-            window_manager: services.window_manager.clone(),
-            coinbase_manager: services.coinbase_manager.clone(),
-            transaction_validator: services.transaction_validator.clone(),
-            pruning_point_manager: services.pruning_point_manager.clone(),
-            parents_manager: services.parents_manager.clone(),
-            depth_manager: services.depth_manager.clone(),
+            // ghostdag_manager: services.ghostdag_primary_manager.clone(),
+            reachability_service,
+            // relations_service: services.relations_service.clone(),
+            // dag_traversal_manager: services.dag_traversal_manager.clone(),
+            // window_manager: services.window_manager.clone(),
+            // coinbase_manager: services.coinbase_manager.clone(),
+            // transaction_validator: services.transaction_validator.clone(),
+            // pruning_point_manager: services.pruning_point_manager.clone(),
+            // parents_manager: services.parents_manager.clone(),
+            // depth_manager: services.depth_manager.clone(),
 
-            pruning_lock,
-            notification_root,
-            counters,
+            // pruning_lock,
+            // notification_root,
+            // counters,
             storage_mass_activation_daa_score: params.storage_mass_activation_daa_score,
-            hash_to_pchmr_store,
-            rep_parents_store,
+            hash_to_pchmr_store: storage.hash_to_pchmr_store.clone(),
+            rep_parents_store: storage.rep_parents_store.clone(),
         }
     }
 
@@ -291,16 +287,17 @@ impl Kip6Processor {
         let req_atmr = req_block_header.accepted_id_merkle_root;
         verify_merkle_witness(witness, tracked_tx_id, req_atmr)
     }
-    pub fn representative_log_parents(&self, req_block_hash: Hash) -> Vec<Hash> {
-        //returns all 2^i deep parents up to the posterity block
-        let pre_posterity_hash = self.get_prev_posterity_block(req_block_hash);
+    fn representative_log_parents(&self, req_block_parent: Hash) -> Vec<Hash> {
+        // function receives the selected parent of the relevant block
+        //returns all 2^i deep 'selected' parents up to the posterity block not included
+        let pre_posterity_hash = self.get_prev_posterity_block(req_block_parent).unwrap();
         let pre_posterity_daa = self.headers_store.get_daa_score(pre_posterity_hash).unwrap();
         let mut representative_parents_list = vec![];
         /*  currently I store the representative parents of each block in memory to implement this efficiently,
         there likely are better ways, but we might change to a completely different method later on
-        so currently not worth to much thought*/
+        so currently not worth too much thought*/
         let mut i = 0;
-        let mut curr_block = self.reachability_service.default_backward_chain_iterator(req_block_hash).next();
+        let mut curr_block = self.reachability_service.default_backward_chain_iterator(req_block_parent).next();
         while curr_block.is_some() && self.headers_store.get_daa_score(pre_posterity_hash).unwrap() > pre_posterity_daa {
             representative_parents_list.push(curr_block.unwrap());
             curr_block = self.rep_parents_store.get_ith_rep_parent(curr_block.unwrap(), i);
@@ -319,16 +316,19 @@ impl Kip6Processor {
         // }
         representative_parents_list
     }
-    pub fn calc_pchmr_root(&self, req_block_hash: Hash) -> Hash {
-        let log_sized_parents_list = self.representative_log_parents(req_block_hash);
-        let ret = calc_merkle_root(log_sized_parents_list.into_iter());
+    #[allow(clippy::let_and_return)]
+    pub fn calc_pchmr_root(&self, selected_parent: Hash) -> Hash {
+        // function receives the selected parent of the relevant block
+        let representative_parents_list = self.representative_log_parents(selected_parent);
+        let ret = calc_merkle_root(representative_parents_list.into_iter());
         //temporary non hard fork solution
-        self.hash_to_pchmr_store.insert(req_block_hash, ret).unwrap();
+        // self.hash_to_pchmr_store.insert(req_block_parent, ret).unwrap();
         ret
     }
     pub fn create_pchmr_witness(&self, leaf_block_hash: Hash, root_block_hash: Hash) -> Option<MerkleWitness> {
         // proof that a block belongs to the prhmr tree of another block
-        let log_sized_parents_list = self.representative_log_parents(root_block_hash);
+        let parent_of_root = self.reachability_service.get_chain_parent(root_block_hash);
+        let log_sized_parents_list = self.representative_log_parents(parent_of_root);
 
         create_merkle_witness_from_unsorted(log_sized_parents_list.into_iter(), leaf_block_hash)
     }
@@ -336,25 +336,58 @@ impl Kip6Processor {
         verify_merkle_witness(witness, leaf_block_hash, self.hash_to_pchmr_store.get(root_block_hash).unwrap())
     }
     pub fn create_pochm_proof(&self, req_block_hash: Hash) -> Option<Pochm> {
+        //Assumes: requested block hash is on the selected chain
         //needs be relooked at
         let mut proof = vec![];
-        let post_posterity_hash = self.get_post_posterity_block(req_block_hash).unwrap();
-        let mut prev_hash = post_posterity_hash;
-        for (i, current_hash) in self.reachability_service.default_backward_chain_iterator(post_posterity_hash).enumerate() {
-            let index = i + 1; //enumeration should start from 1
-            if current_hash == req_block_hash || (index & (index - 1)) == 0 {
-                //trickery to check if it is a power of two
-                let pmr_proof_for_current = self.create_pchmr_witness(current_hash, prev_hash)?;
-                let prev_header: Arc<Header> = self.headers_store.get_header(prev_hash).unwrap();
-                proof.push(PochmSegment { pmr_witness: pmr_proof_for_current, header: prev_header });
-                prev_hash = current_hash;
-            }
-            if current_hash == req_block_hash {
-                break;
-            }
+        let post_posterity_hash = self.get_post_posterity_block(req_block_hash)?;
+        let req_block_index = self.selected_chain_store.read().get_by_hash(req_block_hash).unwrap();
+        let (mut prev_hash, mut prev_index) =
+            (post_posterity_hash, self.selected_chain_store.read().get_by_hash(post_posterity_hash).unwrap());
+        let mut curr_index; //init value for compiler
+        let mut diff = prev_index - req_block_index;
+        let mut curr_hash; //init value for compiler
+        while diff > 0 {
+            curr_index = prev_index - (diff + 1).next_power_of_two() / 2; //highest power of two such that it does not pass below prev_index-req_block_index
+            curr_hash = self.selected_chain_store.read().get_by_index(curr_index).unwrap();
+
+            let pchmr_proof_for_current = self.create_pchmr_witness(curr_hash, prev_hash)?;
+            let prev_header: Arc<Header> = self.headers_store.get_header(prev_hash).unwrap();
+            proof.push(PochmSegment { pchmr_witness: pchmr_proof_for_current, header: prev_header });
+            (prev_hash, prev_index) = (curr_hash, curr_index);
+            diff = prev_index - req_block_index;
         }
         Some(proof)
     }
+    // let mut prev_hash = post_posterity_hash;
+    // loop {
+    //     for curr_hash in self.rep_parents_store.get(post_posterity_hash).unwrap().into_iter().rev(){
+    //         let curr_daa_score=self.headers_store.get_daa_score(curr_hash).unwrap();
+    //         if req_daa_score==curr_daa_score
+    //             {return Some(proof)}
+    //         if req_daa_score>curr_daa_score
+    //             {break;}
+    //         else{
+    //             let pchmr_proof_for_current = self.create_pchmr_witness(curr_hash, prev_hash)?;
+    //             let prev_header: Arc<Header> = self.headers_store.get_header(prev_hash).unwrap();
+    //             proof.push(PochmSegment { pchmr_witness: pchmr_proof_for_current, header: prev_header });
+    //             prev_hash = curr_hash;
+    //         }
+    //     }
+    // }
+    // for (i, current_hash) in self.reachability_service.default_backward_chain_iterator(post_posterity_hash).enumerate() {
+    //     let index = i + 1; //enumeration should start from 1
+    //     if current_hash == req_block_hash || (index & (index - 1)) == 0 {
+    //         //trickery to check if it is a power of two
+
+    //         proof.push(PochmSegment { pchmr_witness: pchmr_proof_for_current, header: prev_header });
+    //         prev_hash = current_hash;
+    //     }
+    //     if current_hash == req_block_hash {
+    //         break;
+    //     }
+    // }
+    //     // Some(proof)
+    // }
     pub fn verify_pochm_proof(&self, req_block_hash: Hash, witness: &Pochm) -> bool {
         //needs be relooked at
         let _post_posterity_header = &witness[0].header;
@@ -367,7 +400,7 @@ impl Kip6Processor {
         leaf_hashes.next(); //remove first element to match accordingly to witnessess
         for (pochm, leaf_hash) in witness.iter().zip(leaf_hashes) {
             let pchmr = self.hash_to_pchmr_store.get(pochm.header.hash).unwrap();
-            if !(self.verify_pchmr_witness(&pochm.pmr_witness, leaf_hash, pchmr)) {
+            if !(self.verify_pchmr_witness(&pochm.pchmr_witness, leaf_hash, pchmr)) {
                 return false;
             }
         }
@@ -379,11 +412,14 @@ impl Kip6Processor {
         Some(TxReceipt { tracked_tx_id, accepting_block_hash: req_block_hash, pochm, tx_acc_proof })
     }
     pub fn generate_proof_of_pub(&self, req_block_hash: Hash, tracked_tx_id: Hash) -> Option<ProofOfPublication> {
-        let pruning_head = self.pruning_point_store.read().pruning_point().unwrap(); //this appears incorrect, and requires further thought
-
+        /*there is a certain degree of inefficiency here, as post_posterity is calculated again in create_pochm function
+        however I expect this feature to rarely be called so optimizations seem not worth it */
+        let post_posterity = self.get_post_posterity_block(req_block_hash)?;
         let tx_pub_proof = self.create_merkle_witness_for_tx(tracked_tx_id, req_block_hash)?;
         let mut headers_chain_to_selected = vec![];
-        for block in self.reachability_service.forward_chain_iterator(req_block_hash, pruning_head, true) {
+
+        //find a chain block on the path to post_posterity
+        for block in self.reachability_service.forward_chain_iterator(req_block_hash, post_posterity, true) {
             headers_chain_to_selected.push(self.headers_store.get_header(block).unwrap());
             if self.selected_chain_store.read().get_by_hash(block).is_ok() {
                 break;
@@ -416,29 +452,29 @@ impl Kip6Processor {
     }
 
     pub fn get_post_posterity_block(&self, block_hash: Hash) -> Option<Hash> {
-        let pruning_head = self.pruning_point_store.read().pruning_point().unwrap();
+        //reach the first proceeding selected chain block
+        let pruning_head = self.pruning_point_store.read().pruning_point().unwrap(); //may be inefficient
         let candidate_block = self
             .reachability_service
             .forward_chain_iterator(block_hash, pruning_head, true)
-            .find(|&block| self.selected_chain_store.read().get_by_hash(block).is_ok())
-            .unwrap();
+            .find(|&block| self.selected_chain_store.read().get_by_hash(block).is_ok())?;
 
         let candidate_daa: u64 = self.headers_store.get_daa_score(candidate_block).unwrap();
         let pruning_head_daa = self.headers_store.get_daa_score(pruning_head).unwrap();
         let cutoff_daa = candidate_daa - candidate_daa % self.posterity_depth + self.posterity_depth;
         if cutoff_daa > pruning_head_daa {
+            // Posterity block not yet available.
             None
         } else {
-            Some(self.get_posterity_by_daa(candidate_block, cutoff_daa))
+            self.get_posterity_by_daa(candidate_block, cutoff_daa)
         }
     }
-    pub fn get_prev_posterity_block(&self, block_hash: Hash) -> Hash {
-        //possibly pruning point points too far back.
+    pub fn get_prev_posterity_block(&self, block_hash: Hash) -> Option<Hash> {
+        //reach the first preceding selected chain block
         let candidate_block = self
             .reachability_service
-            .backward_chain_iterator(block_hash, ORIGIN, true)
-            .find(|&block| self.selected_chain_store.read().get_by_hash(block).is_ok())
-            .unwrap();
+            .default_backward_chain_iterator(block_hash)
+            .find(|&block| self.selected_chain_store.read().get_by_hash(block).is_ok())?;
 
         let candidate_daa: u64 = self.headers_store.get_daa_score(candidate_block).unwrap();
         let cutoff_daa = candidate_daa - candidate_daa % self.posterity_depth;
@@ -446,26 +482,76 @@ impl Kip6Processor {
         self.get_posterity_by_daa(candidate_block, cutoff_daa)
     }
 
-    pub fn get_posterity_by_daa(&self, posterity_candidate: Hash, cutoff_daa: u64) -> Hash {
+    fn get_posterity_by_daa(&self, reference_block: Hash, cutoff_daa: u64) -> Option<Hash> {
+        //posterity_candidate is assumed to be a chain block
         //TODO:change to Error sometime probably
-        /*returns  the first posterity block with daa smaller or equal to the approximate daa
+        /*returns  the first posterity block with daa smaller or equal to the cutoff daa
         assumes data is available*/
-        let candidate_parent = self.reachability_service.get_chain_parent(posterity_candidate);
 
-        let candidate_daa = self.headers_store.get_daa_score(posterity_candidate).unwrap();
-        let candidate_parent_daa = self.headers_store.get_daa_score(candidate_parent).unwrap();
-        if candidate_daa >= cutoff_daa || candidate_parent_daa < cutoff_daa {
-            return posterity_candidate;
+        if cutoff_daa == 0
+        // edge case
+        {
+            return Some(self.genesis.hash);
         }
-        //dangerous conversion magic
-        let index_diff: i128 = (candidate_daa as i128 - cutoff_daa as i128) / (self.average_width as i128);
-        let reference_index: i128 = self.selected_chain_store.read().get_by_hash(posterity_candidate).unwrap() as i128;
-        let mut next_index = 0;
-        if reference_index > index_diff {
-            next_index = (reference_index - index_diff) as u64
+
+        let mut low = 0;
+        let mut high = self.selected_chain_store.read().get_tip().unwrap().0;
+        let mut next_candidate = reference_block;
+        let mut candidate_daa = self.headers_store.get_daa_score(next_candidate).unwrap();
+
+        // let mut next_index= self.selected_chain_store.read().get_by_hash(next_candidate).unwrap();
+        let mut candidate_index = self.selected_chain_store.read().get_by_hash(next_candidate).unwrap();
+
+        loop {
+            /* a binary search 'style' loop
+            with special checks to avoid getting stuck in a back and forth   */
+
+            if candidate_daa < cutoff_daa {
+                // in this case index will move forward
+                if low < candidate_index
+                //rescale bound and update
+                {
+                    low = candidate_index;
+                    let index_diff = (cutoff_daa - candidate_daa) / self.average_width as u64;
+                    candidate_index += index_diff;
+                } else {
+                    // if low bound was already known, we risk getting stuck in a loop, so just iterate forwards till posterity is found.
+                    let high_block = self.selected_chain_store.read().get_by_index(high).unwrap();
+                    return self
+                        .reachability_service
+                        .forward_chain_iterator(next_candidate, high_block, true)
+                        .find(|&block| self.headers_store.get_daa_score(block).unwrap() >= cutoff_daa);
+                }
+            } else {
+                // in this case index will move backward
+                if high > candidate_index {
+                    let candidate_parent = self.reachability_service.get_chain_parent(next_candidate);
+                    let candidate_parent_daa = self.headers_store.get_daa_score(candidate_parent).unwrap();
+                    if candidate_parent_daa < cutoff_daa
+                    // first check if next_candidate actually is the posterity
+                    {
+                        return Some(next_candidate);
+                    } else {
+                        // if not, update candidate indices and bounds
+                        let index_diff = (candidate_daa - cutoff_daa) / self.average_width as u64;
+                        candidate_index -= index_diff; //shouldn't overflow
+                        high = candidate_index; // if not, rescale bound
+                    }
+                } else {
+                    //again avoid getting stuck in a loop
+                    //iterate back until a parent is found with daa score lower than the cutoff
+                    let low_block = self.selected_chain_store.read().get_by_index(low).unwrap();
+                    let posterity_parent = self
+                        .reachability_service
+                        .backward_chain_iterator(next_candidate, low_block, true)
+                        .find(|&block| self.headers_store.get_daa_score(block).unwrap() < cutoff_daa)?;
+                    // and then return its 'selected' son
+                    return self.reachability_service.forward_chain_iterator(posterity_parent, next_candidate, true).next();
+                }
+            }
+            next_candidate = self.selected_chain_store.read().get_by_index(candidate_index).unwrap();
+            candidate_daa = self.headers_store.get_daa_score(next_candidate).unwrap();
         }
-        let next_candidate: Hash = self.selected_chain_store.read().get_by_index(next_index).unwrap();
-        self.get_posterity_by_daa(next_candidate, cutoff_daa)
     }
     pub fn verify_post_posterity_block(&self, block_hash: Hash, post_posterity_candidate_hash: Hash) -> bool {
         /*the verification consists of 3 parts:
@@ -488,7 +574,7 @@ impl Kip6Processor {
 }
 #[derive(Clone)]
 pub struct PochmSegment {
-    pmr_witness: MerkleWitness,
+    pchmr_witness: MerkleWitness,
     header: Arc<Header>,
 }
 pub type Pochm = Vec<PochmSegment>;
