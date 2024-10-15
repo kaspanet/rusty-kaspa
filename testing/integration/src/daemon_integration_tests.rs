@@ -274,7 +274,8 @@ async fn daemon_utxos_propagation_test() {
     clients.iter().for_each(|x| x.utxos_changed_listener().unwrap().drain());
     clients.iter().for_each(|x| x.virtual_daa_score_changed_listener().unwrap().drain());
 
-    // Spend some coins
+    // Spend some coins - sending funds from miner address to user address
+    // The transaction here is later used to verify utxo return address RPC
     const NUMBER_INPUTS: u64 = 2;
     const NUMBER_OUTPUTS: u64 = 2;
     const TX_AMOUNT: u64 = SIMNET_PARAMS.pre_deflationary_phase_base_subsidy * (NUMBER_INPUTS * 5 - 1) / 5;
@@ -323,6 +324,23 @@ async fn daemon_utxos_propagation_test() {
         let user_balance = x.get_balance_by_address(user_address.clone()).await.unwrap();
         assert_eq!(user_balance, TX_AMOUNT);
     }
+
+    // UTXO Return Address Test
+    // Mine another block to accept the transactions from the previous block
+    // The tx above is sending from miner address to user address
+    mine_block(blank_address.clone(), &rpc_client1, &clients).await;
+    let new_utxos = rpc_client1.get_utxos_by_addresses(vec![user_address]).await.unwrap();
+    let new_utxo = new_utxos
+        .iter()
+        .find(|utxo| utxo.outpoint.transaction_id == transaction.id())
+        .expect("Did not find a utxo for the tx we just created but expected to");
+
+    let utxo_return_address = rpc_client1
+        .get_utxo_return_address(new_utxo.outpoint.transaction_id, new_utxo.utxo_entry.block_daa_score)
+        .await
+        .expect("We just created the tx and utxo here");
+
+    assert_eq!(miner_address, utxo_return_address);
 
     // Terminate multi-listener clients
     for x in clients.iter() {
