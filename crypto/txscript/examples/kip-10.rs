@@ -31,6 +31,7 @@ use secp256k1::Keypair;
 fn main() -> ScriptBuilderResult<()> {
     threshold_scenario()?;
     threshold_scenario_limited_one_time()?;
+    threshold_scenario_limited_2_times()?;
     shared_secret_scenario()?;
     Ok(())
 }
@@ -161,31 +162,22 @@ fn threshold_scenario() -> ScriptBuilderResult<()> {
     Ok(())
 }
 
-/// Generate a script for the one-time borrowing scenario
+/// Generate a script for limited-time borrowing scenarios
 ///
-/// This function creates a script that allows for one-time borrowing with a threshold,
-/// or spending by the owner at any time.
+/// This function creates a script that allows for limited-time borrowing with a threshold,
+/// or spending by the owner at any time. It's generic enough to be used for both one-time
+/// and multi-time borrowing scenarios.
 ///
 /// # Arguments
 ///
 /// * `owner` - The public key of the owner
 /// * `threshold` - The threshold amount that must be met for borrowing
+/// * `output_spk` - The output script public key as a vector of bytes
 ///
 /// # Returns
 ///
 /// * The generated script as a vector of bytes
-fn generate_one_time_script(owner: &Keypair, threshold: i64) -> ScriptBuilderResult<Vec<u8>> {
-    let p2pk =
-        pay_to_address_script(&Address::new(Prefix::Mainnet, Version::PubKey, owner.x_only_public_key().0.serialize().as_slice()));
-    let p2pk_as_vec = {
-        let version = p2pk.version.to_be_bytes();
-        let script = p2pk.script();
-        let mut v = Vec::with_capacity(version.len() + script.len());
-        v.extend_from_slice(&version);
-        v.extend_from_slice(script);
-        v
-    };
-
+fn generate_limited_time_script(owner: &Keypair, threshold: i64, output_spk: Vec<u8>) -> ScriptBuilderResult<Vec<u8>> {
     let mut builder = ScriptBuilder::new();
     let script = builder
         // Owner branch
@@ -194,7 +186,7 @@ fn generate_one_time_script(owner: &Keypair, threshold: i64) -> ScriptBuilderRes
         .add_op(OpCheckSig)?
         // Borrower branch
         .add_op(OpElse)?
-        .add_data(&p2pk_as_vec)?
+        .add_data(&output_spk)?
         .add_ops(&[OpOutputSpk, OpEqualVerify, OpOutputAmount])?
         .add_i64(threshold)?
         .add_ops(&[OpSub, OpInputAmount, OpGreaterThanOrEqual])?
@@ -202,6 +194,18 @@ fn generate_one_time_script(owner: &Keypair, threshold: i64) -> ScriptBuilderRes
         .drain();
 
     Ok(script)
+}
+
+// Helper function to create P2PK script as a vector
+fn p2pk_as_vec(owner: &Keypair) -> Vec<u8> {
+    let p2pk =
+        pay_to_address_script(&Address::new(Prefix::Mainnet, Version::PubKey, owner.x_only_public_key().0.serialize().as_slice()));
+    let version = p2pk.version.to_be_bytes();
+    let script = p2pk.script();
+    let mut v = Vec::with_capacity(version.len() + script.len());
+    v.extend_from_slice(&version);
+    v.extend_from_slice(script);
+    v
 }
 
 /// # Threshold Scenario with Limited One-Time Borrowing
@@ -236,9 +240,10 @@ fn threshold_scenario_limited_one_time() -> ScriptBuilderResult<()> {
     // Set a threshold value for comparison
     let threshold: i64 = 100;
 
-    // Generate the one-time script
-    let script = generate_one_time_script(&owner, threshold)?;
-    let p2pk = pay_to_address_script(&Address::new(Prefix::Mainnet, Version::PubKey, owner.x_only_public_key().0.serialize().as_slice()));
+    let p2pk =
+        pay_to_address_script(&Address::new(Prefix::Mainnet, Version::PubKey, owner.x_only_public_key().0.serialize().as_slice()));
+    let p2pk_vec = p2pk_as_vec(&owner);
+    let script = generate_limited_time_script(&owner, threshold, p2pk_vec.clone())?;
 
     // Initialize a cache for signature verification
     let sig_cache = Cache::new(10_000);
@@ -333,7 +338,11 @@ fn threshold_scenario_limited_one_time() -> ScriptBuilderResult<()> {
         println!("[ONE-TIME] Checking borrower branch with output going to wrong address");
         // Create a new key pair for a different address
         let wrong_recipient = Keypair::new(secp256k1::SECP256K1, &mut thread_rng());
-        let wrong_p2pk = pay_to_address_script(&Address::new(Prefix::Mainnet, Version::PubKey, wrong_recipient.x_only_public_key().0.serialize().as_slice()));
+        let wrong_p2pk = pay_to_address_script(&Address::new(
+            Prefix::Mainnet,
+            Version::PubKey,
+            wrong_recipient.x_only_public_key().0.serialize().as_slice(),
+        ));
 
         // Create a new transaction with the wrong output address
         let mut wrong_tx = tx.clone();
@@ -341,14 +350,188 @@ fn threshold_scenario_limited_one_time() -> ScriptBuilderResult<()> {
         wrong_tx.inputs[0].signature_script = ScriptBuilder::new().add_op(OpFalse)?.add_data(&script)?.drain();
 
         let wrong_tx = PopulatedTransaction::new(&wrong_tx, vec![utxo_entry.clone()]);
-        let mut vm =
-            TxScriptEngine::from_transaction_input(&wrong_tx, &wrong_tx.tx.inputs[0], 0, &utxo_entry, &mut reused_values, &sig_cache, true)
-                .expect("Script creation failed");
+        let mut vm = TxScriptEngine::from_transaction_input(
+            &wrong_tx,
+            &wrong_tx.tx.inputs[0],
+            0,
+            &utxo_entry,
+            &mut reused_values,
+            &sig_cache,
+            true,
+        )
+        .expect("Script creation failed");
         assert_eq!(vm.execute(), Err(VerifyError));
         println!("[ONE-TIME] Borrower branch with output going to wrong address failed as expected");
     }
 
     println!("[ONE-TIME] Threshold one-time scenario completed successfully");
+    Ok(())
+}
+
+/// # Threshold Scenario with Limited Two-Times Borrowing
+///
+/// This function demonstrates a modified version of the threshold scenario where borrowing
+/// is limited to two occurrences. The key difference from the one-time scenario is that
+/// the first borrowing outputs to a P2SH of the one-time script, allowing for a second borrowing.
+///
+/// ## Key Features:
+/// 1. **Two-Times Borrowing:** The borrower can use this mechanism twice.
+/// 2. **Owner Access:** The owner retains the ability to spend the funds at any time using their private key.
+/// 3. **Threshold Mechanism:** The borrower must still meet the threshold requirement to spend the funds.
+/// 4. **Output Validation:** Ensures the output goes to the correct address (P2SH of one-time script for first borrow).
+///
+/// ## Scenarios Tested:
+/// 1. **Owner Spending:** Verifies that the owner can spend the funds using their signature.
+/// 2. **Borrower First Spending:** Checks if the borrower can spend when meeting the threshold and
+///    sending to the correct P2SH address of the one-time script.
+/// 3. **Invalid Borrower Attempt (Threshold):** Ensures the script fails if the borrower doesn't meet the threshold.
+/// 4. **Invalid Borrower Attempt (Wrong Output):** Ensures the script fails if the output goes to an incorrect address.
+///
+/// # Returns
+///
+/// * `ScriptBuilderResult<()>` - Result of script builder operations for this scenario.
+fn threshold_scenario_limited_2_times() -> ScriptBuilderResult<()> {
+    println!("\n[TWO-TIMES] Running threshold two-times scenario");
+    let owner = Keypair::new(secp256k1::SECP256K1, &mut thread_rng());
+    let threshold: i64 = 100;
+
+    // First, create the one-time script
+    let p2pk_vec = p2pk_as_vec(&owner);
+    let one_time_script = generate_limited_time_script(&owner, threshold, p2pk_vec)?;
+
+    // Now, create the two-times script using the one-time script as output
+    let p2sh_one_time = pay_to_script_hash_script(&one_time_script);
+    let p2sh_one_time_vec = {
+        let version = p2sh_one_time.version.to_be_bytes();
+        let script = p2sh_one_time.script();
+        let mut v = Vec::with_capacity(version.len() + script.len());
+        v.extend_from_slice(&version);
+        v.extend_from_slice(script);
+        v
+    };
+
+    let two_times_script = generate_limited_time_script(&owner, threshold, p2sh_one_time_vec)?;
+
+    // Initialize a cache for signature verification
+    let sig_cache = Cache::new(10_000);
+
+    // Prepare to reuse values for signature hashing
+    let mut reused_values = SigHashReusedValues::new();
+
+    // Generate the script public key
+    let spk = pay_to_script_hash_script(&two_times_script);
+
+    // Define the input value
+    let input_value = 1000000000;
+
+    // Create a transaction output
+    let output = TransactionOutput { value: 1000000000 + threshold as u64, script_public_key: p2sh_one_time };
+
+    // Create a UTXO entry for the input
+    let utxo_entry = UtxoEntry::new(input_value, spk, 0, false);
+
+    // Create a transaction input
+    let input = TransactionInput {
+        previous_outpoint: TransactionOutpoint {
+            transaction_id: TransactionId::from_bytes([
+                0xc9, 0x97, 0xa5, 0xe5, 0x6e, 0x10, 0x42, 0x02, 0xfa, 0x20, 0x9c, 0x6a, 0x85, 0x2d, 0xd9, 0x06, 0x60, 0xa2, 0x0b,
+                0x2d, 0x9c, 0x35, 0x24, 0x23, 0xed, 0xce, 0x25, 0x85, 0x7f, 0xcd, 0x37, 0x04,
+            ]),
+            index: 0,
+        },
+        signature_script: ScriptBuilder::new().add_data(&two_times_script)?.drain(),
+        sequence: 4294967295,
+        sig_op_count: 0,
+    };
+
+    // Create a transaction with the input and output
+    let mut tx = Transaction::new(1, vec![input.clone()], vec![output.clone()], 0, Default::default(), 0, vec![]);
+
+    // Check owner branch
+    {
+        println!("[TWO-TIMES] Checking owner branch");
+        let mut tx = MutableTransaction::with_entries(tx.clone(), vec![utxo_entry.clone()]);
+        let sig_hash = calc_schnorr_signature_hash(&tx.as_verifiable(), 0, SIG_HASH_ALL, &mut reused_values);
+        let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
+
+        let sig = owner.sign_schnorr(msg);
+        let mut signature = Vec::new();
+        signature.extend_from_slice(sig.as_ref().as_slice());
+        signature.push(SIG_HASH_ALL.to_u8());
+
+        let mut builder = ScriptBuilder::new();
+        builder.add_data(&signature)?;
+        builder.add_op(OpTrue)?;
+        builder.add_data(&two_times_script)?;
+        {
+            tx.tx.inputs[0].signature_script = builder.drain();
+        }
+
+        let tx = tx.as_verifiable();
+        let mut vm =
+            TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, &utxo_entry, &mut reused_values, &sig_cache, true)
+                .expect("Script creation failed");
+        assert_eq!(vm.execute(), Ok(()));
+        println!("[TWO-TIMES] Owner branch execution successful");
+    }
+
+    // Check borrower branch (first borrowing)
+    {
+        println!("[TWO-TIMES] Checking borrower branch (first borrowing)");
+        tx.inputs[0].signature_script = ScriptBuilder::new().add_op(OpFalse)?.add_data(&two_times_script)?.drain();
+        let tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
+        let mut vm =
+            TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, &mut reused_values, &sig_cache, true)
+                .expect("Script creation failed");
+        assert_eq!(vm.execute(), Ok(()));
+        println!("[TWO-TIMES] Borrower branch (first borrowing) execution successful");
+    }
+
+    // Check borrower branch with threshold not reached
+    {
+        println!("[TWO-TIMES] Checking borrower branch with threshold not reached");
+        // Less than threshold
+        tx.outputs[0].value -= 1;
+        let tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
+        let mut vm =
+            TxScriptEngine::from_transaction_input(&tx, &tx.tx.inputs[0], 0, &utxo_entry, &mut reused_values, &sig_cache, true)
+                .expect("Script creation failed");
+        assert_eq!(vm.execute(), Err(EvalFalse));
+        println!("[TWO-TIMES] Borrower branch with threshold not reached failed as expected");
+    }
+
+    // Check borrower branch with output going to wrong address
+    {
+        println!("[TWO-TIMES] Checking borrower branch with output going to wrong address");
+        // Create a new key pair for a different address
+        let wrong_recipient = Keypair::new(secp256k1::SECP256K1, &mut thread_rng());
+        let wrong_p2pk = pay_to_address_script(&Address::new(
+            Prefix::Mainnet,
+            Version::PubKey,
+            wrong_recipient.x_only_public_key().0.serialize().as_slice(),
+        ));
+
+        // Create a new transaction with the wrong output address
+        let mut wrong_tx = tx.clone();
+        wrong_tx.outputs[0].script_public_key = wrong_p2pk;
+        wrong_tx.inputs[0].signature_script = ScriptBuilder::new().add_op(OpFalse)?.add_data(&two_times_script)?.drain();
+
+        let wrong_tx = PopulatedTransaction::new(&wrong_tx, vec![utxo_entry.clone()]);
+        let mut vm = TxScriptEngine::from_transaction_input(
+            &wrong_tx,
+            &wrong_tx.tx.inputs[0],
+            0,
+            &utxo_entry,
+            &mut reused_values,
+            &sig_cache,
+            true,
+        )
+        .expect("Script creation failed");
+        assert_eq!(vm.execute(), Err(VerifyError));
+        println!("[TWO-TIMES] Borrower branch with output going to wrong address failed as expected");
+    }
+
+    println!("[TWO-TIMES] Threshold two-times scenario completed successfully");
     Ok(())
 }
 
