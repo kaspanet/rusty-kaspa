@@ -356,7 +356,7 @@ impl HeaderProcessor {
     }
 
     fn commit_header(&self, ctx: HeaderProcessingContext, header: &Header) {
-        let ghostdag_primary_data = ctx.ghostdag_data.as_ref().unwrap();
+        let ghostdag_data = ctx.ghostdag_data.as_ref().unwrap();
         let pp = ctx.pruning_point();
 
         // Create a DB batch writer
@@ -365,7 +365,7 @@ impl HeaderProcessor {
         //
         // Append-only stores: these require no lock and hence done first in order to reduce locking time
         //
-        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_primary_data).unwrap();
+        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_data).unwrap();
 
         if let Some(window) = ctx.block_window_for_difficulty {
             self.block_window_cache_for_difficulty.insert(ctx.hash, window);
@@ -387,8 +387,8 @@ impl HeaderProcessor {
         // time, and thus serializing this part will do no harm. However this should be benchmarked. The
         // alternative is to create a separate ReachabilityProcessor and to manage things more tightly.
         let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
-        let selected_parent = ghostdag_primary_data.selected_parent;
-        let mut reachability_mergeset = ghostdag_primary_data.unordered_mergeset_without_selected_parent();
+        let selected_parent = ghostdag_data.selected_parent;
+        let mut reachability_mergeset = ghostdag_data.unordered_mergeset_without_selected_parent();
         reachability::add_block(&mut staging, ctx.hash, selected_parent, &mut reachability_mergeset).unwrap();
 
         // Non-append only stores need to use write locks.
