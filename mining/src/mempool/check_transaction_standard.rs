@@ -8,11 +8,11 @@ use kaspa_consensus_core::{
     mass,
     tx::{MutableTransaction, PopulatedTransaction, TransactionOutput},
 };
-use kaspa_txscript::{get_sig_op_count, is_unspendable, script_class::ScriptClass};
+use kaspa_txscript::{is_unspendable, script_class::ScriptClass};
 
 /// MAX_STANDARD_P2SH_SIG_OPS is the maximum number of signature operations
 /// that are considered standard in a pay-to-script-hash script.
-const MAX_STANDARD_P2SH_SIG_OPS: u8 = 15;
+// const MAX_STANDARD_P2SH_SIG_OPS: u8 = 15;
 
 /// MAXIMUM_STANDARD_SIGNATURE_SCRIPT_SIZE is the maximum size allowed for a
 /// transaction input signature script to be considered standard. This
@@ -176,7 +176,7 @@ impl Mempool {
         if contextual_mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
             return Err(NonStandardError::RejectContextualMass(transaction_id, contextual_mass, MAXIMUM_STANDARD_TRANSACTION_MASS));
         }
-        for (i, input) in transaction.tx.inputs.iter().enumerate() {
+        for (i, _input) in transaction.tx.inputs.iter().enumerate() {
             // It is safe to elide existence and index checks here since
             // they have already been checked prior to calling this
             // function.
@@ -188,13 +188,14 @@ impl Mempool {
                 ScriptClass::PubKey => {}
                 ScriptClass::PubKeyECDSA => {}
                 ScriptClass::ScriptHash => {
-                    let num_sig_ops = get_sig_op_count::<PopulatedTransaction, SigHashReusedValuesUnsync>(
-                        &input.signature_script,
-                        &entry.script_public_key,
-                    );
-                    if num_sig_ops > MAX_STANDARD_P2SH_SIG_OPS as u64 {
-                        return Err(NonStandardError::RejectSignatureCount(transaction_id, i, num_sig_ops, MAX_STANDARD_P2SH_SIG_OPS));
-                    }
+                    // todo execute tx to calculate sig ops or skip the check
+                    // let num_sig_ops = get_sig_op_count::<PopulatedTransaction, SigHashReusedValuesUnsync>(
+                    //     &input.signature_script,
+                    //     &entry.script_public_key,
+                    // );
+                    // if num_sig_ops > MAX_STANDARD_P2SH_SIG_OPS as u64 {
+                    //     return Err(NonStandardError::RejectSignatureCount(transaction_id, i, num_sig_ops, MAX_STANDARD_P2SH_SIG_OPS));
+                    // }
                 }
             }
 
