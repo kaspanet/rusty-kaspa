@@ -70,7 +70,7 @@ impl ScriptBuilder {
         &self.script
     }
 
-    #[cfg(any(test, target_arch = "wasm32"))]
+    #[cfg(any(test, target_arch = "wasm32", feature = "py-sdk"))]
     pub fn extend(&mut self, data: &[u8]) {
         self.script.extend(data);
     }

@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 
 class Address:
 
@@ -205,6 +205,16 @@ class UtxoEntryReference:
     def script_public_key(self) -> ScriptPublicKey: ...
 
 
+def address_from_script_public_key(script_public_key: ScriptPublicKey, network: str) -> Address: ...
+
+
+class Hash:
+
+    def __init__(self, hex_str: str) -> None: ...
+
+    def to_string(self) -> str: ...
+
+
 class Language(Enum):
     English: 1
 
@@ -234,6 +244,45 @@ class Mnemonic:
     def to_seed(self, password: Optional[str]) -> str: ...
 
 
+class ScriptBuilder:
+
+    def __init__(self) -> None: ...
+
+    @staticmethod
+    def from_script(script: Union[str, bytes, list[int]]) -> ScriptBuilder: ...
+
+    def add_op(self, op: Union[Opcode, int]) -> ScriptBuilder: ...
+
+    def add_ops(self, opcodes: Union[list[Opcode], list[int]]) -> ScriptBuilder: ...
+
+    def add_data(self, data: Union[str, bytes, list[int]]) -> ScriptBuilder: ...
+
+    def add_i64(self, value: int) -> ScriptBuilder: ...
+
+    def add_lock_time(self, lock_time: int) -> ScriptBuilder: ...
+
+    def add_sequence(self, sequence: int) -> ScriptBuilder: ...
+
+    @staticmethod
+    def canonical_data_size(data: Union[str, bytes, list[int]]) -> int: ...
+
+    def to_string(self) -> str: ...
+
+    def drain(self) -> str: ...
+
+    def create_pay_to_script_hash_script(self) -> ScriptPublicKey: ...
+
+    def encode_pay_to_script_hash_signature_script(self) -> str: ...
+
+
+class Opcodes(Enum): ...
+    # TODO
+
+
+class PaymentOutput:
+
+    def __init__(self, address: Address, amount: int) -> None: ...
+
 
 def create_transaction(
     utxo_entry_source: list[dict],
@@ -244,11 +293,6 @@ def create_transaction(
 ) -> Transaction: ...
 
 def sign_transaction(tx: Transaction, signer: list[PrivateKey], verify_sig: bool) -> Transaction: ...
-
-
-class PaymentOutput:
-
-    def __init__(self, address: Address, amount: int) -> None: ...
 
 
 class DerivationPath:

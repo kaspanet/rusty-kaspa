@@ -1,8 +1,12 @@
+#[cfg(feature = "py-sdk")]
+use pyo3::prelude::*;
 pub use wasm_bindgen::prelude::*;
 
 /// Kaspa Transaction Script Opcodes
 /// @see {@link ScriptBuilder}
 /// @category Consensus
+#[derive(Clone)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen]
 pub enum Opcodes {
     OpFalse = 0x00,
@@ -293,4 +297,13 @@ pub enum Opcodes {
     OpPubKeyHash = 0xfd,
     OpPubKey = 0xfe,
     OpInvalidOpCode = 0xff,
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl Opcodes {
+    #[getter]
+    pub fn value(&self) -> u8 {
+        self.clone() as u8
+    }
 }

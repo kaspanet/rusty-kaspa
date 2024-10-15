@@ -11,5 +11,7 @@ cfg_if! {
 
         pub use self::opcodes::*;
         pub use self::builder::*;
+    } else if #[cfg(feature = "py-sdk")] {
+        pub mod opcodes;
     }
 }

@@ -17,6 +17,7 @@ kaspa-bip32.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-consensus-client.workspace = true
 kaspa-hashes.workspace = true
+kaspa-txscript.workspace = true
 kaspa-wallet-core.workspace = true
 kaspa-wallet-keys.workspace = true
 kaspa-wrpc-python.workspace = true
@@ -28,6 +29,7 @@ py-sdk = [
     "pyo3/extension-module",
     "kaspa-addresses/py-sdk",
     "kaspa-consensus-client/py-sdk",
+    "kaspa-txscript/py-sdk",
     "kaspa-wallet-keys/py-sdk",
     "kaspa-wallet-core/py-sdk",
     "kaspa-wrpc-python/py-sdk",

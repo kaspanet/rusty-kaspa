@@ -5,11 +5,13 @@ pub mod caches;
 mod data_stack;
 pub mod error;
 pub mod opcodes;
+#[cfg(feature = "py-sdk")]
+pub mod python;
 pub mod result;
 pub mod script_builder;
 pub mod script_class;
 pub mod standard;
-#[cfg(feature = "wasm32-sdk")]
+#[cfg(any(feature = "wasm32-sdk", feature = "py-sdk"))]
 pub mod wasm;
 
 use crate::caches::Cache;

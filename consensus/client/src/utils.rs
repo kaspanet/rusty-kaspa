@@ -53,6 +53,16 @@ pub fn address_from_script_public_key(script_public_key: &ScriptPublicKeyT, netw
     }
 }
 
+#[cfg(feature = "py-sdk")]
+#[pyfunction]
+#[pyo3(name = "address_from_script_public_key")]
+pub fn address_from_script_public_key_py(script_public_key: &ScriptPublicKey, network: &str) -> PyResult<Address> {
+    match standard::extract_script_pub_key_address(script_public_key, network.try_into()?) {
+        Ok(address) => Ok(address),
+        Err(err) => Err(pyo3::exceptions::PyException::new_err(format!("{}", err))),
+    }
+}
+
 /// Returns true if the script passed is a pay-to-pubkey.
 /// @param script - The script ({@link HexString} or Uint8Array).
 /// @category Wallet SDK

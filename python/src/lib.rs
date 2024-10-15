@@ -15,11 +15,15 @@ cfg_if::cfg_if! {
             m.add_class::<kaspa_consensus_client::UtxoEntries>()?;
             m.add_class::<kaspa_consensus_client::UtxoEntry>()?;
             m.add_class::<kaspa_consensus_client::UtxoEntryReference>()?;
+            m.add_function(wrap_pyfunction!(kaspa_consensus_client::address_from_script_public_key_py, m)?)?;
 
             m.add_class::<kaspa_hashes::Hash>()?;
 
             m.add_class::<kaspa_bip32::Language>()?;
             m.add_class::<kaspa_bip32::Mnemonic>()?;
+
+            m.add_class::<kaspa_txscript::python::ScriptBuilder>()?;
+            m.add_class::<kaspa_txscript::wasm::opcodes::Opcodes>()?;
 
             m.add_class::<kaspa_wallet_core::tx::payment::PaymentOutput>()?;
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::python::tx::utils::create_transaction_py, m)?)?;
