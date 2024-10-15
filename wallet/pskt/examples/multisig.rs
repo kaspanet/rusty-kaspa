@@ -1,5 +1,5 @@
 use kaspa_consensus_core::{
-    hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
+    hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync},
     tx::{TransactionId, TransactionOutpoint, UtxoEntry},
 };
 use kaspa_txscript::{multisig_redeem_script, opcodes::codes::OpData65, pay_to_script_hash_script, script_builder::ScriptBuilder};
@@ -51,8 +51,8 @@ fn main() {
     println!("Serialized after setting sequence: {}", ser_updated);
 
     let signer_pskt: PSKT<Signer> = serde_json::from_str(&ser_updated).expect("Failed to deserialize");
-    let mut reused_values = SigHashReusedValues::new();
-    let mut sign = |signer_pskt: PSKT<Signer>, kp: &Keypair| {
+    let reused_values = SigHashReusedValuesUnsync::new();
+    let sign = |signer_pskt: PSKT<Signer>, kp: &Keypair| {
         signer_pskt
             .pass_signature_sync(|tx, sighash| -> Result<Vec<SignInputOk>, String> {
                 let tx = dbg!(tx);
@@ -61,7 +61,7 @@ fn main() {
                     .iter()
                     .enumerate()
                     .map(|(idx, _input)| {
-                        let hash = calc_schnorr_signature_hash(&tx.as_verifiable(), idx, sighash[idx], &mut reused_values);
+                        let hash = calc_schnorr_signature_hash(&tx.as_verifiable(), idx, sighash[idx], &reused_values);
                         let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice()).unwrap();
                         Ok(SignInputOk {
                             signature: Signature::Schnorr(kp.sign_schnorr(msg)),

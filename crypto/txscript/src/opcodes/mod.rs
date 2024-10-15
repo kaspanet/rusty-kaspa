@@ -8,6 +8,7 @@ use crate::{
 };
 use blake2b_simd::Params;
 use core::cmp::{max, min};
+use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::tx::VerifiableTransaction;
 use sha2::{Digest, Sha256};
@@ -73,28 +74,31 @@ pub trait OpCodeMetadata: Debug {
     }
 }
 
-pub trait OpCodeExecution<T: VerifiableTransaction> {
-    fn empty() -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>
+pub trait OpCodeExecution<T: VerifiableTransaction, Reused: SigHashReusedValues> {
+    fn empty() -> Result<Box<dyn OpCodeImplementation<T, Reused>>, TxScriptError>
     where
         Self: Sized;
     #[allow(clippy::new_ret_no_self)]
-    fn new(data: Vec<u8>) -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>
+    fn new(data: Vec<u8>) -> Result<Box<dyn OpCodeImplementation<T, Reused>>, TxScriptError>
     where
         Self: Sized;
 
-    fn execute(&self, vm: &mut TxScriptEngine<T>) -> OpCodeResult;
+    fn execute(&self, vm: &mut TxScriptEngine<T, Reused>) -> OpCodeResult;
 }
 
 pub trait OpcodeSerialization {
     fn serialize(&self) -> Vec<u8>;
-    fn deserialize<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction>(
+    fn deserialize<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction, Reused: SigHashReusedValues>(
         it: &mut I,
-    ) -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>
+    ) -> Result<Box<dyn OpCodeImplementation<T, Reused>>, TxScriptError>
     where
         Self: Sized;
 }
 
-pub trait OpCodeImplementation<T: VerifiableTransaction>: OpCodeExecution<T> + OpCodeMetadata + OpcodeSerialization {}
+pub trait OpCodeImplementation<T: VerifiableTransaction, Reused: SigHashReusedValues>:
+    OpCodeExecution<T, Reused> + OpCodeMetadata + OpcodeSerialization
+{
+}
 
 impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
     fn value(&self) -> u8 {
@@ -193,13 +197,19 @@ impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
 
 // Helpers for some opcodes with shared data
 #[inline]
-fn push_data<T: VerifiableTransaction>(data: Vec<u8>, vm: &mut TxScriptEngine<T>) -> OpCodeResult {
+fn push_data<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+    data: Vec<u8>,
+    vm: &mut TxScriptEngine<T, Reused>,
+) -> OpCodeResult {
     vm.dstack.push(data);
     Ok(())
 }
 
 #[inline]
-fn push_number<T: VerifiableTransaction>(number: i64, vm: &mut TxScriptEngine<T>) -> OpCodeResult {
+fn push_number<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+    number: i64,
+    vm: &mut TxScriptEngine<T, Reused>,
+) -> OpCodeResult {
     vm.dstack.push_item(number);
     Ok(())
 }
@@ -958,7 +968,7 @@ opcode_list! {
 
 // converts an opcode from the list of Op0 to Op16 to its associated value
 #[allow(clippy::borrowed_box)]
-pub fn to_small_int<T: VerifiableTransaction>(opcode: &Box<dyn OpCodeImplementation<T>>) -> u8 {
+pub fn to_small_int<T: VerifiableTransaction, Reused: SigHashReusedValues>(opcode: &Box<dyn OpCodeImplementation<T, Reused>>) -> u8 {
     let value = opcode.value();
     if value == codes::OpFalse {
         return 0;
@@ -976,7 +986,7 @@ mod test {
     use crate::{opcodes, pay_to_address_script, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD};
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::constants::{SOMPI_PER_KASPA, TX_VERSION};
-    use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
+    use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
     use kaspa_consensus_core::tx::{
         PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
@@ -985,21 +995,21 @@ mod test {
 
     struct TestCase<'a> {
         init: Stack,
-        code: Box<dyn OpCodeImplementation<PopulatedTransaction<'a>>>,
+        code: Box<dyn OpCodeImplementation<PopulatedTransaction<'a>, SigHashReusedValuesUnsync>>,
         dstack: Stack,
     }
 
     struct ErrorTestCase<'a> {
         init: Stack,
-        code: Box<dyn OpCodeImplementation<PopulatedTransaction<'a>>>,
+        code: Box<dyn OpCodeImplementation<PopulatedTransaction<'a>, SigHashReusedValuesUnsync>>,
         error: TxScriptError,
     }
 
     fn run_success_test_cases(tests: Vec<TestCase>) {
         let cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValues::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
         for TestCase { init, code, dstack } in tests {
-            let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
+            let mut vm = TxScriptEngine::new(&reused_values, &cache);
             vm.dstack = init;
             code.execute(&mut vm).unwrap_or_else(|_| panic!("Opcode {} should not fail", code.value()));
             assert_eq!(*vm.dstack, dstack, "OpCode {} Pushed wrong value", code.value());
@@ -1008,9 +1018,9 @@ mod test {
 
     fn run_error_test_cases(tests: Vec<ErrorTestCase>) {
         let cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValues::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
         for ErrorTestCase { init, code, error } in tests {
-            let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
+            let mut vm = TxScriptEngine::new(&reused_values, &cache);
             vm.dstack.clone_from(&init);
             assert_eq!(
                 code.execute(&mut vm)
@@ -1025,7 +1035,7 @@ mod test {
 
     #[test]
     fn test_opcode_disabled() {
-        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction>>> = vec![
+        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpCat::empty().expect("Should accept empty"),
             opcodes::OpSubStr::empty().expect("Should accept empty"),
             opcodes::OpLeft::empty().expect("Should accept empty"),
@@ -1044,8 +1054,8 @@ mod test {
         ];
 
         let cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValues::new();
-        let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let mut vm = TxScriptEngine::new(&reused_values, &cache);
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -1057,7 +1067,7 @@ mod test {
 
     #[test]
     fn test_opcode_reserved() {
-        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction>>> = vec![
+        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpReserved::empty().expect("Should accept empty"),
             opcodes::OpVer::empty().expect("Should accept empty"),
             opcodes::OpVerIf::empty().expect("Should accept empty"),
@@ -1067,8 +1077,8 @@ mod test {
         ];
 
         let cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValues::new();
-        let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let mut vm = TxScriptEngine::new(&reused_values, &cache);
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -1080,7 +1090,7 @@ mod test {
 
     #[test]
     fn test_opcode_invalid() {
-        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction>>> = vec![
+        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpUnknown166::empty().expect("Should accept empty"),
             opcodes::OpUnknown167::empty().expect("Should accept empty"),
             opcodes::OpUnknown178::empty().expect("Should accept empty"),
@@ -1158,8 +1168,8 @@ mod test {
         ];
 
         let cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValues::new();
-        let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let mut vm = TxScriptEngine::new(&reused_values, &cache);
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -2739,7 +2749,7 @@ mod test {
         let (base_tx, input, utxo_entry) = make_mock_transaction(1);
 
         let sig_cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValues::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
 
         let code = opcodes::OpCheckLockTimeVerify::empty().expect("Should accept empty");
 
@@ -2751,7 +2761,7 @@ mod test {
         ] {
             let mut tx = base_tx.clone();
             tx.0.lock_time = tx_lock_time;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache)
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache)
                 .expect("Shouldn't fail");
             vm.dstack = vec![lock_time.clone()];
             match code.execute(&mut vm) {
@@ -2781,7 +2791,7 @@ mod test {
         let (tx, base_input, utxo_entry) = make_mock_transaction(1);
 
         let sig_cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValues::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
 
         let code = opcodes::OpCheckSequenceVerify::empty().expect("Should accept empty");
 
@@ -2794,7 +2804,7 @@ mod test {
         ] {
             let mut input = base_input.clone();
             input.sequence = tx_sequence;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache)
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache)
                 .expect("Shouldn't fail");
             vm.dstack = vec![sequence.clone()];
             match code.execute(&mut vm) {

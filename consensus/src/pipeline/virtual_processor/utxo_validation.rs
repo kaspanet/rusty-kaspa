@@ -31,6 +31,7 @@ use kaspa_muhash::MuHash;
 use kaspa_utils::refs::Refs;
 
 use rayon::prelude::*;
+use smallvec::{smallvec, SmallVec};
 use std::{iter::once, ops::Deref};
 
 /// A context for processing the UTXO state of a block with respect to its selected parent.
@@ -95,12 +96,14 @@ impl VirtualStateProcessor {
             // No need to fully validate selected parent transactions since selected parent txs were already validated
             // as part of selected parent UTXO state verification with the exact same UTXO context.
             let validation_flags = if is_selected_parent { TxValidationFlags::SkipScriptChecks } else { TxValidationFlags::Full };
-            let validated_transactions = self.validate_transactions_in_parallel(&txs, &composed_view, pov_daa_score, validation_flags);
+            let (validated_transactions, inner_multiset) =
+                self.validate_transactions_with_muhash_in_parallel(&txs, &composed_view, pov_daa_score, validation_flags);
+
+            ctx.multiset_hash.combine(&inner_multiset);
 
             let mut block_fee = 0u64;
             for (validated_tx, _) in validated_transactions.iter() {
                 ctx.mergeset_diff.add_transaction(validated_tx, pov_daa_score).unwrap();
-                ctx.multiset_hash.add_transaction(validated_tx, pov_daa_score);
                 ctx.accepted_tx_ids.push(validated_tx.id());
                 block_fee += validated_tx.calculated_fee;
             }
@@ -229,6 +232,37 @@ impl VirtualStateProcessor {
         })
     }
 
+    /// Same as validate_transactions_in_parallel except during the iteration this will also
+    /// calculate the muhash in parallel for valid transactions
+    pub(crate) fn validate_transactions_with_muhash_in_parallel<'a, V: UtxoView + Sync>(
+        &self,
+        txs: &'a Vec<Transaction>,
+        utxo_view: &V,
+        pov_daa_score: u64,
+        flags: TxValidationFlags,
+    ) -> (SmallVec<[(ValidatedTransaction<'a>, u32); 2]>, MuHash) {
+        self.thread_pool.install(|| {
+            txs
+                .par_iter() // We can do this in parallel without complications since block body validation already ensured
+                            // that all txs within each block are independent
+                .enumerate()
+                .skip(1) // Skip the coinbase tx.
+                .filter_map(|(i, tx)| self.validate_transaction_in_utxo_context(tx, &utxo_view, pov_daa_score, flags).ok().map(|vtx| {
+                    let mh = MuHash::from_transaction(&vtx, pov_daa_score);
+                    (smallvec![(vtx, i as u32)], mh)
+                }
+                ))
+                .reduce(
+                    || (smallvec![], MuHash::new()),
+                    |mut a, mut b| {
+                        a.0.append(&mut b.0);
+                        a.1.combine(&b.1);
+                        a
+                    },
+                )
+        })
+    }
+
     /// Attempts to populate the transaction with UTXO entries and performs all utxo-related tx validations
     pub(super) fn validate_transaction_in_utxo_context<'a>(
         &self,
@@ -316,5 +350,62 @@ impl VirtualStateProcessor {
         )?;
         mutable_tx.calculated_fee = Some(calculated_fee);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use itertools::Itertools;
+
+    use super::*;
+
+    #[test]
+    fn test_rayon_reduce_retains_order() {
+        // this is an independent test to replicate the behavior of
+        // validate_txs_in_parallel and validate_txs_with_muhash_in_parallel
+        // and assert that the order of data is retained when doing par_iter
+        let data: Vec<u16> = (1..=1000).collect();
+
+        let collected: Vec<u16> = data
+            .par_iter()
+            .filter_map(|a| {
+                let chance: f64 = rand::random();
+                if chance < 0.05 {
+                    return None;
+                }
+                Some(*a)
+            })
+            .collect();
+
+        println!("collected len: {}", collected.len());
+
+        collected.iter().tuple_windows().for_each(|(prev, curr)| {
+            // Data was originally sorted, so we check if they remain sorted after filtering
+            assert!(prev < curr, "expected {} < {} if original sort was preserved", prev, curr);
+        });
+
+        let reduced: SmallVec<[u16; 2]> = data
+            .par_iter()
+            .filter_map(|a: &u16| {
+                let chance: f64 = rand::random();
+                if chance < 0.05 {
+                    return None;
+                }
+                Some(smallvec![*a])
+            })
+            .reduce(
+                || smallvec![],
+                |mut arr, mut curr_data| {
+                    arr.append(&mut curr_data);
+                    arr
+                },
+            );
+
+        println!("reduced len: {}", reduced.len());
+
+        reduced.iter().tuple_windows().for_each(|(prev, curr)| {
+            // Data was originally sorted, so we check if they remain sorted after filtering
+            assert!(prev < curr, "expected {} < {} if original sort was preserved", prev, curr);
+        });
     }
 }

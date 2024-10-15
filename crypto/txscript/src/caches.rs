@@ -31,6 +31,10 @@ impl<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Syn
         }
     }
 
+    pub fn clear(&self) {
+        self.map.write().clear();
+    }
+
     pub(crate) fn get(&self, key: &TKey) -> Option<TData> {
         self.map.read().get(key).cloned().inspect(|_data| {
             self.counters.get_counts.fetch_add(1, Ordering::Relaxed);

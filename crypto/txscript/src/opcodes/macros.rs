@@ -6,9 +6,9 @@ macro_rules! opcode_serde {
             [[self.value()].as_slice(), length.to_le_bytes().as_slice(), self.data.as_slice()].concat()
         }
 
-        fn deserialize<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction>(
+        fn deserialize<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction, Reused: SigHashReusedValues>(
             it: &mut I,
-        ) -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError> {
+        ) -> Result<Box<dyn OpCodeImplementation<T, Reused>>, TxScriptError> {
             match it.take(size_of::<$type>()).copied().collect::<Vec<u8>>().try_into() {
                 Ok(bytes) => {
                     let length = <$type>::from_le_bytes(bytes) as usize;
@@ -32,9 +32,9 @@ macro_rules! opcode_serde {
             [[self.value()].as_slice(), self.data.clone().as_slice()].concat()
         }
 
-        fn deserialize<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction>(
+        fn deserialize<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction, Reused: SigHashReusedValues>(
             it: &mut I,
-        ) -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError> {
+        ) -> Result<Box<dyn OpCodeImplementation<T, Reused>>, TxScriptError> {
             // Static length includes the opcode itself
             let data: Vec<u8> = it.take($length - 1).copied().collect();
             Self::new(data)
@@ -44,7 +44,7 @@ macro_rules! opcode_serde {
 
 macro_rules! opcode_init {
     ($type:ty) => {
-        fn new(data: Vec<u8>) -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError> {
+        fn new(data: Vec<u8>) -> Result<Box<dyn OpCodeImplementation<T, Reused>>, TxScriptError> {
             if data.len() > <$type>::MAX as usize {
                 return Err(TxScriptError::MalformedPush(<$type>::MAX as usize, data.len()));
             }
@@ -52,7 +52,7 @@ macro_rules! opcode_init {
         }
     };
     ($length: literal) => {
-        fn new(data: Vec<u8>) -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError> {
+        fn new(data: Vec<u8>) -> Result<Box<dyn OpCodeImplementation<T, Reused>>, TxScriptError> {
             if data.len() != $length - 1 {
                 return Err(TxScriptError::MalformedPush($length - 1, data.len()));
             }
@@ -69,20 +69,20 @@ macro_rules! opcode_impl {
             opcode_serde!($length);
         }
 
-        impl<T: VerifiableTransaction> OpCodeExecution<T> for $name {
-            fn empty() -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError> {
+        impl<T: VerifiableTransaction, Reused: SigHashReusedValues> OpCodeExecution<T, Reused> for $name {
+            fn empty() -> Result<Box<dyn OpCodeImplementation<T, Reused>>, TxScriptError> {
                 Self::new(vec![])
             }
 
             opcode_init!($length);
 
             #[allow(unused_variables)]
-            fn execute(&$self, $vm: &mut TxScriptEngine<T>) -> OpCodeResult {
+            fn execute(&$self, $vm: &mut TxScriptEngine<T, Reused>) -> OpCodeResult {
                 $code
             }
         }
 
-        impl<T :VerifiableTransaction> OpCodeImplementation<T> for $name {}
+        impl<T: VerifiableTransaction, Reused: SigHashReusedValues> OpCodeImplementation<T, Reused> for $name {}
     }
 }
 
@@ -111,7 +111,7 @@ macro_rules! opcode_list {
             )?
         )*
 
-        pub fn deserialize_next_opcode<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction>(it: &mut I) -> Option<Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>> {
+        pub fn deserialize_next_opcode<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction, Reused: SigHashReusedValues>(it: &mut I) -> Option<Result<Box<dyn OpCodeImplementation<T, Reused>>, TxScriptError>> {
             match it.next() {
                 Some(opcode_num) => match opcode_num {
                     $(
