@@ -5,7 +5,6 @@ use kaspa_consensus_core::{
     BlockHashMap, BlueWorkType, HashMapCustomHasher,
 };
 use kaspa_hashes::Hash;
-use kaspa_math::Uint192;
 use kaspa_utils::refs::Refs;
 
 use crate::{
@@ -118,7 +117,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
 
         let blue_score = self.ghostdag_store.get_blue_score(selected_parent).unwrap() + new_block_data.mergeset_blues.len() as u64;
 
-        let blue_work: Uint192 = if self.use_score_as_work {
+        let blue_work: BlueWorkType = if self.use_score_as_work {
             blue_score.into()
         } else {
             let added_blue_work: BlueWorkType = new_block_data

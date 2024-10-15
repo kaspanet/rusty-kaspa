@@ -344,7 +344,7 @@ impl HeaderProcessor {
             .collect_vec()
     }
 
-    /// Runs the GHOSTDAG algorithm for all block levels and writes the data into the context (if hasn't run already)
+    /// Runs the GHOSTDAG algorithm and writes the data into the context (if hasn't run already)
     fn ghostdag(&self, ctx: &mut HeaderProcessingContext) {
         let ghostdag_data = self
             .ghostdag_store
@@ -365,8 +365,6 @@ impl HeaderProcessor {
         //
         // Append-only stores: these require no lock and hence done first in order to reduce locking time
         //
-
-        // This data might have been already written when applying the pruning proof.
         self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_primary_data).unwrap();
 
         if let Some(window) = ctx.block_window_for_difficulty {
