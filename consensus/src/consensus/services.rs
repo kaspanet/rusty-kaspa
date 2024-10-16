@@ -10,7 +10,7 @@ use crate::{
             selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB,
         },
     },
-    pipeline::tx_receipts_processor::processor::MerkleProofsManager,
+    pipeline::tx_receipts_processor::merkle_proofs_manager::MerkleProofsManager,
     processes::{
         block_depth::BlockDepthManager, coinbase::CoinbaseManager, ghostdag::protocol::GhostdagManager,
         parents_builder::ParentsManager, pruning::PruningPointManager, pruning_proof::PruningProofManager, sync::SyncManager,
@@ -26,6 +26,7 @@ pub type DbGhostdagManager =
     GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
 
 pub type DbDagTraversalManager = DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
+pub type DbMerkleProofsManager = MerkleProofsManager<DbSelectedChainStore,DbReachabilityStore,DbHeadersStore>;
 
 pub type DbWindowManager = DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>;
 
@@ -63,7 +64,7 @@ pub struct ConsensusServices {
     pub depth_manager: DbBlockDepthManager,
     pub mass_calculator: MassCalculator,
     pub transaction_validator: TransactionValidator,
-    pub merkle_proofs_manager: MerkleProofsManager,
+    pub merkle_proofs_manager: DbMerkleProofsManager,
 }
 
 impl ConsensusServices {
@@ -197,6 +198,8 @@ impl ConsensusServices {
             storage.pruning_point_store.clone(),
             storage.statuses_store.clone(),
         );
+        let merkle_proofs_manager = MerkleProofsManager::new(params, &storage,            dag_traversal_manager.clone(),
+        pruning_point_manager.clone(),ghostdag_primary_manager.clone(),reachability_service.clone(),storage.headers_store.clone(),storage.selected_chain_store.clone());
 
         Arc::new(Self {
             storage,

@@ -1,3 +1,4 @@
+
 use kaspa_hashes::{Hash, HasherBase, MerkleBranchHash, ZERO_HASH};
 #[derive(Clone)]
 pub enum LeafRoute {
@@ -13,7 +14,7 @@ pub struct WitnessSegment {
 
 fn derive_merkle_tree(hashes: impl ExactSizeIterator<Item = Hash>) -> Vec<Option<Hash>> {
     if hashes.len() == 0 {
-        return vec![Some(ZERO_HASH)];
+        return vec!(Some(ZERO_HASH));
     }
     let next_pot = hashes.len().next_power_of_two(); //maximal number of  leaves in last level of tree
     let vec_len = 2 * next_pot - 1; //maximal number of nodes in tree
@@ -41,29 +42,30 @@ pub fn calc_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
     let merkles = derive_merkle_tree(hashes);
     merkles.last().unwrap().unwrap()
 }
-pub fn create_merkle_witness_from_unsorted(hashes: impl ExactSizeIterator<Item = Hash>, leaf_hash: Hash) -> Option<MerkleWitness> {
+pub fn create_merkle_witness_from_unsorted(hashes: impl ExactSizeIterator<Item = Hash>, leaf_hash: Hash) -> Result<MerkleWitness,MerkleTreeError> {
     let is_sorted = false;
     create_merkle_witness(hashes, leaf_hash, is_sorted)
 }
-pub fn create_merkle_witness_from_sorted(hashes: impl ExactSizeIterator<Item = Hash>, leaf_hash: Hash) -> Option<MerkleWitness> {
+pub fn create_merkle_witness_from_sorted(hashes: impl ExactSizeIterator<Item = Hash>, leaf_hash: Hash) -> Result<MerkleWitness,MerkleTreeError> {
     let is_sorted = true;
     create_merkle_witness(hashes, leaf_hash, is_sorted)
 }
-pub fn create_merkle_witness(hashes: impl ExactSizeIterator<Item = Hash>, leaf_hash: Hash, is_sorted: bool) -> Option<MerkleWitness> {
+pub fn create_merkle_witness(hashes: impl ExactSizeIterator<Item = Hash>, leaf_hash: Hash, is_sorted: bool) -> Result<MerkleWitness,MerkleTreeError> {
     let vec_len = hashes.len();
     if vec_len == 0 && leaf_hash == ZERO_HASH {
-        //edge case, return empty witness and not None
-        return Some(vec![]);
+        //edge case, return empty witness and not an error
+        return Ok(vec!());
     }
     let next_pot = vec_len.next_power_of_two(); //maximal number of  leaves in last level of tree
     let merkles = derive_merkle_tree(hashes);
     let leaf_index = if is_sorted {
-        merkles[0..vec_len].binary_search(&Some(leaf_hash)).ok()?
+        merkles[0..vec_len].binary_search(&Some(leaf_hash))
+        .map_err(|_| MerkleTreeError::HashNotFoundInSorterd(leaf_hash))?
     } else {
-        merkles[0..vec_len].iter().position(|&e| e == Some(leaf_hash))?
+        merkles[0..vec_len].iter().position(|&e| e == Some(leaf_hash))
+        .ok_or(MerkleTreeError::HashNotFound(leaf_hash))?
     };
-
-    let mut witness_vec = vec![];
+    let mut witness_vec = vec!();
     let mut level_start = 0;
     let mut level_length = next_pot;
     let mut level_index = leaf_index;
@@ -77,7 +79,7 @@ pub fn create_merkle_witness(hashes: impl ExactSizeIterator<Item = Hash>, leaf_h
                 WitnessSegment {
                     companion_hash: merkles[level_start + level_index + 1].unwrap_or(ZERO_HASH),
                     leaf_route: LeafRoute::Left,
-                } //edge case relevant to the leaf level only
+                } //ZERO_HASH edge case relevant to the leaf level only
             } else {
                 WitnessSegment { companion_hash: merkles[level_start + level_index - 1].unwrap(), leaf_route: LeafRoute::Right }
             }
@@ -89,7 +91,7 @@ pub fn create_merkle_witness(hashes: impl ExactSizeIterator<Item = Hash>, leaf_h
     }
     // assert_eq!(level_start,vec_len-1);
     // assert_eq!(level_index,0);
-    Some(witness_vec)
+    Ok(witness_vec)
 }
 
 pub fn verify_merkle_witness(witness_vec: &MerkleWitness, leaf_value: Hash, merkle_root_hash: Hash) -> bool {
@@ -136,7 +138,7 @@ mod tests {
         //check false is returned for other hashes
         assert!(!verify_merkle_witness(&empty_witness, Hash::from(HASH1), merkle_root));
         //check erronous case behaves as expected
-        assert!(create_merkle_witness_from_sorted(empty_vec.clone().into_iter(), Hash::from(HASH1)).is_none());
+        assert!(create_merkle_witness_from_sorted(empty_vec.clone().into_iter(), Hash::from(HASH1)).is_err());
     }
     // test separately the single leaf and double leaf tree cases
     #[test]
@@ -159,9 +161,9 @@ mod tests {
             calc_merkle_root(double_vec.clone().into_iter())
         ));
         // //testing erronous case behaviour
-        assert!(create_merkle_witness_from_unsorted(single_vec.clone().into_iter(), Hash::from(HASH2)).is_none());
-        assert!(create_merkle_witness_from_unsorted(single_vec.clone().into_iter(), Hash::from(HASH3)).is_none());
-        assert!(create_merkle_witness_from_unsorted(double_vec.clone().into_iter(), Hash::from(HASH3)).is_none());
+        assert!(create_merkle_witness_from_unsorted(single_vec.clone().into_iter(), Hash::from(HASH2)).is_err());
+        assert!(create_merkle_witness_from_unsorted(single_vec.clone().into_iter(), Hash::from(HASH3)).is_err());
+        assert!(create_merkle_witness_from_unsorted(double_vec.clone().into_iter(), Hash::from(HASH3)).is_err());
     }
     #[test]
     fn test_witnesses_consistency() {
@@ -203,9 +205,19 @@ mod tests {
             //testing erronous case behaviour
             let leaf_index = 2 * i - 1;
             assert!(
-                create_merkle_witness_from_sorted(sorted_hash_vec.clone().into_iter().take(i), sorted_hash_vec[leaf_index]).is_none()
+                create_merkle_witness_from_sorted(sorted_hash_vec.clone().into_iter().take(i), sorted_hash_vec[leaf_index]).is_err()
             );
-            assert!(create_merkle_witness_from_unsorted(hash_vec.clone().into_iter().take(i), hash_vec[leaf_index]).is_none());
+            assert!(create_merkle_witness_from_unsorted(hash_vec.clone().into_iter().take(i), hash_vec[leaf_index]).is_err());
         }
     }
+}
+
+use thiserror::Error;
+
+#[derive(Error, PartialEq, Eq, Debug, Clone)]
+pub enum MerkleTreeError {
+    #[error("hash {0} is not a leaf in the tree")]
+    HashNotFound(Hash),
+    #[error("hash {0} is not a leaf in the tree, or the leafs are not sorted")]
+    HashNotFoundInSorterd(Hash),
 }

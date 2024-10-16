@@ -1,8 +1,7 @@
 use super::{
-    pchmr_store::{DbPchmrStore, PchmrStoreReader},
-    rep_parents_store::{DbRepParentsStore, RepParentsStoreReader},
+    error::ReceiptsError, pchmr_store::{DbPchmrStore, PchmrStoreReader}, rep_parents_store::{DbRepParentsStore, RepParentsStoreReader}
 };
-use crate::model::stores::selected_chain::SelectedChainStoreReader;
+use crate::model::stores::selected_chain:: SelectedChainStoreReader;
 #[allow(unused_imports)]
 use crate::{
     consensus::{
@@ -86,7 +85,7 @@ use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExte
 #[allow(unused_imports)]
 use kaspa_hashes::Hash;
 use kaspa_merkle::{
-    calc_merkle_root, create_merkle_witness_from_sorted, create_merkle_witness_from_unsorted, verify_merkle_witness, MerkleWitness,
+    calc_merkle_root, create_merkle_witness_from_sorted, create_merkle_witness_from_unsorted, verify_merkle_witness, MerkleWitness
 };
 #[allow(unused_imports)]
 use kaspa_muhash::MuHash;
@@ -122,7 +121,7 @@ use std::{
     sync::{atomic::Ordering, Arc},
 };
 #[derive(Clone)]
-pub struct MerkleProofsManager {
+pub struct MerkleProofsManager<T:SelectedChainStoreReader,U: ReachabilityStoreReader,V:HeaderStoreReader> {
     // Channels
     // receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
     // pruning_sender: CrossbeamSender<PruningProcessingMessage>,
@@ -145,14 +144,13 @@ pub struct MerkleProofsManager {
     // Stores
     // pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
     // pub(super) ghostdag_primary_store: Arc<DbGhostdagStore>,
-    pub(super) headers_store: Arc<DbHeadersStore>,
-    // pub(super) daa_excluded_store: Arc<DbDaaStore>,
+    headers_store: Arc<V>,
+    selected_chain_store: Arc<RwLock<T>>,    // pub(super) daa_excluded_store: Arc<DbDaaStore>,
     // pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub(super) pruning_point_store: Arc<RwLock<DbPruningStore>>,
-    // pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
+    pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     // pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
     // pub(super) depth_store: Arc<DbDepthStore>,
-    pub(super) selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
     pub(super) hash_to_pchmr_store: Arc<DbPchmrStore>,
     pub(super) rep_parents_store: Arc<DbRepParentsStore>,
 
@@ -168,14 +166,14 @@ pub struct MerkleProofsManager {
     // pub lkg_virtual_state: LkgVirtualState,
 
     // // Managers and services
-    // pub(super) ghostdag_manager: DbGhostdagManager,
-    pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
-    // pub(super) relations_service: MTRelationsService<DbRelationsStore>,
-    // pub(super) dag_traversal_manager: DbDagTraversalManager,
+    pub(super) ghostdag_manager: DbGhostdagManager,
+    pub(super )reachability_service: MTReachabilityService<U>,    // pub(super) relations_service: MTRelationsService<DbRelationsStore>,
+    pub(super) dag_traversal_manager: DbDagTraversalManager,
     // pub(super) window_manager: DbWindowManager,
     // pub(super) coinbase_manager: CoinbaseManager,
     // pub(super) transaction_validator: TransactionValidator,
-    // pub(super) pruning_point_manager: DbPruningPointManager,
+    pub(super) pruning_point_manager: DbPruningPointManager,
+    
     // pub(super) parents_manager: DbParentsManager,
     // pub(super) depth_manager: DbBlockDepthManager,
 
@@ -192,7 +190,7 @@ pub struct MerkleProofsManager {
     pub(crate) storage_mass_activation_daa_score: u64,
 }
 
-impl MerkleProofsManager {
+impl <T:SelectedChainStoreReader,U: ReachabilityStoreReader,V:HeaderStoreReader> MerkleProofsManager<T,U,V,>  {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         // receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
@@ -202,7 +200,14 @@ impl MerkleProofsManager {
         params: &Params,
         // db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
-        reachability_service: MTReachabilityService<DbReachabilityStore>,
+        dag_traversal_manager:DbDagTraversalManager,
+        pruning_point_manager: DbPruningPointManager,
+        ghostdag_manager: DbGhostdagManager,
+
+        reachability_service: MTReachabilityService<U>,
+        headers_store: Arc<V>,
+        selected_chain_store: Arc<RwLock<T>>,
+
         // pruning_lock: SessionLock,
         // notification_root: Arc<ConsensusNotificationRoot>,
         // counters: Arc<ProcessingCounters>,
@@ -221,15 +226,15 @@ impl MerkleProofsManager {
 
             // db,
             // statuses_store: storage.statuses_store.clone(),
-            headers_store: storage.headers_store.clone(),
+            headers_store: headers_store,
             // ghostdag_primary_store: storage.ghostdag_primary_store.clone(),
             // daa_excluded_store: storage.daa_excluded_store.clone(),
             // block_transactions_store: storage.block_transactions_store.clone(),
             pruning_point_store: storage.pruning_point_store.clone(),
-            // past_pruning_points_store: storage.past_pruning_points_store.clone(),
+            past_pruning_points_store: storage.past_pruning_points_store.clone(),
             // body_tips_store: storage.body_tips_store.clone(),
             // depth_store: storage.depth_store.clone(),
-            selected_chain_store: storage.selected_chain_store.clone(),
+            selected_chain_store: selected_chain_store.clone(),
             // utxo_diffs_store: storage.utxo_diffs_store.clone(),
             // utxo_multisets_store: storage.utxo_multisets_store.clone(),
             acceptance_data_store: storage.acceptance_data_store.clone(),
@@ -237,14 +242,14 @@ impl MerkleProofsManager {
             // pruning_utxoset_stores: storage.pruning_utxoset_stores.clone(),
             // lkg_virtual_state: storage.lkg_virtual_state.clone(),
 
-            // ghostdag_manager: services.ghostdag_primary_manager.clone(),
+            ghostdag_manager: ghostdag_manager.clone(),
             reachability_service,
             // relations_service: services.relations_service.clone(),
-            // dag_traversal_manager: services.dag_traversal_manager.clone(),
+            dag_traversal_manager: dag_traversal_manager.clone(),
             // window_manager: services.window_manager.clone(),
             // coinbase_manager: services.coinbase_manager.clone(),
             // transaction_validator: services.transaction_validator.clone(),
-            // pruning_point_manager: services.pruning_point_manager.clone(),
+            pruning_point_manager: pruning_point_manager.clone(),
             // parents_manager: services.parents_manager.clone(),
             // depth_manager: services.depth_manager.clone(),
 
@@ -257,14 +262,11 @@ impl MerkleProofsManager {
         }
     }
 
-    pub fn create_merkle_witness_for_tx(&self, tracked_tx_id: Hash, req_block_hash: Hash) -> Option<MerkleWitness> {
+    pub fn create_merkle_witness_for_tx(&self, tracked_tx_id: Hash, req_block_hash: Hash) -> Result<MerkleWitness,ReceiptsError> {
         // maybe better here to make it return result? rethink
         let mergeset_txs_manager = self.acceptance_data_store.get(req_block_hash); // I think this is incorrect
-        if mergeset_txs_manager.is_err() {
-            return None;
-        };
-        let mergeset_txs_manager = mergeset_txs_manager.unwrap();
-        let mut accepted_txs = vec![];
+        let mergeset_txs_manager = mergeset_txs_manager?;
+        let mut accepted_txs = vec!();
 
         for parent_acc_data in mergeset_txs_manager.iter() {
             let parent_acc_txs = parent_acc_data.accepted_transactions.iter().map(|tx| tx.transaction_id);
@@ -275,7 +277,7 @@ impl MerkleProofsManager {
         }
         accepted_txs.sort();
 
-        create_merkle_witness_from_sorted(accepted_txs.into_iter(), tracked_tx_id)
+        create_merkle_witness_from_sorted(accepted_txs.into_iter(), tracked_tx_id).map_err(|e|e.into())
     }
     pub fn verify_merkle_witness_for_tx(&self, witness: &MerkleWitness, tracked_tx_id: Hash, req_block_hash: Hash) -> bool {
         // arguably better here to make it return result? rethink
@@ -291,29 +293,18 @@ impl MerkleProofsManager {
         // function receives the selected parent of the relevant block
         //returns all 2^i deep 'selected' parents up to the posterity block not included
         let pre_posterity_hash = self.get_prev_posterity_block(req_block_parent).unwrap();
-        let pre_posterity_daa = self.headers_store.get_daa_score(pre_posterity_hash).unwrap();
-        let mut representative_parents_list = vec![];
+        let pre_posterity_bscore = self.headers_store.get_blue_score(pre_posterity_hash).unwrap();
+        let mut representative_parents_list = vec!();
         /*  currently I store the representative parents of each block in memory to implement this efficiently,
         there likely are better ways, but we might change to a completely different method later on
         so currently not worth too much thought*/
         let mut i = 0;
         let mut curr_block = self.reachability_service.default_backward_chain_iterator(req_block_parent).next();
-        while curr_block.is_some() && self.headers_store.get_daa_score(pre_posterity_hash).unwrap() > pre_posterity_daa {
+        while curr_block.is_some() && self.headers_store.get_blue_score(pre_posterity_hash).unwrap() > pre_posterity_bscore {
             representative_parents_list.push(curr_block.unwrap());
             curr_block = self.rep_parents_store.get_ith_rep_parent(curr_block.unwrap(), i);
             i += 1;
         }
-        // for (i, current) in self.reachability_service.default_backward_chain_iterator(req_block_hash).enumerate() {
-        //     let index = i + 1; //enumeration should start from 1
-        //     if current == pre_posterity_hash {
-        //         break;
-        //     }
-        //     if (index & (index - 1)) == 0 {
-        //         //trickery to check if index is a power of two
-        //         representative_parents_list.push(current);
-        //     }
-        //     continue;
-        // }
         representative_parents_list
     }
     #[allow(clippy::let_and_return)]
@@ -321,24 +312,23 @@ impl MerkleProofsManager {
         // function receives the selected parent of the relevant block
         let representative_parents_list = self.representative_log_parents(selected_parent);
         let ret = calc_merkle_root(representative_parents_list.into_iter());
-        //temporary non hard fork solution
-        // self.hash_to_pchmr_store.insert(req_block_parent, ret).unwrap();
+
         ret
     }
-    pub fn create_pchmr_witness(&self, leaf_block_hash: Hash, root_block_hash: Hash) -> Option<MerkleWitness> {
+    pub fn create_pchmr_witness(&self, leaf_block_hash: Hash, root_block_hash: Hash) -> Result<MerkleWitness,ReceiptsError> {
         // proof that a block belongs to the prhmr tree of another block
         let parent_of_root = self.reachability_service.get_chain_parent(root_block_hash);
         let log_sized_parents_list = self.representative_log_parents(parent_of_root);
 
-        create_merkle_witness_from_unsorted(log_sized_parents_list.into_iter(), leaf_block_hash)
+        create_merkle_witness_from_unsorted(log_sized_parents_list.into_iter(), leaf_block_hash).map_err(|e|e.into())
     }
     pub fn verify_pchmr_witness(&self, witness: &MerkleWitness, leaf_block_hash: Hash, root_block_hash: Hash) -> bool {
         verify_merkle_witness(witness, leaf_block_hash, self.hash_to_pchmr_store.get(root_block_hash).unwrap())
     }
-    pub fn create_pochm_proof(&self, req_block_hash: Hash) -> Option<Pochm> {
+    pub fn create_pochm_proof(&self, req_block_hash: Hash) -> Result<Pochm,ReceiptsError> {
         //Assumes: requested block hash is on the selected chain
         //needs be relooked at
-        let mut proof = vec![];
+        let mut proof = vec!();
         let post_posterity_hash = self.get_post_posterity_block(req_block_hash)?;
         let req_block_index = self.selected_chain_store.read().get_by_hash(req_block_hash).unwrap();
         let (mut prev_hash, mut prev_index) =
@@ -356,38 +346,8 @@ impl MerkleProofsManager {
             (prev_hash, prev_index) = (curr_hash, curr_index);
             diff = prev_index - req_block_index;
         }
-        Some(proof)
+        Ok(proof)
     }
-    // let mut prev_hash = post_posterity_hash;
-    // loop {
-    //     for curr_hash in self.rep_parents_store.get(post_posterity_hash).unwrap().into_iter().rev(){
-    //         let curr_daa_score=self.headers_store.get_daa_score(curr_hash).unwrap();
-    //         if req_daa_score==curr_daa_score
-    //             {return Some(proof)}
-    //         if req_daa_score>curr_daa_score
-    //             {break;}
-    //         else{
-    //             let pchmr_proof_for_current = self.create_pchmr_witness(curr_hash, prev_hash)?;
-    //             let prev_header: Arc<Header> = self.headers_store.get_header(prev_hash).unwrap();
-    //             proof.push(PochmSegment { pchmr_witness: pchmr_proof_for_current, header: prev_header });
-    //             prev_hash = curr_hash;
-    //         }
-    //     }
-    // }
-    // for (i, current_hash) in self.reachability_service.default_backward_chain_iterator(post_posterity_hash).enumerate() {
-    //     let index = i + 1; //enumeration should start from 1
-    //     if current_hash == req_block_hash || (index & (index - 1)) == 0 {
-    //         //trickery to check if it is a power of two
-
-    //         proof.push(PochmSegment { pchmr_witness: pchmr_proof_for_current, header: prev_header });
-    //         prev_hash = current_hash;
-    //     }
-    //     if current_hash == req_block_hash {
-    //         break;
-    //     }
-    // }
-    //     // Some(proof)
-    // }
     pub fn verify_pochm_proof(&self, req_block_hash: Hash, witness: &Pochm) -> bool {
         //needs be relooked at
         let _post_posterity_header = &witness[0].header;
@@ -406,17 +366,17 @@ impl MerkleProofsManager {
         }
         true
     }
-    pub fn generate_tx_receipt(&self, req_block_hash: Hash, tracked_tx_id: Hash) -> Option<TxReceipt> {
+    pub fn generate_tx_receipt(&self, req_block_hash: Hash, tracked_tx_id: Hash) -> Result<TxReceipt,ReceiptsError> {
         let pochm = self.create_pochm_proof(req_block_hash)?;
         let tx_acc_proof = self.create_merkle_witness_for_tx(tracked_tx_id, req_block_hash)?;
-        Some(TxReceipt { tracked_tx_id, accepting_block_hash: req_block_hash, pochm, tx_acc_proof })
+        Ok(TxReceipt { tracked_tx_id, accepting_block_hash: req_block_hash, pochm, tx_acc_proof })
     }
-    pub fn generate_proof_of_pub(&self, req_block_hash: Hash, tracked_tx_id: Hash) -> Option<ProofOfPublication> {
+    pub fn generate_proof_of_pub(&self, req_block_hash: Hash, tracked_tx_id: Hash) -> Result<ProofOfPublication,ReceiptsError> {
         /*there is a certain degree of inefficiency here, as post_posterity is calculated again in create_pochm function
         however I expect this feature to rarely be called so optimizations seem not worth it */
         let post_posterity = self.get_post_posterity_block(req_block_hash)?;
         let tx_pub_proof = self.create_merkle_witness_for_tx(tracked_tx_id, req_block_hash)?;
-        let mut headers_chain_to_selected = vec![];
+        let mut headers_chain_to_selected = vec!();
 
         //find a chain block on the path to post_posterity
         for block in self.reachability_service.forward_chain_iterator(req_block_hash, post_posterity, true) {
@@ -427,7 +387,7 @@ impl MerkleProofsManager {
         }
         let pochm = self.create_pochm_proof(headers_chain_to_selected.last().unwrap().hash)?;
         headers_chain_to_selected.remove(0); //remove the publishing block itself from the chain as it is redundant
-        Some(ProofOfPublication { tracked_tx_id, pub_block_hash: req_block_hash, pochm, tx_pub_proof, headers_chain_to_selected })
+        Ok(ProofOfPublication { tracked_tx_id, pub_block_hash: req_block_hash, pochm, tx_pub_proof, headers_chain_to_selected })
     }
     pub fn verify_tx_receipt(&self, tx_receipt: TxReceipt) -> bool {
         self.verify_merkle_witness_for_tx(&tx_receipt.tx_acc_proof, tx_receipt.tracked_tx_id, tx_receipt.accepting_block_hash)
@@ -451,22 +411,23 @@ impl MerkleProofsManager {
             && self.verify_pochm_proof(accepting_block_hash, &proof_of_pub.pochm)
     }
 
-    pub fn get_post_posterity_block(&self, block_hash: Hash) -> Option<Hash> {
+    pub fn get_post_posterity_block(&self, block_hash: Hash) -> Result<Hash,ReceiptsError> {
         //reach the first proceeding selected chain block
         let pruning_head = self.pruning_point_store.read().pruning_point().unwrap(); //may be inefficient
         let candidate_block = self
             .reachability_service
             .forward_chain_iterator(block_hash, pruning_head, true)
-            .find(|&block| self.selected_chain_store.read().get_by_hash(block).is_ok())?;
+            .find(|&block| self.selected_chain_store.read().get_by_hash(block).is_ok()).ok_or(ReceiptsError::PostPosterityDoesNotExistYet(block_hash))?;
 
-        let candidate_daa: u64 = self.headers_store.get_daa_score(candidate_block).unwrap();
-        let pruning_head_daa = self.headers_store.get_daa_score(pruning_head).unwrap();
-        let cutoff_daa = candidate_daa - candidate_daa % self.posterity_depth + self.posterity_depth;
-        if cutoff_daa > pruning_head_daa {
+        let candidate_bscore: u64 = self.headers_store.get_blue_score(candidate_block).unwrap();
+        let pruning_head_bscore = self.headers_store.get_blue_score(pruning_head).unwrap();
+        let cutoff_bscore = candidate_bscore - candidate_bscore % self.posterity_depth + self.posterity_depth;
+        if cutoff_bscore > pruning_head_bscore {
             // Posterity block not yet available.
-            None
-        } else {
-            self.get_posterity_by_daa(candidate_block, cutoff_daa)
+            Err(ReceiptsError::PostPosterityDoesNotExistYet(block_hash))
+            } else 
+            {
+            self.get_posterity_by_bscore(candidate_block, cutoff_bscore).ok_or(ReceiptsError::PostPosterityDoesNotExistYet(block_hash))
         }
     }
     pub fn get_prev_posterity_block(&self, block_hash: Hash) -> Option<Hash> {
@@ -476,19 +437,19 @@ impl MerkleProofsManager {
             .default_backward_chain_iterator(block_hash)
             .find(|&block| self.selected_chain_store.read().get_by_hash(block).is_ok())?;
 
-        let candidate_daa: u64 = self.headers_store.get_daa_score(candidate_block).unwrap();
-        let cutoff_daa = candidate_daa - candidate_daa % self.posterity_depth;
+        let candidate_bscore: u64 = self.headers_store.get_blue_score(candidate_block).unwrap();
+        let cutoff_bscore = candidate_bscore - candidate_bscore % self.posterity_depth;
 
-        self.get_posterity_by_daa(candidate_block, cutoff_daa)
+        self.get_posterity_by_bscore(candidate_block, cutoff_bscore)
     }
 
-    fn get_posterity_by_daa(&self, reference_block: Hash, cutoff_daa: u64) -> Option<Hash> {
+    fn get_posterity_by_bscore(&self, reference_block: Hash, cutoff_bscore: u64) -> Option<Hash> {
         //posterity_candidate is assumed to be a chain block
         //TODO:change to Error sometime probably
-        /*returns  the first posterity block with daa smaller or equal to the cutoff daa
+        /*returns  the first posterity block with bscore smaller or equal to the cutoff bscore
         assumes data is available*/
 
-        if cutoff_daa == 0
+        if cutoff_bscore == 0
         // edge case
         {
             return Some(self.genesis.hash);
@@ -497,7 +458,7 @@ impl MerkleProofsManager {
         let mut low = 0;
         let mut high = self.selected_chain_store.read().get_tip().unwrap().0;
         let mut next_candidate = reference_block;
-        let mut candidate_daa = self.headers_store.get_daa_score(next_candidate).unwrap();
+        let mut candidate_bscore = self.headers_store.get_blue_score(next_candidate).unwrap();
 
         // let mut next_index= self.selected_chain_store.read().get_by_hash(next_candidate).unwrap();
         let mut candidate_index = self.selected_chain_store.read().get_by_hash(next_candidate).unwrap();
@@ -506,13 +467,13 @@ impl MerkleProofsManager {
             /* a binary search 'style' loop
             with special checks to avoid getting stuck in a back and forth   */
 
-            if candidate_daa < cutoff_daa {
+            if candidate_bscore < cutoff_bscore {
                 // in this case index will move forward
                 if low < candidate_index
                 //rescale bound and update
                 {
                     low = candidate_index;
-                    let index_diff = (cutoff_daa - candidate_daa) / self.average_width as u64;
+                    let index_diff = (cutoff_bscore - candidate_bscore) / self.average_width as u64;
                     candidate_index += index_diff;
                 } else {
                     // if low bound was already known, we risk getting stuck in a loop, so just iterate forwards till posterity is found.
@@ -520,56 +481,56 @@ impl MerkleProofsManager {
                     return self
                         .reachability_service
                         .forward_chain_iterator(next_candidate, high_block, true)
-                        .find(|&block| self.headers_store.get_daa_score(block).unwrap() >= cutoff_daa);
+                        .find(|&block| self.headers_store.get_blue_score(block).unwrap() >= cutoff_bscore);
                 }
             } else {
                 // in this case index will move backward
                 if high > candidate_index {
                     let candidate_parent = self.reachability_service.get_chain_parent(next_candidate);
-                    let candidate_parent_daa = self.headers_store.get_daa_score(candidate_parent).unwrap();
-                    if candidate_parent_daa < cutoff_daa
+                    let candidate_parent_bscore = self.headers_store.get_blue_score(candidate_parent).unwrap();
+                    if candidate_parent_bscore < cutoff_bscore
                     // first check if next_candidate actually is the posterity
                     {
                         return Some(next_candidate);
                     } else {
                         // if not, update candidate indices and bounds
-                        let index_diff = (candidate_daa - cutoff_daa) / self.average_width as u64;
+                        let index_diff = (candidate_bscore - cutoff_bscore) / self.average_width as u64;
                         candidate_index -= index_diff; //shouldn't overflow
                         high = candidate_index; // if not, rescale bound
                     }
                 } else {
                     //again avoid getting stuck in a loop
-                    //iterate back until a parent is found with daa score lower than the cutoff
+                    //iterate back until a parent is found with blue score lower than the cutoff
                     let low_block = self.selected_chain_store.read().get_by_index(low).unwrap();
                     let posterity_parent = self
                         .reachability_service
                         .backward_chain_iterator(next_candidate, low_block, true)
-                        .find(|&block| self.headers_store.get_daa_score(block).unwrap() < cutoff_daa)?;
+                        .find(|&block| self.headers_store.get_blue_score(block).unwrap() < cutoff_bscore)?;
                     // and then return its 'selected' son
                     return self.reachability_service.forward_chain_iterator(posterity_parent, next_candidate, true).next();
                 }
             }
             next_candidate = self.selected_chain_store.read().get_by_index(candidate_index).unwrap();
-            candidate_daa = self.headers_store.get_daa_score(next_candidate).unwrap();
+            candidate_bscore = self.headers_store.get_blue_score(next_candidate).unwrap();
         }
     }
     pub fn verify_post_posterity_block(&self, block_hash: Hash, post_posterity_candidate_hash: Hash) -> bool {
         /*the verification consists of 3 parts:
         1) verify the block queried is an ancesstor of the candidate
         2)verify the candidate is on the selected chain
-        3) verify the selected parent of the candidate has daa score smaller than the posterity designated daa*/
+        3) verify the selected parent of the candidate has blue score score smaller than the posterity designated blue score*/
         if !self.reachability_service.is_dag_ancestor_of(block_hash, post_posterity_candidate_hash) {
             return false;
         }
         if self.selected_chain_store.read().get_by_hash(post_posterity_candidate_hash).is_ok() {
             return false;
         }
-        let candidate_daa = self.headers_store.get_daa_score(post_posterity_candidate_hash).unwrap();
-        let cutoff_daa = candidate_daa - candidate_daa % self.posterity_depth;
+        let candidate_bscore = self.headers_store.get_blue_score(post_posterity_candidate_hash).unwrap();
+        let cutoff_bscore = candidate_bscore - candidate_bscore % self.posterity_depth;
         let candidate_sel_parent_hash =
             self.reachability_service.default_backward_chain_iterator(post_posterity_candidate_hash).next().unwrap();
-        let candidate_sel_parent_daa = self.headers_store.get_daa_score(candidate_sel_parent_hash).unwrap();
-        candidate_sel_parent_daa < cutoff_daa
+        let candidate_sel_parent_bscore = self.headers_store.get_blue_score(candidate_sel_parent_hash).unwrap();
+        candidate_sel_parent_bscore < cutoff_bscore
     }
 }
 #[derive(Clone)]
