@@ -34,15 +34,15 @@ jobs:
 
   test:
     name: Test Suite
-    # runs-on: ${{ matrix.os }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
-      # matrix:
-      #   os: [ ubuntu-latest, macos-latest, windows-latest ]
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
     steps:
       # Clean unnecessary files to save disk space
       - name: clean unnecessary files to save space
+        if: runner.os == 'Linux'
         run: |
           docker rmi `docker images -q`
           sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /etc/sudo apt/sources.list.d
@@ -67,6 +67,7 @@ jobs:
 
       # Free up disk space on Ubuntu
       - name: Free Disk Space (Ubuntu)
+        if: runner.os == 'Linux'
         uses: jlumbroso/free-disk-space@main
         with:
           # This might remove tools that are actually needed, if set to "true" but frees about 6 GB
