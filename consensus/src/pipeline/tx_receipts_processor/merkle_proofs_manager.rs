@@ -1,7 +1,9 @@
 use super::{
-    error::ReceiptsError, pchmr_store::{DbPchmrStore, PchmrStoreReader}, rep_parents_store::{DbRepParentsStore, RepParentsStoreReader}
+    error::ReceiptsErrors,
+    pchmr_store::{DbPchmrStore, PchmrStoreReader},
+    rep_parents_store::{DbRepParentsStore, RepParentsStoreReader},
 };
-use crate::model::stores::selected_chain:: SelectedChainStoreReader;
+use crate::model::stores::selected_chain::SelectedChainStoreReader;
 #[allow(unused_imports)]
 use crate::{
     consensus::{
@@ -85,7 +87,7 @@ use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExte
 #[allow(unused_imports)]
 use kaspa_hashes::Hash;
 use kaspa_merkle::{
-    calc_merkle_root, create_merkle_witness_from_sorted, create_merkle_witness_from_unsorted, verify_merkle_witness, MerkleWitness
+    calc_merkle_root, create_merkle_witness_from_sorted, create_merkle_witness_from_unsorted, verify_merkle_witness, MerkleWitness,
 };
 #[allow(unused_imports)]
 use kaspa_muhash::MuHash;
@@ -121,7 +123,7 @@ use std::{
     sync::{atomic::Ordering, Arc},
 };
 #[derive(Clone)]
-pub struct MerkleProofsManager<T:SelectedChainStoreReader,U: ReachabilityStoreReader,V:HeaderStoreReader> {
+pub struct MerkleProofsManager<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreReader> {
     // Channels
     // receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
     // pruning_sender: CrossbeamSender<PruningProcessingMessage>,
@@ -145,7 +147,7 @@ pub struct MerkleProofsManager<T:SelectedChainStoreReader,U: ReachabilityStoreRe
     // pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
     // pub(super) ghostdag_primary_store: Arc<DbGhostdagStore>,
     headers_store: Arc<V>,
-    selected_chain_store: Arc<RwLock<T>>,    // pub(super) daa_excluded_store: Arc<DbDaaStore>,
+    selected_chain_store: Arc<RwLock<T>>, // pub(super) daa_excluded_store: Arc<DbDaaStore>,
     // pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub(super) pruning_point_store: Arc<RwLock<DbPruningStore>>,
     pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
@@ -167,13 +169,13 @@ pub struct MerkleProofsManager<T:SelectedChainStoreReader,U: ReachabilityStoreRe
 
     // // Managers and services
     pub(super) ghostdag_manager: DbGhostdagManager,
-    pub(super )reachability_service: MTReachabilityService<U>,    // pub(super) relations_service: MTRelationsService<DbRelationsStore>,
+    pub(super) reachability_service: MTReachabilityService<U>, // pub(super) relations_service: MTRelationsService<DbRelationsStore>,
     pub(super) dag_traversal_manager: DbDagTraversalManager,
     // pub(super) window_manager: DbWindowManager,
     // pub(super) coinbase_manager: CoinbaseManager,
     // pub(super) transaction_validator: TransactionValidator,
     pub(super) pruning_point_manager: DbPruningPointManager,
-    
+
     // pub(super) parents_manager: DbParentsManager,
     // pub(super) depth_manager: DbBlockDepthManager,
 
@@ -190,7 +192,7 @@ pub struct MerkleProofsManager<T:SelectedChainStoreReader,U: ReachabilityStoreRe
     pub(crate) storage_mass_activation_daa_score: u64,
 }
 
-impl <T:SelectedChainStoreReader,U: ReachabilityStoreReader,V:HeaderStoreReader> MerkleProofsManager<T,U,V,>  {
+impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreReader> MerkleProofsManager<T, U, V> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         // receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
@@ -200,14 +202,13 @@ impl <T:SelectedChainStoreReader,U: ReachabilityStoreReader,V:HeaderStoreReader>
         params: &Params,
         // db: Arc<DB>,
         storage: &Arc<ConsensusStorage>,
-        dag_traversal_manager:DbDagTraversalManager,
+        dag_traversal_manager: DbDagTraversalManager,
         pruning_point_manager: DbPruningPointManager,
         ghostdag_manager: DbGhostdagManager,
 
         reachability_service: MTReachabilityService<U>,
         headers_store: Arc<V>,
         selected_chain_store: Arc<RwLock<T>>,
-
         // pruning_lock: SessionLock,
         // notification_root: Arc<ConsensusNotificationRoot>,
         // counters: Arc<ProcessingCounters>,
@@ -226,7 +227,7 @@ impl <T:SelectedChainStoreReader,U: ReachabilityStoreReader,V:HeaderStoreReader>
 
             // db,
             // statuses_store: storage.statuses_store.clone(),
-            headers_store: headers_store,
+            headers_store,
             // ghostdag_primary_store: storage.ghostdag_primary_store.clone(),
             // daa_excluded_store: storage.daa_excluded_store.clone(),
             // block_transactions_store: storage.block_transactions_store.clone(),
@@ -241,7 +242,6 @@ impl <T:SelectedChainStoreReader,U: ReachabilityStoreReader,V:HeaderStoreReader>
             // virtual_stores: storage.virtual_stores.clone(),
             // pruning_utxoset_stores: storage.pruning_utxoset_stores.clone(),
             // lkg_virtual_state: storage.lkg_virtual_state.clone(),
-
             ghostdag_manager: ghostdag_manager.clone(),
             reachability_service,
             // relations_service: services.relations_service.clone(),
@@ -261,122 +261,17 @@ impl <T:SelectedChainStoreReader,U: ReachabilityStoreReader,V:HeaderStoreReader>
             rep_parents_store: storage.rep_parents_store.clone(),
         }
     }
-
-    pub fn create_merkle_witness_for_tx(&self, tracked_tx_id: Hash, req_block_hash: Hash) -> Result<MerkleWitness,ReceiptsError> {
-        // maybe better here to make it return result? rethink
-        let mergeset_txs_manager = self.acceptance_data_store.get(req_block_hash); // I think this is incorrect
-        let mergeset_txs_manager = mergeset_txs_manager?;
-        let mut accepted_txs = vec!();
-
-        for parent_acc_data in mergeset_txs_manager.iter() {
-            let parent_acc_txs = parent_acc_data.accepted_transactions.iter().map(|tx| tx.transaction_id);
-
-            for tx in parent_acc_txs {
-                accepted_txs.push(tx);
-            }
-        }
-        accepted_txs.sort();
-
-        create_merkle_witness_from_sorted(accepted_txs.into_iter(), tracked_tx_id).map_err(|e|e.into())
-    }
-    pub fn verify_merkle_witness_for_tx(&self, witness: &MerkleWitness, tracked_tx_id: Hash, req_block_hash: Hash) -> bool {
-        // arguably better here to make it return result? rethink
-        let mergeset_txs_manager = self.acceptance_data_store.get(req_block_hash); // I think this is incorrect
-        if mergeset_txs_manager.is_err() {
-            return false;
-        }
-        let req_block_header = self.headers_store.get_header(req_block_hash).unwrap();
-        let req_atmr = req_block_header.accepted_id_merkle_root;
-        verify_merkle_witness(witness, tracked_tx_id, req_atmr)
-    }
-    fn representative_log_parents(&self, req_block_parent: Hash) -> Vec<Hash> {
-        // function receives the selected parent of the relevant block
-        //returns all 2^i deep 'selected' parents up to the posterity block not included
-        let pre_posterity_hash = self.get_prev_posterity_block(req_block_parent).unwrap();
-        let pre_posterity_bscore = self.headers_store.get_blue_score(pre_posterity_hash).unwrap();
-        let mut representative_parents_list = vec!();
-        /*  currently I store the representative parents of each block in memory to implement this efficiently,
-        there likely are better ways, but we might change to a completely different method later on
-        so currently not worth too much thought*/
-        let mut i = 0;
-        let mut curr_block = self.reachability_service.default_backward_chain_iterator(req_block_parent).next();
-        while curr_block.is_some() && self.headers_store.get_blue_score(pre_posterity_hash).unwrap() > pre_posterity_bscore {
-            representative_parents_list.push(curr_block.unwrap());
-            curr_block = self.rep_parents_store.get_ith_rep_parent(curr_block.unwrap(), i);
-            i += 1;
-        }
-        representative_parents_list
-    }
-    #[allow(clippy::let_and_return)]
-    pub fn calc_pchmr_root(&self, selected_parent: Hash) -> Hash {
-        // function receives the selected parent of the relevant block
-        let representative_parents_list = self.representative_log_parents(selected_parent);
-        let ret = calc_merkle_root(representative_parents_list.into_iter());
-
-        ret
-    }
-    pub fn create_pchmr_witness(&self, leaf_block_hash: Hash, root_block_hash: Hash) -> Result<MerkleWitness,ReceiptsError> {
-        // proof that a block belongs to the prhmr tree of another block
-        let parent_of_root = self.reachability_service.get_chain_parent(root_block_hash);
-        let log_sized_parents_list = self.representative_log_parents(parent_of_root);
-
-        create_merkle_witness_from_unsorted(log_sized_parents_list.into_iter(), leaf_block_hash).map_err(|e|e.into())
-    }
-    pub fn verify_pchmr_witness(&self, witness: &MerkleWitness, leaf_block_hash: Hash, root_block_hash: Hash) -> bool {
-        verify_merkle_witness(witness, leaf_block_hash, self.hash_to_pchmr_store.get(root_block_hash).unwrap())
-    }
-    pub fn create_pochm_proof(&self, req_block_hash: Hash) -> Result<Pochm,ReceiptsError> {
-        //Assumes: requested block hash is on the selected chain
-        //needs be relooked at
-        let mut proof = vec!();
-        let post_posterity_hash = self.get_post_posterity_block(req_block_hash)?;
-        let req_block_index = self.selected_chain_store.read().get_by_hash(req_block_hash).unwrap();
-        let (mut prev_hash, mut prev_index) =
-            (post_posterity_hash, self.selected_chain_store.read().get_by_hash(post_posterity_hash).unwrap());
-        let mut curr_index; //init value for compiler
-        let mut diff = prev_index - req_block_index;
-        let mut curr_hash; //init value for compiler
-        while diff > 0 {
-            curr_index = prev_index - (diff + 1).next_power_of_two() / 2; //highest power of two such that it does not pass below prev_index-req_block_index
-            curr_hash = self.selected_chain_store.read().get_by_index(curr_index).unwrap();
-
-            let pchmr_proof_for_current = self.create_pchmr_witness(curr_hash, prev_hash)?;
-            let prev_header: Arc<Header> = self.headers_store.get_header(prev_hash).unwrap();
-            proof.push(PochmSegment { pchmr_witness: pchmr_proof_for_current, header: prev_header });
-            (prev_hash, prev_index) = (curr_hash, curr_index);
-            diff = prev_index - req_block_index;
-        }
-        Ok(proof)
-    }
-    pub fn verify_pochm_proof(&self, req_block_hash: Hash, witness: &Pochm) -> bool {
-        //needs be relooked at
-        let _post_posterity_header = &witness[0].header;
-        let post_posterity_hash = _post_posterity_header.hash;
-        if !self.verify_post_posterity_block(req_block_hash, post_posterity_hash) {
-            return false;
-        }
-
-        let mut leaf_hashes = witness.iter().map(|pochm| pochm.header.hash).chain(std::iter::once(req_block_hash));
-        leaf_hashes.next(); //remove first element to match accordingly to witnessess
-        for (pochm, leaf_hash) in witness.iter().zip(leaf_hashes) {
-            let pchmr = self.hash_to_pchmr_store.get(pochm.header.hash).unwrap();
-            if !(self.verify_pchmr_witness(&pochm.pchmr_witness, leaf_hash, pchmr)) {
-                return false;
-            }
-        }
-        true
-    }
-    pub fn generate_tx_receipt(&self, req_block_hash: Hash, tracked_tx_id: Hash) -> Result<TxReceipt,ReceiptsError> {
+    pub fn generate_tx_receipt(&self, req_block_hash: Hash, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
         let pochm = self.create_pochm_proof(req_block_hash)?;
         let tx_acc_proof = self.create_merkle_witness_for_tx(tracked_tx_id, req_block_hash)?;
         Ok(TxReceipt { tracked_tx_id, accepting_block_hash: req_block_hash, pochm, tx_acc_proof })
     }
-    pub fn generate_proof_of_pub(&self, req_block_hash: Hash, tracked_tx_id: Hash) -> Result<ProofOfPublication,ReceiptsError> {
+    pub fn generate_proof_of_pub(&self, req_block_hash: Hash, tracked_tx_id: Hash) -> Result<ProofOfPublication, ReceiptsErrors> {
         /*there is a certain degree of inefficiency here, as post_posterity is calculated again in create_pochm function
         however I expect this feature to rarely be called so optimizations seem not worth it */
         let post_posterity = self.get_post_posterity_block(req_block_hash)?;
         let tx_pub_proof = self.create_merkle_witness_for_tx(tracked_tx_id, req_block_hash)?;
-        let mut headers_chain_to_selected = vec!();
+        let mut headers_chain_to_selected = vec![];
 
         //find a chain block on the path to post_posterity
         for block in self.reachability_service.forward_chain_iterator(req_block_hash, post_posterity, true) {
@@ -403,31 +298,138 @@ impl <T:SelectedChainStoreReader,U: ReachabilityStoreReader,V:HeaderStoreReader>
         if !valid_path {
             return false;
         };
-
         let accepting_block_hash =
             proof_of_pub.headers_chain_to_selected.last().unwrap_or(&self.headers_store.get_header(pub_block_hash).unwrap()).hash;
 
         self.verify_merkle_witness_for_tx(&proof_of_pub.tx_pub_proof, proof_of_pub.tracked_tx_id, accepting_block_hash)
             && self.verify_pochm_proof(accepting_block_hash, &proof_of_pub.pochm)
     }
+    pub fn create_pochm_proof(&self, req_block_hash: Hash) -> Result<Pochm, ReceiptsErrors> {
+        /*Assumes: requested block hash is on the selected chain,
+        if not returns error   */
+        let mut pochm_proof = Pochm::new(self.hash_to_pchmr_store.clone());
+        let post_posterity_hash = self.get_post_posterity_block(req_block_hash)?;
+        let req_block_index = self
+            .selected_chain_store
+            .read()
+            .get_by_hash(req_block_hash)
+            .map_err(|_| ReceiptsErrors::RequestedBlockNotOnSelectedChain(req_block_hash))?;
+        let (mut root_block_hash, mut root_block_index) =
+            (post_posterity_hash, self.selected_chain_store.read().get_by_hash(post_posterity_hash).unwrap()); //if posterity block is not on selected chain, panic.
+        let mut leaf_block_index;
+        let mut remaining_index_diff = root_block_index - req_block_index;
+        let mut leaf_block_hash;
+        while remaining_index_diff > 0 {
+            leaf_block_index = root_block_index - (remaining_index_diff + 1).next_power_of_two() / 2; //subtract highest possible power of two such as to not cross 0
+            leaf_block_hash = self.selected_chain_store.read().get_by_index(leaf_block_index)?;
 
-    pub fn get_post_posterity_block(&self, block_hash: Hash) -> Result<Hash,ReceiptsError> {
+            let leaf_is_in_pchmr_of_root_proof = self.create_pchmr_witness(leaf_block_hash, root_block_hash)?;
+            let root_block_header: Arc<Header> = self.headers_store.get_header(root_block_hash).unwrap();
+            pochm_proof.add(root_block_header, leaf_is_in_pchmr_of_root_proof);
+
+            (root_block_hash, root_block_index) = (leaf_block_hash, leaf_block_index);
+            remaining_index_diff = root_block_index - req_block_index;
+        }
+        Ok(pochm_proof)
+    }
+    pub fn verify_pochm_proof(&self, req_block_hash: Hash, witness: &Pochm) -> bool {
+        /*this function will return true for any witness premiering with a currently non pruned block and
+        recursively pointing down to req_block_hash, it is the responsibility of the
+        creator of the witness to make sure the witness premiers with a posterity block
+        and not just any block that may be pruned in the future, as this property is not verified in this function,
+        and the function should not be relied upon to confirm the witness is everlasting*/
+
+        if let Some(post_posterity_hash) = witness.get_path_origin() {
+            if self.headers_store.get_header(post_posterity_hash).is_ok()
+            // verify the corresponding header is available
+            {
+                //verification of path itself is delegated to the pochm struct
+                return witness.verify_pchmrs_path(req_block_hash);
+            }
+        }
+        false
+    }
+    pub fn calc_pchmr_root(&self, selected_parent: Hash) -> Hash {
+        // function receives the selected parent of the relevant block
+        let representative_parents_list = self.representative_log_parents(selected_parent);
+        calc_merkle_root(representative_parents_list.into_iter())
+    }
+    pub fn create_pchmr_witness(&self, leaf_block_hash: Hash, root_block_hash: Hash) -> Result<MerkleWitness, ReceiptsErrors> {
+        // proof that a block belongs to the pchmr tree of another block
+        let parent_of_root = self.reachability_service.get_chain_parent(root_block_hash);
+        let log_sized_parents_list = self.representative_log_parents(parent_of_root);
+
+        create_merkle_witness_from_unsorted(log_sized_parents_list.into_iter(), leaf_block_hash).map_err(|e| e.into())
+    }
+    pub fn verify_pchmr_witness(&self, witness: &MerkleWitness, leaf_block_hash: Hash, root_block_hash: Hash) -> bool {
+        verify_merkle_witness(witness, leaf_block_hash, self.hash_to_pchmr_store.get(root_block_hash).unwrap())
+    }
+
+    pub fn create_merkle_witness_for_tx(&self, tracked_tx_id: Hash, req_block_hash: Hash) -> Result<MerkleWitness, ReceiptsErrors> {
+        // maybe better here to make it return result? rethink
+        let mergeset_txs_manager = self.acceptance_data_store.get(req_block_hash); // I think this is incorrect
+        let mergeset_txs_manager = mergeset_txs_manager?;
+        let mut accepted_txs = vec![];
+
+        for parent_acc_data in mergeset_txs_manager.iter() {
+            let parent_acc_txs = parent_acc_data.accepted_transactions.iter().map(|tx| tx.transaction_id);
+
+            for tx in parent_acc_txs {
+                accepted_txs.push(tx);
+            }
+        }
+        accepted_txs.sort();
+
+        create_merkle_witness_from_sorted(accepted_txs.into_iter(), tracked_tx_id).map_err(|e| e.into())
+    }
+    pub fn verify_merkle_witness_for_tx(&self, witness: &MerkleWitness, tracked_tx_id: Hash, req_block_hash: Hash) -> bool {
+        // arguably better here to make it return result? rethink
+        let mergeset_txs_manager = self.acceptance_data_store.get(req_block_hash); // I think this is incorrect
+        if mergeset_txs_manager.is_err() {
+            return false;
+        }
+        let req_block_header = self.headers_store.get_header(req_block_hash).unwrap();
+        let req_atmr = req_block_header.accepted_id_merkle_root;
+        verify_merkle_witness(witness, tracked_tx_id, req_atmr)
+    }
+    fn representative_log_parents(&self, req_block_parent: Hash) -> Vec<Hash> {
+        // function receives the selected parent of the relevant block
+        // returns all 2^i deep 'selected' parents up to the posterity block not included
+        let pre_posterity_hash = self.get_prev_posterity_block(req_block_parent).unwrap();
+        let pre_posterity_bscore = self.headers_store.get_blue_score(pre_posterity_hash).unwrap();
+        let mut representative_parents_list = vec![];
+        /*  currently I store the representative parents of each block in memory to implement this efficiently,
+        there likely are optimizations like using selected_chain_store,
+         but we might change to a completely different method later on
+        so currently not worth too much thought*/
+        let mut i = 0;
+        let mut curr_block = self.reachability_service.default_backward_chain_iterator(req_block_parent).next();
+        while curr_block.is_some() && self.headers_store.get_blue_score(pre_posterity_hash).unwrap() > pre_posterity_bscore {
+            representative_parents_list.push(curr_block.unwrap());
+            curr_block = self.rep_parents_store.get_ith_rep_parent(curr_block.unwrap(), i);
+            i += 1;
+        }
+        representative_parents_list
+    }
+
+    pub fn get_post_posterity_block(&self, block_hash: Hash) -> Result<Hash, ReceiptsErrors> {
         //reach the first proceeding selected chain block
         let pruning_head = self.pruning_point_store.read().pruning_point().unwrap(); //may be inefficient
         let candidate_block = self
             .reachability_service
             .forward_chain_iterator(block_hash, pruning_head, true)
-            .find(|&block| self.selected_chain_store.read().get_by_hash(block).is_ok()).ok_or(ReceiptsError::PostPosterityDoesNotExistYet(block_hash))?;
+            .find(|&block| self.selected_chain_store.read().get_by_hash(block).is_ok())
+            .ok_or(ReceiptsErrors::PostPosterityDoesNotExistYet(block_hash))?;
 
         let candidate_bscore: u64 = self.headers_store.get_blue_score(candidate_block).unwrap();
         let pruning_head_bscore = self.headers_store.get_blue_score(pruning_head).unwrap();
         let cutoff_bscore = candidate_bscore - candidate_bscore % self.posterity_depth + self.posterity_depth;
         if cutoff_bscore > pruning_head_bscore {
             // Posterity block not yet available.
-            Err(ReceiptsError::PostPosterityDoesNotExistYet(block_hash))
-            } else 
-            {
-            self.get_posterity_by_bscore(candidate_block, cutoff_bscore).ok_or(ReceiptsError::PostPosterityDoesNotExistYet(block_hash))
+            Err(ReceiptsErrors::PostPosterityDoesNotExistYet(block_hash))
+        } else {
+            self.get_posterity_by_bscore(candidate_block, cutoff_bscore)
+                .ok_or(ReceiptsErrors::PostPosterityDoesNotExistYet(block_hash))
         }
     }
     pub fn get_prev_posterity_block(&self, block_hash: Hash) -> Option<Hash> {
@@ -535,10 +537,46 @@ impl <T:SelectedChainStoreReader,U: ReachabilityStoreReader,V:HeaderStoreReader>
 }
 #[derive(Clone)]
 pub struct PochmSegment {
-    pchmr_witness: MerkleWitness,
     header: Arc<Header>,
+    leaf_in_pchmr_witness: MerkleWitness,
 }
-pub type Pochm = Vec<PochmSegment>;
+#[derive(Clone)]
+pub struct Pochm {
+    vec: Vec<PochmSegment>,
+    hash_to_pchmr_store: Arc<DbPchmrStore>, //temporary field
+}
+impl Pochm {
+    pub fn new(hash_to_pchmr_store: Arc<DbPchmrStore>) -> Self {
+        let vec = vec![];
+        Self { vec, hash_to_pchmr_store }
+    }
+
+    pub fn add(&mut self, header: Arc<Header>, witness: MerkleWitness) {
+        self.vec.push(PochmSegment { header, leaf_in_pchmr_witness: witness })
+    }
+    pub fn get_path_origin(&self) -> Option<Hash> {
+        self.vec.first().map(|seg| seg.header.hash)
+    }
+
+    pub fn verify_pchmrs_path(&self, destination_block_hash: Hash) -> bool {
+        // Suggestion: Recheck if this logic can be delegated to another struct
+        let leaf_hashes = self.vec.iter()
+        .skip(1)//remove first element to match accordingly to witnesses 
+        .map(|pochm| pochm.header.hash)//map to hashes
+        .chain(std::iter::once(destination_block_hash)); // add final block
+
+        /*verify the path from posterity down to req_block_hash:
+        iterate downward from posterity block header: for each, check that leaf hash is  */
+        for (pochm_seg, leaf_hash) in self.vec.iter().zip(leaf_hashes) {
+            let pchmr_root_hash = self.hash_to_pchmr_store.get(pochm_seg.header.hash).unwrap();
+            let witness = &pochm_seg.leaf_in_pchmr_witness;
+            if !(verify_merkle_witness(witness, leaf_hash, pchmr_root_hash)) {
+                return false;
+            }
+        }
+        true
+    }
+}
 pub struct TxReceipt {
     tracked_tx_id: Hash,
     accepting_block_hash: Hash,

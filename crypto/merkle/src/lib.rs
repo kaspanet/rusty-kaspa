@@ -1,4 +1,3 @@
-
 use kaspa_hashes::{Hash, HasherBase, MerkleBranchHash, ZERO_HASH};
 #[derive(Clone)]
 pub enum LeafRoute {
@@ -14,7 +13,7 @@ pub struct WitnessSegment {
 
 fn derive_merkle_tree(hashes: impl ExactSizeIterator<Item = Hash>) -> Vec<Option<Hash>> {
     if hashes.len() == 0 {
-        return vec!(Some(ZERO_HASH));
+        return vec![Some(ZERO_HASH)];
     }
     let next_pot = hashes.len().next_power_of_two(); //maximal number of  leaves in last level of tree
     let vec_len = 2 * next_pot - 1; //maximal number of nodes in tree
@@ -42,30 +41,38 @@ pub fn calc_merkle_root(hashes: impl ExactSizeIterator<Item = Hash>) -> Hash {
     let merkles = derive_merkle_tree(hashes);
     merkles.last().unwrap().unwrap()
 }
-pub fn create_merkle_witness_from_unsorted(hashes: impl ExactSizeIterator<Item = Hash>, leaf_hash: Hash) -> Result<MerkleWitness,MerkleTreeError> {
+pub fn create_merkle_witness_from_unsorted(
+    hashes: impl ExactSizeIterator<Item = Hash>,
+    leaf_hash: Hash,
+) -> Result<MerkleWitness, MerkleTreeError> {
     let is_sorted = false;
     create_merkle_witness(hashes, leaf_hash, is_sorted)
 }
-pub fn create_merkle_witness_from_sorted(hashes: impl ExactSizeIterator<Item = Hash>, leaf_hash: Hash) -> Result<MerkleWitness,MerkleTreeError> {
+pub fn create_merkle_witness_from_sorted(
+    hashes: impl ExactSizeIterator<Item = Hash>,
+    leaf_hash: Hash,
+) -> Result<MerkleWitness, MerkleTreeError> {
     let is_sorted = true;
     create_merkle_witness(hashes, leaf_hash, is_sorted)
 }
-pub fn create_merkle_witness(hashes: impl ExactSizeIterator<Item = Hash>, leaf_hash: Hash, is_sorted: bool) -> Result<MerkleWitness,MerkleTreeError> {
+pub fn create_merkle_witness(
+    hashes: impl ExactSizeIterator<Item = Hash>,
+    leaf_hash: Hash,
+    is_sorted: bool,
+) -> Result<MerkleWitness, MerkleTreeError> {
     let vec_len = hashes.len();
     if vec_len == 0 && leaf_hash == ZERO_HASH {
         //edge case, return empty witness and not an error
-        return Ok(vec!());
+        return Ok(vec![]);
     }
     let next_pot = vec_len.next_power_of_two(); //maximal number of  leaves in last level of tree
     let merkles = derive_merkle_tree(hashes);
     let leaf_index = if is_sorted {
-        merkles[0..vec_len].binary_search(&Some(leaf_hash))
-        .map_err(|_| MerkleTreeError::HashNotFoundInSorterd(leaf_hash))?
+        merkles[0..vec_len].binary_search(&Some(leaf_hash)).map_err(|_| MerkleTreeError::HashNotFoundInSorterd(leaf_hash))?
     } else {
-        merkles[0..vec_len].iter().position(|&e| e == Some(leaf_hash))
-        .ok_or(MerkleTreeError::HashNotFound(leaf_hash))?
+        merkles[0..vec_len].iter().position(|&e| e == Some(leaf_hash)).ok_or(MerkleTreeError::HashNotFound(leaf_hash))?
     };
-    let mut witness_vec = vec!();
+    let mut witness_vec = vec![];
     let mut level_start = 0;
     let mut level_length = next_pot;
     let mut level_index = leaf_index;
