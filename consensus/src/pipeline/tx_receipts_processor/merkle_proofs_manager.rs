@@ -1,7 +1,7 @@
 use super::{
     error::ReceiptsErrors,
     pchmr_store::{DbPchmrStore, PchmrStoreReader},
-    rep_parents_store::{DbRepParentsStore, RepParentsStoreReader},
+    rep_parents_store::DbRepParentsStore,
 };
 use crate::model::stores::selected_chain::SelectedChainStoreReader;
 #[allow(unused_imports)]
@@ -86,6 +86,7 @@ use kaspa_core::{debug, info, time::unix_now, trace, warn};
 use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
 #[allow(unused_imports)]
 use kaspa_hashes::Hash;
+use kaspa_hashes::ZERO_HASH;
 use kaspa_merkle::{
     calc_merkle_root, create_merkle_witness_from_sorted, create_merkle_witness_from_unsorted, verify_merkle_witness, MerkleWitness,
 };
@@ -154,7 +155,7 @@ pub struct MerkleProofsManager<T: SelectedChainStoreReader, U: ReachabilityStore
     // pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
     // pub(super) depth_store: Arc<DbDepthStore>,
     pub(super) hash_to_pchmr_store: Arc<DbPchmrStore>,
-    pub(super) rep_parents_store: Arc<DbRepParentsStore>,
+    pub(super) rep_parents_store: Arc<DbRepParentsStore>, //will probably remove field
 
     // // Utxo-related stores
     // pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
@@ -349,13 +350,18 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
         }
         false
     }
-    pub fn calc_pchmr_root(&self, selected_parent: Hash) -> Hash {
-        // function receives the selected parent of the relevant block
-        let representative_parents_list = self.representative_log_parents(selected_parent);
+    pub fn calc_pchmr_root(&self, req_selected_parent: Hash) -> Hash {
+        /*  function receives the selected parent of the relevant block,
+        as the block itself at this point is not assumed to exist*/
+        let representative_parents_list = self.representative_log_parents(req_selected_parent);
         calc_merkle_root(representative_parents_list.into_iter())
+        // in block template: should update rep_parents_store
     }
     pub fn create_pchmr_witness(&self, leaf_block_hash: Hash, root_block_hash: Hash) -> Result<MerkleWitness, ReceiptsErrors> {
         // proof that a block belongs to the pchmr tree of another block
+        /* the function assumes that the path from block_hash down to its posterity is intact and has not been pruned
+        (which should be the same as assuming block_hash has not been pruned)
+        it will panic if not.*/
         let parent_of_root = self.reachability_service.get_chain_parent(root_block_hash);
         let log_sized_parents_list = self.representative_log_parents(parent_of_root);
 
@@ -366,9 +372,7 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
     }
 
     pub fn create_merkle_witness_for_tx(&self, tracked_tx_id: Hash, req_block_hash: Hash) -> Result<MerkleWitness, ReceiptsErrors> {
-        // maybe better here to make it return result? rethink
-        let mergeset_txs_manager = self.acceptance_data_store.get(req_block_hash); // I think this is incorrect
-        let mergeset_txs_manager = mergeset_txs_manager?;
+        let mergeset_txs_manager = self.acceptance_data_store.get(req_block_hash)?;
         let mut accepted_txs = vec![];
 
         for parent_acc_data in mergeset_txs_manager.iter() {
@@ -383,7 +387,7 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
         create_merkle_witness_from_sorted(accepted_txs.into_iter(), tracked_tx_id).map_err(|e| e.into())
     }
     pub fn verify_merkle_witness_for_tx(&self, witness: &MerkleWitness, tracked_tx_id: Hash, req_block_hash: Hash) -> bool {
-        // arguably better here to make it return result? rethink
+        // maybe make it return result? rethink
         let mergeset_txs_manager = self.acceptance_data_store.get(req_block_hash); // I think this is incorrect
         if mergeset_txs_manager.is_err() {
             return false;
@@ -393,68 +397,144 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
         verify_merkle_witness(witness, tracked_tx_id, req_atmr)
     }
     fn representative_log_parents(&self, req_block_parent: Hash) -> Vec<Hash> {
-        // function receives the selected parent of the relevant block
-        // returns all 2^i deep 'selected' parents up to the posterity block not included
-        let pre_posterity_hash = self.get_prev_posterity_block(req_block_parent).unwrap();
+        /* the function assumes that the path from block_hash down to its posterity is intact and has not been pruned
+        (which should be the same as assuming block_hash has not been pruned)
+        it will panic if not.
+        Function receives the selected parent of the relevant block ,as the block itself is not assumed to necessarily exist
+        Returns all 2^i deep 'selected' parents up to the posterity block not included */
+        let pre_posterity_hash = self.get_pre_posterity_block(req_block_parent);
         let pre_posterity_bscore = self.headers_store.get_blue_score(pre_posterity_hash).unwrap();
         let mut representative_parents_list = vec![];
-        /*  currently I store the representative parents of each block in memory to implement this efficiently,
-        there likely are optimizations like using selected_chain_store,
-         but we might change to a completely different method later on
-        so currently not worth too much thought*/
-        let mut i = 0;
-        let mut curr_block = self.reachability_service.default_backward_chain_iterator(req_block_parent).next();
-        while curr_block.is_some() && self.headers_store.get_blue_score(pre_posterity_hash).unwrap() > pre_posterity_bscore {
-            representative_parents_list.push(curr_block.unwrap());
-            curr_block = self.rep_parents_store.get_ith_rep_parent(curr_block.unwrap(), i);
-            i += 1;
+        /*The following logic will not be efficient for blocks which are a long distance away from the selected chain,
+        Hence, the corresponding field for which this calculation is required should only be verified for selected chain candidates
+        This function is also called when creating said field - in this case however any honest node should only call for it on a block which
+        would be on the selected chain from its point of view
+        nethertheless, the logic will return a correct answer if called.
+         */
+        let mut distance_covered_before_chain = 0; //compulsory initialization for compiler only
+        let mut first_chain_block = ZERO_HASH; //compulsory initialization for compiler only
+        for (i, current) in self.reachability_service.default_backward_chain_iterator(req_block_parent).enumerate() {
+            let index = i + 1; //enumeration should start from 1
+            if current == pre_posterity_hash {
+                // pre posterity not included in list
+                return representative_parents_list;
+            } else if self.selected_chain_store.read().get_by_hash(current).is_ok() {
+                // get out of loop and apply selected chain logic instead
+                first_chain_block = current;
+                distance_covered_before_chain = i as u64;
+                break;
+            } else if (index & (index - 1)) == 0 {
+                //trickery to check if index is a power of two
+                representative_parents_list.push(current);
+            }
+        }
+        let first_chain_block_index = self.selected_chain_store.read().get_by_hash(first_chain_block).unwrap();
+        let req_block_imaginary_index = first_chain_block_index + distance_covered_before_chain;
+        let mut next_power = distance_covered_before_chain.next_power_of_two();
+        let mut next_chain_block_rep_parent =
+            self.selected_chain_store.read().get_by_index(req_block_imaginary_index - next_power).unwrap();
+        let mut next_bscore = self.headers_store.get_blue_score(next_chain_block_rep_parent).unwrap();
+        while next_bscore > pre_posterity_bscore {
+            representative_parents_list.push(next_chain_block_rep_parent);
+            next_power *= 2;
+            next_chain_block_rep_parent = self
+                .selected_chain_store
+                .read()
+                .get_by_index(first_chain_block_index - (next_power - distance_covered_before_chain))
+                .unwrap();
+            next_bscore = self.headers_store.get_blue_score(next_chain_block_rep_parent).unwrap();
         }
         representative_parents_list
     }
 
     pub fn get_post_posterity_block(&self, block_hash: Hash) -> Result<Hash, ReceiptsErrors> {
-        //reach the first proceeding selected chain block
-        let pruning_head = self.pruning_point_store.read().pruning_point().unwrap(); //may be inefficient
+        /* the function assumes that the path from block_hash up to its post posterity if it exits is intact and has not been pruned
+        (which should be the same as assuming block_hash has not been pruned)
+        it will panic if not.
+        An error is returned if post_posterity does not yet exist.
+        The function does not assume block_hash is a chain block, however
+        the known aplications of posterity blocks appear nonsensical when it is not.
+         */
+        let block_bscore: u64 = self.headers_store.get_blue_score(block_hash).unwrap();
+        let tentative_cutoff_bscore = block_bscore - block_bscore % self.posterity_depth + self.posterity_depth;
+        let pruning_head = self.pruning_point_store.read().pruning_point()?; //possibly inefficient
+                                                                             /*try and reach the first proceeding selected chain block,
+                                                                             while checking if pre_posterity of queried block is of the rare case where it is encountered before arriving at a chain block
+                                                                             in the majority of cases, a very short distance is covered before reaching a chain block.
+                                                                             */
         let candidate_block = self
             .reachability_service
             .forward_chain_iterator(block_hash, pruning_head, true)
-            .find(|&block| self.selected_chain_store.read().get_by_hash(block).is_ok())
-            .ok_or(ReceiptsErrors::PostPosterityDoesNotExistYet(block_hash))?;
+            .find(|&block| {
+                let block_bscore = self.headers_store.get_blue_score(block).unwrap();
+                block_bscore > tentative_cutoff_bscore || self.selected_chain_store.read().get_by_hash(block).is_ok()
+            })
+            .ok_or(ReceiptsErrors::PosterityDoesNotExistYet(tentative_cutoff_bscore))?;
 
         let candidate_bscore: u64 = self.headers_store.get_blue_score(candidate_block).unwrap();
+        if candidate_bscore > tentative_cutoff_bscore {
+            // in case cutoff_bscore was crossed prior to reaching a chain block
+            return Ok(candidate_block);
+        }
         let pruning_head_bscore = self.headers_store.get_blue_score(pruning_head).unwrap();
         let cutoff_bscore = candidate_bscore - candidate_bscore % self.posterity_depth + self.posterity_depth;
         if cutoff_bscore > pruning_head_bscore {
             // Posterity block not yet available.
-            Err(ReceiptsErrors::PostPosterityDoesNotExistYet(block_hash))
+            Err(ReceiptsErrors::PosterityDoesNotExistYet(cutoff_bscore))
         } else {
-            self.get_posterity_by_bscore(candidate_block, cutoff_bscore)
-                .ok_or(ReceiptsErrors::PostPosterityDoesNotExistYet(block_hash))
+            self.get_chain_block_posterity_by_bscore(candidate_block, cutoff_bscore)
         }
     }
-    pub fn get_prev_posterity_block(&self, block_hash: Hash) -> Option<Hash> {
-        //reach the first preceding selected chain block
+    pub fn get_pre_posterity_block(&self, block_hash: Hash) -> Hash {
+        /* the function assumes that the path from block_hash down to its posterity is intact and has not been pruned
+        (which should be the same as assuming block_hash has not been pruned)
+        it will panic if not.
+        The function does not assume block_hash is a chain block, however
+        the known aplications of posterity blocks appear nonsensical when it is not
+        */
+        let block_bscore: u64 = self.headers_store.get_blue_score(block_hash).unwrap();
+        let tentative_cutoff_bscore = block_bscore - block_bscore % self.posterity_depth;
+        if tentative_cutoff_bscore == 0
+        //genesis block edge case
+        {
+            return self.genesis.hash;
+        }
+        /*try and reach the first preceding selected chain block,
+        while checking if pre_posterity of queried block is of the rare case
+        where it is encountered before arriving at a chain block
+        in the majority of cases, a very short distance is covered before reaching a chain block
+        */
         let candidate_block = self
             .reachability_service
             .default_backward_chain_iterator(block_hash)
-            .find(|&block| self.selected_chain_store.read().get_by_hash(block).is_ok())?;
-
+            .find(|&block| {
+                self.headers_store.get_blue_score(block).unwrap() < tentative_cutoff_bscore
+                    || self.selected_chain_store.read().get_by_hash(block).is_ok()
+            })
+            .unwrap();
+        // in case cutoff_bscore was crossed prior to reaching a chain block
+        if self.headers_store.get_blue_score(candidate_block).unwrap() < tentative_cutoff_bscore {
+            let posterity_parent = candidate_block;
+            return self.reachability_service.forward_chain_iterator(posterity_parent, block_hash, true)
+            .nth(1)             //skip posterity parent
+            .unwrap();
+        }
+        //othrewise, recalculate the cutoff score in accordance to the candiate
         let candidate_bscore: u64 = self.headers_store.get_blue_score(candidate_block).unwrap();
         let cutoff_bscore = candidate_bscore - candidate_bscore % self.posterity_depth;
 
-        self.get_posterity_by_bscore(candidate_block, cutoff_bscore)
+        self.get_chain_block_posterity_by_bscore(candidate_block, cutoff_bscore).unwrap()
     }
 
-    fn get_posterity_by_bscore(&self, reference_block: Hash, cutoff_bscore: u64) -> Option<Hash> {
-        //posterity_candidate is assumed to be a chain block
-        //TODO:change to Error sometime probably
+    fn get_chain_block_posterity_by_bscore(&self, reference_block: Hash, cutoff_bscore: u64) -> Result<Hash, ReceiptsErrors> {
+        //reference_block is assumed to be a chain block
         /*returns  the first posterity block with bscore smaller or equal to the cutoff bscore
-        assumes data is available*/
+        assumes data is available, will panic if not*/
 
         if cutoff_bscore == 0
         // edge case
         {
-            return Some(self.genesis.hash);
+            return Ok(self.genesis.hash);
         }
 
         let mut low = 0;
@@ -464,10 +544,13 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
 
         // let mut next_index= self.selected_chain_store.read().get_by_hash(next_candidate).unwrap();
         let mut candidate_index = self.selected_chain_store.read().get_by_hash(next_candidate).unwrap();
-
+        if high < candidate_index {
+            return Err(ReceiptsErrors::PosterityDoesNotExistYet(cutoff_bscore));
+        };
         loop {
             /* a binary search 'style' loop
-            with special checks to avoid getting stuck in a back and forth   */
+            with special checks to avoid getting stuck in a back and forth
+            Suggestion: make recursive   */
 
             if candidate_bscore < cutoff_bscore {
                 // in this case index will move forward
@@ -480,10 +563,11 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
                 } else {
                     // if low bound was already known, we risk getting stuck in a loop, so just iterate forwards till posterity is found.
                     let high_block = self.selected_chain_store.read().get_by_index(high).unwrap();
-                    return self
+                    return Ok(self
                         .reachability_service
                         .forward_chain_iterator(next_candidate, high_block, true)
-                        .find(|&block| self.headers_store.get_blue_score(block).unwrap() >= cutoff_bscore);
+                        .find(|&block| self.headers_store.get_blue_score(block).unwrap() >= cutoff_bscore)
+                        .unwrap());
                 }
             } else {
                 // in this case index will move backward
@@ -493,7 +577,7 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
                     if candidate_parent_bscore < cutoff_bscore
                     // first check if next_candidate actually is the posterity
                     {
-                        return Some(next_candidate);
+                        return Ok(next_candidate);
                     } else {
                         // if not, update candidate indices and bounds
                         let index_diff = (candidate_bscore - cutoff_bscore) / self.average_width as u64;
@@ -507,9 +591,14 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
                     let posterity_parent = self
                         .reachability_service
                         .backward_chain_iterator(next_candidate, low_block, true)
-                        .find(|&block| self.headers_store.get_blue_score(block).unwrap() < cutoff_bscore)?;
+                        .find(|&block| self.headers_store.get_blue_score(block).unwrap() < cutoff_bscore)
+                        .unwrap();
                     // and then return its 'selected' son
-                    return self.reachability_service.forward_chain_iterator(posterity_parent, next_candidate, true).next();
+                    return Ok(self
+                        .reachability_service
+                        .forward_chain_iterator(posterity_parent, next_candidate, true)
+                        .nth(1)//skip posterity parent
+                        .unwrap());
                 }
             }
             next_candidate = self.selected_chain_store.read().get_by_index(candidate_index).unwrap();
@@ -520,7 +609,9 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
         /*the verification consists of 3 parts:
         1) verify the block queried is an ancesstor of the candidate
         2)verify the candidate is on the selected chain
-        3) verify the selected parent of the candidate has blue score score smaller than the posterity designated blue score*/
+        3) verify the selected parent of the candidate has blue score score smaller than the posterity designated blue score
+        function hence assumes the selected parent has not been pruned
+        */
         if !self.reachability_service.is_dag_ancestor_of(block_hash, post_posterity_candidate_hash) {
             return false;
         }
