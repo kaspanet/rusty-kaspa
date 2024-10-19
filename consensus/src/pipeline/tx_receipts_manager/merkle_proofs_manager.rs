@@ -222,7 +222,7 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
             max_block_parents: params.max_block_parents,
             mergeset_size_limit: params.mergeset_size_limit,
             pruning_depth: params.pruning_depth,
-            posterity_depth: params.pruning_depth,
+            posterity_depth: params.finality_depth,
 
             // db,
             // statuses_store: storage.statuses_store.clone(),
@@ -251,7 +251,6 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
             pruning_point_manager: pruning_point_manager.clone(),
             // parents_manager: services.parents_manager.clone(),
             // depth_manager: services.depth_manager.clone(),
-
             // pruning_lock,
             // notification_root,
             // counters,
@@ -541,13 +540,15 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
         {
             return Ok(self.genesis.hash);
         }
-        let mut low = self.selected_chain_store.read().get_by_hash(self.pruning_point_store.read().history_root().unwrap()).unwrap();
-        let mut high = self.selected_chain_store.read().get_tip().unwrap().0;
+        // let _prune_guard = self.pruning_lock.blocking_read();
         let mut next_candidate = reference_block;
-        let mut index_step;
         let mut candidate_bscore = self.headers_store.get_blue_score(next_candidate).unwrap();
-        // let mut next_index= self.selected_chain_store.read().get_by_hash(next_candidate).unwrap();
         let mut candidate_index = self.selected_chain_store.read().get_by_hash(next_candidate).unwrap();
+
+        let mut low = candidate_index.saturating_sub(self.posterity_depth);
+        let mut high = min(self.selected_chain_store.read().get_tip().unwrap().0, candidate_index + self.posterity_depth);
+        let mut index_step;
+
         let mut estimated_width = width_guess.unwrap_or(candidate_bscore / candidate_index); // a very rough estimation in case None was given
 
         if high < candidate_index {
