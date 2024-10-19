@@ -541,8 +541,7 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
         {
             return Ok(self.genesis.hash);
         }
-        let mut low = self.selected_chain_store.read()
-        .get_by_hash(self.pruning_point_store.read().history_root().unwrap()).unwrap();
+        let mut low = self.selected_chain_store.read().get_by_hash(self.pruning_point_store.read().history_root().unwrap()).unwrap();
         let mut high = self.selected_chain_store.read().get_tip().unwrap().0;
         let mut next_candidate = reference_block;
         let mut index_step;
