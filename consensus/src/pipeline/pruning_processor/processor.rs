@@ -20,7 +20,7 @@ use crate::{
             utxo_diffs::UtxoDiffsStoreReader,
         },
     },
-    pipeline::tx_receipts_processor::rep_parents_store::RepParentsStore,
+    pipeline::tx_receipts_manager::rep_parents_store::RepParentsStore,
     processes::{pruning_proof::PruningProofManager, reachability::inquirer as reachability, relations},
 };
 use crossbeam_channel::Receiver as CrossbeamReceiver;

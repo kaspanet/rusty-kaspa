@@ -22,7 +22,7 @@ use crate::{
         virtual_state::{LkgVirtualState, VirtualStores},
         DB,
     },
-    pipeline::tx_receipts_processor::{pchmr_store::DbPchmrStore, rep_parents_store::DbRepParentsStore},
+    pipeline::tx_receipts_manager::{pchmr_store::DbPchmrStore, rep_parents_store::DbRepParentsStore},
     processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations},
 };
 

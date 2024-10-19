@@ -10,7 +10,7 @@ use crate::{
             selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB,
         },
     },
-    pipeline::tx_receipts_processor::merkle_proofs_manager::MerkleProofsManager,
+    pipeline::tx_receipts_manager::merkle_proofs_manager::MerkleProofsManager,
     processes::{
         block_depth::BlockDepthManager, coinbase::CoinbaseManager, ghostdag::protocol::GhostdagManager,
         parents_builder::ParentsManager, pruning::PruningPointManager, pruning_proof::PruningProofManager, sync::SyncManager,
