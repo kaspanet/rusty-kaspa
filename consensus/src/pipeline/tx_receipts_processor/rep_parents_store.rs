@@ -5,7 +5,7 @@ use kaspa_database::{
 };
 use kaspa_hashes::Hash;
 use std::sync::Arc;
-
+/*most likely this store will be removed */
 pub trait RepParentsStoreReader {
     fn get(&self, hash: Hash) -> Result<Vec<Hash>, StoreError>;
 

@@ -38,13 +38,7 @@ impl DbPchmrStore {
 impl PchmrStore for DbPchmrStore {
     fn insert(&self, hash: Hash, pchmr: Hash) -> Result<(), StoreError> {
         if self.access.has(hash)? {
-            if self.get(hash).unwrap() != pchmr
-            //TODO:temporary workaround - this is bad and should not be kept this way
-            {
-                return Err(StoreError::HashAlreadyExists(hash));
-            } else {
-                return Ok(());
-            }
+            return Err(StoreError::HashAlreadyExists(hash));
         }
         self.access.write(DirectDbWriter::new(&self.db), hash, pchmr)?;
         Ok(())
