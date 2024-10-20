@@ -1,7 +1,6 @@
 use super::{
     error::ReceiptsErrors,
     pchmr_store::{DbPchmrStore, PchmrStoreReader},
-    rep_parents_store::DbRepParentsStore,
 };
 use crate::model::stores::selected_chain::SelectedChainStoreReader;
 #[allow(unused_imports)]
@@ -154,7 +153,6 @@ pub struct MerkleProofsManager<T: SelectedChainStoreReader, U: ReachabilityStore
     // pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
     // pub(super) depth_store: Arc<DbDepthStore>,
     pub(super) hash_to_pchmr_store: Arc<DbPchmrStore>,
-    pub(super) rep_parents_store: Arc<DbRepParentsStore>, //will probably remove field
 
     // // Utxo-related stores
     // pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
@@ -256,7 +254,6 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
             // counters,
             storage_mass_activation_daa_score: params.storage_mass_activation_daa_score,
             hash_to_pchmr_store: storage.hash_to_pchmr_store.clone(),
-            rep_parents_store: storage.rep_parents_store.clone(),
         }
     }
     pub fn generate_tx_receipt(&self, req_block_hash: Hash, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
@@ -352,7 +349,6 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
         as the block itself at this point is not assumed to exist*/
         let representative_parents_list = self.representative_log_parents(req_selected_parent);
         calc_merkle_root(representative_parents_list.into_iter())
-        // in block template: should update rep_parents_store
     }
     pub fn create_pchmr_witness(&self, leaf_block_hash: Hash, root_block_hash: Hash) -> Result<MerkleWitness, ReceiptsErrors> {
         // proof that a block belongs to the pchmr tree of another block

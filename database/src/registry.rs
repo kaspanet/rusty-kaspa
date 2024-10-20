@@ -48,8 +48,6 @@ pub enum DatabaseStorePrefixes {
     // ---- Metadata ----
     MultiConsensusMetadata = 124,
     ConsensusEntries = 125,
-    //---- Temporary ----
-    RepParentsList = 126,
 
     // ---- Components ----
     Addresses = 128,

@@ -22,7 +22,7 @@ use crate::{
         virtual_state::{LkgVirtualState, VirtualStores},
         DB,
     },
-    pipeline::tx_receipts_manager::{pchmr_store::DbPchmrStore, rep_parents_store::DbRepParentsStore},
+    pipeline::tx_receipts_manager::pchmr_store::DbPchmrStore,
     processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations},
 };
 
@@ -52,7 +52,6 @@ pub struct ConsensusStorage {
 
     // temporary
     pub hash_to_pchmr_store: Arc<DbPchmrStore>,
-    pub rep_parents_store: Arc<DbRepParentsStore>,
 
     // Append-only stores
     pub ghostdag_store: Arc<DbGhostdagStore>,
@@ -220,7 +219,6 @@ impl ConsensusStorage {
         let acceptance_data_store = Arc::new(DbAcceptanceDataStore::new(db.clone(), acceptance_data_builder.build()));
         //temp
         let hash_to_pchmr_store = Arc::new(DbPchmrStore::new(db.clone(), header_data_builder.build()));
-        let rep_parents_store = Arc::new(DbRepParentsStore::new(db.clone(), header_data_builder.build()));
         //TODO: think about the correc cache policy above
 
         // Tips
@@ -264,7 +262,6 @@ impl ConsensusStorage {
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             lkg_virtual_state,
-            rep_parents_store,
             hash_to_pchmr_store,
         })
     }
