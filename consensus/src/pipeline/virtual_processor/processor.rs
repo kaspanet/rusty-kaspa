@@ -1,8 +1,7 @@
 use crate::{
     consensus::{
         services::{
-            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbGhostdagManager, DbParentsManager, DbPruningPointManager,
-            DbWindowManager,
+            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbGhostdagManager, DbMerkleProofsManager, DbParentsManager, DbPruningPointManager, DbWindowManager
         },
         storage::ConsensusStorage,
     },

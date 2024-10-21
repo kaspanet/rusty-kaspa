@@ -1,4 +1,4 @@
-use crate::{consensus::test_consensus::TestConsensus, model::services::reachability::ReachabilityService};
+use crate::{consensus::{services::DbMerkleProofsManager, test_consensus::TestConsensus}, model::{services::reachability::ReachabilityService, stores::pchmr_store::PchmrStore}};
 use kaspa_consensus_core::{
     api::ConsensusApi,
     block::{Block, BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
@@ -85,7 +85,10 @@ impl TestContext {
         self.current_tips.clear();
         while let Some(t) = self.current_templates.pop_front() {
             self.current_tips.insert(t.block.header.hash);
-            self.validate_and_insert_block(t.block.to_immutable()).await;
+            let immutatble_block=t.block.to_immutable();
+            let pchmr_root=self.calc_pchmr_root(&immutatble_block);
+            self.store_pchmr_root(immutatble_block.header.hash,pchmr_root);
+            self.validate_and_insert_block(immutatble_block).await;
         }
         self
     }
@@ -149,6 +152,19 @@ impl TestContext {
         // Assert that at least one body tip was resolved with valid UTXO
         assert!(self.consensus.body_tips().iter().copied().any(|h| self.consensus.block_status(h) == BlockStatus::StatusUTXOValid));
         self
+    }
+    pub fn calc_pchmr_root(&self, block: &Block)->Hash {
+        let mut parent=None;
+        if block.header.hash!=self. merkle_proofs_manager().genesis.hash{
+         parent=Some(self.consensus.services.reachability_service.get_chain_parent(block.header.hash));
+        }
+        self.merkle_proofs_manager().calc_pchmr_root(parent)
+    }
+    pub fn store_pchmr_root(&self, block_hash: Hash,pchmr_root_hash:Hash) {
+        self.merkle_proofs_manager().hash_to_pchmr_store.insert(block_hash,pchmr_root_hash).unwrap();
+    }
+    pub fn merkle_proofs_manager(&self)-> DbMerkleProofsManager{
+        self.consensus.services.merkle_proofs_manager.clone()
     }
 }
 
@@ -295,6 +311,36 @@ async fn double_search_disqualified_test() {
     }
     ctx.assert_tips_num(1);
 }
+
+#[tokio::test]
+async fn test_chain_posterities() {
+    let config = ConfigBuilder::new(MAINNET_PARAMS)
+    .skip_proof_of_work()
+    .edit_consensus_params(|p| {
+        p.max_block_parents = 4;
+        p.mergeset_size_limit = 10;
+        p.finality_depth=10;
+        p.target_time_per_block=50;
+    })
+    .build();
+
+let mut ctx = TestContext::new(TestConsensus::new(&config));
+
+// Build a large 32-wide antichain
+ctx.build_block_template_row(0..32)
+    .validate_and_insert_row()
+    .await
+    .assert_tips()
+    .assert_virtual_parents_subset()
+    .assert_valid_utxo_tip();
+
+// Mine a long enough chain s.t. the antichain is fully merged
+for _ in 0..32 {
+    ctx.build_block_template_row(0..1).validate_and_insert_row().await.assert_valid_utxo_tip();
+}
+ctx.assert_tips_num(1);
+}
+
 
 fn new_miner_data() -> MinerData {
     let secp = secp256k1::Secp256k1::new();

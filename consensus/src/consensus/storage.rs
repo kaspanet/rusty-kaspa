@@ -1,28 +1,8 @@
 use crate::{
     config::Config,
     model::stores::{
-        acceptance_data::DbAcceptanceDataStore,
-        block_transactions::DbBlockTransactionsStore,
-        block_window_cache::BlockWindowCacheStore,
-        daa::DbDaaStore,
-        depth::DbDepthStore,
-        ghostdag::{CompactGhostdagData, DbGhostdagStore},
-        headers::{CompactHeaderData, DbHeadersStore},
-        headers_selected_tip::DbHeadersSelectedTipStore,
-        past_pruning_points::DbPastPruningPointsStore,
-        pruning::DbPruningStore,
-        pruning_utxoset::PruningUtxosetStores,
-        reachability::{DbReachabilityStore, ReachabilityData},
-        relations::DbRelationsStore,
-        selected_chain::DbSelectedChainStore,
-        statuses::DbStatusesStore,
-        tips::DbTipsStore,
-        utxo_diffs::DbUtxoDiffsStore,
-        utxo_multisets::DbUtxoMultisetsStore,
-        virtual_state::{LkgVirtualState, VirtualStores},
-        DB,
+        acceptance_data::DbAcceptanceDataStore, block_transactions::DbBlockTransactionsStore, block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::{CompactGhostdagData, DbGhostdagStore}, headers::{CompactHeaderData, DbHeadersStore}, headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore, pchmr_store::DbPchmrStore, pruning::DbPruningStore, pruning_utxoset::PruningUtxosetStores, reachability::{DbReachabilityStore, ReachabilityData}, relations::DbRelationsStore, selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, tips::DbTipsStore, utxo_diffs::DbUtxoDiffsStore, utxo_multisets::DbUtxoMultisetsStore, virtual_state::{LkgVirtualState, VirtualStores}, DB
     },
-    pipeline::tx_receipts_manager::pchmr_store::DbPchmrStore,
     processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations},
 };
 

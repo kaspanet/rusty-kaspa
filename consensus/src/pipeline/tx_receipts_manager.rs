@@ -1,8 +1,5 @@
-use super::{
-    error::ReceiptsErrors,
-    pchmr_store::{DbPchmrStore, PchmrStoreReader},
-};
-use crate::model::stores::selected_chain::SelectedChainStoreReader;
+use super::receipts_errors::ReceiptsErrors;
+use crate::model::stores::{pchmr_store::{DbPchmrStore, PchmrStoreReader}, selected_chain::SelectedChainStoreReader};
 #[allow(unused_imports)]
 use crate::{
     consensus::{
@@ -123,7 +120,14 @@ use std::{
     sync::{atomic::Ordering, Arc},
 };
 #[derive(Clone)]
-pub struct MerkleProofsManager<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreReader> {
+pub struct MerkleProofsManager<
+    T: SelectedChainStoreReader,
+    U: ReachabilityStoreReader,
+    V: HeaderStoreReader,
+    // W:PchmrStoreReader,
+    X:AcceptanceDataStoreReader>
+    // S:PruningStoreReader>
+    {
     // Channels
     // receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
     // pruning_sender: CrossbeamSender<PruningProcessingMessage>,
@@ -136,11 +140,11 @@ pub struct MerkleProofsManager<T: SelectedChainStoreReader, U: ReachabilityStore
     // db: Arc<DB>,
 
     // Config
-    pub(super) genesis: GenesisBlock,
-    pub(super) max_block_parents: u8,
-    pub(super) mergeset_size_limit: u64,
-    pub(super) pruning_depth: u64,
-    pub(super) posterity_depth: u64,
+    pub genesis: GenesisBlock,
+    // pub(super) max_block_parents: u8,
+    // pub(super) mergeset_size_limit: u64,
+    // pub(super) pruning_depth: u64,
+    pub posterity_depth: u64,
 
     // Stores
     // pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -148,16 +152,16 @@ pub struct MerkleProofsManager<T: SelectedChainStoreReader, U: ReachabilityStore
     headers_store: Arc<V>,
     selected_chain_store: Arc<RwLock<T>>, // pub(super) daa_excluded_store: Arc<DbDaaStore>,
     // pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
-    pub(super) pruning_point_store: Arc<RwLock<DbPruningStore>>,
-    pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
+    // pub(super) pruning_point_store: Arc<RwLock<S>>,
+    // pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
     // pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
     // pub(super) depth_store: Arc<DbDepthStore>,
-    pub(super) hash_to_pchmr_store: Arc<DbPchmrStore>,
+    pub hash_to_pchmr_store: Arc<DbPchmrStore>,
 
     // // Utxo-related stores
     // pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
     // pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
-    pub(super) acceptance_data_store: Arc<DbAcceptanceDataStore>,
+    pub(super) acceptance_data_store: Arc<X>,
     // pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
     // pub(super) pruning_utxoset_stores: Arc<RwLock<PruningUtxosetStores>>,
 
@@ -166,13 +170,13 @@ pub struct MerkleProofsManager<T: SelectedChainStoreReader, U: ReachabilityStore
     // pub lkg_virtual_state: LkgVirtualState,
 
     // // Managers and services
-    pub(super) ghostdag_manager: DbGhostdagManager,
+    // pub(super) ghostdag_manager: DbGhostdagManager,
     pub(super) reachability_service: MTReachabilityService<U>, // pub(super) relations_service: MTRelationsService<DbRelationsStore>,
-    pub(super) dag_traversal_manager: DbDagTraversalManager,
+    // pub(super) dag_traversal_manager: DbDagTraversalManager,
     // pub(super) window_manager: DbWindowManager,
     // pub(super) coinbase_manager: CoinbaseManager,
     // pub(super) transaction_validator: TransactionValidator,
-    pub(super) pruning_point_manager: DbPruningPointManager,
+    // pub(super) pruning_point_manager: DbPruningPointManager,
 
     // pub(super) parents_manager: DbParentsManager,
     // pub(super) depth_manager: DbBlockDepthManager,
@@ -190,37 +194,48 @@ pub struct MerkleProofsManager<T: SelectedChainStoreReader, U: ReachabilityStore
     pub(crate) storage_mass_activation_daa_score: u64,
 }
 
-impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreReader> MerkleProofsManager<T, U, V> {
+impl <
+T: SelectedChainStoreReader,
+U: ReachabilityStoreReader,
+V: HeaderStoreReader,
+// W:PchmrStoreReader,
+X:AcceptanceDataStoreReader> MerkleProofsManager<T, U,V,X> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         // receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
         // pruning_sender: CrossbeamSender<PruningProcessingMessage>,
         // pruning_receiver: CrossbeamReceiver<PruningProcessingMessage>,
         // thread_pool: Arc<ThreadPool>,
-        params: &Params,
+        genesis: GenesisBlock,
+        posterity_depth: u64,
+        // params: &Params,
         // db: Arc<DB>,
-        storage: &Arc<ConsensusStorage>,
-        dag_traversal_manager: DbDagTraversalManager,
-        pruning_point_manager: DbPruningPointManager,
-        ghostdag_manager: DbGhostdagManager,
+        // storage: &Arc<ConsensusStorage>,
+        // dag_traversal_manager: DbDagTraversalManager,
+        // pruning_point_manager: DbPruningPointManager,
+        // ghostdag_manager: DbGhostdagManager,
 
         reachability_service: MTReachabilityService<U>,
         headers_store: Arc<V>,
         selected_chain_store: Arc<RwLock<T>>,
+        acceptance_data_store: Arc<X>,
+        hash_to_pchmr_store: Arc<DbPchmrStore>,
+        // pruning_point_store: Arc<RwLock<S>>,
         // pruning_lock: SessionLock,
         // notification_root: Arc<ConsensusNotificationRoot>,
         // counters: Arc<ProcessingCounters>,
+        storage_mass_activation_daa_score: u64,
     ) -> Self {
         Self {
             // receiver,
             // pruning_sender,
             // pruning_receiver,
             // thread_pool,
-            genesis: params.genesis.clone(),
-            max_block_parents: params.max_block_parents,
-            mergeset_size_limit: params.mergeset_size_limit,
-            pruning_depth: params.pruning_depth,
-            posterity_depth: params.finality_depth,
+            genesis: genesis.clone(),
+            // max_block_parents: params.max_block_parents,
+            // mergeset_size_limit: params.mergeset_size_limit,
+            // pruning_depth: params.pruning_depth,
+            posterity_depth: posterity_depth,
 
             // db,
             // statuses_store: storage.statuses_store.clone(),
@@ -228,32 +243,32 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
             // ghostdag_primary_store: storage.ghostdag_primary_store.clone(),
             // daa_excluded_store: storage.daa_excluded_store.clone(),
             // block_transactions_store: storage.block_transactions_store.clone(),
-            pruning_point_store: storage.pruning_point_store.clone(),
-            past_pruning_points_store: storage.past_pruning_points_store.clone(),
+            // pruning_point_store: pruning_point_store.clone(),
+            // past_pruning_points_store: past_pruning_points_store.clone(),
             // body_tips_store: storage.body_tips_store.clone(),
             // depth_store: storage.depth_store.clone(),
             selected_chain_store: selected_chain_store.clone(),
             // utxo_diffs_store: storage.utxo_diffs_store.clone(),
             // utxo_multisets_store: storage.utxo_multisets_store.clone(),
-            acceptance_data_store: storage.acceptance_data_store.clone(),
+            acceptance_data_store: acceptance_data_store.clone(),
             // virtual_stores: storage.virtual_stores.clone(),
             // pruning_utxoset_stores: storage.pruning_utxoset_stores.clone(),
             // lkg_virtual_state: storage.lkg_virtual_state.clone(),
-            ghostdag_manager: ghostdag_manager.clone(),
+            // ghostdag_manager: ghostdag_manager.clone(),
             reachability_service,
             // relations_service: services.relations_service.clone(),
-            dag_traversal_manager: dag_traversal_manager.clone(),
+            // dag_traversal_manager: dag_traversal_manager.clone(),
             // window_manager: services.window_manager.clone(),
             // coinbase_manager: services.coinbase_manager.clone(),
             // transaction_validator: services.transaction_validator.clone(),
-            pruning_point_manager: pruning_point_manager.clone(),
+            // pruning_point_manager: pruning_point_manager.clone(),
             // parents_manager: services.parents_manager.clone(),
             // depth_manager: services.depth_manager.clone(),
             // pruning_lock,
             // notification_root,
             // counters,
-            storage_mass_activation_daa_score: params.storage_mass_activation_daa_score,
-            hash_to_pchmr_store: storage.hash_to_pchmr_store.clone(),
+            storage_mass_activation_daa_score: storage_mass_activation_daa_score,
+            hash_to_pchmr_store: hash_to_pchmr_store.clone(),
         }
     }
     pub fn generate_tx_receipt(&self, req_block_hash: Hash, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
@@ -344,10 +359,14 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
         }
         false
     }
-    pub fn calc_pchmr_root(&self, req_selected_parent: Hash) -> Hash {
+    pub fn calc_pchmr_root(&self, req_selected_parent: Option<Hash>) -> Hash {
         /*  function receives the selected parent of the relevant block,
         as the block itself at this point is not assumed to exist*/
-        let representative_parents_list = self.representative_log_parents(req_selected_parent);
+        if req_selected_parent==None //genesis edge case has no parent at all
+        {
+            return ZERO_HASH;
+        }
+        let representative_parents_list = self.representative_log_parents(req_selected_parent.unwrap());
         calc_merkle_root(representative_parents_list.into_iter())
     }
     pub fn create_pchmr_witness(&self, leaf_block_hash: Hash, root_block_hash: Hash) -> Result<MerkleWitness, ReceiptsErrors> {
@@ -450,14 +469,14 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
          */
         let block_bscore: u64 = self.headers_store.get_blue_score(block_hash).unwrap();
         let tentative_cutoff_bscore = block_bscore - block_bscore % self.posterity_depth + self.posterity_depth;
-        let pruning_head = self.pruning_point_store.read().pruning_point()?; //possibly inefficient
-                                                                             /*try and reach the first proceeding selected chain block,
-                                                                             while checking if pre_posterity of queried block is of the rare case where it is encountered before arriving at a chain block
-                                                                             in the majority of cases, a very short distance is covered before reaching a chain block.
-                                                                             */
+        let head_hash = self.selected_chain_store.read().get_tip()?.1; //possibly inefficient
+        /*try and reach the first proceeding selected chain block,
+        while checking if pre_posterity of queried block is of the rare case where it is encountered before arriving at a chain block
+        in the majority of cases, a very short distance is covered before reaching a chain block.
+        */
         let candidate_block = self
             .reachability_service
-            .forward_chain_iterator(block_hash, pruning_head, true)
+            .forward_chain_iterator(block_hash, head_hash, true)
             .find(|&block| {
                 let block_bscore = self.headers_store.get_blue_score(block).unwrap();
                 block_bscore > tentative_cutoff_bscore || self.selected_chain_store.read().get_by_hash(block).is_ok()
@@ -469,9 +488,9 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
             // in case cutoff_bscore was crossed prior to reaching a chain block
             return Ok(candidate_block);
         }
-        let pruning_head_bscore = self.headers_store.get_blue_score(pruning_head).unwrap();
+        let head_bscore = self.headers_store.get_blue_score(head_hash).unwrap();
         let cutoff_bscore = candidate_bscore - candidate_bscore % self.posterity_depth + self.posterity_depth;
-        if cutoff_bscore > pruning_head_bscore {
+        if cutoff_bscore > head_bscore {
             // Posterity block not yet available.
             Err(ReceiptsErrors::PosterityDoesNotExistYet(cutoff_bscore))
         } else {
@@ -647,7 +666,7 @@ pub struct PochmSegment {
     leaf_in_pchmr_witness: MerkleWitness,
 }
 #[derive(Clone)]
-pub struct Pochm {
+pub struct Pochm  {
     vec: Vec<PochmSegment>,
     hash_to_pchmr_store: Arc<DbPchmrStore>, //temporary field
 }

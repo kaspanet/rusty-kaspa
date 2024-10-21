@@ -4,13 +4,10 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
-            block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
-            headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore,
-            pruning::DbPruningStore, reachability::DbReachabilityStore, relations::DbRelationsStore,
-            selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB,
+            acceptance_data::DbAcceptanceDataStore, block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore, headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore, pruning::DbPruningStore, reachability::DbReachabilityStore, relations::DbRelationsStore, selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB
         },
     },
-    pipeline::tx_receipts_manager::merkle_proofs_manager::MerkleProofsManager,
+    pipeline::tx_receipts_manager::MerkleProofsManager,
     processes::{
         block_depth::BlockDepthManager, coinbase::CoinbaseManager, ghostdag::protocol::GhostdagManager,
         parents_builder::ParentsManager, pruning::PruningPointManager, pruning_proof::PruningProofManager, sync::SyncManager,
@@ -26,8 +23,6 @@ pub type DbGhostdagManager =
     GhostdagManager<DbGhostdagStore, MTRelationsService<DbRelationsStore>, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>;
 
 pub type DbDagTraversalManager = DagTraversalManager<DbGhostdagStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
-pub type DbMerkleProofsManager = MerkleProofsManager<DbSelectedChainStore, DbReachabilityStore, DbHeadersStore>;
-
 pub type DbWindowManager = DualWindowManager<DbGhostdagStore, BlockWindowCacheStore, DbHeadersStore, DbDaaStore>;
 
 pub type DbSyncManager = SyncManager<
@@ -44,6 +39,11 @@ pub type DbPruningPointManager =
     PruningPointManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore, DbHeadersSelectedTipStore>;
 pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>;
 pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
+pub type DbMerkleProofsManager = MerkleProofsManager<DbSelectedChainStore,
+DbReachabilityStore,
+DbHeadersStore,
+// W:PchmrStoreReader,
+DbAcceptanceDataStore>;
 
 pub struct ConsensusServices {
     // Underlying storage
@@ -199,14 +199,14 @@ impl ConsensusServices {
             storage.statuses_store.clone(),
         );
         let merkle_proofs_manager = MerkleProofsManager::new(
-            params,
-            &storage,
-            dag_traversal_manager.clone(),
-            pruning_point_manager.clone(),
-            ghostdag_primary_manager.clone(),
+            params.genesis.clone(),
+            params.finality_depth,
             reachability_service.clone(),
             storage.headers_store.clone(),
             storage.selected_chain_store.clone(),
+            storage.acceptance_data_store.clone(),
+            storage.hash_to_pchmr_store.clone(),
+            params.storage_mass_activation_daa_score,
         );
 
         Arc::new(Self {

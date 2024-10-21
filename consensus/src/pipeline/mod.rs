@@ -4,6 +4,7 @@ pub mod header_processor;
 pub mod monitor;
 pub mod pruning_processor;
 pub mod tx_receipts_manager;
+pub mod receipts_errors;
 pub mod virtual_processor;
 
 /// Re-export from consensus core
