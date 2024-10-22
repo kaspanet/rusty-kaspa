@@ -22,6 +22,7 @@ use kaspa_txscript::{
 use kaspa_txscript_errors::TxScriptError::{EvalFalse, VerifyError};
 use rand::thread_rng;
 use secp256k1::Keypair;
+use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 
 /// Main function to execute all Kaspa transaction script scenarios.
 ///
@@ -59,7 +60,7 @@ fn threshold_scenario() -> ScriptBuilderResult<()> {
     let sig_cache = Cache::new(10_000);
 
     // Prepare to reuse values for signature hashing
-    let mut reused_values = SigHashReusedValues::new();
+    let mut reused_values = SigHashReusedValuesUnsync::new();
 
     // Create the script builder
     let mut builder = ScriptBuilder::new();
@@ -249,7 +250,7 @@ fn threshold_scenario_limited_one_time() -> ScriptBuilderResult<()> {
     let sig_cache = Cache::new(10_000);
 
     // Prepare to reuse values for signature hashing
-    let mut reused_values = SigHashReusedValues::new();
+    let mut reused_values = SigHashReusedValuesUnsync::new();
 
     // Generate the script public key
     let spk = pay_to_script_hash_script(&script);
@@ -416,7 +417,7 @@ fn threshold_scenario_limited_2_times() -> ScriptBuilderResult<()> {
     let sig_cache = Cache::new(10_000);
 
     // Prepare to reuse values for signature hashing
-    let mut reused_values = SigHashReusedValues::new();
+    let mut reused_values = SigHashReusedValuesUnsync::new();
 
     // Generate the script public key
     let spk = pay_to_script_hash_script(&two_times_script);
@@ -611,7 +612,7 @@ fn shared_secret_scenario() -> ScriptBuilderResult<()> {
     let tx = Transaction::new(1, vec![input.clone()], vec![output.clone()], 0, Default::default(), 0, vec![]);
     let sign = |pk: Keypair| {
         // Prepare to reuse values for signature hashing
-        let mut reused_values = SigHashReusedValues::new();
+        let mut reused_values = SigHashReusedValuesUnsync::new();
 
         let tx = MutableTransaction::with_entries(tx.clone(), vec![utxo_entry.clone()]);
         let sig_hash = calc_schnorr_signature_hash(&tx.as_verifiable(), 0, SIG_HASH_ALL, &mut reused_values);
