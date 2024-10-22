@@ -131,7 +131,7 @@ pub enum NonStandardError {
     RejectInsufficientFee(TransactionId, u64, u64),
 
     #[error("transaction input #{1} has {2} signature operations which is more than the allowed max amount of {3}")]
-    RejectSignatureCount(TransactionId, usize, u8, u8),
+    RejectSignatureCount(TransactionId, usize, u64, u8),
 }
 
 impl NonStandardError {

@@ -93,6 +93,7 @@ fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     script.iter().batching(|it| deserialize_next_opcode(it))
 }
 
+#[must_use]
 pub fn get_sig_op_count<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     signature_script: &[u8],
     prev_script_public_key: &ScriptPublicKey,
