@@ -142,7 +142,7 @@ impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for Vec<u8> {
                 "numeric value encoded as {:x?} is {} bytes which exceeds the max allowed of {}",
                 self,
                 self.len(),
-                DEFAULT_SCRIPT_NUM_LEN
+                LEN
             ))),
             false => deserialize_i64(self).map(SizedEncodeInt::<LEN>),
         }
