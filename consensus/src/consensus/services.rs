@@ -4,7 +4,10 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
-            acceptance_data::DbAcceptanceDataStore, block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore, headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore, pruning::DbPruningStore, reachability::DbReachabilityStore, relations::DbRelationsStore, selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB
+            acceptance_data::DbAcceptanceDataStore, block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore,
+            ghostdag::DbGhostdagStore, headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore,
+            past_pruning_points::DbPastPruningPointsStore, pruning::DbPruningStore, reachability::DbReachabilityStore,
+            relations::DbRelationsStore, selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB,
         },
     },
     pipeline::tx_receipts_manager::MerkleProofsManager,
@@ -39,11 +42,13 @@ pub type DbPruningPointManager =
     PruningPointManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore, DbHeadersSelectedTipStore>;
 pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>;
 pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
-pub type DbMerkleProofsManager = MerkleProofsManager<DbSelectedChainStore,
-DbReachabilityStore,
-DbHeadersStore,
-// W:PchmrStoreReader,
-DbAcceptanceDataStore>;
+pub type DbMerkleProofsManager = MerkleProofsManager<
+    DbSelectedChainStore,
+    DbReachabilityStore,
+    DbHeadersStore,
+    // W:PchmrStoreReader,
+    DbAcceptanceDataStore,
+>;
 
 pub struct ConsensusServices {
     // Underlying storage

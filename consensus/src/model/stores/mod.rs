@@ -8,6 +8,7 @@ pub mod ghostdag;
 pub mod headers;
 pub mod headers_selected_tip;
 pub mod past_pruning_points;
+pub mod pchmr_store;
 pub mod pruning;
 pub mod pruning_utxoset;
 pub mod reachability;
@@ -19,7 +20,6 @@ pub mod utxo_diffs;
 pub mod utxo_multisets;
 pub mod utxo_set;
 pub mod virtual_state;
-pub mod pchmr_store;
 
 pub use kaspa_database;
 pub use kaspa_database::prelude::DB;

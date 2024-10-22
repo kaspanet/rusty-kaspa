@@ -1,133 +1,32 @@
 use super::receipts_errors::ReceiptsErrors;
-use crate::model::stores::{pchmr_store::{DbPchmrStore, PchmrStoreReader}, selected_chain::SelectedChainStoreReader};
-#[allow(unused_imports)]
-use crate::{
-    consensus::{
-        services::{
-            ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbGhostdagManager, DbParentsManager, DbPruningPointManager,
-            DbWindowManager,
-        },
-        storage::ConsensusStorage,
-    },
-    constants::BLOCK_VERSION,
-    errors::RuleError,
-    model::{
-        services::{
-            reachability::{MTReachabilityService, ReachabilityService},
-            relations::MTRelationsService,
-        },
-        stores::{
-            acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
-            block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
-            daa::DbDaaStore,
-            depth::{DbDepthStore, DepthStoreReader},
-            ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
-            headers::{DbHeadersStore, HeaderStoreReader},
-            past_pruning_points::DbPastPruningPointsStore,
-            pruning::{DbPruningStore, PruningStoreReader},
-            pruning_utxoset::PruningUtxosetStores,
-            reachability::{DbReachabilityStore, ReachabilityStoreReader},
-            relations::{DbRelationsStore, RelationsStoreReader},
-            selected_chain::{DbSelectedChainStore, SelectedChainStore},
-            statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
-            tips::{DbTipsStore, TipsStoreReader},
-            utxo_diffs::{DbUtxoDiffsStore, UtxoDiffsStoreReader},
-            utxo_multisets::{DbUtxoMultisetsStore, UtxoMultisetsStoreReader},
-            virtual_state::{LkgVirtualState, VirtualState, VirtualStateStoreReader, VirtualStores},
-            DB,
-        },
-    },
-    params::Params,
-    pipeline::{
-        deps_manager::VirtualStateProcessingMessage, pruning_processor::processor::PruningProcessingMessage, ProcessingCounters,
-    },
-    processes::{
-        coinbase::CoinbaseManager,
-        ghostdag::ordering::SortableBlock,
-        transaction_validator::{errors::TxResult, transaction_validator_populated::TxValidationFlags, TransactionValidator},
-        window::WindowManager,
-    },
+use crate::model::stores::{
+    pchmr_store::{DbPchmrStore, PchmrStoreReader},
+    selected_chain::SelectedChainStoreReader,
 };
-#[allow(unused_imports)]
-use kaspa_consensus_core::{
-    acceptance_data::AcceptanceData,
-    api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
-    block::{BlockTemplate, MutableBlock, TemplateBuildMode, TemplateTransactionSelector},
-    blockstatus::BlockStatus::{StatusDisqualifiedFromChain, StatusUTXOValid},
-    coinbase::MinerData,
-    config::genesis::GenesisBlock,
-    header::Header,
-    merkle::calc_hash_merkle_root,
-    pruning::PruningPointsList,
-    tx::{MutableTransaction, Transaction},
-    utxo::{
-        utxo_diff::UtxoDiff,
-        utxo_view::{UtxoView, UtxoViewComposition},
-    },
-    BlockHashSet, ChainPath,
+use crate::model::{
+    services::reachability::{MTReachabilityService, ReachabilityService},
+    stores::{acceptance_data::AcceptanceDataStoreReader, headers::HeaderStoreReader, reachability::ReachabilityStoreReader},
 };
-#[allow(unused_imports)]
-use kaspa_consensus_notify::{
-    notification::{
-        NewBlockTemplateNotification, Notification, SinkBlueScoreChangedNotification, UtxosChangedNotification,
-        VirtualChainChangedNotification, VirtualDaaScoreChangedNotification,
-    },
-    root::ConsensusNotificationRoot,
-};
-#[allow(unused_imports)]
-use kaspa_consensusmanager::SessionLock;
-#[allow(unused_imports)]
-use kaspa_core::{debug, info, time::unix_now, trace, warn};
-#[allow(unused_imports)]
-use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExtensions};
-#[allow(unused_imports)]
+use kaspa_consensus_core::{config::genesis::GenesisBlock, header::Header};
 use kaspa_hashes::Hash;
 use kaspa_hashes::ZERO_HASH;
 use kaspa_merkle::{
     calc_merkle_root, create_merkle_witness_from_sorted, create_merkle_witness_from_unsorted, verify_merkle_witness, MerkleWitness,
 };
-#[allow(unused_imports)]
-use kaspa_muhash::MuHash;
-#[allow(unused_imports)]
-use kaspa_notify::{events::EventType, notifier::Notify};
 
-// use super::errors::{PruningImportError, PruningImportResult};
-#[allow(unused_imports)]
-use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
-#[allow(unused_imports)]
-use itertools::Itertools;
-#[allow(unused_imports)]
-use kaspa_consensus_core::tx::ValidatedTransaction;
-#[allow(unused_imports)]
-use kaspa_utils::binary_heap::BinaryHeapExtensions;
-#[allow(unused_imports)]
-use parking_lot::{RwLock, RwLockUpgradableReadGuard};
-#[allow(unused_imports)]
-use rand::{seq::SliceRandom, Rng};
+use parking_lot::RwLock;
 
-#[allow(unused_imports)]
-use rayon::{
-    prelude::{IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator},
-    ThreadPool,
-};
-#[allow(unused_imports)]
-use rocksdb::WriteBatch;
-#[allow(unused_imports)]
-use std::{
-    cmp::min,
-    collections::{BinaryHeap, HashMap, VecDeque},
-    ops::Deref,
-    sync::{atomic::Ordering, Arc},
-};
+use std::{cmp::min, sync::Arc};
 #[derive(Clone)]
 pub struct MerkleProofsManager<
     T: SelectedChainStoreReader,
     U: ReachabilityStoreReader,
     V: HeaderStoreReader,
     // W:PchmrStoreReader,
-    X:AcceptanceDataStoreReader>
-    // S:PruningStoreReader>
-    {
+    X: AcceptanceDataStoreReader,
+>
+// S:PruningStoreReader>
+{
     // Channels
     // receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
     // pruning_sender: CrossbeamSender<PruningProcessingMessage>,
@@ -194,13 +93,14 @@ pub struct MerkleProofsManager<
     pub(crate) storage_mass_activation_daa_score: u64,
 }
 
-impl <
-T: SelectedChainStoreReader,
-U: ReachabilityStoreReader,
-V: HeaderStoreReader,
-// W:PchmrStoreReader,
-X:AcceptanceDataStoreReader> MerkleProofsManager<T, U,V,X> {
-    #[allow(clippy::too_many_arguments)]
+impl<
+        T: SelectedChainStoreReader,
+        U: ReachabilityStoreReader,
+        V: HeaderStoreReader,
+        // W:PchmrStoreReader,
+        X: AcceptanceDataStoreReader,
+    > MerkleProofsManager<T, U, V, X>
+{
     pub fn new(
         // receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
         // pruning_sender: CrossbeamSender<PruningProcessingMessage>,
@@ -214,7 +114,6 @@ X:AcceptanceDataStoreReader> MerkleProofsManager<T, U,V,X> {
         // dag_traversal_manager: DbDagTraversalManager,
         // pruning_point_manager: DbPruningPointManager,
         // ghostdag_manager: DbGhostdagManager,
-
         reachability_service: MTReachabilityService<U>,
         headers_store: Arc<V>,
         selected_chain_store: Arc<RwLock<T>>,
@@ -235,7 +134,7 @@ X:AcceptanceDataStoreReader> MerkleProofsManager<T, U,V,X> {
             // max_block_parents: params.max_block_parents,
             // mergeset_size_limit: params.mergeset_size_limit,
             // pruning_depth: params.pruning_depth,
-            posterity_depth: posterity_depth,
+            posterity_depth,
 
             // db,
             // statuses_store: storage.statuses_store.clone(),
@@ -267,7 +166,7 @@ X:AcceptanceDataStoreReader> MerkleProofsManager<T, U,V,X> {
             // pruning_lock,
             // notification_root,
             // counters,
-            storage_mass_activation_daa_score: storage_mass_activation_daa_score,
+            storage_mass_activation_daa_score,
             hash_to_pchmr_store: hash_to_pchmr_store.clone(),
         }
     }
@@ -359,14 +258,18 @@ X:AcceptanceDataStoreReader> MerkleProofsManager<T, U,V,X> {
         }
         false
     }
-    pub fn calc_pchmr_root(&self, req_selected_parent: Option<Hash>) -> Hash {
-        /*  function receives the selected parent of the relevant block,
-        as the block itself at this point is not assumed to exist*/
-        if req_selected_parent==None //genesis edge case has no parent at all
-        {
+    pub fn calc_pchmr_root_by_hash(&self, block_hash: Hash) -> Hash {
+        if block_hash == self.genesis.hash {
             return ZERO_HASH;
         }
-        let representative_parents_list = self.representative_log_parents(req_selected_parent.unwrap());
+        let parent = self.reachability_service.get_chain_parent(block_hash);
+        self.calc_pchmr_root_by_parent(parent)
+    }
+    pub fn calc_pchmr_root_by_parent(&self, req_selected_parent: Hash) -> Hash {
+        /*  function receives the selected parent of the relevant block,
+        as the block itself at this point is not assumed to exist*/
+
+        let representative_parents_list = self.representative_log_parents(req_selected_parent);
         calc_merkle_root(representative_parents_list.into_iter())
     }
     pub fn create_pchmr_witness(&self, leaf_block_hash: Hash, root_block_hash: Hash) -> Result<MerkleWitness, ReceiptsErrors> {
@@ -414,7 +317,7 @@ X:AcceptanceDataStoreReader> MerkleProofsManager<T, U,V,X> {
         it will panic if not.
         Function receives the selected parent of the relevant block ,as the block itself is not assumed to necessarily exist
         Returns all 2^i deep 'selected' parents up to the posterity block not included */
-        let pre_posterity_hash = self.get_pre_posterity_block(req_block_parent);
+        let pre_posterity_hash = self.get_pre_posterity_block_by_parent(req_block_parent);
         let pre_posterity_bscore = self.headers_store.get_blue_score(pre_posterity_hash).unwrap();
         let mut representative_parents_list = vec![];
         /*The following logic will not be efficient for blocks which are a long distance away from the selected chain,
@@ -470,10 +373,10 @@ X:AcceptanceDataStoreReader> MerkleProofsManager<T, U,V,X> {
         let block_bscore: u64 = self.headers_store.get_blue_score(block_hash).unwrap();
         let tentative_cutoff_bscore = block_bscore - block_bscore % self.posterity_depth + self.posterity_depth;
         let head_hash = self.selected_chain_store.read().get_tip()?.1; //possibly inefficient
-        /*try and reach the first proceeding selected chain block,
-        while checking if pre_posterity of queried block is of the rare case where it is encountered before arriving at a chain block
-        in the majority of cases, a very short distance is covered before reaching a chain block.
-        */
+                                                                       /*try and reach the first proceeding selected chain block,
+                                                                       while checking if pre_posterity of queried block is of the rare case where it is encountered before arriving at a chain block
+                                                                       in the majority of cases, a very short distance is covered before reaching a chain block.
+                                                                       */
         let candidate_block = self
             .reachability_service
             .forward_chain_iterator(block_hash, head_hash, true)
@@ -498,14 +401,22 @@ X:AcceptanceDataStoreReader> MerkleProofsManager<T, U,V,X> {
             self.get_chain_block_posterity_by_bscore(candidate_block, cutoff_bscore, Some(witdth_guess))
         }
     }
-    pub fn get_pre_posterity_block(&self, block_hash: Hash) -> Hash {
-        /* the function assumes that the path from block_hash down to its posterity is intact and has not been pruned
+    pub fn get_pre_posterity_block_by_hash(&self, block_hash: Hash) -> Hash {
+        if block_hash == self.genesis.hash {
+            return block_hash;
+        }
+        let parent_hash = self.reachability_service.get_chain_parent(block_hash);
+        self.get_pre_posterity_block_by_parent(parent_hash)
+    }
+
+    pub fn get_pre_posterity_block_by_parent(&self, block_parent_hash: Hash) -> Hash {
+        /* the function assumes that the path from block_parent_hash down to its posterity is intact and has not been pruned
         (which should be the same as assuming block_hash has not been pruned)
         it will panic if not.
         The function does not assume block_hash is a chain block, however
         the known aplications of posterity blocks appear nonsensical when it is not
         */
-        let block_bscore: u64 = self.headers_store.get_blue_score(block_hash).unwrap();
+        let block_bscore: u64 = self.headers_store.get_blue_score(block_parent_hash).unwrap();
         let tentative_cutoff_bscore = block_bscore - block_bscore % self.posterity_depth;
         if tentative_cutoff_bscore == 0
         //genesis block edge case
@@ -519,7 +430,7 @@ X:AcceptanceDataStoreReader> MerkleProofsManager<T, U,V,X> {
         */
         let candidate_block = self
             .reachability_service
-            .default_backward_chain_iterator(block_hash)
+            .default_backward_chain_iterator(block_parent_hash)
             .find(|&block| {
                 self.headers_store.get_blue_score(block).unwrap() < tentative_cutoff_bscore
                     || self.selected_chain_store.read().get_by_hash(block).is_ok()
@@ -528,7 +439,7 @@ X:AcceptanceDataStoreReader> MerkleProofsManager<T, U,V,X> {
         // in case cutoff_bscore was crossed prior to reaching a chain block
         if self.headers_store.get_blue_score(candidate_block).unwrap() < tentative_cutoff_bscore {
             let posterity_parent = candidate_block;
-            return self.reachability_service.forward_chain_iterator(posterity_parent, block_hash, true)
+            return self.reachability_service.forward_chain_iterator(posterity_parent, block_parent_hash, true)
             .nth(1)             //skip posterity parent
             .unwrap();
         }
@@ -564,7 +475,7 @@ X:AcceptanceDataStoreReader> MerkleProofsManager<T, U,V,X> {
         let mut high = min(self.selected_chain_store.read().get_tip().unwrap().0, candidate_index + self.posterity_depth);
         let mut index_step;
 
-        let mut estimated_width = width_guess.unwrap_or(candidate_bscore / candidate_index); // a very rough estimation in case None was given
+        let mut estimated_width = width_guess.unwrap_or(candidate_bscore / (candidate_index + 1)); // a very rough estimation in case None was given
 
         if high < candidate_index {
             return Err(ReceiptsErrors::PosterityDoesNotExistYet(cutoff_bscore));
@@ -649,13 +560,12 @@ X:AcceptanceDataStoreReader> MerkleProofsManager<T, U,V,X> {
         if !self.reachability_service.is_dag_ancestor_of(block_hash, post_posterity_candidate_hash) {
             return false;
         }
-        if self.selected_chain_store.read().get_by_hash(post_posterity_candidate_hash).is_ok() {
+        if self.selected_chain_store.read().get_by_hash(post_posterity_candidate_hash).is_err() {
             return false;
         }
-        let candidate_bscore = self.headers_store.get_blue_score(post_posterity_candidate_hash).unwrap();
-        let cutoff_bscore = candidate_bscore - candidate_bscore % self.posterity_depth;
-        let candidate_sel_parent_hash =
-            self.reachability_service.default_backward_chain_iterator(post_posterity_candidate_hash).next().unwrap();
+        let bscore = self.headers_store.get_blue_score(block_hash).unwrap();
+        let cutoff_bscore = bscore - bscore % self.posterity_depth + self.posterity_depth;
+        let candidate_sel_parent_hash = self.reachability_service.get_chain_parent(post_posterity_candidate_hash);
         let candidate_sel_parent_bscore = self.headers_store.get_blue_score(candidate_sel_parent_hash).unwrap();
         candidate_sel_parent_bscore < cutoff_bscore
     }
@@ -666,7 +576,7 @@ pub struct PochmSegment {
     leaf_in_pchmr_witness: MerkleWitness,
 }
 #[derive(Clone)]
-pub struct Pochm  {
+pub struct Pochm {
     vec: Vec<PochmSegment>,
     hash_to_pchmr_store: Arc<DbPchmrStore>, //temporary field
 }
