@@ -188,12 +188,11 @@ impl Mempool {
                 ScriptClass::PubKey => {}
                 ScriptClass::PubKeyECDSA => {}
                 ScriptClass::ScriptHash => {
-                    get_sig_op_count::<PopulatedTransaction, SigHashReusedValuesUnsync>(
+                    let num_sig_ops = get_sig_op_count::<PopulatedTransaction, SigHashReusedValuesUnsync>(
                         &input.signature_script,
                         &entry.script_public_key,
                     );
-                    let num_sig_ops = 1;
-                    if num_sig_ops > MAX_STANDARD_P2SH_SIG_OPS {
+                    if num_sig_ops > MAX_STANDARD_P2SH_SIG_OPS as u64 {
                         return Err(NonStandardError::RejectSignatureCount(transaction_id, i, num_sig_ops, MAX_STANDARD_P2SH_SIG_OPS));
                     }
                 }
