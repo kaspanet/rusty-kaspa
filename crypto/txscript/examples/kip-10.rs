@@ -1,4 +1,5 @@
 use kaspa_addresses::{Address, Prefix, Version};
+use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 use kaspa_consensus_core::{
     hashing::{
         sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
@@ -22,7 +23,6 @@ use kaspa_txscript::{
 use kaspa_txscript_errors::TxScriptError::{EvalFalse, VerifyError};
 use rand::thread_rng;
 use secp256k1::Keypair;
-use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 
 /// Main function to execute all Kaspa transaction script scenarios.
 ///
