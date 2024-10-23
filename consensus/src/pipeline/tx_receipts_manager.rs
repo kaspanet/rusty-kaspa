@@ -22,150 +22,49 @@ pub struct MerkleProofsManager<
     T: SelectedChainStoreReader,
     U: ReachabilityStoreReader,
     V: HeaderStoreReader,
-    // W:PchmrStoreReader,
     X: AcceptanceDataStoreReader,
 >
-// S:PruningStoreReader>
 {
-    // Channels
-    // receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
-    // pruning_sender: CrossbeamSender<PruningProcessingMessage>,
-    // pruning_receiver: CrossbeamReceiver<PruningProcessingMessage>,
-
-    // Thread pool
-    // pub(super) thread_pool: Arc<ThreadPool>,
-
-    // DB
-    // db: Arc<DB>,
-
-    // Config
     pub genesis: GenesisBlock,
-    // pub(super) max_block_parents: u8,
-    // pub(super) mergeset_size_limit: u64,
-    // pub(super) pruning_depth: u64,
+ 
     pub posterity_depth: u64,
 
-    // Stores
-    // pub(super) statuses_store: Arc<RwLock<DbStatusesStore>>,
-    // pub(super) ghostdag_primary_store: Arc<DbGhostdagStore>,
-    headers_store: Arc<V>,
-    selected_chain_store: Arc<RwLock<T>>, // pub(super) daa_excluded_store: Arc<DbDaaStore>,
-    // pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
-    // pub(super) pruning_point_store: Arc<RwLock<S>>,
-    // pub(super) past_pruning_points_store: Arc<DbPastPruningPointsStore>,
-    // pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
-    // pub(super) depth_store: Arc<DbDepthStore>,
+  
+    pub headers_store: Arc<V>,
+    pub  selected_chain_store: Arc<RwLock<T>>, 
+   
     pub hash_to_pchmr_store: Arc<DbPchmrStore>,
 
-    // // Utxo-related stores
-    // pub(super) utxo_diffs_store: Arc<DbUtxoDiffsStore>,
-    // pub(super) utxo_multisets_store: Arc<DbUtxoMultisetsStore>,
-    pub(super) acceptance_data_store: Arc<X>,
-    // pub(super) virtual_stores: Arc<RwLock<VirtualStores>>,
-    // pub(super) pruning_utxoset_stores: Arc<RwLock<PruningUtxosetStores>>,
-
-    // /// The "last known good" virtual state. To be used by any logic which does not want to wait
-    // /// for a possible virtual state write to complete but can rather settle with the last known state
-    // pub lkg_virtual_state: LkgVirtualState,
-
-    // // Managers and services
-    // pub(super) ghostdag_manager: DbGhostdagManager,
-    pub(super) reachability_service: MTReachabilityService<U>, // pub(super) relations_service: MTRelationsService<DbRelationsStore>,
-    // pub(super) dag_traversal_manager: DbDagTraversalManager,
-    // pub(super) window_manager: DbWindowManager,
-    // pub(super) coinbase_manager: CoinbaseManager,
-    // pub(super) transaction_validator: TransactionValidator,
-    // pub(super) pruning_point_manager: DbPruningPointManager,
-
-    // pub(super) parents_manager: DbParentsManager,
-    // pub(super) depth_manager: DbBlockDepthManager,
-
-    // // Pruning lock
-    // pruning_lock: SessionLock,
-
-    // // Notifier
-    // notification_root: Arc<ConsensusNotificationRoot>,
-
-    // Counters
-    // counters: Arc<ProcessingCounters>,
-
-    // Storage mass hardfork DAA score
-    pub(crate) storage_mass_activation_daa_score: u64,
+  
+    pub acceptance_data_store: Arc<X>,
+    pub reachability_service: MTReachabilityService<U>, 
+    pub storage_mass_activation_daa_score: u64,
 }
 
 impl<
         T: SelectedChainStoreReader,
         U: ReachabilityStoreReader,
         V: HeaderStoreReader,
-        // W:PchmrStoreReader,
         X: AcceptanceDataStoreReader,
     > MerkleProofsManager<T, U, V, X>
 {
     pub fn new(
-        // receiver: CrossbeamReceiver<VirtualStateProcessingMessage>,
-        // pruning_sender: CrossbeamSender<PruningProcessingMessage>,
-        // pruning_receiver: CrossbeamReceiver<PruningProcessingMessage>,
-        // thread_pool: Arc<ThreadPool>,
         genesis: GenesisBlock,
         posterity_depth: u64,
-        // params: &Params,
-        // db: Arc<DB>,
-        // storage: &Arc<ConsensusStorage>,
-        // dag_traversal_manager: DbDagTraversalManager,
-        // pruning_point_manager: DbPruningPointManager,
-        // ghostdag_manager: DbGhostdagManager,
         reachability_service: MTReachabilityService<U>,
         headers_store: Arc<V>,
         selected_chain_store: Arc<RwLock<T>>,
         acceptance_data_store: Arc<X>,
         hash_to_pchmr_store: Arc<DbPchmrStore>,
-        // pruning_point_store: Arc<RwLock<S>>,
-        // pruning_lock: SessionLock,
-        // notification_root: Arc<ConsensusNotificationRoot>,
-        // counters: Arc<ProcessingCounters>,
         storage_mass_activation_daa_score: u64,
     ) -> Self {
         Self {
-            // receiver,
-            // pruning_sender,
-            // pruning_receiver,
-            // thread_pool,
             genesis: genesis.clone(),
-            // max_block_parents: params.max_block_parents,
-            // mergeset_size_limit: params.mergeset_size_limit,
-            // pruning_depth: params.pruning_depth,
             posterity_depth,
-
-            // db,
-            // statuses_store: storage.statuses_store.clone(),
             headers_store,
-            // ghostdag_primary_store: storage.ghostdag_primary_store.clone(),
-            // daa_excluded_store: storage.daa_excluded_store.clone(),
-            // block_transactions_store: storage.block_transactions_store.clone(),
-            // pruning_point_store: pruning_point_store.clone(),
-            // past_pruning_points_store: past_pruning_points_store.clone(),
-            // body_tips_store: storage.body_tips_store.clone(),
-            // depth_store: storage.depth_store.clone(),
             selected_chain_store: selected_chain_store.clone(),
-            // utxo_diffs_store: storage.utxo_diffs_store.clone(),
-            // utxo_multisets_store: storage.utxo_multisets_store.clone(),
             acceptance_data_store: acceptance_data_store.clone(),
-            // virtual_stores: storage.virtual_stores.clone(),
-            // pruning_utxoset_stores: storage.pruning_utxoset_stores.clone(),
-            // lkg_virtual_state: storage.lkg_virtual_state.clone(),
-            // ghostdag_manager: ghostdag_manager.clone(),
             reachability_service,
-            // relations_service: services.relations_service.clone(),
-            // dag_traversal_manager: dag_traversal_manager.clone(),
-            // window_manager: services.window_manager.clone(),
-            // coinbase_manager: services.coinbase_manager.clone(),
-            // transaction_validator: services.transaction_validator.clone(),
-            // pruning_point_manager: pruning_point_manager.clone(),
-            // parents_manager: services.parents_manager.clone(),
-            // depth_manager: services.depth_manager.clone(),
-            // pruning_lock,
-            // notification_root,
-            // counters,
             storage_mass_activation_daa_score,
             hash_to_pchmr_store: hash_to_pchmr_store.clone(),
         }
@@ -369,14 +268,16 @@ impl<
         An error is returned if post_posterity does not yet exist.
         The function does not assume block_hash is a chain block, however
         the known aplications of posterity blocks appear nonsensical when it is not.
+        The post posterity of a posterity block, is not the block itself rather the posterity after it
          */
         let block_bscore: u64 = self.headers_store.get_blue_score(block_hash).unwrap();
         let tentative_cutoff_bscore = block_bscore - block_bscore % self.posterity_depth + self.posterity_depth;
         let head_hash = self.selected_chain_store.read().get_tip()?.1; //possibly inefficient
-                                                                       /*try and reach the first proceeding selected chain block,
-                                                                       while checking if pre_posterity of queried block is of the rare case where it is encountered before arriving at a chain block
-                                                                       in the majority of cases, a very short distance is covered before reaching a chain block.
-                                                                       */
+
+        /*try and reach the first proceeding selected chain block,
+        while checking if post_posterity of queried block is of the rare case where it is encountered before arriving at a chain block
+        in the majority of cases, a very short distance is covered before reaching a chain block.
+        */
         let candidate_block = self
             .reachability_service
             .forward_chain_iterator(block_hash, head_hash, true)
@@ -415,6 +316,8 @@ impl<
         it will panic if not.
         The function does not assume block_hash is a chain block, however
         the known aplications of posterity blocks appear nonsensical when it is not
+        The pre posterity of a posterity block, is not the block itself rather the posterity before it
+        The posterity of genesis is defined to be genesis
         */
         let block_bscore: u64 = self.headers_store.get_blue_score(block_parent_hash).unwrap();
         let tentative_cutoff_bscore = block_bscore - block_bscore % self.posterity_depth;
@@ -466,7 +369,6 @@ impl<
         {
             return Ok(self.genesis.hash);
         }
-        // let _prune_guard = self.pruning_lock.blocking_read();
         let mut next_candidate = reference_block;
         let mut candidate_bscore = self.headers_store.get_blue_score(next_candidate).unwrap();
         let mut candidate_index = self.selected_chain_store.read().get_by_hash(next_candidate).unwrap();
@@ -475,7 +377,7 @@ impl<
         let mut high = min(self.selected_chain_store.read().get_tip().unwrap().0, candidate_index + self.posterity_depth);
         let mut index_step;
 
-        let mut estimated_width = width_guess.unwrap_or(candidate_bscore / (candidate_index + 1)); // a very rough estimation in case None was given
+        let mut estimated_width = width_guess.unwrap_or(candidate_bscore / (candidate_index + 1)); // a very rough estimation in case None was given, division by 0 averted
 
         if high < candidate_index {
             return Err(ReceiptsErrors::PosterityDoesNotExistYet(cutoff_bscore));
@@ -487,7 +389,7 @@ impl<
 
             /*Special attention is taken to prevent a 0 value from occuring
             and causing divide by 0 or lack of progress
-            estimated width is guaranteed a non zero value*/
+            estimated width is hence guaranteed a non zero value*/
             index_step = (candidate_bscore.abs_diff(cutoff_bscore)) / estimated_width;
             index_step = if index_step == 0 { 1 } else { index_step };
             if candidate_bscore < cutoff_bscore {
