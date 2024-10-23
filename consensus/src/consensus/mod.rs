@@ -19,6 +19,7 @@ use crate::{
             ghostdag::{GhostdagData, GhostdagStoreReader},
             headers::{CompactHeaderData, HeaderStoreReader},
             headers_selected_tip::HeadersSelectedTipStoreReader,
+            mature_finality_point::MatureFinalityPointStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::PruningStoreReader,
             relations::RelationsStoreReader,
@@ -272,6 +273,7 @@ impl Consensus {
             pruning_lock.clone(),
             notification_root.clone(),
             counters.clone(),
+            creation_timestamp,
         ));
 
         let pruning_processor = Arc::new(PruningProcessor::new(
@@ -761,8 +763,13 @@ impl ConsensusApi for Consensus {
         self.services.pruning_proof_manager.validate_pruning_point_proof(proof)
     }
 
-    fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
-        self.services.pruning_proof_manager.apply_proof(proof, trusted_set)
+    fn apply_pruning_proof(
+        &self,
+        proof: PruningPointProof,
+        trusted_set: &[TrustedBlock],
+        mature_finality_point: Hash,
+    ) -> PruningImportResult<()> {
+        self.services.pruning_proof_manager.apply_proof(proof, trusted_set, mature_finality_point)
     }
 
     fn import_pruning_points(&self, pruning_points: PruningPointsList) {
@@ -1038,8 +1045,8 @@ impl ConsensusApi for Consensus {
         }
     }
 
-    fn are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {
-        self.virtual_processor.are_pruning_points_violating_finality(pp_list)
+    fn next_mature_finality_point(&self, pp_list: PruningPointsList) -> PruningImportResult<Hash> {
+        self.virtual_processor.next_mature_finality_point(pp_list)
     }
 
     fn creation_timestamp(&self) -> u64 {
@@ -1048,5 +1055,13 @@ impl ConsensusApi for Consensus {
 
     fn finality_point(&self) -> Hash {
         self.virtual_processor.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, self.pruning_point())
+    }
+
+    fn get_mature_finality_point(&self) -> Hash {
+        if self.virtual_processor.is_consensus_mature() {
+            self.pruning_point()
+        } else {
+            self.storage.mature_finality_point_store.read().get().unwrap()
+        }
     }
 }

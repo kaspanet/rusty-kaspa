@@ -9,6 +9,7 @@ use crate::{
         ghostdag::{CompactGhostdagData, DbGhostdagStore},
         headers::{CompactHeaderData, DbHeadersStore},
         headers_selected_tip::DbHeadersSelectedTipStore,
+        mature_finality_point::DbMatureFinalityPointStore,
         past_pruning_points::DbPastPruningPointsStore,
         pruning::DbPruningStore,
         pruning_utxoset::PruningUtxosetStores,
@@ -48,6 +49,7 @@ pub struct ConsensusStorage {
     pub pruning_utxoset_stores: Arc<RwLock<PruningUtxosetStores>>,
     pub virtual_stores: Arc<RwLock<VirtualStores>>,
     pub selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
+    pub mature_finality_point_store: Arc<RwLock<DbMatureFinalityPointStore>>,
 
     // Append-only stores
     pub ghostdag_stores: Arc<Vec<Arc<DbGhostdagStore>>>,
@@ -235,6 +237,8 @@ impl ConsensusStorage {
         let virtual_stores =
             Arc::new(RwLock::new(VirtualStores::new(db.clone(), lkg_virtual_state.clone(), utxo_set_builder.build())));
 
+        let mature_finality_point_store = Arc::new(RwLock::new(DbMatureFinalityPointStore::new(db.clone())));
+
         // Ensure that reachability stores are initialized
         reachability::init(reachability_store.write().deref_mut()).unwrap();
         relations::init(reachability_relations_store.write().deref_mut());
@@ -264,6 +268,7 @@ impl ConsensusStorage {
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             lkg_virtual_state,
+            mature_finality_point_store,
         })
     }
 }

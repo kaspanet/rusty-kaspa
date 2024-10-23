@@ -8,7 +8,7 @@ use kaspa_consensus_core::{
     block::Block,
     blockstatus::BlockStatus,
     daa_score_timestamp::DaaScoreTimestamp,
-    errors::consensus::ConsensusResult,
+    errors::{consensus::ConsensusResult, pruning::PruningImportResult},
     header::Header,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
     trusted::{ExternalGhostdagData, TrustedBlock},
@@ -437,8 +437,8 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(move |c| c.validate_pruning_points()).await
     }
 
-    pub async fn async_are_pruning_points_violating_finality(&self, pp_list: PruningPointsList) -> bool {
-        self.clone().spawn_blocking(move |c| c.are_pruning_points_violating_finality(pp_list)).await
+    pub async fn async_next_mature_finality_point(&self, pp_list: PruningPointsList) -> PruningImportResult<Hash> {
+        self.clone().spawn_blocking(move |c| c.next_mature_finality_point(pp_list)).await
     }
 
     pub async fn async_creation_timestamp(&self) -> u64 {

@@ -44,6 +44,7 @@ use crate::{
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
             headers_selected_tip::DbHeadersSelectedTipStore,
+            mature_finality_point::{DbMatureFinalityPointStore, MatureFinalityPointStore},
             past_pruning_points::{DbPastPruningPointsStore, PastPruningPointsStore},
             pruning::{DbPruningStore, PruningStoreReader},
             reachability::{DbReachabilityStore, ReachabilityStoreReader, StagingReachabilityStore},
@@ -104,6 +105,7 @@ pub struct PruningProofManager {
     headers_selected_tip_store: Arc<RwLock<DbHeadersSelectedTipStore>>,
     depth_store: Arc<DbDepthStore>,
     selected_chain_store: Arc<RwLock<DbSelectedChainStore>>,
+    mature_finality_point_store: Arc<RwLock<DbMatureFinalityPointStore>>,
 
     ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
     traversal_manager: DbDagTraversalManager,
@@ -154,6 +156,7 @@ impl PruningProofManager {
             headers_selected_tip_store: storage.headers_selected_tip_store.clone(),
             selected_chain_store: storage.selected_chain_store.clone(),
             depth_store: storage.depth_store.clone(),
+            mature_finality_point_store: storage.mature_finality_point_store.clone(),
 
             ghostdag_managers,
             traversal_manager,
@@ -199,7 +202,13 @@ impl PruningProofManager {
         drop(pruning_point_write);
     }
 
-    pub fn apply_proof(&self, mut proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
+    pub fn apply_proof(
+        &self,
+        mut proof: PruningPointProof,
+        trusted_set: &[TrustedBlock],
+        mature_finality_point: Hash,
+    ) -> PruningImportResult<()> {
+        self.mature_finality_point_store.write().set(mature_finality_point).unwrap();
         let pruning_point_header = proof[0].last().unwrap().clone();
         let pruning_point = pruning_point_header.hash;
 
