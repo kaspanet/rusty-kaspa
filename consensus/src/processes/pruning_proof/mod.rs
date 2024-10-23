@@ -842,10 +842,17 @@ impl PruningProofManager {
             .filter_map(|p| self.headers_store.get_header(p).unwrap_option().map(|h| SortableBlock::new(p, h.blue_work)))
             .max()
             .ok_or(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof("no parents with header".to_string()))?;
-
         Ok(self.headers_store.get_header(sp.hash).expect("unwrapped above"))
     }
 
+    /// Find a sufficient root at a given level by going through the headers store and looking
+    /// for a deep enough level block
+    /// For each root candidate, fill in the ghostdag data to see if it actually is deep enough.
+    /// If the root is deep enough, it will satisfy these conditions
+    /// 1. block at depth 2m at this level ∈ Future(root)
+    /// 2. block at depth m at the next level ∈ Future(root)
+    ///
+    /// Returns: the filled ghostdag store from root to tip, the selected tip and the root
     fn find_sufficient_root(
         &self,
         pp_header: &HeaderWithBlockLevel,
@@ -854,18 +861,19 @@ impl PruningProofManager {
         required_block: Option<Hash>,
         temp_db: Arc<DB>,
     ) -> PruningProofManagerInternalResult<(Arc<DbGhostdagStore>, Hash, Hash)> {
-        let selected_tip_header = if pp_header.block_level >= level {
-            pp_header.header.clone()
+        // Step 1: Determine which selected tip to use
+        let selected_tip = if pp_header.block_level >= level {
+            pp_header.header.hash
         } else {
-            self.find_selected_parent_header_at_level(&pp_header.header, level)?
+            self.find_selected_parent_header_at_level(&pp_header.header, level)?.hash
         };
-
-        let selected_tip = selected_tip_header.hash;
-        let pp = pp_header.header.hash;
 
         let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize); // TODO: We can probably reduce cache size
         let required_level_depth = 2 * self.pruning_proof_m;
-        let mut required_level_0_depth = if level == 0 {
+
+        // We only have the headers store (which has level 0 blue_scores) to assemble the proof data from.
+        // We need to look deeper at higher levels (2x deeper every level) to find 2M (plus margin) blocks at that level
+        let mut required_base_level_depth = if level == 0 {
             required_level_depth + 100 // smaller safety margin
         } else {
             self.estimated_blue_depth_at_level_0(
@@ -875,96 +883,80 @@ impl PruningProofManager {
             )
         };
 
+        let mut is_last_level_header;
         let mut tries = 0;
+
+        let block_at_depth_m_at_next_level = required_block.unwrap_or(selected_tip);
+
         loop {
-            let required_block = if let Some(required_block) = required_block {
-                // TODO: We can change it to skip related checks if `None`
-                required_block
+            // Step 2 - Find a deep enough root candidate
+            let block_at_depth_2m = match self.level_block_at_base_depth(level, selected_tip, required_base_level_depth) {
+                Ok((header, is_last_header)) => {
+                    is_last_level_header = is_last_header;
+                    header
+                }
+                Err(e) => return Err(e),
+            };
+
+            let root = if self.reachability_service.is_dag_ancestor_of(block_at_depth_2m, block_at_depth_m_at_next_level) {
+                block_at_depth_2m
+            } else if self.reachability_service.is_dag_ancestor_of(block_at_depth_m_at_next_level, block_at_depth_2m) {
+                block_at_depth_m_at_next_level
             } else {
-                selected_tip
+                // find common ancestor of block_at_depth_m_at_next_level and block_at_depth_2m in chain of block_at_depth_m_at_next_level
+                let mut common_ancestor = self.headers_store.get_header(block_at_depth_m_at_next_level).unwrap();
+
+                while !self.reachability_service.is_dag_ancestor_of(common_ancestor.hash, block_at_depth_2m) {
+                    common_ancestor = match self.find_selected_parent_header_at_level(&common_ancestor, level) {
+                        Ok(header) => header,
+                        // Try to give this last header a chance at being root
+                        Err(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(_)) => break,
+                        Err(e) => return Err(e),
+                    };
+                }
+
+                common_ancestor.hash
             };
-
-            let mut finished_headers = false;
-            let mut finished_headers_for_required_block_chain = false;
-            let mut current_header = selected_tip_header.clone();
-            let mut required_block_chain = BlockHashSet::new();
-            let mut selected_chain = BlockHashSet::new();
-            let mut intersected_with_required_block_chain = false;
-            let mut current_required_chain_block = self.headers_store.get_header(required_block).unwrap();
-            let root_header = loop {
-                if !intersected_with_required_block_chain {
-                    required_block_chain.insert(current_required_chain_block.hash);
-                    selected_chain.insert(current_header.hash);
-                    if required_block_chain.contains(&current_header.hash)
-                        || selected_chain.contains(&current_required_chain_block.hash)
-                    {
-                        intersected_with_required_block_chain = true;
-                    }
-                }
-
-                if current_header.direct_parents().is_empty() // Stop at genesis
-                    // Need to ensure this does the same 2M+1 depth that block_at_depth does
-                    || (pp_header.header.blue_score > current_header.blue_score + required_level_0_depth
-                        && intersected_with_required_block_chain)
-                {
-                    break current_header;
-                }
-                current_header = match self.find_selected_parent_header_at_level(&current_header, level) {
-                    Ok(header) => header,
-                    Err(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(_)) => {
-                        if !intersected_with_required_block_chain {
-                            warn!("it's unknown if the selected root for level {level} ( {} ) is in the chain of the required block {required_block}", current_header.hash)
-                        }
-                        finished_headers = true; // We want to give this root a shot if all its past is pruned
-                        break current_header;
-                    }
-                    Err(e) => return Err(e),
-                };
-
-                if !finished_headers_for_required_block_chain && !intersected_with_required_block_chain {
-                    current_required_chain_block =
-                        match self.find_selected_parent_header_at_level(&current_required_chain_block, level) {
-                            Ok(header) => header,
-                            Err(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(_)) => {
-                                finished_headers_for_required_block_chain = true;
-                                current_required_chain_block
-                            }
-                            Err(e) => return Err(e),
-                        };
-                }
-            };
-            let root = root_header.hash;
 
             if level == 0 {
                 return Ok((self.ghostdag_store.clone(), selected_tip, root));
             }
 
+            // Step 3 - Fill the ghostdag data from root to tip
             let ghostdag_store = Arc::new(DbGhostdagStore::new_temp(temp_db.clone(), level, cache_policy, cache_policy, tries));
-            let has_required_block =
-                self.fill_proof_ghostdag_data(root, root, pp, &ghostdag_store, level != 0, Some(required_block), true, level);
+            let has_required_block = self.fill_level_proof_ghostdag_data(
+                root,
+                pp_header.header.hash,
+                &ghostdag_store,
+                Some(block_at_depth_m_at_next_level),
+                level,
+            );
 
+            // Step 4 - Check if we actually have enough depth.
             // Need to ensure this does the same 2M+1 depth that block_at_depth does
             if has_required_block
-                && (root == self.genesis_hash || ghostdag_store.get_blue_score(selected_tip).unwrap() > required_level_depth)
+                && (root == self.genesis_hash || ghostdag_store.get_blue_score(selected_tip).unwrap() >= required_level_depth)
             {
                 break Ok((ghostdag_store, selected_tip, root));
             }
 
             tries += 1;
-            if finished_headers {
+            if is_last_level_header {
                 if has_required_block {
                     // Normally this scenario doesn't occur when syncing with nodes that already have the safety margin change in place.
                     // However, when syncing with an older node version that doesn't have a safety margin for the proof, it's possible to
                     // try to find 2500 depth worth of headers at a level, but the proof only contains about 2000 headers. To be able to sync
                     // with such an older node. As long as we found the required block, we can still proceed.
-                    warn!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_level_0_depth} are already pruned. Required block found so trying anyway.");
+                    warn!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_base_level_depth} are already pruned. Required block found so trying anyway.");
                     break Ok((ghostdag_store, selected_tip, root));
                 } else {
-                    panic!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_level_0_depth} are already pruned");
+                    panic!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_base_level_depth} are already pruned");
                 }
             }
-            required_level_0_depth <<= 1;
-            warn!("Failed to find sufficient root for level {level} after {tries} tries. Retrying again to find with depth {required_level_0_depth}");
+
+            // If we don't have enough depth now, we need to look deeper
+            required_base_level_depth <<= 1;
+            warn!("Failed to find sufficient root for level {level} after {tries} tries. Retrying again to find with depth {required_base_level_depth}");
         }
     }
 
@@ -1062,7 +1054,9 @@ impl PruningProofManager {
                         continue;
                     }
 
-                    if !self.reachability_service.is_dag_ancestor_of(current, selected_tip) {
+                    if !self.reachability_service.is_dag_ancestor_of(current, selected_tip)
+                        || ghostdag_stores[level as usize].has(current).is_err()
+                    {
                         continue;
                     }
 
@@ -1103,18 +1097,15 @@ impl PruningProofManager {
             .collect_vec()
     }
 
-    /// BFS forward iterates from starting_hash until selected tip, ignoring blocks in the antipast of selected_tip.
+    /// BFS forward iterates from genesis_hash until selected tip, ignoring blocks in the antipast of selected_tip.
     /// For each block along the way, insert that hash into the ghostdag_store
     /// If we have a required_block to find, this will return true if that block was found along the way
-    fn fill_proof_ghostdag_data(
+    fn fill_level_proof_ghostdag_data(
         &self,
         genesis_hash: Hash,
-        starting_hash: Hash,
         selected_tip: Hash,
         ghostdag_store: &Arc<DbGhostdagStore>,
-        use_score_as_work: bool,
         required_block: Option<Hash>,
-        initialize_store: bool,
         level: BlockLevel,
     ) -> bool {
         let relations_service = RelationsStoreInFutureOfRoot {
@@ -1129,17 +1120,15 @@ impl PruningProofManager {
             relations_service.clone(),
             self.headers_store.clone(),
             self.reachability_service.clone(),
-            use_score_as_work,
+            level != 0,
         );
 
-        if initialize_store {
-            ghostdag_store.insert(genesis_hash, Arc::new(gd_manager.genesis_ghostdag_data())).unwrap();
-            ghostdag_store.insert(ORIGIN, gd_manager.origin_ghostdag_data()).unwrap();
-        }
+        ghostdag_store.insert(genesis_hash, Arc::new(gd_manager.genesis_ghostdag_data())).unwrap();
+        ghostdag_store.insert(ORIGIN, gd_manager.origin_ghostdag_data()).unwrap();
 
         let mut topological_heap: BinaryHeap<_> = Default::default();
         let mut visited = BlockHashSet::new();
-        for child in relations_service.get_children(starting_hash).unwrap().read().iter().copied() {
+        for child in relations_service.get_children(genesis_hash).unwrap().read().iter().copied() {
             topological_heap.push(Reverse(SortableBlock {
                 hash: child,
                 // It's important to use here blue work and not score so we can iterate the heap in a way that respects the topology
@@ -1147,7 +1136,7 @@ impl PruningProofManager {
             }));
         }
 
-        let mut has_required_block = required_block.is_some_and(|required_block| starting_hash == required_block);
+        let mut has_required_block = required_block.is_some_and(|required_block| genesis_hash == required_block);
         loop {
             let Some(current) = topological_heap.pop() else {
                 break;
@@ -1171,7 +1160,7 @@ impl PruningProofManager {
                 .unwrap()
                 .iter()
                 .copied()
-                .filter(|parent| self.reachability_service.is_dag_ancestor_of(starting_hash, *parent))
+                .filter(|parent| self.reachability_service.is_dag_ancestor_of(genesis_hash, *parent))
                 .collect();
             let current_gd = gd_manager.ghostdag(&relevant_parents);
 
@@ -1244,6 +1233,42 @@ impl PruningProofManager {
             })?;
         }
         Ok(current)
+    }
+
+    /// Finds the block on a given level that is at base_depth deep from it.
+    /// Also returns if the block was the last one in the level
+    /// base_depth = the blue score depth at level 0
+    fn level_block_at_base_depth(
+        &self,
+        level: BlockLevel,
+        high: Hash,
+        base_depth: u64,
+    ) -> PruningProofManagerInternalResult<(Hash, bool)> {
+        let high_header = self
+            .headers_store
+            .get_header(high)
+            .map_err(|err| PruningProofManagerInternalError::BlockAtDepth(format!("high: {high}, depth: {base_depth}, {err}")))?;
+        let high_header_score = high_header.blue_score;
+        let mut current_header = high_header;
+
+        let mut is_last_header = false;
+
+        while current_header.blue_score + base_depth >= high_header_score {
+            if current_header.direct_parents().is_empty() {
+                break;
+            }
+
+            current_header = match self.find_selected_parent_header_at_level(&current_header, level) {
+                Ok(header) => header,
+                Err(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(_)) => {
+                    // We want to give this root a shot if all its past is pruned
+                    is_last_header = true;
+                    break;
+                }
+                Err(e) => return Err(e),
+            };
+        }
+        Ok((current_header.hash, is_last_header))
     }
 
     fn find_common_ancestor_in_chain_of_a(
