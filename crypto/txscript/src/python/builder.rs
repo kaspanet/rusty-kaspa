@@ -117,10 +117,13 @@ impl ScriptBuilder {
 
     #[pyo3(name = "encode_pay_to_script_hash_signature_script")]
     pub fn pay_to_script_hash_signature_script(&self, signature: String) -> Result<String> {
+        // PY-TODO use PyBinary
+        let mut signature_bytes = vec![0u8; signature.len() / 2];
+        faster_hex::hex_decode(signature.as_bytes(), &mut signature_bytes).unwrap();
+
         let inner = self.inner();
         let script = inner.script();
-        let signature = signature.as_bytes();
-        let generated_script = standard::pay_to_script_hash_signature_script(script.into(), signature.to_vec())?;
+        let generated_script = standard::pay_to_script_hash_signature_script(script.into(), signature_bytes)?;
 
         Ok(generated_script.to_hex().into())
     }

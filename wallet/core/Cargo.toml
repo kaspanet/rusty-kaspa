@@ -27,7 +27,12 @@ wasm32-sdk = [
 ]
 default = ["wasm32-sdk"]
 py-sdk = [
+    "kaspa-consensus-core/py-sdk",
+    "kaspa-python-macros",
+    "kaspa-wallet-keys/py-sdk",
+    "kaspa-wrpc-python/py-sdk",
     "pyo3",
+    "pyo3-asyncio-0-21",
     "serde-pyobject",
 ]
 # default = []
@@ -69,6 +74,7 @@ kaspa-core.workspace = true
 kaspa-hashes.workspace = true
 kaspa-metrics-core.workspace = true
 kaspa-notify.workspace = true
+kaspa-python-macros = { workspace = true, optional = true }
 kaspa-rpc-core.workspace = true
 kaspa-txscript-errors.workspace = true
 kaspa-txscript.workspace = true
@@ -78,11 +84,13 @@ kaspa-wallet-macros.workspace = true
 kaspa-wallet-pskt.workspace = true
 kaspa-wasm-core.workspace = true
 kaspa-wrpc-client.workspace = true
+kaspa-wrpc-python = { workspace = true, optional = true }
 kaspa-wrpc-wasm.workspace = true
 md-5.workspace = true
 pad.workspace = true
 pbkdf2.workspace = true
 pyo3 = { workspace = true, optional = true }
+pyo3-asyncio-0-21 = { workspace = true, optional = true }
 rand.workspace = true
 regex.workspace = true
 ripemd.workspace = true

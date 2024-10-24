@@ -1,4 +1,5 @@
 use crate::imports::*;
+use crate::python::tx::generator::{Generator, PendingTransaction};
 use crate::tx::payment::PaymentOutput;
 use kaspa_consensus_client::*;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
@@ -42,4 +43,39 @@ pub fn create_transaction_py(
     let transaction = Transaction::new(None, 0, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload, 0)?;
 
     Ok(transaction)
+}
+
+#[pyfunction]
+#[pyo3(name = "create_transactions")]
+pub fn create_transactions_py<'a>(
+    py: Python<'a>,
+    network_id: String, // TODO this is wrong
+    entries: Vec<&PyDict>,
+    outputs: Vec<&PyDict>,
+    change_address: Address,
+    payload: Option<String>, // TODO Hex string for now, use PyBinary
+    priority_fee: Option<u64>,
+    priority_entries: Option<Vec<&PyDict>>,
+    sig_op_count: Option<u8>,
+    minimum_signatures: Option<u16>,
+) -> PyResult<Bound<'a, PyDict>> {
+    let generator = Generator::ctor(
+        network_id,
+        entries,
+        outputs,
+        change_address,
+        payload,
+        priority_fee,
+        priority_entries,
+        sig_op_count,
+        minimum_signatures,
+    )?;
+
+    let transactions =
+        generator.iter().map(|r| r.map(PendingTransaction::from).map(|tx| tx.into_py(py))).collect::<Result<Vec<_>>>()?;
+    let summary = generator.summary().into_py(py);
+    let dict = PyDict::new_bound(py);
+    dict.set_item("transactions", &transactions)?;
+    dict.set_item("summary", &summary)?;
+    Ok(dict)
 }

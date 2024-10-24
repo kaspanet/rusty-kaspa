@@ -209,6 +209,15 @@ impl TryCastFromJs for PaymentOutputs {
     }
 }
 
+#[cfg(feature = "py-sdk")]
+impl TryFrom<Vec<&PyDict>> for PaymentOutputs {
+    type Error = PyErr;
+    fn try_from(value: Vec<&PyDict>) -> PyResult<Self> {
+        let outputs: Vec<PaymentOutput> = value.iter().map(|utxo| PaymentOutput::try_from(*utxo)).collect::<Result<Vec<_>, _>>()?;
+        Ok(PaymentOutputs { outputs })
+    }
+}
+
 impl From<PaymentOutputs> for Vec<TransactionOutput> {
     fn from(value: PaymentOutputs) -> Self {
         value.outputs.into_iter().map(TransactionOutput::from).collect()
