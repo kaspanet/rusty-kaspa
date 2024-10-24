@@ -20,12 +20,16 @@ impl Pochm {
         let vec = vec![];
         Self { vec }
     }
-
     pub fn insert(&mut self, header: Arc<Header>, witness: MerkleWitness) {
         self.vec.push(PochmSegment { header, leaf_in_pchmr_witness: witness })
     }
     pub fn get_path_origin(&self) -> Option<Hash> {
         self.vec.first().map(|seg| seg.header.hash)
+    }
+}
+impl Default for Pochm {
+    fn default() -> Self {
+        Self::new()
     }
 }
 pub struct TxReceipt {

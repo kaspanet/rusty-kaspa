@@ -1,6 +1,6 @@
+use super::{difficulty::DifficultyError, sync::SyncManagerError, traversal::TraversalError};
 use kaspa_hashes::Hash;
 use thiserror::Error;
-use super::{difficulty::DifficultyError, sync::SyncManagerError, traversal::TraversalError};
 #[derive(Error, Debug, Clone)]
 pub enum ConsensusError {
     #[error("cannot find full block {0}")]
@@ -32,7 +32,7 @@ pub enum ConsensusError {
 
     #[error("difficulty error: {0}")]
     DifficultyError(#[from] DifficultyError),
-    
+
     #[error("{0}")]
     General(&'static str),
 }
