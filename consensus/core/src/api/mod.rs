@@ -1,15 +1,8 @@
 use futures_util::future::BoxFuture;
 use kaspa_muhash::MuHash;
 use std::sync::Arc;
-
 use crate::{
-    acceptance_data::AcceptanceData,
-    api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
-    block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
-    blockstatus::BlockStatus,
-    coinbase::MinerData,
-    daa_score_timestamp::DaaScoreTimestamp,
-    errors::{
+    acceptance_data::AcceptanceData, api::args::{TransactionValidationArgs, TransactionValidationBatchArgs}, block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId}, blockstatus::BlockStatus, coinbase::MinerData, daa_score_timestamp::DaaScoreTimestamp, errors::{
         block::{BlockProcessResult, RuleError},
         coinbase::CoinbaseResult,
         consensus::ConsensusResult,
@@ -362,6 +355,15 @@ pub trait ConsensusApi: Send + Sync {
     fn finality_point(&self) -> Hash {
         unimplemented!()
     }
+    fn get_tx_receipt(&self,tx_id:Hash,accepting_block:Option<Hash>,time_stamp:Option<u64>,current_time_stamp:u64)->ConsensusResult<TxReceipt>
+    {
+        unimplemented!()
+    }
+    fn verify_tx_receipt(&self,receipt:TxReceipt)->bool
+    {
+        unimplemented!()
+    }
+
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

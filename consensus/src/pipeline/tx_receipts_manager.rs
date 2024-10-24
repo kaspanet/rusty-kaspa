@@ -7,7 +7,7 @@ use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
     stores::{acceptance_data::AcceptanceDataStoreReader, headers::HeaderStoreReader, reachability::ReachabilityStoreReader},
 };
-use kaspa_consensus_core::{config::genesis::GenesisBlock, header::Header};
+use kaspa_consensus_core::{config::genesis::GenesisBlock, header::Header, receipts::{Pochm, ProofOfPublication, TxReceipt}};
 use kaspa_hashes::Hash;
 use kaspa_hashes::ZERO_HASH;
 use kaspa_merkle::{
@@ -115,7 +115,7 @@ impl<
     pub fn create_pochm_proof(&self, req_block_hash: Hash) -> Result<Pochm, ReceiptsErrors> {
         /*Assumes: requested block hash is on the selected chain,
         if not returns error   */
-        let mut pochm_proof = Pochm::new(self.hash_to_pchmr_store.clone());
+        let mut pochm_proof = Pochm::new();
         let post_posterity_hash = self.get_post_posterity_block(req_block_hash)?;
         let req_block_index = self
             .selected_chain_store
@@ -152,7 +152,7 @@ impl<
             // verify the corresponding header is available
             {
                 //verification of path itself is delegated to the pochm struct
-                return witness.verify_pchmrs_path(req_block_hash);
+                return verify_pchmrs_path(witness.clone(),req_block_hash,self.hash_to_pchmr_store.clone());
             }
         }
         false
@@ -298,8 +298,7 @@ impl<
             // Posterity block not yet available.
             Err(ReceiptsErrors::PosterityDoesNotExistYet(cutoff_bscore))
         } else {
-            let witdth_guess = 2; //hardcoded guess
-            self.get_chain_block_posterity_by_bscore(candidate_block, cutoff_bscore, Some(witdth_guess))
+            self.get_chain_block_posterity_by_bscore(candidate_block, cutoff_bscore)
         }
     }
     pub fn get_pre_posterity_block_by_hash(&self, block_hash: Hash) -> Hash {
@@ -349,16 +348,14 @@ impl<
         //othrewise, recalculate the cutoff score in accordance to the candiate
         let candidate_bscore: u64 = self.headers_store.get_blue_score(candidate_block).unwrap();
         let cutoff_bscore = candidate_bscore - candidate_bscore % self.posterity_depth;
-        let witdth_guess = 2; //hardcoded guess
 
-        self.get_chain_block_posterity_by_bscore(candidate_block, cutoff_bscore, Some(witdth_guess)).unwrap()
+        self.get_chain_block_posterity_by_bscore(candidate_block, cutoff_bscore).unwrap()
     }
 
     fn get_chain_block_posterity_by_bscore(
         &self,
         reference_block: Hash,
         cutoff_bscore: u64,
-        width_guess: Option<u64>,
     ) -> Result<Hash, ReceiptsErrors> {
         //reference_block is assumed to be a chain block
         /*returns  the first posterity block with bscore smaller or equal to the cutoff bscore
@@ -377,7 +374,7 @@ impl<
         let mut high = min(self.selected_chain_store.read().get_tip().unwrap().0, candidate_index + self.posterity_depth);
         let mut index_step;
 
-        let mut estimated_width = width_guess.unwrap_or(candidate_bscore / (candidate_index + 1)); // a very rough estimation in case None was given, division by 0 averted
+        let mut estimated_width =self.estimate_dag_width(); // a very rough estimation in case None was given, division by 0 averted
 
         if high < candidate_index {
             return Err(ReceiptsErrors::PosterityDoesNotExistYet(cutoff_bscore));
@@ -471,40 +468,28 @@ impl<
         let candidate_sel_parent_bscore = self.headers_store.get_blue_score(candidate_sel_parent_hash).unwrap();
         candidate_sel_parent_bscore < cutoff_bscore
     }
-}
-#[derive(Clone)]
-pub struct PochmSegment {
-    header: Arc<Header>,
-    leaf_in_pchmr_witness: MerkleWitness,
-}
-#[derive(Clone)]
-pub struct Pochm {
-    vec: Vec<PochmSegment>,
-    hash_to_pchmr_store: Arc<DbPchmrStore>, //temporary field
-}
-impl Pochm {
-    pub fn new(hash_to_pchmr_store: Arc<DbPchmrStore>) -> Self {
-        let vec = vec![];
-        Self { vec, hash_to_pchmr_store }
+    pub fn estimate_dag_width(&self)->u64
+    {// a  rough estimation
+        let past:u64=std::cmp::min(100, self.posterity_depth);//edge case relevant for testing mostly
+        let (tip_index,tip)=self.selected_chain_store.read().get_tip().unwrap();
+        let tip_bscore=self.headers_store.get_blue_score(tip).unwrap();
+        let past_bscore= self.headers_store
+        .get_blue_score(self.selected_chain_store.read().get_by_index(tip_index.saturating_sub(past)).unwrap())
+        .unwrap();
+        std::cmp::max(tip_bscore.saturating_sub(past_bscore)/past,1)//avoiding a harmful 0 value
     }
-
-    pub fn insert(&mut self, header: Arc<Header>, witness: MerkleWitness) {
-        self.vec.push(PochmSegment { header, leaf_in_pchmr_witness: witness })
-    }
-    pub fn get_path_origin(&self) -> Option<Hash> {
-        self.vec.first().map(|seg| seg.header.hash)
-    }
-
-    pub fn verify_pchmrs_path(&self, destination_block_hash: Hash) -> bool {
-        let leaf_hashes = self.vec.iter()
+}
+    // this logic should be in receipts, it is only here currently because pchmr_store is required for it
+    pub fn verify_pchmrs_path(pochm:Pochm, destination_block_hash: Hash,pchmr_store:Arc<DbPchmrStore>) -> bool {
+        let leaf_hashes = pochm.vec.iter()
         .skip(1)//remove first element to match accordingly to witnesses 
-        .map(|pochm| pochm.header.hash)//map to hashes
+        .map(|pochm_seg| pochm_seg.header.hash)//map to hashes
         .chain(std::iter::once(destination_block_hash)); // add final block
 
         /*verify the path from posterity down to req_block_hash:
         iterate downward from posterity block header: for each, check that leaf hash is  */
-        for (pochm_seg, leaf_hash) in self.vec.iter().zip(leaf_hashes) {
-            let pchmr_root_hash = self.hash_to_pchmr_store.get(pochm_seg.header.hash).unwrap();
+        for (pochm_seg, leaf_hash) in pochm.vec.iter().zip(leaf_hashes) {
+            let pchmr_root_hash = pchmr_store.get(pochm_seg.header.hash).unwrap();
             let witness = &pochm_seg.leaf_in_pchmr_witness;
             if !(verify_merkle_witness(witness, leaf_hash, pchmr_root_hash)) {
                 return false;
@@ -512,17 +497,3 @@ impl Pochm {
         }
         true
     }
-}
-pub struct TxReceipt {
-    tracked_tx_id: Hash,
-    accepting_block_hash: Hash,
-    pochm: Pochm,
-    tx_acc_proof: MerkleWitness,
-}
-pub struct ProofOfPublication {
-    tracked_tx_id: Hash,
-    pub_block_hash: Hash,
-    pochm: Pochm,
-    tx_pub_proof: MerkleWitness,
-    headers_chain_to_selected: Vec<Arc<Header>>,
-}

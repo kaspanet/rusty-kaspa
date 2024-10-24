@@ -29,12 +29,7 @@ use crate::{
         },
     },
     pipeline::{
-        body_processor::BlockBodyProcessor,
-        deps_manager::{BlockProcessingMessage, BlockResultSender, BlockTask, VirtualStateProcessingMessage},
-        header_processor::HeaderProcessor,
-        pruning_processor::processor::{PruningProcessingMessage, PruningProcessor},
-        virtual_processor::{errors::PruningImportResult, VirtualStateProcessor},
-        ProcessingCounters,
+        body_processor::BlockBodyProcessor, deps_manager::{BlockProcessingMessage, BlockResultSender, BlockTask, VirtualStateProcessingMessage}, header_processor::HeaderProcessor, pruning_processor::processor::{PruningProcessingMessage, PruningProcessor}, virtual_processor::{errors::PruningImportResult, VirtualStateProcessor}, ProcessingCounters
     },
     processes::{
         ghostdag::ordering::SortableBlock,
@@ -42,18 +37,11 @@ use crate::{
     },
 };
 use kaspa_consensus_core::{
-    acceptance_data::AcceptanceData,
-    api::{
+    acceptance_data::AcceptanceData, api::{
         args::{TransactionValidationArgs, TransactionValidationBatchArgs},
         stats::BlockCount,
         BlockValidationFutures, ConsensusApi, ConsensusStats,
-    },
-    block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId},
-    blockhash::BlockHashExtensions,
-    blockstatus::BlockStatus,
-    coinbase::MinerData,
-    daa_score_timestamp::DaaScoreTimestamp,
-    errors::{
+    }, block::{Block, BlockTemplate, TemplateBuildMode, TemplateTransactionSelector, VirtualStateApproxId}, blockhash::BlockHashExtensions, blockstatus::BlockStatus, coinbase::MinerData, daa_score_timestamp::DaaScoreTimestamp, errors::{
         coinbase::CoinbaseResult,
         consensus::{ConsensusError, ConsensusResult},
         difficulty::DifficultyError,
@@ -397,6 +385,42 @@ impl Consensus {
             .chain(once(current_pp_info.pruning_point))
             .map(|hash| (hash, self.headers_store.get_compact_header_data(hash).unwrap()))
             .collect_vec()
+    }
+    fn get_tx_receipt_based_on_time(&self,tx_id:Hash,time_stamp:u64,current_time_stamp:u64)->ConsensusResult<TxReceipt>
+    {
+        const DEVIATION_IN_SECONDS:u64=300; //5 minutes deviation should be enough?
+        let bps=self.config.bps();
+        let deviation_in_blocks=(DEVIATION_IN_SECONDS*bps) as usize;
+        let (tip_index,tip)= self.selected_chain_store.read().get_tip().unwrap();
+        let width_guess:u64=self.services.merkle_proofs_manager.estimate_dag_width();
+
+        let tip_bscore=self.headers_store.get_blue_score(tip).unwrap();
+        let estimated_bscore=tip_bscore-(current_time_stamp.saturating_sub(time_stamp))*bps/1000;
+        let guess_index=tip_index-(tip_bscore.saturating_sub(estimated_bscore)/width_guess);
+        let guess_block=self.selected_chain_store.read().get_by_index(guess_index).map_err(|_|ConsensusError::General("not found"))?;
+        //forward deviation
+        for block in self.services.reachability_service.forward_chain_iterator(guess_block, tip, true).take(deviation_in_blocks) {
+            let tx_data=self.block_transactions_store.get(block)
+            .unwrap_option().ok_or(ConsensusError::BlockNotFound(block))?;
+            if tx_data.iter().map(|tx| tx.id()).contains(&tx_id){
+
+                self.services.merkle_proofs_manager
+                    .generate_tx_receipt(block,tx_id)
+                    .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))?;
+            }
+        }
+        //Backwards deviation deviation
+
+        for block in self.services.reachability_service.default_backward_chain_iterator(guess_block).take(deviation_in_blocks).skip(1) {
+            let tx_data=self.block_transactions_store.get(block)
+            .unwrap_option().ok_or(ConsensusError::BlockNotFound(block))?;
+            if tx_data.iter().map(|tx| tx.id()).contains(&tx_id){
+                self.services.merkle_proofs_manager
+                    .generate_tx_receipt(block,tx_id)
+                    .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))?;
+            }
+        }
+        return Err(ConsensusError::General("not found"));
     }
 }
 
@@ -1043,5 +1067,40 @@ impl ConsensusApi for Consensus {
 
     fn finality_point(&self) -> Hash {
         self.virtual_processor.virtual_finality_point(&self.lkg_virtual_state.load().ghostdag_data, self.pruning_point())
+    }
+    fn get_tx_receipt(&self,tx_id:Hash,accepting_block:Option<Hash>,time_stamp:Option<u64>,current_time_stamp:u64)->ConsensusResult<TxReceipt>
+    {
+    /*For an archival node, generally speaking, this function should not be called without a known accepting_block
+    or a timestamp, as it will search through the entire datadbase */
+        if let Some(accepting_block)=accepting_block{
+            
+            return self.services.merkle_proofs_manager.generate_tx_receipt(accepting_block,tx_id)
+            .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"));
+
+        }
+        //if no block is given, try to search based on time_stamp
+        let pruning_point=self.pruning_point();
+        let tip= self.selected_chain_store.read().get_tip().unwrap().1;
+        if let Some(time_stamp)=time_stamp{
+          return  self.get_tx_receipt_based_on_time(tx_id, time_stamp,current_time_stamp);
+        }
+        /*  if no timestamp is given either, search the entire database
+        note: this is probably very computationally wasteful for archival nodes
+        and should be avoided on usual terms */
+        for block in self.services.reachability_service.forward_chain_iterator(pruning_point, tip, true){
+            let tx_data=self.block_transactions_store.get(block)
+            .unwrap_option().ok_or(ConsensusError::BlockNotFound(block))?;
+            if tx_data.iter().map(|tx| tx.id()).contains(&tx_id){
+
+               return self.services.merkle_proofs_manager
+                    .generate_tx_receipt(block,tx_id)
+                    .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"));
+            }
+        }
+        Err(ConsensusError::MissingTx(tx_id))
+    }
+    fn verify_tx_receipt(&self,receipt:TxReceipt)->bool
+    {
+        self.services.merkle_proofs_manager.verify_tx_receipt(receipt)
     }
 }
