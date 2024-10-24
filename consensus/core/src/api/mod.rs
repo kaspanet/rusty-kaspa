@@ -359,7 +359,15 @@ pub trait ConsensusApi: Send + Sync {
     {
         unimplemented!()
     }
+    fn get_proof_of_pub(&self,tx_id:Hash,publishing_block:Option<Hash>,time_stamp:Option<u64>,current_time_stamp:u64)->ConsensusResult<ProofOfPublication>
+    {
+        unimplemented!()
+    }
     fn verify_tx_receipt(&self,receipt:TxReceipt)->bool
+    {
+        unimplemented!()
+    }
+    fn verify_proof_of_pub(&self,pop:ProofOfPublication)->bool
     {
         unimplemented!()
     }

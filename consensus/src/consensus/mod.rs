@@ -400,21 +400,24 @@ impl Consensus {
         let guess_block=self.selected_chain_store.read().get_by_index(guess_index).map_err(|_|ConsensusError::General("not found"))?;
         //forward deviation
         for block in self.services.reachability_service.forward_chain_iterator(guess_block, tip, true).take(deviation_in_blocks) {
-            let tx_data=self.block_transactions_store.get(block)
-            .unwrap_option().ok_or(ConsensusError::BlockNotFound(block))?;
-            if tx_data.iter().map(|tx| tx.id()).contains(&tx_id){
+            let accepted_txs=self.get_block_acceptance_data(block)?;
+            if accepted_txs.iter()
+                .map(|parent_acc_data|parent_acc_data.accepted_transactions
+                .iter().map(|t|t.transaction_id)).flatten().contains(&tx_id)
+            {
 
                 self.services.merkle_proofs_manager
                     .generate_tx_receipt(block,tx_id)
                     .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))?;
             }
         }
-        //Backwards deviation deviation
-
+        //Backwards deviation
         for block in self.services.reachability_service.default_backward_chain_iterator(guess_block).take(deviation_in_blocks).skip(1) {
-            let tx_data=self.block_transactions_store.get(block)
-            .unwrap_option().ok_or(ConsensusError::BlockNotFound(block))?;
-            if tx_data.iter().map(|tx| tx.id()).contains(&tx_id){
+            let accepted_txs=self.get_block_acceptance_data(block)?;
+            if accepted_txs.iter()
+                .map(|parent_acc_data|parent_acc_data.accepted_transactions
+                .iter().map(|t|t.transaction_id)).flatten().contains(&tx_id)
+            {
                 self.services.merkle_proofs_manager
                     .generate_tx_receipt(block,tx_id)
                     .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))?;
@@ -1072,7 +1075,7 @@ impl ConsensusApi for Consensus {
     {
     /*For an archival node, generally speaking, this function should not be called without a known accepting_block
     or a timestamp, as it will search through the entire datadbase */
-        if let Some(accepting_block)=accepting_block{
+        if let Some(accepting_block)=accepting_block{//if a block is supplied, generate receipt directly
             
             return self.services.merkle_proofs_manager.generate_tx_receipt(accepting_block,tx_id)
             .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"));
@@ -1088,10 +1091,11 @@ impl ConsensusApi for Consensus {
         note: this is probably very computationally wasteful for archival nodes
         and should be avoided on usual terms */
         for block in self.services.reachability_service.forward_chain_iterator(pruning_point, tip, true){
-            let tx_data=self.block_transactions_store.get(block)
-            .unwrap_option().ok_or(ConsensusError::BlockNotFound(block))?;
-            if tx_data.iter().map(|tx| tx.id()).contains(&tx_id){
-
+            let accepted_txs=self.get_block_acceptance_data(block)?;
+            if accepted_txs.iter()
+                .map(|parent_acc_data|parent_acc_data.accepted_transactions
+                .iter().map(|t|t.transaction_id)).flatten().contains(&tx_id)
+            {
                return self.services.merkle_proofs_manager
                     .generate_tx_receipt(block,tx_id)
                     .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"));
@@ -1099,8 +1103,24 @@ impl ConsensusApi for Consensus {
         }
         Err(ConsensusError::MissingTx(tx_id))
     }
+    fn get_proof_of_pub(&self,tx_id:Hash,publishing_block:Option<Hash>,_time_stamp:Option<u64>,_current_time_stamp:u64)->ConsensusResult<ProofOfPublication>
+    {
+    /*Partial implementation as of now, finding a publishing block via timestamp etc might be implemented in the future
+    */            
+    if let Some(publishing_block)=publishing_block{//if a block is supplied, generate receipt directly
+            return self.services.merkle_proofs_manager.generate_proof_of_pub(publishing_block,tx_id)
+            .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))
+        }
+        else 
+            {Err(ConsensusError::General("get_proof_of_pub must be supplied with the publishing block "))}
+    }
+
     fn verify_tx_receipt(&self,receipt:TxReceipt)->bool
     {
         self.services.merkle_proofs_manager.verify_tx_receipt(receipt)
+    }
+    fn verify_proof_of_pub(&self,pop:ProofOfPublication)->bool
+    {
+        self.services.merkle_proofs_manager.verify_proof_of_pub(pop)
     }
 }

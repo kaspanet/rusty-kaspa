@@ -187,25 +187,15 @@ impl<
 
     pub fn create_merkle_witness_for_tx(&self, tracked_tx_id: Hash, req_block_hash: Hash) -> Result<MerkleWitness, ReceiptsErrors> {
         let mergeset_txs_manager = self.acceptance_data_store.get(req_block_hash)?;
-        let mut accepted_txs = vec![];
-
-        for parent_acc_data in mergeset_txs_manager.iter() {
-            let parent_acc_txs = parent_acc_data.accepted_transactions.iter().map(|tx| tx.transaction_id);
-
-            for tx in parent_acc_txs {
-                accepted_txs.push(tx);
-            }
-        }
+        let mut accepted_txs= mergeset_txs_manager.iter()
+            .map(|parent_acc_data|parent_acc_data.accepted_transactions
+            .iter().map(|t|t.transaction_id)).flatten().collect::<Vec<Hash>>();
         accepted_txs.sort();
 
         create_merkle_witness_from_sorted(accepted_txs.into_iter(), tracked_tx_id).map_err(|e| e.into())
     }
     pub fn verify_merkle_witness_for_tx(&self, witness: &MerkleWitness, tracked_tx_id: Hash, req_block_hash: Hash) -> bool {
         // maybe make it return result? rethink
-        let mergeset_txs_manager = self.acceptance_data_store.get(req_block_hash); // I think this is incorrect
-        if mergeset_txs_manager.is_err() {
-            return false;
-        }
         let req_block_header = self.headers_store.get_header(req_block_hash).unwrap();
         let req_atmr = req_block_header.accepted_id_merkle_root;
         verify_merkle_witness(witness, tracked_tx_id, req_atmr)
@@ -442,7 +432,9 @@ impl<
             Notice a 0 value can never occur:
             A) because index_step!=0, meaning candidate_bscore_next and candidate_bscore are strictly different
             B) because |candidate_bscore_next-candidate_bscore| is by definition the minimal possible value index_step can get
-            divide by 0 doesn't occur since index_step!=0*/
+            divide by 0 doesn't occur since index_step!=0
+            Should reconsider whether this is even worth calculating iteratively compared to just the initial guess:
+            very likely not*/
             estimated_width = (candidate_bscore.abs_diff(candidate_bscore_next)) / index_step;
             assert_ne!(estimated_width, 0);
 
