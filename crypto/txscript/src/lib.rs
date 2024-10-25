@@ -45,6 +45,8 @@ pub const MAX_PUB_KEYS_PER_MUTLTISIG: i32 = 20;
 // Note that this includes OP_RESERVED which counts as a push operation.
 pub const NO_COST_OPCODE: u8 = 0x60;
 
+type DynOpcodeImplementation<Tx, Reused> = Box<dyn OpCodeImplementation<Tx, Reused>>;
+
 #[derive(Clone, Hash, PartialEq, Eq)]
 enum Signature {
     Secp256k1(secp256k1::schnorr::Signature),
@@ -70,15 +72,14 @@ enum ScriptSource<'a, T: VerifiableTransaction> {
     StandAloneScripts(Vec<&'a [u8]>),
 }
 
-pub struct TxScriptEngine<'a, T: VerifiableTransaction> {
+pub struct TxScriptEngine<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> {
     dstack: Stack,
     astack: Stack,
 
     script_source: ScriptSource<'a, T>,
 
     // Outer caches for quicker calculation
-    // TODO:: make it compatible with threading
-    reused_values: &'a mut SigHashReusedValues,
+    reused_values: &'a Reused,
     sig_cache: &'a Cache<SigCacheKey, bool>,
 
     cond_stack: Vec<OpCond>, // Following if stacks, and whether it is running
@@ -86,30 +87,36 @@ pub struct TxScriptEngine<'a, T: VerifiableTransaction> {
     num_ops: i32,
 }
 
-fn parse_script<T: VerifiableTransaction>(
+fn parse_script<T: VerifiableTransaction, Reused: SigHashReusedValues>(
     script: &[u8],
-) -> impl Iterator<Item = Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>> + '_ {
+) -> impl Iterator<Item = Result<DynOpcodeImplementation<T, Reused>, TxScriptError>> + '_ {
     script.iter().batching(|it| deserialize_next_opcode(it))
 }
 
-pub fn get_sig_op_count<T: VerifiableTransaction>(signature_script: &[u8], prev_script_public_key: &ScriptPublicKey) -> u64 {
+#[must_use]
+pub fn get_sig_op_count<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+    signature_script: &[u8],
+    prev_script_public_key: &ScriptPublicKey,
+) -> u64 {
     let is_p2sh = ScriptClass::is_pay_to_script_hash(prev_script_public_key.script());
-    let script_pub_key_ops = parse_script::<T>(prev_script_public_key.script()).collect_vec();
+    let script_pub_key_ops = parse_script::<T, Reused>(prev_script_public_key.script()).collect_vec();
     if !is_p2sh {
         return get_sig_op_count_by_opcodes(&script_pub_key_ops);
     }
 
-    let signature_script_ops = parse_script::<T>(signature_script).collect_vec();
+    let signature_script_ops = parse_script::<T, Reused>(signature_script).collect_vec();
     if signature_script_ops.is_empty() || signature_script_ops.iter().any(|op| op.is_err() || !op.as_ref().unwrap().is_push_opcode()) {
         return 0;
     }
 
     let p2sh_script = signature_script_ops.last().expect("checked if empty above").as_ref().expect("checked if err above").get_data();
-    let p2sh_ops = parse_script::<T>(p2sh_script).collect_vec();
+    let p2sh_ops = parse_script::<T, Reused>(p2sh_script).collect_vec();
     get_sig_op_count_by_opcodes(&p2sh_ops)
 }
 
-fn get_sig_op_count_by_opcodes<T: VerifiableTransaction>(opcodes: &[Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>]) -> u64 {
+fn get_sig_op_count_by_opcodes<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+    opcodes: &[Result<DynOpcodeImplementation<T, Reused>, TxScriptError>],
+) -> u64 {
     // TODO: Check for overflows
     let mut num_sigs: u64 = 0;
     for (i, op) in opcodes.iter().enumerate() {
@@ -142,12 +149,12 @@ fn get_sig_op_count_by_opcodes<T: VerifiableTransaction>(opcodes: &[Result<Box<d
 /// Returns whether the passed public key script is unspendable, or guaranteed to fail at execution.
 ///
 /// This allows inputs to be pruned instantly when entering the UTXO set.
-pub fn is_unspendable<T: VerifiableTransaction>(script: &[u8]) -> bool {
-    parse_script::<T>(script).enumerate().any(|(index, op)| op.is_err() || (index == 0 && op.unwrap().value() == OpReturn))
+pub fn is_unspendable<T: VerifiableTransaction, Reused: SigHashReusedValues>(script: &[u8]) -> bool {
+    parse_script::<T, Reused>(script).enumerate().any(|(index, op)| op.is_err() || (index == 0 && op.unwrap().value() == OpReturn))
 }
 
-impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
-    pub fn new(reused_values: &'a mut SigHashReusedValues, sig_cache: &'a Cache<SigCacheKey, bool>) -> Self {
+impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'a, T, Reused> {
+    pub fn new(reused_values: &'a Reused, sig_cache: &'a Cache<SigCacheKey, bool>) -> Self {
         Self {
             dstack: vec![],
             astack: vec![],
@@ -164,7 +171,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         input: &'a TransactionInput,
         input_idx: usize,
         utxo_entry: &'a UtxoEntry,
-        reused_values: &'a mut SigHashReusedValues,
+        reused_values: &'a Reused,
         sig_cache: &'a Cache<SigCacheKey, bool>,
     ) -> Result<Self, TxScriptError> {
         let script_public_key = utxo_entry.script_public_key.script();
@@ -185,7 +192,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         }
     }
 
-    pub fn from_script(script: &'a [u8], reused_values: &'a mut SigHashReusedValues, sig_cache: &'a Cache<SigCacheKey, bool>) -> Self {
+    pub fn from_script(script: &'a [u8], reused_values: &'a Reused, sig_cache: &'a Cache<SigCacheKey, bool>) -> Self {
         Self {
             dstack: Default::default(),
             astack: Default::default(),
@@ -202,7 +209,7 @@ impl<'a, T: VerifiableTransaction> TxScriptEngine<'a, T> {
         return self.cond_stack.is_empty() || *self.cond_stack.last().expect("Checked not empty") == OpCond::True;
     }
 
-    fn execute_opcode(&mut self, opcode: Box<dyn OpCodeImplementation<T>>) -> Result<(), TxScriptError> {
+    fn execute_opcode(&mut self, opcode: DynOpcodeImplementation<T, Reused>) -> Result<(), TxScriptError> {
         // Different from kaspad: Illegal and disabled opcode are checked on execute instead
         // Note that this includes OP_RESERVED which counts as a push operation.
         if !opcode.is_push_opcode() {
@@ -512,6 +519,7 @@ mod tests {
     use crate::opcodes::codes::{OpBlake2b, OpCheckSig, OpData1, OpData2, OpData32, OpDup, OpEqual, OpPushData1, OpTrue};
 
     use super::*;
+    use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::tx::{
         PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
     };
@@ -542,7 +550,7 @@ mod tests {
 
     fn run_test_script_cases(test_cases: Vec<ScriptTestCase>) {
         let sig_cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValues::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
 
         for test in test_cases {
             // Ensure encapsulation of variables (no leaking between tests)
@@ -565,7 +573,7 @@ mod tests {
 
             let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
 
-            let mut vm = TxScriptEngine::from_transaction_input(&populated_tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache)
+            let mut vm = TxScriptEngine::from_transaction_input(&populated_tx, &input, 0, &utxo_entry, &reused_values, &sig_cache)
                 .expect("Script creation failed");
             assert_eq!(vm.execute(), test.expected_result);
         }
@@ -783,7 +791,7 @@ mod tests {
         ];
 
         for test in test_cases {
-            let check = TxScriptEngine::<PopulatedTransaction>::check_pub_key_encoding(test.key);
+            let check = TxScriptEngine::<PopulatedTransaction, SigHashReusedValuesUnsync>::check_pub_key_encoding(test.key);
             if test.is_valid {
                 assert_eq!(
                     check,
@@ -880,7 +888,10 @@ mod tests {
 
         for test in tests {
             assert_eq!(
-                get_sig_op_count::<VerifiableTransactionMock>(test.signature_script, &test.prev_script_public_key),
+                get_sig_op_count::<VerifiableTransactionMock, SigHashReusedValuesUnsync>(
+                    test.signature_script,
+                    &test.prev_script_public_key
+                ),
                 test.expected_sig_ops,
                 "failed for '{}'",
                 test.name
@@ -909,7 +920,7 @@ mod tests {
 
         for test in tests {
             assert_eq!(
-                is_unspendable::<VerifiableTransactionMock>(test.script_public_key),
+                is_unspendable::<VerifiableTransactionMock, SigHashReusedValuesUnsync>(test.script_public_key),
                 test.expected,
                 "failed for '{}'",
                 test.name
@@ -929,6 +940,7 @@ mod bitcoind_tests {
     use super::*;
     use crate::script_builder::ScriptBuilderError;
     use kaspa_consensus_core::constants::MAX_TX_IN_SEQUENCE_NUM;
+    use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::tx::{
         PopulatedTransaction, ScriptPublicKey, Transaction, TransactionId, TransactionOutpoint, TransactionOutput,
     };
@@ -1019,13 +1031,13 @@ mod bitcoind_tests {
 
             // Run transaction
             let sig_cache = Cache::new(10_000);
-            let mut reused_values = SigHashReusedValues::new();
+            let reused_values = SigHashReusedValuesUnsync::new();
             let mut vm = TxScriptEngine::from_transaction_input(
                 &populated_tx,
                 &populated_tx.tx().inputs[0],
                 0,
                 &populated_tx.entries[0],
-                &mut reused_values,
+                &reused_values,
                 &sig_cache,
             )
             .map_err(UnifiedError::TxScriptError)?;

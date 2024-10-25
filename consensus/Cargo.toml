@@ -54,9 +54,14 @@ serde_json.workspace = true
 flate2.workspace = true
 rand_distr.workspace = true
 kaspa-txscript-errors.workspace = true
+kaspa-addresses.workspace = true
 
 [[bench]]
-name = "hash_benchmarks"
+name = "parallel_muhash"
+harness = false
+
+[[bench]]
+name = "check_scripts"
 harness = false
 
 [features]
