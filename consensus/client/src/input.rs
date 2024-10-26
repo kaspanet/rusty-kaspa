@@ -176,13 +176,12 @@ impl TransactionInput {
     #[new]
     pub fn constructor_py(
         previous_outpoint: TransactionOutpoint,
-        signature_script: String,
+        signature_script: PyBinary,
         sequence: u64,
         sig_op_count: u8,
         utxo: Option<UtxoEntryReference>,
     ) -> PyResult<Self> {
-        let signature_script = Vec::from_hex(&signature_script).map_err(|err| PyException::new_err(format!("{}", err)))?;
-        Ok(Self::new(previous_outpoint, Some(signature_script), sequence, sig_op_count, utxo))
+        Ok(Self::new(previous_outpoint, Some(signature_script.into()), sequence, sig_op_count, utxo))
     }
 
     #[getter]
@@ -207,9 +206,8 @@ impl TransactionInput {
 
     #[setter]
     #[pyo3(name = "signature_script")]
-    pub fn set_signature_script_as_hex_py(&mut self, signature_script: String) -> PyResult<()> {
-        let signature_script = Vec::from_hex(&signature_script).map_err(|err| PyException::new_err(format!("{}", err)))?;
-        self.set_signature_script(signature_script);
+    pub fn set_signature_script_as_hex_py(&mut self, signature_script: PyBinary) -> PyResult<()> {
+        self.set_signature_script(signature_script.into());
         Ok(())
     }
 

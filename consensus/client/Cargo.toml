@@ -14,6 +14,7 @@ wasm32-types = []
 py-sdk = [
     "pyo3",
     "kaspa-hashes/py-sdk",
+    "kaspa-python-core/py-sdk",
     "serde-pyobject",
 ]
 
@@ -22,6 +23,7 @@ kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-hashes.workspace = true
 kaspa-math.workspace = true
+kaspa-python-core = { workspace = true, optional = true }
 kaspa-txscript.workspace = true
 kaspa-utils.workspace = true
 kaspa-wasm-core.workspace = true

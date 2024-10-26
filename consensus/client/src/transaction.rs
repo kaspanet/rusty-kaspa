@@ -301,7 +301,7 @@ impl Transaction {
         lock_time: u64,
         subnetwork_id: String,
         gas: u64,
-        payload: Vec<u8>,
+        payload: PyBinary,
         mass: u64,
     ) -> PyResult<Self> {
         let subnetwork_id = Vec::from_hex(&subnetwork_id)
@@ -310,7 +310,7 @@ impl Transaction {
             .try_into()
             .map_err(|err| PyException::new_err(format!("subnetwork_id conversion error: {}", err)))?;
 
-        Ok(Transaction::new(None, version, inputs, outputs, lock_time, subnetwork_id, gas, payload, mass)
+        Ok(Transaction::new(None, version, inputs, outputs, lock_time, subnetwork_id, gas, payload.into(), mass)
             .map_err(|err| PyException::new_err(format!("{}", err)))?)
     }
 
@@ -417,9 +417,8 @@ impl Transaction {
 
     #[setter]
     #[pyo3(name = "payload")]
-    pub fn set_payload_from_py_value(&mut self, v: String) {
-        let payload = Vec::from_hex(&v).unwrap_or_else(|err| panic!("Hex decode error {}", err));
-        self.inner.lock().unwrap().payload = payload;
+    pub fn set_payload_from_py_value(&mut self, v: PyBinary) {
+        self.inner.lock().unwrap().payload = v.into();
     }
 }
 

@@ -28,6 +28,7 @@ async def main():
     fee_rates = await client.get_fee_estimate()
     fee = int(fee_rates["estimate"]["priorityBucket"]["feerate"])
 
+    fee = max(fee, 2000)
     output_amount = int(total - fee)
 
     change_address = address

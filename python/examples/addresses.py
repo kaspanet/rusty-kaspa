@@ -33,8 +33,8 @@ def demo_generate_address_from_private_key_hex_string():
 def demo_generate_random():
     keypair = Keypair.random()
     print("\nRandom Generation")
-    print(keypair.private_key())
-    print(keypair.public_key())
+    print(keypair.private_key)
+    print(keypair.public_key)
     print(keypair.to_address("kaspa").to_string())
 
 if __name__ == "__main__":

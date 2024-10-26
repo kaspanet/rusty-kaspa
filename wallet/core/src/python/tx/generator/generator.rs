@@ -16,7 +16,7 @@ impl Generator {
         entries: Vec<&PyDict>,
         outputs: Vec<&PyDict>,
         change_address: Address,
-        payload: Option<String>, // TODO Hex string for now, use PyBinary
+        payload: Option<PyBinary>,
         priority_fee: Option<u64>,
         priority_entries: Option<Vec<&PyDict>>,
         sig_op_count: Option<u8>,
@@ -30,7 +30,7 @@ impl Generator {
             priority_entries,
             sig_op_count,
             minimum_signatures,
-            payload,
+            payload.map(Into::into),
             network_id,
         );
 
@@ -101,7 +101,6 @@ impl Generator {
 enum GeneratorSource {
     UtxoEntries(Vec<UtxoEntryReference>),
     UtxoContext(UtxoContext),
-    // #[cfg(any(feature = "wasm32-sdk"), not(target_arch = "wasm32"))]
     // Account(Account),
 }
 
@@ -127,11 +126,12 @@ impl GeneratorSettings {
         priority_entries: Option<Vec<&PyDict>>,
         sig_op_count: Option<u8>,
         minimum_signatures: Option<u16>,
-        payload: Option<String>, // TODO Hex string for now, use PyBinary
-        network_id: String,      // TODO this is wrong
+        payload: Option<Vec<u8>>,
+        network_id: String,
     ) -> GeneratorSettings {
         let network_id = NetworkId::from_str(&network_id).unwrap();
 
+        // PY-TODO
         // let final_transaction_destination: PaymentDestination =
         //     if outputs.is_empty() { PaymentDestination::Change } else { PaymentOutputs::try_from(outputs).unwrap().into() };
         let final_transaction_destination: PaymentDestination = PaymentOutputs::try_from(outputs).unwrap().into();
@@ -141,7 +141,7 @@ impl GeneratorSettings {
             None => Fees::None,
         };
 
-        // TODO support GeneratorSource::UtxoContext and clean up below
+        // PY-TODO support GeneratorSource::UtxoContext and clean up below
         let generator_source =
             GeneratorSource::UtxoEntries(entries.iter().map(|entry| UtxoEntryReference::try_from(*entry).unwrap()).collect());
 
@@ -154,8 +154,6 @@ impl GeneratorSettings {
         let sig_op_count = sig_op_count.unwrap_or(1);
 
         let minimum_signatures = minimum_signatures.unwrap_or(1);
-
-        let payload = payload.map(|s| s.into_bytes());
 
         GeneratorSettings {
             network_id: Some(network_id),

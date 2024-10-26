@@ -10,7 +10,10 @@ license.workspace = true
 repository.workspace = true
 
 [features]
-py-sdk = ["pyo3"]
+py-sdk = [
+    "pyo3",
+    "kaspa-python-core/py-sdk",
+]
 wasm32-core = []
 wasm32-sdk = []
 
@@ -25,6 +28,7 @@ itertools.workspace = true
 kaspa-addresses.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-hashes.workspace = true
+kaspa-python-core = { workspace = true, optional = true }
 kaspa-txscript-errors.workspace = true
 kaspa-utils.workspace = true
 kaspa-wasm-core.workspace = true

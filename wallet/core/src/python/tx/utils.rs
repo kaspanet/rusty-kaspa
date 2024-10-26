@@ -10,7 +10,7 @@ pub fn create_transaction_py(
     utxo_entry_source: Vec<&PyDict>,
     outputs: Vec<&PyDict>,
     priority_fee: u64,
-    payload: Option<Vec<u8>>, // PY-TODO can this be string?
+    payload: Option<PyBinary>,
     sig_op_count: Option<u8>,
 ) -> PyResult<Transaction> {
     let utxo_entries: Vec<UtxoEntryReference> =
@@ -18,7 +18,7 @@ pub fn create_transaction_py(
 
     let outputs: Vec<PaymentOutput> = outputs.iter().map(|utxo| PaymentOutput::try_from(*utxo)).collect::<Result<Vec<_>, _>>()?;
 
-    let payload = payload.unwrap_or_default();
+    let payload: Vec<u8> = payload.map(Into::into).unwrap_or_default();
     let sig_op_count = sig_op_count.unwrap_or(1);
 
     let mut total_input_amount = 0;
@@ -53,7 +53,7 @@ pub fn create_transactions_py<'a>(
     entries: Vec<&PyDict>,
     outputs: Vec<&PyDict>,
     change_address: Address,
-    payload: Option<String>, // TODO Hex string for now, use PyBinary
+    payload: Option<PyBinary>,
     priority_fee: Option<u64>,
     priority_entries: Option<Vec<&PyDict>>,
     sig_op_count: Option<u8>,
@@ -64,7 +64,7 @@ pub fn create_transactions_py<'a>(
         entries,
         outputs,
         change_address,
-        payload,
+        payload.map(Into::into),
         priority_fee,
         priority_entries,
         sig_op_count,

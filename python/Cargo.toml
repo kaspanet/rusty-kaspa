@@ -34,3 +34,6 @@ py-sdk = [
     "kaspa-wallet-core/py-sdk",
     "kaspa-wrpc-python/py-sdk",
 ]
+
+[lints]
+workspace = true

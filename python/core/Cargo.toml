@@ -1,0 +1,20 @@
+[package]
+name = "kaspa-python-core"
+description = "Kaspa core Python types"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+include.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+py-sdk = []
+
+[dependencies]
+cfg-if.workspace = true
+pyo3.workspace = true
+faster-hex.workspace = true
+
+[lints]
+workspace = true

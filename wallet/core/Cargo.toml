@@ -28,6 +28,7 @@ wasm32-sdk = [
 default = ["wasm32-sdk"]
 py-sdk = [
     "kaspa-consensus-core/py-sdk",
+    "kaspa-python-core/py-sdk",
     "kaspa-python-macros",
     "kaspa-wallet-keys/py-sdk",
     "kaspa-wrpc-python/py-sdk",
@@ -74,6 +75,7 @@ kaspa-core.workspace = true
 kaspa-hashes.workspace = true
 kaspa-metrics-core.workspace = true
 kaspa-notify.workspace = true
+kaspa-python-core = { workspace = true, optional = true }
 kaspa-python-macros = { workspace = true, optional = true }
 kaspa-rpc-core.workspace = true
 kaspa-txscript-errors.workspace = true

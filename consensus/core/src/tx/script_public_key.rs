@@ -357,9 +357,8 @@ impl ScriptPublicKey {
 #[pymethods]
 impl ScriptPublicKey {
     #[new]
-    pub fn constructor_py(version: u16, script: String) -> PyResult<ScriptPublicKey> {
-        let script = Vec::from_hex(&script).map_err(|err| pyo3::exceptions::PyException::new_err(format!("{}", err)))?;
-        Ok(ScriptPublicKey::new(version, script.into()))
+    pub fn constructor_py(version: u16, script: kaspa_python_core::types::PyBinary) -> PyResult<ScriptPublicKey> {
+        Ok(ScriptPublicKey::new(version, script.data.into()))
     }
 
     #[getter]

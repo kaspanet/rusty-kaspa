@@ -86,11 +86,8 @@ impl PendingTransaction {
         Ok(signature.to_hex())
     }
 
-    fn fill_input(&self, input_index: u8, signature_script: String) -> Result<()> {
-        // TODO use PyBinary for signature_script
-        let mut bytes = vec![0u8; signature_script.len() / 2];
-        faster_hex::hex_decode(signature_script.as_bytes(), &mut bytes).unwrap();
-        self.inner.fill_input(input_index.into(), bytes)?;
+    fn fill_input(&self, input_index: u8, signature_script: PyBinary) -> Result<()> {
+        self.inner.fill_input(input_index.into(), signature_script.into())?;
 
         Ok(())
     }

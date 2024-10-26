@@ -1,8 +1,8 @@
 use crate::result::Result;
 use crate::wasm::opcodes::Opcodes;
 use crate::{script_builder as native, standard};
-use faster_hex::hex_decode;
 use kaspa_consensus_core::tx::ScriptPublicKey;
+use kaspa_python_core::types::PyBinary;
 use kaspa_utils::hex::ToHex;
 use pyo3::prelude::*;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -34,10 +34,9 @@ impl ScriptBuilder {
     }
 
     #[staticmethod]
-    pub fn from_script(script: Bound<PyAny>) -> PyResult<ScriptBuilder> {
+    pub fn from_script(script: PyBinary) -> PyResult<ScriptBuilder> {
         let builder = ScriptBuilder::default();
-        let script = PyBinary::try_from(script)?;
-        builder.inner().extend(&script.data);
+        builder.inner().extend(script.as_ref());
 
         Ok(builder)
     }
@@ -57,11 +56,9 @@ impl ScriptBuilder {
         Ok(self.clone())
     }
 
-    pub fn add_data(&self, data: Bound<PyAny>) -> PyResult<ScriptBuilder> {
-        let data = PyBinary::try_from(data)?;
-
+    pub fn add_data(&self, data: PyBinary) -> PyResult<ScriptBuilder> {
         let mut inner = self.inner();
-        inner.add_data(&data.data).map_err(|err| pyo3::exceptions::PyException::new_err(format!("{}", err)))?;
+        inner.add_data(data.as_ref()).map_err(|err| pyo3::exceptions::PyException::new_err(format!("{}", err)))?;
 
         Ok(self.clone())
     }
@@ -88,9 +85,8 @@ impl ScriptBuilder {
     }
 
     #[staticmethod]
-    pub fn canonical_data_size(data: Bound<PyAny>) -> PyResult<u32> {
-        let data = PyBinary::try_from(data)?;
-        let size = native::ScriptBuilder::canonical_data_size(&data.data.as_slice()) as u32;
+    pub fn canonical_data_size(data: PyBinary) -> PyResult<u32> {
+        let size = native::ScriptBuilder::canonical_data_size(data.as_ref()) as u32;
 
         Ok(size)
     }
@@ -116,14 +112,14 @@ impl ScriptBuilder {
     }
 
     #[pyo3(name = "encode_pay_to_script_hash_signature_script")]
-    pub fn pay_to_script_hash_signature_script(&self, signature: String) -> Result<String> {
+    pub fn pay_to_script_hash_signature_script(&self, signature: PyBinary) -> Result<String> {
         // PY-TODO use PyBinary
-        let mut signature_bytes = vec![0u8; signature.len() / 2];
-        faster_hex::hex_decode(signature.as_bytes(), &mut signature_bytes).unwrap();
+        // let mut signature_bytes = vec![0u8; signature.len() / 2];
+        // faster_hex::hex_decode(signature.as_bytes(), &mut signature_bytes).unwrap();
 
         let inner = self.inner();
         let script = inner.script();
-        let generated_script = standard::pay_to_script_hash_signature_script(script.into(), signature_bytes)?;
+        let generated_script = standard::pay_to_script_hash_signature_script(script.into(), signature.into())?;
 
         Ok(generated_script.to_hex().into())
     }
@@ -137,6 +133,7 @@ impl ScriptBuilder {
     // }
 }
 
+// PY-TODO change to PyOpcode struct and handle similar to PyBinary
 fn extract_ops(input: Bound<PyAny>) -> PyResult<Vec<u8>> {
     if let Ok(opcode) = extract_op(&input) {
         // Single u8 or Opcodes variant
@@ -156,32 +153,5 @@ fn extract_op(item: &Bound<PyAny>) -> PyResult<u8> {
         Ok(op.value())
     } else {
         Err(pyo3::exceptions::PyTypeError::new_err("Expected Opcodes variant or u8"))
-    }
-}
-
-struct PyBinary {
-    pub data: Vec<u8>,
-}
-
-impl TryFrom<Bound<'_, PyAny>> for PyBinary {
-    type Error = PyErr;
-    fn try_from(value: Bound<PyAny>) -> Result<Self, Self::Error> {
-        if let Ok(str) = value.extract::<String>() {
-            // Python `str` (of valid hex)
-            let mut data = vec![0u8; str.len() / 2];
-            match hex_decode(str.as_bytes(), &mut data) {
-                Ok(()) => Ok(PyBinary { data }), // Hex string
-                Err(_) => Err(pyo3::exceptions::PyValueError::new_err("Invalid hex string")),
-            }
-        } else if let Ok(py_bytes) = value.downcast::<pyo3::types::PyBytes>() {
-            // Python `bytes` type
-            Ok(PyBinary { data: py_bytes.as_bytes().to_vec() })
-        } else if let Ok(op_list) = value.downcast::<pyo3::types::PyList>() {
-            // Python `[int]` (list of bytes)
-            let data = op_list.iter().map(|item| item.extract::<u8>().unwrap()).collect();
-            Ok(PyBinary { data })
-        } else {
-            Err(pyo3::exceptions::PyTypeError::new_err("Expected `str` (of valid hex), `bytes`, `int` (u8), or `[int]` (u8)"))
-        }
     }
 }

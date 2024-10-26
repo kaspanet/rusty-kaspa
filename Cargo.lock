@@ -2576,6 +2576,7 @@ dependencies = [
  "kaspa-consensus-core",
  "kaspa-hashes",
  "kaspa-math",
+ "kaspa-python-core",
  "kaspa-txscript",
  "kaspa-utils",
  "kaspa-wasm-core",
@@ -2612,6 +2613,7 @@ dependencies = [
  "kaspa-math",
  "kaspa-merkle",
  "kaspa-muhash",
+ "kaspa-python-core",
  "kaspa-txscript-errors",
  "kaspa-utils",
  "pyo3",
@@ -3139,6 +3141,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaspa-python-core"
+version = "0.15.2"
+dependencies = [
+ "cfg-if 1.0.0",
+ "faster-hex",
+ "pyo3",
+]
+
+[[package]]
 name = "kaspa-python-macros"
 version = "0.15.2"
 dependencies = [
@@ -3311,6 +3322,7 @@ dependencies = [
  "kaspa-addresses",
  "kaspa-consensus-core",
  "kaspa-hashes",
+ "kaspa-python-core",
  "kaspa-txscript-errors",
  "kaspa-utils",
  "kaspa-wasm-core",
@@ -3474,6 +3486,7 @@ dependencies = [
  "kaspa-hashes",
  "kaspa-metrics-core",
  "kaspa-notify",
+ "kaspa-python-core",
  "kaspa-python-macros",
  "kaspa-rpc-core",
  "kaspa-txscript",

@@ -68,6 +68,7 @@ cfg_if! {
 
 cfg_if! {
     if #[cfg(feature = "py-sdk")] {
+        pub use kaspa_python_core::types::PyBinary;
         pub use pyo3::{
             exceptions::PyException,
             prelude::*,
