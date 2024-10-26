@@ -1,0 +1,22 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "kaspa"
+version = "0.0.1"
+description = "Kaspa Python SDK"
+license = "ISC"
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Rust",
+]
+dependencies = []
+
+[package.metadata.maturin]
+name = "kaspa"
+description = "Kaspa Python SDK"
+
+[tool.maturin]
+name = "kaspa"
+features = ["pyo3/extension-module"]
