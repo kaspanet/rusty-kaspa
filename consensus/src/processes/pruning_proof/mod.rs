@@ -833,39 +833,17 @@ impl PruningProofManager {
     ) -> PruningProofManagerInternalResult<Arc<Header>> {
         // Parents manager parents_at_level may return parents that aren't in relations_service, so it's important
         // to filter to include only parents that are in relations_service.
-        let parents = self
+        let sp = self
             .parents_manager
             .parents_at_level(header, level)
             .iter()
             .copied()
-            .filter(|parent| self.level_relations_services[level as usize].has(*parent).unwrap())
-            .collect_vec()
-            .push_if_empty(ORIGIN);
+            .filter(|p| self.level_relations_services[level as usize].has(*p).unwrap())
+            .filter_map(|p| self.headers_store.get_header(p).unwrap_option().map(|h| SortableBlock::new(p, h.blue_work)))
+            .max()
+            .ok_or(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof("no parents with header".to_string()))?;
 
-        let mut sp = SortableBlock {
-            hash: parents[0],
-            blue_work: if parents[0] == ORIGIN { 0.into() } else { self.headers_store.get_header(parents[0]).unwrap().blue_work },
-        };
-        for parent in parents.iter().copied().skip(1) {
-            let sblock = SortableBlock {
-                hash: parent,
-                blue_work: self
-                    .headers_store
-                    .get_header(parent)
-                    .unwrap_option()
-                    .ok_or(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(format!(
-                        "find_selected_parent_header_at_level (level {level}) couldn't find the header for block {parent}"
-                    )))?
-                    .blue_work,
-            };
-            if sblock > sp {
-                sp = sblock;
-            }
-        }
-        // TODO: For higher levels the chance of having more than two parents is very small, so it might make sense to fetch the whole header for the SortableBlock instead of blue_score (which will probably come from a compact header).
-        self.headers_store.get_header(sp.hash).unwrap_option().ok_or(PruningProofManagerInternalError::NotEnoughHeadersToBuildProof(
-            format!("find_selected_parent_header_at_level (level {level}) couldn't find the header for block {}", sp.hash,),
-        ))
+        Ok(self.headers_store.get_header(sp.hash).expect("unwrapped above"))
     }
 
     fn find_sufficient_root(
