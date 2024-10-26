@@ -6,9 +6,13 @@ from kaspa import RpcClient, Resolver
 def subscription_callback(event, name, **kwargs):
     print(f"{name} | {event}")
 
+def block_added_handler(event):
+    print(f"block_added_handler: {event}")
+
 async def rpc_subscriptions(client: RpcClient):
     # client.add_event_listener("all", subscription_callback, callback_id=1, kwarg1="Im a kwarg!!")
     client.add_event_listener("all", subscription_callback, name="all")
+    client.add_event_listener("block-added", block_added_handler)
 
     await client.subscribe_virtual_daa_score_changed()
     await client.subscribe_virtual_chain_changed(True)

@@ -268,7 +268,11 @@ impl RpcClient {
         let event = NotificationEvent::from_str(event.as_str()).unwrap();
 
         let args = args.to_object(py).extract::<Py<PyTuple>>(py)?;
-        let kwargs = kwargs.unwrap().to_object(py).extract::<Py<PyDict>>(py)?;
+
+        let kwargs = match kwargs {
+            Some(kw) => kw.to_object(py).extract::<Py<PyDict>>(py)?,
+            None => PyDict::new_bound(py).into(),
+        };
 
         let py_callback = PyCallback { callback, args: Some(args), kwargs: Some(kwargs) };
 
