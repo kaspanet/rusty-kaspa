@@ -1051,7 +1051,7 @@ impl PruningProofManager {
                     }
 
                     if !self.reachability_service.is_dag_ancestor_of(current, selected_tip)
-                        || ghostdag_stores[level as usize].has(current).is_err()
+                        || !ghostdag_stores[level].has(current).is_ok_and(|found| found)
                     {
                         continue;
                     }
