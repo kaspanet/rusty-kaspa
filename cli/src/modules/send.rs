@@ -12,13 +12,26 @@ impl Send {
         let account = ctx.wallet().account()?;
 
         if argv.len() < 2 {
-            tprintln!(ctx, "usage: send <address> <amount> <priority fee>");
+            tprintln!(ctx, "usage: send <address> <amount|--send-all> <priority fee>");
             return Ok(());
         }
 
         let address = Address::try_from(argv.first().unwrap().as_str())?;
-        let amount_sompi = try_parse_required_nonzero_kaspa_as_sompi_u64(argv.get(1))?;
         let priority_fee_sompi = try_parse_optional_kaspa_as_sompi_i64(argv.get(2))?.unwrap_or(0);
+        // handle --send-all
+        let amount_sompi = if argv.get(1).unwrap() == "--send-all" {
+            // get mature balance from account
+            let balance = account.balance().ok_or_else(|| Error::Custom("Failed to retrieve account balance".into()))?;
+            let mature_balance_sompi = balance.mature;
+
+            // subtract priority fee from mature balance
+            mature_balance_sompi
+                .checked_sub(priority_fee_sompi.try_into().unwrap_or(0))
+                .ok_or_else(|| Error::Custom("Insufficient funds to cover the priority fee.".into()))?
+        } else {
+            // parse amount if not using --send-all
+            try_parse_required_nonzero_kaspa_as_sompi_u64(argv.get(1))?
+        };
         let outputs = PaymentOutputs::from((address.clone(), amount_sompi));
         let abortable = Abortable::default();
         let (wallet_secret, payment_secret) = ctx.ask_wallet_secret(Some(&account)).await?;

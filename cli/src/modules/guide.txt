@@ -41,6 +41,8 @@ the selected account to an account named 'pete' (starts with a 'p' letter).
 
 `send <address> <amount>` - Sends funds to a destination address.
 
+`send <address> --send-all` - Sends all available funds to a destination address.
+
 `estimate <amount>` - Provides a fee and UTXO consumption estimate for a transaction of a given amount.
 
 `sweep` - Sweeps account UTXOs to reduce the UTXO size.
