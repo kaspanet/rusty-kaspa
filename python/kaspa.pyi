@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Iterator, Optional, Union
 
 class Address:
 
@@ -608,10 +608,24 @@ class Generator:
         minimun_signatures: Optional[int]
     ) -> None: ...
 
+    def estimate(
+        self,
+        network_id: str,
+        entries: list[dict],
+        outputs: list[dict],
+        change_address: Address,
+        payload: Optional[str],
+        priority_fee: Optional[str],
+        priority_entries: Optional[list[dict]],
+        sig_op_count: Optional[int],
+        minimun_signatures: Optional[int]
+    ) -> GeneratorSummary: ...
+
     def summary(self) -> GeneratorSummary: ...
 
-    # __iter__ TODO
-    # __next__ TODO
+    def __iter__(self) -> Iterator[PendingTransaction]: ...
+
+    def __next__(self) -> PendingTransaction: ...
 
 
 class PendingTransaction:

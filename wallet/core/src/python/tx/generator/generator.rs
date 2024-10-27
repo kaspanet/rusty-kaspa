@@ -66,6 +66,11 @@ impl Generator {
         Ok(Self { inner: Arc::new(generator) })
     }
 
+    pub fn estimate(&self) -> Result<GeneratorSummary> {
+        self.inner.iter().collect::<Result<Vec<_>>>()?;
+        Ok(self.inner.summary().into())
+    }
+
     pub fn summary(&self) -> GeneratorSummary {
         self.inner.summary().into()
     }
