@@ -1,5 +1,5 @@
 use crate::imports::*;
-use crate::python::tx::generator::{Generator, PendingTransaction};
+use crate::python::tx::generator::{Generator, GeneratorSummary, PendingTransaction};
 use crate::tx::payment::PaymentOutput;
 use kaspa_consensus_client::*;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
@@ -78,4 +78,33 @@ pub fn create_transactions_py<'a>(
     dict.set_item("transactions", &transactions)?;
     dict.set_item("summary", &summary)?;
     Ok(dict)
+}
+
+#[pyfunction]
+#[pyo3(name = "estimate_transactions")]
+pub fn estimate_transactions_py<'a>(
+    network_id: String,
+    entries: Vec<&PyDict>,
+    outputs: Vec<&PyDict>,
+    change_address: Address,
+    payload: Option<PyBinary>,
+    priority_fee: Option<u64>,
+    priority_entries: Option<Vec<&PyDict>>,
+    sig_op_count: Option<u8>,
+    minimum_signatures: Option<u16>,
+) -> PyResult<GeneratorSummary> {
+    let generator = Generator::ctor(
+        network_id,
+        entries,
+        outputs,
+        change_address,
+        payload.map(Into::into),
+        priority_fee,
+        priority_entries,
+        sig_op_count,
+        minimum_signatures,
+    )?;
+
+    generator.iter().collect::<Result<Vec<_>>>()?;
+    Ok(generator.summary())
 }

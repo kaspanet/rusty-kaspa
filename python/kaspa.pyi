@@ -682,6 +682,13 @@ class GeneratorSummary:
     def final_transaction_id(self) -> Optional[str]: ...
 
 
+def calculate_transaction_fee(network_id: str, tx: Transaction, minimum_signatures: Optional[int]) -> Optional[int]: ...
+
+def calculate_transaction_mass(network_id: str, tx: Transaction, minimum_signatures: Optional[int]) -> int: ...
+
+def update_transaction_mass(network_id: str, tx: Transaction, minimum_signatures: Optional[int]) -> bool: ...
+
+
 class PaymentOutput:
 
     def __init__(self, address: Address, amount: int) -> None: ...
@@ -714,6 +721,17 @@ def create_transactions(
     minimum_signatures: Optional[int]
 ) -> dict: ...
 
+def estimate_transactions(
+    network_id: str,
+    entries: list[dict],
+    outputs: list[dict],
+    change_address: Address,
+    payload: Optional[str],
+    priority_fee: Optional[int],
+    priority_entries: Optional[list[dict]],
+    sig_op_count: Optional[int],
+    minimum_signatures: Optional[int]
+) -> GeneratorSummary: ...
 
 def sign_transaction(tx: Transaction, signer: list[PrivateKey], verify_sig: bool) -> Transaction: ...
 
