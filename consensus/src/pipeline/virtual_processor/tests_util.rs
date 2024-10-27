@@ -1,5 +1,5 @@
 use crate::{
-    consensus::{services::DbMerkleProofsManager, test_consensus::TestConsensus},
+    consensus::{services::DbTxReceiptsManager, test_consensus::TestConsensus},
     model::stores::pchmr_store::PchmrStore,
 };
 use kaspa_consensus_core::{
@@ -89,7 +89,7 @@ impl TestContext {
             let immutatble_block = t.block.to_immutable();
             let block_hash = immutatble_block.header.hash;
             self.validate_and_insert_block(immutatble_block).await;
-            let pchmr_root = self.merkle_proofs_manager().calc_pchmr_root_by_hash(block_hash);
+            let pchmr_root = self.tx_receipts_manager().calc_pchmr_root_by_hash(block_hash);
             self.store_pchmr_root(block_hash, pchmr_root);
         }
         self
@@ -156,10 +156,10 @@ impl TestContext {
         self
     }
     pub fn store_pchmr_root(&self, block_hash: Hash, pchmr_root_hash: Hash) {
-        self.merkle_proofs_manager().hash_to_pchmr_store.insert(block_hash, pchmr_root_hash).unwrap();
+        self.tx_receipts_manager().hash_to_pchmr_store.insert(block_hash, pchmr_root_hash).unwrap();
     }
-    pub fn merkle_proofs_manager(&self) -> DbMerkleProofsManager {
-        self.consensus.services.merkle_proofs_manager.clone()
+    pub fn tx_receipts_manager(&self) -> DbTxReceiptsManager {
+        self.consensus.services.tx_receipts_manager.clone()
     }
 }
 

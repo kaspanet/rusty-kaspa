@@ -10,7 +10,7 @@ use crate::{
             relations::DbRelationsStore, selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB,
         },
     },
-    pipeline::tx_receipts_manager::MerkleProofsManager,
+    pipeline::tx_receipts_manager::TxReceiptsManager,
     processes::{
         block_depth::BlockDepthManager, coinbase::CoinbaseManager, ghostdag::protocol::GhostdagManager,
         parents_builder::ParentsManager, pruning::PruningPointManager, pruning_proof::PruningProofManager, sync::SyncManager,
@@ -42,7 +42,7 @@ pub type DbPruningPointManager =
     PruningPointManager<DbGhostdagStore, DbReachabilityStore, DbHeadersStore, DbPastPruningPointsStore, DbHeadersSelectedTipStore>;
 pub type DbBlockDepthManager = BlockDepthManager<DbDepthStore, DbReachabilityStore, DbGhostdagStore>;
 pub type DbParentsManager = ParentsManager<DbHeadersStore, DbReachabilityStore, MTRelationsService<DbRelationsStore>>;
-pub type DbMerkleProofsManager = MerkleProofsManager<
+pub type DbTxReceiptsManager = TxReceiptsManager<
     DbSelectedChainStore,
     DbReachabilityStore,
     DbHeadersStore,
@@ -69,7 +69,7 @@ pub struct ConsensusServices {
     pub depth_manager: DbBlockDepthManager,
     pub mass_calculator: MassCalculator,
     pub transaction_validator: TransactionValidator,
-    pub merkle_proofs_manager: DbMerkleProofsManager,
+    pub tx_receipts_manager: DbTxReceiptsManager,
 }
 
 impl ConsensusServices {
@@ -203,7 +203,7 @@ impl ConsensusServices {
             storage.pruning_point_store.clone(),
             storage.statuses_store.clone(),
         );
-        let merkle_proofs_manager = MerkleProofsManager::new(
+        let tx_receipts_manager = TxReceiptsManager::new(
             params.genesis.clone(),
             params.finality_depth,
             reachability_service.clone(),
@@ -230,7 +230,7 @@ impl ConsensusServices {
             depth_manager,
             mass_calculator,
             transaction_validator,
-            merkle_proofs_manager,
+            tx_receipts_manager,
         })
     }
 }

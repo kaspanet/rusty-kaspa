@@ -403,7 +403,7 @@ impl Consensus {
         let bps = self.config.bps();
         let deviation_in_blocks = (DEVIATION_IN_SECONDS * bps) as usize;
         let (tip_index, tip) = self.selected_chain_store.read().get_tip().unwrap();
-        let width_guess: u64 = self.services.merkle_proofs_manager.estimate_dag_width();
+        let width_guess: u64 = self.services.tx_receipts_manager.estimate_dag_width();
 
         let tip_bscore = self.headers_store.get_blue_score(tip).unwrap();
         let estimated_bscore = tip_bscore - (current_time_stamp.saturating_sub(time_stamp)) * bps / 1000;
@@ -419,7 +419,7 @@ impl Consensus {
                 .contains(&tx_id)
             {
                 self.services
-                    .merkle_proofs_manager
+                    .tx_receipts_manager
                     .generate_tx_receipt(block, tx_id)
                     .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))?;
             }
@@ -434,7 +434,7 @@ impl Consensus {
                 .contains(&tx_id)
             {
                 self.services
-                    .merkle_proofs_manager
+                    .tx_receipts_manager
                     .generate_tx_receipt(block, tx_id)
                     .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))?;
             }
@@ -1101,7 +1101,7 @@ impl ConsensusApi for Consensus {
 
             return self
                 .services
-                .merkle_proofs_manager
+                .tx_receipts_manager
                 .generate_tx_receipt(accepting_block, tx_id)
                 .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"));
         }
@@ -1123,7 +1123,7 @@ impl ConsensusApi for Consensus {
             {
                 return self
                     .services
-                    .merkle_proofs_manager
+                    .tx_receipts_manager
                     .generate_tx_receipt(block, tx_id)
                     .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"));
             }
@@ -1142,7 +1142,7 @@ impl ConsensusApi for Consensus {
         if let Some(publishing_block) = publishing_block {
             //if a block is supplied, generate receipt directly
             self.services
-                .merkle_proofs_manager
+                .tx_receipts_manager
                 .generate_proof_of_pub(publishing_block, tx_id)
                 .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))
         } else {
@@ -1151,9 +1151,9 @@ impl ConsensusApi for Consensus {
     }
 
     fn verify_tx_receipt(&self, receipt: TxReceipt) -> bool {
-        self.services.merkle_proofs_manager.verify_tx_receipt(receipt)
+        self.services.tx_receipts_manager.verify_tx_receipt(receipt)
     }
     fn verify_proof_of_pub(&self, pop: ProofOfPublication) -> bool {
-        self.services.merkle_proofs_manager.verify_proof_of_pub(pop)
+        self.services.tx_receipts_manager.verify_proof_of_pub(pop)
     }
 }

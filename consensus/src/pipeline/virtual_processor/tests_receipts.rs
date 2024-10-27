@@ -35,11 +35,11 @@ async fn test_chain_posterities() {
         expected_posterities.push(tip);
     }
     //check genesis behavior
-    let pre_posterity = ctx.merkle_proofs_manager().get_pre_posterity_block_by_hash(genesis_hash);
-    let post_posterity = ctx.merkle_proofs_manager().get_post_posterity_block(genesis_hash);
+    let pre_posterity = ctx.tx_receipts_manager().get_pre_posterity_block_by_hash(genesis_hash);
+    let post_posterity = ctx.tx_receipts_manager().get_post_posterity_block(genesis_hash);
     assert_eq!(pre_posterity, expected_posterities[0]);
     assert_eq!(post_posterity.unwrap(), expected_posterities[1]);
-    assert!(ctx.merkle_proofs_manager().verify_post_posterity_block(genesis_hash, expected_posterities[1]));
+    assert!(ctx.tx_receipts_manager().verify_post_posterity_block(genesis_hash, expected_posterities[1]));
 
     let mut it = ctx.consensus.services.reachability_service.forward_chain_iterator(genesis_hash, tip, true).skip(1);
     for i in 0..PERIODS - 3 {
@@ -49,11 +49,11 @@ async fn test_chain_posterities() {
             B) validates the posterity qualitiesof the block 3*FINALITY_DEPTH blocks in its past*/
             ctx.build_block_template_row(0..1).validate_and_insert_row().await.assert_valid_utxo_tip();
             let block = it.next().unwrap();
-            let pre_posterity = ctx.merkle_proofs_manager().get_pre_posterity_block_by_hash(block);
-            let post_posterity = ctx.merkle_proofs_manager().get_post_posterity_block(block);
+            let pre_posterity = ctx.tx_receipts_manager().get_pre_posterity_block_by_hash(block);
+            let post_posterity = ctx.tx_receipts_manager().get_post_posterity_block(block);
             assert_eq!(pre_posterity, expected_posterities[i]);
             assert_eq!(post_posterity.unwrap(), expected_posterities[i + 1]);
-            assert!(ctx.merkle_proofs_manager().verify_post_posterity_block(block, expected_posterities[i + 1]));
+            assert!(ctx.tx_receipts_manager().verify_post_posterity_block(block, expected_posterities[i + 1]));
         }
         //insert and update the next posterity block
         ctx.build_block_template_row(0..1).validate_and_insert_row().await.assert_valid_utxo_tip();
@@ -62,11 +62,11 @@ async fn test_chain_posterities() {
         expected_posterities.push(tip);
         //verify posterity qualities of a 3*FINALITY_DEPTH blocks in the past posterity block
         let past_posterity_block = it.next().unwrap();
-        let pre_posterity = ctx.merkle_proofs_manager().get_pre_posterity_block_by_hash(past_posterity_block);
-        let post_posterity = ctx.merkle_proofs_manager().get_post_posterity_block(past_posterity_block);
+        let pre_posterity = ctx.tx_receipts_manager().get_pre_posterity_block_by_hash(past_posterity_block);
+        let post_posterity = ctx.tx_receipts_manager().get_post_posterity_block(past_posterity_block);
         assert_eq!(pre_posterity, expected_posterities[i]);
         assert_eq!(post_posterity.unwrap(), expected_posterities[i + 2]);
-        assert!(ctx.merkle_proofs_manager().verify_post_posterity_block(past_posterity_block, expected_posterities[i + 2]));
+        assert!(ctx.tx_receipts_manager().verify_post_posterity_block(past_posterity_block, expected_posterities[i + 2]));
         //update the iterator
         it = ctx.consensus.services.reachability_service.forward_chain_iterator(past_posterity_block, tip, true).skip(1);
     }
@@ -79,23 +79,23 @@ async fn test_chain_posterities() {
     //check remaining blocks, which were yet to be pruned
     for i in PERIODS - 3..PERIODS + 1 {
         for block in it.by_ref().take(FINALITY_DEPTH - 1) {
-            let pre_posterity = ctx.merkle_proofs_manager().get_pre_posterity_block_by_hash(block);
-            let post_posterity = ctx.merkle_proofs_manager().get_post_posterity_block(block);
+            let pre_posterity = ctx.tx_receipts_manager().get_pre_posterity_block_by_hash(block);
+            let post_posterity = ctx.tx_receipts_manager().get_post_posterity_block(block);
 
             assert_eq!(pre_posterity, expected_posterities[i]);
             if i == PERIODS {
                 assert!(post_posterity.is_err());
             } else {
                 assert_eq!(post_posterity.unwrap(), expected_posterities[i + 1]);
-                assert!(ctx.merkle_proofs_manager().verify_post_posterity_block(block, expected_posterities[i + 1]));
+                assert!(ctx.tx_receipts_manager().verify_post_posterity_block(block, expected_posterities[i + 1]));
             }
         }
         if i == PERIODS {
             break;
         }
         let past_posterity_block = it.next().unwrap();
-        let pre_posterity = ctx.merkle_proofs_manager().get_pre_posterity_block_by_hash(past_posterity_block);
-        let post_posterity = ctx.merkle_proofs_manager().get_post_posterity_block(past_posterity_block);
+        let pre_posterity = ctx.tx_receipts_manager().get_pre_posterity_block_by_hash(past_posterity_block);
+        let post_posterity = ctx.tx_receipts_manager().get_post_posterity_block(past_posterity_block);
         assert_eq!(pre_posterity, expected_posterities[i]);
         //edge case logic
         if i == PERIODS - 1 {
@@ -107,8 +107,8 @@ async fn test_chain_posterities() {
 
     for block in it {
         //check final blocks
-        let pre_posterity = ctx.merkle_proofs_manager().get_pre_posterity_block_by_hash(block);
-        let post_posterity = ctx.merkle_proofs_manager().get_post_posterity_block(block);
+        let pre_posterity = ctx.tx_receipts_manager().get_pre_posterity_block_by_hash(block);
+        let post_posterity = ctx.tx_receipts_manager().get_post_posterity_block(block);
         assert_eq!(pre_posterity, expected_posterities[PERIODS]);
         assert!(post_posterity.is_err());
     }

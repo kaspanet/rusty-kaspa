@@ -22,7 +22,7 @@ use parking_lot::RwLock;
 
 use std::{cmp::min, sync::Arc};
 #[derive(Clone)]
-pub struct MerkleProofsManager<
+pub struct TxReceiptsManager<
     T: SelectedChainStoreReader,
     U: ReachabilityStoreReader,
     V: HeaderStoreReader,
@@ -43,7 +43,7 @@ pub struct MerkleProofsManager<
 }
 
 impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreReader, X: AcceptanceDataStoreReader>
-    MerkleProofsManager<T, U, V, X>
+    TxReceiptsManager<T, U, V, X>
 {
     pub fn new(
         genesis: GenesisBlock,
