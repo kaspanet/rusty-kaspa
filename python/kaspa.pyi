@@ -588,6 +588,11 @@ class Opcodes(Enum):
     OpInvalidOpCode = 0xff
 
 
+def sign_message(message: str, private_key: PrivateKey) -> str: ...
+
+def verify_message(message: str, signature: str, public_key: PublicKey) -> bool: ...
+
+
 class Generator:
 
     def __init__(
