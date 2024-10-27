@@ -127,7 +127,7 @@ impl XPub {
         Ok(self.inner.to_string(Some(prefix.try_into()?)))
     }
 
-    #[pyo3(name = "public_key")]
+    #[pyo3(name = "to_public_key")]
     pub fn public_key_py(&self) -> PublicKey {
         self.inner.public_key().into()
     }

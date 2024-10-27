@@ -141,7 +141,7 @@ impl XPrv {
     }
 
     #[staticmethod]
-    #[pyo3(name = "from_xprv_str")]
+    #[pyo3(name = "from_xprv")]
     pub fn from_xprv_str_py(xprv: String) -> PyResult<XPrv> {
         Ok(Self { inner: ExtendedPrivateKey::<SecretKey>::from_str(&xprv)? })
     }
@@ -154,8 +154,15 @@ impl XPrv {
     }
 
     #[pyo3(name = "derive_path")]
-    pub fn derive_path_py(&self, path: String) -> PyResult<XPrv> {
-        let path = DerivationPath::new(path.as_str())?;
+    pub fn derive_path_py(&self, path: Bound<PyAny>) -> PyResult<XPrv> {
+        let path = if let Ok(path_str) = path.extract::<String>() {
+            Ok(DerivationPath::new(path_str.as_str())?)
+        } else if let Ok(path_obj) = path.extract::<DerivationPath>() {
+            Ok(path_obj)
+        } else {
+            Err(PyException::new_err("`path` must be of type `str` or `DerivationPath`"))
+        }?;
+
         let inner = self.inner.clone().derive_path((&path).into())?;
         Ok(Self { inner })
     }

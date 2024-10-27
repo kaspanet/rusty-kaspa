@@ -18,12 +18,7 @@ impl DerivationPath {
         let inner = kaspa_bip32::DerivationPath::from_str(path)?;
         Ok(Self { inner })
     }
-}
 
-// PY-NOTE: methods exposed to both WASM and Python
-#[wasm_bindgen]
-#[cfg_attr(feature = "py-sdk", pymethods)]
-impl DerivationPath {
     /// Is this derivation path empty? (i.e. the root)
     #[wasm_bindgen(js_name = isEmpty)]
     pub fn is_empty(&self) -> bool {
@@ -64,6 +59,33 @@ impl DerivationPath {
     pub fn new_py(path: &str) -> Result<DerivationPath> {
         let inner = kaspa_bip32::DerivationPath::from_str(path)?;
         Ok(Self { inner })
+    }
+
+    #[pyo3(name = "is_empty")]
+    pub fn is_empty_py(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    #[pyo3(name = "length")]
+    pub fn len_py(&self) -> usize {
+        self.inner.len()
+    }
+
+    #[pyo3(name = "parent")]
+    pub fn parent_py(&self) -> Option<DerivationPath> {
+        self.inner.parent().map(|inner| Self { inner })
+    }
+
+    #[pyo3(name = "push")]
+    pub fn push_py(&mut self, child_number: u32, hardened: Option<bool>) -> Result<()> {
+        let child = ChildNumber::new(child_number, hardened.unwrap_or(false))?;
+        self.inner.push(child);
+        Ok(())
+    }
+
+    #[pyo3(name = "to_string")]
+    pub fn to_str_py(&self) -> String {
+        self.inner.to_string()
     }
 }
 
