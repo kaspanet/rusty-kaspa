@@ -49,7 +49,7 @@ pub fn create_transaction_py(
 #[pyo3(name = "create_transactions")]
 pub fn create_transactions_py<'a>(
     py: Python<'a>,
-    network_id: String, // TODO this is wrong
+    network_id: String,
     entries: Vec<&PyDict>,
     outputs: Vec<&PyDict>,
     change_address: Address,

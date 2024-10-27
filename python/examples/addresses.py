@@ -28,14 +28,14 @@ def demo_generate_address_from_public_key_hex_string():
 def demo_generate_address_from_private_key_hex_string():
     private_key = PrivateKey("b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef")
     print("\nGiven private key b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef")
-    print(private_key.to_keypair().to_address("kaspa").to_string())
+    print(private_key.to_keypair().to_address("mainnet").to_string())
 
 def demo_generate_random():
     keypair = Keypair.random()
     print("\nRandom Generation")
     print(keypair.private_key)
     print(keypair.public_key)
-    print(keypair.to_address("kaspa").to_string())
+    print(keypair.to_address("mainnet").to_string())
 
 if __name__ == "__main__":
     demo_generate_address_from_public_key_hex_string()

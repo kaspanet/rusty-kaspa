@@ -57,7 +57,7 @@ pub fn address_from_script_public_key(script_public_key: &ScriptPublicKeyT, netw
 #[pyfunction]
 #[pyo3(name = "address_from_script_public_key")]
 pub fn address_from_script_public_key_py(script_public_key: &ScriptPublicKey, network: &str) -> PyResult<Address> {
-    match standard::extract_script_pub_key_address(script_public_key, network.try_into()?) {
+    match standard::extract_script_pub_key_address(script_public_key, NetworkType::from_str(network)?.try_into()?) {
         Ok(address) => Ok(address),
         Err(err) => Err(pyo3::exceptions::PyException::new_err(format!("{}", err))),
     }

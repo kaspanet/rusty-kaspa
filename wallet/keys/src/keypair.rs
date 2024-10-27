@@ -122,14 +122,14 @@ impl Keypair {
     #[pyo3(name = "to_address")]
     pub fn to_address_py(&self, network: &str) -> PyResult<Address> {
         let payload = &self.xonly_public_key.serialize();
-        let address = Address::new(network.try_into()?, AddressVersion::PubKey, payload);
+        let address = Address::new(NetworkType::from_str(network)?.try_into()?, AddressVersion::PubKey, payload);
         Ok(address)
     }
 
     #[pyo3(name = "to_address_ecdsa")]
     pub fn to_address_ecdsa_py(&self, network: &str) -> PyResult<Address> {
         let payload = &self.public_key.serialize();
-        let address = Address::new(network.try_into()?, AddressVersion::PubKeyECDSA, payload);
+        let address = Address::new(NetworkType::from_str(network)?.try_into()?, AddressVersion::PubKeyECDSA, payload);
         Ok(address)
     }
 

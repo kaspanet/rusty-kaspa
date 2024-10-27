@@ -118,7 +118,7 @@ impl PrivateKey {
         let public_key = secp256k1::PublicKey::from_secret_key_global(&self.inner);
         let (x_only_public_key, _) = public_key.x_only_public_key();
         let payload = x_only_public_key.serialize();
-        let address = Address::new(network.try_into()?, AddressVersion::PubKey, &payload);
+        let address = Address::new(NetworkType::from_str(network)?.try_into()?, AddressVersion::PubKey, &payload);
         Ok(address)
     }
 
@@ -126,7 +126,7 @@ impl PrivateKey {
     pub fn to_address_ecdsa_py(&self, network: &str) -> PyResult<Address> {
         let public_key = secp256k1::PublicKey::from_secret_key_global(&self.inner);
         let payload = public_key.serialize();
-        let address = Address::new(network.try_into()?, AddressVersion::PubKeyECDSA, &payload);
+        let address = Address::new(NetworkType::from_str(network)?.try_into()?, AddressVersion::PubKeyECDSA, &payload);
         Ok(address)
     }
 

@@ -183,6 +183,13 @@ impl From<NetworkIdError> for JsValue {
     }
 }
 
+#[cfg(feature = "py-sdk")]
+impl From<NetworkIdError> for PyErr {
+    fn from(value: NetworkIdError) -> PyErr {
+        PyException::new_err(value.to_string())
+    }
+}
+
 ///
 /// NetworkId is a unique identifier for a kaspa network instance.
 /// It is composed of a network type and an optional suffix.

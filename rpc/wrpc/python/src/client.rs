@@ -1,4 +1,4 @@
-use crate::resolver::{into_network_id, Resolver};
+use crate::resolver::Resolver;
 use ahash::AHashMap;
 use futures::*;
 use kaspa_addresses::Address;
@@ -157,12 +157,10 @@ impl RpcClient {
         resolver: Option<Resolver>,
         url: Option<String>,
         encoding: Option<String>,
-        network: Option<String>,
-        network_suffix: Option<u32>,
+        network_id: Option<String>,
     ) -> PyResult<RpcClient> {
         let encoding = WrpcEncoding::from_str(&encoding.unwrap_or("borsh".to_string())).unwrap();
-        let network = network.unwrap_or(String::from("mainnet"));
-        let network_id = into_network_id(&network, network_suffix)?;
+        let network_id = NetworkId::from_str(&network_id.unwrap_or(String::from("mainnet")))?;
 
         Ok(Self::new(resolver, url, Some(encoding), Some(network_id))?)
     }
@@ -182,8 +180,8 @@ impl RpcClient {
         Ok(())
     }
 
-    fn set_network_id(&self, network: String, network_suffix: Option<u32>) -> PyResult<()> {
-        let network_id = into_network_id(&network, network_suffix)?;
+    fn set_network_id(&self, network_id: String) -> PyResult<()> {
+        let network_id = NetworkId::from_str(&network_id)?;
         self.inner.client.set_network_id(&network_id)?;
         Ok(())
     }

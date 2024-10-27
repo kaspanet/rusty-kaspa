@@ -44,7 +44,7 @@ async def main():
     script.add_op(Opcodes.OpEndIf)
     print(f'Script: {script.to_string()}')
     
-    p2sh_address = address_from_script_public_key(script.create_pay_to_script_hash_script(), 'kaspatest')
+    p2sh_address = address_from_script_public_key(script.create_pay_to_script_hash_script(), 'testnet')
     print(f'P2SH Address: {p2sh_address.to_string()}')
 
     utxos = await client.get_utxos_by_addresses(request={'addresses': [address]})

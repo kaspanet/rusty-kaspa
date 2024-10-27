@@ -299,13 +299,13 @@ impl Transaction {
         inputs: Vec<TransactionInput>,
         outputs: Vec<TransactionOutput>,
         lock_time: u64,
-        subnetwork_id: String,
+        subnetwork_id: PyBinary,
         gas: u64,
         payload: PyBinary,
         mass: u64,
     ) -> PyResult<Self> {
-        let subnetwork_id = Vec::from_hex(&subnetwork_id)
-            .map_err(|err| PyException::new_err(format!("subnetwork_id decode error: {}", err)))?
+        let subnetwork_id: SubnetworkId = subnetwork_id
+            .data
             .as_slice()
             .try_into()
             .map_err(|err| PyException::new_err(format!("subnetwork_id conversion error: {}", err)))?;

@@ -1,7 +1,6 @@
-use kaspa_consensus_core::network::{NetworkId, NetworkType};
+use kaspa_consensus_core::network::NetworkId;
 use kaspa_python_macros::py_async;
 use kaspa_wrpc_client::{Resolver as NativeResolver, WrpcEncoding};
-use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use std::{str::FromStr, sync::Arc};
 
@@ -36,11 +35,9 @@ impl Resolver {
         self.resolver.urls().unwrap_or_default().into_iter().map(|url| (*url).clone()).collect::<Vec<_>>()
     }
 
-    fn get_node(&self, py: Python, encoding: String, network: String, network_suffix: Option<u32>) -> PyResult<Py<PyAny>> {
+    fn get_node(&self, py: Python, encoding: String, network_id: &str) -> PyResult<Py<PyAny>> {
         let encoding = WrpcEncoding::from_str(encoding.as_str()).unwrap();
-
-        // TODO find better way of accepting NetworkId type from Python
-        let network_id = into_network_id(&network, network_suffix)?;
+        let network_id = NetworkId::from_str(network_id)?;
 
         let resolver = self.resolver.clone();
         py_async! {py, async move {
@@ -51,11 +48,9 @@ impl Resolver {
         }}
     }
 
-    fn get_url(&self, py: Python, encoding: String, network: String, network_suffix: Option<u32>) -> PyResult<Py<PyAny>> {
+    fn get_url(&self, py: Python, encoding: String, network_id: &str) -> PyResult<Py<PyAny>> {
         let encoding = WrpcEncoding::from_str(encoding.as_str()).unwrap();
-
-        // TODO find better way of accepting NetworkId type from Python
-        let network_id = into_network_id(&network, network_suffix)?;
+        let network_id = NetworkId::from_str(network_id)?;
 
         let resolver = self.resolver.clone();
         py_async! {py, async move {
@@ -71,14 +66,4 @@ impl From<Resolver> for NativeResolver {
     fn from(resolver: Resolver) -> Self {
         resolver.resolver
     }
-}
-
-pub fn into_network_id(network: &str, network_suffix: Option<u32>) -> Result<NetworkId, PyErr> {
-    let network_type = NetworkType::from_str(network).map_err(|_| PyErr::new::<PyException, _>("Invalid network type"))?;
-    NetworkId::try_from(network_type).or_else(|_| {
-        network_suffix.map_or_else(
-            || Err(PyErr::new::<PyException, _>("Network suffix required for this network")),
-            |suffix| Ok(NetworkId::with_suffix(network_type, suffix)),
-        )
-    })
 }

@@ -15,6 +15,8 @@ pub use borsh::{BorshDeserialize, BorshSerialize};
 pub use js_sys::Array;
 pub use kaspa_addresses::{Address, Version as AddressVersion};
 pub use kaspa_bip32::{ChildNumber, ExtendedPrivateKey, ExtendedPublicKey, SecretKey};
+#[cfg(feature = "py-sdk")]
+pub use kaspa_consensus_core::network::NetworkType;
 pub use kaspa_consensus_core::network::{NetworkId, NetworkTypeT};
 pub use kaspa_utils::hex::*;
 pub use kaspa_wasm_core::types::*;

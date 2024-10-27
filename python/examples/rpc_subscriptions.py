@@ -32,7 +32,7 @@ async def rpc_subscriptions(client: RpcClient):
     await client.unsubscribe_new_block_template()
 
 async def main():
-    client = RpcClient(resolver=Resolver(), network="testnet", network_suffix=10)
+    client = RpcClient(resolver=Resolver(), network_id="testnet-11")
     
     await client.connect()
     print(f"Client is connected: {client.is_connected}")
