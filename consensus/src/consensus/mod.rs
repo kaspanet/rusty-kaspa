@@ -398,45 +398,55 @@ impl Consensus {
             .map(|hash| (hash, self.headers_store.get_compact_header_data(hash).unwrap()))
             .collect_vec()
     }
-    fn get_tx_receipt_based_on_time(&self, tx_id: Hash, time_stamp: u64, current_time_stamp: u64) -> ConsensusResult<TxReceipt> {
+    /* this logic may be imperfect as of now */
+    fn get_tx_receipt_based_on_time(&self, tx_id: Hash, tx_timestamp: u64) -> ConsensusResult<TxReceipt> {
         const DEVIATION_IN_SECONDS: u64 = 300; //5 minutes deviation should be enough?
         let bps = self.config.bps();
-        let deviation_in_blocks = (DEVIATION_IN_SECONDS * bps) as usize;
         let (tip_index, tip) = self.selected_chain_store.read().get_tip().unwrap();
         let width_guess: u64 = self.services.tx_receipts_manager.estimate_dag_width();
+        let sink_timestamp = self.headers_store.get_timestamp(tip).unwrap(); // verify this
+        let deviation_in_chain_blocks = ((DEVIATION_IN_SECONDS * bps) / width_guess) as usize;
 
         let tip_bscore = self.headers_store.get_blue_score(tip).unwrap();
-        let estimated_bscore = tip_bscore - (current_time_stamp.saturating_sub(time_stamp)) * bps / 1000;
+        let estimated_bscore = tip_bscore - (sink_timestamp.saturating_sub(tx_timestamp)) * bps / 1000;
         let guess_index = tip_index - (tip_bscore.saturating_sub(estimated_bscore) / width_guess);
         let guess_block =
             self.selected_chain_store.read().get_by_index(guess_index).map_err(|_| ConsensusError::General("not found"))?;
         //forward deviation
-        for block in self.services.reachability_service.forward_chain_iterator(guess_block, tip, true).take(deviation_in_blocks) {
-            let accepted_txs = self.get_block_acceptance_data(block)?;
-            if accepted_txs
+        let double_sided_iterator =
+            self.services.reachability_service.forward_chain_iterator(guess_block, tip, true).take(deviation_in_chain_blocks).zip(
+                self.services.reachability_service
+                .default_backward_chain_iterator(guess_block)
+                .skip(1)// avoid checking guess block itself twice
+                .take(deviation_in_chain_blocks),
+            );
+
+        //we iterate backwards and forwards at the same time to locate the accepting block of the transaction
+        for (forward_blk, backward_blk) in double_sided_iterator {
+            let mut acc_block = None;
+            let accepted_txs_forward = self.get_block_acceptance_data(forward_blk)?;
+            if accepted_txs_forward
                 .iter()
                 .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
                 .contains(&tx_id)
             {
-                self.services
-                    .tx_receipts_manager
-                    .generate_tx_receipt(block, tx_id)
-                    .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))?;
+                acc_block = Some(forward_blk);
+            } else {
+                let accepted_txs_backward = self.get_block_acceptance_data(backward_blk)?;
+                if accepted_txs_backward
+                    .iter()
+                    .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
+                    .contains(&tx_id)
+                {
+                    acc_block = Some(backward_blk);
+                }
             }
-        }
-        //Backwards deviation
-        for block in self.services.reachability_service.default_backward_chain_iterator(guess_block).take(deviation_in_blocks).skip(1)
-        {
-            let accepted_txs = self.get_block_acceptance_data(block)?;
-            if accepted_txs
-                .iter()
-                .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
-                .contains(&tx_id)
-            {
-                self.services
+            if let Some(acc_block) = acc_block {
+                return self
+                    .services
                     .tx_receipts_manager
-                    .generate_tx_receipt(block, tx_id)
-                    .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))?;
+                    .generate_tx_receipt(acc_block, tx_id)
+                    .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"));
             }
         }
         Err(ConsensusError::General("not found"))
@@ -1094,8 +1104,8 @@ impl ConsensusApi for Consensus {
         &self,
         tx_id: Hash,
         accepting_block: Option<Hash>,
-        time_stamp: Option<u64>,
-        current_time_stamp: u64,
+        tx_timestamp: Option<u64>,
+        // current_time_stamp: u64, // take sink timestamp
     ) -> ConsensusResult<TxReceipt> {
         if let Some(accepting_block) = accepting_block {
             //if a block is supplied, generate receipt directly
@@ -1109,8 +1119,8 @@ impl ConsensusApi for Consensus {
         //if no block is given, try to search based on time_stamp
         let pruning_point = self.pruning_point();
         let tip = self.selected_chain_store.read().get_tip().unwrap().1;
-        if let Some(time_stamp) = time_stamp {
-            return self.get_tx_receipt_based_on_time(tx_id, time_stamp, current_time_stamp);
+        if let Some(tx_timestamp) = tx_timestamp {
+            return self.get_tx_receipt_based_on_time(tx_id, tx_timestamp);
         }
         /*  if no timestamp is given either, search the entire database
         note: this is probably very computationally wasteful for archival nodes
@@ -1135,8 +1145,7 @@ impl ConsensusApi for Consensus {
         &self,
         tx_id: Hash,
         publishing_block: Option<Hash>,
-        _time_stamp: Option<u64>,
-        _current_time_stamp: u64,
+        _tx_timestamp: Option<u64>,
     ) -> ConsensusResult<ProofOfPublication> {
         /*Partial implementation as of now, finding a publishing block via timestamp etc might be implemented in the future
          */

@@ -176,7 +176,7 @@ mod tests {
     fn test_witnesses_consistency() {
         const TREE_LENGTH: usize = 30;
 
-        let mut hash_vec: Vec<Hash> = vec![];
+        let mut hash_vec = vec![];
         for i in 0..TREE_LENGTH {
             let temp = [(TREE_LENGTH + 2 - i) as u8; HASH_SIZE]; //skip ZERO_HASH and HASH1
             hash_vec.push(Hash::from(temp));

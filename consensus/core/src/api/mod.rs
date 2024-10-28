@@ -365,8 +365,8 @@ pub trait ConsensusApi: Send + Sync {
         &self,
         tx_id: Hash,
         accepting_block: Option<Hash>,
-        time_stamp: Option<u64>,
-        current_time_stamp: u64,
+        tx_timestamp: Option<u64>,
+        // current_time_stamp: u64,
     ) -> ConsensusResult<TxReceipt> {
         unimplemented!()
     }
@@ -374,8 +374,7 @@ pub trait ConsensusApi: Send + Sync {
         &self,
         tx_id: Hash,
         publishing_block: Option<Hash>,
-        time_stamp: Option<u64>,
-        current_time_stamp: u64,
+        tx_timestamp: Option<u64>,
     ) -> ConsensusResult<ProofOfPublication> {
         unimplemented!()
     }
