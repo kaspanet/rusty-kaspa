@@ -1089,7 +1089,7 @@ impl ConsensusApi for Consensus {
     }
 
     /*For an archival node, generally speaking, this function should not be called without a known accepting_block
-        or a timestamp, as it will search through the entire datadbase */
+    or a timestamp, as it will search through the entire datadbase */
     fn get_tx_receipt(
         &self,
         tx_id: Hash,
@@ -1097,7 +1097,6 @@ impl ConsensusApi for Consensus {
         time_stamp: Option<u64>,
         current_time_stamp: u64,
     ) -> ConsensusResult<TxReceipt> {
-
         if let Some(accepting_block) = accepting_block {
             //if a block is supplied, generate receipt directly
 
