@@ -328,8 +328,8 @@ impl PruningProofManager {
                             blue_work: header.blue_work,
                             selected_parent: calculated_gd.selected_parent,
                             mergeset_blues: calculated_gd.mergeset_blues.clone(),
-                            mergeset_reds: calculated_gd.mergeset_reds.clone(),
-                            blues_anticone_sizes: calculated_gd.blues_anticone_sizes.clone(),
+                            mergeset_reds: calculated_gd.mergeset_reds,
+                            blues_anticone_sizes: calculated_gd.blues_anticone_sizes,
                         }
                     };
                     self.ghostdag_store.insert(header.hash, Arc::new(gd)).unwrap();
