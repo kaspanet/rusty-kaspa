@@ -361,13 +361,7 @@ pub trait ConsensusApi: Send + Sync {
     fn finality_point(&self) -> Hash {
         unimplemented!()
     }
-    fn get_tx_receipt(
-        &self,
-        tx_id: Hash,
-        accepting_block: Option<Hash>,
-        tx_timestamp: Option<u64>,
-        // current_time_stamp: u64,
-    ) -> ConsensusResult<TxReceipt> {
+    fn get_tx_receipt(&self, tx_id: Hash, accepting_block: Option<Hash>, tx_timestamp: Option<u64>) -> ConsensusResult<TxReceipt> {
         unimplemented!()
     }
     fn get_proof_of_pub(

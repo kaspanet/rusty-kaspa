@@ -423,24 +423,18 @@ impl Consensus {
 
         //we iterate backwards and forwards at the same time to locate the accepting block of the transaction
         for (forward_blk, backward_blk) in double_sided_iterator {
-            let mut acc_block = None;
-            let accepted_txs_forward = self.get_block_acceptance_data(forward_blk)?;
-            if accepted_txs_forward
-                .iter()
-                .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
-                .contains(&tx_id)
-            {
-                acc_block = Some(forward_blk);
-            } else {
-                let accepted_txs_backward = self.get_block_acceptance_data(backward_blk)?;
-                if accepted_txs_backward
+            let is_blk_accepting_tx = |blk| {
+                let accepted_txs_forward = self.get_block_acceptance_data(blk).unwrap();
+                accepted_txs_forward
                     .iter()
                     .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
                     .contains(&tx_id)
-                {
-                    acc_block = Some(backward_blk);
-                }
-            }
+            };
+            let acc_block = match (is_blk_accepting_tx(forward_blk), is_blk_accepting_tx(backward_blk)) {
+                (true, _) => Some(forward_blk),
+                (_, true) => Some(backward_blk),
+                _ => None,
+            };
             if let Some(acc_block) = acc_block {
                 return self
                     .services
@@ -1100,13 +1094,7 @@ impl ConsensusApi for Consensus {
 
     /*For an archival node, generally speaking, this function should not be called without a known accepting_block
     or a timestamp, as it will search through the entire datadbase */
-    fn get_tx_receipt(
-        &self,
-        tx_id: Hash,
-        accepting_block: Option<Hash>,
-        tx_timestamp: Option<u64>,
-        // current_time_stamp: u64, // take sink timestamp
-    ) -> ConsensusResult<TxReceipt> {
+    fn get_tx_receipt(&self, tx_id: Hash, accepting_block: Option<Hash>, tx_timestamp: Option<u64>) -> ConsensusResult<TxReceipt> {
         if let Some(accepting_block) = accepting_block {
             //if a block is supplied, generate receipt directly
 
