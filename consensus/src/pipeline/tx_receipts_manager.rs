@@ -150,7 +150,7 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
             // verify the corresponding header is available
             {
                 //verification of path itself is delegated to the pochm struct
-                return verify_pchmrs_path(witness.clone(), req_block_hash, self.hash_to_pchmr_store.clone());
+                return verify_pchmrs_path(witness, req_block_hash, self.hash_to_pchmr_store.clone());
             }
         }
         false
@@ -226,7 +226,7 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
                 first_chain_block = current;
                 distance_covered_before_chain = i as u64;
                 break;
-            } else if (index & (index - 1)) == 0 {
+            } else if index.is_power_of_two() {
                 //trickery to check if index is a power of two
                 representative_parents_list.push(current);
             }
@@ -328,9 +328,7 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
         // in case cutoff_bscore was crossed prior to reaching a chain block
         if self.headers_store.get_blue_score(candidate_block).unwrap() < tentative_cutoff_bscore {
             let posterity_parent = candidate_block;
-            return self.reachability_service.forward_chain_iterator(posterity_parent, block_parent_hash, true)
-            .nth(1)             //skip posterity parent
-            .unwrap();
+            return self.reachability_service.get_next_chain_ancestor(block_parent_hash, posterity_parent);
         }
         //othrewise, recalculate the cutoff score in accordance to the candiate
         let candidate_bscore: u64 = self.headers_store.get_blue_score(candidate_block).unwrap();
@@ -351,7 +349,7 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
         {
             return self.genesis.hash;
         }
-        let reference_bscore = self.headers_store.get_blue_score(reference_block).unwrap();
+        let reference_header = self.headers_store.get_header(reference_block).unwrap();
         let reference_index = self.selected_chain_store.read().get_by_hash(reference_block).unwrap();
 
         let low = reference_index.saturating_sub(max_distance);
@@ -360,91 +358,29 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
 
         assert!(reference_index <= high);
 
-        self.get_chain_block_by_cutoff_bscore_rec(
-            cutoff_bscore,
-            low,
-            high,
-            reference_block,
-            reference_index,
-            reference_bscore,
-            estimated_width,
-        )
-        /* a binary search 'style' loop
-        with special checks to avoid getting stuck in a back and forth
-        Suggestion: make recursive   */
-        // loop {
-        //     /*Special attention is taken to prevent a 0 value from occuring
-        //         and causing divide by 0 or lack of progress
-        //         estimated width is hence guaranteed a non zero value*/
-        //     index_step = (candidate_bscore.abs_diff(cutoff_bscore)) / estimated_width;
-        //     index_step = if index_step == 0 { 1 } else { index_step };
-        //     if candidate_bscore < cutoff_bscore {
-        //         // in this case index should move forward
-        //         if low < candidate_index
-        //         //rescale bound and update
-        //         {
-        //             low = candidate_index; //rescale bound
-        //             candidate_index += index_step;
-        //         } else {
-        //             /*  if candidate slipped outside the already known bounds,
-        //             we risk making no progress and  getting stuck inside a back and forth loop,
-        //             so just iterate forwards till posterity is found.*/
-        //             return Ok(self.get_chain_block_by_cutoff_bscore_linearly_forwards(next_candidate, high, cutoff_bscore));
-        //         }
-        //     } else {
-        //         // in this case index will move backward
-        //         if high > candidate_index {
-        //             let candidate_parent = self.reachability_service.get_chain_parent(next_candidate);
-        //             let candidate_parent_bscore = self.headers_store.get_blue_score(candidate_parent).unwrap();
-        //             if candidate_parent_bscore < cutoff_bscore
-        //             // first check if next_candidate actually is the posterity
-        //             {
-        //                 return Ok(next_candidate);
-        //             } else {
-        //                 // if not, update candidate indices and bounds
-        //                 high = candidate_index; //  rescale bound
-        //                 candidate_index -= index_step; //shouldn't overflow
-        //             }
-        //         } else {
-        //             //again avoid getting stuck in a back and forth loop
-        //             return Ok(self.get_chain_block_by_cutoff_bscore_linearly_backwards(next_candidate, low, cutoff_bscore));
-        //         }
-        //     }
-        //     next_candidate = self.selected_chain_store.read().get_by_index(candidate_index).unwrap();
-        //     let candidate_bscore_next = self.headers_store.get_blue_score(next_candidate).unwrap();
-        //     /*Update the estimated width based on the latest result;
-        //         Notice a 0 value can never occur:
-        //         A) because index_step!=0, meaning candidate_bscore_next and candidate_bscore are strictly different
-        //         B) because |candidate_bscore_next-candidate_bscore| is by definition the minimal possible value index_step can get
-        //         divide by 0 doesn't occur since index_step!=0;
-        //         Should reconsider whether this is even worth calculating iteratively compared to just the initial guess:
-        //         very likely not*/
-        //     estimated_width = (candidate_bscore.abs_diff(candidate_bscore_next)) / index_step;
-        //     assert_ne!(estimated_width, 0);
-
-        //     candidate_bscore = candidate_bscore_next;
-        // }
+        self.get_chain_block_by_cutoff_bscore_rec(cutoff_bscore, low, high, reference_header, estimated_width)
     }
 
     /* a binary search 'style' recursive function
-    with special checks in place to avoid getting stuck in a back and forth */
+    with special checks in place to avoid getting stuck in a back and forth
+    notice the function gets a header and not a hash
+    */
     fn get_chain_block_by_cutoff_bscore_rec(
         &self,
         cutoff_bscore: u64,
         mut low: u64,
         mut high: u64,
-        candidate_hash: Hash,
-        candidate_index: u64,
-        candidate_bscore: u64,
+        candidate_header: Arc<Header>,
         estimated_width: u64,
     ) -> Hash {
+        let candidate_index = self.selected_chain_store.read().get_by_hash(candidate_header.hash).unwrap();
         let next_candidate_index;
         /*Special attention is taken to prevent a 0 value from occuring
         and causing divide by 0 or lack of progress
         estimated width is hence guaranteed a non zero value*/
-        let mut index_step = (candidate_bscore.abs_diff(cutoff_bscore)) / estimated_width;
+        let mut index_step = (candidate_header.blue_score.abs_diff(cutoff_bscore)) / estimated_width;
         index_step = if index_step == 0 { 1 } else { index_step };
-        if candidate_bscore < cutoff_bscore {
+        if candidate_header.blue_score < cutoff_bscore {
             // in this case index should move forward
             if low < candidate_index
             //rescale bound and update
@@ -455,17 +391,17 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
                 /*  if candidate slipped outside the already known bounds,
                 we risk making no progress and  getting stuck inside a back and forth loop,
                 so just iterate forwards on route to high_block till cutoff is found.*/
-                return self.get_chain_block_by_cutoff_bscore_linearly_forwards(candidate_hash, high, cutoff_bscore);
+                return self.get_chain_block_by_cutoff_bscore_linearly_forwards(candidate_header.hash, high, cutoff_bscore);
             }
         } else {
             // in this case index will move backward
             if high > candidate_index {
-                let candidate_parent = self.reachability_service.get_chain_parent(candidate_hash);
+                let candidate_parent = self.reachability_service.get_chain_parent(candidate_header.hash);
                 let candidate_parent_bscore = self.headers_store.get_blue_score(candidate_parent).unwrap();
                 if candidate_parent_bscore < cutoff_bscore
-                // first check if candidate_hash actually is the cutoff block
+                // first check if candidate actually is the cutoff block
                 {
-                    return candidate_hash;
+                    return candidate_header.hash;
                 } else {
                     // if not, update candidate indices and bounds
                     high = candidate_index; //  rescale bound
@@ -474,11 +410,12 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
             } else {
                 /*again avoid getting stuck in a back and forth loop
                 by iterating backwards down to low to */
-                return self.get_chain_block_by_cutoff_bscore_linearly_backwards(candidate_hash, low, cutoff_bscore);
+                return self.get_chain_block_by_cutoff_bscore_linearly_backwards(candidate_header.hash, low, cutoff_bscore);
             }
         }
         let next_candidate_hash = self.selected_chain_store.read().get_by_index(next_candidate_index).unwrap();
-        let next_candidate_bscore = self.headers_store.get_blue_score(next_candidate_hash).unwrap();
+        let next_candidate_header = self.headers_store.get_header(next_candidate_hash).unwrap();
+
         /*Update the estimated width based on the latest result;
         Notice a 0 value can never occur:
         A) because index_step!=0, meaning next_candidate_bscore and candidate_bscore are strictly different
@@ -486,18 +423,10 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
         divide by 0 doesn't occur since index_step!=0;
         Should reconsider whether this  logic is even worth calculating iteratively compared to just the initial guess:
         very likely not*/
-        let next_estimated_width = (candidate_bscore.abs_diff(next_candidate_bscore)) / index_step;
+        let next_estimated_width = (candidate_header.blue_score.abs_diff(next_candidate_header.blue_score)) / index_step;
         assert_ne!(next_estimated_width, 0);
 
-        self.get_chain_block_by_cutoff_bscore_rec(
-            cutoff_bscore,
-            low,
-            high,
-            next_candidate_hash,
-            next_candidate_index,
-            next_candidate_bscore,
-            next_estimated_width,
-        )
+        self.get_chain_block_by_cutoff_bscore_rec(cutoff_bscore, low, high, next_candidate_header, next_estimated_width)
     }
 
     fn get_chain_block_by_cutoff_bscore_linearly_backwards(&self, initial: Hash, low: u64, cutoff_bscore: u64) -> Hash {
@@ -559,7 +488,7 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
 }
 
 // this logic should be in receipts, it is only here currently because pchmr_store is required for it
-pub fn verify_pchmrs_path(pochm: Pochm, destination_block_hash: Hash, pchmr_store: Arc<DbPchmrStore>) -> bool {
+pub fn verify_pchmrs_path(pochm: &Pochm, destination_block_hash: Hash, pchmr_store: Arc<DbPchmrStore>) -> bool {
     let leaf_hashes = pochm.vec.iter()
         .skip(1)//remove first element to match accordingly to witnesses 
         .map(|pochm_seg| pochm_seg.header.hash)//map to hashes
