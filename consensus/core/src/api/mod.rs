@@ -382,7 +382,7 @@ pub trait ConsensusApi: Send + Sync {
     fn verify_tx_receipt(&self, receipt: TxReceipt) -> bool {
         unimplemented!()
     }
-    fn verify_proof_of_pub(&self, pop: ProofOfPublication) -> bool {
+    fn verify_proof_of_pub(&self, proof_of_pub: ProofOfPublication) -> bool {
         unimplemented!()
     }
 }

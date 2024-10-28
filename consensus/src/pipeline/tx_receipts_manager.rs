@@ -109,20 +109,20 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
             && self.verify_pochm_proof(accepting_block_hash, &proof_of_pub.pochm)
     }
 
-    /*Assumes: requested block hash is on the selected chain,
+    /*Assumes: chain_purporter is on the selected chain,
     if not returns error   */
-    pub fn create_pochm_proof(&self, req_block_hash: Hash) -> Result<Pochm, ReceiptsErrors> {
+    pub fn create_pochm_proof(&self, chain_purporter: Hash) -> Result<Pochm, ReceiptsErrors> {
         let mut pochm_proof = Pochm::new();
-        let post_posterity_hash = self.get_post_posterity_block(req_block_hash)?;
-        let req_block_index = self
+        let post_posterity_hash = self.get_post_posterity_block(chain_purporter)?;
+        let purporter_index = self
             .selected_chain_store
             .read()
-            .get_by_hash(req_block_hash)
-            .map_err(|_| ReceiptsErrors::RequestedBlockNotOnSelectedChain(req_block_hash))?;
+            .get_by_hash(chain_purporter)
+            .map_err(|_| ReceiptsErrors::RequestedBlockNotOnSelectedChain(chain_purporter))?;
         let (mut root_block_hash, mut root_block_index) =
             (post_posterity_hash, self.selected_chain_store.read().get_by_hash(post_posterity_hash).unwrap()); //if posterity block is not on selected chain, panic.
         let mut leaf_block_index;
-        let mut remaining_index_diff = root_block_index - req_block_index;
+        let mut remaining_index_diff = root_block_index - purporter_index;
         let mut leaf_block_hash;
         while remaining_index_diff > 0 {
             leaf_block_index = root_block_index - (remaining_index_diff + 1).next_power_of_two() / 2; //subtract highest possible power of two such as to not cross 0
@@ -133,23 +133,23 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
             pochm_proof.insert(root_block_header, leaf_is_in_pchmr_of_root_proof);
 
             (root_block_hash, root_block_index) = (leaf_block_hash, leaf_block_index);
-            remaining_index_diff = root_block_index - req_block_index;
+            remaining_index_diff = root_block_index - purporter_index;
         }
         Ok(pochm_proof)
     }
 
     /*this function will return true for any witness premiering with a currently non pruned block and
-    recursively pointing down to req_block_hash, it is the responsibility of the
+    recursively pointing down to chain_purporter, it is the responsibility of the
     creator of the witness to make sure the witness premiers with a posterity block
     and not just any block that may be pruned in the future, as this property is not verified in this function,
     and the function should not be relied upon to confirm the witness is everlasting*/
-    pub fn verify_pochm_proof(&self, req_block_hash: Hash, witness: &Pochm) -> bool {
+    pub fn verify_pochm_proof(&self, chain_purporter: Hash, witness: &Pochm) -> bool {
         if let Some(post_posterity_hash) = witness.get_path_origin() {
             if self.headers_store.get_header(post_posterity_hash).is_ok()
             // verify the corresponding header is available
             {
                 //verification of path itself is delegated to the pochm struct
-                return verify_pchmrs_path(witness, req_block_hash, self.hash_to_pchmr_store.clone());
+                return verify_pchmrs_path(witness, chain_purporter, self.hash_to_pchmr_store.clone());
             }
         }
         false
@@ -164,8 +164,8 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
 
     /*  function receives the selected parent of the relevant block,
     as the block itself at this point is not assumed to exist*/
-    pub fn calc_pchmr_root_by_parent(&self, req_selected_parent: Hash) -> Hash {
-        let representative_parents_list = self.representative_log_parents(req_selected_parent);
+    pub fn calc_pchmr_root_by_parent(&self, parent_of_queried_block: Hash) -> Hash {
+        let representative_parents_list = self.representative_log_parents(parent_of_queried_block);
         calc_merkle_root(representative_parents_list.into_iter())
     }
 
@@ -204,8 +204,8 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
     it will panic if not.
     Function receives the selected parent of the relevant block, as the block itself is not assumed to necessarily exist yet
     Returns all 2^i deep 'selected' parents up to the posterity block not included */
-    fn representative_log_parents(&self, req_block_parent: Hash) -> Vec<Hash> {
-        let pre_posterity_hash = self.get_pre_posterity_block_by_parent(req_block_parent);
+    fn representative_log_parents(&self, parent_of_queried_block: Hash) -> Vec<Hash> {
+        let pre_posterity_hash = self.get_pre_posterity_block_by_parent(parent_of_queried_block);
         let pre_posterity_bscore = self.headers_store.get_blue_score(pre_posterity_hash).unwrap();
         let mut representative_parents_list = vec![];
         /*The following logic will not be efficient for blocks which are a long distance away from the selected chain,
@@ -215,7 +215,7 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
         nethertheless, the logic will return a correct answer if called.*/
         let mut distance_covered_before_chain = 0; //compulsory initialization for compiler only , a chain block will have to be reached eventually
         let mut first_chain_block = ZERO_HASH; //compulsory initialization for compiler only, a chain block will have to be reached eventually
-        for (i, current) in self.reachability_service.default_backward_chain_iterator(req_block_parent).enumerate() {
+        for (i, current) in self.reachability_service.default_backward_chain_iterator(parent_of_queried_block).enumerate() {
             let index = i + 1; //enumeration should start from 1
             if current == pre_posterity_hash {
                 // pre posterity not included in list
@@ -231,10 +231,10 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
             }
         }
         let first_chain_block_index = self.selected_chain_store.read().get_by_hash(first_chain_block).unwrap();
-        let req_block_imaginary_index = first_chain_block_index + distance_covered_before_chain;
+        let queried_block_imaginary_index = first_chain_block_index + distance_covered_before_chain;
         let mut next_power = distance_covered_before_chain.next_power_of_two();
         let mut next_chain_block_rep_parent =
-            self.selected_chain_store.read().get_by_index(req_block_imaginary_index - next_power).unwrap();
+            self.selected_chain_store.read().get_by_index(queried_block_imaginary_index - next_power).unwrap();
         let mut next_bscore = self.headers_store.get_blue_score(next_chain_block_rep_parent).unwrap();
         while next_bscore > pre_posterity_bscore {
             representative_parents_list.push(next_chain_block_rep_parent);
@@ -493,7 +493,7 @@ pub fn verify_pchmrs_path(pochm: &Pochm, destination_block_hash: Hash, pchmr_sto
         .map(|pochm_seg| pochm_seg.header.hash)//map to hashes
         .chain(std::iter::once(destination_block_hash)); // add final block
 
-    /*verify the path from posterity down to req_block_hash:
+    /*verify the path from posterity down to chain_purporter:
     iterate downward from posterity block header: for each, check that leaf hash is */
     pochm.vec.iter().zip(leaf_hashes).all(|(pochm_seg, leaf_hash)| {
         let pchmr_root_hash = pchmr_store.get(pochm_seg.header.hash).unwrap();

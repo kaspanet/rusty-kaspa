@@ -1154,7 +1154,7 @@ impl ConsensusApi for Consensus {
     fn verify_tx_receipt(&self, receipt: TxReceipt) -> bool {
         self.services.tx_receipts_manager.verify_tx_receipt(receipt)
     }
-    fn verify_proof_of_pub(&self, pop: ProofOfPublication) -> bool {
-        self.services.tx_receipts_manager.verify_proof_of_pub(pop)
+    fn verify_proof_of_pub(&self, proof_of_pub: ProofOfPublication) -> bool {
+        self.services.tx_receipts_manager.verify_proof_of_pub(proof_of_pub)
     }
 }
