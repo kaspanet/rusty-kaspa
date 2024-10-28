@@ -66,20 +66,20 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
             hash_to_pchmr_store: hash_to_pchmr_store.clone(),
         }
     }
-    pub fn generate_tx_receipt(&self, req_block_hash: Hash, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
-        let pochm = self.create_pochm_proof(req_block_hash)?;
-        let tx_acc_proof = self.create_merkle_witness_for_tx(tracked_tx_id, req_block_hash)?;
-        Ok(TxReceipt { tracked_tx_id, accepting_block_hash: req_block_hash, pochm, tx_acc_proof })
+    pub fn generate_tx_receipt(&self, accepting_block_hash: Hash, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
+        let pochm = self.create_pochm_proof(accepting_block_hash)?;
+        let tx_acc_proof = self.create_merkle_witness_for_tx(tracked_tx_id, accepting_block_hash)?;
+        Ok(TxReceipt { tracked_tx_id, accepting_block_hash, pochm, tx_acc_proof })
     }
-    pub fn generate_proof_of_pub(&self, req_block_hash: Hash, tracked_tx_id: Hash) -> Result<ProofOfPublication, ReceiptsErrors> {
+    pub fn generate_proof_of_pub(&self, pub_block_hash: Hash, tracked_tx_id: Hash) -> Result<ProofOfPublication, ReceiptsErrors> {
         /*there is a certain degree of inefficiency here, as post_posterity is calculated again in create_pochm function
         however I expect this feature to rarely be called so optimizations seem not worth it */
-        let post_posterity = self.get_post_posterity_block(req_block_hash)?;
-        let tx_pub_proof = self.create_merkle_witness_for_tx(tracked_tx_id, req_block_hash)?;
+        let post_posterity = self.get_post_posterity_block(pub_block_hash)?;
+        let tx_pub_proof = self.create_merkle_witness_for_tx(tracked_tx_id, pub_block_hash)?;
         let mut headers_chain_to_selected = vec![];
 
         //find a chain block on the path to post_posterity
-        for block in self.reachability_service.forward_chain_iterator(req_block_hash, post_posterity, true) {
+        for block in self.reachability_service.forward_chain_iterator(pub_block_hash, post_posterity, true) {
             headers_chain_to_selected.push(self.headers_store.get_header(block).unwrap());
             if self.selected_chain_store.read().get_by_hash(block).is_ok() {
                 break;
@@ -87,26 +87,25 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
         }
         let pochm = self.create_pochm_proof(headers_chain_to_selected.last().unwrap().hash)?;
         headers_chain_to_selected.remove(0); //remove the publishing block itself from the chain as it is redundant
-        Ok(ProofOfPublication { tracked_tx_id, pub_block_hash: req_block_hash, pochm, tx_pub_proof, headers_chain_to_selected })
+        Ok(ProofOfPublication { tracked_tx_id, pub_block_hash, pochm, tx_pub_proof, headers_chain_to_selected })
     }
     pub fn verify_tx_receipt(&self, tx_receipt: TxReceipt) -> bool {
         self.verify_merkle_witness_for_tx(&tx_receipt.tx_acc_proof, tx_receipt.tracked_tx_id, tx_receipt.accepting_block_hash)
             && self.verify_pochm_proof(tx_receipt.accepting_block_hash, &tx_receipt.pochm)
     }
     pub fn verify_proof_of_pub(&self, proof_of_pub: ProofOfPublication) -> bool {
-        let pub_block_hash = proof_of_pub.pub_block_hash;
         let valid_path = proof_of_pub
             .headers_chain_to_selected
             .iter()
-            .try_fold(pub_block_hash, |curr, next| if next.direct_parents().contains(&curr) { Some(next.hash) } else { None })
+            .try_fold(proof_of_pub.pub_block_hash, |curr, next| if next.direct_parents().contains(&curr) { Some(next.hash) } else { None })
             .is_none();
         if !valid_path {
             return false;
         };
         let accepting_block_hash =
-            proof_of_pub.headers_chain_to_selected.last().unwrap_or(&self.headers_store.get_header(pub_block_hash).unwrap()).hash;
+            proof_of_pub.headers_chain_to_selected.last().unwrap_or(&self.headers_store.get_header(proof_of_pub.pub_block_hash).unwrap()).hash;
 
-        self.verify_merkle_witness_for_tx(&proof_of_pub.tx_pub_proof, proof_of_pub.tracked_tx_id, accepting_block_hash)
+        self.verify_merkle_witness_for_tx(&proof_of_pub.tx_pub_proof, proof_of_pub.tracked_tx_id, proof_of_pub.pub_block_hash)
             && self.verify_pochm_proof(accepting_block_hash, &proof_of_pub.pochm)
     }
 
@@ -184,8 +183,8 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
         verify_merkle_witness(witness, leaf_block_hash, self.hash_to_pchmr_store.get(root_block_hash).unwrap())
     }
 
-    pub fn create_merkle_witness_for_tx(&self, tracked_tx_id: Hash, req_block_hash: Hash) -> Result<MerkleWitness, ReceiptsErrors> {
-        let mergeset_txs_manager = self.acceptance_data_store.get(req_block_hash)?;
+    pub fn create_merkle_witness_for_tx(&self, tracked_tx_id: Hash, acc_block_hash: Hash) -> Result<MerkleWitness, ReceiptsErrors> {
+        let mergeset_txs_manager = self.acceptance_data_store.get(acc_block_hash)?;
         let mut accepted_txs = mergeset_txs_manager
             .iter()
             .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
@@ -194,10 +193,10 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
 
         create_merkle_witness_from_sorted(accepted_txs.into_iter(), tracked_tx_id).map_err(|e| e.into())
     }
-    pub fn verify_merkle_witness_for_tx(&self, witness: &MerkleWitness, tracked_tx_id: Hash, req_block_hash: Hash) -> bool {
-        let req_block_header = self.headers_store.get_header(req_block_hash).unwrap();
-        let req_atmr = req_block_header.accepted_id_merkle_root;
-        verify_merkle_witness(witness, tracked_tx_id, req_atmr)
+    pub fn verify_merkle_witness_for_tx(&self, witness: &MerkleWitness, tracked_tx_id: Hash, acc_block_hash: Hash) -> bool {
+        let acc_block_header = self.headers_store.get_header(acc_block_hash).unwrap();
+        let acc_atmr = acc_block_header.accepted_id_merkle_root;
+        verify_merkle_witness(witness, tracked_tx_id, acc_atmr)
     }
 
     /* the function assumes that the path from block_hash down to its posterity is intact and has not been pruned
