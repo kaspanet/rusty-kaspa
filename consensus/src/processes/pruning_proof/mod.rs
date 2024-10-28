@@ -104,7 +104,7 @@ struct TempProofContext {
     headers_store: Arc<DbHeadersStore>,
     ghostdag_stores: Vec<Arc<DbGhostdagStore>>,
     relations_stores: Vec<DbRelationsStore>,
-    reachability_stores: Vec<Arc<parking_lot::lock_api::RwLock<parking_lot::RawRwLock, DbReachabilityStore>>>,
+    reachability_stores: Vec<Arc<RwLock<DbReachabilityStore>>>,
     ghostdag_managers:
         Vec<GhostdagManager<DbGhostdagStore, DbRelationsStore, MTReachabilityService<DbReachabilityStore>, DbHeadersStore>>,
     db_lifetime: DbLifetime,
