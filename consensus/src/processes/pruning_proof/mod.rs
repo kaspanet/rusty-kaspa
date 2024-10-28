@@ -1093,12 +1093,12 @@ impl PruningProofManager {
             .collect_vec()
     }
 
-    /// BFS forward iterates from genesis_hash until selected tip, ignoring blocks in the antipast of selected_tip.
+    /// BFS forward iterates from root until selected tip, ignoring blocks in the antipast of selected_tip.
     /// For each block along the way, insert that hash into the ghostdag_store
     /// If we have a required_block to find, this will return true if that block was found along the way
     fn fill_level_proof_ghostdag_data(
         &self,
-        genesis_hash: Hash,
+        root: Hash,
         selected_tip: Hash,
         ghostdag_store: &Arc<DbGhostdagStore>,
         required_block: Option<Hash>,
@@ -1107,10 +1107,10 @@ impl PruningProofManager {
         let relations_service = RelationsStoreInFutureOfRoot {
             relations_store: self.level_relations_services[level as usize].clone(),
             reachability_service: self.reachability_service.clone(),
-            root: genesis_hash,
+            root,
         };
         let gd_manager = GhostdagManager::new(
-            genesis_hash,
+            root,
             self.ghostdag_k,
             ghostdag_store.clone(),
             relations_service.clone(),
@@ -1119,12 +1119,12 @@ impl PruningProofManager {
             level != 0,
         );
 
-        ghostdag_store.insert(genesis_hash, Arc::new(gd_manager.genesis_ghostdag_data())).unwrap();
+        ghostdag_store.insert(root, Arc::new(gd_manager.genesis_ghostdag_data())).unwrap();
         ghostdag_store.insert(ORIGIN, gd_manager.origin_ghostdag_data()).unwrap();
 
         let mut topological_heap: BinaryHeap<_> = Default::default();
         let mut visited = BlockHashSet::new();
-        for child in relations_service.get_children(genesis_hash).unwrap().read().iter().copied() {
+        for child in relations_service.get_children(root).unwrap().read().iter().copied() {
             topological_heap.push(Reverse(SortableBlock {
                 hash: child,
                 // It's important to use here blue work and not score so we can iterate the heap in a way that respects the topology
@@ -1132,7 +1132,7 @@ impl PruningProofManager {
             }));
         }
 
-        let mut has_required_block = required_block.is_some_and(|required_block| genesis_hash == required_block);
+        let mut has_required_block = required_block.is_some_and(|required_block| root == required_block);
         loop {
             let Some(current) = topological_heap.pop() else {
                 break;
@@ -1151,13 +1151,7 @@ impl PruningProofManager {
                 has_required_block = true;
             }
 
-            let relevant_parents: Box<[Hash]> = relations_service
-                .get_parents(current_hash)
-                .unwrap()
-                .iter()
-                .copied()
-                .filter(|parent| self.reachability_service.is_dag_ancestor_of(genesis_hash, *parent))
-                .collect();
+            let relevant_parents: Box<[Hash]> = relations_service.get_parents(current_hash).unwrap().iter().copied().collect();
             let current_gd = gd_manager.ghostdag(&relevant_parents);
 
             ghostdag_store.insert(current_hash, Arc::new(current_gd)).unwrap_or_exists();
