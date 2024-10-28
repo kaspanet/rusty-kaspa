@@ -97,13 +97,19 @@ impl<T: SelectedChainStoreReader, U: ReachabilityStoreReader, V: HeaderStoreRead
         let valid_path = proof_of_pub
             .headers_chain_to_selected
             .iter()
-            .try_fold(proof_of_pub.pub_block_hash, |curr, next| if next.direct_parents().contains(&curr) { Some(next.hash) } else { None })
+            .try_fold(
+                proof_of_pub.pub_block_hash,
+                |curr, next| if next.direct_parents().contains(&curr) { Some(next.hash) } else { None },
+            )
             .is_none();
         if !valid_path {
             return false;
         };
-        let accepting_block_hash =
-            proof_of_pub.headers_chain_to_selected.last().unwrap_or(&self.headers_store.get_header(proof_of_pub.pub_block_hash).unwrap()).hash;
+        let accepting_block_hash = proof_of_pub
+            .headers_chain_to_selected
+            .last()
+            .unwrap_or(&self.headers_store.get_header(proof_of_pub.pub_block_hash).unwrap())
+            .hash;
 
         self.verify_merkle_witness_for_tx(&proof_of_pub.tx_pub_proof, proof_of_pub.tracked_tx_id, proof_of_pub.pub_block_hash)
             && self.verify_pochm_proof(accepting_block_hash, &proof_of_pub.pochm)
