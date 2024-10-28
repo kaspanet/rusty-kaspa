@@ -951,7 +951,7 @@ impl PruningProofManager {
             }
 
             // If we don't have enough depth now, we need to look deeper
-            required_base_level_depth <<= 1;
+            required_base_level_depth = (required_base_level_depth as f64 * 1.1) as u64;
             warn!("Failed to find sufficient root for level {level} after {tries} tries. Retrying again to find with depth {required_base_level_depth}");
         }
     }
