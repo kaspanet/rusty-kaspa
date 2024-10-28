@@ -825,7 +825,7 @@ impl PruningProofManager {
     }
 
     /// selected parent at level = the parent of the header at the level
-    /// with the highest blue_work (using score as work in this case)
+    /// with the highest blue_work
     fn find_selected_parent_header_at_level(
         &self,
         header: &Header,
@@ -868,7 +868,7 @@ impl PruningProofManager {
             self.find_selected_parent_header_at_level(&pp_header.header, level)?.hash
         };
 
-        let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize); // TODO: We can probably reduce cache size
+        let cache_policy = CachePolicy::Count(2 * self.pruning_proof_m as usize);
         let required_level_depth = 2 * self.pruning_proof_m;
 
         // We only have the headers store (which has level 0 blue_scores) to assemble the proof data from.
@@ -1128,7 +1128,7 @@ impl PruningProofManager {
             topological_heap.push(Reverse(SortableBlock {
                 hash: child,
                 // It's important to use here blue work and not score so we can iterate the heap in a way that respects the topology
-                blue_work: self.headers_store.get_header(child).unwrap().blue_work, // TODO: Maybe add to compact data?
+                blue_work: self.headers_store.get_header(child).unwrap().blue_work,
             }));
         }
 
@@ -1166,7 +1166,7 @@ impl PruningProofManager {
                 topological_heap.push(Reverse(SortableBlock {
                     hash: child,
                     // It's important to use here blue work and not score so we can iterate the heap in a way that respects the topology
-                    blue_work: self.headers_store.get_header(child).unwrap().blue_work, // TODO: Maybe add to compact data?
+                    blue_work: self.headers_store.get_header(child).unwrap().blue_work,
                 }));
             }
         }
