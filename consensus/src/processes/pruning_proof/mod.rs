@@ -139,7 +139,7 @@ impl<T: RelationsStoreReader, U: ReachabilityService> RelationsStoreReader for R
     }
 
     fn counts(&self) -> Result<(usize, usize), kaspa_database::prelude::StoreError> {
-        panic!("unimplemented")
+        unimplemented!()
     }
 }
 
