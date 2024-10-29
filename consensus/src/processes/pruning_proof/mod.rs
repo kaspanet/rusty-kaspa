@@ -327,7 +327,7 @@ impl PruningProofManager {
                             blue_score: header.blue_score,
                             blue_work: header.blue_work,
                             selected_parent: calculated_gd.selected_parent,
-                            mergeset_blues: calculated_gd.mergeset_blues.clone(),
+                            mergeset_blues: calculated_gd.mergeset_blues,
                             mergeset_reds: calculated_gd.mergeset_reds,
                             blues_anticone_sizes: calculated_gd.blues_anticone_sizes,
                         }
@@ -1010,6 +1010,7 @@ impl PruningProofManager {
                     .map_err(|err| format!("level: {}, err: {}", level, err))
                     .unwrap();
 
+                // TODO (relaxed): remove the assertion below
                 // (New Logic) This is the root we calculated by going through block relations
                 let root = roots_by_level[level];
                 // (Old Logic) This is the root we can calculate given that the GD records are already filled
@@ -1050,6 +1051,9 @@ impl PruningProofManager {
                         continue;
                     }
 
+                    // The second condition is always expected to be true (ghostdag store will have the entry)
+                    // because we are traversing the exact diamond (future(root) ⋂ past(tip)) for which we calculated
+                    // GD for (see fill_level_proof_ghostdag_data). TODO (relaxed): remove the condition or turn into assertion
                     if !self.reachability_service.is_dag_ancestor_of(current, selected_tip)
                         || !ghostdag_stores[level].has(current).is_ok_and(|found| found)
                     {
@@ -1062,6 +1066,7 @@ impl PruningProofManager {
                     }
                 }
 
+                // TODO (relaxed): remove the assertion below
                 // Temp assertion for verifying a bug fix: assert that the full 2M chain is actually contained in the composed level proof
                 let set = BlockHashSet::from_iter(headers.iter().map(|h| h.hash));
                 let chain_2m = self
@@ -1151,8 +1156,7 @@ impl PruningProofManager {
                 has_required_block = true;
             }
 
-            let relevant_parents: Box<[Hash]> = relations_service.get_parents(current_hash).unwrap().iter().copied().collect();
-            let current_gd = gd_manager.ghostdag(&relevant_parents);
+            let current_gd = gd_manager.ghostdag(&relations_service.get_parents(current_hash).unwrap());
 
             ghostdag_store.insert(current_hash, Arc::new(current_gd)).unwrap_or_exists();
 
