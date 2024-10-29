@@ -27,7 +27,7 @@ use kaspa_consensus_core::{
     trusted::{TrustedBlock, TrustedGhostdagData, TrustedHeader},
     BlockHashMap, BlockHashSet, BlockLevel, HashMapCustomHasher, KType,
 };
-use kaspa_core::{debug, info, trace, warn};
+use kaspa_core::{debug, info, trace};
 use kaspa_database::{
     prelude::{CachePolicy, ConnBuilder, StoreError, StoreResult, StoreResultEmptyTuple, StoreResultExtensions},
     utils::DbLifetime,
@@ -943,7 +943,7 @@ impl PruningProofManager {
                     // However, when syncing with an older node version that doesn't have a safety margin for the proof, it's possible to
                     // try to find 2500 depth worth of headers at a level, but the proof only contains about 2000 headers. To be able to sync
                     // with such an older node. As long as we found the required block, we can still proceed.
-                    warn!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_base_level_depth} are already pruned. Required block found so trying anyway.");
+                    debug!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_base_level_depth} are already pruned. Required block found so trying anyway.");
                     break Ok((ghostdag_store, selected_tip, root));
                 } else {
                     panic!("Failed to find sufficient root for level {level} after {tries} tries. Headers below the current depth of {required_base_level_depth} are already pruned");
@@ -952,7 +952,7 @@ impl PruningProofManager {
 
             // If we don't have enough depth now, we need to look deeper
             required_base_level_depth = (required_base_level_depth as f64 * 1.1) as u64;
-            warn!("Failed to find sufficient root for level {level} after {tries} tries. Retrying again to find with depth {required_base_level_depth}");
+            debug!("Failed to find sufficient root for level {level} after {tries} tries. Retrying again to find with depth {required_base_level_depth}");
         }
     }
 
