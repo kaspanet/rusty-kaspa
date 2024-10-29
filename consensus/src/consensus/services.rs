@@ -4,10 +4,11 @@ use crate::{
     model::{
         services::{reachability::MTReachabilityService, relations::MTRelationsService, statuses::MTStatusesService},
         stores::{
-            acceptance_data::DbAcceptanceDataStore, block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore,
-            ghostdag::DbGhostdagStore, headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore,
-            past_pruning_points::DbPastPruningPointsStore, pruning::DbPruningStore, reachability::DbReachabilityStore,
-            relations::DbRelationsStore, selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB,
+            acceptance_data::DbAcceptanceDataStore, block_transactions::DbBlockTransactionsStore,
+            block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
+            headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore,
+            pruning::DbPruningStore, reachability::DbReachabilityStore, relations::DbRelationsStore,
+            selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB,
         },
     },
     pipeline::tx_receipts_manager::TxReceiptsManager,
@@ -48,6 +49,7 @@ pub type DbTxReceiptsManager = TxReceiptsManager<
     DbHeadersStore,
     // W:PchmrStoreReader,
     DbAcceptanceDataStore,
+    DbBlockTransactionsStore,
 >;
 
 pub struct ConsensusServices {
@@ -81,7 +83,6 @@ impl ConsensusServices {
         is_consensus_exiting: Arc<AtomicBool>,
     ) -> Arc<Self> {
         let params = &config.params;
-
         let statuses_service = MTStatusesService::new(storage.statuses_store.clone());
         let relations_services =
             (0..=params.max_block_level).map(|level| MTRelationsService::new(storage.relations_stores.clone(), level)).collect_vec();
@@ -210,6 +211,7 @@ impl ConsensusServices {
             storage.headers_store.clone(),
             storage.selected_chain_store.clone(),
             storage.acceptance_data_store.clone(),
+            storage.block_transactions_store.clone(),
             storage.hash_to_pchmr_store.clone(),
             params.storage_mass_activation_daa_score,
         );

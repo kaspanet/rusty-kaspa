@@ -400,50 +400,89 @@ impl Consensus {
     }
     /* this logic may be imperfect as of now */
     fn get_tx_receipt_based_on_time(&self, tx_id: Hash, tx_timestamp: u64) -> ConsensusResult<TxReceipt> {
-        const DEVIATION_IN_SECONDS: u64 = 300; //5 minutes deviation should be enough?
-        let bps = self.config.bps();
-        let (tip_index, tip) = self.selected_chain_store.read().get_tip().unwrap();
-        let width_guess: u64 = self.services.tx_receipts_manager.estimate_dag_width();
-        let sink_timestamp = self.headers_store.get_timestamp(tip).unwrap(); // verify this
-        let deviation_in_chain_blocks = ((DEVIATION_IN_SECONDS * bps) / width_guess) as usize;
+        //utility closures
+        let someize_if_blk_acceps_tx = |blk| {
+            if self
+                .get_block_acceptance_data(blk)
+                .ok()?
+                .iter()
+                .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
+                .contains(&tx_id)
+            {
+                Some(blk)
+            } else {
+                None
+            }
+        };
+        let first_some_out_of_option_pair = { |(a, b): (Option<_>, Option<_>)| a.or(b) };
 
+        let bps = self.config.bps();
+
+        /*The first part of the function tries to guess a block which should be nearby enough to the tx
+           the current logic does so by estimating when approximately should a block with this timestamp have occured,
+           based on the bps and the estimation dag_width.
+           This should function relatively well in the common case where the transaction is a couple days old
+           There are two problems with this approach when dealing with old transactions:
+           A) due to ever increasing hash rate, real bps is oftentimes ever so slightly higher than what it should be.
+           This will add up.
+           B) The estimation of the dag width is coarse,
+           and represents recent dag width, while the true dag_width can vary considerbly with time.
+           A possible solution for B is to perform a more complicated logic iterative style estimation.
+           Another possible solution is to attempt a search based on the timestamps of the blocks themselves,
+           which are currently ignored, however as these timestamps fluctuate up and down, this again will result in more complicated logic
+           For the moment these optimizations seem not worth it
+        */
+        let (tip_index, tip) = self.selected_chain_store.read().get_tip().unwrap();
+        let tip_timestamp = self.headers_store.get_timestamp(tip).unwrap();
         let tip_bscore = self.headers_store.get_blue_score(tip).unwrap();
-        let estimated_bscore = tip_bscore - (sink_timestamp.saturating_sub(tx_timestamp)) * bps / 1000;
-        let guess_index = tip_index - (tip_bscore.saturating_sub(estimated_bscore) / width_guess);
+        let dag_width_guess: u64 = self.services.tx_receipts_manager.estimate_dag_width(Some(tip)); // estimation may be off for old txs
+
+        let estimated_bscore = tip_bscore - (tip_timestamp.saturating_sub(tx_timestamp)) * bps / 1000;
+        let guess_index = tip_index - (tip_bscore.saturating_sub(estimated_bscore) / dag_width_guess);
         let guess_block =
             self.selected_chain_store.read().get_by_index(guess_index).map_err(|_| ConsensusError::General("not found"))?;
-        //forward deviation
-        let double_sided_iterator =
-            self.services.reachability_service.forward_chain_iterator(guess_block, tip, true).take(deviation_in_chain_blocks).zip(
-                self.services.reachability_service
-                .default_backward_chain_iterator(guess_block)
-                .skip(1)// avoid checking guess block itself twice
-                .take(deviation_in_chain_blocks),
-            );
+
+        //since guess_block is merely a guess, some margin of error needs be taken
+        // we account for a deviation of "10 minutes" and derive the expected max distance in chain blocks
+        const DEVIATION_IN_SECONDS: u64 = 600; //10 minutes deviation should be enough?
+        let deviation_in_chain_blocks = ((DEVIATION_IN_SECONDS * bps) / dag_width_guess) as usize;
+
+        /* The next segment searches for a block accepting the transaction within
+        deviation_in_chain_blocks distance, forward or backwards from guess_block.
+        A naive implementation would first check all "forward blocks" and only then all "backwards block"
+        However, checking the entire spectrum of one direction before any blocks of the other is wasteful,
+        as the correct block is much more likely to be close to guess_block than far away from it
+        (assuming the guess is decent)
+        Because of this an iterator is constructed to iterate both directions simultaniously
+         */
+
+        //forward derivation
+        let forward_search_iter = self
+            .services
+            .reachability_service
+            .forward_chain_iterator(guess_block, tip, true)
+            .take(deviation_in_chain_blocks)
+            .map(someize_if_blk_acceps_tx);
+        //backward derivation
+        let backward_search_iter = self.services.reachability_service
+            .default_backward_chain_iterator(guess_block)
+            .skip(1)// avoid checking guess block itself twice
+            .take(deviation_in_chain_blocks)
+            .map(someize_if_blk_acceps_tx);
+
+        let mut double_sided_iterator = forward_search_iter.zip(backward_search_iter).map(first_some_out_of_option_pair);
 
         //we iterate backwards and forwards at the same time to locate the accepting block of the transaction
-        for (forward_blk, backward_blk) in double_sided_iterator {
-            let is_blk_accepting_tx = |blk| {
-                let accepted_txs_forward = self.get_block_acceptance_data(blk).unwrap();
-                accepted_txs_forward
-                    .iter()
-                    .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
-                    .contains(&tx_id)
-            };
-            let acc_block = match (is_blk_accepting_tx(forward_blk), is_blk_accepting_tx(backward_blk)) {
-                (true, _) => Some(forward_blk),
-                (_, true) => Some(backward_blk),
-                _ => None,
-            };
-            if let Some(acc_block) = acc_block {
-                return self
-                    .services
-                    .tx_receipts_manager
-                    .generate_tx_receipt(acc_block, tx_id)
-                    .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"));
-            }
+        let acc_block = double_sided_iterator.find(|blk| blk.is_some());
+        if let Some(Some(acc_block)) = acc_block {
+            //first Some represents the result of the find, second the fact that blk is a Some
+            self.services
+                .tx_receipts_manager
+                .generate_tx_receipt(acc_block, tx_id)
+                .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))
+        } else {
+            Err(ConsensusError::General("not found"))
         }
-        Err(ConsensusError::General("not found"))
     }
 }
 
