@@ -6,9 +6,12 @@ use kaspa_consensus_core::{
     errors::config::{ConfigError, ConfigResult},
 };
 use kaspa_consensus_notify::{root::ConsensusNotificationRoot, service::NotifyService};
-use kaspa_core::{core::Core, debug, info};
+use kaspa_core::{core::Core, debug, info, trace};
 use kaspa_core::{kaspad_env::version, task::tick::TickService};
-use kaspa_database::prelude::CachePolicy;
+use kaspa_database::{
+    prelude::{CachePolicy, DbWriter, DirectDbWriter},
+    registry::DatabaseStorePrefixes,
+};
 use kaspa_grpc_server::service::GrpcService;
 use kaspa_notify::{address::tracker::Tracker, subscription::context::SubscriptionContext};
 use kaspa_rpc_service::service::RpcCoreService;
@@ -33,6 +36,7 @@ use kaspa_mining::{
 };
 use kaspa_p2p_flows::{flow_context::FlowContext, service::P2pService};
 
+use itertools::Itertools;
 use kaspa_perf_monitor::{builder::Builder as PerfMonitorBuilder, counters::CountersSnapshot};
 use kaspa_utxoindex::{api::UtxoIndexProxy, UtxoIndex};
 use kaspa_wrpc_server::service::{Options as WrpcServerOptions, WebSocketCounters as WrpcServerCounters, WrpcEncoding, WrpcService};
@@ -316,13 +320,106 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         && (meta_db.get_pinned(b"multi-consensus-metadata-key").is_ok_and(|r| r.is_some())
             || MultiConsensusManagementStore::new(meta_db.clone()).should_upgrade().unwrap())
     {
-        let msg =
-            "Node database is from a different Kaspad *DB* version and needs to be fully deleted, do you confirm the delete? (y/n)";
-        get_user_approval_or_exit(msg, args.yes);
+        let mut mcms = MultiConsensusManagementStore::new(meta_db.clone());
+        let version = mcms.version().unwrap();
 
-        info!("Deleting databases from previous Kaspad version");
+        // TODO: Update this entire section to a more robust implementation that allows applying multiple upgrade strategies.
+        // If I'm at version 3 and latest version is 7, I need to be able to upgrade to that version following the intermediate
+        // steps without having to delete the DB
+        if version == 3 {
+            let active_consensus_dir_name = mcms.active_consensus_dir_name().unwrap();
 
-        is_db_reset_needed = true;
+            match active_consensus_dir_name {
+                Some(current_consensus_db) => {
+                    // Apply soft upgrade logic: delete GD data from higher levels
+                    // and then update DB version to 4
+                    let consensus_db = kaspa_database::prelude::ConnBuilder::default()
+                        .with_db_path(consensus_db_dir.clone().join(current_consensus_db))
+                        .with_files_limit(1)
+                        .build()
+                        .unwrap();
+                    info!("Scanning for deprecated records to cleanup");
+
+                    let mut gd_record_count: u32 = 0;
+                    let mut compact_record_count: u32 = 0;
+
+                    let start_level: u8 = 1;
+                    let start_level_bytes = start_level.to_le_bytes();
+                    let ghostdag_prefix_vec = DatabaseStorePrefixes::Ghostdag.into_iter().chain(start_level_bytes).collect_vec();
+                    let ghostdag_prefix = ghostdag_prefix_vec.as_slice();
+
+                    // This section is used to count the records to be deleted. It's not used for the actual delete.
+                    for result in consensus_db.iterator(rocksdb::IteratorMode::From(ghostdag_prefix, rocksdb::Direction::Forward)) {
+                        let (key, _) = result.unwrap();
+                        if !key.starts_with(&[DatabaseStorePrefixes::Ghostdag.into()]) {
+                            break;
+                        }
+
+                        gd_record_count += 1;
+                    }
+
+                    let compact_prefix_vec = DatabaseStorePrefixes::GhostdagCompact.into_iter().chain(start_level_bytes).collect_vec();
+                    let compact_prefix = compact_prefix_vec.as_slice();
+
+                    for result in consensus_db.iterator(rocksdb::IteratorMode::From(compact_prefix, rocksdb::Direction::Forward)) {
+                        let (key, _) = result.unwrap();
+                        if !key.starts_with(&[DatabaseStorePrefixes::GhostdagCompact.into()]) {
+                            break;
+                        }
+
+                        compact_record_count += 1;
+                    }
+
+                    trace!("Number of Ghostdag records to cleanup: {}", gd_record_count);
+                    trace!("Number of GhostdagCompact records to cleanup: {}", compact_record_count);
+                    info!("Number of deprecated records to cleanup: {}", gd_record_count + compact_record_count);
+
+                    let msg =
+                        "Node database currently at version 3. Upgrade process to version 4 needs to be applied. Continue? (y/n)";
+                    get_user_approval_or_exit(msg, args.yes);
+
+                    // Actual delete only happens after user consents to the upgrade:
+                    let mut writer = DirectDbWriter::new(&consensus_db);
+
+                    let end_level: u8 = config.max_block_level + 1;
+                    let end_level_bytes = end_level.to_le_bytes();
+
+                    let start_ghostdag_prefix_vec = DatabaseStorePrefixes::Ghostdag.into_iter().chain(start_level_bytes).collect_vec();
+                    let end_ghostdag_prefix_vec = DatabaseStorePrefixes::Ghostdag.into_iter().chain(end_level_bytes).collect_vec();
+
+                    let start_compact_prefix_vec =
+                        DatabaseStorePrefixes::GhostdagCompact.into_iter().chain(start_level_bytes).collect_vec();
+                    let end_compact_prefix_vec =
+                        DatabaseStorePrefixes::GhostdagCompact.into_iter().chain(end_level_bytes).collect_vec();
+
+                    // Apply delete of range from level 1 to max (+1) for Ghostdag and GhostdagCompact:
+                    writer.delete_range(start_ghostdag_prefix_vec.clone(), end_ghostdag_prefix_vec.clone()).unwrap();
+                    writer.delete_range(start_compact_prefix_vec.clone(), end_compact_prefix_vec.clone()).unwrap();
+
+                    // Compact the deleted rangeto apply the delete immediately
+                    consensus_db.compact_range(Some(start_ghostdag_prefix_vec.as_slice()), Some(end_ghostdag_prefix_vec.as_slice()));
+                    consensus_db.compact_range(Some(start_compact_prefix_vec.as_slice()), Some(end_compact_prefix_vec.as_slice()));
+
+                    // Also update the version to one higher:
+                    mcms.set_version(version + 1).unwrap();
+                }
+                None => {
+                    let msg =
+                    "Node database is from a different Kaspad *DB* version and needs to be fully deleted, do you confirm the delete? (y/n)";
+                    get_user_approval_or_exit(msg, args.yes);
+
+                    is_db_reset_needed = true;
+                }
+            }
+        } else {
+            let msg =
+                "Node database is from a different Kaspad *DB* version and needs to be fully deleted, do you confirm the delete? (y/n)";
+            get_user_approval_or_exit(msg, args.yes);
+
+            info!("Deleting databases from previous Kaspad version");
+
+            is_db_reset_needed = true;
+        }
     }
 
     // Will be true if any of the other condition above except args.reset_db

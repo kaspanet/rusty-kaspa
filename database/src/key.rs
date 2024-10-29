@@ -73,6 +73,8 @@ impl Display for DbKey {
                     match prefix {
                         Ghostdag
                         | GhostdagCompact
+                        | TempGhostdag
+                        | TempGhostdagCompact
                         | RelationsParents
                         | RelationsChildren
                         | Reachability

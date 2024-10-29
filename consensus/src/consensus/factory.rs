@@ -59,7 +59,7 @@ pub struct MultiConsensusMetadata {
     version: u32,
 }
 
-const LATEST_DB_VERSION: u32 = 3;
+const LATEST_DB_VERSION: u32 = 4;
 impl Default for MultiConsensusMetadata {
     fn default() -> Self {
         Self {
@@ -217,6 +217,23 @@ impl MultiConsensusManagementStore {
             let mut batch = WriteBatch::default();
             self.metadata.write(BatchDbWriter::new(&mut batch), &metadata).unwrap();
         }
+    }
+
+    /// Returns the current version of this database
+    pub fn version(&self) -> StoreResult<u32> {
+        match self.metadata.read() {
+            Ok(data) => Ok(data.version),
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Set the database version to a different one
+    pub fn set_version(&mut self, version: u32) -> StoreResult<()> {
+        self.metadata.update(DirectDbWriter::new(&self.db), |mut data| {
+            data.version = version;
+            data
+        })?;
+        Ok(())
     }
 
     pub fn should_upgrade(&self) -> StoreResult<bool> {
