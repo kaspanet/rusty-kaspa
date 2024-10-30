@@ -10,6 +10,7 @@ use crate::model::{
 };
 use kaspa_consensus_core::{
     config::genesis::GenesisBlock,
+    hashing,
     header::Header,
     merkle::create_hash_merkle_witness,
     receipts::{Pochm, ProofOfPublication, TxReceipt},
@@ -79,29 +80,45 @@ impl<
     }
     pub fn generate_tx_receipt(&self, accepting_block_hash: Hash, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
         let pochm = self.create_pochm_proof(accepting_block_hash)?;
-        let tx_acc_proof = self.create_merkle_witness_for_accepted_tx(tracked_tx_id, accepting_block_hash)?;
+        //find the accepted tx in accepting_block_hash and create a merkle witness for it
+        let mergeset_txs_manager = self.acceptance_data_store.get(accepting_block_hash)?;
+        let mut accepted_txs = mergeset_txs_manager
+            .iter()
+            .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
+            .collect::<Vec<Hash>>();
+        accepted_txs.sort();
+
+        let tx_acc_proof = create_merkle_witness_from_sorted(accepted_txs.into_iter(), tracked_tx_id)?;
+
         Ok(TxReceipt { tracked_tx_id, accepting_block_hash, pochm, tx_acc_proof })
     }
     pub fn generate_proof_of_pub(&self, pub_block_hash: Hash, tracked_tx_id: Hash) -> Result<ProofOfPublication, ReceiptsErrors> {
-        /*there is a certain degree of inefficiency here, as post_posterity is calculated again in create_pochm function
-        however I expect this feature to rarely be called so optimizations seem not worth it */
-        let post_posterity = self.get_post_posterity_block(pub_block_hash)?;
-        let tx_pub_proof = self.create_merkle_witness_for_published_tx(tracked_tx_id, pub_block_hash)?;
         let mut headers_chain_to_selected = vec![];
-
-        //find a chain block on the path to post_posterity
-        for block in self.reachability_service.forward_chain_iterator(pub_block_hash, post_posterity, true) {
+        let tip = self.selected_chain_store.read().get_tip().unwrap().1;
+        //find a chain block on the path to the tip
+        for block in self.reachability_service.forward_chain_iterator(pub_block_hash, tip, true) {
             headers_chain_to_selected.push(self.headers_store.get_header(block).unwrap());
             if self.selected_chain_store.read().get_by_hash(block).is_ok() {
                 break;
             }
         }
+
         let pochm = self.create_pochm_proof(headers_chain_to_selected.last().unwrap().hash)?;
-        headers_chain_to_selected.remove(0); //remove the publishing block itself from the chain as it is redundant
-        Ok(ProofOfPublication { tracked_tx_id, pub_block_hash, pochm, tx_pub_proof, headers_chain_to_selected })
+        headers_chain_to_selected.remove(0); //remove the publishing block itself from the chain as it is redundant to store
+
+        //next, find the relevant transaction in pub_block_hash's published transactions and create a merkle witness for it
+        let published_txs = self.block_transactions_store.get(pub_block_hash)?;
+        let tracked_tx = published_txs.iter().find(|tx| tx.id() == tracked_tx_id).unwrap();
+        let include_mass_field = self.headers_store.get_daa_score(pub_block_hash).unwrap() > self.storage_mass_activation_daa_score;
+        let tx_pub_proof = create_hash_merkle_witness(published_txs.iter(), tracked_tx, include_mass_field)?;
+
+        let tracked_tx_hash = hashing::tx::hash(tracked_tx, include_mass_field); //leaf value in merkle tree
+        Ok(ProofOfPublication { tracked_tx_hash, pub_block_hash, pochm, tx_pub_proof, headers_chain_to_selected })
     }
     pub fn verify_tx_receipt(&self, tx_receipt: TxReceipt) -> bool {
-        self.verify_merkle_witness_for_accepted_tx(&tx_receipt.tx_acc_proof, tx_receipt.tracked_tx_id, tx_receipt.accepting_block_hash)
+        let acc_block_header = self.headers_store.get_header(tx_receipt.accepting_block_hash).unwrap();
+        let acc_atmr = acc_block_header.accepted_id_merkle_root;
+        verify_merkle_witness(&tx_receipt.tx_acc_proof, tx_receipt.tracked_tx_id, acc_atmr)
             && self.verify_pochm_proof(tx_receipt.accepting_block_hash, &tx_receipt.pochm)
     }
     pub fn verify_proof_of_pub(&self, proof_of_pub: ProofOfPublication) -> bool {
@@ -121,12 +138,10 @@ impl<
             .last()
             .unwrap_or(&self.headers_store.get_header(proof_of_pub.pub_block_hash).unwrap())
             .hash;
-
-        self.verify_merkle_witness_for_published_tx(
-            &proof_of_pub.tx_pub_proof,
-            proof_of_pub.tracked_tx_id,
-            proof_of_pub.pub_block_hash,
-        ) && self.verify_pochm_proof(accepting_block_hash, &proof_of_pub.pochm)
+        let pub_block_header = self.headers_store.get_header(proof_of_pub.pub_block_hash).unwrap();
+        let pub_merkle_root = pub_block_header.hash_merkle_root;
+        verify_merkle_witness(&proof_of_pub.tx_pub_proof, proof_of_pub.tracked_tx_hash, pub_merkle_root)
+            && self.verify_pochm_proof(accepting_block_hash, &proof_of_pub.pochm)
     }
 
     /*Assumes: chain_purporter is on the selected chain,
@@ -207,46 +222,46 @@ impl<
         verify_merkle_witness(witness, leaf_block_hash, self.hash_to_pchmr_store.get(root_block_hash).unwrap())
     }
 
-    pub fn create_merkle_witness_for_accepted_tx(
-        &self,
-        tracked_tx_id: Hash,
-        acc_block_hash: Hash,
-    ) -> Result<MerkleWitness, ReceiptsErrors> {
-        let mergeset_txs_manager = self.acceptance_data_store.get(acc_block_hash)?;
-        let mut accepted_txs = mergeset_txs_manager
-            .iter()
-            .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
-            .collect::<Vec<Hash>>();
-        accepted_txs.sort();
+    // pub fn create_merkle_witness_for_accepted_tx(
+    //     &self,
+    //     tracked_tx_id: Hash,
+    //     acc_block_hash: Hash,
+    // ) -> Result<MerkleWitness, ReceiptsErrors> {
+    //     let mergeset_txs_manager = self.acceptance_data_store.get(acc_block_hash)?;
+    //     let mut accepted_txs = mergeset_txs_manager
+    //         .iter()
+    //         .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
+    //         .collect::<Vec<Hash>>();
+    //     accepted_txs.sort();
 
-        create_merkle_witness_from_sorted(accepted_txs.into_iter(), tracked_tx_id).map_err(|e| e.into())
-    }
-    pub fn verify_merkle_witness_for_accepted_tx(&self, witness: &MerkleWitness, tracked_tx_id: Hash, acc_block_hash: Hash) -> bool {
-        let acc_block_header = self.headers_store.get_header(acc_block_hash).unwrap();
-        let acc_atmr = acc_block_header.accepted_id_merkle_root;
-        verify_merkle_witness(witness, tracked_tx_id, acc_atmr)
-    }
+    //     create_merkle_witness_from_sorted(accepted_txs.into_iter(), tracked_tx_id).map_err(|e| e.into())
+    // }
+    // pub fn verify_merkle_witness_for_accepted_tx(&self, witness: &MerkleWitness, tracked_tx_id: Hash, acc_block_hash: Hash) -> bool {
+    //     let acc_block_header = self.headers_store.get_header(acc_block_hash).unwrap();
+    //     let acc_atmr = acc_block_header.accepted_id_merkle_root;
+    //     verify_merkle_witness(witness, tracked_tx_id, acc_atmr)
+    // }
 
-    pub fn create_merkle_witness_for_published_tx(
-        &self,
-        tracked_tx_id: Hash,
-        pub_block_hash: Hash,
-    ) -> Result<MerkleWitness, ReceiptsErrors> {
-        let published_txs = self.block_transactions_store.get(pub_block_hash)?;
-        let tracked_tx = published_txs.iter().find(|tx| tx.id() == tracked_tx_id).unwrap();
-        let include_mass_field = self.headers_store.get_daa_score(pub_block_hash).unwrap() > self.storage_mass_activation_daa_score;
-        create_hash_merkle_witness(published_txs.iter(), tracked_tx, include_mass_field).map_err(|e| e.into())
-    }
-    pub fn verify_merkle_witness_for_published_tx(
-        &self,
-        witness: &MerkleWitness,
-        tracked_tx_hash: Hash,
-        acc_block_hash: Hash,
-    ) -> bool {
-        let pub_block_header = self.headers_store.get_header(acc_block_hash).unwrap();
-        let pub_merkle_root = pub_block_header.hash_merkle_root;
-        verify_merkle_witness(witness, tracked_tx_hash, pub_merkle_root)
-    }
+    // pub fn create_merkle_witness_for_published_tx(
+    //     &self,
+    //     tracked_tx_id: Hash,
+    //     pub_block_hash: Hash,
+    // ) -> Result<MerkleWitness, ReceiptsErrors> {
+    //     let published_txs = self.block_transactions_store.get(pub_block_hash)?;
+    //     let tracked_tx = published_txs.iter().find(|tx| tx.id() == tracked_tx_id).unwrap();
+    //     let include_mass_field = self.headers_store.get_daa_score(pub_block_hash).unwrap() > self.storage_mass_activation_daa_score;
+    //     create_hash_merkle_witness(published_txs.iter(), tracked_tx, include_mass_field).map_err(|e| e.into())
+    // }
+    // pub fn verify_merkle_witness_for_published_tx(
+    //     &self,
+    //     witness: &MerkleWitness,
+    //     tracked_tx_hash: Hash,
+    //     acc_block_hash: Hash,
+    // ) -> bool {
+    //     let pub_block_header = self.headers_store.get_header(acc_block_hash).unwrap();
+    //     let pub_merkle_root = pub_block_header.hash_merkle_root;
+    //     verify_merkle_witness(witness, tracked_tx_hash, pub_merkle_root)
+    // }
 
     /* the function assumes that the path from block_hash down to its posterity is intact and has not been pruned
     (which should be the same as assuming block_hash has not been pruned)
@@ -261,7 +276,7 @@ impl<
         Hence, the corresponding field for which this calculation should only be verified for selected chain candidates
         This function is also called when creating said field - in this case however any honest node should only call for it on a block which
         would be on the selected chain from its point of view
-        nethertheless, the logic will return a correct answer if called.*/
+        nethertheless, the logic will always return a correct answer if called.*/
         let mut distance_covered_before_chain = 0; //compulsory initialization for compiler only , a chain block will have to be reached eventually
         let mut first_chain_ancestor = ZERO_HASH; //compulsory initialization for compiler only, a chain block will have to be reached eventually
         for (i, current) in self.reachability_service.default_backward_chain_iterator(parent_of_queried_block).enumerate() {
@@ -489,7 +504,7 @@ impl<
         A) because index_step!=0, meaning next_candidate_bscore and candidate_bscore are strictly different
         B) because |next_candidate_bscore-candidate_bscore| is by definition the minimal possible value index_step can get
         divide by 0 doesn't occur since index_step!=0;
-        Should reconsider whether this  logic is even worth calculating iteratively compared to just the initial guess:
+        Should reconsider whether this logic is even worth calculating iteratively compared to just the initial guess:
         very likely not*/
         let next_estimated_width = (candidate_header.blue_score.abs_diff(next_candidate_header.blue_score)) / index_step;
         assert_ne!(next_estimated_width, 0);

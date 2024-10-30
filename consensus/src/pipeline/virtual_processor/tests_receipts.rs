@@ -3,6 +3,7 @@ use kaspa_consensus_core::{
     api::ConsensusApi,
     config::{params::MAINNET_PARAMS, ConfigBuilder},
 };
+use kaspa_hashes::Hash;
 
 #[tokio::test]
 async fn test_chain_posterities() {
@@ -18,7 +19,7 @@ async fn test_chain_posterities() {
             p.pruning_depth = (FINALITY_DEPTH * 3) as u64;
         })
         .build();
-    let mut expected_posterities = vec![];
+    let mut expected_posterities: Vec<Hash> = vec![];
     let mut ctx = TestContext::new(TestConsensus::new(&config));
     let genesis_hash = ctx.consensus.params().genesis.hash;
     let mut tip = genesis_hash; //compulsory initialization

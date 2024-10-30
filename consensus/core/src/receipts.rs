@@ -39,7 +39,7 @@ pub struct TxReceipt {
     pub tx_acc_proof: MerkleWitness,
 }
 pub struct ProofOfPublication {
-    pub tracked_tx_id: Hash,
+    pub tracked_tx_hash: Hash,
     pub pub_block_hash: Hash,
     pub pochm: Pochm,
     pub tx_pub_proof: MerkleWitness,
