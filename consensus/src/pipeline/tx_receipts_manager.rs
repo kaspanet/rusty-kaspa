@@ -78,10 +78,10 @@ impl<
             block_transactions_store: block_transactions_store.clone(),
         }
     }
-    pub fn generate_tx_receipt(&self, accepting_block_hash: Hash, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
-        let pochm = self.create_pochm_proof(accepting_block_hash)?;
+    pub fn generate_tx_receipt(&self, accepting_block_header: Arc<Header>, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
+        let pochm = self.create_pochm_proof(accepting_block_header.hash)?;
         //find the accepted tx in accepting_block_hash and create a merkle witness for it
-        let mergeset_txs_manager = self.acceptance_data_store.get(accepting_block_hash)?;
+        let mergeset_txs_manager = self.acceptance_data_store.get(accepting_block_header.hash)?;
         let mut accepted_txs = mergeset_txs_manager
             .iter()
             .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
@@ -90,13 +90,17 @@ impl<
 
         let tx_acc_proof = create_merkle_witness_from_sorted(accepted_txs.into_iter(), tracked_tx_id)?;
 
-        Ok(TxReceipt { tracked_tx_id, accepting_block_hash, pochm, tx_acc_proof })
+        Ok(TxReceipt { tracked_tx_id, accepting_block_header, pochm, tx_acc_proof })
     }
-    pub fn generate_proof_of_pub(&self, pub_block_hash: Hash, tracked_tx_id: Hash) -> Result<ProofOfPublication, ReceiptsErrors> {
+    pub fn generate_proof_of_pub(
+        &self,
+        pub_block_header: Arc<Header>,
+        tracked_tx_id: Hash,
+    ) -> Result<ProofOfPublication, ReceiptsErrors> {
         let mut headers_chain_to_selected = vec![];
         let tip = self.selected_chain_store.read().get_tip().unwrap().1;
         //find a chain block on the path to the tip
-        for block in self.reachability_service.forward_chain_iterator(pub_block_hash, tip, true) {
+        for block in self.reachability_service.forward_chain_iterator(pub_block_header.hash, tip, true) {
             headers_chain_to_selected.push(self.headers_store.get_header(block).unwrap());
             if self.selected_chain_store.read().get_by_hash(block).is_ok() {
                 break;
@@ -107,41 +111,36 @@ impl<
         headers_chain_to_selected.remove(0); //remove the publishing block itself from the chain as it is redundant to store
 
         //next, find the relevant transaction in pub_block_hash's published transactions and create a merkle witness for it
-        let published_txs = self.block_transactions_store.get(pub_block_hash)?;
+        let published_txs = self.block_transactions_store.get(pub_block_header.hash)?;
         let tracked_tx = published_txs.iter().find(|tx| tx.id() == tracked_tx_id).unwrap();
-        let include_mass_field = self.headers_store.get_daa_score(pub_block_hash).unwrap() > self.storage_mass_activation_daa_score;
+        let include_mass_field = pub_block_header.daa_score > self.storage_mass_activation_daa_score;
         let tx_pub_proof = create_hash_merkle_witness(published_txs.iter(), tracked_tx, include_mass_field)?;
 
         let tracked_tx_hash = hashing::tx::hash(tracked_tx, include_mass_field); //leaf value in merkle tree
-        Ok(ProofOfPublication { tracked_tx_hash, pub_block_hash, pochm, tx_pub_proof, headers_chain_to_selected })
+        Ok(ProofOfPublication { tracked_tx_hash, pub_block_header, pochm, tx_pub_proof, headers_chain_to_selected })
     }
     pub fn verify_tx_receipt(&self, tx_receipt: TxReceipt) -> bool {
-        let acc_block_header = self.headers_store.get_header(tx_receipt.accepting_block_hash).unwrap();
-        let acc_atmr = acc_block_header.accepted_id_merkle_root;
+        let acc_atmr = tx_receipt.accepting_block_header.accepted_id_merkle_root;
         verify_merkle_witness(&tx_receipt.tx_acc_proof, tx_receipt.tracked_tx_id, acc_atmr)
-            && self.verify_pochm_proof(tx_receipt.accepting_block_hash, &tx_receipt.pochm)
+            && self.verify_pochm_proof(tx_receipt.accepting_block_header.hash, &tx_receipt.pochm)
     }
     pub fn verify_proof_of_pub(&self, proof_of_pub: ProofOfPublication) -> bool {
         let valid_path = proof_of_pub
             .headers_chain_to_selected
             .iter()
             .try_fold(
-                proof_of_pub.pub_block_hash,
+                proof_of_pub.pub_block_header.hash,
                 |curr, next| if next.direct_parents().contains(&curr) { Some(next.hash) } else { None },
             )
             .is_none();
         if !valid_path {
             return false;
         };
-        let accepting_block_hash = proof_of_pub
-            .headers_chain_to_selected
-            .last()
-            .unwrap_or(&self.headers_store.get_header(proof_of_pub.pub_block_hash).unwrap())
-            .hash;
-        let pub_block_header = self.headers_store.get_header(proof_of_pub.pub_block_hash).unwrap();
-        let pub_merkle_root = pub_block_header.hash_merkle_root;
+        let earliest_selected_chain_decendant =
+            proof_of_pub.headers_chain_to_selected.last().unwrap_or(&proof_of_pub.pub_block_header).hash;
+        let pub_merkle_root = proof_of_pub.pub_block_header.hash_merkle_root;
         verify_merkle_witness(&proof_of_pub.tx_pub_proof, proof_of_pub.tracked_tx_hash, pub_merkle_root)
-            && self.verify_pochm_proof(accepting_block_hash, &proof_of_pub.pochm)
+            && self.verify_pochm_proof(earliest_selected_chain_decendant, &proof_of_pub.pochm)
     }
 
     /*Assumes: chain_purporter is on the selected chain,

@@ -401,7 +401,7 @@ impl Consensus {
     /* this logic may be imperfect as of now */
     fn get_tx_receipt_based_on_time(&self, tx_id: Hash, tx_timestamp: u64) -> ConsensusResult<TxReceipt> {
         //utility closures
-        let someize_if_blk_acceps_tx = |blk| {
+        let someize_header_if_blk_acceps_tx = |blk| {
             if self
                 .get_block_acceptance_data(blk)
                 .ok()?
@@ -409,7 +409,7 @@ impl Consensus {
                 .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
                 .contains(&tx_id)
             {
-                Some(blk)
+                Some(self.headers_store.get_header(blk).unwrap())
             } else {
                 None
             }
@@ -462,13 +462,13 @@ impl Consensus {
             .reachability_service
             .forward_chain_iterator(guess_block, tip, true)
             .take(deviation_in_chain_blocks)
-            .map(someize_if_blk_acceps_tx);
+            .map(someize_header_if_blk_acceps_tx);
         //backward derivation
         let backward_search_iter = self.services.reachability_service
             .default_backward_chain_iterator(guess_block)
             .skip(1)// avoid checking guess block itself twice
             .take(deviation_in_chain_blocks)
-            .map(someize_if_blk_acceps_tx);
+            .map(someize_header_if_blk_acceps_tx);
 
         let mut double_sided_iterator = forward_search_iter.zip(backward_search_iter).map(first_some_out_of_option_pair);
 
@@ -1135,12 +1135,12 @@ impl ConsensusApi for Consensus {
     or a timestamp, as it will search through the entire datadbase */
     fn get_tx_receipt(&self, tx_id: Hash, accepting_block: Option<Hash>, tx_timestamp: Option<u64>) -> ConsensusResult<TxReceipt> {
         if let Some(accepting_block) = accepting_block {
-            //if a block is supplied, generate receipt directly
-
+            //if a block hash is supplied, generate receipt directly
+            let aaccepting_block_header = self.headers_store.get_header(accepting_block).unwrap();
             return self
                 .services
                 .tx_receipts_manager
-                .generate_tx_receipt(accepting_block, tx_id)
+                .generate_tx_receipt(aaccepting_block_header, tx_id)
                 .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"));
         }
         //if no block is given, try to search based on time_stamp
@@ -1159,10 +1159,11 @@ impl ConsensusApi for Consensus {
                 .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
                 .contains(&tx_id)
             {
+                let accepting_block_header = self.headers_store.get_header(block).unwrap();
                 return self
                     .services
                     .tx_receipts_manager
-                    .generate_tx_receipt(block, tx_id)
+                    .generate_tx_receipt(accepting_block_header, tx_id)
                     .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"));
             }
         }
@@ -1177,10 +1178,11 @@ impl ConsensusApi for Consensus {
         /*Partial implementation as of now, finding a publishing block via timestamp etc might be implemented in the future
          */
         if let Some(publishing_block) = publishing_block {
+            let publishing_block_header = self.headers_store.get_header(publishing_block).unwrap();
             //if a block is supplied, generate receipt directly
             self.services
                 .tx_receipts_manager
-                .generate_proof_of_pub(publishing_block, tx_id)
+                .generate_proof_of_pub(publishing_block_header, tx_id)
                 .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))
         } else {
             Err(ConsensusError::General("get_proof_of_pub must be supplied with the publishing block "))

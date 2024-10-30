@@ -34,13 +34,13 @@ impl Default for Pochm {
 }
 pub struct TxReceipt {
     pub tracked_tx_id: Hash,
-    pub accepting_block_hash: Hash,
+    pub accepting_block_header: Arc<Header>,
     pub pochm: Pochm,
     pub tx_acc_proof: MerkleWitness,
 }
 pub struct ProofOfPublication {
     pub tracked_tx_hash: Hash,
-    pub pub_block_hash: Hash,
+    pub pub_block_header: Arc<Header>,
     pub pochm: Pochm,
     pub tx_pub_proof: MerkleWitness,
     pub headers_chain_to_selected: Vec<Arc<Header>>,
