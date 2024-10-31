@@ -1079,7 +1079,7 @@ mod test {
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
         for TestCase { init, code, dstack } in tests {
-            let mut vm = TxScriptEngine::new(&reused_values, &cache);
+            let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
             vm.dstack = init;
             code.execute(&mut vm).unwrap_or_else(|_| panic!("Opcode {} should not fail", code.value()));
             assert_eq!(*vm.dstack, dstack, "OpCode {} Pushed wrong value", code.value());
@@ -1090,7 +1090,7 @@ mod test {
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
         for ErrorTestCase { init, code, error } in tests {
-            let mut vm = TxScriptEngine::new(&reused_values, &cache);
+            let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
             vm.dstack.clone_from(&init);
             assert_eq!(
                 code.execute(&mut vm)
@@ -1125,7 +1125,7 @@ mod test {
 
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let mut vm = TxScriptEngine::new(&reused_values, &cache);
+        let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -1148,7 +1148,7 @@ mod test {
 
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let mut vm = TxScriptEngine::new(&reused_values, &cache);
+        let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -1235,7 +1235,7 @@ mod test {
 
         let cache = Cache::new(10_000);
         let reused_values = SigHashReusedValuesUnsync::new();
-        let mut vm = TxScriptEngine::new(&reused_values, &cache);
+        let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
 
         for pop in tests {
             match pop.execute(&mut vm) {

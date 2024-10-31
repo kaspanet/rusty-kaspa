@@ -155,7 +155,7 @@ pub fn is_unspendable<T: VerifiableTransaction, Reused: SigHashReusedValues>(scr
 }
 
 impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'a, T, Reused> {
-    pub fn new(reused_values: &'a Reused, sig_cache: &'a Cache<SigCacheKey, bool>) -> Self {
+    pub fn new(reused_values: &'a Reused, sig_cache: &'a Cache<SigCacheKey, bool>, kip10_enabled: bool) -> Self {
         Self {
             dstack: vec![],
             astack: vec![],
@@ -164,7 +164,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             sig_cache,
             cond_stack: vec![],
             num_ops: 0,
-            kip10_enabled: false,
+            kip10_enabled,
         }
     }
 
@@ -196,7 +196,12 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         }
     }
 
-    pub fn from_script(script: &'a [u8], reused_values: &'a Reused, sig_cache: &'a Cache<SigCacheKey, bool>) -> Self {
+    pub fn from_script(
+        script: &'a [u8],
+        reused_values: &'a Reused,
+        sig_cache: &'a Cache<SigCacheKey, bool>,
+        kip10_enabled: bool,
+    ) -> Self {
         Self {
             dstack: Default::default(),
             astack: Default::default(),
@@ -205,7 +210,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             sig_cache,
             cond_stack: Default::default(),
             num_ops: 0,
-            kip10_enabled: false,
+            kip10_enabled,
         }
     }
 
