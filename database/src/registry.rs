@@ -41,6 +41,10 @@ pub enum DatabaseStorePrefixes {
     ReachabilityTreeChildren = 30,
     ReachabilityFutureCoveringSet = 31,
 
+    // ---- Ghostdag Proof
+    TempGhostdag = 40,
+    TempGhostdagCompact = 41,
+
     // ---- Metadata ----
     MultiConsensusMetadata = 124,
     ConsensusEntries = 125,
