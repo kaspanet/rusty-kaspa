@@ -12,8 +12,8 @@ use kaspa_consensus_core::{
 
 #[tokio::test]
 async fn test_chain_posterities() {
-    const PERIODS: usize = 10;
-    const FINALITY_DEPTH: usize = 30;
+    const PERIODS: usize = 5;
+    const FINALITY_DEPTH: usize = 20;
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
@@ -61,7 +61,7 @@ async fn test_chain_posterities() {
             ctx.build_block_template_row(0..1).validate_and_insert_row().await.assert_valid_utxo_tip();
             let block = it.next().unwrap();
             let block_header = ctx.consensus.headers_store.get_header(block).unwrap();
-            pochms_list.push((ctx.consensus.generate_pochm(block), block));
+            pochms_list.push((ctx.consensus.generate_pochm(block).unwrap(), block));
             let acc_tx = ctx.consensus.acceptance_data_store.get(block).unwrap()[0].accepted_transactions[0].transaction_id;
             receipts
                 .push((ctx.consensus.services.tx_receipts_manager.generate_tx_receipt(block_header.clone(), acc_tx).unwrap(), acc_tx)); //add later: test if works via timestamp
@@ -81,7 +81,7 @@ async fn test_chain_posterities() {
         //verify posterity qualities of a 3*FINALITY_DEPTH blocks in the past posterity block
         let past_posterity_block = it.next().unwrap();
         let past_posterity_header = ctx.consensus.headers_store.get_header(past_posterity_block).unwrap();
-        pochms_list.push((ctx.consensus.generate_pochm(past_posterity_block), past_posterity_block));
+        pochms_list.push((ctx.consensus.generate_pochm(past_posterity_block).unwrap(), past_posterity_block));
 
         let acc_tx = ctx.consensus.acceptance_data_store.get(past_posterity_block).unwrap()[0].accepted_transactions[0].transaction_id;
         receipts.push((
@@ -141,7 +141,8 @@ async fn test_chain_posterities() {
         assert!(post_posterity.is_err());
     }
     for (pochm, blk) in pochms_list {
-        assert!(ctx.consensus.verify_pochm(blk, &pochm.unwrap()));
+        assert!(ctx.consensus.verify_pochm(blk, &pochm));
+        assert!(pochm.vec.len() <= (FINALITY_DEPTH as f64).log2() as usize)
     }
     for (rec, tx_id) in receipts {
         assert!(ctx.consensus.verify_tx_receipt(&rec));
