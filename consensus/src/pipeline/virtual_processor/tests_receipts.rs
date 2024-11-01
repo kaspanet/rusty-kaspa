@@ -1,9 +1,12 @@
-use crate::{consensus::test_consensus::TestConsensus, pipeline::virtual_processor::tests_util::TestContext};
+use crate::{
+    consensus::test_consensus::TestConsensus,
+    model::stores::{acceptance_data::AcceptanceDataStoreReader, headers::HeaderStoreReader},
+    pipeline::virtual_processor::tests_util::TestContext,
+};
 use kaspa_consensus_core::{
     api::ConsensusApi,
     config::{params::MAINNET_PARAMS, ConfigBuilder},
 };
-use kaspa_hashes::Hash;
 
 #[tokio::test]
 async fn test_chain_posterities() {
@@ -19,7 +22,10 @@ async fn test_chain_posterities() {
             p.pruning_depth = (FINALITY_DEPTH * 3) as u64;
         })
         .build();
-    let mut expected_posterities: Vec<Hash> = vec![];
+    let mut expected_posterities = vec![];
+    let mut receipts = vec![];
+    let mut pochms_list = vec![];
+
     let mut ctx = TestContext::new(TestConsensus::new(&config));
     let genesis_hash = ctx.consensus.params().genesis.hash;
     let mut tip = genesis_hash; //compulsory initialization
@@ -47,8 +53,16 @@ async fn test_chain_posterities() {
             /*This loop:
             A) creates a new block and adds it at the tip
             B) validates the posterity qualitiesof the block 3*FINALITY_DEPTH blocks in its past*/
+
             ctx.build_block_template_row(0..1).validate_and_insert_row().await.assert_valid_utxo_tip();
             let block = it.next().unwrap();
+            let block_header = ctx.consensus.headers_store.get_header(block).unwrap();
+            pochms_list.push((ctx.consensus.generate_pochm(block), block));
+            let coinbase_tx = ctx.consensus.acceptance_data_store.get(block).unwrap()[0].accepted_transactions[0].transaction_id;
+            receipts.push((
+                ctx.consensus.services.tx_receipts_manager.generate_tx_receipt(block_header, coinbase_tx).unwrap(),
+                coinbase_tx,
+            )); //add later: test if works via timestamp
             let pre_posterity = ctx.tx_receipts_manager().get_pre_posterity_block_by_hash(block);
             let post_posterity = ctx.tx_receipts_manager().get_post_posterity_block(block);
             assert_eq!(pre_posterity, expected_posterities[i]);
@@ -62,6 +76,15 @@ async fn test_chain_posterities() {
         expected_posterities.push(tip);
         //verify posterity qualities of a 3*FINALITY_DEPTH blocks in the past posterity block
         let past_posterity_block = it.next().unwrap();
+        let past_posterity_header = ctx.consensus.headers_store.get_header(past_posterity_block).unwrap();
+        pochms_list.push((ctx.consensus.generate_pochm(past_posterity_block), past_posterity_block));
+
+        let coinbase_tx =
+            ctx.consensus.acceptance_data_store.get(past_posterity_block).unwrap()[0].accepted_transactions[0].transaction_id;
+        receipts.push((
+            ctx.consensus.services.tx_receipts_manager.generate_tx_receipt(past_posterity_header, coinbase_tx).unwrap(),
+            coinbase_tx,
+        )); //add later: test if works via timestamp
         let pre_posterity = ctx.tx_receipts_manager().get_pre_posterity_block_by_hash(past_posterity_block);
         let post_posterity = ctx.tx_receipts_manager().get_post_posterity_block(past_posterity_block);
         assert_eq!(pre_posterity, expected_posterities[i]);
@@ -112,4 +135,18 @@ async fn test_chain_posterities() {
         assert_eq!(pre_posterity, expected_posterities[PERIODS]);
         assert!(post_posterity.is_err());
     }
+    for (pochm, blk) in pochms_list {
+        assert!(ctx.consensus.verify_pochm(blk, &pochm.unwrap()));
+    }
+    for (rec, tx_id) in receipts {
+        assert!(ctx.consensus.verify_tx_receipt(&rec));
+        // sanity check
+        assert_eq!(rec.tracked_tx_id, tx_id);
+    }
+    //     for (i,block) in ctx.consensus.reachability_service().forward_chain_iterator(genesis_hash, tip, true).skip(1).enumerate().take(receipts.len()){
+    //         assert!(ctx.consensus.verify_tx_receipt(&receipts[i].0));
+    //         // sanity check
+    //         assert_eq!(receipts[i].0.accepting_block_header.hash,block);
+    //         assert_eq!(receipts[i].0.tracked_tx_id,receipts[i].1);
+    //     }
 }

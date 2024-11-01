@@ -399,7 +399,7 @@ impl Consensus {
             .collect_vec()
     }
     /* this logic may be imperfect as of now */
-    fn get_tx_receipt_based_on_time(&self, tx_id: Hash, tx_timestamp: u64) -> ConsensusResult<TxReceipt> {
+    fn generate_tx_receipt_based_on_time(&self, tx_id: Hash, tx_timestamp: u64) -> ConsensusResult<TxReceipt> {
         //utility closures
         let someize_header_if_blk_acceps_tx = |blk| {
             if self
@@ -1133,7 +1133,12 @@ impl ConsensusApi for Consensus {
 
     /*For an archival node, generally speaking, this function should not be called without a known accepting_block
     or a timestamp, as it will search through the entire datadbase */
-    fn get_tx_receipt(&self, tx_id: Hash, accepting_block: Option<Hash>, tx_timestamp: Option<u64>) -> ConsensusResult<TxReceipt> {
+    fn generate_tx_receipt(
+        &self,
+        tx_id: Hash,
+        accepting_block: Option<Hash>,
+        tx_timestamp: Option<u64>,
+    ) -> ConsensusResult<TxReceipt> {
         if let Some(accepting_block) = accepting_block {
             //if a block hash is supplied, generate receipt directly
             let aaccepting_block_header = self.headers_store.get_header(accepting_block).unwrap();
@@ -1147,7 +1152,7 @@ impl ConsensusApi for Consensus {
         let pruning_point = self.pruning_point();
         let tip = self.selected_chain_store.read().get_tip().unwrap().1;
         if let Some(tx_timestamp) = tx_timestamp {
-            return self.get_tx_receipt_based_on_time(tx_id, tx_timestamp);
+            return self.generate_tx_receipt_based_on_time(tx_id, tx_timestamp);
         }
         /*  if no timestamp is given either, search the entire database
         note: this is probably very computationally wasteful for archival nodes
@@ -1169,7 +1174,7 @@ impl ConsensusApi for Consensus {
         }
         Err(ConsensusError::MissingTx(tx_id))
     }
-    fn get_proof_of_pub(
+    fn generate_proof_of_pub(
         &self,
         tx_id: Hash,
         publishing_block: Option<Hash>,
@@ -1188,11 +1193,20 @@ impl ConsensusApi for Consensus {
             Err(ConsensusError::General("get_proof_of_pub must be supplied with the publishing block "))
         }
     }
+    fn generate_pochm(&self, chain_purporter: Hash) -> ConsensusResult<Pochm> {
+        self.services
+            .tx_receipts_manager
+            .create_pochm_proof(chain_purporter)
+            .map_err(|_| ConsensusError::General("required data to create a proof of chain membership appears missing"))
+    }
 
-    fn verify_tx_receipt(&self, receipt: TxReceipt) -> bool {
+    fn verify_tx_receipt(&self, receipt: &TxReceipt) -> bool {
         self.services.tx_receipts_manager.verify_tx_receipt(receipt)
     }
-    fn verify_proof_of_pub(&self, proof_of_pub: ProofOfPublication) -> bool {
+    fn verify_proof_of_pub(&self, proof_of_pub: &ProofOfPublication) -> bool {
         self.services.tx_receipts_manager.verify_proof_of_pub(proof_of_pub)
+    }
+    fn verify_pochm(&self, chain_purporter: Hash, proof_of_pub: &Pochm) -> bool {
+        self.services.tx_receipts_manager.verify_pochm_proof(chain_purporter, proof_of_pub)
     }
 }

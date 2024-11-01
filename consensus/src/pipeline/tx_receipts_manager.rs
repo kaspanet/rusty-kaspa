@@ -119,12 +119,12 @@ impl<
         let tracked_tx_hash = hashing::tx::hash(tracked_tx, include_mass_field); //leaf value in merkle tree
         Ok(ProofOfPublication { tracked_tx_hash, pub_block_header, pochm, tx_pub_proof, headers_chain_to_selected })
     }
-    pub fn verify_tx_receipt(&self, tx_receipt: TxReceipt) -> bool {
+    pub fn verify_tx_receipt(&self, tx_receipt: &TxReceipt) -> bool {
         let acc_atmr = tx_receipt.accepting_block_header.accepted_id_merkle_root;
         verify_merkle_witness(&tx_receipt.tx_acc_proof, tx_receipt.tracked_tx_id, acc_atmr)
             && self.verify_pochm_proof(tx_receipt.accepting_block_header.hash, &tx_receipt.pochm)
     }
-    pub fn verify_proof_of_pub(&self, proof_of_pub: ProofOfPublication) -> bool {
+    pub fn verify_proof_of_pub(&self, proof_of_pub: &ProofOfPublication) -> bool {
         let valid_path = proof_of_pub
             .headers_chain_to_selected
             .iter()
@@ -221,47 +221,6 @@ impl<
         verify_merkle_witness(witness, leaf_block_hash, self.hash_to_pchmr_store.get(root_block_hash).unwrap())
     }
 
-    // pub fn create_merkle_witness_for_accepted_tx(
-    //     &self,
-    //     tracked_tx_id: Hash,
-    //     acc_block_hash: Hash,
-    // ) -> Result<MerkleWitness, ReceiptsErrors> {
-    //     let mergeset_txs_manager = self.acceptance_data_store.get(acc_block_hash)?;
-    //     let mut accepted_txs = mergeset_txs_manager
-    //         .iter()
-    //         .flat_map(|parent_acc_data| parent_acc_data.accepted_transactions.iter().map(|t| t.transaction_id))
-    //         .collect::<Vec<Hash>>();
-    //     accepted_txs.sort();
-
-    //     create_merkle_witness_from_sorted(accepted_txs.into_iter(), tracked_tx_id).map_err(|e| e.into())
-    // }
-    // pub fn verify_merkle_witness_for_accepted_tx(&self, witness: &MerkleWitness, tracked_tx_id: Hash, acc_block_hash: Hash) -> bool {
-    //     let acc_block_header = self.headers_store.get_header(acc_block_hash).unwrap();
-    //     let acc_atmr = acc_block_header.accepted_id_merkle_root;
-    //     verify_merkle_witness(witness, tracked_tx_id, acc_atmr)
-    // }
-
-    // pub fn create_merkle_witness_for_published_tx(
-    //     &self,
-    //     tracked_tx_id: Hash,
-    //     pub_block_hash: Hash,
-    // ) -> Result<MerkleWitness, ReceiptsErrors> {
-    //     let published_txs = self.block_transactions_store.get(pub_block_hash)?;
-    //     let tracked_tx = published_txs.iter().find(|tx| tx.id() == tracked_tx_id).unwrap();
-    //     let include_mass_field = self.headers_store.get_daa_score(pub_block_hash).unwrap() > self.storage_mass_activation_daa_score;
-    //     create_hash_merkle_witness(published_txs.iter(), tracked_tx, include_mass_field).map_err(|e| e.into())
-    // }
-    // pub fn verify_merkle_witness_for_published_tx(
-    //     &self,
-    //     witness: &MerkleWitness,
-    //     tracked_tx_hash: Hash,
-    //     acc_block_hash: Hash,
-    // ) -> bool {
-    //     let pub_block_header = self.headers_store.get_header(acc_block_hash).unwrap();
-    //     let pub_merkle_root = pub_block_header.hash_merkle_root;
-    //     verify_merkle_witness(witness, tracked_tx_hash, pub_merkle_root)
-    // }
-
     /* the function assumes that the path from block_hash down to its posterity is intact and has not been pruned
     (which should be the same as assuming block_hash has not been pruned)
     it will panic if not.
@@ -278,19 +237,22 @@ impl<
         nethertheless, the logic will always return a correct answer if called.*/
         let mut distance_covered_before_chain = 0; //compulsory initialization for compiler only , a chain block will have to be reached eventually
         let mut first_chain_ancestor = ZERO_HASH; //compulsory initialization for compiler only, a chain block will have to be reached eventually
-        for (i, current) in self.reachability_service.default_backward_chain_iterator(parent_of_queried_block).enumerate() {
+        for (i, current) in
+            self.reachability_service.backward_chain_iterator(parent_of_queried_block, self.genesis.hash, true).enumerate()
+        {
             let index = i + 1; //enumeration should start from 1
-            if current == pre_posterity_hash {
-                // pre posterity not included in list
-                return representative_parents_list;
-            } else if self.selected_chain_store.read().get_by_hash(current).is_ok() {
+            if self.selected_chain_store.read().get_by_hash(current).is_ok() {
                 // get out of loop and apply selected chain logic instead
                 first_chain_ancestor = current;
-                distance_covered_before_chain = i as u64;
+                distance_covered_before_chain = index as u64;
                 break;
             } else if index.is_power_of_two() {
                 //trickery to check if index is a power of two
                 representative_parents_list.push(current);
+            }
+            if current == pre_posterity_hash {
+                // notice the pre_posterity for a non chain block is not necessarily a chain block
+                return representative_parents_list;
             }
         }
         let first_chain_ancestor_index = self.selected_chain_store.read().get_by_hash(first_chain_ancestor).unwrap();
@@ -323,12 +285,19 @@ impl<
         while next_bscore > pre_posterity_bscore {
             representative_parents_partial_list.push(next_chain_block_rep_parent);
             next_power *= 2;
-            next_chain_block_rep_parent = self
+            if let Ok(unwarapped) = self
                 .selected_chain_store
                 .read()
-                .get_by_index(first_chain_ancestor_index.saturating_sub(next_power - distance_covered_before_chain))
-                .unwrap();
-            next_bscore = self.headers_store.get_blue_score(next_chain_block_rep_parent).unwrap();
+                .get_by_index(first_chain_ancestor_index.saturating_sub(next_power.saturating_sub(distance_covered_before_chain)))
+            {
+                next_chain_block_rep_parent = unwarapped;
+                next_bscore = self.headers_store.get_blue_score(next_chain_block_rep_parent).unwrap();
+            } else {
+                break;
+            }
+        }
+        if next_bscore == pre_posterity_bscore {
+            representative_parents_partial_list.push(next_chain_block_rep_parent);
         }
         representative_parents_partial_list
     }

@@ -32,12 +32,15 @@ impl Default for Pochm {
         Self::new()
     }
 }
+#[derive(Clone)]
 pub struct TxReceipt {
     pub tracked_tx_id: Hash,
     pub accepting_block_header: Arc<Header>,
     pub pochm: Pochm,
     pub tx_acc_proof: MerkleWitness,
 }
+#[derive(Clone)]
+
 pub struct ProofOfPublication {
     pub tracked_tx_hash: Hash,
     pub pub_block_header: Arc<Header>,
