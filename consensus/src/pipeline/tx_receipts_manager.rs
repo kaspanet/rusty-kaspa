@@ -132,7 +132,7 @@ impl<
                 proof_of_pub.pub_block_header.hash,
                 |curr, next| if next.direct_parents().contains(&curr) { Some(next.hash) } else { None },
             )
-            .is_none();
+            .is_some();
         if !valid_path {
             return false;
         };

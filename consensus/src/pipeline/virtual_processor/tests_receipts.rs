@@ -1,6 +1,8 @@
 use crate::{
     consensus::test_consensus::TestConsensus,
-    model::stores::{acceptance_data::AcceptanceDataStoreReader, headers::HeaderStoreReader},
+    model::stores::{
+        acceptance_data::AcceptanceDataStoreReader, block_transactions::BlockTransactionsStoreReader, headers::HeaderStoreReader,
+    },
     pipeline::virtual_processor::tests_util::TestContext,
 };
 use kaspa_consensus_core::{
@@ -10,8 +12,8 @@ use kaspa_consensus_core::{
 
 #[tokio::test]
 async fn test_chain_posterities() {
-    const PERIODS: usize = 30;
-    const FINALITY_DEPTH: usize = 10;
+    const PERIODS: usize = 10;
+    const FINALITY_DEPTH: usize = 30;
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
@@ -24,6 +26,8 @@ async fn test_chain_posterities() {
         .build();
     let mut expected_posterities = vec![];
     let mut receipts = vec![];
+    let mut pops = vec![];
+
     let mut pochms_list = vec![];
 
     let mut ctx = TestContext::new(TestConsensus::new(&config));
@@ -58,11 +62,11 @@ async fn test_chain_posterities() {
             let block = it.next().unwrap();
             let block_header = ctx.consensus.headers_store.get_header(block).unwrap();
             pochms_list.push((ctx.consensus.generate_pochm(block), block));
-            let coinbase_tx = ctx.consensus.acceptance_data_store.get(block).unwrap()[0].accepted_transactions[0].transaction_id;
-            receipts.push((
-                ctx.consensus.services.tx_receipts_manager.generate_tx_receipt(block_header, coinbase_tx).unwrap(),
-                coinbase_tx,
-            )); //add later: test if works via timestamp
+            let acc_tx = ctx.consensus.acceptance_data_store.get(block).unwrap()[0].accepted_transactions[0].transaction_id;
+            receipts
+                .push((ctx.consensus.services.tx_receipts_manager.generate_tx_receipt(block_header.clone(), acc_tx).unwrap(), acc_tx)); //add later: test if works via timestamp
+            let pub_tx = ctx.consensus.block_transactions_store.get(block).unwrap()[0].id();
+            pops.push((ctx.consensus.services.tx_receipts_manager.generate_proof_of_pub(block_header, pub_tx).unwrap(), pub_tx));
             let pre_posterity = ctx.tx_receipts_manager().get_pre_posterity_block_by_hash(block);
             let post_posterity = ctx.tx_receipts_manager().get_post_posterity_block(block);
             assert_eq!(pre_posterity, expected_posterities[i]);
@@ -79,12 +83,13 @@ async fn test_chain_posterities() {
         let past_posterity_header = ctx.consensus.headers_store.get_header(past_posterity_block).unwrap();
         pochms_list.push((ctx.consensus.generate_pochm(past_posterity_block), past_posterity_block));
 
-        let coinbase_tx =
-            ctx.consensus.acceptance_data_store.get(past_posterity_block).unwrap()[0].accepted_transactions[0].transaction_id;
+        let acc_tx = ctx.consensus.acceptance_data_store.get(past_posterity_block).unwrap()[0].accepted_transactions[0].transaction_id;
         receipts.push((
-            ctx.consensus.services.tx_receipts_manager.generate_tx_receipt(past_posterity_header, coinbase_tx).unwrap(),
-            coinbase_tx,
+            ctx.consensus.services.tx_receipts_manager.generate_tx_receipt(past_posterity_header.clone(), acc_tx).unwrap(),
+            acc_tx,
         )); //add later: test if works via timestamp
+        let pub_tx = ctx.consensus.block_transactions_store.get(past_posterity_block).unwrap()[0].id();
+        pops.push((ctx.consensus.services.tx_receipts_manager.generate_proof_of_pub(past_posterity_header, pub_tx).unwrap(), pub_tx));
         let pre_posterity = ctx.tx_receipts_manager().get_pre_posterity_block_by_hash(past_posterity_block);
         let post_posterity = ctx.tx_receipts_manager().get_post_posterity_block(past_posterity_block);
         assert_eq!(pre_posterity, expected_posterities[i]);
@@ -143,10 +148,8 @@ async fn test_chain_posterities() {
         // sanity check
         assert_eq!(rec.tracked_tx_id, tx_id);
     }
-    //     for (i,block) in ctx.consensus.reachability_service().forward_chain_iterator(genesis_hash, tip, true).skip(1).enumerate().take(receipts.len()){
-    //         assert!(ctx.consensus.verify_tx_receipt(&receipts[i].0));
-    //         // sanity check
-    //         assert_eq!(receipts[i].0.accepting_block_header.hash,block);
-    //         assert_eq!(receipts[i].0.tracked_tx_id,receipts[i].1);
-    //     }
+
+    for (proof, _) in pops {
+        assert!(ctx.consensus.verify_proof_of_pub(&proof));
+    }
 }
