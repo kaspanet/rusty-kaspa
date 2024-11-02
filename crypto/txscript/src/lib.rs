@@ -582,11 +582,19 @@ mod tests {
             let utxo_entry = UtxoEntry::new(output.value, output.script_public_key.clone(), 0, tx.is_coinbase());
 
             let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
-
-            let mut vm =
-                TxScriptEngine::from_transaction_input(&populated_tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false)
-                    .expect("Script creation failed");
-            assert_eq!(vm.execute(), test.expected_result);
+            [false, true].into_iter().for_each(|kip10_enabled| {
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &populated_tx,
+                    &input,
+                    0,
+                    &utxo_entry,
+                    &reused_values,
+                    &sig_cache,
+                    kip10_enabled,
+                )
+                .expect("Script creation failed");
+                assert_eq!(vm.execute(), test.expected_result);
+            });
         }
     }
 
@@ -937,51 +945,6 @@ mod tests {
                 test.name
             );
         }
-    }
-    #[test]
-    fn output_gt_input_test() {
-        use crate::opcodes::codes::{
-            OpEqualVerify, OpGreaterThanOrEqual, OpInputAmount, OpInputSpk, OpOutputAmount, OpOutputSpk, OpSub,
-        };
-
-        use super::*;
-        use crate::script_builder::ScriptBuilder;
-
-        let threshold: i64 = 100;
-        let sig_cache = Cache::new(10_000);
-        let reused_values = SigHashReusedValuesUnsync::new();
-        let script = ScriptBuilder::new()
-            .add_ops(&[OpInputSpk, OpOutputSpk, OpEqualVerify, OpOutputAmount])
-            .unwrap()
-            .add_i64(threshold)
-            .unwrap()
-            .add_ops(&[OpSub, OpInputAmount, OpGreaterThanOrEqual])
-            .unwrap()
-            .drain();
-        let spk = pay_to_script_hash_script(&script);
-        let input = TransactionInput {
-            previous_outpoint: TransactionOutpoint {
-                transaction_id: TransactionId::from_bytes([
-                    0xc9, 0x97, 0xa5, 0xe5, 0x6e, 0x10, 0x41, 0x02, 0xfa, 0x20, 0x9c, 0x6a, 0x85, 0x2d, 0xd9, 0x06, 0x60, 0xa2, 0x0b,
-                    0x2d, 0x9c, 0x35, 0x24, 0x23, 0xed, 0xce, 0x25, 0x85, 0x7f, 0xcd, 0x37, 0x04,
-                ]),
-                index: 0,
-            },
-            signature_script: ScriptBuilder::new().add_data(&script).unwrap().drain(),
-            sequence: 4294967295,
-            sig_op_count: 0,
-        };
-        let input_value = 1000000000;
-        let output = TransactionOutput { value: 1000000000 + threshold as u64, script_public_key: spk.clone() };
-
-        let tx = Transaction::new(1, vec![input.clone()], vec![output.clone()], 0, Default::default(), 0, vec![]);
-        let utxo_entry = UtxoEntry::new(input_value, spk, 0, tx.is_coinbase());
-
-        let populated_tx = PopulatedTransaction::new(&tx, vec![utxo_entry.clone()]);
-
-        let mut vm = TxScriptEngine::from_transaction_input(&populated_tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, true)
-            .expect("Script creation failed");
-        assert_eq!(vm.execute(), Ok(()));
     }
 }
 
