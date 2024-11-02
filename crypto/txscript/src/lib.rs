@@ -1139,6 +1139,21 @@ mod bitcoind_tests {
 
     #[test]
     fn test_bitcoind_tests() {
+        // Script test files are split into two versions to test behavior before and after KIP-10:
+        //
+        // - script_tests.json: Tests basic script functionality with KIP-10 disabled (kip10_enabled=false)
+        // - script_tests-kip10.json: Tests expanded functionality with KIP-10 enabled (kip10_enabled=true)
+        //
+        // KIP-10 introduces four new opcodes to enhance script functionality:
+        // - OpInputSpk (0xb2): Retrieves the script public key of the current input
+        // - OpInputAmount (0xb3): Retrieves the amount of the current input
+        // - OpOutputSpk (0xb4): Retrieves the script public key of the output at the current input's index
+        // - OpOutputAmount (0xb5): Retrieves the amount of the output at the current input's index
+        //
+        // These opcodes were added to support mutual transactions and auto-compounding addresses
+        // as discussed in KIP-9. When KIP-10 is disabled (pre-activation), these opcodes will return
+        // an InvalidOpcode error. When enabled, they provide access to transaction input/output data
+        // within scripts.
         for (file_name, kip10_enabled) in [("script_tests.json", false), ("script_tests-kip10.json", true)] {
             let file =
                 File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join(file_name)).expect("Could not find test file");

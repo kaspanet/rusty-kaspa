@@ -1220,7 +1220,8 @@
     "0",
     "IF 0xbd ELSE 1 ENDIF",
     "",
-    "OK"
+    "OK",
+    "opcodes above OP_OUTPUT_AMOUNT invalid if executed"
   ],
   [
     "0",
