@@ -5,7 +5,7 @@ use core::iter;
 const DEFAULT_SCRIPT_NUM_LEN: usize = 4;
 
 #[derive(PartialEq, Eq, Debug, Default)]
-pub(crate) struct SizedEncodeInt<const LEN: usize>(i64);
+pub(crate) struct SizedEncodeInt<const LEN: usize>(pub(crate) i64);
 
 pub(crate) type Stack = Vec<Vec<u8>>;
 

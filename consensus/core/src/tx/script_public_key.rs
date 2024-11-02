@@ -56,6 +56,17 @@ pub struct ScriptPublicKey {
     pub(super) script: ScriptVec, // Kept private to preserve read-only semantics
 }
 
+impl ScriptPublicKey {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let version = self.version.to_be_bytes();
+        let script = self.script();
+        let mut v = Vec::with_capacity(version.len() + script.len());
+        v.extend_from_slice(&version);
+        v.extend_from_slice(script);
+        v
+    }
+}
+
 impl std::fmt::Debug for ScriptPublicKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ScriptPublicKey").field("version", &self.version).field("script", &self.script.to_hex()).finish()
