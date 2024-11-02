@@ -928,7 +928,7 @@ opcode_list! {
                     vm.dstack.push(v.unwrap_or_default());
                     Ok(())
                 },
-                _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
+                _ => Err(TxScriptError::InvalidSource("OpOutputSpk only applies to transaction inputs".to_string()))
             }
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -940,7 +940,7 @@ opcode_list! {
                 ScriptSource::TxInput{tx, id , ..} => {
                     push_number(tx.outputs().get(id).map(|output| output.value).unwrap_or_default() as i64, vm)
                 },
-                _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
+                _ => Err(TxScriptError::InvalidSource("OpOutputAmount only applies to transaction inputs".to_string()))
             }
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
