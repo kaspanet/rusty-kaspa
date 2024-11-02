@@ -13,7 +13,7 @@ from kaspa import (
 
 
 async def main():
-    client = RpcClient(resolver=Resolver(), network='testnet', network_suffix=10)
+    client = RpcClient(resolver=Resolver(), network_id='testnet-10')
     await client.connect()
 
     private_key = PrivateKey('389840d7696e89c38856a066175e8e92697f0cf182b854c883237a50acaf1f69')

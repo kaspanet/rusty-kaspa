@@ -147,6 +147,7 @@ impl XPrv {
     }
 
     #[pyo3(name = "derive_child")]
+    #[pyo3(signature = (child_number, hardened=None))]
     pub fn derive_child_py(&self, child_number: u32, hardened: Option<bool>) -> PyResult<XPrv> {
         let child_number = ChildNumber::new(child_number, hardened.unwrap_or(false))?;
         let inner = self.inner.derive_child(child_number)?;
@@ -154,7 +155,7 @@ impl XPrv {
     }
 
     #[pyo3(name = "derive_path")]
-    pub fn derive_path_py(&self, path: Bound<PyAny>) -> PyResult<XPrv> {
+    pub fn derive_path_py(&self, path: &Bound<PyAny>) -> PyResult<XPrv> {
         let path = if let Ok(path_str) = path.extract::<String>() {
             Ok(DerivationPath::new(path_str.as_str())?)
         } else if let Ok(path_obj) = path.extract::<DerivationPath>() {

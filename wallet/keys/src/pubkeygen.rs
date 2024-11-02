@@ -227,6 +227,7 @@ impl PublicKeyGenerator {
 impl PublicKeyGenerator {
     #[staticmethod]
     #[pyo3(name = "from_xpub")]
+    #[pyo3(signature = (kpub, cosigner_index=None))]
     fn from_xpub_py(kpub: String, cosigner_index: Option<u32>) -> PyResult<PublicKeyGenerator> {
         let kpub = XPub::try_new(kpub.as_str())?;
         let xpub = kpub.inner();
@@ -236,6 +237,7 @@ impl PublicKeyGenerator {
 
     #[staticmethod]
     #[pyo3(name = "from_master_xprv")]
+    #[pyo3(signature = (xprv, is_multisig, account_index, cosigner_index=None))]
     fn from_master_xprv_py(
         xprv: String,
         is_multisig: bool,

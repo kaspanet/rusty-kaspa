@@ -19,8 +19,8 @@ use wasm_bindgen::prelude::*;
 /// @see {@link Mnemonic}
 ///
 /// @category Wallet SDK
-#[derive(Copy, Clone, Debug, Default)]
-#[cfg_attr(feature = "py-sdk", pyclass)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "py-sdk", pyclass(eq, eq_int))]
 #[wasm_bindgen]
 pub enum Language {
     /// English is presently the only supported language

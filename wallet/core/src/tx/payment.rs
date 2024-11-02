@@ -89,9 +89,9 @@ impl TryCastFromJs for PaymentOutput {
 }
 
 #[cfg(feature = "py-sdk")]
-impl TryFrom<&PyDict> for PaymentOutput {
+impl TryFrom<&Bound<'_, PyDict>> for PaymentOutput {
     type Error = PyErr;
-    fn try_from(value: &PyDict) -> PyResult<Self> {
+    fn try_from(value: &Bound<PyDict>) -> PyResult<Self> {
         let address_value = value.get_item("address")?.ok_or_else(|| PyException::new_err("Key `address` not present"))?;
 
         let address = if let Ok(address) = address_value.extract::<Address>() {
@@ -210,9 +210,9 @@ impl TryCastFromJs for PaymentOutputs {
 }
 
 #[cfg(feature = "py-sdk")]
-impl TryFrom<Vec<&PyDict>> for PaymentOutputs {
+impl TryFrom<Vec<&Bound<'_, PyDict>>> for PaymentOutputs {
     type Error = PyErr;
-    fn try_from(value: Vec<&PyDict>) -> PyResult<Self> {
+    fn try_from(value: Vec<&Bound<PyDict>>) -> PyResult<Self> {
         let outputs: Vec<PaymentOutput> = value.iter().map(|utxo| PaymentOutput::try_from(*utxo)).collect::<Result<Vec<_>, _>>()?;
         Ok(PaymentOutputs { outputs })
     }

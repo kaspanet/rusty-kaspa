@@ -72,7 +72,7 @@ cfg_if! {
         pub use pyo3::{
             exceptions::PyException,
             prelude::*,
-            types::PyDict,
+            types::{PyDict, PyList},
         };
     }
 }

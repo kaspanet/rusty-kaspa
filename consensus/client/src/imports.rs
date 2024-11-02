@@ -15,7 +15,7 @@ cfg_if::cfg_if! {
         pub use pyo3::{
             exceptions::PyException,
             prelude::*,
-            types::{IntoPyDict, PyDict},
+            types::PyDict,
         };
         pub use serde_pyobject;
         pub use std::str::FromStr;

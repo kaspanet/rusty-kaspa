@@ -19,6 +19,7 @@ impl Resolver {
 #[pymethods]
 impl Resolver {
     #[new]
+    #[pyo3(signature = (urls=None, tls=None))]
     pub fn ctor(urls: Option<Vec<String>>, tls: Option<bool>) -> PyResult<Resolver> {
         let tls = tls.unwrap_or(false);
         if let Some(urls) = urls {

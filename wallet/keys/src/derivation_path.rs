@@ -77,6 +77,7 @@ impl DerivationPath {
     }
 
     #[pyo3(name = "push")]
+    #[pyo3(signature = (child_number, hardened=None))]
     pub fn push_py(&mut self, child_number: u32, hardened: Option<bool>) -> Result<()> {
         let child = ChildNumber::new(child_number, hardened.unwrap_or(false))?;
         self.inner.push(child);

@@ -41,7 +41,7 @@ impl ScriptBuilder {
         Ok(builder)
     }
 
-    pub fn add_op(&self, op: Bound<PyAny>) -> PyResult<ScriptBuilder> {
+    pub fn add_op(&self, op: &Bound<PyAny>) -> PyResult<ScriptBuilder> {
         let op = extract_ops(op)?;
         let mut inner = self.inner();
         inner.add_op(op[0]).map_err(|err| pyo3::exceptions::PyException::new_err(format!("{}", err)))?;
@@ -49,7 +49,7 @@ impl ScriptBuilder {
         Ok(self.clone())
     }
 
-    pub fn add_ops(&self, opcodes: Bound<PyAny>) -> PyResult<ScriptBuilder> {
+    pub fn add_ops(&self, opcodes: &Bound<PyAny>) -> PyResult<ScriptBuilder> {
         let ops = extract_ops(opcodes)?;
         self.inner().add_ops(&ops.as_slice()).map_err(|err| pyo3::exceptions::PyException::new_err(format!("{}", err)))?;
 
@@ -134,7 +134,7 @@ impl ScriptBuilder {
 }
 
 // PY-TODO change to PyOpcode struct and handle similar to PyBinary
-fn extract_ops(input: Bound<PyAny>) -> PyResult<Vec<u8>> {
+fn extract_ops(input: &Bound<PyAny>) -> PyResult<Vec<u8>> {
     if let Ok(opcode) = extract_op(&input) {
         // Single u8 or Opcodes variant
         Ok(vec![opcode])

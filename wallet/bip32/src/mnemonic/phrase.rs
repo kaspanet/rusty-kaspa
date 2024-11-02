@@ -114,12 +114,14 @@ impl Mnemonic {
 #[pymethods]
 impl Mnemonic {
     #[new]
+    #[pyo3(signature = (phrase, language=None))]
     pub fn constructor_py(phrase: String, language: Option<Language>) -> Result<Mnemonic> {
         Mnemonic::new(phrase, language.unwrap_or(Language::English))
     }
 
     #[staticmethod]
     #[pyo3(name = "validate")]
+    #[pyo3(signature = (phrase, language=None))]
     pub fn validate_py(phrase: &str, language: Option<Language>) -> bool {
         Mnemonic::new(phrase, language.unwrap_or(Language::English)).is_ok()
     }
@@ -143,6 +145,7 @@ impl Mnemonic {
 
     #[staticmethod]
     #[pyo3(name = "random")]
+    #[pyo3(signature = (word_count=None))]
     pub fn create_random_py(word_count: Option<u32>) -> Result<Mnemonic> {
         let word_count = word_count.unwrap_or(24) as usize;
         Mnemonic::random(word_count.try_into()?, Default::default())
@@ -161,6 +164,7 @@ impl Mnemonic {
     }
 
     #[pyo3(name = "to_seed")]
+    #[pyo3(signature = (password=None))]
     pub fn create_seed_py(&self, password: Option<String>) -> String {
         let password = password.unwrap_or_default();
         self.to_seed(password.as_str()).as_bytes().to_vec().to_hex()

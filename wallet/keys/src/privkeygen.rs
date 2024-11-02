@@ -61,6 +61,7 @@ impl PrivateKeyGenerator {
 #[pymethods]
 impl PrivateKeyGenerator {
     #[new]
+    #[pyo3(signature = (xprv, is_multisig, account_index, cosigner_index=None))]
     pub fn new_py(xprv: String, is_multisig: bool, account_index: u64, cosigner_index: Option<u32>) -> Result<PrivateKeyGenerator> {
         let xprv = XPrv::from_xprv_str(xprv)?;
         let xprv = xprv.inner();

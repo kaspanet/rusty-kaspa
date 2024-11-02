@@ -1,30 +1,26 @@
 use crate::imports::*;
-use crate::python::tx::generator::{Generator, GeneratorSummary, PendingTransaction};
-use crate::tx::payment::PaymentOutput;
+use crate::python::tx::generator::{Generator, GeneratorSummary, PendingTransaction, PyOutputs, PyUtxoEntries};
 use kaspa_consensus_client::*;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 
 #[pyfunction]
 #[pyo3(name = "create_transaction")]
+#[pyo3(signature = (utxo_entry_source, outputs, priority_fee, payload=None, sig_op_count=None))]
 pub fn create_transaction_py(
-    utxo_entry_source: Vec<&PyDict>,
-    outputs: Vec<&PyDict>,
+    utxo_entry_source: PyUtxoEntries,
+    outputs: PyOutputs,
     priority_fee: u64,
     payload: Option<PyBinary>,
     sig_op_count: Option<u8>,
 ) -> PyResult<Transaction> {
-    let utxo_entries: Vec<UtxoEntryReference> =
-        utxo_entry_source.iter().map(|utxo| UtxoEntryReference::try_from(*utxo)).collect::<Result<Vec<_>, _>>()?;
-
-    let outputs: Vec<PaymentOutput> = outputs.iter().map(|utxo| PaymentOutput::try_from(*utxo)).collect::<Result<Vec<_>, _>>()?;
-
     let payload: Vec<u8> = payload.map(Into::into).unwrap_or_default();
     let sig_op_count = sig_op_count.unwrap_or(1);
 
     let mut total_input_amount = 0;
     let mut entries = vec![];
 
-    let inputs = utxo_entries
+    let inputs = utxo_entry_source
+        .entries
         .into_iter()
         .enumerate()
         .map(|(sequence, reference)| {
@@ -39,7 +35,7 @@ pub fn create_transaction_py(
         return Err(PyException::new_err(format!("priority fee({priority_fee}) > amount({total_input_amount})")));
     }
 
-    let outputs = outputs.into_iter().map(|output| output.into()).collect::<Vec<TransactionOutput>>();
+    let outputs = outputs.outputs.into_iter().map(|output| output.into()).collect::<Vec<TransactionOutput>>();
     let transaction = Transaction::new(None, 0, inputs, outputs, 0, SUBNETWORK_ID_NATIVE, 0, payload, 0)?;
 
     Ok(transaction)
@@ -47,15 +43,16 @@ pub fn create_transaction_py(
 
 #[pyfunction]
 #[pyo3(name = "create_transactions")]
+#[pyo3(signature = (network_id, entries, outputs, change_address, payload=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
 pub fn create_transactions_py<'a>(
     py: Python<'a>,
     network_id: String,
-    entries: Vec<&PyDict>,
-    outputs: Vec<&PyDict>,
+    entries: PyUtxoEntries,
+    outputs: PyOutputs,
     change_address: Address,
     payload: Option<PyBinary>,
     priority_fee: Option<u64>,
-    priority_entries: Option<Vec<&PyDict>>,
+    priority_entries: Option<PyUtxoEntries>,
     sig_op_count: Option<u8>,
     minimum_signatures: Option<u16>,
 ) -> PyResult<Bound<'a, PyDict>> {
@@ -82,14 +79,15 @@ pub fn create_transactions_py<'a>(
 
 #[pyfunction]
 #[pyo3(name = "estimate_transactions")]
+#[pyo3(signature = (network_id, entries, outputs, change_address, payload=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
 pub fn estimate_transactions_py<'a>(
     network_id: String,
-    entries: Vec<&PyDict>,
-    outputs: Vec<&PyDict>,
+    entries: PyUtxoEntries,
+    outputs: PyOutputs,
     change_address: Address,
     payload: Option<PyBinary>,
     priority_fee: Option<u64>,
-    priority_entries: Option<Vec<&PyDict>>,
+    priority_entries: Option<PyUtxoEntries>,
     sig_op_count: Option<u8>,
     minimum_signatures: Option<u16>,
 ) -> PyResult<GeneratorSummary> {

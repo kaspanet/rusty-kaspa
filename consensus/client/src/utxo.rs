@@ -559,19 +559,19 @@ impl TryCastFromJs for UtxoEntryReference {
 }
 
 #[cfg(feature = "py-sdk")]
-impl TryFrom<&PyDict> for UtxoEntryReference {
+impl TryFrom<&Bound<'_, PyDict>> for UtxoEntryReference {
     type Error = PyErr;
-    fn try_from(dict: &PyDict) -> PyResult<Self> {
+    fn try_from(dict: &Bound<PyDict>) -> PyResult<Self> {
         let address = Address::try_from(
             dict.get_item("address")?.ok_or_else(|| PyException::new_err("Key `address` not present"))?.extract::<String>()?,
         )?;
 
-        let outpoint: &PyDict =
-            dict.get_item("outpoint")?.ok_or_else(|| PyException::new_err("Key `outpoint` not present"))?.downcast()?;
-        let outpoint = TransactionOutpoint::try_from(outpoint)?;
+        let outpoint = TransactionOutpoint::try_from(
+            dict.get_item("outpoint")?.ok_or_else(|| PyException::new_err("Key `outpoint` not present"))?.downcast::<PyDict>()?,
+        )?;
 
-        let utxo_entry: &PyDict =
-            dict.get_item("utxoEntry")?.ok_or_else(|| PyException::new_err("Key `utxoEntry` not present"))?.extract()?;
+        let utxo_entry_value = dict.get_item("utxoEntry")?.ok_or_else(|| PyException::new_err("Key `utxoEntry` not present"))?;
+        let utxo_entry = utxo_entry_value.downcast::<PyDict>()?;
 
         let amount: u64 = utxo_entry.get_item("amount")?.ok_or_else(|| PyException::new_err("Key `amount` not present"))?.extract()?;
 

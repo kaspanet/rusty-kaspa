@@ -76,6 +76,7 @@ impl PendingTransaction {
         self.inner.utxo_entries().values().map(|utxo_entry| UtxoEntryReference::from(utxo_entry.clone())).collect()
     }
 
+    #[pyo3(signature = (input_index, private_key, sighash_type=None))]
     fn create_input_signature(&self, input_index: u8, private_key: &PrivateKey, sighash_type: Option<&SighashType>) -> Result<String> {
         let signature = self.inner.create_input_signature(
             input_index.into(),
@@ -92,6 +93,7 @@ impl PendingTransaction {
         Ok(())
     }
 
+    #[pyo3(signature = (input_index, private_key, sighash_type=None))]
     fn sign_input(&self, input_index: u8, private_key: &PrivateKey, sighash_type: Option<&SighashType>) -> Result<()> {
         self.inner.sign_input(
             input_index.into(),
@@ -102,6 +104,7 @@ impl PendingTransaction {
         Ok(())
     }
 
+    #[pyo3(signature = (private_keys, check_fully_signed=None))]
     fn sign(&self, private_keys: Vec<PrivateKey>, check_fully_signed: Option<bool>) -> Result<()> {
         let mut keys = private_keys.iter().map(|key| key.secret_bytes()).collect::<Vec<_>>();
         self.inner.try_sign_with_keys(&keys, check_fully_signed)?;

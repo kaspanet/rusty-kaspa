@@ -1,7 +1,59 @@
 use crate::imports::*;
 use crate::python::tx::generator::pending::PendingTransaction;
 use crate::python::tx::generator::summary::GeneratorSummary;
-use crate::tx::{generator as native, Fees, PaymentDestination, PaymentOutputs};
+use crate::tx::{generator as native, Fees, PaymentDestination, PaymentOutput, PaymentOutputs};
+
+pub struct PyUtxoEntries {
+    pub entries: Vec<UtxoEntryReference>,
+}
+
+impl FromPyObject<'_> for PyUtxoEntries {
+    fn extract_bound(ob: &Bound<'_, PyAny>) -> PyResult<Self> {
+        // Must be list
+        let list = ob.downcast::<PyList>()?;
+
+        let entries = list
+            .iter()
+            .map(|item| {
+                if let Ok(entry) = item.extract::<UtxoEntryReference>() {
+                    Ok(entry)
+                } else if let Ok(entry) = item.downcast::<PyDict>() {
+                    UtxoEntryReference::try_from(entry)
+                } else {
+                    Err(PyException::new_err("All entries must be UtxoEntryReference instance or compatible dict"))
+                }
+            })
+            .collect::<PyResult<Vec<UtxoEntryReference>>>()?;
+
+        Ok(PyUtxoEntries { entries })
+    }
+}
+
+pub struct PyOutputs {
+    pub outputs: Vec<PaymentOutput>,
+}
+
+impl FromPyObject<'_> for PyOutputs {
+    fn extract_bound(ob: &Bound<'_, PyAny>) -> PyResult<Self> {
+        // Must be list
+        let list = ob.downcast::<PyList>()?;
+
+        let outputs = list
+            .iter()
+            .map(|item| {
+                if let Ok(output) = item.extract::<PaymentOutput>() {
+                    Ok(output)
+                } else if let Ok(output) = item.downcast::<PyDict>() {
+                    PaymentOutput::try_from(output)
+                } else {
+                    Err(PyException::new_err("All outputs must be PaymentOutput instance or compatible dict"))
+                }
+            })
+            .collect::<PyResult<Vec<PaymentOutput>>>()?;
+
+        Ok(PyOutputs { outputs })
+    }
+}
 
 #[pyclass]
 pub struct Generator {
@@ -11,23 +63,24 @@ pub struct Generator {
 #[pymethods]
 impl Generator {
     #[new]
+    #[pyo3(signature = (network_id, entries, outputs, change_address, payload=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
     pub fn ctor(
-        network_id: String, // TODO this is wrong
-        entries: Vec<&PyDict>,
-        outputs: Vec<&PyDict>,
+        network_id: String,
+        entries: PyUtxoEntries,
+        outputs: PyOutputs,
         change_address: Address,
         payload: Option<PyBinary>,
         priority_fee: Option<u64>,
-        priority_entries: Option<Vec<&PyDict>>,
+        priority_entries: Option<PyUtxoEntries>,
         sig_op_count: Option<u8>,
         minimum_signatures: Option<u16>,
     ) -> PyResult<Generator> {
         let settings = GeneratorSettings::new(
-            outputs,
+            outputs.outputs,
             change_address,
             priority_fee,
-            entries,
-            priority_entries,
+            entries.entries,
+            priority_entries.map(|p| p.entries),
             sig_op_count,
             minimum_signatures,
             payload.map(Into::into),
@@ -124,11 +177,11 @@ struct GeneratorSettings {
 
 impl GeneratorSettings {
     pub fn new(
-        outputs: Vec<&PyDict>,
+        outputs: Vec<PaymentOutput>,
         change_address: Address,
         priority_fee: Option<u64>,
-        entries: Vec<&PyDict>,
-        priority_entries: Option<Vec<&PyDict>>,
+        entries: Vec<UtxoEntryReference>,
+        priority_entries: Option<Vec<UtxoEntryReference>>,
         sig_op_count: Option<u8>,
         minimum_signatures: Option<u16>,
         payload: Option<Vec<u8>>,
@@ -139,7 +192,7 @@ impl GeneratorSettings {
         // PY-TODO
         // let final_transaction_destination: PaymentDestination =
         //     if outputs.is_empty() { PaymentDestination::Change } else { PaymentOutputs::try_from(outputs).unwrap().into() };
-        let final_transaction_destination: PaymentDestination = PaymentOutputs::try_from(outputs).unwrap().into();
+        let final_transaction_destination: PaymentDestination = PaymentOutputs { outputs }.into();
 
         let final_priority_fee = match priority_fee {
             Some(fee) => fee.try_into().unwrap(),
@@ -148,13 +201,13 @@ impl GeneratorSettings {
 
         // PY-TODO support GeneratorSource::UtxoContext and clean up below
         let generator_source =
-            GeneratorSource::UtxoEntries(entries.iter().map(|entry| UtxoEntryReference::try_from(*entry).unwrap()).collect());
+            GeneratorSource::UtxoEntries(entries.iter().map(|entry| UtxoEntryReference::try_from(entry.clone()).unwrap()).collect());
 
-        let priority_utxo_entries = if let Some(entries) = priority_entries {
-            Some(entries.iter().map(|entry| UtxoEntryReference::try_from(*entry).unwrap()).collect())
-        } else {
-            None
-        };
+        // let priority_utxo_entries = if let Some(entries) = priority_entries {
+        //     Some(entries.iter().map(|entry| UtxoEntryReference::try_from(entry.clone()).unwrap()).collect())
+        // } else {
+        //     None
+        // };
 
         let sig_op_count = sig_op_count.unwrap_or(1);
 
@@ -163,7 +216,7 @@ impl GeneratorSettings {
         GeneratorSettings {
             network_id: Some(network_id),
             source: generator_source,
-            priority_utxo_entries,
+            priority_utxo_entries: priority_entries,
             multiplexer: None,
             final_transaction_destination,
             change_address: Some(change_address),

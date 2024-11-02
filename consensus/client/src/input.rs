@@ -174,6 +174,7 @@ impl TransactionInput {
 #[pymethods]
 impl TransactionInput {
     #[new]
+    #[pyo3(signature = (previous_outpoint, signature_script, sequence, sig_op_count, utxo=None))]
     pub fn constructor_py(
         previous_outpoint: TransactionOutpoint,
         signature_script: PyBinary,

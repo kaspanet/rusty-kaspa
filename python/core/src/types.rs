@@ -7,7 +7,7 @@ pub struct PyBinary {
 }
 
 impl<'a> FromPyObject<'a> for PyBinary {
-    fn extract(value: &'a PyAny) -> PyResult<Self> {
+    fn extract_bound(value: &Bound<PyAny>) -> PyResult<Self> {
         if let Ok(str) = value.extract::<String>() {
             // Python `str` (of valid hex)
             let mut data = vec![0u8; str.len() / 2];
@@ -28,9 +28,9 @@ impl<'a> FromPyObject<'a> for PyBinary {
     }
 }
 
-impl TryFrom<Bound<'_, PyAny>> for PyBinary {
+impl TryFrom<&Bound<'_, PyAny>> for PyBinary {
     type Error = PyErr;
-    fn try_from(value: Bound<PyAny>) -> Result<Self, Self::Error> {
+    fn try_from(value: &Bound<PyAny>) -> Result<Self, Self::Error> {
         if let Ok(str) = value.extract::<String>() {
             // Python `str` (of valid hex)
             let mut data = vec![0u8; str.len() / 2];

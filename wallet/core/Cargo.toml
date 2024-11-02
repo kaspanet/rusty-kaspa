@@ -33,7 +33,7 @@ py-sdk = [
     "kaspa-wallet-keys/py-sdk",
     "kaspa-wrpc-python/py-sdk",
     "pyo3",
-    "pyo3-asyncio-0-21",
+    "pyo3-async-runtimes",
     "serde-pyobject",
 ]
 # default = []
@@ -92,7 +92,7 @@ md-5.workspace = true
 pad.workspace = true
 pbkdf2.workspace = true
 pyo3 = { workspace = true, optional = true }
-pyo3-asyncio-0-21 = { workspace = true, optional = true }
+pyo3-async-runtimes = { workspace = true, optional = true }
 rand.workspace = true
 regex.workspace = true
 ripemd.workspace = true

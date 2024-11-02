@@ -53,13 +53,13 @@ impl FromStr for NotificationEvent {
 
 #[derive(Clone)]
 struct PyCallback {
-    callback: PyObject,
-    args: Option<Py<PyTuple>>,
-    kwargs: Option<Py<PyDict>>,
+    callback: Arc<PyObject>,
+    args: Option<Arc<Py<PyTuple>>>,
+    kwargs: Option<Arc<Py<PyDict>>>,
 }
 
 impl PyCallback {
-    fn append_to_args(&self, py: Python, event: Bound<PyDict>) -> PyResult<Py<PyTuple>> {
+    fn add_event_to_args(&self, py: Python, event: Bound<PyDict>) -> PyResult<Py<PyTuple>> {
         match &self.args {
             Some(existing_args) => {
                 let tuple_ref = existing_args.bind(py);
@@ -74,7 +74,7 @@ impl PyCallback {
     }
 
     fn execute(&self, py: Python, event: Bound<PyDict>) -> PyResult<PyObject> {
-        let args = self.append_to_args(py, event)?;
+        let args = self.add_event_to_args(py, event)?;
         let kwargs = self.kwargs.as_ref().map(|kw| kw.bind(py));
 
         let result = self
@@ -153,6 +153,7 @@ impl RpcClient {
 #[pymethods]
 impl RpcClient {
     #[new]
+    #[pyo3(signature = (resolver=None, url=None, encoding=None, network_id=None))]
     fn ctor(
         resolver: Option<Resolver>,
         url: Option<String>,
@@ -202,6 +203,7 @@ impl RpcClient {
         self.inner.client.node_descriptor().map(|node| node.uid.clone())
     }
 
+    #[pyo3(signature = (block_async_connect=None, strategy=None, url=None, timeout_duration=None, retry_interval=None))]
     pub fn connect(
         &self,
         py: Python,
@@ -272,12 +274,13 @@ impl RpcClient {
             None => PyDict::new_bound(py).into(),
         };
 
-        let py_callback = PyCallback { callback, args: Some(args), kwargs: Some(kwargs) };
+        let py_callback = PyCallback { callback: Arc::new(callback), args: Some(Arc::new(args)), kwargs: Some(Arc::new(kwargs)) };
 
         self.inner.callbacks.lock().unwrap().entry(event).or_default().push(py_callback);
         Ok(())
     }
 
+    #[pyo3(signature = (event, callback=None))]
     fn remove_event_listener(&self, py: Python, event: String, callback: Option<PyObject>) -> PyResult<()> {
         let event = NotificationEvent::from_str(event.as_str()).unwrap();
         let mut callbacks = self.inner.callbacks.lock().unwrap();
@@ -356,7 +359,7 @@ impl RpcClient {
             self.inner.client.rpc_client().ctl_multiplexer().as_ref().expect("Python RpcClient ctl_multiplexer is None").channel();
         let this = self.clone();
 
-        let _ = pyo3_asyncio_0_21::tokio::future_into_py(py, async move {
+        let _ = pyo3_async_runtimes::tokio::future_into_py(py, async move {
             loop {
                 select_biased! {
                     msg = ctl_multiplexer_channel.recv().fuse() => {

@@ -5,8 +5,8 @@ pub use wasm_bindgen::prelude::*;
 /// Kaspa Transaction Script Opcodes
 /// @see {@link ScriptBuilder}
 /// @category Consensus
-#[derive(Clone)]
-#[cfg_attr(feature = "py-sdk", pyclass)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(feature = "py-sdk", pyclass(eq, eq_int))]
 #[wasm_bindgen]
 pub enum Opcodes {
     OpFalse = 0x00,
