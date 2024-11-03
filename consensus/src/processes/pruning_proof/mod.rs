@@ -241,10 +241,7 @@ impl PruningProofManager {
                 continue;
             }
 
-            let state = kaspa_pow::State::new(header);
-            let (_, pow) = state.check_pow(header.nonce);
-            let signed_block_level = self.max_block_level as i64 - pow.bits() as i64;
-            let block_level = max(signed_block_level, 0) as BlockLevel;
+            let block_level = calc_block_level(header, self.max_block_level);
             self.headers_store.insert(header.hash, header.clone(), block_level).unwrap();
         }
 
@@ -372,10 +369,7 @@ impl PruningProofManager {
         let mut up_heap = BinaryHeap::with_capacity(capacity_estimate);
         for header in proof.iter().flatten().cloned() {
             if let Vacant(e) = dag.entry(header.hash) {
-                let state = kaspa_pow::State::new(&header);
-                let (_, pow) = state.check_pow(header.nonce); // TODO: Check if pow passes
-                let signed_block_level = self.max_block_level as i64 - pow.bits() as i64;
-                let block_level = max(signed_block_level, 0) as BlockLevel;
+                let block_level = calc_block_level(&header, self.max_block_level);
                 self.headers_store.insert(header.hash, header.clone(), block_level).unwrap();
 
                 let mut parents = BlockHashSet::with_capacity(header.direct_parents().len() * 2);
