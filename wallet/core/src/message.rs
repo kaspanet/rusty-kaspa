@@ -26,6 +26,17 @@ pub fn sign_message(msg: &PersonalMessage, privkey: &[u8; 32]) -> Result<Vec<u8>
     Ok(sig.to_vec())
 }
 
+/// Sign a message with the given private key without random
+pub fn sign_message_without_rand(msg: &PersonalMessage, privkey: &[u8; 32]) -> Result<Vec<u8>, Error> {
+    let hash = calc_personal_message_hash(msg);
+
+    let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice())?;
+    let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, privkey)?;
+    let sig: [u8; 64] = *secp256k1::SECP256K1.sign_schnorr_no_aux_rand(&msg, &schnorr_key).as_ref();
+
+    Ok(sig.to_vec())
+}
+
 /// Verifies signed message.
 ///
 /// Produces `Ok(())` if the signature matches the given message and [`secp256k1::Error`]
@@ -75,6 +86,21 @@ mod tests {
         .unwrap();
 
         verify_message(&pm, &sign_message(&pm, &privkey).expect("sign_message failed"), &pubkey).expect("verify_message failed");
+        verify_message(&pm, &sign_message_without_rand(&pm, &privkey).expect("sign_message failed"), &pubkey)
+            .expect("verify_message failed");
+    }
+
+    #[test]
+    fn test_basic_sign_without_rand_twice_should_get_same_signature() {
+        let pm = PersonalMessage("Hello Kaspa!");
+        let privkey: [u8; 32] = [
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03,
+        ];
+
+        let signature = sign_message_without_rand(&pm, &privkey).expect("sign_message failed");
+        let signature_twice = sign_message_without_rand(&pm, &privkey).expect("sign_message failed");
+        assert_eq!(signature, signature_twice);
     }
 
     #[test]
@@ -91,6 +117,8 @@ mod tests {
         .unwrap();
 
         verify_message(&pm, &sign_message(&pm, &privkey).expect("sign_message failed"), &pubkey).expect("verify_message failed");
+        verify_message(&pm, &sign_message_without_rand(&pm, &privkey).expect("sign_message failed"), &pubkey)
+            .expect("verify_message failed");
     }
 
     #[test]
@@ -111,6 +139,8 @@ Ut omnis magnam et accusamus earum rem impedit provident eum commodi repellat qu
         .unwrap();
 
         verify_message(&pm, &sign_message(&pm, &privkey).expect("sign_message failed"), &pubkey).expect("verify_message failed");
+        verify_message(&pm, &sign_message_without_rand(&pm, &privkey).expect("sign_message failed"), &pubkey)
+            .expect("verify_message failed");
     }
 
     #[test]
