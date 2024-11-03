@@ -203,12 +203,6 @@ impl GeneratorSettings {
         let generator_source =
             GeneratorSource::UtxoEntries(entries.iter().map(|entry| UtxoEntryReference::try_from(entry.clone()).unwrap()).collect());
 
-        // let priority_utxo_entries = if let Some(entries) = priority_entries {
-        //     Some(entries.iter().map(|entry| UtxoEntryReference::try_from(entry.clone()).unwrap()).collect())
-        // } else {
-        //     None
-        // };
-
         let sig_op_count = sig_op_count.unwrap_or(1);
 
         let minimum_signatures = minimum_signatures.unwrap_or(1);
