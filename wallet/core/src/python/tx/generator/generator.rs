@@ -65,7 +65,7 @@ impl Generator {
     #[new]
     #[pyo3(signature = (network_id, entries, outputs, change_address, payload=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
     pub fn ctor(
-        network_id: String,
+        network_id: &str,
         entries: PyUtxoEntries,
         outputs: PyOutputs,
         change_address: Address,
@@ -119,7 +119,7 @@ impl Generator {
         Ok(Self { inner: Arc::new(generator) })
     }
 
-    pub fn estimate(&self) -> Result<GeneratorSummary> {
+    pub fn estimate(&self) -> PyResult<GeneratorSummary> {
         self.inner.iter().collect::<Result<Vec<_>>>()?;
         Ok(self.inner.summary().into())
     }
@@ -185,9 +185,9 @@ impl GeneratorSettings {
         sig_op_count: Option<u8>,
         minimum_signatures: Option<u16>,
         payload: Option<Vec<u8>>,
-        network_id: String,
+        network_id: &str,
     ) -> GeneratorSettings {
-        let network_id = NetworkId::from_str(&network_id).unwrap();
+        let network_id = NetworkId::from_str(network_id).unwrap();
 
         // PY-TODO
         // let final_transaction_destination: PaymentDestination =

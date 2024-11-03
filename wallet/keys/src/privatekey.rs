@@ -98,8 +98,9 @@ impl PrivateKey {
 #[pymethods]
 impl PrivateKey {
     #[new]
-    pub fn try_new_py(key: &str) -> Result<PrivateKey> {
-        Ok(Self { inner: secp256k1::SecretKey::from_str(key)? })
+    pub fn try_new_py(key: &str) -> PyResult<PrivateKey> {
+        let secret_key = secp256k1::SecretKey::from_str(key).map_err(|err| PyException::new_err(format!("{}", err)))?;
+        Ok(Self { inner: secret_key })
     }
 
     #[pyo3(name = "to_string")]

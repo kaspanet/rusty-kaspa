@@ -276,8 +276,8 @@ impl Address {
 #[pymethods]
 impl Address {
     #[new]
-    pub fn constructor_py(address: &str) -> Address {
-        address.try_into().unwrap_or_else(|err| panic!("Address::constructor() - address error `{}`: {err}", address))
+    pub fn constructor_py(address: &str) -> PyResult<Address> {
+        Ok(address.try_into()?)
     }
 
     #[staticmethod]
@@ -305,8 +305,9 @@ impl Address {
 
     #[setter]
     #[pyo3(name = "prefix")]
-    pub fn set_prefix_from_str_py(&mut self, prefix: &str) {
-        self.prefix = Prefix::try_from(prefix).unwrap_or_else(|err| panic!("Address::prefix() - invalid prefix `{prefix}`: {err}"));
+    pub fn set_prefix_from_str_py(&mut self, prefix: &str) -> PyResult<()> {
+        self.prefix = Prefix::try_from(prefix)?;
+        Ok(())
     }
 
     #[pyo3(name = "payload")]

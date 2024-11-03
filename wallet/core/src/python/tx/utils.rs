@@ -46,7 +46,7 @@ pub fn create_transaction_py(
 #[pyo3(signature = (network_id, entries, outputs, change_address, payload=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
 pub fn create_transactions_py<'a>(
     py: Python<'a>,
-    network_id: String,
+    network_id: &str,
     entries: PyUtxoEntries,
     outputs: PyOutputs,
     change_address: Address,
@@ -81,7 +81,7 @@ pub fn create_transactions_py<'a>(
 #[pyo3(name = "estimate_transactions")]
 #[pyo3(signature = (network_id, entries, outputs, change_address, payload=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
 pub fn estimate_transactions_py<'a>(
-    network_id: String,
+    network_id: &str,
     entries: PyUtxoEntries,
     outputs: PyOutputs,
     change_address: Address,

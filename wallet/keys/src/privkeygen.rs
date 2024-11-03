@@ -62,7 +62,7 @@ impl PrivateKeyGenerator {
 impl PrivateKeyGenerator {
     #[new]
     #[pyo3(signature = (xprv, is_multisig, account_index, cosigner_index=None))]
-    pub fn new_py(xprv: String, is_multisig: bool, account_index: u64, cosigner_index: Option<u32>) -> Result<PrivateKeyGenerator> {
+    pub fn new_py(xprv: String, is_multisig: bool, account_index: u64, cosigner_index: Option<u32>) -> PyResult<PrivateKeyGenerator> {
         let xprv = XPrv::from_xprv_str(xprv)?;
         let xprv = xprv.inner();
         let receive = xprv.clone().derive_path(&WalletDerivationManager::build_derivate_path(

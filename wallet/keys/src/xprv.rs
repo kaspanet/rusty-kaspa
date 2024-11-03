@@ -133,8 +133,8 @@ impl XPrv {
 #[pymethods]
 impl XPrv {
     #[new]
-    fn try_new_py(seed: String) -> PyResult<XPrv> {
-        let seed_bytes = Vec::<u8>::from_hex(&seed).map_err(|e| PyErr::new::<PyException, _>(format!("{}", e)))?;
+    fn try_new_py(seed: &str) -> PyResult<XPrv> {
+        let seed_bytes = Vec::<u8>::from_hex(seed).map_err(|e| PyErr::new::<PyException, _>(format!("{}", e)))?;
 
         let inner = ExtendedPrivateKey::<SecretKey>::new(seed_bytes)?;
         Ok(Self { inner })
@@ -142,8 +142,8 @@ impl XPrv {
 
     #[staticmethod]
     #[pyo3(name = "from_xprv")]
-    pub fn from_xprv_str_py(xprv: String) -> PyResult<XPrv> {
-        Ok(Self { inner: ExtendedPrivateKey::<SecretKey>::from_str(&xprv)? })
+    pub fn from_xprv_str_py(xprv: &str) -> PyResult<XPrv> {
+        Ok(Self { inner: ExtendedPrivateKey::<SecretKey>::from_str(xprv)? })
     }
 
     #[pyo3(name = "derive_child")]

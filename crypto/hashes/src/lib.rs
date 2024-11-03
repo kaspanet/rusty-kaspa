@@ -8,7 +8,7 @@ use kaspa_utils::{
     serde_impl_deser_fixed_bytes_ref, serde_impl_ser_fixed_bytes_ref,
 };
 #[cfg(feature = "py-sdk")]
-use pyo3::prelude::*;
+use pyo3::{exceptions::PyException, prelude::*};
 use std::{
     array::TryFromSliceError,
     fmt::{Debug, Display, Formatter},
@@ -191,8 +191,8 @@ impl Hash {
 #[pymethods]
 impl Hash {
     #[new]
-    pub fn constructor_py(hex_str: &str) -> Self {
-        Hash::from_str(hex_str).expect("invalid hash value")
+    pub fn constructor_py(hex_str: &str) -> PyResult<Self> {
+        Ok(Hash::from_str(hex_str).map_err(|err| PyException::new_err(format!("{}", err)))?)
     }
 
     #[pyo3(name = "to_string")]

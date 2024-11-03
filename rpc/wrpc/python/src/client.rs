@@ -15,7 +15,7 @@ use kaspa_wrpc_client::{client::ConnectOptions, error::Error, prelude::*, result
 use pyo3::{
     exceptions::PyException,
     prelude::*,
-    types::{PyDict, PyTuple},
+    types::{PyDict, PyModule, PyTuple},
 };
 use std::str::FromStr;
 use std::{
@@ -77,10 +77,26 @@ impl PyCallback {
         let args = self.add_event_to_args(py, event)?;
         let kwargs = self.kwargs.as_ref().map(|kw| kw.bind(py));
 
-        let result = self
-            .callback
-            .call_bound(py, args.bind(py), kwargs)
-            .map_err(|e| pyo3::exceptions::PyException::new_err(format!("Error while executing RPC notification callback: {}", e)))?;
+        let result = self.callback.call_bound(py, args.bind(py), kwargs).map_err(|err| {
+            // let fn_name: String = self.callback.getattr(py, "__name__").unwrap().extract(py).unwrap();
+
+            let traceback = PyModule::import_bound(py, "traceback")
+                .and_then(|traceback| {
+                    traceback.call_method(
+                        "format_exception",
+                        (err.get_type_bound(py), err.value_bound(py), err.traceback_bound(py)),
+                        None,
+                    )
+                })
+                .and_then(|formatted| {
+                    let trace_lines: Vec<String> =
+                        formatted.extract().unwrap_or_else(|_| vec!["<Failed to retrieve traceback>".to_string()]);
+                    Ok(trace_lines.join(""))
+                })
+                .unwrap_or_else(|_| "<Failed to retrieve traceback>".to_string());
+
+            PyException::new_err(format!("{}", traceback))
+        })?;
 
         Ok(result)
     }
@@ -160,7 +176,8 @@ impl RpcClient {
         encoding: Option<String>,
         network_id: Option<String>,
     ) -> PyResult<RpcClient> {
-        let encoding = WrpcEncoding::from_str(&encoding.unwrap_or("borsh".to_string())).unwrap();
+        let encoding = WrpcEncoding::from_str(&encoding.unwrap_or("borsh".to_string()))
+            .map_err(|err| PyException::new_err(format!("{}", err)))?;
         let network_id = NetworkId::from_str(&network_id.unwrap_or(String::from("mainnet")))?;
 
         Ok(Self::new(resolver, url, Some(encoding), Some(network_id))?)
@@ -217,7 +234,7 @@ impl RpcClient {
 
         let block_async_connect = block_async_connect.unwrap_or(true);
         let strategy = match strategy {
-            Some(strategy) => ConnectStrategy::from_str(&strategy).unwrap(),
+            Some(strategy) => ConnectStrategy::from_str(&strategy).map_err(|err| PyException::new_err(format!("{}", err)))?,
             None => ConnectStrategy::Retry,
         };
         let connect_timeout: Option<Duration> = timeout_duration.and_then(|ms| Some(Duration::from_millis(ms)));
@@ -229,7 +246,7 @@ impl RpcClient {
 
         let client = self.inner.client.clone();
         py_async! {py, async move {
-            let _ = client.connect(Some(options)).await.map_err(|e| pyo3::exceptions::PyException::new_err(e.to_string()));
+            let _ = client.connect(Some(options)).await.map_err(|e| PyException::new_err(e.to_string()));
             Ok(())
         }}
     }
@@ -265,7 +282,7 @@ impl RpcClient {
         args: &Bound<'_, PyTuple>,
         kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<()> {
-        let event = NotificationEvent::from_str(event.as_str()).unwrap();
+        let event = NotificationEvent::from_str(event.as_str())?;
 
         let args = args.to_object(py).extract::<Py<PyTuple>>(py)?;
 
@@ -282,7 +299,7 @@ impl RpcClient {
 
     #[pyo3(signature = (event, callback=None))]
     fn remove_event_listener(&self, py: Python, event: String, callback: Option<PyObject>) -> PyResult<()> {
-        let event = NotificationEvent::from_str(event.as_str()).unwrap();
+        let event = NotificationEvent::from_str(event.as_str())?;
         let mut callbacks = self.inner.callbacks.lock().unwrap();
 
         match (&event, callback) {
@@ -378,7 +395,7 @@ impl RpcClient {
                                     let listener_id = this.inner.listener_id.lock().unwrap().take();
                                     if let Some(listener_id) = listener_id {
                                         if let Err(err) = this.inner.client.unregister_listener(listener_id).await {
-                                            log_error!("Error in unregister_listener: {:?}",err);
+                                            panic!("Error in unregister_listener: {:?}",err);
                                         }
                                     }
                                 }
@@ -392,7 +409,7 @@ impl RpcClient {
                                         event.set_item("type", ctl.to_string()).unwrap();
                                         event.set_item("rpc", this.url()).unwrap();
 
-                                        handler.execute(py, event).unwrap();
+                                        handler.execute(py, event).unwrap_or_else(|err| panic!("{}", err));
                                     });
                                 }
                             }
@@ -417,7 +434,7 @@ impl RpcClient {
                                                 event.set_item("added", &added.to_object(py)).unwrap();
                                                 event.set_item("removed", &removed.to_object(py)).unwrap();
 
-                                                handler.execute(py, event).unwrap();
+                                                handler.execute(py, event).unwrap_or_else(|err| panic!("{}", err));
                                             })
                                         }
                                     }
@@ -432,7 +449,7 @@ impl RpcClient {
                                                 event.set_item("type", event_type.to_string()).unwrap();
                                                 event.set_item("data", &notification.to_pyobject(py).unwrap()).unwrap();
 
-                                                handler.execute(py, event).unwrap();
+                                                handler.execute(py, event).unwrap_or_else(|err| panic!("{}", err));
                                             });
                                         }
                                     }
@@ -479,7 +496,7 @@ impl RpcClient {
                 Ok(())
             }}
         } else {
-            Err(PyErr::new::<PyException, _>("RPC subscribe on a closed connection"))
+            Err(PyException::new_err("RPC subscribe on a closed connection"))
         }
     }
 
@@ -491,7 +508,7 @@ impl RpcClient {
                 Ok(())
             }}
         } else {
-            Err(PyErr::new::<PyException, _>("RPC unsubscribe on a closed connection"))
+            Err(PyException::new_err("RPC unsubscribe on a closed connection"))
         }
     }
 
@@ -503,7 +520,7 @@ impl RpcClient {
                 Ok(())
             }}
         } else {
-            Err(PyErr::new::<PyException, _>("RPC subscribe on a closed connection"))
+            Err(PyException::new_err("RPC subscribe on a closed connection"))
         }
     }
 
@@ -515,7 +532,7 @@ impl RpcClient {
                 Ok(())
             }}
         } else {
-            Err(PyErr::new::<PyException, _>("RPC unsubscribe on a closed connection"))
+            Err(PyException::new_err("RPC unsubscribe on a closed connection"))
         }
     }
 }

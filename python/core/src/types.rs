@@ -12,7 +12,7 @@ impl<'a> FromPyObject<'a> for PyBinary {
             // Python `str` (of valid hex)
             let mut data = vec![0u8; str.len() / 2];
             match faster_hex::hex_decode(str.as_bytes(), &mut data) {
-                Ok(()) => Ok(PyBinary { data }), // Hex string
+                Ok(()) => Ok(PyBinary { data }),
                 Err(_) => Err(PyException::new_err("Invalid hex string")),
             }
         } else if let Ok(py_bytes) = value.downcast::<PyBytes>() {

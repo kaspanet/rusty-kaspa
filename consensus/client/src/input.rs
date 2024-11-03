@@ -201,7 +201,6 @@ impl TransactionInput {
     #[getter]
     #[pyo3(name = "signature_script")]
     pub fn get_signature_script_as_hex_py(&self) -> Option<String> {
-        // self.inner().signature_script.to_hex()
         self.inner().signature_script.as_ref().map(|script| script.to_hex())
     }
 

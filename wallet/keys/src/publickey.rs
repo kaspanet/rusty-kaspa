@@ -91,10 +91,14 @@ impl PublicKey {
 #[pymethods]
 impl PublicKey {
     #[new]
-    pub fn try_new_py(key: &str) -> Result<PublicKey> {
+    pub fn try_new_py(key: &str) -> PyResult<PublicKey> {
         match secp256k1::PublicKey::from_str(key) {
             Ok(public_key) => Ok((&public_key).into()),
-            Err(_e) => Ok(Self { xonly_public_key: secp256k1::XOnlyPublicKey::from_str(key)?, public_key: None }),
+            Err(_) => {
+                let xonly_public_key =
+                    secp256k1::XOnlyPublicKey::from_str(key).map_err(|err| PyException::new_err(format!("{}", err)))?;
+                Ok(Self { xonly_public_key, public_key: None })
+            }
         }
     }
 
@@ -104,13 +108,13 @@ impl PublicKey {
     }
 
     #[pyo3(name = "to_address")]
-    pub fn to_address_py(&self, network: &str) -> Result<Address> {
-        self.to_address(NetworkType::from_str(network)?)
+    pub fn to_address_py(&self, network: &str) -> PyResult<Address> {
+        Ok(self.to_address(NetworkType::from_str(network)?)?)
     }
 
     #[pyo3(name = "to_address_ecdsa")]
-    pub fn to_address_ecdsa_py(&self, network: &str) -> Result<Address> {
-        self.to_address_ecdsa(NetworkType::from_str(network)?)
+    pub fn to_address_ecdsa_py(&self, network: &str) -> PyResult<Address> {
+        Ok(self.to_address_ecdsa(NetworkType::from_str(network)?)?)
     }
 
     #[pyo3(name = "to_x_only_public_key")]
@@ -293,8 +297,9 @@ impl XOnlyPublicKey {
 #[pymethods]
 impl XOnlyPublicKey {
     #[new]
-    pub fn try_new_py(key: &str) -> Result<XOnlyPublicKey> {
-        Ok(secp256k1::XOnlyPublicKey::from_str(key)?.into())
+    pub fn try_new_py(key: &str) -> PyResult<XOnlyPublicKey> {
+        let xonly_public_key = secp256k1::XOnlyPublicKey::from_str(key).map_err(|err| PyException::new_err(format!("{}", err)))?;
+        Ok(xonly_public_key.into())
     }
 
     #[pyo3(name = "to_string")]
@@ -318,8 +323,10 @@ impl XOnlyPublicKey {
 
     #[pyo3(name = "from_address")]
     #[staticmethod]
-    pub fn from_address_py(address: &Address) -> Result<XOnlyPublicKey> {
-        Ok(secp256k1::XOnlyPublicKey::from_slice(&address.payload)?.into())
+    pub fn from_address_py(address: &Address) -> PyResult<XOnlyPublicKey> {
+        let xonly_public_key =
+            secp256k1::XOnlyPublicKey::from_slice(&address.payload).map_err(|err| PyException::new_err(format!("{}", err)))?;
+        Ok(xonly_public_key.into())
     }
 }
 

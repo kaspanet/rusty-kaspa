@@ -57,7 +57,7 @@ impl ToTokens for RpcHandlers {
                         let py_fut = pyo3_async_runtimes::tokio::future_into_py(py, async move {
                             let response : #response_type = client.#fn_call(None, request).await?;
                             Python::with_gil(|py| {
-                                Ok(serde_pyobject::to_pyobject(py, &response).unwrap().to_object(py))
+                                Ok(serde_pyobject::to_pyobject(py, &response)?.to_object(py))
                             })
                         })?;
 
@@ -83,7 +83,7 @@ impl ToTokens for RpcHandlers {
                             let response : #response_type = client.#fn_call(None, request).await?;
 
                             Python::with_gil(|py| {
-                                Ok(serde_pyobject::to_pyobject(py, &response).unwrap().to_object(py))
+                                Ok(serde_pyobject::to_pyobject(py, &response)?.to_object(py))
                             })
                         })?;
 

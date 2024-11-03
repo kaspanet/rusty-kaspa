@@ -56,7 +56,7 @@ impl DerivationPath {
 #[pymethods]
 impl DerivationPath {
     #[new]
-    pub fn new_py(path: &str) -> Result<DerivationPath> {
+    pub fn new_py(path: &str) -> PyResult<DerivationPath> {
         let inner = kaspa_bip32::DerivationPath::from_str(path)?;
         Ok(Self { inner })
     }
@@ -78,7 +78,7 @@ impl DerivationPath {
 
     #[pyo3(name = "push")]
     #[pyo3(signature = (child_number, hardened=None))]
-    pub fn push_py(&mut self, child_number: u32, hardened: Option<bool>) -> Result<()> {
+    pub fn push_py(&mut self, child_number: u32, hardened: Option<bool>) -> PyResult<()> {
         let child = ChildNumber::new(child_number, hardened.unwrap_or(false))?;
         self.inner.push(child);
         Ok(())

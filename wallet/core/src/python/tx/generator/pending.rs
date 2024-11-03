@@ -77,7 +77,12 @@ impl PendingTransaction {
     }
 
     #[pyo3(signature = (input_index, private_key, sighash_type=None))]
-    fn create_input_signature(&self, input_index: u8, private_key: &PrivateKey, sighash_type: Option<&SighashType>) -> Result<String> {
+    fn create_input_signature(
+        &self,
+        input_index: u8,
+        private_key: &PrivateKey,
+        sighash_type: Option<&SighashType>,
+    ) -> PyResult<String> {
         let signature = self.inner.create_input_signature(
             input_index.into(),
             &private_key.secret_bytes(),
@@ -87,14 +92,14 @@ impl PendingTransaction {
         Ok(signature.to_hex())
     }
 
-    fn fill_input(&self, input_index: u8, signature_script: PyBinary) -> Result<()> {
+    fn fill_input(&self, input_index: u8, signature_script: PyBinary) -> PyResult<()> {
         self.inner.fill_input(input_index.into(), signature_script.into())?;
 
         Ok(())
     }
 
     #[pyo3(signature = (input_index, private_key, sighash_type=None))]
-    fn sign_input(&self, input_index: u8, private_key: &PrivateKey, sighash_type: Option<&SighashType>) -> Result<()> {
+    fn sign_input(&self, input_index: u8, private_key: &PrivateKey, sighash_type: Option<&SighashType>) -> PyResult<()> {
         self.inner.sign_input(
             input_index.into(),
             &private_key.secret_bytes(),
@@ -105,7 +110,7 @@ impl PendingTransaction {
     }
 
     #[pyo3(signature = (private_keys, check_fully_signed=None))]
-    fn sign(&self, private_keys: Vec<PrivateKey>, check_fully_signed: Option<bool>) -> Result<()> {
+    fn sign(&self, private_keys: Vec<PrivateKey>, check_fully_signed: Option<bool>) -> PyResult<()> {
         let mut keys = private_keys.iter().map(|key| key.secret_bytes()).collect::<Vec<_>>();
         self.inner.try_sign_with_keys(&keys, check_fully_signed)?;
         keys.zeroize();
@@ -123,7 +128,7 @@ impl PendingTransaction {
     }
 
     #[getter]
-    fn transaction(&self) -> Result<Transaction> {
+    fn transaction(&self) -> PyResult<Transaction> {
         Ok(Transaction::from_cctx_transaction(&self.inner.transaction(), self.inner.utxo_entries()))
     }
 }

@@ -79,9 +79,9 @@ impl Notification {
             Notification::VirtualDaaScoreChanged(v) => to_pyobject(py, &v),
             Notification::SinkBlueScoreChanged(v) => to_pyobject(py, &v),
             Notification::VirtualChainChanged(v) => to_pyobject(py, &v),
-        };
+        }?;
 
-        Ok(bound_obj.unwrap().to_object(py))
+        Ok(bound_obj.to_object(py))
     }
 }
 

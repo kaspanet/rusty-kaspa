@@ -1,7 +1,7 @@
 use kaspa_consensus_core::network::NetworkId;
 use kaspa_python_macros::py_async;
 use kaspa_wrpc_client::{Resolver as NativeResolver, WrpcEncoding};
-use pyo3::prelude::*;
+use pyo3::{exceptions::PyException, prelude::*};
 use std::{str::FromStr, sync::Arc};
 
 #[derive(Debug, Clone)]
@@ -36,21 +36,21 @@ impl Resolver {
         self.resolver.urls().unwrap_or_default().into_iter().map(|url| (*url).clone()).collect::<Vec<_>>()
     }
 
-    fn get_node(&self, py: Python, encoding: String, network_id: &str) -> PyResult<Py<PyAny>> {
-        let encoding = WrpcEncoding::from_str(encoding.as_str()).unwrap();
+    fn get_node(&self, py: Python, encoding: &str, network_id: &str) -> PyResult<Py<PyAny>> {
+        let encoding = WrpcEncoding::from_str(encoding).map_err(|err| PyException::new_err(format!("{}", err)))?;
         let network_id = NetworkId::from_str(network_id)?;
 
         let resolver = self.resolver.clone();
         py_async! {py, async move {
             let node = resolver.get_node(encoding, network_id).await?;
             Python::with_gil(|py| {
-                Ok(serde_pyobject::to_pyobject(py, &node).unwrap().to_object(py))
+                Ok(serde_pyobject::to_pyobject(py, &node)?.to_object(py))
             })
         }}
     }
 
-    fn get_url(&self, py: Python, encoding: String, network_id: &str) -> PyResult<Py<PyAny>> {
-        let encoding = WrpcEncoding::from_str(encoding.as_str()).unwrap();
+    fn get_url(&self, py: Python, encoding: &str, network_id: &str) -> PyResult<Py<PyAny>> {
+        let encoding = WrpcEncoding::from_str(encoding).map_err(|err| PyException::new_err(format!("{}", err)))?;
         let network_id = NetworkId::from_str(network_id)?;
 
         let resolver = self.resolver.clone();

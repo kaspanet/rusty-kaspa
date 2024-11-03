@@ -115,7 +115,7 @@ impl Mnemonic {
 impl Mnemonic {
     #[new]
     #[pyo3(signature = (phrase, language=None))]
-    pub fn constructor_py(phrase: String, language: Option<Language>) -> Result<Mnemonic> {
+    pub fn constructor_py(phrase: &str, language: Option<Language>) -> Result<Mnemonic> {
         Mnemonic::new(phrase, language.unwrap_or(Language::English))
     }
 
@@ -134,8 +134,8 @@ impl Mnemonic {
 
     #[setter]
     #[pyo3(name = "entropy")]
-    pub fn set_entropy_py(&mut self, entropy: String) {
-        let vec = Vec::<u8>::from_hex(&entropy).unwrap_or_else(|err| panic!("invalid entropy `{entropy}`: {err}"));
+    pub fn set_entropy_py(&mut self, entropy: &str) {
+        let vec = Vec::<u8>::from_hex(entropy).unwrap_or_else(|err| panic!("invalid entropy `{entropy}`: {err}"));
         let len = vec.len();
         if len != 16 && len != 32 {
             panic!("Invalid entropy: `{entropy}`")
@@ -159,15 +159,15 @@ impl Mnemonic {
 
     #[setter]
     #[pyo3(name = "phrase")]
-    pub fn set_phrase_py(&mut self, phrase: &str) {
-        self.phrase = phrase.to_string();
+    pub fn set_phrase_py(&mut self, phrase: String) {
+        self.phrase = phrase;
     }
 
     #[pyo3(name = "to_seed")]
     #[pyo3(signature = (password=None))]
-    pub fn create_seed_py(&self, password: Option<String>) -> String {
+    pub fn create_seed_py(&self, password: Option<&str>) -> String {
         let password = password.unwrap_or_default();
-        self.to_seed(password.as_str()).as_bytes().to_vec().to_hex()
+        self.to_seed(password).as_bytes().to_vec().to_hex()
     }
 }
 
