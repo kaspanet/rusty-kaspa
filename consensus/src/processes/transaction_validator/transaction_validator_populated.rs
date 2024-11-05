@@ -44,13 +44,14 @@ impl TransactionValidator {
         let total_in = self.check_transaction_input_amounts(tx)?;
         let total_out = Self::check_transaction_output_values(tx, total_in)?;
         let fee = total_in - total_out;
-        if flags != TxValidationFlags::SkipMassCheck && pov_daa_score > self.storage_mass_activation_daa_score {
+        if flags != TxValidationFlags::SkipMassCheck && self.storage_mass_activation.is_active(pov_daa_score) {
             // Storage mass hardfork was activated
             self.check_mass_commitment(tx)?;
 
-            if pov_daa_score < self.storage_mass_activation_daa_score + 10 && self.storage_mass_activation_daa_score > 0 {
-                warn!("--------- Storage mass hardfork was activated successfully!!! --------- (DAA score: {})", pov_daa_score);
-            }
+            // TODO: Decide what to do here
+            // if pov_daa_score < self.storage_mass_activation + 10 && self.storage_mass_activation > 0 {
+            //     warn!("--------- Storage mass hardfork was activated successfully!!! --------- (DAA score: {})", pov_daa_score);
+            // }
         }
         Self::check_sequence_lock(tx, pov_daa_score)?;
 

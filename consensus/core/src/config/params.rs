@@ -15,6 +15,27 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ForkActivation(u64);
+
+impl ForkActivation {
+    pub const fn new(daa_score: u64) -> Self {
+        Self(daa_score)
+    }
+
+    pub const fn never() -> Self {
+        Self(u64::MAX)
+    }
+
+    pub const fn always() -> Self {
+        Self(0)
+    }
+
+    pub fn is_active(self, current_daa_score: u64) -> bool {
+        current_daa_score >= self.0
+    }
+}
+
 /// Consensus parameters. Contains settings and configurations which are consensus-sensitive.
 /// Changing one of these on a network node would exclude and prevent it from reaching consensus
 /// with the other unmodified nodes.
@@ -41,7 +62,7 @@ pub struct Params {
     pub target_time_per_block: u64,
 
     /// DAA score from which the window sampling starts for difficulty and past median time calculation
-    pub sampling_activation_daa_score: u64,
+    pub sampling_activation: ForkActivation,
 
     /// Defines the highest allowed proof of work difficulty value for a block as a [`Uint256`]
     pub max_difficulty_target: Uint256,
@@ -81,7 +102,7 @@ pub struct Params {
     pub storage_mass_parameter: u64,
 
     /// DAA score from which storage mass calculation and transaction mass field are activated as a consensus rule
-    pub storage_mass_activation_daa_score: u64,
+    pub storage_mass_activation: ForkActivation,
 
     /// DAA score after which the pre-deflationary period switches to the deflationary period
     pub deflationary_phase_daa_score: u64,
@@ -117,7 +138,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn past_median_time_window_size(&self, selected_parent_daa_score: u64) -> usize {
-        if selected_parent_daa_score < self.sampling_activation_daa_score {
+        if !self.sampling_activation.is_active(selected_parent_daa_score) {
             self.legacy_past_median_time_window_size()
         } else {
             self.sampled_past_median_time_window_size()
@@ -129,7 +150,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn timestamp_deviation_tolerance(&self, selected_parent_daa_score: u64) -> u64 {
-        if selected_parent_daa_score < self.sampling_activation_daa_score {
+        if !self.sampling_activation.is_active(selected_parent_daa_score) {
             self.legacy_timestamp_deviation_tolerance
         } else {
             self.new_timestamp_deviation_tolerance
@@ -141,7 +162,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn past_median_time_sample_rate(&self, selected_parent_daa_score: u64) -> u64 {
-        if selected_parent_daa_score < self.sampling_activation_daa_score {
+        if !self.sampling_activation.is_active(selected_parent_daa_score) {
             1
         } else {
             self.past_median_time_sample_rate
@@ -153,7 +174,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn difficulty_window_size(&self, selected_parent_daa_score: u64) -> usize {
-        if selected_parent_daa_score < self.sampling_activation_daa_score {
+        if !self.sampling_activation.is_active(selected_parent_daa_score) {
             self.legacy_difficulty_window_size
         } else {
             self.sampled_difficulty_window_size
@@ -165,7 +186,7 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn difficulty_sample_rate(&self, selected_parent_daa_score: u64) -> u64 {
-        if selected_parent_daa_score < self.sampling_activation_daa_score {
+        if !self.sampling_activation.is_active(selected_parent_daa_score) {
             1
         } else {
             self.difficulty_sample_rate
@@ -188,7 +209,7 @@ impl Params {
     }
 
     pub fn daa_window_duration_in_blocks(&self, selected_parent_daa_score: u64) -> u64 {
-        if selected_parent_daa_score < self.sampling_activation_daa_score {
+        if !self.sampling_activation.is_active(selected_parent_daa_score) {
             self.legacy_difficulty_window_size as u64
         } else {
             self.difficulty_sample_rate * self.sampled_difficulty_window_size as u64
@@ -196,7 +217,7 @@ impl Params {
     }
 
     fn expected_daa_window_duration_in_milliseconds(&self, selected_parent_daa_score: u64) -> u64 {
-        if selected_parent_daa_score < self.sampling_activation_daa_score {
+        if !self.sampling_activation.is_active(selected_parent_daa_score) {
             self.target_time_per_block * self.legacy_difficulty_window_size as u64
         } else {
             self.target_time_per_block * self.difficulty_sample_rate * self.sampled_difficulty_window_size as u64
@@ -322,7 +343,7 @@ pub const MAINNET_PARAMS: Params = Params {
     past_median_time_sample_rate: Bps::<1>::past_median_time_sample_rate(),
     past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     target_time_per_block: 1000,
-    sampling_activation_daa_score: u64::MAX,
+    sampling_activation: ForkActivation::never(),
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
@@ -352,7 +373,7 @@ pub const MAINNET_PARAMS: Params = Params {
     max_block_mass: 500_000,
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
-    storage_mass_activation_daa_score: u64::MAX,
+    storage_mass_activation: ForkActivation::never(),
 
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
     // switches to the deflationary period. This number is calculated as follows:
@@ -385,7 +406,7 @@ pub const TESTNET_PARAMS: Params = Params {
     past_median_time_sample_rate: Bps::<1>::past_median_time_sample_rate(),
     past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     target_time_per_block: 1000,
-    sampling_activation_daa_score: u64::MAX,
+    sampling_activation: ForkActivation::never(),
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
@@ -415,7 +436,7 @@ pub const TESTNET_PARAMS: Params = Params {
     max_block_mass: 500_000,
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
-    storage_mass_activation_daa_score: u64::MAX,
+    storage_mass_activation: ForkActivation::never(),
 
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
     // switches to the deflationary period. This number is calculated as follows:
@@ -447,7 +468,7 @@ pub const TESTNET11_PARAMS: Params = Params {
     legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
     new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
-    sampling_activation_daa_score: 0, // Sampling is activated from network inception
+    sampling_activation: ForkActivation::always(), // Sampling is activated from network inception
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
@@ -485,7 +506,7 @@ pub const TESTNET11_PARAMS: Params = Params {
     max_block_mass: 500_000,
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
-    storage_mass_activation_daa_score: 0,
+    storage_mass_activation: ForkActivation::always(),
 
     skip_proof_of_work: false,
     max_block_level: 250,
@@ -498,7 +519,7 @@ pub const SIMNET_PARAMS: Params = Params {
     legacy_timestamp_deviation_tolerance: LEGACY_TIMESTAMP_DEVIATION_TOLERANCE,
     new_timestamp_deviation_tolerance: NEW_TIMESTAMP_DEVIATION_TOLERANCE,
     past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
-    sampling_activation_daa_score: 0, // Sampling is activated from network inception
+    sampling_activation: ForkActivation::always(), // Sampling is activated from network inception
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     sampled_difficulty_window_size: DIFFICULTY_SAMPLED_WINDOW_SIZE as usize,
@@ -538,7 +559,7 @@ pub const SIMNET_PARAMS: Params = Params {
     max_block_mass: 500_000,
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
-    storage_mass_activation_daa_score: 0,
+    storage_mass_activation: ForkActivation::always(),
 
     skip_proof_of_work: true, // For simnet only, PoW can be simulated by default
     max_block_level: 250,
@@ -554,7 +575,7 @@ pub const DEVNET_PARAMS: Params = Params {
     past_median_time_sample_rate: Bps::<1>::past_median_time_sample_rate(),
     past_median_time_sampled_window_size: MEDIAN_TIME_SAMPLED_WINDOW_SIZE,
     target_time_per_block: 1000,
-    sampling_activation_daa_score: u64::MAX,
+    sampling_activation: ForkActivation::never(),
     max_difficulty_target: MAX_DIFFICULTY_TARGET,
     max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
     difficulty_sample_rate: Bps::<1>::difficulty_adjustment_sample_rate(),
@@ -584,7 +605,7 @@ pub const DEVNET_PARAMS: Params = Params {
     max_block_mass: 500_000,
 
     storage_mass_parameter: STORAGE_MASS_PARAMETER,
-    storage_mass_activation_daa_score: u64::MAX,
+    storage_mass_activation: ForkActivation::never(),
 
     // deflationary_phase_daa_score is the DAA score after which the pre-deflationary period
     // switches to the deflationary period. This number is calculated as follows:

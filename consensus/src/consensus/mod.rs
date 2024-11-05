@@ -257,7 +257,7 @@ impl Consensus {
             pruning_lock.clone(),
             notification_root.clone(),
             counters.clone(),
-            params.storage_mass_activation_daa_score,
+            params.storage_mass_activation,
         ));
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
@@ -753,7 +753,7 @@ impl ConsensusApi for Consensus {
     }
 
     fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction], pov_daa_score: u64) -> Hash {
-        let storage_mass_activated = pov_daa_score > self.config.storage_mass_activation_daa_score;
+        let storage_mass_activated = self.config.storage_mass_activation.is_active(pov_daa_score);
         calc_hash_merkle_root(txs.iter(), storage_mass_activated)
     }
 
