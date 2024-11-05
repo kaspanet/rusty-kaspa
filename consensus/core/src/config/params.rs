@@ -34,6 +34,10 @@ impl ForkActivation {
     pub fn is_active(self, current_daa_score: u64) -> bool {
         current_daa_score >= self.0
     }
+
+    pub fn is_within_range_from_activation(self, current_daa_score: u64, range: u64) -> bool {
+        self.is_active(current_daa_score) && current_daa_score < self.0 + range
+    }
 }
 
 /// Consensus parameters. Contains settings and configurations which are consensus-sensitive.

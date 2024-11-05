@@ -1,5 +1,6 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use kaspa_consensus_core::{
+    config::params::ForkActivation,
     hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
     mass::Kip9Version,
     tx::{TransactionInput, VerifiableTransaction},
@@ -48,10 +49,11 @@ impl TransactionValidator {
             // Storage mass hardfork was activated
             self.check_mass_commitment(tx)?;
 
-            // TODO: Decide what to do here
-            // if pov_daa_score < self.storage_mass_activation + 10 && self.storage_mass_activation > 0 {
-            //     warn!("--------- Storage mass hardfork was activated successfully!!! --------- (DAA score: {})", pov_daa_score);
-            // }
+            if self.storage_mass_activation.is_within_range_from_activation(pov_daa_score, 10)
+                && self.storage_mass_activation != ForkActivation::always()
+            {
+                warn!("--------- Storage mass hardfork was activated successfully!!! --------- (DAA score: {})", pov_daa_score);
+            }
         }
         Self::check_sequence_lock(tx, pov_daa_score)?;
 
