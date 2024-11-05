@@ -49,9 +49,7 @@ impl TransactionValidator {
             // Storage mass hardfork was activated
             self.check_mass_commitment(tx)?;
 
-            if self.storage_mass_activation.is_within_range_from_activation(pov_daa_score, 10)
-                && self.storage_mass_activation != ForkActivation::always()
-            {
+            if self.storage_mass_activation.is_within_range_from_activation(pov_daa_score, 10) {
                 warn!("--------- Storage mass hardfork was activated successfully!!! --------- (DAA score: {})", pov_daa_score);
             }
         }
