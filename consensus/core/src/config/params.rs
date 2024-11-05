@@ -138,10 +138,10 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn past_median_time_window_size(&self, selected_parent_daa_score: u64) -> usize {
-        if !self.sampling_activation.is_active(selected_parent_daa_score) {
-            self.legacy_past_median_time_window_size()
-        } else {
+        if self.sampling_activation.is_active(selected_parent_daa_score) {
             self.sampled_past_median_time_window_size()
+        } else {
+            self.legacy_past_median_time_window_size()
         }
     }
 
@@ -150,10 +150,10 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn timestamp_deviation_tolerance(&self, selected_parent_daa_score: u64) -> u64 {
-        if !self.sampling_activation.is_active(selected_parent_daa_score) {
-            self.legacy_timestamp_deviation_tolerance
-        } else {
+        if self.sampling_activation.is_active(selected_parent_daa_score) {
             self.new_timestamp_deviation_tolerance
+        } else {
+            self.legacy_timestamp_deviation_tolerance
         }
     }
 
@@ -162,10 +162,10 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn past_median_time_sample_rate(&self, selected_parent_daa_score: u64) -> u64 {
-        if !self.sampling_activation.is_active(selected_parent_daa_score) {
-            1
-        } else {
+        if self.sampling_activation.is_active(selected_parent_daa_score) {
             self.past_median_time_sample_rate
+        } else {
+            1
         }
     }
 
@@ -174,10 +174,10 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn difficulty_window_size(&self, selected_parent_daa_score: u64) -> usize {
-        if !self.sampling_activation.is_active(selected_parent_daa_score) {
-            self.legacy_difficulty_window_size
-        } else {
+        if self.sampling_activation.is_active(selected_parent_daa_score) {
             self.sampled_difficulty_window_size
+        } else {
+            self.legacy_difficulty_window_size
         }
     }
 
@@ -186,10 +186,10 @@ impl Params {
     #[inline]
     #[must_use]
     pub fn difficulty_sample_rate(&self, selected_parent_daa_score: u64) -> u64 {
-        if !self.sampling_activation.is_active(selected_parent_daa_score) {
-            1
-        } else {
+        if self.sampling_activation.is_active(selected_parent_daa_score) {
             self.difficulty_sample_rate
+        } else {
+            1
         }
     }
 
@@ -209,18 +209,18 @@ impl Params {
     }
 
     pub fn daa_window_duration_in_blocks(&self, selected_parent_daa_score: u64) -> u64 {
-        if !self.sampling_activation.is_active(selected_parent_daa_score) {
-            self.legacy_difficulty_window_size as u64
-        } else {
+        if self.sampling_activation.is_active(selected_parent_daa_score) {
             self.difficulty_sample_rate * self.sampled_difficulty_window_size as u64
+        } else {
+            self.legacy_difficulty_window_size as u64
         }
     }
 
     fn expected_daa_window_duration_in_milliseconds(&self, selected_parent_daa_score: u64) -> u64 {
-        if !self.sampling_activation.is_active(selected_parent_daa_score) {
-            self.target_time_per_block * self.legacy_difficulty_window_size as u64
-        } else {
+        if self.sampling_activation.is_active(selected_parent_daa_score) {
             self.target_time_per_block * self.difficulty_sample_rate * self.sampled_difficulty_window_size as u64
+        } else {
+            self.target_time_per_block * self.legacy_difficulty_window_size as u64
         }
     }
 
