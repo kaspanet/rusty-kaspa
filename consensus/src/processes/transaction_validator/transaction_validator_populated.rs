@@ -1,6 +1,5 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use kaspa_consensus_core::{
-    config::params::ForkActivation,
     hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
     mass::Kip9Version,
     tx::{TransactionInput, VerifiableTransaction},

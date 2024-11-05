@@ -35,8 +35,8 @@ impl ForkActivation {
         current_daa_score >= self.0
     }
 
-    // checks if the fork was "recently" activated, i.e., in the timeframe of the provided range.
-    // This function returns false for forks that were always active, since they were never activated.
+    /// Checks if the fork was "recently" activated, i.e., in the time frame of the provided range.
+    /// This function returns false for forks that were always active, since they were never activated.
     pub fn is_within_range_from_activation(self, current_daa_score: u64, range: u64) -> bool {
         self != Self::always() && self.is_active(current_daa_score) && current_daa_score < self.0 + range
     }
