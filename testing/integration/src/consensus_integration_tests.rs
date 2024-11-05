@@ -16,7 +16,9 @@ use kaspa_consensus::model::stores::headers::HeaderStoreReader;
 use kaspa_consensus::model::stores::reachability::DbReachabilityStore;
 use kaspa_consensus::model::stores::relations::DbRelationsStore;
 use kaspa_consensus::model::stores::selected_chain::SelectedChainStoreReader;
-use kaspa_consensus::params::{Params, DEVNET_PARAMS, MAINNET_PARAMS, MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64};
+use kaspa_consensus::params::{
+    ForkActivation, Params, DEVNET_PARAMS, MAINNET_PARAMS, MAX_DIFFICULTY_TARGET, MAX_DIFFICULTY_TARGET_AS_F64,
+};
 use kaspa_consensus::pipeline::monitor::ConsensusMonitor;
 use kaspa_consensus::pipeline::ProcessingCounters;
 use kaspa_consensus::processes::reachability::tests::{DagBlock, DagBuilder, StoreValidationExtensions};
@@ -553,7 +555,7 @@ async fn median_time_test() {
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.sampling_activation_daa_score = u64::MAX;
+                    p.sampling_activation = ForkActivation::never();
                 })
                 .build(),
         },
@@ -562,7 +564,7 @@ async fn median_time_test() {
             config: ConfigBuilder::new(MAINNET_PARAMS)
                 .skip_proof_of_work()
                 .edit_consensus_params(|p| {
-                    p.sampling_activation_daa_score = 0;
+                    p.sampling_activation = ForkActivation::always();
                     p.new_timestamp_deviation_tolerance = 120;
                     p.past_median_time_sample_rate = 3;
                     p.past_median_time_sampled_window_size = (2 * 120 - 1) / 3;
@@ -807,7 +809,7 @@ impl KaspadGoParams {
             past_median_time_sample_rate: 1,
             past_median_time_sampled_window_size: 2 * self.TimestampDeviationTolerance - 1,
             target_time_per_block: self.TargetTimePerBlock / 1_000_000,
-            sampling_activation_daa_score: u64::MAX,
+            sampling_activation: ForkActivation::never(),
             max_block_parents: self.MaxBlockParents,
             max_difficulty_target: MAX_DIFFICULTY_TARGET,
             max_difficulty_target_f64: MAX_DIFFICULTY_TARGET_AS_F64,
@@ -830,7 +832,7 @@ impl KaspadGoParams {
             mass_per_sig_op: self.MassPerSigOp,
             max_block_mass: self.MaxBlockMass,
             storage_mass_parameter: STORAGE_MASS_PARAMETER,
-            storage_mass_activation_daa_score: u64::MAX,
+            storage_mass_activation: ForkActivation::never(),
             kip10_activation_daa_score: u64::MAX,
             deflationary_phase_daa_score: self.DeflationaryPhaseDaaScore,
             pre_deflationary_phase_base_subsidy: self.PreDeflationaryPhaseBaseSubsidy,
@@ -1389,7 +1391,7 @@ async fn difficulty_test() {
                 .edit_consensus_params(|p| {
                     p.ghostdag_k = 1;
                     p.legacy_difficulty_window_size = FULL_WINDOW_SIZE;
-                    p.sampling_activation_daa_score = u64::MAX;
+                    p.sampling_activation = ForkActivation::never();
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.legacy_timestamp_deviation_tolerance = 60;
@@ -1405,7 +1407,7 @@ async fn difficulty_test() {
                     p.ghostdag_k = 1;
                     p.sampled_difficulty_window_size = SAMPLED_WINDOW_SIZE;
                     p.difficulty_sample_rate = SAMPLE_RATE;
-                    p.sampling_activation_daa_score = 0;
+                    p.sampling_activation = ForkActivation::always();
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.past_median_time_sample_rate = PMT_SAMPLE_RATE;
@@ -1424,7 +1426,7 @@ async fn difficulty_test() {
                     p.target_time_per_block /= HIGH_BPS;
                     p.sampled_difficulty_window_size = HIGH_BPS_SAMPLED_WINDOW_SIZE;
                     p.difficulty_sample_rate = SAMPLE_RATE * HIGH_BPS;
-                    p.sampling_activation_daa_score = 0;
+                    p.sampling_activation = ForkActivation::always();
                     // Define past median time so that calls to add_block_with_min_time create blocks
                     // which timestamps fit within the min-max timestamps found in the difficulty window
                     p.past_median_time_sample_rate = PMT_SAMPLE_RATE * HIGH_BPS;

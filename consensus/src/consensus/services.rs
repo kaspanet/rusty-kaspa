@@ -94,7 +94,7 @@ impl ConsensusServices {
             storage.block_window_cache_for_past_median_time.clone(),
             params.max_difficulty_target,
             params.target_time_per_block,
-            params.sampling_activation_daa_score,
+            params.sampling_activation,
             params.legacy_difficulty_window_size,
             params.sampled_difficulty_window_size,
             params.min_difficulty_window_len,
@@ -146,7 +146,7 @@ impl ConsensusServices {
             params.coinbase_maturity,
             tx_script_cache_counters,
             mass_calculator.clone(),
-            params.storage_mass_activation_daa_score,
+            params.storage_mass_activation,
             params.kip10_activation_daa_score,
         );
 
