@@ -6,7 +6,7 @@ use kaspa_consensus_core::{block::Block, merkle::calc_hash_merkle_root, tx::Tran
 
 impl BlockBodyProcessor {
     pub fn validate_body_in_isolation(self: &Arc<Self>, block: &Block) -> BlockProcessResult<u64> {
-        let storage_mass_activated = block.header.daa_score > self.storage_mass_activation_daa_score;
+        let storage_mass_activated = self.storage_mass_activation.is_active(block.header.daa_score);
 
         Self::check_has_transactions(block)?;
         Self::check_hash_merkle_root(block, storage_mass_activated)?;

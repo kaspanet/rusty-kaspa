@@ -23,7 +23,7 @@ use crossbeam_channel::{Receiver, Sender};
 use kaspa_consensus_core::{
     block::Block,
     blockstatus::BlockStatus::{self, StatusHeaderOnly, StatusInvalid},
-    config::genesis::GenesisBlock,
+    config::{genesis::GenesisBlock, params::ForkActivation},
     mass::MassCalculator,
     tx::Transaction,
 };
@@ -81,7 +81,7 @@ pub struct BlockBodyProcessor {
     counters: Arc<ProcessingCounters>,
 
     /// Storage mass hardfork DAA score
-    pub(crate) storage_mass_activation_daa_score: u64,
+    pub(crate) storage_mass_activation: ForkActivation,
 }
 
 impl BlockBodyProcessor {
@@ -108,7 +108,7 @@ impl BlockBodyProcessor {
         pruning_lock: SessionLock,
         notification_root: Arc<ConsensusNotificationRoot>,
         counters: Arc<ProcessingCounters>,
-        storage_mass_activation_daa_score: u64,
+        storage_mass_activation: ForkActivation,
     ) -> Self {
         Self {
             receiver,
@@ -131,7 +131,7 @@ impl BlockBodyProcessor {
             task_manager: BlockTaskDependencyManager::new(),
             notification_root,
             counters,
-            storage_mass_activation_daa_score,
+            storage_mass_activation,
         }
     }
 

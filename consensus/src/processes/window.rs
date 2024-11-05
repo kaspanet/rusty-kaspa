@@ -9,7 +9,7 @@ use crate::{
 };
 use kaspa_consensus_core::{
     blockhash::BlockHashExtensions,
-    config::genesis::GenesisBlock,
+    config::{genesis::GenesisBlock, params::ForkActivation},
     errors::{block::RuleError, difficulty::DifficultyResult},
     BlockHashSet, BlueWorkType,
 };
@@ -249,7 +249,7 @@ pub struct SampledWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReade
     block_window_cache_for_difficulty: Arc<U>,
     block_window_cache_for_past_median_time: Arc<U>,
     target_time_per_block: u64,
-    sampling_activation_daa_score: u64,
+    sampling_activation: ForkActivation,
     difficulty_window_size: usize,
     difficulty_sample_rate: u64,
     past_median_time_window_size: usize,
@@ -269,7 +269,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         block_window_cache_for_past_median_time: Arc<U>,
         max_difficulty_target: Uint256,
         target_time_per_block: u64,
-        sampling_activation_daa_score: u64,
+        sampling_activation: ForkActivation,
         difficulty_window_size: usize,
         min_difficulty_window_len: usize,
         difficulty_sample_rate: u64,
@@ -294,7 +294,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             block_window_cache_for_difficulty,
             block_window_cache_for_past_median_time,
             target_time_per_block,
-            sampling_activation_daa_score,
+            sampling_activation,
             difficulty_window_size,
             difficulty_sample_rate,
             past_median_time_window_size,
@@ -525,7 +525,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
 pub struct DualWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W: DaaStoreReader> {
     ghostdag_store: Arc<T>,
     headers_store: Arc<V>,
-    sampling_activation_daa_score: u64,
+    sampling_activation: ForkActivation,
     full_window_manager: FullWindowManager<T, U, V>,
     sampled_window_manager: SampledWindowManager<T, U, V, W>,
 }
@@ -541,7 +541,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         block_window_cache_for_past_median_time: Arc<U>,
         max_difficulty_target: Uint256,
         target_time_per_block: u64,
-        sampling_activation_daa_score: u64,
+        sampling_activation: ForkActivation,
         full_difficulty_window_size: usize,
         sampled_difficulty_window_size: usize,
         min_difficulty_window_len: usize,
@@ -571,19 +571,19 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             block_window_cache_for_past_median_time,
             max_difficulty_target,
             target_time_per_block,
-            sampling_activation_daa_score,
+            sampling_activation,
             sampled_difficulty_window_size,
             min_difficulty_window_len.min(sampled_difficulty_window_size),
             difficulty_sample_rate,
             sampled_past_median_time_window_size,
             past_median_time_sample_rate,
         );
-        Self { ghostdag_store, headers_store, sampled_window_manager, full_window_manager, sampling_activation_daa_score }
+        Self { ghostdag_store, headers_store, sampled_window_manager, full_window_manager, sampling_activation }
     }
 
     fn sampling(&self, ghostdag_data: &GhostdagData) -> bool {
         let sp_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
-        sp_daa_score >= self.sampling_activation_daa_score
+        self.sampling_activation.is_active(sp_daa_score)
     }
 }
 
