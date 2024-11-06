@@ -19,6 +19,8 @@ use std::{
 use super::ghostdag::ordering::SortableBlock;
 use itertools::Itertools;
 
+const MAX_WORK_LEVEL: u32 = 128;
+
 trait DifficultyManagerExtension {
     fn headers_store(&self) -> &dyn HeaderStoreReader;
 
@@ -282,6 +284,15 @@ pub fn calc_work(bits: u32) -> BlueWorkType {
     res.try_into().expect("Work should not exceed 2**192")
 }
 
+pub fn level_work(level: u8, max_block_level: u8) -> BlueWorkType {
+    // Need to make a special condition for level 0 to ensure true work is always used
+    if level == 0 {
+        return 0.into();
+    }
+    let exp = (level as u32) + 256 - (max_block_level as u32);
+    BlueWorkType::from_u64(1) << exp.min(MAX_WORK_LEVEL)
+}
+
 #[derive(Eq)]
 struct DifficultyBlock {
     timestamp: u64,
@@ -305,5 +316,59 @@ impl PartialOrd for DifficultyBlock {
 impl Ord for DifficultyBlock {
     fn cmp(&self, other: &Self) -> Ordering {
         self.timestamp.cmp(&other.timestamp).then_with(|| self.sortable_block.cmp(&other.sortable_block))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cmp::max;
+
+    use kaspa_consensus_core::{BlockLevel, BlueWorkType};
+    use kaspa_math::{Uint256, Uint320};
+
+    use crate::processes::difficulty::{calc_work, level_work, MAX_WORK_LEVEL};
+    use kaspa_utils::hex::ToHex;
+
+    #[test]
+    fn test_target_levels() {
+        let max_block_level: BlockLevel = 225;
+        for level in 1..=max_block_level {
+            // required pow for level
+            let level_target = (Uint320::from_u64(1) << ((max_block_level - level) as u32).max(MAX_WORK_LEVEL)) - Uint320::from_u64(1);
+            let level_target = Uint256::from_be_bytes(level_target.to_be_bytes()[8..40].try_into().unwrap());
+            let signed_block_level = max_block_level as i64 - level_target.bits() as i64;
+            let calculated_level = max(signed_block_level, 0) as BlockLevel;
+
+            let true_level_work = calc_work(level_target.compact_target_bits());
+            let calc_level_work = level_work(level, max_block_level);
+
+            // A "good enough" estimate of level work is within 1% diff from work with actual level target
+            // It's hard to calculate percentages with these large numbers, so to get around using floats
+            // we multiply the difference by 100. if the result is <= the calc_level_work it means
+            // difference must have been less than 1%
+            let (percent_diff, overflowed) = (true_level_work - calc_level_work).overflowing_mul(BlueWorkType::from_u64(100));
+            let is_good_enough = percent_diff <= calc_level_work;
+
+            println!("Level {}:", level);
+            println!(
+                "    data | {} | {} | {} / {} |",
+                level_target.compact_target_bits(),
+                level_target.bits(),
+                calculated_level,
+                max_block_level
+            );
+            println!("    pow  | {}", level_target.to_hex());
+            println!("    work | 0000000000000000{}", true_level_work.to_hex());
+            println!("  lvwork | 0000000000000000{}", calc_level_work.to_hex());
+            println!(" diff<1% | {}", !overflowed && (is_good_enough));
+
+            assert!(is_good_enough);
+        }
+    }
+
+    #[test]
+    fn test_base_level_work() {
+        // Expect that at level 0, the level work is always 0
+        assert_eq!(BlueWorkType::from(0), level_work(0, 255));
     }
 }

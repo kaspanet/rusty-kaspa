@@ -11,7 +11,7 @@ use crate::{
         },
     },
     processes::{
-        block_depth::BlockDepthManager, coinbase::CoinbaseManager, ghostdag::protocol::GhostdagManager,
+        block_depth::BlockDepthManager, coinbase::CoinbaseManager, difficulty::level_work, ghostdag::protocol::GhostdagManager,
         parents_builder::ParentsManager, pruning::PruningPointManager, pruning_proof::PruningProofManager, sync::SyncManager,
         transaction_validator::TransactionValidator, traversal_manager::DagTraversalManager, window::DualWindowManager,
     },
@@ -118,7 +118,7 @@ impl ConsensusServices {
             relations_services[0].clone(),
             storage.headers_store.clone(),
             reachability_service.clone(),
-            false,
+            level_work(0, config.max_block_level),
         );
 
         let coinbase_manager = CoinbaseManager::new(

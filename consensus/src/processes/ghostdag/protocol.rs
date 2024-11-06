@@ -29,7 +29,7 @@ pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: R
     pub(super) relations_store: S,
     pub(super) headers_store: Arc<V>,
     pub(super) reachability_service: U,
-    use_score_as_work: bool,
+    expected_level_work: BlueWorkType,
 }
 
 impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {
@@ -40,9 +40,9 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         relations_store: S,
         headers_store: Arc<V>,
         reachability_service: U,
-        use_score_as_work: bool,
+        expected_level_work: BlueWorkType,
     ) -> Self {
-        Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store, use_score_as_work }
+        Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store, expected_level_work }
     }
 
     pub fn genesis_ghostdag_data(&self) -> GhostdagData {
@@ -117,18 +117,20 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
 
         let blue_score = self.ghostdag_store.get_blue_score(selected_parent).unwrap() + new_block_data.mergeset_blues.len() as u64;
 
-        let blue_work: BlueWorkType = if self.use_score_as_work {
-            blue_score.into()
-        } else {
-            let added_blue_work: BlueWorkType = new_block_data
-                .mergeset_blues
-                .iter()
-                .cloned()
-                .map(|hash| if hash.is_origin() { 0.into() } else { calc_work(self.headers_store.get_bits(hash).unwrap()) })
-                .sum();
-
-            self.ghostdag_store.get_blue_work(selected_parent).unwrap() + added_blue_work
-        };
+        let added_blue_work: BlueWorkType = new_block_data
+            .mergeset_blues
+            .iter()
+            .cloned()
+            .map(|hash| {
+                if hash.is_origin() {
+                    0.into()
+                } else {
+                    let true_work = calc_work(self.headers_store.get_bits(hash).unwrap());
+                    true_work.max(self.expected_level_work)
+                }
+            })
+            .sum();
+        let blue_work: BlueWorkType = self.ghostdag_store.get_blue_work(selected_parent).unwrap() + added_blue_work;
 
         new_block_data.finalize_score_and_work(blue_score, blue_work);
 
