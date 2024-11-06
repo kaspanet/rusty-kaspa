@@ -556,6 +556,10 @@ mod tests {
         fn populated_input(&self, _index: usize) -> (&TransactionInput, &UtxoEntry) {
             unimplemented!()
         }
+
+        fn utxo(&self, _index: usize) -> Option<&UtxoEntry> {
+            unimplemented!()
+        }
     }
 
     fn run_test_script_cases(test_cases: Vec<ScriptTestCase>) {

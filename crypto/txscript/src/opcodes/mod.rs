@@ -887,13 +887,13 @@ opcode_list! {
         if vm.kip10_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{
-                    utxo_entry: kaspa_consensus_core::tx::UtxoEntry{
-                        script_public_key: spk,
-                        ..
-                    },
+                    tx,
                     ..
                 } => {
-                    vm.dstack.push(spk.to_bytes());
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?; // todo check if idx <= u8::MAX ??
+                    let idx = idx as usize;
+                    let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidIndex(idx, tx.inputs().len()))?;
+                    vm.dstack.push(utxo.script_public_key.to_bytes());
                     Ok(())
                 },
                 _ => Err(TxScriptError::InvalidSource("OpInputSpk only applies to transaction inputs".to_string()))
@@ -906,12 +906,14 @@ opcode_list! {
         if vm.kip10_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{
-                    utxo_entry: kaspa_consensus_core::tx::UtxoEntry{
-                        amount,
-                        ..
-                    },
+                    tx,
                     ..
-                } => push_number(*amount as i64, vm),
+                } => {
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?; // todo check if idx <= u8::MAX ??
+                    let idx = idx as usize;
+                    let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidIndex(idx, tx.inputs().len()))?;
+                    push_number(utxo.amount as i64, vm)
+                },
                 _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
             }
         } else {
@@ -921,11 +923,11 @@ opcode_list! {
     opcode OpOutputSpk<0xb4, 1>(self, vm) {
         if vm.kip10_enabled {
             match vm.script_source {
-                ScriptSource::TxInput{tx, id , ..} => {
-                    let v = tx.outputs().get(id).map(|output| {
-                        output.script_public_key.to_bytes()
-                    });
-                    vm.dstack.push(v.unwrap_or_default());
+                ScriptSource::TxInput{tx, ..} => {
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?; // todo check if idx <= u8::MAX ??
+                    let idx = idx as usize;
+                    let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.outputs().len()))?;
+                    vm.dstack.push(output.script_public_key.to_bytes());
                     Ok(())
                 },
                 _ => Err(TxScriptError::InvalidSource("OpOutputSpk only applies to transaction inputs".to_string()))
@@ -937,8 +939,11 @@ opcode_list! {
     opcode OpOutputAmount<0xb5, 1>(self, vm) {
         if vm.kip10_enabled {
             match vm.script_source {
-                ScriptSource::TxInput{tx, id , ..} => {
-                    push_number(tx.outputs().get(id).map(|output| output.value).unwrap_or_default() as i64, vm)
+                ScriptSource::TxInput{tx, ..} => {
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?; // todo check if idx <= u8::MAX ??
+                    let idx = idx as usize;
+                    let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.outputs().len()))?;
+                    push_number(output.value as i64, vm)
                 },
                 _ => Err(TxScriptError::InvalidSource("OpOutputAmount only applies to transaction inputs".to_string()))
             }
@@ -2903,6 +2908,9 @@ mod test {
         }
 
         fn populated_input(&self, _index: usize) -> (&TransactionInput, &UtxoEntry) {
+            unimplemented!()
+        }
+        fn utxo(&self, _index: usize) -> Option<&UtxoEntry> {
             unimplemented!()
         }
     }

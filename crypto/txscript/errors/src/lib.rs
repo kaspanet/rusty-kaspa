@@ -69,4 +69,6 @@ pub enum TxScriptError {
     InvalidStackOperation(usize, usize),
     #[error("script of size {0} exceeded maximum allowed size of {1}")]
     ScriptSize(usize, usize),
+    #[error("transaction output index {0} >= {1}")]
+    InvalidOutputIndex(usize, usize),
 }
