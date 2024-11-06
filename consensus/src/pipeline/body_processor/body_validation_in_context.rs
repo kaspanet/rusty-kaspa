@@ -2,7 +2,13 @@ use super::BlockBodyProcessor;
 use crate::{
     errors::{BlockProcessResult, RuleError},
     model::stores::statuses::StatusesStoreReader,
-    processes::window::WindowManager,
+    processes::{
+        transaction_validator::{
+            tx_validation_not_utxo_related::{LockTimeArg, LockTimeType},
+            TransactionValidator,
+        },
+        window::WindowManager,
+    },
 };
 use kaspa_consensus_core::block::Block;
 use kaspa_database::prelude::StoreResultExtensions;
@@ -23,14 +29,14 @@ impl BlockBodyProcessor {
         let lazy_pmt_res = Lazy::new(|| self.window_manager.calc_past_median_time_for_known_hash(block.hash()));
 
         for tx in block.transactions.iter() {
-            // Quick check to avoid the expensive Lazy eval during ibd (in most cases).
-            // TODO: refactor this and avoid classifying the tx lock outside of the transaction validator.
-            if tx.lock_time != 0 {
-                if let Err(e) =
-                    self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, (*lazy_pmt_res).clone()?)
-                {
-                    return Err(RuleError::TxInContextFailed(tx.id(), e));
-                };
+            let lock_time_arg = match TransactionValidator::get_lock_time_type(tx) {
+                LockTimeType::Finalized => LockTimeArg::Finalized,
+                LockTimeType::DaaScore => LockTimeArg::DaaScore(block.header.daa_score),
+                // We only evaluate the pmt calculation when actually needed
+                LockTimeType::Time => LockTimeArg::MedianTime((*lazy_pmt_res).clone()?),
+            };
+            if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, lock_time_arg) {
+                return Err(RuleError::TxInContextFailed(tx.id(), e));
             };
         }
         Ok(())

@@ -7,22 +7,57 @@ use super::{
     TransactionValidator,
 };
 
+pub(crate) enum LockTimeType {
+    Finalized,
+    DaaScore,
+    Time,
+}
+
+pub(crate) enum LockTimeArg {
+    Finalized,
+    DaaScore(u64),
+    MedianTime(u64),
+}
+
 impl TransactionValidator {
-    pub fn utxo_free_tx_validation(&self, tx: &Transaction, ctx_daa_score: u64, ctx_block_time: u64) -> TxResult<()> {
-        self.check_tx_is_finalized(tx, ctx_daa_score, ctx_block_time)
+    pub(crate) fn utxo_free_tx_validation_with_args(&self, tx: &Transaction, ctx_daa_score: u64, ctx_block_time: u64) -> TxResult<()> {
+        self.utxo_free_tx_validation(
+            tx,
+            match Self::get_lock_time_type(tx) {
+                LockTimeType::Finalized => LockTimeArg::Finalized,
+                LockTimeType::DaaScore => LockTimeArg::DaaScore(ctx_daa_score),
+                LockTimeType::Time => LockTimeArg::MedianTime(ctx_block_time),
+            },
+        )
     }
 
-    fn check_tx_is_finalized(&self, tx: &Transaction, ctx_daa_score: u64, ctx_block_time: u64) -> TxResult<()> {
-        // Lock time of zero means the transaction is finalized.
-        if tx.lock_time == 0 {
-            return Ok(());
-        }
+    pub(crate) fn utxo_free_tx_validation(&self, tx: &Transaction, lock_time_arg: LockTimeArg) -> TxResult<()> {
+        self.check_tx_is_finalized(tx, lock_time_arg)
+    }
 
-        // The lock time field of a transaction is either a block DAA score at
-        // which the transaction is finalized or a timestamp depending on if the
-        // value is before the LOCK_TIME_THRESHOLD. When it is under the
-        // threshold it is a DAA score.
-        let block_time_or_daa_score = if tx.lock_time < LOCK_TIME_THRESHOLD { ctx_daa_score } else { ctx_block_time };
+    pub(crate) fn get_lock_time_type(tx: &Transaction) -> LockTimeType {
+        match tx.lock_time {
+            // Lock time of zero means the transaction is finalized.
+            0 => LockTimeType::Finalized,
+
+            // The lock time field of a transaction is either a block DAA score at
+            // which the transaction is finalized or a timestamp depending on if the
+            // value is before the LOCK_TIME_THRESHOLD. When it is under the
+            // threshold it is a DAA score
+            t if t < LOCK_TIME_THRESHOLD => LockTimeType::DaaScore,
+
+            // ..and when equal or above the threshold it represents time
+            _t => LockTimeType::Time,
+        }
+    }
+
+    fn check_tx_is_finalized(&self, tx: &Transaction, lock_time_arg: LockTimeArg) -> TxResult<()> {
+        let block_time_or_daa_score = match lock_time_arg {
+            LockTimeArg::Finalized => return Ok(()),
+            LockTimeArg::DaaScore(ctx_daa_score) => ctx_daa_score,
+            LockTimeArg::MedianTime(ctx_block_time) => ctx_block_time,
+        };
+
         if tx.lock_time < block_time_or_daa_score {
             return Ok(());
         }
