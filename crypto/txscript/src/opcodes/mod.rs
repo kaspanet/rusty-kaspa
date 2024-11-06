@@ -912,7 +912,7 @@ opcode_list! {
                     tx,
                     ..
                 } => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?; // todo check if idx <= u8::MAX ??
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
                      if !(0..=u8::MAX as i32).contains(&idx) {
                         return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
                     }
@@ -930,7 +930,7 @@ opcode_list! {
         if vm.kip10_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?; // todo check if idx <= u8::MAX ??
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
                      if !(0..=u8::MAX as i32).contains(&idx) {
                         return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
                     }
@@ -949,7 +949,7 @@ opcode_list! {
         if vm.kip10_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?; // todo check if idx <= u8::MAX ??
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
                      if !(0..=u8::MAX as i32).contains(&idx) {
                         return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
                     }
@@ -3018,9 +3018,11 @@ mod test {
             };
             let input_spk1 = spk(vec![1u8; 32]);
             let input_spk2 = spk(vec![2u8; 32]);
+            let output_spk1 = spk(vec![3u8; 32]);
+            let output_spk2 = spk(vec![4u8; 32]);
             let (tx, utxo_entries) = kip_10_tx_mock(
                 vec![Kip10Mock { spk: input_spk1.clone(), amount: 0 }, Kip10Mock { spk: input_spk2.clone(), amount: 0 }],
-                vec![],
+                vec![Kip10Mock { spk: output_spk1.clone(), amount: 0 }, Kip10Mock { spk: output_spk2.clone(), amount: 0 }],
             );
             let tx = PopulatedTransaction::new(&tx, utxo_entries);
             let sig_cache = Cache::new(10_000);
@@ -3037,43 +3039,79 @@ mod test {
                         kip10_enabled,
                     )
                     .unwrap();
-                    let code = opcodes::OpInputSpk::empty().expect("Should accept empty");
+                    let op_input_spk = opcodes::OpInputSpk::empty().expect("Should accept empty");
+                    let op_output_spk = opcodes::OpOutputSpk::empty().expect("Should accept empty");
 
                     if !kip10_enabled {
-                        assert!(matches!(code.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))));
+                        assert!(matches!(op_input_spk.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))));
+                        assert!(matches!(op_output_spk.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))));
                     } else {
                         // check first input
                         {
                             push_number(0, &mut vm).unwrap();
-                            code.execute(&mut vm).unwrap();
+                            op_input_spk.execute(&mut vm).unwrap();
                             assert_eq!(vm.dstack, vec![input_spk1.to_bytes()]);
                             vm.dstack.clear();
                         }
                         // check second input
                         {
                             push_number(1, &mut vm).unwrap();
-                            code.execute(&mut vm).unwrap();
+                            op_input_spk.execute(&mut vm).unwrap();
                             assert_eq!(vm.dstack, vec![input_spk2.to_bytes()]);
                             vm.dstack.clear();
                         }
                         // check empty stack
                         {
-                            assert!(matches!(code.execute(&mut vm), Err(TxScriptError::InvalidStackOperation(1, 0))));
+                            assert!(matches!(op_input_spk.execute(&mut vm), Err(TxScriptError::InvalidStackOperation(1, 0))));
                         }
                         // check negative input
                         {
                             push_number(-1, &mut vm).unwrap();
-                            assert!(matches!(code.execute(&mut vm), Err(TxScriptError::InvalidIndex(_, 2))));
+                            assert!(matches!(op_input_spk.execute(&mut vm), Err(TxScriptError::InvalidIndex(_, 2))));
                         }
                         // check big number input
                         {
                             push_number(u8::MAX as i64 + 1, &mut vm).unwrap();
-                            assert!(matches!(code.execute(&mut vm), Err(TxScriptError::InvalidIndex(_, 2))));
+                            assert!(matches!(op_input_spk.execute(&mut vm), Err(TxScriptError::InvalidIndex(_, 2))));
                         }
                         // check third input
                         {
                             push_number(2, &mut vm).unwrap();
-                            assert!(matches!(code.execute(&mut vm), Err(TxScriptError::InvalidIndex(2, 2))));
+                            assert!(matches!(op_input_spk.execute(&mut vm), Err(TxScriptError::InvalidIndex(2, 2))));
+                        }
+
+                        // check first output
+                        {
+                            push_number(0, &mut vm).unwrap();
+                            op_output_spk.execute(&mut vm).unwrap();
+                            assert_eq!(vm.dstack, vec![output_spk1.to_bytes()]);
+                            vm.dstack.clear();
+                        }
+                        // check second output
+                        {
+                            push_number(1, &mut vm).unwrap();
+                            op_output_spk.execute(&mut vm).unwrap();
+                            assert_eq!(vm.dstack, vec![output_spk2.to_bytes()]);
+                            vm.dstack.clear();
+                        }
+                        // check empty stack
+                        {
+                            assert!(matches!(op_output_spk.execute(&mut vm), Err(TxScriptError::InvalidStackOperation(1, 0))));
+                        }
+                        // check negative output
+                        {
+                            push_number(-1, &mut vm).unwrap();
+                            assert!(matches!(op_output_spk.execute(&mut vm), Err(TxScriptError::InvalidIndex(_, 2))));
+                        }
+                        // check big number output
+                        {
+                            push_number(u8::MAX as i64 + 1, &mut vm).unwrap();
+                            assert!(matches!(op_output_spk.execute(&mut vm), Err(TxScriptError::InvalidIndex(_, 2))));
+                        }
+                        // check third output
+                        {
+                            push_number(2, &mut vm).unwrap();
+                            assert!(matches!(op_output_spk.execute(&mut vm), Err(TxScriptError::InvalidOutputIndex(2, 2))));
                         }
                     }
                 })
