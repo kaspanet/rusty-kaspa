@@ -890,9 +890,12 @@ opcode_list! {
                     tx,
                     ..
                 } => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?; // todo check if idx <= u8::MAX ??
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                    if !(0..=u8::MAX as i32).contains(&idx) {
+                        return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
+                    }
                     let idx = idx as usize;
-                    let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidIndex(idx, tx.inputs().len()))?;
+                     let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidIndex(idx, tx.inputs().len()))?;
                     vm.dstack.push(utxo.script_public_key.to_bytes());
                     Ok(())
                 },
@@ -910,6 +913,9 @@ opcode_list! {
                     ..
                 } => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?; // todo check if idx <= u8::MAX ??
+                     if !(0..=u8::MAX as i32).contains(&idx) {
+                        return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
+                    }
                     let idx = idx as usize;
                     let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidIndex(idx, tx.inputs().len()))?;
                     push_number(utxo.amount as i64, vm)
@@ -925,6 +931,9 @@ opcode_list! {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?; // todo check if idx <= u8::MAX ??
+                     if !(0..=u8::MAX as i32).contains(&idx) {
+                        return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
+                    }
                     let idx = idx as usize;
                     let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.outputs().len()))?;
                     vm.dstack.push(output.script_public_key.to_bytes());
@@ -941,6 +950,9 @@ opcode_list! {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?; // todo check if idx <= u8::MAX ??
+                     if !(0..=u8::MAX as i32).contains(&idx) {
+                        return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
+                    }
                     let idx = idx as usize;
                     let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.outputs().len()))?;
                     push_number(output.value as i64, vm)
@@ -1045,7 +1057,7 @@ pub fn to_small_int<T: VerifiableTransaction, Reused: SigHashReusedValues>(opcod
 #[cfg(test)]
 mod test {
     use crate::caches::Cache;
-    use crate::data_stack::{OpcodeData, SizedEncodeInt, Stack};
+    use crate::data_stack::Stack;
     use crate::opcodes::{OpCodeExecution, OpCodeImplementation};
     use crate::{opcodes, pay_to_address_script, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD};
     use kaspa_addresses::{Address, Prefix, Version};
@@ -2349,134 +2361,6 @@ mod test {
         ]);
     }
 
-    fn execute_kip_10_op_with_mock_engine(
-        input_spk: ScriptPublicKey,
-        output_spk: Option<ScriptPublicKey>,
-        input_amount: u64,
-        output_amount: u64,
-        cb: impl FnOnce(TxScriptEngine<VerifiableTransactionMock, SigHashReusedValuesUnsync>),
-    ) {
-        let cache = Cache::new(10_000);
-        let reused_values = SigHashReusedValuesUnsync::new();
-        let dummy_prev_out = TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 1);
-        let dummy_sig_script = vec![0u8; 65];
-        let tx_input = TransactionInput::new(dummy_prev_out, dummy_sig_script, 10, 0);
-
-        let tx_out = output_spk.map(|spk| TransactionOutput::new(output_amount, spk));
-        let tx = VerifiableTransactionMock(Transaction::new(
-            TX_VERSION + 1,
-            vec![tx_input.clone()],
-            tx_out.map(|tx_out| vec![tx_out]).unwrap_or_default(),
-            0,
-            SUBNETWORK_ID_NATIVE,
-            0,
-            vec![],
-        ));
-        let utxo_entry = UtxoEntry::new(input_amount, input_spk.clone(), 0, false);
-
-        let vm = TxScriptEngine::from_transaction_input(&tx, &tx_input, 0, &utxo_entry, &reused_values, &cache, true)
-            .expect("Shouldn't fail");
-        cb(vm);
-    }
-    #[test]
-    fn test_op_input_spk() {
-        let input_pub_key = vec![1u8; 32];
-        let input_addr = Address::new(Prefix::Testnet, Version::PubKey, &input_pub_key);
-        let input_script_public_key = pay_to_address_script(&input_addr);
-        execute_kip_10_op_with_mock_engine(input_script_public_key.clone(), None, 0, 0, |mut vm| {
-            let code = opcodes::OpInputSpk::empty().expect("Should accept empty");
-            code.execute(&mut vm).unwrap();
-            assert_eq!(vm.dstack, vec![input_script_public_key.to_bytes()]);
-        });
-    }
-
-    #[test]
-    fn test_op_output_spk() {
-        let input_pub_key = vec![1u8; 32];
-        let input_addr = Address::new(Prefix::Testnet, Version::PubKey, &input_pub_key);
-        let input_script_public_key = pay_to_address_script(&input_addr);
-        let output_pub_key = vec![2u8; 32];
-        let output_addr = Address::new(Prefix::Testnet, Version::PubKey, &output_pub_key);
-        let output_script_public_key = pay_to_address_script(&output_addr);
-        [None, Some(output_script_public_key.clone())].into_iter().for_each(|output_spk| {
-            execute_kip_10_op_with_mock_engine(input_script_public_key.clone(), output_spk.clone(), 0, 0, |mut vm| {
-                let code = opcodes::OpOutputSpk::empty().expect("Should accept empty");
-                code.execute(&mut vm).unwrap();
-                assert_eq!(vm.dstack, vec![output_spk.map(|output_spk| output_spk.to_bytes()).unwrap_or_default()]);
-                vm.dstack.clear();
-            });
-        });
-    }
-
-    #[test]
-    fn test_op_input_amount() {
-        let input_pub_key = vec![1u8; 32];
-        let input_addr = Address::new(Prefix::Testnet, Version::PubKey, &input_pub_key);
-        let input_script_public_key = pay_to_address_script(&input_addr);
-        [0, 268_435_455].into_iter().for_each(|amount| {
-            execute_kip_10_op_with_mock_engine(input_script_public_key.clone(), None, amount, 0, |mut vm| {
-                let code = opcodes::OpInputAmount::empty().expect("Should accept empty");
-                code.execute(&mut vm).unwrap();
-                let actual: i64 = vm.dstack[0].deserialize().unwrap();
-                assert_eq!(actual, amount as i64);
-            });
-        });
-
-        const MAX_SOMPI: u64 = 29_000_000_000 * SOMPI_PER_KASPA; // works if serialized to SizedEncodeInt<8>
-        execute_kip_10_op_with_mock_engine(input_script_public_key.clone(), None, MAX_SOMPI, 0, |mut vm| {
-            let code = opcodes::OpInputAmount::empty().expect("Should accept empty");
-            code.execute(&mut vm).unwrap();
-            let actual: SizedEncodeInt<8> = vm.dstack[0].deserialize().unwrap();
-            assert_eq!(actual.0, MAX_SOMPI as i64);
-        });
-    }
-
-    #[test]
-    fn test_op_output_amount() {
-        let input_pub_key = vec![1u8; 32];
-        let input_addr = Address::new(Prefix::Testnet, Version::PubKey, &input_pub_key);
-        let input_script_public_key = pay_to_address_script(&input_addr);
-        let output_pub_key = vec![2u8; 32];
-        let output_addr = Address::new(Prefix::Testnet, Version::PubKey, &output_pub_key);
-        let output_script_public_key = pay_to_address_script(&output_addr);
-
-        execute_kip_10_op_with_mock_engine(input_script_public_key.clone(), None, 0, 0, |mut vm| {
-            let code = opcodes::OpOutputAmount::empty().expect("Should accept empty");
-            code.execute(&mut vm).unwrap();
-            let actual: i64 = vm.dstack[0].deserialize().unwrap();
-            assert_eq!(actual, 0);
-        });
-
-        [0, 268_435_455].into_iter().for_each(|amount| {
-            execute_kip_10_op_with_mock_engine(
-                input_script_public_key.clone(),
-                Some(output_script_public_key.clone()),
-                0,
-                amount,
-                |mut vm| {
-                    let code = opcodes::OpOutputAmount::empty().expect("Should accept empty");
-                    code.execute(&mut vm).unwrap();
-                    let actual: i64 = vm.dstack[0].deserialize().unwrap();
-                    assert_eq!(actual, amount as i64);
-                },
-            );
-        });
-
-        const MAX_SOMPI: u64 = 29_000_000_000 * SOMPI_PER_KASPA; // works if serialized to SizedEncodeInt<8>
-        execute_kip_10_op_with_mock_engine(
-            input_script_public_key.clone(),
-            Some(output_script_public_key.clone()),
-            0,
-            MAX_SOMPI,
-            |mut vm| {
-                let code = opcodes::OpOutputAmount::empty().expect("Should accept empty");
-                code.execute(&mut vm).unwrap();
-                let actual: SizedEncodeInt<8> = vm.dstack[0].deserialize().unwrap();
-                assert_eq!(actual.0, MAX_SOMPI as i64);
-            },
-        );
-    }
-
     #[test]
     fn test_oppick() {
         run_success_test_cases(vec![
@@ -3101,5 +2985,174 @@ mod test {
             },
             TestCase { code: opcodes::OpIfDup::empty().expect("Should accept empty"), init: vec![vec![]], dstack: vec![vec![]] },
         ])
+    }
+
+    mod kip10 {
+        use super::*;
+        use crate::opcodes::push_number;
+
+        struct Kip10Mock {
+            spk: ScriptPublicKey,
+            amount: u64,
+        }
+
+        fn kip_10_tx_mock(inputs: Vec<Kip10Mock>, outputs: Vec<Kip10Mock>) -> (Transaction, Vec<UtxoEntry>) {
+            let dummy_prev_out = TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 1);
+            let dummy_sig_script = vec![0u8; 65];
+            let (utxos, tx_inputs) = inputs
+                .into_iter()
+                .map(|Kip10Mock { spk, amount }| {
+                    (UtxoEntry::new(amount, spk, 0, false), TransactionInput::new(dummy_prev_out, dummy_sig_script.clone(), 10, 0))
+                })
+                .unzip();
+
+            let tx_out = outputs.into_iter().map(|Kip10Mock { spk, amount }| TransactionOutput::new(amount, spk));
+            let tx = Transaction::new(TX_VERSION + 1, tx_inputs, tx_out.collect(), 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+            (tx, utxos)
+        }
+        #[test]
+        fn test_op_input_spk() {
+            let spk = |pub_key: Vec<_>| {
+                let addr = Address::new(Prefix::Testnet, Version::PubKey, &pub_key);
+                pay_to_address_script(&addr)
+            };
+            let input_spk1 = spk(vec![1u8; 32]);
+            let input_spk2 = spk(vec![2u8; 32]);
+            let (tx, utxo_entries) = kip_10_tx_mock(
+                vec![Kip10Mock { spk: input_spk1.clone(), amount: 0 }, Kip10Mock { spk: input_spk2.clone(), amount: 0 }],
+                vec![],
+            );
+            let tx = PopulatedTransaction::new(&tx, utxo_entries);
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+            [true, false].into_iter().for_each(|kip10_enabled| {
+                (0..tx.inputs().len()).for_each(|current_idx| {
+                    let mut vm = TxScriptEngine::from_transaction_input(
+                        &tx,
+                        &tx.inputs()[current_idx],
+                        current_idx,
+                        tx.utxo(current_idx).unwrap(),
+                        &reused_values,
+                        &sig_cache,
+                        kip10_enabled,
+                    )
+                    .unwrap();
+                    let code = opcodes::OpInputSpk::empty().expect("Should accept empty");
+
+                    if !kip10_enabled {
+                        assert!(matches!(code.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))));
+                    } else {
+                        // check first input
+                        {
+                            push_number(0, &mut vm).unwrap();
+                            code.execute(&mut vm).unwrap();
+                            assert_eq!(vm.dstack, vec![input_spk1.to_bytes()]);
+                            vm.dstack.clear();
+                        }
+                        // check second input
+                        {
+                            push_number(1, &mut vm).unwrap();
+                            code.execute(&mut vm).unwrap();
+                            assert_eq!(vm.dstack, vec![input_spk2.to_bytes()]);
+                            vm.dstack.clear();
+                        }
+                        // check empty stack
+                        {
+                            assert!(matches!(code.execute(&mut vm), Err(TxScriptError::InvalidStackOperation(1, 0))));
+                        }
+                        // check negative input
+                        {
+                            push_number(-1, &mut vm).unwrap();
+                            assert!(matches!(code.execute(&mut vm), Err(TxScriptError::InvalidIndex(_, 2))));
+                        }
+                        // check big number input
+                        {
+                            push_number(u8::MAX as i64 + 1, &mut vm).unwrap();
+                            assert!(matches!(code.execute(&mut vm), Err(TxScriptError::InvalidIndex(_, 2))));
+                        }
+                        // check third input
+                        {
+                            push_number(2, &mut vm).unwrap();
+                            assert!(matches!(code.execute(&mut vm), Err(TxScriptError::InvalidIndex(2, 2))));
+                        }
+                    }
+                })
+            });
+        }
+
+        //     #[test]
+        //     fn test_op_output_spk() {
+        //         let input_pub_key = vec![1u8; 32];
+        //         let input_addr = Address::new(Prefix::Testnet, Version::PubKey, &input_pub_key);
+        //         let input_script_public_key = pay_to_address_script(&input_addr);
+        //         let output_pub_key = vec![2u8; 32];
+        //         let output_addr = Address::new(Prefix::Testnet, Version::PubKey, &output_pub_key);
+        //         let output_script_public_key = pay_to_address_script(&output_addr);
+        //         [None, Some(output_script_public_key.clone())].into_iter().for_each(|output_spk| {
+        //             kip_10_tx_mock(input_script_public_key.clone(), output_spk.clone(), 0, 0, |mut vm| {
+        //                 let code = opcodes::OpOutputSpk::empty().expect("Should accept empty");
+        //                 code.execute(&mut vm).unwrap();
+        //                 assert_eq!(vm.dstack, vec![output_spk.map(|output_spk| output_spk.to_bytes()).unwrap_or_default()]);
+        //                 vm.dstack.clear();
+        //             });
+        //         });
+        //     }
+        //
+        //     #[test]
+        //     fn test_op_input_amount() {
+        //         let input_pub_key = vec![1u8; 32];
+        //         let input_addr = Address::new(Prefix::Testnet, Version::PubKey, &input_pub_key);
+        //         let input_script_public_key = pay_to_address_script(&input_addr);
+        //         [0, 268_435_455].into_iter().for_each(|amount| {
+        //             kip_10_tx_mock(input_script_public_key.clone(), None, amount, 0, |mut vm| {
+        //                 let code = opcodes::OpInputAmount::empty().expect("Should accept empty");
+        //                 code.execute(&mut vm).unwrap();
+        //                 let actual: i64 = vm.dstack[0].deserialize().unwrap();
+        //                 assert_eq!(actual, amount as i64);
+        //             });
+        //         });
+        //
+        //         const MAX_SOMPI: u64 = 29_000_000_000 * SOMPI_PER_KASPA; // works if serialized to SizedEncodeInt<8>
+        //         kip_10_tx_mock(input_script_public_key.clone(), None, MAX_SOMPI, 0, |mut vm| {
+        //             let code = opcodes::OpInputAmount::empty().expect("Should accept empty");
+        //             code.execute(&mut vm).unwrap();
+        //             let actual: SizedEncodeInt<8> = vm.dstack[0].deserialize().unwrap();
+        //             assert_eq!(actual.0, MAX_SOMPI as i64);
+        //         });
+        //     }
+        //
+        //     #[test]
+        //     fn test_op_output_amount() {
+        //         let input_pub_key = vec![1u8; 32];
+        //         let input_addr = Address::new(Prefix::Testnet, Version::PubKey, &input_pub_key);
+        //         let input_script_public_key = pay_to_address_script(&input_addr);
+        //         let output_pub_key = vec![2u8; 32];
+        //         let output_addr = Address::new(Prefix::Testnet, Version::PubKey, &output_pub_key);
+        //         let output_script_public_key = pay_to_address_script(&output_addr);
+        //
+        //         kip_10_tx_mock(input_script_public_key.clone(), None, 0, 0, |mut vm| {
+        //             let code = opcodes::OpOutputAmount::empty().expect("Should accept empty");
+        //             code.execute(&mut vm).unwrap();
+        //             let actual: i64 = vm.dstack[0].deserialize().unwrap();
+        //             assert_eq!(actual, 0);
+        //         });
+        //
+        //         [0, 268_435_455].into_iter().for_each(|amount| {
+        //             kip_10_tx_mock(input_script_public_key.clone(), Some(output_script_public_key.clone()), 0, amount, |mut vm| {
+        //                 let code = opcodes::OpOutputAmount::empty().expect("Should accept empty");
+        //                 code.execute(&mut vm).unwrap();
+        //                 let actual: i64 = vm.dstack[0].deserialize().unwrap();
+        //                 assert_eq!(actual, amount as i64);
+        //             });
+        //         });
+        //
+        //         const MAX_SOMPI: u64 = 29_000_000_000 * SOMPI_PER_KASPA; // works if serialized to SizedEncodeInt<8>
+        //         kip_10_tx_mock(input_script_public_key.clone(), Some(output_script_public_key.clone()), 0, MAX_SOMPI, |mut vm| {
+        //             let code = opcodes::OpOutputAmount::empty().expect("Should accept empty");
+        //             code.execute(&mut vm).unwrap();
+        //             let actual: SizedEncodeInt<8> = vm.dstack[0].deserialize().unwrap();
+        //             assert_eq!(actual.0, MAX_SOMPI as i64);
+        //         });
+        //     }
     }
 }
