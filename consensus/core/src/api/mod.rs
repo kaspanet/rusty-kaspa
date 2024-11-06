@@ -17,7 +17,7 @@ use crate::{
         tx::TxResult,
     },
     header::Header,
-    pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
+    pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath,
@@ -203,7 +203,7 @@ pub trait ConsensusApi: Send + Sync {
         unimplemented!()
     }
 
-    fn validate_pruning_proof(&self, proof: &PruningPointProof) -> PruningImportResult<()> {
+    fn validate_pruning_proof(&self, proof: &PruningPointProof, proof_metadata: &PruningProofMetadata) -> PruningImportResult<()> {
         unimplemented!()
     }
 

@@ -8,8 +8,8 @@ use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
     errors::pruning::{PruningImportError, PruningImportResult},
     header::Header,
-    pruning::PruningPointProof,
-    BlockLevel,
+    pruning::{PruningPointProof, PruningProofMetadata},
+    BlockLevel, BlueWorkType,
 };
 use kaspa_core::info;
 use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions};
@@ -26,6 +26,7 @@ use crate::{
         stores::{
             ghostdag::{CompactGhostdagData, DbGhostdagStore, GhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
+            headers_selected_tip::HeadersSelectedTipStoreReader,
             pruning::PruningStoreReader,
             reachability::{DbReachabilityStore, ReachabilityStoreReader},
             relations::{DbRelationsStore, RelationsStoreReader},
@@ -40,7 +41,11 @@ use crate::{
 use super::{PruningProofManager, TempProofContext};
 
 impl PruningProofManager {
-    pub fn validate_pruning_point_proof(&self, proof: &PruningPointProof) -> PruningImportResult<()> {
+    pub fn validate_pruning_point_proof(
+        &self,
+        proof: &PruningPointProof,
+        proof_metadata: &PruningProofMetadata,
+    ) -> PruningImportResult<()> {
         if proof.len() != self.max_block_level as usize + 1 {
             return Err(PruningImportError::ProofNotEnoughLevels(self.max_block_level as usize + 1));
         }
@@ -77,6 +82,10 @@ impl PruningProofManager {
         let current_pp = pruning_read.get().unwrap().pruning_point;
         let current_pp_header = self.headers_store.get_header(current_pp).unwrap();
 
+        let current_consensus_tip_work_diff =
+            SignedInteger::from(self.get_current_consensus_selected_tip_work(current_pp_header.blue_work));
+        let relay_header_work_diff = SignedInteger::from(proof_metadata.claimed_prover_relay_work(proof_pp_header.blue_work));
+
         for (level_idx, selected_tip) in proof_selected_tip_by_level.iter().copied().enumerate() {
             let level = level_idx as BlockLevel;
             self.validate_proof_selected_tip(selected_tip, level, proof_pp_level, proof_pp, proof_pp_header)?;
@@ -93,7 +102,6 @@ impl PruningProofManager {
             // we can determine if the proof is better. The proof is better if the blue work* difference between the
             // old current consensus's tips and the common ancestor is less than the blue work difference between the
             // proof's tip and the common ancestor.
-            // *Note: blue work is the same as blue score on levels higher than 0
             if let Some((proof_common_ancestor_gd, common_ancestor_gd)) = self.find_proof_and_consensus_common_ancestor_ghostdag_data(
                 &proof_ghostdag_stores,
                 &current_consensus_ghostdag_stores,
@@ -107,7 +115,9 @@ impl PruningProofManager {
                     let parent_blue_work = current_consensus_ghostdag_stores[level_idx].get_blue_work(parent).unwrap();
                     let parent_blue_work_diff =
                         SignedInteger::from(parent_blue_work) - SignedInteger::from(common_ancestor_gd.blue_work);
-                    if parent_blue_work_diff >= selected_tip_blue_work_diff {
+                    // TODO: Do something about not being to use add
+                    if parent_blue_work_diff - relay_header_work_diff >= selected_tip_blue_work_diff - current_consensus_tip_work_diff
+                    {
                         return Err(PruningImportError::PruningProofInsufficientBlueWork);
                     }
                 }
@@ -156,6 +166,16 @@ impl PruningProofManager {
         drop(current_consensus_stores_and_processes.db_lifetime);
 
         Err(PruningImportError::PruningProofNotEnoughHeaders)
+    }
+
+    fn get_current_consensus_selected_tip_work(&self, current_consensus_pp_blue_work: BlueWorkType) -> BlueWorkType {
+        let hst_work = self.headers_selected_tip_store.read().get().unwrap().blue_work;
+
+        if hst_work <= current_consensus_pp_blue_work {
+            return 0.into();
+        }
+
+        hst_work - current_consensus_pp_blue_work
     }
 
     fn init_validate_pruning_point_proof_stores_and_processes(
