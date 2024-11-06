@@ -2991,9 +2991,35 @@ mod test {
         use super::*;
         use crate::opcodes::push_number;
 
+        #[derive(Clone, Debug)]
         struct Kip10Mock {
             spk: ScriptPublicKey,
             amount: u64,
+        }
+
+        #[derive(Debug)]
+        struct TestCase {
+            name: &'static str,
+            kip10_enabled: bool,
+            expected_results: Vec<ExpectedResult>,
+        }
+
+        #[derive(Debug)]
+        enum ExpectedResult {
+            Success { operation: Operation, input: i64, expected_spk: Vec<u8> },
+            Error { operation: Operation, input: Option<i64>, expected_error: TxScriptError },
+        }
+
+        #[derive(Debug)]
+        enum Operation {
+            InputSpk,
+            OutputSpk,
+        }
+
+        fn create_mock_spk(value: u8) -> ScriptPublicKey {
+            let pub_key = vec![value; 32];
+            let addr = Address::new(Prefix::Testnet, Version::PubKey, &pub_key);
+            pay_to_address_script(&addr)
         }
 
         fn kip_10_tx_mock(inputs: Vec<Kip10Mock>, outputs: Vec<Kip10Mock>) -> (Transaction, Vec<UtxoEntry>) {
@@ -3007,115 +3033,162 @@ mod test {
                 .unzip();
 
             let tx_out = outputs.into_iter().map(|Kip10Mock { spk, amount }| TransactionOutput::new(amount, spk));
+
             let tx = Transaction::new(TX_VERSION + 1, tx_inputs, tx_out.collect(), 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
             (tx, utxos)
         }
-        #[test]
-        fn test_op_input_spk() {
-            let spk = |pub_key: Vec<_>| {
-                let addr = Address::new(Prefix::Testnet, Version::PubKey, &pub_key);
-                pay_to_address_script(&addr)
-            };
-            let input_spk1 = spk(vec![1u8; 32]);
-            let input_spk2 = spk(vec![2u8; 32]);
-            let output_spk1 = spk(vec![3u8; 32]);
-            let output_spk2 = spk(vec![4u8; 32]);
-            let (tx, utxo_entries) = kip_10_tx_mock(
-                vec![Kip10Mock { spk: input_spk1.clone(), amount: 0 }, Kip10Mock { spk: input_spk2.clone(), amount: 0 }],
-                vec![Kip10Mock { spk: output_spk1.clone(), amount: 0 }, Kip10Mock { spk: output_spk2.clone(), amount: 0 }],
-            );
+
+        fn execute_test_case(test_case: &TestCase) {
+            let input_spk1 = create_mock_spk(1);
+            let input_spk2 = create_mock_spk(2);
+            let output_spk1 = create_mock_spk(3);
+            let output_spk2 = create_mock_spk(4);
+
+            let inputs = vec![Kip10Mock { spk: input_spk1.clone(), amount: 0 }, Kip10Mock { spk: input_spk2.clone(), amount: 0 }];
+            let outputs = vec![Kip10Mock { spk: output_spk1.clone(), amount: 0 }, Kip10Mock { spk: output_spk2.clone(), amount: 0 }];
+
+            let (tx, utxo_entries) = kip_10_tx_mock(inputs, outputs);
             let tx = PopulatedTransaction::new(&tx, utxo_entries);
             let sig_cache = Cache::new(10_000);
             let reused_values = SigHashReusedValuesUnsync::new();
-            [true, false].into_iter().for_each(|kip10_enabled| {
-                (0..tx.inputs().len()).for_each(|current_idx| {
-                    let mut vm = TxScriptEngine::from_transaction_input(
-                        &tx,
-                        &tx.inputs()[current_idx],
-                        current_idx,
-                        tx.utxo(current_idx).unwrap(),
-                        &reused_values,
-                        &sig_cache,
-                        kip10_enabled,
-                    )
-                    .unwrap();
-                    let op_input_spk = opcodes::OpInputSpk::empty().expect("Should accept empty");
-                    let op_output_spk = opcodes::OpOutputSpk::empty().expect("Should accept empty");
 
-                    if !kip10_enabled {
-                        assert!(matches!(op_input_spk.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))));
-                        assert!(matches!(op_output_spk.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))));
-                    } else {
-                        // check first input
-                        {
-                            push_number(0, &mut vm).unwrap();
-                            op_input_spk.execute(&mut vm).unwrap();
-                            assert_eq!(vm.dstack, vec![input_spk1.to_bytes()]);
-                            vm.dstack.clear();
-                        }
-                        // check second input
-                        {
-                            push_number(1, &mut vm).unwrap();
-                            op_input_spk.execute(&mut vm).unwrap();
-                            assert_eq!(vm.dstack, vec![input_spk2.to_bytes()]);
-                            vm.dstack.clear();
-                        }
-                        // check empty stack
-                        {
-                            assert!(matches!(op_input_spk.execute(&mut vm), Err(TxScriptError::InvalidStackOperation(1, 0))));
-                        }
-                        // check negative input
-                        {
-                            push_number(-1, &mut vm).unwrap();
-                            assert!(matches!(op_input_spk.execute(&mut vm), Err(TxScriptError::InvalidIndex(_, 2))));
-                        }
-                        // check big number input
-                        {
-                            push_number(u8::MAX as i64 + 1, &mut vm).unwrap();
-                            assert!(matches!(op_input_spk.execute(&mut vm), Err(TxScriptError::InvalidIndex(_, 2))));
-                        }
-                        // check third input
-                        {
-                            push_number(2, &mut vm).unwrap();
-                            assert!(matches!(op_input_spk.execute(&mut vm), Err(TxScriptError::InvalidIndex(2, 2))));
-                        }
+            for current_idx in 0..tx.inputs().len() {
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[current_idx],
+                    current_idx,
+                    tx.utxo(current_idx).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    test_case.kip10_enabled,
+                )
+                .unwrap();
 
-                        // check first output
-                        {
-                            push_number(0, &mut vm).unwrap();
-                            op_output_spk.execute(&mut vm).unwrap();
-                            assert_eq!(vm.dstack, vec![output_spk1.to_bytes()]);
+                let op_input_spk = opcodes::OpInputSpk::empty().expect("Should accept empty");
+                let op_output_spk = opcodes::OpOutputSpk::empty().expect("Should accept empty");
+
+                for expected_result in &test_case.expected_results {
+                    match expected_result {
+                        ExpectedResult::Success { operation, input, expected_spk } => {
+                            push_number(*input, &mut vm).unwrap();
+                            match operation {
+                                Operation::InputSpk => {
+                                    op_input_spk.execute(&mut vm).unwrap();
+                                    assert_eq!(vm.dstack, vec![expected_spk.clone()]);
+                                }
+                                Operation::OutputSpk => {
+                                    op_output_spk.execute(&mut vm).unwrap();
+                                    assert_eq!(vm.dstack, vec![expected_spk.clone()]);
+                                }
+                            }
                             vm.dstack.clear();
                         }
-                        // check second output
-                        {
-                            push_number(1, &mut vm).unwrap();
-                            op_output_spk.execute(&mut vm).unwrap();
-                            assert_eq!(vm.dstack, vec![output_spk2.to_bytes()]);
+                        ExpectedResult::Error { operation, input, expected_error } => {
+                            if let Some(input_value) = input {
+                                push_number(*input_value, &mut vm).unwrap();
+                            }
+                            let result = match operation {
+                                Operation::InputSpk => op_input_spk.execute(&mut vm),
+                                Operation::OutputSpk => op_output_spk.execute(&mut vm),
+                            };
+                            assert!(
+                                matches!(result, Err(ref e) if std::mem::discriminant(e) == std::mem::discriminant(expected_error))
+                            );
                             vm.dstack.clear();
-                        }
-                        // check empty stack
-                        {
-                            assert!(matches!(op_output_spk.execute(&mut vm), Err(TxScriptError::InvalidStackOperation(1, 0))));
-                        }
-                        // check negative output
-                        {
-                            push_number(-1, &mut vm).unwrap();
-                            assert!(matches!(op_output_spk.execute(&mut vm), Err(TxScriptError::InvalidIndex(_, 2))));
-                        }
-                        // check big number output
-                        {
-                            push_number(u8::MAX as i64 + 1, &mut vm).unwrap();
-                            assert!(matches!(op_output_spk.execute(&mut vm), Err(TxScriptError::InvalidIndex(_, 2))));
-                        }
-                        // check third output
-                        {
-                            push_number(2, &mut vm).unwrap();
-                            assert!(matches!(op_output_spk.execute(&mut vm), Err(TxScriptError::InvalidOutputIndex(2, 2))));
                         }
                     }
-                })
-            });
+                }
+            }
+        }
+
+        #[test]
+        fn test_op_spk() {
+            let test_cases = vec![
+                TestCase {
+                    name: "KIP-10 disabled",
+                    kip10_enabled: false,
+                    expected_results: vec![
+                        ExpectedResult::Error {
+                            operation: Operation::InputSpk,
+                            input: Some(0),
+                            expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
+                        },
+                        ExpectedResult::Error {
+                            operation: Operation::OutputSpk,
+                            input: Some(0),
+                            expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
+                        },
+                    ],
+                },
+                TestCase {
+                    name: "Valid input indices",
+                    kip10_enabled: true,
+                    expected_results: vec![
+                        ExpectedResult::Success {
+                            operation: Operation::InputSpk,
+                            input: 0,
+                            expected_spk: create_mock_spk(1).to_bytes(),
+                        },
+                        ExpectedResult::Success {
+                            operation: Operation::InputSpk,
+                            input: 1,
+                            expected_spk: create_mock_spk(2).to_bytes(),
+                        },
+                    ],
+                },
+                TestCase {
+                    name: "Valid output indices",
+                    kip10_enabled: true,
+                    expected_results: vec![
+                        ExpectedResult::Success {
+                            operation: Operation::OutputSpk,
+                            input: 0,
+                            expected_spk: create_mock_spk(3).to_bytes(),
+                        },
+                        ExpectedResult::Success {
+                            operation: Operation::OutputSpk,
+                            input: 1,
+                            expected_spk: create_mock_spk(4).to_bytes(),
+                        },
+                    ],
+                },
+                TestCase {
+                    name: "Error cases",
+                    kip10_enabled: true,
+                    expected_results: vec![
+                        ExpectedResult::Error {
+                            operation: Operation::InputSpk,
+                            input: None, // empty stack case
+                            expected_error: TxScriptError::InvalidStackOperation(1, 0),
+                        },
+                        ExpectedResult::Error {
+                            operation: Operation::InputSpk,
+                            input: Some(-1),
+                            expected_error: TxScriptError::InvalidIndex(u8::MAX as usize + 1, 2),
+                        },
+                        ExpectedResult::Error {
+                            operation: Operation::InputSpk,
+                            input: Some(u8::MAX as i64 + 1),
+                            expected_error: TxScriptError::InvalidIndex(u8::MAX as usize + 1, 2),
+                        },
+                        ExpectedResult::Error {
+                            operation: Operation::InputSpk,
+                            input: Some(2),
+                            expected_error: TxScriptError::InvalidIndex(2, 2),
+                        },
+                        ExpectedResult::Error {
+                            operation: Operation::OutputSpk,
+                            input: Some(2),
+                            expected_error: TxScriptError::InvalidOutputIndex(2, 2),
+                        },
+                    ],
+                },
+            ];
+
+            for test_case in test_cases {
+                println!("Running test case: {}", test_case.name);
+                execute_test_case(&test_case);
+            }
         }
 
         //     #[test]
