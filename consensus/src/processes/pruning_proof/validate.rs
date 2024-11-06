@@ -15,7 +15,7 @@ use kaspa_core::info;
 use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
 use kaspa_math::int::SignedInteger;
-use kaspa_pow::calc_block_level;
+use kaspa_pow::{calc_block_level, calc_block_level_check_pow};
 use kaspa_utils::vec::VecExtensions;
 use parking_lot::lock_api::RwLock;
 use rocksdb::WriteBatch;
@@ -242,9 +242,12 @@ impl PruningProofManager {
             let level_idx = level as usize;
             let mut selected_tip = None;
             for (i, header) in proof[level as usize].iter().enumerate() {
-                let header_level = calc_block_level(header, self.max_block_level);
+                let (header_level, pow_passes) = calc_block_level_check_pow(header, self.max_block_level);
                 if header_level < level {
                     return Err(PruningImportError::PruningProofWrongBlockLevel(header.hash, header_level, level));
+                }
+                if !pow_passes {
+                    return Err(PruningImportError::ProofOfWorkFailed(header.hash, level));
                 }
 
                 headers_store.insert(header.hash, header.clone(), header_level).unwrap_or_exists();
