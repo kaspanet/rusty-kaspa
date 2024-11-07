@@ -967,8 +967,30 @@ opcode_list! {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
     }
-    opcode OpUnknown183<0xb7, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
-    opcode OpUnknown184<0xb8, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode OpInputCount<0xb7, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    push_number(tx.inputs().len() as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpInputCount only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+    opcode OpOutputCount<0xb8, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    push_number(tx.outputs().len() as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpOutputCount only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
     opcode OpUnknown185<0xb9, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
     opcode OpUnknown186<0xba, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     // Undefined opcodes.
@@ -1175,8 +1197,6 @@ mod test {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpUnknown166::empty().expect("Should accept empty"),
             opcodes::OpUnknown167::empty().expect("Should accept empty"),
-            opcodes::OpUnknown183::empty().expect("Should accept empty"),
-            opcodes::OpUnknown184::empty().expect("Should accept empty"),
             opcodes::OpUnknown185::empty().expect("Should accept empty"),
             opcodes::OpUnknown186::empty().expect("Should accept empty"),
             opcodes::OpUnknown187::empty().expect("Should accept empty"),
@@ -2990,8 +3010,8 @@ mod test {
 
     mod kip10 {
         use super::*;
-        use crate::{data_stack::OpcodeData, opcodes::push_number};
         use crate::data_stack::DataStack;
+        use crate::{data_stack::OpcodeData, opcodes::push_number};
 
         #[derive(Clone, Debug)]
         struct Kip10Mock {
@@ -3260,6 +3280,102 @@ mod test {
             for test_case in test_cases {
                 println!("Running test case: {}", test_case.name);
                 execute_test_case(&test_case);
+            }
+        }
+        fn create_mock_tx(input_count: usize, output_count: usize) -> (Transaction, Vec<UtxoEntry>) {
+            let dummy_prev_out = TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 1);
+            let dummy_sig_script = vec![0u8; 65];
+
+            // Create inputs with different SPKs and amounts
+            let inputs: Vec<Kip10Mock> =
+                (0..input_count).map(|i| Kip10Mock { spk: create_mock_spk(i as u8), amount: 1000 + i as u64 }).collect();
+
+            // Create outputs with different SPKs and amounts
+            let outputs: Vec<Kip10Mock> =
+                (0..output_count).map(|i| Kip10Mock { spk: create_mock_spk((100 + i) as u8), amount: 2000 + i as u64 }).collect();
+
+            let (utxos, tx_inputs): (Vec<_>, Vec<_>) = inputs
+                .into_iter()
+                .map(|Kip10Mock { spk, amount }| {
+                    (UtxoEntry::new(amount, spk, 0, false), TransactionInput::new(dummy_prev_out, dummy_sig_script.clone(), 10, 0))
+                })
+                .unzip();
+
+            let tx_outputs: Vec<_> =
+                outputs.into_iter().map(|Kip10Mock { spk, amount }| TransactionOutput::new(amount, spk)).collect();
+
+            let tx = Transaction::new(TX_VERSION + 1, tx_inputs, tx_outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+
+            (tx, utxos)
+        }
+
+        #[test]
+        fn test_op_input_output_count() {
+            // Test cases with different input/output combinations
+            let test_cases = vec![
+                (1, 0), // Minimum inputs, no outputs
+                (1, 1), // Minimum inputs, one output
+                (1, 2), // Minimum inputs, multiple outputs
+                (2, 1), // Multiple inputs, one output
+                (3, 2), // Multiple inputs, multiple outputs
+                (5, 3), // More inputs than outputs
+                (2, 4), // More outputs than inputs
+            ];
+
+            for (input_count, output_count) in test_cases {
+                let (tx, utxo_entries) = create_mock_tx(input_count, output_count);
+                let tx = PopulatedTransaction::new(&tx, utxo_entries);
+                let sig_cache = Cache::new(10_000);
+                let reused_values = SigHashReusedValuesUnsync::new();
+
+                // Test with KIP-10 enabled and disabled
+                for kip10_enabled in [true, false] {
+                    let mut vm = TxScriptEngine::from_transaction_input(
+                        &tx,
+                        &tx.inputs()[0], // Use first input
+                        0,
+                        tx.utxo(0).unwrap(),
+                        &reused_values,
+                        &sig_cache,
+                        kip10_enabled,
+                    )
+                    .unwrap();
+
+                    let op_input_count = opcodes::OpInputCount::empty().expect("Should accept empty");
+                    let op_output_count = opcodes::OpOutputCount::empty().expect("Should accept empty");
+
+                    if kip10_enabled {
+                        // Test input count
+                        op_input_count.execute(&mut vm).unwrap();
+                        assert_eq!(
+                            vm.dstack,
+                            vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(input_count as i64))],
+                            "Input count mismatch for {} inputs",
+                            input_count
+                        );
+                        vm.dstack.clear();
+
+                        // Test output count
+                        op_output_count.execute(&mut vm).unwrap();
+                        assert_eq!(
+                            vm.dstack,
+                            vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(output_count as i64))],
+                            "Output count mismatch for {} outputs",
+                            output_count
+                        );
+                        vm.dstack.clear();
+                    } else {
+                        // Test that operations fail when KIP-10 is disabled
+                        assert!(
+                            matches!(op_input_count.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))),
+                            "OpInputCount should fail when KIP-10 is disabled"
+                        );
+                        assert!(
+                            matches!(op_output_count.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))),
+                            "OpOutputCount should fail when KIP-10 is disabled"
+                        );
+                    }
+                }
             }
         }
     }
