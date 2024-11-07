@@ -173,7 +173,7 @@ impl TransactionValidator {
     }
 
     pub fn check_scripts(&self, tx: &(impl VerifiableTransaction + Sync), pov_daa_score: u64) -> TxResult<()> {
-        check_scripts(&self.sig_cache, tx, pov_daa_score > self.kip10_activation_daa_score)
+        check_scripts(&self.sig_cache, tx, self.kip10_activation_daa_score.is_active(pov_daa_score))
     }
 }
 

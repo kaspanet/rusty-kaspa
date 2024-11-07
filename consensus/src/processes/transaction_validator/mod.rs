@@ -29,7 +29,7 @@ pub struct TransactionValidator {
     /// Storage mass hardfork DAA score
     storage_mass_activation: ForkActivation,
     /// KIP-10 hardfork DAA score
-    kip10_activation_daa_score: u64,
+    kip10_activation_daa_score: ForkActivation,
 }
 
 impl TransactionValidator {
@@ -45,7 +45,7 @@ impl TransactionValidator {
         counters: Arc<TxScriptCacheCounters>,
         mass_calculator: MassCalculator,
         storage_mass_activation: ForkActivation,
-        kip10_activation_daa_score: u64,
+        kip10_activation_daa_score: ForkActivation,
     ) -> Self {
         Self {
             max_tx_inputs,
@@ -83,7 +83,7 @@ impl TransactionValidator {
             sig_cache: Cache::with_counters(10_000, counters),
             mass_calculator: MassCalculator::new(0, 0, 0, 0),
             storage_mass_activation: ForkActivation::never(),
-            kip10_activation_daa_score: u64::MAX,
+            kip10_activation_daa_score: ForkActivation::never(),
         }
     }
 }
