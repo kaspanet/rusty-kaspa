@@ -23,6 +23,7 @@ use kaspa_txscript::{
 use kaspa_txscript_errors::TxScriptError::{EvalFalse, VerifyError};
 use rand::thread_rng;
 use secp256k1::Keypair;
+use kaspa_txscript::opcodes::codes::Op0;
 
 /// Main function to execute all Kaspa transaction script scenarios.
 ///
@@ -71,9 +72,9 @@ fn threshold_scenario() -> ScriptBuilderResult<()> {
         .add_op(OpCheckSig)?
         // Borrower branch
         .add_op(OpElse)?
-        .add_ops(&[OpInputSpk, OpOutputSpk, OpEqualVerify, OpOutputAmount])?
+        .add_ops(&[Op0, OpInputSpk, Op0, OpOutputSpk, OpEqualVerify, Op0, OpOutputAmount])?
         .add_i64(threshold)?
-        .add_ops(&[OpSub, OpInputAmount, OpGreaterThanOrEqual])?
+        .add_ops(&[OpSub, Op0, OpInputAmount, OpGreaterThanOrEqual])?
         .add_op(OpEndIf)?
         .drain();
 
@@ -188,9 +189,9 @@ fn generate_limited_time_script(owner: &Keypair, threshold: i64, output_spk: Vec
         // Borrower branch
         .add_op(OpElse)?
         .add_data(&output_spk)?
-        .add_ops(&[OpOutputSpk, OpEqualVerify, OpOutputAmount])?
+        .add_ops(&[Op0, OpOutputSpk, OpEqualVerify, Op0, OpOutputAmount])?
         .add_i64(threshold)?
-        .add_ops(&[OpSub, OpInputAmount, OpGreaterThanOrEqual])?
+        .add_ops(&[OpSub, Op0, OpInputAmount, OpGreaterThanOrEqual])?
         .add_op(OpEndIf)?
         .drain();
 
@@ -578,7 +579,7 @@ fn shared_secret_scenario() -> ScriptBuilderResult<()> {
         .add_data(shared_secret_kp.x_only_public_key().0.serialize().as_slice())?
         .add_op(OpEqualVerify)?
         .add_op(OpCheckSigVerify)?
-        .add_ops(&[OpInputSpk, OpOutputSpk, OpEqualVerify, OpOutputAmount, OpInputAmount, OpGreaterThanOrEqual])?
+        .add_ops(&[Op0, OpInputSpk, Op0, OpOutputSpk, OpEqualVerify, Op0, OpOutputAmount, Op0, OpInputAmount, OpGreaterThanOrEqual])?
         .add_op(OpEndIf)?
         .drain();
 
