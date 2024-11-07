@@ -355,6 +355,16 @@ mod tests {
             Test { name: "push -256", val: -256, expected: vec![OpData2, 0x00, 0x81] },
             Test { name: "push -32767", val: -32767, expected: vec![OpData2, 0xff, 0xff] },
             Test { name: "push -32768", val: -32768, expected: vec![OpData3, 0x00, 0x80, 0x80] },
+            Test {
+                name: "push 9223372036854775807",
+                val: 9223372036854775807,
+                expected: vec![OpData8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F],
+            },
+            Test {
+                name: "push -9223372036854775808",
+                val: -9223372036854775808,
+                expected: vec![OpData9, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x80],
+            },
         ];
 
         for test in tests {

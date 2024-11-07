@@ -567,13 +567,15 @@ opcode_list! {
     // Numeric related opcodes.
     opcode Op1Add<0x8b, 1>(self, vm) {
         let [value]: [i64; 1] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(value + 1);
+        let r = value.checked_add(1).ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?;
+        vm.dstack.push_item(r);
         Ok(())
     }
 
     opcode Op1Sub<0x8c, 1>(self, vm) {
         let [value]: [i64; 1] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(value - 1);
+        let r = value.checked_sub(1).ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?;
+        vm.dstack.push_item(r);
         Ok(())
     }
 
@@ -582,13 +584,15 @@ opcode_list! {
 
     opcode OpNegate<0x8f, 1>(self, vm) {
         let [value]: [i64; 1] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(-value);
+        let r = value.checked_neg().ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?;
+        vm.dstack.push_item(r);
         Ok(())
     }
 
     opcode OpAbs<0x90, 1>(self, vm) {
         let [m]: [i64; 1] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(m.abs());
+        let r = m.checked_abs().ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?;
+        vm.dstack.push_item(r);
         Ok(())
     }
 
@@ -606,13 +610,15 @@ opcode_list! {
 
     opcode OpAdd<0x93, 1>(self, vm) {
         let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(a+b);
+        let r = a.checked_add(b).ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?;
+        vm.dstack.push_item(r);
         Ok(())
     }
 
     opcode OpSub<0x94, 1>(self, vm) {
         let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(a-b);
+        let r = a.checked_sub(b).ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?;
+        vm.dstack.push_item(r);
         Ok(())
     }
 
