@@ -3106,7 +3106,7 @@ mod test {
         }
 
         #[test]
-        fn test_nullary_introspection_ops() {
+        fn test_unary_introspection_ops() {
             let test_cases = vec![
                 TestCase {
                     name: "KIP-10 disabled",
