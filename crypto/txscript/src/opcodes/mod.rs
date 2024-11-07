@@ -2978,8 +2978,7 @@ mod test {
 
     mod kip10 {
         use super::*;
-        use crate::opcodes::push_number;
-
+        use crate::{data_stack::OpcodeData, opcodes::push_number};
         #[derive(Clone, Debug)]
         struct Kip10Mock {
             spk: ScriptPublicKey,
@@ -2994,15 +2993,17 @@ mod test {
         }
 
         #[derive(Debug)]
-        enum ExpectedResult {
-            Success { operation: Operation, input: i64, expected_spk: Vec<u8> },
-            Error { operation: Operation, input: Option<i64>, expected_error: TxScriptError },
-        }
-
-        #[derive(Debug)]
         enum Operation {
             InputSpk,
             OutputSpk,
+            InputAmount,
+            OutputAmount,
+        }
+
+        #[derive(Debug)]
+        enum ExpectedResult {
+            Success { operation: Operation, index: i64, expected_spk: Option<Vec<u8>>, expected_amount: Option<Vec<u8>> },
+            Error { operation: Operation, index: Option<i64>, expected_error: TxScriptError },
         }
 
         fn create_mock_spk(value: u8) -> ScriptPublicKey {
@@ -3033,8 +3034,10 @@ mod test {
             let output_spk1 = create_mock_spk(3);
             let output_spk2 = create_mock_spk(4);
 
-            let inputs = vec![Kip10Mock { spk: input_spk1.clone(), amount: 0 }, Kip10Mock { spk: input_spk2.clone(), amount: 0 }];
-            let outputs = vec![Kip10Mock { spk: output_spk1.clone(), amount: 0 }, Kip10Mock { spk: output_spk2.clone(), amount: 0 }];
+            let inputs =
+                vec![Kip10Mock { spk: input_spk1.clone(), amount: 1111 }, Kip10Mock { spk: input_spk2.clone(), amount: 2222 }];
+            let outputs =
+                vec![Kip10Mock { spk: output_spk1.clone(), amount: 3333 }, Kip10Mock { spk: output_spk2.clone(), amount: 4444 }];
 
             let (tx, utxo_entries) = kip_10_tx_mock(inputs, outputs);
             let tx = PopulatedTransaction::new(&tx, utxo_entries);
@@ -3055,30 +3058,42 @@ mod test {
 
                 let op_input_spk = opcodes::OpInputSpk::empty().expect("Should accept empty");
                 let op_output_spk = opcodes::OpOutputSpk::empty().expect("Should accept empty");
+                let op_input_amount = opcodes::OpInputAmount::empty().expect("Should accept empty");
+                let op_output_amount = opcodes::OpOutputAmount::empty().expect("Should accept empty");
 
                 for expected_result in &test_case.expected_results {
                     match expected_result {
-                        ExpectedResult::Success { operation, input, expected_spk } => {
-                            push_number(*input, &mut vm).unwrap();
+                        ExpectedResult::Success { operation, index, expected_spk, expected_amount } => {
+                            push_number(*index, &mut vm).unwrap();
                             match operation {
                                 Operation::InputSpk => {
                                     op_input_spk.execute(&mut vm).unwrap();
-                                    assert_eq!(vm.dstack, vec![expected_spk.clone()]);
+                                    assert_eq!(vm.dstack, vec![expected_spk.clone().unwrap()]);
                                 }
                                 Operation::OutputSpk => {
                                     op_output_spk.execute(&mut vm).unwrap();
-                                    assert_eq!(vm.dstack, vec![expected_spk.clone()]);
+                                    assert_eq!(vm.dstack, vec![expected_spk.clone().unwrap()]);
+                                }
+                                Operation::InputAmount => {
+                                    op_input_amount.execute(&mut vm).unwrap();
+                                    assert_eq!(vm.dstack, vec![expected_amount.clone().unwrap()]);
+                                }
+                                Operation::OutputAmount => {
+                                    op_output_amount.execute(&mut vm).unwrap();
+                                    assert_eq!(vm.dstack, vec![expected_amount.clone().unwrap()]);
                                 }
                             }
                             vm.dstack.clear();
                         }
-                        ExpectedResult::Error { operation, input, expected_error } => {
-                            if let Some(input_value) = input {
-                                push_number(*input_value, &mut vm).unwrap();
+                        ExpectedResult::Error { operation, index, expected_error } => {
+                            if let Some(idx) = index {
+                                push_number(*idx, &mut vm).unwrap();
                             }
                             let result = match operation {
                                 Operation::InputSpk => op_input_spk.execute(&mut vm),
                                 Operation::OutputSpk => op_output_spk.execute(&mut vm),
+                                Operation::InputAmount => op_input_amount.execute(&mut vm),
+                                Operation::OutputAmount => op_output_amount.execute(&mut vm),
                             };
                             assert!(
                                 matches!(result, Err(ref e) if std::mem::discriminant(e) == std::mem::discriminant(expected_error))
@@ -3091,7 +3106,7 @@ mod test {
         }
 
         #[test]
-        fn test_op_spk() {
+        fn test_nullary_introspection_ops() {
             let test_cases = vec![
                 TestCase {
                     name: "KIP-10 disabled",
@@ -3099,12 +3114,22 @@ mod test {
                     expected_results: vec![
                         ExpectedResult::Error {
                             operation: Operation::InputSpk,
-                            input: Some(0),
+                            index: Some(0),
                             expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
                         },
                         ExpectedResult::Error {
                             operation: Operation::OutputSpk,
-                            input: Some(0),
+                            index: Some(0),
+                            expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
+                        },
+                        ExpectedResult::Error {
+                            operation: Operation::InputAmount,
+                            index: Some(0),
+                            expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
+                        },
+                        ExpectedResult::Error {
+                            operation: Operation::OutputAmount,
+                            index: Some(0),
                             expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
                         },
                     ],
@@ -3115,13 +3140,27 @@ mod test {
                     expected_results: vec![
                         ExpectedResult::Success {
                             operation: Operation::InputSpk,
-                            input: 0,
-                            expected_spk: create_mock_spk(1).to_bytes(),
+                            index: 0,
+                            expected_spk: Some(create_mock_spk(1).to_bytes()),
+                            expected_amount: None,
                         },
                         ExpectedResult::Success {
                             operation: Operation::InputSpk,
-                            input: 1,
-                            expected_spk: create_mock_spk(2).to_bytes(),
+                            index: 1,
+                            expected_spk: Some(create_mock_spk(2).to_bytes()),
+                            expected_amount: None,
+                        },
+                        ExpectedResult::Success {
+                            operation: Operation::InputAmount,
+                            index: 0,
+                            expected_spk: None,
+                            expected_amount: Some(OpcodeData::<i64>::serialize(&1111)),
+                        },
+                        ExpectedResult::Success {
+                            operation: Operation::InputAmount,
+                            index: 1,
+                            expected_spk: None,
+                            expected_amount: Some(OpcodeData::<i64>::serialize(&2222)),
                         },
                     ],
                 },
@@ -3131,13 +3170,27 @@ mod test {
                     expected_results: vec![
                         ExpectedResult::Success {
                             operation: Operation::OutputSpk,
-                            input: 0,
-                            expected_spk: create_mock_spk(3).to_bytes(),
+                            index: 0,
+                            expected_spk: Some(create_mock_spk(3).to_bytes()),
+                            expected_amount: None,
                         },
                         ExpectedResult::Success {
                             operation: Operation::OutputSpk,
-                            input: 1,
-                            expected_spk: create_mock_spk(4).to_bytes(),
+                            index: 1,
+                            expected_spk: Some(create_mock_spk(4).to_bytes()),
+                            expected_amount: None,
+                        },
+                        ExpectedResult::Success {
+                            operation: Operation::OutputAmount,
+                            index: 0,
+                            expected_spk: None,
+                            expected_amount: Some(OpcodeData::<i64>::serialize(&3333)),
+                        },
+                        ExpectedResult::Success {
+                            operation: Operation::OutputAmount,
+                            index: 1,
+                            expected_spk: None,
+                            expected_amount: Some(OpcodeData::<i64>::serialize(&4444)),
                         },
                     ],
                 },
@@ -3146,28 +3199,33 @@ mod test {
                     kip10_enabled: true,
                     expected_results: vec![
                         ExpectedResult::Error {
-                            operation: Operation::InputSpk,
-                            input: None, // empty stack case
+                            operation: Operation::InputAmount,
+                            index: None,
                             expected_error: TxScriptError::InvalidStackOperation(1, 0),
                         },
                         ExpectedResult::Error {
-                            operation: Operation::InputSpk,
-                            input: Some(-1),
+                            operation: Operation::InputAmount,
+                            index: Some(-1),
                             expected_error: TxScriptError::InvalidIndex(u8::MAX as usize + 1, 2),
                         },
                         ExpectedResult::Error {
-                            operation: Operation::InputSpk,
-                            input: Some(u8::MAX as i64 + 1),
-                            expected_error: TxScriptError::InvalidIndex(u8::MAX as usize + 1, 2),
-                        },
-                        ExpectedResult::Error {
-                            operation: Operation::InputSpk,
-                            input: Some(2),
+                            operation: Operation::InputAmount,
+                            index: Some(2),
                             expected_error: TxScriptError::InvalidIndex(2, 2),
                         },
                         ExpectedResult::Error {
-                            operation: Operation::OutputSpk,
-                            input: Some(2),
+                            operation: Operation::OutputAmount,
+                            index: None,
+                            expected_error: TxScriptError::InvalidStackOperation(1, 0),
+                        },
+                        ExpectedResult::Error {
+                            operation: Operation::OutputAmount,
+                            index: Some(-1),
+                            expected_error: TxScriptError::InvalidIndex(u8::MAX as usize + 1, 2),
+                        },
+                        ExpectedResult::Error {
+                            operation: Operation::OutputAmount,
+                            index: Some(2),
                             expected_error: TxScriptError::InvalidOutputIndex(2, 2),
                         },
                     ],
@@ -3179,80 +3237,5 @@ mod test {
                 execute_test_case(&test_case);
             }
         }
-
-        //     #[test]
-        //     fn test_op_output_spk() {
-        //         let input_pub_key = vec![1u8; 32];
-        //         let input_addr = Address::new(Prefix::Testnet, Version::PubKey, &input_pub_key);
-        //         let input_script_public_key = pay_to_address_script(&input_addr);
-        //         let output_pub_key = vec![2u8; 32];
-        //         let output_addr = Address::new(Prefix::Testnet, Version::PubKey, &output_pub_key);
-        //         let output_script_public_key = pay_to_address_script(&output_addr);
-        //         [None, Some(output_script_public_key.clone())].into_iter().for_each(|output_spk| {
-        //             kip_10_tx_mock(input_script_public_key.clone(), output_spk.clone(), 0, 0, |mut vm| {
-        //                 let code = opcodes::OpOutputSpk::empty().expect("Should accept empty");
-        //                 code.execute(&mut vm).unwrap();
-        //                 assert_eq!(vm.dstack, vec![output_spk.map(|output_spk| output_spk.to_bytes()).unwrap_or_default()]);
-        //                 vm.dstack.clear();
-        //             });
-        //         });
-        //     }
-        //
-        //     #[test]
-        //     fn test_op_input_amount() {
-        //         let input_pub_key = vec![1u8; 32];
-        //         let input_addr = Address::new(Prefix::Testnet, Version::PubKey, &input_pub_key);
-        //         let input_script_public_key = pay_to_address_script(&input_addr);
-        //         [0, 268_435_455].into_iter().for_each(|amount| {
-        //             kip_10_tx_mock(input_script_public_key.clone(), None, amount, 0, |mut vm| {
-        //                 let code = opcodes::OpInputAmount::empty().expect("Should accept empty");
-        //                 code.execute(&mut vm).unwrap();
-        //                 let actual: i64 = vm.dstack[0].deserialize().unwrap();
-        //                 assert_eq!(actual, amount as i64);
-        //             });
-        //         });
-        //
-        //         const MAX_SOMPI: u64 = 29_000_000_000 * SOMPI_PER_KASPA; // works if serialized to SizedEncodeInt<8>
-        //         kip_10_tx_mock(input_script_public_key.clone(), None, MAX_SOMPI, 0, |mut vm| {
-        //             let code = opcodes::OpInputAmount::empty().expect("Should accept empty");
-        //             code.execute(&mut vm).unwrap();
-        //             let actual: SizedEncodeInt<8> = vm.dstack[0].deserialize().unwrap();
-        //             assert_eq!(actual.0, MAX_SOMPI as i64);
-        //         });
-        //     }
-        //
-        //     #[test]
-        //     fn test_op_output_amount() {
-        //         let input_pub_key = vec![1u8; 32];
-        //         let input_addr = Address::new(Prefix::Testnet, Version::PubKey, &input_pub_key);
-        //         let input_script_public_key = pay_to_address_script(&input_addr);
-        //         let output_pub_key = vec![2u8; 32];
-        //         let output_addr = Address::new(Prefix::Testnet, Version::PubKey, &output_pub_key);
-        //         let output_script_public_key = pay_to_address_script(&output_addr);
-        //
-        //         kip_10_tx_mock(input_script_public_key.clone(), None, 0, 0, |mut vm| {
-        //             let code = opcodes::OpOutputAmount::empty().expect("Should accept empty");
-        //             code.execute(&mut vm).unwrap();
-        //             let actual: i64 = vm.dstack[0].deserialize().unwrap();
-        //             assert_eq!(actual, 0);
-        //         });
-        //
-        //         [0, 268_435_455].into_iter().for_each(|amount| {
-        //             kip_10_tx_mock(input_script_public_key.clone(), Some(output_script_public_key.clone()), 0, amount, |mut vm| {
-        //                 let code = opcodes::OpOutputAmount::empty().expect("Should accept empty");
-        //                 code.execute(&mut vm).unwrap();
-        //                 let actual: i64 = vm.dstack[0].deserialize().unwrap();
-        //                 assert_eq!(actual, amount as i64);
-        //             });
-        //         });
-        //
-        //         const MAX_SOMPI: u64 = 29_000_000_000 * SOMPI_PER_KASPA; // works if serialized to SizedEncodeInt<8>
-        //         kip_10_tx_mock(input_script_public_key.clone(), Some(output_script_public_key.clone()), 0, MAX_SOMPI, |mut vm| {
-        //             let code = opcodes::OpOutputAmount::empty().expect("Should accept empty");
-        //             code.execute(&mut vm).unwrap();
-        //             let actual: SizedEncodeInt<8> = vm.dstack[0].deserialize().unwrap();
-        //             assert_eq!(actual.0, MAX_SOMPI as i64);
-        //         });
-        //     }
     }
 }
