@@ -3592,7 +3592,7 @@
     "EVAL_FALSE"
   ],
   [
-    "9223372036854775808 0",
+    "-9223372036854775808 0",
     "ADD NOP",
     "",
     "UNKNOWN_ERROR",
@@ -4241,14 +4241,14 @@
     "OP_RESERVED2 is reserved"
   ],
   [
-    "9223372036854775808",
+    "-9223372036854775808",
     "1ADD 1",
     "",
     "UNKNOWN_ERROR",
     "We cannot do math on 9-byte integers"
   ],
   [
-    "9223372036854775808",
+    "-9223372036854775808",
     "NEGATE 1",
     "",
     "UNKNOWN_ERROR",
@@ -4262,14 +4262,14 @@
     "Because we use a sign bit, -2147483648 is also 5 bytes"
   ],
   [
-    "9223372036854775808",
+    "-9223372036854775808",
     "1ADD 1SUB 1",
     "",
     "UNKNOWN_ERROR",
     "We cannot do math on 9-byte integers, even if the result is 8-bytes"
   ],
   [
-    "9223372036854775808",
+    "-9223372036854775808",
     "1SUB 1",
     "",
     "UNKNOWN_ERROR",
