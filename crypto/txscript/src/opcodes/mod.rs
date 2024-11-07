@@ -1,13 +1,12 @@
 #[macro_use]
 mod macros;
 
-use crate::data_stack::{DataStack, OpcodeData};
+use crate::data_stack::{DataStack, Kip10I64, OpcodeData};
 use crate::{
     ScriptSource, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE,
     SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
 };
 use blake2b_simd::Params;
-use core::cmp::{max, min};
 use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::tx::VerifiableTransaction;
@@ -212,6 +211,26 @@ fn push_number<T: VerifiableTransaction, Reused: SigHashReusedValues>(
 ) -> OpCodeResult {
     vm.dstack.push_item(number);
     Ok(())
+}
+
+/// This macro helps to avoid code duplication in numeric opcodes where the only difference
+/// between KIP10_ENABLED and disabled states is the numeric type used (Kip10I64 vs i64).
+/// KIP10I64 deserializator supports 8-byte integers
+macro_rules! numeric_op {
+    ($vm: expr, $pattern: pat, $count: expr, $block: expr) => {
+        if $vm.kip10_enabled {
+            let $pattern: [Kip10I64; $count] = $vm.dstack.pop_items()?;
+            let r = $block;
+            $vm.dstack.push_item(r);
+            Ok(())
+        } else {
+            let $pattern: [i64; $count] = $vm.dstack.pop_items()?;
+            #[allow(clippy::useless_conversion)]
+            let r = $block;
+            $vm.dstack.push_item(r);
+            Ok(())
+        }
+    };
 }
 
 /*
@@ -566,60 +585,38 @@ opcode_list! {
 
     // Numeric related opcodes.
     opcode Op1Add<0x8b, 1>(self, vm) {
-        let [value]: [i64; 1] = vm.dstack.pop_items()?;
-        let r = value.checked_add(1).ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?;
-        vm.dstack.push_item(r);
-        Ok(())
+        numeric_op!(vm, [value], 1, value.checked_add(1).ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?)
     }
 
     opcode Op1Sub<0x8c, 1>(self, vm) {
-        let [value]: [i64; 1] = vm.dstack.pop_items()?;
-        let r = value.checked_sub(1).ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?;
-        vm.dstack.push_item(r);
-        Ok(())
+        numeric_op!(vm, [value], 1, value.checked_sub(1).ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?)
     }
 
     opcode Op2Mul<0x8d, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
     opcode Op2Div<0x8e, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
 
     opcode OpNegate<0x8f, 1>(self, vm) {
-        let [value]: [i64; 1] = vm.dstack.pop_items()?;
-        let r = value.checked_neg().ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?;
-        vm.dstack.push_item(r);
-        Ok(())
+        numeric_op!(vm, [value], 1, value.checked_neg().ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?)
     }
 
     opcode OpAbs<0x90, 1>(self, vm) {
-        let [m]: [i64; 1] = vm.dstack.pop_items()?;
-        let r = m.checked_abs().ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?;
-        vm.dstack.push_item(r);
-        Ok(())
+        numeric_op!(vm, [value], 1, value.checked_abs().ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?)
     }
 
     opcode OpNot<0x91, 1>(self, vm) {
-        let [m]: [i64; 1] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((m == 0) as i64);
-        Ok(())
+        numeric_op!(vm, [m], 1, (m == 0) as i64)
     }
 
     opcode Op0NotEqual<0x92, 1>(self, vm) {
-        let [m]: [i64; 1] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((m != 0) as i64 );
-        Ok(())
+        numeric_op!(vm, [m], 1, (m != 0) as i64)
     }
 
     opcode OpAdd<0x93, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        let r = a.checked_add(b).ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?;
-        vm.dstack.push_item(r);
-        Ok(())
+        numeric_op!(vm, [a,b], 2, a.checked_add(b.into()).ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?)
     }
 
     opcode OpSub<0x94, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        let r = a.checked_sub(b).ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?;
-        vm.dstack.push_item(r);
-        Ok(())
+        numeric_op!(vm, [a,b], 2, a.checked_sub(b.into()).ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?)
     }
 
     opcode OpMul<0x95, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
@@ -629,77 +626,63 @@ opcode_list! {
     opcode OpRShift<0x99, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
 
     opcode OpBoolAnd<0x9a, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(((a != 0) && (b != 0)) as i64);
-        Ok(())
+        numeric_op!(vm, [a,b], 2, ((a != 0) && (b != 0)) as i64)
     }
 
     opcode OpBoolOr<0x9b, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(((a != 0) || (b != 0)) as i64);
-        Ok(())
+        numeric_op!(vm, [a,b], 2, ((a != 0) || (b != 0)) as i64)
     }
 
     opcode OpNumEqual<0x9c, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((a == b) as i64);
-        Ok(())
+        numeric_op!(vm, [a,b], 2, (a == b) as i64)
     }
 
     opcode OpNumEqualVerify<0x9d, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        match a == b {
-            true => Ok(()),
-            false => Err(TxScriptError::VerifyError)
+        if vm.kip10_enabled {
+            let [a,b]: [Kip10I64; 2] = vm.dstack.pop_items()?;
+            match a == b {
+                true => Ok(()),
+                false => Err(TxScriptError::VerifyError)
+            }
+        } else {
+            let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
+            match a == b {
+                true => Ok(()),
+                false => Err(TxScriptError::VerifyError)
+            }
         }
     }
 
     opcode OpNumNotEqual<0x9e, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((a != b) as i64);
-        Ok(())
+        numeric_op!(vm, [a, b], 2, (a != b) as i64)
     }
 
     opcode OpLessThan<0x9f, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((a < b) as i64);
-        Ok(())
+        numeric_op!(vm, [a, b], 2, (a < b) as i64)
     }
 
     opcode OpGreaterThan<0xa0, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((a > b) as i64);
-        Ok(())
+        numeric_op!(vm, [a, b], 2, (a > b) as i64)
     }
 
     opcode OpLessThanOrEqual<0xa1, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((a <= b) as i64);
-        Ok(())
+        numeric_op!(vm, [a, b], 2, (a <= b) as i64)
     }
 
     opcode OpGreaterThanOrEqual<0xa2, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((a >= b) as i64);
-        Ok(())
+        numeric_op!(vm, [a, b], 2, (a >= b) as i64)
     }
 
     opcode OpMin<0xa3, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(min(a,b));
-        Ok(())
+         numeric_op!(vm, [a, b], 2, a.min(b))
     }
 
     opcode OpMax<0xa4, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(max(a,b));
-        Ok(())
+        numeric_op!(vm, [a, b], 2, a.max(b))
     }
 
     opcode OpWithin<0xa5, 1>(self, vm) {
-        let [x,l,u]: [i64; 3] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((x >= l && x < u) as i64);
-        Ok(())
+        numeric_op!(vm, [x,l,u], 3, (x >= l && x < u) as i64)
     }
 
     // Undefined opcodes.

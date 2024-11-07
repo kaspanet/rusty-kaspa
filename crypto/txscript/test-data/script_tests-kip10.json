@@ -3592,18 +3592,18 @@
     "EVAL_FALSE"
   ],
   [
-    "2147483648 0",
+    "9223372036854775808 0",
     "ADD NOP",
     "",
     "UNKNOWN_ERROR",
-    "arithmetic operands must be in range [-2^31...2^31] "
+    ""
   ],
   [
-    "-2147483648 0",
+    "-9223372036854775807 0",
     "ADD NOP",
     "",
     "UNKNOWN_ERROR",
-    "arithmetic operands must be in range [-2^31...2^31] "
+    ""
   ],
   [
     "2147483647",
@@ -4241,18 +4241,18 @@
     "OP_RESERVED2 is reserved"
   ],
   [
-    "2147483648",
+    "9223372036854775808",
     "1ADD 1",
     "",
     "UNKNOWN_ERROR",
-    "We cannot do math on 5-byte integers"
+    "We cannot do math on 9-byte integers"
   ],
   [
-    "2147483648",
+    "9223372036854775808",
     "NEGATE 1",
     "",
     "UNKNOWN_ERROR",
-    "We cannot do math on 5-byte integers"
+    "We cannot do math on 9-byte integers"
   ],
   [
     "-2147483648",
@@ -4262,18 +4262,18 @@
     "Because we use a sign bit, -2147483648 is also 5 bytes"
   ],
   [
-    "2147483647",
+    "9223372036854775808",
     "1ADD 1SUB 1",
     "",
     "UNKNOWN_ERROR",
-    "We cannot do math on 5-byte integers, even if the result is 4-bytes"
+    "We cannot do math on 9-byte integers, even if the result is 8-bytes"
   ],
   [
-    "2147483648",
+    "9223372036854775808",
     "1SUB 1",
     "",
     "UNKNOWN_ERROR",
-    "We cannot do math on 5-byte integers, even if the result is 4-bytes"
+    "We cannot do math on 9-byte integers, even if the result is 8-bytes"
   ],
   [
     "2147483648 1",

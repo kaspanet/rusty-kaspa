@@ -1,8 +1,11 @@
 use crate::TxScriptError;
 use core::fmt::Debug;
 use core::iter;
+use std::cmp::Ordering;
+use std::ops::Deref;
 
-const DEFAULT_SCRIPT_NUM_LEN: usize = 8;
+const DEFAULT_SCRIPT_NUM_LEN: usize = 4;
+const DEFAULT_SCRIPT_NUM_LEN_KIP10: usize = 8;
 
 #[derive(PartialEq, Eq, Debug, Default)]
 pub(crate) struct SizedEncodeInt<const LEN: usize>(pub(crate) i64);
@@ -72,6 +75,56 @@ fn deserialize_i64(v: &[u8]) -> Result<i64, TxScriptError> {
             let first_byte = (msb & 0x7f) as i64;
             Ok(v[..v.len() - 1].iter().rev().map(|v| *v as i64).fold(first_byte, |accum, item| (accum << 8) + item) * sign)
         }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd)]
+#[repr(transparent)]
+pub struct Kip10I64(pub i64);
+
+impl From<Kip10I64> for i64 {
+    fn from(value: Kip10I64) -> Self {
+        value.0
+    }
+}
+
+impl PartialEq<i64> for Kip10I64 {
+    fn eq(&self, other: &i64) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl PartialOrd<i64> for Kip10I64 {
+    fn partial_cmp(&self, other: &i64) -> Option<Ordering> {
+        self.0.partial_cmp(other)
+    }
+}
+
+impl Deref for Kip10I64 {
+    type Target = i64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl OpcodeData<Kip10I64> for Vec<u8> {
+    #[inline]
+    fn deserialize(&self) -> Result<Kip10I64, TxScriptError> {
+        match self.len() > DEFAULT_SCRIPT_NUM_LEN_KIP10 {
+            true => Err(TxScriptError::NumberTooBig(format!(
+                "numeric value encoded as {:x?} is {} bytes which exceeds the max allowed of {}",
+                self,
+                self.len(),
+                DEFAULT_SCRIPT_NUM_LEN_KIP10
+            ))),
+            false => deserialize_i64(self).map(Kip10I64),
+        }
+    }
+
+    #[inline]
+    fn serialize(from: &Kip10I64) -> Self {
+        Self::serialize(&from.0)
     }
 }
 
