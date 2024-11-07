@@ -21,7 +21,6 @@ use crate::{
         },
     },
     processes::{
-        difficulty::level_work,
         ghostdag::{ordering::SortableBlock, protocol::GhostdagManager},
         pruning_proof::PruningProofManagerInternalError,
     },
@@ -332,14 +331,15 @@ impl PruningProofManager {
             reachability_service: self.reachability_service.clone(),
             root,
         };
-        let gd_manager = GhostdagManager::new(
+        let gd_manager = GhostdagManager::with_level(
             root,
             self.ghostdag_k,
             ghostdag_store.clone(),
             relations_service.clone(),
             self.headers_store.clone(),
             self.reachability_service.clone(),
-            level_work(level, self.max_block_level),
+            level,
+            self.max_block_level,
         );
 
         ghostdag_store.insert(root, Arc::new(gd_manager.genesis_ghostdag_data())).unwrap();

@@ -32,10 +32,7 @@ use crate::{
             relations::{DbRelationsStore, RelationsStoreReader},
         },
     },
-    processes::{
-        difficulty::level_work, ghostdag::protocol::GhostdagManager, reachability::inquirer as reachability,
-        relations::RelationsStoreExtensions,
-    },
+    processes::{ghostdag::protocol::GhostdagManager, reachability::inquirer as reachability, relations::RelationsStoreExtensions},
 };
 
 use super::{PruningProofManager, TempProofContext};
@@ -210,14 +207,15 @@ impl PruningProofManager {
             .cloned()
             .enumerate()
             .map(|(level, ghostdag_store)| {
-                GhostdagManager::new(
+                GhostdagManager::with_level(
                     self.genesis_hash,
                     self.ghostdag_k,
                     ghostdag_store,
                     relations_stores[level].clone(),
                     headers_store.clone(),
                     reachability_services[level].clone(),
-                    level_work(level as BlockLevel, self.max_block_level),
+                    level as BlockLevel,
+                    self.max_block_level,
                 )
             })
             .collect_vec();
