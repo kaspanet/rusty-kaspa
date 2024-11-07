@@ -872,6 +872,8 @@ opcode_list! {
             _ => Err(TxScriptError::InvalidSource("LockTimeVerify only applies to transaction inputs".to_string()))
         }
     }
+
+    // Introspection opcodes
     opcode OpInputSpk<0xb2, 1>(self, vm) {
         if vm.kip10_enabled {
             match vm.script_source {
@@ -953,12 +955,23 @@ opcode_list! {
         }
     }
 
-    // Undefined opcodes.
-    opcode OpUnknown182<0xb6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown183<0xb7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown184<0xb8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown185<0xb9, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    opcode OpInputIndex<0xb6, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{id, ..} => {
+                    push_number(id as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpOutputAmount only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+    opcode OpUnknown183<0xb7, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode OpUnknown184<0xb8, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
+    opcode OpUnknown185<0xb9, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
     opcode OpUnknown186<0xba, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    // Undefined opcodes.
     opcode OpUnknown187<0xbb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown188<0xbc, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown189<0xbd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1162,7 +1175,6 @@ mod test {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpUnknown166::empty().expect("Should accept empty"),
             opcodes::OpUnknown167::empty().expect("Should accept empty"),
-            opcodes::OpUnknown182::empty().expect("Should accept empty"),
             opcodes::OpUnknown183::empty().expect("Should accept empty"),
             opcodes::OpUnknown184::empty().expect("Should accept empty"),
             opcodes::OpUnknown185::empty().expect("Should accept empty"),
@@ -2979,6 +2991,8 @@ mod test {
     mod kip10 {
         use super::*;
         use crate::{data_stack::OpcodeData, opcodes::push_number};
+        use crate::data_stack::DataStack;
+
         #[derive(Clone, Debug)]
         struct Kip10Mock {
             spk: ScriptPublicKey,
@@ -3055,6 +3069,17 @@ mod test {
                     test_case.kip10_enabled,
                 )
                 .unwrap();
+                let op_input_idx = opcodes::OpInputIndex::empty().expect("Should accept empty");
+
+                if !test_case.kip10_enabled {
+                    assert!(matches!(op_input_idx.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))));
+                } else {
+                    let mut expected = vm.dstack.clone();
+                    expected.push_item(current_idx as i64);
+                    op_input_idx.execute(&mut vm).unwrap();
+                    assert_eq!(vm.dstack, expected);
+                    vm.dstack.clear();
+                }
 
                 let op_input_spk = opcodes::OpInputSpk::empty().expect("Should accept empty");
                 let op_output_spk = opcodes::OpOutputSpk::empty().expect("Should accept empty");
