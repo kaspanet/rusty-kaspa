@@ -13,7 +13,7 @@ use kaspa_consensus_core::{
 use kaspa_txscript::{
     caches::Cache,
     opcodes::codes::{
-        OpCheckSig, OpCheckSigVerify, OpDup, OpElse, OpEndIf, OpEqualVerify, OpFalse, OpGreaterThanOrEqual, OpIf, OpInputAmount,
+        Op0, OpCheckSig, OpCheckSigVerify, OpDup, OpElse, OpEndIf, OpEqualVerify, OpFalse, OpGreaterThanOrEqual, OpIf, OpInputAmount,
         OpInputSpk, OpOutputAmount, OpOutputSpk, OpSub, OpTrue,
     },
     pay_to_address_script, pay_to_script_hash_script,
@@ -23,7 +23,6 @@ use kaspa_txscript::{
 use kaspa_txscript_errors::TxScriptError::{EvalFalse, VerifyError};
 use rand::thread_rng;
 use secp256k1::Keypair;
-use kaspa_txscript::opcodes::codes::Op0;
 
 /// Main function to execute all Kaspa transaction script scenarios.
 ///

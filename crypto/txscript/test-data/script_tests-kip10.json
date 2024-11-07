@@ -1218,10 +1218,10 @@
   ],
   [
     "0",
-    "IF 0xbd ELSE 1 ENDIF",
+    "IF 0xc4 ELSE 1 ENDIF",
     "",
     "OK",
-    "opcodes above OP_OUTPUT_AMOUNT invalid if executed"
+    "opcodes above OpTxOutputSpk invalid if executed"
   ],
   [
     "0",
@@ -3706,25 +3706,7 @@
   ],
   [
     "1",
-    "IF 0xbc ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
-  ],
-  [
-    "1",
     "IF 0xbd ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
-  ],
-  [
-    "1",
-    "IF 0xbe ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
-  ],
-  [
-    "1",
-    "IF 0xbf ELSE 1 ENDIF",
     "",
     "BAD_OPCODE"
   ],
@@ -3737,18 +3719,6 @@
   [
     "1",
     "IF 0xc1 ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
-  ],
-  [
-    "1",
-    "IF 0xc2 ELSE 1 ENDIF",
-    "",
-    "BAD_OPCODE"
-  ],
-  [
-    "1",
-    "IF 0xc3 ELSE 1 ENDIF",
     "",
     "BAD_OPCODE"
   ],

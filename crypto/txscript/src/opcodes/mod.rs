@@ -874,37 +874,60 @@ opcode_list! {
     }
 
     // Introspection opcodes
-    opcode OpInputSpk<0xb2, 1>(self, vm) {
+    // Transaction level opcodes (following Transaction struct field order)
+    opcode OpTxVersion<0xb2, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxInputCount<0xb3, 1>(self, vm) {
         if vm.kip10_enabled {
             match vm.script_source {
-                ScriptSource::TxInput{
-                    tx,
-                    ..
-                } => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    if !(0..=u8::MAX as i32).contains(&idx) {
-                        return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
-                    }
-                    let idx = idx as usize;
-                     let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidIndex(idx, tx.inputs().len()))?;
-                    vm.dstack.push(utxo.script_public_key.to_bytes());
-                    Ok(())
+                ScriptSource::TxInput{tx, ..} => {
+                    push_number(tx.inputs().len() as i64, vm)
                 },
-                _ => Err(TxScriptError::InvalidSource("OpInputSpk only applies to transaction inputs".to_string()))
+                _ => Err(TxScriptError::InvalidSource("OpInputCount only applies to transaction inputs".to_string()))
             }
         } else {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
     }
-    opcode OpInputAmount<0xb3, 1>(self, vm) {
+    opcode OpTxOutputCount<0xb4, 1>(self, vm) {
         if vm.kip10_enabled {
             match vm.script_source {
-                ScriptSource::TxInput{
-                    tx,
-                    ..
-                } => {
+                ScriptSource::TxInput{tx, ..} => {
+                    push_number(tx.outputs().len() as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpOutputCount only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+    opcode OpTxLockTime<0xb5, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxSubnetId<0xb6, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxGas<0xb7, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxPayload<0xb8, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxId<0xb9, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    // Input related opcodes (following TransactionInput struct field order)
+    opcode OpOutpointTxHash<0xba, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpOutpointTxIdx<0xbb, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxInputIndex<0xbc, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{id, ..} => {
+                    push_number(id as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpInputIndex only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+    opcode OpTxInputSeq<0xbd, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    // UTXO related opcodes (following UtxoEntry struct field order)
+    opcode OpTxInputAmount<0xbe, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                     if !(0..=u8::MAX as i32).contains(&idx) {
+                    if !(0..=u8::MAX as i32).contains(&idx) {
                         return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
                     }
                     let idx = idx as usize;
@@ -917,12 +940,52 @@ opcode_list! {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
     }
-    opcode OpOutputSpk<0xb4, 1>(self, vm) {
+    opcode OpTxInputSpk<0xbf, 1>(self, vm) {
         if vm.kip10_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                     if !(0..=u8::MAX as i32).contains(&idx) {
+                    if !(0..=u8::MAX as i32).contains(&idx) {
+                        return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
+                    }
+                    let idx = idx as usize;
+                    let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidIndex(idx, tx.inputs().len()))?;
+                    vm.dstack.push(utxo.script_public_key.to_bytes());
+                    Ok(())
+                },
+                _ => Err(TxScriptError::InvalidSource("OpInputSpk only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+    opcode OpTxInputBlockDaaScore<0xc0, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxInputIsCoinbase<0xc1, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    // Output related opcodes (following TransactionOutput struct field order)
+    opcode OpTxOutputAmount<0xc2, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                    if !(0..=u8::MAX as i32).contains(&idx) {
+                        return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
+                    }
+                    let idx = idx as usize;
+                    let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.outputs().len()))?;
+                    push_number(output.value as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpOutputAmount only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+    opcode OpTxOutputSpk<0xc3, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                    if !(0..=u8::MAX as i32).contains(&idx) {
                         return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
                     }
                     let idx = idx as usize;
@@ -936,73 +999,7 @@ opcode_list! {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
     }
-    opcode OpOutputAmount<0xb5, 1>(self, vm) {
-        if vm.kip10_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                     if !(0..=u8::MAX as i32).contains(&idx) {
-                        return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
-                    }
-                    let idx = idx as usize;
-                    let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.outputs().len()))?;
-                    push_number(output.value as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpOutputAmount only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-        }
-    }
-
-    opcode OpInputIndex<0xb6, 1>(self, vm) {
-        if vm.kip10_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{id, ..} => {
-                    push_number(id as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpOutputAmount only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-        }
-    }
-    opcode OpInputCount<0xb7, 1>(self, vm) {
-        if vm.kip10_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    push_number(tx.inputs().len() as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpInputCount only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-        }
-    }
-    opcode OpOutputCount<0xb8, 1>(self, vm) {
-        if vm.kip10_enabled {
-            match vm.script_source {
-                ScriptSource::TxInput{tx, ..} => {
-                    push_number(tx.outputs().len() as i64, vm)
-                },
-                _ => Err(TxScriptError::InvalidSource("OpOutputCount only applies to transaction inputs".to_string()))
-            }
-        } else {
-            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-        }
-    }
-    opcode OpUnknown185<0xb9, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
-    opcode OpUnknown186<0xba, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    // Undefined opcodes.
-    opcode OpUnknown187<0xbb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown188<0xbc, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown189<0xbd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown190<0xbe, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown191<0xbf, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown192<0xc0, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown193<0xc1, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown194<0xc2, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown195<0xc3, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    // Undefined opcodes
     opcode OpUnknown196<0xc4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown197<0xc5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown198<0xc6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -1155,6 +1152,17 @@ mod test {
             opcodes::OpMod::empty().expect("Should accept empty"),
             opcodes::OpLShift::empty().expect("Should accept empty"),
             opcodes::OpRShift::empty().expect("Should accept empty"),
+            opcodes::OpTxVersion::empty().expect("Should accept empty"),
+            opcodes::OpTxLockTime::empty().expect("Should accept empty"),
+            opcodes::OpTxSubnetId::empty().expect("Should accept empty"),
+            opcodes::OpTxGas::empty().expect("Should accept empty"),
+            opcodes::OpTxPayload::empty().expect("Should accept empty"),
+            opcodes::OpTxId::empty().expect("Should accept empty"),
+            opcodes::OpOutpointTxHash::empty().expect("Should accept empty"),
+            opcodes::OpOutpointTxIdx::empty().expect("Should accept empty"),
+            opcodes::OpTxInputSeq::empty().expect("Should accept empty"),
+            opcodes::OpTxInputBlockDaaScore::empty().expect("Should accept empty"),
+            opcodes::OpTxInputIsCoinbase::empty().expect("Should accept empty"),
         ];
 
         let cache = Cache::new(10_000);
@@ -1197,17 +1205,6 @@ mod test {
         let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpUnknown166::empty().expect("Should accept empty"),
             opcodes::OpUnknown167::empty().expect("Should accept empty"),
-            opcodes::OpUnknown185::empty().expect("Should accept empty"),
-            opcodes::OpUnknown186::empty().expect("Should accept empty"),
-            opcodes::OpUnknown187::empty().expect("Should accept empty"),
-            opcodes::OpUnknown188::empty().expect("Should accept empty"),
-            opcodes::OpUnknown189::empty().expect("Should accept empty"),
-            opcodes::OpUnknown190::empty().expect("Should accept empty"),
-            opcodes::OpUnknown191::empty().expect("Should accept empty"),
-            opcodes::OpUnknown192::empty().expect("Should accept empty"),
-            opcodes::OpUnknown193::empty().expect("Should accept empty"),
-            opcodes::OpUnknown194::empty().expect("Should accept empty"),
-            opcodes::OpUnknown195::empty().expect("Should accept empty"),
             opcodes::OpUnknown196::empty().expect("Should accept empty"),
             opcodes::OpUnknown197::empty().expect("Should accept empty"),
             opcodes::OpUnknown198::empty().expect("Should accept empty"),
@@ -3089,7 +3086,7 @@ mod test {
                     test_case.kip10_enabled,
                 )
                 .unwrap();
-                let op_input_idx = opcodes::OpInputIndex::empty().expect("Should accept empty");
+                let op_input_idx = opcodes::OpTxInputIndex::empty().expect("Should accept empty");
 
                 if !test_case.kip10_enabled {
                     assert!(matches!(op_input_idx.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))));
@@ -3101,10 +3098,10 @@ mod test {
                     vm.dstack.clear();
                 }
 
-                let op_input_spk = opcodes::OpInputSpk::empty().expect("Should accept empty");
-                let op_output_spk = opcodes::OpOutputSpk::empty().expect("Should accept empty");
-                let op_input_amount = opcodes::OpInputAmount::empty().expect("Should accept empty");
-                let op_output_amount = opcodes::OpOutputAmount::empty().expect("Should accept empty");
+                let op_input_spk = opcodes::OpTxInputSpk::empty().expect("Should accept empty");
+                let op_output_spk = opcodes::OpTxOutputSpk::empty().expect("Should accept empty");
+                let op_input_amount = opcodes::OpTxInputAmount::empty().expect("Should accept empty");
+                let op_output_amount = opcodes::OpTxOutputAmount::empty().expect("Should accept empty");
 
                 for expected_result in &test_case.expected_results {
                     match expected_result {
@@ -3341,8 +3338,8 @@ mod test {
                     )
                     .unwrap();
 
-                    let op_input_count = opcodes::OpInputCount::empty().expect("Should accept empty");
-                    let op_output_count = opcodes::OpOutputCount::empty().expect("Should accept empty");
+                    let op_input_count = opcodes::OpTxInputCount::empty().expect("Should accept empty");
+                    let op_output_count = opcodes::OpTxOutputCount::empty().expect("Should accept empty");
 
                     if kip10_enabled {
                         // Test input count
