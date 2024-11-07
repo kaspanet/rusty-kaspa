@@ -1152,17 +1152,6 @@ mod test {
             opcodes::OpMod::empty().expect("Should accept empty"),
             opcodes::OpLShift::empty().expect("Should accept empty"),
             opcodes::OpRShift::empty().expect("Should accept empty"),
-            opcodes::OpTxVersion::empty().expect("Should accept empty"),
-            opcodes::OpTxLockTime::empty().expect("Should accept empty"),
-            opcodes::OpTxSubnetId::empty().expect("Should accept empty"),
-            opcodes::OpTxGas::empty().expect("Should accept empty"),
-            opcodes::OpTxPayload::empty().expect("Should accept empty"),
-            opcodes::OpTxId::empty().expect("Should accept empty"),
-            opcodes::OpOutpointTxHash::empty().expect("Should accept empty"),
-            opcodes::OpOutpointTxIdx::empty().expect("Should accept empty"),
-            opcodes::OpTxInputSeq::empty().expect("Should accept empty"),
-            opcodes::OpTxInputBlockDaaScore::empty().expect("Should accept empty"),
-            opcodes::OpTxInputIsCoinbase::empty().expect("Should accept empty"),
         ];
 
         let cache = Cache::new(10_000);
@@ -1186,6 +1175,17 @@ mod test {
             opcodes::OpVerNotIf::empty().expect("Should accept empty"),
             opcodes::OpReserved1::empty().expect("Should accept empty"),
             opcodes::OpReserved2::empty().expect("Should accept empty"),
+            opcodes::OpTxVersion::empty().expect("Should accept empty"),
+            opcodes::OpTxLockTime::empty().expect("Should accept empty"),
+            opcodes::OpTxSubnetId::empty().expect("Should accept empty"),
+            opcodes::OpTxGas::empty().expect("Should accept empty"),
+            opcodes::OpTxPayload::empty().expect("Should accept empty"),
+            opcodes::OpTxId::empty().expect("Should accept empty"),
+            opcodes::OpOutpointTxHash::empty().expect("Should accept empty"),
+            opcodes::OpOutpointTxIdx::empty().expect("Should accept empty"),
+            opcodes::OpTxInputSeq::empty().expect("Should accept empty"),
+            opcodes::OpTxInputBlockDaaScore::empty().expect("Should accept empty"),
+            opcodes::OpTxInputIsCoinbase::empty().expect("Should accept empty"),
         ];
 
         let cache = Cache::new(10_000);
