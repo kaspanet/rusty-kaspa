@@ -336,7 +336,7 @@ impl DataStack for Stack {
 
 #[cfg(test)]
 mod tests {
-    use super::OpcodeData;
+    use super::{Kip10I64, OpcodeData};
     use crate::data_stack::SizedEncodeInt;
     use kaspa_txscript_errors::TxScriptError;
 
@@ -374,6 +374,8 @@ mod tests {
             TestCase { num: -8388608, serialized: hex::decode("00008080").expect("failed parsing hex") },
             TestCase { num: 2147483647, serialized: hex::decode("ffffff7f").expect("failed parsing hex") },
             TestCase { num: -2147483647, serialized: hex::decode("ffffffff").expect("failed parsing hex") },
+            // Values that are out of range for data that is interpreted as
+            // numbers before KIP-10 enabled, but are allowed as the result of numeric operations.
             TestCase { num: 2147483648, serialized: hex::decode("0000008000").expect("failed parsing hex") },
             TestCase { num: -2147483648, serialized: hex::decode("0000008080").expect("failed parsing hex") },
             TestCase { num: 2415919104, serialized: hex::decode("0000009000").expect("failed parsing hex") },
@@ -389,7 +391,7 @@ mod tests {
             TestCase { num: 9223372036854775807, serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex") },
             TestCase { num: -9223372036854775807, serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex") },
             // Values that are out of range for data that is interpreted as
-            // numbers, but are allowed as the result of numeric operations.
+            // numbers after KIP-10 enabled, but are allowed as the result of numeric operations.
             TestCase { num: -9223372036854775808, serialized: hex::decode("000000000000008080").expect("failed parsing hex") },
         ];
 
@@ -439,39 +441,98 @@ mod tests {
             TestCase::<i64> { serialized: hex::decode("00008080").expect("failed parsing hex"), result: Ok(-8388608) },
             TestCase::<i64> { serialized: hex::decode("ffffff7f").expect("failed parsing hex"), result: Ok(2147483647) },
             TestCase::<i64> { serialized: hex::decode("ffffffff").expect("failed parsing hex"), result: Ok(-2147483647) },
-            TestCase::<i64> { serialized: hex::decode("0000008000").expect("failed parsing hex"), result: Ok(2147483648) },
-            TestCase::<i64> { serialized: hex::decode("0000008080").expect("failed parsing hex"), result: Ok(-2147483648) },
-            TestCase::<i64> { serialized: hex::decode("0000009000").expect("failed parsing hex"), result: Ok(2415919104) },
-            TestCase::<i64> { serialized: hex::decode("0000009080").expect("failed parsing hex"), result: Ok(-2415919104) },
-            TestCase::<i64> { serialized: hex::decode("ffffffff00").expect("failed parsing hex"), result: Ok(4294967295) },
-            TestCase::<i64> { serialized: hex::decode("ffffffff80").expect("failed parsing hex"), result: Ok(-4294967295) },
-            TestCase::<i64> { serialized: hex::decode("0000000001").expect("failed parsing hex"), result: Ok(4294967296) },
-            TestCase::<i64> { serialized: hex::decode("0000000081").expect("failed parsing hex"), result: Ok(-4294967296) },
-            TestCase::<i64> { serialized: hex::decode("ffffffffffff00").expect("failed parsing hex"), result: Ok(281474976710655) },
-            TestCase::<i64> { serialized: hex::decode("ffffffffffff80").expect("failed parsing hex"), result: Ok(-281474976710655) },
-            TestCase::<i64> {
-                serialized: hex::decode("ffffffffffffff00").expect("failed parsing hex"),
-                result: Ok(72057594037927935),
-            },
-            TestCase::<i64> {
-                serialized: hex::decode("ffffffffffffff80").expect("failed parsing hex"),
-                result: Ok(-72057594037927935),
-            },
-            TestCase::<i64> {
-                serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex"),
-                result: Ok(9223372036854775807),
-            },
-            TestCase::<i64> {
-                serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex"),
-                result: Ok(-9223372036854775807),
-            },
+            /*
+            TestCase::<i64>{serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex"), num_len: 8, result: Ok(9223372036854775807)},
+            TestCase::<i64>{serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex"), num_len: 8, result: Ok(-9223372036854775807)},*/
             // Minimally encoded values that are out of range for data that
             // is interpreted as script numbers with the minimal encoding
             // flag set. Should error and return 0.
             TestCase::<i64> {
-                serialized: hex::decode("000000000000008080").expect("failed parsing hex"),
+                serialized: hex::decode("0000008000").expect("failed parsing hex"),
                 result: Err(TxScriptError::NumberTooBig(
-                    "numeric value encoded as [0, 0, 0, 0, 0, 0, 0, 80, 80] is 9 bytes which exceeds the max allowed of 8".to_string(),
+                    "numeric value encoded as [0, 0, 0, 80, 0] is 5 bytes which exceeds the max allowed of 4".to_string(),
+                )),
+            },
+            TestCase::<i64> {
+                serialized: hex::decode("0000008080").expect("failed parsing hex"),
+                result: Err(TxScriptError::NumberTooBig(
+                    "numeric value encoded as [0, 0, 0, 80, 80] is 5 bytes which exceeds the max allowed of 4".to_string(),
+                )),
+            },
+            TestCase::<i64> {
+                serialized: hex::decode("0000009000").expect("failed parsing hex"),
+                result: Err(TxScriptError::NumberTooBig(
+                    "numeric value encoded as [0, 0, 0, 90, 0] is 5 bytes which exceeds the max allowed of 4".to_string(),
+                )),
+            },
+            TestCase::<i64> {
+                serialized: hex::decode("0000009080").expect("failed parsing hex"),
+                result: Err(TxScriptError::NumberTooBig(
+                    "numeric value encoded as [0, 0, 0, 90, 80] is 5 bytes which exceeds the max allowed of 4".to_string(),
+                )),
+            },
+            TestCase::<i64> {
+                serialized: hex::decode("ffffffff00").expect("failed parsing hex"),
+                result: Err(TxScriptError::NumberTooBig(
+                    "numeric value encoded as [ff, ff, ff, ff, 0] is 5 bytes which exceeds the max allowed of 4".to_string(),
+                )),
+            },
+            TestCase::<i64> {
+                serialized: hex::decode("ffffffff80").expect("failed parsing hex"),
+                result: Err(TxScriptError::NumberTooBig(
+                    "numeric value encoded as [ff, ff, ff, ff, 80] is 5 bytes which exceeds the max allowed of 4".to_string(),
+                )),
+            },
+            TestCase::<i64> {
+                serialized: hex::decode("0000000001").expect("failed parsing hex"),
+                result: Err(TxScriptError::NumberTooBig(
+                    "numeric value encoded as [0, 0, 0, 0, 1] is 5 bytes which exceeds the max allowed of 4".to_string(),
+                )),
+            },
+            TestCase::<i64> {
+                serialized: hex::decode("0000000081").expect("failed parsing hex"),
+                result: Err(TxScriptError::NumberTooBig(
+                    "numeric value encoded as [0, 0, 0, 0, 81] is 5 bytes which exceeds the max allowed of 4".to_string(),
+                )),
+            },
+            TestCase::<i64> {
+                serialized: hex::decode("ffffffffffff00").expect("failed parsing hex"),
+                result: Err(TxScriptError::NumberTooBig(
+                    "numeric value encoded as [ff, ff, ff, ff, ff, ff, 0] is 7 bytes which exceeds the max allowed of 4".to_string(),
+                )),
+            },
+            TestCase::<i64> {
+                serialized: hex::decode("ffffffffffff80").expect("failed parsing hex"),
+                result: Err(TxScriptError::NumberTooBig(
+                    "numeric value encoded as [ff, ff, ff, ff, ff, ff, 80] is 7 bytes which exceeds the max allowed of 4".to_string(),
+                )),
+            },
+            TestCase::<i64> {
+                serialized: hex::decode("ffffffffffffff00").expect("failed parsing hex"),
+                result: Err(TxScriptError::NumberTooBig(
+                    "numeric value encoded as [ff, ff, ff, ff, ff, ff, ff, 0] is 8 bytes which exceeds the max allowed of 4"
+                        .to_string(),
+                )),
+            },
+            TestCase::<i64> {
+                serialized: hex::decode("ffffffffffffff80").expect("failed parsing hex"),
+                result: Err(TxScriptError::NumberTooBig(
+                    "numeric value encoded as [ff, ff, ff, ff, ff, ff, ff, 80] is 8 bytes which exceeds the max allowed of 4"
+                        .to_string(),
+                )),
+            },
+            TestCase::<i64> {
+                serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex"),
+                result: Err(TxScriptError::NumberTooBig(
+                    "numeric value encoded as [ff, ff, ff, ff, ff, ff, ff, 7f] is 8 bytes which exceeds the max allowed of 4"
+                        .to_string(),
+                )),
+            },
+            TestCase::<i64> {
+                serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex"),
+                result: Err(TxScriptError::NumberTooBig(
+                    "numeric value encoded as [ff, ff, ff, ff, ff, ff, ff, ff] is 8 bytes which exceeds the max allowed of 4"
+                        .to_string(),
                 )),
             },
             // Non-minimally encoded, but otherwise valid values with
@@ -532,7 +593,73 @@ mod tests {
             }, // 7340032
                // Values above 8 bytes should always return error
         ];
-
+        let kip10_tests = vec![
+            TestCase::<Kip10I64> {
+                serialized: hex::decode("0000008000").expect("failed parsing hex"),
+                result: Ok(Kip10I64(2147483648)),
+            },
+            TestCase::<Kip10I64> {
+                serialized: hex::decode("0000008080").expect("failed parsing hex"),
+                result: Ok(Kip10I64(-2147483648)),
+            },
+            TestCase::<Kip10I64> {
+                serialized: hex::decode("0000009000").expect("failed parsing hex"),
+                result: Ok(Kip10I64(2415919104)),
+            },
+            TestCase::<Kip10I64> {
+                serialized: hex::decode("0000009080").expect("failed parsing hex"),
+                result: Ok(Kip10I64(-2415919104)),
+            },
+            TestCase::<Kip10I64> {
+                serialized: hex::decode("ffffffff00").expect("failed parsing hex"),
+                result: Ok(Kip10I64(4294967295)),
+            },
+            TestCase::<Kip10I64> {
+                serialized: hex::decode("ffffffff80").expect("failed parsing hex"),
+                result: Ok(Kip10I64(-4294967295)),
+            },
+            TestCase::<Kip10I64> {
+                serialized: hex::decode("0000000001").expect("failed parsing hex"),
+                result: Ok(Kip10I64(4294967296)),
+            },
+            TestCase::<Kip10I64> {
+                serialized: hex::decode("0000000081").expect("failed parsing hex"),
+                result: Ok(Kip10I64(-4294967296)),
+            },
+            TestCase::<Kip10I64> {
+                serialized: hex::decode("ffffffffffff00").expect("failed parsing hex"),
+                result: Ok(Kip10I64(281474976710655)),
+            },
+            TestCase::<Kip10I64> {
+                serialized: hex::decode("ffffffffffff80").expect("failed parsing hex"),
+                result: Ok(Kip10I64(-281474976710655)),
+            },
+            TestCase::<Kip10I64> {
+                serialized: hex::decode("ffffffffffffff00").expect("failed parsing hex"),
+                result: Ok(Kip10I64(72057594037927935)),
+            },
+            TestCase::<Kip10I64> {
+                serialized: hex::decode("ffffffffffffff80").expect("failed parsing hex"),
+                result: Ok(Kip10I64(-72057594037927935)),
+            },
+            TestCase::<Kip10I64> {
+                serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex"),
+                result: Ok(Kip10I64(9223372036854775807)),
+            },
+            TestCase::<Kip10I64> {
+                serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex"),
+                result: Ok(Kip10I64(-9223372036854775807)),
+            },
+            // Minimally encoded values that are out of range for data that
+            // is interpreted as script numbers with the minimal encoding
+            // flag set. Should error and return 0.
+            TestCase::<Kip10I64> {
+                serialized: hex::decode("000000000000008080").expect("failed parsing hex"),
+                result: Err(TxScriptError::NumberTooBig(
+                    "numeric value encoded as [0, 0, 0, 0, 0, 0, 0, 80, 80] is 9 bytes which exceeds the max allowed of 8".to_string(),
+                )),
+            },
+        ];
         let test_of_size_5 = vec![
             TestCase::<SizedEncodeInt<5>> {
                 serialized: hex::decode("ffffffff7f").expect("failed parsing hex"),
@@ -624,6 +751,11 @@ mod tests {
         }
 
         for test in test_bool {
+            // Ensure the error code is of the expected type and the error
+            // code matches the value specified in the test instance.
+            assert_eq!(test.serialized.deserialize(), test.result);
+        }
+        for test in kip10_tests {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
             assert_eq!(test.serialized.deserialize(), test.result);
