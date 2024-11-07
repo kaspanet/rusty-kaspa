@@ -9,12 +9,11 @@ use kaspa_consensus_core::{
     errors::pruning::{PruningImportError, PruningImportResult},
     header::Header,
     pruning::{PruningPointProof, PruningProofMetadata},
-    BlockLevel, BlueWorkType,
+    BlockLevel,
 };
 use kaspa_core::info;
 use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
-use kaspa_math::int::SignedInteger;
 use kaspa_pow::{calc_block_level, calc_block_level_check_pow};
 use kaspa_utils::vec::VecExtensions;
 use parking_lot::lock_api::RwLock;
@@ -79,9 +78,12 @@ impl PruningProofManager {
         let current_pp = pruning_read.get().unwrap().pruning_point;
         let current_pp_header = self.headers_store.get_header(current_pp).unwrap();
 
-        let current_consensus_tip_work_diff =
-            SignedInteger::from(self.get_current_consensus_selected_tip_work(current_pp_header.blue_work));
-        let relay_header_work_diff = SignedInteger::from(proof_metadata.claimed_prover_relay_work(proof_pp_header.blue_work));
+        // The accumulated blue work of current consensus from the pruning point onward
+        let pruning_period_work =
+            self.headers_selected_tip_store.read().get().unwrap().blue_work.saturating_sub(current_pp_header.blue_work);
+        // The claimed blue work of the prover from his pruning point and up to the triggering relay block. This work
+        // will eventually be verified if the proof is accepted so we can treat it as trusted
+        let prover_claimed_pruning_period_work = proof_metadata.relay_block_blue_work.saturating_sub(proof_pp_header.blue_work);
 
         for (level_idx, selected_tip) in proof_selected_tip_by_level.iter().copied().enumerate() {
             let level = level_idx as BlockLevel;
@@ -106,14 +108,12 @@ impl PruningProofManager {
                 level,
                 proof_selected_tip_gd,
             ) {
-                let selected_tip_blue_work_diff =
-                    SignedInteger::from(proof_selected_tip_gd.blue_work) - SignedInteger::from(proof_common_ancestor_gd.blue_work);
+                let proof_level_blue_work_diff = proof_selected_tip_gd.blue_work.saturating_sub(proof_common_ancestor_gd.blue_work);
                 for parent in self.parents_manager.parents_at_level(&current_pp_header, level).iter().copied() {
                     let parent_blue_work = current_consensus_ghostdag_stores[level_idx].get_blue_work(parent).unwrap();
-                    let parent_blue_work_diff =
-                        SignedInteger::from(parent_blue_work) - SignedInteger::from(common_ancestor_gd.blue_work);
-                    // TODO: Do something about not being to use add
-                    if parent_blue_work_diff - relay_header_work_diff >= selected_tip_blue_work_diff - current_consensus_tip_work_diff
+                    let parent_blue_work_diff = parent_blue_work.saturating_sub(common_ancestor_gd.blue_work);
+                    if parent_blue_work_diff.saturating_add(pruning_period_work)
+                        >= proof_level_blue_work_diff.saturating_add(prover_claimed_pruning_period_work)
                     {
                         return Err(PruningImportError::PruningProofInsufficientBlueWork);
                     }
@@ -163,16 +163,6 @@ impl PruningProofManager {
         drop(current_consensus_stores_and_processes.db_lifetime);
 
         Err(PruningImportError::PruningProofNotEnoughHeaders)
-    }
-
-    fn get_current_consensus_selected_tip_work(&self, current_consensus_pp_blue_work: BlueWorkType) -> BlueWorkType {
-        let hst_work = self.headers_selected_tip_store.read().get().unwrap().blue_work;
-
-        if hst_work <= current_consensus_pp_blue_work {
-            return 0.into();
-        }
-
-        hst_work - current_consensus_pp_blue_work
     }
 
     fn init_validate_pruning_point_proof_stores_and_processes(

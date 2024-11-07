@@ -23,20 +23,12 @@ pub struct PruningPointTrustedData {
 
 #[derive(Clone, Copy)]
 pub struct PruningProofMetadata {
-    relay_block_blue_work: BlueWorkType,
+    /// The claimed work of the initial relay block (from the prover)
+    pub relay_block_blue_work: BlueWorkType,
 }
 
 impl PruningProofMetadata {
     pub fn new(relay_block_blue_work: BlueWorkType) -> Self {
         Self { relay_block_blue_work }
-    }
-
-    /// The amount of blue work since the syncer's pruning point
-    pub fn claimed_prover_relay_work(&self, pruning_point_work: BlueWorkType) -> BlueWorkType {
-        if self.relay_block_blue_work <= pruning_point_work {
-            return 0.into();
-        }
-
-        self.relay_block_blue_work - pruning_point_work
     }
 }
