@@ -3599,21 +3599,14 @@
     ""
   ],
   [
-    "-9223372036854775807 0",
-    "ADD NOP",
-    "",
-    "UNKNOWN_ERROR",
-    ""
-  ],
-  [
     "2147483647",
     "DUP ADD 4294967294 NUMEQUAL",
     "",
-    "UNKNOWN_ERROR",
-    "NUMEQUAL must be in numeric range"
+    "OK",
+    "NUMEQUAL is in numeric range"
   ],
   [
-    "'abcdef'",
+    "'abcdefghi'",
     "NOT 0 EQUAL",
     "",
     "UNKNOWN_ERROR",
@@ -4255,11 +4248,11 @@
     "We cannot do math on 9-byte integers"
   ],
   [
-    "-2147483648",
+    "-9223372036854775808",
     "1ADD 1",
     "",
     "UNKNOWN_ERROR",
-    "Because we use a sign bit, -2147483648 is also 5 bytes"
+    "Because we use a sign bit, -9223372036854775808 is also 9 bytes"
   ],
   [
     "-9223372036854775808",
@@ -4276,18 +4269,18 @@
     "We cannot do math on 9-byte integers, even if the result is 8-bytes"
   ],
   [
-    "2147483648 1",
+    "-9223372036854775808 1",
     "BOOLOR 1",
     "",
     "UNKNOWN_ERROR",
-    "We cannot do BOOLOR on 5-byte integers (but we can still do IF etc)"
+    "We cannot do BOOLOR on 9-byte integers (but we can still do IF etc)"
   ],
   [
-    "2147483648 1",
+    "-9223372036854775808 1",
     "BOOLAND 1",
     "",
     "UNKNOWN_ERROR",
-    "We cannot do BOOLAND on 5-byte integers"
+    "We cannot do BOOLAND on 9-byte integers"
   ],
   [
     "1",
