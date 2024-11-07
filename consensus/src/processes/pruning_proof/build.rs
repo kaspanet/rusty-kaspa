@@ -2,7 +2,7 @@ use std::{cmp::Reverse, collections::BinaryHeap, sync::Arc};
 
 use itertools::Itertools;
 use kaspa_consensus_core::{
-    blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
+    blockhash::{BlockHashExtensions, BlockHashes},
     header::Header,
     pruning::PruningPointProof,
     BlockHashSet, BlockLevel, HashMapCustomHasher,
@@ -342,17 +342,14 @@ impl PruningProofManager {
             self.max_block_level,
         );
 
+        // Note there is no need to initialize origin since we have a single root
         ghostdag_store.insert(root, Arc::new(gd_manager.genesis_ghostdag_data())).unwrap();
-        ghostdag_store.insert(ORIGIN, gd_manager.origin_ghostdag_data()).unwrap();
 
         let mut topological_heap: BinaryHeap<_> = Default::default();
         let mut visited = BlockHashSet::new();
         for child in relations_service.get_children(root).unwrap().read().iter().copied() {
-            topological_heap.push(Reverse(SortableBlock {
-                hash: child,
-                // It's important to use here blue work and not score so we can iterate the heap in a way that respects the topology
-                blue_work: self.headers_store.get_header(child).unwrap().blue_work,
-            }));
+            topological_heap
+                .push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
         }
 
         let mut has_required_block = required_block.is_some_and(|required_block| root == required_block);
@@ -379,11 +376,8 @@ impl PruningProofManager {
             ghostdag_store.insert(current_hash, Arc::new(current_gd)).unwrap_or_exists();
 
             for child in relations_service.get_children(current_hash).unwrap().read().iter().copied() {
-                topological_heap.push(Reverse(SortableBlock {
-                    hash: child,
-                    // It's important to use here blue work and not score so we can iterate the heap in a way that respects the topology
-                    blue_work: self.headers_store.get_header(child).unwrap().blue_work,
-                }));
+                topological_heap
+                    .push(Reverse(SortableBlock { hash: child, blue_work: self.headers_store.get_header(child).unwrap().blue_work }));
             }
         }
 
