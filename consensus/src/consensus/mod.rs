@@ -1132,7 +1132,8 @@ impl ConsensusApi for Consensus {
     }
 
     /*For an archival node, generally speaking, this function should not be called without a known accepting_block
-    or a timestamp, as it will search through the entire datadbase */
+    or a timestamp, as it will search through the entire datadbase
+     */
     fn generate_tx_receipt(
         &self,
         tx_id: Hash,
@@ -1141,11 +1142,11 @@ impl ConsensusApi for Consensus {
     ) -> ConsensusResult<TxReceipt> {
         if let Some(accepting_block) = accepting_block {
             //if a block hash is supplied, generate receipt directly
-            let aaccepting_block_header = self.headers_store.get_header(accepting_block).unwrap();
+            let accepting_block_header = self.headers_store.get_header(accepting_block).unwrap();
             return self
                 .services
                 .tx_receipts_manager
-                .generate_tx_receipt(aaccepting_block_header, tx_id)
+                .generate_tx_receipt(accepting_block_header, tx_id)
                 .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"));
         }
         //if no block is given, try to search based on time_stamp
@@ -1199,14 +1200,29 @@ impl ConsensusApi for Consensus {
             .create_pochm_proof(chain_purporter)
             .map_err(|_| ConsensusError::General("required data to create a proof of chain membership appears missing"))
     }
-
+    //Note: wallets are expected to verify on their own that the tx_id corresponds to the tx they have stored
     fn verify_tx_receipt(&self, receipt: &TxReceipt) -> bool {
         self.services.tx_receipts_manager.verify_tx_receipt(receipt)
     }
+    //Note: wallets are expected to verify on their own that the tx_id corresponds to the tx they have stored
     fn verify_proof_of_pub(&self, proof_of_pub: &ProofOfPublication) -> bool {
         self.services.tx_receipts_manager.verify_proof_of_pub(proof_of_pub)
     }
     fn verify_pochm(&self, chain_purporter: Hash, proof_of_pub: &Pochm) -> bool {
         self.services.tx_receipts_manager.verify_pochm_proof(chain_purporter, proof_of_pub)
+    }
+    fn is_posterity_reached(&self, cutoff_bscore: u64) -> bool {
+        /* note this function only asserts a posterity with blue score higher than cutoff score exists
+        *It does not* necessarily imply this block is a posterity of a block with blue socre cutoof score:
+        In the rare case the block is in the anticone of posterity, its posterity will be the
+         next posterity block after the one in question, i.e.
+         its existence could be queried by calling the function with cutoff_bscore+posterity_depth
+         */
+        let (_, tip) = self.selected_chain_store.read().get_tip().unwrap();
+        // a security margin of 100 seconds is taken to avoid the posterity reorgin, should be enough
+        // the minimum with 2 times finality depth is taken for testing purposes.
+        let security_margin = std::cmp::min(100 * self.config.bps(), self.config.finality_depth * 2);
+        let tip_bscore = self.headers_store.get_blue_score(tip).unwrap();
+        tip_bscore >= cutoff_bscore + security_margin
     }
 }

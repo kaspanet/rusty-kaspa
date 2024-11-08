@@ -389,6 +389,9 @@ pub trait ConsensusApi: Send + Sync {
     fn verify_pochm(&self, chain_purporter: Hash, pochm: &Pochm) -> bool {
         unimplemented!()
     }
+    fn is_posterity_reached(&self, cutoff_bscore: u64) -> bool {
+        unimplemented!()
+    }
 }
 
 pub type DynConsensus = Arc<dyn ConsensusApi>;

@@ -128,7 +128,12 @@ impl TestContext {
         b.header.finalize(); // This overrides the NONE hash we passed earlier with the actual hash
         b
     }
-
+    pub async fn add_utxo_valid_block_with_parents(&self, hash: Hash, parents: Vec<Hash>, txs: Vec<Transaction>) -> BlockStatus {
+        let ret = self.consensus.add_utxo_valid_block_with_parents(hash, parents, txs).await.unwrap();
+        let pchmr_root = self.tx_receipts_manager().calc_pchmr_root_by_hash(hash);
+        self.store_pchmr_root(hash, pchmr_root);
+        ret
+    }
     pub async fn validate_and_insert_block(&mut self, block: Block) -> &mut Self {
         let status = self.consensus.validate_and_insert_block(block).virtual_state_task.await.unwrap();
         assert!(status.has_block_body());

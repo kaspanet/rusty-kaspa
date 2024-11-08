@@ -2,6 +2,7 @@ use super::receipts_errors::ReceiptsErrors;
 use crate::model::stores::{
     block_transactions::BlockTransactionsStoreReader,
     pchmr_store::{DbPchmrStore, PchmrStoreReader},
+    pruning::PruningStoreReader,
     selected_chain::SelectedChainStoreReader,
 };
 use crate::model::{
@@ -31,6 +32,7 @@ pub struct TxReceiptsManager<
     V: HeaderStoreReader,
     X: AcceptanceDataStoreReader,
     W: BlockTransactionsStoreReader,
+    Y: PruningStoreReader,
 > {
     pub genesis: GenesisBlock,
 
@@ -43,6 +45,7 @@ pub struct TxReceiptsManager<
     pub block_transactions_store: Arc<W>,
 
     pub hash_to_pchmr_store: Arc<DbPchmrStore>,
+    pub pruning_point_store: Arc<RwLock<Y>>,
 
     pub storage_mass_activation_daa_score: u64,
 }
@@ -53,7 +56,8 @@ impl<
         V: HeaderStoreReader,
         X: AcceptanceDataStoreReader,
         W: BlockTransactionsStoreReader,
-    > TxReceiptsManager<T, U, V, X, W>
+        Y: PruningStoreReader,
+    > TxReceiptsManager<T, U, V, X, W, Y>
 {
     pub fn new(
         genesis: GenesisBlock,
@@ -63,6 +67,7 @@ impl<
         selected_chain_store: Arc<RwLock<T>>,
         acceptance_data_store: Arc<X>,
         block_transactions_store: Arc<W>,
+        pruning_point_store: Arc<RwLock<Y>>,
         hash_to_pchmr_store: Arc<DbPchmrStore>,
         storage_mass_activation_daa_score: u64,
     ) -> Self {
@@ -76,6 +81,7 @@ impl<
             storage_mass_activation_daa_score,
             hash_to_pchmr_store: hash_to_pchmr_store.clone(),
             block_transactions_store: block_transactions_store.clone(),
+            pruning_point_store: pruning_point_store.clone(),
         }
     }
     pub fn generate_tx_receipt(&self, accepting_block_header: Arc<Header>, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
@@ -100,6 +106,7 @@ impl<
         let mut headers_chain_to_selected = vec![];
         let tip = self.selected_chain_store.read().get_tip().unwrap().1;
         //find a chain block on the path to the tip
+        //TODO: this is wrong, fix me
         for block in self.reachability_service.forward_chain_iterator(pub_block_header.hash, tip, true) {
             headers_chain_to_selected.push(self.headers_store.get_header(block).unwrap());
             if self.selected_chain_store.read().get_by_hash(block).is_ok() {
@@ -147,12 +154,13 @@ impl<
     if not returns error   */
     pub fn create_pochm_proof(&self, chain_purporter: Hash) -> Result<Pochm, ReceiptsErrors> {
         let mut pochm_proof = Pochm::new();
-        let post_posterity_hash = self.get_post_posterity_block(chain_purporter)?;
         let purporter_index = self
             .selected_chain_store
             .read()
             .get_by_hash(chain_purporter)
             .map_err(|_| ReceiptsErrors::RequestedBlockNotOnSelectedChain(chain_purporter))?;
+        let post_posterity_hash = self.get_post_posterity_block(chain_purporter)?;
+
         /*
            iterate from post posterity down  to the chain purpoter creating pchmr witnesses along the way
         */
@@ -168,7 +176,7 @@ impl<
 
             let leaf_is_in_pchmr_of_root_proof = self.create_pchmr_witness(leaf_block_hash, root_block_hash)?;
             let root_block_header = self.headers_store.get_header(root_block_hash).unwrap();
-            pochm_proof.insert(root_block_header, leaf_is_in_pchmr_of_root_proof);
+            pochm_proof.insert(root_block_header.clone(), leaf_is_in_pchmr_of_root_proof);
 
             (root_block_hash, root_block_index) = (leaf_block_hash, leaf_block_index);
             remaining_index_diff = root_block_index - purporter_index;
@@ -297,6 +305,7 @@ impl<
             }
         }
         if next_bscore == pre_posterity_bscore {
+            //edge case
             representative_parents_partial_list.push(next_chain_block_rep_parent);
         }
         representative_parents_partial_list
@@ -317,6 +326,8 @@ impl<
         while checking if post_posterity of queried block is of the rare case where
         it is encountered before arriving at a chain block
         in the majority of cases, a very short distance is covered before reaching a chain block.*/
+
+        //TODO: this is wrong, fix me
         let candidate_block = self
             .reachability_service
             .forward_chain_iterator(block_hash, head_hash, true)
@@ -403,7 +414,11 @@ impl<
         let reference_header = self.headers_store.get_header(reference_block).unwrap();
         let reference_index = self.selected_chain_store.read().get_by_hash(reference_block).unwrap();
 
-        let low = reference_index.saturating_sub(max_distance);
+        let pruning_read = self.pruning_point_store.read(); //should I keep this lock till the end?
+        let pruning_point_index = self.selected_chain_store.read().get_by_hash(pruning_read.pruning_point().unwrap()).unwrap();
+        drop(pruning_read);
+
+        let low = std::cmp::max(reference_index.saturating_sub(max_distance), pruning_point_index);
         let high = min(self.selected_chain_store.read().get_tip().unwrap().0, reference_index + max_distance);
         let estimated_width = self.estimate_dag_width(None); //rough initial estimation
 
@@ -415,6 +430,7 @@ impl<
     /* a binary search 'style' recursive function
     with special checks in place to avoid getting stuck in a back and forth
     notice the function gets a header and not a hash
+    candidate_header is assumed to be a chain block
     */
     fn get_chain_block_by_cutoff_bscore_rec(
         &self,
@@ -464,7 +480,17 @@ impl<
                 return self.get_chain_block_by_cutoff_bscore_linearly_backwards(candidate_header, low, cutoff_bscore);
             }
         }
-        let next_candidate_hash = self.selected_chain_store.read().get_by_index(next_candidate_index).unwrap();
+        // if next_candidate_index<low || next_candidate_index>high // forced repetition to prevent out of bound errors
+        // {
+        //         return self.get_chain_block_by_cutoff_bscore_rec(cutoff_bscore, low, high, candidate_header, estimated_width)
+        // }
+        let next_candidate_hash = self.selected_chain_store.read().get_by_index(next_candidate_index);
+        if next_candidate_hash.is_err() {
+            //forced repetition if index out of bounds...
+            // panic!();
+            return self.get_chain_block_by_cutoff_bscore_rec(cutoff_bscore, low, high, candidate_header, estimated_width);
+        }
+        let next_candidate_hash = next_candidate_hash.unwrap();
         let next_candidate_header = self.headers_store.get_header(next_candidate_hash).unwrap();
 
         /*Update the estimated width based on the latest result;
@@ -505,10 +531,13 @@ impl<
     }
 
     // a rough estimation of the dag width
-    //reference_wrapped is assumed to be a block on the selected chain, or None
+    // reference_wrapped is assumed to be a block on the selected chain, or None
     // will panic if not
     pub fn estimate_dag_width(&self, reference_wrapped: Option<Hash>) -> u64 {
         let (reference_index, reference);
+        let pruning_read = self.pruning_point_store.read(); //should I keep this lock till the end?
+        let pruning_point_index = self.selected_chain_store.read().get_by_hash(pruning_read.pruning_point().unwrap()).unwrap();
+        drop(pruning_read);
         let past_dist_cover = std::cmp::min(100, self.posterity_depth); //edge case relevant for testing mostly
         if reference_wrapped.is_some() {
             reference = reference_wrapped.unwrap();
@@ -520,7 +549,12 @@ impl<
         let reference_bscore = self.headers_store.get_blue_score(reference).unwrap();
         let past_bscore = self
             .headers_store
-            .get_blue_score(self.selected_chain_store.read().get_by_index(reference_index.saturating_sub(past_dist_cover)).unwrap())
+            .get_blue_score(
+                self.selected_chain_store
+                    .read()
+                    .get_by_index(std::cmp::max(reference_index.saturating_sub(past_dist_cover), pruning_point_index))
+                    .unwrap(),
+            )
             .unwrap();
         std::cmp::max(reference_bscore.saturating_sub(past_bscore) / past_dist_cover, 1)
         //avoiding a harmful 0 value
