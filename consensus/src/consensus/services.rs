@@ -215,7 +215,7 @@ impl ConsensusServices {
             storage.block_transactions_store.clone(),
             storage.pruning_point_store.clone(),
             storage.hash_to_pchmr_store.clone(),
-            params.storage_mass_activation_daa_score,
+            params.storage_mass_activation,
         );
 
         Arc::new(Self {

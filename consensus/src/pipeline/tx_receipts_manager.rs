@@ -10,7 +10,7 @@ use crate::model::{
     stores::{acceptance_data::AcceptanceDataStoreReader, headers::HeaderStoreReader, reachability::ReachabilityStoreReader},
 };
 use kaspa_consensus_core::{
-    config::genesis::GenesisBlock,
+    config::{genesis::GenesisBlock, params::ForkActivation},
     hashing,
     header::Header,
     merkle::create_hash_merkle_witness,
@@ -47,7 +47,7 @@ pub struct TxReceiptsManager<
     pub hash_to_pchmr_store: Arc<DbPchmrStore>,
     pub pruning_point_store: Arc<RwLock<Y>>,
 
-    pub storage_mass_activation_daa_score: u64,
+    pub storage_mass_activation: ForkActivation,
 }
 
 impl<
@@ -69,7 +69,7 @@ impl<
         block_transactions_store: Arc<W>,
         pruning_point_store: Arc<RwLock<Y>>,
         hash_to_pchmr_store: Arc<DbPchmrStore>,
-        storage_mass_activation_daa_score: u64,
+        storage_mass_activation: ForkActivation,
     ) -> Self {
         Self {
             genesis: genesis.clone(),
@@ -78,7 +78,7 @@ impl<
             selected_chain_store: selected_chain_store.clone(),
             acceptance_data_store: acceptance_data_store.clone(),
             reachability_service,
-            storage_mass_activation_daa_score,
+            storage_mass_activation,
             hash_to_pchmr_store: hash_to_pchmr_store.clone(),
             block_transactions_store: block_transactions_store.clone(),
             pruning_point_store: pruning_point_store.clone(),
@@ -120,7 +120,7 @@ impl<
         //next, find the relevant transaction in pub_block_hash's published transactions and create a merkle witness for it
         let published_txs = self.block_transactions_store.get(pub_block_header.hash)?;
         let tracked_tx = published_txs.iter().find(|tx| tx.id() == tracked_tx_id).unwrap();
-        let include_mass_field = pub_block_header.daa_score > self.storage_mass_activation_daa_score;
+        let include_mass_field = self.storage_mass_activation.is_active(pub_block_header.daa_score);
         let tx_pub_proof = create_hash_merkle_witness(published_txs.iter(), tracked_tx, include_mass_field)?;
 
         let tracked_tx_hash = hashing::tx::hash(tracked_tx, include_mass_field); //leaf value in merkle tree
