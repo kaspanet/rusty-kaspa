@@ -289,6 +289,7 @@ pub fn level_work(level: u8, max_block_level: u8) -> BlueWorkType {
     if level == 0 {
         return 0.into();
     }
+    // We use 256 here so the result corresponds to the work at the level from calc_block_level
     let exp = (level as u32) + 256 - (max_block_level as u32);
     BlueWorkType::from_u64(1) << exp.min(MAX_WORK_LEVEL)
 }
