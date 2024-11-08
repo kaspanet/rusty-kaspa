@@ -6,7 +6,7 @@ use crate::model::stores::{
 use kaspa_consensus_core::{
     config::params::MIN_DIFFICULTY_WINDOW_LEN,
     errors::difficulty::{DifficultyError, DifficultyResult},
-    BlockHashSet, BlueWorkType,
+    BlockHashSet, BlueWorkType, MAX_WORK_LEVEL,
 };
 use kaspa_math::{Uint256, Uint320};
 use std::{
@@ -18,8 +18,6 @@ use std::{
 
 use super::ghostdag::ordering::SortableBlock;
 use itertools::Itertools;
-
-const MAX_WORK_LEVEL: u32 = 128;
 
 trait DifficultyManagerExtension {
     fn headers_store(&self) -> &dyn HeaderStoreReader;
@@ -291,7 +289,7 @@ pub fn level_work(level: u8, max_block_level: u8) -> BlueWorkType {
     }
     // We use 256 here so the result corresponds to the work at the level from calc_block_level
     let exp = (level as u32) + 256 - (max_block_level as u32);
-    BlueWorkType::from_u64(1) << exp.min(MAX_WORK_LEVEL)
+    BlueWorkType::from_u64(1) << exp.min(MAX_WORK_LEVEL as u32)
 }
 
 #[derive(Eq)]
@@ -324,10 +322,10 @@ impl Ord for DifficultyBlock {
 mod tests {
     use std::cmp::max;
 
-    use kaspa_consensus_core::{BlockLevel, BlueWorkType};
+    use kaspa_consensus_core::{BlockLevel, BlueWorkType, MAX_WORK_LEVEL};
     use kaspa_math::{Uint256, Uint320};
 
-    use crate::processes::difficulty::{calc_work, level_work, MAX_WORK_LEVEL};
+    use crate::processes::difficulty::{calc_work, level_work};
     use kaspa_utils::hex::ToHex;
 
     #[test]
@@ -335,7 +333,7 @@ mod tests {
         let max_block_level: BlockLevel = 225;
         for level in 1..=max_block_level {
             // required pow for level
-            let level_target = (Uint320::from_u64(1) << ((max_block_level - level) as u32).max(MAX_WORK_LEVEL)) - Uint320::from_u64(1);
+            let level_target = (Uint320::from_u64(1) << (max_block_level - level).max(MAX_WORK_LEVEL) as u32) - Uint320::from_u64(1);
             let level_target = Uint256::from_be_bytes(level_target.to_be_bytes()[8..40].try_into().unwrap());
             let signed_block_level = max_block_level as i64 - level_target.bits() as i64;
             let calculated_level = max(signed_block_level, 0) as BlockLevel;
