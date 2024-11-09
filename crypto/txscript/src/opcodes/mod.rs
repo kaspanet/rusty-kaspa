@@ -3010,27 +3010,6 @@ mod test {
             amount: u64,
         }
 
-        #[derive(Debug)]
-        struct TestCase {
-            name: &'static str,
-            kip10_enabled: bool,
-            expected_results: Vec<ExpectedResult>,
-        }
-
-        #[derive(Debug)]
-        enum Operation {
-            InputSpk,
-            OutputSpk,
-            InputAmount,
-            OutputAmount,
-        }
-
-        #[derive(Debug)]
-        enum ExpectedResult {
-            Success { operation: Operation, index: i64, expected_spk: Option<Vec<u8>>, expected_amount: Option<Vec<u8>> },
-            Error { operation: Operation, index: Option<i64>, expected_error: TxScriptError },
-        }
-
         fn create_mock_spk(value: u8) -> ScriptPublicKey {
             let pub_key = vec![value; 32];
             let addr = Address::new(Prefix::Testnet, Version::PubKey, &pub_key);
@@ -3053,7 +3032,34 @@ mod test {
             (tx, utxos)
         }
 
-        fn execute_test_case(test_case: &TestCase) {
+        #[derive(Debug)]
+        struct TestGroup {
+            name: &'static str,
+            kip10_enabled: bool,
+            test_cases: Vec<TestCase>,
+        }
+
+        #[derive(Debug)]
+        enum Operation {
+            InputSpk,
+            OutputSpk,
+            InputAmount,
+            OutputAmount,
+        }
+
+        #[derive(Debug)]
+        enum TestCase {
+            Successful { operation: Operation, index: i64, expected_result: ExpectedResult },
+            Incorrect { operation: Operation, index: Option<i64>, expected_error: TxScriptError },
+        }
+
+        #[derive(Debug)]
+        struct ExpectedResult {
+            expected_spk: Option<Vec<u8>>,
+            expected_amount: Option<Vec<u8>>,
+        }
+
+        fn execute_test_group(group: &TestGroup) {
             let input_spk1 = create_mock_spk(1);
             let input_spk2 = create_mock_spk(2);
             let output_spk1 = create_mock_spk(3);
@@ -3077,12 +3083,13 @@ mod test {
                     tx.utxo(current_idx).unwrap(),
                     &reused_values,
                     &sig_cache,
-                    test_case.kip10_enabled,
+                    group.kip10_enabled,
                 )
                 .unwrap();
-                let op_input_idx = opcodes::OpTxInputIndex::empty().expect("Should accept empty");
 
-                if !test_case.kip10_enabled {
+                // Check input index opcode first
+                let op_input_idx = opcodes::OpTxInputIndex::empty().expect("Should accept empty");
+                if !group.kip10_enabled {
                     assert!(matches!(op_input_idx.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))));
                 } else {
                     let mut expected = vm.dstack.clone();
@@ -3092,45 +3099,46 @@ mod test {
                     vm.dstack.clear();
                 }
 
+                // Prepare opcodes
                 let op_input_spk = opcodes::OpTxInputSpk::empty().expect("Should accept empty");
                 let op_output_spk = opcodes::OpTxOutputSpk::empty().expect("Should accept empty");
                 let op_input_amount = opcodes::OpTxInputAmount::empty().expect("Should accept empty");
                 let op_output_amount = opcodes::OpTxOutputAmount::empty().expect("Should accept empty");
 
-                for expected_result in &test_case.expected_results {
-                    match expected_result {
-                        ExpectedResult::Success { operation, index, expected_spk, expected_amount } => {
+                // Execute each test case
+                for test_case in &group.test_cases {
+                    match test_case {
+                        TestCase::Successful { operation, index, expected_result } => {
                             push_number(*index, &mut vm).unwrap();
-                            match operation {
-                                Operation::InputSpk => {
-                                    op_input_spk.execute(&mut vm).unwrap();
-                                    assert_eq!(vm.dstack, vec![expected_spk.clone().unwrap()]);
-                                }
-                                Operation::OutputSpk => {
-                                    op_output_spk.execute(&mut vm).unwrap();
-                                    assert_eq!(vm.dstack, vec![expected_spk.clone().unwrap()]);
-                                }
-                                Operation::InputAmount => {
-                                    op_input_amount.execute(&mut vm).unwrap();
-                                    assert_eq!(vm.dstack, vec![expected_amount.clone().unwrap()]);
-                                }
-                                Operation::OutputAmount => {
-                                    op_output_amount.execute(&mut vm).unwrap();
-                                    assert_eq!(vm.dstack, vec![expected_amount.clone().unwrap()]);
-                                }
-                            }
-                            vm.dstack.clear();
-                        }
-                        ExpectedResult::Error { operation, index, expected_error } => {
-                            if let Some(idx) = index {
-                                push_number(*idx, &mut vm).unwrap();
-                            }
                             let result = match operation {
                                 Operation::InputSpk => op_input_spk.execute(&mut vm),
                                 Operation::OutputSpk => op_output_spk.execute(&mut vm),
                                 Operation::InputAmount => op_input_amount.execute(&mut vm),
                                 Operation::OutputAmount => op_output_amount.execute(&mut vm),
                             };
+                            assert!(result.is_ok());
+
+                            // Check the result matches expectations
+                            if let Some(ref expected_spk) = expected_result.expected_spk {
+                                assert_eq!(vm.dstack, vec![expected_spk.clone()]);
+                            }
+                            if let Some(ref expected_amount) = expected_result.expected_amount {
+                                assert_eq!(vm.dstack, vec![expected_amount.clone()]);
+                            }
+                            vm.dstack.clear();
+                        }
+                        TestCase::Incorrect { operation, index, expected_error } => {
+                            if let Some(idx) = index {
+                                push_number(*idx, &mut vm).unwrap();
+                            }
+
+                            let result = match operation {
+                                Operation::InputSpk => op_input_spk.execute(&mut vm),
+                                Operation::OutputSpk => op_output_spk.execute(&mut vm),
+                                Operation::InputAmount => op_input_amount.execute(&mut vm),
+                                Operation::OutputAmount => op_output_amount.execute(&mut vm),
+                            };
+
                             assert!(
                                 matches!(result, Err(ref e) if std::mem::discriminant(e) == std::mem::discriminant(expected_error))
                             );
@@ -3143,123 +3151,139 @@ mod test {
 
         #[test]
         fn test_unary_introspection_ops() {
-            let test_cases = vec![
-                TestCase {
+            let test_groups = vec![
+                TestGroup {
                     name: "KIP-10 disabled",
                     kip10_enabled: false,
-                    expected_results: vec![
-                        ExpectedResult::Error {
+                    test_cases: vec![
+                        TestCase::Incorrect {
                             operation: Operation::InputSpk,
                             index: Some(0),
                             expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
                         },
-                        ExpectedResult::Error {
+                        TestCase::Incorrect {
                             operation: Operation::OutputSpk,
                             index: Some(0),
                             expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
                         },
-                        ExpectedResult::Error {
+                        TestCase::Incorrect {
                             operation: Operation::InputAmount,
                             index: Some(0),
                             expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
                         },
-                        ExpectedResult::Error {
+                        TestCase::Incorrect {
                             operation: Operation::OutputAmount,
                             index: Some(0),
                             expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
                         },
                     ],
                 },
-                TestCase {
+                TestGroup {
                     name: "Valid input indices",
                     kip10_enabled: true,
-                    expected_results: vec![
-                        ExpectedResult::Success {
+                    test_cases: vec![
+                        TestCase::Successful {
                             operation: Operation::InputSpk,
                             index: 0,
-                            expected_spk: Some(create_mock_spk(1).to_bytes()),
-                            expected_amount: None,
+                            expected_result: ExpectedResult {
+                                expected_spk: Some(create_mock_spk(1).to_bytes()),
+                                expected_amount: None,
+                            },
                         },
-                        ExpectedResult::Success {
+                        TestCase::Successful {
                             operation: Operation::InputSpk,
                             index: 1,
-                            expected_spk: Some(create_mock_spk(2).to_bytes()),
-                            expected_amount: None,
+                            expected_result: ExpectedResult {
+                                expected_spk: Some(create_mock_spk(2).to_bytes()),
+                                expected_amount: None,
+                            },
                         },
-                        ExpectedResult::Success {
+                        TestCase::Successful {
                             operation: Operation::InputAmount,
                             index: 0,
-                            expected_spk: None,
-                            expected_amount: Some(OpcodeData::<i64>::serialize(&1111)),
+                            expected_result: ExpectedResult {
+                                expected_spk: None,
+                                expected_amount: Some(OpcodeData::<i64>::serialize(&1111)),
+                            },
                         },
-                        ExpectedResult::Success {
+                        TestCase::Successful {
                             operation: Operation::InputAmount,
                             index: 1,
-                            expected_spk: None,
-                            expected_amount: Some(OpcodeData::<i64>::serialize(&2222)),
+                            expected_result: ExpectedResult {
+                                expected_spk: None,
+                                expected_amount: Some(OpcodeData::<i64>::serialize(&2222)),
+                            },
                         },
                     ],
                 },
-                TestCase {
+                TestGroup {
                     name: "Valid output indices",
                     kip10_enabled: true,
-                    expected_results: vec![
-                        ExpectedResult::Success {
+                    test_cases: vec![
+                        TestCase::Successful {
                             operation: Operation::OutputSpk,
                             index: 0,
-                            expected_spk: Some(create_mock_spk(3).to_bytes()),
-                            expected_amount: None,
+                            expected_result: ExpectedResult {
+                                expected_spk: Some(create_mock_spk(3).to_bytes()),
+                                expected_amount: None,
+                            },
                         },
-                        ExpectedResult::Success {
+                        TestCase::Successful {
                             operation: Operation::OutputSpk,
                             index: 1,
-                            expected_spk: Some(create_mock_spk(4).to_bytes()),
-                            expected_amount: None,
+                            expected_result: ExpectedResult {
+                                expected_spk: Some(create_mock_spk(4).to_bytes()),
+                                expected_amount: None,
+                            },
                         },
-                        ExpectedResult::Success {
+                        TestCase::Successful {
                             operation: Operation::OutputAmount,
                             index: 0,
-                            expected_spk: None,
-                            expected_amount: Some(OpcodeData::<i64>::serialize(&3333)),
+                            expected_result: ExpectedResult {
+                                expected_spk: None,
+                                expected_amount: Some(OpcodeData::<i64>::serialize(&3333)),
+                            },
                         },
-                        ExpectedResult::Success {
+                        TestCase::Successful {
                             operation: Operation::OutputAmount,
                             index: 1,
-                            expected_spk: None,
-                            expected_amount: Some(OpcodeData::<i64>::serialize(&4444)),
+                            expected_result: ExpectedResult {
+                                expected_spk: None,
+                                expected_amount: Some(OpcodeData::<i64>::serialize(&4444)),
+                            },
                         },
                     ],
                 },
-                TestCase {
+                TestGroup {
                     name: "Error cases",
                     kip10_enabled: true,
-                    expected_results: vec![
-                        ExpectedResult::Error {
+                    test_cases: vec![
+                        TestCase::Incorrect {
                             operation: Operation::InputAmount,
                             index: None,
                             expected_error: TxScriptError::InvalidStackOperation(1, 0),
                         },
-                        ExpectedResult::Error {
+                        TestCase::Incorrect {
                             operation: Operation::InputAmount,
                             index: Some(-1),
                             expected_error: TxScriptError::InvalidIndex(u8::MAX as usize + 1, 2),
                         },
-                        ExpectedResult::Error {
+                        TestCase::Incorrect {
                             operation: Operation::InputAmount,
                             index: Some(2),
                             expected_error: TxScriptError::InvalidIndex(2, 2),
                         },
-                        ExpectedResult::Error {
+                        TestCase::Incorrect {
                             operation: Operation::OutputAmount,
                             index: None,
                             expected_error: TxScriptError::InvalidStackOperation(1, 0),
                         },
-                        ExpectedResult::Error {
+                        TestCase::Incorrect {
                             operation: Operation::OutputAmount,
                             index: Some(-1),
                             expected_error: TxScriptError::InvalidIndex(u8::MAX as usize + 1, 2),
                         },
-                        ExpectedResult::Error {
+                        TestCase::Incorrect {
                             operation: Operation::OutputAmount,
                             index: Some(2),
                             expected_error: TxScriptError::InvalidOutputIndex(2, 2),
@@ -3268,9 +3292,9 @@ mod test {
                 },
             ];
 
-            for test_case in test_cases {
-                println!("Running test case: {}", test_case.name);
-                execute_test_case(&test_case);
+            for group in test_groups {
+                println!("Running test group: {}", group.name);
+                execute_test_group(&group);
             }
         }
         fn create_mock_tx(input_count: usize, output_count: usize) -> (Transaction, Vec<UtxoEntry>) {
