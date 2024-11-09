@@ -2995,8 +2995,14 @@ mod test {
 
     mod kip10 {
         use super::*;
-        use crate::data_stack::DataStack;
-        use crate::{data_stack::OpcodeData, opcodes::push_number, SpkEncoding};
+        use crate::{
+            data_stack::{DataStack, OpcodeData},
+            opcodes::{codes::*, push_number},
+            pay_to_script_hash_script,
+            script_builder::ScriptBuilder,
+            SpkEncoding,
+        };
+        use kaspa_consensus_core::tx::MutableTransaction;
 
         #[derive(Clone, Debug)]
         struct Kip10Mock {
@@ -3361,6 +3367,392 @@ mod test {
                         );
                     }
                 }
+            }
+        }
+
+        #[test]
+        fn test_output_amount() {
+            // Create script: 0 OP_OUTPUTAMOUNT 100 EQUAL
+            let redeem_script = ScriptBuilder::new()
+                .add_op(Op0)
+                .unwrap()
+                .add_op(OpTxOutputAmount)
+                .unwrap()
+                .add_i64(100)
+                .unwrap()
+                .add_op(OpEqual)
+                .unwrap()
+                .drain();
+
+            let spk = pay_to_script_hash_script(&redeem_script);
+
+            // Create transaction with output amount 100
+            let input_mock = Kip10Mock { spk: spk.clone(), amount: 200 };
+            let output_mock = Kip10Mock { spk: create_mock_spk(1), amount: 100 };
+
+            let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock.clone()], vec![output_mock]);
+            let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+
+            // Set signature script to push redeem script
+            tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+            let tx = tx.as_verifiable();
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+
+            // Test success case
+            {
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                )
+                .unwrap();
+
+                assert_eq!(vm.execute(), Ok(()));
+            }
+
+            // Test failure case with wrong amount
+            {
+                let output_mock = Kip10Mock {
+                    spk: create_mock_spk(1),
+                    amount: 99, // Wrong amount
+                };
+                let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock.clone()], vec![output_mock]);
+                let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                )
+                .unwrap();
+
+                assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
+            }
+        }
+
+        #[test]
+        fn test_input_amount() {
+            // Create script: 0 OP_INPUTAMOUNT 200 EQUAL
+            let redeem_script = ScriptBuilder::new()
+                .add_op(Op0)
+                .unwrap()
+                .add_op(OpTxInputAmount)
+                .unwrap()
+                .add_i64(200)
+                .unwrap()
+                .add_op(OpEqual)
+                .unwrap()
+                .drain();
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+            let spk = pay_to_script_hash_script(&redeem_script);
+
+            // Test success case
+            {
+                let input_mock = Kip10Mock { spk: spk.clone(), amount: 200 };
+                let output_mock = Kip10Mock { spk: create_mock_spk(1), amount: 100 };
+
+                let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock], vec![output_mock]);
+                let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                )
+                .unwrap();
+
+                assert_eq!(vm.execute(), Ok(()));
+            }
+
+            // Test failure case
+            {
+                let input_mock = Kip10Mock {
+                    spk: spk.clone(),
+                    amount: 199, // Wrong amount
+                };
+                let output_mock = Kip10Mock { spk: create_mock_spk(1), amount: 100 };
+
+                let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock], vec![output_mock]);
+                let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                )
+                .unwrap();
+
+                assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
+            }
+        }
+
+        #[test]
+        fn test_output_spk() {
+            // Create unique SPK to check
+            let expected_spk = create_mock_spk(42);
+            let expected_spk_bytes = expected_spk.to_bytes();
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+            // Create script: 0 OP_OUTPUTSPK <expected_spk_bytes> EQUAL
+            let redeem_script = ScriptBuilder::new()
+                .add_op(Op0)
+                .unwrap()
+                .add_op(OpTxOutputSpk)
+                .unwrap()
+                .add_data(&expected_spk_bytes)
+                .unwrap()
+                .add_op(OpEqual)
+                .unwrap()
+                .drain();
+
+            let spk = pay_to_script_hash_script(&redeem_script);
+
+            // Test success case
+            {
+                let input_mock = Kip10Mock { spk: spk.clone(), amount: 200 };
+                let output_mock = Kip10Mock { spk: expected_spk.clone(), amount: 100 };
+
+                let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock], vec![output_mock]);
+                let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                )
+                .unwrap();
+
+                assert_eq!(vm.execute(), Ok(()));
+            }
+
+            // Test failure case
+            {
+                let input_mock = Kip10Mock { spk: spk.clone(), amount: 200 };
+                let output_mock = Kip10Mock {
+                    spk: create_mock_spk(43), // Different SPK
+                    amount: 100,
+                };
+
+                let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock], vec![output_mock]);
+                let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                )
+                .unwrap();
+
+                assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
+            }
+        }
+
+        #[test]
+        fn test_input_index() {
+            // Create script: OP_INPUTINDEX 0 EQUAL
+            let redeem_script =
+                ScriptBuilder::new().add_op(OpTxInputIndex).unwrap().add_i64(0).unwrap().add_op(OpEqual).unwrap().drain();
+
+            let spk = pay_to_script_hash_script(&redeem_script);
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+            // Test first input (success case)
+            {
+                let input_mock = Kip10Mock { spk: spk.clone(), amount: 200 };
+                let output_mock = Kip10Mock { spk: create_mock_spk(1), amount: 100 };
+
+                let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock], vec![output_mock]);
+                let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                )
+                .unwrap();
+
+                assert_eq!(vm.execute(), Ok(()));
+            }
+
+            // Test second input (failure case)
+            {
+                let input_mock1 = Kip10Mock { spk: create_mock_spk(1), amount: 100 };
+                let input_mock2 = Kip10Mock { spk: spk.clone(), amount: 200 };
+                let output_mock = Kip10Mock { spk: create_mock_spk(2), amount: 100 };
+
+                let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock1, input_mock2], vec![output_mock]);
+                let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+                tx.tx.inputs[1].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[1],
+                    1,
+                    tx.utxo(1).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                )
+                .unwrap();
+
+                // Should fail because script expects index 0 but we're at index 1
+                assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
+            }
+        }
+
+        #[test]
+        fn test_counts() {
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+            // Test OpInputCount: "OP_INPUTCOUNT 2 EQUAL"
+            let input_count_script =
+                ScriptBuilder::new().add_op(OpTxInputCount).unwrap().add_i64(2).unwrap().add_op(OpEqual).unwrap().drain();
+
+            // Test OpOutputCount: "OP_OUTPUTCOUNT 3 EQUAL"
+            let output_count_script =
+                ScriptBuilder::new().add_op(OpTxOutputCount).unwrap().add_i64(3).unwrap().add_op(OpEqual).unwrap().drain();
+
+            let input_spk = pay_to_script_hash_script(&input_count_script);
+            let output_spk = pay_to_script_hash_script(&output_count_script);
+
+            // Create transaction with 2 inputs and 3 outputs
+            let input_mock1 = Kip10Mock { spk: input_spk.clone(), amount: 100 };
+            let input_mock2 = Kip10Mock { spk: output_spk.clone(), amount: 200 };
+            let output_mock1 = Kip10Mock { spk: create_mock_spk(1), amount: 50 };
+            let output_mock2 = Kip10Mock { spk: create_mock_spk(2), amount: 100 };
+            let output_mock3 = Kip10Mock { spk: create_mock_spk(3), amount: 150 };
+
+            let (tx, utxo_entries) =
+                kip_10_tx_mock(vec![input_mock1.clone(), input_mock2.clone()], vec![output_mock1, output_mock2, output_mock3]);
+
+            // Test InputCount
+            {
+                let mut tx = MutableTransaction::with_entries(tx.clone(), utxo_entries.clone());
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&input_count_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                )
+                .unwrap();
+
+                assert_eq!(vm.execute(), Ok(()));
+            }
+
+            // Test OutputCount
+            {
+                let mut tx = MutableTransaction::with_entries(tx.clone(), utxo_entries.clone());
+                tx.tx.inputs[1].signature_script = ScriptBuilder::new().add_data(&output_count_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[1],
+                    1,
+                    tx.utxo(1).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                )
+                .unwrap();
+
+                assert_eq!(vm.execute(), Ok(()));
+            }
+
+            // Test failure cases with wrong counts
+            {
+                // Wrong input count script: "OP_INPUTCOUNT 3 EQUAL"
+                let wrong_input_count_script =
+                    ScriptBuilder::new().add_op(OpTxInputCount).unwrap().add_i64(3).unwrap().add_op(OpEqual).unwrap().drain();
+
+                let mut tx = MutableTransaction::with_entries(tx.clone(), utxo_entries.clone());
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&wrong_input_count_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                )
+                .unwrap();
+
+                assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
+            }
+
+            {
+                // Wrong output count script: "OP_OUTPUTCOUNT 2 EQUAL"
+                let wrong_output_count_script =
+                    ScriptBuilder::new().add_op(OpTxOutputCount).unwrap().add_i64(2).unwrap().add_op(OpEqual).unwrap().drain();
+
+                let mut tx = MutableTransaction::with_entries(tx.clone(), utxo_entries.clone());
+                tx.tx.inputs[1].signature_script = ScriptBuilder::new().add_data(&wrong_output_count_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[1],
+                    1,
+                    tx.utxo(1).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                )
+                .unwrap();
+
+                assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
             }
         }
     }
