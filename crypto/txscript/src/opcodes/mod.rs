@@ -918,7 +918,7 @@ opcode_list! {
         }
     }
     opcode OpOutpointTxId<0xba, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
-    opcode OpOutpointOutputIdx<0xbb, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpOutpointIndex<0xbb, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
     opcode OpTxInputScriptSig<0xbc, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
     opcode OpTxInputSeq<0xbd, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
     // UTXO related opcodes (following UtxoEntry struct field order)
@@ -1171,7 +1171,7 @@ mod test {
             opcodes::OpTxGas::empty().expect("Should accept empty"),
             opcodes::OpTxPayload::empty().expect("Should accept empty"),
             opcodes::OpOutpointTxId::empty().expect("Should accept empty"),
-            opcodes::OpOutpointOutputIdx::empty().expect("Should accept empty"),
+            opcodes::OpOutpointIndex::empty().expect("Should accept empty"),
             opcodes::OpTxInputScriptSig::empty().expect("Should accept empty"),
             opcodes::OpTxInputSeq::empty().expect("Should accept empty"),
             opcodes::OpTxInputBlockDaaScore::empty().expect("Should accept empty"),
