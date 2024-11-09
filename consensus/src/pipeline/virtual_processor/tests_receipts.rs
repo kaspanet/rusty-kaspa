@@ -172,7 +172,7 @@ async fn test_receipts_in_random() {
     This error appears to decrease with higher BPS
     BPS too high though (10BPS) tends to result in block status errors
 
-    Perhaps this test needs just be replaced by an integration test.
+    Perhaps this test needs just be replaced by a simulation on real data.
      */
     const FINALITY_DEPTH: usize = 10;
     const DAG_SIZE: u64 = 500;
@@ -183,7 +183,7 @@ async fn test_receipts_in_random() {
             p.max_block_parents = 50; //  is probably enough to avoid errors
             p.mergeset_size_limit = 30;
             p.finality_depth = FINALITY_DEPTH as u64;
-            p.pruning_depth = (FINALITY_DEPTH * 3) as u64;
+            p.pruning_depth = (FINALITY_DEPTH * 4) as u64;
         })
         .build();
     // let mut expected_posterities = vec![];
@@ -230,11 +230,11 @@ async fn test_receipts_in_random() {
                 if ctx.consensus.get_header(old_block).is_err() {
                     return false;
                 }
-                let blk_header = ctx.consensus.headers_store.get_header(old_block).unwrap();
+                let blk_header = ctx.consensus.get_header(old_block).unwrap();
                 let pub_tx = ctx.consensus.block_transactions_store.get(old_block).unwrap()[0].id();
                 let proof = ctx.consensus.generate_proof_of_pub(pub_tx, Some(blk_header.hash), None);
-                if proof.is_ok() {
-                    pops.push((proof.unwrap(), pub_tx));
+                if let Ok(proof) = proof {
+                    pops.push((proof, pub_tx));
                     return false;
                 }
                 true
@@ -251,7 +251,7 @@ async fn test_receipts_in_random() {
                 if blk_pochm.is_ok() {
                     assert!(is_chain_blk);
                     pochms_list.push((blk_pochm.unwrap(), old_block));
-                    let blk_header = ctx.consensus.headers_store.get_header(old_block).unwrap();
+                    let blk_header = ctx.consensus.get_header(old_block).unwrap();
                     let acc_tx =
                         ctx.consensus.acceptance_data_store.get(old_block).unwrap()[0].accepted_transactions[0].transaction_id;
 

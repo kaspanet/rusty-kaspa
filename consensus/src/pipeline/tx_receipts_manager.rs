@@ -67,6 +67,7 @@ impl<
         I: RelationsStoreReader,
     > TxReceiptsManager<T, U, V, X, W, Y, I>
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         genesis: GenesisBlock,
         posterity_depth: u64,
@@ -492,7 +493,9 @@ impl<
         B) because |next_candidate_bscore-candidate_bscore| is by definition the minimal possible value index_step can get
         divide by 0 doesn't occur since index_step!=0;
         Should reconsider whether this logic is even worth calculating iteratively compared to just the initial guess:
-        very likely not*/
+        This is probably a classic premature optimization is the root of all evil.
+        The scenario where I believe this iterative guessing is of use is when an archival node
+        attempts to find a deep posterity block where thhe width may have flactuated a lot*/
         let next_estimated_width = (candidate_header.blue_score.abs_diff(next_candidate_header.blue_score)) / index_step;
         assert_ne!(next_estimated_width, 0);
 
@@ -553,14 +556,16 @@ impl<
         //avoiding a harmful 0 value
     }
 
+    /*block hash must be an ancestor of sink, otherwise an error will be returned
+    Maybe this kind of code needs to be on the traversal manager or something of sorts
+    */
     pub fn find_future_chain_block_path(&self, block_hash: Hash) -> Result<Vec<Hash>, ReceiptsErrors> {
-        /*block hash must be an ancestor of sink, otherwise an error will be returned
-        Maybe this kind of code needs to be on the traversal manager or something of sorts
-         */
         let sink = self.selected_chain_store.read().get_tip()?.1;
         let mut queue = VecDeque::new();
         let mut visited = HashSet::new();
         queue.push_back(vec![block_hash]);
+        visited.insert(block_hash);
+        // a standard BFS loop until a chain block is found
         while let Some(path) = queue.pop_front() {
             let curr = *path.last().unwrap(); // path should never be empty
             if !self.reachability_service.is_dag_ancestor_of(curr, sink) {
@@ -577,10 +582,10 @@ impl<
                         let mut new_path = path.clone();
                         new_path.push(child);
                         queue.push_back(new_path);
+                        visited.insert(child);
                     }
                 }
             }
-            visited.insert(curr);
         }
         Err(ReceiptsErrors::NoChainBlockInFuture(block_hash))
     }
