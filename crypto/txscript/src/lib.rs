@@ -168,6 +168,22 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         }
     }
 
+    /// Creates a new Script Engine for validating transaction input.
+    ///
+    /// # Arguments
+    /// * `tx` - The transaction being validated
+    /// * `input` - The input being validated
+    /// * `input_idx` - Index of the input in the transaction
+    /// * `utxo_entry` - UTXO entry being spent
+    /// * `reused_values` - Reused values for signature hashing
+    /// * `sig_cache` - Cache for signature verification
+    /// * `kip10_enabled` - Whether KIP-10 transaction introspection opcodes are enabled
+    ///
+    /// # Panics
+    /// * When input_idx >= number of inputs in transaction (malformed input)
+    ///
+    /// # Returns
+    /// Script engine instance configured for the given input
     pub fn from_transaction_input(
         tx: &'a T,
         input: &'a TransactionInput,
@@ -181,19 +197,17 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
         // the user provides
         let is_p2sh = ScriptClass::is_pay_to_script_hash(script_public_key);
-        match input_idx < tx.tx().inputs.len() {
-            true => Ok(Self {
-                dstack: Default::default(),
-                astack: Default::default(),
-                script_source: ScriptSource::TxInput { tx, input, idx: input_idx, utxo_entry, is_p2sh },
-                reused_values,
-                sig_cache,
-                cond_stack: Default::default(),
-                num_ops: 0,
-                kip10_enabled,
-            }),
-            false => Err(TxScriptError::InvalidIndex(input_idx, tx.tx().inputs.len())),
-        }
+        assert!(input_idx < tx.tx().inputs.len());
+        Ok(Self {
+            dstack: Default::default(),
+            astack: Default::default(),
+            script_source: ScriptSource::TxInput { tx, input, idx: input_idx, utxo_entry, is_p2sh },
+            reused_values,
+            sig_cache,
+            cond_stack: Default::default(),
+            num_ops: 0,
+            kip10_enabled,
+        })
     }
 
     pub fn from_script(
