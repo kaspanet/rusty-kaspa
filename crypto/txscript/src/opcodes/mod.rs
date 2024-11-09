@@ -927,8 +927,7 @@ opcode_list! {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let idx = usize::try_from(idx).map_err(|_| TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))?;
-                    let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidIndex(idx, tx.inputs().len()))?;
+                    let utxo = usize::try_from(idx).ok().and_then(|idx| tx.utxo(idx)).ok_or_else(|| TxScriptError::InvalidInputIndex(idx, tx.inputs().len()))?;
                     push_number(utxo.amount as i64, vm)
                 },
                 _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
@@ -942,8 +941,9 @@ opcode_list! {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let idx = usize::try_from(idx).map_err(|_| TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))?;
-                    let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidIndex(idx, tx.inputs().len()))?;
+                    let utxo = usize::try_from(idx).ok().
+                        and_then(|idx| tx.utxo(idx)).
+                        ok_or_else(|| TxScriptError::InvalidInputIndex(idx, tx.inputs().len()))?;
                     vm.dstack.push(utxo.script_public_key.to_bytes());
                     Ok(())
                 },
@@ -961,8 +961,9 @@ opcode_list! {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let idx = usize::try_from(idx).map_err(|_| TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))?;
-                    let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.outputs().len()))?;
+                    let output = usize::try_from(idx).ok().
+                        and_then(|idx| tx.outputs().get(idx)).
+                        ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
                     push_number(output.value as i64, vm)
                 },
                 _ => Err(TxScriptError::InvalidSource("OpOutputAmount only applies to transaction inputs".to_string()))
@@ -976,8 +977,9 @@ opcode_list! {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let idx = usize::try_from(idx).map_err(|_| TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))?;
-                    let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.outputs().len()))?;
+                    let output = usize::try_from(idx).ok().
+                        and_then(|idx| tx.outputs().get(idx)).
+                        ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
                     vm.dstack.push(output.script_public_key.to_bytes());
                     Ok(())
                 },
@@ -3266,12 +3268,12 @@ mod test {
                         TestCase::Incorrect {
                             operation: Operation::InputAmount,
                             index: Some(-1),
-                            expected_error: TxScriptError::InvalidIndex(u8::MAX as usize + 1, 2),
+                            expected_error: TxScriptError::InvalidInputIndex(-1, 2),
                         },
                         TestCase::Incorrect {
                             operation: Operation::InputAmount,
                             index: Some(2),
-                            expected_error: TxScriptError::InvalidIndex(2, 2),
+                            expected_error: TxScriptError::InvalidInputIndex(2, 2),
                         },
                         TestCase::Incorrect {
                             operation: Operation::OutputAmount,
@@ -3281,7 +3283,7 @@ mod test {
                         TestCase::Incorrect {
                             operation: Operation::OutputAmount,
                             index: Some(-1),
-                            expected_error: TxScriptError::InvalidIndex(u8::MAX as usize + 1, 2),
+                            expected_error: TxScriptError::InvalidOutputIndex(-1, 2),
                         },
                         TestCase::Incorrect {
                             operation: Operation::OutputAmount,
