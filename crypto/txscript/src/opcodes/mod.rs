@@ -1,8 +1,8 @@
 #[macro_use]
 mod macros;
 
-use crate::data_stack::{DataStack, Kip10I64, OpcodeData};
 use crate::{
+    data_stack::{DataStack, Kip10I64, OpcodeData},
     ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE,
     SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
 };
@@ -2996,7 +2996,7 @@ mod test {
     mod kip10 {
         use super::*;
         use crate::data_stack::DataStack;
-        use crate::{data_stack::OpcodeData, opcodes::push_number};
+        use crate::{data_stack::OpcodeData, opcodes::push_number, SpkEncoding};
 
         #[derive(Clone, Debug)]
         struct Kip10Mock {
