@@ -3511,6 +3511,80 @@ mod test {
         }
 
         #[test]
+        fn test_input_spk_basic() {
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+
+            // Create script: 0 OP_INPUTSPK OpNop
+            // Just verify that OpInputSpk pushes something onto stack
+            let redeem_script = ScriptBuilder::new().add_ops(&[Op0, OpTxInputSpk, OpNop]).unwrap().drain();
+            let spk = pay_to_script_hash_script(&redeem_script);
+
+            let (tx, utxo_entries) = kip_10_tx_mock(vec![Kip10Mock { spk, amount: 100 }], vec![]);
+            let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+            tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+            let tx = tx.as_verifiable();
+            let mut vm =
+                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache, true)
+                    .unwrap();
+
+            // OpInputSpk should push input's SPK onto stack, making it non-empty
+            assert_eq!(vm.execute(), Ok(()));
+        }
+
+        #[test]
+        fn test_input_spk_different() {
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+
+            // Create script: 0 OP_INPUTSPK 1 OP_INPUTSPK OP_EQUAL OP_NOT
+            // Verifies that two different inputs have different SPKs
+            let redeem_script = ScriptBuilder::new().add_ops(&[Op0, OpTxInputSpk, Op1, OpTxInputSpk, OpEqual, OpNot]).unwrap().drain();
+            let spk = pay_to_script_hash_script(&redeem_script);
+            let input_mock1 = Kip10Mock { spk, amount: 100 };
+            let input_mock2 = Kip10Mock { spk: create_mock_spk(2), amount: 100 }; // Different SPK
+
+            let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock1, input_mock2], vec![]);
+            let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+            tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+            let tx = tx.as_verifiable();
+            let mut vm =
+                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache, true)
+                    .unwrap();
+
+            // Should succeed because the SPKs are different
+            assert_eq!(vm.execute(), Ok(()));
+        }
+
+        #[test]
+        fn test_input_spk_same() {
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+
+            // Create script: 0 OP_INPUTSPK 1 OP_INPUTSPK OP_EQUAL
+            // Verifies that two inputs with same SPK are equal
+            let redeem_script = ScriptBuilder::new().add_ops(&[Op0, OpTxInputSpk, Op1, OpTxInputSpk, OpEqual]).unwrap().drain();
+
+            let spk = pay_to_script_hash_script(&redeem_script);
+            let input_mock1 = Kip10Mock { spk: spk.clone(), amount: 100 };
+            let input_mock2 = Kip10Mock { spk, amount: 100 };
+
+            let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock1, input_mock2], vec![]);
+            let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+            tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+            let tx = tx.as_verifiable();
+            let mut vm =
+                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache, true)
+                    .unwrap();
+
+            // Should succeed because both SPKs are identical
+            assert_eq!(vm.execute(), Ok(()));
+        }
+
+        #[test]
         fn test_output_spk() {
             // Create unique SPK to check
             let expected_spk = create_mock_spk(42);
