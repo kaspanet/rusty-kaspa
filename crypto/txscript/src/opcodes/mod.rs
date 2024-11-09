@@ -927,10 +927,7 @@ opcode_list! {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    if !(0..=u8::MAX as i32).contains(&idx) {
-                        return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
-                    }
-                    let idx = idx as usize;
+                    let idx = usize::try_from(idx).map_err(|_| TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))?;
                     let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidIndex(idx, tx.inputs().len()))?;
                     push_number(utxo.amount as i64, vm)
                 },
@@ -945,10 +942,7 @@ opcode_list! {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    if !(0..=u8::MAX as i32).contains(&idx) {
-                        return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
-                    }
-                    let idx = idx as usize;
+                    let idx = usize::try_from(idx).map_err(|_| TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))?;
                     let utxo = tx.utxo(idx).ok_or_else(|| TxScriptError::InvalidIndex(idx, tx.inputs().len()))?;
                     vm.dstack.push(utxo.script_public_key.to_bytes());
                     Ok(())
@@ -967,10 +961,7 @@ opcode_list! {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    if !(0..=u8::MAX as i32).contains(&idx) {
-                        return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
-                    }
-                    let idx = idx as usize;
+                    let idx = usize::try_from(idx).map_err(|_| TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))?;
                     let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.outputs().len()))?;
                     push_number(output.value as i64, vm)
                 },
@@ -985,10 +976,7 @@ opcode_list! {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    if !(0..=u8::MAX as i32).contains(&idx) {
-                        return Err(TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))
-                    }
-                    let idx = idx as usize;
+                    let idx = usize::try_from(idx).map_err(|_| TxScriptError::InvalidIndex(idx as usize, tx.inputs().len()))?;
                     let output = tx.outputs().get(idx).ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.outputs().len()))?;
                     vm.dstack.push(output.script_public_key.to_bytes());
                     Ok(())
