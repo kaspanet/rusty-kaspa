@@ -585,22 +585,22 @@ opcode_list! {
 
     // Numeric related opcodes.
     opcode Op1Add<0x8b, 1>(self, vm) {
-        numeric_op!(vm, [value], 1, value.checked_add(1).ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?)
+        numeric_op!(vm, [value], 1, value.checked_add(1).ok_or_else(|| TxScriptError::NumberTooBig("Result of addition exceeds 64-bit signed integer range".to_string()))?)
     }
 
     opcode Op1Sub<0x8c, 1>(self, vm) {
-        numeric_op!(vm, [value], 1, value.checked_sub(1).ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?)
+        numeric_op!(vm, [value], 1, value.checked_sub(1).ok_or_else(|| TxScriptError::NumberTooBig("Result of subtraction exceeds 64-bit signed integer range".to_string()))?)
     }
 
     opcode Op2Mul<0x8d, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
     opcode Op2Div<0x8e, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
 
     opcode OpNegate<0x8f, 1>(self, vm) {
-        numeric_op!(vm, [value], 1, value.checked_neg().ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?)
+        numeric_op!(vm, [value], 1, value.checked_neg().ok_or_else(|| TxScriptError::NumberTooBig("Negation result exceeds 64-bit signed integer range".to_string()))?)
     }
 
     opcode OpAbs<0x90, 1>(self, vm) {
-        numeric_op!(vm, [value], 1, value.checked_abs().ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?)
+        numeric_op!(vm, [value], 1, value.checked_abs().ok_or_else(|| TxScriptError::NumberTooBig("Absolute value exceeds 64-bit signed integer range".to_string()))?)
     }
 
     opcode OpNot<0x91, 1>(self, vm) {
@@ -612,11 +612,11 @@ opcode_list! {
     }
 
     opcode OpAdd<0x93, 1>(self, vm) {
-        numeric_op!(vm, [a,b], 2, a.checked_add(b.into()).ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?)
+        numeric_op!(vm, [a,b], 2, a.checked_add(b.into()).ok_or_else(|| TxScriptError::NumberTooBig("Sum exceeds 64-bit signed integer range".to_string()))?)
     }
 
     opcode OpSub<0x94, 1>(self, vm) {
-        numeric_op!(vm, [a,b], 2, a.checked_sub(b.into()).ok_or_else(|| TxScriptError::NumberTooBig("todo".to_string()))?)
+        numeric_op!(vm, [a,b], 2, a.checked_sub(b.into()).ok_or_else(|| TxScriptError::NumberTooBig("Difference exceeds 64-bit signed integer range".to_string()))?)
     }
 
     opcode OpMul<0x95, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
