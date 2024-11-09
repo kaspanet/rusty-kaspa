@@ -68,7 +68,7 @@ pub struct SigCacheKey {
 }
 
 enum ScriptSource<'a, T: VerifiableTransaction> {
-    TxInput { tx: &'a T, input: &'a TransactionInput, id: usize, utxo_entry: &'a UtxoEntry, is_p2sh: bool },
+    TxInput { tx: &'a T, input: &'a TransactionInput, idx: usize, utxo_entry: &'a UtxoEntry, is_p2sh: bool },
     StandAloneScripts(Vec<&'a [u8]>),
 }
 
@@ -185,7 +185,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             true => Ok(Self {
                 dstack: Default::default(),
                 astack: Default::default(),
-                script_source: ScriptSource::TxInput { tx, input, id: input_idx, utxo_entry, is_p2sh },
+                script_source: ScriptSource::TxInput { tx, input, idx: input_idx, utxo_entry, is_p2sh },
                 reused_values,
                 sig_cache,
                 cond_stack: Default::default(),
@@ -310,7 +310,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         // each is successful
         scripts.iter().enumerate().filter(|(_, s)| !s.is_empty()).try_for_each(|(idx, s)| {
             let verify_only_push =
-                idx == 0 && matches!(self.script_source, ScriptSource::TxInput { tx: _, input: _, id: _, utxo_entry: _, is_p2sh: _ });
+                idx == 0 && matches!(self.script_source, ScriptSource::TxInput { tx: _, input: _, idx: _, utxo_entry: _, is_p2sh: _ });
             // Save script in p2sh
             if is_p2sh && idx == 1 {
                 saved_stack = Some(self.dstack.clone());
@@ -454,7 +454,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     #[inline]
     fn check_schnorr_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
         match self.script_source {
-            ScriptSource::TxInput { tx, id, .. } => {
+            ScriptSource::TxInput { tx, idx: id, .. } => {
                 if sig.len() != 64 {
                     return Err(TxScriptError::SigLength(sig.len()));
                 }
@@ -489,7 +489,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
 
     fn check_ecdsa_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
         match self.script_source {
-            ScriptSource::TxInput { tx, id, .. } => {
+            ScriptSource::TxInput { tx, idx: id, .. } => {
                 if sig.len() != 64 {
                     return Err(TxScriptError::SigLength(sig.len()));
                 }

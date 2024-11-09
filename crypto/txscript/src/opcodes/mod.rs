@@ -908,8 +908,8 @@ opcode_list! {
     opcode OpTxInputIndex<0xb9, 1>(self, vm) {
         if vm.kip10_enabled {
             match vm.script_source {
-                ScriptSource::TxInput{id, ..} => {
-                    push_number(id as i64, vm)
+                ScriptSource::TxInput{idx, ..} => {
+                    push_number(idx as i64, vm)
                 },
                 _ => Err(TxScriptError::InvalidSource("OpInputIndex only applies to transaction inputs".to_string()))
             }
