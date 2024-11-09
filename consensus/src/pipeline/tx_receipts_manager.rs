@@ -3,6 +3,7 @@ use crate::model::stores::{
     block_transactions::BlockTransactionsStoreReader,
     pchmr_store::{DbPchmrStore, PchmrStoreReader},
     pruning::PruningStoreReader,
+    relations::RelationsStoreReader,
     selected_chain::SelectedChainStoreReader,
 };
 use crate::model::{
@@ -24,7 +25,11 @@ use kaspa_merkle::{
 
 use parking_lot::RwLock;
 
-use std::{cmp::min, sync::Arc};
+use std::{
+    cmp::min,
+    collections::{HashSet, VecDeque},
+    sync::Arc,
+};
 #[derive(Clone)]
 pub struct TxReceiptsManager<
     T: SelectedChainStoreReader,
@@ -33,6 +38,7 @@ pub struct TxReceiptsManager<
     X: AcceptanceDataStoreReader,
     W: BlockTransactionsStoreReader,
     Y: PruningStoreReader,
+    I: RelationsStoreReader,
 > {
     pub genesis: GenesisBlock,
 
@@ -43,6 +49,7 @@ pub struct TxReceiptsManager<
     pub selected_chain_store: Arc<RwLock<T>>,
     pub acceptance_data_store: Arc<X>,
     pub block_transactions_store: Arc<W>,
+    pub relations_store: Arc<RwLock<Vec<I>>>,
 
     pub hash_to_pchmr_store: Arc<DbPchmrStore>,
     pub pruning_point_store: Arc<RwLock<Y>>,
@@ -57,7 +64,8 @@ impl<
         X: AcceptanceDataStoreReader,
         W: BlockTransactionsStoreReader,
         Y: PruningStoreReader,
-    > TxReceiptsManager<T, U, V, X, W, Y>
+        I: RelationsStoreReader,
+    > TxReceiptsManager<T, U, V, X, W, Y, I>
 {
     pub fn new(
         genesis: GenesisBlock,
@@ -68,6 +76,8 @@ impl<
         acceptance_data_store: Arc<X>,
         block_transactions_store: Arc<W>,
         pruning_point_store: Arc<RwLock<Y>>,
+        relations_store: Arc<RwLock<Vec<I>>>,
+
         hash_to_pchmr_store: Arc<DbPchmrStore>,
         storage_mass_activation: ForkActivation,
     ) -> Self {
@@ -82,6 +92,7 @@ impl<
             hash_to_pchmr_store: hash_to_pchmr_store.clone(),
             block_transactions_store: block_transactions_store.clone(),
             pruning_point_store: pruning_point_store.clone(),
+            relations_store: relations_store.clone(),
         }
     }
     pub fn generate_tx_receipt(&self, accepting_block_header: Arc<Header>, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
@@ -103,19 +114,13 @@ impl<
         pub_block_header: Arc<Header>,
         tracked_tx_id: Hash,
     ) -> Result<ProofOfPublication, ReceiptsErrors> {
-        let mut headers_chain_to_selected = vec![];
-        let tip = self.selected_chain_store.read().get_tip().unwrap().1;
-        //find a chain block on the path to the tip
-        //TODO: this is wrong, fix me
-        for block in self.reachability_service.forward_chain_iterator(pub_block_header.hash, tip, true) {
-            headers_chain_to_selected.push(self.headers_store.get_header(block).unwrap());
-            if self.selected_chain_store.read().get_by_hash(block).is_ok() {
-                break;
-            }
-        }
+        let path_to_selected = self.find_future_chain_block_path(pub_block_header.hash)?;
 
-        let pochm = self.create_pochm_proof(headers_chain_to_selected.last().unwrap().hash)?;
-        headers_chain_to_selected.remove(0); //remove the publishing block itself from the chain as it is redundant to store
+        let mut headers_path_to_selected: Vec<_> =
+            path_to_selected.iter().map(|&hash| self.headers_store.get_header(hash).unwrap()).collect();
+
+        let pochm = self.create_pochm_proof(headers_path_to_selected.last().unwrap().hash)?;
+        headers_path_to_selected.remove(0); //remove the publishing block itself from the chain as it is redundant to store
 
         //next, find the relevant transaction in pub_block_hash's published transactions and create a merkle witness for it
         let published_txs = self.block_transactions_store.get(pub_block_header.hash)?;
@@ -124,7 +129,7 @@ impl<
         let tx_pub_proof = create_hash_merkle_witness(published_txs.iter(), tracked_tx, include_mass_field)?;
 
         let tracked_tx_hash = hashing::tx::hash(tracked_tx, include_mass_field); //leaf value in merkle tree
-        Ok(ProofOfPublication { tracked_tx_hash, pub_block_header, pochm, tx_pub_proof, headers_chain_to_selected })
+        Ok(ProofOfPublication { tracked_tx_hash, pub_block_header, pochm, tx_pub_proof, headers_path_to_selected })
     }
     pub fn verify_tx_receipt(&self, tx_receipt: &TxReceipt) -> bool {
         let acc_atmr = tx_receipt.accepting_block_header.accepted_id_merkle_root;
@@ -133,7 +138,7 @@ impl<
     }
     pub fn verify_proof_of_pub(&self, proof_of_pub: &ProofOfPublication) -> bool {
         let valid_path = proof_of_pub
-            .headers_chain_to_selected
+            .headers_path_to_selected
             .iter()
             .try_fold(
                 proof_of_pub.pub_block_header.hash,
@@ -144,7 +149,7 @@ impl<
             return false;
         };
         let earliest_selected_chain_decendant =
-            proof_of_pub.headers_chain_to_selected.last().unwrap_or(&proof_of_pub.pub_block_header).hash;
+            proof_of_pub.headers_path_to_selected.last().unwrap_or(&proof_of_pub.pub_block_header).hash;
         let pub_merkle_root = proof_of_pub.pub_block_header.hash_merkle_root;
         verify_merkle_witness(&proof_of_pub.tx_pub_proof, proof_of_pub.tracked_tx_hash, pub_merkle_root)
             && self.verify_pochm_proof(earliest_selected_chain_decendant, &proof_of_pub.pochm)
@@ -318,35 +323,22 @@ impl<
     the known aplications of posterity blocks appear nonsensical when it is not;
     The post posterity of a posterity block, is not the block itself rather the posterity after it. */
     pub fn get_post_posterity_block(&self, block_hash: Hash) -> Result<Hash, ReceiptsErrors> {
-        let block_bscore: u64 = self.headers_store.get_blue_score(block_hash).unwrap();
-        let tentative_cutoff_bscore = block_bscore - block_bscore % self.posterity_depth + self.posterity_depth;
-        let head_hash = self.selected_chain_store.read().get_tip()?.1;
-
         /*try and reach the first proceeding selected chain block,
-        while checking if post_posterity of queried block is of the rare case where
-        it is encountered before arriving at a chain block
         in the majority of cases, a very short distance is covered before reaching a chain block.*/
 
-        //TODO: this is wrong, fix me
-        let candidate_block = self
-            .reachability_service
-            .forward_chain_iterator(block_hash, head_hash, true)
-            .find(|&block| {
-                let block_bscore = self.headers_store.get_blue_score(block).unwrap();
-                block_bscore > tentative_cutoff_bscore || self.selected_chain_store.read().get_by_hash(block).is_ok()
-            })
-            .ok_or(ReceiptsErrors::PosterityDoesNotExistYet(tentative_cutoff_bscore))?;
-
+        let candidate_block = *self
+            .find_future_chain_block_path(block_hash)
+            .map_err(|_| ReceiptsErrors::PosterityDoesNotExistYet(block_hash))?
+            .last()
+            .unwrap();
         let candidate_bscore = self.headers_store.get_blue_score(candidate_block).unwrap();
-        if candidate_bscore > tentative_cutoff_bscore {
-            // in case cutoff_bscore was crossed prior to reaching a chain block
-            return Ok(candidate_block);
-        }
+
+        let head_hash = self.selected_chain_store.read().get_tip()?.1;
         let head_bscore = self.headers_store.get_blue_score(head_hash).unwrap();
         let cutoff_bscore = candidate_bscore - candidate_bscore % self.posterity_depth + self.posterity_depth;
         if cutoff_bscore > head_bscore {
             // Posterity block not yet available.
-            Err(ReceiptsErrors::PosterityDoesNotExistYet(cutoff_bscore))
+            Err(ReceiptsErrors::PosterityDoesNotExistYet(block_hash))
         } else {
             Ok(self.get_chain_block_by_cutoff_bscore(candidate_block, cutoff_bscore, self.posterity_depth))
         }
@@ -544,7 +536,7 @@ impl<
             reference = reference_wrapped.unwrap();
             reference_index = self.selected_chain_store.read().get_by_hash(reference).unwrap();
         } else {
-            // if no refernce provided, take the tip as reference
+            // if no refernce provided, take the sink as reference
             (reference_index, reference) = self.selected_chain_store.read().get_tip().unwrap();
         }
         let reference_bscore = self.headers_store.get_blue_score(reference).unwrap();
@@ -561,6 +553,37 @@ impl<
         //avoiding a harmful 0 value
     }
 
+    pub fn find_future_chain_block_path(&self, block_hash: Hash) -> Result<Vec<Hash>, ReceiptsErrors> {
+        /*block hash must be an ancestor of sink, otherwise an error will be returned
+        Maybe this kind of code needs to be on the traversal manager or something of sorts
+         */
+        let sink = self.selected_chain_store.read().get_tip()?.1;
+        let mut queue = VecDeque::new();
+        let mut visited = HashSet::new();
+        queue.push_back(vec![block_hash]);
+        while let Some(path) = queue.pop_front() {
+            let curr = *path.last().unwrap(); // path should never be empty
+            if !self.reachability_service.is_dag_ancestor_of(curr, sink) {
+                continue;
+            }
+
+            if self.selected_chain_store.read().get_by_hash(curr).is_ok() {
+                return Ok(path);
+            }
+            let children = self.relations_store.read()[0].get_children(curr);
+            if let Ok(children) = children {
+                for &child in children.read().iter() {
+                    if !visited.contains(&child) {
+                        let mut new_path = path.clone();
+                        new_path.push(child);
+                        queue.push_back(new_path);
+                    }
+                }
+            }
+            visited.insert(curr);
+        }
+        Err(ReceiptsErrors::NoChainBlockInFuture(block_hash))
+    }
     /*the verification consists of 3 parts:
     1) verify the block queried is an ancesstor of the candidate
     2)verify the candidate is on the selected chain

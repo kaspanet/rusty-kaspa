@@ -46,5 +46,5 @@ pub struct ProofOfPublication {
     pub pub_block_header: Arc<Header>,
     pub pochm: Pochm,
     pub tx_pub_proof: MerkleWitness,
-    pub headers_chain_to_selected: Vec<Arc<Header>>,
+    pub headers_path_to_selected: Vec<Arc<Header>>,
 }

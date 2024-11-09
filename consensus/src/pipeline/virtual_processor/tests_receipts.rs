@@ -171,6 +171,8 @@ async fn test_receipts_in_random() {
     the security margin should be enough for real data but test data behaves unexpectedly and thus this error persists despite attempts to mitigate it
     This error appears to decrease with higher BPS
     BPS too high though (10BPS) tends to result in block status errors
+
+    Perhaps this test needs just be replaced by an integration test.
      */
     const FINALITY_DEPTH: usize = 10;
     const DAG_SIZE: u64 = 500;
@@ -186,7 +188,7 @@ async fn test_receipts_in_random() {
         .build();
     // let mut expected_posterities = vec![];
     let mut receipts = vec![];
-    // let mut pops = vec![];
+    let mut pops = vec![];
     let ctx = TestContext::new(TestConsensus::new(&config));
     let genesis_hash = ctx.consensus.params().genesis.hash;
     let mut unreceipted_blocks = vec![];
@@ -224,17 +226,19 @@ async fn test_receipts_in_random() {
         mapper.insert(ind, blk_hash);
         if ctx.consensus.is_posterity_reached(next_posterity_score) {
             //try and get proofs of publications for old blocks
-            // unproved_blocks.retain(|&old_block|{
-            //     let blk_header=ctx.consensus.headers_store.get_header(old_block).unwrap();
-
-            //     if ctx.consensus.get_header(old_block).is_err() || !ctx.consensus.reachability_service().is_dag_ancestor_of(old_block, ctx.consensus.get_sink())
-            //     {
-            //         return false;
-            //     }
-            //     let pub_tx = ctx.consensus.block_transactions_store.get(old_block).unwrap()[0].id();
-            //     pops.push((ctx.consensus.services.tx_receipts_manager.generate_proof_of_pub(blk_header, pub_tx).unwrap(), pub_tx));
-            //     return true;
-            // });
+            unproved_blocks.retain(|&old_block| {
+                if ctx.consensus.get_header(old_block).is_err() {
+                    return false;
+                }
+                let blk_header = ctx.consensus.headers_store.get_header(old_block).unwrap();
+                let pub_tx = ctx.consensus.block_transactions_store.get(old_block).unwrap()[0].id();
+                let proof = ctx.consensus.generate_proof_of_pub(pub_tx, Some(blk_header.hash), None);
+                if proof.is_ok() {
+                    pops.push((proof.unwrap(), pub_tx));
+                    return false;
+                }
+                true
+            });
             //try and get receipts and  pochms for old blocks
             unreceipted_blocks.retain(|&old_block| {
                 if ctx.consensus.get_header(old_block).is_err()
@@ -274,6 +278,7 @@ async fn test_receipts_in_random() {
     }
     eprintln!();
     assert!(receipts.len() > 5); //sanity check
+    assert!(pops.len() > 10); //sanity check
     for (pochm, blk) in pochms_list.into_iter() {
         eprintln!("blk_verified: {:?}", blk);
         assert!(ctx.consensus.verify_pochm(blk, &pochm));
@@ -285,7 +290,7 @@ async fn test_receipts_in_random() {
         assert_eq!(rec.tracked_tx_id, tx_id);
     }
 
-    // for (proof, _) in pops {
-    //     assert!(ctx.consensus.verify_proof_of_pub(&proof));
-    // }
+    for (proof, _) in pops {
+        assert!(ctx.consensus.verify_proof_of_pub(&proof));
+    }
 }
