@@ -110,7 +110,16 @@ pub struct Params {
     /// DAA score from which storage mass calculation and transaction mass field are activated as a consensus rule
     pub storage_mass_activation: ForkActivation,
 
-    /// DAA score from which tx engine supports kip10 opcodes: OpInputAmount, OpInputSpk, OpOutputAmount, OpOutputSpk
+    /// DAA score from which tx engine:
+    /// 1. Supports 8-byte integer arithmetic operations (previously limited to 4 bytes)
+    /// 2. Supports transaction introspection opcodes:
+    ///    - OpTxInputCount (0xb3): Get number of inputs
+    ///    - OpTxOutputCount (0xb4): Get number of outputs
+    ///    - OpTxInputIndex (0xb9): Get current input index
+    ///    - OpTxInputAmount (0xbe): Get input amount
+    ///    - OpTxInputSpk (0xbf): Get input script public key
+    ///    - OpTxOutputAmount (0xc2): Get output amount
+    ///    - OpTxOutputSpk (0xc3): Get output script public key
     pub kip10_activation_daa_score: ForkActivation,
 
     /// DAA score after which the pre-deflationary period switches to the deflationary period

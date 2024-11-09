@@ -1163,16 +1163,24 @@ mod bitcoind_tests {
         // - script_tests.json: Tests basic script functionality with KIP-10 disabled (kip10_enabled=false)
         // - script_tests-kip10.json: Tests expanded functionality with KIP-10 enabled (kip10_enabled=true)
         //
-        // KIP-10 introduces four new opcodes to enhance script functionality:
-        // - OpInputSpk (0xb2): Retrieves the script public key of the current input
-        // - OpInputAmount (0xb3): Retrieves the amount of the current input
-        // - OpOutputSpk (0xb4): Retrieves the script public key of the output at the current input's index
-        // - OpOutputAmount (0xb5): Retrieves the amount of the output at the current input's index
+        // KIP-10 introduces two major changes:
         //
-        // These opcodes were added to support mutual transactions and auto-compounding addresses
-        // as discussed in KIP-9. When KIP-10 is disabled (pre-activation), these opcodes will return
-        // an InvalidOpcode error. When enabled, they provide access to transaction input/output data
-        // within scripts.
+        // 1. Support for 8-byte integer arithmetic (previously limited to 4 bytes)
+        //    This enables working with larger numbers in scripts and reduces artificial constraints
+        //
+        // 2. Transaction introspection opcodes:
+        //    - OpTxInputCount (0xb3): Get number of inputs
+        //    - OpTxOutputCount (0xb4): Get number of outputs
+        //    - OpTxInputIndex (0xb9): Get current input index
+        //    - OpTxInputAmount (0xbe): Get input amount
+        //    - OpTxInputSpk (0xbf): Get input script public key
+        //    - OpTxOutputAmount (0xc2): Get output amount
+        //    - OpTxOutputSpk (0xc3): Get output script public key
+        //
+        // These changes were added to support mutual transactions and auto-compounding addresses.
+        // When KIP-10 is disabled (pre-activation), the new opcodes will return an InvalidOpcode error
+        // and arithmetic is limited to 4 bytes. When enabled, scripts gain full access to transaction
+        // data and 8-byte arithmetic capabilities.
         for (file_name, kip10_enabled) in [("script_tests.json", false), ("script_tests-kip10.json", true)] {
             let file =
                 File::open(Path::new(env!("CARGO_MANIFEST_DIR")).join("test-data").join(file_name)).expect("Could not find test file");
