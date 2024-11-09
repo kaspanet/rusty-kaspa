@@ -468,14 +468,14 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     #[inline]
     fn check_schnorr_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
         match self.script_source {
-            ScriptSource::TxInput { tx, idx: id, .. } => {
+            ScriptSource::TxInput { tx, idx, .. } => {
                 if sig.len() != 64 {
                     return Err(TxScriptError::SigLength(sig.len()));
                 }
                 Self::check_pub_key_encoding(key)?;
                 let pk = secp256k1::XOnlyPublicKey::from_slice(key).map_err(TxScriptError::InvalidSignature)?;
                 let sig = secp256k1::schnorr::Signature::from_slice(sig).map_err(TxScriptError::InvalidSignature)?;
-                let sig_hash = calc_schnorr_signature_hash(tx, id, hash_type, self.reused_values);
+                let sig_hash = calc_schnorr_signature_hash(tx, idx, hash_type, self.reused_values);
                 let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
                 let sig_cache_key =
                     SigCacheKey { signature: Signature::Secp256k1(sig), pub_key: PublicKey::Schnorr(pk), message: msg };
@@ -503,14 +503,14 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
 
     fn check_ecdsa_signature(&mut self, hash_type: SigHashType, key: &[u8], sig: &[u8]) -> Result<bool, TxScriptError> {
         match self.script_source {
-            ScriptSource::TxInput { tx, idx: id, .. } => {
+            ScriptSource::TxInput { tx, idx, .. } => {
                 if sig.len() != 64 {
                     return Err(TxScriptError::SigLength(sig.len()));
                 }
                 Self::check_pub_key_encoding_ecdsa(key)?;
                 let pk = secp256k1::PublicKey::from_slice(key).map_err(TxScriptError::InvalidSignature)?;
                 let sig = secp256k1::ecdsa::Signature::from_compact(sig).map_err(TxScriptError::InvalidSignature)?;
-                let sig_hash = calc_ecdsa_signature_hash(tx, id, hash_type, self.reused_values);
+                let sig_hash = calc_ecdsa_signature_hash(tx, idx, hash_type, self.reused_values);
                 let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
                 let sig_cache_key = SigCacheKey { signature: Signature::Ecdsa(sig), pub_key: PublicKey::Ecdsa(pk), message: msg };
 
