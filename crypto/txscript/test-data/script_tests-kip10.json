@@ -1218,10 +1218,16 @@
   ],
   [
     "0",
-    "IF 0xc4 ELSE 1 ENDIF",
+    "IF 0xb2 ELSE 1 ENDIF",
     "",
     "OK",
-    "opcodes above OpTxOutputSpk invalid if executed"
+    "opcodes above OP_CHECKSEQUENCEVERIFY invalid if executed"
+  ],
+  [
+    "0",
+    "IF 0xbd ELSE 1 ENDIF",
+    "",
+    "OK"
   ],
   [
     "0",
@@ -3592,6 +3598,20 @@
     "EVAL_FALSE"
   ],
   [
+    "2147483648 0",
+    "ADD NOP",
+    "",
+    "OK",
+    "numbers up to 8 bytes are supported since kip10"
+  ],
+  [
+    "-2147483648 0",
+    "ADD NOP",
+    "",
+    "OK",
+    "numbers up to 8 bytes are supported since kip10"
+  ],
+  [
     "-9223372036854775808 0",
     "ADD NOP",
     "",
@@ -3603,7 +3623,14 @@
     "DUP ADD 4294967294 NUMEQUAL",
     "",
     "OK",
-    "NUMEQUAL is in numeric range"
+    "NUMEQUAL is in numeric range since kip10"
+  ],
+  [
+    "'abcdef'",
+    "NOT 0 EQUAL",
+    "",
+    "OK",
+    "numbers up to 8 bytes are supported since kip10"
   ],
   [
     "'abcdefghi'",
@@ -3670,63 +3697,136 @@
   ],
   [
     "1",
+    "IF 0xb2 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE",
+    "OpTxVersion is reserved"
+  ],
+  [
+    "1",
+    "IF 0xb3 ELSE 1 ENDIF",
+    "",
+    "OK",
+    "OpTxInputCount is enabled since kip10"
+  ],
+  [
+    "1",
+    "IF 0xb4 ELSE 1 ENDIF",
+    "",
+    "OK",
+    "OpTxOutputCount is enabled since kip10"
+  ],
+  [
+    "1",
+    "IF 0xb5 ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE",
+    "OpTxLockTime is reserved"
+  ],
+  [
+    "1",
     "IF 0xb6 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpTxSubnetId is reserved"
   ],
   [
     "1",
     "IF 0xb7 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpTxGas is reserved"
   ],
   [
     "1",
     "IF 0xb8 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpTxPayload is reserved"
   ],
   [
     "1",
-    "IF 0xb9 ELSE 1 ENDIF",
+    "IF 0xb9 0 NUMEQUAL ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "OK",
+    "OpTxInputIndex is enabled since kip10"
   ],
   [
     "1",
     "IF 0xba ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpOutpointTxId is reserved"
   ],
   [
     "1",
     "IF 0xbb ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpOutpointOutputIdx is reserved"
+  ],
+  [
+    "1",
+    "IF 0xbc ELSE 1 ENDIF",
+    "",
+    "BAD_OPCODE",
+    "OpTxInputScriptSig is reserved"
   ],
   [
     "1",
     "IF 0xbd ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpTxInputSeq is reserved"
+  ],
+  [
+    "0 1",
+    "IF 0xbe 0 NUMEQUAL ELSE 1 ENDIF",
+    "",
+    "OK",
+    "OpTxInputAmount is enabled since kip10"
+  ],
+  [
+    "0 1",
+    "IF 0xbf ELSE 1 ENDIF",
+    "",
+    "OK",
+    "OpTxInputSpk is enabled since kip10"
   ],
   [
     "1",
     "IF 0xc0 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpTxInputBlockDaaScore is reserved"
   ],
   [
     "1",
     "IF 0xc1 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "OpTxInputIsCoinbase is reserved"
+  ],
+  [
+    "0 1",
+    "IF 0xc2 0 NUMEQUAL ELSE 1 ENDIF",
+    "",
+    "OK",
+    "OpTxOutputAmount is enabled since kip10"
+  ],
+  [
+    "0 1",
+    "IF 0xc3 0x02 0x0000 EQUAL ELSE 1 ENDIF",
+    "",
+    "OK",
+    "OpTxOutputSpk is enabled since kip10"
   ],
   [
     "1",
     "IF 0xc4 ELSE 1 ENDIF",
     "",
-    "BAD_OPCODE"
+    "BAD_OPCODE",
+    "opcodes above OpTxOutputSpk invalid if executed"
   ],
   [
     "1",
@@ -4202,6 +4302,62 @@
     "",
     "BAD_OPCODE",
     "OP_RESERVED2 is reserved"
+  ],
+  [
+    "1",
+    "0xb2",
+    "",
+    "BAD_OPCODE",
+    "0xb2 == OP_CHECKSEQUENCEVERIFY + 1"
+  ],
+  [
+    "2147483648",
+    "1ADD 2147483649 NUMEQUAL",
+    "",
+    "OK",
+    "We can do math on 5-byte integers since kip10"
+  ],
+  [
+    "2147483648",
+    "NEGATE -2147483648 NUMEQUAL",
+    "",
+    "OK",
+    "We can do math on 5-byte integers since kip10"
+  ],
+  [
+    "-2147483648",
+    "1ADD -2147483647 NUMEQUAL",
+    "",
+    "OK",
+    "We can do math on 5-byte integers since kip10"
+  ],
+  [
+    "2147483647",
+    "DUP 1ADD 1SUB NUMEQUAL",
+    "",
+    "OK",
+    "We can do math on 5-byte integers since kip10"
+  ],
+  [
+    "2147483648",
+    "1SUB 2147483647 NUMEQUAL",
+    "",
+    "OK",
+    "We can do math on 5-byte integers since kip10"
+  ],
+  [
+    "2147483648 1",
+    "BOOLOR 1 EQUAL",
+    "",
+    "OK",
+    "We can do math on 5-byte integers since kip10"
+  ],
+  [
+    "2147483648 1",
+    "BOOLAND 1 EQUAL",
+    "",
+    "OK",
+    "We can do math on 5-byte integers since kip10"
   ],
   [
     "-9223372036854775808",

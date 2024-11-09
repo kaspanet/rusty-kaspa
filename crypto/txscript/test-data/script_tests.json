@@ -1218,10 +1218,10 @@
   ],
   [
     "0",
-    "IF 0xc4 ELSE 1 ENDIF",
+    "IF 0xb2 ELSE 1 ENDIF",
     "",
     "OK",
-    "opcodes above OpTxOutputSpk invalid if executed"
+    "opcodes above OP_CHECKSEQUENCEVERIFY invalid if executed"
   ],
   [
     "0",
@@ -3683,7 +3683,7 @@
   ],
   [
     "1",
-    "IF 0xc4 ELSE 1 ENDIF",
+    "IF 0xb2 ELSE 1 ENDIF",
     "",
     "BAD_OPCODE",
     "opcodes above OP_CHECKSEQUENCEVERIFY invalid if executed"
