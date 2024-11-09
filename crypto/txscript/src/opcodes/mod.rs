@@ -904,11 +904,8 @@ opcode_list! {
     opcode OpTxSubnetId<0xb6, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
     opcode OpTxGas<0xb7, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
     opcode OpTxPayload<0xb8, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
-    opcode OpTxId<0xb9, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
     // Input related opcodes (following TransactionInput struct field order)
-    opcode OpOutpointTxHash<0xba, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
-    opcode OpOutpointTxIdx<0xbb, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
-    opcode OpTxInputIndex<0xbc, 1>(self, vm) {
+    opcode OpTxInputIndex<0xb9, 1>(self, vm) {
         if vm.kip10_enabled {
             match vm.script_source {
                 ScriptSource::TxInput{id, ..} => {
@@ -920,6 +917,9 @@ opcode_list! {
             Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
         }
     }
+    opcode OpOutpointTxId<0xba, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpOutpointOutputIdx<0xbb, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxInputScriptSig<0xbc, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
     opcode OpTxInputSeq<0xbd, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
     // UTXO related opcodes (following UtxoEntry struct field order)
     opcode OpTxInputAmount<0xbe, 1>(self, vm) {
@@ -1168,9 +1168,9 @@ mod test {
             opcodes::OpTxSubnetId::empty().expect("Should accept empty"),
             opcodes::OpTxGas::empty().expect("Should accept empty"),
             opcodes::OpTxPayload::empty().expect("Should accept empty"),
-            opcodes::OpTxId::empty().expect("Should accept empty"),
-            opcodes::OpOutpointTxHash::empty().expect("Should accept empty"),
-            opcodes::OpOutpointTxIdx::empty().expect("Should accept empty"),
+            opcodes::OpOutpointTxId::empty().expect("Should accept empty"),
+            opcodes::OpOutpointOutputIdx::empty().expect("Should accept empty"),
+            opcodes::OpTxInputScriptSig::empty().expect("Should accept empty"),
             opcodes::OpTxInputSeq::empty().expect("Should accept empty"),
             opcodes::OpTxInputBlockDaaScore::empty().expect("Should accept empty"),
             opcodes::OpTxInputIsCoinbase::empty().expect("Should accept empty"),
