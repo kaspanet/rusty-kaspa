@@ -472,7 +472,8 @@ impl<
                 } else {
                     // if not, update candidate indices and bounds
                     high = candidate_index; //  rescale bound
-                    next_candidate_index = candidate_index - index_step; //shouldn't overflow
+                    next_candidate_index = candidate_index.saturating_sub(index_step);
+                    //shouldn't overflow in natural conditions but does in testing
                 }
             } else {
                 /*again avoid getting stuck in a back and forth loop

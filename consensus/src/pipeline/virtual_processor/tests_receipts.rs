@@ -164,16 +164,24 @@ async fn test_receipts_in_chain() {
 }
 #[tokio::test]
 async fn test_receipts_in_random() {
-    const FINALITY_DEPTH: usize = 7;
-    const DAG_SIZE: u64 = 120;
-    const BPS: f64 = 1.0;
+    /*The test generates a random dag and builds blocks from it, with some modifications to the dag to make it more realistic
+     whenever a new posterity block is reached by some margin, a batch of receipts is attempted to be generated for old blocks.
+    These receipts are then verified at the end of the test.
+    Occasionally the test fails because the real posterity of a block will change after a receipt for it has been pulled:
+    the security margin should be enough for real data but test data behaves unexpectedly and thus this error persists despite attempts to mitigate it
+    This error appears to decrease with higher BPS
+    BPS too high though (10BPS) tends to result in block status errors
+     */
+    const FINALITY_DEPTH: usize = 10;
+    const DAG_SIZE: u64 = 500;
+    const BPS: f64 = 5.0;
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
             p.max_block_parents = 50; //  is probably enough to avoid errors
             p.mergeset_size_limit = 30;
             p.finality_depth = FINALITY_DEPTH as u64;
-            p.pruning_depth = (FINALITY_DEPTH * 4) as u64;
+            p.pruning_depth = (FINALITY_DEPTH * 3) as u64;
         })
         .build();
     // let mut expected_posterities = vec![];
@@ -208,10 +216,10 @@ async fn test_receipts_in_random() {
             }
         }
         let blk_hash = ind.into();
-        eprintln!("{ind:?}");
-        let status = ctx.add_utxo_valid_block_with_parents(blk_hash, parents, vec![]).await;
-        eprintln!("{status:?}");
-        eprintln!("{:?}", ctx.consensus.headers_store().get_blue_score(blk_hash));
+        // eprintln!("{ind:?}");
+        let _status = ctx.add_utxo_valid_block_with_parents(blk_hash, parents, vec![]).await;
+        // eprintln!("{status:?}");
+        // eprintln!("{:?}", ctx.consensus.headers_store().get_blue_score(blk_hash));
 
         mapper.insert(ind, blk_hash);
         if ctx.consensus.is_posterity_reached(next_posterity_score) {
@@ -237,20 +245,15 @@ async fn test_receipts_in_random() {
                 let blk_pochm = ctx.consensus.generate_pochm(old_block);
                 let is_chain_blk = ctx.consensus.is_chain_block(old_block).unwrap();
                 if blk_pochm.is_ok() {
-                    eprintln!(
-                        " for {:?}\n posterity is {:?}",
-                        old_block,
-                        ctx.consensus.services.tx_receipts_manager.get_post_posterity_block(old_block)
-                    );
                     assert!(is_chain_blk);
                     pochms_list.push((blk_pochm.unwrap(), old_block));
                     let blk_header = ctx.consensus.headers_store.get_header(old_block).unwrap();
                     let acc_tx =
                         ctx.consensus.acceptance_data_store.get(old_block).unwrap()[0].accepted_transactions[0].transaction_id;
-                    receipts.push((
-                        ctx.consensus.services.tx_receipts_manager.generate_tx_receipt(blk_header.clone(), acc_tx).unwrap(),
-                        acc_tx,
-                    ));
+
+                    receipts.push((ctx.consensus.generate_tx_receipt(acc_tx, Some(blk_header.hash), None).unwrap(), acc_tx));
+                    receipts.push((ctx.consensus.generate_tx_receipt(acc_tx, None, Some(blk_header.timestamp)).unwrap(), acc_tx));
+                    receipts.push((ctx.consensus.generate_tx_receipt(acc_tx, None, None).unwrap(), acc_tx));
                     false
                 } else {
                     true
@@ -260,8 +263,6 @@ async fn test_receipts_in_random() {
         }
         unreceipted_blocks.push(blk_hash);
         unproved_blocks.push(blk_hash);
-
-        // assert_eq!(is_chain_blk);
     }
 
     for blk in ctx.consensus.services.reachability_service.default_backward_chain_iterator(ctx.consensus.get_sink()) {
@@ -272,7 +273,7 @@ async fn test_receipts_in_random() {
         eprintln!("posterity hash:{:?}\n bscore: {:?}", point.hash, point.blue_score);
     }
     eprintln!();
-    assert!(!pochms_list.is_empty());
+    assert!(receipts.len() > 5); //sanity check
     for (pochm, blk) in pochms_list.into_iter() {
         eprintln!("blk_verified: {:?}", blk);
         assert!(ctx.consensus.verify_pochm(blk, &pochm));
@@ -288,5 +289,3 @@ async fn test_receipts_in_random() {
     //     assert!(ctx.consensus.verify_proof_of_pub(&proof));
     // }
 }
-
-//to add later: test if find by timestamp works

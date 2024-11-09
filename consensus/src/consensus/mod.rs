@@ -74,7 +74,7 @@ use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 use crossbeam_channel::{
     bounded as bounded_crossbeam, unbounded as unbounded_crossbeam, Receiver as CrossbeamReceiver, Sender as CrossbeamSender,
 };
-use itertools::Itertools;
+use itertools::{EitherOrBoth, Itertools};
 use kaspa_consensusmanager::{SessionLock, SessionReadGuard};
 
 use kaspa_database::prelude::StoreResultExtensions;
@@ -398,7 +398,7 @@ impl Consensus {
             .map(|hash| (hash, self.headers_store.get_compact_header_data(hash).unwrap()))
             .collect_vec()
     }
-    /* this logic may be imperfect as of now */
+    /* this logic may not be the most efficient and reliable as of now */
     fn generate_tx_receipt_based_on_time(&self, tx_id: Hash, tx_timestamp: u64) -> ConsensusResult<TxReceipt> {
         //utility closures
         let someize_header_if_blk_acceps_tx = |blk| {
@@ -414,7 +414,10 @@ impl Consensus {
                 None
             }
         };
-        let first_some_out_of_option_pair = { |(a, b): (Option<_>, Option<_>)| a.or(b) };
+        let first_some_out_of_either_pair = |pair: EitherOrBoth<Option<_>, Option<_>>| {
+            let (a, b) = pair.or_default();
+            a.or(b)
+        };
 
         let bps = self.config.bps();
 
@@ -436,12 +439,13 @@ impl Consensus {
         let tip_timestamp = self.headers_store.get_timestamp(tip).unwrap();
         let tip_bscore = self.headers_store.get_blue_score(tip).unwrap();
         let dag_width_guess: u64 = self.services.tx_receipts_manager.estimate_dag_width(Some(tip)); // estimation may be off for old txs
-
-        let estimated_bscore = tip_bscore - (tip_timestamp.saturating_sub(tx_timestamp)) * bps / 1000;
-        let guess_index = tip_index - (tip_bscore.saturating_sub(estimated_bscore) / dag_width_guess);
-        let guess_block =
-            self.selected_chain_store.read().get_by_index(guess_index).map_err(|_| ConsensusError::General("not found"))?;
-
+        let estimated_bscore = tip_bscore.saturating_sub(tip_timestamp.saturating_sub(tx_timestamp)) * bps / 1000;
+        let guess_index = tip_index.saturating_sub(tip_bscore.saturating_sub(estimated_bscore) / dag_width_guess);
+        let guess_block = self
+            .selected_chain_store
+            .read()
+            .get_by_index(guess_index)
+            .unwrap_or(self.pruning_point_store.read().history_root().unwrap());
         //since guess_block is merely a guess, some margin of error needs be taken
         // we account for a deviation of "10 minutes" and derive the expected max distance in chain blocks
         const DEVIATION_IN_SECONDS: u64 = 600; //10 minutes deviation should be enough?
@@ -470,9 +474,8 @@ impl Consensus {
             .take(deviation_in_chain_blocks)
             .map(someize_header_if_blk_acceps_tx);
 
-        let mut double_sided_iterator = forward_search_iter.zip(backward_search_iter).map(first_some_out_of_option_pair);
-
-        //we iterate backwards and forwards at the same time to locate the accepting block of the transaction
+        let mut double_sided_iterator = forward_search_iter.zip_longest(backward_search_iter).map(first_some_out_of_either_pair);
+        // we iterate backwards and forwards at the same time to locate the accepting block of the transaction
         let acc_block = double_sided_iterator.find(|blk| blk.is_some());
         if let Some(Some(acc_block)) = acc_block {
             //first Some represents the result of the find, second the fact that blk is a Some
@@ -481,7 +484,7 @@ impl Consensus {
                 .generate_tx_receipt(acc_block, tx_id)
                 .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))
         } else {
-            Err(ConsensusError::General("not found"))
+            Err(ConsensusError::General("cannot find block with given timestamp"))
         }
     }
 }
