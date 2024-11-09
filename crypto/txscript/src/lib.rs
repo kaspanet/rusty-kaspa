@@ -522,6 +522,21 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
     }
 }
 
+trait SpkEncoding {
+    fn to_bytes(&self) -> Vec<u8>;
+}
+
+impl SpkEncoding for ScriptPublicKey {
+    fn to_bytes(&self) -> Vec<u8> {
+        let version = self.version.to_be_bytes();
+        let script = self.script();
+        let mut v = Vec::with_capacity(version.len() + script.len());
+        v.extend_from_slice(&version);
+        v.extend_from_slice(script);
+        v
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::iter::once;
