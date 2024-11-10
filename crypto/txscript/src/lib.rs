@@ -542,12 +542,7 @@ trait SpkEncoding {
 
 impl SpkEncoding for ScriptPublicKey {
     fn to_bytes(&self) -> Vec<u8> {
-        let version = self.version.to_be_bytes();
-        let script = self.script();
-        let mut v = Vec::with_capacity(version.len() + script.len());
-        v.extend_from_slice(&version);
-        v.extend_from_slice(script);
-        v
+        self.version.to_be_bytes().into_iter().chain(self.script().iter().copied()).collect()
     }
 }
 
