@@ -197,7 +197,7 @@ pub fn check_scripts_sequential(
     let reused_values = SigHashReusedValuesUnsync::new();
     for (i, (input, entry)) in tx.populated_inputs().enumerate() {
         TxScriptEngine::from_transaction_input(tx, input, i, entry, &reused_values, sig_cache, kip10_enabled)
-            .and_then(|mut e| e.execute())
+            .execute()
             .map_err(|err| map_script_err(err, input))?;
     }
     Ok(())
@@ -212,7 +212,7 @@ pub fn check_scripts_par_iter(
     (0..tx.inputs().len()).into_par_iter().try_for_each(|idx| {
         let (input, utxo) = tx.populated_input(idx);
         TxScriptEngine::from_transaction_input(tx, input, idx, utxo, &reused_values, sig_cache, kip10_enabled)
-            .and_then(|mut e| e.execute())
+            .execute()
             .map_err(|err| map_script_err(err, input))
     })
 }

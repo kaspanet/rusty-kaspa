@@ -192,13 +192,13 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
         reused_values: &'a Reused,
         sig_cache: &'a Cache<SigCacheKey, bool>,
         kip10_enabled: bool,
-    ) -> Result<Self, TxScriptError> {
+    ) -> Self {
         let script_public_key = utxo_entry.script_public_key.script();
         // The script_public_key in P2SH is just validating the hash on the OpMultiSig script
         // the user provides
         let is_p2sh = ScriptClass::is_pay_to_script_hash(script_public_key);
         assert!(input_idx < tx.tx().inputs.len());
-        Ok(Self {
+        Self {
             dstack: Default::default(),
             astack: Default::default(),
             script_source: ScriptSource::TxInput { tx, input, idx: input_idx, utxo_entry, is_p2sh },
@@ -207,7 +207,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             cond_stack: Default::default(),
             num_ops: 0,
             kip10_enabled,
-        })
+        }
     }
 
     pub fn from_script(
@@ -624,8 +624,7 @@ mod tests {
                     &reused_values,
                     &sig_cache,
                     kip10_enabled,
-                )
-                .expect("Script creation failed");
+                );
                 assert_eq!(vm.execute(), test.expected_result);
             });
         }
@@ -1092,8 +1091,7 @@ mod bitcoind_tests {
                 &reused_values,
                 &sig_cache,
                 kip10_enabled,
-            )
-            .map_err(UnifiedError::TxScriptError)?;
+            );
             vm.execute().map_err(UnifiedError::TxScriptError)
         }
 

@@ -2848,8 +2848,7 @@ mod test {
         ] {
             let mut tx = base_tx.clone();
             tx.0.lock_time = tx_lock_time;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false)
-                .expect("Shouldn't fail");
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false);
             vm.dstack = vec![lock_time.clone()];
             match code.execute(&mut vm) {
                 // Message is based on the should_fail values
@@ -2891,8 +2890,7 @@ mod test {
         ] {
             let mut input = base_input.clone();
             input.sequence = tx_sequence;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false)
-                .expect("Shouldn't fail");
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false);
             vm.dstack = vec![sequence.clone()];
             match code.execute(&mut vm) {
                 // Message is based on the should_fail values
@@ -3086,8 +3084,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     group.kip10_enabled,
-                )
-                .unwrap();
+                );
 
                 // Check input index opcode first
                 let op_input_idx = opcodes::OpTxInputIndex::empty().expect("Should accept empty");
@@ -3355,8 +3352,7 @@ mod test {
                         &reused_values,
                         &sig_cache,
                         kip10_enabled,
-                    )
-                    .unwrap();
+                    );
 
                     let op_input_count = opcodes::OpTxInputCount::empty().expect("Should accept empty");
                     let op_output_count = opcodes::OpTxOutputCount::empty().expect("Should accept empty");
@@ -3436,8 +3432,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
-                )
-                .unwrap();
+                );
 
                 assert_eq!(vm.execute(), Ok(()));
             }
@@ -3461,8 +3456,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
-                )
-                .unwrap();
+                );
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
             }
@@ -3502,8 +3496,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
-                )
-                .unwrap();
+                );
 
                 assert_eq!(vm.execute(), Ok(()));
             }
@@ -3529,8 +3522,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
-                )
-                .unwrap();
+                );
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
             }
@@ -3552,8 +3544,7 @@ mod test {
 
             let tx = tx.as_verifiable();
             let mut vm =
-                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache, true)
-                    .unwrap();
+                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache, true);
 
             // OpInputSpk should push input's SPK onto stack, making it non-empty
             assert_eq!(vm.execute(), Ok(()));
@@ -3577,8 +3568,7 @@ mod test {
 
             let tx = tx.as_verifiable();
             let mut vm =
-                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache, true)
-                    .unwrap();
+                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache, true);
 
             // Should succeed because the SPKs are different
             assert_eq!(vm.execute(), Ok(()));
@@ -3603,8 +3593,7 @@ mod test {
 
             let tx = tx.as_verifiable();
             let mut vm =
-                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache, true)
-                    .unwrap();
+                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache, true);
 
             // Should succeed because both SPKs are identical
             assert_eq!(vm.execute(), Ok(()));
@@ -3649,8 +3638,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
-                )
-                .unwrap();
+                );
 
                 assert_eq!(vm.execute(), Ok(()));
             }
@@ -3676,8 +3664,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
-                )
-                .unwrap();
+                );
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
             }
@@ -3710,8 +3697,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
-                )
-                .unwrap();
+                );
 
                 assert_eq!(vm.execute(), Ok(()));
             }
@@ -3735,8 +3721,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
-                )
-                .unwrap();
+                );
 
                 // Should fail because script expects index 0 but we're at index 1
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
@@ -3782,8 +3767,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
-                )
-                .unwrap();
+                );
 
                 assert_eq!(vm.execute(), Ok(()));
             }
@@ -3802,8 +3786,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
-                )
-                .unwrap();
+                );
 
                 assert_eq!(vm.execute(), Ok(()));
             }
@@ -3826,8 +3809,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
-                )
-                .unwrap();
+                );
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
             }
@@ -3849,8 +3831,7 @@ mod test {
                     &reused_values,
                     &sig_cache,
                     true,
-                )
-                .unwrap();
+                );
 
                 assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
             }
