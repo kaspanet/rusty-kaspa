@@ -27,6 +27,7 @@ use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::blockhash::new_unique;
 use kaspa_consensus_core::blockstatus::BlockStatus;
+use kaspa_consensus_core::coinbase::MinerData;
 use kaspa_consensus_core::constants::{BLOCK_VERSION, STORAGE_MASS_PARAMETER};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::header::Header;
@@ -57,6 +58,7 @@ use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
 use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_txscript::caches::TxScriptCacheCounters;
+use kaspa_txscript::opcodes::codes::OpTrue;
 use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use kaspa_utxoindex::UtxoIndex;
 use serde::{Deserialize, Serialize};
@@ -839,6 +841,7 @@ impl KaspadGoParams {
             skip_proof_of_work: self.SkipProofOfWork,
             max_block_level: self.MaxBlockLevel,
             pruning_proof_m: self.PruningProofM,
+            payload_activation: ForkActivation::never(),
         }
     }
 }
@@ -1756,4 +1759,40 @@ async fn staging_consensus_test() {
 
     core.shutdown();
     core.join(joins);
+}
+
+#[tokio::test]
+async fn payload_test() {
+    let config = ConfigBuilder::new(DEVNET_PARAMS)
+        .skip_proof_of_work()
+        .edit_consensus_params(|p| {
+            p.coinbase_maturity = 0;
+            p.payload_activation = ForkActivation::always()
+        })
+        .build();
+    let consensus = TestConsensus::new(&config);
+    let wait_handles = consensus.init();
+
+    let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![OpTrue]), vec![]);
+    let b = consensus.build_utxo_valid_block_with_parents(1.into(), vec![config.genesis.hash], miner_data.clone(), vec![]);
+    consensus.validate_and_insert_block(b.to_immutable()).virtual_state_task.await.unwrap();
+    let funding_block = consensus.build_utxo_valid_block_with_parents(2.into(), vec![1.into()], miner_data, vec![]);
+    let cb_id = {
+        let mut cb = funding_block.transactions[0].clone();
+        cb.finalize();
+        cb.id()
+    };
+    consensus.validate_and_insert_block(funding_block.to_immutable()).virtual_state_task.await.unwrap();
+    let tx = Transaction::new(
+        0,
+        vec![TransactionInput::new(TransactionOutpoint { transaction_id: cb_id, index: 0 }, vec![], 0, 0)],
+        vec![TransactionOutput::new(1, ScriptPublicKey::default())],
+        0,
+        SubnetworkId::default(),
+        0,
+        vec![0; (config.params.max_block_mass / 2) as usize],
+    );
+    consensus.add_utxo_valid_block_with_parents(3.into(), vec![2.into()], vec![tx]).await.unwrap();
+
+    consensus.shutdown(wait_handles);
 }
