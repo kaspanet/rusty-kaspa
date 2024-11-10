@@ -47,7 +47,8 @@ use crate::common;
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
-use kaspa_consensus_core::errors::tx::TxRuleError;
+use kaspa_consensus_core::coinbase::MinerData;
+use kaspa_consensus_core::merkle::calc_hash_merkle_root;
 use kaspa_consensus_core::muhash::MuHashExtensions;
 use kaspa_core::core::Core;
 use kaspa_core::signals::Shutdown;
@@ -60,7 +61,6 @@ use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
 use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_txscript::caches::TxScriptCacheCounters;
-use kaspa_txscript_errors::TxScriptError;
 use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use kaspa_utxoindex::UtxoIndex;
 use serde::{Deserialize, Serialize};
@@ -1815,13 +1815,13 @@ async fn run_kip10_activation_test() {
     consensus.init();
 
     // Build blockchain up to one block before activation
-    let mut daa = 0;
+    let mut index = 0;
     for _ in 0..KIP10_ACTIVATION_DAA_SCORE - 1 {
-        let parent = if daa == 0 { config.genesis.hash } else { daa.into() };
-        consensus.add_utxo_valid_block_with_parents((daa + 1).into(), vec![parent], vec![]).unwrap().await.unwrap();
-        daa += 1;
+        let parent = if index == 0 { config.genesis.hash } else { index.into() };
+        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![parent], vec![]).unwrap().await.unwrap();
+        index += 1;
     }
-    assert_eq!(consensus.get_virtual_daa_score(), daa);
+    assert_eq!(consensus.get_virtual_daa_score(), index);
 
     // Create transaction that attempts to use the KIP-10 opcode
     let mut spending_tx = Transaction::new(
@@ -1840,24 +1840,29 @@ async fn run_kip10_activation_test() {
     );
     spending_tx.finalize();
     let tx_id = spending_tx.id();
+    // Test 1: Build empty block, then manually insert invalid tx and verify consensus rejects it
+    {
+        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
 
-    let result = consensus.add_utxo_valid_block_with_parents((daa + 1).into(), vec![daa.into()], vec![spending_tx.clone()]);
-    // Test 1: Verify transaction is rejected before activation
-    assert!(matches!(
-        result,
-        Err(RuleError::InvalidTransactionsInNewBlock(map)) if matches!(
-            map.get(&tx_id).unwrap(),
-            TxRuleError::SignatureInvalid(TxScriptError::InvalidOpcode(s))
-                if s.contains(&format!("{:#01x}", OpTxInputSpk))
-        )
-    ));
+        // First build block without transactions
+        let mut block =
+            consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]).unwrap();
 
-    // Add one more block to reach activation score
-    consensus.add_utxo_valid_block_with_parents((daa + 1).into(), vec![daa.into()], vec![]).unwrap().await.unwrap();
-    daa += 1;
+        // Insert our test transaction and recalculate block hashes
+        block.transactions.push(spending_tx.clone());
+        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter(), false);
+        let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
+        assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
+        assert_eq!(consensus.lkg_virtual_state.load().daa_score, 2);
+        index += 1;
+    }
+    // // Add one more block to reach activation score
+    consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).unwrap().await.unwrap();
+    index += 1;
 
     // Test 2: Verify the same transaction is accepted after activation
-    _ = consensus.add_utxo_valid_block_with_parents((daa + 1).into(), vec![daa.into()], vec![spending_tx.clone()]).unwrap().await;
-
+    let status =
+        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![spending_tx.clone()]).unwrap().await;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
 }
