@@ -41,6 +41,10 @@ pub mod utxo;
 /// overall blocks, so 2^192 is definitely a justified upper-bound.
 pub type BlueWorkType = kaspa_math::Uint192;
 
+/// The extends directly from the expectation above about having no more than
+/// 2^128 work in a single block
+pub const MAX_WORK_LEVEL: BlockLevel = 128;
+
 /// The type used to represent the GHOSTDAG K parameter
 pub type KType = u16;
 

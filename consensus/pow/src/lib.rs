@@ -54,12 +54,22 @@ impl State {
 }
 
 pub fn calc_block_level(header: &Header, max_block_level: BlockLevel) -> BlockLevel {
+    let (block_level, _) = calc_block_level_check_pow(header, max_block_level);
+    block_level
+}
+
+pub fn calc_block_level_check_pow(header: &Header, max_block_level: BlockLevel) -> (BlockLevel, bool) {
     if header.parents_by_level.is_empty() {
-        return max_block_level; // Genesis has the max block level
+        return (max_block_level, true); // Genesis has the max block level
     }
 
     let state = State::new(header);
-    let (_, pow) = state.check_pow(header.nonce);
+    let (passed, pow) = state.check_pow(header.nonce);
+    let block_level = calc_level_from_pow(pow, max_block_level);
+    (block_level, passed)
+}
+
+pub fn calc_level_from_pow(pow: Uint256, max_block_level: BlockLevel) -> BlockLevel {
     let signed_block_level = max_block_level as i64 - pow.bits() as i64;
     max(signed_block_level, 0) as BlockLevel
 }

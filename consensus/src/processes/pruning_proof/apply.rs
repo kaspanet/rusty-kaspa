@@ -148,7 +148,7 @@ impl PruningProofManager {
         let mut up_heap = BinaryHeap::with_capacity(capacity_estimate);
         for header in proof.iter().flatten().cloned() {
             if let Vacant(e) = dag.entry(header.hash) {
-                // TODO: Check if pow passes
+                // pow passing has already been checked during validation
                 let block_level = calc_block_level(&header, self.max_block_level);
                 self.headers_store.insert(header.hash, header.clone(), block_level).unwrap();
 
