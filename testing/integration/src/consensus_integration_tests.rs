@@ -27,7 +27,7 @@ use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::blockhash::new_unique;
 use kaspa_consensus_core::blockstatus::BlockStatus;
-use kaspa_consensus_core::constants::{BLOCK_VERSION, STORAGE_MASS_PARAMETER};
+use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, STORAGE_MASS_PARAMETER};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::header::Header;
 use kaspa_consensus_core::network::{NetworkId, NetworkType::Mainnet};
@@ -43,9 +43,11 @@ use kaspa_core::time::unix_now;
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_hashes::Hash;
 
+use crate::common;
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
+use kaspa_consensus_core::muhash::MuHashExtensions;
 use kaspa_core::core::Core;
 use kaspa_core::signals::Shutdown;
 use kaspa_core::task::runtime::AsyncRuntime;
@@ -71,8 +73,6 @@ use std::{
     io::{BufRead, BufReader},
     str::{from_utf8, FromStr},
 };
-
-use crate::common;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct JsonBlock {
@@ -1664,12 +1664,12 @@ async fn selected_chain_test() {
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
-    consensus.add_utxo_valid_block_with_parents(1.into(), vec![config.genesis.hash], vec![]).await.unwrap();
+    consensus.add_utxo_valid_block_with_parents(1.into(), vec![config.genesis.hash], vec![]).unwrap().await.unwrap();
     for i in 2..7 {
         let hash = i.into();
-        consensus.add_utxo_valid_block_with_parents(hash, vec![(i - 1).into()], vec![]).await.unwrap();
+        consensus.add_utxo_valid_block_with_parents(hash, vec![(i - 1).into()], vec![]).unwrap().await.unwrap();
     }
-    consensus.add_utxo_valid_block_with_parents(7.into(), vec![1.into()], vec![]).await.unwrap(); // Adding a non chain block shouldn't affect the selected chain store.
+    consensus.add_utxo_valid_block_with_parents(7.into(), vec![1.into()], vec![]).unwrap().await.unwrap(); // Adding a non chain block shouldn't affect the selected chain store.
 
     assert_eq!(consensus.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
     for i in 1..7 {
@@ -1677,10 +1677,10 @@ async fn selected_chain_test() {
     }
     assert!(consensus.selected_chain_store.read().get_by_index(7).is_err());
 
-    consensus.add_utxo_valid_block_with_parents(8.into(), vec![config.genesis.hash], vec![]).await.unwrap();
+    consensus.add_utxo_valid_block_with_parents(8.into(), vec![config.genesis.hash], vec![]).unwrap().await.unwrap();
     for i in 9..15 {
         let hash = i.into();
-        consensus.add_utxo_valid_block_with_parents(hash, vec![(i - 1).into()], vec![]).await.unwrap();
+        consensus.add_utxo_valid_block_with_parents(hash, vec![(i - 1).into()], vec![]).unwrap().await.unwrap();
     }
 
     assert_eq!(consensus.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
@@ -1691,9 +1691,9 @@ async fn selected_chain_test() {
 
     // We now check a situation where there's a shorter selected chain (3 blocks) with more blue work
     for i in 15..23 {
-        consensus.add_utxo_valid_block_with_parents(i.into(), vec![config.genesis.hash], vec![]).await.unwrap();
+        consensus.add_utxo_valid_block_with_parents(i.into(), vec![config.genesis.hash], vec![]).unwrap().await.unwrap();
     }
-    consensus.add_utxo_valid_block_with_parents(23.into(), (15..23).map(|i| i.into()).collect_vec(), vec![]).await.unwrap();
+    consensus.add_utxo_valid_block_with_parents(23.into(), (15..23).map(|i| i.into()).collect_vec(), vec![]).unwrap().await.unwrap();
 
     assert_eq!(consensus.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
     assert_eq!(consensus.selected_chain_store.read().get_by_index(1).unwrap(), 22.into()); // We expect 23's selected parent to be 22 because of GHOSTDAG tie-breaking rules.
@@ -1757,4 +1757,99 @@ async fn staging_consensus_test() {
 
     core.shutdown();
     core.join(joins);
+}
+
+/// Tests the KIP-10 transaction introspection opcode activation by verifying that:
+/// 1. Transactions using these opcodes are rejected before the activation DAA score
+/// 2. The same transactions are accepted at and after the activation score
+/// Uses OpInputSpk opcode as an example
+#[tokio::test]
+async fn run_kip10_activation_test() {
+    use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
+    use kaspa_txscript::opcodes::codes::{Op0, OpTxInputSpk};
+    use kaspa_txscript::pay_to_script_hash_script;
+    use kaspa_txscript::script_builder::ScriptBuilder;
+
+    // KIP-10 activates at DAA score 3 in this test
+    const KIP10_ACTIVATION_DAA_SCORE: u64 = 3;
+
+    init_allocator_with_default_settings();
+
+    // Create P2SH script that attempts to use OpInputSpk - this will be our test subject
+    // The script should fail before KIP-10 activation and succeed after
+    let redeem_script = ScriptBuilder::new()
+        .add_op(Op0).unwrap() // Push 0 for input index
+        .add_op(OpTxInputSpk).unwrap() // Get the input's script pubkey
+        .drain();
+    let spk = pay_to_script_hash_script(&redeem_script);
+
+    // Set up initial UTXO with our test script
+    let initial_utxo_collection = [(
+        TransactionOutpoint::new(1.into(), 0),
+        UtxoEntry { amount: SOMPI_PER_KASPA, script_public_key: spk.clone(), block_daa_score: 0, is_coinbase: false },
+    )];
+
+    // Initialize consensus with KIP-10 activation point
+    let config = ConfigBuilder::new(DEVNET_PARAMS)
+        .skip_proof_of_work()
+        .apply_args(|cfg| {
+            let mut genesis_multiset = MuHash::new();
+            initial_utxo_collection.iter().for_each(|(outpoint, utxo)| {
+                genesis_multiset.add_utxo(outpoint, utxo);
+            });
+            cfg.params.genesis.utxo_commitment = genesis_multiset.finalize();
+            let genesis_header: Header = (&cfg.params.genesis).into();
+            cfg.params.genesis.hash = genesis_header.hash;
+        })
+        .edit_consensus_params(|p| {
+            p.kip10_activation_daa_score = ForkActivation::new(KIP10_ACTIVATION_DAA_SCORE);
+        })
+        .build();
+
+    let consensus = TestConsensus::new(&config);
+    let mut genesis_multiset = MuHash::new();
+    consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
+    consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
+    consensus.init();
+
+    // Build blockchain up to one block before activation
+    let mut daa = 0;
+    for _ in 0..KIP10_ACTIVATION_DAA_SCORE - 1 {
+        let parent = if daa == 0 { config.genesis.hash } else { daa.into() };
+        consensus.add_utxo_valid_block_with_parents((daa + 1).into(), vec![parent], vec![]).unwrap().await.unwrap();
+        daa += 1;
+    }
+    assert_eq!(consensus.get_virtual_daa_score(), daa);
+
+    // Create transaction that attempts to use the KIP-10 opcode
+    let mut spending_tx = Transaction::new(
+        0,
+        vec![TransactionInput::new(
+            initial_utxo_collection[0].0,
+            ScriptBuilder::new().add_data(&redeem_script).unwrap().drain(),
+            0,
+            0,
+        )],
+        vec![TransactionOutput::new(initial_utxo_collection[0].1.amount - 5000, spk)],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+
+    // Test 1: Verify transaction is rejected before activation
+    assert!(matches!(
+        consensus.add_utxo_valid_block_with_parents((daa + 1).into(), vec![daa.into()], vec![spending_tx.clone()]),
+        Err(RuleError::InvalidTransactionsInNewBlock(_))
+    ));
+
+    // Add one more block to reach activation score
+    consensus.add_utxo_valid_block_with_parents((daa + 1).into(), vec![daa.into()], vec![]).unwrap().await.unwrap();
+    daa += 1;
+
+    // Test 2: Verify the same transaction is accepted after activation
+    _ = consensus.add_utxo_valid_block_with_parents((daa + 1).into(), vec![daa.into()], vec![spending_tx.clone()]).unwrap().await;
+    spending_tx.finalize();
+    let tx_id = spending_tx.id();
+    assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
 }

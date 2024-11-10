@@ -13,11 +13,6 @@ use kaspa_hashes::Hash;
 use kaspa_notify::subscription::context::SubscriptionContext;
 use parking_lot::RwLock;
 
-use kaspa_database::create_temp_db;
-use kaspa_database::prelude::ConnBuilder;
-use std::future::Future;
-use std::{sync::Arc, thread::JoinHandle};
-
 use crate::pipeline::virtual_processor::test_block_builder::TestBlockBuilder;
 use crate::processes::window::WindowManager;
 use crate::{
@@ -35,6 +30,11 @@ use crate::{
     pipeline::{body_processor::BlockBodyProcessor, virtual_processor::VirtualStateProcessor, ProcessingCounters},
     test_helpers::header_from_precomputed_hash,
 };
+use kaspa_consensus_core::errors::block::RuleError;
+use kaspa_database::create_temp_db;
+use kaspa_database::prelude::ConnBuilder;
+use std::future::Future;
+use std::{sync::Arc, thread::JoinHandle};
 
 use super::services::{DbDagTraversalManager, DbGhostdagManager, DbWindowManager};
 use super::Consensus;
@@ -143,10 +143,11 @@ impl TestConsensus {
         hash: Hash,
         parents: Vec<Hash>,
         txs: Vec<Transaction>,
-    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
+    ) -> Result<impl Future<Output = BlockProcessResult<BlockStatus>>, RuleError> {
         let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-        self.validate_and_insert_block(self.build_utxo_valid_block_with_parents(hash, parents, miner_data, txs).to_immutable())
-            .virtual_state_task
+        Ok(self
+            .validate_and_insert_block(self.build_utxo_valid_block_with_parents(hash, parents, miner_data, txs)?.to_immutable())
+            .virtual_state_task)
     }
 
     pub fn build_utxo_valid_block_with_parents(
@@ -155,10 +156,10 @@ impl TestConsensus {
         parents: Vec<Hash>,
         miner_data: MinerData,
         txs: Vec<Transaction>,
-    ) -> MutableBlock {
-        let mut template = self.block_builder.build_block_template_with_parents(parents, miner_data, txs).unwrap();
+    ) -> Result<MutableBlock, RuleError> {
+        let mut template = self.block_builder.build_block_template_with_parents(parents, miner_data, txs)?;
         template.block.header.hash = hash;
-        template.block
+        Ok(template.block)
     }
 
     pub fn build_block_with_parents_and_transactions(
