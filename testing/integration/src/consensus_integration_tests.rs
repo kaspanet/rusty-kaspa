@@ -1666,12 +1666,12 @@ async fn selected_chain_test() {
     let consensus = TestConsensus::new(&config);
     let wait_handles = consensus.init();
 
-    consensus.add_utxo_valid_block_with_parents(1.into(), vec![config.genesis.hash], vec![]).unwrap().await.unwrap();
+    consensus.add_utxo_valid_block_with_parents(1.into(), vec![config.genesis.hash], vec![]).await.unwrap();
     for i in 2..7 {
         let hash = i.into();
-        consensus.add_utxo_valid_block_with_parents(hash, vec![(i - 1).into()], vec![]).unwrap().await.unwrap();
+        consensus.add_utxo_valid_block_with_parents(hash, vec![(i - 1).into()], vec![]).await.unwrap();
     }
-    consensus.add_utxo_valid_block_with_parents(7.into(), vec![1.into()], vec![]).unwrap().await.unwrap(); // Adding a non chain block shouldn't affect the selected chain store.
+    consensus.add_utxo_valid_block_with_parents(7.into(), vec![1.into()], vec![]).await.unwrap(); // Adding a non chain block shouldn't affect the selected chain store.
 
     assert_eq!(consensus.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
     for i in 1..7 {
@@ -1679,10 +1679,10 @@ async fn selected_chain_test() {
     }
     assert!(consensus.selected_chain_store.read().get_by_index(7).is_err());
 
-    consensus.add_utxo_valid_block_with_parents(8.into(), vec![config.genesis.hash], vec![]).unwrap().await.unwrap();
+    consensus.add_utxo_valid_block_with_parents(8.into(), vec![config.genesis.hash], vec![]).await.unwrap();
     for i in 9..15 {
         let hash = i.into();
-        consensus.add_utxo_valid_block_with_parents(hash, vec![(i - 1).into()], vec![]).unwrap().await.unwrap();
+        consensus.add_utxo_valid_block_with_parents(hash, vec![(i - 1).into()], vec![]).await.unwrap();
     }
 
     assert_eq!(consensus.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
@@ -1693,9 +1693,9 @@ async fn selected_chain_test() {
 
     // We now check a situation where there's a shorter selected chain (3 blocks) with more blue work
     for i in 15..23 {
-        consensus.add_utxo_valid_block_with_parents(i.into(), vec![config.genesis.hash], vec![]).unwrap().await.unwrap();
+        consensus.add_utxo_valid_block_with_parents(i.into(), vec![config.genesis.hash], vec![]).await.unwrap();
     }
-    consensus.add_utxo_valid_block_with_parents(23.into(), (15..23).map(|i| i.into()).collect_vec(), vec![]).unwrap().await.unwrap();
+    consensus.add_utxo_valid_block_with_parents(23.into(), (15..23).map(|i| i.into()).collect_vec(), vec![]).await.unwrap();
 
     assert_eq!(consensus.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
     assert_eq!(consensus.selected_chain_store.read().get_by_index(1).unwrap(), 22.into()); // We expect 23's selected parent to be 22 because of GHOSTDAG tie-breaking rules.
@@ -1818,7 +1818,7 @@ async fn run_kip10_activation_test() {
     let mut index = 0;
     for _ in 0..KIP10_ACTIVATION_DAA_SCORE - 1 {
         let parent = if index == 0 { config.genesis.hash } else { index.into() };
-        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![parent], vec![]).unwrap().await.unwrap();
+        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![parent], vec![]).await.unwrap();
         index += 1;
     }
     assert_eq!(consensus.get_virtual_daa_score(), index);
@@ -1846,7 +1846,7 @@ async fn run_kip10_activation_test() {
 
         // First build block without transactions
         let mut block =
-            consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]).unwrap();
+            consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
 
         // Insert our test transaction and recalculate block hashes
         block.transactions.push(spending_tx.clone());
@@ -1857,12 +1857,11 @@ async fn run_kip10_activation_test() {
         index += 1;
     }
     // // Add one more block to reach activation score
-    consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).unwrap().await.unwrap();
+    consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).await.unwrap();
     index += 1;
 
     // Test 2: Verify the same transaction is accepted after activation
-    let status =
-        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![spending_tx.clone()]).unwrap().await;
+    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![spending_tx.clone()]).await;
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
 }

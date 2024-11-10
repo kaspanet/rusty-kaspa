@@ -30,7 +30,6 @@ use crate::{
     pipeline::{body_processor::BlockBodyProcessor, virtual_processor::VirtualStateProcessor, ProcessingCounters},
     test_helpers::header_from_precomputed_hash,
 };
-use kaspa_consensus_core::errors::block::RuleError;
 use kaspa_database::create_temp_db;
 use kaspa_database::prelude::ConnBuilder;
 use std::future::Future;
@@ -143,11 +142,10 @@ impl TestConsensus {
         hash: Hash,
         parents: Vec<Hash>,
         txs: Vec<Transaction>,
-    ) -> Result<impl Future<Output = BlockProcessResult<BlockStatus>>, RuleError> {
+    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-        Ok(self
-            .validate_and_insert_block(self.build_utxo_valid_block_with_parents(hash, parents, miner_data, txs)?.to_immutable())
-            .virtual_state_task)
+        self.validate_and_insert_block(self.build_utxo_valid_block_with_parents(hash, parents, miner_data, txs).to_immutable())
+            .virtual_state_task
     }
 
     pub fn build_utxo_valid_block_with_parents(
@@ -156,10 +154,10 @@ impl TestConsensus {
         parents: Vec<Hash>,
         miner_data: MinerData,
         txs: Vec<Transaction>,
-    ) -> Result<MutableBlock, RuleError> {
-        let mut template = self.block_builder.build_block_template_with_parents(parents, miner_data, txs)?;
+    ) -> MutableBlock {
+        let mut template = self.block_builder.build_block_template_with_parents(parents, miner_data, txs).unwrap();
         template.block.header.hash = hash;
-        Ok(template.block)
+        template.block
     }
 
     pub fn build_block_with_parents_and_transactions(
