@@ -927,7 +927,9 @@ opcode_list! {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let utxo = usize::try_from(idx).ok().and_then(|idx| tx.utxo(idx)).ok_or_else(|| TxScriptError::InvalidInputIndex(idx, tx.inputs().len()))?;
+                    let utxo = usize::try_from(idx).ok()
+                        .and_then(|idx| tx.utxo(idx))
+                        .ok_or_else(|| TxScriptError::InvalidInputIndex(idx, tx.inputs().len()))?;
                     push_number(utxo.amount as i64, vm)
                 },
                 _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
@@ -941,9 +943,9 @@ opcode_list! {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let utxo = usize::try_from(idx).ok().
-                        and_then(|idx| tx.utxo(idx)).
-                        ok_or_else(|| TxScriptError::InvalidInputIndex(idx, tx.inputs().len()))?;
+                    let utxo = usize::try_from(idx).ok()
+                        .and_then(|idx| tx.utxo(idx))
+                        .ok_or_else(|| TxScriptError::InvalidInputIndex(idx, tx.inputs().len()))?;
                     vm.dstack.push(utxo.script_public_key.to_bytes());
                     Ok(())
                 },
@@ -961,9 +963,9 @@ opcode_list! {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let output = usize::try_from(idx).ok().
-                        and_then(|idx| tx.outputs().get(idx)).
-                        ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
+                    let output = usize::try_from(idx).ok()
+                        .and_then(|idx| tx.outputs().get(idx))
+                        .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
                     push_number(output.value as i64, vm)
                 },
                 _ => Err(TxScriptError::InvalidSource("OpOutputAmount only applies to transaction inputs".to_string()))
@@ -977,9 +979,9 @@ opcode_list! {
             match vm.script_source {
                 ScriptSource::TxInput{tx, ..} => {
                     let [idx]: [i32; 1] = vm.dstack.pop_items()?;
-                    let output = usize::try_from(idx).ok().
-                        and_then(|idx| tx.outputs().get(idx)).
-                        ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
+                    let output = usize::try_from(idx).ok()
+                        .and_then(|idx| tx.outputs().get(idx))
+                        .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
                     vm.dstack.push(output.script_public_key.to_bytes());
                     Ok(())
                 },
