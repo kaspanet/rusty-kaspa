@@ -8,14 +8,13 @@ use kaspa_consensus_core::{
     blockhash::{BlockHashExtensions, BlockHashes, ORIGIN},
     errors::pruning::{PruningImportError, PruningImportResult},
     header::Header,
-    pruning::PruningPointProof,
+    pruning::{PruningPointProof, PruningProofMetadata},
     BlockLevel,
 };
 use kaspa_core::info;
 use kaspa_database::prelude::{CachePolicy, ConnBuilder, StoreResultEmptyTuple, StoreResultExtensions};
 use kaspa_hashes::Hash;
-use kaspa_math::int::SignedInteger;
-use kaspa_pow::calc_block_level;
+use kaspa_pow::{calc_block_level, calc_block_level_check_pow};
 use kaspa_utils::vec::VecExtensions;
 use parking_lot::lock_api::RwLock;
 use rocksdb::WriteBatch;
@@ -26,6 +25,7 @@ use crate::{
         stores::{
             ghostdag::{CompactGhostdagData, DbGhostdagStore, GhostdagStore, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStore, HeaderStoreReader},
+            headers_selected_tip::HeadersSelectedTipStoreReader,
             pruning::PruningStoreReader,
             reachability::{DbReachabilityStore, ReachabilityStoreReader},
             relations::{DbRelationsStore, RelationsStoreReader},
@@ -37,7 +37,11 @@ use crate::{
 use super::{PruningProofManager, TempProofContext};
 
 impl PruningProofManager {
-    pub fn validate_pruning_point_proof(&self, proof: &PruningPointProof) -> PruningImportResult<()> {
+    pub fn validate_pruning_point_proof(
+        &self,
+        proof: &PruningPointProof,
+        proof_metadata: &PruningProofMetadata,
+    ) -> PruningImportResult<()> {
         if proof.len() != self.max_block_level as usize + 1 {
             return Err(PruningImportError::ProofNotEnoughLevels(self.max_block_level as usize + 1));
         }
@@ -74,6 +78,13 @@ impl PruningProofManager {
         let current_pp = pruning_read.get().unwrap().pruning_point;
         let current_pp_header = self.headers_store.get_header(current_pp).unwrap();
 
+        // The accumulated blue work of current consensus from the pruning point onward
+        let pruning_period_work =
+            self.headers_selected_tip_store.read().get().unwrap().blue_work.saturating_sub(current_pp_header.blue_work);
+        // The claimed blue work of the prover from his pruning point and up to the triggering relay block. This work
+        // will eventually be verified if the proof is accepted so we can treat it as trusted
+        let prover_claimed_pruning_period_work = proof_metadata.relay_block_blue_work.saturating_sub(proof_pp_header.blue_work);
+
         for (level_idx, selected_tip) in proof_selected_tip_by_level.iter().copied().enumerate() {
             let level = level_idx as BlockLevel;
             self.validate_proof_selected_tip(selected_tip, level, proof_pp_level, proof_pp, proof_pp_header)?;
@@ -90,7 +101,6 @@ impl PruningProofManager {
             // we can determine if the proof is better. The proof is better if the blue work* difference between the
             // old current consensus's tips and the common ancestor is less than the blue work difference between the
             // proof's tip and the common ancestor.
-            // *Note: blue work is the same as blue score on levels higher than 0
             if let Some((proof_common_ancestor_gd, common_ancestor_gd)) = self.find_proof_and_consensus_common_ancestor_ghostdag_data(
                 &proof_ghostdag_stores,
                 &current_consensus_ghostdag_stores,
@@ -98,13 +108,13 @@ impl PruningProofManager {
                 level,
                 proof_selected_tip_gd,
             ) {
-                let selected_tip_blue_work_diff =
-                    SignedInteger::from(proof_selected_tip_gd.blue_work) - SignedInteger::from(proof_common_ancestor_gd.blue_work);
+                let proof_level_blue_work_diff = proof_selected_tip_gd.blue_work.saturating_sub(proof_common_ancestor_gd.blue_work);
                 for parent in self.parents_manager.parents_at_level(&current_pp_header, level).iter().copied() {
                     let parent_blue_work = current_consensus_ghostdag_stores[level_idx].get_blue_work(parent).unwrap();
-                    let parent_blue_work_diff =
-                        SignedInteger::from(parent_blue_work) - SignedInteger::from(common_ancestor_gd.blue_work);
-                    if parent_blue_work_diff >= selected_tip_blue_work_diff {
+                    let parent_blue_work_diff = parent_blue_work.saturating_sub(common_ancestor_gd.blue_work);
+                    if parent_blue_work_diff.saturating_add(pruning_period_work)
+                        >= proof_level_blue_work_diff.saturating_add(prover_claimed_pruning_period_work)
+                    {
                         return Err(PruningImportError::PruningProofInsufficientBlueWork);
                     }
                 }
@@ -187,14 +197,15 @@ impl PruningProofManager {
             .cloned()
             .enumerate()
             .map(|(level, ghostdag_store)| {
-                GhostdagManager::new(
+                GhostdagManager::with_level(
                     self.genesis_hash,
                     self.ghostdag_k,
                     ghostdag_store,
                     relations_stores[level].clone(),
                     headers_store.clone(),
                     reachability_services[level].clone(),
-                    level != 0,
+                    level as BlockLevel,
+                    self.max_block_level,
                 )
             })
             .collect_vec();
@@ -242,9 +253,12 @@ impl PruningProofManager {
             let level_idx = level as usize;
             let mut selected_tip = None;
             for (i, header) in proof[level as usize].iter().enumerate() {
-                let header_level = calc_block_level(header, self.max_block_level);
+                let (header_level, pow_passes) = calc_block_level_check_pow(header, self.max_block_level);
                 if header_level < level {
                     return Err(PruningImportError::PruningProofWrongBlockLevel(header.hash, header_level, level));
+                }
+                if !pow_passes {
+                    return Err(PruningImportError::ProofOfWorkFailed(header.hash, level));
                 }
 
                 headers_store.insert(header.hash, header.clone(), header_level).unwrap_or_exists();
