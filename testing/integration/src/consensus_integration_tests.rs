@@ -47,6 +47,7 @@ use crate::common;
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
+use kaspa_consensus_core::errors::tx::TxRuleError;
 use kaspa_consensus_core::muhash::MuHashExtensions;
 use kaspa_core::core::Core;
 use kaspa_core::signals::Shutdown;
@@ -59,6 +60,7 @@ use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
 use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_txscript::caches::TxScriptCacheCounters;
+use kaspa_txscript_errors::TxScriptError;
 use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use kaspa_utxoindex::UtxoIndex;
 use serde::{Deserialize, Serialize};
@@ -1836,11 +1838,18 @@ async fn run_kip10_activation_test() {
         0,
         vec![],
     );
+    spending_tx.finalize();
+    let tx_id = spending_tx.id();
 
+    let result = consensus.add_utxo_valid_block_with_parents((daa + 1).into(), vec![daa.into()], vec![spending_tx.clone()]);
     // Test 1: Verify transaction is rejected before activation
     assert!(matches!(
-        consensus.add_utxo_valid_block_with_parents((daa + 1).into(), vec![daa.into()], vec![spending_tx.clone()]),
-        Err(RuleError::InvalidTransactionsInNewBlock(_))
+        result,
+        Err(RuleError::InvalidTransactionsInNewBlock(map)) if matches!(
+            map.get(&tx_id).unwrap(),
+            TxRuleError::SignatureInvalid(TxScriptError::InvalidOpcode(s))
+                if s.contains(&format!("{:#01x}", OpTxInputSpk))
+        )
     ));
 
     // Add one more block to reach activation score
@@ -1849,7 +1858,6 @@ async fn run_kip10_activation_test() {
 
     // Test 2: Verify the same transaction is accepted after activation
     _ = consensus.add_utxo_valid_block_with_parents((daa + 1).into(), vec![daa.into()], vec![spending_tx.clone()]).unwrap().await;
-    spending_tx.finalize();
-    let tx_id = spending_tx.id();
+
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
 }
