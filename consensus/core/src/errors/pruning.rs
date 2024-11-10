@@ -59,6 +59,9 @@ pub enum PruningImportError {
 
     #[error("process exit was initiated while validating pruning point proof")]
     PruningValidationInterrupted,
+
+    #[error("block {0} at level {1} has invalid proof of work for level")]
+    ProofOfWorkFailed(Hash, BlockLevel),
 }
 
 pub type PruningImportResult<T> = std::result::Result<T, PruningImportError>;
