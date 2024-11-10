@@ -833,7 +833,7 @@ impl KaspadGoParams {
             max_block_mass: self.MaxBlockMass,
             storage_mass_parameter: STORAGE_MASS_PARAMETER,
             storage_mass_activation: ForkActivation::never(),
-            kip10_activation_daa_score: ForkActivation::never(),
+            kip10_activation: ForkActivation::never(),
             deflationary_phase_daa_score: self.DeflationaryPhaseDaaScore,
             pre_deflationary_phase_base_subsidy: self.PreDeflationaryPhaseBaseSubsidy,
             coinbase_maturity: MAINNET_PARAMS.coinbase_maturity,
@@ -1802,7 +1802,7 @@ async fn run_kip10_activation_test() {
             cfg.params.genesis.hash = genesis_header.hash;
         })
         .edit_consensus_params(|p| {
-            p.kip10_activation_daa_score = ForkActivation::new(KIP10_ACTIVATION_DAA_SCORE);
+            p.kip10_activation = ForkActivation::new(KIP10_ACTIVATION_DAA_SCORE);
         })
         .build();
 
