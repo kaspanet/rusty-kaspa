@@ -129,7 +129,6 @@ kaspa-wallet-macros = { version = "0.15.3", path = "wallet/macros" }
 kaspa-wasm = { version = "0.15.3", path = "wasm" }
 kaspa-wasm-core = { version = "0.15.3", path = "wasm/core" }
 kaspa-wrpc-client = { version = "0.15.3", path = "rpc/wrpc/client" }
-kaspa-wrpc-proxy = { version = "0.15.3", path = "rpc/wrpc/proxy" }
 kaspa-wrpc-server = { version = "0.15.3", path = "rpc/wrpc/server" }
 kaspa-wrpc-wasm = { version = "0.15.3", path = "rpc/wrpc/wasm" }
 kaspa-wrpc-example-subscriber = { version = "0.15.3", path = "rpc/wrpc/examples/subscriber" }

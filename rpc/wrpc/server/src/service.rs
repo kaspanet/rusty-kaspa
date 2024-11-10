@@ -18,13 +18,12 @@ static MAX_WRPC_MESSAGE_SIZE: usize = 1024 * 1024 * 128; // 128MB
 /// Options for configuring the wRPC server
 pub struct Options {
     pub listen_address: String,
-    pub grpc_proxy_address: Option<String>,
     pub verbose: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { listen_address: "127.0.0.1:17110".to_owned(), verbose: false, grpc_proxy_address: None }
+        Options { listen_address: "127.0.0.1:17110".to_owned(), verbose: false }
     }
 }
 
@@ -49,12 +48,7 @@ pub struct KaspaRpcHandler {
 }
 
 impl KaspaRpcHandler {
-    pub fn new(
-        tasks: usize,
-        encoding: WrpcEncoding,
-        core_service: Option<Arc<RpcCoreService>>,
-        options: Arc<Options>,
-    ) -> KaspaRpcHandler {
+    pub fn new(tasks: usize, encoding: WrpcEncoding, core_service: Arc<RpcCoreService>, options: Arc<Options>) -> KaspaRpcHandler {
         KaspaRpcHandler { server: Server::new(tasks, encoding, core_service, options.clone()), options }
     }
 }
@@ -106,7 +100,7 @@ impl WrpcService {
     /// Create and initialize RpcServer
     pub fn new(
         tasks: usize,
-        core_service: Option<Arc<RpcCoreService>>,
+        core_service: Arc<RpcCoreService>,
         encoding: &Encoding,
         counters: Arc<WebSocketCounters>,
         options: Options,
