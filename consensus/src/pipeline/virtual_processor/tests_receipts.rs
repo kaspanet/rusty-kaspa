@@ -183,7 +183,7 @@ async fn test_receipts_in_random() {
             p.max_block_parents = 50; //  is probably enough to avoid errors
             p.mergeset_size_limit = 30;
             p.finality_depth = FINALITY_DEPTH as u64;
-            p.pruning_depth = (FINALITY_DEPTH * 4) as u64;
+            p.pruning_depth = (FINALITY_DEPTH * 3) as u64;
         })
         .build();
     // let mut expected_posterities = vec![];
@@ -227,7 +227,7 @@ async fn test_receipts_in_random() {
         if ctx.consensus.is_posterity_reached(next_posterity_score) {
             //try and get proofs of publications for old blocks
             unproved_blocks.retain(|&old_block| {
-                if ctx.consensus.get_header(old_block).is_err() {
+                if ctx.consensus.block_transactions_store.get(old_block).is_err() || ctx.consensus.get_header(old_block).is_err() {
                     return false;
                 }
                 let blk_header = ctx.consensus.get_header(old_block).unwrap();
@@ -241,7 +241,8 @@ async fn test_receipts_in_random() {
             });
             //try and get receipts and  pochms for old blocks
             unreceipted_blocks.retain(|&old_block| {
-                if ctx.consensus.get_header(old_block).is_err()
+                if ctx.consensus.acceptance_data_store.get(old_block).is_err()
+                    || ctx.consensus.get_header(old_block).is_err()
                     || !ctx.consensus.reachability_service().is_chain_ancestor_of(old_block, ctx.consensus.get_sink())
                 {
                     return false;
@@ -277,8 +278,8 @@ async fn test_receipts_in_random() {
         eprintln!("posterity hash:{:?}\n bscore: {:?}", point.hash, point.blue_score);
     }
     eprintln!();
-    assert!(receipts.len() > 5); //sanity check
-    assert!(pops.len() > 10); //sanity check
+    assert!(receipts.len() > DAG_SIZE as usize / 6); //sanity check
+    assert!(pops.len() > DAG_SIZE as usize / 3); //sanity check
     for (pochm, blk) in pochms_list.into_iter() {
         eprintln!("blk_verified: {:?}", blk);
         assert!(ctx.consensus.verify_pochm(blk, &pochm));
