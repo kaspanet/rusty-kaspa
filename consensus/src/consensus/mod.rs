@@ -64,7 +64,7 @@ use kaspa_consensus_core::{
     merkle::calc_hash_merkle_root,
     muhash::MuHashExtensions,
     network::NetworkType,
-    pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
+    pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
@@ -257,7 +257,7 @@ impl Consensus {
             pruning_lock.clone(),
             notification_root.clone(),
             counters.clone(),
-            params.storage_mass_activation_daa_score,
+            params.storage_mass_activation,
         ));
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
@@ -753,12 +753,16 @@ impl ConsensusApi for Consensus {
     }
 
     fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction], pov_daa_score: u64) -> Hash {
-        let storage_mass_activated = pov_daa_score > self.config.storage_mass_activation_daa_score;
+        let storage_mass_activated = self.config.storage_mass_activation.is_active(pov_daa_score);
         calc_hash_merkle_root(txs.iter(), storage_mass_activated)
     }
 
-    fn validate_pruning_proof(&self, proof: &PruningPointProof) -> Result<(), PruningImportError> {
-        self.services.pruning_proof_manager.validate_pruning_point_proof(proof)
+    fn validate_pruning_proof(
+        &self,
+        proof: &PruningPointProof,
+        proof_metadata: &PruningProofMetadata,
+    ) -> Result<(), PruningImportError> {
+        self.services.pruning_proof_manager.validate_pruning_point_proof(proof, proof_metadata)
     }
 
     fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
