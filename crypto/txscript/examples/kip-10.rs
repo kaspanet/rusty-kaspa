@@ -12,8 +12,8 @@ use kaspa_consensus_core::{
 use kaspa_txscript::{
     caches::Cache,
     opcodes::codes::{
-        Op0, OpCheckSig, OpCheckSigVerify, OpDup, OpElse, OpEndIf, OpEqualVerify, OpFalse, OpGreaterThanOrEqual, OpIf, OpSub, OpTrue,
-        OpTxInputAmount, OpTxInputSpk, OpTxOutputAmount, OpTxOutputSpk,
+        OpCheckSig, OpCheckSigVerify, OpDup, OpElse, OpEndIf, OpEqualVerify, OpFalse, OpGreaterThanOrEqual, OpIf, OpSub, OpTrue,
+        OpTxInputAmount, OpTxInputIndex, OpTxInputSpk, OpTxOutputAmount, OpTxOutputSpk,
     },
     pay_to_address_script, pay_to_script_hash_script,
     script_builder::{ScriptBuilder, ScriptBuilderResult},
@@ -70,9 +70,9 @@ fn threshold_scenario() -> ScriptBuilderResult<()> {
         .add_op(OpCheckSig)?
         // Borrower branch
         .add_op(OpElse)?
-        .add_ops(&[Op0, OpTxInputSpk, Op0, OpTxOutputSpk, OpEqualVerify, Op0, OpTxOutputAmount])?
+        .add_ops(&[OpTxInputIndex, OpTxInputSpk, OpTxInputIndex, OpTxOutputSpk, OpEqualVerify, OpTxInputIndex, OpTxOutputAmount])?
         .add_i64(threshold)?
-        .add_ops(&[OpSub, Op0, OpTxInputAmount, OpGreaterThanOrEqual])?
+        .add_ops(&[OpSub, OpTxInputIndex, OpTxInputAmount, OpGreaterThanOrEqual])?
         .add_op(OpEndIf)?
         .drain();
 
@@ -181,9 +181,9 @@ fn generate_limited_time_script(owner: &Keypair, threshold: i64, output_spk: Vec
         // Borrower branch
         .add_op(OpElse)?
         .add_data(&output_spk)?
-        .add_ops(&[Op0, OpTxOutputSpk, OpEqualVerify, Op0, OpTxOutputAmount])?
+        .add_ops(&[OpTxInputIndex, OpTxOutputSpk, OpEqualVerify, OpTxInputIndex, OpTxOutputAmount])?
         .add_i64(threshold)?
-        .add_ops(&[OpSub, Op0, OpTxInputAmount, OpGreaterThanOrEqual])?
+        .add_ops(&[OpSub, OpTxInputIndex, OpTxInputAmount, OpGreaterThanOrEqual])?
         .add_op(OpEndIf)?
         .drain();
 
@@ -557,7 +557,7 @@ fn shared_secret_scenario() -> ScriptBuilderResult<()> {
         .add_data(shared_secret_kp.x_only_public_key().0.serialize().as_slice())?
         .add_op(OpEqualVerify)?
         .add_op(OpCheckSigVerify)?
-        .add_ops(&[Op0, OpTxInputSpk, Op0, OpTxOutputSpk, OpEqualVerify, Op0, OpTxOutputAmount, Op0, OpTxInputAmount, OpGreaterThanOrEqual])?
+        .add_ops(&[OpTxInputIndex, OpTxInputSpk, OpTxInputIndex, OpTxOutputSpk, OpEqualVerify, OpTxInputIndex, OpTxOutputAmount, OpTxInputIndex, OpTxInputAmount, OpGreaterThanOrEqual])?
         .add_op(OpEndIf)?
         .drain();
 
