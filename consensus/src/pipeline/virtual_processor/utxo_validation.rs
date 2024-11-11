@@ -14,6 +14,7 @@ use kaspa_consensus_core::{
     acceptance_data::{AcceptedTxEntry, MergesetBlockAcceptanceData},
     api::args::TransactionValidationArgs,
     coinbase::*,
+    config::params::ForkActivation,
     hashing,
     header::Header,
     mass::Kip9Version,
@@ -82,7 +83,7 @@ impl VirtualStateProcessor {
         for (i, (merged_block, txs)) in once((ctx.selected_parent(), selected_parent_transactions))
             .chain(
                 ctx.ghostdag_data
-                    .consensus_ordered_mergeset_without_selected_parent(self.ghostdag_primary_store.deref())
+                    .consensus_ordered_mergeset_without_selected_parent(self.ghostdag_store.deref())
                     .map(|b| (b, self.block_transactions_store.get(b).unwrap())),
             )
             .enumerate()
@@ -328,7 +329,8 @@ impl VirtualStateProcessor {
 
         // For non-activated nets (mainnet, TN10) we can update mempool rules to KIP9 beta asap. For
         // TN11 we need to hard-fork consensus first (since the new beta rules are more permissive)
-        let kip9_version = if self.storage_mass_activation_daa_score == u64::MAX { Kip9Version::Beta } else { Kip9Version::Alpha };
+        let kip9_version =
+            if self.storage_mass_activation == ForkActivation::never() { Kip9Version::Beta } else { Kip9Version::Alpha };
 
         // Calc the full contextual mass including storage mass
         let contextual_mass = self

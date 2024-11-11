@@ -46,10 +46,12 @@ clap.workspace = true
 dhat = { workspace = true, optional = true }
 dirs.workspace = true
 futures-util.workspace = true
+itertools.workspace = true
 log.workspace = true
 num_cpus.workspace = true
 rand.workspace = true
 rayon.workspace = true
+rocksdb.workspace = true
 serde.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
