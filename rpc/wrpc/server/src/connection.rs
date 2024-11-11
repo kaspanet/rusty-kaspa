@@ -82,7 +82,7 @@ pub struct Connection {
 
 impl Connection {
     pub fn new(id: u64, peer: &SocketAddr, messenger: Arc<Messenger>) -> Connection {
-        Connection { inner: Arc::new(ConnectionInner { id, peer: *peer, messenger, listener_id: None.into() }) }
+        Connection { inner: Arc::new(ConnectionInner { id, peer: *peer, messenger, listener_id: Mutex::new(None) }) }
     }
 
     /// Obtain the connection id
