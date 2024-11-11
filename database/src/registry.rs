@@ -46,6 +46,9 @@ pub enum DatabaseStorePrefixes {
     TempGhostdag = 40,
     TempGhostdagCompact = 41,
 
+    // ---- Retention Period Root ----
+    RetentionPeriodRoot = 50,
+
     // ---- Metadata ----
     MultiConsensusMetadata = 124,
     ConsensusEntries = 125,

@@ -1115,6 +1115,7 @@ impl VirtualStateProcessor {
             self.past_pruning_points_store.insert_batch(&mut batch, 0, self.genesis.hash).unwrap_or_exists();
             pruning_point_write.set_batch(&mut batch, self.genesis.hash, self.genesis.hash, 0).unwrap();
             pruning_point_write.set_history_root(&mut batch, self.genesis.hash).unwrap();
+            pruning_point_write.set_retention_period_root(&mut batch, self.genesis.hash).unwrap();
             pruning_utxoset_write.set_utxoset_position(&mut batch, self.genesis.hash).unwrap();
             self.db.write(batch).unwrap();
             drop(pruning_point_write);

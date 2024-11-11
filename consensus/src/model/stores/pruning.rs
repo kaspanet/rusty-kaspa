@@ -42,6 +42,7 @@ pub trait PruningStoreReader {
     /// This is usually the pruning point, though it might lag a bit behind until data prune completes (and for archival
     /// nodes it will remain the initial syncing point or the last pruning point before turning to an archive)
     fn history_root(&self) -> StoreResult<Hash>;
+    fn retention_period_root(&self) -> StoreResult<Hash>;
 }
 
 pub trait PruningStore: PruningStoreReader {
@@ -54,6 +55,7 @@ pub struct DbPruningStore {
     db: Arc<DB>,
     access: CachedDbItem<PruningPointInfo>,
     history_root_access: CachedDbItem<Hash>,
+    retention_period_root_access: CachedDbItem<Hash>,
 }
 
 impl DbPruningStore {
@@ -61,7 +63,8 @@ impl DbPruningStore {
         Self {
             db: Arc::clone(&db),
             access: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::PruningPoint.into()),
-            history_root_access: CachedDbItem::new(db, DatabaseStorePrefixes::HistoryRoot.into()),
+            history_root_access: CachedDbItem::new(db.clone(), DatabaseStorePrefixes::HistoryRoot.into()),
+            retention_period_root_access: CachedDbItem::new(db, DatabaseStorePrefixes::RetentionPeriodRoot.into()),
         }
     }
 
@@ -75,6 +78,10 @@ impl DbPruningStore {
 
     pub fn set_history_root(&mut self, batch: &mut WriteBatch, history_root: Hash) -> StoreResult<()> {
         self.history_root_access.write(BatchDbWriter::new(batch), &history_root)
+    }
+
+    pub fn set_retention_period_root(&mut self, batch: &mut WriteBatch, retention_period_root: Hash) -> StoreResult<()> {
+        self.retention_period_root_access.write(BatchDbWriter::new(batch), &retention_period_root)
     }
 }
 
@@ -97,6 +104,10 @@ impl PruningStoreReader for DbPruningStore {
 
     fn history_root(&self) -> StoreResult<Hash> {
         self.history_root_access.read()
+    }
+
+    fn retention_period_root(&self) -> StoreResult<Hash> {
+        self.retention_period_root_access.read()
     }
 }
 

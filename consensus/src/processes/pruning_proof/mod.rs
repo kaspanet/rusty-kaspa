@@ -225,6 +225,7 @@ impl PruningProofManager {
         let mut batch = WriteBatch::default();
         pruning_point_write.set_batch(&mut batch, new_pruning_point, new_pruning_point, (pruning_points.len() - 1) as u64).unwrap();
         pruning_point_write.set_history_root(&mut batch, new_pruning_point).unwrap();
+        pruning_point_write.set_retention_period_root(&mut batch, new_pruning_point).unwrap();
         self.db.write(batch).unwrap();
         drop(pruning_point_write);
 
