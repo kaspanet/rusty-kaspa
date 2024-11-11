@@ -618,7 +618,7 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         listen_address.map(|listen_address| {
             Arc::new(WrpcService::new(
                 wrpc_service_tasks,
-                Some(rpc_core_service.clone()),
+                rpc_core_service.clone(),
                 &encoding,
                 wrpc_server_counters,
                 WrpcServerOptions {

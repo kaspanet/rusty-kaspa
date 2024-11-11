@@ -3544,25 +3544,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kaspa-wrpc-proxy"
-version = "0.15.3"
-dependencies = [
- "async-trait",
- "clap 4.5.19",
- "kaspa-consensus-core",
- "kaspa-grpc-client",
- "kaspa-rpc-core",
- "kaspa-rpc-macros",
- "kaspa-wrpc-server",
- "num_cpus",
- "thiserror",
- "tokio",
- "workflow-core",
- "workflow-log",
- "workflow-rpc",
-]
-
-[[package]]
 name = "kaspa-wrpc-server"
 version = "0.15.3"
 dependencies = [

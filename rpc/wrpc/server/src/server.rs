@@ -4,7 +4,6 @@ use crate::{
     result::Result,
     service::Options,
 };
-use kaspa_grpc_client::GrpcClient;
 use kaspa_notify::{
     connection::ChannelType,
     events::EVENT_TYPE_ARRAY,
@@ -15,8 +14,8 @@ use kaspa_notify::{
     subscription::{MutationPolicies, UtxosChangedMutationPolicy},
 };
 use kaspa_rpc_core::{
-    api::rpc::{DynRpcService, RpcApi},
-    notify::{channel::NotificationChannel, connection::ChannelConnection, mode::NotificationMode},
+    api::rpc::DynRpcService,
+    notify::{channel::NotificationChannel, connection::ChannelConnection},
     Notification, RpcResult,
 };
 use kaspa_rpc_service::service::RpcCoreService;
@@ -98,7 +97,7 @@ impl Server {
         let id = self.inner.next_connection_id.fetch_add(1, Ordering::SeqCst);
 
         // Create the connection without gRPC client handling
-        let connection = Connection::new(id, peer, messenger, None); // TODO: also remove grpc_client
+        let connection = Connection::new(id, peer, messenger);
 
         // Insert the new connection into the sockets map
         self.inner.sockets.lock()?.insert(id, connection.clone());
@@ -115,7 +114,7 @@ impl Server {
             });
         }
 
-        // Remove the connection from the sockets map
+        // Remove the connection from the sockets
         self.inner.sockets.lock().unwrap().remove(&connection.id());
         // FIXME: determine if messenger should be closed explicitly
         // connection.close();

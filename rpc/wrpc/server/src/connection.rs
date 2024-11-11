@@ -48,7 +48,6 @@ struct ConnectionInner {
     pub id: u64,
     pub peer: SocketAddr,
     pub messenger: Arc<Messenger>,
-    pub grpc_client: Option<Arc<GrpcClient>>,
     // not using an atomic in case an Id will change type in the future...
     pub listener_id: Mutex<Option<ListenerId>>,
 }
@@ -83,12 +82,8 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn new(id: u64, peer: &SocketAddr, messenger: Arc<Messenger>, grpc_client: Option<Arc<GrpcClient>>) -> Connection {
-        // If a GrpcClient is provided, it has to come configured in direct mode
-        assert!(grpc_client.is_none() || grpc_client.as_ref().unwrap().notification_mode() == NotificationMode::Direct);
-        // Should a gRPC client be provided, no listener_id is required for subscriptions so the listener id is set to default
-        let listener_id = Mutex::new(grpc_client.clone().map(|_| ListenerId::default()));
-        Connection { inner: Arc::new(ConnectionInner { id, peer: *peer, messenger, grpc_client, listener_id }) }
+    pub fn new(id: u64, peer: &SocketAddr, messenger: Arc<Messenger>) -> Connection {
+        Connection { inner: Arc::new(ConnectionInner { id, peer: *peer, messenger, listener_id: None.into() }) }
     }
 
     /// Obtain the connection id
@@ -99,18 +94,6 @@ impl Connection {
     /// Get a reference to the connection [`Messenger`]
     pub fn messenger(&self) -> &Arc<Messenger> {
         &self.inner.messenger
-    }
-
-    pub fn grpc_client(&self) -> Arc<GrpcClient> {
-        self.inner
-            .grpc_client
-            .as_ref()
-            .cloned()
-            .unwrap_or_else(|| panic!("Incorrect use: `server::Connection` does not carry RpcApi references"))
-    }
-
-    pub fn grpc_client_notify_target(&self) -> GrpcClientNotify {
-        self.inner.clone()
     }
 
     pub fn listener_id(&self) -> Option<ListenerId> {
