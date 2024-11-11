@@ -71,4 +71,12 @@ pub enum TxScriptError {
     ScriptSize(usize, usize),
     #[error("transaction output {0} is out of bounds, should be non-negative below {1}")]
     InvalidOutputIndex(i32, usize),
+    #[error(transparent)]
+    Serialization(#[from] SerializationError),
+}
+
+#[derive(Error, PartialEq, Eq, Debug, Clone, Copy)]
+pub enum SerializationError {
+    #[error("Number exceeds 8 bytes: {0}")]
+    NumberTooLong(i64),
 }

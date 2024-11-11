@@ -461,7 +461,7 @@ impl<'a, T: VerifiableTransaction, Reused: SigHashReusedValues> TxScriptEngine<'
             return Err(TxScriptError::NullFail);
         }
 
-        self.dstack.push_item(!failed);
+        self.dstack.push_item(!failed)?;
         Ok(())
     }
 
@@ -1119,6 +1119,7 @@ mod bitcoind_tests {
                 Err(ue) => match ue {
                     UnifiedError::TxScriptError(e) => match e {
                         TxScriptError::NumberTooBig(_) => vec!["UNKNOWN_ERROR"],
+                        TxScriptError::Serialization(_) => vec!["UNKNOWN_ERROR"],
                         TxScriptError::PubKeyFormat => vec!["PUBKEYFORMAT"],
                         TxScriptError::EvalFalse => vec!["EVAL_FALSE"],
                         TxScriptError::EmptyStack => {
