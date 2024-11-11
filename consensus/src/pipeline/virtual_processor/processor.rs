@@ -214,9 +214,6 @@ impl VirtualStateProcessor {
             block_window_cache_for_difficulty: storage.block_window_cache_for_difficulty.clone(),
             block_window_cache_for_past_median_time: storage.block_window_cache_for_past_median_time.clone(),
 
-            block_window_cache_for_difficulty: storage.block_window_cache_for_difficulty.clone(),
-            block_window_cache_for_past_median_time: storage.block_window_cache_for_past_median_time.clone(),
-
             ghostdag_manager: services.ghostdag_manager.clone(),
             reachability_service: services.reachability_service.clone(),
             relations_service: services.relations_service.clone(),
@@ -318,12 +315,12 @@ impl VirtualStateProcessor {
 
         let compact_sink_ghostdag_data = if prev_sink != new_sink {
             // we need to check with full data here, since we may need to update the window caches
-            let sink_ghostdag_data = self.ghostdag_primary_store.get_data(new_sink).unwrap();
+            let sink_ghostdag_data = self.ghostdag_store.get_data(new_sink).unwrap();
             // update window caches - for ibd performance. see method comment for more details.
             self.maybe_commit_windows(new_sink, &sink_ghostdag_data);
             CompactGhostdagData::from(sink_ghostdag_data.as_ref())
         } else {
-            self.ghostdag_primary_store.get_compact_data(new_sink).unwrap()
+            self.ghostdag_store.get_compact_data(new_sink).unwrap()
         };
         // Empty the channel before sending the new message. If pruning processor is busy, this step makes sure
         // the internal channel does not grow with no need (since we only care about the most recent message)
