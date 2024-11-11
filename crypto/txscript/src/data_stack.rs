@@ -191,7 +191,9 @@ impl OpcodeData<i32> for Vec<u8> {
     #[inline]
     fn deserialize(&self) -> Result<i32, TxScriptError> {
         let res = OpcodeData::<i64>::deserialize(self)?;
-        Ok(res.clamp(i32::MIN as i64, i32::MAX as i64) as i32) // todo rid of clamp?
+        // TODO: Consider getting rid of clamp, since the call to deserialize should return an error
+        // if the number is not in the i32 range (this should be done with proper testing)?
+        Ok(res.clamp(i32::MIN as i64, i32::MAX as i64) as i32)
     }
 
     #[inline]
@@ -739,7 +741,7 @@ mod tests {
         for test in tests {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
-            assert_eq!(<std::vec::Vec<u8> as OpcodeData<i64>>::deserialize(&test.serialized), test.result);
+            assert_eq!(test.serialized.deserialize(), test.result);
         }
 
         for test in test_of_size_5 {
