@@ -4409,6 +4409,13 @@
     "We cannot do BOOLAND on 9-byte integers"
   ],
   [
+    "-9223372036854775807",
+    "1SUB",
+    "",
+    "UNKNOWN_ERROR",
+    "result of math operation can't exceed 8 bytes"
+  ],
+  [
     "1",
     "1 ENDIF",
     "",
