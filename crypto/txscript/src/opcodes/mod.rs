@@ -930,7 +930,7 @@ opcode_list! {
                     let utxo = usize::try_from(idx).ok()
                         .and_then(|idx| tx.utxo(idx))
                         .ok_or_else(|| TxScriptError::InvalidInputIndex(idx, tx.inputs().len()))?;
-                    push_number(utxo.amount as i64, vm)
+                    push_number(utxo.amount.try_into().map_err(|e: TryFromIntError| TxScriptError::NumberTooBig(e.to_string()))?, vm)
                 },
                 _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
             }
