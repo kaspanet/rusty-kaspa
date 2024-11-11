@@ -68,6 +68,9 @@ pub struct Config {
 
     /// A scale factor to apply to memory allocation bounds
     pub ram_scale: f64,
+
+    /// The number of extra days of data from pruning point to keep
+    pub keep_extra_days_data: u32,
 }
 
 impl Config {
@@ -95,6 +98,7 @@ impl Config {
             initial_utxo_set: Default::default(),
             disable_upnp: false,
             ram_scale: 1.0,
+            keep_extra_days_data: 0,
         }
     }
 
