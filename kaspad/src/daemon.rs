@@ -624,7 +624,6 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
                 WrpcServerOptions {
                     listen_address: listen_address.to_address(&network.network_type, &encoding).to_string(), // TODO: use a normalized ContextualNetAddress instead of a String
                     verbose: args.wrpc_verbose,
-                    ..WrpcServerOptions::default()
                 },
             ))
         })
