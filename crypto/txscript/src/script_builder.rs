@@ -239,24 +239,7 @@ impl ScriptBuilder {
     // Bitcoind tests utilizes this function
     #[cfg(test)]
     pub fn add_i64_min(&mut self) -> ScriptBuilderResult<&mut Self> {
-        let val = i64::MIN;
-        // Pushes that would cause the script to exceed the largest allowed
-        // script size would result in a non-canonical script.
-        if self.script.len() + 1 > MAX_SCRIPTS_SIZE {
-            return Err(ScriptBuilderError::IntegerRejected(val));
-        }
-
-        // Fast path for small integers and Op1Negate.
-        if val == 0 {
-            self.script.push(Op0);
-            return Ok(self);
-        }
-        if val == -1 || (1..=16).contains(&val) {
-            self.script.push(((Op1 as i64 - 1) + val) as u8);
-            return Ok(self);
-        }
-
-        let bytes: Vec<_> = OpcodeData::serialize(&crate::data_stack::SizedEncodeInt::<9>(val)).expect("infallible");
+        let bytes: Vec<_> = OpcodeData::serialize(&crate::data_stack::SizedEncodeInt::<9>(i64::MIN)).expect("infallible");
         self.add_data(&bytes)
     }
 
