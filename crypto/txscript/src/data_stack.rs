@@ -191,7 +191,7 @@ impl OpcodeData<i32> for Vec<u8> {
     #[inline]
     fn deserialize(&self) -> Result<i32, TxScriptError> {
         let res = OpcodeData::<i64>::deserialize(self)?;
-        Ok(res.clamp(i32::MIN as i64, i32::MAX as i64) as i32)
+        Ok(res.clamp(i32::MIN as i64, i32::MAX as i64) as i32) // todo rid of clamp?
     }
 
     #[inline]
