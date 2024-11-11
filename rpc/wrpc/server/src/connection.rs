@@ -1,4 +1,3 @@
-use kaspa_grpc_client::{GrpcClient, GrpcClientNotify};
 use kaspa_notify::{
     connection::Connection as ConnectionT,
     error::{Error as NotifyError, Result as NotifyResult},
@@ -6,7 +5,7 @@ use kaspa_notify::{
     notification::Notification as NotificationT,
     notifier::Notify,
 };
-use kaspa_rpc_core::{api::ops::RpcApiOps, notify::mode::NotificationMode, Notification};
+use kaspa_rpc_core::{api::ops::RpcApiOps, Notification};
 use std::{
     fmt::{Debug, Display},
     sync::{Arc, Mutex},

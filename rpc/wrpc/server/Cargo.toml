@@ -18,7 +18,6 @@ borsh = { workspace = true, features = ["rc"] }
 futures.workspace = true
 kaspa-consensus-core.workspace = true
 kaspa-core.workspace = true
-kaspa-grpc-client.workspace = true
 kaspa-notify.workspace = true
 kaspa-rpc-core.workspace = true
 kaspa-rpc-macros.workspace = true
