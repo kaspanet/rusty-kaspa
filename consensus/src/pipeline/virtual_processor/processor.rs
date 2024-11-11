@@ -311,8 +311,6 @@ impl VirtualStateProcessor {
             .expect("all possible rule errors are unexpected here");
 
         // Update the pruning processor about the virtual state change
-        let sink_ghostdag_data = self.ghostdag_store.get_compact_data(new_sink).unwrap();
-
         let compact_sink_ghostdag_data = if prev_sink != new_sink {
             // we need to check with full data here, since we may need to update the window caches
             let sink_ghostdag_data = self.ghostdag_store.get_data(new_sink).unwrap();
