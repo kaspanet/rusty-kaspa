@@ -1,6 +1,7 @@
 use crate::TxScriptError;
 use core::fmt::Debug;
 use core::iter;
+use kaspa_txscript_errors::SerializationError;
 use std::cmp::Ordering;
 use std::ops::Deref;
 
@@ -22,7 +23,7 @@ pub(crate) trait DataStack {
         Vec<u8>: OpcodeData<T>;
     fn pop_raw<const SIZE: usize>(&mut self) -> Result<[Vec<u8>; SIZE], TxScriptError>;
     fn peek_raw<const SIZE: usize>(&self) -> Result<[Vec<u8>; SIZE], TxScriptError>;
-    fn push_item<T: Debug>(&mut self, item: T)
+    fn push_item<T: Debug>(&mut self, item: T) -> Result<(), TxScriptError>
     where
         Vec<u8>: OpcodeData<T>;
     fn drop_items<const SIZE: usize>(&mut self) -> Result<(), TxScriptError>;
@@ -34,7 +35,9 @@ pub(crate) trait DataStack {
 
 pub(crate) trait OpcodeData<T> {
     fn deserialize(&self) -> Result<T, TxScriptError>;
-    fn serialize(from: &T) -> Self;
+    fn serialize(from: &T) -> Result<Self, SerializationError>
+    where
+        Self: Sized;
 }
 
 fn check_minimal_data_encoding(v: &[u8]) -> Result<(), TxScriptError> {
@@ -60,6 +63,36 @@ fn check_minimal_data_encoding(v: &[u8]) -> Result<(), TxScriptError> {
     }
 
     Ok(())
+}
+
+#[inline]
+fn serialize_i64(from: &i64) -> Vec<u8> {
+    let sign = from.signum();
+    let mut positive = from.unsigned_abs();
+    let mut last_saturated = false;
+    let mut number_vec: Vec<u8> = iter::from_fn(move || {
+        if positive == 0 {
+            if last_saturated {
+                last_saturated = false;
+                Some(0)
+            } else {
+                None
+            }
+        } else {
+            let value = positive & 0xff;
+            last_saturated = (value & 0x80) != 0;
+            positive >>= 8;
+            Some(value as u8)
+        }
+    })
+    .collect();
+    if sign == -1 {
+        match number_vec.last_mut() {
+            Some(num) => *num |= 0x80,
+            _ => unreachable!(),
+        }
+    }
+    number_vec
 }
 
 fn deserialize_i64(v: &[u8]) -> Result<i64, TxScriptError> {
@@ -123,8 +156,11 @@ impl OpcodeData<Kip10I64> for Vec<u8> {
     }
 
     #[inline]
-    fn serialize(from: &Kip10I64) -> Self {
-        Self::serialize(&from.0)
+    fn serialize(from: &Kip10I64) -> Result<Self, SerializationError> {
+        if from.0 == i64::MIN {
+            return Err(SerializationError::NumberTooLong(from.0));
+        }
+        Ok(serialize_i64(&from.0))
     }
 }
 
@@ -143,33 +179,11 @@ impl OpcodeData<i64> for Vec<u8> {
     }
 
     #[inline]
-    fn serialize(from: &i64) -> Self {
-        let sign = from.signum();
-        let mut positive = from.unsigned_abs();
-        let mut last_saturated = false;
-        let mut number_vec: Vec<u8> = iter::from_fn(move || {
-            if positive == 0 {
-                if last_saturated {
-                    last_saturated = false;
-                    Some(0)
-                } else {
-                    None
-                }
-            } else {
-                let value = positive & 0xff;
-                last_saturated = (value & 0x80) != 0;
-                positive >>= 8;
-                Some(value as u8)
-            }
-        })
-        .collect();
-        if sign == -1 {
-            match number_vec.last_mut() {
-                Some(num) => *num |= 0x80,
-                _ => unreachable!(),
-            }
+    fn serialize(from: &i64) -> Result<Self, SerializationError> {
+        if from == &i64::MIN {
+            return Err(SerializationError::NumberTooLong(*from));
         }
-        number_vec
+        Ok(serialize_i64(from))
     }
 }
 
@@ -177,13 +191,12 @@ impl OpcodeData<i32> for Vec<u8> {
     #[inline]
     fn deserialize(&self) -> Result<i32, TxScriptError> {
         let res = OpcodeData::<i64>::deserialize(self)?;
-        i32::try_from(res.clamp(i32::MIN as i64, i32::MAX as i64))
-            .map_err(|e| TxScriptError::InvalidState(format!("data is too big for `i32`: {e}")))
+        Ok(res.clamp(i32::MIN as i64, i32::MAX as i64) as i32)
     }
 
     #[inline]
-    fn serialize(from: &i32) -> Self {
-        OpcodeData::<i64>::serialize(&(*from as i64))
+    fn serialize(from: &i32) -> Result<Self, SerializationError> {
+        Ok(OpcodeData::<i64>::serialize(&(*from as i64)).expect("should never happen"))
     }
 }
 
@@ -202,8 +215,8 @@ impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for Vec<u8> {
     }
 
     #[inline]
-    fn serialize(from: &SizedEncodeInt<LEN>) -> Self {
-        OpcodeData::<i64>::serialize(&from.0)
+    fn serialize(from: &SizedEncodeInt<LEN>) -> Result<Self, SerializationError> {
+        Ok(serialize_i64(&from.0))
     }
 }
 
@@ -219,11 +232,11 @@ impl OpcodeData<bool> for Vec<u8> {
     }
 
     #[inline]
-    fn serialize(from: &bool) -> Self {
-        match from {
+    fn serialize(from: &bool) -> Result<Self, SerializationError> {
+        Ok(match from {
             true => vec![1],
             false => vec![],
-        }
+        })
     }
 }
 
@@ -269,11 +282,13 @@ impl DataStack for Stack {
     }
 
     #[inline]
-    fn push_item<T: Debug>(&mut self, item: T)
+    fn push_item<T: Debug>(&mut self, item: T) -> Result<(), TxScriptError>
     where
         Vec<u8>: OpcodeData<T>,
     {
-        Vec::push(self, OpcodeData::serialize(&item));
+        let v = OpcodeData::serialize(&item)?;
+        Vec::push(self, v);
+        Ok(())
     }
 
     #[inline]
@@ -338,7 +353,7 @@ impl DataStack for Stack {
 mod tests {
     use super::{Kip10I64, OpcodeData};
     use crate::data_stack::SizedEncodeInt;
-    use kaspa_txscript_errors::TxScriptError;
+    use kaspa_txscript_errors::{SerializationError, TxScriptError};
 
     // TestScriptNumBytes
     #[test]
@@ -390,15 +405,16 @@ mod tests {
             TestCase { num: -72057594037927935, serialized: hex::decode("ffffffffffffff80").expect("failed parsing hex") },
             TestCase { num: 9223372036854775807, serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex") },
             TestCase { num: -9223372036854775807, serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex") },
-            // Values that are out of range for data that is interpreted as
-            // numbers after KIP-10 enabled, but are allowed as the result of numeric operations.
-            TestCase { num: -9223372036854775808, serialized: hex::decode("000000000000008080").expect("failed parsing hex") },
         ];
 
         for test in tests {
-            let serialized: Vec<u8> = OpcodeData::<i64>::serialize(&test.num);
+            let serialized: Vec<u8> = OpcodeData::<i64>::serialize(&test.num).unwrap();
             assert_eq!(serialized, test.serialized);
         }
+
+        // special case 9-byte i64
+        let r: Result<Vec<u8>, _> = OpcodeData::<i64>::serialize(&-9223372036854775808);
+        assert_eq!(r, Err(SerializationError::NumberTooLong(-9223372036854775808)));
     }
 
     // TestMakeScriptNum
@@ -723,7 +739,7 @@ mod tests {
         for test in tests {
             // Ensure the error code is of the expected type and the error
             // code matches the value specified in the test instance.
-            assert_eq!(test.serialized.deserialize(), test.result);
+            assert_eq!(<std::vec::Vec<u8> as OpcodeData<i64>>::deserialize(&test.serialized), test.result);
         }
 
         for test in test_of_size_5 {
