@@ -3,6 +3,7 @@ use core::fmt::Debug;
 use core::iter;
 use kaspa_txscript_errors::SerializationError;
 use std::cmp::Ordering;
+use std::num::TryFromIntError;
 use std::ops::Deref;
 
 #[derive(PartialEq, Eq, Debug, Default, PartialOrd, Ord)]
@@ -17,6 +18,14 @@ impl<const LEN: usize> From<i64> for SizedEncodeInt<LEN> {
 impl<const LEN: usize> From<i32> for SizedEncodeInt<LEN> {
     fn from(value: i32) -> Self {
         SizedEncodeInt(value as i64)
+    }
+}
+
+impl<const LEN: usize> TryFrom<SizedEncodeInt<LEN>> for i32 {
+    type Error = TryFromIntError;
+
+    fn try_from(value: SizedEncodeInt<LEN>) -> Result<Self, Self::Error> {
+        value.0.try_into()
     }
 }
 
@@ -170,7 +179,7 @@ impl OpcodeData<i64> for Vec<u8> {
 impl OpcodeData<i32> for Vec<u8> {
     #[inline]
     fn deserialize(&self) -> Result<i32, TxScriptError> {
-        OpcodeData::<SizedEncodeInt<4>>::deserialize(self).map(|v| i64::from(v).try_into().expect("number is within i32 range"))
+        OpcodeData::<SizedEncodeInt<4>>::deserialize(self).map(|v| v.try_into().expect("number is within i32 range"))
     }
 
     #[inline]
@@ -195,11 +204,6 @@ impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for Vec<u8> {
 
     #[inline]
     fn serialize(from: &SizedEncodeInt<LEN>) -> Result<Self, SerializationError> {
-        // This is an optimzation for LEN 8. Without it, the function will fail when checking the serialized data length.
-        if LEN == 8 && from.0 == i64::MIN {
-            return Err(SerializationError::NumberTooLong(from.0));
-        }
-
         let bytes = serialize_i64(&from.0);
         if bytes.len() > LEN {
             return Err(SerializationError::NumberTooLong(from.0));
