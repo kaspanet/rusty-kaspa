@@ -132,7 +132,11 @@ macro_rules! opcode_list {
             let mut builder = ScriptBuilder::new();
             for token in script.split_whitespace() {
                 if let Ok(value) = token.parse::<i64>() {
-                    builder.add_i64(value)?;
+                    if value == i64::MIN {
+                        builder.add_i64_min()?;
+                    } else {
+                        builder.add_i64(value)?;
+                    }
                 }
                 else if let Some(Ok(value)) = token.strip_prefix("0x").and_then(|trimmed| Some(hex::decode(trimmed))) {
                     builder.extend(&value);

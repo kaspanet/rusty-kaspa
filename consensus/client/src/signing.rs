@@ -178,7 +178,7 @@ pub fn calc_schnorr_signature_hash(
     let utxo = cctx::UtxoEntry::from(utxo.as_ref());
 
     let hash_type = SIG_HASH_ALL;
-    let mut reused_values = SigHashReusedValues::new();
+    let reused_values = SigHashReusedValuesUnsync::new();
 
     // let input = verifiable_tx.populated_input(input_index);
     // let tx = verifiable_tx.tx();
