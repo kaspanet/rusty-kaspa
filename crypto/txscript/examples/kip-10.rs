@@ -607,7 +607,7 @@ fn shared_secret_scenario() -> ScriptBuilderResult<()> {
     // Check owner branch
     {
         println!("[SHARED-SECRET] Checking owner branch");
-        let (mut tx, signature, mut reused_values) = sign(owner);
+        let (mut tx, signature, reused_values) = sign(owner);
         let mut builder = ScriptBuilder::new();
         builder.add_data(&signature)?;
         builder.add_op(OpTrue)?;
