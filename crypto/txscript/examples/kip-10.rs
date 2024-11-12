@@ -625,7 +625,7 @@ fn shared_secret_scenario() -> ScriptBuilderResult<()> {
     // Check borrower branch with correct shared secret
     {
         println!("[SHARED-SECRET] Checking borrower branch with correct shared secret");
-        let (mut tx, signature, mut reused_values) = sign(shared_secret_kp);
+        let (mut tx, signature, reused_values) = sign(shared_secret_kp);
         builder.add_data(&signature)?;
         builder.add_data(shared_secret_kp.x_only_public_key().0.serialize().as_slice())?;
         builder.add_op(OpFalse)?;
