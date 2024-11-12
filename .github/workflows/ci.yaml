@@ -213,7 +213,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run cargo clippy
-        run: cargo clippy --workspace --tests --benches -- -D warnings
+        run: cargo clippy --workspace --tests --benches --examples -- -D warnings
 
 
   check-wasm32:
