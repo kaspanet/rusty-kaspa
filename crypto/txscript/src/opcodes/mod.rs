@@ -219,6 +219,7 @@ fn push_number<T: VerifiableTransaction, Reused: SigHashReusedValues>(
 /// This macro helps to avoid code duplication in numeric opcodes where the only difference
 /// between KIP10_ENABLED and disabled states is the numeric type used (Kip10I64 vs i64).
 /// KIP10I64 deserializator supports 8-byte integers
+// TODO: Remove this macro after KIP-10 activation.
 macro_rules! numeric_op {
     ($vm: expr, $pattern: pat, $count: expr, $block: expr) => {
         if $vm.kip10_enabled {
