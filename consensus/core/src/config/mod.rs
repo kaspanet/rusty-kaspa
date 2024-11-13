@@ -68,6 +68,9 @@ pub struct Config {
 
     /// A scale factor to apply to memory allocation bounds
     pub ram_scale: f64,
+
+    /// Bitwise flag for configuring allowed RPC calls
+    pub rpc_flags: u128,
 }
 
 impl Config {
@@ -95,6 +98,7 @@ impl Config {
             initial_utxo_set: Default::default(),
             disable_upnp: false,
             ram_scale: 1.0,
+            rpc_flags: u128::MAX,
         }
     }
 

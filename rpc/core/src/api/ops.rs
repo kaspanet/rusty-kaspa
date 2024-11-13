@@ -139,6 +139,10 @@ pub enum RpcApiOps {
 }
 
 impl RpcApiOps {
+    pub fn bitmask(&self) -> u128 {
+        1 << (*self as u128 - 110) // Only applies for RPC methods -- means it covers all calls up to 237.
+    }
+
     pub fn is_subscription(&self) -> bool {
         matches!(
             self,

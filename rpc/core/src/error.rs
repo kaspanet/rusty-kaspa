@@ -60,6 +60,9 @@ pub enum RpcError {
     #[error("Transaction {0} not found")]
     TransactionNotFound(TransactionId),
 
+    #[error("Method unavailable. Disabled through RPC flags.")]
+    UnauthorizedMethod,
+
     #[error("Method unavailable. Run the node with the --utxoindex argument.")]
     NoUtxoIndex,
 
