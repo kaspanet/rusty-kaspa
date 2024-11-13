@@ -859,6 +859,23 @@ impl VirtualStateProcessor {
         // which were previously validated through `validate_mempool_transaction_and_populate`, hence we only perform
         // in-context validations
         self.transaction_validator.utxo_free_tx_validation(tx, virtual_state.daa_score, virtual_state.past_median_time)?;
+        // Temp TN11 HF logic:
+        //      Switching from kip9 alpha to beta requires making sure that mass is calculated by the actual virtual DAA score of this block template
+        if self.storage_mass_activation.is_active(virtual_state.daa_score) {
+            use kaspa_consensus_core::mass::Kip9Version;
+            let kip9_version =
+                if self.kip10_activation.is_active(virtual_state.daa_score) { Kip9Version::Beta } else { Kip9Version::Alpha };
+            // Skip mass check since we will recalculate it correctly in a moment
+            let vtx =
+                self.validate_transaction_in_utxo_context(tx, utxo_view, virtual_state.daa_score, TxValidationFlags::SkipMassCheck)?;
+            let contextual_mass = self
+                .transaction_validator
+                .mass_calculator
+                .calc_tx_overall_mass(&vtx, None, kip9_version)
+                .ok_or(kaspa_consensus_core::errors::tx::TxRuleError::MassIncomputable)?;
+            tx.set_mass(contextual_mass);
+            return Ok(vtx.calculated_fee);
+        }
         let ValidatedTransaction { calculated_fee, .. } =
             self.validate_transaction_in_utxo_context(tx, utxo_view, virtual_state.daa_score, TxValidationFlags::Full)?;
         Ok(calculated_fee)
@@ -932,6 +949,18 @@ impl VirtualStateProcessor {
 
         // At this point we can safely drop the read lock
         drop(virtual_read);
+
+        // Temp TN11 HF logic:
+        //      In the very unlikely event where virtual DAA score decreased and total mass increased, remove some txs
+        if self.storage_mass_activation.is_active(virtual_state.daa_score) {
+            let mut total_mass = 0;
+            if let Some(pos) = txs.iter().position(|tx| {
+                total_mass += tx.mass();
+                total_mass > 500_000
+            }) {
+                txs.truncate(pos);
+            }
+        }
 
         // Build the template
         self.build_block_template_from_virtual_state(virtual_state, miner_data, txs, calculated_fees)
