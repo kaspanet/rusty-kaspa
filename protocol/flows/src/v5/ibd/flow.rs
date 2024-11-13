@@ -10,7 +10,7 @@ use kaspa_consensus_core::{
     api::BlockValidationFuture,
     block::Block,
     header::Header,
-    pruning::{PruningPointProof, PruningPointsList},
+    pruning::{PruningPointProof, PruningPointsList, PruningProofMetadata},
     BlockHashSet,
 };
 use kaspa_consensusmanager::{spawn_blocking, ConsensusProxy, StagingConsensus};
@@ -218,7 +218,7 @@ impl IbdFlow {
 
         let staging_session = staging.session().await;
 
-        let pruning_point = self.sync_and_validate_pruning_proof(&staging_session).await?;
+        let pruning_point = self.sync_and_validate_pruning_proof(&staging_session, relay_block).await?;
         self.sync_headers(&staging_session, syncer_virtual_selected_parent, pruning_point, relay_block).await?;
         staging_session.async_validate_pruning_points().await?;
         self.validate_staging_timestamps(&self.ctx.consensus().session().await, &staging_session).await?;
@@ -226,7 +226,7 @@ impl IbdFlow {
         Ok(())
     }
 
-    async fn sync_and_validate_pruning_proof(&mut self, staging: &ConsensusProxy) -> Result<Hash, ProtocolError> {
+    async fn sync_and_validate_pruning_proof(&mut self, staging: &ConsensusProxy, relay_block: &Block) -> Result<Hash, ProtocolError> {
         self.router.enqueue(make_message!(Payload::RequestPruningPointProof, RequestPruningPointProofMessage {})).await?;
 
         // Pruning proof generation and communication might take several minutes, so we allow a long 10 minute timeout
@@ -234,11 +234,14 @@ impl IbdFlow {
         let proof: PruningPointProof = msg.try_into()?;
         debug!("received proof with overall {} headers", proof.iter().map(|l| l.len()).sum::<usize>());
 
+        let proof_metadata = PruningProofMetadata::new(relay_block.header.blue_work);
+
         // Get a new session for current consensus (non staging)
         let consensus = self.ctx.consensus().session().await;
 
         // The proof is validated in the context of current consensus
-        let proof = consensus.clone().spawn_blocking(move |c| c.validate_pruning_proof(&proof).map(|()| proof)).await?;
+        let proof =
+            consensus.clone().spawn_blocking(move |c| c.validate_pruning_proof(&proof, &proof_metadata).map(|()| proof)).await?;
 
         let proof_pruning_point = proof[0].last().expect("was just ensured by validation").hash;
 
@@ -316,7 +319,7 @@ impl IbdFlow {
                     if mismatch_detected {
                         info!("Validating the locally built proof (sanity test fallback #2)");
                         // Note: the proof is validated in the context of *current* consensus
-                        if let Err(err) = con.validate_pruning_proof(&built_proof) {
+                        if let Err(err) = con.validate_pruning_proof(&built_proof, &proof_metadata) {
                             panic!("Locally built proof failed validation: {}", err);
                         }
                         info!("Locally built proof was validated successfully");

@@ -44,6 +44,10 @@ pub enum DatabaseStorePrefixes {
 
     PruningUtxosetCount = 32, //TODO: move this beside `PruningUtxoset` whenever we get a chance to break the Db
 
+    // ---- Ghostdag Proof
+    TempGhostdag = 40,
+    TempGhostdagCompact = 41,
+
     // ---- Metadata ----
     MultiConsensusMetadata = 124,
     ConsensusEntries = 125,
