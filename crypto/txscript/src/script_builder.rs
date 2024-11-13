@@ -1,7 +1,7 @@
 use std::iter::once;
 
 use crate::{
-    data_stack::OpcodeData,
+    data_stack::{Kip10I64, OpcodeData},
     opcodes::{codes::*, OP_1_NEGATE_VAL, OP_DATA_MAX_VAL, OP_DATA_MIN_VAL, OP_SMALL_INT_MAX_VAL},
     MAX_SCRIPTS_SIZE, MAX_SCRIPT_ELEMENT_SIZE,
 };
@@ -232,7 +232,7 @@ impl ScriptBuilder {
             return Ok(self);
         }
 
-        let bytes: Vec<_> = OpcodeData::<i64>::serialize(&val)?;
+        let bytes: Vec<_> = OpcodeData::<Kip10I64>::serialize(&val.into())?;
         self.add_data(&bytes)
     }
 
