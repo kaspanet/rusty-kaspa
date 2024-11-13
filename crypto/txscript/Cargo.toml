@@ -9,6 +9,9 @@ include.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[[example]]
+name = "kip-10"
+
 [features]
 wasm32-core = []
 wasm32-sdk = []
