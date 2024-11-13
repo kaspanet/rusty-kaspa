@@ -3,13 +3,57 @@ use core::fmt::Debug;
 use core::iter;
 use kaspa_txscript_errors::SerializationError;
 use std::cmp::Ordering;
+use std::num::TryFromIntError;
 use std::ops::Deref;
 
-const DEFAULT_SCRIPT_NUM_LEN: usize = 4;
-const DEFAULT_SCRIPT_NUM_LEN_KIP10: usize = 8;
-
-#[derive(PartialEq, Eq, Debug, Default)]
+#[derive(PartialEq, Eq, Debug, Default, PartialOrd, Ord)]
 pub(crate) struct SizedEncodeInt<const LEN: usize>(pub(crate) i64);
+
+impl<const LEN: usize> From<i64> for SizedEncodeInt<LEN> {
+    fn from(value: i64) -> Self {
+        SizedEncodeInt(value)
+    }
+}
+
+impl<const LEN: usize> From<i32> for SizedEncodeInt<LEN> {
+    fn from(value: i32) -> Self {
+        SizedEncodeInt(value as i64)
+    }
+}
+
+impl<const LEN: usize> TryFrom<SizedEncodeInt<LEN>> for i32 {
+    type Error = TryFromIntError;
+
+    fn try_from(value: SizedEncodeInt<LEN>) -> Result<Self, Self::Error> {
+        value.0.try_into()
+    }
+}
+
+impl<const LEN: usize> PartialEq<i64> for SizedEncodeInt<LEN> {
+    fn eq(&self, other: &i64) -> bool {
+        self.0 == *other
+    }
+}
+
+impl<const LEN: usize> PartialOrd<i64> for SizedEncodeInt<LEN> {
+    fn partial_cmp(&self, other: &i64) -> Option<Ordering> {
+        self.0.partial_cmp(other)
+    }
+}
+
+impl<const LEN: usize> Deref for SizedEncodeInt<LEN> {
+    type Target = i64;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<const LEN: usize> From<SizedEncodeInt<LEN>> for i64 {
+    fn from(value: SizedEncodeInt<LEN>) -> Self {
+        value.0
+    }
+}
 
 pub(crate) type Stack = Vec<Vec<u8>>;
 
@@ -111,94 +155,36 @@ fn deserialize_i64(v: &[u8]) -> Result<i64, TxScriptError> {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd)]
-#[repr(transparent)]
-pub struct Kip10I64(pub i64);
-
-impl From<Kip10I64> for i64 {
-    fn from(value: Kip10I64) -> Self {
-        value.0
-    }
-}
-
-impl PartialEq<i64> for Kip10I64 {
-    fn eq(&self, other: &i64) -> bool {
-        self.0.eq(other)
-    }
-}
-
-impl PartialOrd<i64> for Kip10I64 {
-    fn partial_cmp(&self, other: &i64) -> Option<Ordering> {
-        self.0.partial_cmp(other)
-    }
-}
-
-impl Deref for Kip10I64 {
-    type Target = i64;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl OpcodeData<Kip10I64> for Vec<u8> {
-    #[inline]
-    fn deserialize(&self) -> Result<Kip10I64, TxScriptError> {
-        match self.len() > DEFAULT_SCRIPT_NUM_LEN_KIP10 {
-            true => Err(TxScriptError::NumberTooBig(format!(
-                "numeric value encoded as {:x?} is {} bytes which exceeds the max allowed of {}",
-                self,
-                self.len(),
-                DEFAULT_SCRIPT_NUM_LEN_KIP10
-            ))),
-            false => deserialize_i64(self).map(Kip10I64),
-        }
-    }
-
-    #[inline]
-    fn serialize(from: &Kip10I64) -> Result<Self, SerializationError> {
-        if from.0 == i64::MIN {
-            return Err(SerializationError::NumberTooLong(from.0));
-        }
-        Ok(serialize_i64(&from.0))
-    }
-}
+// TODO: Rename to DefaultSizedEncodeInt when KIP-10 is activated
+pub type Kip10I64 = SizedEncodeInt<8>;
 
 impl OpcodeData<i64> for Vec<u8> {
     #[inline]
     fn deserialize(&self) -> Result<i64, TxScriptError> {
-        match self.len() > DEFAULT_SCRIPT_NUM_LEN {
-            true => Err(TxScriptError::NumberTooBig(format!(
-                "numeric value encoded as {:x?} is {} bytes which exceeds the max allowed of {}",
-                self,
-                self.len(),
-                DEFAULT_SCRIPT_NUM_LEN
-            ))),
-            false => deserialize_i64(self),
-        }
+        // TODO: Change LEN to 8 once KIP-10 is activated
+        OpcodeData::<SizedEncodeInt<4>>::deserialize(self).map(i64::from)
     }
 
     #[inline]
     fn serialize(from: &i64) -> Result<Self, SerializationError> {
-        if from == &i64::MIN {
-            return Err(SerializationError::NumberTooLong(*from));
-        }
-        Ok(serialize_i64(from))
+        // Note that serialization and deserialization use different LEN.
+        // This is because prior to KIP-10, only deserialization size was limited.
+        // It's safe to use 8 here because i32 arithmetic operations (which were the
+        // only ones that were supported prior to KIP-10) can't get to i64::MIN
+        // (the only i64 value that requires more than 8 bytes to serialize).
+        OpcodeData::<SizedEncodeInt<8>>::serialize(&(*from).into())
     }
 }
 
 impl OpcodeData<i32> for Vec<u8> {
     #[inline]
     fn deserialize(&self) -> Result<i32, TxScriptError> {
-        let res = OpcodeData::<i64>::deserialize(self)?;
-        // TODO: Consider getting rid of clamp, since the call to deserialize should return an error
-        // if the number is not in the i32 range (this should be done with proper testing)?
-        Ok(res.clamp(i32::MIN as i64, i32::MAX as i64) as i32)
+        OpcodeData::<SizedEncodeInt<4>>::deserialize(self).map(|v| v.try_into().expect("number is within i32 range"))
     }
 
     #[inline]
     fn serialize(from: &i32) -> Result<Self, SerializationError> {
-        Ok(OpcodeData::<i64>::serialize(&(*from as i64)).expect("should never happen"))
+        OpcodeData::<SizedEncodeInt<4>>::serialize(&(*from).into())
     }
 }
 
@@ -206,7 +192,7 @@ impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for Vec<u8> {
     #[inline]
     fn deserialize(&self) -> Result<SizedEncodeInt<LEN>, TxScriptError> {
         match self.len() > LEN {
-            true => Err(TxScriptError::InvalidState(format!(
+            true => Err(TxScriptError::NumberTooBig(format!(
                 "numeric value encoded as {:x?} is {} bytes which exceeds the max allowed of {}",
                 self,
                 self.len(),
@@ -218,7 +204,11 @@ impl<const LEN: usize> OpcodeData<SizedEncodeInt<LEN>> for Vec<u8> {
 
     #[inline]
     fn serialize(from: &SizedEncodeInt<LEN>) -> Result<Self, SerializationError> {
-        Ok(serialize_i64(&from.0))
+        let bytes = serialize_i64(&from.0);
+        if bytes.len() > LEN {
+            return Err(SerializationError::NumberTooLong(from.0));
+        }
+        Ok(bytes)
     }
 }
 
@@ -614,59 +604,59 @@ mod tests {
         let kip10_tests = vec![
             TestCase::<Kip10I64> {
                 serialized: hex::decode("0000008000").expect("failed parsing hex"),
-                result: Ok(Kip10I64(2147483648)),
+                result: Ok(Kip10I64::from(2147483648i64)),
             },
             TestCase::<Kip10I64> {
                 serialized: hex::decode("0000008080").expect("failed parsing hex"),
-                result: Ok(Kip10I64(-2147483648)),
+                result: Ok(Kip10I64::from(-2147483648i64)),
             },
             TestCase::<Kip10I64> {
                 serialized: hex::decode("0000009000").expect("failed parsing hex"),
-                result: Ok(Kip10I64(2415919104)),
+                result: Ok(Kip10I64::from(2415919104i64)),
             },
             TestCase::<Kip10I64> {
                 serialized: hex::decode("0000009080").expect("failed parsing hex"),
-                result: Ok(Kip10I64(-2415919104)),
+                result: Ok(Kip10I64::from(-2415919104i64)),
             },
             TestCase::<Kip10I64> {
                 serialized: hex::decode("ffffffff00").expect("failed parsing hex"),
-                result: Ok(Kip10I64(4294967295)),
+                result: Ok(Kip10I64::from(4294967295i64)),
             },
             TestCase::<Kip10I64> {
                 serialized: hex::decode("ffffffff80").expect("failed parsing hex"),
-                result: Ok(Kip10I64(-4294967295)),
+                result: Ok(Kip10I64::from(-4294967295i64)),
             },
             TestCase::<Kip10I64> {
                 serialized: hex::decode("0000000001").expect("failed parsing hex"),
-                result: Ok(Kip10I64(4294967296)),
+                result: Ok(Kip10I64::from(4294967296i64)),
             },
             TestCase::<Kip10I64> {
                 serialized: hex::decode("0000000081").expect("failed parsing hex"),
-                result: Ok(Kip10I64(-4294967296)),
+                result: Ok(Kip10I64::from(-4294967296i64)),
             },
             TestCase::<Kip10I64> {
                 serialized: hex::decode("ffffffffffff00").expect("failed parsing hex"),
-                result: Ok(Kip10I64(281474976710655)),
+                result: Ok(Kip10I64::from(281474976710655i64)),
             },
             TestCase::<Kip10I64> {
                 serialized: hex::decode("ffffffffffff80").expect("failed parsing hex"),
-                result: Ok(Kip10I64(-281474976710655)),
+                result: Ok(Kip10I64::from(-281474976710655i64)),
             },
             TestCase::<Kip10I64> {
                 serialized: hex::decode("ffffffffffffff00").expect("failed parsing hex"),
-                result: Ok(Kip10I64(72057594037927935)),
+                result: Ok(Kip10I64::from(72057594037927935i64)),
             },
             TestCase::<Kip10I64> {
                 serialized: hex::decode("ffffffffffffff80").expect("failed parsing hex"),
-                result: Ok(Kip10I64(-72057594037927935)),
+                result: Ok(Kip10I64::from(-72057594037927935i64)),
             },
             TestCase::<Kip10I64> {
                 serialized: hex::decode("ffffffffffffff7f").expect("failed parsing hex"),
-                result: Ok(Kip10I64(9223372036854775807)),
+                result: Ok(Kip10I64::from(9223372036854775807i64)),
             },
             TestCase::<Kip10I64> {
                 serialized: hex::decode("ffffffffffffffff").expect("failed parsing hex"),
-                result: Ok(Kip10I64(-9223372036854775807)),
+                result: Ok(Kip10I64::from(-9223372036854775807i64)),
             },
             // Minimally encoded values that are out of range for data that
             // is interpreted as script numbers with the minimal encoding
