@@ -64,7 +64,7 @@ use kaspa_consensus_core::{
     merkle::calc_hash_merkle_root,
     muhash::MuHashExtensions,
     network::NetworkType,
-    pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList},
+    pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
     BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
@@ -243,7 +243,7 @@ impl Consensus {
             block_processors_pool,
             db.clone(),
             storage.statuses_store.clone(),
-            storage.ghostdag_primary_store.clone(),
+            storage.ghostdag_store.clone(),
             storage.headers_store.clone(),
             storage.block_transactions_store.clone(),
             storage.body_tips_store.clone(),
@@ -257,7 +257,7 @@ impl Consensus {
             pruning_lock.clone(),
             notification_root.clone(),
             counters.clone(),
-            params.storage_mass_activation_daa_score,
+            params.storage_mass_activation,
         ));
 
         let virtual_processor = Arc::new(VirtualStateProcessor::new(
@@ -500,7 +500,7 @@ impl ConsensusApi for Consensus {
 
     fn get_virtual_merge_depth_blue_work_threshold(&self) -> BlueWorkType {
         // PRUNE SAFETY: merge depth root is never close to being pruned (in terms of block depth)
-        self.get_virtual_merge_depth_root().map_or(BlueWorkType::ZERO, |root| self.ghostdag_primary_store.get_blue_work(root).unwrap())
+        self.get_virtual_merge_depth_root().map_or(BlueWorkType::ZERO, |root| self.ghostdag_store.get_blue_work(root).unwrap())
     }
 
     fn get_sink(&self) -> Hash {
@@ -533,7 +533,7 @@ impl ConsensusApi for Consensus {
 
         for child in initial_children {
             if visited.insert(child) {
-                let blue_work = self.ghostdag_primary_store.get_blue_work(child).unwrap();
+                let blue_work = self.ghostdag_store.get_blue_work(child).unwrap();
                 heap.push(Reverse(SortableBlock::new(child, blue_work)));
             }
         }
@@ -560,7 +560,7 @@ impl ConsensusApi for Consensus {
 
             for child in children {
                 if visited.insert(child) {
-                    let blue_work = self.ghostdag_primary_store.get_blue_work(child).unwrap();
+                    let blue_work = self.ghostdag_store.get_blue_work(child).unwrap();
                     heap.push(Reverse(SortableBlock::new(child, blue_work)));
                 }
             }
@@ -753,12 +753,16 @@ impl ConsensusApi for Consensus {
     }
 
     fn calc_transaction_hash_merkle_root(&self, txs: &[Transaction], pov_daa_score: u64) -> Hash {
-        let storage_mass_activated = pov_daa_score > self.config.storage_mass_activation_daa_score;
+        let storage_mass_activated = self.config.storage_mass_activation.is_active(pov_daa_score);
         calc_hash_merkle_root(txs.iter(), storage_mass_activated)
     }
 
-    fn validate_pruning_proof(&self, proof: &PruningPointProof) -> Result<(), PruningImportError> {
-        self.services.pruning_proof_manager.validate_pruning_point_proof(proof)
+    fn validate_pruning_proof(
+        &self,
+        proof: &PruningPointProof,
+        proof_metadata: &PruningProofMetadata,
+    ) -> Result<(), PruningImportError> {
+        self.services.pruning_proof_manager.validate_pruning_point_proof(proof, proof_metadata)
     }
 
     fn apply_pruning_proof(&self, proof: PruningPointProof, trusted_set: &[TrustedBlock]) -> PruningImportResult<()> {
@@ -909,7 +913,7 @@ impl ConsensusApi for Consensus {
             Some(BlockStatus::StatusInvalid) => return Err(ConsensusError::InvalidBlock(hash)),
             _ => {}
         };
-        let ghostdag = self.ghostdag_primary_store.get_data(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))?;
+        let ghostdag = self.ghostdag_store.get_data(hash).unwrap_option().ok_or(ConsensusError::MissingData(hash))?;
         Ok((&*ghostdag).into())
     }
 
@@ -985,7 +989,7 @@ impl ConsensusApi for Consensus {
         Ok(self
             .services
             .window_manager
-            .block_window(&self.ghostdag_primary_store.get_data(hash).unwrap(), WindowType::SampledDifficultyWindow)
+            .block_window(&self.ghostdag_store.get_data(hash).unwrap(), WindowType::SampledDifficultyWindow)
             .unwrap()
             .deref()
             .iter()
@@ -1024,7 +1028,7 @@ impl ConsensusApi for Consensus {
         match start_hash {
             Some(hash) => {
                 self.validate_block_exists(hash)?;
-                let ghostdag_data = self.ghostdag_primary_store.get_data(hash).unwrap();
+                let ghostdag_data = self.ghostdag_store.get_data(hash).unwrap();
                 // The selected parent header is used within to check for sampling activation, so we verify its existence first
                 if !self.headers_store.has(ghostdag_data.selected_parent).unwrap() {
                     return Err(ConsensusError::DifficultyError(DifficultyError::InsufficientWindowData(0)));
