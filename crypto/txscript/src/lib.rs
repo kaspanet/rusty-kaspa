@@ -1196,16 +1196,10 @@ mod bitcoind_tests {
 
             // Read the JSON contents of the file as an instance of `User`.
             let tests: Vec<JsonTestRow> = serde_json::from_reader(reader).expect("Failed Parsing {:?}");
-            let mut had_errors = 0;
-            let total_tests = tests.len();
             for row in tests {
                 if let Err(error) = row.test_row(kip10_enabled) {
-                    println!("Test: {:?} failed: {:?}", row.clone(), error);
-                    had_errors += 1;
+                    panic!("Test: {:?} failed for {}: {:?}", row.clone(), file_name, error);
                 }
-            }
-            if had_errors > 0 {
-                panic!("{}/{} json tests failed", had_errors, total_tests)
             }
         }
     }
