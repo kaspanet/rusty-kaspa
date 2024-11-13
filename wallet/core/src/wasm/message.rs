@@ -14,6 +14,7 @@ const TS_MESSAGE_TYPES: &'static str = r#"
 export interface ISignMessage {
     message: string;
     privateKey: PrivateKey | string;
+    noAuxRand: boolean;
 }
 "#;
 
@@ -30,28 +31,12 @@ pub fn js_sign_message(value: ISignMessage) -> Result<HexString, Error> {
     if let Some(object) = Object::try_from(&value) {
         let private_key = object.cast_into::<PrivateKey>("privateKey")?;
         let raw_msg = object.get_string("message")?;
+        let no_aux_rand = object.get_bool("noAuxRand")?;
         let mut privkey_bytes = [0u8; 32];
         privkey_bytes.copy_from_slice(&private_key.secret_bytes());
         let pm = PersonalMessage(&raw_msg);
-        let sig_vec = sign_message(&pm, &privkey_bytes)?;
-        privkey_bytes.zeroize();
-        Ok(faster_hex::hex_string(sig_vec.as_slice()).into())
-    } else {
-        Err(Error::custom("Failed to parse input"))
-    }
-}
-
-/// Signs a message with the given private key without rand
-/// @category Message Signing
-#[wasm_bindgen(js_name = signMessageWithoutRand)]
-pub fn js_sign_message_without_rand(value: ISignMessage) -> Result<HexString, Error> {
-    if let Some(object) = Object::try_from(&value) {
-        let private_key = object.cast_into::<PrivateKey>("privateKey")?;
-        let raw_msg = object.get_string("message")?;
-        let mut privkey_bytes = [0u8; 32];
-        privkey_bytes.copy_from_slice(&private_key.secret_bytes());
-        let pm = PersonalMessage(&raw_msg);
-        let sig_vec = sign_message_without_rand(&pm, &privkey_bytes)?;
+        let sign_options = SignMessageOptions { no_aux_rand };
+        let sig_vec = sign_message(&pm, &privkey_bytes, &sign_options)?;
         privkey_bytes.zeroize();
         Ok(faster_hex::hex_string(sig_vec.as_slice()).into())
     } else {
