@@ -160,6 +160,7 @@ pub struct VirtualStateProcessor {
 
     // Storage mass hardfork DAA score
     pub(crate) storage_mass_activation: ForkActivation,
+    pub(crate) kip10_activation: ForkActivation,
 }
 
 impl VirtualStateProcessor {
@@ -221,6 +222,7 @@ impl VirtualStateProcessor {
             notification_root,
             counters,
             storage_mass_activation: params.storage_mass_activation,
+            kip10_activation: params.kip10_activation,
         }
     }
 
