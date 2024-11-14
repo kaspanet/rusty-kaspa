@@ -33,9 +33,9 @@ pub fn sign_message(msg: &PersonalMessage, privkey: &[u8; 32], options: &SignMes
     let schnorr_key = secp256k1::Keypair::from_seckey_slice(secp256k1::SECP256K1, privkey)?;
 
     let sig: [u8; 64] = if options.no_aux_rand {
-        *schnorr_key.sign_schnorr(msg).as_ref()
+        *secp256k1::SECP256K1.sign_schnorr_no_aux_rand(&msg, &schnorr_key).as_ref()
     } else {
-        *secp256k1::Secp256k1::new().sign_schnorr_no_aux_rand(&msg, &schnorr_key).as_ref()
+        *schnorr_key.sign_schnorr(msg).as_ref()
     };
 
     Ok(sig.to_vec())
