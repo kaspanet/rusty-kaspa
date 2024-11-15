@@ -25,20 +25,30 @@ const COLLISION_FACTOR: u64 = 4;
 /// hard limit in order to allow the SequenceSelector to compensate for consensus rejections.
 const MASS_LIMIT_FACTOR: f64 = 1.2;
 
-/// A rough estimation for the average transaction mass. The usage is a non-important edge case
-/// hence we just throw this here (as oppose to performing an accurate estimation)
-const TYPICAL_TX_MASS: f64 = 2000.0;
+/// Initial estimation of the average transaction mass.
+const INITIAL_AVG_MASS: f64 = 2036.0;
+
+/// Decay factor of average mass weighting.
+const AVG_MASS_DECAY_FACTOR: f64 = 0.99999;
 
 /// Management of the transaction pool frontier, that is, the set of transactions in
 /// the transaction pool which have no mempool ancestors and are essentially ready
 /// to enter the next block template.
-#[derive(Default)]
 pub struct Frontier {
     /// Frontier transactions sorted by feerate order and searchable for weight sampling
     search_tree: SearchTree,
 
     /// Total masses: Σ_{tx in frontier} tx.mass
     total_mass: u64,
+
+    /// Tracks the average transaction mass throughout the mempool's lifespan using a decayed weighting mechanism
+    average_transaction_mass: f64,
+}
+
+impl Default for Frontier {
+    fn default() -> Self {
+        Self { search_tree: Default::default(), total_mass: Default::default(), average_transaction_mass: INITIAL_AVG_MASS }
+    }
 }
 
 impl Frontier {
@@ -62,6 +72,11 @@ impl Frontier {
         let mass = key.mass;
         if self.search_tree.insert(key) {
             self.total_mass += mass;
+            // A decaying average formula. Denote ɛ = 1 - AVG_MASS_DECAY_FACTOR. A transaction inserted N slots ago has
+            // ɛ * (1 - ɛ)^N weight within the updated average. This gives some weight to the full mempool history while
+            // giving growing importance to more recent samples.
+            self.average_transaction_mass =
+                self.average_transaction_mass * AVG_MASS_DECAY_FACTOR + mass as f64 * (1.0 - AVG_MASS_DECAY_FACTOR);
             true
         } else {
             false
@@ -210,10 +225,7 @@ impl Frontier {
 
     /// Builds a feerate estimator based on internal state of the ready transactions frontier
     pub fn build_feerate_estimator(&self, args: FeerateEstimatorArgs) -> FeerateEstimator {
-        let average_transaction_mass = match self.len() {
-            0 => TYPICAL_TX_MASS,
-            n => self.total_mass() as f64 / n as f64,
-        };
+        let average_transaction_mass = self.average_transaction_mass;
         let bps = args.network_blocks_per_second as f64;
         let mut mass_per_block = args.maximum_mass_per_block as f64;
         let mut inclusion_interval = average_transaction_mass / (mass_per_block * bps);
