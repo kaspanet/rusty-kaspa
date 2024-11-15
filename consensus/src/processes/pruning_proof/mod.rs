@@ -7,7 +7,6 @@ use std::{
         hash_map::Entry::{self},
         VecDeque,
     },
-    ops::Deref,
     sync::{atomic::AtomicBool, Arc},
 };
 
@@ -279,12 +278,28 @@ impl PruningProofManager {
         // PRUNE SAFETY: called either via consensus under the prune guard or by the pruning processor (hence no pruning in parallel)
 
         for anticone_block in anticone.iter().copied() {
-            let window = self
-                .window_manager
-                .block_window(&self.ghostdag_store.get_data(anticone_block).unwrap(), WindowType::FullDifficultyWindow)
-                .unwrap();
+            let mut ghostdag = self.ghostdag_store.get_data(anticone_block).unwrap();
+            let window = self.window_manager.block_window(&ghostdag, WindowType::SampledDifficultyWindow).unwrap();
 
-            for hash in window.deref().iter().map(|block| block.0.hash) {
+            /* TODO (PR):
+               1. Extract to function
+               2. Avoid searching for the cover if window is not sampled
+               3. Cleanup WindowType::FullDifficultyWindow
+            */
+            // Tracks the window blocks to make sure we visit all blocks
+            let mut unvisited: BlockHashSet = window.iter().map(|b| b.0.hash).collect();
+            // The full consecutive window covering all (possibly sampled) window blocks and the full mergesets containing them
+            let mut cover = Vec::with_capacity(window.len());
+            while !unvisited.is_empty() {
+                assert!(!ghostdag.selected_parent.is_origin(), "unvisited still not empty");
+                for merged in ghostdag.unordered_mergeset() {
+                    cover.push(merged);
+                    unvisited.remove(&merged);
+                }
+                ghostdag = self.ghostdag_store.get_data(ghostdag.selected_parent).unwrap();
+            }
+
+            for hash in cover {
                 if let Entry::Vacant(e) = daa_window_blocks.entry(hash) {
                     e.insert(TrustedHeader {
                         header: self.headers_store.get_header(hash).unwrap(),
