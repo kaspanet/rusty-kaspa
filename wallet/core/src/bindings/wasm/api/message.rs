@@ -3,10 +3,10 @@
 use super::extensions::*;
 use crate::account::descriptor::IAccountDescriptor;
 use crate::api::message::*;
+use crate::bindings::wasm::tx::fees::IFees;
+use crate::bindings::wasm::tx::GeneratorSummary;
 use crate::imports::*;
 use crate::tx::{Fees, PaymentDestination, PaymentOutputs};
-use crate::wasm::tx::fees::IFees;
-use crate::wasm::tx::GeneratorSummary;
 use js_sys::Array;
 use serde_wasm_bindgen::from_value;
 use workflow_wasm::serde::to_value;

@@ -1,7 +1,7 @@
+use crate::bindings::wasm::PrivateKeyArrayT;
 use crate::imports::*;
 use crate::result::Result;
 use crate::tx::generator as native;
-use crate::wasm::PrivateKeyArrayT;
 use kaspa_consensus_client::{numeric, string};
 use kaspa_consensus_client::{Transaction, TransactionT};
 use kaspa_consensus_core::hashing::wasm::SighashType;

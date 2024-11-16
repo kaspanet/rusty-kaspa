@@ -6,12 +6,10 @@ use cfg_if::cfg_if;
 
 cfg_if! {
     if #[cfg(any(feature = "wasm32-sdk", feature = "wasm32-core"))] {
-        pub mod opcodes;
+        // pub mod opcodes;
         pub mod builder;
 
-        pub use self::opcodes::*;
+        pub use crate::bindings::opcodes::*;
         pub use self::builder::*;
-    } else if #[cfg(feature = "py-sdk")] {
-        pub mod opcodes;
     }
 }

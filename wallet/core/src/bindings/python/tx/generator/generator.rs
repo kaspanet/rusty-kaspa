@@ -1,6 +1,6 @@
+use crate::bindings::python::tx::generator::pending::PendingTransaction;
+use crate::bindings::python::tx::generator::summary::GeneratorSummary;
 use crate::imports::*;
-use crate::python::tx::generator::pending::PendingTransaction;
-use crate::python::tx::generator::summary::GeneratorSummary;
 use crate::tx::{generator as native, Fees, PaymentDestination, PaymentOutput, PaymentOutputs};
 
 pub struct PyUtxoEntries {

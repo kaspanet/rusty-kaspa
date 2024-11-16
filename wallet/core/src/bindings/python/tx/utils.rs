@@ -1,5 +1,5 @@
+use crate::bindings::python::tx::generator::{Generator, GeneratorSummary, PendingTransaction, PyOutputs, PyUtxoEntries};
 use crate::imports::*;
-use crate::python::tx::generator::{Generator, GeneratorSummary, PendingTransaction, PyOutputs, PyUtxoEntries};
 use kaspa_consensus_client::*;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 

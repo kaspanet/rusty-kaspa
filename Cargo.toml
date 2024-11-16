@@ -39,8 +39,8 @@ members = [
     "rpc/wrpc/server",
     "rpc/wrpc/client",
     "rpc/wrpc/proxy",
-    "rpc/wrpc/python",
-    "rpc/wrpc/wasm",
+    "rpc/wrpc/bindings/python",
+    "rpc/wrpc/bindings/wasm",
     "rpc/wrpc/examples/subscriber",
     "rpc/wrpc/examples/simple_client",
     "mining",
@@ -137,9 +137,9 @@ kaspa-wasm = { version = "0.15.2", path = "wasm" }
 kaspa-wasm-core = { version = "0.15.2", path = "wasm/core" }
 kaspa-wrpc-client = { version = "0.15.2", path = "rpc/wrpc/client" }
 kaspa-wrpc-proxy = { version = "0.15.2", path = "rpc/wrpc/proxy" }
-kaspa-wrpc-python = { version = "0.15.2", path = "rpc/wrpc/python" }
+kaspa-wrpc-python = { version = "0.15.2", path = "rpc/wrpc/bindings/python" }
 kaspa-wrpc-server = { version = "0.15.2", path = "rpc/wrpc/server" }
-kaspa-wrpc-wasm = { version = "0.15.2", path = "rpc/wrpc/wasm" }
+kaspa-wrpc-wasm = { version = "0.15.2", path = "rpc/wrpc/bindings/wasm" }
 kaspa-wrpc-example-subscriber = { version = "0.15.2", path = "rpc/wrpc/examples/subscriber" }
 kaspad = { version = "0.15.2", path = "kaspad" }
 kaspa-alloc = { version = "0.15.2", path = "utils/alloc" }

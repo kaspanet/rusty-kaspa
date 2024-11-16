@@ -1,9 +1,11 @@
+use crate::bindings::wasm::notify::{
+    UtxoProcessorEventTarget, UtxoProcessorNotificationCallback, UtxoProcessorNotificationTypeOrCallback,
+};
 use crate::error::Error;
 use crate::events::{EventKind, Events};
 use crate::imports::*;
 use crate::result::Result;
 use crate::utxo as native;
-use crate::wasm::notify::{UtxoProcessorEventTarget, UtxoProcessorNotificationCallback, UtxoProcessorNotificationTypeOrCallback};
 use kaspa_consensus_core::network::NetworkIdT;
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 use kaspa_wasm_core::events::{get_event_targets, Sink};

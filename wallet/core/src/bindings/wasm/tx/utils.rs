@@ -1,7 +1,7 @@
+use crate::bindings::wasm::tx::generator::*;
 use crate::imports::*;
 use crate::result::Result;
 use crate::tx::{IPaymentOutputArray, PaymentOutputs};
-use crate::wasm::tx::generator::*;
 use kaspa_consensus_client::*;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;

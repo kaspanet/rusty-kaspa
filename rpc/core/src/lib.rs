@@ -2,13 +2,13 @@
 #![recursion_limit = "256"]
 
 pub mod api;
+#[cfg(any(feature = "wasm32-sdk", feature = "py-sdk"))]
+pub mod bindings;
 pub mod convert;
 pub mod error;
 pub mod model;
 pub mod notify;
-#[cfg(feature = "py-sdk")]
-pub mod python;
-pub mod wasm;
+// pub mod wasm;
 
 pub mod prelude {
     pub use super::api::notifications::*;

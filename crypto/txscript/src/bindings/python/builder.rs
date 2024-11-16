@@ -1,4 +1,4 @@
-use crate::wasm::opcodes::Opcodes;
+use crate::bindings::opcodes::Opcodes;
 use crate::{script_builder as native, standard};
 use kaspa_consensus_core::tx::ScriptPublicKey;
 use kaspa_python_core::types::PyBinary;

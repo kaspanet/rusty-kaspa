@@ -12,7 +12,7 @@ use kaspa_notify::events::EventType;
 use kaspa_notify::listener;
 use kaspa_notify::notification::Notification as NotificationT;
 use kaspa_rpc_core::api::ctl;
-pub use kaspa_rpc_core::wasm::message::*;
+pub use kaspa_rpc_core::bindings::wasm::message::*;
 pub use kaspa_rpc_macros::{
     build_wrpc_wasm_bindgen_interface, build_wrpc_wasm_bindgen_subscriptions, declare_typescript_wasm_interface as declare,
 };

@@ -111,11 +111,8 @@ pub mod wallet;
 
 // }
 
-#[cfg(any(feature = "wasm32-sdk", feature = "wasm32-core"))]
-pub mod wasm;
-
-#[cfg(feature = "py-sdk")]
-pub mod python;
+#[cfg(any(feature = "wasm32-sdk", feature = "wasm32-core", feature = "py-sdk"))]
+pub mod bindings;
 
 /// Returns the version of the Wallet framework.
 pub fn version() -> String {

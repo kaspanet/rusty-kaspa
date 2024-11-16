@@ -1,8 +1,8 @@
+use crate::bindings::wasm::notify::{WalletEventTarget, WalletNotificationCallback, WalletNotificationTypeOrCallback};
 use crate::imports::*;
 use crate::storage::local::interface::LocalStore;
 use crate::storage::WalletDescriptor;
 use crate::wallet as native;
-use crate::wasm::notify::{WalletEventTarget, WalletNotificationCallback, WalletNotificationTypeOrCallback};
 use kaspa_wallet_macros::declare_typescript_wasm_interface as declare;
 use kaspa_wasm_core::events::{get_event_targets, Sink};
 use kaspa_wrpc_wasm::{IConnectOptions, Resolver, RpcClient, RpcConfig, WrpcEncoding};

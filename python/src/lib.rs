@@ -29,24 +29,24 @@ cfg_if::cfg_if! {
             m.add_class::<kaspa_bip32::Language>()?;
             m.add_class::<kaspa_bip32::Mnemonic>()?;
 
-            m.add_class::<kaspa_txscript::python::ScriptBuilder>()?;
-            m.add_class::<kaspa_txscript::wasm::opcodes::Opcodes>()?;
+            m.add_class::<kaspa_txscript::bindings::python::ScriptBuilder>()?;
+            m.add_class::<kaspa_txscript::bindings::opcodes::Opcodes>()?;
 
-            m.add_function(wrap_pyfunction!(kaspa_wallet_core::python::message::py_sign_message, m)?)?;
-            m.add_function(wrap_pyfunction!(kaspa_wallet_core::python::message::py_verify_message, m)?)?;
-            m.add_function(wrap_pyfunction!(kaspa_wallet_core::python::signer::py_sign_transaction, m)?)?;
-            m.add_class::<kaspa_wallet_core::python::tx::generator::generator::Generator>()?;
-            m.add_class::<kaspa_wallet_core::python::tx::generator::pending::PendingTransaction>()?;
-            m.add_class::<kaspa_wallet_core::python::tx::generator::summary::GeneratorSummary>()?;
-            m.add_function(wrap_pyfunction!(kaspa_wallet_core::python::tx::mass::calculate_unsigned_transaction_fee, m)?)?;
-            m.add_function(wrap_pyfunction!(kaspa_wallet_core::python::tx::mass::calculate_unsigned_transaction_mass, m)?)?;
-            m.add_function(wrap_pyfunction!(kaspa_wallet_core::python::tx::mass::update_unsigned_transaction_mass, m)?)?;
-            m.add_function(wrap_pyfunction!(kaspa_wallet_core::python::tx::utils::create_transaction_py, m)?)?;
-            m.add_function(wrap_pyfunction!(kaspa_wallet_core::python::tx::utils::create_transactions_py, m)?)?;
-            m.add_function(wrap_pyfunction!(kaspa_wallet_core::python::tx::utils::estimate_transactions_py, m)?)?;
-            m.add_function(wrap_pyfunction!(kaspa_wallet_core::python::utils::kaspa_to_sompi, m)?)?;
-            m.add_function(wrap_pyfunction!(kaspa_wallet_core::python::utils::sompi_to_kaspa, m)?)?;
-            m.add_function(wrap_pyfunction!(kaspa_wallet_core::python::utils::sompi_to_kaspa_string_with_suffix, m)?)?;
+            m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::message::py_sign_message, m)?)?;
+            m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::message::py_verify_message, m)?)?;
+            m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::signer::py_sign_transaction, m)?)?;
+            m.add_class::<kaspa_wallet_core::bindings::python::tx::generator::generator::Generator>()?;
+            m.add_class::<kaspa_wallet_core::bindings::python::tx::generator::pending::PendingTransaction>()?;
+            m.add_class::<kaspa_wallet_core::bindings::python::tx::generator::summary::GeneratorSummary>()?;
+            m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::tx::mass::calculate_unsigned_transaction_fee, m)?)?;
+            m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::tx::mass::calculate_unsigned_transaction_mass, m)?)?;
+            m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::tx::mass::update_unsigned_transaction_mass, m)?)?;
+            m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::tx::utils::create_transaction_py, m)?)?;
+            m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::tx::utils::create_transactions_py, m)?)?;
+            m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::tx::utils::estimate_transactions_py, m)?)?;
+            m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::utils::kaspa_to_sompi, m)?)?;
+            m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::utils::sompi_to_kaspa, m)?)?;
+            m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::utils::sompi_to_kaspa_string_with_suffix, m)?)?;
             m.add_class::<kaspa_wallet_core::tx::payment::PaymentOutput>()?;
 
             m.add_class::<kaspa_wallet_keys::derivation_path::DerivationPath>()?;

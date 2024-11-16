@@ -1,11 +1,11 @@
+use crate::bindings::wasm::tx::generator::*;
+use crate::bindings::wasm::tx::IFees;
 use crate::imports::*;
 use crate::result::Result;
 use crate::tx::{generator as native, Fees, PaymentDestination, PaymentOutputs};
 use crate::utxo::{TryIntoUtxoEntryReferences, UtxoEntryReference};
-use crate::wasm::tx::generator::*;
-use crate::wasm::tx::IFees;
 // use crate::wasm::wallet::Account;
-use crate::wasm::UtxoContext;
+use crate::bindings::wasm::UtxoContext;
 
 // TODO-WASM fix outputs
 #[wasm_bindgen(typescript_custom_section)]

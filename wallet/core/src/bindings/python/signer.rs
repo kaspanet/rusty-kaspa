@@ -1,5 +1,5 @@
+use crate::bindings::wasm::signer::{sign_hash, sign_transaction};
 use crate::imports::*;
-use crate::wasm::signer::{sign_hash, sign_transaction};
 use kaspa_consensus_client::Transaction;
 use kaspa_consensus_core::hashing::wasm::SighashType;
 use kaspa_consensus_core::sign::sign_input;
