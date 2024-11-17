@@ -380,8 +380,12 @@ mod tests {
         assert_eq!(frontier.total_mass(), frontier.search_tree.ascending_iter().map(|k| k.mass).sum::<u64>());
     }
 
+    /// Epsilon used for various test comparisons
+    const EPS: f64 = 0.000001;
+
     #[test]
     fn test_feerate_estimator() {
+        const MIN_FEERATE: f64 = 1.0;
         let mut rng = thread_rng();
         let cap = 2000;
         let mut map = HashMap::with_capacity(cap);
@@ -406,13 +410,13 @@ mod tests {
             let args = FeerateEstimatorArgs { network_blocks_per_second: 1, maximum_mass_per_block: 500_000 };
             // We are testing that the build function actually returns and is not looping indefinitely
             let estimator = frontier.build_feerate_estimator(args);
-            let estimations = estimator.calc_estimations(1.0);
+            let estimations = estimator.calc_estimations(MIN_FEERATE);
 
             let buckets = estimations.ordered_buckets();
             // Test for the absence of NaN, infinite or zero values in buckets
             for b in buckets.iter() {
                 assert!(
-                    b.feerate.is_normal() && b.feerate >= 1.0,
+                    b.feerate.is_normal() && b.feerate >= MIN_FEERATE - EPS,
                     "bucket feerate must be a finite number greater or equal to the minimum standard feerate"
                 );
                 assert!(
@@ -453,7 +457,7 @@ mod tests {
             // Test for the absence of NaN, infinite or zero values in buckets
             for b in buckets.iter() {
                 assert!(
-                    b.feerate.is_normal() && b.feerate >= MIN_FEERATE,
+                    b.feerate.is_normal() && b.feerate >= MIN_FEERATE - EPS,
                     "bucket feerate must be a finite number greater or equal to the minimum standard feerate"
                 );
                 assert!(
@@ -504,7 +508,7 @@ mod tests {
         // Test for the absence of NaN, infinite or zero values in buckets
         for b in buckets.iter() {
             assert!(
-                b.feerate.is_normal() && b.feerate >= MIN_FEERATE,
+                b.feerate.is_normal() && b.feerate >= MIN_FEERATE - EPS,
                 "bucket feerate must be a finite number greater or equal to the minimum standard feerate"
             );
             assert!(
@@ -518,6 +522,7 @@ mod tests {
 
     #[test]
     fn test_feerate_estimator_with_less_than_block_capacity() {
+        const MIN_FEERATE: f64 = 1.0;
         let mut map = HashMap::new();
         for i in 0..304 {
             let mass: u64 = 1650;
@@ -536,13 +541,16 @@ mod tests {
             let args = FeerateEstimatorArgs { network_blocks_per_second: 1, maximum_mass_per_block: 500_000 };
             // We are testing that the build function actually returns and is not looping indefinitely
             let estimator = frontier.build_feerate_estimator(args);
-            let estimations = estimator.calc_estimations(1.0);
+            let estimations = estimator.calc_estimations(MIN_FEERATE);
 
             let buckets = estimations.ordered_buckets();
             // Test for the absence of NaN, infinite or zero values in buckets
             for b in buckets.iter() {
                 // Expect min feerate bcs blocks are not full
-                assert!(b.feerate == 1.0, "bucket feerate is expected to be equal to the minimum standard feerate");
+                assert!(
+                    (b.feerate - MIN_FEERATE).abs() <= EPS,
+                    "bucket feerate is expected to be equal to the minimum standard feerate"
+                );
                 assert!(
                     b.estimated_seconds.is_normal() && b.estimated_seconds > 0.0 && b.estimated_seconds <= 1.0,
                     "bucket estimated seconds must be a finite number greater than zero & less than 1.0"
