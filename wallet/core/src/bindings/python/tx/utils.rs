@@ -43,13 +43,13 @@ pub fn create_transaction_py(
 
 #[pyfunction]
 #[pyo3(name = "create_transactions")]
-#[pyo3(signature = (network_id, entries, outputs, change_address, payload=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
+#[pyo3(signature = (network_id, entries, change_address, outputs=None, payload=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
 pub fn create_transactions_py<'a>(
     py: Python<'a>,
     network_id: &str,
     entries: PyUtxoEntries,
-    outputs: PyOutputs,
     change_address: Address,
+    outputs: Option<PyOutputs>,
     payload: Option<PyBinary>,
     priority_fee: Option<u64>,
     priority_entries: Option<PyUtxoEntries>,
@@ -59,8 +59,8 @@ pub fn create_transactions_py<'a>(
     let generator = Generator::ctor(
         network_id,
         entries,
-        outputs,
         change_address,
+        outputs,
         payload.map(Into::into),
         priority_fee,
         priority_entries,
@@ -79,12 +79,12 @@ pub fn create_transactions_py<'a>(
 
 #[pyfunction]
 #[pyo3(name = "estimate_transactions")]
-#[pyo3(signature = (network_id, entries, outputs, change_address, payload=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
+#[pyo3(signature = (network_id, entries, change_address, outputs=None, payload=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
 pub fn estimate_transactions_py<'a>(
     network_id: &str,
     entries: PyUtxoEntries,
-    outputs: PyOutputs,
     change_address: Address,
+    outputs: Option<PyOutputs>,
     payload: Option<PyBinary>,
     priority_fee: Option<u64>,
     priority_entries: Option<PyUtxoEntries>,
@@ -94,8 +94,8 @@ pub fn estimate_transactions_py<'a>(
     let generator = Generator::ctor(
         network_id,
         entries,
-        outputs,
         change_address,
+        outputs,
         payload.map(Into::into),
         priority_fee,
         priority_entries,

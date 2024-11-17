@@ -20,7 +20,6 @@ pub struct PublicKeyGenerator {
     hd_wallet: WalletDerivationManager,
 }
 
-// PY-NOTE: WASM specific method impls
 #[wasm_bindgen]
 impl PublicKeyGenerator {
     #[wasm_bindgen(js_name=fromXPub)]
@@ -221,7 +220,6 @@ impl PublicKeyGenerator {
     }
 }
 
-// PY-NOTE: Python specific fn implementations
 #[cfg(feature = "py-sdk")]
 #[pymethods]
 impl PublicKeyGenerator {

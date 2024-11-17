@@ -48,7 +48,6 @@ impl PrivateKey {
     }
 }
 
-// PY-NOTE: WASM specific fn implementations
 #[wasm_bindgen]
 impl PrivateKey {
     /// Returns the [`PrivateKey`] key encoded as a hex string.
@@ -93,7 +92,6 @@ impl PrivateKey {
     }
 }
 
-// PY-NOTE: Python specific fn implementations
 #[cfg(feature = "py-sdk")]
 #[pymethods]
 impl PrivateKey {

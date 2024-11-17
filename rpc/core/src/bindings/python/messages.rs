@@ -245,7 +245,6 @@ try_from_args! ( dict : SubmitTransactionRequest, {
         verbose_data: None,
     };
 
-    // PY-TODO transaction.into()
     Ok(SubmitTransactionRequest { transaction: rpc_transaction, allow_orphan })
 });
 
@@ -254,7 +253,6 @@ try_from_args! ( dict : SubmitTransactionReplacementRequest, {
         .ok_or_else(|| PyException::new_err("Key `transactions` not present"))?
         .extract()?;
 
-    // PY-TODO transaction.into()
     Ok(SubmitTransactionReplacementRequest { transaction: transaction.into() })
 });
 

@@ -230,8 +230,6 @@ impl RpcClient {
         timeout_duration: Option<u64>,
         retry_interval: Option<u64>,
     ) -> PyResult<Py<PyAny>> {
-        // TODO expose args to Python similar to WASM wRPC Client IConnectOptions?
-
         let block_async_connect = block_async_connect.unwrap_or(true);
         let strategy = match strategy {
             Some(strategy) => ConnectStrategy::from_str(&strategy).map_err(|err| PyException::new_err(format!("{}", err)))?,
@@ -335,7 +333,9 @@ impl RpcClient {
         Ok(())
     }
 
-    // fn clear_event_listener() PY-TODO
+    // fn clear_event_listener PY-TODO
+    // fn default_port PY-TODO
+    // fn parse_url PY-TODO
 
     fn remove_all_event_listeners(&self) -> PyResult<()> {
         *self.inner.callbacks.lock().unwrap() = Default::default();
@@ -482,12 +482,6 @@ impl RpcClient {
 
 #[pymethods]
 impl RpcClient {
-    // PY-TODO default_port
-    // PY-TODO parse_url
-}
-
-#[pymethods]
-impl RpcClient {
     fn subscribe_utxos_changed(&self, py: Python, addresses: Vec<Address>) -> PyResult<Py<PyAny>> {
         if let Some(listener_id) = self.listener_id() {
             let client = self.inner.client.clone();
@@ -538,8 +532,8 @@ impl RpcClient {
 }
 
 build_wrpc_python_subscriptions!([
-    // UtxosChanged - added above due to parameter `addresses: Vec<Address>``
-    // VirtualChainChanged - added above due to paramter `include_accepted_transaction_ids: bool`
+    // UtxosChanged - defined above due to parameter `addresses: Vec<Address>``
+    // VirtualChainChanged - defined above due to paramter `include_accepted_transaction_ids: bool`
     BlockAdded,
     FinalityConflict,
     FinalityConflictResolved,

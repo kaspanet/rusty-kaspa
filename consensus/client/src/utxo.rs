@@ -218,9 +218,6 @@ impl UtxoEntryReference {
 #[cfg(feature = "py-sdk")]
 #[pymethods]
 impl UtxoEntryReference {
-    // PY-TODO
-    // fn py_to_string
-
     #[getter]
     #[pyo3(name = "entry")]
     pub fn entry_py(&self) -> UtxoEntry {
@@ -426,10 +423,6 @@ impl UtxoEntries {
 #[cfg(feature = "py-sdk")]
 #[pymethods]
 impl UtxoEntries {
-    // PY-TODO
-    // #[new]
-    // pub fn py_ctor()
-
     #[getter]
     #[pyo3(name = "items")]
     pub fn get_items_as_py_list(&self) -> Vec<UtxoEntryReference> {

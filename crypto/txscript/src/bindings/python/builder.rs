@@ -119,11 +119,9 @@ impl ScriptBuilder {
 
         Ok(generated_script.to_hex().into())
     }
-
-    // pub fn hex_view()
 }
 
-// PY-TODO change to PyOpcode struct and handle similar to PyBinary
+// PY-TODO change to PyOpcode struct and handle similar to PyBinary?
 fn extract_ops(input: &Bound<PyAny>) -> PyResult<Vec<u8>> {
     if let Ok(opcode) = extract_op(&input) {
         // Single u8 or Opcodes variant

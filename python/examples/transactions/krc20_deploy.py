@@ -33,15 +33,15 @@ async def main():
         'lim': '1000',
     }
 
-    script = ScriptBuilder()
-    script.add_data(public_key.to_x_only_public_key().to_string())
-    script.add_op(Opcodes.OpCheckSig)
-    script.add_op(Opcodes.OpFalse)
-    script.add_op(Opcodes.OpIf)
-    script.add_data(b'kasplex')
-    script.add_i64(0)
-    script.add_data(json.dumps(data, separators=(',', ':')).encode('utf-8'))
-    script.add_op(Opcodes.OpEndIf)
+    script = ScriptBuilder()\
+        .add_data(public_key.to_x_only_public_key().to_string())\
+        .add_op(Opcodes.OpCheckSig)\
+        .add_op(Opcodes.OpFalse)\
+        .add_op(Opcodes.OpIf)\
+        .add_data(b'kasplex')\
+        .add_i64(0)\
+        .add_data(json.dumps(data, separators=(',', ':')).encode('utf-8'))\
+        .add_op(Opcodes.OpEndIf)
     print(f'Script: {script.to_string()}')
     
     p2sh_address = address_from_script_public_key(script.create_pay_to_script_hash_script(), 'testnet')

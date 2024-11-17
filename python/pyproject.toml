@@ -4,14 +4,20 @@ build-backend = "maturin"
 
 [project]
 name = "kaspa"
-version = "0.0.1"
+version = "0.1.0"
 description = "Kaspa Python SDK"
+requires-python = ">=3.8"
+readme = "README.md"
 license = "ISC"
 classifiers = [
+    "Development Status :: 4 - Beta",
     "Programming Language :: Python",
     "Programming Language :: Rust",
 ]
 dependencies = []
+
+[project.urls]
+"Source" = "https://github.com/kaspanet/rusty-kaspa/tree/master/python"
 
 [package.metadata.maturin]
 name = "kaspa"
@@ -19,4 +25,6 @@ description = "Kaspa Python SDK"
 
 [tool.maturin]
 name = "kaspa"
+bindings = "pyo3"
 features = ["pyo3/extension-module"]
+strip = true

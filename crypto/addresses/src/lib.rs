@@ -225,7 +225,6 @@ impl Address {
     }
 }
 
-// PY-NOTE: WASM specific fn implementations
 #[wasm_bindgen]
 impl Address {
     #[wasm_bindgen(constructor)]
@@ -271,7 +270,6 @@ impl Address {
     }
 }
 
-// PY-NOTE: Python specific fn implementations
 #[cfg(feature = "py-sdk")]
 #[pymethods]
 impl Address {

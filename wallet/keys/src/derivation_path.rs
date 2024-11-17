@@ -10,7 +10,6 @@ pub struct DerivationPath {
     inner: kaspa_bip32::DerivationPath,
 }
 
-// PY-NOTE: methods exposed to only WASM
 #[wasm_bindgen]
 impl DerivationPath {
     #[wasm_bindgen(constructor)]
@@ -51,7 +50,6 @@ impl DerivationPath {
     }
 }
 
-// PY-NOTE: methods exposed to only Python
 #[cfg(feature = "py-sdk")]
 #[pymethods]
 impl DerivationPath {

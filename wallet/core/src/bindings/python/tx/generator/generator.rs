@@ -63,12 +63,12 @@ pub struct Generator {
 #[pymethods]
 impl Generator {
     #[new]
-    #[pyo3(signature = (network_id, entries, outputs, change_address, payload=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
+    #[pyo3(signature = (network_id, entries, change_address, outputs=None, payload=None, priority_fee=None, priority_entries=None, sig_op_count=None, minimum_signatures=None))]
     pub fn ctor(
         network_id: &str,
         entries: PyUtxoEntries,
-        outputs: PyOutputs,
         change_address: Address,
+        outputs: Option<PyOutputs>,
         payload: Option<PyBinary>,
         priority_fee: Option<u64>,
         priority_entries: Option<PyUtxoEntries>,
@@ -76,7 +76,7 @@ impl Generator {
         minimum_signatures: Option<u16>,
     ) -> PyResult<Generator> {
         let settings = GeneratorSettings::new(
-            outputs.outputs,
+            outputs,
             change_address,
             priority_fee,
             entries.entries,
@@ -177,7 +177,7 @@ struct GeneratorSettings {
 
 impl GeneratorSettings {
     pub fn new(
-        outputs: Vec<PaymentOutput>,
+        outputs: Option<PyOutputs>,
         change_address: Address,
         priority_fee: Option<u64>,
         entries: Vec<UtxoEntryReference>,
@@ -189,17 +189,17 @@ impl GeneratorSettings {
     ) -> GeneratorSettings {
         let network_id = NetworkId::from_str(network_id).unwrap();
 
-        // PY-TODO
-        // let final_transaction_destination: PaymentDestination =
-        //     if outputs.is_empty() { PaymentDestination::Change } else { PaymentOutputs::try_from(outputs).unwrap().into() };
-        let final_transaction_destination: PaymentDestination = PaymentOutputs { outputs }.into();
+        let final_transaction_destination = match outputs {
+            Some(py_outputs) => PaymentOutputs { outputs: py_outputs.outputs }.into(),
+            None => PaymentDestination::Change,
+        };
 
         let final_priority_fee = match priority_fee {
             Some(fee) => fee.try_into().unwrap(),
             None => Fees::None,
         };
 
-        // PY-TODO support GeneratorSource::UtxoContext and clean up below
+        // PY-TODO support GeneratorSource::UtxoContext when available
         let generator_source =
             GeneratorSource::UtxoEntries(entries.iter().map(|entry| UtxoEntryReference::try_from(entry.clone()).unwrap()).collect());
 

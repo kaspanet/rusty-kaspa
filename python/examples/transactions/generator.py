@@ -18,7 +18,7 @@ async def main():
 
     entries = await client.get_utxos_by_addresses({"addresses": [source_address]})
     entries = entries["entries"]
-    
+
     entries = sorted(entries, key=lambda x: x['utxoEntry']['amount'], reverse=True)
     total = sum(item['utxoEntry']['amount'] for item in entries)
 

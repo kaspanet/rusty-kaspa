@@ -36,7 +36,6 @@ pub struct PublicKey {
     pub public_key: Option<secp256k1::PublicKey>,
 }
 
-// PY-NOTE: WASM specific fn implementations
 #[wasm_bindgen(js_class = PublicKey)]
 impl PublicKey {
     /// Create a new [`PublicKey`] from a hex-encoded string.
@@ -86,7 +85,6 @@ impl PublicKey {
     }
 }
 
-// PY-NOTE: Python specific fn implementations
 #[cfg(feature = "py-sdk")]
 #[pymethods]
 impl PublicKey {
@@ -253,7 +251,6 @@ impl XOnlyPublicKey {
     }
 }
 
-// PY-NOTE: WASM specific fn implementations
 #[wasm_bindgen]
 impl XOnlyPublicKey {
     #[wasm_bindgen(constructor)]
@@ -292,7 +289,6 @@ impl XOnlyPublicKey {
     }
 }
 
-// PY-NOTE: Python specific fn implementations
 #[cfg(feature = "py-sdk")]
 #[pymethods]
 impl XOnlyPublicKey {
