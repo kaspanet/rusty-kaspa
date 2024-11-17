@@ -299,6 +299,17 @@ impl VirtualStateProcessor {
 
         let sink_multiset = self.utxo_multisets_store.get(new_sink).unwrap();
         let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_sink, new_sink, None);
+        let compact_sink_ghostdag_data = if prev_sink != new_sink {
+            // We need to check with full data here, since we may need to update the window caches
+            let sink_ghostdag_data = self.ghostdag_store.get_data(new_sink).unwrap();
+            // Update window caches - for ibd performance. see method comment for more details.
+            // This should also be called before `calculate_and_commit_virtual_state` to ascertain cache hits in the latter method.
+            self.commit_windows(new_sink, &sink_ghostdag_data);
+            CompactGhostdagData::from(sink_ghostdag_data.as_ref())
+        } else {
+            self.ghostdag_store.get_compact_data(new_sink).unwrap()
+        };
+
         let new_virtual_state = self
             .calculate_and_commit_virtual_state(
                 virtual_read,
@@ -311,15 +322,6 @@ impl VirtualStateProcessor {
             .expect("all possible rule errors are unexpected here");
 
         // Update the pruning processor about the virtual state change
-        let compact_sink_ghostdag_data = if prev_sink != new_sink {
-            // we need to check with full data here, since we may need to update the window caches
-            let sink_ghostdag_data = self.ghostdag_store.get_data(new_sink).unwrap();
-            // update window caches - for ibd performance. see method comment for more details.
-            self.maybe_commit_windows(new_sink, &sink_ghostdag_data);
-            CompactGhostdagData::from(sink_ghostdag_data.as_ref())
-        } else {
-            self.ghostdag_store.get_compact_data(new_sink).unwrap()
-        };
         // Empty the channel before sending the new message. If pruning processor is busy, this step makes sure
         // the internal channel does not grow with no need (since we only care about the most recent message)
         let _consume = self.pruning_receiver.try_iter().count();
@@ -556,13 +558,9 @@ impl VirtualStateProcessor {
         drop(selected_chain_write);
     }
 
-    fn maybe_commit_windows(&self, new_sink: Hash, sink_ghostdag_data: &GhostdagData) {
+    fn commit_windows(&self, new_sink: Hash, sink_ghostdag_data: &GhostdagData) {
         // this is only important for ibd performance, as we incur expensive cache misses otherwise.
         // this occurs because we cannot rely on header processing to pre-cache in this scenario.
-
-        // TODO: We could optimize this by only committing the windows if virtual processor where to have explicit knowledge of being in ibd.
-        // above may be possible with access to the `is_ibd_running` AtomicBool, or `is_nearly_synced()` method.
-
         if !self.block_window_cache_for_difficulty.contains_key(&new_sink) {
             self.block_window_cache_for_difficulty
                 .insert(new_sink, self.window_manager.block_daa_window(sink_ghostdag_data).unwrap().window);

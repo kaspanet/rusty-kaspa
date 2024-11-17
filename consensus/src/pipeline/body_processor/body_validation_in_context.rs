@@ -9,7 +9,7 @@ use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
 use kaspa_utils::option::OptionExtensions;
 use once_cell::unsync::Lazy;
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
 impl BlockBodyProcessor {
     pub fn validate_body_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
@@ -19,17 +19,29 @@ impl BlockBodyProcessor {
     }
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        // TODO: this is somewhat expensive during ibd, as it incurs cache misses.
-        let pmt_res =
-            Lazy::new(|| match self.window_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap()) {
-                Ok((pmt, _)) => Ok(pmt),
-                Err(e) => Err(e),
-            });
+        // Note: This is somewhat expensive during ibd, as it incurs cache misses.
+
+        // Use lazy evaluation to avoid unnecessary work, as most of the time we expect the txs not to have lock time.
+        let lazy_ghostdag_data = Lazy::new(|| self.ghostdag_store.get_data(block.hash()).unwrap());
+        let lazy_pmt_res = Lazy::new(|| match self.window_manager.calc_past_median_time(lazy_ghostdag_data.deref()) {
+            Ok((pmt, _)) => Ok(pmt),
+            Err(e) => Err(e),
+        });
 
         for tx in block.transactions.iter() {
-            // quick check to avoid the expensive Lazy eval during ibd (in most cases).
+            // Quick check to avoid the expensive Lazy eval during ibd (in most cases).
+            // TODO: refactor this and avoid classifying the tx lock outside of the transaction validator.
             if tx.lock_time != 0 {
-                if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, (*pmt_res).clone()?) {
+                // Extract the past median time from the Lazy.
+                let pmt = (*lazy_pmt_res).clone()?;
+
+                // Commit the past median time to the cache, if not already there.
+                if !self.block_window_cache_for_past_median_time.contains_key(&block.hash()) {
+                    self.block_window_cache_for_past_median_time
+                        .insert(block.hash(), self.window_manager.calc_past_median_time(lazy_ghostdag_data.deref()).unwrap().1);
+                };
+
+                if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, pmt) {
                     return Err(RuleError::TxInContextFailed(tx.id(), e));
                 };
             };
