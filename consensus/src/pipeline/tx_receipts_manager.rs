@@ -447,6 +447,7 @@ impl<
             {
                 low = candidate_index; //rescale bound
                 next_candidate_index = candidate_index + index_step;
+                eprintln!("forward:{}", next_candidate_index);
             } else {
                 /*  if candidate slipped outside the already known bounds,
                 we risk making no progress and  getting stuck inside a back and forth loop,
@@ -466,18 +467,16 @@ impl<
                     // if not, update candidate indices and bounds
                     high = candidate_index; //  rescale bound
                     next_candidate_index = candidate_index.saturating_sub(index_step);
+                    eprintln!("backward:{}", next_candidate_index);
+
                     //shouldn't overflow in natural conditions but does in testing
                 }
             } else {
                 /*again avoid getting stuck in a back and forth loop
-                by iterating backwards down to low to */
+                by iterating backwards down to low */
                 return self.get_chain_block_by_cutoff_bscore_linearly_backwards(candidate_header, low, cutoff_bscore);
             }
         }
-        // if next_candidate_index<low || next_candidate_index>high // forced repetition to prevent out of bound errors
-        // {
-        //         return self.get_chain_block_by_cutoff_bscore_rec(cutoff_bscore, low, high, candidate_header, estimated_width)
-        // }
         let next_candidate_hash = self.selected_chain_store.read().get_by_index(next_candidate_index);
         if next_candidate_hash.is_err() {
             //forced repetition if index out of bounds...
@@ -510,10 +509,16 @@ impl<
         let candidate_parent = self
             .reachability_service
             .backward_chain_iterator(initial.hash, low_block, true)
-            .find(|&block| self.headers_store.get_blue_score(block).unwrap() < cutoff_bscore)
-            .unwrap();
-        // and then return its 'selected' son
-        self.reachability_service.get_next_chain_ancestor(initial.hash, candidate_parent)
+            .find(|&block| self.headers_store.get_blue_score(block).unwrap() < cutoff_bscore);
+
+        if let Some(candidate_parent) = candidate_parent {
+            // and then return its 'selected' son
+            self.reachability_service.get_next_chain_ancestor(initial.hash, candidate_parent)
+        } else {
+            // if no block is found, then the block must be low_block itself.
+            // We cannot explicitely check this as low_block may not have parents stored
+            low_block
+        }
     }
     fn get_chain_block_by_cutoff_bscore_linearly_forwards(&self, initial: Arc<Header>, high: u64, cutoff_bscore: u64) -> Hash {
         //initial has blue score less than cutoff score

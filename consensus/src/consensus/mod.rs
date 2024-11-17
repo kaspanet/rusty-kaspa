@@ -1153,7 +1153,7 @@ impl ConsensusApi for Consensus {
                 .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"));
         }
         //if no block is given, try to search based on time_stamp
-        let pruning_point = self.pruning_point();
+
         let tip = self.selected_chain_store.read().get_tip().unwrap().1;
         if let Some(tx_timestamp) = tx_timestamp {
             return self.generate_tx_receipt_based_on_time(tx_id, tx_timestamp);
@@ -1161,6 +1161,7 @@ impl ConsensusApi for Consensus {
         /*  if no timestamp is given either, search the entire database
         note: this is probably very computationally wasteful for archival nodes
         and should be avoided on usual terms */
+        let pruning_point = self.pruning_point();
         for block in self.services.reachability_service.forward_chain_iterator(pruning_point, tip, true) {
             let accepted_txs = self.get_block_acceptance_data(block)?;
             if accepted_txs
@@ -1215,7 +1216,7 @@ impl ConsensusApi for Consensus {
         self.services.tx_receipts_manager.verify_pochm_proof(chain_purporter, proof_of_pub)
     }
     fn is_posterity_reached(&self, cutoff_bscore: u64) -> bool {
-        /* note this function only asserts a posterity with blue score higher than cutoff score exists
+        /* note: this function only asserts a posterity with blue score higher than cutoff score exists
         *It does not* necessarily imply this block is a posterity of a block with blue socre cutoof score:
         In the rare case the block is in the anticone of posterity, its posterity will be the
          next posterity block after the one in question, i.e.
@@ -1223,7 +1224,7 @@ impl ConsensusApi for Consensus {
          */
         let (_, tip) = self.selected_chain_store.read().get_tip().unwrap();
         // a security margin of 100 seconds is taken to avoid the posterity reorgin, should be enough
-        // the minimum with 2 times finality depth is taken for testing purposes.
+        // the minimum with 2 times finality depth is taken for testing purposes. For true data this minimum is meaningless.
         let security_margin = std::cmp::min(100 * self.config.bps(), self.config.finality_depth * 2);
         let tip_bscore = self.headers_store.get_blue_score(tip).unwrap();
         tip_bscore >= cutoff_bscore + security_margin

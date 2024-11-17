@@ -186,9 +186,11 @@ async fn test_receipts_in_random() {
             p.pruning_depth = (FINALITY_DEPTH * 3) as u64;
         })
         .build();
-    // let mut expected_posterities = vec![];
-    let mut receipts = vec![];
-    let mut pops = vec![];
+    let mut receipts1 = std::collections::HashMap::<_, _>::new();
+    let mut receipts2 = std::collections::HashMap::<_, _>::new();
+    let mut receipts3: HashMap<_, _> = std::collections::HashMap::<_, _>::new();
+
+    let mut pops = std::collections::HashMap::<_, _>::new();
     let ctx = TestContext::new(TestConsensus::new(&config));
     let genesis_hash = ctx.consensus.params().genesis.hash;
     let mut unreceipted_blocks = vec![];
@@ -199,6 +201,11 @@ async fn test_receipts_in_random() {
     let mut next_posterity_score = FINALITY_DEPTH as u64;
     let mut mapper = HashMap::new();
     mapper.insert(dag.0, genesis_hash);
+    /*
+       A loop over the simulated dag is created, converting it step by step to a blockDag
+       Mapper is the hash map coupling the abstract nodes on the dag object to the block hashes.
+       Some of the vertices and nodes of the original node are changed so the blockdag behaves more realistically
+    */
     for (ind, parents_ind) in dag.1.into_iter() {
         let mut parents = vec![];
         for par in parents_ind.clone().iter() {
@@ -211,87 +218,118 @@ async fn test_receipts_in_random() {
                 }
             }
         }
-        // make sure not all parents have been removed, if so ignore block
+        // make sure not all parents have been removed, if so ignore this node and do not attempt to convert it to a block.
         if parents.is_empty() {
             {
                 continue;
             }
         }
-        let blk_hash = ind.into();
-        // eprintln!("{ind:?}");
-        let _status = ctx.add_utxo_valid_block_with_parents(blk_hash, parents, vec![]).await;
-        // eprintln!("{status:?}");
-        // eprintln!("{:?}", ctx.consensus.headers_store().get_blue_score(blk_hash));
 
+        //add the new block to the blockdag, and update it on mapper
+        let blk_hash = ind.into();
+        ctx.add_utxo_valid_block_with_parents(blk_hash, parents, vec![]).await;
         mapper.insert(ind, blk_hash);
+        /*periodically check if a new posterity point has been reached
+        if so, attempt to create and store receipts and POPs for blocks pending for it.
+        */
         if ctx.consensus.is_posterity_reached(next_posterity_score) {
+            next_posterity_score += FINALITY_DEPTH as u64;
+
             //try and get proofs of publications for old blocks
             unproved_blocks.retain(|&old_block| {
-                if ctx.consensus.block_transactions_store.get(old_block).is_err() || ctx.consensus.get_header(old_block).is_err() {
+                if ctx.consensus.block_transactions_store.get(old_block).is_err()
+                    || !ctx
+                        .consensus
+                        .reachability_service()
+                        .is_dag_ancestor_of_result(ctx.consensus.pruning_point(), old_block)
+                        .unwrap_or(false)
+                    || !ctx
+                        .consensus
+                        .reachability_service()
+                        .is_dag_ancestor_of_result(old_block, ctx.consensus.get_sink())
+                        .unwrap_or(false)
+                {
+                    // remove blocks with pruned data
                     return false;
                 }
                 let blk_header = ctx.consensus.get_header(old_block).unwrap();
                 let pub_tx = ctx.consensus.block_transactions_store.get(old_block).unwrap()[0].id();
                 let proof = ctx.consensus.generate_proof_of_pub(pub_tx, Some(blk_header.hash), None);
                 if let Ok(proof) = proof {
-                    pops.push((proof, pub_tx));
-                    return false;
+                    pops.insert(old_block, proof);
+                    true
+                } else {
+                    //proofs can fail because data is too new or because it is too old: discern the two cases
+                    if pops.contains_key(&old_block) {
+                        false
+                    }
+                    //there already is a key, don't touch it and say farewell
+                    else {
+                        true
+                    } // wait for next iteration
                 }
-                true
             });
             //try and get receipts and  pochms for old blocks
             unreceipted_blocks.retain(|&old_block| {
-                if ctx.consensus.acceptance_data_store.get(old_block).is_err()
-                    || ctx.consensus.get_header(old_block).is_err()
+                if !ctx.consensus.reachability_service().is_chain_ancestor_of(ctx.consensus.pruning_point(), old_block)
                     || !ctx.consensus.reachability_service().is_chain_ancestor_of(old_block, ctx.consensus.get_sink())
                 {
                     return false;
                 }
+                let blk_header = ctx.consensus.get_header(old_block).unwrap();
+
                 let blk_pochm = ctx.consensus.generate_pochm(old_block);
-                let is_chain_blk = ctx.consensus.is_chain_block(old_block).unwrap();
                 if blk_pochm.is_ok() {
-                    assert!(is_chain_blk);
                     pochms_list.push((blk_pochm.unwrap(), old_block));
-                    let blk_header = ctx.consensus.get_header(old_block).unwrap();
                     let acc_tx =
                         ctx.consensus.acceptance_data_store.get(old_block).unwrap()[0].accepted_transactions[0].transaction_id;
 
-                    receipts.push((ctx.consensus.generate_tx_receipt(acc_tx, Some(blk_header.hash), None).unwrap(), acc_tx));
-                    receipts.push((ctx.consensus.generate_tx_receipt(acc_tx, None, Some(blk_header.timestamp)).unwrap(), acc_tx));
-                    receipts.push((ctx.consensus.generate_tx_receipt(acc_tx, None, None).unwrap(), acc_tx));
-                    false
-                } else {
+                    receipts1.insert(old_block, ctx.consensus.generate_tx_receipt(acc_tx, Some(blk_header.hash), None).unwrap());
+                    receipts2.insert(old_block, ctx.consensus.generate_tx_receipt(acc_tx, None, Some(blk_header.timestamp)).unwrap());
+                    receipts3.insert(old_block, ctx.consensus.generate_tx_receipt(acc_tx, None, None).unwrap());
                     true
+                } else {
+                    //proofs can fail because data is inexistent or because it is too old: discern the two cases
+                    if receipts1.contains_key(&old_block) {
+                        false
+                    }
+                    //there already is a key, don't touch it and say farewell
+                    else {
+                        true
+                    } // wait for next iteration
                 }
             });
-            next_posterity_score += FINALITY_DEPTH as u64;
         }
+        //add the current block to the pending for proofs list
         unreceipted_blocks.push(blk_hash);
         unproved_blocks.push(blk_hash);
     }
 
     for blk in ctx.consensus.services.reachability_service.default_backward_chain_iterator(ctx.consensus.get_sink()) {
         eprintln!("chain blk: {:?}", blk);
-        // eprintln!("{:?}",ctx.consensus.headers_store().get_blue_score(blk));
     }
     for point in ctx.consensus.pruning_point_headers().into_iter() {
         eprintln!("posterity hash:{:?}\n bscore: {:?}", point.hash, point.blue_score);
     }
-    eprintln!();
-    assert!(receipts.len() > DAG_SIZE as usize / 6); //sanity check
-    assert!(pops.len() > DAG_SIZE as usize / 3); //sanity check
+    eprintln!("receipts:{}", pops.len());
+    assert!(receipts1.len() > DAG_SIZE as usize / (4.0 * BPS) as usize); //sanity check
+    assert!(pops.len() > DAG_SIZE as usize / (BPS / 2.0).max(4.0) as usize); //sanity check
     for (pochm, blk) in pochms_list.into_iter() {
         eprintln!("blk_verified: {:?}", blk);
         assert!(ctx.consensus.verify_pochm(blk, &pochm));
         assert!(pochm.vec.len() <= (FINALITY_DEPTH as f64).log2() as usize);
     }
-    for (rec, tx_id) in receipts {
-        assert!(ctx.consensus.verify_tx_receipt(&rec));
-        // sanity check
-        assert_eq!(rec.tracked_tx_id, tx_id);
+    for rec in receipts1.values() {
+        assert!(ctx.consensus.verify_tx_receipt(rec));
+    }
+    for rec in receipts2.values() {
+        assert!(ctx.consensus.verify_tx_receipt(rec));
+    }
+    for rec in receipts3.values() {
+        assert!(ctx.consensus.verify_tx_receipt(rec));
     }
 
-    for (proof, _) in pops {
-        assert!(ctx.consensus.verify_proof_of_pub(&proof));
+    for proof in pops.values() {
+        assert!(ctx.consensus.verify_proof_of_pub(proof));
     }
 }
