@@ -19,7 +19,7 @@ use crate::{
             block_window_cache::BlockWindowCacheStore,
             daa::DbDaaStore,
             depth::{DbDepthStore, DepthStoreReader},
-            ghostdag::{CompactGhostdagData, DbGhostdagStore, GhostdagData, GhostdagStoreReader},
+            ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
             headers::{DbHeadersStore, HeaderStoreReader},
             past_pruning_points::DbPastPruningPointsStore,
             pruning::{DbPruningStore, PruningStoreReader},
@@ -77,6 +77,7 @@ use kaspa_database::prelude::{StoreError, StoreResultEmptyTuple, StoreResultExte
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
 use kaspa_notify::{events::EventType, notifier::Notify};
+use once_cell::unsync::Lazy;
 
 use super::errors::{PruningImportError, PruningImportResult};
 use crossbeam_channel::{Receiver as CrossbeamReceiver, Sender as CrossbeamSender};
@@ -299,16 +300,8 @@ impl VirtualStateProcessor {
 
         let sink_multiset = self.utxo_multisets_store.get(new_sink).unwrap();
         let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_sink, new_sink, None);
-        let compact_sink_ghostdag_data = if prev_sink != new_sink {
-            // We need to check with full data here, since we may need to update the window caches
-            let sink_ghostdag_data = self.ghostdag_store.get_data(new_sink).unwrap();
-            // Update window caches - for ibd performance. see method comment for more details.
-            // This should also be called before `calculate_and_commit_virtual_state` to ascertain cache hits in the latter method.
-            self.commit_windows(new_sink, &sink_ghostdag_data);
-            CompactGhostdagData::from(sink_ghostdag_data.as_ref())
-        } else {
-            self.ghostdag_store.get_compact_data(new_sink).unwrap()
-        };
+        let sink_ghostdag_data = Lazy::new(|| self.ghostdag_store.get_data(new_sink).unwrap());
+        self.commit_windows(new_sink, prev_sink, &sink_ghostdag_data);
 
         let new_virtual_state = self
             .calculate_and_commit_virtual_state(
@@ -320,6 +313,14 @@ impl VirtualStateProcessor {
                 &chain_path,
             )
             .expect("all possible rule errors are unexpected here");
+
+        let compact_sink_ghostdag_data = if let Some(sink_ghostdag_data) = Lazy::get(&sink_ghostdag_data) {
+            // If we had to retrieve the full data, we convert it to compact
+            sink_ghostdag_data.to_compact()
+        } else {
+            // Else we query the compact data directly.
+            self.ghostdag_store.get_compact_data(new_sink).unwrap()
+        };
 
         // Update the pruning processor about the virtual state change
         // Empty the channel before sending the new message. If pruning processor is busy, this step makes sure
@@ -558,18 +559,20 @@ impl VirtualStateProcessor {
         drop(selected_chain_write);
     }
 
-    fn commit_windows(&self, new_sink: Hash, sink_ghostdag_data: &GhostdagData) {
-        // this is only important for ibd performance, as we incur expensive cache misses otherwise.
-        // this occurs because we cannot rely on header processing to pre-cache in this scenario.
-        if !self.block_window_cache_for_difficulty.contains_key(&new_sink) {
-            self.block_window_cache_for_difficulty
-                .insert(new_sink, self.window_manager.block_daa_window(sink_ghostdag_data).unwrap().window);
-        };
+    fn commit_windows(&self, new_sink: Hash, prev_sink: Hash, sink_ghostdag_data: &impl Deref<Target = Arc<GhostdagData>>) {
+        if new_sink != prev_sink {
+            // this is only important for ibd performance, as we incur expensive cache misses otherwise.
+            // this occurs because we cannot rely on header processing to pre-cache in this scenario.
+            if !self.block_window_cache_for_difficulty.contains_key(&new_sink) {
+                self.block_window_cache_for_difficulty
+                    .insert(new_sink, self.window_manager.block_daa_window(sink_ghostdag_data.deref()).unwrap().window);
+            };
 
-        if !self.block_window_cache_for_past_median_time.contains_key(&new_sink) {
-            self.block_window_cache_for_past_median_time
-                .insert(new_sink, self.window_manager.calc_past_median_time(sink_ghostdag_data).unwrap().1);
-        };
+            if !self.block_window_cache_for_past_median_time.contains_key(&new_sink) {
+                self.block_window_cache_for_past_median_time
+                    .insert(new_sink, self.window_manager.calc_past_median_time(sink_ghostdag_data.deref()).unwrap().1);
+            };
+        }
     }
 
     /// Returns the max number of tips to consider as virtual parents in a single virtual resolve operation.
