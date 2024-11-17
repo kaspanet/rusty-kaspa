@@ -22,23 +22,19 @@ impl BlockBodyProcessor {
         // Note: This is somewhat expensive during ibd, as it incurs cache misses.
 
         // Use lazy evaluation to avoid unnecessary work, as most of the time we expect the txs not to have lock time.
-        let lazy_ghostdag_data = Lazy::new(|| self.ghostdag_store.get_data(block.hash()).unwrap());
-        let lazy_pmt_res = Lazy::new(|| match self.window_manager.calc_past_median_time(lazy_ghostdag_data.deref()) {
-            Ok((pmt, _)) => Ok(pmt),
-            Err(e) => Err(e),
-        });
+        let lazy_pmt_res =
+            Lazy::new(|| self.window_manager.calc_past_median_time(self.ghostdag_store.get_data(block.hash()).unwrap().deref()));
 
         for tx in block.transactions.iter() {
             // Quick check to avoid the expensive Lazy eval during ibd (in most cases).
             // TODO: refactor this and avoid classifying the tx lock outside of the transaction validator.
             if tx.lock_time != 0 {
                 // Extract the past median time from the Lazy.
-                let pmt = (*lazy_pmt_res).clone()?;
+                let (pmt, pmt_window) = (*lazy_pmt_res).clone()?;
 
                 // Commit the past median time to the cache, if not already there.
                 if !self.block_window_cache_for_past_median_time.contains_key(&block.hash()) {
-                    self.block_window_cache_for_past_median_time
-                        .insert(block.hash(), self.window_manager.calc_past_median_time(lazy_ghostdag_data.deref()).unwrap().1);
+                    self.block_window_cache_for_past_median_time.insert(block.hash(), pmt_window);
                 };
 
                 if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, pmt) {
