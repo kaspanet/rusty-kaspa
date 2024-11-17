@@ -23,21 +23,23 @@ impl BlockBodyProcessor {
 
         // Use lazy evaluation to avoid unnecessary work, as most of the time we expect the txs not to have lock time.
         let lazy_pmt_res =
-            Lazy::new(|| self.window_manager.calc_past_median_time(self.ghostdag_store.get_data(block.hash()).unwrap().deref()));
+            Lazy::new(|| match self.window_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap()) {
+                Ok((pmt, pmt_window)) => {
+                    if !self.block_window_cache_for_past_median_time.contains_key(&block.hash()) {
+                        self.block_window_cache_for_past_median_time.insert(block.hash(), pmt_window);
+                    };
+                    Ok(pmt)
+                }
+                Err(e) => Err(e),
+            });
 
         for tx in block.transactions.iter() {
             // Quick check to avoid the expensive Lazy eval during ibd (in most cases).
             // TODO: refactor this and avoid classifying the tx lock outside of the transaction validator.
             if tx.lock_time != 0 {
-                // Extract the past median time from the Lazy.
-                let (pmt, pmt_window) = (*lazy_pmt_res).clone()?;
-
-                // Commit the past median time to the cache, if not already there.
-                if !self.block_window_cache_for_past_median_time.contains_key(&block.hash()) {
-                    self.block_window_cache_for_past_median_time.insert(block.hash(), pmt_window);
-                };
-
-                if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, pmt) {
+                if let Err(e) =
+                    self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, (*lazy_pmt_res).clone()?)
+                {
                     return Err(RuleError::TxInContextFailed(tx.id(), e));
                 };
             };
