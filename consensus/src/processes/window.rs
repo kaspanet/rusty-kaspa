@@ -410,7 +410,9 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
             match block {
                 SampledBlock::Sampled(block) => {
-                    heap.deref_mut().try_push(block.hash, block.blue_work);
+                    if !heap.deref_mut().try_push(block.hash, block.blue_work) {
+                        return;
+                    }
                 }
                 SampledBlock::NonDaa(hash) => mergeset_non_daa_inserter(hash),
             }
