@@ -67,7 +67,6 @@ pub struct BlockBodyProcessor {
     pub(super) headers_store: Arc<DbHeadersStore>,
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
-    pub(super) block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
     pub(super) block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
 
     // Managers and services
@@ -123,7 +122,6 @@ impl BlockBodyProcessor {
             headers_store: storage.headers_store.clone(),
             block_transactions_store: storage.block_transactions_store.clone(),
             body_tips_store: storage.body_tips_store.clone(),
-            block_window_cache_for_difficulty: storage.block_window_cache_for_difficulty.clone(),
             block_window_cache_for_past_median_time: storage.block_window_cache_for_past_median_time.clone(),
 
             reachability_service: services.reachability_service.clone(),

@@ -15,7 +15,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_hashes::Hash;
 use kaspa_math::Uint256;
-use kaspa_utils::{arc::ArcExtensions, refs::Refs};
+use kaspa_utils::refs::Refs;
 use once_cell::unsync::Lazy;
 use std::{
     cmp::Reverse,
@@ -346,14 +346,20 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             cache,
             ghostdag_data,
             selected_parent_blue_work,
-            &mut mergeset_non_daa_inserter,
+            Some(&mut mergeset_non_daa_inserter),
         ) {
             return Ok(res);
         }
 
         // else we populate the window with the passed ghostdag_data.
         let mut window_heap = BoundedSizeBlockHeap::new(WindowOrigin::Sampled, window_size);
-        self.push_mergeset(&mut &mut window_heap, sample_rate, ghostdag_data, selected_parent_blue_work, mergeset_non_daa_inserter);
+        self.push_mergeset(
+            &mut &mut window_heap,
+            sample_rate,
+            ghostdag_data,
+            selected_parent_blue_work,
+            Some(&mut mergeset_non_daa_inserter),
+        );
         let mut current_ghostdag = self.ghostdag_store.get_data(ghostdag_data.selected_parent).unwrap();
 
         // Note: no need to check for cache here, as we already tried to initialize from the passed ghostdag's selected parent cache in `self.try_init_from_cache`
@@ -382,7 +388,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             }
 
             // push the current mergeset into the window
-            self.push_mergeset(&mut &mut window_heap, sample_rate, &current_ghostdag, parent_ghostdag.blue_work, move |_| {});
+            self.push_mergeset(&mut &mut window_heap, sample_rate, &current_ghostdag, parent_ghostdag.blue_work, None::<fn(Hash)>);
 
             // see if we can inherit and merge with the selected parent cache
             if self.try_merge_with_selected_parent_cache(&mut window_heap, cache, &current_ghostdag.selected_parent) {
@@ -405,16 +411,26 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         sample_rate: u64,
         ghostdag_data: &GhostdagData,
         selected_parent_blue_work: BlueWorkType,
-        mut mergeset_non_daa_inserter: impl FnMut(Hash),
+        mergeset_non_daa_inserter: Option<impl FnMut(Hash)>,
     ) {
-        for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
-            match block {
-                SampledBlock::Sampled(block) => {
-                    if !heap.deref_mut().try_push(block.hash, block.blue_work) {
+        if let Some(mut mergeset_non_daa_inserter) = mergeset_non_daa_inserter {
+            // If we have a non-daa inserter, we most iterate over the whole mergeset and op the sampled and non-daa blocks.
+            for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
+                match block {
+                    SampledBlock::Sampled(block) => {
+                        heap.try_push(block.hash, block.blue_work);
+                    }
+                    SampledBlock::NonDaa(hash) => mergeset_non_daa_inserter(hash),
+                };
+            }
+        } else {
+            // If we don't have a non-daa inserter, we can iterate over the sampled mergeset and return early if we can't push anymore.
+            for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
+                if let SampledBlock::Sampled(block) = block {
+                    if !heap.try_push(block.hash, block.blue_work) {
                         return;
                     }
                 }
-                SampledBlock::NonDaa(hash) => mergeset_non_daa_inserter(hash),
             }
         }
     }
@@ -426,7 +442,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         cache: Option<&Arc<U>>,
         ghostdag_data: &GhostdagData,
         selected_parent_blue_work: BlueWorkType,
-        mergeset_non_daa_inserter: impl FnMut(Hash),
+        mergeset_non_daa_inserter: Option<impl FnMut(Hash)>,
     ) -> Option<Arc<BlockWindowHeap>> {
         cache.and_then(|cache| {
             cache.get(&ghostdag_data.selected_parent).map(|selected_parent_window| {
@@ -451,7 +467,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         cache
             .and_then(|cache| {
                 cache.get(selected_parent).map(|selected_parent_window| {
-                    heap.merge_ancestor_heap(&mut selected_parent_window.unwrap_or_clone());
+                    heap.merge_ancestor_heap(&mut (*selected_parent_window).clone());
                 })
             })
             .is_some()
