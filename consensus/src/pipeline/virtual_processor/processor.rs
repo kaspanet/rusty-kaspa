@@ -301,7 +301,8 @@ impl VirtualStateProcessor {
         let sink_multiset = self.utxo_multisets_store.get(new_sink).unwrap();
         let chain_path = self.dag_traversal_manager.calculate_chain_path(prev_sink, new_sink, None);
         let sink_ghostdag_data = Lazy::new(|| self.ghostdag_store.get_data(new_sink).unwrap());
-        self.commit_windows(new_sink, prev_sink, &sink_ghostdag_data);
+        // Cache the DAA and Median time windows of the sink for future use, as well as prepare for virtual's window calculations
+        self.cache_sink_windows(new_sink, prev_sink, &sink_ghostdag_data);
 
         let new_virtual_state = self
             .calculate_and_commit_virtual_state(
@@ -559,7 +560,9 @@ impl VirtualStateProcessor {
         drop(selected_chain_write);
     }
 
-    fn commit_windows(&self, new_sink: Hash, prev_sink: Hash, sink_ghostdag_data: &impl Deref<Target = Arc<GhostdagData>>) {
+    /// Caches the DAA and Median time windows of the sink block (if needed). Following, virtual's window calculations will
+    /// naturally hit the cache finding the sink's windows and building upon them.
+    fn cache_sink_windows(&self, new_sink: Hash, prev_sink: Hash, sink_ghostdag_data: &impl Deref<Target = Arc<GhostdagData>>) {
         if new_sink != prev_sink {
             // this is only important for ibd performance, as we incur expensive cache misses otherwise.
             // this occurs because we cannot rely on header processing to pre-cache in this scenario.
