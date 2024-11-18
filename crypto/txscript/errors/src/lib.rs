@@ -6,8 +6,8 @@ pub enum TxScriptError {
     MalformedPushSize(Vec<u8>),
     #[error("opcode requires {0} bytes, but script only has {1} remaining")]
     MalformedPush(usize, usize),
-    #[error("transaction input index {0} >= {1}")]
-    InvalidIndex(usize, usize),
+    #[error("transaction input {0} is out of bounds, should be non-negative below {1}")]
+    InvalidInputIndex(i32, usize),
     #[error("combined stack size {0} > max allowed {1}")]
     StackSizeExceeded(usize, usize),
     #[error("attempt to execute invalid opcode {0}")]
@@ -69,4 +69,14 @@ pub enum TxScriptError {
     InvalidStackOperation(usize, usize),
     #[error("script of size {0} exceeded maximum allowed size of {1}")]
     ScriptSize(usize, usize),
+    #[error("transaction output {0} is out of bounds, should be non-negative below {1}")]
+    InvalidOutputIndex(i32, usize),
+    #[error(transparent)]
+    Serialization(#[from] SerializationError),
+}
+
+#[derive(Error, PartialEq, Eq, Debug, Clone, Copy)]
+pub enum SerializationError {
+    #[error("Number exceeds 8 bytes: {0}")]
+    NumberTooLong(i64),
 }
