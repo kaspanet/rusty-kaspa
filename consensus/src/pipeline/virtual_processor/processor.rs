@@ -563,6 +563,8 @@ impl VirtualStateProcessor {
     /// Caches the DAA and Median time windows of the sink block (if needed). Following, virtual's window calculations will
     /// naturally hit the cache finding the sink's windows and building upon them.
     fn cache_sink_windows(&self, new_sink: Hash, prev_sink: Hash, sink_ghostdag_data: &impl Deref<Target = Arc<GhostdagData>>) {
+        // We expect that the `new_sink` is cached (or some close-enough ancestor thereof) if it is equal to the `prev_sink`,
+        // Hence we short-circuit the check of the keys in such cases, thereby reducing the access of the read-lock
         if new_sink != prev_sink {
             // this is only important for ibd performance, as we incur expensive cache misses otherwise.
             // this occurs because we cannot rely on header processing to pre-cache in this scenario.
