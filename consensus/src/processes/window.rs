@@ -17,7 +17,12 @@ use kaspa_hashes::Hash;
 use kaspa_math::Uint256;
 use kaspa_utils::{arc::ArcExtensions, refs::Refs};
 use once_cell::unsync::Lazy;
-use std::{cmp::Reverse, iter::once, ops::Deref, sync::Arc};
+use std::{
+    cmp::Reverse,
+    iter::once,
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 
 use super::{
     difficulty::{FullDifficultyManager, SampledDifficultyManager},
@@ -334,7 +339,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
 
         let selected_parent_blue_work = self.ghostdag_store.get_blue_work(ghostdag_data.selected_parent).unwrap();
 
-        //try to initialize the window from the cache directly
+        // Try to initialize the window from the cache directly
         if let Some(res) = self.try_init_from_cache(
             window_size,
             sample_rate,
@@ -348,7 +353,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
 
         // else we populate the window with the passed ghostdag_data.
         let mut window_heap = BoundedSizeBlockHeap::new(WindowOrigin::Sampled, window_size);
-        self.push_mergeset(&mut window_heap, sample_rate, ghostdag_data, selected_parent_blue_work, mergeset_non_daa_inserter);
+        self.push_mergeset(&mut &mut window_heap, sample_rate, ghostdag_data, selected_parent_blue_work, mergeset_non_daa_inserter);
         let mut current_ghostdag = self.ghostdag_store.get_data(ghostdag_data.selected_parent).unwrap();
 
         // Note: no need to check for cache here, as we already tried to initialize from the passed ghostdag's selected parent cache in `self.try_init_from_cache`
@@ -377,7 +382,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             }
 
             // push the current mergeset into the window
-            self.push_mergeset(&mut window_heap, sample_rate, &current_ghostdag, parent_ghostdag.blue_work, move |_| {});
+            self.push_mergeset(&mut &mut window_heap, sample_rate, &current_ghostdag, parent_ghostdag.blue_work, move |_| {});
 
             // see if we can inherit and merge with the selected parent cache
             if self.try_merge_with_selected_parent_cache(&mut window_heap, cache, &current_ghostdag.selected_parent) {
@@ -392,9 +397,11 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         Ok(Arc::new(window_heap.binary_heap))
     }
 
+    /// Push the mergeset samples into the bounded heap.
+    /// Note: receives the heap argument as a DerefMut so that Lazy can be passed and be evaluated *only if an actual push is needed*
     fn push_mergeset(
         &self,
-        heap: &mut BoundedSizeBlockHeap,
+        heap: &mut impl DerefMut<Target = BoundedSizeBlockHeap>,
         sample_rate: u64,
         ghostdag_data: &GhostdagData,
         selected_parent_blue_work: BlueWorkType,
@@ -403,7 +410,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
             match block {
                 SampledBlock::Sampled(block) => {
-                    heap.try_push(block.hash, block.blue_work);
+                    heap.deref_mut().try_push(block.hash, block.blue_work);
                 }
                 SampledBlock::NonDaa(hash) => mergeset_non_daa_inserter(hash),
             }
@@ -417,23 +424,13 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         cache: Option<&Arc<U>>,
         ghostdag_data: &GhostdagData,
         selected_parent_blue_work: BlueWorkType,
-        mut mergeset_non_daa_inserter: impl FnMut(Hash),
+        mergeset_non_daa_inserter: impl FnMut(Hash),
     ) -> Option<Arc<BlockWindowHeap>> {
         cache.and_then(|cache| {
             cache.get(&ghostdag_data.selected_parent).map(|selected_parent_window| {
                 let mut heap = Lazy::new(|| BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_window).clone()));
-                //Note: calling self.push_mergeset here voids the lazy evaluation optimization of the heap. so we don't do that.
-                for block in self.sampled_mergeset_iterator(sample_rate, ghostdag_data, selected_parent_blue_work) {
-                    match block {
-                        SampledBlock::Sampled(block) => {
-                            heap.try_push(block.hash, block.blue_work);
-                        }
-                        SampledBlock::NonDaa(hash) => {
-                            mergeset_non_daa_inserter(hash);
-                        }
-                    }
-                }
-
+                // We pass a Lazy heap as an optimization to avoid cloning the selected parent heap in cases where the mergeset contains no samples
+                self.push_mergeset(&mut heap, sample_rate, ghostdag_data, selected_parent_blue_work, mergeset_non_daa_inserter);
                 if let Ok(heap) = Lazy::into_value(heap) {
                     Arc::new(heap.binary_heap)
                 } else {
@@ -715,8 +712,8 @@ impl BoundedSizeBlockHeap {
     // This method is intended to be used to merge the ancestor heap with the current heap.
     fn merge_ancestor_heap(&mut self, ancestor_heap: &mut BlockWindowHeap) {
         self.binary_heap.blocks.append(&mut ancestor_heap.blocks);
-        // below we saturate for cases where ancestor may be close to, the origin, or genesis.
-        // note: this is a no-op if overflow_amount is 0, i.e. because of the saturating sub, the sum of the two heaps is less or equal to the size bound.
+        // Below we saturate for cases where ancestor may be close to, the origin, or genesis.
+        // Note: this is a no-op if overflow_amount is 0, i.e. because of the saturating sub, the sum of the two heaps is less or equal to the size bound.
         for _ in 0..self.binary_heap.len().saturating_sub(self.size_bound) {
             self.binary_heap.blocks.pop();
         }
