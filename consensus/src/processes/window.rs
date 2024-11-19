@@ -32,7 +32,6 @@ use super::{
 #[derive(Clone, Copy)]
 pub enum WindowType {
     SampledDifficultyWindow,
-    FullDifficultyWindow,
     SampledMedianTimeWindow,
     VaryingWindow(usize),
 }
@@ -226,7 +225,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Wi
 
     fn window_size(&self, _ghostdag_data: &GhostdagData, window_type: WindowType) -> usize {
         match window_type {
-            WindowType::SampledDifficultyWindow | WindowType::FullDifficultyWindow => self.difficulty_window_size,
+            WindowType::SampledDifficultyWindow => self.difficulty_window_size,
             WindowType::SampledMedianTimeWindow => self.past_median_time_window_size,
             WindowType::VaryingWindow(size) => size,
         }
@@ -334,7 +333,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         let cache = match window_type {
             WindowType::SampledDifficultyWindow => Some(&self.block_window_cache_for_difficulty),
             WindowType::SampledMedianTimeWindow => Some(&self.block_window_cache_for_past_median_time),
-            WindowType::FullDifficultyWindow | WindowType::VaryingWindow(_) => None,
+            WindowType::VaryingWindow(_) => None,
         };
 
         let selected_parent_blue_work = self.ghostdag_store.get_blue_work(ghostdag_data.selected_parent).unwrap();
@@ -540,10 +539,6 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
     fn window_size(&self, _ghostdag_data: &GhostdagData, window_type: WindowType) -> usize {
         match window_type {
             WindowType::SampledDifficultyWindow => self.difficulty_window_size,
-            // We aim to return a full window such that it contains what would be the sampled window. Note that the
-            // product below addresses also the worst-case scenario where the last sampled block is exactly `sample_rate`
-            // blocks from the end of the full window
-            WindowType::FullDifficultyWindow => self.difficulty_window_size * self.difficulty_sample_rate as usize,
             WindowType::SampledMedianTimeWindow => self.past_median_time_window_size,
             WindowType::VaryingWindow(size) => size,
         }
@@ -553,7 +548,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         match window_type {
             WindowType::SampledDifficultyWindow => self.difficulty_sample_rate,
             WindowType::SampledMedianTimeWindow => self.past_median_time_sample_rate,
-            WindowType::FullDifficultyWindow | WindowType::VaryingWindow(_) => 1,
+            WindowType::VaryingWindow(_) => 1,
         }
     }
 }
