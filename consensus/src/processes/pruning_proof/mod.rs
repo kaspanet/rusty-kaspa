@@ -281,23 +281,29 @@ impl PruningProofManager {
             let mut ghostdag = self.ghostdag_store.get_data(anticone_block).unwrap();
             let window = self.window_manager.block_window(&ghostdag, WindowType::SampledDifficultyWindow).unwrap();
 
-            /* TODO (PR):
-               1. Extract to function
-               2. Avoid searching for the cover if window is not sampled
-               3. Cleanup WindowType::FullDifficultyWindow
-            */
-            // Tracks the window blocks to make sure we visit all blocks
-            let mut unvisited: BlockHashSet = window.iter().map(|b| b.0.hash).collect();
-            // The full consecutive window covering all (possibly sampled) window blocks and the full mergesets containing them
-            let mut cover = Vec::with_capacity(window.len());
-            while !unvisited.is_empty() {
-                assert!(!ghostdag.selected_parent.is_origin(), "unvisited still not empty");
-                for merged in ghostdag.unordered_mergeset() {
-                    cover.push(merged);
-                    unvisited.remove(&merged);
+            // Make sure we extract a full consecutive window containing all blocks required to restore the (possibly sampled) window.
+            // In the sampling case, the mechanism relies on DAA indexes which can only be calculated correctly if the full
+            // mergesets covering all sampled blocks are sent.
+            let cover = match self.window_manager.sampling(&ghostdag) {
+                true => {
+                    // Tracks the window blocks to make sure we visit all blocks
+                    let mut unvisited: BlockHashSet = window.iter().map(|b| b.0.hash).collect();
+                    let capacity_estimate =
+                        window.len() * self.window_manager.sample_rate(&ghostdag, WindowType::SampledDifficultyWindow) as usize;
+                    // The full consecutive window covering all sampled window blocks and the full mergesets containing them
+                    let mut cover = Vec::with_capacity(capacity_estimate);
+                    while !unvisited.is_empty() {
+                        assert!(!ghostdag.selected_parent.is_origin(), "unvisited still not empty");
+                        for merged in ghostdag.unordered_mergeset() {
+                            cover.push(merged);
+                            unvisited.remove(&merged);
+                        }
+                        ghostdag = self.ghostdag_store.get_data(ghostdag.selected_parent).unwrap();
+                    }
+                    cover
                 }
-                ghostdag = self.ghostdag_store.get_data(ghostdag.selected_parent).unwrap();
-            }
+                false => window.iter().map(|b| b.0.hash).collect(),
+            };
 
             for hash in cover {
                 if let Entry::Vacant(e) = daa_window_blocks.entry(hash) {

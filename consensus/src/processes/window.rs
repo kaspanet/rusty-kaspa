@@ -621,7 +621,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         Self { ghostdag_store, headers_store, sampled_window_manager, full_window_manager, sampling_activation }
     }
 
-    fn sampling(&self, ghostdag_data: &GhostdagData) -> bool {
+    pub fn sampling(&self, ghostdag_data: &GhostdagData) -> bool {
         let sp_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
         self.sampling_activation.is_active(sp_daa_score)
     }
