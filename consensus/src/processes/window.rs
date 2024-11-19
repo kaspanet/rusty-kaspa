@@ -59,6 +59,27 @@ pub trait WindowManager {
     fn sample_rate(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> u64;
 }
 
+/// A local wrapper over an (optional) block window cache which filters cache hits based on window origin
+struct AffiliatedWindowCache<'a, U: BlockWindowCacheReader> {
+    /// The inner underlying cache
+    inner: Option<&'a Arc<U>>,
+    /// The affiliated origin (sampled vs. full)
+    origin: WindowOrigin,
+}
+
+impl<'a, U: BlockWindowCacheReader> AffiliatedWindowCache<'a, U> {
+    fn new(inner: Option<&'a Arc<U>>, origin: WindowOrigin) -> Self {
+        Self { inner, origin }
+    }
+}
+
+impl<'a, U: BlockWindowCacheReader> BlockWindowCacheReader for AffiliatedWindowCache<'a, U> {
+    fn get(&self, hash: &Hash) -> Option<Arc<BlockWindowHeap>> {
+        // Only return the cached window if it originates from the affiliated origin
+        self.inner.and_then(|cache| cache.get(hash).and_then(|win| if win.origin() == self.origin { Some(win) } else { None }))
+    }
+}
+
 /// A window manager conforming (indirectly) to the legacy golang implementation
 /// based on full, hence un-sampled, windows
 #[derive(Clone)]
@@ -113,30 +134,29 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Fu
             return Ok(Arc::new(BlockWindowHeap::new(WindowOrigin::Full)));
         }
 
-        let cache = if window_size == self.difficulty_window_size {
+        let inner_cache = if window_size == self.difficulty_window_size {
             Some(&self.block_window_cache_for_difficulty)
         } else if window_size == self.past_median_time_window_size {
             Some(&self.block_window_cache_for_past_median_time)
         } else {
             None
         };
+        // Wrap the inner cache with a cache affiliated with this origin (WindowOrigin::Full).
+        // This is crucial for hardfork times where the DAA mechanism changes thereby invalidating cache entries
+        // originating from the prior mechanism
+        let cache = AffiliatedWindowCache::new(inner_cache, WindowOrigin::Full);
 
-        if let Some(cache) = cache {
-            if let Some(selected_parent_binary_heap) = cache.get(&ghostdag_data.selected_parent) {
-                // Only use the cached window if it originates from here
-                if let WindowOrigin::Full = selected_parent_binary_heap.origin() {
-                    let mut window_heap = BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_binary_heap).clone());
-                    if ghostdag_data.selected_parent != self.genesis_hash {
-                        self.try_push_mergeset(
-                            &mut window_heap,
-                            ghostdag_data,
-                            self.ghostdag_store.get_blue_work(ghostdag_data.selected_parent).unwrap(),
-                        );
-                    }
-
-                    return Ok(Arc::new(window_heap.binary_heap));
-                }
+        if let Some(selected_parent_binary_heap) = cache.get(&ghostdag_data.selected_parent) {
+            let mut window_heap = BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_binary_heap).clone());
+            if ghostdag_data.selected_parent != self.genesis_hash {
+                self.try_push_mergeset(
+                    &mut window_heap,
+                    ghostdag_data,
+                    self.ghostdag_store.get_blue_work(ghostdag_data.selected_parent).unwrap(),
+                );
             }
+
+            return Ok(Arc::new(window_heap.binary_heap));
         }
 
         let mut window_heap = BoundedSizeBlockHeap::new(WindowOrigin::Full, window_size);
@@ -330,11 +350,15 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             return Err(RuleError::InsufficientDaaWindowSize(0));
         }
 
-        let cache = match window_type {
+        let inner_cache = match window_type {
             WindowType::DifficultyWindow => Some(&self.block_window_cache_for_difficulty),
             WindowType::MedianTimeWindow => Some(&self.block_window_cache_for_past_median_time),
             WindowType::VaryingWindow(_) => None,
         };
+        // Wrap the inner cache with a cache affiliated with this origin (WindowOrigin::Sampled).
+        // This is crucial for hardfork times where the DAA mechanism changes thereby invalidating cache entries
+        // originating from the prior mechanism
+        let cache = AffiliatedWindowCache::new(inner_cache, WindowOrigin::Sampled);
 
         let selected_parent_blue_work = self.ghostdag_store.get_blue_work(ghostdag_data.selected_parent).unwrap();
 
@@ -342,7 +366,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         if let Some(res) = self.try_init_from_cache(
             window_size,
             sample_rate,
-            cache,
+            &cache,
             ghostdag_data,
             selected_parent_blue_work,
             Some(&mut mergeset_non_daa_inserter),
@@ -390,7 +414,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
             self.push_mergeset(&mut &mut window_heap, sample_rate, &current_ghostdag, parent_ghostdag.blue_work, None::<fn(Hash)>);
 
             // see if we can inherit and merge with the selected parent cache
-            if self.try_merge_with_selected_parent_cache(&mut window_heap, cache, &current_ghostdag.selected_parent) {
+            if self.try_merge_with_selected_parent_cache(&mut window_heap, &cache, &current_ghostdag.selected_parent) {
                 // if successful, we may break out of the loop, with the window already filled.
                 break;
             };
@@ -438,36 +462,33 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         &self,
         window_size: usize,
         sample_rate: u64,
-        cache: Option<&Arc<U>>,
+        cache: &impl BlockWindowCacheReader,
         ghostdag_data: &GhostdagData,
         selected_parent_blue_work: BlueWorkType,
         mergeset_non_daa_inserter: Option<impl FnMut(Hash)>,
     ) -> Option<Arc<BlockWindowHeap>> {
-        cache.and_then(|cache| {
-            cache.get(&ghostdag_data.selected_parent).map(|selected_parent_window| {
-                let mut heap = Lazy::new(|| BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_window).clone()));
-                // We pass a Lazy heap as an optimization to avoid cloning the selected parent heap in cases where the mergeset contains no samples
-                self.push_mergeset(&mut heap, sample_rate, ghostdag_data, selected_parent_blue_work, mergeset_non_daa_inserter);
-                if let Ok(heap) = Lazy::into_value(heap) {
-                    Arc::new(heap.binary_heap)
-                } else {
-                    selected_parent_window.clone()
-                }
-            })
+        cache.get(&ghostdag_data.selected_parent).map(|selected_parent_window| {
+            let mut heap = Lazy::new(|| BoundedSizeBlockHeap::from_binary_heap(window_size, (*selected_parent_window).clone()));
+            // We pass a Lazy heap as an optimization to avoid cloning the selected parent heap in cases where the mergeset contains no samples
+            self.push_mergeset(&mut heap, sample_rate, ghostdag_data, selected_parent_blue_work, mergeset_non_daa_inserter);
+            if let Ok(heap) = Lazy::into_value(heap) {
+                Arc::new(heap.binary_heap)
+            } else {
+                selected_parent_window.clone()
+            }
         })
     }
 
     fn try_merge_with_selected_parent_cache(
         &self,
         heap: &mut BoundedSizeBlockHeap,
-        cache: Option<&Arc<U>>,
+        cache: &impl BlockWindowCacheReader,
         selected_parent: &Hash,
     ) -> bool {
         cache
-            .and_then(|cache| {
-                cache.get(selected_parent).map(|selected_parent_window| {
-                    heap.merge_ancestor_heap(&mut (*selected_parent_window).clone());
-                })
+            .get(selected_parent)
+            .map(|selected_parent_window| {
+                heap.merge_ancestor_heap(&mut (*selected_parent_window).clone());
             })
             .is_some()
     }

@@ -10,7 +10,7 @@ use std::{
     sync::Arc,
 };
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum WindowOrigin {
     Full,
     Sampled,
