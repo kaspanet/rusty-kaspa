@@ -1,7 +1,7 @@
 use super::BlockBodyProcessor;
 use crate::{
     errors::{BlockProcessResult, RuleError},
-    model::stores::{ghostdag::GhostdagStoreReader, statuses::StatusesStoreReader},
+    model::stores::statuses::StatusesStoreReader,
     processes::window::WindowManager,
 };
 use kaspa_consensus_core::block::Block;
@@ -19,19 +19,8 @@ impl BlockBodyProcessor {
     }
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        // Note: This is somewhat expensive during ibd, as it incurs cache misses.
-
         // Use lazy evaluation to avoid unnecessary work, as most of the time we expect the txs not to have lock time.
-        let lazy_pmt_res =
-            Lazy::new(|| match self.window_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap()) {
-                Ok((pmt, pmt_window)) => {
-                    if !self.block_window_cache_for_past_median_time.contains_key(&block.hash()) {
-                        self.block_window_cache_for_past_median_time.insert(block.hash(), pmt_window);
-                    };
-                    Ok(pmt)
-                }
-                Err(e) => Err(e),
-            });
+        let lazy_pmt_res = Lazy::new(|| self.window_manager.calc_past_median_time_for_known_hash(block.hash()));
 
         for tx in block.transactions.iter() {
             // Quick check to avoid the expensive Lazy eval during ibd (in most cases).

@@ -284,7 +284,7 @@ impl PruningProofManager {
             // Make sure we extract a full consecutive window containing all blocks required to restore the (possibly sampled) window.
             // In the sampling case, the mechanism relies on DAA indexes which can only be calculated correctly if the full
             // mergesets covering all sampled blocks are sent.
-            let cover = match self.window_manager.sampling(&ghostdag) {
+            let cover = match self.window_manager.sampling(ghostdag.selected_parent) {
                 true => {
                     // Tracks the window blocks to make sure we visit all blocks
                     let mut unvisited: BlockHashSet = window.iter().map(|b| b.0.hash).collect();

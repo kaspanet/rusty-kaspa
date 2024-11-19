@@ -1,6 +1,6 @@
 use crate::{
     model::stores::{
-        block_window_cache::{BlockWindowCacheReader, BlockWindowHeap, WindowOrigin},
+        block_window_cache::{BlockWindowCacheReader, BlockWindowCacheWriter, BlockWindowHeap, WindowOrigin},
         daa::DaaStoreReader,
         ghostdag::{GhostdagData, GhostdagStoreReader},
         headers::HeaderStoreReader,
@@ -54,12 +54,17 @@ pub trait WindowManager {
     fn block_daa_window(&self, ghostdag_data: &GhostdagData) -> Result<DaaWindow, RuleError>;
     fn calculate_difficulty_bits(&self, ghostdag_data: &GhostdagData, daa_window: &DaaWindow) -> u32;
     fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError>;
+    fn calc_past_median_time_for_known_hash(&self, hash: Hash) -> Result<u64, RuleError>;
     fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64>;
     fn window_size(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> usize;
     fn sample_rate(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> u64;
 }
 
-/// A local wrapper over an (optional) block window cache which filters cache hits based on window origin
+trait AffiliatedWindowCacheReader {
+    fn get(&self, hash: &Hash) -> Option<Arc<BlockWindowHeap>>;
+}
+
+/// A local wrapper over an (optional) block window cache which filters cache hits based on a pre-specified window origin
 struct AffiliatedWindowCache<'a, U: BlockWindowCacheReader> {
     /// The inner underlying cache
     inner: Option<&'a Arc<U>>,
@@ -73,17 +78,17 @@ impl<'a, U: BlockWindowCacheReader> AffiliatedWindowCache<'a, U> {
     }
 }
 
-impl<'a, U: BlockWindowCacheReader> BlockWindowCacheReader for AffiliatedWindowCache<'a, U> {
+impl<'a, U: BlockWindowCacheReader> AffiliatedWindowCacheReader for AffiliatedWindowCache<'a, U> {
     fn get(&self, hash: &Hash) -> Option<Arc<BlockWindowHeap>> {
         // Only return the cached window if it originates from the affiliated origin
-        self.inner.and_then(|cache| cache.get(hash).and_then(|win| if win.origin() == self.origin { Some(win) } else { None }))
+        self.inner.and_then(|cache| cache.get(hash, self.origin))
     }
 }
 
 /// A window manager conforming (indirectly) to the legacy golang implementation
 /// based on full, hence un-sampled, windows
 #[derive(Clone)]
-pub struct FullWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> {
+pub struct FullWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter, V: HeaderStoreReader> {
     genesis_hash: Hash,
     ghostdag_store: Arc<T>,
     block_window_cache_for_difficulty: Arc<U>,
@@ -94,7 +99,7 @@ pub struct FullWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReader, 
     past_median_time_manager: FullPastMedianTimeManager<V>,
 }
 
-impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> FullWindowManager<T, U, V> {
+impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter, V: HeaderStoreReader> FullWindowManager<T, U, V> {
     pub fn new(
         genesis: &GenesisBlock,
         ghostdag_store: Arc<T>,
@@ -213,7 +218,9 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Fu
     }
 }
 
-impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> WindowManager for FullWindowManager<T, U, V> {
+impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter, V: HeaderStoreReader> WindowManager
+    for FullWindowManager<T, U, V>
+{
     fn block_window(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<Arc<BlockWindowHeap>, RuleError> {
         self.build_block_window(ghostdag_data, window_type)
     }
@@ -237,6 +244,18 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Wi
         let window = self.block_window(ghostdag_data, WindowType::MedianTimeWindow)?;
         let past_median_time = self.past_median_time_manager.calc_past_median_time(&window)?;
         Ok((past_median_time, window))
+    }
+
+    fn calc_past_median_time_for_known_hash(&self, hash: Hash) -> Result<u64, RuleError> {
+        if let Some(window) = self.block_window_cache_for_past_median_time.get(&hash, WindowOrigin::Full) {
+            let past_median_time = self.past_median_time_manager.calc_past_median_time(&window)?;
+            Ok(past_median_time)
+        } else {
+            let ghostdag_data = self.ghostdag_store.get_data(hash).unwrap();
+            let (past_median_time, window) = self.calc_past_median_time(&ghostdag_data)?;
+            self.block_window_cache_for_past_median_time.insert(hash, window);
+            Ok(past_median_time)
+        }
     }
 
     fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64> {
@@ -265,7 +284,12 @@ enum SampledBlock {
 
 /// A sampled window manager implementing [KIP-0004](https://github.com/kaspanet/kips/blob/master/kip-0004.md)
 #[derive(Clone)]
-pub struct SampledWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W: DaaStoreReader> {
+pub struct SampledWindowManager<
+    T: GhostdagStoreReader,
+    U: BlockWindowCacheReader + BlockWindowCacheWriter,
+    V: HeaderStoreReader,
+    W: DaaStoreReader,
+> {
     genesis_hash: Hash,
     ghostdag_store: Arc<T>,
     headers_store: Arc<V>,
@@ -282,7 +306,9 @@ pub struct SampledWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReade
     past_median_time_manager: SampledPastMedianTimeManager<V>,
 }
 
-impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W: DaaStoreReader> SampledWindowManager<T, U, V, W> {
+impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter, V: HeaderStoreReader, W: DaaStoreReader>
+    SampledWindowManager<T, U, V, W>
+{
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         genesis: &GenesisBlock,
@@ -462,7 +488,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         &self,
         window_size: usize,
         sample_rate: u64,
-        cache: &impl BlockWindowCacheReader,
+        cache: &impl AffiliatedWindowCacheReader,
         ghostdag_data: &GhostdagData,
         selected_parent_blue_work: BlueWorkType,
         mergeset_non_daa_inserter: Option<impl FnMut(Hash)>,
@@ -482,7 +508,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
     fn try_merge_with_selected_parent_cache(
         &self,
         heap: &mut BoundedSizeBlockHeap,
-        cache: &impl BlockWindowCacheReader,
+        cache: &impl AffiliatedWindowCacheReader,
         selected_parent: &Hash,
     ) -> bool {
         cache
@@ -521,7 +547,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
     }
 }
 
-impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W: DaaStoreReader> WindowManager
+impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter, V: HeaderStoreReader, W: DaaStoreReader> WindowManager
     for SampledWindowManager<T, U, V, W>
 {
     fn block_window(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<Arc<BlockWindowHeap>, RuleError> {
@@ -553,6 +579,18 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         Ok((past_median_time, window))
     }
 
+    fn calc_past_median_time_for_known_hash(&self, hash: Hash) -> Result<u64, RuleError> {
+        if let Some(window) = self.block_window_cache_for_past_median_time.get(&hash, WindowOrigin::Sampled) {
+            let past_median_time = self.past_median_time_manager.calc_past_median_time(&window)?;
+            Ok(past_median_time)
+        } else {
+            let ghostdag_data = self.ghostdag_store.get_data(hash).unwrap();
+            let (past_median_time, window) = self.calc_past_median_time(&ghostdag_data)?;
+            self.block_window_cache_for_past_median_time.insert(hash, window);
+            Ok(past_median_time)
+        }
+    }
+
     fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64> {
         self.difficulty_manager.estimate_network_hashes_per_second(&window)
     }
@@ -578,7 +616,12 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
 ///
 /// See [FullWindowManager] and [SampledWindowManager]
 #[derive(Clone)]
-pub struct DualWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W: DaaStoreReader> {
+pub struct DualWindowManager<
+    T: GhostdagStoreReader,
+    U: BlockWindowCacheReader + BlockWindowCacheWriter,
+    V: HeaderStoreReader,
+    W: DaaStoreReader,
+> {
     ghostdag_store: Arc<T>,
     headers_store: Arc<V>,
     sampling_activation: ForkActivation,
@@ -586,7 +629,9 @@ pub struct DualWindowManager<T: GhostdagStoreReader, U: BlockWindowCacheReader, 
     sampled_window_manager: SampledWindowManager<T, U, V, W>,
 }
 
-impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W: DaaStoreReader> DualWindowManager<T, U, V, W> {
+impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter, V: HeaderStoreReader, W: DaaStoreReader>
+    DualWindowManager<T, U, V, W>
+{
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         genesis: &GenesisBlock,
@@ -637,47 +682,55 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         Self { ghostdag_store, headers_store, sampled_window_manager, full_window_manager, sampling_activation }
     }
 
-    pub fn sampling(&self, ghostdag_data: &GhostdagData) -> bool {
-        let sp_daa_score = self.headers_store.get_daa_score(ghostdag_data.selected_parent).unwrap();
+    /// Checks whether sampling mode was activated based on the selected parent (internally checking its DAA score)
+    pub(crate) fn sampling(&self, selected_parent: Hash) -> bool {
+        let sp_daa_score = self.headers_store.get_daa_score(selected_parent).unwrap();
         self.sampling_activation.is_active(sp_daa_score)
     }
 }
 
-impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W: DaaStoreReader> WindowManager
+impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter, V: HeaderStoreReader, W: DaaStoreReader> WindowManager
     for DualWindowManager<T, U, V, W>
 {
     fn block_window(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> Result<Arc<BlockWindowHeap>, RuleError> {
-        match self.sampling(ghostdag_data) {
+        match self.sampling(ghostdag_data.selected_parent) {
             true => self.sampled_window_manager.block_window(ghostdag_data, window_type),
             false => self.full_window_manager.block_window(ghostdag_data, window_type),
         }
     }
 
     fn calc_daa_window(&self, ghostdag_data: &GhostdagData, window: Arc<BlockWindowHeap>) -> DaaWindow {
-        match self.sampling(ghostdag_data) {
+        match self.sampling(ghostdag_data.selected_parent) {
             true => self.sampled_window_manager.calc_daa_window(ghostdag_data, window),
             false => self.full_window_manager.calc_daa_window(ghostdag_data, window),
         }
     }
 
     fn block_daa_window(&self, ghostdag_data: &GhostdagData) -> Result<DaaWindow, RuleError> {
-        match self.sampling(ghostdag_data) {
+        match self.sampling(ghostdag_data.selected_parent) {
             true => self.sampled_window_manager.block_daa_window(ghostdag_data),
             false => self.full_window_manager.block_daa_window(ghostdag_data),
         }
     }
 
     fn calculate_difficulty_bits(&self, ghostdag_data: &GhostdagData, daa_window: &DaaWindow) -> u32 {
-        match self.sampling(ghostdag_data) {
+        match self.sampling(ghostdag_data.selected_parent) {
             true => self.sampled_window_manager.calculate_difficulty_bits(ghostdag_data, daa_window),
             false => self.full_window_manager.calculate_difficulty_bits(ghostdag_data, daa_window),
         }
     }
 
     fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError> {
-        match self.sampling(ghostdag_data) {
+        match self.sampling(ghostdag_data.selected_parent) {
             true => self.sampled_window_manager.calc_past_median_time(ghostdag_data),
             false => self.full_window_manager.calc_past_median_time(ghostdag_data),
+        }
+    }
+
+    fn calc_past_median_time_for_known_hash(&self, hash: Hash) -> Result<u64, RuleError> {
+        match self.sampling(self.ghostdag_store.get_selected_parent(hash).unwrap()) {
+            true => self.sampled_window_manager.calc_past_median_time_for_known_hash(hash),
+            false => self.full_window_manager.calc_past_median_time_for_known_hash(hash),
         }
     }
 
@@ -686,14 +739,14 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
     }
 
     fn window_size(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> usize {
-        match self.sampling(ghostdag_data) {
+        match self.sampling(ghostdag_data.selected_parent) {
             true => self.sampled_window_manager.window_size(ghostdag_data, window_type),
             false => self.full_window_manager.window_size(ghostdag_data, window_type),
         }
     }
 
     fn sample_rate(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> u64 {
-        match self.sampling(ghostdag_data) {
+        match self.sampling(ghostdag_data.selected_parent) {
             true => self.sampled_window_manager.sample_rate(ghostdag_data, window_type),
             false => self.full_window_manager.sample_rate(ghostdag_data, window_type),
         }
