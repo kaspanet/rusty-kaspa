@@ -279,7 +279,7 @@ impl PruningProofManager {
 
         for anticone_block in anticone.iter().copied() {
             let mut ghostdag = self.ghostdag_store.get_data(anticone_block).unwrap();
-            let window = self.window_manager.block_window(&ghostdag, WindowType::SampledDifficultyWindow).unwrap();
+            let window = self.window_manager.block_window(&ghostdag, WindowType::DifficultyWindow).unwrap();
 
             // Make sure we extract a full consecutive window containing all blocks required to restore the (possibly sampled) window.
             // In the sampling case, the mechanism relies on DAA indexes which can only be calculated correctly if the full
@@ -289,7 +289,7 @@ impl PruningProofManager {
                     // Tracks the window blocks to make sure we visit all blocks
                     let mut unvisited: BlockHashSet = window.iter().map(|b| b.0.hash).collect();
                     let capacity_estimate =
-                        window.len() * self.window_manager.sample_rate(&ghostdag, WindowType::SampledDifficultyWindow) as usize;
+                        window.len() * self.window_manager.sample_rate(&ghostdag, WindowType::DifficultyWindow) as usize;
                     // The full consecutive window covering all sampled window blocks and the full mergesets containing them
                     let mut cover = Vec::with_capacity(capacity_estimate);
                     while !unvisited.is_empty() {

@@ -31,8 +31,8 @@ use super::{
 
 #[derive(Clone, Copy)]
 pub enum WindowType {
-    SampledDifficultyWindow,
-    SampledMedianTimeWindow,
+    DifficultyWindow,
+    MedianTimeWindow,
     VaryingWindow(usize),
 }
 
@@ -205,7 +205,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Wi
     }
 
     fn block_daa_window(&self, ghostdag_data: &GhostdagData) -> Result<DaaWindow, RuleError> {
-        let window = self.block_window(ghostdag_data, WindowType::SampledDifficultyWindow)?;
+        let window = self.block_window(ghostdag_data, WindowType::DifficultyWindow)?;
         Ok(self.calc_daa_window(ghostdag_data, window))
     }
 
@@ -214,7 +214,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Wi
     }
 
     fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError> {
-        let window = self.block_window(ghostdag_data, WindowType::SampledMedianTimeWindow)?;
+        let window = self.block_window(ghostdag_data, WindowType::MedianTimeWindow)?;
         let past_median_time = self.past_median_time_manager.calc_past_median_time(&window)?;
         Ok((past_median_time, window))
     }
@@ -225,8 +225,8 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader> Wi
 
     fn window_size(&self, _ghostdag_data: &GhostdagData, window_type: WindowType) -> usize {
         match window_type {
-            WindowType::SampledDifficultyWindow => self.difficulty_window_size,
-            WindowType::SampledMedianTimeWindow => self.past_median_time_window_size,
+            WindowType::DifficultyWindow => self.difficulty_window_size,
+            WindowType::MedianTimeWindow => self.past_median_time_window_size,
             WindowType::VaryingWindow(size) => size,
         }
     }
@@ -331,8 +331,8 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
         }
 
         let cache = match window_type {
-            WindowType::SampledDifficultyWindow => Some(&self.block_window_cache_for_difficulty),
-            WindowType::SampledMedianTimeWindow => Some(&self.block_window_cache_for_past_median_time),
+            WindowType::DifficultyWindow => Some(&self.block_window_cache_for_difficulty),
+            WindowType::MedianTimeWindow => Some(&self.block_window_cache_for_past_median_time),
             WindowType::VaryingWindow(_) => None,
         };
 
@@ -515,7 +515,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
 
     fn block_daa_window(&self, ghostdag_data: &GhostdagData) -> Result<DaaWindow, RuleError> {
         let mut mergeset_non_daa = BlockHashSet::default();
-        let window = self.build_block_window(ghostdag_data, WindowType::SampledDifficultyWindow, |hash| {
+        let window = self.build_block_window(ghostdag_data, WindowType::DifficultyWindow, |hash| {
             mergeset_non_daa.insert(hash);
         })?;
         let daa_score = self.difficulty_manager.calc_daa_score(ghostdag_data, &mergeset_non_daa);
@@ -527,7 +527,7 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
     }
 
     fn calc_past_median_time(&self, ghostdag_data: &GhostdagData) -> Result<(u64, Arc<BlockWindowHeap>), RuleError> {
-        let window = self.block_window(ghostdag_data, WindowType::SampledMedianTimeWindow)?;
+        let window = self.block_window(ghostdag_data, WindowType::MedianTimeWindow)?;
         let past_median_time = self.past_median_time_manager.calc_past_median_time(&window)?;
         Ok((past_median_time, window))
     }
@@ -538,16 +538,16 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader, V: HeaderStoreReader, W:
 
     fn window_size(&self, _ghostdag_data: &GhostdagData, window_type: WindowType) -> usize {
         match window_type {
-            WindowType::SampledDifficultyWindow => self.difficulty_window_size,
-            WindowType::SampledMedianTimeWindow => self.past_median_time_window_size,
+            WindowType::DifficultyWindow => self.difficulty_window_size,
+            WindowType::MedianTimeWindow => self.past_median_time_window_size,
             WindowType::VaryingWindow(size) => size,
         }
     }
 
     fn sample_rate(&self, _ghostdag_data: &GhostdagData, window_type: WindowType) -> u64 {
         match window_type {
-            WindowType::SampledDifficultyWindow => self.difficulty_sample_rate,
-            WindowType::SampledMedianTimeWindow => self.past_median_time_sample_rate,
+            WindowType::DifficultyWindow => self.difficulty_sample_rate,
+            WindowType::MedianTimeWindow => self.past_median_time_sample_rate,
             WindowType::VaryingWindow(_) => 1,
         }
     }
