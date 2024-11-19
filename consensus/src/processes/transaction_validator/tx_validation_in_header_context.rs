@@ -20,8 +20,13 @@ pub(crate) enum LockTimeArg {
 }
 
 impl TransactionValidator {
-    pub(crate) fn utxo_free_tx_validation_with_args(&self, tx: &Transaction, ctx_daa_score: u64, ctx_block_time: u64) -> TxResult<()> {
-        self.utxo_free_tx_validation(
+    pub(crate) fn header_contextual_tx_validation_with_args(
+        &self,
+        tx: &Transaction,
+        ctx_daa_score: u64,
+        ctx_block_time: u64,
+    ) -> TxResult<()> {
+        self.header_contextual_tx_validation(
             tx,
             match Self::get_lock_time_type(tx) {
                 LockTimeType::Finalized => LockTimeArg::Finalized,
@@ -31,7 +36,7 @@ impl TransactionValidator {
         )
     }
 
-    pub(crate) fn utxo_free_tx_validation(&self, tx: &Transaction, lock_time_arg: LockTimeArg) -> TxResult<()> {
+    pub(crate) fn header_contextual_tx_validation(&self, tx: &Transaction, lock_time_arg: LockTimeArg) -> TxResult<()> {
         self.check_tx_is_finalized(tx, lock_time_arg)
     }
 

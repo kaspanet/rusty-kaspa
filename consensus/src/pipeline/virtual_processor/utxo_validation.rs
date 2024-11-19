@@ -7,7 +7,7 @@ use crate::{
     model::stores::{block_transactions::BlockTransactionsStoreReader, daa::DaaStoreReader, ghostdag::GhostdagData},
     processes::transaction_validator::{
         errors::{TxResult, TxRuleError},
-        transaction_validator_populated::TxValidationFlags,
+        tx_validation_in_utxo_context::TxValidationFlags,
     },
 };
 use kaspa_consensus_core::{

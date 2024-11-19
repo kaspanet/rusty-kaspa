@@ -4,7 +4,7 @@ use crate::{
     model::stores::statuses::StatusesStoreReader,
     processes::{
         transaction_validator::{
-            tx_validation_not_utxo_related::{LockTimeArg, LockTimeType},
+            tx_validation_in_header_context::{LockTimeArg, LockTimeType},
             TransactionValidator,
         },
         window::WindowManager,
@@ -35,7 +35,7 @@ impl BlockBodyProcessor {
                 // We only evaluate the pmt calculation when actually needed
                 LockTimeType::Time => LockTimeArg::MedianTime((*lazy_pmt_res).clone()?),
             };
-            if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, lock_time_arg) {
+            if let Err(e) = self.transaction_validator.header_contextual_tx_validation(tx, lock_time_arg) {
                 return Err(RuleError::TxInContextFailed(tx.id(), e));
             };
         }
