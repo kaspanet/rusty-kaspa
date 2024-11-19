@@ -48,6 +48,7 @@ impl MemSizeEstimator for GhostdagData {
 impl MemSizeEstimator for CompactGhostdagData {}
 
 impl From<&GhostdagData> for CompactGhostdagData {
+    #[inline(always)]
     fn from(value: &GhostdagData) -> Self {
         Self { blue_score: value.blue_score, blue_work: value.blue_work, selected_parent: value.selected_parent }
     }

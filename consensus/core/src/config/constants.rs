@@ -121,7 +121,7 @@ pub mod perf {
 
     const BASELINE_HEADER_DATA_CACHE_SIZE: usize = 10_000;
     const BASELINE_BLOCK_DATA_CACHE_SIZE: usize = 200;
-    const BASELINE_BLOCK_WINDOW_CACHE_SIZE: usize = 2000;
+    const BASELINE_BLOCK_WINDOW_CACHE_SIZE: usize = 2_000;
     const BASELINE_UTXOSET_CACHE_SIZE: usize = 10_000;
 
     #[derive(Clone, Debug)]

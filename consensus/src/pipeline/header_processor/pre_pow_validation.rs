@@ -35,7 +35,7 @@ impl HeaderProcessor {
         ctx.mergeset_non_daa = Some(daa_window.mergeset_non_daa);
 
         if header.bits != expected_bits {
-            return Err(RuleError::UnexpectedDifficulty(header.bits, expected_bits));
+            return Err(RuleError::UnexpectedDifficulty(header.hash, header.bits, expected_bits));
         }
 
         ctx.block_window_for_difficulty = Some(daa_window.window);

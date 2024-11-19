@@ -64,8 +64,8 @@ pub enum RuleError {
     #[error("expected header blue work {0} but got {1}")]
     UnexpectedHeaderBlueWork(BlueWorkType, BlueWorkType),
 
-    #[error("block difficulty of {0} is not the expected value of {1}")]
-    UnexpectedDifficulty(u32, u32),
+    #[error("block {0} difficulty of {1} is not the expected value of {2}")]
+    UnexpectedDifficulty(Hash, u32, u32),
 
     #[error("block timestamp of {0} is not after expected {1}")]
     TimeTooOld(u64, u64),
