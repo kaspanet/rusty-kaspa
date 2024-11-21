@@ -1,3 +1,7 @@
+//!
+//! Extended public key ([`XPub`]).
+//!
+
 use kaspa_bip32::{ChainCode, KeyFingerprint, Prefix};
 use std::{fmt, str::FromStr};
 

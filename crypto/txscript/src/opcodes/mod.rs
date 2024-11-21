@@ -1,17 +1,20 @@
 #[macro_use]
 mod macros;
 
-use crate::data_stack::{DataStack, OpcodeData};
 use crate::{
-    ScriptSource, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE,
+    data_stack::{DataStack, Kip10I64, OpcodeData},
+    ScriptSource, SpkEncoding, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD, MAX_TX_IN_SEQUENCE_NUM, NO_COST_OPCODE,
     SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK,
 };
 use blake2b_simd::Params;
-use core::cmp::{max, min};
+use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
 use kaspa_consensus_core::hashing::sighash_type::SigHashType;
 use kaspa_consensus_core::tx::VerifiableTransaction;
 use sha2::{Digest, Sha256};
-use std::fmt::{Debug, Formatter};
+use std::{
+    fmt::{Debug, Formatter},
+    num::TryFromIntError,
+};
 
 /// First value in the range formed by the "small integer" Op# opcodes
 pub const OP_SMALL_INT_MIN_VAL: u8 = 1;
@@ -73,28 +76,31 @@ pub trait OpCodeMetadata: Debug {
     }
 }
 
-pub trait OpCodeExecution<T: VerifiableTransaction> {
-    fn empty() -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>
+pub trait OpCodeExecution<T: VerifiableTransaction, Reused: SigHashReusedValues> {
+    fn empty() -> Result<Box<dyn OpCodeImplementation<T, Reused>>, TxScriptError>
     where
         Self: Sized;
     #[allow(clippy::new_ret_no_self)]
-    fn new(data: Vec<u8>) -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>
+    fn new(data: Vec<u8>) -> Result<Box<dyn OpCodeImplementation<T, Reused>>, TxScriptError>
     where
         Self: Sized;
 
-    fn execute(&self, vm: &mut TxScriptEngine<T>) -> OpCodeResult;
+    fn execute(&self, vm: &mut TxScriptEngine<T, Reused>) -> OpCodeResult;
 }
 
 pub trait OpcodeSerialization {
     fn serialize(&self) -> Vec<u8>;
-    fn deserialize<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction>(
+    fn deserialize<'i, I: Iterator<Item = &'i u8>, T: VerifiableTransaction, Reused: SigHashReusedValues>(
         it: &mut I,
-    ) -> Result<Box<dyn OpCodeImplementation<T>>, TxScriptError>
+    ) -> Result<Box<dyn OpCodeImplementation<T, Reused>>, TxScriptError>
     where
         Self: Sized;
 }
 
-pub trait OpCodeImplementation<T: VerifiableTransaction>: OpCodeExecution<T> + OpCodeMetadata + OpcodeSerialization {}
+pub trait OpCodeImplementation<T: VerifiableTransaction, Reused: SigHashReusedValues>:
+    OpCodeExecution<T, Reused> + OpCodeMetadata + OpcodeSerialization
+{
+}
 
 impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
     fn value(&self) -> u8 {
@@ -193,15 +199,42 @@ impl<const CODE: u8> OpCodeMetadata for OpCode<CODE> {
 
 // Helpers for some opcodes with shared data
 #[inline]
-fn push_data<T: VerifiableTransaction>(data: Vec<u8>, vm: &mut TxScriptEngine<T>) -> OpCodeResult {
+fn push_data<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+    data: Vec<u8>,
+    vm: &mut TxScriptEngine<T, Reused>,
+) -> OpCodeResult {
     vm.dstack.push(data);
     Ok(())
 }
 
 #[inline]
-fn push_number<T: VerifiableTransaction>(number: i64, vm: &mut TxScriptEngine<T>) -> OpCodeResult {
-    vm.dstack.push_item(number);
+fn push_number<T: VerifiableTransaction, Reused: SigHashReusedValues>(
+    number: i64,
+    vm: &mut TxScriptEngine<T, Reused>,
+) -> OpCodeResult {
+    vm.dstack.push_item(number)?;
     Ok(())
+}
+
+/// This macro helps to avoid code duplication in numeric opcodes where the only difference
+/// between KIP10_ENABLED and disabled states is the numeric type used (Kip10I64 vs i64).
+/// KIP10I64 deserializator supports 8-byte integers
+// TODO: Remove this macro after KIP-10 activation.
+macro_rules! numeric_op {
+    ($vm: expr, $pattern: pat, $count: expr, $block: expr) => {
+        if $vm.kip10_enabled {
+            let $pattern: [Kip10I64; $count] = $vm.dstack.pop_items()?;
+            let r = $block;
+            $vm.dstack.push_item(r)?;
+            Ok(())
+        } else {
+            let $pattern: [i64; $count] = $vm.dstack.pop_items()?;
+            #[allow(clippy::useless_conversion)]
+            let r = $block;
+            $vm.dstack.push_item(r)?;
+            Ok(())
+        }
+    };
 }
 
 /*
@@ -511,7 +544,7 @@ opcode_list! {
     opcode OpSize<0x82, 1>(self, vm) {
         match vm.dstack.last() {
             Some(last) => {
-                vm.dstack.push_item(i64::try_from(last.len()).map_err(|e| TxScriptError::NumberTooBig(e.to_string()))?);
+                vm.dstack.push_item(i64::try_from(last.len()).map_err(|e| TxScriptError::NumberTooBig(e.to_string()))?)?;
                 Ok(())
             },
             None => Err(TxScriptError::InvalidStackOperation(1, 0))
@@ -556,54 +589,38 @@ opcode_list! {
 
     // Numeric related opcodes.
     opcode Op1Add<0x8b, 1>(self, vm) {
-        let [value]: [i64; 1] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(value + 1);
-        Ok(())
+        numeric_op!(vm, [value], 1, value.checked_add(1).ok_or_else(|| TxScriptError::NumberTooBig("Result of addition exceeds 64-bit signed integer range".to_string()))?)
     }
 
     opcode Op1Sub<0x8c, 1>(self, vm) {
-        let [value]: [i64; 1] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(value - 1);
-        Ok(())
+        numeric_op!(vm, [value], 1, value.checked_sub(1).ok_or_else(|| TxScriptError::NumberTooBig("Result of subtraction exceeds 64-bit signed integer range".to_string()))?)
     }
 
     opcode Op2Mul<0x8d, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
     opcode Op2Div<0x8e, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
 
     opcode OpNegate<0x8f, 1>(self, vm) {
-        let [value]: [i64; 1] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(-value);
-        Ok(())
+        numeric_op!(vm, [value], 1, value.checked_neg().ok_or_else(|| TxScriptError::NumberTooBig("Negation result exceeds 64-bit signed integer range".to_string()))?)
     }
 
     opcode OpAbs<0x90, 1>(self, vm) {
-        let [m]: [i64; 1] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(m.abs());
-        Ok(())
+        numeric_op!(vm, [value], 1, value.checked_abs().ok_or_else(|| TxScriptError::NumberTooBig("Absolute value exceeds 64-bit signed integer range".to_string()))?)
     }
 
     opcode OpNot<0x91, 1>(self, vm) {
-        let [m]: [i64; 1] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((m == 0) as i64);
-        Ok(())
+        numeric_op!(vm, [m], 1, (m == 0) as i64)
     }
 
     opcode Op0NotEqual<0x92, 1>(self, vm) {
-        let [m]: [i64; 1] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((m != 0) as i64 );
-        Ok(())
+        numeric_op!(vm, [m], 1, (m != 0) as i64)
     }
 
     opcode OpAdd<0x93, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(a+b);
-        Ok(())
+        numeric_op!(vm, [a,b], 2, a.checked_add(b.into()).ok_or_else(|| TxScriptError::NumberTooBig("Sum exceeds 64-bit signed integer range".to_string()))?)
     }
 
     opcode OpSub<0x94, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(a-b);
-        Ok(())
+        numeric_op!(vm, [a,b], 2, a.checked_sub(b.into()).ok_or_else(|| TxScriptError::NumberTooBig("Difference exceeds 64-bit signed integer range".to_string()))?)
     }
 
     opcode OpMul<0x95, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
@@ -613,77 +630,63 @@ opcode_list! {
     opcode OpRShift<0x99, 1>(self, vm) Err(TxScriptError::OpcodeDisabled(format!("{self:?}")))
 
     opcode OpBoolAnd<0x9a, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(((a != 0) && (b != 0)) as i64);
-        Ok(())
+        numeric_op!(vm, [a,b], 2, ((a != 0) && (b != 0)) as i64)
     }
 
     opcode OpBoolOr<0x9b, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(((a != 0) || (b != 0)) as i64);
-        Ok(())
+        numeric_op!(vm, [a,b], 2, ((a != 0) || (b != 0)) as i64)
     }
 
     opcode OpNumEqual<0x9c, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((a == b) as i64);
-        Ok(())
+        numeric_op!(vm, [a,b], 2, (a == b) as i64)
     }
 
     opcode OpNumEqualVerify<0x9d, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        match a == b {
-            true => Ok(()),
-            false => Err(TxScriptError::VerifyError)
+        if vm.kip10_enabled {
+            let [a,b]: [Kip10I64; 2] = vm.dstack.pop_items()?;
+            match a == b {
+                true => Ok(()),
+                false => Err(TxScriptError::VerifyError)
+            }
+        } else {
+            let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
+            match a == b {
+                true => Ok(()),
+                false => Err(TxScriptError::VerifyError)
+            }
         }
     }
 
     opcode OpNumNotEqual<0x9e, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((a != b) as i64);
-        Ok(())
+        numeric_op!(vm, [a, b], 2, (a != b) as i64)
     }
 
     opcode OpLessThan<0x9f, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((a < b) as i64);
-        Ok(())
+        numeric_op!(vm, [a, b], 2, (a < b) as i64)
     }
 
     opcode OpGreaterThan<0xa0, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((a > b) as i64);
-        Ok(())
+        numeric_op!(vm, [a, b], 2, (a > b) as i64)
     }
 
     opcode OpLessThanOrEqual<0xa1, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((a <= b) as i64);
-        Ok(())
+        numeric_op!(vm, [a, b], 2, (a <= b) as i64)
     }
 
     opcode OpGreaterThanOrEqual<0xa2, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((a >= b) as i64);
-        Ok(())
+        numeric_op!(vm, [a, b], 2, (a >= b) as i64)
     }
 
     opcode OpMin<0xa3, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(min(a,b));
-        Ok(())
+         numeric_op!(vm, [a, b], 2, a.min(b))
     }
 
     opcode OpMax<0xa4, 1>(self, vm) {
-        let [a,b]: [i64; 2] = vm.dstack.pop_items()?;
-        vm.dstack.push_item(max(a,b));
-        Ok(())
+        numeric_op!(vm, [a, b], 2, a.max(b))
     }
 
     opcode OpWithin<0xa5, 1>(self, vm) {
-        let [x,l,u]: [i64; 3] = vm.dstack.pop_items()?;
-        vm.dstack.push_item((x >= l && x < u) as i64);
-        Ok(())
+        numeric_op!(vm, [x,l,u], 3, (x >= l && x < u) as i64)
     }
 
     // Undefined opcodes.
@@ -719,7 +722,7 @@ opcode_list! {
                 let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
                 match vm.check_ecdsa_signature(hash_type, key.as_slice(), sig.as_slice()) {
                     Ok(valid) => {
-                        vm.dstack.push_item(valid);
+                        vm.dstack.push_item(valid)?;
                         Ok(())
                     },
                     Err(e) => {
@@ -728,7 +731,7 @@ opcode_list! {
                 }
             }
             None => {
-                vm.dstack.push_item(false);
+                vm.dstack.push_item(false)?;
                 Ok(())
             }
         }
@@ -742,7 +745,7 @@ opcode_list! {
                 let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
                 match vm.check_schnorr_signature(hash_type, key.as_slice(), sig.as_slice()) {
                     Ok(valid) => {
-                        vm.dstack.push_item(valid);
+                        vm.dstack.push_item(valid)?;
                         Ok(())
                     },
                     Err(e) => {
@@ -751,7 +754,7 @@ opcode_list! {
                 }
             }
             None => {
-                vm.dstack.push_item(false);
+                vm.dstack.push_item(false)?;
                 Ok(())
             }
         }
@@ -874,25 +877,125 @@ opcode_list! {
         }
     }
 
-    // Undefined opcodes.
-    opcode OpUnknown178<0xb2, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown179<0xb3, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown180<0xb4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown181<0xb5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown182<0xb6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown183<0xb7, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown184<0xb8, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown185<0xb9, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown186<0xba, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown187<0xbb, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown188<0xbc, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown189<0xbd, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown190<0xbe, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown191<0xbf, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown192<0xc0, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown193<0xc1, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown194<0xc2, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
-    opcode OpUnknown195<0xc3, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+    // Introspection opcodes
+    // Transaction level opcodes (following Transaction struct field order)
+    opcode OpTxVersion<0xb2, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxInputCount<0xb3, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    push_number(tx.inputs().len() as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpInputCount only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+    opcode OpTxOutputCount<0xb4, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    push_number(tx.outputs().len() as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpOutputCount only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+    opcode OpTxLockTime<0xb5, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxSubnetId<0xb6, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxGas<0xb7, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxPayload<0xb8, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    // Input related opcodes (following TransactionInput struct field order)
+    opcode OpTxInputIndex<0xb9, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{idx, ..} => {
+                    push_number(idx as i64, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpInputIndex only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+    opcode OpOutpointTxId<0xba, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpOutpointIndex<0xbb, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxInputScriptSig<0xbc, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxInputSeq<0xbd, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    // UTXO related opcodes (following UtxoEntry struct field order)
+    opcode OpTxInputAmount<0xbe, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                    let utxo = usize::try_from(idx).ok()
+                        .and_then(|idx| tx.utxo(idx))
+                        .ok_or_else(|| TxScriptError::InvalidInputIndex(idx, tx.inputs().len()))?;
+                    push_number(utxo.amount.try_into().map_err(|e: TryFromIntError| TxScriptError::NumberTooBig(e.to_string()))?, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpInputAmount only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+    opcode OpTxInputSpk<0xbf, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                    let utxo = usize::try_from(idx).ok()
+                        .and_then(|idx| tx.utxo(idx))
+                        .ok_or_else(|| TxScriptError::InvalidInputIndex(idx, tx.inputs().len()))?;
+                    vm.dstack.push(utxo.script_public_key.to_bytes());
+                    Ok(())
+                },
+                _ => Err(TxScriptError::InvalidSource("OpInputSpk only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+    opcode OpTxInputBlockDaaScore<0xc0, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    opcode OpTxInputIsCoinbase<0xc1, 1>(self, vm) Err(TxScriptError::OpcodeReserved(format!("{self:?}")))
+    // Output related opcodes (following TransactionOutput struct field order)
+    opcode OpTxOutputAmount<0xc2, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                    let output = usize::try_from(idx).ok()
+                        .and_then(|idx| tx.outputs().get(idx))
+                        .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
+                    push_number(output.value.try_into().map_err(|e: TryFromIntError| TxScriptError::NumberTooBig(e.to_string()))?, vm)
+                },
+                _ => Err(TxScriptError::InvalidSource("OpOutputAmount only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+    opcode OpTxOutputSpk<0xc3, 1>(self, vm) {
+        if vm.kip10_enabled {
+            match vm.script_source {
+                ScriptSource::TxInput{tx, ..} => {
+                    let [idx]: [i32; 1] = vm.dstack.pop_items()?;
+                    let output = usize::try_from(idx).ok()
+                        .and_then(|idx| tx.outputs().get(idx))
+                        .ok_or_else(|| TxScriptError::InvalidOutputIndex(idx, tx.inputs().len()))?;
+                    vm.dstack.push(output.script_public_key.to_bytes());
+                    Ok(())
+                },
+                _ => Err(TxScriptError::InvalidSource("OpOutputSpk only applies to transaction inputs".to_string()))
+            }
+        } else {
+            Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
+        }
+    }
+    // Undefined opcodes
     opcode OpUnknown196<0xc4, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown197<0xc5, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
     opcode OpUnknown198<0xc6, 1>(self, vm) Err(TxScriptError::InvalidOpcode(format!("{self:?}")))
@@ -958,7 +1061,7 @@ opcode_list! {
 
 // converts an opcode from the list of Op0 to Op16 to its associated value
 #[allow(clippy::borrowed_box)]
-pub fn to_small_int<T: VerifiableTransaction>(opcode: &Box<dyn OpCodeImplementation<T>>) -> u8 {
+pub fn to_small_int<T: VerifiableTransaction, Reused: SigHashReusedValues>(opcode: &Box<dyn OpCodeImplementation<T, Reused>>) -> u8 {
     let value = opcode.value();
     if value == codes::OpFalse {
         return 0;
@@ -976,7 +1079,7 @@ mod test {
     use crate::{opcodes, pay_to_address_script, TxScriptEngine, TxScriptError, LOCK_TIME_THRESHOLD};
     use kaspa_addresses::{Address, Prefix, Version};
     use kaspa_consensus_core::constants::{SOMPI_PER_KASPA, TX_VERSION};
-    use kaspa_consensus_core::hashing::sighash::SigHashReusedValues;
+    use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
     use kaspa_consensus_core::tx::{
         PopulatedTransaction, ScriptPublicKey, Transaction, TransactionInput, TransactionOutpoint, TransactionOutput, UtxoEntry,
@@ -985,47 +1088,51 @@ mod test {
 
     struct TestCase<'a> {
         init: Stack,
-        code: Box<dyn OpCodeImplementation<PopulatedTransaction<'a>>>,
+        code: Box<dyn OpCodeImplementation<PopulatedTransaction<'a>, SigHashReusedValuesUnsync>>,
         dstack: Stack,
     }
 
     struct ErrorTestCase<'a> {
         init: Stack,
-        code: Box<dyn OpCodeImplementation<PopulatedTransaction<'a>>>,
+        code: Box<dyn OpCodeImplementation<PopulatedTransaction<'a>, SigHashReusedValuesUnsync>>,
         error: TxScriptError,
     }
 
     fn run_success_test_cases(tests: Vec<TestCase>) {
         let cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValues::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
         for TestCase { init, code, dstack } in tests {
-            let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
-            vm.dstack = init;
-            code.execute(&mut vm).unwrap_or_else(|_| panic!("Opcode {} should not fail", code.value()));
-            assert_eq!(*vm.dstack, dstack, "OpCode {} Pushed wrong value", code.value());
+            [false, true].into_iter().for_each(|kip10_enabled| {
+                let mut vm = TxScriptEngine::new(&reused_values, &cache, kip10_enabled);
+                vm.dstack = init.clone();
+                code.execute(&mut vm).unwrap_or_else(|_| panic!("Opcode {} should not fail", code.value()));
+                assert_eq!(*vm.dstack, dstack, "OpCode {} Pushed wrong value", code.value());
+            });
         }
     }
 
     fn run_error_test_cases(tests: Vec<ErrorTestCase>) {
         let cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValues::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
         for ErrorTestCase { init, code, error } in tests {
-            let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
-            vm.dstack.clone_from(&init);
-            assert_eq!(
-                code.execute(&mut vm)
-                    .expect_err(format!("Opcode {} should have errored (init: {:?})", code.value(), init.clone()).as_str()),
-                error,
-                "Opcode {} returned wrong error {:?}",
-                code.value(),
-                init
-            );
+            [false, true].into_iter().for_each(|kip10_enabled| {
+                let mut vm = TxScriptEngine::new(&reused_values, &cache, kip10_enabled);
+                vm.dstack.clone_from(&init);
+                assert_eq!(
+                    code.execute(&mut vm)
+                        .expect_err(format!("Opcode {} should have errored (init: {:?})", code.value(), init.clone()).as_str()),
+                    error,
+                    "Opcode {} returned wrong error {:?}",
+                    code.value(),
+                    init
+                );
+            });
         }
     }
 
     #[test]
     fn test_opcode_disabled() {
-        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction>>> = vec![
+        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpCat::empty().expect("Should accept empty"),
             opcodes::OpSubStr::empty().expect("Should accept empty"),
             opcodes::OpLeft::empty().expect("Should accept empty"),
@@ -1044,8 +1151,8 @@ mod test {
         ];
 
         let cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValues::new();
-        let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -1057,18 +1164,29 @@ mod test {
 
     #[test]
     fn test_opcode_reserved() {
-        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction>>> = vec![
+        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpReserved::empty().expect("Should accept empty"),
             opcodes::OpVer::empty().expect("Should accept empty"),
             opcodes::OpVerIf::empty().expect("Should accept empty"),
             opcodes::OpVerNotIf::empty().expect("Should accept empty"),
             opcodes::OpReserved1::empty().expect("Should accept empty"),
             opcodes::OpReserved2::empty().expect("Should accept empty"),
+            opcodes::OpTxVersion::empty().expect("Should accept empty"),
+            opcodes::OpTxLockTime::empty().expect("Should accept empty"),
+            opcodes::OpTxSubnetId::empty().expect("Should accept empty"),
+            opcodes::OpTxGas::empty().expect("Should accept empty"),
+            opcodes::OpTxPayload::empty().expect("Should accept empty"),
+            opcodes::OpOutpointTxId::empty().expect("Should accept empty"),
+            opcodes::OpOutpointIndex::empty().expect("Should accept empty"),
+            opcodes::OpTxInputScriptSig::empty().expect("Should accept empty"),
+            opcodes::OpTxInputSeq::empty().expect("Should accept empty"),
+            opcodes::OpTxInputBlockDaaScore::empty().expect("Should accept empty"),
+            opcodes::OpTxInputIsCoinbase::empty().expect("Should accept empty"),
         ];
 
         let cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValues::new();
-        let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -1080,27 +1198,9 @@ mod test {
 
     #[test]
     fn test_opcode_invalid() {
-        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction>>> = vec![
+        let tests: Vec<Box<dyn OpCodeImplementation<PopulatedTransaction, SigHashReusedValuesUnsync>>> = vec![
             opcodes::OpUnknown166::empty().expect("Should accept empty"),
             opcodes::OpUnknown167::empty().expect("Should accept empty"),
-            opcodes::OpUnknown178::empty().expect("Should accept empty"),
-            opcodes::OpUnknown179::empty().expect("Should accept empty"),
-            opcodes::OpUnknown180::empty().expect("Should accept empty"),
-            opcodes::OpUnknown181::empty().expect("Should accept empty"),
-            opcodes::OpUnknown182::empty().expect("Should accept empty"),
-            opcodes::OpUnknown183::empty().expect("Should accept empty"),
-            opcodes::OpUnknown184::empty().expect("Should accept empty"),
-            opcodes::OpUnknown185::empty().expect("Should accept empty"),
-            opcodes::OpUnknown186::empty().expect("Should accept empty"),
-            opcodes::OpUnknown187::empty().expect("Should accept empty"),
-            opcodes::OpUnknown188::empty().expect("Should accept empty"),
-            opcodes::OpUnknown189::empty().expect("Should accept empty"),
-            opcodes::OpUnknown190::empty().expect("Should accept empty"),
-            opcodes::OpUnknown191::empty().expect("Should accept empty"),
-            opcodes::OpUnknown192::empty().expect("Should accept empty"),
-            opcodes::OpUnknown193::empty().expect("Should accept empty"),
-            opcodes::OpUnknown194::empty().expect("Should accept empty"),
-            opcodes::OpUnknown195::empty().expect("Should accept empty"),
             opcodes::OpUnknown196::empty().expect("Should accept empty"),
             opcodes::OpUnknown197::empty().expect("Should accept empty"),
             opcodes::OpUnknown198::empty().expect("Should accept empty"),
@@ -1158,8 +1258,8 @@ mod test {
         ];
 
         let cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValues::new();
-        let mut vm = TxScriptEngine::new(&mut reused_values, &cache);
+        let reused_values = SigHashReusedValuesUnsync::new();
+        let mut vm = TxScriptEngine::new(&reused_values, &cache, false);
 
         for pop in tests {
             match pop.execute(&mut vm) {
@@ -2708,6 +2808,9 @@ mod test {
         fn populated_input(&self, _index: usize) -> (&TransactionInput, &UtxoEntry) {
             unimplemented!()
         }
+        fn utxo(&self, _index: usize) -> Option<&UtxoEntry> {
+            unimplemented!()
+        }
     }
 
     fn make_mock_transaction(lock_time: u64) -> (VerifiableTransactionMock, TransactionInput, UtxoEntry) {
@@ -2739,7 +2842,7 @@ mod test {
         let (base_tx, input, utxo_entry) = make_mock_transaction(1);
 
         let sig_cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValues::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
 
         let code = opcodes::OpCheckLockTimeVerify::empty().expect("Should accept empty");
 
@@ -2747,12 +2850,11 @@ mod test {
             (1u64, vec![], false),                                // Case 1: 0 = locktime < txLockTime
             (0x800000, vec![0x7f, 0, 0], false),                  // Case 2: 0 < locktime < txLockTime
             (0x800000, vec![0x7f, 0, 0, 0, 0, 0, 0, 0, 0], true), // Case 3: locktime too big
-            (LOCK_TIME_THRESHOLD * 2, vec![0x7f, 0, 0, 0], true), // Case 4: lock times are inconsistant
+            (LOCK_TIME_THRESHOLD * 2, vec![0x7f, 0, 0, 0], true), // Case 4: lock times are inconsistent
         ] {
             let mut tx = base_tx.clone();
             tx.0.lock_time = tx_lock_time;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache)
-                .expect("Shouldn't fail");
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false);
             vm.dstack = vec![lock_time.clone()];
             match code.execute(&mut vm) {
                 // Message is based on the should_fail values
@@ -2781,7 +2883,7 @@ mod test {
         let (tx, base_input, utxo_entry) = make_mock_transaction(1);
 
         let sig_cache = Cache::new(10_000);
-        let mut reused_values = SigHashReusedValues::new();
+        let reused_values = SigHashReusedValuesUnsync::new();
 
         let code = opcodes::OpCheckSequenceVerify::empty().expect("Should accept empty");
 
@@ -2794,8 +2896,7 @@ mod test {
         ] {
             let mut input = base_input.clone();
             input.sequence = tx_sequence;
-            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &mut reused_values, &sig_cache)
-                .expect("Shouldn't fail");
+            let mut vm = TxScriptEngine::from_transaction_input(&tx, &input, 0, &utxo_entry, &reused_values, &sig_cache, false);
             vm.dstack = vec![sequence.clone()];
             match code.execute(&mut vm) {
                 // Message is based on the should_fail values
@@ -2896,5 +2997,850 @@ mod test {
             },
             TestCase { code: opcodes::OpIfDup::empty().expect("Should accept empty"), init: vec![vec![]], dstack: vec![vec![]] },
         ])
+    }
+
+    mod kip10 {
+        use super::*;
+        use crate::{
+            data_stack::{DataStack, OpcodeData},
+            opcodes::{codes::*, push_number},
+            pay_to_script_hash_script,
+            script_builder::ScriptBuilder,
+            SpkEncoding,
+        };
+        use kaspa_consensus_core::tx::MutableTransaction;
+
+        #[derive(Clone, Debug)]
+        struct Kip10Mock {
+            spk: ScriptPublicKey,
+            amount: u64,
+        }
+
+        fn create_mock_spk(value: u8) -> ScriptPublicKey {
+            let pub_key = vec![value; 32];
+            let addr = Address::new(Prefix::Testnet, Version::PubKey, &pub_key);
+            pay_to_address_script(&addr)
+        }
+
+        fn kip_10_tx_mock(inputs: Vec<Kip10Mock>, outputs: Vec<Kip10Mock>) -> (Transaction, Vec<UtxoEntry>) {
+            let dummy_prev_out = TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 1);
+            let dummy_sig_script = vec![0u8; 65];
+            let (utxos, tx_inputs) = inputs
+                .into_iter()
+                .map(|Kip10Mock { spk, amount }| {
+                    (UtxoEntry::new(amount, spk, 0, false), TransactionInput::new(dummy_prev_out, dummy_sig_script.clone(), 10, 0))
+                })
+                .unzip();
+
+            let tx_out = outputs.into_iter().map(|Kip10Mock { spk, amount }| TransactionOutput::new(amount, spk));
+
+            let tx = Transaction::new(TX_VERSION + 1, tx_inputs, tx_out.collect(), 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+            (tx, utxos)
+        }
+
+        #[derive(Debug)]
+        struct TestGroup {
+            name: &'static str,
+            kip10_enabled: bool,
+            test_cases: Vec<TestCase>,
+        }
+
+        #[derive(Debug)]
+        enum Operation {
+            InputSpk,
+            OutputSpk,
+            InputAmount,
+            OutputAmount,
+        }
+
+        #[derive(Debug)]
+        enum TestCase {
+            Successful { operation: Operation, index: i64, expected_result: ExpectedResult },
+            Incorrect { operation: Operation, index: Option<i64>, expected_error: TxScriptError },
+        }
+
+        #[derive(Debug)]
+        struct ExpectedResult {
+            expected_spk: Option<Vec<u8>>,
+            expected_amount: Option<Vec<u8>>,
+        }
+
+        fn execute_test_group(group: &TestGroup) {
+            let input_spk1 = create_mock_spk(1);
+            let input_spk2 = create_mock_spk(2);
+            let output_spk1 = create_mock_spk(3);
+            let output_spk2 = create_mock_spk(4);
+
+            let inputs =
+                vec![Kip10Mock { spk: input_spk1.clone(), amount: 1111 }, Kip10Mock { spk: input_spk2.clone(), amount: 2222 }];
+            let outputs =
+                vec![Kip10Mock { spk: output_spk1.clone(), amount: 3333 }, Kip10Mock { spk: output_spk2.clone(), amount: 4444 }];
+
+            let (tx, utxo_entries) = kip_10_tx_mock(inputs, outputs);
+            let tx = PopulatedTransaction::new(&tx, utxo_entries);
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+
+            for current_idx in 0..tx.inputs().len() {
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[current_idx],
+                    current_idx,
+                    tx.utxo(current_idx).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    group.kip10_enabled,
+                );
+
+                // Check input index opcode first
+                let op_input_idx = opcodes::OpTxInputIndex::empty().expect("Should accept empty");
+                if !group.kip10_enabled {
+                    assert!(matches!(op_input_idx.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))));
+                } else {
+                    let mut expected = vm.dstack.clone();
+                    expected.push_item(current_idx as i64).unwrap();
+                    op_input_idx.execute(&mut vm).unwrap();
+                    assert_eq!(vm.dstack, expected);
+                    vm.dstack.clear();
+                }
+
+                // Prepare opcodes
+                let op_input_spk = opcodes::OpTxInputSpk::empty().expect("Should accept empty");
+                let op_output_spk = opcodes::OpTxOutputSpk::empty().expect("Should accept empty");
+                let op_input_amount = opcodes::OpTxInputAmount::empty().expect("Should accept empty");
+                let op_output_amount = opcodes::OpTxOutputAmount::empty().expect("Should accept empty");
+
+                // Execute each test case
+                for test_case in &group.test_cases {
+                    match test_case {
+                        TestCase::Successful { operation, index, expected_result } => {
+                            push_number(*index, &mut vm).unwrap();
+                            let result = match operation {
+                                Operation::InputSpk => op_input_spk.execute(&mut vm),
+                                Operation::OutputSpk => op_output_spk.execute(&mut vm),
+                                Operation::InputAmount => op_input_amount.execute(&mut vm),
+                                Operation::OutputAmount => op_output_amount.execute(&mut vm),
+                            };
+                            assert!(result.is_ok());
+
+                            // Check the result matches expectations
+                            if let Some(ref expected_spk) = expected_result.expected_spk {
+                                assert_eq!(vm.dstack, vec![expected_spk.clone()]);
+                            }
+                            if let Some(ref expected_amount) = expected_result.expected_amount {
+                                assert_eq!(vm.dstack, vec![expected_amount.clone()]);
+                            }
+                            vm.dstack.clear();
+                        }
+                        TestCase::Incorrect { operation, index, expected_error } => {
+                            if let Some(idx) = index {
+                                push_number(*idx, &mut vm).unwrap();
+                            }
+
+                            let result = match operation {
+                                Operation::InputSpk => op_input_spk.execute(&mut vm),
+                                Operation::OutputSpk => op_output_spk.execute(&mut vm),
+                                Operation::InputAmount => op_input_amount.execute(&mut vm),
+                                Operation::OutputAmount => op_output_amount.execute(&mut vm),
+                            };
+
+                            assert!(
+                                matches!(result, Err(ref e) if std::mem::discriminant(e) == std::mem::discriminant(expected_error))
+                            );
+                            vm.dstack.clear();
+                        }
+                    }
+                }
+            }
+        }
+
+        #[test]
+        fn test_unary_introspection_ops() {
+            let test_groups = vec![
+                TestGroup {
+                    name: "KIP-10 disabled",
+                    kip10_enabled: false,
+                    test_cases: vec![
+                        TestCase::Incorrect {
+                            operation: Operation::InputSpk,
+                            index: Some(0),
+                            expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
+                        },
+                        TestCase::Incorrect {
+                            operation: Operation::OutputSpk,
+                            index: Some(0),
+                            expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
+                        },
+                        TestCase::Incorrect {
+                            operation: Operation::InputAmount,
+                            index: Some(0),
+                            expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
+                        },
+                        TestCase::Incorrect {
+                            operation: Operation::OutputAmount,
+                            index: Some(0),
+                            expected_error: TxScriptError::InvalidOpcode("Invalid opcode".to_string()),
+                        },
+                    ],
+                },
+                TestGroup {
+                    name: "Valid input indices",
+                    kip10_enabled: true,
+                    test_cases: vec![
+                        TestCase::Successful {
+                            operation: Operation::InputSpk,
+                            index: 0,
+                            expected_result: ExpectedResult {
+                                expected_spk: Some(create_mock_spk(1).to_bytes()),
+                                expected_amount: None,
+                            },
+                        },
+                        TestCase::Successful {
+                            operation: Operation::InputSpk,
+                            index: 1,
+                            expected_result: ExpectedResult {
+                                expected_spk: Some(create_mock_spk(2).to_bytes()),
+                                expected_amount: None,
+                            },
+                        },
+                        TestCase::Successful {
+                            operation: Operation::InputAmount,
+                            index: 0,
+                            expected_result: ExpectedResult {
+                                expected_spk: None,
+                                expected_amount: Some(OpcodeData::<i64>::serialize(&1111).unwrap()),
+                            },
+                        },
+                        TestCase::Successful {
+                            operation: Operation::InputAmount,
+                            index: 1,
+                            expected_result: ExpectedResult {
+                                expected_spk: None,
+                                expected_amount: Some(OpcodeData::<i64>::serialize(&2222).unwrap()),
+                            },
+                        },
+                    ],
+                },
+                TestGroup {
+                    name: "Valid output indices",
+                    kip10_enabled: true,
+                    test_cases: vec![
+                        TestCase::Successful {
+                            operation: Operation::OutputSpk,
+                            index: 0,
+                            expected_result: ExpectedResult {
+                                expected_spk: Some(create_mock_spk(3).to_bytes()),
+                                expected_amount: None,
+                            },
+                        },
+                        TestCase::Successful {
+                            operation: Operation::OutputSpk,
+                            index: 1,
+                            expected_result: ExpectedResult {
+                                expected_spk: Some(create_mock_spk(4).to_bytes()),
+                                expected_amount: None,
+                            },
+                        },
+                        TestCase::Successful {
+                            operation: Operation::OutputAmount,
+                            index: 0,
+                            expected_result: ExpectedResult {
+                                expected_spk: None,
+                                expected_amount: Some(OpcodeData::<i64>::serialize(&3333).unwrap()),
+                            },
+                        },
+                        TestCase::Successful {
+                            operation: Operation::OutputAmount,
+                            index: 1,
+                            expected_result: ExpectedResult {
+                                expected_spk: None,
+                                expected_amount: Some(OpcodeData::<i64>::serialize(&4444).unwrap()),
+                            },
+                        },
+                    ],
+                },
+                TestGroup {
+                    name: "Error cases",
+                    kip10_enabled: true,
+                    test_cases: vec![
+                        TestCase::Incorrect {
+                            operation: Operation::InputAmount,
+                            index: None,
+                            expected_error: TxScriptError::InvalidStackOperation(1, 0),
+                        },
+                        TestCase::Incorrect {
+                            operation: Operation::InputAmount,
+                            index: Some(-1),
+                            expected_error: TxScriptError::InvalidInputIndex(-1, 2),
+                        },
+                        TestCase::Incorrect {
+                            operation: Operation::InputAmount,
+                            index: Some(2),
+                            expected_error: TxScriptError::InvalidInputIndex(2, 2),
+                        },
+                        TestCase::Incorrect {
+                            operation: Operation::OutputAmount,
+                            index: None,
+                            expected_error: TxScriptError::InvalidStackOperation(1, 0),
+                        },
+                        TestCase::Incorrect {
+                            operation: Operation::OutputAmount,
+                            index: Some(-1),
+                            expected_error: TxScriptError::InvalidOutputIndex(-1, 2),
+                        },
+                        TestCase::Incorrect {
+                            operation: Operation::OutputAmount,
+                            index: Some(2),
+                            expected_error: TxScriptError::InvalidOutputIndex(2, 2),
+                        },
+                    ],
+                },
+            ];
+
+            for group in test_groups {
+                println!("Running test group: {}", group.name);
+                execute_test_group(&group);
+            }
+        }
+        fn create_mock_tx(input_count: usize, output_count: usize) -> (Transaction, Vec<UtxoEntry>) {
+            let dummy_prev_out = TransactionOutpoint::new(kaspa_hashes::Hash::from_u64_word(1), 1);
+            let dummy_sig_script = vec![0u8; 65];
+
+            // Create inputs with different SPKs and amounts
+            let inputs: Vec<Kip10Mock> =
+                (0..input_count).map(|i| Kip10Mock { spk: create_mock_spk(i as u8), amount: 1000 + i as u64 }).collect();
+
+            // Create outputs with different SPKs and amounts
+            let outputs: Vec<Kip10Mock> =
+                (0..output_count).map(|i| Kip10Mock { spk: create_mock_spk((100 + i) as u8), amount: 2000 + i as u64 }).collect();
+
+            let (utxos, tx_inputs): (Vec<_>, Vec<_>) = inputs
+                .into_iter()
+                .map(|Kip10Mock { spk, amount }| {
+                    (UtxoEntry::new(amount, spk, 0, false), TransactionInput::new(dummy_prev_out, dummy_sig_script.clone(), 10, 0))
+                })
+                .unzip();
+
+            let tx_outputs: Vec<_> =
+                outputs.into_iter().map(|Kip10Mock { spk, amount }| TransactionOutput::new(amount, spk)).collect();
+
+            let tx = Transaction::new(TX_VERSION + 1, tx_inputs, tx_outputs, 0, SUBNETWORK_ID_NATIVE, 0, vec![]);
+
+            (tx, utxos)
+        }
+
+        #[test]
+        fn test_op_input_output_count() {
+            // Test cases with different input/output combinations
+            let test_cases = vec![
+                (1, 0), // Minimum inputs, no outputs
+                (1, 1), // Minimum inputs, one output
+                (1, 2), // Minimum inputs, multiple outputs
+                (2, 1), // Multiple inputs, one output
+                (3, 2), // Multiple inputs, multiple outputs
+                (5, 3), // More inputs than outputs
+                (2, 4), // More outputs than inputs
+            ];
+
+            for (input_count, output_count) in test_cases {
+                let (tx, utxo_entries) = create_mock_tx(input_count, output_count);
+                let tx = PopulatedTransaction::new(&tx, utxo_entries);
+                let sig_cache = Cache::new(10_000);
+                let reused_values = SigHashReusedValuesUnsync::new();
+
+                // Test with KIP-10 enabled and disabled
+                for kip10_enabled in [true, false] {
+                    let mut vm = TxScriptEngine::from_transaction_input(
+                        &tx,
+                        &tx.inputs()[0], // Use first input
+                        0,
+                        tx.utxo(0).unwrap(),
+                        &reused_values,
+                        &sig_cache,
+                        kip10_enabled,
+                    );
+
+                    let op_input_count = opcodes::OpTxInputCount::empty().expect("Should accept empty");
+                    let op_output_count = opcodes::OpTxOutputCount::empty().expect("Should accept empty");
+
+                    if kip10_enabled {
+                        // Test input count
+                        op_input_count.execute(&mut vm).unwrap();
+                        assert_eq!(
+                            vm.dstack,
+                            vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(input_count as i64)).unwrap()],
+                            "Input count mismatch for {} inputs",
+                            input_count
+                        );
+                        vm.dstack.clear();
+
+                        // Test output count
+                        op_output_count.execute(&mut vm).unwrap();
+                        assert_eq!(
+                            vm.dstack,
+                            vec![<Vec<u8> as OpcodeData<i64>>::serialize(&(output_count as i64)).unwrap()],
+                            "Output count mismatch for {} outputs",
+                            output_count
+                        );
+                        vm.dstack.clear();
+                    } else {
+                        // Test that operations fail when KIP-10 is disabled
+                        assert!(
+                            matches!(op_input_count.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))),
+                            "OpInputCount should fail when KIP-10 is disabled"
+                        );
+                        assert!(
+                            matches!(op_output_count.execute(&mut vm), Err(TxScriptError::InvalidOpcode(_))),
+                            "OpOutputCount should fail when KIP-10 is disabled"
+                        );
+                    }
+                }
+            }
+        }
+
+        #[test]
+        fn test_output_amount() {
+            // Create script: 0 OP_OUTPUTAMOUNT 100 EQUAL
+            let redeem_script = ScriptBuilder::new()
+                .add_op(Op0)
+                .unwrap()
+                .add_op(OpTxOutputAmount)
+                .unwrap()
+                .add_i64(100)
+                .unwrap()
+                .add_op(OpEqual)
+                .unwrap()
+                .drain();
+
+            let spk = pay_to_script_hash_script(&redeem_script);
+
+            // Create transaction with output amount 100
+            let input_mock = Kip10Mock { spk: spk.clone(), amount: 200 };
+            let output_mock = Kip10Mock { spk: create_mock_spk(1), amount: 100 };
+
+            let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock.clone()], vec![output_mock]);
+            let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+
+            // Set signature script to push redeem script
+            tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+            let tx = tx.as_verifiable();
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+
+            // Test success case
+            {
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                );
+
+                assert_eq!(vm.execute(), Ok(()));
+            }
+
+            // Test failure case with wrong amount
+            {
+                let output_mock = Kip10Mock {
+                    spk: create_mock_spk(1),
+                    amount: 99, // Wrong amount
+                };
+                let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock.clone()], vec![output_mock]);
+                let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                );
+
+                assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
+            }
+        }
+
+        #[test]
+        fn test_input_amount() {
+            // Create script: 0 OP_INPUTAMOUNT 200 EQUAL
+            let redeem_script = ScriptBuilder::new()
+                .add_op(Op0)
+                .unwrap()
+                .add_op(OpTxInputAmount)
+                .unwrap()
+                .add_i64(200)
+                .unwrap()
+                .add_op(OpEqual)
+                .unwrap()
+                .drain();
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+            let spk = pay_to_script_hash_script(&redeem_script);
+
+            // Test success case
+            {
+                let input_mock = Kip10Mock { spk: spk.clone(), amount: 200 };
+                let output_mock = Kip10Mock { spk: create_mock_spk(1), amount: 100 };
+
+                let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock], vec![output_mock]);
+                let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                );
+
+                assert_eq!(vm.execute(), Ok(()));
+            }
+
+            // Test failure case
+            {
+                let input_mock = Kip10Mock {
+                    spk: spk.clone(),
+                    amount: 199, // Wrong amount
+                };
+                let output_mock = Kip10Mock { spk: create_mock_spk(1), amount: 100 };
+
+                let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock], vec![output_mock]);
+                let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                );
+
+                assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
+            }
+        }
+
+        #[test]
+        fn test_input_spk_basic() {
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+
+            // Create script: 0 OP_INPUTSPK OpNop
+            // Just verify that OpInputSpk pushes something onto stack
+            let redeem_script = ScriptBuilder::new().add_ops(&[Op0, OpTxInputSpk, OpNop]).unwrap().drain();
+            let spk = pay_to_script_hash_script(&redeem_script);
+
+            let (tx, utxo_entries) = kip_10_tx_mock(vec![Kip10Mock { spk, amount: 100 }], vec![]);
+            let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+            tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+            let tx = tx.as_verifiable();
+            let mut vm =
+                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache, true);
+
+            // OpInputSpk should push input's SPK onto stack, making it non-empty
+            assert_eq!(vm.execute(), Ok(()));
+        }
+
+        #[test]
+        fn test_input_spk_different() {
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+
+            // Create script: 0 OP_INPUTSPK 1 OP_INPUTSPK OP_EQUAL OP_NOT
+            // Verifies that two different inputs have different SPKs
+            let redeem_script = ScriptBuilder::new().add_ops(&[Op0, OpTxInputSpk, Op1, OpTxInputSpk, OpEqual, OpNot]).unwrap().drain();
+            let spk = pay_to_script_hash_script(&redeem_script);
+            let input_mock1 = Kip10Mock { spk, amount: 100 };
+            let input_mock2 = Kip10Mock { spk: create_mock_spk(2), amount: 100 }; // Different SPK
+
+            let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock1, input_mock2], vec![]);
+            let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+            tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+            let tx = tx.as_verifiable();
+            let mut vm =
+                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache, true);
+
+            // Should succeed because the SPKs are different
+            assert_eq!(vm.execute(), Ok(()));
+        }
+
+        #[test]
+        fn test_input_spk_same() {
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+
+            // Create script: 0 OP_INPUTSPK 1 OP_INPUTSPK OP_EQUAL
+            // Verifies that two inputs with same SPK are equal
+            let redeem_script = ScriptBuilder::new().add_ops(&[Op0, OpTxInputSpk, Op1, OpTxInputSpk, OpEqual]).unwrap().drain();
+
+            let spk = pay_to_script_hash_script(&redeem_script);
+            let input_mock1 = Kip10Mock { spk: spk.clone(), amount: 100 };
+            let input_mock2 = Kip10Mock { spk, amount: 100 };
+
+            let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock1, input_mock2], vec![]);
+            let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+            tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+            let tx = tx.as_verifiable();
+            let mut vm =
+                TxScriptEngine::from_transaction_input(&tx, &tx.inputs()[0], 0, tx.utxo(0).unwrap(), &reused_values, &sig_cache, true);
+
+            // Should succeed because both SPKs are identical
+            assert_eq!(vm.execute(), Ok(()));
+        }
+
+        #[test]
+        fn test_output_spk() {
+            // Create unique SPK to check
+            let expected_spk = create_mock_spk(42);
+            let expected_spk_bytes = expected_spk.to_bytes();
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+            // Create script: 0 OP_OUTPUTSPK <expected_spk_bytes> EQUAL
+            let redeem_script = ScriptBuilder::new()
+                .add_op(Op0)
+                .unwrap()
+                .add_op(OpTxOutputSpk)
+                .unwrap()
+                .add_data(&expected_spk_bytes)
+                .unwrap()
+                .add_op(OpEqual)
+                .unwrap()
+                .drain();
+
+            let spk = pay_to_script_hash_script(&redeem_script);
+
+            // Test success case
+            {
+                let input_mock = Kip10Mock { spk: spk.clone(), amount: 200 };
+                let output_mock = Kip10Mock { spk: expected_spk.clone(), amount: 100 };
+
+                let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock], vec![output_mock]);
+                let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                );
+
+                assert_eq!(vm.execute(), Ok(()));
+            }
+
+            // Test failure case
+            {
+                let input_mock = Kip10Mock { spk: spk.clone(), amount: 200 };
+                let output_mock = Kip10Mock {
+                    spk: create_mock_spk(43), // Different SPK
+                    amount: 100,
+                };
+
+                let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock], vec![output_mock]);
+                let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                );
+
+                assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
+            }
+        }
+
+        #[test]
+        fn test_input_index() {
+            // Create script: OP_INPUTINDEX 0 EQUAL
+            let redeem_script =
+                ScriptBuilder::new().add_op(OpTxInputIndex).unwrap().add_i64(0).unwrap().add_op(OpEqual).unwrap().drain();
+
+            let spk = pay_to_script_hash_script(&redeem_script);
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+            // Test first input (success case)
+            {
+                let input_mock = Kip10Mock { spk: spk.clone(), amount: 200 };
+                let output_mock = Kip10Mock { spk: create_mock_spk(1), amount: 100 };
+
+                let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock], vec![output_mock]);
+                let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                );
+
+                assert_eq!(vm.execute(), Ok(()));
+            }
+
+            // Test second input (failure case)
+            {
+                let input_mock1 = Kip10Mock { spk: create_mock_spk(1), amount: 100 };
+                let input_mock2 = Kip10Mock { spk: spk.clone(), amount: 200 };
+                let output_mock = Kip10Mock { spk: create_mock_spk(2), amount: 100 };
+
+                let (tx, utxo_entries) = kip_10_tx_mock(vec![input_mock1, input_mock2], vec![output_mock]);
+                let mut tx = MutableTransaction::with_entries(tx, utxo_entries);
+                tx.tx.inputs[1].signature_script = ScriptBuilder::new().add_data(&redeem_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[1],
+                    1,
+                    tx.utxo(1).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                );
+
+                // Should fail because script expects index 0 but we're at index 1
+                assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
+            }
+        }
+
+        #[test]
+        fn test_counts() {
+            let sig_cache = Cache::new(10_000);
+            let reused_values = SigHashReusedValuesUnsync::new();
+            // Test OpInputCount: "OP_INPUTCOUNT 2 EQUAL"
+            let input_count_script =
+                ScriptBuilder::new().add_op(OpTxInputCount).unwrap().add_i64(2).unwrap().add_op(OpEqual).unwrap().drain();
+
+            // Test OpOutputCount: "OP_OUTPUTCOUNT 3 EQUAL"
+            let output_count_script =
+                ScriptBuilder::new().add_op(OpTxOutputCount).unwrap().add_i64(3).unwrap().add_op(OpEqual).unwrap().drain();
+
+            let input_spk = pay_to_script_hash_script(&input_count_script);
+            let output_spk = pay_to_script_hash_script(&output_count_script);
+
+            // Create transaction with 2 inputs and 3 outputs
+            let input_mock1 = Kip10Mock { spk: input_spk.clone(), amount: 100 };
+            let input_mock2 = Kip10Mock { spk: output_spk.clone(), amount: 200 };
+            let output_mock1 = Kip10Mock { spk: create_mock_spk(1), amount: 50 };
+            let output_mock2 = Kip10Mock { spk: create_mock_spk(2), amount: 100 };
+            let output_mock3 = Kip10Mock { spk: create_mock_spk(3), amount: 150 };
+
+            let (tx, utxo_entries) =
+                kip_10_tx_mock(vec![input_mock1.clone(), input_mock2.clone()], vec![output_mock1, output_mock2, output_mock3]);
+
+            // Test InputCount
+            {
+                let mut tx = MutableTransaction::with_entries(tx.clone(), utxo_entries.clone());
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&input_count_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                );
+
+                assert_eq!(vm.execute(), Ok(()));
+            }
+
+            // Test OutputCount
+            {
+                let mut tx = MutableTransaction::with_entries(tx.clone(), utxo_entries.clone());
+                tx.tx.inputs[1].signature_script = ScriptBuilder::new().add_data(&output_count_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[1],
+                    1,
+                    tx.utxo(1).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                );
+
+                assert_eq!(vm.execute(), Ok(()));
+            }
+
+            // Test failure cases with wrong counts
+            {
+                // Wrong input count script: "OP_INPUTCOUNT 3 EQUAL"
+                let wrong_input_count_script =
+                    ScriptBuilder::new().add_op(OpTxInputCount).unwrap().add_i64(3).unwrap().add_op(OpEqual).unwrap().drain();
+
+                let mut tx = MutableTransaction::with_entries(tx.clone(), utxo_entries.clone());
+                tx.tx.inputs[0].signature_script = ScriptBuilder::new().add_data(&wrong_input_count_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[0],
+                    0,
+                    tx.utxo(0).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                );
+
+                assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
+            }
+
+            {
+                // Wrong output count script: "OP_OUTPUTCOUNT 2 EQUAL"
+                let wrong_output_count_script =
+                    ScriptBuilder::new().add_op(OpTxOutputCount).unwrap().add_i64(2).unwrap().add_op(OpEqual).unwrap().drain();
+
+                let mut tx = MutableTransaction::with_entries(tx.clone(), utxo_entries.clone());
+                tx.tx.inputs[1].signature_script = ScriptBuilder::new().add_data(&wrong_output_count_script).unwrap().drain();
+
+                let tx = tx.as_verifiable();
+                let mut vm = TxScriptEngine::from_transaction_input(
+                    &tx,
+                    &tx.inputs()[1],
+                    1,
+                    tx.utxo(1).unwrap(),
+                    &reused_values,
+                    &sig_cache,
+                    true,
+                );
+
+                assert_eq!(vm.execute(), Err(TxScriptError::EvalFalse));
+            }
+        }
     }
 }

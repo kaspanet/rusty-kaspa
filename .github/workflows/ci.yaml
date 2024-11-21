@@ -126,6 +126,12 @@ jobs:
       - name: Run cargo doc tests with features=no-asm on kaspa-hashes
         run: cargo test --doc --release -p kaspa-hashes --features=no-asm
 
+      - name: Run cargo doc
+        run: cargo doc --release --no-deps --workspace
+      - name: Run kip-10 example
+        run: cargo run --example kip-10
+
+
   # test-release:
   #   name: Test Suite Release
   #   runs-on: ${{ matrix.os }}
@@ -207,7 +213,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Run cargo clippy
-        run: cargo clippy --workspace --tests --benches -- -D warnings
+        run: cargo clippy --workspace --tests --benches --examples -- -D warnings
 
 
   check-wasm32:

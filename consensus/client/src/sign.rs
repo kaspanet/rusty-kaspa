@@ -1,9 +1,13 @@
+//!
+//! Utilities for signing transactions.
+//!
+
 use crate::transaction::Transaction;
 use core::iter::once;
 use itertools::Itertools;
 use kaspa_consensus_core::{
     hashing::{
-        sighash::{calc_schnorr_signature_hash, SigHashReusedValues},
+        sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync},
         sighash_type::SIG_HASH_ALL,
     },
     tx::PopulatedTransaction,
@@ -40,7 +44,7 @@ pub fn sign_with_multiple_v3<'a>(tx: &'a Transaction, privkeys: &[[u8; 32]]) -> 
         map.insert(script_pub_key_script, schnorr_key);
     }
 
-    let mut reused_values = SigHashReusedValues::new();
+    let reused_values = SigHashReusedValuesUnsync::new();
     let mut additional_signatures_required = false;
     {
         let input_len = tx.inner().inputs.len();
@@ -55,7 +59,7 @@ pub fn sign_with_multiple_v3<'a>(tx: &'a Transaction, privkeys: &[[u8; 32]]) -> 
             };
             let script = script_pub_key.script();
             if let Some(schnorr_key) = map.get(script) {
-                let sig_hash = calc_schnorr_signature_hash(&populated_transaction, i, SIG_HASH_ALL, &mut reused_values);
+                let sig_hash = calc_schnorr_signature_hash(&populated_transaction, i, SIG_HASH_ALL, &reused_values);
                 let msg = secp256k1::Message::from_digest_slice(sig_hash.as_bytes().as_slice()).unwrap();
                 let sig: [u8; 64] = *schnorr_key.sign_schnorr(msg).as_ref();
                 // This represents OP_DATA_65 <SIGNATURE+SIGHASH_TYPE> (since signature length is 64 bytes and SIGHASH_TYPE is one byte)

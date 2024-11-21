@@ -1,3 +1,9 @@
+//!
+//! # Consensus Core
+//!
+//! This crate implements primitives used in the Kaspa node consensus processing.
+//!
+
 extern crate alloc;
 extern crate core;
 extern crate self as consensus_core;
@@ -34,6 +40,10 @@ pub mod utxo;
 /// 2^128 work in a single block (btc has ~2^80), and no more than 2^64
 /// overall blocks, so 2^192 is definitely a justified upper-bound.
 pub type BlueWorkType = kaspa_math::Uint192;
+
+/// The extends directly from the expectation above about having no more than
+/// 2^128 work in a single block
+pub const MAX_WORK_LEVEL: BlockLevel = 128;
 
 /// The type used to represent the GHOSTDAG K parameter
 pub type KType = u16;

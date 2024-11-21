@@ -1,3 +1,7 @@
+//!
+//! [`RpcError`] enum used by RPC primitives.
+//!
+
 use kaspa_consensus_core::{subnets::SubnetworkConversionError, tx::TransactionId};
 use kaspa_utils::networking::IpAddress;
 #[cfg(feature = "py-sdk")]

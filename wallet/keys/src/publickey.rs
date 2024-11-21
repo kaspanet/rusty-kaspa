@@ -1,6 +1,6 @@
 //!
-//! [`keypair`](mod@self) module encapsulates [`Keypair`] and [`PrivateKey`].
-//! The [`Keypair`] provides access to the secret and public keys.
+//! [`keypair`](mod@self) module encapsulates [`Keypair`](crate::keypair::Keypair) and [`PrivateKey`].
+//! The [`Keypair`](crate::keypair::Keypair) provides access to the secret and public keys.
 //!
 //! ```javascript
 //!

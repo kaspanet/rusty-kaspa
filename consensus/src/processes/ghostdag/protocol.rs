@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use kaspa_consensus_core::{
     blockhash::{self, BlockHashExtensions, BlockHashes},
-    BlockHashMap, BlueWorkType, HashMapCustomHasher,
+    BlockHashMap, BlockLevel, BlueWorkType, HashMapCustomHasher,
 };
 use kaspa_hashes::Hash;
 use kaspa_utils::refs::Refs;
@@ -16,7 +16,7 @@ use crate::{
             relations::RelationsStoreReader,
         },
     },
-    processes::difficulty::calc_work,
+    processes::difficulty::{calc_work, level_work},
 };
 
 use super::ordering::*;
@@ -29,6 +29,15 @@ pub struct GhostdagManager<T: GhostdagStoreReader, S: RelationsStoreReader, U: R
     pub(super) relations_store: S,
     pub(super) headers_store: Arc<V>,
     pub(super) reachability_service: U,
+
+    /// Level work is a lower-bound for the amount of work represented by each block.
+    /// When running GD for higher-level sub-DAGs, this value should be set accordingly
+    /// to the work represented by that level, and then used as a lower bound
+    /// for the work calculated from header bits (which depends on current difficulty).
+    /// For instance, assuming level 80 (i.e., pow hash has at least 80 zeros) is always
+    /// above the difficulty target, all blocks in it should represent the same amount of
+    /// work regardless of whether current difficulty requires 20 zeros or 25 zeros.  
+    level_work: BlueWorkType,
 }
 
 impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V: HeaderStoreReader> GhostdagManager<T, S, U, V> {
@@ -40,7 +49,29 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         headers_store: Arc<V>,
         reachability_service: U,
     ) -> Self {
-        Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store }
+        // For ordinary GD, always keep level_work=0 so the lower bound is ineffective
+        Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store, level_work: 0.into() }
+    }
+
+    pub fn with_level(
+        genesis_hash: Hash,
+        k: KType,
+        ghostdag_store: Arc<T>,
+        relations_store: S,
+        headers_store: Arc<V>,
+        reachability_service: U,
+        level: BlockLevel,
+        max_block_level: BlockLevel,
+    ) -> Self {
+        Self {
+            genesis_hash,
+            k,
+            ghostdag_store,
+            relations_store,
+            reachability_service,
+            headers_store,
+            level_work: level_work(level, max_block_level),
+        }
     }
 
     pub fn genesis_ghostdag_data(&self) -> GhostdagData {
@@ -91,7 +122,7 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
     ///    the selected parent chain of the new block until we find an existing entry in
     ///    blues_anticone_sizes.
     ///
-    /// For further details see the article https://eprint.iacr.org/2018/104.pdf
+    /// For further details see the article <https://eprint.iacr.org/2018/104.pdf>
     pub fn ghostdag(&self, parents: &[Hash]) -> GhostdagData {
         assert!(!parents.is_empty(), "genesis must be added via a call to init");
 
@@ -113,16 +144,22 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
             }
         }
 
+        // Handle the special case of origin children first
+        if selected_parent.is_origin() {
+            // ORIGIN is always a single parent so both blue score and work should remain zero
+            return new_block_data;
+        }
+
         let blue_score = self.ghostdag_store.get_blue_score(selected_parent).unwrap() + new_block_data.mergeset_blues.len() as u64;
 
         let added_blue_work: BlueWorkType = new_block_data
             .mergeset_blues
             .iter()
             .cloned()
-            .map(|hash| if hash.is_origin() { 0.into() } else { calc_work(self.headers_store.get_bits(hash).unwrap()) })
+            .map(|hash| calc_work(self.headers_store.get_bits(hash).unwrap()).max(self.level_work))
             .sum();
+        let blue_work: BlueWorkType = self.ghostdag_store.get_blue_work(selected_parent).unwrap() + added_blue_work;
 
-        let blue_work = self.ghostdag_store.get_blue_work(selected_parent).unwrap() + added_blue_work;
         new_block_data.finalize_score_and_work(blue_score, blue_work);
 
         new_block_data

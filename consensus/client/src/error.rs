@@ -1,3 +1,5 @@
+//! The [`Error`](enum@Error) enum used by this crate
+
 #[cfg(feature = "py-sdk")]
 use pyo3::{exceptions::PyException, prelude::PyErr};
 use thiserror::Error;

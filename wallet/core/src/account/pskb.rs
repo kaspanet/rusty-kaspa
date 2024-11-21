@@ -1,10 +1,15 @@
+//!
+//! Tools for interfacing wallet accounts with PSKBs.
+//! (Partial Signed Kaspa Transaction Bundles).
+//!
+
 pub use crate::error::Error;
 use crate::imports::*;
 use crate::tx::PaymentOutputs;
 use futures::stream;
 use kaspa_bip32::{DerivationPath, KeyFingerprint, PrivateKey};
 use kaspa_consensus_client::UtxoEntry as ClientUTXO;
-use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValues};
+use kaspa_consensus_core::hashing::sighash::{calc_schnorr_signature_hash, SigHashReusedValuesUnsync};
 use kaspa_consensus_core::tx::VerifiableTransaction;
 use kaspa_consensus_core::tx::{TransactionInput, UtxoEntry};
 use kaspa_txscript::extract_script_pub_key_address;
@@ -155,7 +160,7 @@ pub async fn pskb_signer_for_address(
     key_fingerprint: KeyFingerprint,
 ) -> Result<Bundle, Error> {
     let mut signed_bundle = Bundle::new();
-    let mut reused_values = SigHashReusedValues::new();
+    let reused_values = SigHashReusedValuesUnsync::new();
 
     // If set, sign-for address is used for signing.
     // Else, all addresses from inputs are.
@@ -181,7 +186,7 @@ pub async fn pskb_signer_for_address(
     for pskt_inner in bundle.iter().cloned() {
         let pskt: PSKT<Signer> = PSKT::from(pskt_inner);
 
-        let mut sign = |signer_pskt: PSKT<Signer>| {
+        let sign = |signer_pskt: PSKT<Signer>| {
             signer_pskt
                 .pass_signature_sync(|tx, sighash| -> Result<Vec<SignInputOk>, String> {
                     tx.tx
@@ -189,7 +194,7 @@ pub async fn pskb_signer_for_address(
                         .iter()
                         .enumerate()
                         .map(|(idx, _input)| {
-                            let hash = calc_schnorr_signature_hash(&tx.as_verifiable(), idx, sighash[idx], &mut reused_values);
+                            let hash = calc_schnorr_signature_hash(&tx.as_verifiable(), idx, sighash[idx], &reused_values);
                             let msg = secp256k1::Message::from_digest_slice(hash.as_bytes().as_slice()).unwrap();
 
                             // When address represents a locked UTXO, no private key is available.

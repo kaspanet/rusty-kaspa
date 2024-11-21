@@ -1,11 +1,12 @@
 use std::iter::once;
 
 use crate::{
-    data_stack::OpcodeData,
+    data_stack::{Kip10I64, OpcodeData},
     opcodes::{codes::*, OP_1_NEGATE_VAL, OP_DATA_MAX_VAL, OP_DATA_MIN_VAL, OP_SMALL_INT_MAX_VAL},
     MAX_SCRIPTS_SIZE, MAX_SCRIPT_ELEMENT_SIZE,
 };
 use hexplay::{HexView, HexViewBuilder};
+use kaspa_txscript_errors::SerializationError;
 use thiserror::Error;
 
 /// DEFAULT_SCRIPT_ALLOC is the default size used for the backing array
@@ -31,6 +32,9 @@ pub enum ScriptBuilderError {
 
     #[error("adding integer {0} would exceed the maximum allowed canonical script length of {MAX_SCRIPTS_SIZE}")]
     IntegerRejected(i64),
+
+    #[error(transparent)]
+    Serialization(#[from] SerializationError),
 }
 pub type ScriptBuilderResult<T> = std::result::Result<T, ScriptBuilderError>;
 
@@ -228,7 +232,14 @@ impl ScriptBuilder {
             return Ok(self);
         }
 
-        let bytes: Vec<_> = OpcodeData::serialize(&val);
+        let bytes: Vec<_> = OpcodeData::<Kip10I64>::serialize(&val.into())?;
+        self.add_data(&bytes)
+    }
+
+    // Bitcoind tests utilizes this function
+    #[cfg(test)]
+    pub fn add_i64_min(&mut self) -> ScriptBuilderResult<&mut Self> {
+        let bytes: Vec<_> = OpcodeData::serialize(&crate::data_stack::SizedEncodeInt::<9>(i64::MIN)).expect("infallible");
         self.add_data(&bytes)
     }
 
@@ -355,6 +366,11 @@ mod tests {
             Test { name: "push -256", val: -256, expected: vec![OpData2, 0x00, 0x81] },
             Test { name: "push -32767", val: -32767, expected: vec![OpData2, 0xff, 0xff] },
             Test { name: "push -32768", val: -32768, expected: vec![OpData3, 0x00, 0x80, 0x80] },
+            Test {
+                name: "push 9223372036854775807",
+                val: 9223372036854775807,
+                expected: vec![OpData8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F],
+            },
         ];
 
         for test in tests {
@@ -362,6 +378,15 @@ mod tests {
             let result = builder.add_i64(test.val).expect("the script is canonical").script();
             assert_eq!(result, test.expected, "{} wrong result", test.name);
         }
+
+        // special case that used in bitcoind test
+        let mut builder = ScriptBuilder::new();
+        let result = builder.add_i64_min().expect("the script is canonical").script();
+        assert_eq!(
+            result,
+            vec![OpData9, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x80, 0x80],
+            "push -9223372036854775808 wrong result"
+        );
     }
 
     /// Tests that pushing data to a script via the ScriptBuilder API works as expected and conforms to BIP0062.

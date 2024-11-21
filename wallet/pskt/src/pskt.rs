@@ -1,4 +1,9 @@
+//!
+//! Partially Signed Kaspa Transaction (PSKT)
+//!
+
 use kaspa_bip32::{secp256k1, DerivationPath, KeyFingerprint};
+use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{collections::BTreeMap, fmt::Display, fmt::Formatter, future::Future, marker::PhantomData, ops::Deref};
@@ -10,7 +15,7 @@ pub use crate::output::{Output, OutputBuilder};
 pub use crate::role::{Combiner, Constructor, Creator, Extractor, Finalizer, Signer, Updater};
 use kaspa_consensus_core::tx::UtxoEntry;
 use kaspa_consensus_core::{
-    hashing::{sighash::SigHashReusedValues, sighash_type::SigHashType},
+    hashing::sighash_type::SigHashType,
     subnets::SUBNETWORK_ID_NATIVE,
     tx::{MutableTransaction, SignableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput},
 };
@@ -76,6 +81,23 @@ impl Signature {
     }
 }
 
+///
+/// A Partially Signed Kaspa Transaction (PSKT) is a standardized format
+/// that allows multiple participants to collaborate in creating and signing
+/// a Kaspa transaction. PSKT enables the exchange of incomplete transaction
+/// data between different wallets or entities, allowing each participant
+/// to add their signature or inputs in stages. This facilitates more complex
+/// transaction workflows, such as multi-signature setups or hardware wallet
+/// interactions, by ensuring that sensitive data remains secure while
+/// enabling cooperation across different devices or platforms without
+/// exposing private keys.
+///
+/// Please note that due to transaction mass limits and potential of
+/// a wallet aggregating large UTXO sets, the PSKT [`Bundle`](crate::bundle::Bundle) primitive
+/// is used to represent a collection of PSKTs and should be used for
+/// PSKT serialization and transport. PSKT is an internal implementation
+/// primitive that represents each transaction in the bundle.
+///
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PSKT<ROLE> {
@@ -411,10 +433,10 @@ impl PSKT<Extractor> {
         {
             let tx = tx.as_verifiable();
             let cache = Cache::new(10_000);
-            let mut reused_values = SigHashReusedValues::new();
+            let reused_values = SigHashReusedValuesUnsync::new();
 
             tx.populated_inputs().enumerate().try_for_each(|(idx, (input, entry))| {
-                TxScriptEngine::from_transaction_input(&tx, input, idx, entry, &mut reused_values, &cache)?.execute()?;
+                TxScriptEngine::from_transaction_input(&tx, input, idx, entry, &reused_values, &cache, false).execute()?;
                 <Result<(), ExtractError>>::Ok(())
             })?;
         }

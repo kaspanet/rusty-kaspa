@@ -1,3 +1,11 @@
+//!
+//! Kaspa [`Address`] implementation.
+//!
+//! In it's string form, the Kaspa [`Address`] is represented by a `bech32`-encoded
+//! address string combined with a network type.  The `bech32` string encoding is
+//! comprised of a public key, the public key version and the resulting checksum.
+//!
+
 use borsh::{BorshDeserialize, BorshSerialize};
 #[cfg(feature = "py-sdk")]
 use pyo3::{exceptions::PyException, prelude::*};
@@ -13,6 +21,7 @@ use workflow_wasm::{
 
 mod bech32;
 
+/// Error type produced by [`Address`] operations.
 #[derive(Error, PartialEq, Eq, Debug, Clone)]
 pub enum AddressError {
     #[error("The address has an invalid prefix {0}")]
@@ -192,7 +201,8 @@ pub const PAYLOAD_VECTOR_SIZE: usize = 36;
 /// Used as the underlying type for address payload, optimized for the largest version length (33).
 pub type PayloadVec = SmallVec<[u8; PAYLOAD_VECTOR_SIZE]>;
 
-/// Kaspa `Address` struct that serializes to and from an address format string: `kaspa:qz0s...t8cv`.
+/// Kaspa [`Address`] struct that serializes to and from an address format string: `kaspa:qz0s...t8cv`.
+///
 /// @category Address
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, CastFromJs)]
 #[cfg_attr(feature = "py-sdk", pyclass)]
@@ -577,12 +587,24 @@ impl From<AddressError> for PyErr {
 
 #[wasm_bindgen]
 extern "C" {
+    /// WASM (TypeScript) type representing an Address-like object: `Address | string`.
+    ///
+    /// @category Address
     #[wasm_bindgen(extends = js_sys::Array, typescript_type = "Address | string")]
     pub type AddressT;
+    /// WASM (TypeScript) type representing an array of Address-like objects: `(Address | string)[]`.
+    ///
+    /// @category Address
     #[wasm_bindgen(extends = js_sys::Array, typescript_type = "(Address | string)[]")]
     pub type AddressOrStringArrayT;
+    /// WASM (TypeScript) type representing an array of [`Address`] objects: `Address[]`.
+    ///
+    /// @category Address
     #[wasm_bindgen(extends = js_sys::Array, typescript_type = "Address[]")]
     pub type AddressArrayT;
+    /// WASM (TypeScript) type representing an [`Address`] or an undefined value: `Address | undefined`.
+    ///
+    /// @category Address
     #[wasm_bindgen(typescript_type = "Address | undefined")]
     pub type AddressOrUndefinedT;
 }

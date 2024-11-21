@@ -1,3 +1,5 @@
+//! [`Error`](enum@Error) variants for the wRPC client library.
+
 #[cfg(feature = "py-sdk")]
 use pyo3::{exceptions::PyException, prelude::PyErr};
 use thiserror::Error;
