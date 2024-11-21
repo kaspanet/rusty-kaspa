@@ -43,7 +43,8 @@ where
     where
         TKey: Clone + AsRef<[u8]>,
     {
-        Ok(self.cache.as_ref().map_or(false, |cache| cache.contains_key(&key)) || self.db.get_pinned(DbKey::new(&self.prefix, key))?.is_some())
+        Ok(self.cache.as_ref().map_or(false, |cache| cache.contains_key(&key))
+            || self.db.get_pinned(DbKey::new(&self.prefix, key))?.is_some())
     }
 
     pub fn read(&self, key: TKey) -> Result<TData, StoreError>
@@ -57,7 +58,9 @@ where
             let db_key = DbKey::new(&self.prefix, key.clone());
             if let Some(slice) = self.db.get_pinned(&db_key)? {
                 let data: TData = bincode::deserialize(&slice)?;
-                self.cache.as_ref().map(|cache| cache.insert(key, data.clone()));
+                if let Some(cache) = &self.cache {
+                    cache.insert(key, data.clone());
+                }
                 return Ok(data);
             }
         };
@@ -89,7 +92,9 @@ where
         TData: Serialize,
     {
         let bin_data = bincode::serialize(&data)?;
-        self.cache.as_ref().map(|cache| cache.insert(key.clone(), data));
+        if let Some(cache) = &self.cache {
+            cache.insert(key.clone(), data);
+        }
         writer.put(DbKey::new(&self.prefix, key), bin_data)?;
         Ok(())
     }
@@ -103,7 +108,9 @@ where
         TKey: Clone + AsRef<[u8]>,
         TData: Serialize,
     {
-        self.cache.as_ref().map(|cache| cache.insert_many(&mut iter.clone()));
+        if let Some(cache) = &self.cache {
+            cache.insert_many(iter);
+        }
         for (key, data) in iter {
             let bin_data = bincode::serialize(&data)?;
             writer.put(DbKey::new(&self.prefix, key.clone()), bin_data)?;
@@ -126,7 +133,9 @@ where
             writer.put(DbKey::new(&self.prefix, key), bin_data)?;
         }
         // We must clear the cache in order to avoid invalidated entries
-        self.cache.as_ref().map(|cache| cache.remove_all());
+        if let Some(cache) = &self.cache {
+            cache.remove_all();
+        }
         Ok(())
     }
 
@@ -143,14 +152,14 @@ where
     where
         TKey: Clone + AsRef<[u8]>,
     {
-        self.cache.as_ref().map(|cache| {
-            cache.remove_many(&mut  key_iter.clone());
-        });
+        if let Some(cache) = &self.cache {
+            cache.remove_many(&mut key_iter.clone());
+        };
 
         for key in key_iter {
             writer.delete(DbKey::new(&self.prefix, key.clone()))?;
         }
-        
+
         Ok(())
     }
 
@@ -159,7 +168,9 @@ where
     where
         TKey: Clone + AsRef<[u8]>,
     {
-        self.cache.as_ref().map(|cache| cache.remove_all());
+        if let Some(cache) = &self.cache {
+            cache.remove_all()
+        };
         let db_key = DbKey::prefix_only(&self.prefix);
         let (from, to) = rocksdb::PrefixRange(db_key.as_ref()).into_bounds();
         writer.delete_range(from.unwrap(), to.unwrap())?;
