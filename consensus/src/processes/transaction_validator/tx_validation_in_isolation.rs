@@ -295,7 +295,7 @@ mod tests {
 
         let mut tx = valid_tx.clone();
         tx.payload = vec![0];
-        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::NonCoinbaseTxHasPayload));
+        assert_match!(tv.validate_tx_in_isolation(&tx), Ok(()));
 
         let mut tx = valid_tx;
         tx.version = TX_VERSION + 1;
