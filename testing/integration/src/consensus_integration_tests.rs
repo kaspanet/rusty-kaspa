@@ -28,7 +28,7 @@ use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::blockhash::new_unique;
 use kaspa_consensus_core::blockstatus::BlockStatus;
 use kaspa_consensus_core::coinbase::MinerData;
-use kaspa_consensus_core::constants::{BLOCK_VERSION, STORAGE_MASS_PARAMETER};
+use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, STORAGE_MASS_PARAMETER};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::header::Header;
 use kaspa_consensus_core::network::{NetworkId, NetworkType::Mainnet};
@@ -44,9 +44,12 @@ use kaspa_core::time::unix_now;
 use kaspa_database::utils::get_kaspa_tempdir;
 use kaspa_hashes::Hash;
 
+use crate::common;
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
+use kaspa_consensus_core::merkle::calc_hash_merkle_root;
+use kaspa_consensus_core::muhash::MuHashExtensions;
 use kaspa_core::core::Core;
 use kaspa_core::signals::Shutdown;
 use kaspa_core::task::runtime::AsyncRuntime;
@@ -73,8 +76,6 @@ use std::{
     io::{BufRead, BufReader},
     str::{from_utf8, FromStr},
 };
-
-use crate::common;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct JsonBlock {
@@ -835,6 +836,7 @@ impl KaspadGoParams {
             max_block_mass: self.MaxBlockMass,
             storage_mass_parameter: STORAGE_MASS_PARAMETER,
             storage_mass_activation: ForkActivation::never(),
+            kip10_activation: ForkActivation::never(),
             deflationary_phase_daa_score: self.DeflationaryPhaseDaaScore,
             pre_deflationary_phase_base_subsidy: self.PreDeflationaryPhaseBaseSubsidy,
             coinbase_maturity: MAINNET_PARAMS.coinbase_maturity,
@@ -1759,6 +1761,111 @@ async fn staging_consensus_test() {
 
     core.shutdown();
     core.join(joins);
+}
+
+/// Tests the KIP-10 transaction introspection opcode activation by verifying that:
+/// 1. Transactions using these opcodes are rejected before the activation DAA score
+/// 2. The same transactions are accepted at and after the activation score
+/// Uses OpInputSpk opcode as an example
+#[tokio::test]
+async fn run_kip10_activation_test() {
+    use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
+    use kaspa_txscript::opcodes::codes::{Op0, OpTxInputSpk};
+    use kaspa_txscript::pay_to_script_hash_script;
+    use kaspa_txscript::script_builder::ScriptBuilder;
+
+    // KIP-10 activates at DAA score 3 in this test
+    const KIP10_ACTIVATION_DAA_SCORE: u64 = 3;
+
+    init_allocator_with_default_settings();
+
+    // Create P2SH script that attempts to use OpInputSpk - this will be our test subject
+    // The script should fail before KIP-10 activation and succeed after
+    let redeem_script = ScriptBuilder::new()
+        .add_op(Op0).unwrap() // Push 0 for input index
+        .add_op(OpTxInputSpk).unwrap() // Get the input's script pubkey
+        .drain();
+    let spk = pay_to_script_hash_script(&redeem_script);
+
+    // Set up initial UTXO with our test script
+    let initial_utxo_collection = [(
+        TransactionOutpoint::new(1.into(), 0),
+        UtxoEntry { amount: SOMPI_PER_KASPA, script_public_key: spk.clone(), block_daa_score: 0, is_coinbase: false },
+    )];
+
+    // Initialize consensus with KIP-10 activation point
+    let config = ConfigBuilder::new(DEVNET_PARAMS)
+        .skip_proof_of_work()
+        .apply_args(|cfg| {
+            let mut genesis_multiset = MuHash::new();
+            initial_utxo_collection.iter().for_each(|(outpoint, utxo)| {
+                genesis_multiset.add_utxo(outpoint, utxo);
+            });
+            cfg.params.genesis.utxo_commitment = genesis_multiset.finalize();
+            let genesis_header: Header = (&cfg.params.genesis).into();
+            cfg.params.genesis.hash = genesis_header.hash;
+        })
+        .edit_consensus_params(|p| {
+            p.kip10_activation = ForkActivation::new(KIP10_ACTIVATION_DAA_SCORE);
+        })
+        .build();
+
+    let consensus = TestConsensus::new(&config);
+    let mut genesis_multiset = MuHash::new();
+    consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
+    consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
+    consensus.init();
+
+    // Build blockchain up to one block before activation
+    let mut index = 0;
+    for _ in 0..KIP10_ACTIVATION_DAA_SCORE - 1 {
+        let parent = if index == 0 { config.genesis.hash } else { index.into() };
+        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![parent], vec![]).await.unwrap();
+        index += 1;
+    }
+    assert_eq!(consensus.get_virtual_daa_score(), index);
+
+    // Create transaction that attempts to use the KIP-10 opcode
+    let mut spending_tx = Transaction::new(
+        0,
+        vec![TransactionInput::new(
+            initial_utxo_collection[0].0,
+            ScriptBuilder::new().add_data(&redeem_script).unwrap().drain(),
+            0,
+            0,
+        )],
+        vec![TransactionOutput::new(initial_utxo_collection[0].1.amount - 5000, spk)],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        vec![],
+    );
+    spending_tx.finalize();
+    let tx_id = spending_tx.id();
+    // Test 1: Build empty block, then manually insert invalid tx and verify consensus rejects it
+    {
+        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
+
+        // First build block without transactions
+        let mut block =
+            consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
+
+        // Insert our test transaction and recalculate block hashes
+        block.transactions.push(spending_tx.clone());
+        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter(), false);
+        let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
+        assert!(matches!(block_status, Ok(BlockStatus::StatusDisqualifiedFromChain)));
+        assert_eq!(consensus.lkg_virtual_state.load().daa_score, 2);
+        index += 1;
+    }
+    // // Add one more block to reach activation score
+    consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).await.unwrap();
+    index += 1;
+
+    // Test 2: Verify the same transaction is accepted after activation
+    let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![spending_tx.clone()]).await;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+    assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
 }
 
 #[tokio::test]
