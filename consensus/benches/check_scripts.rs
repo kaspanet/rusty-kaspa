@@ -129,31 +129,46 @@ fn benchmark_check_scripts(c: &mut Criterion) {
     }
 }
 
+/// Benchmarks script checking performance with different payload sizes and input counts.
+///
+/// This benchmark evaluates the performance impact of transaction payload size
+/// on script validation, testing multiple scenarios:
+///
+/// * Payload sizes: 0KB, 16KB, 32KB, 64KB, 128KB
+/// * Input counts: 1, 2, 10, 50 transactions
+///
+/// The benchmark helps understand:
+/// 1. How payload size affects validation performance
+/// 2. The relationship between input count and payload processing overhead
 fn benchmark_check_scripts_with_payload(c: &mut Criterion) {
     let payload_sizes = [0, 16_384, 32_768, 65_536, 131_072]; // 0, 16KB, 32KB, 64KB, 128KB
-    let inputs_count = 50; // Fixed number of inputs
-    let non_uniq_signatures = 0; // Fixed number of non-unique signatures
+    let input_counts = [1, 2, 10, 50];
+    let non_uniq_signatures = 0;
 
-    for &payload_size in &payload_sizes {
-        let (tx, utxos) = mock_tx_with_payload(inputs_count, non_uniq_signatures, payload_size);
-        let mut group = c.benchmark_group(format!("payload size: {}KB", payload_size / 1024));
-        group.sampling_mode(SamplingMode::Flat);
+    for inputs_count in input_counts {
+        for &payload_size in &payload_sizes {
+            let (tx, utxos) = mock_tx_with_payload(inputs_count, non_uniq_signatures, payload_size);
+            let mut group = c.benchmark_group(
+                format!("script_check/inputs_{}/payload_{}_kb", inputs_count, payload_size / 1024)
+            );
+            group.sampling_mode(SamplingMode::Flat);
 
-        group.bench_function("rayon par iter with payload", |b| {
-            let tx = MutableTransaction::with_entries(tx.clone(), utxos.clone());
-            let cache = Cache::new(inputs_count as u64);
-            b.iter(|| {
-                cache.clear();
-                check_scripts_par_iter(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
-            })
-        });
+            group.bench_function("parallel_validation", |b| {
+                let tx = MutableTransaction::with_entries(tx.clone(), utxos.clone());
+                let cache = Cache::new(inputs_count as u64);
+                b.iter(|| {
+                    cache.clear();
+                    check_scripts_par_iter(black_box(&cache), black_box(&tx.as_verifiable())).unwrap();
+                })
+            });
+        }
     }
 }
 
 criterion_group! {
     name = benches;
     config = Criterion::default().with_output_color(true).measurement_time(std::time::Duration::new(20, 0));
-    targets = /*benchmark_check_scripts,*/ benchmark_check_scripts_with_payload
+    targets = benchmark_check_scripts, benchmark_check_scripts_with_payload
 }
 
 criterion_main!(benches);
