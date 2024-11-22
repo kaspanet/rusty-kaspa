@@ -48,6 +48,7 @@ use crate::common;
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
+use kaspa_consensus_core::errors::tx::TxRuleError;
 use kaspa_consensus_core::merkle::calc_hash_merkle_root;
 use kaspa_consensus_core::muhash::MuHashExtensions;
 use kaspa_core::core::Core;
@@ -76,7 +77,6 @@ use std::{
     io::{BufRead, BufReader},
     str::{from_utf8, FromStr},
 };
-use kaspa_consensus_core::errors::tx::TxRuleError;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct JsonBlock {
@@ -1921,7 +1921,7 @@ async fn run_payload_activation_test() {
             amount: SOMPI_PER_KASPA,
             script_public_key: ScriptPublicKey::from_vec(0, vec![OpTrue]),
             block_daa_score: 0,
-            is_coinbase: false
+            is_coinbase: false,
         },
     )];
 
@@ -1967,10 +1967,7 @@ async fn run_payload_activation_test() {
             0,
             0,
         )],
-        vec![TransactionOutput::new(
-            initial_utxo_collection[0].1.amount - 5000,
-            ScriptPublicKey::from_vec(0, vec![OpTrue])
-        )],
+        vec![TransactionOutput::new(initial_utxo_collection[0].1.amount - 5000, ScriptPublicKey::from_vec(0, vec![OpTrue]))],
         0,
         SUBNETWORK_ID_NATIVE,
         0,
@@ -1984,12 +1981,8 @@ async fn run_payload_activation_test() {
         let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
 
         // First build block without transactions
-        let mut block = consensus.build_utxo_valid_block_with_parents(
-            (index + 1).into(),
-            vec![index.into()],
-            miner_data.clone(),
-            vec![],
-        );
+        let mut block =
+            consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
 
         // Insert our test transaction and recalculate block hashes
         block.transactions.push(tx_with_payload.clone());
@@ -2006,11 +1999,8 @@ async fn run_payload_activation_test() {
     index += 1;
 
     // Test 2: Verify the same transaction is accepted after activation
-    let status = consensus.add_utxo_valid_block_with_parents(
-        (index + 1).into(),
-        vec![index.into()],
-        vec![tx_with_payload.clone()]
-    ).await;
+    let status =
+        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx_with_payload.clone()]).await;
 
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
