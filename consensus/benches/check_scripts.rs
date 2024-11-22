@@ -33,12 +33,7 @@ fn mock_tx_with_payload(inputs_count: usize, non_uniq_signatures: usize, payload
 
     for _ in 0..inputs_count - non_uniq_signatures {
         let kp = Keypair::new(secp256k1::SECP256K1, &mut thread_rng());
-        tx.inputs.push(TransactionInput {
-            previous_outpoint: dummy_prev_out,
-            signature_script: vec![],
-            sequence: 0,
-            sig_op_count: 1
-        });
+        tx.inputs.push(TransactionInput { previous_outpoint: dummy_prev_out, signature_script: vec![], sequence: 0, sig_op_count: 1 });
         let address = Address::new(Prefix::Mainnet, Version::PubKey, &kp.x_only_public_key().0.serialize());
         utxos.push(UtxoEntry {
             amount: thread_rng().gen::<u32>() as u64,
@@ -51,12 +46,7 @@ fn mock_tx_with_payload(inputs_count: usize, non_uniq_signatures: usize, payload
 
     for _ in 0..non_uniq_signatures {
         let kp = kps.last().unwrap();
-        tx.inputs.push(TransactionInput {
-            previous_outpoint: dummy_prev_out,
-            signature_script: vec![],
-            sequence: 0,
-            sig_op_count: 1
-        });
+        tx.inputs.push(TransactionInput { previous_outpoint: dummy_prev_out, signature_script: vec![], sequence: 0, sig_op_count: 1 });
         let address = Address::new(Prefix::Mainnet, Version::PubKey, &kp.x_only_public_key().0.serialize());
         utxos.push(UtxoEntry {
             amount: thread_rng().gen::<u32>() as u64,
@@ -148,9 +138,7 @@ fn benchmark_check_scripts_with_payload(c: &mut Criterion) {
     for inputs_count in input_counts {
         for &payload_size in &payload_sizes {
             let (tx, utxos) = mock_tx_with_payload(inputs_count, non_uniq_signatures, payload_size);
-            let mut group = c.benchmark_group(
-                format!("script_check/inputs_{}/payload_{}_kb", inputs_count, payload_size / 1024)
-            );
+            let mut group = c.benchmark_group(format!("script_check/inputs_{}/payload_{}_kb", inputs_count, payload_size / 1024));
             group.sampling_mode(SamplingMode::Flat);
 
             group.bench_function("parallel_validation", |b| {

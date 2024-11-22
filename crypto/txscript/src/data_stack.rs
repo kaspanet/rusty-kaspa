@@ -127,7 +127,7 @@ impl OpcodeData<i32> for Vec<u8> {
         i32::try_from(res.clamp(i32::MIN as i64, i32::MAX as i64))
             .map_err(|e| TxScriptError::InvalidState(format!("data is too big for `i32`: {e}")))
     }
-    
+
     #[inline]
     fn serialize(from: &i32) -> Self {
         OpcodeData::<i64>::serialize(&(*from as i64))
