@@ -5,11 +5,13 @@ use kaspa_wallet_keys::publickey::PublicKey;
 
 #[pyfunction]
 #[pyo3(name = "sign_message")]
-pub fn py_sign_message(message: String, private_key: PrivateKey) -> PyResult<String> {
+#[pyo3(signature = (message, private_key, no_aux_rand=false))]
+pub fn py_sign_message(message: String, private_key: PrivateKey, no_aux_rand: bool) -> PyResult<String> {
     let mut privkey_bytes = [0u8; 32];
     privkey_bytes.copy_from_slice(&private_key.secret_bytes());
     let pm = PersonalMessage(&message);
-    let sig_vec = sign_message(&pm, &privkey_bytes).map_err(|err| PyException::new_err(format!("{}", err)))?;
+    let sign_options = SignMessageOptions { no_aux_rand };
+    let sig_vec = sign_message(&pm, &privkey_bytes, &sign_options).map_err(|err| PyException::new_err(format!("{}", err)))?;
     privkey_bytes.zeroize();
     Ok(faster_hex::hex_string(sig_vec.as_slice()).into())
 }

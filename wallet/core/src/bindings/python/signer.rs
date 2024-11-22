@@ -1,4 +1,4 @@
-use crate::bindings::wasm::signer::{sign_hash, sign_transaction};
+use crate::bindings::signer::{sign_hash, sign_transaction};
 use crate::imports::*;
 use kaspa_consensus_client::Transaction;
 use kaspa_consensus_core::hashing::wasm::SighashType;
