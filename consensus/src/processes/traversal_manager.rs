@@ -1,4 +1,7 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::{HashSet, VecDeque},
+    sync::Arc,
+};
 
 use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
@@ -154,5 +157,56 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
         }
 
         current
+    }
+    /* I am forced to work with references and lifetimes because I can't clone
+    reachability_service and relations_store,
+    I'm pretty sure this can have significant limitations,
+     So someone with more knowledge is encouraged to help out in whatever the required refactoring is */
+    pub fn bfs_iterator_from_this_to_queried(&self, this: Hash, queried: Hash) -> BlocksBFSIterator<'_, U, V> {
+        BlocksBFSIterator::new(this, queried, &self.reachability_service, &self.relations_store)
+    }
+}
+pub struct BlocksBFSIterator<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> {
+    queue: VecDeque<Vec<Hash>>,
+    visited: HashSet<Hash>,
+    edge: Hash,
+    reachability_service: &'a MTReachabilityService<U>,
+    relations_store: &'a V,
+}
+
+impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> BlocksBFSIterator<'a, U, V> {
+    pub fn new(start: Hash, edge: Hash, reachability_service: &'a MTReachabilityService<U>, relations_store: &'a V) -> Self {
+        let mut queue = VecDeque::new();
+        queue.push_back(vec![start]);
+        let mut visited = HashSet::new();
+        visited.insert(start); //note that in a dag this isn't actually necessary, but is kept for logical clarity
+        Self { queue, visited, edge, reachability_service, relations_store }
+    }
+}
+impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> Iterator for BlocksBFSIterator<'a, U, V> {
+    type Item = Vec<Hash>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(path) = self.queue.pop_front() {
+            let curr = *path.last().unwrap(); // path should never be empty
+            if !self.reachability_service.is_dag_ancestor_of(curr, self.edge) {
+                None
+            } else {
+                let children = self.relations_store.get_children(curr);
+                if let Ok(children) = children {
+                    for &child in children.read().iter() {
+                        if !self.visited.contains(&child) {
+                            let mut new_path = path.clone();
+                            new_path.push(child);
+                            self.queue.push_back(new_path);
+                            self.visited.insert(child);
+                        }
+                    }
+                }
+                Some(path)
+            }
+        } else {
+            None
+        }
     }
 }

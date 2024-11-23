@@ -51,7 +51,6 @@ pub type DbTxReceiptsManager = TxReceiptsManager<
     DbAcceptanceDataStore,
     DbBlockTransactionsStore,
     DbPruningStore,
-    DbRelationsStore,
 >;
 
 pub struct ConsensusServices {
@@ -215,7 +214,7 @@ impl ConsensusServices {
             storage.acceptance_data_store.clone(),
             storage.block_transactions_store.clone(),
             storage.pruning_point_store.clone(),
-            storage.relations_stores.clone(),
+            dag_traversal_manager.clone(),
             storage.hash_to_pchmr_store.clone(),
             params.storage_mass_activation,
         );

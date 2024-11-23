@@ -1,14 +1,16 @@
 use super::receipts_errors::ReceiptsErrors;
-use crate::model::stores::{
-    block_transactions::BlockTransactionsStoreReader,
-    pchmr_store::{DbPchmrStore, PchmrStoreReader},
-    pruning::PruningStoreReader,
-    relations::RelationsStoreReader,
-    selected_chain::SelectedChainStoreReader,
-};
 use crate::model::{
     services::reachability::{MTReachabilityService, ReachabilityService},
     stores::{acceptance_data::AcceptanceDataStoreReader, headers::HeaderStoreReader, reachability::ReachabilityStoreReader},
+};
+use crate::{
+    consensus::services::DbDagTraversalManager,
+    model::stores::{
+        block_transactions::BlockTransactionsStoreReader,
+        pchmr_store::{DbPchmrStore, PchmrStoreReader},
+        pruning::PruningStoreReader,
+        selected_chain::SelectedChainStoreReader,
+    },
 };
 use kaspa_consensus_core::{
     config::{genesis::GenesisBlock, params::ForkActivation},
@@ -25,11 +27,7 @@ use kaspa_merkle::{
 
 use parking_lot::RwLock;
 
-use std::{
-    cmp::min,
-    collections::{HashSet, VecDeque},
-    sync::Arc,
-};
+use std::{cmp::min, sync::Arc};
 #[derive(Clone)]
 pub struct TxReceiptsManager<
     T: SelectedChainStoreReader,
@@ -38,7 +36,6 @@ pub struct TxReceiptsManager<
     X: AcceptanceDataStoreReader,
     W: BlockTransactionsStoreReader,
     Y: PruningStoreReader,
-    I: RelationsStoreReader,
 > {
     pub genesis: GenesisBlock,
 
@@ -49,12 +46,11 @@ pub struct TxReceiptsManager<
     pub selected_chain_store: Arc<RwLock<T>>,
     pub acceptance_data_store: Arc<X>,
     pub block_transactions_store: Arc<W>,
-    pub relations_store: Arc<RwLock<Vec<I>>>,
-
     pub hash_to_pchmr_store: Arc<DbPchmrStore>,
     pub pruning_point_store: Arc<RwLock<Y>>,
 
     pub storage_mass_activation: ForkActivation,
+    traversal_manager: DbDagTraversalManager,
 }
 
 impl<
@@ -64,8 +60,7 @@ impl<
         X: AcceptanceDataStoreReader,
         W: BlockTransactionsStoreReader,
         Y: PruningStoreReader,
-        I: RelationsStoreReader,
-    > TxReceiptsManager<T, U, V, X, W, Y, I>
+    > TxReceiptsManager<T, U, V, X, W, Y>
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -77,7 +72,7 @@ impl<
         acceptance_data_store: Arc<X>,
         block_transactions_store: Arc<W>,
         pruning_point_store: Arc<RwLock<Y>>,
-        relations_store: Arc<RwLock<Vec<I>>>,
+        traversal_manager: DbDagTraversalManager,
 
         hash_to_pchmr_store: Arc<DbPchmrStore>,
         storage_mass_activation: ForkActivation,
@@ -93,7 +88,7 @@ impl<
             hash_to_pchmr_store: hash_to_pchmr_store.clone(),
             block_transactions_store: block_transactions_store.clone(),
             pruning_point_store: pruning_point_store.clone(),
-            relations_store: relations_store.clone(),
+            traversal_manager: traversal_manager.clone(),
         }
     }
     pub fn generate_tx_receipt(&self, accepting_block_header: Arc<Header>, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
@@ -566,33 +561,13 @@ impl<
     */
     pub fn find_future_chain_block_path(&self, block_hash: Hash) -> Result<Vec<Hash>, ReceiptsErrors> {
         let sink = self.selected_chain_store.read().get_tip()?.1;
-        let mut queue = VecDeque::new();
-        let mut visited = HashSet::new();
-        queue.push_back(vec![block_hash]);
-        visited.insert(block_hash);
-        // a standard BFS loop until a chain block is found
-        while let Some(path) = queue.pop_front() {
-            let curr = *path.last().unwrap(); // path should never be empty
-            if !self.reachability_service.is_dag_ancestor_of(curr, sink) {
-                continue;
-            }
-
-            if self.selected_chain_store.read().get_by_hash(curr).is_ok() {
-                return Ok(path);
-            }
-            let children = self.relations_store.read()[0].get_children(curr);
-            if let Ok(children) = children {
-                for &child in children.read().iter() {
-                    if !visited.contains(&child) {
-                        let mut new_path = path.clone();
-                        new_path.push(child);
-                        queue.push_back(new_path);
-                        visited.insert(child);
-                    }
-                }
-            }
-        }
-        Err(ReceiptsErrors::NoChainBlockInFuture(block_hash))
+        self.traversal_manager
+            .bfs_iterator_from_this_to_queried(block_hash, sink)
+            .find(|path| {
+                let curr = *path.last().unwrap();
+                return self.selected_chain_store.read().get_by_hash(curr).is_ok();
+            })
+            .ok_or(ReceiptsErrors::NoChainBlockInFuture(block_hash))
     }
     /*the verification consists of 3 parts:
     1) verify the block queried is an ancesstor of the candidate

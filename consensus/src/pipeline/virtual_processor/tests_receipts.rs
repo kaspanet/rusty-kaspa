@@ -176,7 +176,7 @@ async fn test_receipts_in_random() {
      */
     const FINALITY_DEPTH: usize = 10;
     const DAG_SIZE: u64 = 500;
-    const BPS: f64 = 5.0;
+    const BPS: f64 = 10.0;
     let config = ConfigBuilder::new(MAINNET_PARAMS)
         .skip_proof_of_work()
         .edit_consensus_params(|p| {
@@ -311,9 +311,10 @@ async fn test_receipts_in_random() {
     for point in ctx.consensus.pruning_point_headers().into_iter() {
         eprintln!("posterity hash:{:?}\n bscore: {:?}", point.hash, point.blue_score);
     }
-    eprintln!("receipts:{}", pops.len());
+    eprintln!("receipts:{}", receipts1.len());
+    eprintln!("pops:{}", pops.len());
     assert!(receipts1.len() > DAG_SIZE as usize / (4.0 * BPS) as usize); //sanity check
-    assert!(pops.len() > DAG_SIZE as usize / (BPS / 2.0).max(4.0) as usize); //sanity check
+    assert!(pops.len() > DAG_SIZE as usize / (2 * BPS as usize)); //sanity check
     for (pochm, blk) in pochms_list.into_iter() {
         eprintln!("blk_verified: {:?}", blk);
         assert!(ctx.consensus.verify_pochm(blk, &pochm));
