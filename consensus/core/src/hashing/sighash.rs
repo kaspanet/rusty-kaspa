@@ -209,9 +209,6 @@ pub fn payload_hash(tx: &Transaction, reused_values: &impl SigHashReusedValues) 
             return ZERO_HASH;
         }
 
-        // TODO: Right now this branch will never be executed, since payload is disabled
-        // for all non coinbase transactions. Once payload is enabled, the payload hash
-        // should be cached to make it cost O(1) instead of O(tx.inputs.len()).
         let mut hasher = TransactionSigningHash::new();
         hasher.write_var_bytes(&tx.payload);
         hasher.finalize()
@@ -631,6 +628,14 @@ mod tests {
                 input_index: 2,
                 action: ModifyAction::NoAction,
                 expected_hash: "846689131fb08b77f83af1d3901076732ef09d3f8fdff945be89aa4300562e5f", // should change the hash
+            },
+            TestVector {
+                name: "native-all-0-modify-payload",
+                populated_tx: &native_populated_tx,
+                hash_type: SIG_HASH_ALL,
+                input_index: 0,
+                action: ModifyAction::Payload,
+                expected_hash: "72ea6c2871e0f44499f1c2b556f265d9424bfea67cca9cb343b4b040ead65525", // should change the hash
             },
             // subnetwork transaction
             TestVector {
