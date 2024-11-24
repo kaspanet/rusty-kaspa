@@ -16,7 +16,6 @@ impl TransactionValidator {
         check_transaction_output_value_ranges(tx)?;
         check_duplicate_transaction_inputs(tx)?;
         check_gas(tx)?;
-        check_transaction_payload(tx)?;
         check_transaction_subnetwork(tx)?;
         check_transaction_version(tx)
     }
@@ -103,14 +102,6 @@ fn check_gas(tx: &Transaction) -> TxResult<()> {
     // This should be revised if subnetworks are activated (along with other validations that weren't copied from kaspad)
     if tx.gas > 0 {
         return Err(TxRuleError::TxHasGas);
-    }
-    Ok(())
-}
-
-fn check_transaction_payload(tx: &Transaction) -> TxResult<()> {
-    // This should be revised if subnetworks are activated (along with other validations that weren't copied from kaspad)
-    if !tx.is_coinbase() && !tx.payload.is_empty() {
-        return Err(TxRuleError::NonCoinbaseTxHasPayload);
     }
     Ok(())
 }
@@ -304,7 +295,7 @@ mod tests {
 
         let mut tx = valid_tx.clone();
         tx.payload = vec![0];
-        assert_match!(tv.validate_tx_in_isolation(&tx), Err(TxRuleError::NonCoinbaseTxHasPayload));
+        assert_match!(tv.validate_tx_in_isolation(&tx), Ok(()));
 
         let mut tx = valid_tx;
         tx.version = TX_VERSION + 1;
