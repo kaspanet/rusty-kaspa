@@ -162,51 +162,100 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
     reachability_service and relations_store,
     I'm pretty sure this can have significant limitations,
      So someone with more knowledge is encouraged to help out in whatever the required refactoring is */
-    pub fn bfs_iterator_from_this_to_queried(&self, this: Hash, queried: Hash) -> BlocksBFSIterator<'_, U, V> {
-        BlocksBFSIterator::new(this, queried, &self.reachability_service, &self.relations_store)
+
+    /* returns all blocks on route on the bfs path from this to descendant
+     */
+    pub fn forward_bfs_path_iterator(&self, this: Hash, descendant: Hash) -> BlocksBfsPathIterator<'_, U, V> {
+        BlocksBfsPathIterator::new(this, Some(descendant), &self.reachability_service, &self.relations_store, BfsDirection::Forward)
+    }
+
+    /* returns all  known blocks on route on the bfs path from this onward
+     */
+    pub fn default_forward_bfs_path_iterator(&self, this: Hash) -> BlocksBfsPathIterator<'_, U, V> {
+        BlocksBfsPathIterator::new(this, None, &self.reachability_service, &self.relations_store, BfsDirection::Forward)
+    }
+
+    /* returns all nodes on route on the backward bfs path from this to ancestor
+     */
+    pub fn backward_bfs_path_iterator(&self, this: Hash, ancestor: Hash) -> BlocksBfsPathIterator<'_, U, V> {
+        BlocksBfsPathIterator::new(this, Some(ancestor), &self.reachability_service, &self.relations_store, BfsDirection::Backward)
+    }
+    /* returns all nodes on route on the backward bfs path from this to genesis
+     */
+    pub fn default_backward_bfs_path_iterator(&self, this: Hash) -> BlocksBfsPathIterator<'_, U, V> {
+        BlocksBfsPathIterator::new(this, None, &self.reachability_service, &self.relations_store, BfsDirection::Backward)
     }
 }
-pub struct BlocksBFSIterator<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> {
+#[derive(PartialEq, Eq)]
+pub enum BfsDirection {
+    Forward,
+    Backward,
+}
+pub struct BlocksBfsPathIterator<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> {
     queue: VecDeque<Vec<Hash>>,
     visited: HashSet<Hash>,
-    edge: Hash,
+    edge: Option<Hash>,
     reachability_service: &'a MTReachabilityService<U>,
     relations_store: &'a V,
+    bfs_direction: BfsDirection,
 }
 
-impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> BlocksBFSIterator<'a, U, V> {
-    pub fn new(start: Hash, edge: Hash, reachability_service: &'a MTReachabilityService<U>, relations_store: &'a V) -> Self {
+impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> BlocksBfsPathIterator<'a, U, V> {
+    pub fn new(
+        start: Hash,
+        edge: Option<Hash>,
+        reachability_service: &'a MTReachabilityService<U>,
+        relations_store: &'a V,
+        bfs_direction: BfsDirection,
+    ) -> Self {
         let mut queue = VecDeque::new();
         queue.push_back(vec![start]);
         let mut visited = HashSet::new();
         visited.insert(start); //note that in a dag this isn't actually necessary, but is kept for logical clarity
-        Self { queue, visited, edge, reachability_service, relations_store }
+        Self { queue, visited, edge, reachability_service, relations_store, bfs_direction }
+    }
+    pub fn map_path_to_blocks(self) -> impl Iterator<Item = Hash> + use<'a, U, V> {
+        self.map(|path| path.last().cloned().unwrap())
     }
 }
-impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> Iterator for BlocksBFSIterator<'a, U, V> {
+impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> Iterator for BlocksBfsPathIterator<'a, U, V> {
     type Item = Vec<Hash>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(path) = self.queue.pop_front() {
-            let curr = *path.last().unwrap(); // path should never be empty
-            if !self.reachability_service.is_dag_ancestor_of(curr, self.edge) {
-                None
-            } else {
-                let children = self.relations_store.get_children(curr);
-                if let Ok(children) = children {
-                    for &child in children.read().iter() {
-                        if !self.visited.contains(&child) {
-                            let mut new_path = path.clone();
-                            new_path.push(child);
-                            self.queue.push_back(new_path);
-                            self.visited.insert(child);
-                        }
-                    }
-                }
-                Some(path)
+        let mut curr;
+        let mut path;
+        loop {
+            //loop until a block on the route is found
+            if self.queue.is_empty() {
+                return None;
             }
-        } else {
-            None
+            path = self.queue.pop_front().unwrap();
+            curr = *path.last().unwrap(); // path should never be empty
+
+            if self.edge.is_none()
+                || self.bfs_direction == BfsDirection::Forward
+                    && self.reachability_service.is_dag_ancestor_of(curr, self.edge.unwrap())
+                || self.bfs_direction == BfsDirection::Backward
+                    && self.reachability_service.is_dag_ancestor_of(self.edge.unwrap(), curr)
+            {
+                //once a block on the route is found in the queue, break out of loop
+                break;
+            }
         }
+        let next_batch = match self.bfs_direction {
+            // type checker gives me hell here
+            BfsDirection::Forward => self.relations_store.get_children(curr).unwrap().read().iter().cloned().collect_vec(), // I feel like this can potentially panic
+            BfsDirection::Backward => self.relations_store.get_parents(curr).unwrap_or(vec![].into()).iter().cloned().collect_vec(),
+        };
+        for &elem in next_batch.iter() {
+            if !self.visited.contains(&elem) {
+                let mut new_path = path.clone();
+                new_path.push(elem);
+                self.queue.push_back(new_path);
+                self.visited.insert(elem);
+            }
+        }
+
+        Some(path)
     }
 }

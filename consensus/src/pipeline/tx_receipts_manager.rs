@@ -562,7 +562,7 @@ impl<
     pub fn find_future_chain_block_path(&self, block_hash: Hash) -> Result<Vec<Hash>, ReceiptsErrors> {
         let sink = self.selected_chain_store.read().get_tip()?.1;
         self.traversal_manager
-            .bfs_iterator_from_this_to_queried(block_hash, sink)
+            .forward_bfs_path_iterator(block_hash, sink)
             .find(|path| {
                 let curr = *path.last().unwrap();
                 return self.selected_chain_store.read().get_by_hash(curr).is_ok();
