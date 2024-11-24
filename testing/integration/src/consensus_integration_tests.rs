@@ -1906,7 +1906,7 @@ async fn payload_test() {
 }
 
 #[tokio::test]
-async fn run_payload_activation_test() {
+async fn payload_activation_test() {
     use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 
     // Set payload activation at DAA score 3 for this test
