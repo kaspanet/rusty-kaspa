@@ -147,6 +147,7 @@ impl ConsensusServices {
             mass_calculator.clone(),
             params.storage_mass_activation,
             params.kip10_activation,
+            params.payload_activation,
         );
 
         let pruning_point_manager = PruningPointManager::new(

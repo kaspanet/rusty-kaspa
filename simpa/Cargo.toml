@@ -40,3 +40,8 @@ tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 [features]
 heap = ["dhat", "kaspa-alloc/heap"]
 semaphore-trace = ["kaspa-utils/semaphore-trace"]
+
+[profile.heap]
+inherits = "release"
+debug = true
+strip = false
