@@ -44,8 +44,8 @@ impl BlockBodyValidationContext {
                 }
             };
             number_of_input_outpoints += tx.inputs.len();
-            for tx_inputs in tx.inputs.iter() {
-                match existing_outpoints_count.entry(tx_inputs.previous_outpoint) {
+            for input in tx.inputs.iter() {
+                match existing_outpoints_count.entry(input.previous_outpoint) {
                     Entry::Occupied(mut entry) => {
                         entry.insert(entry.get().add(1));
                     }
@@ -104,8 +104,8 @@ impl BlockBodyProcessor {
     fn check_transactions_full(&self, bbvc: &Arc<BlockBodyValidationContext>, block: &Block) -> BlockProcessResult<()> {
         self.thread_pool.install(|| {
             block.transactions.par_iter().enumerate().try_for_each(|(index, tx)| {
-                self.validate_transaction_in_isolation(tx)?;
-                Self::validate_transaction_with_context(&(bbvc.clone()), tx, index as TransactionIndexType)
+                Self::validate_transaction_with_context(&(bbvc.clone()), tx, index as TransactionIndexType)?;
+                self.validate_transaction_in_isolation(tx)
             })
         })
     }
@@ -496,7 +496,7 @@ mod tests {
         txs[1].inputs[0].sig_op_count = 255;
         txs[1].inputs[1].sig_op_count = 255;
         block.header.hash_merkle_root = calc_hash_merkle_root(txs.iter());
-        assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::ExceedsMassLimit(_)));
+        assert_match!(body_processor.validate_body_in_isolation(&block.to_immutable()), Err(RuleError::ExceedsMassLimit(_, _, _)));
 
         let mut block = example_block.clone();
         let txs = &mut block.transactions;
