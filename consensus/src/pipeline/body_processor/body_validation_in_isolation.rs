@@ -85,8 +85,8 @@ impl BlockBodyProcessor {
             storage_mass_activated,
             Arc::new(self.mass_calculator.clone()),
         );
+        Self::check_input_double_spends(bbvc)?;
         Self::check_duplicate_transactions(bbvc, block)?;
-        Self::check_input_double_spends(bbvc, block)?;
         Self::check_transactions_full(self, bbvc, block)?;
         Self::check_block_mass(bbvc, block)?;
         Ok(bbvc.total_calculated_mass)
@@ -169,21 +169,10 @@ impl BlockBodyProcessor {
         tx.inputs.iter().try_for_each(|input| Self::check_no_chained_inputs(bbvc, input))
     }
 
-    fn check_input_double_spends(bbvc: &Arc<BlockBodyValidationContext>, block: &Block) -> BlockProcessResult<()> {
+    fn check_input_double_spends(bbvc: &Arc<BlockBodyValidationContext>) -> BlockProcessResult<()> {
         if bbvc.existing_outpoints_count.len() < bbvc.number_of_input_outpoints {
             return Err(RuleError::DoubleSpendInSameBlock(
-                block
-                    .transactions
-                    .iter()
-                    .find_map(|tx| {
-                        let res = tx
-                            .inputs
-                            .iter()
-                            .find(|input| bbvc.existing_outpoints_count[&input.previous_outpoint] > 1)
-                            .map(|input| input.previous_outpoint);
-                        res
-                    })
-                    .unwrap(),
+                *bbvc.existing_outpoints_count.iter().find(|(_, count)| **count > 1).unwrap().0,
             ));
         }
         Ok(())
