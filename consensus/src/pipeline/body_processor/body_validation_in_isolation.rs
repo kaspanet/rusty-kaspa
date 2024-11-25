@@ -85,8 +85,8 @@ impl BlockBodyProcessor {
             storage_mass_activated,
             Arc::new(self.mass_calculator.clone()),
         );
-        Self::check_input_double_spends(bbvc)?;
         Self::check_duplicate_transactions(bbvc, block)?;
+        Self::check_input_double_spends(bbvc)?;
         Self::check_transactions_full(self, bbvc, block)?;
         Self::check_block_mass(bbvc, block)?;
         Ok(bbvc.total_calculated_mass)
