@@ -469,7 +469,7 @@ impl Consensus {
             .map(someize_header_if_blk_accepts_tx);
         //backward derivation
         let backward_search_iter = self.services.reachability_service
-            .default_backward_chain_iterator(guess_block)
+            .backward_chain_iterator(guess_block,self.pruning_point_store.read().history_root().unwrap(),true)
             .skip(1)// avoid checking guess block itself twice
             .take(deviation_in_chain_blocks)
             .map(someize_header_if_blk_accepts_tx);
@@ -488,7 +488,7 @@ impl Consensus {
         }
     }
 
-    fn generate_proof_of_publication_based_on_time(&self, tx_id: Hash, tx_timestamp: u64) -> ConsensusResult<TxReceipt> {
+    fn generate_proof_of_publication_based_on_time(&self, tx_id: Hash, tx_timestamp: u64) -> ConsensusResult<ProofOfPublication> {
         //utility closures
         let someize_header_if_blk_publishes_tx = |blk| {
             if self.get_block(blk).ok()?.transactions.iter().map(|t| t.id()).contains(&tx_id) {
@@ -553,7 +553,7 @@ impl Consensus {
             .map(someize_header_if_blk_publishes_tx);
         //backward derivation
         let backward_search_iter = self.services.dag_traversal_manager
-            .default_backward_bfs_path_iterator(guess_block)
+            .backward_bfs_path_iterator(guess_block,self.pruning_point_store.read().history_root().unwrap())
             .map_path_to_blocks()
             .skip(1)// avoid checking guess block itself twice
             .take(deviation_in_dag_blocks)
@@ -561,13 +561,13 @@ impl Consensus {
 
         let mut double_sided_iterator = forward_search_iter.zip_longest(backward_search_iter).map(first_some_out_of_either_pair);
         // we iterate backwards and forwards at the same time to locate the accepting block of the transaction
-        let acc_block = double_sided_iterator.find(|blk| blk.is_some());
-        if let Some(Some(acc_block)) = acc_block {
+        let pub_block = double_sided_iterator.find(|blk| blk.is_some());
+        if let Some(Some(pub_block)) = pub_block {
             //first Some represents the result of the find, second the fact that blk is a Some
             self.services
                 .tx_receipts_manager
-                .generate_tx_receipt(acc_block, tx_id)
-                .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))
+                .generate_proof_of_pub(pub_block, tx_id)
+                .map_err(|_| ConsensusError::General("required data to create a receipt appears missing here"))
         } else {
             Err(ConsensusError::General("cannot find block with given timestamp"))
         }
@@ -1246,8 +1246,7 @@ impl ConsensusApi for Consensus {
         note: this is probably very computationally wasteful for archival nodes
         and should be avoided on usual terms */
 
-        let pruning_point = self.pruning_point();
-        for block in self.services.reachability_service.forward_chain_iterator(pruning_point, self.get_sink(), true) {
+        for block in self.services.reachability_service.forward_chain_iterator(self.get_source(), self.get_sink(), true) {
             let accepted_txs = self.get_block_acceptance_data(block)?;
             if accepted_txs
                 .iter()
@@ -1255,11 +1254,9 @@ impl ConsensusApi for Consensus {
                 .contains(&tx_id)
             {
                 let accepting_block_header = self.headers_store.get_header(block).unwrap();
-                return self
-                    .services
-                    .tx_receipts_manager
-                    .generate_tx_receipt(accepting_block_header, tx_id)
-                    .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"));
+                if let Ok(ret) = self.services.tx_receipts_manager.generate_tx_receipt(accepting_block_header, tx_id) {
+                    return Ok(ret);
+                }
             }
         }
         Err(ConsensusError::MissingTx(tx_id))
@@ -1268,7 +1265,7 @@ impl ConsensusApi for Consensus {
         &self,
         tx_id: Hash,
         publishing_block: Option<Hash>,
-        _tx_timestamp: Option<u64>,
+        tx_timestamp: Option<u64>,
     ) -> ConsensusResult<ProofOfPublication> {
         /*Partial implementation as of now, finding a publishing block via timestamp etc might be implemented in the future
          */
@@ -1280,10 +1277,16 @@ impl ConsensusApi for Consensus {
                 .generate_proof_of_pub(publishing_block_header, tx_id)
                 .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))
         } else {
-            //TODO: get tx by timestamp
-            let pruning_point = self.pruning_point();
+            //if no block is given, try to search based on time_stamp
+            if let Some(tx_timestamp) = tx_timestamp {
+                return self.generate_proof_of_publication_based_on_time(tx_id, tx_timestamp);
+            }
+
+            /*  if no timestamp is given either, search the entire database
+            note: this is probably very computationally wasteful for archival nodes
+            and should be avoided on usual terms */
             for block in
-                self.services.dag_traversal_manager.forward_bfs_path_iterator(pruning_point, self.get_sink()).map_path_to_blocks()
+                self.services.dag_traversal_manager.forward_bfs_path_iterator(self.get_source(), self.get_sink()).map_path_to_blocks()
             {
                 let published_txs = self
                     .storage
@@ -1292,11 +1295,9 @@ impl ConsensusApi for Consensus {
                     .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))?;
                 if published_txs.iter().map(|t| t.id()).contains(&tx_id) {
                     let publishing_block_header = self.headers_store.get_header(block).unwrap();
-                    return self
-                        .services
-                        .tx_receipts_manager
-                        .generate_proof_of_pub(publishing_block_header, tx_id)
-                        .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"));
+                    if let Ok(ret) = self.services.tx_receipts_manager.generate_proof_of_pub(publishing_block_header, tx_id) {
+                        return Ok(ret);
+                    }
                 }
             }
             Err(ConsensusError::MissingTx(tx_id))

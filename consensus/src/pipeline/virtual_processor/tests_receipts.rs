@@ -185,9 +185,12 @@ async fn test_receipts_in_random() {
         .build();
     let mut receipts1 = std::collections::HashMap::<_, _>::new();
     let mut receipts2 = std::collections::HashMap::<_, _>::new();
-    let mut receipts3: HashMap<_, _> = std::collections::HashMap::<_, _>::new();
+    let mut receipts3 = std::collections::HashMap::<_, _>::new();
 
-    let mut pops = std::collections::HashMap::<_, _>::new();
+    let mut pops1 = std::collections::HashMap::<_, _>::new();
+    // let mut pops2 = std::collections::HashMap::<_, _>::new();
+    let mut pops3 = std::collections::HashMap::<_, _>::new();
+
     let ctx = TestContext::new(TestConsensus::new(&config));
     let genesis_hash = ctx.consensus.params().genesis.hash;
     let mut unreceipted_blocks = vec![];
@@ -225,7 +228,7 @@ async fn test_receipts_in_random() {
         }
 
         //add the new block to the blockdag, and update it on mapper
-        let blk_hash = ind.into();
+        let blk_hash = (ind + 1).into();
         ctx.add_utxo_valid_block_with_parents(blk_hash, parents, vec![]).await;
         mapper.insert(ind, blk_hash);
         /*periodically check if a new posterity point has been reached
@@ -247,7 +250,10 @@ async fn test_receipts_in_random() {
                     let pub_tx = ctx.consensus.block_transactions_store.get(old_block).unwrap()[0].id();
                     let proof = ctx.consensus.generate_proof_of_pub(pub_tx, Some(blk_header.hash), None);
                     if let Ok(proof) = proof {
-                        pops.insert(old_block, proof);
+                        pops1.insert(old_block, proof);
+                        // pops2
+                        //     .insert(old_block, ctx.consensus.generate_proof_of_pub(pub_tx, None, Some(blk_header.timestamp)).unwrap());
+                        pops3.insert(old_block, ctx.consensus.generate_proof_of_pub(pub_tx, None, None).unwrap());
                     }
                     let blk_pochm = ctx.consensus.generate_pochm(old_block);
                     if blk_pochm.is_ok() && old_block != genesis_hash {
@@ -339,9 +345,9 @@ async fn test_receipts_in_random() {
         eprintln!("posterity hash:{:?}\n bscore: {:?}", point.hash, point.blue_score);
     }
     eprintln!("receipts:{}", receipts1.len());
-    eprintln!("pops:{}", pops.len());
+    eprintln!("pops:{}", pops1.len());
     assert!(receipts1.len() > DAG_SIZE as usize / (4.0 * BPS) as usize); //sanity check
-    assert!(pops.len() > DAG_SIZE as usize / (4 * BPS as usize)); //sanity check
+    assert!(pops1.len() > DAG_SIZE as usize / (4 * BPS as usize)); //sanity check
     for (pochm, blk) in pochms_list.into_iter() {
         eprintln!("blk_verified: {:?}", blk);
         assert!(ctx.consensus.verify_pochm(blk, &pochm));
@@ -357,7 +363,13 @@ async fn test_receipts_in_random() {
         assert!(ctx.consensus.verify_tx_receipt(rec));
     }
 
-    for proof in pops.values() {
+    for proof in pops1.values() {
         assert!(ctx.consensus.verify_proof_of_pub(proof));
     }
+    // for proof in pops2.values() {
+    //     assert!(ctx.consensus.verify_proof_of_pub(proof));
+    // }
+    // for proof in pops3.values() {
+    //     assert!(ctx.consensus.verify_proof_of_pub(proof));
+    // }
 }

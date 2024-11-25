@@ -234,9 +234,9 @@ impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> Iterator for Block
 
             if self.edge.is_none()
                 || self.bfs_direction == BfsDirection::Forward
-                    && self.reachability_service.is_dag_ancestor_of(curr, self.edge.unwrap())
+                    && self.reachability_service.is_dag_ancestor_of_result(curr, self.edge.unwrap()).is_ok_and(|bool| bool)
                 || self.bfs_direction == BfsDirection::Backward
-                    && self.reachability_service.is_dag_ancestor_of(self.edge.unwrap(), curr)
+                    && self.reachability_service.is_dag_ancestor_of_result(self.edge.unwrap(), curr).is_ok_and(|bool| bool)
             {
                 //once a block on the route is found in the queue, break out of loop
                 break;

@@ -17,7 +17,7 @@ use kaspa_consensus_core::{
     hashing,
     header::Header,
     merkle::create_hash_merkle_witness,
-    receipts::{Pochm, ProofOfPublication, TxReceipt},
+    receipts::{LegacyPochm, Pochm, ProofOfPublication, TxReceipt},
 };
 use kaspa_hashes::Hash;
 use kaspa_hashes::ZERO_HASH;
@@ -153,6 +153,25 @@ impl<
 
     /*Assumes: chain_purporter is on the selected chain,
     if not returns error   */
+    pub fn create_legacy_pochm_proof(&self, chain_purporter: Hash) -> Result<LegacyPochm, ReceiptsErrors> {
+        let _purporter_index = self
+            .selected_chain_store
+            .read()
+            .get_by_hash(chain_purporter)
+            .map_err(|_| ReceiptsErrors::RequestedBlockNotOnSelectedChain(chain_purporter))?;
+        let post_posterity_hash = self.get_post_posterity_block(chain_purporter)?;
+        let bfs_vec: Vec<_> = self
+            .traversal_manager
+            .forward_bfs_path_iterator(chain_purporter, post_posterity_hash)
+            .map_path_to_blocks()
+            .map(|hash| (hash, self.headers_store.get_header(hash).unwrap()))
+            .collect();
+        Ok(LegacyPochm::new(bfs_vec))
+    }
+
+    /*Assumes: chain_purporter is on the selected chain,
+    if not returns error   */
+
     pub fn create_pochm_proof(&self, chain_purporter: Hash) -> Result<Pochm, ReceiptsErrors> {
         let mut pochm_proof = Pochm::new();
         let purporter_index = self
@@ -201,6 +220,24 @@ impl<
         }
         false
     }
+    /*this function will return true for any witness premiering with a currently non pruned block and
+    recursively pointing down to chain_purporter, it is the responsibility of the
+    creator of the witness to make sure the witness premiers with a posterity block
+    and not just any block that may be pruned in the future, as this property is not verified in this function,
+    and the function should not be relied upon to confirm the witness is everlasting*/
+    pub fn verify_legacy_pochm_proof(&self, _chain_purporter: Hash, witness: &LegacyPochm) -> bool {
+        let post_posterity_hash = witness.top;
+        {
+            if self.headers_store.get_header(post_posterity_hash).is_ok()
+            // verify the corresponding header is available
+            {
+                //verification of path itself is delegated to the pochm struct
+                unimplemented!();
+            }
+        }
+        false
+    }
+
     pub fn calc_pchmr_root_by_hash(&self, block_hash: Hash) -> Hash {
         if block_hash == self.genesis.hash {
             return ZERO_HASH;
