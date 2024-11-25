@@ -20,6 +20,7 @@ struct BlockBodyValidationContext {
     pub total_calculated_mass: u64,
     pub calculated_mass: Vec<u64>,
     pub existing_outpoints_count: HashMap<TransactionOutpoint, usize>,
+    pub number_of_input_outpoints: usize,
     pub block_created_outpoints: HashSet<TransactionOutpoint>,
     pub transaction_ids_count: HashMap<TransactionId, usize>,
 }
@@ -31,6 +32,7 @@ impl BlockBodyValidationContext {
         let mut block_created_outpoints = HashSet::new();
         let mut calculated_mass = Vec::<u64>::with_capacity(block.transactions.len());
         let mut total_calculated_mass = 0u64;
+        let mut number_of_input_outpoints = 0;
         for tx in block.transactions.iter() {
             let tx_id = tx.id();
             match transaction_ids_count.entry(tx_id) {
@@ -41,6 +43,7 @@ impl BlockBodyValidationContext {
                     entry.insert(1);
                 }
             };
+            number_of_input_outpoints += tx.inputs.len();
             for tx_inputs in tx.inputs.iter() {
                 match existing_outpoints_count.entry(tx_inputs.previous_outpoint) {
                     Entry::Occupied(mut entry) => {
@@ -61,6 +64,7 @@ impl BlockBodyValidationContext {
         Arc::new(Self {
             max_block_mass,
             storage_mass_activation,
+            number_of_input_outpoints,
             total_calculated_mass,
             calculated_mass,
             existing_outpoints_count,
@@ -74,15 +78,17 @@ impl BlockBodyProcessor {
     pub fn validate_body_in_isolation(self: &Arc<Self>, block: &Block) -> BlockProcessResult<u64> {
         let storage_mass_activated = self.storage_mass_activation.is_active(block.header.daa_score);
         Self::check_has_transactions(block)?;
+        Self::check_hash_merkle_root(block, storage_mass_activated)?;
         let bbvc = &BlockBodyValidationContext::new(
             block,
             self.max_block_mass,
             storage_mass_activated,
             Arc::new(self.mass_calculator.clone()),
         );
+        Self::check_duplicate_transactions(bbvc, block)?;
+        Self::check_input_double_spends(bbvc, block)?;
         Self::check_transactions_full(self, bbvc, block)?;
-        Self::check_hash_merkle_root(block, storage_mass_activated)?;
-        Self::check_block_mass(bbvc)?;
+        Self::check_block_mass(bbvc, block)?;
         Ok(bbvc.total_calculated_mass)
     }
 
@@ -116,7 +122,6 @@ impl BlockBodyProcessor {
         Self::check_coinbase(tx, index)?;
         Self::check_transaction_mass(bbvc, tx, index)?;
         Self::check_transaction_inputs_with_context(bbvc, tx)?;
-        Self::check_duplicate_transactions(bbvc, tx)?;
         Ok(())
     }
 
@@ -131,7 +136,7 @@ impl BlockBodyProcessor {
     fn check_coinbase(tx: &Transaction, index: TransactionIndexType) -> BlockProcessResult<()> {
         if index as usize == COINBASE_TRANSACTION_INDEX {
             if !tx.is_coinbase() {
-                return Err(RuleError::FirstTxNotCoinbase);
+                Err(RuleError::FirstTxNotCoinbase)
             } else {
                 Ok(())
             }
@@ -142,9 +147,9 @@ impl BlockBodyProcessor {
         }
     }
 
-    fn check_block_mass(bbvc: &Arc<BlockBodyValidationContext>) -> BlockProcessResult<()> {
+    fn check_block_mass(bbvc: &Arc<BlockBodyValidationContext>, block: &Block) -> BlockProcessResult<()> {
         if bbvc.total_calculated_mass > bbvc.max_block_mass {
-            return Err(RuleError::ExceedsMassLimit(bbvc.max_block_mass));
+            return Err(RuleError::ExceedsMassLimit(block.hash(), bbvc.total_calculated_mass, bbvc.max_block_mass));
         };
         Ok(())
     }
@@ -161,14 +166,25 @@ impl BlockBodyProcessor {
     }
 
     fn check_transaction_inputs_with_context(bbvc: &Arc<BlockBodyValidationContext>, tx: &Transaction) -> BlockProcessResult<()> {
-        tx.inputs
-            .iter()
-            .try_for_each(|input| Self::check_input_double_spends(bbvc, input).map(|_| Self::check_no_chained_inputs(bbvc, input))?)
+        tx.inputs.iter().try_for_each(|input| Self::check_no_chained_inputs(bbvc, input))
     }
 
-    fn check_input_double_spends(bbvc: &Arc<BlockBodyValidationContext>, input: &TransactionInput) -> BlockProcessResult<()> {
-        if bbvc.existing_outpoints_count[&input.previous_outpoint] > 1 {
-            return Err(RuleError::DoubleSpendInSameBlock(input.previous_outpoint));
+    fn check_input_double_spends(bbvc: &Arc<BlockBodyValidationContext>, block: &Block) -> BlockProcessResult<()> {
+        if bbvc.existing_outpoints_count.len() < bbvc.number_of_input_outpoints {
+            return Err(RuleError::DoubleSpendInSameBlock(
+                block
+                    .transactions
+                    .iter()
+                    .find_map(|tx| {
+                        let res = tx
+                            .inputs
+                            .iter()
+                            .find(|input| bbvc.existing_outpoints_count[&input.previous_outpoint] > 1)
+                            .map(|input| input.previous_outpoint);
+                        res
+                    })
+                    .unwrap(),
+            ));
         }
         Ok(())
     }
@@ -180,9 +196,11 @@ impl BlockBodyProcessor {
         Ok(())
     }
 
-    fn check_duplicate_transactions(bbvc: &Arc<BlockBodyValidationContext>, tx: &Transaction) -> BlockProcessResult<()> {
-        if bbvc.transaction_ids_count[&tx.id()] > 1 {
-            return Err(RuleError::DuplicateTransactions(tx.id()));
+    fn check_duplicate_transactions(bbvc: &Arc<BlockBodyValidationContext>, block: &Block) -> BlockProcessResult<()> {
+        if bbvc.transaction_ids_count.len() < block.transactions.len() {
+            return Err(RuleError::DuplicateTransactions(
+                *bbvc.transaction_ids_count.iter().find(|(_, count)| **count > 1).unwrap().0,
+            ));
         }
         Ok(())
     }
