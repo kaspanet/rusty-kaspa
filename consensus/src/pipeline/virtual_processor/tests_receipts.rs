@@ -167,7 +167,7 @@ async fn test_receipts_in_random() {
     Occasionally the test fails because the real posterity of a block will change after a receipt for it has been pulled:
     the security margin should be enough for real data but test data behaves unexpectedly and thus this error persists despite attempts to mitigate it
     This error appears to decrease with higher BPS
-    BPS too high though (10BPS) sometimes results in block status errors, unclear if this error still exists
+    BPS too high though (10BPS) sometimes results in block status errors, occurs very rarely
 
     Perhaps this test needs just be replaced by a simulation on real data.
      */
@@ -188,13 +188,11 @@ async fn test_receipts_in_random() {
     let mut receipts3 = std::collections::HashMap::<_, _>::new();
 
     let mut pops1 = std::collections::HashMap::<_, _>::new();
-    // let mut pops2 = std::collections::HashMap::<_, _>::new();
+    let mut pops2 = std::collections::HashMap::<_, _>::new();
     let mut pops3 = std::collections::HashMap::<_, _>::new();
 
     let ctx = TestContext::new(TestConsensus::new(&config));
     let genesis_hash = ctx.consensus.params().genesis.hash;
-    let mut unreceipted_blocks = vec![];
-    let mut unproved_blocks = vec![];
     let mut pochms_list = vec![];
     let mut posterity_list = vec![genesis_hash];
 
@@ -232,10 +230,10 @@ async fn test_receipts_in_random() {
         ctx.add_utxo_valid_block_with_parents(blk_hash, parents, vec![]).await;
         mapper.insert(ind, blk_hash);
         /*periodically check if a new posterity point has been reached
-        if so, attempt to create and store receipts and POPs for blocks pending for it.
+        if so, attempt to create and store receipts and POPs for a batch of blocks past the current pruning point.
         */
         if ctx.consensus.is_posterity_reached(next_posterity_score) {
-            sleep(Duration::from_millis(50)); //wait while pruning, relevant for finding txs from
+            sleep(Duration::from_millis(50));
             next_posterity_score += FINALITY_DEPTH as u64;
             posterity_list.push(ctx.consensus.services.tx_receipts_manager.get_pre_posterity_block_by_hash(ctx.consensus.get_sink()));
             if posterity_list.len() >= 3 {
@@ -243,16 +241,16 @@ async fn test_receipts_in_random() {
                     .consensus
                     .services
                     .dag_traversal_manager
-                    .forward_bfs_path_iterator(ctx.consensus.pruning_point(), posterity_list[posterity_list.len() - 2])
-                    .map_path_to_blocks()
+                    .forward_bfs_paths_iterator(ctx.consensus.pruning_point(), posterity_list[posterity_list.len() - 2])
+                    .map_paths_to_tips()
                 {
                     let blk_header = ctx.consensus.get_header(old_block).unwrap();
                     let pub_tx = ctx.consensus.block_transactions_store.get(old_block).unwrap()[0].id();
                     let proof = ctx.consensus.generate_proof_of_pub(pub_tx, Some(blk_header.hash), None);
                     if let Ok(proof) = proof {
                         pops1.insert(old_block, proof);
-                        // pops2
-                        //     .insert(old_block, ctx.consensus.generate_proof_of_pub(pub_tx, None, Some(blk_header.timestamp)).unwrap());
+                        pops2
+                            .insert(old_block, ctx.consensus.generate_proof_of_pub(pub_tx, None, Some(blk_header.timestamp)).unwrap());
                         pops3.insert(old_block, ctx.consensus.generate_proof_of_pub(pub_tx, None, None).unwrap());
                     }
                     let blk_pochm = ctx.consensus.generate_pochm(old_block);
@@ -268,74 +266,7 @@ async fn test_receipts_in_random() {
                     }
                 }
             }
-            // //try and get proofs of publications for old blocks
-            // unproved_blocks.retain(|&old_block| {
-            //     if ctx.consensus.block_transactions_store.get(old_block).is_err()
-            //         || !ctx
-            //             .consensus
-            //             .reachability_service()
-            //             .is_dag_ancestor_of_result(ctx.consensus.pruning_point(), old_block)
-            //             .unwrap_or(false)
-            //         || !ctx
-            //             .consensus
-            //             .reachability_service()
-            //             .is_dag_ancestor_of_result(old_block, ctx.consensus.get_sink())
-            //             .unwrap_or(false)
-            //     {
-            //         // remove blocks with pruned data
-            //         return false;
-            //     }
-            //     let blk_header = ctx.consensus.get_header(old_block).unwrap();
-            //     let pub_tx = ctx.consensus.block_transactions_store.get(old_block).unwrap()[0].id();
-            //     let proof = ctx.consensus.generate_proof_of_pub(pub_tx, Some(blk_header.hash), None);
-            //     if let Ok(proof) = proof {
-            //         pops.insert(old_block, proof);
-            //         true
-            //     } else {
-            //         //proofs can fail because data is too new or because it is too old: discern the two cases
-            //         if pops.contains_key(&old_block) {
-            //             false
-            //         }
-            //         //there already is a key, don't touch it and say farewell
-            //         else {
-            //             true
-            //         } // wait for next iteration
-            //     }
-            // });
-            //try and get receipts and  pochms for old blocks
-            // unreceipted_blocks.retain(|&old_block| {
-            //     if !ctx.consensus.reachability_service().is_chain_ancestor_of(ctx.consensus.pruning_point(), old_block)
-            //         || !ctx.consensus.reachability_service().is_chain_ancestor_of(old_block, ctx.consensus.get_sink())
-            //     {
-            //         return false;
-            //     }
-            //     let blk_header = ctx.consensus.get_header(old_block).unwrap();
-
-            //     let blk_pochm = ctx.consensus.generate_pochm(old_block);
-            //     if blk_pochm.is_ok() {
-            //         pochms_list.push((blk_pochm.unwrap(), old_block));
-            //         let acc_tx =
-            //             ctx.consensus.acceptance_data_store.get(old_block).unwrap()[0].accepted_transactions[0].transaction_id;
-
-            //         receipts1.insert(old_block, ctx.consensus.generate_tx_receipt(acc_tx, Some(blk_header.hash), None).unwrap());
-            //         receipts2.insert(old_block, ctx.consensus.generate_tx_receipt(acc_tx, None, Some(blk_header.timestamp)).unwrap());
-            //         receipts3.insert(old_block, ctx.consensus.generate_tx_receipt(acc_tx, None, None).unwrap());
-            //         true
-            //     } else {
-            //         //proofs can fail because data is inexistent or because it is too old: discern the two cases
-            //         if receipts1.contains_key(&old_block) {
-            //             false
-            //         }
-            //         //there already is a key, don't touch it and say farewell
-            //         else {
-            //             true
-            //         } // wait for next iteration
-            //     }
-            // });
         }
-        //add the current block to the pending for proofs list
-        unreceipted_blocks.push(blk_hash);
-        unproved_blocks.push(blk_hash);
     }
 
     for blk in ctx.consensus.services.reachability_service.default_backward_chain_iterator(ctx.consensus.get_sink()) {
@@ -366,10 +297,10 @@ async fn test_receipts_in_random() {
     for proof in pops1.values() {
         assert!(ctx.consensus.verify_proof_of_pub(proof));
     }
-    // for proof in pops2.values() {
-    //     assert!(ctx.consensus.verify_proof_of_pub(proof));
-    // }
-    // for proof in pops3.values() {
-    //     assert!(ctx.consensus.verify_proof_of_pub(proof));
-    // }
+    for proof in pops2.values() {
+        assert!(ctx.consensus.verify_proof_of_pub(proof));
+    }
+    for proof in pops3.values() {
+        assert!(ctx.consensus.verify_proof_of_pub(proof));
+    }
 }

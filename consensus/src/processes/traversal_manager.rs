@@ -165,25 +165,25 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
 
     /* returns all blocks on route on the bfs path from this to descendant
      */
-    pub fn forward_bfs_path_iterator(&self, this: Hash, descendant: Hash) -> BlocksBfsPathIterator<'_, U, V> {
-        BlocksBfsPathIterator::new(this, Some(descendant), &self.reachability_service, &self.relations_store, BfsDirection::Forward)
+    pub fn forward_bfs_paths_iterator(&self, this: Hash, descendant: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
+        BlocksBfsPathsIterator::new(this, Some(descendant), &self.reachability_service, &self.relations_store, BfsDirection::Forward)
     }
 
     /* returns all  known blocks on route on the bfs path from this onward
      */
-    pub fn default_forward_bfs_path_iterator(&self, this: Hash) -> BlocksBfsPathIterator<'_, U, V> {
-        BlocksBfsPathIterator::new(this, None, &self.reachability_service, &self.relations_store, BfsDirection::Forward)
+    pub fn default_forward_bfs_paths_iterator(&self, this: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
+        BlocksBfsPathsIterator::new(this, None, &self.reachability_service, &self.relations_store, BfsDirection::Forward)
     }
 
     /* returns all nodes on route on the backward bfs path from this to ancestor
      */
-    pub fn backward_bfs_path_iterator(&self, this: Hash, ancestor: Hash) -> BlocksBfsPathIterator<'_, U, V> {
-        BlocksBfsPathIterator::new(this, Some(ancestor), &self.reachability_service, &self.relations_store, BfsDirection::Backward)
+    pub fn backward_bfs_paths_iterator(&self, this: Hash, ancestor: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
+        BlocksBfsPathsIterator::new(this, Some(ancestor), &self.reachability_service, &self.relations_store, BfsDirection::Backward)
     }
     /* returns all nodes on route on the backward bfs path from this to genesis
      */
-    pub fn default_backward_bfs_path_iterator(&self, this: Hash) -> BlocksBfsPathIterator<'_, U, V> {
-        BlocksBfsPathIterator::new(this, None, &self.reachability_service, &self.relations_store, BfsDirection::Backward)
+    pub fn default_backward_bfs_paths_iterator(&self, this: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
+        BlocksBfsPathsIterator::new(this, None, &self.reachability_service, &self.relations_store, BfsDirection::Backward)
     }
 }
 #[derive(PartialEq, Eq)]
@@ -191,7 +191,7 @@ pub enum BfsDirection {
     Forward,
     Backward,
 }
-pub struct BlocksBfsPathIterator<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> {
+pub struct BlocksBfsPathsIterator<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> {
     queue: VecDeque<Vec<Hash>>,
     visited: HashSet<Hash>,
     edge: Option<Hash>,
@@ -200,7 +200,7 @@ pub struct BlocksBfsPathIterator<'a, U: ReachabilityStoreReader, V: RelationsSto
     bfs_direction: BfsDirection,
 }
 
-impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> BlocksBfsPathIterator<'a, U, V> {
+impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> BlocksBfsPathsIterator<'a, U, V> {
     pub fn new(
         start: Hash,
         edge: Option<Hash>,
@@ -214,11 +214,11 @@ impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> BlocksBfsPathItera
         visited.insert(start); //note that in a dag this isn't actually necessary, but is kept for logical clarity
         Self { queue, visited, edge, reachability_service, relations_store, bfs_direction }
     }
-    pub fn map_path_to_blocks(self) -> impl Iterator<Item = Hash> + use<'a, U, V> {
+    pub fn map_paths_to_tips(self) -> impl Iterator<Item = Hash> + use<'a, U, V> {
         self.map(|path| path.last().cloned().unwrap())
     }
 }
-impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> Iterator for BlocksBfsPathIterator<'a, U, V> {
+impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> Iterator for BlocksBfsPathsIterator<'a, U, V> {
     type Item = Vec<Hash>;
 
     fn next(&mut self) -> Option<Self::Item> {

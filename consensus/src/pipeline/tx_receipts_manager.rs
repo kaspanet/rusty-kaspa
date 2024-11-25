@@ -162,8 +162,8 @@ impl<
         let post_posterity_hash = self.get_post_posterity_block(chain_purporter)?;
         let bfs_vec: Vec<_> = self
             .traversal_manager
-            .forward_bfs_path_iterator(chain_purporter, post_posterity_hash)
-            .map_path_to_blocks()
+            .forward_bfs_paths_iterator(chain_purporter, post_posterity_hash)
+            .map_paths_to_tips()
             .map(|hash| (hash, self.headers_store.get_header(hash).unwrap()))
             .collect();
         Ok(LegacyPochm::new(bfs_vec))
@@ -599,7 +599,7 @@ impl<
     pub fn find_future_chain_block_path(&self, block_hash: Hash) -> Result<Vec<Hash>, ReceiptsErrors> {
         let sink = self.selected_chain_store.read().get_tip()?.1;
         self.traversal_manager
-            .forward_bfs_path_iterator(block_hash, sink)
+            .forward_bfs_paths_iterator(block_hash, sink)
             .find(|path| {
                 let curr = *path.last().unwrap();
                 return self.selected_chain_store.read().get_by_hash(curr).is_ok();

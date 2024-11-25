@@ -441,11 +441,7 @@ impl Consensus {
         let dag_width_guess: u64 = self.services.tx_receipts_manager.estimate_dag_width(Some(tip)); // estimation may be off for old txs
         let estimated_bscore = tip_bscore.saturating_sub(tip_timestamp.saturating_sub(tx_timestamp)) * bps / 1000;
         let guess_index = tip_index.saturating_sub(tip_bscore.saturating_sub(estimated_bscore) / dag_width_guess);
-        let guess_block = self
-            .selected_chain_store
-            .read()
-            .get_by_index(guess_index)
-            .unwrap_or(self.pruning_point_store.read().history_root().unwrap());
+        let guess_block = self.selected_chain_store.read().get_by_index(guess_index).unwrap_or(self.get_source());
         //since guess_block is merely a guess, some margin of error needs be taken
         // we account for a deviation of "10 minutes" and derive the expected max distance in chain blocks
         const DEVIATION_IN_SECONDS: u64 = 600; //10 minutes deviation should be enough?
@@ -474,18 +470,16 @@ impl Consensus {
             .take(deviation_in_chain_blocks)
             .map(someize_header_if_blk_accepts_tx);
 
-        let mut double_sided_iterator = forward_search_iter.zip_longest(backward_search_iter).map(first_some_out_of_either_pair);
+        let double_sided_iterator = backward_search_iter.zip_longest(forward_search_iter).map(first_some_out_of_either_pair);
         // we iterate backwards and forwards at the same time to locate the accepting block of the transaction
-        let acc_block = double_sided_iterator.find(|blk| blk.is_some());
-        if let Some(Some(acc_block)) = acc_block {
+        let acc_blocks = double_sided_iterator.filter(|blk| blk.is_some());
+        for hdr in acc_blocks {
             //first Some represents the result of the find, second the fact that blk is a Some
-            self.services
-                .tx_receipts_manager
-                .generate_tx_receipt(acc_block, tx_id)
-                .map_err(|_| ConsensusError::General("required data to create a receipt appears missing"))
-        } else {
-            Err(ConsensusError::General("cannot find block with given timestamp"))
+            if let Ok(ret) = self.services.tx_receipts_manager.generate_tx_receipt(hdr.unwrap(), tx_id) {
+                return Ok(ret);
+            }
         }
+        Err(ConsensusError::General("cannot find block with given timestamp"))
     }
 
     fn generate_proof_of_publication_based_on_time(&self, tx_id: Hash, tx_timestamp: u64) -> ConsensusResult<ProofOfPublication> {
@@ -524,13 +518,9 @@ impl Consensus {
         let dag_width_guess: u64 = self.services.tx_receipts_manager.estimate_dag_width(Some(tip)); // estimation may be off for old txs
         let estimated_bscore = tip_bscore.saturating_sub(tip_timestamp.saturating_sub(tx_timestamp)) * bps / 1000;
         let guess_index = tip_index.saturating_sub(tip_bscore.saturating_sub(estimated_bscore) / dag_width_guess);
-        let guess_block = self
-            .selected_chain_store
-            .read()
-            .get_by_index(guess_index)
-            .unwrap_or(self.pruning_point_store.read().history_root().unwrap());
+        let guess_block = self.selected_chain_store.read().get_by_index(guess_index).unwrap_or(self.get_source());
         //since guess_block is merely a guess, some margin of error needs be taken
-        // we account for a deviation of "10 minutes" and derive the expected max distance in chain blocks
+        // we account for a deviation of "10 minutes" and derive the expected max distance in blocks
         const DEVIATION_IN_SECONDS: u64 = 600; //10 minutes deviation should be enough?
         let deviation_in_dag_blocks = (DEVIATION_IN_SECONDS * bps) as usize;
 
@@ -547,30 +537,29 @@ impl Consensus {
         let forward_search_iter = self
             .services
             .dag_traversal_manager
-            .forward_bfs_path_iterator(guess_block, tip)
-            .map_path_to_blocks()
+            .forward_bfs_paths_iterator(guess_block, tip)
+            .map_paths_to_tips()
             .take(deviation_in_dag_blocks)
             .map(someize_header_if_blk_publishes_tx);
         //backward derivation
         let backward_search_iter = self.services.dag_traversal_manager
-            .backward_bfs_path_iterator(guess_block,self.pruning_point_store.read().history_root().unwrap())
-            .map_path_to_blocks()
+            .backward_bfs_paths_iterator(guess_block,self.pruning_point_store.read().history_root().unwrap())
+            .map_paths_to_tips()
             .skip(1)// avoid checking guess block itself twice
             .take(deviation_in_dag_blocks)
             .map(someize_header_if_blk_publishes_tx);
 
-        let mut double_sided_iterator = forward_search_iter.zip_longest(backward_search_iter).map(first_some_out_of_either_pair);
+        let double_sided_iterator = backward_search_iter.zip_longest(forward_search_iter).map(first_some_out_of_either_pair);
         // we iterate backwards and forwards at the same time to locate the accepting block of the transaction
-        let pub_block = double_sided_iterator.find(|blk| blk.is_some());
-        if let Some(Some(pub_block)) = pub_block {
+        let pub_blocks = double_sided_iterator.filter(|blk| blk.is_some());
+        for hdr in pub_blocks {
             //first Some represents the result of the find, second the fact that blk is a Some
-            self.services
-                .tx_receipts_manager
-                .generate_proof_of_pub(pub_block, tx_id)
-                .map_err(|_| ConsensusError::General("required data to create a receipt appears missing here"))
-        } else {
-            Err(ConsensusError::General("cannot find block with given timestamp"))
+            if let Ok(ret) = self.services.tx_receipts_manager.generate_proof_of_pub(hdr.unwrap(), tx_id) {
+                return Ok(ret);
+            }
         }
+
+        Err(ConsensusError::General("cannot find block with given timestamp"))
     }
 }
 
@@ -1286,7 +1275,7 @@ impl ConsensusApi for Consensus {
             note: this is probably very computationally wasteful for archival nodes
             and should be avoided on usual terms */
             for block in
-                self.services.dag_traversal_manager.forward_bfs_path_iterator(self.get_source(), self.get_sink()).map_path_to_blocks()
+                self.services.dag_traversal_manager.forward_bfs_paths_iterator(self.get_source(), self.get_sink()).map_paths_to_tips()
             {
                 let published_txs = self
                     .storage
