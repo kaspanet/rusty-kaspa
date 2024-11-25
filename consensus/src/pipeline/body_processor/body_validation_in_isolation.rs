@@ -106,6 +106,9 @@ impl BlockBodyProcessor {
             block.transactions.par_iter().enumerate().try_for_each(|(index, tx)| {
                 Self::validate_transaction_with_context(&(bbvc.clone()), tx, index as TransactionIndexType)?;
                 self.validate_transaction_in_isolation(tx)
+                // TODO: the tx hash may be cached from this point onward. Consider caching it here.
+                // i.e. something like: tx.finalize_hash(bbvc.storage_mass_activation)
+                // and then retrieve via tx.hash() in the future.
             })
         })
     }
