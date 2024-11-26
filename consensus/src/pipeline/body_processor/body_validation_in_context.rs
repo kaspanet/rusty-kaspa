@@ -18,13 +18,21 @@ impl BlockBodyProcessor {
     }
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        let (pmt, _) = self.window_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap())?;
+        // Note: This is somewhat expensive during ibd, as it incurs cache misses.
+
+        let pmt = {
+            let (pmt, pmt_window) = self.window_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap())?;
+            if !self.block_window_cache_for_past_median_time.contains_key(&block.hash()) {
+                self.block_window_cache_for_past_median_time.insert(block.hash(), pmt_window);
+            };
+            pmt
+        };
+
         for tx in block.transactions.iter() {
             if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, pmt) {
                 return Err(RuleError::TxInContextFailed(tx.id(), e));
-            }
+            };
         }
-
         Ok(())
     }
 
