@@ -1671,7 +1671,6 @@ async fn selected_chain_test() {
     mapper.insert(0, config.genesis.hash);
     mapper.insert(1, consensus.add_utxo_valid_block_with_parents(vec![config.genesis.hash], vec![]).await.1);
     for i in 2..7 {
-        // let hash = i.into();
         mapper.insert(i, consensus.add_utxo_valid_block_with_parents(vec![mapper[&(i - 1)]], vec![]).await.1);
     }
     mapper.insert(7, consensus.add_utxo_valid_block_with_parents(vec![mapper[&1]], vec![]).await.1); // Adding a non chain block shouldn't affect the selected chain store.
@@ -1684,7 +1683,6 @@ async fn selected_chain_test() {
 
     mapper.insert(8, consensus.add_utxo_valid_block_with_parents(vec![config.genesis.hash], vec![]).await.1);
     for i in 9..15 {
-        // let hash = i.into();
         mapper.insert(i, consensus.add_utxo_valid_block_with_parents(vec![mapper[&(i - 1)]], vec![]).await.1);
     }
 
@@ -1699,9 +1697,9 @@ async fn selected_chain_test() {
         mapper.insert(i, consensus.add_utxo_valid_block_with_parents(vec![config.genesis.hash], vec![]).await.1);
     }
     mapper.insert(23, consensus.add_utxo_valid_block_with_parents((15..23).map(|i| mapper[&i]).collect_vec(), vec![]).await.1);
-
+    let tie_winner = (15..23).map(|i| mapper[&i]).reduce(std::cmp::max).unwrap();
     assert_eq!(consensus.selected_chain_store.read().get_by_index(0).unwrap(), config.genesis.hash);
-    assert_eq!(consensus.selected_chain_store.read().get_by_index(1).unwrap(), mapper[&22]); // We expect 23's selected parent to be 22 because of GHOSTDAG tie-breaking rules.
+    assert_eq!(consensus.selected_chain_store.read().get_by_index(1).unwrap(), tie_winner); //testing tie breaking rules
     assert_eq!(consensus.selected_chain_store.read().get_by_index(2).unwrap(), mapper[&23]);
     assert!(consensus.selected_chain_store.read().get_by_index(3).is_err());
     assert_selected_chain_store_matches_virtual_chain(&consensus);

@@ -377,7 +377,7 @@ pub trait ConsensusApi: Send + Sync {
     ) -> ConsensusResult<ProofOfPublication> {
         unimplemented!()
     }
-    fn generate_pochm(&self, block: Hash) -> ConsensusResult<Pochm> {
+    fn generate_pochm(&self, block: Hash) -> ConsensusResult<LogPochm> {
         unimplemented!()
     }
     fn verify_tx_receipt(&self, receipt: &TxReceipt) -> bool {
@@ -386,7 +386,7 @@ pub trait ConsensusApi: Send + Sync {
     fn verify_proof_of_pub(&self, proof_of_pub: &ProofOfPublication) -> bool {
         unimplemented!()
     }
-    fn verify_pochm(&self, chain_purporter: Hash, pochm: &Pochm) -> bool {
+    fn verify_pochm(&self, chain_purporter: Hash, pochm: &LogPochm) -> bool {
         unimplemented!()
     }
     fn is_posterity_reached(&self, cutoff_bscore: u64) -> bool {
