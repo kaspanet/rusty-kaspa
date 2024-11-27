@@ -226,14 +226,13 @@ async fn test_receipts_in_random() {
         }
 
         //add the new block to the blockdag, and update it on mapper
-        let blk_hash = (ind + 1).into();
-        ctx.add_utxo_valid_block_with_parents(blk_hash, parents, vec![]).await;
+        let blk_hash = ctx.add_utxo_valid_block_with_parents(parents, vec![]).await.1;
         mapper.insert(ind, blk_hash);
         /*periodically check if a new posterity point has been reached
         if so, attempt to create and store receipts and POPs for a batch of blocks past the current pruning point.
         */
         if ctx.consensus.is_posterity_reached(next_posterity_score) {
-            sleep(Duration::from_millis(50));
+            sleep(Duration::from_millis(50)); //delay to prevent pruning races
             next_posterity_score += FINALITY_DEPTH as u64;
             posterity_list.push(ctx.consensus.services.tx_receipts_manager.get_pre_posterity_block_by_hash(ctx.consensus.get_sink()));
             if posterity_list.len() >= 3 {
