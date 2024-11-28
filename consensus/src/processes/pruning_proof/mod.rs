@@ -278,32 +278,9 @@ impl PruningProofManager {
         // PRUNE SAFETY: called either via consensus under the prune guard or by the pruning processor (hence no pruning in parallel)
 
         for anticone_block in anticone.iter().copied() {
-            let mut ghostdag = self.ghostdag_store.get_data(anticone_block).unwrap();
+            let ghostdag = self.ghostdag_store.get_data(anticone_block).unwrap();
             let window = self.window_manager.block_window(&ghostdag, WindowType::DifficultyWindow).unwrap();
-
-            // Make sure we extract a full consecutive window containing all blocks required to restore the (possibly sampled) window.
-            // In the sampling case, the mechanism relies on DAA indexes which can only be calculated correctly if the full
-            // mergesets covering all sampled blocks are sent.
-            let cover = match self.window_manager.sampling(ghostdag.selected_parent) {
-                true => {
-                    // Tracks the window blocks to make sure we visit all blocks
-                    let mut unvisited: BlockHashSet = window.iter().map(|b| b.0.hash).collect();
-                    let capacity_estimate =
-                        window.len() * self.window_manager.sample_rate(&ghostdag, WindowType::DifficultyWindow) as usize;
-                    // The full consecutive window covering all sampled window blocks and the full mergesets containing them
-                    let mut cover = Vec::with_capacity(capacity_estimate);
-                    while !unvisited.is_empty() {
-                        assert!(!ghostdag.selected_parent.is_origin(), "unvisited still not empty");
-                        for merged in ghostdag.unordered_mergeset() {
-                            cover.push(merged);
-                            unvisited.remove(&merged);
-                        }
-                        ghostdag = self.ghostdag_store.get_data(ghostdag.selected_parent).unwrap();
-                    }
-                    cover
-                }
-                false => window.iter().map(|b| b.0.hash).collect(),
-            };
+            let cover = self.window_manager.consecutive_cover_for_window(ghostdag, &window);
 
             for hash in cover {
                 if let Entry::Vacant(e) = daa_window_blocks.entry(hash) {

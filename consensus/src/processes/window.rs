@@ -58,6 +58,9 @@ pub trait WindowManager {
     fn estimate_network_hashes_per_second(&self, window: Arc<BlockWindowHeap>) -> DifficultyResult<u64>;
     fn window_size(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> usize;
     fn sample_rate(&self, ghostdag_data: &GhostdagData, window_type: WindowType) -> u64;
+
+    /// Returns the full consecutive sub-DAG containing all blocks required to restore the (possibly sampled) window.
+    fn consecutive_cover_for_window(&self, ghostdag_data: Arc<GhostdagData>, window: &BlockWindowHeap) -> Vec<Hash>;
 }
 
 trait AffiliatedWindowCacheReader {
@@ -272,6 +275,11 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
 
     fn sample_rate(&self, _ghostdag_data: &GhostdagData, _window_type: WindowType) -> u64 {
         1
+    }
+
+    fn consecutive_cover_for_window(&self, _ghostdag_data: Arc<GhostdagData>, window: &BlockWindowHeap) -> Vec<Hash> {
+        assert_eq!(WindowOrigin::Full, window.origin());
+        window.iter().map(|b| b.0.hash).collect()
     }
 }
 
@@ -610,6 +618,38 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
             WindowType::VaryingWindow(_) => 1,
         }
     }
+
+    fn consecutive_cover_for_window(&self, mut ghostdag: Arc<GhostdagData>, window: &BlockWindowHeap) -> Vec<Hash> {
+        assert_eq!(WindowOrigin::Sampled, window.origin());
+
+        // In the sampled case, the sampling logic relies on DAA indexes which can only be calculated correctly if the full
+        // mergesets covering all sampled blocks are sent.
+
+        // Tracks the window blocks to make sure we visit all blocks
+        let mut unvisited: BlockHashSet = window.iter().map(|b| b.0.hash).collect();
+        let capacity_estimate = window.len() * self.difficulty_sample_rate as usize;
+        // The full consecutive window covering all sampled window blocks and the full mergesets containing them
+        let mut cover = Vec::with_capacity(capacity_estimate);
+        while !unvisited.is_empty() {
+            assert!(!ghostdag.selected_parent.is_origin(), "unvisited still not empty");
+            // TODO (relaxed): a possible optimization here is to iterate in the same order as
+            // sampled_mergeset_iterator (descending_mergeset) and to break once all samples from
+            // this mergeset are reached.
+            // * Why is this sufficient? bcs we still send the prefix of the mergeset required for
+            //                           obtaining the DAA index for all sampled blocks.
+            // * What's the benefit? This might exclude deeply merged blocks which in turn will help
+            //                       reducing the number of trusted blocks sent to a fresh syncing peer.
+            for merged in ghostdag.unordered_mergeset() {
+                cover.push(merged);
+                unvisited.remove(&merged);
+            }
+            if unvisited.is_empty() {
+                break;
+            }
+            ghostdag = self.ghostdag_store.get_data(ghostdag.selected_parent).unwrap();
+        }
+        cover
+    }
 }
 
 /// A window manager handling either full (un-sampled) or sampled windows depending on an activation DAA score
@@ -749,6 +789,13 @@ impl<T: GhostdagStoreReader, U: BlockWindowCacheReader + BlockWindowCacheWriter,
         match self.sampling(ghostdag_data.selected_parent) {
             true => self.sampled_window_manager.sample_rate(ghostdag_data, window_type),
             false => self.full_window_manager.sample_rate(ghostdag_data, window_type),
+        }
+    }
+
+    fn consecutive_cover_for_window(&self, ghostdag_data: Arc<GhostdagData>, window: &BlockWindowHeap) -> Vec<Hash> {
+        match window.origin() {
+            WindowOrigin::Sampled => self.sampled_window_manager.consecutive_cover_for_window(ghostdag_data, window),
+            WindowOrigin::Full => self.full_window_manager.consecutive_cover_for_window(ghostdag_data, window),
         }
     }
 }
