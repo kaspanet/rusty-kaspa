@@ -716,6 +716,7 @@ opcode_list! {
 
     opcode OpCheckSigECDSA<0xab, 1>(self, vm) {
         let [mut sig, key] = vm.dstack.pop_raw()?;
+        vm.sig_op_remaining.checked_sub(1).ok_or(TxScriptError::SigOpCountTooLow(vm.sig_op_limit as u16 + 1, vm.sig_op_limit))?;
         // Hash type
         match sig.pop() {
             Some(typ) => {
@@ -742,6 +743,7 @@ opcode_list! {
         // Hash type
         match sig.pop() {
             Some(typ) => {
+                vm.sig_op_remaining.checked_sub(1).ok_or(TxScriptError::SigOpCountTooLow(vm.sig_op_limit as u16 + 1, vm.sig_op_limit))?;
                 let hash_type = SigHashType::from_u8(typ).map_err(|e| TxScriptError::InvalidSigHashType(typ))?;
                 match vm.check_schnorr_signature(hash_type, key.as_slice(), sig.as_slice()) {
                     Ok(valid) => {

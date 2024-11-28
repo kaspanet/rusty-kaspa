@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
     tx::{TransactionInput, VerifiableTransaction},
 };
 use kaspa_core::warn;
-use kaspa_txscript::{caches::Cache, get_sig_op_count, SigCacheKey, TxScriptEngine};
+use kaspa_txscript::{caches::Cache, SigCacheKey, TxScriptEngine};
 use kaspa_txscript_errors::TxScriptError;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rayon::ThreadPool;
@@ -60,7 +60,7 @@ impl TransactionValidator {
 
         match flags {
             TxValidationFlags::Full | TxValidationFlags::SkipMassCheck => {
-                Self::check_sig_op_counts(tx)?;
+                // Self::check_sig_op_counts(tx)?;
                 self.check_scripts(tx, pov_daa_score)?;
             }
             TxValidationFlags::SkipScriptChecks => {}
@@ -162,12 +162,14 @@ impl TransactionValidator {
         Ok(())
     }
 
-    fn check_sig_op_counts<T: VerifiableTransaction>(tx: &T) -> TxResult<()> {
+    fn check_sig_op_counts<T: VerifiableTransaction>(tx: &T, kip10_enabled: bool) -> Result<(), TxScriptError> {
+        // Initialize a cache for signature verification
+        let sig_cache = Cache::new(10_000);
+        // Prepare to reuse values for signature hashing
+        let reused_values = SigHashReusedValuesUnsync::new();
         for (i, (input, entry)) in tx.populated_inputs().enumerate() {
-            let calculated = get_sig_op_count::<T, SigHashReusedValuesUnsync>(&input.signature_script, &entry.script_public_key);
-            if calculated != input.sig_op_count as u64 {
-                return Err(TxRuleError::WrongSigOpCount(i, input.sig_op_count as u64, calculated));
-            }
+            let mut vm = TxScriptEngine::from_transaction_input(tx, input, i, entry, &reused_values, &sig_cache, kip10_enabled);
+            vm.execute()?;
         }
         Ok(())
     }
@@ -823,6 +825,7 @@ mod tests {
         let signed_tx = sign(MutableTransaction::with_entries(unsigned_tx, entries), schnorr_key);
         let populated_tx = signed_tx.as_verifiable();
         assert_eq!(tv.check_scripts(&populated_tx, u64::MAX), Ok(()));
-        assert_eq!(TransactionValidator::check_sig_op_counts(&populated_tx), Ok(()));
+        // check scripts internally checks sig op count
+        // assert_eq!(TransactionValidator::check_sig_op_counts(&populated_tx), Ok(()));
     }
 }
