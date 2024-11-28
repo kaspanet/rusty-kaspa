@@ -146,9 +146,10 @@ impl TestConsensus {
         &self,
         parents: Vec<Hash>,
         txs: Vec<Transaction>,
+        nonce: u64,
     ) -> impl Future<Output = (BlockProcessResult<BlockStatus>, Hash)> {
         let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-        let block = self.build_utxo_valid_block_with_parents(parents, miner_data, txs).to_immutable();
+        let block = self.build_utxo_valid_block_with_parents(parents, miner_data, txs, nonce).to_immutable();
         let hash = block.hash();
         let fut = self.validate_and_insert_block(block).virtual_state_task;
         async move { (fut.await, hash) }
@@ -165,8 +166,11 @@ impl TestConsensus {
         parents: Vec<Hash>,
         miner_data: MinerData,
         txs: Vec<Transaction>,
+        nonce: u64,
     ) -> MutableBlock {
-        let template = self.block_builder.build_block_template_with_parents(parents, miner_data, txs).unwrap();
+        let mut template = self.block_builder.build_block_template_with_parents(parents, miner_data, txs).unwrap();
+        template.block.header.nonce = nonce;
+        template.block.header.finalize();
         template.block
     }
 

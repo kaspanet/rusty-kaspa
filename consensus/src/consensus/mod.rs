@@ -1292,10 +1292,10 @@ impl ConsensusApi for Consensus {
             Err(ConsensusError::MissingTx(tx_id))
         }
     }
-    fn generate_pochm(&self, chain_purporter: Hash) -> ConsensusResult<LogPochm> {
+    fn generate_pochm(&self, chain_purporter: Hash) -> ConsensusResult<Pochm> {
         self.services
             .tx_receipts_manager
-            .create_log_pochm_proof(chain_purporter)
+            .create_pochm_proof(self.headers_store.get_header(chain_purporter).unwrap())
             .map_err(|_| ConsensusError::General("required data to create a proof of chain membership appears missing"))
     }
     //Note: wallets are expected to verify on their own that the tx_id corresponds to the tx they have stored
@@ -1306,7 +1306,7 @@ impl ConsensusApi for Consensus {
     fn verify_proof_of_pub(&self, proof_of_pub: &ProofOfPublication) -> bool {
         self.services.tx_receipts_manager.verify_proof_of_pub(proof_of_pub)
     }
-    fn verify_pochm(&self, chain_purporter: Hash, proof_of_pub: &LogPochm) -> bool {
+    fn verify_pochm(&self, chain_purporter: Hash, proof_of_pub: &Pochm) -> bool {
         self.services.tx_receipts_manager.verify_pochm_proof(chain_purporter, proof_of_pub)
     }
     fn is_posterity_reached(&self, cutoff_bscore: u64) -> bool {

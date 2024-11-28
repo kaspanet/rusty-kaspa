@@ -12,7 +12,11 @@ use crate::{
 use kaspa_consensus_core::{
     api::ConsensusApi,
     blockstatus::BlockStatus,
-    config::{params::MAINNET_PARAMS, ConfigBuilder},
+    config::{
+        params::{ForkActivation, MAINNET_PARAMS},
+        ConfigBuilder,
+    },
+    receipts::Pochm,
 };
 
 #[tokio::test]
@@ -28,6 +32,7 @@ async fn test_receipts_in_chain() {
             p.finality_depth = FINALITY_DEPTH as u64;
             p.target_time_per_block = (1000.0 / BPS) as u64;
             p.pruning_depth = (FINALITY_DEPTH * 3) as u64;
+            p.storage_mass_activation = ForkActivation::new(0);
         })
         .build();
     let mut expected_posterities = vec![];
@@ -148,7 +153,9 @@ async fn test_receipts_in_chain() {
     }
     for (pochm, blk) in pochms_list {
         assert!(ctx.consensus.verify_pochm(blk, &pochm));
-        assert!(pochm.vec.len() <= (FINALITY_DEPTH as f64).log2() as usize)
+        if let Pochm::LogPath(pochm) = pochm {
+            assert!(pochm.vec.len() <= (FINALITY_DEPTH as f64).log2() as usize);
+        }
     }
     for (rec, tx_id) in receipts {
         assert!(ctx.consensus.verify_tx_receipt(&rec));
@@ -182,6 +189,7 @@ async fn test_receipts_in_random() {
             p.mergeset_size_limit = 30;
             p.finality_depth = FINALITY_DEPTH as u64;
             p.pruning_depth = (FINALITY_DEPTH * 3) as u64;
+            p.storage_mass_activation = ForkActivation::new(0);
         })
         .build();
     let mut receipts1 = std::collections::HashMap::<_, _>::new();
@@ -227,7 +235,7 @@ async fn test_receipts_in_random() {
         }
 
         //add the new block to the blockdag, and update it on mapper
-        let blk_hash = ctx.add_utxo_valid_block_with_parents(parents, vec![]).await.1;
+        let blk_hash = ctx.add_utxo_valid_block_with_parents(parents, vec![], ind).await.1;
         mapper.insert(ind, blk_hash);
         /*periodically check if a new posterity point has been reached
         if so, attempt to create and store receipts and POPs for a batch of blocks past the current pruning point.
@@ -281,7 +289,9 @@ async fn test_receipts_in_random() {
     for (pochm, blk) in pochms_list.into_iter() {
         eprintln!("blk_verified: {:?}", blk);
         assert!(ctx.consensus.verify_pochm(blk, &pochm));
-        assert!(pochm.vec.len() <= (FINALITY_DEPTH as f64).log2() as usize);
+        if let Pochm::LogPath(pochm) = pochm {
+            assert!(pochm.vec.len() <= (FINALITY_DEPTH as f64).log2() as usize);
+        }
     }
     for rec in receipts1.values() {
         assert!(ctx.consensus.verify_tx_receipt(rec));

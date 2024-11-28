@@ -21,7 +21,7 @@ pub struct UnverifiedHeader {
     pub pruning_point: Hash,
 }
 impl UnverifiedHeader {
-    pub fn hash(&self) -> Hash {
+    pub fn compute_hash(&self) -> Hash {
         let hdr = Header::from(self);
         hdr.hash
     }
@@ -123,6 +123,11 @@ impl From<Arc<Header>> for UnverifiedHeader {
 }
 
 #[derive(Clone)]
+pub enum Pochm {
+    LogPath(LogPathPochm),
+    Legacy(LegacyPochm),
+}
+#[derive(Clone)]
 pub struct LegacyPochm {
     pub bfs_map: HashMap<Hash, UnverifiedHeader>,
     pub top: Hash,
@@ -138,22 +143,22 @@ impl LegacyPochm {
         }
         Self { bfs_map, top, bottom }
     }
-    pub fn verify_bfs_path(&self, chain_purpoter: Hash) -> bool {
+    pub fn verify_bfs_path(&self, chain_purporter: Hash) -> bool {
         let mut next = self.top;
-        if next != self.bfs_map[&next].hash() {
+        if next != self.bfs_map[&next].compute_hash() {
             return false;
         }
         loop {
-            if next == chain_purpoter {
+            if next == chain_purporter {
                 return true;
             }
             let next_hdr = self.bfs_map.get(&next);
             if let Some(next_hdr) = next_hdr {
-                if next != next_hdr.hash() {
+                if next != next_hdr.compute_hash() {
                     return false;
                 }
                 for &par in next_hdr.parents_by_level[0].iter() {
-                    if par != self.bfs_map[&par].hash() {
+                    if par != self.bfs_map[&par].compute_hash() {
                         return false;
                     }
                     next = *next_hdr.parents_by_level[0]
@@ -182,12 +187,13 @@ pub struct PochmSegment {
     pub header: UnverifiedHeader,
     pub leaf_in_pchmr_witness: MerkleWitness,
 }
+
 #[derive(Clone)]
-pub struct LogPochm {
+pub struct LogPathPochm {
     pub vec: Vec<PochmSegment>,
     // hash_to_pchmr_store: Arc<DbPchmrStore>, //temporary field
 }
-impl LogPochm {
+impl LogPathPochm {
     pub fn new() -> Self {
         let vec = vec![];
         Self { vec }
@@ -197,11 +203,11 @@ impl LogPochm {
         self.vec.push(PochmSegment { header, leaf_in_pchmr_witness: witness })
     }
     pub fn get_path_origin(&self) -> Option<Hash> {
-        self.vec.first().map(|seg| seg.header.hash())
+        self.vec.first().map(|seg| seg.header.compute_hash())
     }
 }
 
-impl Default for LogPochm {
+impl Default for LogPathPochm {
     fn default() -> Self {
         Self::new()
     }
@@ -210,7 +216,7 @@ impl Default for LogPochm {
 pub struct TxReceipt {
     pub tracked_tx_id: Hash,
     pub accepting_block_header: UnverifiedHeader,
-    pub pochm: LogPochm,
+    pub pochm: Pochm,
     pub tx_acc_proof: MerkleWitness,
 }
 #[derive(Clone)]
@@ -218,7 +224,7 @@ pub struct TxReceipt {
 pub struct ProofOfPublication {
     pub tracked_tx_hash: Hash,
     pub pub_block_header: UnverifiedHeader,
-    pub pochm: LogPochm,
+    pub pochm: Pochm,
     pub tx_pub_proof: MerkleWitness,
     pub headers_path_to_selected: Vec<UnverifiedHeader>,
 }

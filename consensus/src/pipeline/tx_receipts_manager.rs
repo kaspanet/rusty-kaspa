@@ -17,7 +17,7 @@ use kaspa_consensus_core::{
     hashing,
     header::Header,
     merkle::create_hash_merkle_witness,
-    receipts::{LegacyPochm, LogPochm, ProofOfPublication, TxReceipt, UnverifiedHeader},
+    receipts::{LegacyPochm, LogPathPochm, Pochm, ProofOfPublication, TxReceipt, UnverifiedHeader},
 };
 use kaspa_hashes::Hash;
 use kaspa_hashes::ZERO_HASH;
@@ -50,7 +50,7 @@ pub struct TxReceiptsManager<
     pub pruning_point_store: Arc<RwLock<Y>>,
 
     pub storage_mass_activation: ForkActivation,
-    traversal_manager: DbDagTraversalManager,
+    pub traversal_manager: DbDagTraversalManager,
 }
 
 impl<
@@ -92,7 +92,7 @@ impl<
         }
     }
     pub fn generate_tx_receipt(&self, accepting_block_header: Arc<Header>, tracked_tx_id: Hash) -> Result<TxReceipt, ReceiptsErrors> {
-        let pochm = self.create_log_pochm_proof(accepting_block_header.hash)?;
+        let pochm = self.create_pochm_proof(accepting_block_header.clone())?;
         //find the accepted tx in accepting_block_hash and create a merkle witness for it
         let mergeset_txs_manager = self.acceptance_data_store.get(accepting_block_header.hash)?;
         let mut accepted_txs = mergeset_txs_manager
@@ -115,7 +115,7 @@ impl<
         let mut headers_path_to_selected: Vec<_> =
             path_to_selected.iter().map(|&hash| self.headers_store.get_header(hash).unwrap()).collect();
 
-        let pochm = self.create_log_pochm_proof(headers_path_to_selected.last().unwrap().hash)?;
+        let pochm = self.create_pochm_proof(headers_path_to_selected.last().unwrap().clone())?;
         headers_path_to_selected.remove(0); //remove the publishing block itself from the chain as it is redundant to store
 
         //next, find the relevant transaction in pub_block_hash's published transactions and create a merkle witness for it
@@ -132,13 +132,13 @@ impl<
     pub fn verify_tx_receipt(&self, tx_receipt: &TxReceipt) -> bool {
         let acc_atmr = tx_receipt.accepting_block_header.accepted_id_merkle_root;
         verify_merkle_witness(&tx_receipt.tx_acc_proof, tx_receipt.tracked_tx_id, acc_atmr)
-            && self.verify_pochm_proof(tx_receipt.accepting_block_header.hash(), &tx_receipt.pochm)
+            && self.verify_pochm_proof(tx_receipt.accepting_block_header.compute_hash(), &tx_receipt.pochm)
     }
     pub fn verify_proof_of_pub(&self, proof_of_pub: &ProofOfPublication) -> bool {
         let valid_path = proof_of_pub
             .headers_path_to_selected
             .iter()
-            .try_fold(proof_of_pub.pub_block_header.hash(), |curr, next| {
+            .try_fold(proof_of_pub.pub_block_header.compute_hash(), |curr, next| {
                 let next = Header::from(next);
                 if next.direct_parents().contains(&curr) {
                     Some(next.hash)
@@ -151,10 +151,19 @@ impl<
             return false;
         };
         let earliest_selected_chain_decendant =
-            proof_of_pub.headers_path_to_selected.last().unwrap_or(&proof_of_pub.pub_block_header).hash();
+            proof_of_pub.headers_path_to_selected.last().unwrap_or(&proof_of_pub.pub_block_header).compute_hash();
         let pub_merkle_root = proof_of_pub.pub_block_header.hash_merkle_root;
         verify_merkle_witness(&proof_of_pub.tx_pub_proof, proof_of_pub.tracked_tx_hash, pub_merkle_root)
             && self.verify_pochm_proof(earliest_selected_chain_decendant, &proof_of_pub.pochm)
+    }
+    /*Assumes: chain_purporter is on the selected chain,
+    if not returns error   */
+    pub fn create_pochm_proof(&self, chain_purporter_hdr: Arc<Header>) -> Result<Pochm, ReceiptsErrors> {
+        if self.storage_mass_activation.is_active(chain_purporter_hdr.daa_score) {
+            Ok(Pochm::LogPath(self.create_log_path_pochm_proof(chain_purporter_hdr.hash)?))
+        } else {
+            Ok(Pochm::Legacy(self.create_legacy_pochm_proof(chain_purporter_hdr.hash)?))
+        }
     }
 
     /*Assumes: chain_purporter is on the selected chain,
@@ -178,8 +187,8 @@ impl<
     /*Assumes: chain_purporter is on the selected chain,
     if not returns error   */
 
-    pub fn create_log_pochm_proof(&self, chain_purporter: Hash) -> Result<LogPochm, ReceiptsErrors> {
-        let mut pochm_proof = LogPochm::new();
+    pub fn create_log_path_pochm_proof(&self, chain_purporter: Hash) -> Result<LogPathPochm, ReceiptsErrors> {
+        let mut pochm_proof = LogPathPochm::new();
         let purporter_index = self
             .selected_chain_store
             .read()
@@ -215,35 +224,22 @@ impl<
     creator of the witness to make sure the witness premiers with a posterity block
     and not just any block that may be pruned in the future, as this property is not verified in this function,
     and the function should not be relied upon to confirm the witness is everlasting*/
-    pub fn verify_pochm_proof(&self, chain_purporter: Hash, witness: &LogPochm) -> bool {
-        if let Some(post_posterity_hash) = witness.get_path_origin() {
-            if self.headers_store.get_header(post_posterity_hash).is_ok()
-            // verify the corresponding header is available
-            {
-                //verification of path itself is delegated to the pochm struct
-                return verify_pchmrs_path(witness, chain_purporter, self.hash_to_pchmr_store.clone());
+    pub fn verify_pochm_proof(&self, chain_purporter: Hash, witness: &Pochm) -> bool {
+        match witness {
+            Pochm::Legacy(witness) => witness.verify_bfs_path(chain_purporter),
+            Pochm::LogPath(witness) => {
+                if let Some(post_posterity_hash) = witness.get_path_origin() {
+                    if self.headers_store.get_header(post_posterity_hash).is_ok()
+                    // verify the corresponding header is available
+                    {
+                        //verification of path itself is delegated to the pochm struct
+                        return verify_pchmrs_path(witness, chain_purporter, self.hash_to_pchmr_store.clone());
+                    }
+                }
+                false
             }
         }
-        false
     }
-    /*this function will return true for any witness premiering with a currently non pruned block and
-    recursively pointing down to chain_purporter, it is the responsibility of the
-    creator of the witness to make sure the witness premiers with a posterity block
-    and not just any block that may be pruned in the future, as this property is not verified in this function,
-    and the function should not be relied upon to confirm the witness is everlasting*/
-    pub fn verify_legacy_pochm_proof(&self, _chain_purporter: Hash, witness: &LegacyPochm) -> bool {
-        let post_posterity_hash = witness.top;
-        {
-            if self.headers_store.get_header(post_posterity_hash).is_ok()
-            // verify the corresponding header is available
-            {
-                //verification of path itself is delegated to the pochm struct
-                unimplemented!();
-            }
-        }
-        false
-    }
-
     pub fn calc_pchmr_root_by_hash(&self, block_hash: Hash) -> Hash {
         if block_hash == self.genesis.hash {
             return ZERO_HASH;
@@ -637,16 +633,16 @@ impl<
 // this logic should be a method of Pochm in receipts.rs,
 //it is only here currently because pchmr_store is required for it
 // and cannot be accessed easily from receipt.rs
-pub fn verify_pchmrs_path(pochm: &LogPochm, destination_block_hash: Hash, pchmr_store: Arc<DbPchmrStore>) -> bool {
+pub fn verify_pchmrs_path(pochm: &LogPathPochm, destination_block_hash: Hash, pchmr_store: Arc<DbPchmrStore>) -> bool {
     let leaf_hashes = pochm.vec.iter()
         .skip(1)//remove first element to match accordingly to witnesses 
-        .map(|pochm_seg| pochm_seg.header.hash())//map to hashes
+        .map(|pochm_seg| pochm_seg.header.compute_hash())//map to hashes
         .chain(std::iter::once(destination_block_hash)); // add final block
 
     /*verify the path from posterity down to chain_purporter:
     iterate downward from posterity block header: for each, verify that leaf hash is in pchmr of ther header */
     pochm.vec.iter().zip(leaf_hashes).all(|(pochm_seg, leaf_hash)| {
-        let pchmr_root_hash = pchmr_store.get(pochm_seg.header.hash()).unwrap();
+        let pchmr_root_hash = pchmr_store.get(pochm_seg.header.compute_hash()).unwrap();
         let witness = &pochm_seg.leaf_in_pchmr_witness;
         verify_merkle_witness(witness, leaf_hash, pchmr_root_hash)
     })
