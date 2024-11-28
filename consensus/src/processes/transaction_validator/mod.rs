@@ -1,7 +1,7 @@
 pub mod errors;
-pub mod transaction_validator_populated;
-mod tx_validation_in_isolation;
-pub mod tx_validation_not_utxo_related;
+pub mod tx_validation_in_header_context;
+pub mod tx_validation_in_isolation;
+pub mod tx_validation_in_utxo_context;
 use std::sync::Arc;
 
 use crate::model::stores::ghostdag;

@@ -767,12 +767,13 @@ impl ConsensusApi for Consensus {
         let mut pruning_utxoset_write = self.pruning_utxoset_stores.write();
         pruning_utxoset_write.utxo_set.write_many(utxoset_chunk).unwrap();
 
-        // Parallelize processing
-        let inner_multiset =
+        // Parallelize processing using the context of an existing thread pool.
+        let inner_multiset = self.virtual_processor.install(|| {
             utxoset_chunk.par_iter().map(|(outpoint, entry)| MuHash::from_utxo(outpoint, entry)).reduce(MuHash::new, |mut a, b| {
                 a.combine(&b);
                 a
-            });
+            })
+        });
 
         current_multiset.combine(&inner_multiset);
     }
@@ -979,7 +980,7 @@ impl ConsensusApi for Consensus {
         Ok(self
             .services
             .window_manager
-            .block_window(&self.ghostdag_store.get_data(hash).unwrap(), WindowType::SampledDifficultyWindow)
+            .block_window(&self.ghostdag_store.get_data(hash).unwrap(), WindowType::DifficultyWindow)
             .unwrap()
             .deref()
             .iter()

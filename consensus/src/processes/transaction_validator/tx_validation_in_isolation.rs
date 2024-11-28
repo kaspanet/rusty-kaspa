@@ -8,6 +8,11 @@ use super::{
 };
 
 impl TransactionValidator {
+    /// Performs a variety of transaction validation checks which are independent of any
+    /// context -- header or utxo. **Note** that any check performed here should be moved to
+    /// header contextual validation if it becomes HF activation dependent. This is bcs we rely
+    /// on checks here to be truly independent and avoid calling it multiple times wherever possible
+    /// (e.g., BBT relies on mempool in isolation checks even though virtual daa score might have changed)   
     pub fn validate_tx_in_isolation(&self, tx: &Transaction) -> TxResult<()> {
         self.check_transaction_inputs_in_isolation(tx)?;
         self.check_transaction_outputs_in_isolation(tx)?;

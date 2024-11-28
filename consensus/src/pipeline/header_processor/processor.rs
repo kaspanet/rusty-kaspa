@@ -10,7 +10,7 @@ use crate::{
     model::{
         services::reachability::MTReachabilityService,
         stores::{
-            block_window_cache::{BlockWindowCacheStore, BlockWindowHeap},
+            block_window_cache::{BlockWindowCacheStore, BlockWindowCacheWriter, BlockWindowHeap},
             daa::DbDaaStore,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},

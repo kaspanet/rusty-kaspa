@@ -1,12 +1,19 @@
 use super::BlockBodyProcessor;
 use crate::{
     errors::{BlockProcessResult, RuleError},
-    model::stores::{ghostdag::GhostdagStoreReader, statuses::StatusesStoreReader},
-    processes::window::WindowManager,
+    model::stores::statuses::StatusesStoreReader,
+    processes::{
+        transaction_validator::{
+            tx_validation_in_header_context::{LockTimeArg, LockTimeType},
+            TransactionValidator,
+        },
+        window::WindowManager,
+    },
 };
 use kaspa_consensus_core::block::Block;
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
+use once_cell::unsync::Lazy;
 use std::sync::Arc;
 
 impl BlockBodyProcessor {
@@ -17,18 +24,17 @@ impl BlockBodyProcessor {
     }
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        // Note: This is somewhat expensive during ibd, as it incurs cache misses.
-
-        let pmt = {
-            let (pmt, pmt_window) = self.window_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap())?;
-            if !self.block_window_cache_for_past_median_time.contains_key(&block.hash()) {
-                self.block_window_cache_for_past_median_time.insert(block.hash(), pmt_window);
-            };
-            pmt
-        };
+        // Use lazy evaluation to avoid unnecessary work, as most of the time we expect the txs not to have lock time.
+        let lazy_pmt_res = Lazy::new(|| self.window_manager.calc_past_median_time_for_known_hash(block.hash()));
 
         for tx in block.transactions.iter() {
-            if let Err(e) = self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, pmt) {
+            let lock_time_arg = match TransactionValidator::get_lock_time_type(tx) {
+                LockTimeType::Finalized => LockTimeArg::Finalized,
+                LockTimeType::DaaScore => LockTimeArg::DaaScore(block.header.daa_score),
+                // We only evaluate the pmt calculation when actually needed
+                LockTimeType::Time => LockTimeArg::MedianTime((*lazy_pmt_res).clone()?),
+            };
+            if let Err(e) = self.transaction_validator.validate_tx_in_header_context(tx, block.header.daa_score, lock_time_arg) {
                 return Err(RuleError::TxInContextFailed(tx.id(), e));
             };
         }

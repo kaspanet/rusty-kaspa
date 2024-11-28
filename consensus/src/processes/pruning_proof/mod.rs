@@ -7,7 +7,6 @@ use std::{
         hash_map::Entry::{self},
         VecDeque,
     },
-    ops::Deref,
     sync::{atomic::AtomicBool, Arc},
 };
 
@@ -279,12 +278,11 @@ impl PruningProofManager {
         // PRUNE SAFETY: called either via consensus under the prune guard or by the pruning processor (hence no pruning in parallel)
 
         for anticone_block in anticone.iter().copied() {
-            let window = self
-                .window_manager
-                .block_window(&self.ghostdag_store.get_data(anticone_block).unwrap(), WindowType::FullDifficultyWindow)
-                .unwrap();
+            let ghostdag = self.ghostdag_store.get_data(anticone_block).unwrap();
+            let window = self.window_manager.block_window(&ghostdag, WindowType::DifficultyWindow).unwrap();
+            let cover = self.window_manager.consecutive_cover_for_window(ghostdag, &window);
 
-            for hash in window.deref().iter().map(|block| block.0.hash) {
+            for hash in cover {
                 if let Entry::Vacant(e) = daa_window_blocks.entry(hash) {
                     e.insert(TrustedHeader {
                         header: self.headers_store.get_header(hash).unwrap(),
