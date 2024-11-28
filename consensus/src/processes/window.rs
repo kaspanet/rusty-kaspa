@@ -81,7 +81,7 @@ impl<'a, U: BlockWindowCacheReader> AffiliatedWindowCache<'a, U> {
     }
 }
 
-impl<'a, U: BlockWindowCacheReader> AffiliatedWindowCacheReader for AffiliatedWindowCache<'a, U> {
+impl<U: BlockWindowCacheReader> AffiliatedWindowCacheReader for AffiliatedWindowCache<'_, U> {
     fn get(&self, hash: &Hash) -> Option<Arc<BlockWindowHeap>> {
         // Only return the cached window if it originates from the affiliated origin
         self.inner.and_then(|cache| cache.get(hash, self.origin))
