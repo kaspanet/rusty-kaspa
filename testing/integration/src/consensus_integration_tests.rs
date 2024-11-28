@@ -1367,7 +1367,7 @@ async fn difficulty_test() {
     fn full_window_bits(consensus: &TestConsensus, hash: Hash) -> u32 {
         let window_size = consensus.params().difficulty_window_size(0) * consensus.params().difficulty_sample_rate(0) as usize;
         let ghostdag_data = &consensus.ghostdag_store().get_data(hash).unwrap();
-        let window = consensus.window_manager().block_window(ghostdag_data, WindowType::FullDifficultyWindow).unwrap();
+        let window = consensus.window_manager().block_window(ghostdag_data, WindowType::VaryingWindow(window_size)).unwrap();
         assert_eq!(window.blocks.len(), window_size);
         let daa_window = consensus.window_manager().calc_daa_window(ghostdag_data, window);
         consensus.window_manager().calculate_difficulty_bits(ghostdag_data, &daa_window)
