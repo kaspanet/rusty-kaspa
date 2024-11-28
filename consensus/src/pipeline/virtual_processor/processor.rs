@@ -1210,6 +1210,15 @@ impl VirtualStateProcessor {
             true
         }
     }
+
+    /// Executes `op` within the thread pool associated with this processor.
+    pub fn install<OP, R>(&self, op: OP) -> R
+    where
+        OP: FnOnce() -> R + Send,
+        R: Send,
+    {
+        self.thread_pool.install(op)
+    }
 }
 
 enum MergesetIncreaseResult {
