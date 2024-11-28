@@ -28,6 +28,7 @@ impl TransactionValidator {
     ) -> TxResult<()> {
         self.header_contextual_tx_validation(
             tx,
+            ctx_daa_score,
             match Self::get_lock_time_type(tx) {
                 LockTimeType::Finalized => LockTimeArg::Finalized,
                 LockTimeType::DaaScore => LockTimeArg::DaaScore(ctx_daa_score),
@@ -36,7 +37,13 @@ impl TransactionValidator {
         )
     }
 
-    pub(crate) fn header_contextual_tx_validation(&self, tx: &Transaction, lock_time_arg: LockTimeArg) -> TxResult<()> {
+    pub(crate) fn header_contextual_tx_validation(
+        &self,
+        tx: &Transaction,
+        ctx_daa_score: u64,
+        lock_time_arg: LockTimeArg,
+    ) -> TxResult<()> {
+        self.check_transaction_payload(tx, ctx_daa_score)?;
         self.check_tx_is_finalized(tx, lock_time_arg)
     }
 
@@ -77,5 +84,16 @@ impl TransactionValidator {
         }
 
         Ok(())
+    }
+
+    fn check_transaction_payload(&self, tx: &Transaction, ctx_daa_score: u64) -> TxResult<()> {
+        if self.payload_activation.is_active(ctx_daa_score) {
+            Ok(())
+        } else {
+            if !tx.is_coinbase() && !tx.payload.is_empty() {
+                return Err(TxRuleError::NonCoinbaseTxHasPayload);
+            }
+            Ok(())
+        }
     }
 }
