@@ -7,7 +7,6 @@ use crate::{
 use kaspa_consensus_core::block::Block;
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
-use kaspa_utils::option::OptionExtensions;
 use std::sync::Arc;
 
 impl BlockBodyProcessor {
@@ -45,7 +44,7 @@ impl BlockBodyProcessor {
             .copied()
             .filter(|parent| {
                 let status_option = statuses_read_guard.get(*parent).unwrap_option();
-                status_option.is_none_or_ex(|s| !s.has_block_body())
+                status_option.is_none_or(|s| !s.has_block_body())
             })
             .collect();
         if !missing.is_empty() {

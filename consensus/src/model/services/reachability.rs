@@ -154,7 +154,6 @@ impl<T: ReachabilityStoreReader + ?Sized> MTReachabilityService<T> {
 /// a compromise where the lock is released every constant number of items.
 ///
 /// TODO: decide if these alternatives require overall system benchmarking
-
 struct BackwardChainIterator<T: ReachabilityStoreReader + ?Sized> {
     store: Arc<RwLock<T>>,
     current: Option<Hash>,
