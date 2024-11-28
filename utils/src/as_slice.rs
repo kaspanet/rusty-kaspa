@@ -16,7 +16,7 @@ pub trait AsMutSlice: AsSlice {
     fn as_mut_slice(&mut self) -> &mut [Self::Element];
 }
 
-impl<'a, S> AsSlice for &'a S
+impl<S> AsSlice for &S
 where
     S: ?Sized + AsSlice,
 {
@@ -27,7 +27,7 @@ where
     }
 }
 
-impl<'a, S> AsSlice for &'a mut S
+impl<S> AsSlice for &mut S
 where
     S: ?Sized + AsSlice,
 {
@@ -38,7 +38,7 @@ where
     }
 }
 
-impl<'a, S> AsMutSlice for &'a mut S
+impl<S> AsMutSlice for &mut S
 where
     S: ?Sized + AsMutSlice,
 {

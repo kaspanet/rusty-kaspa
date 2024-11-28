@@ -56,7 +56,7 @@ impl Bits for u8 {
     }
 }
 
-impl<'a> Bits for &'a u8 {
+impl Bits for &'_ u8 {
     const SIZE: usize = 8;
 
     fn bits(self) -> u32 {

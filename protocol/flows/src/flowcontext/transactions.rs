@@ -47,8 +47,7 @@ impl TransactionsSpread {
         // Keep the launching times aligned to exact intervals. Note that `delta=10.1` seconds will result in
         // adding 10 seconds to last scan time, while `delta=11` will result in adding 20 (assuming scanning
         // interval is 10 seconds).
-        self.last_scanning_time +=
-            Duration::from_secs(((delta.as_secs() + SCANNING_TASK_INTERVAL - 1) / SCANNING_TASK_INTERVAL) * SCANNING_TASK_INTERVAL);
+        self.last_scanning_time += Duration::from_secs(delta.as_secs().div_ceil(SCANNING_TASK_INTERVAL) * SCANNING_TASK_INTERVAL);
 
         self.scanning_job_count += 1;
         self.scanning_task_running = true;

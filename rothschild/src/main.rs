@@ -254,7 +254,7 @@ async fn main() {
                         (stats.utxos_amount / stats.num_utxos as u64),
                         stats.num_utxos / stats.num_txs,
                         stats.num_outs / stats.num_txs,
-                        if utxos_len > pending_len { utxos_len - pending_len } else { 0 },
+                        utxos_len.saturating_sub(pending_len),
                     );
                     stats.since = now;
                     stats.num_txs = 0;

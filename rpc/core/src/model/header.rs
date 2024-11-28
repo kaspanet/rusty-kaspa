@@ -8,7 +8,6 @@ use workflow_serializer::prelude::*;
 /// Used for mining APIs (get_block_template & submit_block)
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-
 pub struct RpcRawHeader {
     pub version: u16,
     pub parents_by_level: Vec<Vec<Hash>>,

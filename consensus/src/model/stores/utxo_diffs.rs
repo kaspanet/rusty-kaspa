@@ -14,7 +14,6 @@ use rocksdb::WriteBatch;
 /// blocks. However, once the diff is computed, it is permanent. This store has a relation to
 /// block status, such that if a block has status `StatusUTXOValid` then it is expected to have
 /// utxo diff data as well as utxo multiset data and acceptance data.
-
 pub trait UtxoDiffsStoreReader {
     fn get(&self, hash: Hash) -> Result<Arc<UtxoDiff>, StoreError>;
 }

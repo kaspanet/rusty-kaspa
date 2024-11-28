@@ -145,7 +145,7 @@ pub struct StagingRelationsStore<'a> {
     children_deletions: BlockHashMap<BlockHashSet>,
 }
 
-impl<'a> ChildrenStore for StagingRelationsStore<'a> {
+impl ChildrenStore for StagingRelationsStore<'_> {
     fn insert_child(&mut self, _writer: impl DbWriter, parent: Hash, child: Hash) -> Result<(), StoreError> {
         self.check_not_in_entry_deletions(parent)?;
         self.check_not_in_children_deletions(parent, child)?; // We expect deletion to be permanent

@@ -57,7 +57,7 @@ pub struct SingleWalletFileV1<'a, T: AsRef<[u8]>> {
     pub ecdsa: bool,
 }
 
-impl<'a, T: AsRef<[u8]>> SingleWalletFileV1<'a, T> {
+impl<T: AsRef<[u8]>> SingleWalletFileV1<'_, T> {
     const NUM_THREADS: u32 = 8;
 }
 
@@ -80,7 +80,7 @@ pub struct MultisigWalletFileV1<'a, T: AsRef<[u8]>> {
     pub ecdsa: bool,
 }
 
-impl<'a, T: AsRef<[u8]>> MultisigWalletFileV1<'a, T> {
+impl<T: AsRef<[u8]>> MultisigWalletFileV1<'_, T> {
     const NUM_THREADS: u32 = 8;
 }
 

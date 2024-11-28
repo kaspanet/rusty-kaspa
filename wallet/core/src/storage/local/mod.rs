@@ -37,21 +37,30 @@ pub fn default_storage_folder() -> &'static str {
     // SAFETY: This operation is initializing a static mut variable,
     // however, the actual variable is accessible only through
     // this function.
-    unsafe { DEFAULT_STORAGE_FOLDER.get_or_insert("~/.kaspa".to_string()).as_str() }
+    #[allow(static_mut_refs)]
+    unsafe {
+        DEFAULT_STORAGE_FOLDER.get_or_insert("~/.kaspa".to_string()).as_str()
+    }
 }
 
 pub fn default_wallet_file() -> &'static str {
     // SAFETY: This operation is initializing a static mut variable,
     // however, the actual variable is accessible only through
     // this function.
-    unsafe { DEFAULT_WALLET_FILE.get_or_insert("kaspa".to_string()).as_str() }
+    #[allow(static_mut_refs)]
+    unsafe {
+        DEFAULT_WALLET_FILE.get_or_insert("kaspa".to_string()).as_str()
+    }
 }
 
 pub fn default_settings_file() -> &'static str {
     // SAFETY: This operation is initializing a static mut variable,
     // however, the actual variable is accessible only through
     // this function.
-    unsafe { DEFAULT_SETTINGS_FILE.get_or_insert("kaspa".to_string()).as_str() }
+    #[allow(static_mut_refs)]
+    unsafe {
+        DEFAULT_SETTINGS_FILE.get_or_insert("kaspa".to_string()).as_str()
+    }
 }
 
 /// Set a custom storage folder for the wallet SDK

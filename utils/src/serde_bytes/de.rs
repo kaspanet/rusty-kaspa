@@ -29,7 +29,7 @@ pub struct FromHexVisitor<'de, T: FromHex> {
     lifetime: std::marker::PhantomData<&'de ()>,
 }
 
-impl<'de, T: FromHex> Default for FromHexVisitor<'de, T> {
+impl<T: FromHex> Default for FromHexVisitor<'_, T> {
     fn default() -> Self {
         Self { marker: Default::default(), lifetime: Default::default() }
     }
