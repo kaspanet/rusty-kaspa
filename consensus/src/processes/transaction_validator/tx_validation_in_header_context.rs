@@ -1,11 +1,13 @@
-use kaspa_consensus_core::tx::Transaction;
-
-use crate::constants::LOCK_TIME_THRESHOLD;
+//! Groups transaction validations that depend on the containing header and/or
+//! its past headers (but do not depend on UTXO state or other transactions in
+//! the containing block)
 
 use super::{
     errors::{TxResult, TxRuleError},
     TransactionValidator,
 };
+use crate::constants::LOCK_TIME_THRESHOLD;
+use kaspa_consensus_core::tx::Transaction;
 
 pub(crate) enum LockTimeType {
     Finalized,
@@ -20,13 +22,13 @@ pub(crate) enum LockTimeArg {
 }
 
 impl TransactionValidator {
-    pub(crate) fn header_contextual_tx_validation_with_args(
+    pub(crate) fn validate_tx_in_header_context_with_args(
         &self,
         tx: &Transaction,
         ctx_daa_score: u64,
         ctx_block_time: u64,
     ) -> TxResult<()> {
-        self.header_contextual_tx_validation(
+        self.validate_tx_in_header_context(
             tx,
             ctx_daa_score,
             match Self::get_lock_time_type(tx) {
@@ -37,7 +39,7 @@ impl TransactionValidator {
         )
     }
 
-    pub(crate) fn header_contextual_tx_validation(
+    pub(crate) fn validate_tx_in_header_context(
         &self,
         tx: &Transaction,
         ctx_daa_score: u64,
@@ -87,6 +89,7 @@ impl TransactionValidator {
     }
 
     fn check_transaction_payload(&self, tx: &Transaction, ctx_daa_score: u64) -> TxResult<()> {
+        // TODO (post HF): move back to in isolation validation
         if self.payload_activation.is_active(ctx_daa_score) {
             Ok(())
         } else {

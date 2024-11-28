@@ -807,7 +807,7 @@ impl VirtualStateProcessor {
         args: &TransactionValidationArgs,
     ) -> TxResult<()> {
         self.transaction_validator.validate_tx_in_isolation(&mutable_tx.tx)?;
-        self.transaction_validator.header_contextual_tx_validation_with_args(
+        self.transaction_validator.validate_tx_in_header_context_with_args(
             &mutable_tx.tx,
             virtual_daa_score,
             virtual_past_median_time,
@@ -900,7 +900,7 @@ impl VirtualStateProcessor {
         // No need to validate the transaction in isolation since we rely on the mining manager to submit transactions
         // which were previously validated through `validate_mempool_transaction_and_populate`, hence we only perform
         // in-context validations
-        self.transaction_validator.header_contextual_tx_validation_with_args(
+        self.transaction_validator.validate_tx_in_header_context_with_args(
             tx,
             virtual_state.daa_score,
             virtual_state.past_median_time,
