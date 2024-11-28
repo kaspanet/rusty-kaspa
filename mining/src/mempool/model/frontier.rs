@@ -74,7 +74,7 @@ impl Frontier {
             self.total_mass += mass;
             // A decaying average formula. Denote ɛ = 1 - AVG_MASS_DECAY_FACTOR. A transaction inserted N slots ago has
             // ɛ * (1 - ɛ)^N weight within the updated average. This gives some weight to the full mempool history while
-            // giving growing importance to more recent samples.
+            // giving higher importance to more recent samples.
             self.average_transaction_mass =
                 self.average_transaction_mass * AVG_MASS_DECAY_FACTOR + mass as f64 * (1.0 - AVG_MASS_DECAY_FACTOR);
             true
