@@ -197,7 +197,7 @@ impl UtxoProcessor {
 
 impl TryCastFromJs for UtxoProcessor {
     type Error = workflow_wasm::error::Error;
-    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
     where
         R: AsRef<JsValue> + 'a,
     {
