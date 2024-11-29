@@ -16,7 +16,7 @@ use crate::{
         stores::{
             acceptance_data::{AcceptanceDataStoreReader, DbAcceptanceDataStore},
             block_transactions::{BlockTransactionsStoreReader, DbBlockTransactionsStore},
-            block_window_cache::BlockWindowCacheStore,
+            block_window_cache::{BlockWindowCacheStore, BlockWindowCacheWriter},
             daa::DbDaaStore,
             depth::{DbDepthStore, DepthStoreReader},
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
@@ -43,7 +43,7 @@ use crate::{
     processes::{
         coinbase::CoinbaseManager,
         ghostdag::ordering::SortableBlock,
-        transaction_validator::{errors::TxResult, transaction_validator_populated::TxValidationFlags, TransactionValidator},
+        transaction_validator::{errors::TxResult, tx_validation_in_utxo_context::TxValidationFlags, TransactionValidator},
         window::WindowManager,
     },
 };
@@ -809,7 +809,11 @@ impl VirtualStateProcessor {
         args: &TransactionValidationArgs,
     ) -> TxResult<()> {
         self.transaction_validator.validate_tx_in_isolation(&mutable_tx.tx)?;
-        self.transaction_validator.utxo_free_tx_validation(&mutable_tx.tx, virtual_daa_score, virtual_past_median_time)?;
+        self.transaction_validator.validate_tx_in_header_context_with_args(
+            &mutable_tx.tx,
+            virtual_daa_score,
+            virtual_past_median_time,
+        )?;
         self.validate_mempool_transaction_in_utxo_context(mutable_tx, virtual_utxo_view, virtual_daa_score, args)?;
         Ok(())
     }
@@ -898,7 +902,11 @@ impl VirtualStateProcessor {
         // No need to validate the transaction in isolation since we rely on the mining manager to submit transactions
         // which were previously validated through `validate_mempool_transaction_and_populate`, hence we only perform
         // in-context validations
-        self.transaction_validator.utxo_free_tx_validation(tx, virtual_state.daa_score, virtual_state.past_median_time)?;
+        self.transaction_validator.validate_tx_in_header_context_with_args(
+            tx,
+            virtual_state.daa_score,
+            virtual_state.past_median_time,
+        )?;
         // Temp TN11 HF logic:
         //      Switching from kip9 alpha to beta requires making sure that mass is calculated by the actual virtual DAA score of this block template
         if self.storage_mass_activation.is_active(virtual_state.daa_score) {
@@ -1232,6 +1240,15 @@ impl VirtualStateProcessor {
             // (normally at least genesis should be known).
             true
         }
+    }
+
+    /// Executes `op` within the thread pool associated with this processor.
+    pub fn install<OP, R>(&self, op: OP) -> R
+    where
+        OP: FnOnce() -> R + Send,
+        R: Send,
+    {
+        self.thread_pool.install(op)
     }
 }
 
