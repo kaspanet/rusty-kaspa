@@ -2,7 +2,6 @@ use crate::imports::*;
 use crate::tx::generator as native;
 use kaspa_consensus_client::Transaction;
 use kaspa_consensus_core::hashing::wasm::SighashType;
-use kaspa_python_macros::py_async;
 use kaspa_wallet_keys::privatekey::PrivateKey;
 use kaspa_wrpc_python::client::RpcClient;
 
@@ -117,14 +116,14 @@ impl PendingTransaction {
         Ok(())
     }
 
-    fn submit(&self, py: Python, rpc_client: &RpcClient) -> PyResult<Py<PyAny>> {
+    fn submit<'py>(&self, py: Python<'py>, rpc_client: &RpcClient) -> PyResult<Bound<'py, PyAny>> {
         let inner = self.inner.clone();
         let rpc: Arc<DynRpcApi> = rpc_client.client().clone();
 
-        py_async! {py, async move {
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let txid = inner.try_submit(&rpc).await?;
             Ok(txid.to_string())
-        }}
+        })
     }
 
     #[getter]

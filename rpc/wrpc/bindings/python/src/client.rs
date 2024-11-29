@@ -6,7 +6,6 @@ use kaspa_notify::listener::ListenerId;
 use kaspa_notify::notification::Notification;
 use kaspa_notify::scope::{Scope, UtxosChangedScope, VirtualChainChangedScope, VirtualDaaScoreChangedScope};
 use kaspa_notify::{connection::ChannelType, events::EventType};
-use kaspa_python_macros::py_async;
 use kaspa_rpc_core::api::rpc::RpcApi;
 use kaspa_rpc_core::model::*;
 use kaspa_rpc_core::notify::connection::ChannelConnection;
@@ -141,19 +140,26 @@ impl RpcClient {
         url: Option<String>,
         encoding: Option<WrpcEncoding>,
         network_id: Option<NetworkId>,
-    ) -> Result<RpcClient> {
-        let client = Arc::new(KaspaRpcClient::new(
-            encoding.unwrap_or(Encoding::Borsh),
-            url.as_deref(),
-            Some(resolver.as_ref().unwrap().clone().into()),
-            network_id,
-            None,
-        )?);
+    ) -> PyResult<RpcClient> {
+        let encoding = encoding.unwrap_or(Encoding::Borsh);
+        let url = url
+            .map(
+                |url| {
+                    if let Some(network_id) = network_id {
+                        Self::parse_url(&url, encoding, network_id)
+                    } else {
+                        Ok(url.to_string())
+                    }
+                },
+            )
+            .transpose()?;
+
+        let client = Arc::new(KaspaRpcClient::new(encoding, url.as_deref(), resolver.clone().map(Into::into), network_id, None)?);
 
         let rpc_client = RpcClient {
             inner: Arc::new(Inner {
                 client,
-                resolver,
+                resolver: resolver.map(Into::into),
                 notification_task: Arc::new(AtomicBool::new(false)),
                 notification_ctl: DuplexChannel::oneshot(),
                 callbacks: Arc::new(Default::default()),
@@ -221,15 +227,15 @@ impl RpcClient {
     }
 
     #[pyo3(signature = (block_async_connect=None, strategy=None, url=None, timeout_duration=None, retry_interval=None))]
-    pub fn connect(
+    pub fn connect<'py>(
         &self,
-        py: Python,
+        py: Python<'py>,
         block_async_connect: Option<bool>,
         strategy: Option<String>,
         url: Option<String>,
         timeout_duration: Option<u64>,
         retry_interval: Option<u64>,
-    ) -> PyResult<Py<PyAny>> {
+    ) -> PyResult<Bound<'py, PyAny>> {
         let block_async_connect = block_async_connect.unwrap_or(true);
         let strategy = match strategy {
             Some(strategy) => ConnectStrategy::from_str(&strategy).map_err(|err| PyException::new_err(format!("{}", err)))?,
@@ -243,29 +249,29 @@ impl RpcClient {
         self.start_notification_task(py)?;
 
         let client = self.inner.client.clone();
-        py_async! {py, async move {
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
             let _ = client.connect(Some(options)).await.map_err(|e| PyException::new_err(e.to_string()));
             Ok(())
-        }}
+        })
     }
 
-    fn disconnect(&self, py: Python) -> PyResult<Py<PyAny>> {
+    fn disconnect<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let client = self.clone();
 
-        py_async! {py, async move {
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
             client.inner.client.disconnect().await?;
             client.stop_notification_task().await?;
             Ok(())
-        }}
+        })
     }
 
-    fn start(&self, py: Python) -> PyResult<Py<PyAny>> {
+    fn start<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         self.start_notification_task(py)?;
         let inner = self.inner.clone();
-        py_async! {py, async move {
+        pyo3_async_runtimes::tokio::future_into_py(py, async move {
             inner.client.start().await?;
             Ok(())
-        }}
+        })
     }
 
     // fn stop() PY-TODO
@@ -335,11 +341,17 @@ impl RpcClient {
 
     // fn clear_event_listener PY-TODO
     // fn default_port PY-TODO
-    // fn parse_url PY-TODO
 
     fn remove_all_event_listeners(&self) -> PyResult<()> {
         *self.inner.callbacks.lock().unwrap() = Default::default();
         Ok(())
+    }
+}
+
+impl RpcClient {
+    pub fn parse_url(url: &str, encoding: Encoding, network_id: NetworkId) -> PyResult<String> {
+        let url_ = KaspaRpcClient::parse_url(url.to_string(), encoding, network_id.into())?;
+        Ok(url_)
     }
 }
 
@@ -482,49 +494,67 @@ impl RpcClient {
 
 #[pymethods]
 impl RpcClient {
-    fn subscribe_utxos_changed(&self, py: Python, addresses: Vec<Address>) -> PyResult<Py<PyAny>> {
+    fn subscribe_utxos_changed<'py>(&self, py: Python<'py>, addresses: Vec<Address>) -> PyResult<Bound<'py, PyAny>> {
         if let Some(listener_id) = self.listener_id() {
             let client = self.inner.client.clone();
-            py_async! {py, async move {
+            pyo3_async_runtimes::tokio::future_into_py(py, async move {
                 client.start_notify(listener_id, Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
                 Ok(())
-            }}
+            })
         } else {
             Err(PyException::new_err("RPC subscribe on a closed connection"))
         }
     }
 
-    fn unsubscribe_utxos_changed(&self, py: Python, addresses: Vec<Address>) -> PyResult<Py<PyAny>> {
+    fn unsubscribe_utxos_changed<'py>(&self, py: Python<'py>, addresses: Vec<Address>) -> PyResult<Bound<'py, PyAny>> {
         if let Some(listener_id) = self.listener_id() {
             let client = self.inner.client.clone();
-            py_async! {py, async move {
+            pyo3_async_runtimes::tokio::future_into_py(py, async move {
                 client.stop_notify(listener_id, Scope::UtxosChanged(UtxosChangedScope { addresses })).await?;
                 Ok(())
-            }}
+            })
         } else {
             Err(PyException::new_err("RPC unsubscribe on a closed connection"))
         }
     }
 
-    fn subscribe_virtual_chain_changed(&self, py: Python, include_accepted_transaction_ids: bool) -> PyResult<Py<PyAny>> {
+    fn subscribe_virtual_chain_changed<'py>(
+        &self,
+        py: Python<'py>,
+        include_accepted_transaction_ids: bool,
+    ) -> PyResult<Bound<'py, PyAny>> {
         if let Some(listener_id) = self.listener_id() {
             let client = self.inner.client.clone();
-            py_async! {py, async move {
-                client.start_notify(listener_id, Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids })).await?;
+            pyo3_async_runtimes::tokio::future_into_py(py, async move {
+                client
+                    .start_notify(
+                        listener_id,
+                        Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids }),
+                    )
+                    .await?;
                 Ok(())
-            }}
+            })
         } else {
             Err(PyException::new_err("RPC subscribe on a closed connection"))
         }
     }
 
-    fn unsubscribe_virtual_chain_changed(&self, py: Python, include_accepted_transaction_ids: bool) -> PyResult<Py<PyAny>> {
+    fn unsubscribe_virtual_chain_changed<'py>(
+        &self,
+        py: Python<'py>,
+        include_accepted_transaction_ids: bool,
+    ) -> PyResult<Bound<'py, PyAny>> {
         if let Some(listener_id) = self.listener_id() {
             let client = self.inner.client.clone();
-            py_async! {py, async move {
-                client.stop_notify(listener_id, Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids })).await?;
+            pyo3_async_runtimes::tokio::future_into_py(py, async move {
+                client
+                    .stop_notify(
+                        listener_id,
+                        Scope::VirtualChainChanged(VirtualChainChangedScope { include_accepted_transaction_ids }),
+                    )
+                    .await?;
                 Ok(())
-            }}
+            })
         } else {
             Err(PyException::new_err("RPC unsubscribe on a closed connection"))
         }

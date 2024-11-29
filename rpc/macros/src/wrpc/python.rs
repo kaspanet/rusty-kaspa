@@ -155,25 +155,25 @@ impl ToTokens for RpcSubscriptions {
             targets.push(quote! {
                 #[pymethods]
                 impl RpcClient {
-                    fn #fn_subscribe_snake(&self, py: Python) -> PyResult<Py<PyAny>> {
+                    fn #fn_subscribe_snake<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
                         if let Some(listener_id) = self.listener_id() {
                             let client = self.inner.client.clone();
-                            py_async! {py, async move {
+                            pyo3_async_runtimes::tokio::future_into_py(py, async move {
                                 client.start_notify(listener_id, Scope::#scope(#sub_scope {})).await?;
                                 Ok(())
-                            }}
+                            })
                         } else {
                             Err(PyErr::new::<PyException, _>("RPC subscribe on a closed connection"))
                         }
                     }
 
-                    fn #fn_unsubscribe_snake(&self, py: Python) -> PyResult<Py<PyAny>> {
+                    fn #fn_unsubscribe_snake<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
                         if let Some(listener_id) = self.listener_id() {
                             let client = self.inner.client.clone();
-                            py_async! {py, async move {
+                            pyo3_async_runtimes::tokio::future_into_py(py, async move {
                                 client.stop_notify(listener_id, Scope::#scope(#sub_scope {})).await?;
                                 Ok(())
-                            }}
+                            })
                         } else {
                             Err(PyErr::new::<PyException, _>("RPC unsubscribe on a closed connection"))
                         }
