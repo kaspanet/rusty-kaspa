@@ -50,14 +50,13 @@ impl AsyncRuntime {
     }
 
     /// Launch a tokio Runtime and run the top-level async objects
-
     pub fn worker(self: &Arc<AsyncRuntime>, core: Arc<Core>) {
-        return tokio::runtime::Builder::new_multi_thread()
+        tokio::runtime::Builder::new_multi_thread()
             .worker_threads(self.threads)
             .enable_all()
             .build()
             .expect("Failed building the Runtime")
-            .block_on(async { self.worker_impl(core).await });
+            .block_on(async { self.worker_impl(core).await })
     }
 
     pub async fn worker_impl(self: &Arc<AsyncRuntime>, core: Arc<Core>) {

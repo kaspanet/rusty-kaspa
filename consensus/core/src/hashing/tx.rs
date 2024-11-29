@@ -157,6 +157,13 @@ mod tests {
             expected_hash: "31da267d5c34f0740c77b8c9ebde0845a01179ec68074578227b804bac306361",
         });
 
+        // Test #8, same as 7 but with a non-zero payload. The test checks id and hash are affected by payload change
+        tests.push(Test {
+            tx: Transaction::new(2, inputs.clone(), outputs.clone(), 54, subnets::SUBNETWORK_ID_REGISTRY, 3, vec![1, 2, 3]),
+            expected_id: "1f18b18ab004ff1b44dd915554b486d64d7ebc02c054e867cc44e3d746e80b3b",
+            expected_hash: "a2029ebd66d29d41aa7b0c40230c1bfa7fe8e026fb44b7815dda4e991b9a5fad",
+        });
+
         for (i, test) in tests.iter().enumerate() {
             assert_eq!(test.tx.id(), Hash::from_str(test.expected_id).unwrap(), "transaction id failed for test {}", i + 1);
             assert_eq!(

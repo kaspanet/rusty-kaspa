@@ -247,23 +247,18 @@ mod tests {
     use secp256k1::Secp256k1;
     use secp256k1::{rand::thread_rng, Keypair};
     use std::str::FromStr;
-    use std::sync::Once;
+    use std::sync::LazyLock;
 
-    static INIT: Once = Once::new();
-    static mut CONTEXT: Option<Box<([Keypair; 2], Vec<u8>)>> = None;
+    static CONTEXT: LazyLock<Box<([Keypair; 2], Vec<u8>)>> = LazyLock::new(|| {
+        let kps = [Keypair::new(&Secp256k1::new(), &mut thread_rng()), Keypair::new(&Secp256k1::new(), &mut thread_rng())];
+        let redeem_script: Vec<u8> =
+            multisig_redeem_script(kps.iter().map(|pk| pk.x_only_public_key().0.serialize()), 2).expect("Test multisig redeem script");
+
+        Box::new((kps, redeem_script))
+    });
 
     fn mock_context() -> &'static ([Keypair; 2], Vec<u8>) {
-        unsafe {
-            INIT.call_once(|| {
-                let kps = [Keypair::new(&Secp256k1::new(), &mut thread_rng()), Keypair::new(&Secp256k1::new(), &mut thread_rng())];
-                let redeem_script: Vec<u8> = multisig_redeem_script(kps.iter().map(|pk| pk.x_only_public_key().0.serialize()), 2)
-                    .expect("Test multisig redeem script");
-
-                CONTEXT = Some(Box::new((kps, redeem_script)));
-            });
-
-            CONTEXT.as_ref().unwrap()
-        }
+        CONTEXT.as_ref()
     }
 
     // Mock multisig PSKT from example

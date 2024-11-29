@@ -1,13 +1,18 @@
 use super::BlockBodyProcessor;
 use crate::{
     errors::{BlockProcessResult, RuleError},
-    model::stores::{ghostdag::GhostdagStoreReader, statuses::StatusesStoreReader},
-    processes::window::WindowManager,
+    model::stores::statuses::StatusesStoreReader,
+    processes::{
+        transaction_validator::{
+            tx_validation_in_header_context::{LockTimeArg, LockTimeType},
+            TransactionValidator,
+        },
+        window::WindowManager,
+    },
 };
 use kaspa_consensus_core::block::Block;
 use kaspa_database::prelude::StoreResultExtensions;
 use kaspa_hashes::Hash;
-use kaspa_utils::option::OptionExtensions;
 use once_cell::unsync::Lazy;
 use std::sync::Arc;
 
@@ -19,29 +24,18 @@ impl BlockBodyProcessor {
     }
 
     fn check_block_transactions_in_context(self: &Arc<Self>, block: &Block) -> BlockProcessResult<()> {
-        // Note: This is somewhat expensive during ibd, as it incurs cache misses.
-
         // Use lazy evaluation to avoid unnecessary work, as most of the time we expect the txs not to have lock time.
-        let lazy_pmt_res =
-            Lazy::new(|| match self.window_manager.calc_past_median_time(&self.ghostdag_store.get_data(block.hash()).unwrap()) {
-                Ok((pmt, pmt_window)) => {
-                    if !self.block_window_cache_for_past_median_time.contains_key(&block.hash()) {
-                        self.block_window_cache_for_past_median_time.insert(block.hash(), pmt_window);
-                    };
-                    Ok(pmt)
-                }
-                Err(e) => Err(e),
-            });
+        let lazy_pmt_res = Lazy::new(|| self.window_manager.calc_past_median_time_for_known_hash(block.hash()));
 
         for tx in block.transactions.iter() {
-            // Quick check to avoid the expensive Lazy eval during ibd (in most cases).
-            // TODO: refactor this and avoid classifying the tx lock outside of the transaction validator.
-            if tx.lock_time != 0 {
-                if let Err(e) =
-                    self.transaction_validator.utxo_free_tx_validation(tx, block.header.daa_score, (*lazy_pmt_res).clone()?)
-                {
-                    return Err(RuleError::TxInContextFailed(tx.id(), e));
-                };
+            let lock_time_arg = match TransactionValidator::get_lock_time_type(tx) {
+                LockTimeType::Finalized => LockTimeArg::Finalized,
+                LockTimeType::DaaScore => LockTimeArg::DaaScore(block.header.daa_score),
+                // We only evaluate the pmt calculation when actually needed
+                LockTimeType::Time => LockTimeArg::MedianTime((*lazy_pmt_res).clone()?),
+            };
+            if let Err(e) = self.transaction_validator.validate_tx_in_header_context(tx, block.header.daa_score, lock_time_arg) {
+                return Err(RuleError::TxInContextFailed(tx.id(), e));
             };
         }
         Ok(())
@@ -56,7 +50,7 @@ impl BlockBodyProcessor {
             .copied()
             .filter(|parent| {
                 let status_option = statuses_read_guard.get(*parent).unwrap_option();
-                status_option.is_none_or_ex(|s| !s.has_block_body())
+                status_option.is_none_or(|s| !s.has_block_body())
             })
             .collect();
         if !missing.is_empty() {
