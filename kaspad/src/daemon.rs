@@ -618,13 +618,12 @@ do you confirm? (answer y/n or pass --yes to the Kaspad command line to confirm 
         listen_address.map(|listen_address| {
             Arc::new(WrpcService::new(
                 wrpc_service_tasks,
-                Some(rpc_core_service.clone()),
+                rpc_core_service.clone(),
                 &encoding,
                 wrpc_server_counters,
                 WrpcServerOptions {
                     listen_address: listen_address.to_address(&network.network_type, &encoding).to_string(), // TODO: use a normalized ContextualNetAddress instead of a String
                     verbose: args.wrpc_verbose,
-                    ..WrpcServerOptions::default()
                 },
             ))
         })

@@ -54,7 +54,7 @@ impl ToTokens for RpcTable {
                         let verbose = server_ctx.verbose();
                         if verbose { workflow_log::log_info!("request: {:?}",request); }
                         // TODO: RPC-CONNECT
-                        let response: #response_type = server_ctx.rpc_service(&connection_ctx).#fn_call(None, request.into_inner()).await
+                        let response: #response_type = server_ctx.rpc_service().#fn_call(None, request.into_inner()).await
                             .map_err(|e|ServerError::Text(e.to_string()))?;
                         if verbose { workflow_log::log_info!("response: {:?}",response); }
                         Ok(Serializable(response))
