@@ -182,7 +182,7 @@ pub fn sig_op_counts_hash(tx: &Transaction, hash_type: SigHashType, reused_value
 }
 
 pub fn payload_hash(tx: &Transaction, reused_values: &impl SigHashReusedValues) -> Hash {
-    if tx.subnetwork_id.is_native() && tx.payload.is_empty() {
+    if tx.payload.is_empty() {
         return ZERO_HASH;
     }
 
