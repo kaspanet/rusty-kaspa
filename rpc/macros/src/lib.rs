@@ -1,5 +1,6 @@
 use proc_macro::TokenStream;
 use proc_macro_error::proc_macro_error;
+mod core;
 mod grpc;
 mod handler;
 mod wrpc;
@@ -44,4 +45,9 @@ pub fn build_grpc_server_interface(input: TokenStream) -> TokenStream {
 #[proc_macro_error]
 pub fn test_wrpc_serializer(input: TokenStream) -> TokenStream {
     wrpc::test::build_test(input)
+}
+
+#[proc_macro_attribute]
+pub fn auth(attr: TokenStream, item: TokenStream) -> TokenStream {
+    core::service::auth(attr, item)
 }
