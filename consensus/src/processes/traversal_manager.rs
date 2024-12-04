@@ -158,11 +158,6 @@ impl<T: GhostdagStoreReader, U: ReachabilityStoreReader, V: RelationsStoreReader
 
         current
     }
-    /* I am forced to work with references and lifetimes because I can't clone
-    reachability_service and relations_store,
-    I'm pretty sure this can have significant limitations,
-     So someone with more knowledge is encouraged to help out in whatever the required refactoring is */
-
     /* returns all blocks on route on the bfs path from this to descendant
      */
     pub fn forward_bfs_paths_iterator(&self, this: Hash, descendant: Hash) -> BlocksBfsPathsIterator<'_, U, V> {
