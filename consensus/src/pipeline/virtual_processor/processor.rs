@@ -409,8 +409,11 @@ impl VirtualStateProcessor {
         for (selected_parent, current) in self.reachability_service.forward_chain_iterator(split_point, to, true).tuple_windows() {
             if selected_parent != diff_point {
                 // This indicates that the selected parent is disqualified, propagate up and continue
-                self.statuses_store.write().set(current, StatusDisqualifiedFromChain).unwrap();
-                chain_disqualified_counter += 1;
+                let statuses_guard = self.statuses_store.upgradable_read();
+                if statuses_guard.get(current).unwrap() != StatusDisqualifiedFromChain {
+                    RwLockUpgradableReadGuard::upgrade(statuses_guard).set(current, StatusDisqualifiedFromChain).unwrap();
+                    chain_disqualified_counter += 1;
+                }
                 continue;
             }
 
