@@ -1,7 +1,6 @@
 use crate::constants::{MAX_SOMPI, SEQUENCE_LOCK_TIME_DISABLED, SEQUENCE_LOCK_TIME_MASK};
 use kaspa_consensus_core::{
     hashing::sighash::{SigHashReusedValuesSync, SigHashReusedValuesUnsync},
-    mass::Kip9Version,
     tx::{TransactionInput, VerifiableTransaction},
 };
 use kaspa_core::warn;
@@ -46,7 +45,7 @@ impl TransactionValidator {
         let fee = total_in - total_out;
         if flags != TxValidationFlags::SkipMassCheck && self.storage_mass_activation.is_active(pov_daa_score) {
             // Storage mass hardfork was activated
-            self.check_mass_commitment(tx, pov_daa_score)?;
+            self.check_mass_commitment(tx)?;
 
             if self.storage_mass_activation.is_within_range_from_activation(pov_daa_score, 10) {
                 warn!("--------- Storage mass hardfork was activated successfully!!! --------- (DAA score: {})", pov_daa_score);
@@ -125,11 +124,8 @@ impl TransactionValidator {
         Ok(total_out)
     }
 
-    fn check_mass_commitment(&self, tx: &impl VerifiableTransaction, pov_daa_score: u64) -> TxResult<()> {
-        // HF to use the beta version in consensus if KIP10 is activated
-        let kip9_version = if self.kip10_activation.is_active(pov_daa_score) { Kip9Version::Beta } else { Kip9Version::Alpha };
-        let calculated_contextual_mass =
-            self.mass_calculator.calc_tx_overall_mass(tx, None, kip9_version).ok_or(TxRuleError::MassIncomputable)?;
+    fn check_mass_commitment(&self, tx: &impl VerifiableTransaction) -> TxResult<()> {
+        let calculated_contextual_mass = self.mass_calculator.calc_tx_overall_mass(tx, None).ok_or(TxRuleError::MassIncomputable)?;
         let committed_contextual_mass = tx.tx().mass();
         if committed_contextual_mass != calculated_contextual_mass {
             return Err(TxRuleError::WrongMass(calculated_contextual_mass, committed_contextual_mass));
