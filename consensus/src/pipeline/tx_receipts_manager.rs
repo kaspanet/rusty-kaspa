@@ -50,6 +50,8 @@ pub struct TxReceiptsManager<
     pub pruning_point_store: Arc<RwLock<Y>>,
 
     pub storage_mass_activation: ForkActivation,
+    pub kip6_activation: ForkActivation,
+
     pub traversal_manager: DbDagTraversalManager,
 }
 
@@ -76,6 +78,7 @@ impl<
 
         hash_to_pchmr_store: Arc<DbPchmrStore>,
         storage_mass_activation: ForkActivation,
+        kip6_activation: ForkActivation,
     ) -> Self {
         Self {
             genesis: genesis.clone(),
@@ -85,6 +88,7 @@ impl<
             acceptance_data_store: acceptance_data_store.clone(),
             reachability_service,
             storage_mass_activation,
+            kip6_activation,
             hash_to_pchmr_store: hash_to_pchmr_store.clone(),
             block_transactions_store: block_transactions_store.clone(),
             pruning_point_store: pruning_point_store.clone(),
@@ -152,7 +156,7 @@ impl<
     /*Assumes: chain_purporter is on the selected chain,
     if not returns error   */
     pub fn create_pochm_proof(&self, chain_purporter_hdr: Arc<Header>) -> Result<Pochm, ReceiptsErrors> {
-        if self.storage_mass_activation.is_active(chain_purporter_hdr.daa_score) {
+        if self.kip6_activation.is_active(chain_purporter_hdr.daa_score) {
             Ok(Pochm::LogPath(self.create_log_path_pochm_proof(chain_purporter_hdr.hash)?))
         } else {
             Ok(Pochm::Legacy(self.create_legacy_pochm_proof(chain_purporter_hdr.hash)?))

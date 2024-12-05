@@ -32,7 +32,7 @@ async fn test_receipts_in_chain() {
             p.finality_depth = FINALITY_DEPTH as u64;
             p.target_time_per_block = (1000.0 / BPS) as u64;
             p.pruning_depth = (FINALITY_DEPTH * 3) as u64;
-            p.storage_mass_activation = ForkActivation::new(20);
+            p.kip6_activation = ForkActivation::new(20);
         })
         .build();
     let mut expected_posterities = vec![];
@@ -189,7 +189,7 @@ async fn test_receipts_in_random() {
             p.mergeset_size_limit = 30;
             p.finality_depth = FINALITY_DEPTH as u64;
             p.pruning_depth = (FINALITY_DEPTH * 3) as u64;
-            p.storage_mass_activation = ForkActivation::new(50);
+            p.kip6_activation = ForkActivation::new(50);
         })
         .build();
     let mut receipts1 = std::collections::HashMap::<_, _>::new();
