@@ -144,17 +144,14 @@ impl TestConsensus {
     /// See `kaspa_consensus_core::errors::block::RuleError` for the complete list of possible validation rules.
     pub fn add_utxo_valid_block_with_parents(
         &self,
+        hash: Hash,
         parents: Vec<Hash>,
         txs: Vec<Transaction>,
-        nonce: u64,
-    ) -> impl Future<Output = (BlockProcessResult<BlockStatus>, Hash)> {
+    ) -> impl Future<Output = BlockProcessResult<BlockStatus>> {
         let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
-        let block = self.build_utxo_valid_block_with_parents(parents, miner_data, txs, nonce).to_immutable();
-        let hash = block.hash();
-        let fut = self.validate_and_insert_block(block).virtual_state_task;
-        async move { (fut.await, hash) }
+        self.validate_and_insert_block(self.build_utxo_valid_block_with_parents(hash, parents, miner_data, txs).to_immutable())
+            .virtual_state_task
     }
-
     /// Builds a valid block with the given transactions, parents, and miner data.
     ///
     /// # Panics
@@ -163,14 +160,13 @@ impl TestConsensus {
     /// See `kaspa_consensus_core::errors::block::RuleError` for the complete list of possible validation rules.
     pub fn build_utxo_valid_block_with_parents(
         &self,
+        hash: Hash,
         parents: Vec<Hash>,
         miner_data: MinerData,
         txs: Vec<Transaction>,
-        nonce: u64,
     ) -> MutableBlock {
         let mut template = self.block_builder.build_block_template_with_parents(parents, miner_data, txs).unwrap();
-        template.block.header.nonce = nonce;
-        template.block.header.finalize();
+        template.block.header.hash = hash;
         template.block
     }
 

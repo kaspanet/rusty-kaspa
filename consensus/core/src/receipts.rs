@@ -27,7 +27,7 @@ impl LegacyPochm {
     }
     pub fn verify_path(&self, chain_purporter: Hash) -> bool {
         //verify top consistency and availability
-        if !self.bfs_map.get(&self.top).is_some_and(|hdr| hdr.hash == self.top) {
+        if self.bfs_map.get(&self.top).is_none_or(|hdr| hdr.hash != self.top) {
             return false;
         }
         let mut next_chain_blk = self.top;
@@ -37,7 +37,7 @@ impl LegacyPochm {
             }
             //verify parents consistency and availability
             for &par in self.bfs_map.get(&next_chain_blk).unwrap().parents_by_level[0].iter() {
-                if !self.bfs_map.get(&par).is_some_and(|hdr| hdr.hash == par) {
+                if self.bfs_map.get(&par).is_none_or(|hdr| hdr.hash != par) {
                     return false;
                 }
             }

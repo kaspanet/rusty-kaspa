@@ -48,7 +48,6 @@ impl<T: GhostdagStoreReader, S: RelationsStoreReader, U: ReachabilityService, V:
         relations_store: S,
         headers_store: Arc<V>,
         reachability_service: U,
-        use_score_as_work: bool,
     ) -> Self {
         // For ordinary GD, always keep level_work=0 so the lower bound is ineffective
         Self { genesis_hash, k, ghostdag_store, relations_store, reachability_service, headers_store, level_work: 0.into() }

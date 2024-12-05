@@ -213,7 +213,7 @@ impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> BlocksBfsPathsIter
         self.map(|path| path.last().cloned().unwrap())
     }
 }
-impl<'a, U: ReachabilityStoreReader, V: RelationsStoreReader> Iterator for BlocksBfsPathsIterator<'a, U, V> {
+impl<U: ReachabilityStoreReader, V: RelationsStoreReader> Iterator for BlocksBfsPathsIterator<'_, U, V> {
     type Item = Vec<Hash>;
 
     fn next(&mut self) -> Option<Self::Item> {

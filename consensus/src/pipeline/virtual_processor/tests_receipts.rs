@@ -235,8 +235,9 @@ async fn test_receipts_in_random() {
         }
 
         //add the new block to the blockdag, and update it on mapper
-        let blk_hash = ctx.add_utxo_valid_block_with_parents(parents, vec![], ind).await.1;
-        mapper.insert(ind, blk_hash);
+        mapper.insert(ind, ind.into());
+
+        ctx.add_utxo_valid_block_with_parents(mapper[&ind], parents, vec![]).await;
         /*periodically check if a new posterity point has been reached
         if so, attempt to create and store receipts and POPs for a batch of blocks past the current pruning point.
         */
