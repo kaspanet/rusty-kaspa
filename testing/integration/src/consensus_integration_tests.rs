@@ -838,6 +838,7 @@ impl KaspadGoParams {
             storage_mass_parameter: STORAGE_MASS_PARAMETER,
             storage_mass_activation: ForkActivation::never(),
             kip10_activation: ForkActivation::never(),
+            kip6_activation: ForkActivation::never(),
             deflationary_phase_daa_score: self.DeflationaryPhaseDaaScore,
             pre_deflationary_phase_base_subsidy: self.PreDeflationaryPhaseBaseSubsidy,
             coinbase_maturity: MAINNET_PARAMS.coinbase_maturity,

@@ -2,7 +2,7 @@ use crate::{
     consensus::{
         services::{
             ConsensusServices, DbBlockDepthManager, DbDagTraversalManager, DbGhostdagManager, DbParentsManager, DbPruningPointManager,
-            DbWindowManager,
+            DbTxReceiptsManager, DbWindowManager,
         },
         storage::ConsensusStorage,
     },
@@ -47,6 +47,8 @@ use crate::{
         window::WindowManager,
     },
 };
+use kaspa_merkle::calc_merkle_root;
+
 use kaspa_consensus_core::{
     acceptance_data::AcceptanceData,
     api::args::{TransactionValidationArgs, TransactionValidationBatchArgs},
@@ -150,6 +152,7 @@ pub struct VirtualStateProcessor {
     pub(super) pruning_point_manager: DbPruningPointManager,
     pub(super) parents_manager: DbParentsManager,
     pub(super) depth_manager: DbBlockDepthManager,
+    pub(super) tx_receipts_manager: DbTxReceiptsManager,
 
     // block window caches
     pub(super) block_window_cache_for_difficulty: Arc<BlockWindowCacheStore>,
@@ -225,6 +228,7 @@ impl VirtualStateProcessor {
             pruning_point_manager: services.pruning_point_manager.clone(),
             parents_manager: services.parents_manager.clone(),
             depth_manager: services.depth_manager.clone(),
+            tx_receipts_manager: services.tx_receipts_manager.clone(),
 
             pruning_lock,
             notification_root,
@@ -1033,8 +1037,9 @@ impl VirtualStateProcessor {
         // Hash according to hardfork activation
         let storage_mass_activated = self.storage_mass_activation.is_active(virtual_state.daa_score);
         let hash_merkle_root = calc_hash_merkle_root(txs.iter(), storage_mass_activated);
-
-        let accepted_id_merkle_root = kaspa_merkle::calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
+        //temporary
+        let _pchmr_merkle_root = self.tx_receipts_manager.calc_pchmr_root_by_parent(virtual_state.ghostdag_data.selected_parent);
+        let accepted_id_merkle_root = calc_merkle_root(virtual_state.accepted_tx_ids.iter().copied());
         let utxo_commitment = virtual_state.multiset.clone().finalize();
         // Past median time is the exclusive lower bound for valid block time, so we increase by 1 to get the valid min
         let min_block_time = virtual_state.past_median_time + 1;

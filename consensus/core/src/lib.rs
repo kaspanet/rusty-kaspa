@@ -30,6 +30,7 @@ pub mod merkle;
 pub mod muhash;
 pub mod network;
 pub mod pruning;
+pub mod receipts;
 pub mod sign;
 pub mod subnets;
 pub mod trusted;
