@@ -193,15 +193,56 @@ pub fn calc_storage_mass(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{subnets::SubnetworkId, tx::*};
+    use crate::{
+        constants::{SOMPI_PER_KASPA, STORAGE_MASS_PARAMETER},
+        subnets::SubnetworkId,
+        tx::*,
+    };
     use std::str::FromStr;
 
     #[test]
     fn test_mass_storage() {
-        // 2:2 transaction
+        // Tx with less outs than ins
+        let mut tx = generate_tx_from_amounts(&[100, 200, 300], &[300, 300]);
+
+        //
+        // Assert the formula: max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
+        //
+
+        let storage_mass = MassCalculator::new(0, 0, 0, 10u64.pow(12)).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
+        assert_eq!(storage_mass, 0); // Compounds from 3 to 2, with symmetric outputs and no fee, should be zero
+
+        // Create asymmetry
+        tx.tx.outputs[0].value = 50;
+        tx.tx.outputs[1].value = 550;
+        let storage_mass_parameter = 10u64.pow(12);
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
+        assert_eq!(storage_mass, storage_mass_parameter / 50 + storage_mass_parameter / 550 - 3 * (storage_mass_parameter / 200));
+
+        // Create a tx with more outs than ins
+        let base_value = 10_000 * SOMPI_PER_KASPA;
+        let mut tx = generate_tx_from_amounts(&[base_value, base_value, base_value * 2], &[base_value; 4]);
+        let storage_mass_parameter = STORAGE_MASS_PARAMETER;
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
+        assert_eq!(storage_mass, 4); // Inputs are above C so they don't contribute negative mass, 4 outputs exactly equal C each charge 1
+
+        let mut tx2 = tx.clone();
+        tx2.tx.outputs[0].value = 10 * SOMPI_PER_KASPA;
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx2.as_verifiable()).unwrap();
+        assert_eq!(storage_mass, 1003);
+
+        // Increase values over the lim
+        for out in tx.tx.outputs.iter_mut() {
+            out.value += 1
+        }
+        tx.entries[0].as_mut().unwrap().amount += tx.tx.outputs.len() as u64;
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
+        assert_eq!(storage_mass, 0);
+
+        // Now create 2:2 transaction
+        // Assert the formula: max( 0 , C·( |O|/H(O) - |I|/H(I) ) )
         let mut tx = generate_tx_from_amounts(&[100, 200], &[50, 250]);
         let storage_mass_parameter = 10u64.pow(12);
-        // Assert the formula: max( 0 , C·( |O|/H(O) - |I|/O(I) ) )
 
         let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 9000000000);
