@@ -94,7 +94,7 @@ impl Serialize for ScriptPublicKey {
     }
 }
 
-impl<'de: 'a, 'a> Deserialize<'de> for ScriptPublicKey {
+impl<'de> Deserialize<'de> for ScriptPublicKey {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -374,7 +374,7 @@ impl BorshDeserialize for ScriptPublicKey {
 type CastError = workflow_wasm::error::Error;
 impl TryCastFromJs for ScriptPublicKey {
     type Error = workflow_wasm::error::Error;
-    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
     where
         R: AsRef<JsValue> + 'a,
     {
