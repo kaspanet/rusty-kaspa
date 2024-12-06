@@ -4,10 +4,9 @@
 
 use crate::error::Error;
 use crate::result::Result;
-use crate::utxo::NetworkParams;
 use kaspa_consensus_client as kcc;
 use kaspa_consensus_client::UtxoEntryReference;
-use kaspa_consensus_core::mass::{calc_storage_mass as consensus_calc_storage_mass, Kip9Version};
+use kaspa_consensus_core::mass::calc_storage_mass as consensus_calc_storage_mass;
 use kaspa_consensus_core::tx::{Transaction, TransactionInput, TransactionOutput, SCRIPT_VECTOR_SIZE};
 use kaspa_consensus_core::{config::params::Params, constants::*, subnets::SUBNETWORK_ID_SIZE};
 use kaspa_hashes::HASH_SIZE;
@@ -218,17 +217,15 @@ pub struct MassCalculator {
     mass_per_script_pub_key_byte: u64,
     mass_per_sig_op: u64,
     storage_mass_parameter: u64,
-    kip9_version: Kip9Version,
 }
 
 impl MassCalculator {
-    pub fn new(consensus_params: &Params, network_params: &NetworkParams) -> Self {
+    pub fn new(consensus_params: &Params) -> Self {
         Self {
             mass_per_tx_byte: consensus_params.mass_per_tx_byte,
             mass_per_script_pub_key_byte: consensus_params.mass_per_script_pub_key_byte,
             mass_per_sig_op: consensus_params.mass_per_sig_op,
             storage_mass_parameter: consensus_params.storage_mass_parameter,
-            kip9_version: network_params.kip9_version(),
         }
     }
 
@@ -297,10 +294,7 @@ impl MassCalculator {
     }
 
     pub fn combine_mass(&self, compute_mass: u64, storage_mass: u64) -> u64 {
-        match self.kip9_version {
-            Kip9Version::Alpha => compute_mass.saturating_add(storage_mass),
-            Kip9Version::Beta => compute_mass.max(storage_mass),
-        }
+        compute_mass.max(storage_mass)
     }
 
     /// Calculates the overall mass of this transaction, combining both compute and storage masses.
@@ -337,7 +331,6 @@ impl MassCalculator {
             false,
             inputs.iter().map(|entry| entry.amount()),
             outputs.iter().map(|out| out.value),
-            self.kip9_version,
             self.storage_mass_parameter,
         )
     }

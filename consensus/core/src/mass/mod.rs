@@ -5,17 +5,6 @@ use crate::{
 };
 use kaspa_hashes::HASH_SIZE;
 
-/// Temp enum for the transition phases of KIP9
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Kip9Version {
-    /// Initial KIP9 mass calculation, w/o the relaxed formula and summing storage mass and compute mass
-    Alpha,
-
-    /// Currently proposed KIP9 mass calculation, with the relaxed formula (for the cases `|O| = 1 OR |O| <= |I| <= 2`),
-    /// and using a maximum operator over storage and compute mass
-    Beta,
-}
-
 // transaction_estimated_serialized_size is the estimated size of a transaction in some
 // serialization. This has to be deterministic, but not necessarily accurate, since
 // it's only used as the size component in the transaction and block mass limit
@@ -121,32 +110,18 @@ impl MassCalculator {
     ///     2. At least one input (unless coinbase)
     ///
     /// Otherwise this function should never fail.
-    pub fn calc_tx_storage_mass(&self, tx: &impl VerifiableTransaction, version: Kip9Version) -> Option<u64> {
+    pub fn calc_tx_storage_mass(&self, tx: &impl VerifiableTransaction) -> Option<u64> {
         calc_storage_mass(
             tx.is_coinbase(),
             tx.populated_inputs().map(|(_, entry)| entry.amount),
             tx.outputs().iter().map(|out| out.value),
-            version,
             self.storage_mass_parameter,
         )
     }
 
     /// Calculates the overall mass of this transaction, combining both compute and storage masses.
-    /// The combination strategy depends on the version passed.
-    pub fn calc_tx_overall_mass(
-        &self,
-        tx: &impl VerifiableTransaction,
-        cached_compute_mass: Option<u64>,
-        version: Kip9Version,
-    ) -> Option<u64> {
-        match version {
-            Kip9Version::Alpha => self
-                .calc_tx_storage_mass(tx, version)
-                .and_then(|mass| mass.checked_add(cached_compute_mass.unwrap_or_else(|| self.calc_tx_compute_mass(tx.tx())))),
-            Kip9Version::Beta => self
-                .calc_tx_storage_mass(tx, version)
-                .map(|mass| mass.max(cached_compute_mass.unwrap_or_else(|| self.calc_tx_compute_mass(tx.tx())))),
-        }
+    pub fn calc_tx_overall_mass(&self, tx: &impl VerifiableTransaction, cached_compute_mass: Option<u64>) -> Option<u64> {
+        self.calc_tx_storage_mass(tx).map(|mass| mass.max(cached_compute_mass.unwrap_or_else(|| self.calc_tx_compute_mass(tx.tx()))))
     }
 }
 
@@ -160,7 +135,6 @@ pub fn calc_storage_mass(
     is_coinbase: bool,
     input_values: impl ExactSizeIterator<Item = u64>,
     output_values: impl ExactSizeIterator<Item = u64>,
-    version: Kip9Version,
     storage_mass_parameter: u64,
 ) -> Option<u64> {
     if is_coinbase {
@@ -199,7 +173,7 @@ pub fn calc_storage_mass(
        Note: in the case |I| = 1 both formulas are equal, yet the following code (harmonic_ins) is a bit more efficient.
              Hence, we transform the condition to |O| = 1 OR |I| = 1 OR |O| = |I| = 2 which is equivalent (and faster).
     */
-    if version == Kip9Version::Beta && (outs_len == 1 || ins_len == 1 || (outs_len == 2 && ins_len == 2)) {
+    if outs_len == 1 || ins_len == 1 || (outs_len == 2 && ins_len == 2) {
         let harmonic_ins =
             input_values.map(|value| storage_mass_parameter / value).fold(0u64, |total, current| total.saturating_add(current)); // C·|I|/H(I)
         return Some(harmonic_outs.saturating_sub(harmonic_ins)); // max( 0 , C·( |O|/H(O) - |I|/H(I) ) );
@@ -230,34 +204,31 @@ mod tests {
     fn test_mass_storage() {
         // Tx with less outs than ins
         let mut tx = generate_tx_from_amounts(&[100, 200, 300], &[300, 300]);
-        let test_version = Kip9Version::Alpha;
 
+        //
         // Assert the formula: max( 0 , C·( |O|/H(O) - |I|/A(I) ) )
+        //
 
-        let storage_mass =
-            MassCalculator::new(0, 0, 0, 10u64.pow(12)).calc_tx_storage_mass(&tx.as_verifiable(), test_version).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 0, 10u64.pow(12)).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 0); // Compounds from 3 to 2, with symmetric outputs and no fee, should be zero
 
         // Create asymmetry
         tx.tx.outputs[0].value = 50;
         tx.tx.outputs[1].value = 550;
         let storage_mass_parameter = 10u64.pow(12);
-        let storage_mass =
-            MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable(), test_version).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, storage_mass_parameter / 50 + storage_mass_parameter / 550 - 3 * (storage_mass_parameter / 200));
 
         // Create a tx with more outs than ins
         let base_value = 10_000 * SOMPI_PER_KASPA;
         let mut tx = generate_tx_from_amounts(&[base_value, base_value, base_value * 2], &[base_value; 4]);
         let storage_mass_parameter = STORAGE_MASS_PARAMETER;
-        let storage_mass =
-            MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable(), test_version).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 4); // Inputs are above C so they don't contribute negative mass, 4 outputs exactly equal C each charge 1
 
         let mut tx2 = tx.clone();
         tx2.tx.outputs[0].value = 10 * SOMPI_PER_KASPA;
-        let storage_mass =
-            MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx2.as_verifiable(), test_version).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx2.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 1003);
 
         // Increase values over the lim
@@ -265,35 +236,27 @@ mod tests {
             out.value += 1
         }
         tx.entries[0].as_mut().unwrap().amount += tx.tx.outputs.len() as u64;
-        let storage_mass =
-            MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable(), test_version).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 0);
-    }
 
-    #[test]
-    fn test_mass_storage_beta() {
-        // 2:2 transaction
+        // Now create 2:2 transaction
+        // Assert the formula: max( 0 , C·( |O|/H(O) - |I|/H(I) ) )
         let mut tx = generate_tx_from_amounts(&[100, 200], &[50, 250]);
         let storage_mass_parameter = 10u64.pow(12);
-        let test_version = Kip9Version::Beta;
-        // Assert the formula: max( 0 , C·( |O|/H(O) - |I|/O(I) ) )
 
-        let storage_mass =
-            MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable(), test_version).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 9000000000);
 
         // Set outputs to be equal to inputs
         tx.tx.outputs[0].value = 100;
         tx.tx.outputs[1].value = 200;
-        let storage_mass =
-            MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable(), test_version).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 0);
 
         // Remove an output and make sure the other is small enough to make storage mass greater than zero
         tx.tx.outputs.pop();
         tx.tx.outputs[0].value = 50;
-        let storage_mass =
-            MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable(), test_version).unwrap();
+        let storage_mass = MassCalculator::new(0, 0, 0, storage_mass_parameter).calc_tx_storage_mass(&tx.as_verifiable()).unwrap();
         assert_eq!(storage_mass, 5000000000);
     }
 
