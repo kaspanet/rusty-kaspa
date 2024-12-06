@@ -1,4 +1,3 @@
-use crate::imports::NetworkParams;
 use crate::result::Result;
 use crate::tx::{mass, MAXIMUM_STANDARD_TRANSACTION_MASS};
 use kaspa_consensus_client::*;
@@ -34,8 +33,7 @@ pub fn calculate_unsigned_transaction_mass(network_id: NetworkIdT, tx: &Transact
     let tx = Transaction::try_cast_from(tx)?;
     let network_id = NetworkId::try_owned_from(network_id)?;
     let consensus_params = Params::from(network_id);
-    let network_params = NetworkParams::from(network_id);
-    let mc = mass::MassCalculator::new(&consensus_params, network_params);
+    let mc = mass::MassCalculator::new(&consensus_params);
     mc.calc_overall_mass_for_unsigned_client_transaction(tx.as_ref(), minimum_signatures.unwrap_or(1))
 }
 
@@ -57,8 +55,7 @@ pub fn calculate_unsigned_transaction_mass(network_id: NetworkIdT, tx: &Transact
 pub fn update_unsigned_transaction_mass(network_id: NetworkIdT, tx: &Transaction, minimum_signatures: Option<u16>) -> Result<bool> {
     let network_id = NetworkId::try_owned_from(network_id)?;
     let consensus_params = Params::from(network_id);
-    let network_params = NetworkParams::from(network_id);
-    let mc = mass::MassCalculator::new(&consensus_params, network_params);
+    let mc = mass::MassCalculator::new(&consensus_params);
     let mass = mc.calc_overall_mass_for_unsigned_client_transaction(tx, minimum_signatures.unwrap_or(1))?;
     if mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
         Ok(false)
@@ -87,8 +84,7 @@ pub fn calculate_unsigned_transaction_fee(
     let tx = Transaction::try_cast_from(tx)?;
     let network_id = NetworkId::try_owned_from(network_id)?;
     let consensus_params = Params::from(network_id);
-    let network_params = NetworkParams::from(network_id);
-    let mc = mass::MassCalculator::new(&consensus_params, network_params);
+    let mc = mass::MassCalculator::new(&consensus_params);
     let mass = mc.calc_overall_mass_for_unsigned_client_transaction(tx.as_ref(), minimum_signatures.unwrap_or(1))?;
     if mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
         Ok(None)
