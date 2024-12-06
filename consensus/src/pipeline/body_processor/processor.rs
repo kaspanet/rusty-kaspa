@@ -8,7 +8,6 @@ use crate::{
         services::reachability::MTReachabilityService,
         stores::{
             block_transactions::DbBlockTransactionsStore,
-            block_window_cache::BlockWindowCacheStore,
             ghostdag::DbGhostdagStore,
             headers::DbHeadersStore,
             reachability::DbReachabilityStore,
@@ -67,7 +66,6 @@ pub struct BlockBodyProcessor {
     pub(super) headers_store: Arc<DbHeadersStore>,
     pub(super) block_transactions_store: Arc<DbBlockTransactionsStore>,
     pub(super) body_tips_store: Arc<RwLock<DbTipsStore>>,
-    pub(super) block_window_cache_for_past_median_time: Arc<BlockWindowCacheStore>,
 
     // Managers and services
     pub(super) reachability_service: MTReachabilityService<DbReachabilityStore>,
@@ -93,7 +91,6 @@ pub struct BlockBodyProcessor {
 }
 
 impl BlockBodyProcessor {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         receiver: Receiver<BlockProcessingMessage>,
         sender: Sender<VirtualStateProcessingMessage>,
@@ -122,7 +119,6 @@ impl BlockBodyProcessor {
             headers_store: storage.headers_store.clone(),
             block_transactions_store: storage.block_transactions_store.clone(),
             body_tips_store: storage.body_tips_store.clone(),
-            block_window_cache_for_past_median_time: storage.block_window_cache_for_past_median_time.clone(),
 
             reachability_service: services.reachability_service.clone(),
             coinbase_manager: services.coinbase_manager.clone(),

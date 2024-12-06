@@ -48,28 +48,6 @@ pub trait SigHashReusedValues {
     fn payload_hash(&self, set: impl Fn() -> Hash) -> Hash;
 }
 
-impl<T: SigHashReusedValues> SigHashReusedValues for Arc<T> {
-    fn previous_outputs_hash(&self, set: impl Fn() -> Hash) -> Hash {
-        self.as_ref().previous_outputs_hash(set)
-    }
-
-    fn sequences_hash(&self, set: impl Fn() -> Hash) -> Hash {
-        self.as_ref().sequences_hash(set)
-    }
-
-    fn sig_op_counts_hash(&self, set: impl Fn() -> Hash) -> Hash {
-        self.as_ref().sig_op_counts_hash(set)
-    }
-
-    fn outputs_hash(&self, set: impl Fn() -> Hash) -> Hash {
-        self.as_ref().outputs_hash(set)
-    }
-
-    fn payload_hash(&self, set: impl Fn() -> Hash) -> Hash {
-        self.as_ref().outputs_hash(set)
-    }
-}
-
 impl SigHashReusedValues for SigHashReusedValuesUnsync {
     fn previous_outputs_hash(&self, set: impl Fn() -> Hash) -> Hash {
         self.previous_outputs_hash.get().unwrap_or_else(|| {
@@ -204,11 +182,11 @@ pub fn sig_op_counts_hash(tx: &Transaction, hash_type: SigHashType, reused_value
 }
 
 pub fn payload_hash(tx: &Transaction, reused_values: &impl SigHashReusedValues) -> Hash {
-    let hash = || {
-        if tx.subnetwork_id.is_native() && tx.payload.is_empty() {
-            return ZERO_HASH;
-        }
+    if tx.subnetwork_id.is_native() && tx.payload.is_empty() {
+        return ZERO_HASH;
+    }
 
+    let hash = || {
         let mut hasher = TransactionSigningHash::new();
         hasher.write_var_bytes(&tx.payload);
         hasher.finalize()
