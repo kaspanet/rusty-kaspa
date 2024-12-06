@@ -4,14 +4,12 @@
 //!
 
 use crate::imports::*;
-use kaspa_consensus_core::mass::Kip9Version;
 
 #[derive(Debug)]
 pub struct NetworkParams {
     pub coinbase_transaction_maturity_period_daa: AtomicU64,
     pub coinbase_transaction_stasis_period_daa: u64,
     pub user_transaction_maturity_period_daa: AtomicU64,
-    pub kip9_version: Kip9Version,
     pub additional_compound_transaction_mass: u64,
 }
 
@@ -32,11 +30,6 @@ impl NetworkParams {
     }
 
     #[inline]
-    pub fn kip9_version(&self) -> Kip9Version {
-        self.kip9_version
-    }
-
-    #[inline]
     pub fn additional_compound_transaction_mass(&self) -> u64 {
         self.additional_compound_transaction_mass
     }
@@ -54,7 +47,6 @@ static MAINNET_NETWORK_PARAMS: LazyLock<NetworkParams> = LazyLock::new(|| Networ
     coinbase_transaction_maturity_period_daa: AtomicU64::new(100),
     coinbase_transaction_stasis_period_daa: 50,
     user_transaction_maturity_period_daa: AtomicU64::new(10),
-    kip9_version: Kip9Version::Beta,
     additional_compound_transaction_mass: 100,
 });
 
@@ -62,7 +54,6 @@ static TESTNET10_NETWORK_PARAMS: LazyLock<NetworkParams> = LazyLock::new(|| Netw
     coinbase_transaction_maturity_period_daa: AtomicU64::new(100),
     coinbase_transaction_stasis_period_daa: 50,
     user_transaction_maturity_period_daa: AtomicU64::new(10),
-    kip9_version: Kip9Version::Beta,
     additional_compound_transaction_mass: 100,
 });
 
@@ -70,7 +61,6 @@ static TESTNET11_NETWORK_PARAMS: LazyLock<NetworkParams> = LazyLock::new(|| Netw
     coinbase_transaction_maturity_period_daa: AtomicU64::new(1_000),
     coinbase_transaction_stasis_period_daa: 500,
     user_transaction_maturity_period_daa: AtomicU64::new(100),
-    kip9_version: Kip9Version::Alpha,
     additional_compound_transaction_mass: 100,
 });
 
@@ -78,7 +68,6 @@ static SIMNET_NETWORK_PARAMS: LazyLock<NetworkParams> = LazyLock::new(|| Network
     coinbase_transaction_maturity_period_daa: AtomicU64::new(100),
     coinbase_transaction_stasis_period_daa: 50,
     user_transaction_maturity_period_daa: AtomicU64::new(10),
-    kip9_version: Kip9Version::Alpha,
     additional_compound_transaction_mass: 0,
 });
 
@@ -86,7 +75,6 @@ static DEVNET_NETWORK_PARAMS: LazyLock<NetworkParams> = LazyLock::new(|| Network
     coinbase_transaction_maturity_period_daa: AtomicU64::new(100),
     coinbase_transaction_stasis_period_daa: 50,
     user_transaction_maturity_period_daa: AtomicU64::new(10),
-    kip9_version: Kip9Version::Beta,
     additional_compound_transaction_mass: 0,
 });
 

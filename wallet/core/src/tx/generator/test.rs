@@ -168,7 +168,7 @@ fn validate(pt: &PendingTransaction) {
         "[validate] aggregate input and output values can not be the same due to fees"
     );
 
-    let calc = MassCalculator::new(&pt.network_type().into(), network_params);
+    let calc = MassCalculator::new(&pt.network_type().into());
     let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass() };
     let compute_mass = calc.calc_compute_mass_for_unsigned_consensus_transaction(&tx, pt.minimum_signatures());
 
@@ -197,7 +197,7 @@ where
     assert_eq!(tx.outputs.len(), expected.output_count, "expected output count");
 
     let pt_fees = pt.fees();
-    let calc = MassCalculator::new(&pt.network_type().into(), network_params);
+    let calc = MassCalculator::new(&pt.network_type().into());
     let additional_mass = if pt.is_final() { 0 } else { network_params.additional_compound_transaction_mass() };
 
     let compute_mass = calc.calc_compute_mass_for_unsigned_consensus_transaction(&tx, pt.minimum_signatures());
