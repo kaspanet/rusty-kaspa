@@ -35,6 +35,8 @@ cfg_if::cfg_if! {
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::message::py_sign_message, m)?)?;
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::message::py_verify_message, m)?)?;
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::signer::py_sign_transaction, m)?)?;
+            m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::signer::create_input_signature, m)?)?;
+            m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::signer::sign_script_hash, m)?)?;
             m.add_class::<kaspa_wallet_core::bindings::python::tx::generator::generator::Generator>()?;
             m.add_class::<kaspa_wallet_core::bindings::python::tx::generator::pending::PendingTransaction>()?;
             m.add_class::<kaspa_wallet_core::bindings::python::tx::generator::summary::GeneratorSummary>()?;

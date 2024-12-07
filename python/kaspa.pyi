@@ -614,6 +614,10 @@ def verify_message(message: str, signature: str, public_key: PublicKey) -> bool:
 
 def sign_transaction(tx: Transaction, signer: list[PrivateKey], verify_sig: bool) -> Transaction: ...
 
+def create_input_signature(tx: Transaction, input_index: int, private_key: PrivateKey, sighash_type: Optional[SighashType] = None) -> str: ...
+
+def sign_script_hash(script_hash: str, privkey: PrivateKey) -> str: ...
+
 class Generator:
 
     def __init__(
