@@ -13,6 +13,8 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use kaspa_addresses::Prefix;
+#[cfg(feature = "py-sdk")]
+use pyo3::{exceptions::PyException, PyErr};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
@@ -112,6 +114,13 @@ impl FromStr for NetworkType {
     }
 }
 
+#[cfg(feature = "py-sdk")]
+impl From<NetworkTypeError> for PyErr {
+    fn from(value: NetworkTypeError) -> PyErr {
+        PyException::new_err(value.to_string())
+    }
+}
+
 impl Display for NetworkType {
     #[inline]
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -184,6 +193,13 @@ pub enum NetworkIdError {
 impl From<NetworkIdError> for JsValue {
     fn from(err: NetworkIdError) -> Self {
         JsValue::from_str(&err.to_string())
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+impl From<NetworkIdError> for PyErr {
+    fn from(value: NetworkIdError) -> PyErr {
+        PyException::new_err(value.to_string())
     }
 }
 

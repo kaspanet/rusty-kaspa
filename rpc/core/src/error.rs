@@ -4,6 +4,8 @@
 
 use kaspa_consensus_core::{subnets::SubnetworkConversionError, tx::TransactionId};
 use kaspa_utils::networking::IpAddress;
+#[cfg(feature = "py-sdk")]
+use pyo3::{exceptions::PyException, prelude::PyErr};
 use std::{net::AddrParseError, num::TryFromIntError};
 use thiserror::Error;
 use workflow_core::channel::ChannelError;
@@ -157,6 +159,13 @@ impl From<ChannelError<RpcState>> for RpcError {
 impl From<serde_wasm_bindgen::Error> for RpcError {
     fn from(value: serde_wasm_bindgen::Error) -> Self {
         RpcError::SerdeWasmBindgen(value.to_string())
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+impl From<RpcError> for PyErr {
+    fn from(value: RpcError) -> Self {
+        PyException::new_err(value.to_string())
     }
 }
 

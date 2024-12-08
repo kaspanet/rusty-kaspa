@@ -63,6 +63,7 @@ impl PaymentDestination {
 ///
 /// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, CastFromJs)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen(inspectable)]
 pub struct PaymentOutput {
     #[wasm_bindgen(getter_with_clone)]
@@ -97,10 +98,39 @@ impl TryCastFromJs for PaymentOutput {
     }
 }
 
+#[cfg(feature = "py-sdk")]
+impl TryFrom<&Bound<'_, PyDict>> for PaymentOutput {
+    type Error = PyErr;
+    fn try_from(value: &Bound<PyDict>) -> PyResult<Self> {
+        let address_value = value.get_item("address")?.ok_or_else(|| PyException::new_err("Key `address` not present"))?;
+
+        let address = if let Ok(address) = address_value.extract::<Address>() {
+            address
+        } else if let Ok(s) = address_value.extract::<String>() {
+            Address::try_from(s).map_err(|err| PyException::new_err(format!("{}", err)))?
+        } else {
+            return Err(PyException::new_err("Addresses must be either an Address instance or a string"));
+        };
+
+        let amount: u64 = value.get_item("amount")?.ok_or_else(|| PyException::new_err("Key `amount` not present"))?.extract()?;
+
+        Ok(PaymentOutput::new(address, amount))
+    }
+}
+
 #[wasm_bindgen]
 impl PaymentOutput {
     #[wasm_bindgen(constructor)]
     pub fn new(address: Address, amount: u64) -> Self {
+        Self { address, amount }
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl PaymentOutput {
+    #[new]
+    pub fn new_py(address: Address, amount: u64) -> Self {
         Self { address, amount }
     }
 }
@@ -119,6 +149,7 @@ impl From<PaymentOutput> for PaymentDestination {
 
 /// @category Wallet SDK
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, CastFromJs)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen]
 pub struct PaymentOutputs {
     #[wasm_bindgen(skip)]
@@ -156,6 +187,15 @@ impl PaymentOutputs {
     }
 }
 
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl PaymentOutputs {
+    #[new]
+    pub fn constructor_py(output_array: Vec<PaymentOutput>) -> PyResult<PaymentOutputs> {
+        Ok(Self { outputs: output_array })
+    }
+}
+
 impl TryCastFromJs for PaymentOutputs {
     type Error = Error;
     fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
@@ -176,6 +216,15 @@ impl TryCastFromJs for PaymentOutputs {
 
             Ok(Self { outputs })
         })
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+impl TryFrom<Vec<&Bound<'_, PyDict>>> for PaymentOutputs {
+    type Error = PyErr;
+    fn try_from(value: Vec<&Bound<PyDict>>) -> PyResult<Self> {
+        let outputs: Vec<PaymentOutput> = value.iter().map(|utxo| PaymentOutput::try_from(*utxo)).collect::<Result<Vec<_>, _>>()?;
+        Ok(PaymentOutputs { outputs })
     }
 }
 
