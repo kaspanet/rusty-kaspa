@@ -34,10 +34,7 @@ async def main():
     prv3, pub3 = derive(seed, 2)
     print(f'Account 3:\n - prv: {prv3.to_string()}\n - pub: {pub3.to_string()}\n')
 
-    ########## 
     # Multisig address creation - from script
-    # schnorr and ECDSA examples 
-
     # schnorr
     redeem_script = ScriptBuilder()\
         .add_i64(2)\
@@ -61,9 +58,7 @@ async def main():
     # ecdsa_spk = ecdsa_redeem_script.create_pay_to_script_hash_script()
     # ecdsa_address = address_from_script_public_key(ecdsa_spk, network="testnet")
 
-    ########## 
     # Multisig address creation - from kaspa package
-    # schnorr and ECDSA examples 
     assert address.to_string() == create_multisig_address(2, [pub1, pub2, pub3], 'testnet').to_string()
     # assert ecdsa_address.to_string() == create_multisig_address(2, [pub1, pub2, pub3], 'testnet', True).to_string()
     
