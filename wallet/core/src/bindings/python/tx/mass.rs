@@ -14,8 +14,7 @@ pub fn maximum_standard_transaction_mass() -> u64 {
 pub fn calculate_unsigned_transaction_mass(network_id: &str, tx: &Transaction, minimum_signatures: Option<u16>) -> PyResult<u64> {
     let network_id = NetworkId::from_str(network_id)?;
     let consensus_params = Params::from(network_id);
-    let network_params = NetworkParams::from(network_id);
-    let mc = mass::MassCalculator::new(&consensus_params, &network_params);
+    let mc = mass::MassCalculator::new(&consensus_params);
     Ok(mc.calc_overall_mass_for_unsigned_client_transaction(tx, minimum_signatures.unwrap_or(1))?)
 }
 
@@ -25,8 +24,7 @@ pub fn calculate_unsigned_transaction_mass(network_id: &str, tx: &Transaction, m
 pub fn update_unsigned_transaction_mass(network_id: &str, tx: &Transaction, minimum_signatures: Option<u16>) -> PyResult<bool> {
     let network_id = NetworkId::from_str(network_id)?;
     let consensus_params = Params::from(network_id);
-    let network_params = NetworkParams::from(network_id);
-    let mc = mass::MassCalculator::new(&consensus_params, network_params);
+    let mc = mass::MassCalculator::new(&consensus_params);
     let mass = mc.calc_overall_mass_for_unsigned_client_transaction(tx, minimum_signatures.unwrap_or(1))?;
     if mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
         Ok(false)
@@ -46,8 +44,7 @@ pub fn calculate_unsigned_transaction_fee(
 ) -> PyResult<Option<u64>> {
     let network_id = NetworkId::from_str(network_id)?;
     let consensus_params = Params::from(network_id);
-    let network_params = NetworkParams::from(network_id);
-    let mc = mass::MassCalculator::new(&consensus_params, network_params);
+    let mc = mass::MassCalculator::new(&consensus_params);
     let mass = mc.calc_overall_mass_for_unsigned_client_transaction(tx, minimum_signatures.unwrap_or(1))?;
     if mass > MAXIMUM_STANDARD_TRANSACTION_MASS {
         Ok(None)

@@ -3039,7 +3039,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-python-core"
-version = "0.15.3"
+version = "0.15.4"
 dependencies = [
  "cfg-if 1.0.0",
  "faster-hex",
@@ -3048,7 +3048,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-python-macros"
-version = "0.15.3"
+version = "0.15.4"
 dependencies = [
  "convert_case 0.6.0",
  "proc-macro-error",
@@ -3619,7 +3619,7 @@ dependencies = [
 
 [[package]]
 name = "kaspa-wrpc-python"
-version = "0.15.3"
+version = "0.15.4"
 dependencies = [
  "ahash",
  "cfg-if 1.0.0",
@@ -4882,7 +4882,7 @@ dependencies = [
 
 [[package]]
 name = "python"
-version = "0.15.3"
+version = "0.15.4"
 dependencies = [
  "cfg-if 1.0.0",
  "kaspa-addresses",
