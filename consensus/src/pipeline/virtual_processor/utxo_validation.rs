@@ -14,10 +14,8 @@ use kaspa_consensus_core::{
     acceptance_data::{AcceptedTxEntry, MergesetBlockAcceptanceData},
     api::args::TransactionValidationArgs,
     coinbase::*,
-    config::params::ForkActivation,
     hashing,
     header::Header,
-    mass::Kip9Version,
     muhash::MuHashExtensions,
     tx::{MutableTransaction, PopulatedTransaction, Transaction, TransactionId, ValidatedTransaction, VerifiableTransaction},
     utxo::{
@@ -327,16 +325,11 @@ impl VirtualStateProcessor {
     ) -> TxResult<()> {
         self.populate_mempool_transaction_in_utxo_context(mutable_tx, utxo_view)?;
 
-        // For non-activated nets (mainnet, TN10) we can update mempool rules to KIP9 beta asap. For
-        // TN11 we need to hard-fork consensus first (since the new beta rules are more permissive)
-        let kip9_version =
-            if self.storage_mass_activation == ForkActivation::never() { Kip9Version::Beta } else { Kip9Version::Alpha };
-
         // Calc the full contextual mass including storage mass
         let contextual_mass = self
             .transaction_validator
             .mass_calculator
-            .calc_tx_overall_mass(&mutable_tx.as_verifiable(), mutable_tx.calculated_compute_mass, kip9_version)
+            .calc_tx_overall_mass(&mutable_tx.as_verifiable(), mutable_tx.calculated_compute_mass)
             .ok_or(TxRuleError::MassIncomputable)?;
 
         // Set the inner mass field
