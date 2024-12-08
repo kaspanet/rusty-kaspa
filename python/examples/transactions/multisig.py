@@ -9,8 +9,9 @@ from kaspa import (
     ScriptBuilder,
     SighashType,
     XPrv,
-    create_transactions,
     address_from_script_public_key,
+    create_multisig_address,
+    create_transactions,
     kaspa_to_sompi
 )
 
@@ -33,6 +34,11 @@ async def main():
     prv3, pub3 = derive(seed, 2)
     print(f'Account 3:\n - prv: {prv3.to_string()}\n - pub: {pub3.to_string()}\n')
 
+    ########## 
+    # Multisig address creation - from script
+    # schnorr and ECDSA examples 
+
+    # schnorr
     redeem_script = ScriptBuilder()\
         .add_i64(2)\
         .add_data(pub1.to_x_only_public_key().to_string())\
@@ -40,13 +46,26 @@ async def main():
         .add_data(pub3.to_x_only_public_key().to_string())\
         .add_i64(3)\
         .add_op(Opcodes.OpCheckMultiSig)
-    
-    # TODO ECDSA version
-    # TODO include create_multisig_address function when available
-
     spk = redeem_script.create_pay_to_script_hash_script()
     address = address_from_script_public_key(spk, network="testnet")
     print(f"Multisig Address: {address.to_string()}\n")
+    
+    # ECDSA
+    # ecdsa_redeem_script = ScriptBuilder()\
+    #     .add_i64(2)\
+    #     .add_data(pub1.to_string())\
+    #     .add_data(pub2.to_string())\
+    #     .add_data(pub3.to_string())\
+    #     .add_i64(3)\
+    #     .add_op(Opcodes.OpCheckMultiSigECDSA)
+    # ecdsa_spk = ecdsa_redeem_script.create_pay_to_script_hash_script()
+    # ecdsa_address = address_from_script_public_key(ecdsa_spk, network="testnet")
+
+    ########## 
+    # Multisig address creation - from kaspa package
+    # schnorr and ECDSA examples 
+    assert address.to_string() == create_multisig_address(2, [pub1, pub2, pub3], 'testnet').to_string()
+    # assert ecdsa_address.to_string() == create_multisig_address(2, [pub1, pub2, pub3], 'testnet', True).to_string()
     
     proceed = input("Send funds to address above before proceeding (enter 'y' to proceed): ")
     if proceed != 'y':

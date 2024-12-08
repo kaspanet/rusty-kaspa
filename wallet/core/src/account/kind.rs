@@ -4,6 +4,8 @@
 
 use crate::imports::*;
 use fixedstr::*;
+#[cfg(feature = "py-sdk")]
+use pyo3::prelude::*;
 use std::hash::Hash;
 use std::str::FromStr;
 use workflow_wasm::convert::CastFromJs;
@@ -15,6 +17,7 @@ use workflow_wasm::convert::CastFromJs;
 ///
 /// @category Wallet SDK
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Serialize, Deserialize, Hash, CastFromJs)]
+#[cfg_attr(feature = "py-sdk", pyclass)]
 #[wasm_bindgen]
 pub struct AccountKind(str64);
 
@@ -26,6 +29,24 @@ impl AccountKind {
     }
     #[wasm_bindgen(js_name=toString)]
     pub fn js_to_string(&self) -> String {
+        self.0.as_str().to_string()
+    }
+}
+
+#[cfg(feature = "py-sdk")]
+#[pymethods]
+impl AccountKind {
+    #[new]
+    pub fn ctor_py(kind: &str) -> PyResult<AccountKind> {
+        Ok(Self::from_str(kind)?)
+    }
+
+    pub fn __str__(&self) -> String {
+        self.py_to_string()
+    }
+
+    #[pyo3(name = "to_string")]
+    pub fn py_to_string(&self) -> String {
         self.0.as_str().to_string()
     }
 }

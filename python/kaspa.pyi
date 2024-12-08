@@ -769,6 +769,23 @@ def sompi_to_kaspa(sompi: int) -> float: ...
 
 def sompi_to_kaspa_string_with_suffix(sompi: int, network: str) -> str: ...
 
+class AccountKind:
+
+    def __init__(self, kind: str) -> None: ...
+
+    def __str__(self) -> str: ...
+
+    def to_string(self) -> str: ...
+
+
+def create_multisig_address(
+    minimum_signatures: int,
+    keys: list[PublicKey],
+    network_type: str,
+    ecdsa: Optional[bool] = None,
+    account_kind: Optional[str] = None,
+) -> Address: ...
+
 class PaymentOutput:
 
     def __init__(self, address: Address, amount: int) -> None: ...

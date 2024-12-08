@@ -19,6 +19,8 @@ use kaspa_consensus_core::network::{NetworkType, NetworkTypeT};
 use kaspa_txscript::{
     extract_script_pub_key_address, multisig_redeem_script, multisig_redeem_script_ecdsa, pay_to_script_hash_script,
 };
+#[cfg(feature = "py-sdk")]
+use pyo3::prelude::*;
 
 #[derive(Default, Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 pub struct AddressDerivationMeta([u32; 2]);
@@ -483,6 +485,22 @@ pub fn create_multisig_address_js(
     account_kind: Option<AccountKind>,
 ) -> Result<Address> {
     create_address(minimum_signatures, keys.try_into()?, network_type.into(), ecdsa.unwrap_or(false), account_kind)
+}
+
+#[cfg(feature = "py-sdk")]
+#[pyfunction]
+#[pyo3(name = "create_multisig_address")]
+#[pyo3(signature = (minimum_signatures, keys, network_type, ecdsa=false, account_kind=None))]
+pub fn create_multisig_address_py(
+    minimum_signatures: usize,
+    keys: Vec<PublicKey>,
+    network_type: &str,
+    ecdsa: Option<bool>,
+    account_kind: Option<AccountKind>,
+) -> PyResult<Address> {
+    let network_type = NetworkType::from_str(network_type)?;
+    let keys = keys.iter().map(|pk| pk.try_into()).collect::<Result<Vec<_>, kaspa_wallet_keys::error::Error>>()?;
+    Ok(create_address(minimum_signatures, keys, network_type.into(), ecdsa.unwrap_or(false), account_kind)?)
 }
 
 pub fn create_address(

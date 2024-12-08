@@ -49,6 +49,8 @@ cfg_if::cfg_if! {
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::utils::kaspa_to_sompi, m)?)?;
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::utils::sompi_to_kaspa, m)?)?;
             m.add_function(wrap_pyfunction!(kaspa_wallet_core::bindings::python::utils::sompi_to_kaspa_string_with_suffix, m)?)?;
+            m.add_class::<kaspa_wallet_core::account::AccountKind>()?;
+            m.add_function(wrap_pyfunction!(kaspa_wallet_core::derivation::create_multisig_address_py, m)?)?;
             m.add_class::<kaspa_wallet_core::tx::payment::PaymentOutput>()?;
 
             m.add_class::<kaspa_wallet_keys::derivation_path::DerivationPath>()?;
