@@ -338,6 +338,7 @@ pub fn pskt_to_pending_transaction(
         priority_utxo_entries: None,
         source_utxo_context: None,
         destination_utxo_context: None,
+        fee_rate: None,
         final_transaction_priority_fee: fee_u.into(),
         final_transaction_destination,
         final_transaction_payload: None,
