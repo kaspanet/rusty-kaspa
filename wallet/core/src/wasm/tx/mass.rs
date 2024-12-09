@@ -111,18 +111,12 @@ pub fn calculate_unsigned_transaction_fee(
 pub fn calculate_storage_mass(network_id: NetworkIdT, input_values: &NumberArray, output_values: &NumberArray) -> Result<Option<u64>> {
     let network_id = NetworkId::try_owned_from(network_id)?;
     let consensus_params = Params::from(network_id);
-    let network_params = NetworkParams::from(network_id);
 
     let input_values = Array::from(input_values).to_vec().iter().map(|v| v.as_f64().unwrap() as u64).collect::<Vec<u64>>();
     let output_values = Array::from(output_values).to_vec().iter().map(|v| v.as_f64().unwrap() as u64).collect::<Vec<u64>>();
 
-    let storage_mass = calc_storage_mass(
-        false,
-        input_values.into_iter(),
-        output_values.into_iter(),
-        network_params.kip9_version,
-        consensus_params.storage_mass_parameter,
-    );
+    let storage_mass =
+        calc_storage_mass(false, input_values.into_iter(), output_values.into_iter(), consensus_params.storage_mass_parameter);
 
     Ok(storage_mass)
 }

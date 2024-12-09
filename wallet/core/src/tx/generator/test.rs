@@ -3,7 +3,7 @@
 use crate::error::Error;
 use crate::result::Result;
 use crate::tx::{Fees, MassCalculator, PaymentDestination};
-use crate::utxo::{NetworkParams, UtxoEntryReference};
+use crate::utxo::UtxoEntryReference;
 use crate::{tx::PaymentOutputs, utils::kaspa_to_sompi};
 use kaspa_addresses::Address;
 use kaspa_consensus_core::config::params::Params;
@@ -782,14 +782,12 @@ fn test_generator_fan_out_1() -> Result<()> {
     use kaspa_consensus_core::mass::calc_storage_mass;
 
     let network_id = test_network_id();
-    let network_params = NetworkParams::from(network_id);
     let consensus_params = Params::from(network_id);
 
     let storage_mass = calc_storage_mass(
         false,
         [100000000, 8723579967].into_iter(),
         [20000000, 25000000, 31000000].into_iter(),
-        network_params.kip9_version,
         consensus_params.storage_mass_parameter,
     );
 
