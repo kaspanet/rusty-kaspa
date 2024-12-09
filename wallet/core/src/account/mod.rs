@@ -530,6 +530,7 @@ pub trait AsLegacyAccount: Account {
 }
 
 /// Account trait used by derivation capable account types (BIP32, MultiSig, etc.)
+#[allow(clippy::too_many_arguments)]
 #[async_trait]
 pub trait DerivationCapableAccount: Account {
     fn derivation(&self) -> Arc<dyn AddressDerivationManagerTrait>;
@@ -546,6 +547,7 @@ pub trait DerivationCapableAccount: Account {
         sweep: bool,
         fee_rate: Option<f64>,
         abortable: &Abortable,
+        update_address_indexes: bool,
         notifier: Option<ScanNotifier>,
     ) -> Result<()> {
         if let Ok(legacy_account) = self.clone().as_legacy_account() {
@@ -572,6 +574,8 @@ pub trait DerivationCapableAccount: Account {
         let mut last_notification = 0;
         let mut aggregate_balance = 0;
         let mut aggregate_utxo_count = 0;
+        let mut last_change_address_index = change_address_index;
+        let mut last_receive_address_index = receive_address_manager.index();
 
         let change_address = change_address_keypair[0].0.clone();
 
@@ -581,8 +585,8 @@ pub trait DerivationCapableAccount: Account {
             index = last as usize;
 
             let (mut keys, addresses) = if sweep {
-                let mut keypairs = derivation.get_range_with_keys(false, first..last, false, &xkey).await?;
-                let change_keypairs = derivation.get_range_with_keys(true, first..last, false, &xkey).await?;
+                let mut keypairs = derivation.get_range_with_keys(false, first..last, true, &xkey).await?;
+                let change_keypairs = derivation.get_range_with_keys(true, first..last, true, &xkey).await?;
                 keypairs.extend(change_keypairs);
                 let mut keys = vec![];
                 let addresses = keypairs
@@ -595,22 +599,40 @@ pub trait DerivationCapableAccount: Account {
                 keys.push(change_address_keypair[0].1.to_bytes());
                 (keys, addresses)
             } else {
-                let mut addresses = receive_address_manager.get_range_with_args(first..last, false)?;
-                let change_addresses = change_address_manager.get_range_with_args(first..last, false)?;
+                let mut addresses = receive_address_manager.get_range_with_args(first..last, true)?;
+                let change_addresses = change_address_manager.get_range_with_args(first..last, true)?;
                 addresses.extend(change_addresses);
                 (vec![], addresses)
             };
 
             let utxos = rpc.get_utxos_by_addresses(addresses.clone()).await?;
-            let balance = utxos.iter().map(|utxo| utxo.utxo_entry.amount).sum::<u64>();
+            let mut balance = 0;
+            let utxos = utxos
+                .iter()
+                .map(|utxo| {
+                    let utxo_ref = UtxoEntryReference::from(utxo);
+                    if let Some(address) = utxo_ref.utxo.address.as_ref() {
+                        if let Some(address_index) = receive_address_manager.inner().address_to_index_map.get(address) {
+                            if last_receive_address_index < *address_index {
+                                last_receive_address_index = *address_index;
+                            }
+                        } else if let Some(address_index) = change_address_manager.inner().address_to_index_map.get(address) {
+                            if last_change_address_index < *address_index {
+                                last_change_address_index = *address_index;
+                            }
+                        } else {
+                            panic!("Account::derivation_scan() has received an unknown address: `{address}`");
+                        }
+                    }
+                    balance += utxo_ref.utxo.amount;
+                    utxo_ref
+                })
+                .collect::<Vec<_>>();
             aggregate_utxo_count += utxos.len();
 
             if balance > 0 {
                 aggregate_balance += balance;
-
                 if sweep {
-                    let utxos = utxos.into_iter().map(UtxoEntryReference::from).collect::<Vec<_>>();
-
                     let settings = GeneratorSettings::try_new_with_iterator(
                         self.wallet().network_id()?,
                         Box::new(utxos.into_iter()),
@@ -659,6 +681,18 @@ pub trait DerivationCapableAccount: Account {
             if let Some(notifier) = notifier {
                 notifier(index, aggregate_utxo_count, aggregate_balance, None);
             }
+        }
+
+        // update address manager with the last used index
+        if update_address_indexes {
+            receive_address_manager.set_index(last_receive_address_index)?;
+            change_address_manager.set_index(last_change_address_index)?;
+
+            let metadata = self.metadata()?.expect("derivation accounts must provide metadata");
+            let store = self.wallet().store().as_account_store()?;
+            store.update_metadata(vec![metadata]).await?;
+            self.clone().scan(None, None).await?;
+            self.wallet().notify(Events::AccountUpdate { account_descriptor: self.descriptor()? }).await?;
         }
 
         if let Ok(legacy_account) = self.as_legacy_account() {

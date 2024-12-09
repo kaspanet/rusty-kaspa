@@ -297,6 +297,7 @@ impl Account {
                 sweep,
                 fee_rate,
                 &abortable,
+                true,
                 Some(Arc::new(move |processed: usize, _, balance, txid| {
                     if let Some(txid) = txid {
                         tprintln!(
