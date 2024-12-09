@@ -53,8 +53,7 @@ pub struct ConsensusServices {
     pub reachability_service: MTReachabilityService<DbReachabilityStore>,
     pub window_manager: DbWindowManager,
     pub dag_traversal_manager: DbDagTraversalManager,
-    pub ghostdag_managers: Arc<Vec<DbGhostdagManager>>,
-    pub ghostdag_primary_manager: DbGhostdagManager,
+    pub ghostdag_manager: DbGhostdagManager,
     pub coinbase_manager: CoinbaseManager,
     pub pruning_point_manager: DbPruningPointManager,
     pub pruning_proof_manager: Arc<PruningProofManager>,
@@ -82,20 +81,20 @@ impl ConsensusServices {
         let reachability_service = MTReachabilityService::new(storage.reachability_store.clone());
         let dag_traversal_manager = DagTraversalManager::new(
             params.genesis.hash,
-            storage.ghostdag_primary_store.clone(),
+            storage.ghostdag_store.clone(),
             relations_service.clone(),
             reachability_service.clone(),
         );
         let window_manager = DualWindowManager::new(
             &params.genesis,
-            storage.ghostdag_primary_store.clone(),
+            storage.ghostdag_store.clone(),
             storage.headers_store.clone(),
             storage.daa_excluded_store.clone(),
             storage.block_window_cache_for_difficulty.clone(),
             storage.block_window_cache_for_past_median_time.clone(),
             params.max_difficulty_target,
             params.target_time_per_block,
-            params.sampling_activation_daa_score,
+            params.sampling_activation,
             params.legacy_difficulty_window_size,
             params.sampled_difficulty_window_size,
             params.min_difficulty_window_len,
@@ -110,27 +109,16 @@ impl ConsensusServices {
             params.genesis.hash,
             storage.depth_store.clone(),
             reachability_service.clone(),
-            storage.ghostdag_primary_store.clone(),
+            storage.ghostdag_store.clone(),
         );
-        let ghostdag_managers = Arc::new(
-            storage
-                .ghostdag_stores
-                .iter()
-                .cloned()
-                .enumerate()
-                .map(|(level, ghostdag_store)| {
-                    GhostdagManager::new(
-                        params.genesis.hash,
-                        params.ghostdag_k,
-                        ghostdag_store,
-                        relations_services[level].clone(),
-                        storage.headers_store.clone(),
-                        reachability_service.clone(),
-                    )
-                })
-                .collect_vec(),
+        let ghostdag_manager = GhostdagManager::new(
+            params.genesis.hash,
+            params.ghostdag_k,
+            storage.ghostdag_store.clone(),
+            relations_services[0].clone(),
+            storage.headers_store.clone(),
+            reachability_service.clone(),
         );
-        let ghostdag_primary_manager = ghostdag_managers[0].clone();
 
         let coinbase_manager = CoinbaseManager::new(
             params.coinbase_payload_script_public_key_max_len,
@@ -157,7 +145,9 @@ impl ConsensusServices {
             params.coinbase_maturity,
             tx_script_cache_counters,
             mass_calculator.clone(),
-            params.storage_mass_activation_daa_score,
+            params.storage_mass_activation,
+            params.kip10_activation,
+            params.payload_activation,
         );
 
         let pruning_point_manager = PruningPointManager::new(
@@ -165,7 +155,7 @@ impl ConsensusServices {
             params.finality_depth,
             params.genesis.hash,
             reachability_service.clone(),
-            storage.ghostdag_primary_store.clone(),
+            storage.ghostdag_store.clone(),
             storage.headers_store.clone(),
             storage.past_pruning_points_store.clone(),
             storage.headers_selected_tip_store.clone(),
@@ -184,7 +174,7 @@ impl ConsensusServices {
             &storage,
             parents_manager.clone(),
             reachability_service.clone(),
-            ghostdag_managers.clone(),
+            ghostdag_manager.clone(),
             dag_traversal_manager.clone(),
             window_manager.clone(),
             params.max_block_level,
@@ -199,7 +189,7 @@ impl ConsensusServices {
             params.mergeset_size_limit as usize,
             reachability_service.clone(),
             dag_traversal_manager.clone(),
-            storage.ghostdag_primary_store.clone(),
+            storage.ghostdag_store.clone(),
             storage.selected_chain_store.clone(),
             storage.headers_selected_tip_store.clone(),
             storage.pruning_point_store.clone(),
@@ -213,8 +203,7 @@ impl ConsensusServices {
             reachability_service,
             window_manager,
             dag_traversal_manager,
-            ghostdag_managers,
-            ghostdag_primary_manager,
+            ghostdag_manager,
             coinbase_manager,
             pruning_point_manager,
             pruning_proof_manager,

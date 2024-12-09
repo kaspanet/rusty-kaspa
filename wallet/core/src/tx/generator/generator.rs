@@ -672,7 +672,6 @@ impl Generator {
 
     }
     */
-
     fn generate_transaction_data(&self, context: &mut Context, stage: &mut Stage) -> Result<(DataKind, Data)> {
         let calc = &self.inner.mass_calculator;
         let mut data = Data::new(calc);

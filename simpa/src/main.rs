@@ -13,7 +13,7 @@ use kaspa_consensus::{
         headers::HeaderStoreReader,
         relations::RelationsStoreReader,
     },
-    params::{Params, Testnet11Bps, DEVNET_PARAMS, NETWORK_DELAY_BOUND, TESTNET11_PARAMS},
+    params::{ForkActivation, Params, Testnet11Bps, DEVNET_PARAMS, NETWORK_DELAY_BOUND, TESTNET11_PARAMS},
 };
 use kaspa_consensus_core::{
     api::ConsensusApi, block::Block, blockstatus::BlockStatus, config::bps::calculate_ghostdag_k, errors::block::BlockProcessResult,
@@ -122,6 +122,8 @@ struct Args {
     rocksdb_files_limit: Option<i32>,
     #[arg(long)]
     rocksdb_mem_budget: Option<usize>,
+    #[arg(long, default_value_t = false)]
+    long_payload: bool,
 }
 
 #[cfg(feature = "heap")]
@@ -189,8 +191,9 @@ fn main_impl(mut args: Args) {
     }
     args.bps = if args.testnet11 { Testnet11Bps::bps() as f64 } else { args.bps };
     let mut params = if args.testnet11 { TESTNET11_PARAMS } else { DEVNET_PARAMS };
-    params.storage_mass_activation_daa_score = 400;
+    params.storage_mass_activation = ForkActivation::new(400);
     params.storage_mass_parameter = 10_000;
+    params.payload_activation = ForkActivation::always();
     let mut builder = ConfigBuilder::new(params)
         .apply_args(|config| apply_args_to_consensus_params(&args, &mut config.params))
         .apply_args(|config| apply_args_to_perf_params(&args, &mut config.perf))
@@ -245,6 +248,7 @@ fn main_impl(mut args: Args) {
                 args.rocksdb_stats_period_sec,
                 args.rocksdb_files_limit,
                 args.rocksdb_mem_budget,
+                args.long_payload,
             )
             .run(until);
         consensus.shutdown(handles);
@@ -306,12 +310,12 @@ fn apply_args_to_consensus_params(args: &Args, params: &mut Params) {
 
         if args.daa_legacy {
             // Scale DAA and median-time windows linearly with BPS
-            params.sampling_activation_daa_score = u64::MAX;
+            params.sampling_activation = ForkActivation::never();
             params.legacy_timestamp_deviation_tolerance = (params.legacy_timestamp_deviation_tolerance as f64 * args.bps) as u64;
             params.legacy_difficulty_window_size = (params.legacy_difficulty_window_size as f64 * args.bps) as usize;
         } else {
             // Use the new sampling algorithms
-            params.sampling_activation_daa_score = 0;
+            params.sampling_activation = ForkActivation::always();
             params.past_median_time_sample_rate = (10.0 * args.bps) as u64;
             params.new_timestamp_deviation_tolerance = (600.0 * args.bps) as u64;
             params.difficulty_sample_rate = (2.0 * args.bps) as u64;
@@ -425,12 +429,12 @@ fn topologically_ordered_hashes(src_consensus: &Consensus, genesis_hash: Hash) -
 }
 
 fn print_stats(src_consensus: &Consensus, hashes: &[Hash], delay: f64, bps: f64, k: KType) -> usize {
-    let blues_mean =
-        hashes.iter().map(|&h| src_consensus.ghostdag_primary_store.get_data(h).unwrap().mergeset_blues.len()).sum::<usize>() as f64
-            / hashes.len() as f64;
-    let reds_mean =
-        hashes.iter().map(|&h| src_consensus.ghostdag_primary_store.get_data(h).unwrap().mergeset_reds.len()).sum::<usize>() as f64
-            / hashes.len() as f64;
+    let blues_mean = hashes.iter().map(|&h| src_consensus.ghostdag_store.get_data(h).unwrap().mergeset_blues.len()).sum::<usize>()
+        as f64
+        / hashes.len() as f64;
+    let reds_mean = hashes.iter().map(|&h| src_consensus.ghostdag_store.get_data(h).unwrap().mergeset_reds.len()).sum::<usize>()
+        as f64
+        / hashes.len() as f64;
     let parents_mean = hashes.iter().map(|&h| src_consensus.headers_store.get_header(h).unwrap().direct_parents().len()).sum::<usize>()
         as f64
         / hashes.len() as f64;

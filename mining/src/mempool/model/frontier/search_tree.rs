@@ -111,7 +111,7 @@ impl<'a> PrefixWeightVisitor<'a> {
     }
 }
 
-impl<'a> DescendVisit<FeerateKey, (), FeerateWeight> for PrefixWeightVisitor<'a> {
+impl DescendVisit<FeerateKey, (), FeerateWeight> for PrefixWeightVisitor<'_> {
     type Result = f64;
 
     fn visit_inner(&mut self, keys: &[FeerateKey], arguments: &[FeerateWeight]) -> DescendVisitResult<Self::Result> {

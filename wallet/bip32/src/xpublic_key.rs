@@ -10,7 +10,7 @@ use hmac::Mac;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
 
-/// Extended public secp256k1 ECDSA verification key.
+///// Extended public secp256k1 ECDSA verification key.
 //#[cfg(feature = "secp256k1")]
 //#[cfg_attr(docsrs, doc(cfg(feature = "secp256k1")))]
 //pub type XPub = ExtendedPublicKey<k256::ecdsa::VerifyingKey>;
