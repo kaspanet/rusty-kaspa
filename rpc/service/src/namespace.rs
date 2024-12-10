@@ -79,6 +79,16 @@ impl FromStr for Namespaces {
 
 impl Default for Namespaces {
     fn default() -> Self {
-        Self { enabled: HashSet::from([Namespace::General, Namespace::DAG, Namespace::Wallet]) }
+        Self {
+            enabled: HashSet::from([
+                Namespace::General,
+                Namespace::Networking,
+                Namespace::DAG,
+                Namespace::Mining,
+                Namespace::Wallet,
+                Namespace::Metrics,
+                Namespace::Mempool,
+            ]),
+        }
     }
 }
