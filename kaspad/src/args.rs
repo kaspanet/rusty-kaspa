@@ -91,7 +91,7 @@ pub struct Args {
     #[serde(rename = "nogrpc")]
     pub disable_grpc: bool,
     pub ram_scale: f64,
-    #[serde(rename = "rpcapi")]
+    #[serde(rename = "rpc-api")]
     pub rpc_namespaces: Option<Namespaces>,
 }
 
