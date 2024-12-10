@@ -3,6 +3,7 @@
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::converter::feerate_estimate::{FeeEstimateConverter, FeeEstimateVerboseConverter};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
+use crate::namespace::{Namespace, Namespaces};
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
@@ -63,6 +64,7 @@ use kaspa_rpc_core::{
     notify::connection::ChannelConnection,
     Notification, RpcError, RpcResult,
 };
+use kaspa_rpc_macros::namespace;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script};
 use kaspa_utils::expiring_cache::ExpiringCache;
 use kaspa_utils::sysinfo::SystemInfo;
@@ -118,6 +120,7 @@ pub struct RpcCoreService {
     system_info: SystemInfo,
     fee_estimate_cache: ExpiringCache<RpcFeeEstimate>,
     fee_estimate_verbose_cache: ExpiringCache<kaspa_mining::errors::MiningManagerResult<GetFeeEstimateExperimentalResponse>>,
+    namespaces: Namespaces,
 }
 
 const RPC_CORE: &str = "rpc-core";
@@ -143,6 +146,7 @@ impl RpcCoreService {
         p2p_tower_counters: Arc<TowerConnectionCounters>,
         grpc_tower_counters: Arc<TowerConnectionCounters>,
         system_info: SystemInfo,
+        namespaces: Option<Namespaces>,
     ) -> Self {
         // This notifier UTXOs subscription granularity to index-processor or consensus notifier
         let policies = match index_notifier {
@@ -195,7 +199,7 @@ impl RpcCoreService {
         // Protocol converter
         let protocol_converter = Arc::new(ProtocolConverter::new(flow_context.clone()));
 
-        // Create the rcp-core notifier
+        // Create the rpc-core notifier
         let notifier =
             Arc::new(Notifier::new(RPC_CORE, EVENT_TYPE_ARRAY[..].into(), collectors, subscribers, subscription_context, 1, policies));
 
@@ -221,6 +225,7 @@ impl RpcCoreService {
             system_info,
             fee_estimate_cache: ExpiringCache::new(Duration::from_millis(500), Duration::from_millis(1000)),
             fee_estimate_verbose_cache: ExpiringCache::new(Duration::from_millis(500), Duration::from_millis(1000)),
+            namespaces: namespaces.unwrap_or_default(),
         }
     }
 
@@ -288,6 +293,7 @@ impl RpcCoreService {
 
 #[async_trait]
 impl RpcApi for RpcCoreService {
+    #[namespace(Namespace::Mining)]
     async fn submit_block_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -350,6 +356,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         }
     }
 
+    #[namespace(Namespace::Mining)]
     async fn get_block_template_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -386,6 +393,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         })
     }
 
+    #[namespace(Namespace::Mining)]
     async fn get_current_block_color_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -399,6 +407,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         }
     }
 
+    #[namespace(Namespace::DAG)]
     async fn get_block_call(&self, _connection: Option<&DynRpcConnection>, request: GetBlockRequest) -> RpcResult<GetBlockResponse> {
         // TODO: test
         let session = self.consensus_manager.consensus().session().await;
@@ -411,6 +420,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         })
     }
 
+    #[namespace(Namespace::DAG)]
     async fn get_blocks_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -464,6 +474,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetBlocksResponse { block_hashes, blocks })
     }
 
+    #[namespace(Namespace::General)]
     async fn get_info_call(&self, _connection: Option<&DynRpcConnection>, _request: GetInfoRequest) -> RpcResult<GetInfoResponse> {
         let is_nearly_synced = self.consensus_manager.consensus().unguarded_session().async_is_nearly_synced().await;
         Ok(GetInfoResponse {
@@ -477,6 +488,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         })
     }
 
+    #[namespace(Namespace::Mempool)]
     async fn get_mempool_entry_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -490,6 +502,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetMempoolEntryResponse::new(self.consensus_converter.get_mempool_entry(&session, &transaction)))
     }
 
+    #[namespace(Namespace::Mempool)]
     async fn get_mempool_entries_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -506,6 +519,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetMempoolEntriesResponse::new(mempool_entries))
     }
 
+    #[namespace(Namespace::Mempool)]
     async fn get_mempool_entries_by_addresses_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -532,6 +546,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetMempoolEntriesByAddressesResponse::new(mempool_entries))
     }
 
+    #[namespace(Namespace::Wallet)]
     async fn submit_transaction_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -557,6 +572,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(SubmitTransactionResponse::new(transaction_id))
     }
 
+    #[namespace(Namespace::Wallet)]
     async fn submit_transaction_replacement_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -574,6 +590,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(SubmitTransactionReplacementResponse::new(transaction_id, (&*replaced_transaction).into()))
     }
 
+    #[namespace(Namespace::General)]
     async fn get_current_network_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -582,6 +599,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetCurrentNetworkResponse::new(*self.config.net))
     }
 
+    #[namespace(Namespace::Networking)]
     async fn get_subnetwork_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -590,10 +608,12 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Err(RpcError::NotImplemented)
     }
 
+    #[namespace(Namespace::DAG)]
     async fn get_sink_call(&self, _connection: Option<&DynRpcConnection>, _: GetSinkRequest) -> RpcResult<GetSinkResponse> {
         Ok(GetSinkResponse::new(self.consensus_manager.consensus().unguarded_session().async_get_sink().await))
     }
 
+    #[namespace(Namespace::DAG)]
     async fn get_sink_blue_score_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -603,6 +623,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetSinkBlueScoreResponse::new(session.async_get_ghostdag_data(session.async_get_sink().await).await?.blue_score))
     }
 
+    #[namespace(Namespace::DAG)]
     async fn get_virtual_chain_from_block_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -631,6 +652,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetVirtualChainFromBlockResponse::new(virtual_chain_batch.removed, virtual_chain_batch.added, accepted_transaction_ids))
     }
 
+    #[namespace(Namespace::DAG)]
     async fn get_block_count_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -639,6 +661,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(self.consensus_manager.consensus().unguarded_session().async_estimate_block_count().await)
     }
 
+    #[namespace(Namespace::Wallet)]
     async fn get_utxos_by_addresses_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -653,6 +676,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetUtxosByAddressesResponse::new(self.index_converter.get_utxos_by_addresses_entries(&entry_map)))
     }
 
+    #[namespace(Namespace::Wallet)]
     async fn get_balance_by_address_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -666,6 +690,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetBalanceByAddressResponse::new(balance))
     }
 
+    #[namespace(Namespace::Wallet)]
     async fn get_balances_by_addresses_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -687,6 +712,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetBalancesByAddressesResponse::new(entries))
     }
 
+    #[namespace(Namespace::DAG)]
     async fn get_coin_supply_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -700,6 +726,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetCoinSupplyResponse::new(MAX_SOMPI, circulating_sompi))
     }
 
+    #[namespace(Namespace::Wallet)] // TODO: think again
     async fn get_daa_score_timestamp_estimate_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -759,6 +786,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetDaaScoreTimestampEstimateResponse::new(timestamps))
     }
 
+    #[namespace(Namespace::Wallet)]
     async fn get_fee_estimate_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -770,6 +798,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetFeeEstimateResponse { estimate })
     }
 
+    #[namespace(Namespace::Wallet)]
     async fn get_fee_estimate_experimental_call(
         &self,
         connection: Option<&DynRpcConnection>,
@@ -794,10 +823,12 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         }
     }
 
+    #[namespace(Namespace::General)]
     async fn ping_call(&self, _connection: Option<&DynRpcConnection>, _: PingRequest) -> RpcResult<PingResponse> {
         Ok(PingResponse {})
     }
 
+    #[namespace(Namespace::DAG)]
     async fn get_headers_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -806,6 +837,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Err(RpcError::NotImplemented)
     }
 
+    #[namespace(Namespace::DAG)]
     async fn get_block_dag_info_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -828,6 +860,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         ))
     }
 
+    #[namespace(Namespace::DAG)]
     async fn estimate_network_hashes_per_second_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -860,6 +893,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         ))
     }
 
+    #[namespace(Namespace::Networking)]
     async fn add_peer_call(&self, _connection: Option<&DynRpcConnection>, request: AddPeerRequest) -> RpcResult<AddPeerResponse> {
         if !self.config.unsafe_rpc {
             warn!("AddPeer RPC command called while node in safe RPC mode -- ignoring.");
@@ -874,6 +908,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(AddPeerResponse {})
     }
 
+    #[namespace(Namespace::Networking)]
     async fn get_peer_addresses_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -883,6 +918,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetPeerAddressesResponse::new(address_manager.get_all_addresses(), address_manager.get_all_banned_addresses()))
     }
 
+    #[namespace(Namespace::Networking)]
     async fn ban_call(&self, _connection: Option<&DynRpcConnection>, request: BanRequest) -> RpcResult<BanResponse> {
         if !self.config.unsafe_rpc {
             warn!("Ban RPC command called while node in safe RPC mode -- ignoring.");
@@ -900,6 +936,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(BanResponse {})
     }
 
+    #[namespace(Namespace::Networking)]
     async fn unban_call(&self, _connection: Option<&DynRpcConnection>, request: UnbanRequest) -> RpcResult<UnbanResponse> {
         if !self.config.unsafe_rpc {
             warn!("Unban RPC command called while node in safe RPC mode -- ignoring.");
@@ -914,6 +951,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(UnbanResponse {})
     }
 
+    #[namespace(Namespace::Networking)]
     async fn get_connected_peer_info_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -924,6 +962,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetConnectedPeerInfoResponse::new(peer_info))
     }
 
+    #[namespace(Namespace::General)]
     async fn shutdown_call(&self, _connection: Option<&DynRpcConnection>, _: ShutdownRequest) -> RpcResult<ShutdownResponse> {
         if !self.config.unsafe_rpc {
             warn!("Shutdown RPC command called while node in safe RPC mode -- ignoring.");
@@ -945,6 +984,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(ShutdownResponse {})
     }
 
+    #[namespace(Namespace::DAG)]
     async fn resolve_finality_conflict_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -957,6 +997,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Err(RpcError::NotImplemented)
     }
 
+    #[namespace(Namespace::Networking)]
     async fn get_connections_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -975,6 +1016,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(GetConnectionsResponse { clients, peers, profile_data })
     }
 
+    #[namespace(Namespace::Metrics)]
     async fn get_metrics_call(&self, _connection: Option<&DynRpcConnection>, req: GetMetricsRequest) -> RpcResult<GetMetricsResponse> {
         let CountersSnapshot {
             resident_set_size,
@@ -1068,6 +1110,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(response)
     }
 
+    #[namespace(Namespace::Metrics)]
     async fn get_system_info_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -1086,6 +1129,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         Ok(response)
     }
 
+    #[namespace(Namespace::General)]
     async fn get_server_info_call(
         &self,
         _connection: Option<&DynRpcConnection>,
@@ -1106,6 +1150,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         })
     }
 
+    #[namespace(Namespace::DAG)]
     async fn get_sync_status_call(
         &self,
         _connection: Option<&DynRpcConnection>,
