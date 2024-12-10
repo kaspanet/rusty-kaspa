@@ -48,6 +48,7 @@ impl MemSizeEstimator for GhostdagData {
 impl MemSizeEstimator for CompactGhostdagData {}
 
 impl From<&GhostdagData> for CompactGhostdagData {
+    #[inline(always)]
     fn from(value: &GhostdagData) -> Self {
         Self { blue_score: value.blue_score, blue_work: value.blue_work, selected_parent: value.selected_parent }
     }
@@ -115,7 +116,7 @@ impl GhostdagData {
     pub fn ascending_mergeset_without_selected_parent<'a>(
         &'a self,
         store: &'a (impl GhostdagStoreReader + ?Sized),
-    ) -> impl Iterator<Item = SortableBlock> + '_ {
+    ) -> impl Iterator<Item = SortableBlock> + 'a {
         self.mergeset_blues
             .iter()
             .skip(1) // Skip the selected parent
@@ -138,7 +139,7 @@ impl GhostdagData {
     pub fn descending_mergeset_without_selected_parent<'a>(
         &'a self,
         store: &'a (impl GhostdagStoreReader + ?Sized),
-    ) -> impl Iterator<Item = SortableBlock> + '_ {
+    ) -> impl Iterator<Item = SortableBlock> + 'a {
         self.mergeset_blues
                 .iter()
                 .skip(1) // Skip the selected parent
@@ -174,7 +175,7 @@ impl GhostdagData {
     pub fn consensus_ordered_mergeset<'a>(
         &'a self,
         store: &'a (impl GhostdagStoreReader + ?Sized),
-    ) -> impl Iterator<Item = Hash> + '_ {
+    ) -> impl Iterator<Item = Hash> + 'a {
         once(self.selected_parent).chain(self.ascending_mergeset_without_selected_parent(store).map(|s| s.hash))
     }
 
@@ -182,7 +183,7 @@ impl GhostdagData {
     pub fn consensus_ordered_mergeset_without_selected_parent<'a>(
         &'a self,
         store: &'a (impl GhostdagStoreReader + ?Sized),
-    ) -> impl Iterator<Item = Hash> + '_ {
+    ) -> impl Iterator<Item = Hash> + 'a {
         self.ascending_mergeset_without_selected_parent(store).map(|s| s.hash)
     }
 

@@ -6,7 +6,7 @@ use kaspa_consensus::params::Params;
 use kaspa_consensus_core::api::ConsensusApi;
 use kaspa_consensus_core::block::{Block, TemplateBuildMode, TemplateTransactionSelector};
 use kaspa_consensus_core::coinbase::MinerData;
-use kaspa_consensus_core::mass::{Kip9Version, MassCalculator};
+use kaspa_consensus_core::mass::MassCalculator;
 use kaspa_consensus_core::sign::sign;
 use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
 use kaspa_consensus_core::tx::{
@@ -74,6 +74,7 @@ pub struct Miner {
     target_txs_per_block: u64,
     target_blocks: Option<u64>,
     max_cached_outpoints: usize,
+    long_payload: bool,
 
     // Mass calculator
     mass_calculator: MassCalculator,
@@ -90,6 +91,7 @@ impl Miner {
         params: &Params,
         target_txs_per_block: u64,
         target_blocks: Option<u64>,
+        long_payload: bool,
     ) -> Self {
         let (schnorr_public_key, _) = pk.x_only_public_key();
         let script_pub_key_script = once(0x20).chain(schnorr_public_key.serialize()).chain(once(0xac)).collect_vec(); // TODO: Use script builder when available to create p2pk properly
@@ -114,6 +116,7 @@ impl Miner {
                 params.mass_per_sig_op,
                 params.storage_mass_parameter,
             ),
+            long_payload,
         }
     }
 
@@ -143,7 +146,10 @@ impl Miner {
             .iter()
             .filter_map(|&outpoint| {
                 let entry = self.get_spendable_entry(virtual_utxo_view, outpoint, virtual_state.daa_score)?;
-                let unsigned_tx = self.create_unsigned_tx(outpoint, entry.amount, multiple_outputs);
+                let mut unsigned_tx = self.create_unsigned_tx(outpoint, entry.amount, multiple_outputs);
+                if self.long_payload {
+                    unsigned_tx.payload = vec![0; 90_000];
+                }
                 Some(MutableTransaction::with_entries(unsigned_tx, vec![entry]))
             })
             .take(self.target_txs_per_block as usize)
@@ -151,7 +157,7 @@ impl Miner {
             .into_par_iter()
             .map(|mutable_tx| {
                 let signed_tx = sign(mutable_tx, schnorr_key);
-                let mass = self.mass_calculator.calc_tx_overall_mass(&signed_tx.as_verifiable(), None, Kip9Version::Alpha).unwrap();
+                let mass = self.mass_calculator.calc_tx_overall_mass(&signed_tx.as_verifiable(), None).unwrap();
                 signed_tx.tx.set_mass(mass);
                 let mut signed_tx = signed_tx.tx;
                 signed_tx.finalize();

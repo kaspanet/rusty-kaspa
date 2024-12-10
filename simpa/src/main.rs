@@ -122,6 +122,8 @@ struct Args {
     rocksdb_files_limit: Option<i32>,
     #[arg(long)]
     rocksdb_mem_budget: Option<usize>,
+    #[arg(long, default_value_t = false)]
+    long_payload: bool,
 }
 
 #[cfg(feature = "heap")]
@@ -191,6 +193,7 @@ fn main_impl(mut args: Args) {
     let mut params = if args.testnet11 { TESTNET11_PARAMS } else { DEVNET_PARAMS };
     params.storage_mass_activation = ForkActivation::new(400);
     params.storage_mass_parameter = 10_000;
+    params.payload_activation = ForkActivation::always();
     let mut builder = ConfigBuilder::new(params)
         .apply_args(|config| apply_args_to_consensus_params(&args, &mut config.params))
         .apply_args(|config| apply_args_to_perf_params(&args, &mut config.perf))
@@ -245,6 +248,7 @@ fn main_impl(mut args: Args) {
                 args.rocksdb_stats_period_sec,
                 args.rocksdb_files_limit,
                 args.rocksdb_mem_budget,
+                args.long_payload,
             )
             .run(until);
         consensus.shutdown(handles);

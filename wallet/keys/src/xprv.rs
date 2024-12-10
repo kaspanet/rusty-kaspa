@@ -146,7 +146,7 @@ extern "C" {
 
 impl TryCastFromJs for XPrv {
     type Error = Error;
-    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<Self>, Self::Error>
+    fn try_cast_from<'a, R>(value: &'a R) -> Result<Cast<'a, Self>, Self::Error>
     where
         R: AsRef<JsValue> + 'a,
     {

@@ -9,14 +9,35 @@ use crate::processes::reachability::{inquirer, Result};
 use kaspa_hashes::Hash;
 
 pub trait ReachabilityService {
+    /// Checks if `this` block is a chain ancestor of `queried` block (i.e., `this ∈ chain(queried) ∪ {queried}`).
+    /// Note that we use the graph theory convention here which defines that a block is also an ancestor of itself.
     fn is_chain_ancestor_of(&self, this: Hash, queried: Hash) -> bool;
+
+    /// Result version of [`Self::is_dag_ancestor_of`] (avoids unwrapping internally)
     fn is_dag_ancestor_of_result(&self, this: Hash, queried: Hash) -> Result<bool>;
+
+    /// Returns true if `this` is a DAG ancestor of `queried` (i.e., `queried ∈ future(this) ∪ {this}`).
+    /// Note: this method will return true if `this == queried`.
+    /// The complexity of this method is `O(log(|future_covering_set(this)|))`
     fn is_dag_ancestor_of(&self, this: Hash, queried: Hash) -> bool;
+
+    /// Checks if `this` is DAG ancestor of any of the blocks in `queried`. See [`Self::is_dag_ancestor_of`] as well.
     fn is_dag_ancestor_of_any(&self, this: Hash, queried: &mut impl Iterator<Item = Hash>) -> bool;
+
+    /// Checks if any of the blocks in `list` is DAG ancestor of `queried`. See [`Self::is_dag_ancestor_of`] as well.
     fn is_any_dag_ancestor(&self, list: &mut impl Iterator<Item = Hash>, queried: Hash) -> bool;
+
+    /// Result version of [`Self::is_any_dag_ancestor`] (avoids unwrapping internally)
     fn is_any_dag_ancestor_result(&self, list: &mut impl Iterator<Item = Hash>, queried: Hash) -> Result<bool>;
+
+    /// Finds the tree child of `ancestor` which is also a chain ancestor of `descendant`.
+    /// (A "tree child of X" is a block which X is its chain parent)
     fn get_next_chain_ancestor(&self, descendant: Hash, ancestor: Hash) -> Hash;
+
+    /// Returns the chain parent of `this`
     fn get_chain_parent(&self, this: Hash) -> Hash;
+
+    /// Checks whether `this` has reachability data
     fn has_reachability_data(&self, this: Hash) -> bool;
 }
 
@@ -154,7 +175,6 @@ impl<T: ReachabilityStoreReader + ?Sized> MTReachabilityService<T> {
 /// a compromise where the lock is released every constant number of items.
 ///
 /// TODO: decide if these alternatives require overall system benchmarking
-
 struct BackwardChainIterator<T: ReachabilityStoreReader + ?Sized> {
     store: Arc<RwLock<T>>,
     current: Option<Hash>,

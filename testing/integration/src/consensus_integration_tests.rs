@@ -27,6 +27,7 @@ use kaspa_consensus_core::api::{BlockValidationFutures, ConsensusApi};
 use kaspa_consensus_core::block::Block;
 use kaspa_consensus_core::blockhash::new_unique;
 use kaspa_consensus_core::blockstatus::BlockStatus;
+use kaspa_consensus_core::coinbase::MinerData;
 use kaspa_consensus_core::constants::{BLOCK_VERSION, SOMPI_PER_KASPA, STORAGE_MASS_PARAMETER};
 use kaspa_consensus_core::errors::block::{BlockProcessResult, RuleError};
 use kaspa_consensus_core::header::Header;
@@ -47,7 +48,7 @@ use crate::common;
 use flate2::read::GzDecoder;
 use futures_util::future::try_join_all;
 use itertools::Itertools;
-use kaspa_consensus_core::coinbase::MinerData;
+use kaspa_consensus_core::errors::tx::TxRuleError;
 use kaspa_consensus_core::merkle::calc_hash_merkle_root;
 use kaspa_consensus_core::muhash::MuHashExtensions;
 use kaspa_core::core::Core;
@@ -61,6 +62,7 @@ use kaspa_math::Uint256;
 use kaspa_muhash::MuHash;
 use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_txscript::caches::TxScriptCacheCounters;
+use kaspa_txscript::opcodes::codes::OpTrue;
 use kaspa_utxoindex::api::{UtxoIndexApi, UtxoIndexProxy};
 use kaspa_utxoindex::UtxoIndex;
 use serde::{Deserialize, Serialize};
@@ -842,6 +844,7 @@ impl KaspadGoParams {
             skip_proof_of_work: self.SkipProofOfWork,
             max_block_level: self.MaxBlockLevel,
             pruning_proof_m: self.PruningProofM,
+            payload_activation: ForkActivation::never(),
         }
     }
 }
@@ -1364,7 +1367,7 @@ async fn difficulty_test() {
     fn full_window_bits(consensus: &TestConsensus, hash: Hash) -> u32 {
         let window_size = consensus.params().difficulty_window_size(0) * consensus.params().difficulty_sample_rate(0) as usize;
         let ghostdag_data = &consensus.ghostdag_store().get_data(hash).unwrap();
-        let window = consensus.window_manager().block_window(ghostdag_data, WindowType::FullDifficultyWindow).unwrap();
+        let window = consensus.window_manager().block_window(ghostdag_data, WindowType::VaryingWindow(window_size)).unwrap();
         assert_eq!(window.blocks.len(), window_size);
         let daa_window = consensus.window_manager().calc_daa_window(ghostdag_data, window);
         consensus.window_manager().calculate_difficulty_bits(ghostdag_data, &daa_window)
@@ -1862,6 +1865,143 @@ async fn run_kip10_activation_test() {
 
     // Test 2: Verify the same transaction is accepted after activation
     let status = consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![spending_tx.clone()]).await;
+    assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
+    assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
+}
+
+#[tokio::test]
+async fn payload_test() {
+    let config = ConfigBuilder::new(DEVNET_PARAMS)
+        .skip_proof_of_work()
+        .edit_consensus_params(|p| {
+            p.coinbase_maturity = 0;
+            p.payload_activation = ForkActivation::always()
+        })
+        .build();
+    let consensus = TestConsensus::new(&config);
+    let wait_handles = consensus.init();
+
+    let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![OpTrue]), vec![]);
+    let b = consensus.build_utxo_valid_block_with_parents(1.into(), vec![config.genesis.hash], miner_data.clone(), vec![]);
+    consensus.validate_and_insert_block(b.to_immutable()).virtual_state_task.await.unwrap();
+    let funding_block = consensus.build_utxo_valid_block_with_parents(2.into(), vec![1.into()], miner_data, vec![]);
+    let cb_id = {
+        let mut cb = funding_block.transactions[0].clone();
+        cb.finalize();
+        cb.id()
+    };
+    consensus.validate_and_insert_block(funding_block.to_immutable()).virtual_state_task.await.unwrap();
+    let tx = Transaction::new(
+        0,
+        vec![TransactionInput::new(TransactionOutpoint { transaction_id: cb_id, index: 0 }, vec![], 0, 0)],
+        vec![TransactionOutput::new(1, ScriptPublicKey::default())],
+        0,
+        SubnetworkId::default(),
+        0,
+        vec![0; (config.params.max_block_mass / 2) as usize],
+    );
+    consensus.add_utxo_valid_block_with_parents(3.into(), vec![2.into()], vec![tx]).await.unwrap();
+
+    consensus.shutdown(wait_handles);
+}
+
+#[tokio::test]
+async fn payload_activation_test() {
+    use kaspa_consensus_core::subnets::SUBNETWORK_ID_NATIVE;
+
+    // Set payload activation at DAA score 3 for this test
+    const PAYLOAD_ACTIVATION_DAA_SCORE: u64 = 3;
+
+    init_allocator_with_default_settings();
+
+    // Create initial UTXO to fund our test transactions
+    let initial_utxo_collection = [(
+        TransactionOutpoint::new(1.into(), 0),
+        UtxoEntry {
+            amount: SOMPI_PER_KASPA,
+            script_public_key: ScriptPublicKey::from_vec(0, vec![OpTrue]),
+            block_daa_score: 0,
+            is_coinbase: false,
+        },
+    )];
+
+    // Initialize consensus with payload activation point
+    let config = ConfigBuilder::new(DEVNET_PARAMS)
+        .skip_proof_of_work()
+        .apply_args(|cfg| {
+            let mut genesis_multiset = MuHash::new();
+            initial_utxo_collection.iter().for_each(|(outpoint, utxo)| {
+                genesis_multiset.add_utxo(outpoint, utxo);
+            });
+            cfg.params.genesis.utxo_commitment = genesis_multiset.finalize();
+            let genesis_header: Header = (&cfg.params.genesis).into();
+            cfg.params.genesis.hash = genesis_header.hash;
+        })
+        .edit_consensus_params(|p| {
+            p.payload_activation = ForkActivation::new(PAYLOAD_ACTIVATION_DAA_SCORE);
+        })
+        .build();
+
+    let consensus = TestConsensus::new(&config);
+    let mut genesis_multiset = MuHash::new();
+    consensus.append_imported_pruning_point_utxos(&initial_utxo_collection, &mut genesis_multiset);
+    consensus.import_pruning_point_utxo_set(config.genesis.hash, genesis_multiset).unwrap();
+    consensus.init();
+
+    // Build blockchain up to one block before activation
+    let mut index = 0;
+    for _ in 0..PAYLOAD_ACTIVATION_DAA_SCORE - 1 {
+        let parent = if index == 0 { config.genesis.hash } else { index.into() };
+        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![parent], vec![]).await.unwrap();
+        index += 1;
+    }
+    assert_eq!(consensus.get_virtual_daa_score(), index);
+
+    // Create transaction with large payload
+    let large_payload = vec![0u8; (config.params.max_block_mass / 2) as usize];
+    let mut tx_with_payload = Transaction::new(
+        0,
+        vec![TransactionInput::new(
+            initial_utxo_collection[0].0,
+            vec![], // Empty signature script since we're using OpTrue
+            0,
+            0,
+        )],
+        vec![TransactionOutput::new(initial_utxo_collection[0].1.amount - 5000, ScriptPublicKey::from_vec(0, vec![OpTrue]))],
+        0,
+        SUBNETWORK_ID_NATIVE,
+        0,
+        large_payload,
+    );
+    tx_with_payload.finalize();
+    let tx_id = tx_with_payload.id();
+
+    // Test 1: Build empty block, then manually insert invalid tx and verify consensus rejects it
+    {
+        let miner_data = MinerData::new(ScriptPublicKey::from_vec(0, vec![]), vec![]);
+
+        // First build block without transactions
+        let mut block =
+            consensus.build_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], miner_data.clone(), vec![]);
+
+        // Insert our test transaction and recalculate block hashes
+        block.transactions.push(tx_with_payload.clone());
+
+        block.header.hash_merkle_root = calc_hash_merkle_root(block.transactions.iter(), false);
+        let block_status = consensus.validate_and_insert_block(block.to_immutable()).virtual_state_task.await;
+        assert!(matches!(block_status, Err(RuleError::TxInContextFailed(tx, TxRuleError::NonCoinbaseTxHasPayload)) if tx == tx_id));
+        assert_eq!(consensus.lkg_virtual_state.load().daa_score, PAYLOAD_ACTIVATION_DAA_SCORE - 1);
+        index += 1;
+    }
+
+    // Add one more block to reach activation score
+    consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![(index - 1).into()], vec![]).await.unwrap();
+    index += 1;
+
+    // Test 2: Verify the same transaction is accepted after activation
+    let status =
+        consensus.add_utxo_valid_block_with_parents((index + 1).into(), vec![index.into()], vec![tx_with_payload.clone()]).await;
+
     assert!(matches!(status, Ok(BlockStatus::StatusUTXOValid)));
     assert!(consensus.lkg_virtual_state.load().accepted_tx_ids.contains(&tx_id));
 }

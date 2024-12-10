@@ -86,15 +86,7 @@ impl History {
             }
         };
         let length = ids.size_hint().0;
-        let skip = if let Some(last) = last {
-            if last > length {
-                0
-            } else {
-                length - last
-            }
-        } else {
-            0
-        };
+        let skip = if let Some(last) = last { length.saturating_sub(last) } else { 0 };
         let mut index = 0;
         let page = 25;
 
