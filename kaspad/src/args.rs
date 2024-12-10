@@ -5,6 +5,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::kaspad_env::version;
 use kaspa_notify::address::tracker::Tracker;
+use kaspa_rpc_service::namespace::Namespaces;
 use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_wrpc_server::address::WrpcNetAddress;
 use serde::Deserialize;
@@ -90,6 +91,8 @@ pub struct Args {
     #[serde(rename = "nogrpc")]
     pub disable_grpc: bool,
     pub ram_scale: f64,
+    #[serde(rename = "rpcapi")]
+    pub rpc_namespaces: Option<Namespaces>,
 }
 
 impl Default for Args {
@@ -140,6 +143,7 @@ impl Default for Args {
             disable_dns_seeding: false,
             disable_grpc: false,
             ram_scale: 1.0,
+            rpc_namespaces: None,
         }
     }
 }
@@ -369,7 +373,15 @@ Setting to 0 prevents the preallocation and sets the maximum to {}, leading to 0
                 .help("Apply a scale factor to memory allocation bounds. Nodes with limited RAM (~4-8GB) should set this to ~0.3-0.5 respectively. Nodes with
 a large RAM (~64GB) can set this value to ~3.0-4.0 and gain superior performance especially for syncing peers faster"),
         )
-        ;
+        .arg(
+            Arg::new("rpc-api")
+                .long("rpc-api")
+                .value_name("namespaces")
+                .require_equals(true)
+                .default_missing_value(None)
+                .value_parser(clap::value_parser!(Namespaces))
+                .help("Specify allowed RPC namespaces exposed over RPC servers."),
+        );
 
     #[cfg(feature = "devnet-prealloc")]
     let cmd = cmd
@@ -448,6 +460,7 @@ impl Args {
             disable_dns_seeding: arg_match_unwrap_or::<bool>(&m, "nodnsseed", defaults.disable_dns_seeding),
             disable_grpc: arg_match_unwrap_or::<bool>(&m, "nogrpc", defaults.disable_grpc),
             ram_scale: arg_match_unwrap_or::<f64>(&m, "ram-scale", defaults.ram_scale),
+            rpc_namespaces: m.get_one::<Namespaces>("rpc-api").cloned().or(defaults.rpc_namespaces),
 
             #[cfg(feature = "devnet-prealloc")]
             num_prealloc_utxos: m.get_one::<u64>("num-prealloc-utxos").cloned(),
@@ -560,4 +573,6 @@ fn arg_match_many_unwrap_or<T: Clone + Send + Sync + 'static>(m: &clap::ArgMatch
       --override-dag-params-file=           Overrides DAG params (allowed only on devnet)
   -s, --service=                            Service command {install, remove, start, stop}
       --nogrpc                              Don't initialize the gRPC server
+      --rpc-api=                            Set available namespaces over RPC server(s).
+                                            (By default all namespaces are enabled)
 */

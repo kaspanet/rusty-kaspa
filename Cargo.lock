@@ -3096,6 +3096,8 @@ dependencies = [
  "kaspa-utils-tower",
  "kaspa-utxoindex",
  "log",
+ "serde",
+ "thiserror",
  "tokio",
  "triggered",
  "workflow-rpc",

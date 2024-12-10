@@ -48,6 +48,6 @@ pub fn test_wrpc_serializer(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn auth(attr: TokenStream, item: TokenStream) -> TokenStream {
-    core::service::auth(attr, item)
+pub fn namespace(attr: TokenStream, item: TokenStream) -> TokenStream {
+    core::service::namespace(attr, item)
 }

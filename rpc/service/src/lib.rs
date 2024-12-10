@@ -1,4 +1,4 @@
 pub mod collector;
 pub mod converter;
-pub mod flags;
+pub mod namespace;
 pub mod service;
