@@ -9,7 +9,7 @@ use kaspa_notify::scope::Scope;
 use kaspa_notify::subscription::context::SubscriptionContext;
 use kaspa_notify::subscription::{MutationPolicies, UtxosChangedMutationPolicy};
 use kaspa_rpc_core::api::ctl::RpcCtl;
-use kaspa_rpc_core::{api::connection::DynRpcConnection, api::rpc::RpcApi, *};
+use kaspa_rpc_core::{api::connection::DynRpcConnection, api::rpc::RpcApi, api::namespaces::Namespaces, *};
 use kaspa_rpc_core::{notify::connection::ChannelConnection, RpcResult};
 use std::sync::Arc;
 
@@ -92,6 +92,7 @@ impl RpcApi for RpcCoreMock {
             is_synced: false,
             has_notify_command: false,
             has_message_id: false,
+            namespaces: Namespaces::default().enabled_namespaces()
         })
     }
 

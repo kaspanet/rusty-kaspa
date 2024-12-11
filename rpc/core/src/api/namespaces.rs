@@ -62,6 +62,14 @@ impl Namespaces {
     pub fn is_enabled(&self, namespace: &Namespace) -> bool {
         self.enabled.contains(namespace)
     }
+
+    /// Return enabled namespaces as string for get_info
+    pub fn enabled_namespaces(&self) -> Vec<String> {
+        self.enabled
+            .iter()
+            .map(|namespace| namespace.to_string())
+            .collect::<Vec<_>>()
+    }
 }
 
 impl FromStr for Namespaces {

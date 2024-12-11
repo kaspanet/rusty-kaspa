@@ -3,7 +3,6 @@
 use super::collector::{CollectorFromConsensus, CollectorFromIndex};
 use crate::converter::feerate_estimate::{FeeEstimateConverter, FeeEstimateVerboseConverter};
 use crate::converter::{consensus::ConsensusConverter, index::IndexConverter, protocol::ProtocolConverter};
-use crate::namespace::{Namespace, Namespaces};
 use crate::service::NetworkType::{Mainnet, Testnet};
 use async_trait::async_trait;
 use kaspa_consensus_core::api::counters::ProcessingCounters;
@@ -59,6 +58,7 @@ use kaspa_rpc_core::{
         connection::DynRpcConnection,
         ops::{RPC_API_REVISION, RPC_API_VERSION},
         rpc::{RpcApi, MAX_SAFE_WINDOW_SIZE},
+        namespaces::{Namespace, Namespaces}
     },
     model::*,
     notify::connection::ChannelConnection,
@@ -483,6 +483,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
             server_version: version().to_string(),
             is_utxo_indexed: self.config.utxoindex,
             is_synced: self.has_sufficient_peer_connectivity() && is_nearly_synced,
+            namespaces: self.namespaces.enabled_namespaces(),
             has_notify_command: true,
             has_message_id: true,
         })

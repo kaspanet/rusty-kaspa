@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod mockery {
 
-    use crate::{model::*, RpcScriptClass};
+    use crate::{model::*, RpcScriptClass, api::namespaces::{Namespaces}};
     use kaspa_addresses::{Prefix, Version};
     use kaspa_consensus_core::api::BlockCount;
     use kaspa_consensus_core::network::NetworkType;
@@ -486,6 +486,7 @@ mod mockery {
                 server_version: "0.4.2".to_string(),
                 is_utxo_indexed: true,
                 is_synced: false,
+                namespaces: Namespaces::default().enabled_namespaces(),
                 has_notify_command: true,
                 has_message_id: false,
             }
