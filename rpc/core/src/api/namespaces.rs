@@ -65,10 +65,7 @@ impl Namespaces {
 
     /// Return enabled namespaces as string for get_info
     pub fn enabled_namespaces(&self) -> Vec<String> {
-        self.enabled
-            .iter()
-            .map(|namespace| namespace.to_string())
-            .collect::<Vec<_>>()
+        self.enabled.iter().map(|namespace| namespace.to_string()).collect::<Vec<_>>()
     }
 }
 

@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod mockery {
 
-    use crate::{model::*, RpcScriptClass, api::namespaces::{Namespaces}};
+    use crate::{api::namespaces::Namespaces, model::*, RpcScriptClass};
     use kaspa_addresses::{Prefix, Version};
     use kaspa_consensus_core::api::BlockCount;
     use kaspa_consensus_core::network::NetworkType;

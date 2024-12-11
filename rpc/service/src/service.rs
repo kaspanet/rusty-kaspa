@@ -56,9 +56,9 @@ use kaspa_perf_monitor::{counters::CountersSnapshot, Monitor as PerfMonitor};
 use kaspa_rpc_core::{
     api::{
         connection::DynRpcConnection,
+        namespaces::{Namespace, Namespaces},
         ops::{RPC_API_REVISION, RPC_API_VERSION},
         rpc::{RpcApi, MAX_SAFE_WINDOW_SIZE},
-        namespaces::{Namespace, Namespaces}
     },
     model::*,
     notify::connection::ChannelConnection,

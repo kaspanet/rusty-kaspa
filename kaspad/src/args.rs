@@ -5,7 +5,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_core::kaspad_env::version;
 use kaspa_notify::address::tracker::Tracker;
-use kaspa_rpc_service::namespace::Namespaces;
+use kaspa_rpc_core::api::namespaces::Namespaces;
 use kaspa_utils::networking::ContextualNetAddress;
 use kaspa_wrpc_server::address::WrpcNetAddress;
 use serde::Deserialize;
