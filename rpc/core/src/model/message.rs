@@ -282,9 +282,9 @@ impl Serializer for GetInfoResponse {
         store!(String, &self.server_version, writer)?;
         store!(bool, &self.is_utxo_indexed, writer)?;
         store!(bool, &self.is_synced, writer)?;
-        store!(Vec<String>, &self.namespaces, writer)?;
         store!(bool, &self.has_notify_command, writer)?;
         store!(bool, &self.has_message_id, writer)?;
+        store!(Vec<String>, &self.namespaces, writer)?;
 
         Ok(())
     }
@@ -298,9 +298,9 @@ impl Deserializer for GetInfoResponse {
         let server_version = load!(String, reader)?;
         let is_utxo_indexed = load!(bool, reader)?;
         let is_synced = load!(bool, reader)?;
-        let namespaces = load!(Vec<String>, reader)?;
         let has_notify_command = load!(bool, reader)?;
         let has_message_id = load!(bool, reader)?;
+        let namespaces = load!(Vec<String>, reader)?;
 
         Ok(Self { p2p_id, mempool_size, server_version, is_utxo_indexed, is_synced, namespaces, has_notify_command, has_message_id })
     }
