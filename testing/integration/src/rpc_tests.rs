@@ -15,7 +15,7 @@ use kaspa_notify::{
         SinkBlueScoreChangedScope, UtxosChangedScope, VirtualChainChangedScope, VirtualDaaScoreChangedScope,
     },
 };
-use kaspa_rpc_core::{api::{namespaces::Namespaces, rpc::RpcApi}, model::*, Notification};
+use kaspa_rpc_core::{api::{namespaces::{Namespace, Namespaces}, rpc::RpcApi}, model::*, Notification};
 use kaspa_utils::{fd_budget, networking::ContextualNetAddress};
 use kaspad_lib::args::Args;
 use tokio::task::JoinHandle;
@@ -231,7 +231,7 @@ async fn sanity_test() {
                     assert!(response.is_utxo_indexed);
                     assert!(response.has_message_id);
                     assert!(response.has_notify_command);
-                    assert_eq!(response.namespaces, Namespaces::default().enabled_namespaces());
+                    assert!(Namespaces::from_str(&response.namespaces.join(",")).unwrap().is_enabled(&Namespace::General))
                 })
             }
 
