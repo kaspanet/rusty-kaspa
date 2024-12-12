@@ -337,3 +337,6 @@ strip = false
 
 [workspace.lints.clippy]
 empty_docs = "allow"
+
+[patch.crates-io]
+intertrait = { git = "https://github.com/Xudong-Huang/intertrait.git", branch = "master" }
