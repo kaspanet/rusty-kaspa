@@ -1,3 +1,4 @@
+use kaspa_notify::scope::Scope;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::str::FromStr;
@@ -61,6 +62,21 @@ impl Namespaces {
     /// Check if a namespace is enabled
     pub fn is_enabled(&self, namespace: &Namespace) -> bool {
         self.enabled.contains(namespace)
+    }
+
+    // Determine the namespace associated with a given subscription scope
+    pub fn get_scope_namespace(&self, scope: &Scope) -> Namespace {
+        match scope {
+            Scope::BlockAdded(_) => Namespace::DAG,
+            Scope::VirtualChainChanged(_) => Namespace::DAG,
+            Scope::FinalityConflict(_) => Namespace::DAG,
+            Scope::FinalityConflictResolved(_) => Namespace::DAG,
+            Scope::UtxosChanged(_) => Namespace::Wallet,
+            Scope::SinkBlueScoreChanged(_) => Namespace::DAG,
+            Scope::VirtualDaaScoreChanged(_) => Namespace::DAG,
+            Scope::PruningPointUtxoSetOverride(_) => Namespace::DAG,
+            Scope::NewBlockTemplate(_) => Namespace::Mining,
+        }
     }
 
     /// Return enabled namespaces as string for get_info

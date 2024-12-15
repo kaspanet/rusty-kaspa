@@ -1180,6 +1180,11 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
 
     /// Start sending notifications of some type to a listener.
     async fn start_notify(&self, id: ListenerId, scope: Scope) -> RpcResult<()> {
+        let namespace = self.namespaces.get_scope_namespace(&scope);
+        if !self.namespaces.is_enabled(&namespace) {
+            return Err(RpcError::UnauthorizedMethod(namespace.to_string()));
+        }
+
         match scope {
             Scope::UtxosChanged(ref utxos_changed_scope) if !self.config.unsafe_rpc && utxos_changed_scope.addresses.is_empty() => {
                 // The subscription to blanket UtxosChanged notifications is restricted to unsafe mode only
