@@ -136,6 +136,8 @@ pub enum RpcApiOps {
     GetFeeEstimateExperimental = 148,
     /// Block color determination by iterating DAG.
     GetCurrentBlockColor = 149,
+    /// Get UTXO Return Addresses
+    GetUtxoReturnAddress = 150,
 }
 
 impl RpcApiOps {
