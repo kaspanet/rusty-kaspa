@@ -315,7 +315,7 @@ impl ConsensusSessionOwned {
         self.clone().spawn_blocking(|c| c.get_chain_block_samples()).await
     }
 
-    pub async fn async_get_utxo_return_script_public_key(
+    pub async fn async_get_utxo_return_address(
         &self,
         txid: Hash,
         accepting_block_daa_score: u64,

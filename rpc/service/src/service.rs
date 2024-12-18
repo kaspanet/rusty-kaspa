@@ -802,7 +802,7 @@ NOTE: This error usually indicates an RPC conversion error between the node and 
         let session = self.consensus_manager.consensus().session().await;
 
         // Convert a SPK to an Address
-        match session.async_get_utxo_return_script_public_key(request.txid, request.accepting_block_daa_score).await {
+        match session.async_get_utxo_return_address(request.txid, request.accepting_block_daa_score).await {
             Ok(return_address) => return Ok(GetUtxoReturnAddressResponse { return_address }),
             Err(error) => return Err(RpcError::UtxoReturnAddressNotFound(error)),
         };
