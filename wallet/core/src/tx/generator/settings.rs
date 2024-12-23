@@ -144,6 +144,7 @@ impl GeneratorSettings {
         Ok(settings)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn try_new_with_iterator(
         network_id: NetworkId,
         utxo_iterator: Box<dyn Iterator<Item = UtxoEntryReference> + Send + Sync + 'static>,
