@@ -1,12 +1,13 @@
 use async_trait::async_trait;
 use kaspa_addresses::Address;
 use kaspa_consensus_core::{
+    acceptance_data::MergesetBlockAcceptanceData,
     block::Block,
     config::Config,
     hashing::tx::hash,
     header::Header,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput},
-    ChainPath,
+    ChainPath
 };
 use kaspa_consensus_notify::notification::{self as consensus_notify, Notification as ConsensusNotification};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusProxy};
@@ -14,9 +15,9 @@ use kaspa_math::Uint256;
 use kaspa_mining::model::{owner_txs::OwnerTransactions, TransactionIdSet};
 use kaspa_notify::converter::Converter;
 use kaspa_rpc_core::{
-    BlockAddedNotification, Notification, RpcAcceptedTransactionIds, RpcBlock, RpcBlockVerboseData, RpcHash, RpcMempoolEntry,
-    RpcMempoolEntryByAddress, RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionOutput, RpcTransactionOutputVerboseData,
-    RpcTransactionVerboseData,
+    BlockAddedNotification, Notification, RpcAcceptanceData, RpcBlock, RpcBlockVerboseData, RpcHash, RpcMempoolEntry,
+    RpcMempoolEntryByAddress, RpcMergesetBlockAcceptanceData, RpcResult, RpcTransaction, RpcTransactionInput, RpcTransactionOutput,
+    RpcTransactionOutputVerboseData, RpcTransactionVerboseData,
 };
 use kaspa_txscript::{extract_script_pub_key_address, script_class::ScriptClass};
 use std::{collections::HashMap, fmt::Debug, sync::Arc};
@@ -163,17 +164,27 @@ impl ConsensusConverter {
         consensus: &ConsensusProxy,
         chain_path: &ChainPath,
         merged_blocks_limit: Option<usize>,
-    ) -> RpcResult<Vec<RpcAcceptedTransactionIds>> {
+    ) -> RpcResult<Vec<RpcAcceptanceData>> {
         let acceptance_data = consensus.async_get_blocks_acceptance_data(chain_path.added.clone(), merged_blocks_limit).await.unwrap();
-        Ok(chain_path
-            .added
-            .iter()
-            .zip(acceptance_data.iter())
-            .map(|(hash, block_data)| RpcAcceptedTransactionIds {
-                accepting_block_hash: hash.to_owned(),
-                accepted_transaction_ids: block_data
+        let mut acceptance_daa_scores = Vec::with_capacity(chain_path.added.len());
+        for hash in chain_path.added.iter() {
+            acceptance_daa_scores.push(consensus.async_get_compact_header_data(*hash).await?.blue_score);
+        }
+        Ok(acceptance_data.iter()
+            .zip(acceptance_daa_scores)
+            .map(|(block_data, accepting_blue_score)| RpcAcceptanceData {
+                accepting_blue_score,
+                mergeset_block_acceptance_data: block_data
                     .iter()
-                    .flat_map(|x| x.accepted_transactions.iter().map(|tx| tx.transaction_id))
+                    .map(|MergesetBlockAcceptanceData { block_hash, accepted_transactions }| {
+                        let mut accepted_transactions = accepted_transactions.clone();
+                        accepted_transactions.sort_unstable_by_key(|entry| entry.index_within_block);
+
+                        RpcMergesetBlockAcceptanceData {
+                            merged_block_hash: *block_hash,
+                            accepted_transaction_ids: accepted_transactions.into_iter().map(|v| v.transaction_id).collect(),
+                        }
+                    })
                     .collect(),
             })
             .collect())

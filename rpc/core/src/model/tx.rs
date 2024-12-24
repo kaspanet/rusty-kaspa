@@ -394,7 +394,14 @@ impl Deserializer for RpcTransactionVerboseData {
 /// Represents accepted transaction ids
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RpcAcceptedTransactionIds {
-    pub accepting_block_hash: RpcHash,
-    pub accepted_transaction_ids: Vec<RpcTransactionId>,
+pub struct RpcMergesetBlockAcceptanceData {
+    pub merged_block_hash: RpcHash,
+    pub accepted_transaction_ids: Vec<TransactionId>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcAcceptanceData {
+    pub accepting_blue_score: u64,
+    pub mergeset_block_acceptance_data: Vec<RpcMergesetBlockAcceptanceData>,
 }

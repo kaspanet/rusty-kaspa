@@ -350,11 +350,15 @@ impl VirtualStateProcessor {
             // check for subscriptions before the heavy lifting
             let added_chain_blocks_acceptance_data =
                 chain_path.added.iter().copied().map(|added| self.acceptance_data_store.get(added).unwrap()).collect_vec();
+
+            let added_chain_block_blue_scores =
+                chain_path.added.iter().copied().map(|added| self.headers_store.get_blue_score(added).unwrap()).collect_vec();
             self.notification_root
                 .notify(Notification::VirtualChainChanged(VirtualChainChangedNotification::new(
                     chain_path.added.into(),
                     chain_path.removed.into(),
                     Arc::new(added_chain_blocks_acceptance_data),
+                    Arc::new(added_chain_block_blue_scores),
                 )))
                 .expect("expecting an open unbounded channel");
         }

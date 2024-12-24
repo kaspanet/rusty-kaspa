@@ -345,7 +345,7 @@ message VirtualChainChangedNotificationMessage{
   repeated string addedChainBlockHashes = 3;
 
   // Will be filled only if `includeAcceptedTransactionIds = true` in the notify request.
-  repeated RpcAcceptedTransactionIds acceptedTransactionIds = 2;
+  repeated RpcAcceptanceData addedAcceptanceData = 4;
 }
 
 // GetBlockRequestMessage requests information about a specific block
@@ -386,12 +386,17 @@ message GetVirtualChainFromBlockRequestMessage{
   bool includeAcceptedTransactionIds = 2;
 }
 
-message RpcAcceptedTransactionIds{
-  string acceptingBlockHash = 1;
-  repeated string acceptedTransactionIds = 2;
+message RpcMergesetBlockAcceptanceData {
+  string mergedBlockHash = 1;
+  repeated string acceptedTransactionIds = 2; // order according to order within block
 }
 
-message GetVirtualChainFromBlockResponseMessage{
+message RpcAcceptanceData {
+  uint64 acceptingBlueScore = 1;
+  repeated RpcMergesetBlockAcceptanceData mergesetBlockAcceptanceData = 2;
+}
+
+message GetVirtualChainFromBlockResponseMessage {
   // The chain blocks that were removed, in high-to-low order
   repeated string removedChainBlockHashes = 1;
 
@@ -400,7 +405,7 @@ message GetVirtualChainFromBlockResponseMessage{
 
   // The transactions accepted by each block in addedChainBlockHashes.
   // Will be filled only if `includeAcceptedTransactionIds = true` in the request.
-  repeated RpcAcceptedTransactionIds acceptedTransactionIds = 2;
+  repeated RpcAcceptanceData addedAcceptanceData = 4;
 
   RPCError error = 1000;
 }

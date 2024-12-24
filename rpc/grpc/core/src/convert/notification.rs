@@ -45,7 +45,7 @@ from!(item: &kaspa_rpc_core::VirtualChainChangedNotification, VirtualChainChange
     Self {
         removed_chain_block_hashes: item.removed_chain_block_hashes.iter().map(|x| x.to_string()).collect(),
         added_chain_block_hashes: item.added_chain_block_hashes.iter().map(|x| x.to_string()).collect(),
-        accepted_transaction_ids: item.accepted_transaction_ids.iter().map(|x| x.into()).collect(),
+        added_acceptance_data: item.added_acceptance_data.iter().map(|x| x.into()).collect(),
     }
 });
 
@@ -142,7 +142,7 @@ try_from!(item: &VirtualChainChangedNotificationMessage, kaspa_rpc_core::Virtual
         added_chain_block_hashes: Arc::new(
             item.added_chain_block_hashes.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
         ),
-        accepted_transaction_ids: Arc::new(item.accepted_transaction_ids.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?),
+        added_acceptance_data: Arc::new(item.added_acceptance_data.iter().map(|x| x.try_into()).collect::<Result<Vec<_>, _>>()?),
     }
 });
 

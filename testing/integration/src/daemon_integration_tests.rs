@@ -115,8 +115,8 @@ async fn daemon_mining_test() {
         .unwrap();
     assert_eq!(vc.removed_chain_block_hashes.len(), 0);
     assert_eq!(vc.added_chain_block_hashes.len(), 10);
-    assert_eq!(vc.accepted_transaction_ids.len(), 10);
-    for accepted_txs_pair in vc.accepted_transaction_ids {
+    assert_eq!(vc.added_acceptance_data.len(), 10);
+    for accepted_txs_pair in vc.added_acceptance_data.iter().flat_map(|v| &v.mergeset_block_acceptance_data) {
         assert_eq!(accepted_txs_pair.accepted_transaction_ids.len(), 1);
     }
 }
@@ -234,8 +234,8 @@ async fn daemon_utxos_propagation_test() {
     let vc = rpc_client2.get_virtual_chain_from_block(kaspa_consensus::params::SIMNET_GENESIS.hash, true).await.unwrap();
     assert_eq!(vc.removed_chain_block_hashes.len(), 0);
     assert_eq!(vc.added_chain_block_hashes.len() as u64, initial_blocks);
-    assert_eq!(vc.accepted_transaction_ids.len() as u64, initial_blocks);
-    for accepted_txs_pair in vc.accepted_transaction_ids {
+    assert_eq!(vc.added_acceptance_data.len() as u64, initial_blocks);
+    for accepted_txs_pair in vc.added_acceptance_data.iter().flat_map(|v| &v.mergeset_block_acceptance_data) {
         assert_eq!(accepted_txs_pair.accepted_transaction_ids.len(), 1);
     }
 

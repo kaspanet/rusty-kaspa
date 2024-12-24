@@ -68,6 +68,7 @@ impl NotificationTrait for Notification {
                             removed_chain_block_hashes: payload.removed_chain_block_hashes.clone(),
                             added_chain_block_hashes: payload.added_chain_block_hashes.clone(),
                             added_chain_blocks_acceptance_data: Arc::new(vec![]),
+                            added_chain_block_blue_scores: Arc::new(vec![]),
                         }));
                     }
                 }
@@ -107,6 +108,8 @@ impl BlockAddedNotification {
 pub struct VirtualChainChangedNotification {
     pub added_chain_block_hashes: Arc<Vec<Hash>>,
     pub removed_chain_block_hashes: Arc<Vec<Hash>>,
+    pub added_chain_block_blue_scores: Arc<Vec<u64>>,
+
     pub added_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
 }
 impl VirtualChainChangedNotification {
@@ -114,8 +117,9 @@ impl VirtualChainChangedNotification {
         added_chain_block_hashes: Arc<Vec<Hash>>,
         removed_chain_block_hashes: Arc<Vec<Hash>>,
         added_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
+        added_chain_block_blue_scores: Arc<Vec<u64>>,
     ) -> Self {
-        Self { added_chain_block_hashes, removed_chain_block_hashes, added_chain_blocks_acceptance_data }
+        Self { added_chain_block_hashes, removed_chain_block_hashes, added_chain_block_blue_scores, added_chain_blocks_acceptance_data }
     }
 }
 

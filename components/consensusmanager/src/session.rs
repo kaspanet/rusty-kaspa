@@ -18,9 +18,9 @@ use kaspa_consensus_core::{
 use kaspa_utils::sync::rwlock::*;
 use std::{ops::Deref, sync::Arc};
 
-pub use tokio::task::spawn_blocking;
-
 use crate::BlockProcessingBatch;
+use kaspa_consensus_core::header::CompactHeaderData;
+pub use tokio::task::spawn_blocking;
 
 #[allow(dead_code)]
 #[derive(Clone)]
@@ -356,6 +356,10 @@ impl ConsensusSessionOwned {
 
     pub async fn async_get_block(&self, hash: Hash) -> ConsensusResult<Block> {
         self.clone().spawn_blocking(move |c| c.get_block(hash)).await
+    }
+
+    pub async fn async_get_compact_header_data(&self, hash: Hash) -> ConsensusResult<CompactHeaderData> {
+        self.clone().spawn_blocking(move |c| c.get_compact_header_data(hash)).await
     }
 
     pub async fn async_get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {

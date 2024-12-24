@@ -1,8 +1,8 @@
 use crate::protowire;
 use crate::{from, try_from};
-use kaspa_rpc_core::{FromRpcHex, RpcError, RpcHash, RpcResult, RpcScriptVec, ToRpcHex};
+use kaspa_rpc_core::{FromRpcHex, RpcError, RpcHash, RpcMergesetBlockAcceptanceData, RpcResult, RpcScriptVec, ToRpcHex};
 use std::str::FromStr;
-
+use kaspa_consensus_core::tx::TransactionId;
 // ----------------------------------------------------------------------------
 // rpc_core to protowire
 // ----------------------------------------------------------------------------
@@ -75,10 +75,19 @@ from!(item: &kaspa_rpc_core::RpcTransactionOutputVerboseData, protowire::RpcTran
     }
 });
 
-from!(item: &kaspa_rpc_core::RpcAcceptedTransactionIds, protowire::RpcAcceptedTransactionIds, {
+from!(item: &kaspa_rpc_core::RpcAcceptanceData, protowire::RpcAcceptanceData, {
     Self {
-        accepting_block_hash: item.accepting_block_hash.to_string(),
-        accepted_transaction_ids: item.accepted_transaction_ids.iter().map(|x| x.to_string()).collect(),
+        accepting_blue_score: item.accepting_blue_score,
+        mergeset_block_acceptance_data: item.mergeset_block_acceptance_data.iter()
+            .map(
+            |RpcMergesetBlockAcceptanceData{
+                merged_block_hash,
+                accepted_transaction_ids,
+            }|
+            protowire::RpcMergesetBlockAcceptanceData{
+                merged_block_hash: merged_block_hash.to_string(),
+                accepted_transaction_ids: accepted_transaction_ids.iter().map(TransactionId::to_string).collect(),
+            }).collect(),
     }
 });
 
@@ -182,10 +191,22 @@ try_from!(item: &protowire::RpcTransactionOutputVerboseData, kaspa_rpc_core::Rpc
     }
 });
 
-try_from!(item: &protowire::RpcAcceptedTransactionIds, kaspa_rpc_core::RpcAcceptedTransactionIds, {
+try_from!(item: &protowire::RpcAcceptanceData, kaspa_rpc_core::RpcAcceptanceData, {
     Self {
-        accepting_block_hash: RpcHash::from_str(&item.accepting_block_hash)?,
-        accepted_transaction_ids: item.accepted_transaction_ids.iter().map(|x| RpcHash::from_str(x)).collect::<Result<Vec<_>, _>>()?,
+        accepting_blue_score: item.accepting_blue_score,
+        mergeset_block_acceptance_data: item.mergeset_block_acceptance_data.iter()
+            .map(
+                |protowire::RpcMergesetBlockAcceptanceData{
+                    merged_block_hash,
+                    accepted_transaction_ids,
+                }|  kaspa_rpc_core::RpcResult::Ok(RpcMergesetBlockAcceptanceData{
+                    merged_block_hash: RpcHash::from_str(merged_block_hash)?,
+                    accepted_transaction_ids: accepted_transaction_ids.iter()
+                        .map(|txid| RpcHash::from_str(txid))
+                        .collect::<Result<Vec<_>, _>>()?,
+                })
+            )
+            .collect::<Result<Vec<_>, _>>()?,
     }
 });
 

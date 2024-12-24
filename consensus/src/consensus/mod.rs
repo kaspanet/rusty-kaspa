@@ -17,7 +17,7 @@ use crate::{
             acceptance_data::AcceptanceDataStoreReader,
             block_transactions::BlockTransactionsStoreReader,
             ghostdag::{GhostdagData, GhostdagStoreReader},
-            headers::{CompactHeaderData, HeaderStoreReader},
+            headers::HeaderStoreReader,
             headers_selected_tip::HeadersSelectedTipStoreReader,
             past_pruning_points::PastPruningPointsStoreReader,
             pruning::PruningStoreReader,
@@ -60,14 +60,20 @@ use kaspa_consensus_core::{
         pruning::PruningImportError,
         tx::TxResult,
     },
-    header::Header,
+    header::{
+        Header,
+        CompactHeaderData
+    },
     merkle::calc_hash_merkle_root,
     muhash::MuHashExtensions,
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
+    BlockHashSet,
+    BlueWorkType,
+    ChainPath,
+    HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 
@@ -882,6 +888,10 @@ impl ConsensusApi for Consensus {
             header: self.headers_store.get_header(hash).unwrap_option().ok_or(ConsensusError::BlockNotFound(hash))?,
             transactions: self.block_transactions_store.get(hash).unwrap_option().ok_or(ConsensusError::BlockNotFound(hash))?,
         })
+    }
+
+    fn get_compact_header_data(&self, hash: Hash) -> ConsensusResult<CompactHeaderData> {
+        self.headers_store.get_compact_header_data(hash).unwrap_option().ok_or(ConsensusError::BlockNotFound(hash))
     }
 
     fn get_block_even_if_header_only(&self, hash: Hash) -> ConsensusResult<Block> {

@@ -10,6 +10,7 @@ use std::{
     fmt::{Display, Formatter},
     sync::Arc,
 };
+use std::io::ErrorKind;
 use workflow_serializer::prelude::*;
 
 pub type RpcExtraData = Vec<u8>;
@@ -892,25 +893,25 @@ impl Deserializer for GetVirtualChainFromBlockRequest {
 pub struct GetVirtualChainFromBlockResponse {
     pub removed_chain_block_hashes: Vec<RpcHash>,
     pub added_chain_block_hashes: Vec<RpcHash>,
-    pub accepted_transaction_ids: Vec<RpcAcceptedTransactionIds>,
+    pub added_acceptance_data: Vec<RpcAcceptanceData>,
 }
 
 impl GetVirtualChainFromBlockResponse {
     pub fn new(
         removed_chain_block_hashes: Vec<RpcHash>,
         added_chain_block_hashes: Vec<RpcHash>,
-        accepted_transaction_ids: Vec<RpcAcceptedTransactionIds>,
+        added_acceptance_data: Vec<RpcAcceptanceData>,
     ) -> Self {
-        Self { removed_chain_block_hashes, added_chain_block_hashes, accepted_transaction_ids }
+        Self { removed_chain_block_hashes, added_chain_block_hashes, added_acceptance_data }
     }
 }
 
 impl Serializer for GetVirtualChainFromBlockResponse {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &254, writer)?;
         store!(Vec<RpcHash>, &self.removed_chain_block_hashes, writer)?;
         store!(Vec<RpcHash>, &self.added_chain_block_hashes, writer)?;
-        store!(Vec<RpcAcceptedTransactionIds>, &self.accepted_transaction_ids, writer)?;
+        store!(Vec<RpcAcceptanceData>, &self.added_acceptance_data, writer)?;
 
         Ok(())
     }
@@ -919,11 +920,14 @@ impl Serializer for GetVirtualChainFromBlockResponse {
 impl Deserializer for GetVirtualChainFromBlockResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
+        if _version != 254 {
+            return Err(std::io::Error::new(ErrorKind::Other,"Expected 254-th version"))
+        }
         let removed_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
         let added_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
-        let accepted_transaction_ids = load!(Vec<RpcAcceptedTransactionIds>, reader)?;
+        let added_acceptance_data = load!(Vec<RpcAcceptanceData>, reader)?;
 
-        Ok(Self { removed_chain_block_hashes, added_chain_block_hashes, accepted_transaction_ids })
+        Ok(Self { removed_chain_block_hashes, added_chain_block_hashes, added_acceptance_data })
     }
 }
 
@@ -2812,15 +2816,15 @@ impl Deserializer for NotifyVirtualChainChangedResponse {
 pub struct VirtualChainChangedNotification {
     pub removed_chain_block_hashes: Arc<Vec<RpcHash>>,
     pub added_chain_block_hashes: Arc<Vec<RpcHash>>,
-    pub accepted_transaction_ids: Arc<Vec<RpcAcceptedTransactionIds>>,
+    pub added_acceptance_data: Arc<Vec<RpcAcceptanceData>>,
 }
 
 impl Serializer for VirtualChainChangedNotification {
     fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        store!(u16, &1, writer)?;
+        store!(u16, &254, writer)?;
         store!(Vec<RpcHash>, &self.removed_chain_block_hashes, writer)?;
         store!(Vec<RpcHash>, &self.added_chain_block_hashes, writer)?;
-        store!(Vec<RpcAcceptedTransactionIds>, &self.accepted_transaction_ids, writer)?;
+        store!(Vec<RpcAcceptanceData>, &self.added_acceptance_data, writer)?;
         Ok(())
     }
 }
@@ -2828,13 +2832,16 @@ impl Serializer for VirtualChainChangedNotification {
 impl Deserializer for VirtualChainChangedNotification {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
+        if _version != 254 {
+            return Err(std::io::Error::new(ErrorKind::Other, "expected 254-th version"));
+        }
         let removed_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
         let added_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
-        let accepted_transaction_ids = load!(Vec<RpcAcceptedTransactionIds>, reader)?;
+        let accepted_transaction_ids = load!(Vec<RpcAcceptanceData>, reader)?;
         Ok(Self {
             removed_chain_block_hashes: removed_chain_block_hashes.into(),
             added_chain_block_hashes: added_chain_block_hashes.into(),
-            accepted_transaction_ids: accepted_transaction_ids.into(),
+            added_acceptance_data: accepted_transaction_ids.into(),
         })
     }
 }

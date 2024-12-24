@@ -220,6 +220,7 @@ mod tests {
     use kaspa_database::prelude::{ReadLock, StoreError, StoreResult};
     use kaspa_hashes::Hash;
     use parking_lot::RwLock;
+    use kaspa_consensus_core::header::CompactHeaderData;
 
     struct HeaderStoreMock {
         map: RwLock<BlockHashMap<HeaderWithBlockLevel>>,
@@ -252,7 +253,7 @@ mod tests {
         fn get_compact_header_data(
             &self,
             hash: kaspa_hashes::Hash,
-        ) -> Result<crate::model::stores::headers::CompactHeaderData, StoreError> {
+        ) -> Result<CompactHeaderData, StoreError> {
             unimplemented!()
         }
 

@@ -25,7 +25,7 @@ pub enum Notification {
     #[display(fmt = "BlockAdded notification: block hash {}", "_0.block.header.hash")]
     BlockAdded(BlockAddedNotification),
 
-    #[display(fmt = "VirtualChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.accepted_transaction_ids.len()")]
+    #[display(fmt = "VirtualChainChanged notification: {} removed blocks, {} added blocks, {} accepted transactions", "_0.removed_chain_block_hashes.len()", "_0.added_chain_block_hashes.len()", "_0.added_acceptance_data.len()")]
     VirtualChainChanged(VirtualChainChangedNotification),
 
     #[display(fmt = "FinalityConflict notification: violating block hash {}", "_0.violating_block_hash")]
@@ -84,11 +84,11 @@ impl NotificationTrait for Notification {
         match subscription.active() {
             true => {
                 if let Notification::VirtualChainChanged(ref payload) = self {
-                    if !subscription.include_accepted_transaction_ids() && !payload.accepted_transaction_ids.is_empty() {
+                    if !subscription.include_accepted_transaction_ids() && !payload.added_acceptance_data.is_empty() {
                         return Some(Notification::VirtualChainChanged(VirtualChainChangedNotification {
                             removed_chain_block_hashes: payload.removed_chain_block_hashes.clone(),
                             added_chain_block_hashes: payload.added_chain_block_hashes.clone(),
-                            accepted_transaction_ids: Arc::new(vec![]),
+                            added_acceptance_data: Arc::new(vec![]),
                         }));
                     }
                 }

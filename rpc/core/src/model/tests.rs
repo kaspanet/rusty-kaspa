@@ -646,9 +646,15 @@ mod mockery {
 
     test!(GetVirtualChainFromBlockRequest);
 
-    impl Mock for RpcAcceptedTransactionIds {
+    impl Mock for RpcMergesetBlockAcceptanceData {
         fn mock() -> Self {
-            RpcAcceptedTransactionIds { accepting_block_hash: mock(), accepted_transaction_ids: mock() }
+            RpcMergesetBlockAcceptanceData{ merged_block_hash: mock(), accepted_transaction_ids: mock() }
+        }
+    }
+
+    impl Mock for RpcAcceptanceData {
+        fn mock() -> Self {
+            RpcAcceptanceData { accepting_blue_score: mock(),  mergeset_block_acceptance_data: mock() }
         }
     }
 
@@ -657,7 +663,7 @@ mod mockery {
             GetVirtualChainFromBlockResponse {
                 removed_chain_block_hashes: mock(),
                 added_chain_block_hashes: mock(),
-                accepted_transaction_ids: mock(),
+                added_acceptance_data: mock(),
             }
         }
     }
@@ -1109,7 +1115,7 @@ mod mockery {
             VirtualChainChangedNotification {
                 removed_chain_block_hashes: mock(),
                 added_chain_block_hashes: mock(),
-                accepted_transaction_ids: mock(),
+                added_acceptance_data: mock(),
             }
         }
     }
