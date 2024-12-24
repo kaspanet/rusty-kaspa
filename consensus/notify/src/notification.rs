@@ -119,7 +119,12 @@ impl VirtualChainChangedNotification {
         added_chain_blocks_acceptance_data: Arc<Vec<Arc<AcceptanceData>>>,
         added_chain_block_blue_scores: Arc<Vec<u64>>,
     ) -> Self {
-        Self { added_chain_block_hashes, removed_chain_block_hashes, added_chain_block_blue_scores, added_chain_blocks_acceptance_data }
+        Self {
+            added_chain_block_hashes,
+            removed_chain_block_hashes,
+            added_chain_block_blue_scores,
+            added_chain_blocks_acceptance_data,
+        }
     }
 }
 

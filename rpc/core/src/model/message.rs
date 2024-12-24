@@ -6,11 +6,11 @@ use kaspa_notify::subscription::{context::SubscriptionContext, single::UtxosChan
 use kaspa_utils::hex::ToHex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::io::ErrorKind;
 use std::{
     fmt::{Display, Formatter},
     sync::Arc,
 };
-use std::io::ErrorKind;
 use workflow_serializer::prelude::*;
 
 pub type RpcExtraData = Vec<u8>;
@@ -921,7 +921,7 @@ impl Deserializer for GetVirtualChainFromBlockResponse {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let _version = load!(u16, reader)?;
         if _version != 254 {
-            return Err(std::io::Error::new(ErrorKind::Other,"Expected 254-th version"))
+            return Err(std::io::Error::new(ErrorKind::Other, "Expected 254-th version"));
         }
         let removed_chain_block_hashes = load!(Vec<RpcHash>, reader)?;
         let added_chain_block_hashes = load!(Vec<RpcHash>, reader)?;

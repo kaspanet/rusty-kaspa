@@ -60,20 +60,14 @@ use kaspa_consensus_core::{
         pruning::PruningImportError,
         tx::TxResult,
     },
-    header::{
-        Header,
-        CompactHeaderData
-    },
+    header::{CompactHeaderData, Header},
     merkle::calc_hash_merkle_root,
     muhash::MuHashExtensions,
     network::NetworkType,
     pruning::{PruningPointProof, PruningPointTrustedData, PruningPointsList, PruningProofMetadata},
     trusted::{ExternalGhostdagData, TrustedBlock},
     tx::{MutableTransaction, Transaction, TransactionOutpoint, UtxoEntry},
-    BlockHashSet,
-    BlueWorkType,
-    ChainPath,
-    HashMapCustomHasher,
+    BlockHashSet, BlueWorkType, ChainPath, HashMapCustomHasher,
 };
 use kaspa_consensus_notify::root::ConsensusNotificationRoot;
 

@@ -648,13 +648,13 @@ mod mockery {
 
     impl Mock for RpcMergesetBlockAcceptanceData {
         fn mock() -> Self {
-            RpcMergesetBlockAcceptanceData{ merged_block_hash: mock(), accepted_transaction_ids: mock() }
+            RpcMergesetBlockAcceptanceData { merged_block_hash: mock(), accepted_transaction_ids: mock() }
         }
     }
 
     impl Mock for RpcAcceptanceData {
         fn mock() -> Self {
-            RpcAcceptanceData { accepting_blue_score: mock(),  mergeset_block_acceptance_data: mock() }
+            RpcAcceptanceData { accepting_blue_score: mock(), mergeset_block_acceptance_data: mock() }
         }
     }
 

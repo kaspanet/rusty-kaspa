@@ -58,12 +58,20 @@ impl From<&consensus_notify::VirtualChainChangedNotification> for VirtualChainCh
                     .zip(item.added_chain_block_blue_scores.iter())
                     .map(|(acceptance_data, &accepting_blue_score)| RpcAcceptanceData {
                         accepting_blue_score,
-                        mergeset_block_acceptance_data: acceptance_data.iter().map(|MergesetBlockAcceptanceData{ block_hash, accepted_transactions }| {
-                            let mut accepted_transactions:Vec<_> = accepted_transactions.to_vec();
-                            accepted_transactions.sort_unstable_by_key(|entry| entry.index_within_block);
-                            RpcMergesetBlockAcceptanceData{ merged_block_hash: *block_hash, accepted_transaction_ids: accepted_transactions.into_iter().map(|AcceptedTxEntry{ transaction_id, .. }| transaction_id).collect() }
-                        }).collect()
-
+                        mergeset_block_acceptance_data: acceptance_data
+                            .iter()
+                            .map(|MergesetBlockAcceptanceData { block_hash, accepted_transactions }| {
+                                let mut accepted_transactions: Vec<_> = accepted_transactions.to_vec();
+                                accepted_transactions.sort_unstable_by_key(|entry| entry.index_within_block);
+                                RpcMergesetBlockAcceptanceData {
+                                    merged_block_hash: *block_hash,
+                                    accepted_transaction_ids: accepted_transactions
+                                        .into_iter()
+                                        .map(|AcceptedTxEntry { transaction_id, .. }| transaction_id)
+                                        .collect(),
+                                }
+                            })
+                            .collect(),
                     })
                     .collect()
             }),

@@ -7,7 +7,7 @@ use kaspa_consensus_core::{
     hashing::tx::hash,
     header::Header,
     tx::{MutableTransaction, Transaction, TransactionId, TransactionInput, TransactionOutput},
-    ChainPath
+    ChainPath,
 };
 use kaspa_consensus_notify::notification::{self as consensus_notify, Notification as ConsensusNotification};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusProxy};
@@ -170,7 +170,8 @@ impl ConsensusConverter {
         for hash in chain_path.added.iter() {
             acceptance_daa_scores.push(consensus.async_get_compact_header_data(*hash).await?.blue_score);
         }
-        Ok(acceptance_data.iter()
+        Ok(acceptance_data
+            .iter()
             .zip(acceptance_daa_scores)
             .map(|(block_data, accepting_blue_score)| RpcAcceptanceData {
                 accepting_blue_score,

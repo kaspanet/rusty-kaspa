@@ -212,6 +212,7 @@ mod tests {
 
     use super::ParentsManager;
     use itertools::Itertools;
+    use kaspa_consensus_core::header::CompactHeaderData;
     use kaspa_consensus_core::{
         blockhash::{BlockHashes, ORIGIN},
         header::Header,
@@ -220,7 +221,6 @@ mod tests {
     use kaspa_database::prelude::{ReadLock, StoreError, StoreResult};
     use kaspa_hashes::Hash;
     use parking_lot::RwLock;
-    use kaspa_consensus_core::header::CompactHeaderData;
 
     struct HeaderStoreMock {
         map: RwLock<BlockHashMap<HeaderWithBlockLevel>>,
@@ -250,10 +250,7 @@ mod tests {
             Ok(self.map.read().get(&hash).unwrap().header.clone())
         }
 
-        fn get_compact_header_data(
-            &self,
-            hash: kaspa_hashes::Hash,
-        ) -> Result<CompactHeaderData, StoreError> {
+        fn get_compact_header_data(&self, hash: kaspa_hashes::Hash) -> Result<CompactHeaderData, StoreError> {
             unimplemented!()
         }
 

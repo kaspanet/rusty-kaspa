@@ -1,8 +1,8 @@
 use crate::protowire;
 use crate::{from, try_from};
+use kaspa_consensus_core::tx::TransactionId;
 use kaspa_rpc_core::{FromRpcHex, RpcError, RpcHash, RpcMergesetBlockAcceptanceData, RpcResult, RpcScriptVec, ToRpcHex};
 use std::str::FromStr;
-use kaspa_consensus_core::tx::TransactionId;
 // ----------------------------------------------------------------------------
 // rpc_core to protowire
 // ----------------------------------------------------------------------------
