@@ -5,8 +5,8 @@ use kaspa_consensus_core::{
         utxo_view::UtxoView,
     },
 };
+use kaspa_database::prelude::RocksDB;
 use kaspa_database::prelude::StoreResultExtensions;
-use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_database::prelude::{CachePolicy, StoreError};
 use kaspa_hashes::Hash;
@@ -89,13 +89,13 @@ impl From<UtxoKey> for TransactionOutpoint {
 
 #[derive(Clone)]
 pub struct DbUtxoSetStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     prefix: Vec<u8>,
     access: CachedDbAccess<UtxoKey, Arc<UtxoEntry>>,
 }
 
 impl DbUtxoSetStore {
-    pub fn new(db: Arc<DB>, cache_policy: CachePolicy, prefix: Vec<u8>) -> Self {
+    pub fn new(db: Arc<RocksDB>, cache_policy: CachePolicy, prefix: Vec<u8>) -> Self {
         Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, prefix.clone()), prefix }
     }
 

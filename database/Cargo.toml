@@ -21,6 +21,7 @@ num_cpus.workspace = true
 num-traits.workspace = true
 parking_lot.workspace = true
 rand.workspace = true
+redb.workspace = true
 rocksdb.workspace = true
 serde.workspace = true
 smallvec.workspace = true

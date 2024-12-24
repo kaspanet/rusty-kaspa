@@ -50,7 +50,7 @@ impl BlockBodyProcessor {
             .copied()
             .filter(|parent| {
                 let status_option = statuses_read_guard.get(*parent).unwrap_option();
-                status_option.is_none_or(|s| !s.has_block_body())
+                status_option.is_none_or_ex(|s| !s.has_block_body())
             })
             .collect();
         if !missing.is_empty() {

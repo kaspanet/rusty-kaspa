@@ -10,7 +10,7 @@ use crate::{
     model::{
         services::reachability::MTReachabilityService,
         stores::{
-            block_window_cache::{BlockWindowCacheStore, BlockWindowCacheWriter, BlockWindowHeap},
+            block_window_cache::{BlockWindowCacheStore, BlockWindowHeap},
             daa::DbDaaStore,
             depth::DbDepthStore,
             ghostdag::{DbGhostdagStore, GhostdagData, GhostdagStoreReader},
@@ -20,7 +20,7 @@ use crate::{
             reachability::{DbReachabilityStore, StagingReachabilityStore},
             relations::{DbRelationsStore, RelationsStoreReader},
             statuses::{DbStatusesStore, StatusesStore, StatusesStoreBatchExtensions, StatusesStoreReader},
-            DB,
+            RocksDB,
         },
     },
     params::Params,
@@ -121,7 +121,7 @@ pub struct HeaderProcessor {
     pub(super) max_block_level: BlockLevel,
 
     // DB
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
 
     // Stores
     pub(super) relations_stores: Arc<RwLock<Vec<DbRelationsStore>>>,
@@ -162,7 +162,7 @@ impl HeaderProcessor {
         body_sender: Sender<BlockProcessingMessage>,
         thread_pool: Arc<ThreadPool>,
         params: &Params,
-        db: Arc<DB>,
+        db: Arc<RocksDB>,
         storage: &Arc<ConsensusStorage>,
         services: &Arc<ConsensusServices>,
         pruning_lock: SessionLock,
@@ -344,7 +344,7 @@ impl HeaderProcessor {
             .collect_vec()
     }
 
-    /// Runs the GHOSTDAG algorithm and writes the data into the context (if hasn't run already)
+    /// Runs the GHOSTDAG algorithm for all block levels and writes the data into the context (if hasn't run already)
     fn ghostdag(&self, ctx: &mut HeaderProcessingContext) {
         let ghostdag_data = self
             .ghostdag_store
@@ -356,7 +356,7 @@ impl HeaderProcessor {
     }
 
     fn commit_header(&self, ctx: HeaderProcessingContext, header: &Header) {
-        let ghostdag_data = ctx.ghostdag_data.as_ref().unwrap();
+        let ghostdag_primary_data = ctx.ghostdag_data.as_ref().unwrap();
         let pp = ctx.pruning_point();
 
         // Create a DB batch writer
@@ -365,7 +365,9 @@ impl HeaderProcessor {
         //
         // Append-only stores: these require no lock and hence done first in order to reduce locking time
         //
-        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_data).unwrap();
+
+        // This data might have been already written when applying the pruning proof.
+        self.ghostdag_store.insert_batch(&mut batch, ctx.hash, ghostdag_primary_data).unwrap();
 
         if let Some(window) = ctx.block_window_for_difficulty {
             self.block_window_cache_for_difficulty.insert(ctx.hash, window);
@@ -387,8 +389,8 @@ impl HeaderProcessor {
         // time, and thus serializing this part will do no harm. However this should be benchmarked. The
         // alternative is to create a separate ReachabilityProcessor and to manage things more tightly.
         let mut staging = StagingReachabilityStore::new(self.reachability_store.upgradable_read());
-        let selected_parent = ghostdag_data.selected_parent;
-        let mut reachability_mergeset = ghostdag_data.unordered_mergeset_without_selected_parent();
+        let selected_parent = ghostdag_primary_data.selected_parent;
+        let mut reachability_mergeset = ghostdag_primary_data.unordered_mergeset_without_selected_parent();
         reachability::add_block(&mut staging, ctx.hash, selected_parent, &mut reachability_mergeset).unwrap();
 
         // Non-append only stores need to use write locks.

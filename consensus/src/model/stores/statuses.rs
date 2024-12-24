@@ -5,7 +5,7 @@ use rocksdb::WriteBatch;
 use std::sync::Arc;
 
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
-use kaspa_database::prelude::{CachePolicy, DB};
+use kaspa_database::prelude::{CachePolicy, RocksDB};
 use kaspa_database::prelude::{StoreError, StoreResult};
 use kaspa_hashes::Hash;
 
@@ -26,12 +26,12 @@ pub trait StatusesStore: StatusesStoreReader {
 /// A DB + cache implementation of `StatusesStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbStatusesStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     access: CachedDbAccess<Hash, BlockStatus, BlockHasher>,
 }
 
 impl DbStatusesStore {
-    pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
+    pub fn new(db: Arc<RocksDB>, cache_policy: CachePolicy) -> Self {
         Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::Statuses.into()) }
     }
 

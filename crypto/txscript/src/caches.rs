@@ -13,7 +13,7 @@ use std::{
 #[derive(Clone)]
 pub struct Cache<TKey: Clone + std::hash::Hash + Eq + Send + Sync, TData: Clone + Send + Sync, S = RandomState> {
     // We use IndexMap and not HashMap, because it makes it cheaper to remove a random element when the cache is full.
-    map: Arc<RwLock<IndexMap<TKey, TData, S>>>,
+    pub map: Arc<RwLock<IndexMap<TKey, TData, S>>>,
     size: usize,
     counters: Arc<TxScriptCacheCounters>,
 }

@@ -2,7 +2,7 @@ use crate::processes::ghostdag::ordering::SortableBlock;
 use kaspa_consensus_core::trusted::ExternalGhostdagData;
 use kaspa_consensus_core::{blockhash::BlockHashes, BlueWorkType};
 use kaspa_consensus_core::{BlockHashMap, BlockHasher, BlockLevel, HashMapCustomHasher};
-use kaspa_database::prelude::DB;
+use kaspa_database::prelude::RocksDB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DbKey};
 use kaspa_database::prelude::{CachePolicy, StoreError};
 use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
@@ -48,7 +48,6 @@ impl MemSizeEstimator for GhostdagData {
 impl MemSizeEstimator for CompactGhostdagData {}
 
 impl From<&GhostdagData> for CompactGhostdagData {
-    #[inline(always)]
     fn from(value: &GhostdagData) -> Self {
         Self { blue_score: value.blue_score, blue_work: value.blue_work, selected_parent: value.selected_parent }
     }
@@ -116,7 +115,7 @@ impl GhostdagData {
     pub fn ascending_mergeset_without_selected_parent<'a>(
         &'a self,
         store: &'a (impl GhostdagStoreReader + ?Sized),
-    ) -> impl Iterator<Item = SortableBlock> + 'a {
+    ) -> impl Iterator<Item = SortableBlock> + '_ {
         self.mergeset_blues
             .iter()
             .skip(1) // Skip the selected parent
@@ -139,7 +138,7 @@ impl GhostdagData {
     pub fn descending_mergeset_without_selected_parent<'a>(
         &'a self,
         store: &'a (impl GhostdagStoreReader + ?Sized),
-    ) -> impl Iterator<Item = SortableBlock> + 'a {
+    ) -> impl Iterator<Item = SortableBlock> + '_ {
         self.mergeset_blues
                 .iter()
                 .skip(1) // Skip the selected parent
@@ -175,7 +174,7 @@ impl GhostdagData {
     pub fn consensus_ordered_mergeset<'a>(
         &'a self,
         store: &'a (impl GhostdagStoreReader + ?Sized),
-    ) -> impl Iterator<Item = Hash> + 'a {
+    ) -> impl Iterator<Item = Hash> + '_ {
         once(self.selected_parent).chain(self.ascending_mergeset_without_selected_parent(store).map(|s| s.hash))
     }
 
@@ -183,7 +182,7 @@ impl GhostdagData {
     pub fn consensus_ordered_mergeset_without_selected_parent<'a>(
         &'a self,
         store: &'a (impl GhostdagStoreReader + ?Sized),
-    ) -> impl Iterator<Item = Hash> + 'a {
+    ) -> impl Iterator<Item = Hash> + '_ {
         self.ascending_mergeset_without_selected_parent(store).map(|s| s.hash)
     }
 
@@ -251,14 +250,14 @@ pub trait GhostdagStore: GhostdagStoreReader {
 /// A DB + cache implementation of `GhostdagStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbGhostdagStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     level: BlockLevel,
     access: CachedDbAccess<Hash, Arc<GhostdagData>, BlockHasher>,
     compact_access: CachedDbAccess<Hash, CompactGhostdagData, BlockHasher>,
 }
 
 impl DbGhostdagStore {
-    pub fn new(db: Arc<DB>, level: BlockLevel, cache_policy: CachePolicy, compact_cache_policy: CachePolicy) -> Self {
+    pub fn new(db: Arc<RocksDB>, level: BlockLevel, cache_policy: CachePolicy, compact_cache_policy: CachePolicy) -> Self {
         assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
         let lvl_bytes = level.to_le_bytes();
         let prefix = DatabaseStorePrefixes::Ghostdag.into_iter().chain(lvl_bytes).collect_vec();
@@ -272,7 +271,7 @@ impl DbGhostdagStore {
     }
 
     pub fn new_temp(
-        db: Arc<DB>,
+        db: Arc<RocksDB>,
         level: BlockLevel,
         cache_policy: CachePolicy,
         compact_cache_policy: CachePolicy,

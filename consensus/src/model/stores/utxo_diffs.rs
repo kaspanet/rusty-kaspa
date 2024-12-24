@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use kaspa_consensus_core::{utxo::utxo_diff::UtxoDiff, BlockHasher};
 use kaspa_database::prelude::CachePolicy;
+use kaspa_database::prelude::RocksDB;
 use kaspa_database::prelude::StoreError;
-use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess, DirectDbWriter};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
@@ -26,12 +26,12 @@ pub trait UtxoDiffsStore: UtxoDiffsStoreReader {
 /// A DB + cache implementation of `UtxoDifferencesStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbUtxoDiffsStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     access: CachedDbAccess<Hash, Arc<UtxoDiff>, BlockHasher>,
 }
 
 impl DbUtxoDiffsStore {
-    pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
+    pub fn new(db: Arc<RocksDB>, cache_policy: CachePolicy) -> Self {
         Self { db: Arc::clone(&db), access: CachedDbAccess::new(db, cache_policy, DatabaseStorePrefixes::UtxoDiffs.into()) }
     }
 

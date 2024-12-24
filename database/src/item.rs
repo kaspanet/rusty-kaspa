@@ -1,7 +1,7 @@
 use crate::{
-    db::DB,
     errors::StoreError,
     prelude::{DbSetAccess, ReadLock},
+    rocksdb::RocksDB,
 };
 
 use super::prelude::{DbKey, DbWriter};
@@ -16,13 +16,13 @@ use std::{
 /// A cached DB item with concurrency support
 #[derive(Clone)]
 pub struct CachedDbItem<T> {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     key: Vec<u8>,
     cached_item: Arc<RwLock<Option<T>>>,
 }
 
 impl<T> CachedDbItem<T> {
-    pub fn new(db: Arc<DB>, key: Vec<u8>) -> Self {
+    pub fn new(db: Arc<RocksDB>, key: Vec<u8>) -> Self {
         Self { db, key, cached_item: Arc::new(RwLock::new(None)) }
     }
 
@@ -104,7 +104,7 @@ where
     T: Clone + std::hash::Hash + Eq + Send + Sync + DeserializeOwned + Serialize,
     S: BuildHasher + Default,
 {
-    pub fn new(db: Arc<DB>, key: Vec<u8>) -> Self {
+    pub fn new(db: Arc<RocksDB>, key: Vec<u8>) -> Self {
         Self { access: DbSetAccess::new(db, key), cached_set: Arc::new(RwLock::new(None)) }
     }
 

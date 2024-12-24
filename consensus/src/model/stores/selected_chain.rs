@@ -7,7 +7,7 @@ use rocksdb::WriteBatch;
 use std::sync::Arc;
 
 use kaspa_database::prelude::{BatchDbWriter, CachePolicy, CachedDbAccess, DbWriter};
-use kaspa_database::prelude::{CachedDbItem, DB};
+use kaspa_database::prelude::{CachedDbItem, RocksDB};
 use kaspa_database::prelude::{StoreError, StoreResult};
 use kaspa_hashes::Hash;
 
@@ -31,14 +31,14 @@ pub trait SelectedChainStore: SelectedChainStoreReader {
 /// A DB + cache implementation of `SelectedChainStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbSelectedChainStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     access_hash_by_index: CachedDbAccess<U64Key, Hash>,
     access_index_by_hash: CachedDbAccess<Hash, u64>,
     access_highest_index: CachedDbItem<u64>,
 }
 
 impl DbSelectedChainStore {
-    pub fn new(db: Arc<DB>, cache_policy: CachePolicy) -> Self {
+    pub fn new(db: Arc<RocksDB>, cache_policy: CachePolicy) -> Self {
         Self {
             db: Arc::clone(&db),
             access_hash_by_index: CachedDbAccess::new(db.clone(), cache_policy, DatabaseStorePrefixes::ChainHashByIndex.into()),

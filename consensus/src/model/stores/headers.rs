@@ -3,7 +3,7 @@ use std::sync::Arc;
 use kaspa_consensus_core::header::CompactHeaderData;
 use kaspa_consensus_core::{header::Header, BlockHasher, BlockLevel};
 use kaspa_database::prelude::{BatchDbWriter, CachedDbAccess};
-use kaspa_database::prelude::{CachePolicy, DB};
+use kaspa_database::prelude::{CachePolicy, RocksDB};
 use kaspa_database::prelude::{StoreError, StoreResult};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
@@ -42,13 +42,13 @@ pub trait HeaderStore: HeaderStoreReader {
 /// A DB + cache implementation of `HeaderStore` trait, with concurrency support.
 #[derive(Clone)]
 pub struct DbHeadersStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     compact_headers_access: CachedDbAccess<Hash, CompactHeaderData, BlockHasher>,
     headers_access: CachedDbAccess<Hash, HeaderWithBlockLevel, BlockHasher>,
 }
 
 impl DbHeadersStore {
-    pub fn new(db: Arc<DB>, cache_policy: CachePolicy, compact_cache_policy: CachePolicy) -> Self {
+    pub fn new(db: Arc<RocksDB>, cache_policy: CachePolicy, compact_cache_policy: CachePolicy) -> Self {
         Self {
             db: Arc::clone(&db),
             compact_headers_access: CachedDbAccess::new(

@@ -1,21 +1,21 @@
-use crate::prelude::DB;
+use crate::prelude::RocksDB;
 use std::sync::Weak;
 use tempfile::TempDir;
 
 #[derive(Default)]
 pub struct DbLifetime {
-    weak_db_ref: Weak<DB>,
+    weak_db_ref: Weak<RocksDB>,
     optional_tempdir: Option<TempDir>,
 }
 
 impl DbLifetime {
-    pub fn new(tempdir: TempDir, weak_db_ref: Weak<DB>) -> Self {
+    pub fn new(tempdir: TempDir, weak_db_ref: Weak<RocksDB>) -> Self {
         Self { optional_tempdir: Some(tempdir), weak_db_ref }
     }
 
     /// Tracks the DB reference and makes sure all strong refs are cleaned up
     /// but does not remove the DB from disk when dropped.
-    pub fn without_destroy(weak_db_ref: Weak<DB>) -> Self {
+    pub fn without_destroy(weak_db_ref: Weak<RocksDB>) -> Self {
         Self { optional_tempdir: None, weak_db_ref }
     }
 }

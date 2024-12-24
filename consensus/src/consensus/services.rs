@@ -7,7 +7,7 @@ use crate::{
             block_window_cache::BlockWindowCacheStore, daa::DbDaaStore, depth::DbDepthStore, ghostdag::DbGhostdagStore,
             headers::DbHeadersStore, headers_selected_tip::DbHeadersSelectedTipStore, past_pruning_points::DbPastPruningPointsStore,
             pruning::DbPruningStore, reachability::DbReachabilityStore, relations::DbRelationsStore,
-            selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, DB,
+            selected_chain::DbSelectedChainStore, statuses::DbStatusesStore, RocksDB,
         },
     },
     processes::{
@@ -66,7 +66,7 @@ pub struct ConsensusServices {
 
 impl ConsensusServices {
     pub fn new(
-        db: Arc<DB>,
+        db: Arc<RocksDB>,
         storage: Arc<ConsensusStorage>,
         config: Arc<Config>,
         tx_script_cache_counters: Arc<TxScriptCacheCounters>,
@@ -94,7 +94,7 @@ impl ConsensusServices {
             storage.block_window_cache_for_past_median_time.clone(),
             params.max_difficulty_target,
             params.target_time_per_block,
-            params.sampling_activation,
+            params.sampling_activation_daa_score,
             params.legacy_difficulty_window_size,
             params.sampled_difficulty_window_size,
             params.min_difficulty_window_len,
@@ -118,6 +118,7 @@ impl ConsensusServices {
             relations_services[0].clone(),
             storage.headers_store.clone(),
             reachability_service.clone(),
+            false,
         );
 
         let coinbase_manager = CoinbaseManager::new(
@@ -145,9 +146,7 @@ impl ConsensusServices {
             params.coinbase_maturity,
             tx_script_cache_counters,
             mass_calculator.clone(),
-            params.storage_mass_activation,
-            params.kip10_activation,
-            params.payload_activation,
+            params.storage_mass_activation_daa_score,
         );
 
         let pruning_point_manager = PruningPointManager::new(

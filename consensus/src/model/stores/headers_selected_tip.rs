@@ -1,6 +1,6 @@
 use crate::processes::ghostdag::ordering::SortableBlock;
+use kaspa_database::prelude::RocksDB;
 use kaspa_database::prelude::StoreResult;
-use kaspa_database::prelude::DB;
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use rocksdb::WriteBatch;
@@ -18,12 +18,12 @@ pub trait HeadersSelectedTipStore: HeadersSelectedTipStoreReader {
 /// A DB + cache implementation of `HeadersSelectedTipStore` trait
 #[derive(Clone)]
 pub struct DbHeadersSelectedTipStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     access: CachedDbItem<SortableBlock>,
 }
 
 impl DbHeadersSelectedTipStore {
-    pub fn new(db: Arc<DB>) -> Self {
+    pub fn new(db: Arc<RocksDB>) -> Self {
         Self { db: Arc::clone(&db), access: CachedDbItem::new(db, DatabaseStorePrefixes::HeadersSelectedTip.into()) }
     }
 

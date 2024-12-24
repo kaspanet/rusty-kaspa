@@ -7,7 +7,7 @@ use crate::{
         daa::DbDaaStore,
         depth::DbDepthStore,
         ghostdag::{CompactGhostdagData, DbGhostdagStore},
-        headers::DbHeadersStore,
+        headers::{CompactHeaderData, DbHeadersStore},
         headers_selected_tip::DbHeadersSelectedTipStore,
         past_pruning_points::DbPastPruningPointsStore,
         pruning::DbPruningStore,
@@ -20,14 +20,13 @@ use crate::{
         utxo_diffs::DbUtxoDiffsStore,
         utxo_multisets::DbUtxoMultisetsStore,
         virtual_state::{LkgVirtualState, VirtualStores},
-        DB,
+        RocksDB,
     },
     processes::{ghostdag::ordering::SortableBlock, reachability::inquirer as reachability, relations},
 };
 
 use super::cache_policy_builder::CachePolicyBuilder as PolicyBuilder;
 use itertools::Itertools;
-use kaspa_consensus_core::header::CompactHeaderData;
 use kaspa_consensus_core::{blockstatus::BlockStatus, BlockHashSet};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
@@ -36,7 +35,7 @@ use std::{ops::DerefMut, sync::Arc};
 
 pub struct ConsensusStorage {
     // DB
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
 
     // Locked stores
     pub statuses_store: Arc<RwLock<DbStatusesStore>>,
@@ -74,7 +73,7 @@ pub struct ConsensusStorage {
 }
 
 impl ConsensusStorage {
-    pub fn new(db: Arc<DB>, config: Arc<Config>) -> Arc<Self> {
+    pub fn new(db: Arc<RocksDB>, config: Arc<Config>) -> Arc<Self> {
         let scale_factor = config.ram_scale;
         let scaled = |s| (s as f64 * scale_factor) as usize;
 
@@ -89,8 +88,8 @@ impl ConsensusStorage {
         // Budgets in bytes. All byte budgets overall sum up to ~1GB of memory (which obviously takes more low level alloc space)
         let daa_excluded_budget = scaled(30_000_000);
         let statuses_budget = scaled(30_000_000);
-        let reachability_data_budget = scaled(100_000_000);
-        let reachability_sets_budget = scaled(100_000_000); // x 2 for tree children and future covering set
+        let reachability_data_budget = scaled(200_000_000);
+        let reachability_sets_budget = scaled(200_000_000); // x 2 for tree children and future covering set
         let ghostdag_compact_budget = scaled(15_000_000);
         let headers_compact_budget = scaled(5_000_000);
         let parents_budget = scaled(80_000_000); // x 3 for reachability and levels

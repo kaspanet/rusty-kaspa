@@ -9,7 +9,7 @@ use crate::{
 use kaspa_consensus_core::{tx::ScriptPublicKeys, utxo::utxo_diff::UtxoDiff, BlockHashSet};
 use kaspa_consensusmanager::{ConsensusManager, ConsensusResetHandler};
 use kaspa_core::{info, trace};
-use kaspa_database::prelude::{StoreError, StoreResult, DB};
+use kaspa_database::prelude::{RocksDB, StoreError, StoreResult};
 use kaspa_hashes::Hash;
 use kaspa_index_core::indexed_utxos::BalanceByScriptPublicKey;
 use kaspa_utils::arc::ArcExtensions;
@@ -32,7 +32,7 @@ pub struct UtxoIndex {
 
 impl UtxoIndex {
     /// Creates a new [`UtxoIndex`] within a [`RwLock`]
-    pub fn new(consensus_manager: Arc<ConsensusManager>, db: Arc<DB>) -> UtxoIndexResult<Arc<RwLock<Self>>> {
+    pub fn new(consensus_manager: Arc<ConsensusManager>, db: Arc<RocksDB>) -> UtxoIndexResult<Arc<RwLock<Self>>> {
         let mut utxoindex = Self { consensus_manager: consensus_manager.clone(), store: Store::new(db) };
         if !utxoindex.is_synced()? {
             utxoindex.resync()?;

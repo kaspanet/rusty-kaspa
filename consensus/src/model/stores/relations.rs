@@ -5,7 +5,7 @@ use kaspa_database::prelude::{BatchDbWriter, CachePolicy, DbWriter};
 use kaspa_database::prelude::{CachedDbAccess, DbKey, DirectDbWriter};
 use kaspa_database::prelude::{DirectWriter, MemoryWriter};
 use kaspa_database::prelude::{ReadLock, StoreError};
-use kaspa_database::prelude::{StoreResult, DB};
+use kaspa_database::prelude::{RocksDB, StoreResult};
 use kaspa_database::registry::{DatabaseStorePrefixes, SEPARATOR};
 use kaspa_hashes::Hash;
 use rocksdb::WriteBatch;
@@ -38,13 +38,13 @@ pub trait RelationsStore: RelationsStoreReader {
 /// A DB + cache implementation of `RelationsStore` trait, with concurrent readers support.
 #[derive(Clone)]
 pub struct DbRelationsStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     parents_access: CachedDbAccess<Hash, Arc<Vec<Hash>>, BlockHasher>,
     children_store: DbChildrenStore,
 }
 
 impl DbRelationsStore {
-    pub fn new(db: Arc<DB>, level: BlockLevel, cache_policy: CachePolicy, children_cache_policy: CachePolicy) -> Self {
+    pub fn new(db: Arc<RocksDB>, level: BlockLevel, cache_policy: CachePolicy, children_cache_policy: CachePolicy) -> Self {
         assert_ne!(SEPARATOR, level, "level {} is reserved for the separator", level);
         let lvl_bytes = level.to_le_bytes();
         let parents_prefix = DatabaseStorePrefixes::RelationsParents.into_iter().chain(lvl_bytes).collect_vec();
@@ -56,7 +56,7 @@ impl DbRelationsStore {
         }
     }
 
-    pub fn with_prefix(db: Arc<DB>, prefix: &[u8], cache_policy: CachePolicy, children_cache_policy: CachePolicy) -> Self {
+    pub fn with_prefix(db: Arc<RocksDB>, prefix: &[u8], cache_policy: CachePolicy, children_cache_policy: CachePolicy) -> Self {
         let parents_prefix = prefix.iter().copied().chain(DatabaseStorePrefixes::RelationsParents).collect_vec();
         Self {
             db: Arc::clone(&db),

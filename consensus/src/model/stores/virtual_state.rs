@@ -9,7 +9,7 @@ use kaspa_consensus_core::{
 };
 use kaspa_database::prelude::{BatchDbWriter, CachedDbItem, DirectDbWriter, StoreResultExtensions};
 use kaspa_database::prelude::{CachePolicy, StoreResult};
-use kaspa_database::prelude::{StoreError, DB};
+use kaspa_database::prelude::{RocksDB, StoreError};
 use kaspa_database::registry::DatabaseStorePrefixes;
 use kaspa_hashes::Hash;
 use kaspa_muhash::MuHash;
@@ -134,7 +134,7 @@ pub struct VirtualStores {
 }
 
 impl VirtualStores {
-    pub fn new(db: Arc<DB>, lkg_virtual_state: LkgVirtualState, utxoset_cache_policy: CachePolicy) -> Self {
+    pub fn new(db: Arc<RocksDB>, lkg_virtual_state: LkgVirtualState, utxoset_cache_policy: CachePolicy) -> Self {
         Self {
             state: DbVirtualStateStore::new(db.clone(), lkg_virtual_state),
             utxo_set: DbUtxoSetStore::new(db, utxoset_cache_policy, DatabaseStorePrefixes::VirtualUtxoset.into()),
@@ -154,14 +154,14 @@ pub trait VirtualStateStore: VirtualStateStoreReader {
 /// A DB + cache implementation of `VirtualStateStore` trait
 #[derive(Clone)]
 pub struct DbVirtualStateStore {
-    db: Arc<DB>,
+    db: Arc<RocksDB>,
     access: CachedDbItem<Arc<VirtualState>>,
     /// The "last known good" virtual state
     lkg_virtual_state: LkgVirtualState,
 }
 
 impl DbVirtualStateStore {
-    pub fn new(db: Arc<DB>, lkg_virtual_state: LkgVirtualState) -> Self {
+    pub fn new(db: Arc<RocksDB>, lkg_virtual_state: LkgVirtualState) -> Self {
         let access = CachedDbItem::new(db.clone(), DatabaseStorePrefixes::VirtualState.into());
         // Init the LKG cache from DB store data
         lkg_virtual_state.store(access.read().unwrap_option().unwrap_or_default());
