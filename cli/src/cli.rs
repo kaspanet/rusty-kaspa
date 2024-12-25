@@ -291,6 +291,7 @@ impl KaspaCli {
                                 Events::Metrics { network_id : _, metrics : _ } => {
                                     // log_info!("Kaspa NG - received metrics event {metrics:?}")
                                 }
+                                Events::FeeRate { .. } => {},
                                 Events::Error { message } => { terrorln!(this,"{message}"); },
                                 Events::UtxoProcStart => {},
                                 Events::UtxoProcStop => {},

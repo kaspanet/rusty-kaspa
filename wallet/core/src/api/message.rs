@@ -8,6 +8,7 @@
 use crate::imports::*;
 use crate::tx::{Fees, GeneratorSummary, PaymentDestination};
 use kaspa_addresses::Address;
+use kaspa_rpc_core::RpcFeerateBucket;
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
@@ -547,6 +548,55 @@ pub struct AccountsEstimateRequest {
 pub struct AccountsEstimateResponse {
     pub generator_summary: GeneratorSummary,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeeRateEstimateBucket {
+    feerate: f64,
+    seconds: f64,
+}
+
+impl From<RpcFeerateBucket> for FeeRateEstimateBucket {
+    fn from(bucket: RpcFeerateBucket) -> Self {
+        Self { feerate: bucket.feerate, seconds: bucket.estimated_seconds }
+    }
+}
+
+impl From<&RpcFeerateBucket> for FeeRateEstimateBucket {
+    fn from(bucket: &RpcFeerateBucket) -> Self {
+        Self { feerate: bucket.feerate, seconds: bucket.estimated_seconds }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeeRateEstimateRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeeRateEstimateResponse {
+    pub priority: FeeRateEstimateBucket,
+    pub normal: FeeRateEstimateBucket,
+    pub low: FeeRateEstimateBucket,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeeRatePollerEnableRequest {
+    pub interval_seconds: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeeRatePollerEnableResponse {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeeRatePollerDisableRequest {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeeRatePollerDisableResponse {}
 
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]

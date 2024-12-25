@@ -8,6 +8,7 @@ use crate::result::Result;
 use crate::storage::interface::TransactionRangeResult;
 use crate::storage::Binding;
 use crate::tx::Fees;
+use kaspa_rpc_core::RpcFeeEstimate;
 use workflow_core::channel::Receiver;
 
 #[async_trait]
@@ -512,5 +513,29 @@ impl WalletApi for super::Wallet {
         _request: AddressBookEnumerateRequest,
     ) -> Result<AddressBookEnumerateResponse> {
         return Err(Error::NotImplemented);
+    }
+
+    async fn fee_rate_estimate_call(self: Arc<Self>, _request: FeeRateEstimateRequest) -> Result<FeeRateEstimateResponse> {
+        let RpcFeeEstimate { priority_bucket, normal_buckets, low_buckets } = self.rpc_api().get_fee_estimate().await?;
+
+        Ok(FeeRateEstimateResponse {
+            priority: priority_bucket.into(),
+            normal: normal_buckets.first().ok_or(Error::custom("missing normal feerate bucket"))?.into(),
+            low: low_buckets.first().ok_or(Error::custom("missing normal feerate bucket"))?.into(),
+        })
+    }
+
+    async fn fee_rate_poller_enable_call(self: Arc<Self>, request: FeeRatePollerEnableRequest) -> Result<FeeRatePollerEnableResponse> {
+        let FeeRatePollerEnableRequest { interval_seconds } = request;
+        self.utxo_processor().start_fee_rate_poller(Duration::from_secs(interval_seconds)).await?;
+        Ok(FeeRatePollerEnableResponse {})
+    }
+
+    async fn fee_rate_poller_disable_call(
+        self: Arc<Self>,
+        _request: FeeRatePollerDisableRequest,
+    ) -> Result<FeeRatePollerDisableResponse> {
+        self.utxo_processor().stop_fee_rate_poller().await?;
+        Ok(FeeRatePollerDisableResponse {})
     }
 }

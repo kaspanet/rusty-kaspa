@@ -1556,6 +1556,91 @@ try_from! ( args: AccountsEstimateResponse, IAccountsEstimateResponse, {
 // ---
 
 declare! {
+    IFeeRateEstimateBucket,
+    r#"
+    export interface IFeeRateEstimateBucket {
+        feeRate : number;
+        seconds : number;
+    }
+    "#,
+}
+
+declare! {
+    IFeeRateEstimateRequest,
+    r#"
+    export interface IFeeRateEstimateRequest { }
+    "#,
+}
+
+try_from! ( _args: IFeeRateEstimateRequest, FeeRateEstimateRequest, {
+    Ok(FeeRateEstimateRequest { })
+});
+
+declare! {
+    IFeeRateEstimateResponse,
+    r#"
+    export interface IFeeRateEstimateResponse {
+        priority : IFeeRateEstimateBucket,
+        normal : IFeeRateEstimateBucket,
+        low : IFeeRateEstimateBucket,
+    }
+    "#,
+}
+
+try_from! ( args: FeeRateEstimateResponse, IFeeRateEstimateResponse, {
+    Ok(to_value(&args)?.into())
+});
+
+declare! {
+    IFeeRatePollerEnableRequest,
+    r#"
+    export interface IFeeRatePollerEnableRequest {
+        intervalSeconds : number;
+    }
+    "#,
+}
+
+try_from! ( args: IFeeRatePollerEnableRequest, FeeRatePollerEnableRequest, {
+    let interval_seconds = args.get_u64("intervalSeconds")?;
+    Ok(FeeRatePollerEnableRequest { interval_seconds })
+});
+
+declare! {
+    IFeeRatePollerEnableResponse,
+    r#"
+    export interface IFeeRatePollerEnableResponse { }
+    "#,
+}
+
+try_from! ( _args: FeeRatePollerEnableResponse, IFeeRatePollerEnableResponse, {
+    Ok(IFeeRatePollerEnableResponse::default())
+});
+
+declare! {
+    IFeeRatePollerDisableRequest,
+    r#"
+    export interface IFeeRatePollerDisableRequest { }
+    "#,
+}
+
+try_from! ( _args: IFeeRatePollerDisableRequest, FeeRatePollerDisableRequest, {
+    Ok(FeeRatePollerDisableRequest { })
+});
+
+declare! {
+    IFeeRatePollerDisableResponse,
+    r#"
+    export interface IFeeRatePollerDisableResponse { }
+    "#,
+}
+
+try_from! ( _args: FeeRatePollerDisableResponse, IFeeRatePollerDisableResponse, {
+    Ok(IFeeRatePollerDisableResponse::default())
+});
+
+// ---
+
+declare! {
     ITransactionsDataGetRequest,
     r#"
     /**

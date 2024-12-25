@@ -105,6 +105,9 @@ impl WalletApi for WalletClient {
         TransactionsReplaceNote,
         TransactionsReplaceMetadata,
         AddressBookEnumerate,
+        FeeRateEstimate,
+        FeeRatePollerEnable,
+        FeeRatePollerDisable,
     ]}
 }
 
@@ -182,6 +185,9 @@ impl WalletServer {
         TransactionsReplaceNote,
         TransactionsReplaceMetadata,
         AddressBookEnumerate,
+        FeeRateEstimate,
+        FeeRatePollerEnable,
+        FeeRatePollerDisable,
     ]}
 }
 

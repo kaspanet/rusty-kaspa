@@ -4,6 +4,7 @@
 //! produced by the client RPC and the Kaspa node monitoring subsystems.
 //!
 
+use crate::api::message::FeeRateEstimateBucket;
 use crate::imports::*;
 use crate::storage::{Hint, PrvKeyDataInfo, StorageDescriptor, TransactionRecord, WalletDescriptor};
 use crate::utxo::context::UtxoContextId;
@@ -221,6 +222,11 @@ pub enum Events {
         // metrics_data: MetricsData,
         metrics: MetricsUpdate,
     },
+    FeeRate {
+        priority: FeeRateEstimateBucket,
+        normal: FeeRateEstimateBucket,
+        low: FeeRateEstimateBucket,
+    },
     /// A general wallet framework error, emitted when an unexpected
     /// error occurs within the wallet framework.
     Error {
@@ -284,6 +290,7 @@ pub enum EventKind {
     Discovery,
     Balance,
     Metrics,
+    FeeRate,
     Error,
 }
 
@@ -320,6 +327,7 @@ impl From<&Events> for EventKind {
             Events::Discovery { .. } => EventKind::Discovery,
             Events::Balance { .. } => EventKind::Balance,
             Events::Metrics { .. } => EventKind::Metrics,
+            Events::FeeRate { .. } => EventKind::FeeRate,
             Events::Error { .. } => EventKind::Error,
         }
     }
@@ -359,6 +367,7 @@ impl FromStr for EventKind {
             "discovery" => Ok(EventKind::Discovery),
             "balance" => Ok(EventKind::Balance),
             "metrics" => Ok(EventKind::Metrics),
+            "fee-rate" => Ok(EventKind::FeeRate),
             "error" => Ok(EventKind::Error),
             _ => Err(Error::custom("Invalid event kind")),
         }
@@ -406,6 +415,7 @@ impl std::fmt::Display for EventKind {
             EventKind::Discovery => "discovery",
             EventKind::Balance => "balance",
             EventKind::Metrics => "metrics",
+            EventKind::FeeRate => "fee-rate",
             EventKind::Error => "error",
         };
 

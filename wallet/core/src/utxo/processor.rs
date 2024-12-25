@@ -17,7 +17,7 @@ use kaspa_rpc_core::{
         ops::{RPC_API_REVISION, RPC_API_VERSION},
     },
     message::UtxosChangedNotification,
-    GetServerInfoResponse,
+    GetServerInfoResponse, RpcFeeEstimate,
 };
 use kaspa_wrpc_client::KaspaRpcClient;
 use workflow_core::channel::{Channel, DuplexChannel, Sender};
@@ -61,6 +61,8 @@ pub struct Inner {
     metrics: Arc<Metrics>,
     metrics_kinds: Mutex<Vec<MetricsUpdateKind>>,
     connection_signaler: Mutex<Option<Sender<std::result::Result<(), String>>>>,
+    fee_rate_task_ctl: DuplexChannel,
+    fee_rate_task_is_running: AtomicBool,
 }
 
 impl Inner {
@@ -91,6 +93,8 @@ impl Inner {
             metrics: Arc::new(Metrics::default()),
             metrics_kinds: Mutex::new(vec![]),
             connection_signaler: Mutex::new(None),
+            fee_rate_task_ctl: DuplexChannel::oneshot(),
+            fee_rate_task_is_running: AtomicBool::new(false),
         }
     }
 }
@@ -727,6 +731,48 @@ impl UtxoProcessor {
 
     pub fn enable_metrics_kinds(&self, metrics_kinds: &[MetricsUpdateKind]) {
         *self.inner.metrics_kinds.lock().unwrap() = metrics_kinds.to_vec();
+    }
+
+    pub async fn start_fee_rate_poller(&self, poller_interval: Duration) -> Result<()> {
+        self.stop_fee_rate_poller().await.ok();
+
+        let this = self.clone();
+        this.inner.fee_rate_task_is_running.store(true, Ordering::SeqCst);
+        let fee_rate_task_ctl_receiver = self.inner.fee_rate_task_ctl.request.receiver.clone();
+        let fee_rate_task_ctl_sender = self.inner.fee_rate_task_ctl.response.sender.clone();
+
+        let mut interval = workflow_core::task::interval(poller_interval);
+
+        spawn(async move {
+            loop {
+                select_biased! {
+                    _ = interval.next().fuse() => {
+                        if let Ok(fee_rate) = this.rpc_api().get_fee_estimate().await {
+                            let RpcFeeEstimate { priority_bucket, normal_buckets, low_buckets } = fee_rate;
+                            this.notify(Events::FeeRate {
+                                priority : priority_bucket.into(),
+                                normal : normal_buckets.first().expect("missing normal feerate bucket").into(),
+                                low : low_buckets.first().expect("missing normal feerate bucket").into()
+                            }).await.ok();
+                        }
+                    },
+                    _ = fee_rate_task_ctl_receiver.recv().fuse() => {
+                        break;
+                    },
+                }
+            }
+
+            fee_rate_task_ctl_sender.send(()).await.unwrap();
+        });
+
+        Ok(())
+    }
+
+    pub async fn stop_fee_rate_poller(&self) -> Result<()> {
+        if self.inner.fee_rate_task_is_running.load(Ordering::SeqCst) {
+            self.inner.fee_rate_task_ctl.signal(()).await.expect("UtxoProcessor::stop_task() `signal` error");
+        }
+        Ok(())
     }
 }
 

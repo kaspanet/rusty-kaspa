@@ -431,6 +431,39 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// an error.
     async fn accounts_estimate_call(self: Arc<Self>, request: AccountsEstimateRequest) -> Result<AccountsEstimateResponse>;
 
+    /// Wrapper around [`accounts_estimate_call()`](Self::accounts_estimate_call)
+    async fn fee_rate_estimate(self: Arc<Self>) -> Result<FeeRateEstimateResponse> {
+        Ok(self.fee_rate_estimate_call(FeeRateEstimateRequest {}).await?)
+    }
+
+    /// Estimate current network fee rate. Returns a [`FeeRateEstimateResponse`]
+    async fn fee_rate_estimate_call(self: Arc<Self>, request: FeeRateEstimateRequest) -> Result<FeeRateEstimateResponse>;
+
+    /// Wrapper around [`fee_rate_poller_enable_call()`](Self::fee_rate_poller_enable_call).
+    async fn fee_rate_poller_enable(self: Arc<Self>, interval_seconds: u64) -> Result<()> {
+        self.fee_rate_poller_enable_call(FeeRatePollerEnableRequest { interval_seconds }).await?;
+        Ok(())
+    }
+
+    /// Enable the fee rate poller. The fee rate poller is a background task that
+    /// periodically polls the network for the current fee rate. The fee rate is
+    /// used to estimate the transaction fee. The poller is disabled by default.
+    /// This function stops the previously enabled poller and starts a new one
+    /// with the specified `interval`.
+    async fn fee_rate_poller_enable_call(self: Arc<Self>, request: FeeRatePollerEnableRequest) -> Result<FeeRatePollerEnableResponse>;
+
+    /// Wrapper around [`fee_rate_poller_disable_call()`](Self::fee_rate_poller_disable_call).
+    async fn fee_rate_poller_disable(self: Arc<Self>) -> Result<()> {
+        self.fee_rate_poller_disable_call(FeeRatePollerDisableRequest {}).await?;
+        Ok(())
+    }
+
+    /// Disable the fee rate poller.
+    async fn fee_rate_poller_disable_call(
+        self: Arc<Self>,
+        request: FeeRatePollerDisableRequest,
+    ) -> Result<FeeRatePollerDisableResponse>;
+
     /// Get a range of transaction records for a specific account id.
     /// Wrapper around [`transactions_data_get_call()`](Self::transactions_data_get_call).
     async fn transactions_data_get_range(
