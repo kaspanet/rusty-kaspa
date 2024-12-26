@@ -89,6 +89,19 @@ impl AddressManager {
         self.current_address()
     }
 
+    pub fn default_address(&self) -> Result<Address> {
+        // TODO @surinder
+        todo!()
+        // let list = self.pubkey_managers.iter().map(|m| m.current_pubkey());
+
+        // let keys = list.into_iter().collect::<kaspa_wallet_keys::result::Result<Vec<_>>>()?;
+        // let address = self.create_address(keys)?;
+
+        // self.update_address_to_index_map(self.index(), &[address.clone()])?;
+
+        // Ok(address)
+    }
+
     pub fn current_address(&self) -> Result<Address> {
         let list = self.pubkey_managers.iter().map(|m| m.current_pubkey());
 

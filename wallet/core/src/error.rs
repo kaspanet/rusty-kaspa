@@ -344,6 +344,9 @@ pub enum Error {
 
     #[error("Error generating pending transaction from PSKT: {0}")]
     PendingTransactionFromPSKTError(String),
+
+    #[error("Address not found")]
+    AddressNotFound,
 }
 
 impl From<Aborted> for Error {

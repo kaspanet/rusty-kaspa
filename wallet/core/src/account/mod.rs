@@ -265,6 +265,16 @@ pub trait Account: AnySync + Send + Sync + 'static {
 
     fn minimum_signatures(&self) -> u16;
 
+    // default account address (receive[0])
+    fn default_address(&self) -> Result<Address> {
+        Err(Error::NotImplemented)
+    }
+
+    // all addresses in the account (receive + change up to and including the last used index)
+    fn account_addresses(&self) -> Result<Vec<Address>> {
+        Err(Error::NotImplemented)
+    }
+
     fn receive_address(&self) -> Result<Address>;
 
     fn change_address(&self) -> Result<Address>;

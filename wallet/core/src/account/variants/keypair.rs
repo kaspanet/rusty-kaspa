@@ -175,6 +175,8 @@ impl Account for Keypair {
     }
 
     fn descriptor(&self) -> Result<AccountDescriptor> {
+        let addresses = self.receive_address().ok().map(|address| vec![address]);
+
         let descriptor = AccountDescriptor::new(
             KEYPAIR_ACCOUNT_KIND.into(),
             *self.id(),
@@ -183,6 +185,7 @@ impl Account for Keypair {
             self.prv_key_data_id.into(),
             self.receive_address().ok(),
             self.change_address().ok(),
+            addresses,
         )
         .with_property(AccountDescriptorProperty::Ecdsa, self.ecdsa.into());
 
