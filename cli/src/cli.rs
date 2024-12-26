@@ -285,6 +285,7 @@ impl KaspaCli {
 
                         if let Ok(msg) = msg {
                             match *msg {
+                                Events::WalletList { .. } => {},
                                 Events::WalletPing => {
                                     // log_info!("Kaspa NG - received wallet ping");
                                 },

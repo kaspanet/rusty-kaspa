@@ -3,6 +3,7 @@
 //!
 
 use crate::api::{message::*, traits::WalletApi};
+use crate::events::Events;
 use crate::imports::*;
 use crate::result::Result;
 use crate::storage::interface::TransactionRangeResult;
@@ -152,6 +153,7 @@ impl WalletApi for super::Wallet {
 
     async fn wallet_enumerate_call(self: Arc<Self>, _request: WalletEnumerateRequest) -> Result<WalletEnumerateResponse> {
         let wallet_descriptors = self.store().wallet_list().await?;
+        self.notify(Events::WalletList { wallet_descriptors: wallet_descriptors.clone() }).await.ok();
         Ok(WalletEnumerateResponse { wallet_descriptors })
     }
 

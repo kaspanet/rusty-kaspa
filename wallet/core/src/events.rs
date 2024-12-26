@@ -82,6 +82,10 @@ pub enum Events {
         #[serde(rename = "syncState")]
         sync_state: SyncState,
     },
+    /// Emitted on wallet enumerate response
+    WalletList {
+        wallet_descriptors: Vec<WalletDescriptor>,
+    },
     /// Emitted after the wallet has loaded and
     /// contains anti-phishing 'hint' set by the user.
     WalletHint {
@@ -265,6 +269,7 @@ pub enum EventKind {
     Disconnect,
     UtxoIndexNotEnabled,
     SyncState,
+    WalletList,
     WalletStart,
     WalletHint,
     WalletOpen,
@@ -303,6 +308,7 @@ impl From<&Events> for EventKind {
             Events::Disconnect { .. } => EventKind::Disconnect,
             Events::UtxoIndexNotEnabled { .. } => EventKind::UtxoIndexNotEnabled,
             Events::SyncState { .. } => EventKind::SyncState,
+            Events::WalletList { .. } => EventKind::WalletList,
             Events::WalletHint { .. } => EventKind::WalletHint,
             Events::WalletOpen { .. } => EventKind::WalletOpen,
             Events::WalletCreate { .. } => EventKind::WalletCreate,
@@ -342,6 +348,7 @@ impl FromStr for EventKind {
             "disconnect" => Ok(EventKind::Disconnect),
             "utxo-index-not-enabled" => Ok(EventKind::UtxoIndexNotEnabled),
             "sync-state" => Ok(EventKind::SyncState),
+            "wallet-list" => Ok(EventKind::WalletList),
             "wallet-start" => Ok(EventKind::WalletStart),
             "wallet-hint" => Ok(EventKind::WalletHint),
             "wallet-open" => Ok(EventKind::WalletOpen),
@@ -391,6 +398,7 @@ impl std::fmt::Display for EventKind {
             EventKind::Disconnect => "disconnect",
             EventKind::UtxoIndexNotEnabled => "utxo-index-not-enabled",
             EventKind::SyncState => "sync-state",
+            EventKind::WalletList => "wallet-list",
             EventKind::WalletHint => "wallet-hint",
             EventKind::WalletOpen => "wallet-open",
             EventKind::WalletCreate => "wallet-create",
