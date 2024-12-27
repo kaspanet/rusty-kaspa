@@ -347,6 +347,9 @@ pub enum Error {
 
     #[error("Address not found")]
     AddressNotFound,
+
+    #[error("Something went wrong while generating commit reveal transaction batch")]
+    CommitRevealBatchGeneratorError,
 }
 
 impl From<Aborted> for Error {

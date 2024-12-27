@@ -3,7 +3,7 @@
 //!
 
 use kaspa_bip32::{secp256k1, DerivationPath, KeyFingerprint};
-use kaspa_consensus_core::hashing::sighash::SigHashReusedValuesUnsync;
+use kaspa_consensus_core::{hashing::sighash::SigHashReusedValuesUnsync, Hash};
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{collections::BTreeMap, fmt::Display, fmt::Formatter, future::Future, marker::PhantomData, ops::Deref};
@@ -312,6 +312,20 @@ impl PSKT<Signer> {
 
     pub fn combiner(self) -> PSKT<Combiner> {
         PSKT { inner_pskt: self.inner_pskt, role: Default::default() }
+    }
+
+    // Unorphan batch transaction UTXO.
+    pub fn set_input_prev_transaction_id(self, transaction_id: Hash) -> PSKT<Signer> {
+        let mut new_inputs = self.inner_pskt.inputs.clone();
+
+        new_inputs.iter_mut().for_each(|input| {
+            input.previous_outpoint.transaction_id = transaction_id;
+        });
+
+        let mut updated_inner = self.inner_pskt.clone();
+        updated_inner.inputs = new_inputs;
+
+        PSKT { inner_pskt: updated_inner, role: Default::default() }
     }
 }
 

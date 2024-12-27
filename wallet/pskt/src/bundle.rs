@@ -9,6 +9,7 @@ use kaspa_consensus_core::network::{NetworkId, NetworkType};
 use kaspa_consensus_core::tx::{ScriptPublicKey, TransactionOutpoint, UtxoEntry};
 
 use hex;
+use kaspa_consensus_core::constants::UNACCEPTED_DAA_SCORE;
 use kaspa_txscript::{extract_script_pub_key_address, pay_to_address_script, pay_to_script_hash_script};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
@@ -148,8 +149,14 @@ impl Default for Bundle {
     }
 }
 
+// Replaces pubkey placeholder in payload string when pubkey_bytes is given.
 pub fn lock_script_sig_templating(payload: String, pubkey_bytes: Option<&[u8]>) -> Result<Vec<u8>, Error> {
-    let mut payload_bytes: Vec<u8> = hex::decode(payload)?;
+    let payload_bytes: Vec<u8> = hex::decode(payload)?;
+    lock_script_sig_templating_bytes(payload_bytes.to_vec(), pubkey_bytes)
+}
+
+pub fn lock_script_sig_templating_bytes(payload: Vec<u8>, pubkey_bytes: Option<&[u8]>) -> Result<Vec<u8>, Error> {
+    let mut payload_bytes = payload;
 
     if let Some(pubkey) = pubkey_bytes {
         let placeholder = b"{{pubkey}}";
@@ -231,6 +238,36 @@ pub fn unlock_utxo(
         .amount(utxo_entry.amount - priority_fee_sompi)
         .script_public_key(script_public_key.clone())
         .build()?;
+
+    let pskt: PSKT<Constructor> = PSKT::<Creator>::default().constructor().input(input).output(output);
+    Ok(pskt.into())
+}
+
+// Build UTXO spending PSKB with custom input to be used in atomic transaction batch.
+pub fn unlock_utxo_as_batch_transaction_pskb(
+    amount: u64,
+    start_address: &Address,
+    end_address: &Address,
+    script_sig: &[u8],
+    priority_fee_sompi: Option<u64>,
+) -> Result<Bundle, Error> {
+    let origin_spk = pay_to_address_script(start_address);
+    let destination_spk = pay_to_address_script(end_address);
+
+    // The transaction input is built with the assumption to be used in
+    // a transaction batch and thus spending the UTXO of the given amount
+    // that is locked in the current batch of transactions.
+    let utxo_entry = UtxoEntry { amount, script_public_key: origin_spk, block_daa_score: UNACCEPTED_DAA_SCORE, is_coinbase: false };
+
+    let input =
+        InputBuilder::default().utxo_entry(utxo_entry.to_owned()).sig_op_count(1).redeem_script(script_sig.to_vec()).build()?;
+
+    let output_amount = match priority_fee_sompi {
+        Some(sompi) => amount - sompi,
+        None => amount,
+    };
+
+    let output = OutputBuilder::default().amount(output_amount).script_public_key(destination_spk).build()?;
 
     let pskt: PSKT<Constructor> = PSKT::<Creator>::default().constructor().input(input).output(output);
     Ok(pskt.into())

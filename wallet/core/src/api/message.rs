@@ -668,3 +668,69 @@ pub struct AddressBookEnumerateResponse {}
 #[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WalletNotification {}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsCommitRevealManualRequest {
+    pub account_id: AccountId,
+    pub script_sig: Vec<u8>,
+    pub start_destination: PaymentDestination,
+    pub end_destination: PaymentDestination,
+    pub wallet_secret: Secret,
+    pub payment_secret: Option<Secret>,
+    pub fee_rate: Option<f64>,
+    pub priority_fees_sompi: Option<Vec<Fees>>,
+    pub payload: Option<Vec<u8>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsCommitRevealManualResponse {
+    pub transaction_ids: Vec<TransactionId>,
+}
+
+/// Specifies the type of an account address to be used in
+/// commit reveal redeem script and also to spend reveal
+/// operation to.
+///
+/// @category Wallet API
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize, CastFromJs)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "wasm32-sdk", wasm_bindgen)]
+pub enum CommitRevealAddressKind {
+    Receive,
+    Change,
+}
+
+impl FromStr for CommitRevealAddressKind {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "receive" => Ok(CommitRevealAddressKind::Receive),
+            "change" => Ok(CommitRevealAddressKind::Change),
+            _ => Err(Error::custom(format!("Invalid address kind: {s}"))),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsCommitRevealRequest {
+    pub account_id: AccountId,
+    pub address_type: CommitRevealAddressKind,
+    pub address_index: u32,
+    pub script_sig: Vec<u8>,
+    pub wallet_secret: Secret,
+    pub commit_amount_sompi: u64,
+    pub payment_secret: Option<Secret>,
+    pub fee_rate: Option<f64>,
+    pub priority_fees_sompi: Option<Vec<Fees>>,
+    pub payload: Option<Vec<u8>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountsCommitRevealResponse {
+    pub transaction_ids: Vec<TransactionId>,
+}

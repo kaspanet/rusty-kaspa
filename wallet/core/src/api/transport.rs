@@ -108,6 +108,8 @@ impl WalletApi for WalletClient {
         FeeRateEstimate,
         FeeRatePollerEnable,
         FeeRatePollerDisable,
+        AccountsCommitReveal,
+        AccountsCommitRevealManual,
     ]}
 }
 
@@ -188,6 +190,8 @@ impl WalletServer {
         FeeRateEstimate,
         FeeRatePollerEnable,
         FeeRatePollerDisable,
+        AccountsCommitReveal,
+        AccountsCommitRevealManual,
     ]}
 }
 

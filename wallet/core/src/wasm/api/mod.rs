@@ -55,4 +55,6 @@ declare_wasm_handlers!([
     FeeRateEstimate,
     FeeRatePollerEnable,
     FeeRatePollerDisable,
+    AccountsCommitReveal,
+    AccountsCommitRevealManual,
 ]);
