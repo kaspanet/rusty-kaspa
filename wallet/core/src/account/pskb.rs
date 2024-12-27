@@ -5,6 +5,7 @@
 
 pub use crate::error::Error;
 use crate::imports::*;
+use crate::tx::PaymentOutput;
 use crate::tx::PaymentOutputs;
 use futures::stream;
 use kaspa_bip32::{DerivationPath, KeyFingerprint, PrivateKey};
@@ -15,8 +16,12 @@ use kaspa_consensus_core::tx::{TransactionInput, UtxoEntry};
 use kaspa_txscript::extract_script_pub_key_address;
 use kaspa_txscript::opcodes::codes::OpData65;
 use kaspa_txscript::script_builder::ScriptBuilder;
+use kaspa_wallet_pskt::bundle::script_sig_to_address;
+use kaspa_wallet_pskt::prelude::unlock_utxo_as_batch_transaction_pskb;
+
 use kaspa_wallet_core::tx::{Generator, GeneratorSettings, PaymentDestination, PendingTransaction};
 pub use kaspa_wallet_pskt::bundle::Bundle;
+use kaspa_wallet_pskt::prelude::lock_script_sig_templating_bytes;
 use kaspa_wallet_pskt::prelude::KeySource;
 use kaspa_wallet_pskt::prelude::{Finalizer, Inner, SignInputOk, Signature, Signer};
 pub use kaspa_wallet_pskt::pskt::{Creator, PSKT};
@@ -365,4 +370,160 @@ pub fn pskt_to_pending_transaction(
     )?;
 
     Ok(pending_tx)
+}
+
+// Allow creation of atomic commit reveal operation with two
+// different parameters sets.
+pub enum CommitRevealBatchKind {
+    Manual { hop_payment: PaymentDestination, destination_payment: PaymentDestination },
+    Parameterized { address: Address, commit_amount_sompi: u64 },
+}
+
+struct BundleCommitRevealConfig {
+    pub address_commit: Address,
+    pub address_reveal: Address,
+    pub first_output: PaymentDestination,
+    pub commit_fee: Option<u64>,
+    pub reveal_fee: Option<u64>,
+    pub redeem_script: Vec<u8>,
+}
+
+// Create signed atomic commit reveal PSKB.
+// Default reveal fee of 100_000 sompi if priority_fee_sompi is not provided.
+pub async fn commit_reveal_batch_bundle(
+    batch_config: CommitRevealBatchKind,
+    priority_fee_sompi: Option<Vec<u64>>,
+    script_sig: Vec<u8>,
+    payload: Option<Vec<u8>>,
+    fee_rate: Option<f64>,
+    account: Arc<dyn Account>,
+    wallet_secret: Secret,
+    payment_secret: Option<Secret>,
+    abortable: &Abortable,
+) -> Result<Bundle, Error> {
+    let network_id = account.wallet().clone().network_id()?;
+
+    // Configure atomic batch of commit reveal transactions relative to set of parameters.
+
+    let mut conf: BundleCommitRevealConfig = match batch_config {
+        CommitRevealBatchKind::Manual { hop_payment, destination_payment } => {
+            let addr_commit = match hop_payment.clone() {
+                PaymentDestination::Change => Err(()),
+                PaymentDestination::PaymentOutputs(payment_outputs) => Ok(payment_outputs.outputs.first().unwrap().address.clone()),
+            }
+            .unwrap();
+
+            let addr_reveal = match destination_payment.clone() {
+                PaymentDestination::Change => Err(()),
+                PaymentDestination::PaymentOutputs(payment_outputs) => Ok(payment_outputs.outputs.first().unwrap().address.clone()),
+            }
+            .unwrap();
+
+            BundleCommitRevealConfig {
+                address_commit: addr_commit,
+                address_reveal: addr_reveal,
+                first_output: hop_payment,
+                commit_fee: None,
+                reveal_fee: None,
+                redeem_script: script_sig,
+            }
+        }
+        CommitRevealBatchKind::Parameterized { address, commit_amount_sompi } => {
+            let redeem_script = lock_script_sig_templating_bytes(script_sig.to_vec(), Some(&address.payload))?;
+            let lock_address = script_sig_to_address(&redeem_script, network_id.into())?;
+            BundleCommitRevealConfig {
+                address_commit: lock_address.clone(),
+                address_reveal: address.clone(),
+                first_output: PaymentDestination::from(PaymentOutput::new(lock_address, commit_amount_sompi)),
+                commit_fee: None,
+                reveal_fee: None,
+                redeem_script,
+            }
+        }
+    };
+
+    // Up to two optional priority fees can be set: if only the first one is set, it will
+    // be applied to both transactions, whereas if both fees are set they will
+    // respectively be applied to commit and reveal transaction.
+    //
+    // A default minimum reveal transaction fee is set to 1000_000.
+    conf.commit_fee = priority_fee_sompi.clone().and_then(|v| v.into_iter().next());
+    conf.reveal_fee = priority_fee_sompi.and_then(|v| v.into_iter().nth(1)).or(conf.commit_fee).or(Some(100_000));
+
+    // Generate commit transaction.
+    let settings = GeneratorSettings::try_new_with_account(
+        account.clone().as_dyn_arc(),
+        conf.first_output.clone(),
+        fee_rate.or(Some(1.0)),
+        conf.commit_fee.unwrap_or(0).into(),
+        payload,
+    )?;
+    let signer = Arc::new(PSKBSigner::new(
+        account.clone().as_dyn_arc(),
+        account.prv_key_data(wallet_secret.clone()).await?,
+        payment_secret.clone(),
+    ));
+    let generator = Generator::try_new(settings, None, Some(abortable))?;
+    let pskt_generator = PSKTGenerator::new(generator, signer, account.wallet().address_prefix()?);
+
+    let bundle_commit = bundle_from_pskt_generator(pskt_generator).await?;
+
+    // Generate reveal transaction
+
+    // todo: support priority fee.
+    let bundle_unlock = unlock_utxo_as_batch_transaction_pskb(
+        conf.first_output.amount().unwrap(),
+        &conf.address_commit,
+        &conf.address_reveal,
+        &conf.redeem_script,
+        conf.reveal_fee,
+    )?;
+
+    let mut merge_bundle: Option<Bundle> = None;
+
+    let commit_transaction_id =
+        match account.clone().pskb_sign(&bundle_commit, wallet_secret.clone(), payment_secret.clone(), None).await {
+            Ok(signed_pskb) => {
+                merge_bundle = Some(Bundle::deserialize(&signed_pskb.serialize()?)?);
+
+                let first_inner = signed_pskb.0.first().unwrap();
+                let pskt: PSKT<Signer> = PSKT::<Signer>::from(first_inner.to_owned());
+                let finalizer = pskt.finalizer();
+                let pskt_finalizer = finalize_pskt_one_or_more_sig_and_redeem_script(finalizer)?;
+
+                let commit_transaction_id = match pskt_to_pending_transaction(
+                    pskt_finalizer.clone(),
+                    network_id,
+                    account.clone().as_derivation_capable()?.change_address()?,
+                ) {
+                    Ok(tx) => Ok(tx.id()),
+                    Err(e) => Err(e),
+                }?;
+                Ok(commit_transaction_id)
+            }
+            Err(e) => Err(e),
+        }?;
+
+    // Set commit transaction ID in reveal batch transaction input.
+    let reveal_inner = bundle_unlock.0.first().unwrap();
+    let reveal_pskt: PSKT<Signer> = PSKT::<Signer>::from(reveal_inner.to_owned());
+
+    let new_pskt = reveal_pskt.set_input_prev_transaction_id(commit_transaction_id);
+    let unorphaned_bundle_unlock = Bundle::from(new_pskt);
+
+    // Sign unlock transaction.
+    if let Ok(signed_pskb) = account
+        .clone()
+        .pskb_sign(&unorphaned_bundle_unlock, wallet_secret.clone(), payment_secret.clone(), Some(&conf.address_reveal))
+        .await
+    {
+        // Merge with commit transaction and return.
+        if merge_bundle.is_some() {
+            let mut bundle = merge_bundle.unwrap();
+            bundle.merge(signed_pskb);
+            return Ok(bundle);
+        }
+    }
+
+    Err(Error::CommitRevealBatchGeneratorError)
 }

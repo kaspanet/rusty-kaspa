@@ -11,8 +11,8 @@ use kaspa_hashes::Hash;
 use kaspa_wallet_pskt::bundle::Bundle;
 pub use kind::*;
 use pskb::{
-    bundle_from_pskt_generator, bundle_to_finalizer_stream, pskb_signer_for_address, pskt_to_pending_transaction, PSKBSigner,
-    PSKTGenerator,
+    bundle_from_pskt_generator, bundle_to_finalizer_stream, commit_reveal_batch_bundle, pskb_signer_for_address,
+    pskt_to_pending_transaction, PSKBSigner, PSKTGenerator,
 };
 pub use variants::*;
 
@@ -381,6 +381,58 @@ pub trait Account: AnySync + Send + Sync + 'static {
         Ok((generator.summary(), ids))
     }
 
+    async fn commit_reveal_manual(
+        self: Arc<Self>,
+        start_destination: PaymentDestination,
+        end_destination: PaymentDestination,
+        script_sig: Vec<u8>,
+        wallet_secret: Secret,
+        payment_secret: Option<Secret>,
+        fee_rate: Option<f64>,
+        priority_fees_sompi: Option<Vec<u64>>,
+        payload: Option<Vec<u8>>,
+        abortable: &Abortable,
+    ) -> Result<Bundle, Error> {
+        commit_reveal_batch_bundle(
+            pskb::CommitRevealBatchKind::Manual { hop_payment: start_destination, destination_payment: end_destination },
+            priority_fees_sompi,
+            script_sig,
+            payload,
+            fee_rate,
+            self.clone().as_dyn_arc(),
+            wallet_secret,
+            payment_secret,
+            abortable,
+        )
+        .await
+    }
+
+    async fn commit_reveal(
+        self: Arc<Self>,
+        address: Address,
+        script_sig: Vec<u8>,
+        wallet_secret: Secret,
+        payment_secret: Option<Secret>,
+        commit_amount_sompi: u64,
+        fee_rate: Option<f64>,
+        priority_fees_sompi: Option<Vec<u64>>,
+        payload: Option<Vec<u8>>,
+        abortable: &Abortable,
+    ) -> Result<Bundle, Error> {
+        commit_reveal_batch_bundle(
+            pskb::CommitRevealBatchKind::Parameterized { address, commit_amount_sompi },
+            priority_fees_sompi,
+            script_sig,
+            payload,
+            fee_rate,
+            self.clone().as_dyn_arc(),
+            wallet_secret,
+            payment_secret,
+            abortable,
+        )
+        .await
+    }
+
     async fn pskb_from_send_generator(
         self: Arc<Self>,
         destination: PaymentDestination,
@@ -431,7 +483,7 @@ pub trait Account: AnySync + Send + Sync + 'static {
         while let Some(result) = stream.next().await {
             match result {
                 Ok(pskt) => {
-                    let change = self.wallet().account()?.change_address()?;
+                    let change = self.change_address()?;
                     let transaction = pskt_to_pending_transaction(pskt, self.wallet().network_id()?, change)?;
                     ids.push(transaction.try_submit(&self.wallet().rpc_api()).await?);
                 }
@@ -752,6 +804,18 @@ pub trait DerivationCapableAccount: Account {
         let payload = key_data.payload.decrypt(payment_secret.as_ref())?;
         let xkey = payload.get_xprv(payment_secret.as_ref())?;
         create_private_keys(&self.account_kind(), self.cosigner_index(), self.account_index(), &xkey, receive, change)
+    }
+
+    // Retrieve receive address by index.
+    async fn receive_address_at_index(self: Arc<Self>, index: u32) -> Result<Address> {
+        let address = self.derivation().receive_address_manager().get_range(index..index + 1)?.first().unwrap().clone();
+        Ok(address)
+    }
+
+    // Retrieve change address by index.
+    async fn change_address_at_index(self: Arc<Self>, index: u32) -> Result<Address> {
+        let address = self.derivation().change_address_manager().get_range(index..index + 1)?.first().unwrap().clone();
+        Ok(address)
     }
 }
 

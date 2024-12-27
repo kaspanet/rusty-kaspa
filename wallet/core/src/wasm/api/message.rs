@@ -1868,3 +1868,212 @@ try_from! ( _args: AddressBookEnumerateResponse, IAddressBookEnumerateResponse, 
 });
 
 // ---
+// ---
+
+declare! {
+    IAccountsCommitRevealRequest,
+    r#"
+    /**
+     * 
+     * Atomic commit reveal operation using parameterized account address to
+     * dynamically generate the commit P2SH address.
+     * 
+     * The account address is selected through addressType and addressIndex
+     * and will be used to complete the script signature.
+     * 
+     * A placeholder of format {{pubkey}} is to be provided inside ScriptSig
+     * in order to be superseded by the selected address' payload.
+     * 
+     * The selected address will also be used to spend reveal transaction to.
+     * 
+     * 
+     * Up to two optional priority fees can be set: if only the first one is set,
+     * it will be applied to both transactions, whereas if both fees are set they
+     * will respectively be applied to commit and reveal transaction.
+     * 
+     * The optional fee rate is applied to the commit transaction.
+     * 
+     * In order to set fees specifically for the reveal transaction, set the second
+     * priority fee in priorityFeesSompi (if different to the reveal transaction fee)
+     * or reflect it in the reveal transaction by adapting endDestination amount. 
+     * 
+     * The default minimum reveal transaction fee is 100_000 sompi if
+     * priorityFeesSompi is not provided.
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsCommitRevealRequest {
+        accountId : HexString;
+        addressType : CommitRevealAddressKind;
+        addressIndex : number;
+        scriptSig : Uint8Array | HexString;
+        walletSecret : string;
+        commitAmountSompi : bigint;
+        paymentSecret? : string;
+        feeRate? : number;
+        priorityFeesSompi? : IFees | bigint;
+        payload? : Uint8Array | HexString;
+    }
+    "#,
+}
+
+try_from! ( args: IAccountsCommitRevealRequest, AccountsCommitRevealRequest, {
+    let account_id = args.get_account_id("accountId")?;
+    let address_type = args.get_value("addressType")?;
+
+    let address_type = if let Some(address_type) = address_type.as_string() {
+        address_type.parse()?
+    } else {
+        CommitRevealAddressKind::try_enum_from(&address_type)?
+    };
+
+    let address_index = args.get_u32("addressIndex")?;
+    let script_sig = args.get_vec_u8("scriptSig")?;
+    let wallet_secret = args.get_secret("walletSecret")?;
+    let payment_secret = args.try_get_secret("paymentSecret")?;
+    let commit_amount_sompi = args.get_u64("commitAmountSompi")?;
+    let fee_rate = args.get_f64("feeRate").ok();
+    let priority_fees_sompi = args.get_vec("priorityFeesSompi").ok().map(|filter| {
+        filter.iter()
+        .filter_map(|js| js.as_string())
+        .map(Fees::try_from).collect::<Result<Vec<Fees>>>()
+    }).transpose()?;
+
+    let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
+
+    Ok(AccountsCommitRevealRequest {
+        account_id,
+        address_type,
+        address_index,
+        script_sig,
+        wallet_secret,
+        payment_secret,
+        commit_amount_sompi,
+        fee_rate,
+        priority_fees_sompi,
+        payload,
+    })
+});
+
+declare! {
+    IAccountsCommitRevealResponse,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsCommitRevealResponse {
+        transactionIds : HexString[];
+    }
+    "#,
+}
+
+try_from! ( args: AccountsCommitRevealResponse, IAccountsCommitRevealResponse, {
+    let response = IAccountsCommitRevealResponse::default();
+    response.set("transactionIds", &to_value(&args.transaction_ids)?)?;
+    Ok(response)
+});
+
+// ---
+
+declare! {
+    IAccountsCommitRevealManualRequest,
+    r#"
+    /**
+     * 
+     * Atomic commit reveal operation using given payment outputs.
+     * 
+     * The startDestination stands for the commit transaction and the endDestination
+     * for the reveal transaction.
+     * 
+     * The scriptSig will be used to spend the UTXO of the first transaction and
+     * must therefore match the startDestination output P2SH.
+     * 
+     * 
+     * Up to two optional priority fees can be set: if only the first one is set,
+     * it will be applied to both transactions, whereas if both fees are set they
+     * will respectively be applied to commit and reveal transaction.
+     * 
+     * The optional fee rate is applied to the commit transaction.
+     * 
+     * In order to set fees specifically for the reveal transaction, set the second
+     * priority fee in priorityFeesSompi (if different to the reveal transaction fee)
+     * or reflect it in the reveal transaction by adapting endDestination amount. 
+     * 
+     * The default minimum reveal transaction fee is 100_000 sompi if
+     * priorityFeesSompi is not provided.
+     * 
+     * @category Wallet API
+     */
+    export interface IAccountsCommitRevealManualRequest {
+        accountId : HexString;
+        scriptSig : Uint8Array | HexString;
+        startDestination: IPaymentOutput;
+        endDestination: IPaymentOutput;
+        walletSecret : string;
+        paymentSecret? : string;
+        feeRate? : number;
+        priorityFeesSompi? : IFees | bigint;
+        payload? : Uint8Array | HexString;
+    }
+    "#,
+}
+
+try_from! ( args: IAccountsCommitRevealManualRequest, AccountsCommitRevealManualRequest, {
+    let account_id = args.get_account_id("accountId")?;
+    let script_sig = args.get_vec_u8("scriptSig")?;
+    let wallet_secret = args.get_secret("walletSecret")?;
+    let payment_secret = args.try_get_secret("paymentSecret")?;
+
+    let commit_output = args.get_value("startDestination")?;
+    let start_destination: PaymentDestination =
+    if commit_output.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_owned_from(commit_output)?.into() };
+
+    let reveal_output = args.get_value("endDestination")?;
+    let end_destination: PaymentDestination =
+    if reveal_output.is_undefined() { PaymentDestination::Change } else { PaymentOutputs::try_owned_from(reveal_output)?.into() };
+
+    let fee_rate = args.get_f64("feeRate").ok();
+    let priority_fees_sompi = args.get_vec("priorityFeesSompi").ok().map(|filter| {
+        filter.iter()
+        .filter_map(|js| js.as_string())
+        .map(Fees::try_from).collect::<Result<Vec<Fees>>>()
+    }).transpose()?;
+
+    let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
+
+    Ok(AccountsCommitRevealManualRequest {
+        account_id,
+        script_sig,
+        wallet_secret,
+        payment_secret,
+        start_destination,
+        end_destination,
+        fee_rate,
+        priority_fees_sompi,
+        payload,
+    })
+});
+
+declare! {
+    IAccountsCommitRevealManualResponse,
+    r#"
+    /**
+     * 
+     *  
+     * @category Wallet API
+     */
+    export interface IAccountsCommitRevealManualResponse {
+        transactionIds : HexString[];
+    }
+    "#,
+}
+
+try_from! ( args: AccountsCommitRevealManualResponse, IAccountsCommitRevealManualResponse, {
+    let response = IAccountsCommitRevealManualResponse::default();
+    response.set("transactionIds", &to_value(&args.transaction_ids)?)?;
+    Ok(response)
+});
+
+// ---

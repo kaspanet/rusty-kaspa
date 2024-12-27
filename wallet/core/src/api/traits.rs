@@ -422,6 +422,26 @@ pub trait WalletApi: Send + Sync + AnySync {
     /// available immediately upon transaction acceptance.
     async fn accounts_transfer_call(self: Arc<Self>, request: AccountsTransferRequest) -> Result<AccountsTransferResponse>;
 
+    /// Commit-reveal funds using provided [`PaymentDestination`] in
+    /// [`AccountsCommitRevealManualRequest`].
+    /// Returns an [`AccountsCommitRevealManualResponse`] struct that
+    /// contains transaction ids.
+    async fn accounts_commit_reveal_manual_call(
+        self: Arc<Self>,
+        request: AccountsCommitRevealManualRequest,
+    ) -> Result<AccountsCommitRevealManualResponse>;
+
+    /// Commit-reveal funds to P2SH of given script signature present in
+    /// [`AccountsCommitRevealRequest`] that provides a pubkey placeholder
+    /// used by given address type and address index looked up in derivation
+    /// manager.
+    /// Returns an [`AccountsCommitRevealResponse`] struct that contains
+    /// transaction ids.
+    async fn accounts_commit_reveal_call(
+        self: Arc<Self>,
+        request: AccountsCommitRevealRequest,
+    ) -> Result<AccountsCommitRevealResponse>;
+
     /// Performs a transaction estimate, returning [`AccountsEstimateResponse`]
     /// that contains [`GeneratorSummary`]. This call will estimate the total
     /// amount of fees that will be required by the transaction as well as
