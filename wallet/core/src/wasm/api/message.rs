@@ -1920,7 +1920,7 @@ try_from! ( args: IAccountsCommitRevealRequest, AccountsCommitRevealRequest, {
     let payment_secret = args.try_get_secret("paymentSecret")?;
     let commit_amount_sompi = args.get_u64("commitAmountSompi")?;
     let fee_rate = args.get_f64("feeRate").ok();
-    
+
     let reveal_fee_sompi = args.get_u64("revealFeeSompi").ok();
 
     let payload = args.try_get_value("payload")?.map(|v| v.try_as_vec_u8()).transpose()?;
